@@ -1,3 +1,7 @@
+"""
+验证 GreatPosterWall 索引结果的解析和字段映射。
+"""
+
 from app.adapters.system import rust as rust_accel
 from app.modules.indexer.parser.gazelle import GazelleSiteUserInfo
 from app.modules.indexer.spider import SiteSpider
@@ -34,7 +38,9 @@ GPW_HTML = """
 
 
 def _gpw_indexer() -> dict:
-    """构造与站点资源一致的 GPW 搜索配置。"""
+    """
+    构造与站点资源一致的 GPW 搜索配置。
+    """
     detail_selector = 'a[href*="torrents.php?id="][href*="torrentid="]'
     return {
         "id": "greatposterwall",
@@ -91,7 +97,9 @@ def _gpw_indexer() -> dict:
 
 
 def _build_parser() -> GazelleSiteUserInfo:
-    """构造 Gazelle 用户数据解析器测试实例。"""
+    """
+    构造 Gazelle 用户数据解析器测试实例。
+    """
     return GazelleSiteUserInfo(
         site_name="海豹",
         url="https://greatposterwall.com/",
@@ -102,7 +110,9 @@ def _build_parser() -> GazelleSiteUserInfo:
 
 
 def test_greatposterwall_python_search_prefers_complete_filename(monkeypatch):
-    """GPW Python 解析应优先使用详情链接携带的完整文件名。"""
+    """
+    GPW Python 解析应优先使用详情链接携带的完整文件名。
+    """
     monkeypatch.setattr(
         "app.modules.indexer.spider.rust_accel.parse_indexer_torrents",
         lambda **_: None,
@@ -122,11 +132,15 @@ def test_greatposterwall_python_search_prefers_complete_filename(monkeypatch):
 
 
 def test_greatposterwall_rust_search_prefers_complete_filename(monkeypatch):
-    """GPW Rust 解析应使用与 Python 相同的完整文件名配置。"""
+    """
+    GPW Rust 解析应使用与 Python 相同的完整文件名配置。
+    """
     monkeypatch.setattr(rust_accel, "is_enabled", lambda: True)
 
     def fail_python_fallback(*_args, **_kwargs):
-        """Rust 返回空值时阻止测试静默落入 Python 路径。"""
+        """
+        Rust 返回空值时阻止测试静默落入 Python 路径。
+        """
         raise AssertionError("GPW Rust 解析不应回退 Python")
 
     monkeypatch.setattr(SiteSpider, "get_info", fail_python_fallback)
@@ -137,7 +151,9 @@ def test_greatposterwall_rust_search_prefers_complete_filename(monkeypatch):
 
 
 def test_greatposterwall_search_falls_back_to_visible_title(monkeypatch):
-    """详情链接缺少完整文件名时应保留可见规格标题作为回退。"""
+    """
+    详情链接缺少完整文件名时应保留可见规格标题作为回退。
+    """
     monkeypatch.setattr(
         "app.modules.indexer.spider.rust_accel.parse_indexer_torrents",
         lambda **_: None,
@@ -153,7 +169,9 @@ def test_greatposterwall_search_falls_back_to_visible_title(monkeypatch):
 
 
 def test_greatposterwall_seeding_uses_semantic_stat_cells():
-    """GPW 标题列使用 colspan 时，做种统计仍应按语义 class 正确配对。"""
+    """
+    GPW 标题列使用 colspan 时，做种统计仍应按语义 class 正确配对。
+    """
     parser = _build_parser()
 
     next_page = parser._parse_user_torrent_seeding_info(GPW_HTML)
@@ -165,7 +183,9 @@ def test_greatposterwall_seeding_uses_semantic_stat_cells():
 
 
 def test_gazelle_seeding_keeps_legacy_column_fallback():
-    """没有语义 class 的传统 Gazelle 表格仍应按既有列号统计做种。"""
+    """
+    没有语义 class 的传统 Gazelle 表格仍应按既有列号统计做种。
+    """
     parser = _build_parser()
     html_text = """
     <table id="torrent_table">
@@ -182,7 +202,9 @@ def test_gazelle_seeding_keeps_legacy_column_fallback():
 
 
 def test_gazelle_login_accepts_current_user_link_without_logout_marker():
-    """Gazelle 首页仅暴露当前用户链接时也应识别为已登录。"""
+    """
+    Gazelle 首页仅暴露当前用户链接时也应识别为已登录。
+    """
     parser = _build_parser()
     logged_in_html = (
         '<html><body><a href="user.php?id=1234">tester</a>'
@@ -194,7 +216,9 @@ def test_gazelle_login_accepts_current_user_link_without_logout_marker():
 
 
 def test_gazelle_login_rejects_password_form_without_current_user_link():
-    """Gazelle 登录页不得因普通用户相关文本被误判为已登录。"""
+    """
+    Gazelle 登录页不得因普通用户相关文本被误判为已登录。
+    """
     parser = _build_parser()
     login_html = (
         '<html><body><form action="login.php">'

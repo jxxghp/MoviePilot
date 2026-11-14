@@ -1,4 +1,6 @@
-"""Agent 数据、会话与自主任务服务的宿主组合根。"""
+"""
+Agent 数据、会话与自主任务服务的宿主组合根。
+"""
 
 from __future__ import annotations
 
@@ -55,7 +57,15 @@ AgentDataContextResetter = Callable[[], None]
 
 @dataclass(frozen=True, slots=True)
 class AgentComposition:
-    """保存一个 lifespan 内共享的 Agent 数据、会话与任务对象。"""
+    """
+    保存一个 lifespan 内共享的 Agent 数据、会话与任务对象。
+
+    :param data: Agent 数据访问上下文
+    :param chat_repository: 将请求会话绑定为聊天仓储的工厂
+    :param persistence: Agent 会话与消息持久化服务
+    :param tasks: 持久化 Agent 定时任务的仓储
+    :param execution: 执行并收口 Agent 任务的应用服务
+    """
 
     data: AgentDataContext
     chat_repository: AgentChatRepositoryFactory
@@ -65,7 +75,9 @@ class AgentComposition:
 
 
 def _history_retention_cutoff() -> float | None:
-    """独立 Agent 库复用已配置的清理开关和会话保留期，零天表示不自动删除。"""
+    """
+    独立 Agent 库复用已配置的清理开关和会话保留期，零天表示不自动删除。
+    """
     policy = read_cleanup_policy()
     return time.time() - policy.agent_chat_days * 86400 if policy.enabled and policy.agent_chat_days else None
 
@@ -77,7 +89,9 @@ def compose_agent(
     dependencies: RuntimeDependencies,
     tasks: TaskRegistry | None = None,
 ) -> AgentComposition:
-    """在数据库 worker 启动后构造共享的 Agent 数据与任务服务。"""
+    """
+    在数据库 worker 启动后构造共享的 Agent 数据与任务服务。
+    """
     from app.agent.history.storage import SqliteRecallRepository
     from app.agent.runtime import agent_runtime_manager
 
@@ -130,7 +144,9 @@ def publish_agent_services(
     *,
     data_context_registrar: AgentDataContextRegistrar,
 ) -> None:
-    """发布同一批 Agent 服务，并由初始化器登记其数据上下文。"""
+    """
+    发布同一批 Agent 服务，并由初始化器登记其数据上下文。
+    """
     configure_agent_chat_service(composition.data.chat)
     configure_agent_chat_persistence(composition.data.chat_persistence)
     configure_agent_task_execution(composition.execution)
@@ -141,7 +157,9 @@ def reset_agent_services(
     *,
     data_context_resetter: AgentDataContextResetter,
 ) -> None:
-    """按发布逆序撤销当前 lifespan 的 Agent 数据、任务与会话服务。"""
+    """
+    按发布逆序撤销当前 lifespan 的 Agent 数据、任务与会话服务。
+    """
     data_context_resetter()
     reset_agent_task_execution()
     reset_agent_chat_persistence()

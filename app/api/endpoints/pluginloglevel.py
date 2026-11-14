@@ -1,4 +1,6 @@
-"""插件实例日志等级查询与设置接口。"""
+"""
+插件实例日志等级查询与设置接口。
+"""
 
 from typing import Any
 
@@ -15,7 +17,7 @@ from app.schemas.response import Response as _SchemaResponse
 router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/loglevel/{plugin_id}",
     summary="查询插件全部实例的日志等级设置",
     response_model=_SchemaResponse[_SchemaPluginInstanceLogLevelOverview],
@@ -37,7 +39,7 @@ def plugin_instance_log_levels(
     )
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/loglevel/{plugin_id}/{instance_id}",
     summary="设置插件实例的日志等级覆盖",
     response_model=_SchemaResponse[None],
@@ -62,7 +64,7 @@ def set_plugin_instance_log_level(
     return _SchemaResponse(success=True)
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/loglevel/{plugin_id}/{instance_id}",
     summary="清除插件实例的日志等级覆盖",
     response_model=_SchemaResponse[None],

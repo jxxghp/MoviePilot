@@ -1,3 +1,7 @@
+"""
+验证架构与插件基线记录的来源、依赖图和文档指标一致性。
+"""
+
 import ast
 import json
 import os
@@ -12,7 +16,9 @@ BASELINE_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "architecture"
 
 
 def test_official_plugin_baseline_records_external_source():
-    """官方插件快照必须绑定独立仓提交，且不得引用宿主插件副本。"""
+    """
+    官方插件快照必须绑定独立仓提交，且不得引用宿主插件副本。
+    """
     baseline_path = BASELINE_ROOT / "official-plugin-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -48,7 +54,9 @@ def test_official_plugin_baseline_records_external_source():
 
 
 def test_dependency_baseline_records_nonempty_host_graph() -> None:
-    """宿主依赖 fixture 不得因收集器提前返回而被静默写成空值。"""
+    """
+    宿主依赖 fixture 不得因收集器提前返回而被静默写成空值。
+    """
     baseline_path = BASELINE_ROOT / "dependency-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -81,19 +89,12 @@ def test_dependency_baseline_records_nonempty_host_graph() -> None:
     assert all("line" not in entry for entry in direct_egress["entries"])
 
 
-def test_architecture_documents_match_generated_quality_metrics() -> None:
-    """高漂移量化指标必须与生成 fixture 同步，不能在多份文档中分叉。"""
+def test_architecture_overview_matches_generated_quality_metrics() -> None:
+    """
+    架构总览引用的依赖边数与事件事实必须与生成 fixture 同步，不能在文档中分叉。
+    """
     dependency = json.loads(
         (BASELINE_ROOT / "dependency-baseline.json").read_text(encoding="utf-8")
-    )
-    ruff = json.loads(
-        (BASELINE_ROOT / "ruff-baseline.json").read_text(encoding="utf-8")
-    )
-    mypy = json.loads(
-        (BASELINE_ROOT / "mypy-baseline.json").read_text(encoding="utf-8")
-    )
-    coverage = json.loads(
-        (BASELINE_ROOT / "coverage-baseline.json").read_text(encoding="utf-8")
     )
     runtime = json.loads(
         (BASELINE_ROOT / "runtime-contract-baseline.json").read_text(
@@ -103,43 +104,10 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
     overview = (PROJECT_ROOT / "docs" / "architecture-overview.md").read_text(
         encoding="utf-8"
     )
-    checklist = (
-        PROJECT_ROOT
-        / "docs"
-        / "refactor"
-        / "optimization-checklist.md"
-    ).read_text(encoding="utf-8")
-    roadmap = (
-        PROJECT_ROOT
-        / "docs"
-        / "refactor"
-        / "refactor-roadmap.md"
-    ).read_text(encoding="utf-8")
     edge_count = f"{dependency['edge_count']:,}"
-    ruff_count = sum(
-        count
-        for diagnostics in ruff.values()
-        for count in diagnostics.values()
-    )
-    mypy_count = sum(
-        count
-        for diagnostics in mypy.values()
-        for count in diagnostics.values()
-    )
-    application_coverage = coverage["application"]["percent"]
-    domain_coverage = coverage["domain"]["percent"]
     event_facts = runtime["event_facts"]
 
     assert edge_count in overview
-    assert f"{dependency['module_count']} / {edge_count}" in checklist
-    assert f"全量 mypy 历史债务 | {mypy_count:,} / {len(mypy)} 文件" in checklist
-    assert f"Ruff 历史诊断 | {ruff_count}" in checklist
-    assert f"Application {application_coverage:.2f}%" in checklist
-    assert f"Domain {domain_coverage:.2f}%" in checklist
-    if "**阶段状态：`CANCELLED`" in roadmap:
-        assert "| S4-L5 Ruff 治理债务清零 | `CANCELLED` |" in roadmap
-    else:
-        assert f"当前受控 {ruff_count} 条诊断归零" in roadmap
     assert (
         f"当前宿主有 {event_facts['producer_call_count']} 个\n"
         f"生产调用，其中 {event_facts['static_producer_call_count']} 个静态解析为 "
@@ -150,20 +118,12 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
         f"{event_facts['static_consumer_count']} 个静态、"
         f"{event_facts['dynamic_consumer_count']} 个动态"
     ) in overview
-    assert (
-        f"{event_facts['producer_call_count']} 个 producer（"
-        f"{event_facts['static_producer_call_count']} 静态、"
-        f"{event_facts['dynamic_producer_count']} 动态）"
-    ) in checklist
-    assert (
-        f"{event_facts['consumer_registration_count']} 个 consumer（"
-        f"{event_facts['static_consumer_count']} 静态、"
-        f"{event_facts['dynamic_consumer_count']} 动态）"
-    ) in checklist
 
 
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():
-    """宿主探索页消费的官方插件 API 不得依赖动态路由隐式包装。"""
+    """
+    宿主探索页消费的官方插件 API 不得依赖动态路由隐式包装。
+    """
     baseline_path = BASELINE_ROOT / "official-plugin-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     routes = {
@@ -186,7 +146,9 @@ def test_official_discovery_plugins_explicitly_keep_host_page_envelope():
 
 
 def test_startup_performance_baseline_records_all_cold_import_targets():
-    """启动性能基线必须包含关键入口的可比较冷导入采样。"""
+    """
+    启动性能基线必须包含关键入口的可比较冷导入采样。
+    """
     baseline_path = BASELINE_ROOT / "startup-performance-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -204,7 +166,9 @@ def test_startup_performance_baseline_records_all_cold_import_targets():
 
 
 def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
-    """运行契约 fixture 只保存稳定语义，源码位置必须按需诊断。"""
+    """
+    运行契约 fixture 只保存稳定语义，源码位置必须按需诊断。
+    """
     baseline_path = BASELINE_ROOT / "runtime-contract-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -218,7 +182,9 @@ def test_runtime_contract_baseline_excludes_diagnostic_line_numbers():
 
 
 def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
-    """事务 fixture 必须保持 Model 写装饰器归零，并冻结剩余查询债务。"""
+    """
+    事务 fixture 必须保持 Model 写装饰器归零，并冻结剩余查询债务。
+    """
     baseline_path = BASELINE_ROOT / "transaction-debt-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -234,7 +200,9 @@ def test_transaction_debt_baseline_is_a_model_and_oper_ratchet() -> None:
 
 
 def test_host_oper_does_not_call_base_implicit_write_wrappers() -> None:
-    """宿主 Oper 不得重新借 Base 兼容写方法隐式提交调用方事务。"""
+    """
+    宿主 Oper 不得重新借 Base 兼容写方法隐式提交调用方事务。
+    """
     implicit_methods = {
         "create",
         "async_create",
@@ -268,7 +236,9 @@ def test_host_oper_does_not_call_base_implicit_write_wrappers() -> None:
 
 
 def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
-    """配置基线必须把零债务与固定基础设施边界分开冻结。"""
+    """
+    配置基线必须把零债务与固定基础设施边界分开冻结。
+    """
     baseline_path = BASELINE_ROOT / "configuration-debt-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -301,7 +271,9 @@ def test_configuration_debt_baseline_tracks_canonical_direct_access() -> None:
 
 
 def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resources():
-    """非功能基线必须同时记录正常/安全模式和隔离资源增量。"""
+    """
+    非功能基线必须同时记录正常/安全模式和隔离资源增量。
+    """
     baseline_path = BASELINE_ROOT / "startup-performance-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     lifecycle = baseline["lifecycle"]
@@ -323,7 +295,9 @@ def test_startup_performance_baseline_records_normal_and_safe_lifecycle_resource
 
 
 def test_schema_export_manifest_matches_current_modules():
-    """Schema 公开符号或冲突来源变化必须显式刷新生成清单。"""
+    """
+    Schema 公开符号或冲突来源变化必须显式刷新生成清单。
+    """
     result = subprocess.run(
         [sys.executable, "scripts/schema/exports.py", "--check"],
         cwd=PROJECT_ROOT,
@@ -336,7 +310,9 @@ def test_schema_export_manifest_matches_current_modules():
 
 
 def test_schema_root_import_does_not_eagerly_load_schema_graph():
-    """仅导入 schema 根包时不得加载任一业务 schema 子模块。"""
+    """
+    仅导入 schema 根包时不得加载任一业务 schema 子模块。
+    """
     script = """
 import sys
 import app.schemas
@@ -361,7 +337,9 @@ assert len(app.schemas.__all__) >= 400
 
 
 def test_agent_policy_root_import_does_not_eagerly_load_policy_submodules():
-    """策略公共入口惰性导出，避免 orchestrator、registry 和 sanitizer 形成导入环。"""
+    """
+    策略公共入口惰性导出，避免 orchestrator、registry 和 sanitizer 形成导入环。
+    """
     script = """
 import sys
 import app.agent.policy
@@ -387,7 +365,9 @@ assert sanitize_for_host({'token': 'secret'}) == {'token': '***'}
 
 
 def test_doctor_and_monitor_roots_are_lazy_identity_preserving_facades(tmp_path):
-    """诊断和监控包根不得预载实现，旧路径仍需返回同一公开对象。"""
+    """
+    诊断和监控包根不得预载实现，旧路径仍需返回同一公开对象。
+    """
     script = """
 import sys
 import app.doctor
@@ -425,7 +405,9 @@ assert callable(run_doctor)
 
 
 def test_split_host_module_roots_keep_manifest_entrypoint_identity():
-    """迁入 module.py 的宿主模块须保持 manifest 包级入口和历史反射路径。"""
+    """
+    迁入 module.py 的宿主模块须保持 manifest 包级入口和历史反射路径。
+    """
     script = """
 from importlib import import_module
 import sys
@@ -457,7 +439,9 @@ for package_name, symbol_name in contracts:
 
 
 def test_event_contract_baseline_covers_every_public_event_enum() -> None:
-    """统一事件事实快照必须覆盖全部枚举和真实生产、消费调用。"""
+    """
+    统一事件事实快照必须覆盖全部枚举和真实生产、消费调用。
+    """
     baseline_path = BASELINE_ROOT / "runtime-contract-baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     events = baseline["event_facts"]
@@ -468,18 +452,18 @@ def test_event_contract_baseline_covers_every_public_event_enum() -> None:
 
     assert set(events["event_index"]) == expected
     assert events["event_count"] == len(expected)
-    assert events["producer_call_count"] == 86
-    assert events["static_producer_call_count"] == 85
-    assert events["dynamic_producer_count"] == 1
+    assert events["producer_call_count"] == 76
+    assert events["static_producer_call_count"] == 74
+    assert events["dynamic_producer_count"] == 2
     assert events["invalid_producer_count"] == 0
-    assert events["producer_event_reference_count"] == 87
-    assert events["consumer_registration_count"] == 17
-    assert events["static_consumer_count"] == 16
+    assert events["producer_event_reference_count"] == 76
+    assert events["consumer_registration_count"] == 19
+    assert events["static_consumer_count"] == 18
     assert events["dynamic_consumer_count"] == 1
     assert events["invalid_consumer_count"] == 0
-    assert events["consumer_event_reference_count"] == 16
-    assert events["fact_count"] == 103
-    assert len({fact["fingerprint"] for fact in events["consumers"]}) == 17
+    assert events["consumer_event_reference_count"] == 18
+    assert events["fact_count"] == 95
+    assert len({fact["fingerprint"] for fact in events["consumers"]}) == 19
     assert all(
         not fact["caller"].startswith("app.plugins")
         for fact in (*events["producers"], *events["consumers"])

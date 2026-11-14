@@ -1,3 +1,7 @@
+"""
+验证媒体识别接口的路径解析、来源选择和元数据传递。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -17,7 +21,9 @@ from app.schemas.types import MediaType
     ],
 )
 def test_recognize_uses_parent_metadata_for_media_file_path(title: str) -> None:
-    """标题参数为媒体文件路径时应合并父目录中的名称和年份。"""
+    """
+    标题参数为媒体文件路径时应合并父目录中的名称和年份。
+    """
     chain = Mock()
     chain.async_recognize_by_meta = AsyncMock(
         return_value=MediaInfo(
@@ -46,7 +52,9 @@ def test_recognize_uses_parent_metadata_for_media_file_path(title: str) -> None:
     ],
 )
 def test_recognize_does_not_treat_non_path_title_as_file_path(title: str) -> None:
-    """普通片名和网络地址不应误走文件路径解析。"""
+    """
+    普通片名和网络地址不应误走文件路径解析。
+    """
     chain = Mock()
     chain.async_recognize_by_meta = AsyncMock(
         return_value=MediaInfo(title="Fate/stay night", type=MediaType.TV)
@@ -62,7 +70,9 @@ def test_recognize_does_not_treat_non_path_title_as_file_path(title: str) -> Non
 
 
 def test_recognize_musicbrainz_source_parses_music_meta() -> None:
-    """MusicBrainz 数据源下普通标题应按音乐元数据解析并拆分艺术家。"""
+    """
+    MusicBrainz 数据源下普通标题应按音乐元数据解析并拆分艺术家。
+    """
     chain = Mock()
     chain.async_recognize_by_meta = AsyncMock(return_value=None)
 
@@ -77,7 +87,9 @@ def test_recognize_musicbrainz_source_parses_music_meta() -> None:
 
 
 def test_recognize_audio_file_title_uses_music_meta_without_source() -> None:
-    """音频文件名无需指定数据源即应进入音乐识别分支。"""
+    """
+    音频文件名无需指定数据源即应进入音乐识别分支。
+    """
     chain = Mock()
     chain.async_recognize_by_meta = AsyncMock(return_value=None)
 
@@ -87,3 +99,24 @@ def test_recognize_audio_file_title_uses_music_meta_without_source() -> None:
     metainfo = chain.async_recognize_by_meta.await_args.args[0]
     assert isinstance(metainfo, MetaMusic)
     assert metainfo.audio_format
+
+
+def test_recognize_returns_meta_info_when_media_lookup_fails() -> None:
+    """
+    未匹配到媒体时也应返回解析元数据，供识别测试展示识别词应用情况和解析结果。
+    """
+    chain = Mock()
+    chain.async_recognize_by_meta = AsyncMock(return_value=None)
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+        result = asyncio.run(
+            recognize(
+                title="Some.Release.2024",
+                custom_words="Some => Other",
+                _=Mock(),
+            )
+        )
+
+    assert result["media_info"] is None
+    assert result["meta_info"]["org_string"] == "Other.Release.2024"
+    assert result["meta_info"]["apply_words"] == ["Some => Other"]

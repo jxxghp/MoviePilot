@@ -1,4 +1,6 @@
-"""进程级运行时 Facade 与 provider 装配门禁回归测试。"""
+"""
+进程级运行时 Facade 与 provider 装配门禁回归测试。
+"""
 
 import subprocess
 import sys
@@ -10,12 +12,16 @@ from scripts.architecture.service_locator import (
 
 
 def test_host_runtime_consumers_use_application_facades() -> None:
-    """canonical 宿主不得在批准边界外直接定位 concrete 运行时。"""
+    """
+    canonical 宿主不得在批准边界外直接定位 concrete 运行时。
+    """
     assert collect_service_locator_violations() == []
 
 
 def test_service_locator_gate_detects_each_concrete_runtime_family() -> None:
-    """单一扫描器必须覆盖五类运行时，并保留明确兼容边界。"""
+    """
+    单一扫描器必须覆盖五类运行时，并保留明确兼容边界。
+    """
     graph = {
         "app.api.scheduler_bypass": {"app.scheduler.facade"},
         "app.api.module_bypass": {"app.runtime.extensions.module.manager"},
@@ -52,7 +58,9 @@ def test_service_locator_gate_detects_each_concrete_runtime_family() -> None:
 
 
 def test_initializer_provider_registration_requires_explicit_stage() -> None:
-    """冷导入 initializer 不得注册 provider；configure/reset 必须成对生效。"""
+    """
+    冷导入 initializer 不得注册 provider；configure/reset 必须成对生效。
+    """
     root = Path(__file__).resolve().parents[1]
     script = r'''
 from app.testing.bootstrap import ensure_sites_stub
@@ -110,3 +118,24 @@ assert gateway._provider_runtime_factory is None
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_cli_agent_is_an_exact_runtime_owner_without_subtree_exemption() -> None:
+    """
+    只允许独占 CLI 组合根持有模块和插件 owner，相邻消费者及子模块仍须走门面。
+    """
+    dependencies = {"app.runtime.extensions.module.manager", "app.runtime.extensions.plugin.manager"}
+    graph = {
+        "app.startup.composition.cliagent": dependencies,
+        "app.startup.composition.cliagent.consumer": dependencies,
+        "app.startup.composition.cliagent_tools": dependencies,
+    }
+
+    violations = collect_service_locator_violations(graph)
+
+    assert [(item.source, item.policy) for item in violations] == [
+        ("app.startup.composition.cliagent.consumer", "module"),
+        ("app.startup.composition.cliagent_tools", "module"),
+        ("app.startup.composition.cliagent.consumer", "plugin"),
+        ("app.startup.composition.cliagent_tools", "plugin"),
+    ]

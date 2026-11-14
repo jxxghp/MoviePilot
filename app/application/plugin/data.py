@@ -1,4 +1,6 @@
-"""插件持久化数据查询、投影与写用例。"""
+"""
+插件持久化数据查询、投影与写用例。
+"""
 
 from __future__ import annotations
 
@@ -11,51 +13,82 @@ from app.schemas.common import JsonData
 
 
 class PluginDataQueryRepository(Protocol):
-    """Agent 插件数据查询所需的类型化异步端口。"""
+    """
+    Agent 插件数据查询所需的类型化异步端口。
+    """
 
     async def get(self, plugin_id: str, key: str) -> JsonData:
-        """读取插件指定键的数据。"""
+        """
+        读取插件指定键的数据。
+
+        :param plugin_id: 目标插件的物理标识
+        :param key: 插件持久化数据的键
+        :return: 该键的 JSON 数据；不存在时为 None
+        """
         ...
 
     async def list(self, plugin_id: str) -> dict[str, JsonData]:
-        """读取插件全部键值并在 Session 内完成投影。"""
+        """
+        读取插件全部键值并在 Session 内完成投影。
+
+        :param plugin_id: 目标插件的物理标识
+        :return: 插件全部数据组成的键值映射，无记录时为空字典
+        """
         ...
 
 
 class PluginDataMutationRepository(Protocol):
-    """插件数据删除命令所需的无提交仓储端口。"""
+    """
+    插件数据删除命令所需的无提交仓储端口。
+    """
 
     def stage_delete(self, plugin_id: str) -> None:
-        """暂存目标插件的全部持久化数据删除。"""
+        """
+        暂存目标插件的全部持久化数据删除。
+
+        :param plugin_id: 目标插件的物理标识
+        """
         ...
 
 
 class UnitOfWork(Protocol):
-    """插件数据同步写用例所需的事务端口。"""
+    """
+    插件数据同步写用例所需的事务端口。
+    """
 
     def commit(self) -> None:
-        """提交当前逻辑操作。"""
+        """
+        提交当前逻辑操作。
+        """
         ...
 
     def rollback(self) -> None:
-        """回滚当前逻辑操作。"""
+        """
+        回滚当前逻辑操作。
+        """
         ...
 
 
 class DeletePluginDataCommand:
-    """在一个显式事务中删除目标插件的全部持久化数据。"""
+    """
+    在一个显式事务中删除目标插件的全部持久化数据。
+    """
 
     def __init__(
         self,
         repository: PluginDataMutationRepository,
         unit_of_work: UnitOfWork,
     ) -> None:
-        """保存无提交仓储和事务所有者。"""
+        """
+        保存无提交仓储和事务所有者。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
 
     def execute(self, plugin_id: str) -> None:
-        """暂存并提交删除；任一步失败时回滚并传播原异常。"""
+        """
+        暂存并提交删除；任一步失败时回滚并传播原异常。
+        """
         try:
             self._repository.stage_delete(plugin_id)
             self._unit_of_work.commit()
@@ -71,14 +104,18 @@ PLUGIN_DATA_TRUNCATION_SUFFIX = "\n...(插件数据内容过长，已截断)"
 
 
 def clamp_preview_chars(max_chars: Optional[int]) -> int:
-    """约束插件数据预览长度，避免结果无限膨胀。"""
+    """
+    约束插件数据预览长度，避免结果无限膨胀。
+    """
     if max_chars is None:
         return DEFAULT_PLUGIN_DATA_PREVIEW_CHARS
     return max(512, min(int(max_chars), MAX_PLUGIN_DATA_PREVIEW_CHARS))
 
 
 def build_preview_payload(value: Any, max_chars: Optional[int]) -> tuple[bool, int, int, str]:
-    """稳定序列化插件数据并生成有界预览。"""
+    """
+    稳定序列化插件数据并生成有界预览。
+    """
     serialized = json.dumps(value, ensure_ascii=False, indent=2, default=str)
     preview_limit = clamp_preview_chars(max_chars)
     if len(serialized) <= preview_limit:
@@ -88,14 +125,18 @@ def build_preview_payload(value: Any, max_chars: Optional[int]) -> tuple[bool, i
 
 
 class PluginDataQueryService:
-    """查询已安装插件数据并对大结果执行稳定裁剪。"""
+    """
+    查询已安装插件数据并对大结果执行稳定裁剪。
+    """
 
     def __init__(
         self,
         repository: PluginDataQueryRepository,
         snapshot: Callable[[str], Optional[dict[str, Any]]],
     ) -> None:
-        """注入插件数据仓储和安装态快照查询函数。"""
+        """
+        注入插件数据仓储和安装态快照查询函数。
+        """
         self._repository = repository
         self._snapshot = snapshot
 
@@ -106,7 +147,9 @@ class PluginDataQueryService:
         key: Optional[str] = None,
         max_chars: Optional[int] = None,
     ) -> dict[str, Any]:
-        """读取单键或全部数据，并返回上下文安全的投影。"""
+        """
+        读取单键或全部数据，并返回上下文安全的投影。
+        """
         plugin = self._snapshot(plugin_id)
         if plugin is None:
             raise ValueError(f"插件 {plugin_id} 不存在")
@@ -151,7 +194,9 @@ class PluginDataQueryService:
 
 
 def plugin_data_value_type(value: JsonData) -> str:
-    """把插件 JSON 值映射为不包含内容的稳定类型名称。"""
+    """
+    把插件 JSON 值映射为不包含内容的稳定类型名称。
+    """
     if value is None:
         return "null"
     if type(value) is bool:
@@ -168,7 +213,9 @@ def plugin_data_value_type(value: JsonData) -> str:
 
 
 def plugin_data_serialized_chars(value: JsonData) -> Optional[int]:
-    """计算合法 JSON 值的紧凑字符数，异常对象不执行自定义字符串化。"""
+    """
+    计算合法 JSON 值的紧凑字符数，异常对象不执行自定义字符串化。
+    """
     try:
         return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
     except (TypeError, ValueError):
@@ -176,19 +223,25 @@ def plugin_data_serialized_chars(value: JsonData) -> Optional[int]:
 
 
 class PluginDataSummaryService:
-    """构建不包含插件持久化原值的有界诊断摘要。"""
+    """
+    构建不包含插件持久化原值的有界诊断摘要。
+    """
 
     def __init__(
         self,
         repository: PluginDataQueryRepository,
         snapshot: Callable[[str], Optional[dict[str, Any]]],
     ) -> None:
-        """注入插件数据仓储和安装态快照查询函数。"""
+        """
+        注入插件数据仓储和安装态快照查询函数。
+        """
         self._repository = repository
         self._snapshot = snapshot
 
     async def summarize(self, plugin_id: str) -> dict[str, Any]:
-        """返回键名、类型、大小和敏感标记，不返回或字符串化数据值。"""
+        """
+        返回键名、类型、大小和敏感标记，不返回或字符串化数据值。
+        """
         plugin = self._snapshot(plugin_id)
         if plugin is None:
             raise ValueError(f"插件 {plugin_id} 不存在")

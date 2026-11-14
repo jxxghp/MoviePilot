@@ -1,22 +1,34 @@
+"""
+验证 Jellyfin 认证参数和历史接口兼容。
+"""
+
 from unittest.mock import patch
 
 from app.modules.jellyfin.jellyfin import Jellyfin
 
 
 class _FakeResponse:
-    """模拟 Jellyfin HTTP 响应。"""
+    """
+    模拟 Jellyfin HTTP 响应。
+    """
 
     def __init__(self, payload: object):
-        """保存响应数据。"""
+        """
+        保存响应数据。
+        """
         self._payload = payload
 
     def json(self) -> object:
-        """返回模拟的 JSON 数据。"""
+        """
+        返回模拟的 JSON 数据。
+        """
         return self._payload
 
 
 def _make_client() -> Jellyfin:
-    """构造跳过初始化的 Jellyfin 客户端。"""
+    """
+    构造跳过初始化的 Jellyfin 客户端。
+    """
     client = Jellyfin.__new__(Jellyfin)
     client._host = "http://jellyfin.local:8096/"
     client._apikey = "api-key"
@@ -27,7 +39,9 @@ def _make_client() -> Jellyfin:
 
 
 def test_get_user_supports_legacy_query_and_jellyfin_12_header():
-    """用户查询应同时兼容旧版查询参数与 Jellyfin 12 请求头鉴权。"""
+    """
+    用户查询应同时兼容旧版查询参数与 Jellyfin 12 请求头鉴权。
+    """
     client = _make_client()
 
     with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request_utils_cls:
@@ -48,7 +62,9 @@ def test_get_user_supports_legacy_query_and_jellyfin_12_header():
 
 
 def test_authenticate_preserves_client_headers_and_adds_jellyfin_12_header():
-    """用户认证应保留客户端声明并补充 Jellyfin 12 请求头鉴权。"""
+    """
+    用户认证应保留客户端声明并补充 Jellyfin 12 请求头鉴权。
+    """
     client = _make_client()
 
     with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request_utils_cls:
@@ -67,7 +83,9 @@ def test_authenticate_preserves_client_headers_and_adds_jellyfin_12_header():
 
 
 def test_post_data_preserves_explicit_authorization_header():
-    """自定义请求显式提供 Authorization 时不应被服务器密钥覆盖。"""
+    """
+    自定义请求显式提供 Authorization 时不应被服务器密钥覆盖。
+    """
     client = _make_client()
 
     with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request_utils_cls:

@@ -1,3 +1,8 @@
+"""
+通过生产识别入口比较影视与音乐的 Rust、Python 解析性能。
+
+先验证完整稳定输出等价，再进行预热与计时；必须存在可用 Rust 运行能力。
+"""
 import argparse
 import statistics
 import sys
@@ -63,7 +68,9 @@ _MUSIC_CASES: tuple[BenchmarkInput, ...] = (
 
 
 def configure_benchmark_runtime() -> None:
-    """注入独立基准所需的文件类型和 Rust 适配器，避免静默测量 Python 回退。"""
+    """
+    注入独立基准所需的文件类型和 Rust 适配器，避免静默测量 Python 回退。
+    """
     configure_recognition_runtime(
         media_extensions_provider=lambda: (
             *get_runtime_setting("RMT_MEDIAEXT"),
@@ -76,7 +83,9 @@ def configure_benchmark_runtime() -> None:
 
 
 def build_video_inputs(repeat: int) -> list[BenchmarkInput]:
-    """构造覆盖影视 MetaInfo 和 MetaInfoPath 生产入口的基准输入。"""
+    """
+    构造覆盖影视 MetaInfo 和 MetaInfoPath 生产入口的基准输入。
+    """
     inputs: list[BenchmarkInput] = []
     for _ in range(repeat):
         for item in meta_cases:
@@ -88,18 +97,26 @@ def build_video_inputs(repeat: int) -> list[BenchmarkInput]:
 
 
 def build_music_inputs(repeat: int) -> list[BenchmarkInput]:
-    """构造覆盖音乐查询、音频文件名和目录路径生产入口的基准输入。"""
+    """
+    构造覆盖音乐查询、音频文件名和目录路径生产入口的基准输入。
+    """
     return list(_MUSIC_CASES) * repeat
 
 
 def disabled_rust_parse(*_args, **_kwargs):
-    """关闭一个 Rust 快路径，使生产入口自然回退到 Python 实现。"""
+    """
+    关闭一个 Rust 快路径，使生产入口自然回退到 Python 实现。
+    """
     return None
 
 
 @contextmanager
 def selected_meta_parser(use_rust: bool):
-    """在 Rust 入口和 Python 回退链路之间切换，并在退出时恢复适配器。"""
+    """
+    在 Rust 入口和 Python 回退链路之间切换，并在退出时恢复适配器。
+
+    :yields: 指定解析器生效的执行区间；退出时恢复原有适配器
+    """
     parser_names = (
         "parse_metainfo",
         "parse_metainfo_path",
@@ -121,7 +138,9 @@ def selected_meta_parser(use_rust: bool):
 
 
 def parse_input(item: BenchmarkInput):
-    """按输入类型调用应用实际使用的公开识别入口。"""
+    """
+    按输入类型调用应用实际使用的公开识别入口。
+    """
     kind, value, subtitle = item
     if kind == "path":
         return MetaInfoPath(Path(value))
@@ -133,24 +152,32 @@ def parse_input(item: BenchmarkInput):
 
 
 def parse_all(inputs: list[BenchmarkInput]) -> list[Any]:
-    """通过生产入口解析一轮完整输入。"""
+    """
+    通过生产入口解析一轮完整输入。
+    """
     return [parse_input(item) for item in inputs]
 
 
 def _enum_value(value: Any) -> Any:
-    """把枚举值归一为稳定的可比较值。"""
+    """
+    把枚举值归一为稳定的可比较值。
+    """
     return getattr(value, "value", value)
 
 
 def project_video_result(meta: Any) -> dict[str, Any]:
-    """提取影视识别完整稳定契约，排除解析器的临时内部状态和派生展示字段。"""
+    """
+    提取影视识别完整稳定契约，排除解析器的临时内部状态和派生展示字段。
+    """
     result = MetaInfoSnapshot.from_meta(meta).to_dict()
     result["apply_words"] = list(result["apply_words"])
     return result
 
 
 def project_music_result(meta: Any) -> dict[str, Any]:
-    """提取音乐识别持久字段和派生音质字段，用于 Rust/Python 等价校验。"""
+    """
+    提取音乐识别持久字段和派生音质字段，用于 Rust/Python 等价校验。
+    """
     return {
         "type": _enum_value(meta.type),
         "org_string": meta.org_string,
@@ -185,7 +212,9 @@ def assert_projected_results_equal(
         python_results: list[Any],
         projector: ResultProjector,
 ) -> None:
-    """逐项校验 Rust/Python 稳定输出，首个差异携带输入和字段明细。"""
+    """
+    逐项校验 Rust/Python 稳定输出，首个差异携带输入和字段明细。
+    """
     if len(rust_results) != len(python_results):
         raise AssertionError(
             f"Rust/Python 结果数量不一致：{len(rust_results)} != {len(python_results)}"
@@ -210,7 +239,9 @@ def validate_equivalent_results(
         inputs: list[BenchmarkInput],
         projector: ResultProjector,
 ) -> None:
-    """分别通过 Rust/Python 生产链路解析并校验稳定输出等价。"""
+    """
+    分别通过 Rust/Python 生产链路解析并校验稳定输出等价。
+    """
     with selected_meta_parser(use_rust=True):
         rust_results = parse_all(inputs)
     with selected_meta_parser(use_rust=False):
@@ -224,7 +255,9 @@ def measure(
         loops: int,
         repeats: int,
 ) -> tuple[float, int]:
-    """在一次解析器切换上下文中预热并多轮测量生产入口耗时。"""
+    """
+    在一次解析器切换上下文中预热并多轮测量生产入口耗时。
+    """
     samples = []
     parsed_count = 0
     with selected_meta_parser(use_rust):
@@ -243,7 +276,9 @@ def benchmark_suite(
         loops: int,
         repeats: int,
 ) -> dict[str, float | int]:
-    """先校验一个媒体域的结果等价，再返回 Rust/Python 独立性能指标。"""
+    """
+    先校验一个媒体域的结果等价，再返回 Rust/Python 独立性能指标。
+    """
     validate_equivalent_results(inputs, projector)
     rust_ms, rust_count = measure(inputs, use_rust=True, loops=loops, repeats=repeats)
     python_ms, python_count = measure(inputs, use_rust=False, loops=loops, repeats=repeats)
@@ -257,7 +292,9 @@ def benchmark_suite(
 
 
 def validate_rust_runtime() -> None:
-    """确认领域入口已注入可工作的 Rust 影视与音乐解析器，拒绝伪基准。"""
+    """
+    确认领域入口已注入可工作的 Rust 影视与音乐解析器，拒绝伪基准。
+    """
     if not rust_accel.is_enabled():
         raise RuntimeError("Rust 加速未启用或 moviepilot-rust 扩展不可用")
     if get_metainfo_accelerator() is not rust_accel:
@@ -279,7 +316,9 @@ def validate_rust_runtime() -> None:
 
 
 def positive_int(value: str) -> int:
-    """解析命令行正整数，拒绝空循环和空样本配置。"""
+    """
+    解析命令行正整数，拒绝空循环和空样本配置。
+    """
     parsed = int(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("必须为正整数")
@@ -287,7 +326,9 @@ def positive_int(value: str) -> int:
 
 
 def parse_args():
-    """解析命令行参数。"""
+    """
+    解析命令行参数。
+    """
     parser = argparse.ArgumentParser(
         description="Benchmark video and music metadata through public entries"
     )
@@ -309,7 +350,9 @@ def print_suite_result(
         loops: int,
         repeats: int,
 ) -> None:
-    """按媒体域输出等价状态、耗时、单项耗时和性能提升倍数。"""
+    """
+    按媒体域输出等价状态、耗时、单项耗时和性能提升倍数。
+    """
     rust_ms = float(result["rust_ms"])
     python_ms = float(result["python_ms"])
     print(f"{name}_items_per_loop={len(inputs)} loops={loops} repeats={repeats}")
@@ -326,7 +369,9 @@ def print_suite_result(
 
 
 def main() -> int:
-    """运行影视与音乐 Rust/Python 生产入口基准测试。"""
+    """
+    运行影视与音乐 Rust/Python 生产入口基准测试。
+    """
     args = parse_args()
     try:
         configure_benchmark_runtime()

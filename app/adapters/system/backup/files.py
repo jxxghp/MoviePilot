@@ -1,4 +1,6 @@
-"""数据库备份单文件的受限文件系统操作。"""
+"""
+数据库备份单文件的受限文件系统操作。
+"""
 
 from __future__ import annotations
 
@@ -22,13 +24,17 @@ _RELEASE_VERSION = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 class BackupFiles:
-    """把备份文件操作限制在一个私有根目录内。"""
+    """
+    把备份文件操作限制在一个私有根目录内。
+    """
 
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
 
     def create_temporary(self, suffix: str) -> Path:
-        """在最终目录内创建私有临时文件，保证发布可使用原子替换。"""
+        """
+        在最终目录内创建私有临时文件，保证发布可使用原子替换。
+        """
         self._ensure_root()
         descriptor, filename = tempfile.mkstemp(
             prefix=".database-",
@@ -41,20 +47,26 @@ class BackupFiles:
         return path
 
     def publish(self, temporary: Path, name: str) -> Path:
-        """把已校验临时文件发布为正式备份文件。"""
+        """
+        把已校验临时文件发布为正式备份文件。
+        """
         destination = self._resolve_name(name, require_exists=False)
         os.replace(temporary, destination)
         destination.chmod(0o600)
         return destination
 
     def discard(self, temporary: Path) -> None:
-        """清理本次操作拥有的未发布临时文件。"""
+        """
+        清理本次操作拥有的未发布临时文件。
+        """
         path = Path(temporary)
         if path.parent == self.root and path.name.startswith(".database-"):
             path.unlink(missing_ok=True)
 
     def list(self) -> list[Path]:
-        """返回当前根目录内格式合法的正式备份文件。"""
+        """
+        返回当前根目录内格式合法的正式备份文件。
+        """
         if not self.root.is_dir():
             return []
         paths = [
@@ -65,15 +77,21 @@ class BackupFiles:
         return sorted(paths, key=lambda path: (self.created_at(path.name), path.name), reverse=True)
 
     def resolve(self, name: str) -> Path:
-        """按受限文件名解析一个必须存在的备份文件。"""
+        """
+        按受限文件名解析一个必须存在的备份文件。
+        """
         return self._resolve_name(name, require_exists=True)
 
     def delete(self, name: str) -> None:
-        """删除一个已通过名称约束的备份文件。"""
+        """
+        删除一个已通过名称约束的备份文件。
+        """
         self.resolve(name).unlink()
 
     def size(self, name: str) -> int:
-        """返回一个已通过名称约束的备份文件字节数。"""
+        """
+        返回一个已通过名称约束的备份文件字节数。
+        """
         return self.resolve(name).stat().st_size
 
     def available_name(
@@ -85,7 +103,9 @@ class BackupFiles:
         target: str = "moviepilot",
         version: str | None = None,
     ) -> str:
-        """生成包含目标、可选版本、数据库类型和时间的可读文件名。"""
+        """
+        生成包含目标、可选版本、数据库类型和时间的可读文件名。
+        """
         timestamp = created_at.strftime("%Y%m%d_%H%M%S")
         if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z_-]*", target):
             raise ValueError("数据库备份目标或版本号无法用于文件命名")
@@ -111,17 +131,23 @@ class BackupFiles:
 
     @staticmethod
     def database_type(name: str) -> str:
-        """从受管文件名读取数据库类型。"""
+        """
+        从受管文件名读取数据库类型。
+        """
         return BackupFiles._match(name).group("db_type")
 
     @staticmethod
     def target(name: str) -> str:
-        """从受管文件名读取备份目标，旧格式归属于 MoviePilot。"""
+        """
+        从受管文件名读取备份目标，旧格式归属于 MoviePilot。
+        """
         return BackupFiles._match(name).group("target") or "moviepilot"
 
     @staticmethod
     def created_at(name: str) -> datetime:
-        """从受管文件名读取本地创建时间。"""
+        """
+        从受管文件名读取本地创建时间。
+        """
         return datetime.strptime(
             BackupFiles._match(name).group("timestamp"),
             "%Y%m%d_%H%M%S",

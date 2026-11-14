@@ -1,5 +1,10 @@
+"""
+按站点组织的发布组名称识别样本。
+
+每组提供站点标识和资源标题、预期发布组名称；样本字符串是测试输入，保持原始命名格式。
+"""
+
 release_group_cases = [
-    # 0ff 组（示例结构）
     {
         "domain": "0ff",
         "groups": [
@@ -11,7 +16,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-FFTV", "group": "FFTV"}
         ]
     },
-    # audiences 组（示例结构）
     {
         "domain": "audiences",
         "groups": [
@@ -23,15 +27,12 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-ADWeb", "group": "ADWeb"}
         ]
     },
-    # ---- 以下为新增结构化部分 ----
-    # beitai 组
     {
         "domain": "beitai",
         "groups": [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-BeiTai", "group": "BeiTai"}
         ]
     },
-    # btschool 组
     {
         "domain": "btschool",
         "groups": [
@@ -42,14 +43,12 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-Zone", "group": "Zone"}
         ]
     },
-    # carpt 组
     {
         "domain": "carpt",
         "groups": [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-CarPT", "group": "CarPT"}
         ]
     },
-    # chd 组
     {
         "domain": "chd",
         "groups": [
@@ -65,7 +64,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-xiaopie", "group": "xiaopie"}
         ]
     },
-    # eastgame 组
     {
         "domain": "eastgame",
         "groups": [
@@ -77,7 +75,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-MiniFHD-TLF", "group": "MiniFHD-TLF"}
         ]
     },
-    # gainbound 组
     {
         "domain": "gainbound",
         "groups": [
@@ -85,7 +82,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-GBWEB", "group": "GBWEB"}
         ]
     },
-    # hares 组
     {
         "domain": "hares",
         "groups": [
@@ -95,7 +91,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-HaresWeb", "group": "HaresWeb"}
         ]
     },
-    # hdarea 组
     {
         "domain": "hdarea",
         "groups": [
@@ -105,7 +100,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-EPiC", "group": "EPiC"}
         ]
     },
-    # hdchina 组
     {
         "domain": "hdchina",
         "groups": [
@@ -117,7 +111,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-iHD", "group": "iHD"}
         ]
     },
-    # hddolby 组
     {
         "domain": "hddolby",
         "groups": [
@@ -127,7 +120,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-QHStudIo", "group": "QHStudIo"}
         ]
     },
-    # hdfans 组
     {
         "domain": "hdfans",
         "groups": [
@@ -135,7 +127,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-beAstTV", "group": "beAstTV"}
         ]
     },
-    # hdhome 组
     {
         "domain": "hdhome",
         "groups": [
@@ -146,7 +137,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-HDHWEB", "group": "HDHWEB"}
         ]
     },
-    # hdpt 组
     {
         "domain": "hdpt",
         "groups": [
@@ -154,7 +144,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-HDPTWeb", "group": "HDPTWeb"}
         ]
     },
-    # hdsky 组
     {
         "domain": "hdsky",
         "groups": [
@@ -166,7 +155,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-AQLJ", "group": "AQLJ"}
         ]
     },
-    # hdzone 组
     {
         "domain": "hdzone",
         "groups": [
@@ -174,21 +162,18 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-HDZone", "group": "HDZone"}
         ]
     },
-    # hhanclub 组
     {
         "domain": "hhanclub",
         "groups": [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-HHWEB", "group": "HHWEB"}
         ]
     },
-    # htpt 组
     {
         "domain": "htpt",
         "groups": [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-HTPT", "group": "HTPT"}
         ]
     },
-    # keepfrds 组
     {
         "domain": "keepfrds",
         "groups": [
@@ -197,7 +182,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-cXcY@FRDS", "group": "cXcY@FRDS"}
         ]
     },
-    # lemonhd 组
     {
         "domain": "lemonhd",
         "groups": [
@@ -212,7 +196,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-CiNT", "group": "CiNT"}
         ]
     },
-    # mteam 组
     {
         "domain": "mteam",
         "groups": [
@@ -221,7 +204,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-MPAD", "group": "MPAD"}
         ]
     },
-    # ourbits 组
     {
         "domain": "ourbits",
         "groups": [
@@ -235,7 +217,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-iLoveTV", "group": "iLoveTV"}
         ]
     },
-    # panda 组
     {
         "domain": "panda",
         "groups": [
@@ -243,7 +224,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-AilMWeb", "group": "AilMWeb"}
         ]
     },
-    # piggo 组
     {
         "domain": "piggo",
         "groups": [
@@ -252,7 +232,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-PiGoWEB", "group": "PiGoWEB"}
         ]
     },
-    # pterclub 组
     {
         "domain": "pterclub",
         "groups": [
@@ -264,7 +243,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-PTerWEB", "group": "PTerWEB"}
         ]
     },
-    # pthome 组
     {
         "domain": "pthome",
         "groups": [
@@ -277,7 +255,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-PTHWEB", "group": "PTHWEB"}
         ]
     },
-    # ptsbao 组
     {
         "domain": "ptsbao",
         "groups": [
@@ -293,14 +270,12 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-SGXT", "group": "SGXT"}
         ]
     },
-    # putao 组
     {
         "domain": "putao",
         "groups": [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-PuTao", "group": "PuTao"}
         ]
     },
-    # ssd 组
     {
         "domain": "ssd",
         "groups": [
@@ -309,7 +284,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-CMCTV", "group": "CMCTV"}
         ]
     },
-    # sharkpt 组
     {
         "domain": "sharkpt",
         "groups": [
@@ -320,14 +294,12 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-SharkMV", "group": "SharkMV"}
         ]
     },
-    # tjupt 组
     {
         "domain": "tjupt",
         "groups": [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-TJUPT", "group": "TJUPT"}
         ]
     },
-    # ttg 组
     {
         "domain": "ttg",
         "groups": [
@@ -339,7 +311,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-ExREN", "group": "ExREN"}
         ]
     },
-    # others 组
     {
         "domain": "others",
         "groups": [
@@ -365,7 +336,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-UBWEB", "group": "UBWEB"}
         ]
     },
-    # anime 组
     {
         "domain": "anime",
         "groups": [
@@ -404,7 +374,6 @@ release_group_cases = [
             },
         ]
     },
-    # frog 组
     {
         "domain": "frog",
         "groups": [
@@ -413,7 +382,6 @@ release_group_cases = [
             {"title": "Bluey S03 2021 2160p WEB-DL H.265 AAC 2.0-FROGWeb", "group": "FROGWeb"},
         ]
     },
-    # ubits 组
     {
         "domain": "ubits",
         "groups": [

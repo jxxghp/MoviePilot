@@ -1,4 +1,6 @@
-"""分别提供离线轨迹回放与显式真实模型评测；业务操作只进入假世界。"""
+"""
+分别提供离线轨迹回放与显式真实模型评测；业务操作只进入假世界。
+"""
 
 import argparse
 import hashlib
@@ -17,7 +19,9 @@ _CALL_FIELDS = frozenset({"operation_id", "path_params", "query", "body"})
 
 
 def _source_digest(root: Path) -> str:
-    """按路径和内容记录生产运行时或内置技能，不把源码正文送进模型或报告。"""
+    """
+    按路径和内容记录生产运行时或内置技能，不把源码正文送进模型或报告。
+    """
     digest = hashlib.sha256()
     for path in sorted(root.rglob("*")):
         if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
@@ -26,7 +30,9 @@ def _source_digest(root: Path) -> str:
 
 
 def _provenance(world: EvaluationWorld) -> dict[str, Any]:
-    """记录实际场景与判定代码指纹，避免未提交或修改后的轨迹被混为同一基线。"""
+    """
+    记录实际场景与判定代码指纹，避免未提交或修改后的轨迹被混为同一基线。
+    """
     fixture = json.dumps({"scenario": asdict(world.scenario), "initial": world.initial_snapshot()},
                          ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256()
@@ -40,7 +46,9 @@ def _provenance(world: EvaluationWorld) -> dict[str, Any]:
 
 
 def replay(scenario_id: str, payload: Any) -> dict[str, Any]:
-    """只接受调用与最终报告，轨迹不能提供初态、账本或预期答案。"""
+    """
+    只接受调用与最终报告，轨迹不能提供初态、账本或预期答案。
+    """
     if not isinstance(payload, dict) or set(payload) != {"calls", "final"}:
         raise ValueError("回放必须且只能包含 calls 与 final")
     calls = payload["calls"]
@@ -56,7 +64,9 @@ def replay(scenario_id: str, payload: Any) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """显式区分回放与真实调用，并以非零退出码表达验收未通过。"""
+    """
+    显式区分回放与真实调用，并以非零退出码表达验收未通过。
+    """
     parser = argparse.ArgumentParser(description="MoviePilot Agent 隔离任务评测；--live/--native 才会调用真实模型")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--list", action="store_true", help="列出公开场景，不输出初态或答案")

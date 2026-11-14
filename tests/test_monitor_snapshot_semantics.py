@@ -1,3 +1,7 @@
+"""
+验证目录监控快照合并、存储隔离和变更事件语义。
+"""
+
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -46,7 +50,9 @@ BASELINE = {
 
 
 def test_poll_preserves_same_path_events_from_different_storages(monkeypatch):
-    """共享去重缓存不能吞掉另一存储的事件，否则新快照落盘后不会再补发。"""
+    """
+    共享去重缓存不能吞掉另一存储的事件，否则新快照落盘后不会再补发。
+    """
     dedup_cache = {}
     dispatcher = TransferDispatcher(all_exts=[".mkv"], cache=dedup_cache)
     monkeypatch.setattr(dispatcher, "_should_skip_by_history", lambda **_kwargs: False)

@@ -1,4 +1,6 @@
-"""插件 package 声明快照和值对象展示回退测试。"""
+"""
+插件 package 声明快照和值对象展示回退测试。
+"""
 
 from datetime import datetime, timezone
 
@@ -24,7 +26,9 @@ def _metadata(
     version: str = "1.0.0",
     matches_payload: bool = True,
 ) -> PluginDeclaredMetadata:
-    """构造一份可用于身份测试的 package 声明快照。"""
+    """
+    构造一份可用于身份测试的 package 声明快照。
+    """
     return PluginDeclaredMetadata.from_package(
         package,
         declaration_version=version,
@@ -38,7 +42,9 @@ def _identity(
     version: str = "1.0.0",
     plugin_id: str = "DemoPlugin",
 ) -> PluginIdentity:
-    """构造带已提交声明快照的官方在线身份。"""
+    """
+    构造带已提交声明快照的官方在线身份。
+    """
     return PluginIdentity(
         plugin_id=plugin_id,
         normalized_plugin_id=plugin_id.lower(),
@@ -60,7 +66,9 @@ def _identity(
 
 
 def test_declared_metadata_round_trips_package_and_storage_without_extra_fields() -> None:
-    """package 声明保存后应可稳定往返，并丢弃未纳入合同的字段。"""
+    """
+    package 声明保存后应可稳定往返，并丢弃未纳入合同的字段。
+    """
     package = {
         "name": "Demo",
         "description": "A demo plugin",
@@ -106,13 +114,17 @@ def test_declared_metadata_round_trips_package_and_storage_without_extra_fields(
 
 
 def test_declared_metadata_preserves_system_version_storage_limit() -> None:
-    """系统版本声明继续遵守旧数据库列的长度合同，保证迁移可降级。"""
+    """
+    系统版本声明继续遵守旧数据库列的长度合同，保证迁移可降级。
+    """
     with pytest.raises(ValueError, match="长度不能超过 128"):
         _metadata({"system_version": "v" * 129})
 
 
 def test_declared_metadata_ignores_unknown_runtime_shapes_and_is_deep_copied() -> None:
-    """未知代际和外部可变对象不能污染已提交快照。"""
+    """
+    未知代际和外部可变对象不能污染已提交快照。
+    """
     labels = ["alpha"]
     package = {
         "name": "Demo",
@@ -134,7 +146,9 @@ def test_declared_metadata_ignores_unknown_runtime_shapes_and_is_deep_copied() -
 
 
 def test_declared_metadata_records_current_and_historical_release_truth() -> None:
-    """当前 package 与历史 Release 的声明对应关系必须可区分。"""
+    """
+    当前 package 与历史 Release 的声明对应关系必须可区分。
+    """
     current = _metadata({"name": "Demo", "v3": True}, version="2.0.0")
     historical = _metadata(
         {"name": "Demo", "v3": True},
@@ -148,7 +162,9 @@ def test_declared_metadata_records_current_and_historical_release_truth() -> Non
 
 
 def test_declared_metadata_fallback_is_batch_safe_and_preserves_runtime_fields() -> None:
-    """批量展示回退只补空展示字段，不覆盖运行态或另一插件身份。"""
+    """
+    批量展示回退只补空展示字段，不覆盖运行态或另一插件身份。
+    """
     first = _identity(
         _metadata(
             {
@@ -208,7 +224,8 @@ def test_declared_metadata_fallback_is_batch_safe_and_preserves_runtime_fields()
 
 
 def test_installed_card_marks_runtime_incompatibility_from_declared_snapshot() -> None:
-    """已安装卡片的 v3t 不兼容提示必须能离线得出。
+    """
+    已安装卡片的 v3t 不兼容提示必须能离线得出。
 
     市场候选那条标注路径要联网才有结果，而切到 v3t 的用户首先看到的是"我的插件"。
     安装时提交的声明快照是运行目录唯一可离线信任的来源，这里钉住它被消费。

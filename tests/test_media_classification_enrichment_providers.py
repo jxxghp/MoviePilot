@@ -1,4 +1,6 @@
-"""内置与插件运行时分类事实补充 provider 的适配测试。"""
+"""
+内置与插件运行时分类事实补充 provider 的适配测试。
+"""
 
 from __future__ import annotations
 
@@ -26,7 +28,9 @@ def _request(
     missing_fields: list[str] | None = None,
     external_ids: dict[str, str] | None = None,
 ) -> ClassificationEnrichmentRequest:
-    """构造带稳定主身份的 provider 请求。"""
+    """
+    构造带稳定主身份的 provider 请求。
+    """
     return ClassificationEnrichmentRequest(
         identity=ClassificationIdentityFacts(
             media_source=MediaSource.Douban.value,
@@ -41,7 +45,9 @@ def _request(
 
 
 def test_runtime_catalog_requires_host_declaration_and_plugin_source_ownership() -> None:
-    """宿主和插件都必须先声明来源所有权，方法同名本身不授予能力。"""
+    """
+    宿主和插件都必须先声明来源所有权，方法同名本身不授予能力。
+    """
     host_callback = Mock(name="host_callback")
     undeclared_callback = Mock(name="undeclared_callback")
     plugin_callback = Mock(name="plugin_callback")
@@ -98,12 +104,16 @@ def test_runtime_catalog_requires_host_declaration_and_plugin_source_ownership()
 def test_tmdb_enrichment_uses_exact_external_id_and_returns_requested_facts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """TMDB provider 只按请求中的 TMDB ID 读取详情并裁剪标准事实。"""
+    """
+    TMDB provider 只按请求中的 TMDB ID 读取详情并裁剪标准事实。
+    """
     module = TheMovieDbModule()
     requested: list[dict[str, object]] = []
 
     def tmdb_info(**kwargs: object) -> dict[str, object]:
-        """记录详情身份并返回离线 TMDB 电影载荷。"""
+        """
+        记录详情身份并返回离线 TMDB 电影载荷。
+        """
         requested.append(kwargs)
         return {
             "id": 129,
@@ -144,7 +154,9 @@ def test_tmdb_enrichment_uses_exact_external_id_and_returns_requested_facts(
 def test_tmdb_enrichment_skips_missing_id_and_music_without_io(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """缺少精确 TMDB ID 或媒体类型为音乐时不得发起详情查询。"""
+    """
+    缺少精确 TMDB ID 或媒体类型为音乐时不得发起详情查询。
+    """
     module = TheMovieDbModule()
     monkeypatch.setattr(
         module,
@@ -167,7 +179,9 @@ def test_tmdb_enrichment_skips_missing_id_and_music_without_io(
 def test_musicbrainz_enrichment_requires_exact_isrc_and_returns_requested_facts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MusicBrainz provider 只接受精确 ISRC 候选并按 MBID 读取详情。"""
+    """
+    MusicBrainz provider 只接受精确 ISRC 候选并按 MBID 读取详情。
+    """
     module = MusicBrainzModule()
     requests: list[tuple[str, dict[str, object] | None]] = []
     recognized: list[tuple[object, str, str | None]] = []
@@ -176,7 +190,9 @@ def test_musicbrainz_enrichment_requires_exact_isrc_and_returns_requested_facts(
         path: str,
         params: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        """返回同时包含错误和正确 ISRC 的离线候选。"""
+        """
+        返回同时包含错误和正确 ISRC 的离线候选。
+        """
         requests.append((path, params))
         return {
             "recordings": [
@@ -195,7 +211,9 @@ def test_musicbrainz_enrichment_requires_exact_isrc_and_returns_requested_facts(
         *,
         music_type: str | None = None,
     ) -> MusicInfo:
-        """记录稳定 MBID 详情请求并返回标准音乐事实。"""
+        """
+        记录稳定 MBID 详情请求并返回标准音乐事实。
+        """
         recognized.append((media_source, media_id, music_type))
         return MusicInfo(
             media_source=MediaSource.MusicBrainz,
@@ -240,7 +258,9 @@ def test_musicbrainz_enrichment_requires_exact_isrc_and_returns_requested_facts(
 def test_musicbrainz_enrichment_rejects_non_exact_isrc_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """标题相同但 ISRC 不同的候选不得作为跨来源同媒体证明。"""
+    """
+    标题相同但 ISRC 不同的候选不得作为跨来源同媒体证明。
+    """
     module = MusicBrainzModule()
     monkeypatch.setattr(
         module,

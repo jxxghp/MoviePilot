@@ -1,4 +1,6 @@
-"""订阅单轮新鲜事实租约测试。"""
+"""
+订阅单轮新鲜事实租约测试。
+"""
 
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.facts import FreshFactKey, FreshFactLease
@@ -7,7 +9,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _subscribe(**overrides) -> SubscriptionSnapshot:
-    """构造具有明确媒体身份的电视剧订阅。"""
+    """
+    构造具有明确媒体身份的电视剧订阅。
+    """
     values = {
         "id": 1,
         "name": "租约测试剧",
@@ -23,7 +27,9 @@ def _subscribe(**overrides) -> SubscriptionSnapshot:
 
 
 def test_fresh_fact_key_isolates_season_and_episode_group():
-    """相同媒体的不同季或剧集组不得共享动态季集事实。"""
+    """
+    相同媒体的不同季或剧集组不得共享动态季集事实。
+    """
     default = FreshFactKey.from_subscribe(_subscribe())
     other_season = FreshFactKey.from_subscribe(_subscribe(season=2))
     other_group = FreshFactKey.from_subscribe(_subscribe(episode_group="group-a"))
@@ -34,13 +40,17 @@ def test_fresh_fact_key_isolates_season_and_episode_group():
 
 
 def test_fresh_fact_lease_loads_once_and_returns_isolated_copies():
-    """相同事实本轮只加载一次，消费者清理对象不会污染后续租约命中。"""
+    """
+    相同事实本轮只加载一次，消费者清理对象不会污染后续租约命中。
+    """
     lease = FreshFactLease()
     subscribe = _subscribe()
     calls = []
 
     def _load() -> MediaInfo:
-        """返回带完整季集和别名的可变媒体事实。"""
+        """
+        返回带完整季集和别名的可变媒体事实。
+        """
         calls.append(True)
         return MediaInfo(
             media_source=MediaSource.TMDB,
@@ -64,12 +74,16 @@ def test_fresh_fact_lease_loads_once_and_returns_isolated_copies():
 
 
 def test_fresh_fact_lease_merges_failed_result_within_round():
-    """相同媒体本轮识别失败后不应立即重复请求外部服务。"""
+    """
+    相同媒体本轮识别失败后不应立即重复请求外部服务。
+    """
     lease = FreshFactLease()
     calls = []
 
     def _load():
-        """记录一次失败的新鲜事实请求。"""
+        """
+        记录一次失败的新鲜事实请求。
+        """
         calls.append(True)
         return None
 
@@ -81,13 +95,17 @@ def test_fresh_fact_lease_merges_failed_result_within_round():
 
 
 def test_fresh_fact_lease_does_not_share_missing_identity():
-    """身份缺失订阅必须各自识别，避免仅按标题错误合并。"""
+    """
+    身份缺失订阅必须各自识别，避免仅按标题错误合并。
+    """
     lease = FreshFactLease()
     calls = []
     subscribe = _subscribe(media_source=None, media_id=None)
 
     def _load() -> MediaInfo:
-        """返回本次标题识别结果。"""
+        """
+        返回本次标题识别结果。
+        """
         calls.append(True)
         return MediaInfo(type=MediaType.TV, title="标题识别结果")
 

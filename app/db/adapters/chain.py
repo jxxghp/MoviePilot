@@ -1,4 +1,6 @@
-"""Chain durable 事件写入端口的 SQLAlchemy 适配器。"""
+"""
+Chain durable 事件写入端口的 SQLAlchemy 适配器。
+"""
 
 from __future__ import annotations
 
@@ -57,7 +59,9 @@ from app.db.uow import SqlAlchemyUnitOfWork
 
 
 class _StagingTransferHistoryRepository:
-    """让既有历史字段映射复用无提交的 replace 适配器。"""
+    """
+    让既有历史字段映射复用无提交的 replace 适配器。
+    """
 
     def __init__(
             self,
@@ -66,7 +70,9 @@ class _StagingTransferHistoryRepository:
             settlement: TransferResultSettlement | None = None,
             settlement_revision: int | None = None,
     ) -> None:
-        """保存仓储，并让历史继续表达同源最新业务投影。"""
+        """
+        保存仓储，并让历史继续表达同源最新业务投影。
+        """
         self._repository = repository
         self._settlement = settlement
         self._settlement_revision = settlement_revision
@@ -76,7 +82,9 @@ class _StagingTransferHistoryRepository:
         src: str,
         storage: str | None = None,
     ) -> TransferHistorySnapshot | None:
-        """转发按源路径读取。"""
+        """
+        转发按源路径读取。
+        """
         record = self._repository.get_by_src(src, storage)
         return project_transfer_history(record) if record is not None else None
 
@@ -85,7 +93,9 @@ class _StagingTransferHistoryRepository:
         src: str,
         storage: str | None = None,
     ) -> TransferHistorySnapshot | None:
-        """读取成功记录；任务结算时绑定当前任务投影。"""
+        """
+        读取成功记录；任务结算时绑定当前任务投影。
+        """
         if self._settlement is not None:
             if self._settlement_revision is None:
                 raise RuntimeError("整理任务结算缺少事务内修订号")
@@ -104,7 +114,9 @@ class _StagingTransferHistoryRepository:
         return project_transfer_history(record) if record is not None else None
 
     def replace(self, history: TransferHistoryWrite) -> TransferHistorySnapshot:
-        """按是否存在任务身份选择事务内类型化替换策略。"""
+        """
+        按是否存在任务身份选择事务内类型化替换策略。
+        """
         payload = history.to_payload()
         if self._settlement is not None:
             if self._settlement_revision is None:
@@ -122,17 +134,26 @@ class _StagingTransferHistoryRepository:
 
 @dataclass(frozen=True, slots=True)
 class _StagedTransferResult:
-    """保存构造 outbox 所需历史投影及可选任务结算结果。"""
+    """
+    保存构造 outbox 所需的历史投影和可选任务结算结果。
+
+    :param history: 当前事务中已经暂存的整理历史快照，用于构造持久事件
+    :param settlement: 整理任务结算结果；None 表示当前写入不关联任务结算
+    """
 
     history: TransferHistorySnapshot
     settlement: TransferSettlementResult | None = None
 
 
 class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
-    """为每次 Chain 结果事件创建独占同步 Session 和 UoW。"""
+    """
+    为每次 Chain 结果事件创建独占同步 Session 和 UoW。
+    """
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
-        """注入惰性同步 Session 工厂。"""
+        """
+        注入惰性同步 Session 工厂。
+        """
         self._session_factory = session_factory
 
     def download_added(
@@ -145,7 +166,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
         processing_payload: dict[str, Any],
         publish: Callable[[dict[str, Any]], None],
     ) -> None:
-        """原子写历史、文件及可恢复的下载事件和具名后处理 intent。"""
+        """
+        原子写历史、文件及可恢复的下载事件和具名后处理 intent。
+        """
         session = self._session_factory()
         try:
             repository = DownloadHistoryOper(session)
@@ -157,7 +180,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             )
 
             def stage_business() -> int:
-                """在同一事务暂存下载历史和可选文件清单。"""
+                """
+                在同一事务暂存下载历史和可选文件清单。
+                """
                 record = repository.stage_add(history.to_payload())
                 if files:
                     repository.stage_add_files([
@@ -166,7 +191,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 return int(record.id)
 
             def build_effects(history_id: int) -> tuple[DurableOutboxEffect, ...]:
-                """按同一 occurrence 构造事件、通知、模块和字幕效果。"""
+                """
+                按同一 occurrence 构造事件、通知、模块和字幕效果。
+                """
                 event_key = download_added_event_key(history_id)
                 event_payload["idempotency_key"] = event_key
                 effects = [
@@ -228,7 +255,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
         publish: Callable[[dict[str, Any]], None] | None,
         settlement: TransferResultSettlement | None = None,
     ) -> TransferHistorySnapshot | TransferSettlementResult | None:
-        """原子写历史、可选任务终态与 intent，再返回稳定投影。"""
+        """
+        原子写历史、可选任务终态与 intent，再返回稳定投影。
+        """
         if topic is None and settlement is None:
             raise ValueError("无事件 topic 的整理写入必须绑定 durable 任务结算")
         session = self._session_factory()
@@ -251,7 +280,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             )
 
             def stage_business() -> _StagedTransferResult:
-                """同一事务暂存历史及受 fencing 保护的 pending 终态。"""
+                """
+                同一事务暂存历史及受 fencing 保护的 pending 终态。
+                """
                 expected_revision = self._settlement_revision(
                     pending_repository=pending_repository,
                     settlement=settlement,
@@ -309,7 +340,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             def build_effects(
                 result: _StagedTransferResult,
             ) -> tuple[DurableOutboxEffect, ...]:
-                """历史 ID 确定后构造可选事件效果与可恢复快照。"""
+                """
+                历史 ID 确定后构造可选事件效果与可恢复快照。
+                """
                 if topic is None:
                     return ()
                 assert topic is not None
@@ -372,7 +405,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             receipt_repository: TransferSettlementReceiptOper,
             settlement: TransferResultSettlement | None,
     ) -> TransferSettlementResult | None:
-        """识别已提交终态并返回幂等结果，未结算时返回空。"""
+        """
+        识别已提交终态并返回幂等结果，未结算时返回空。
+        """
         if settlement is None:
             return None
         pending = pending_repository.get_by_task_id(task_id=settlement.task_id)
@@ -425,7 +460,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             receipt: TransferSettlementReceipt,
             settlement: TransferResultSettlement,
     ) -> None:
-        """校验重放请求与独立回执中的终态身份完全一致。"""
+        """
+        校验重放请求与独立回执中的终态身份完全一致。
+        """
         expected_status = settlement.outcome == "succeeded"
         if (
                 receipt.task_id != settlement.task_id
@@ -443,7 +480,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             pending_repository: TransferPendingOper,
             settlement: TransferResultSettlement | None,
     ) -> int | None:
-        """从当前 pending 读取 CAS 基准修订号并校验执行身份。"""
+        """
+        从当前 pending 读取 CAS 基准修订号并校验执行身份。
+        """
         if settlement is None:
             return None
         pending = pending_repository.get_by_task_id(task_id=settlement.task_id)
@@ -482,7 +521,9 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             expected_revision: int,
             history_id: int,
     ) -> bool:
-        """以同一修订和 lease CAS 收口 pending，成功时同时清理步骤。"""
+        """
+        以同一修订和 lease CAS 收口 pending，成功时同时清理步骤。
+        """
         now = datetime.now(timezone.utc)
         now_utc = TransactionalChainDurableEventWriter._format_utc(now)
         if settlement.outcome == "succeeded":
@@ -529,12 +570,16 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
             history: TransferHistorySnapshot,
             settlement: TransferResultSettlement,
     ) -> None:
-        """拒绝结算终态与历史状态不一致的调用。"""
+        """
+        拒绝结算终态与历史状态不一致的调用。
+        """
         expected_status = settlement.outcome == "succeeded"
         if history.status is not expected_status:
             raise TransferExecutionConflictError("整理终态与历史状态不一致")
 
     @staticmethod
     def _format_utc(value: datetime) -> str:
-        """编码与 pending lease 列一致的固定宽度 UTC 时间。"""
+        """
+        编码与 pending lease 列一致的固定宽度 UTC 时间。
+        """
         return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")

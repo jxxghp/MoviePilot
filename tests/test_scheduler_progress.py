@@ -1,3 +1,7 @@
+"""
+验证后台服务执行进度、状态与结果记录。
+"""
+
 import asyncio
 import threading
 from collections.abc import Generator
@@ -13,7 +17,9 @@ from app.scheduler.registry import ExecutionRegistry
 
 @pytest.fixture(autouse=True)
 def _restore_main_loop_registry() -> Generator[None, None, None]:
-    """隔离并恢复主循环登记，避免前序兼容层假循环改变投递路径。"""
+    """
+    隔离并恢复主循环登记，避免前序兼容层假循环改变投递路径。
+    """
     previous = main_loop_registry.current
     main_loop_registry.replace_compat(None)
     try:
@@ -23,7 +29,9 @@ def _restore_main_loop_registry() -> Generator[None, None, None]:
 
 
 def _build_scheduler(job_id, func):
-    """构造不启动 APScheduler 的定时服务测试对象。"""
+    """
+    构造不启动 APScheduler 的定时服务测试对象。
+    """
     scheduler = object.__new__(Scheduler)
     scheduler._scheduler = None
     scheduler._event = threading.Event()
@@ -42,12 +50,16 @@ def _build_scheduler(job_id, func):
 
 
 def test_scheduler_records_live_and_completed_progress():
-    """定时服务应在执行中更新进度，并在成功后收敛为 100%。"""
+    """
+    定时服务应在执行中更新进度，并在成功后收敛为 100%。
+    """
     job_id = f"test-success-{uuid4()}"
     snapshots = []
 
     def task(progress_callback):
-        """上报一次中间进度。"""
+        """
+        上报一次中间进度。
+        """
         progress_callback(value=42, text="正在处理", data={"finished": 2})
         snapshots.append(scheduler.get_progress(job_id))
 
@@ -69,11 +81,15 @@ def test_scheduler_records_live_and_completed_progress():
 
 
 def test_scheduler_failure_preserves_last_progress(monkeypatch):
-    """定时服务异常时应保留失败位置，而不是伪装成 100% 完成。"""
+    """
+    定时服务异常时应保留失败位置，而不是伪装成 100% 完成。
+    """
     job_id = f"test-failure-{uuid4()}"
 
     def task(progress_callback):
-        """上报进度后抛出异常。"""
+        """
+        上报进度后抛出异常。
+        """
         progress_callback(value=37, text="处理失败")
         raise RuntimeError("预期失败")
 
@@ -95,11 +111,15 @@ def test_scheduler_failure_preserves_last_progress(monkeypatch):
 
 
 def test_scheduler_treats_standard_failure_result_as_failed():
-    """返回 `(False, message)` 的定时服务应记录为业务失败。"""
+    """
+    返回 `(False, message)` 的定时服务应记录为业务失败。
+    """
     job_id = f"test-result-failure-{uuid4()}"
 
     def task(progress_callback):
-        """返回标准失败结果。"""
+        """
+        返回标准失败结果。
+        """
         progress_callback(value=55, text="业务校验失败")
         return False, "业务失败"
 
@@ -114,11 +134,15 @@ def test_scheduler_treats_standard_failure_result_as_failed():
 
 
 def test_scheduler_runs_async_job_without_running_global_loop(monkeypatch):
-    """全局事件循环未运行时，异步定时服务仍应正常执行并收敛进度。"""
+    """
+    全局事件循环未运行时，异步定时服务仍应正常执行并收敛进度。
+    """
     job_id = f"test-async-{uuid4()}"
 
     async def task(progress_callback):
-        """上报异步任务进度。"""
+        """
+        上报异步任务进度。
+        """
         progress_callback(value=65, text="异步处理中")
 
     scheduler = _build_scheduler(job_id, task)
@@ -137,19 +161,27 @@ def test_scheduler_runs_async_job_without_running_global_loop(monkeypatch):
 
 
 def test_scheduler_runs_async_job_from_current_event_loop(monkeypatch):
-    """在异步入口中手动触发定时服务时，不应嵌套调用 `asyncio.run`。"""
+    """
+    在异步入口中手动触发定时服务时，不应嵌套调用 `asyncio.run`。
+    """
     job_id = f"test-current-loop-{uuid4()}"
 
     async def task(progress_callback):
-        """在当前事件循环中上报进度。"""
+        """
+        在当前事件循环中上报进度。
+        """
         progress_callback(value=75, text="当前循环处理中")
 
     async def run_task():
-        """从已运行的事件循环启动定时服务。"""
+        """
+        从已运行的事件循环启动定时服务。
+        """
         scheduler.start(job_id)
 
         async def wait_until_finished() -> None:
-            """等待任务及其异步进度句柄全部收敛。"""
+            """
+            等待任务及其异步进度句柄全部收敛。
+            """
             while (
                     scheduler._registry.handles()
                     or scheduler._registry.is_active(job_id)
@@ -174,14 +206,21 @@ def test_scheduler_runs_async_job_from_current_event_loop(monkeypatch):
 
 
 def test_scheduler_records_cancelled_async_job_as_failed():
-    """协程任务取消时运行时进度不得收敛为成功。"""
+    """
+    协程任务取消时运行时进度不得收敛为成功。
+    """
     job_id = f"test-cancelled-{uuid4()}"
 
     async def task():
-        """模拟传播到调度器外壳的取消。"""
+        """
+        模拟传播到调度器外壳的取消。
+        """
         raise asyncio.CancelledError
 
     async def run_task():
+        """
+        等待取消传播到调度外壳并完成失败终态收口。
+        """
         job = scheduler._prepare_job(job_id)
         with pytest.raises(asyncio.CancelledError):
             await scheduler._run_coro_job(task, job_id, job)
@@ -197,13 +236,17 @@ def test_scheduler_records_cancelled_async_job_as_failed():
 
 
 def test_scheduler_stop_async_cancels_owned_async_jobs():
-    """Scheduler 关停应取消并等待自身登记的异步作业。"""
+    """
+    Scheduler 关停应取消并等待自身登记的异步作业。
+    """
     job_id = f"test-owned-task-{uuid4()}"
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
     async def task():
-        """等待关停信号，验证任务确实由 Scheduler 持有。"""
+        """
+        等待关停信号，验证任务确实由 Scheduler 持有。
+        """
         started.set()
         try:
             await asyncio.Event().wait()
@@ -214,7 +257,9 @@ def test_scheduler_stop_async_cancels_owned_async_jobs():
     scheduler = _build_scheduler(job_id, task)
 
     async def run_task():
-        """在当前事件循环启动并收口异步作业。"""
+        """
+        在当前事件循环启动并收口异步作业。
+        """
         scheduler.start(job_id)
         await started.wait()
         assert len(scheduler._registry.handles()) == 1
@@ -227,7 +272,9 @@ def test_scheduler_stop_async_cancels_owned_async_jobs():
 
 
 def test_scheduler_returns_none_for_unknown_job():
-    """未注册且无历史进度的定时服务应返回空。"""
+    """
+    未注册且无历史进度的定时服务应返回空。
+    """
     job_id = f"test-unknown-{uuid4()}"
     scheduler = object.__new__(Scheduler)
     scheduler._lock = threading.RLock()
@@ -239,24 +286,37 @@ def test_scheduler_returns_none_for_unknown_job():
 
 
 def test_async_progress_end_rebuilds_terminal_snapshot_after_read_failure():
-    """进度快照读取失败时，终态写入仍应生成可展示的完成状态。"""
+    """
+    进度快照读取失败时，终态写入仍应生成可展示的完成状态。
+    """
 
     class BrokenProgress:
-        """模拟读取失败但仍可写入的进度后端。"""
+        """
+        模拟读取失败但仍可写入的进度后端。
+        """
 
         def __init__(self):
+            """
+            初始化用于观察终态写入的缓存槽位。
+            """
             self.value = None
 
         async def get(self, _key):
-            """模拟 Redis 读取失败后的空结果。"""
+            """
+            模拟 Redis 读取失败后的空结果。
+            """
             return None
 
         async def set(self, _key, value):
-            """记录进度终态写入。"""
+            """
+            记录进度终态写入。
+            """
             self.value = value
 
     async def run_end():
-        """执行一次终态写入。"""
+        """
+        执行一次终态写入。
+        """
         progress = AsyncProgressHelper("scheduler:read-failure")
         backend = BrokenProgress()
         progress._progress = backend

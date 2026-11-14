@@ -1,4 +1,6 @@
-"""整理历史查重闸与失败重试预算。"""
+"""
+整理历史查重闸与失败重试预算。
+"""
 
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ _failed_retry_counts = TTLCache(
 
 
 class HistoryGateAction:
-    """整理历史查重闸的判定结果。"""
+    """
+    整理历史查重闸的判定结果。
+    """
 
     PASS_NO_RECORD = "pass_no_record"
     PASS_FAILED = "pass_failed"
@@ -41,12 +45,16 @@ class HistoryGateAction:
 
 
 def is_skip_action(action: str) -> bool:
-    """判断查重闸判定是否为跳过整理。"""
+    """
+    判断查重闸判定是否为跳过整理。
+    """
     return action in (HistoryGateAction.SKIP, HistoryGateAction.SKIP_RETRY_EXHAUSTED)
 
 
 def max_failed_retries(config: TransferRetryConfig | None = None) -> int:
-    """读取失败重试上限并钳制到合法区间。"""
+    """
+    读取失败重试上限并钳制到合法区间。
+    """
     raw = (config or get_transfer_retry_config()).max_failed_retries
     try:
         value = int(raw)
@@ -72,14 +80,18 @@ def max_failed_retries(config: TransferRetryConfig | None = None) -> int:
 
 
 def failed_retry_key(src_path: Optional[str], storage: Optional[str] = None) -> Optional[str]:
-    """生成失败重试计数的缓存键。"""
+    """
+    生成失败重试计数的缓存键。
+    """
     if not src_path:
         return None
     return f"{storage or 'local'}:{src_path}"
 
 
 def coerce_modify_time(modify_time: Any) -> Optional[float]:
-    """统一转换文件修改时间，无法转换时返回 None。"""
+    """
+    统一转换文件修改时间，无法转换时返回 None。
+    """
     if modify_time is None:
         return None
     try:
@@ -89,7 +101,9 @@ def coerce_modify_time(modify_time: Any) -> Optional[float]:
 
 
 def coerce_fileid(fileid: Any) -> Optional[str]:
-    """统一转换文件唯一标识，空值视为不可比对。"""
+    """
+    统一转换文件唯一标识，空值视为不可比对。
+    """
     if fileid is None:
         return None
     value = str(fileid).strip()
@@ -101,7 +115,9 @@ def file_fingerprint(
         file_modify_time: Any = None,
         fileid: Any = None,
 ) -> Dict[str, Any]:
-    """生成用于区分同一路径文件版本的稳定指纹。"""
+    """
+    生成用于区分同一路径文件版本的稳定指纹。
+    """
     fingerprint: Dict[str, Any] = {}
     size = coerce_size(file_size)
     if size is not None:
@@ -116,7 +132,9 @@ def file_fingerprint(
 
 
 def _retry_state(value: Any) -> tuple[int, Dict[str, Any]]:
-    """将新旧缓存值统一转换为失败次数与文件指纹。"""
+    """
+    将新旧缓存值统一转换为失败次数与文件指纹。
+    """
     if isinstance(value, dict):
         raw_count = value.get("count", 0)
         raw_fingerprint = value.get("fingerprint")
@@ -143,7 +161,9 @@ def _is_file_version_changed(
         recorded_fingerprint: Dict[str, Any],
         current_fingerprint: Dict[str, Any],
 ) -> bool:
-    """判断两个可比文件指纹是否指向不同版本，忽略修改时间的毫秒级误差。"""
+    """
+    判断两个可比文件指纹是否指向不同版本，忽略修改时间的毫秒级误差。
+    """
     for field in ("fileid", "modify_time", "size"):
         recorded_value = recorded_fingerprint.get(field)
         current_value = current_fingerprint.get(field)
@@ -168,7 +188,9 @@ def _is_file_version_changed(
 def failed_retry_count(src_path: Optional[str], storage: Optional[str] = None,
                        file_size: Any = None, file_modify_time: Any = None,
                        fileid: Any = None) -> int:
-    """读取同一源路径已累计的连续整理失败次数。"""
+    """
+    读取同一源路径已累计的连续整理失败次数。
+    """
     key = failed_retry_key(src_path, storage)
     if not key:
         return 0
@@ -190,7 +212,9 @@ def failed_retry_count(src_path: Optional[str], storage: Optional[str] = None,
 def record_transfer_failure(src_path: Optional[str], storage: Optional[str] = None,
                             file_size: Any = None, file_modify_time: Any = None,
                             fileid: Any = None) -> int:
-    """累计一次整理失败并返回当前文件版本的连续失败次数。"""
+    """
+    累计一次整理失败并返回当前文件版本的连续失败次数。
+    """
     key = failed_retry_key(src_path, storage)
     if not key:
         return 0
@@ -222,7 +246,9 @@ def record_transfer_failure(src_path: Optional[str], storage: Optional[str] = No
 
 
 def clear_transfer_failures(src_path: Optional[str], storage: Optional[str] = None) -> None:
-    """清空同一源路径的失败计数。"""
+    """
+    清空同一源路径的失败计数。
+    """
     key = failed_retry_key(src_path, storage)
     if key:
         # CacheBackend.pop 的默认值必须显式为 0，避免未命中时抛 KeyError。
@@ -230,7 +256,9 @@ def clear_transfer_failures(src_path: Optional[str], storage: Optional[str] = No
 
 
 def coerce_size(size: Any) -> Optional[int]:
-    """统一转换文件大小，无法转换时返回 None。"""
+    """
+    统一转换文件大小，无法转换时返回 None。
+    """
     if size is None:
         return None
     try:
@@ -240,12 +268,16 @@ def coerce_size(size: Any) -> Optional[int]:
 
 
 def history_src_size(history: TransferHistorySnapshot) -> Optional[int]:
-    """读取整理记录中的源文件大小。"""
+    """
+    读取整理记录中的源文件大小。
+    """
     return history_src_fingerprint(history).get("size")
 
 
 def history_src_fingerprint(history: TransferHistorySnapshot) -> Dict[str, Any]:
-    """读取整理记录中的源文件版本指纹。"""
+    """
+    读取整理记录中的源文件版本指纹。
+    """
     src_fileitem = getattr(history, "src_fileitem", None)
     if not isinstance(src_fileitem, dict):
         return {}
@@ -261,7 +293,9 @@ def resolve_history(
     storage: Optional[str] = None,
     transfer_history_oper: Optional[TransferHistoryQueryPort] = None,
 ) -> Optional[TransferHistorySnapshot]:
-    """查询源路径对应的整理记录，并优先返回成功记录。"""
+    """
+    查询源路径对应的整理记录，并优先返回成功记录。
+    """
     repository = transfer_history_oper or get_transfer_history_repository()
     history = repository.get_by_src(src_path, storage=storage)
     if history is not None and not history.status:
@@ -274,7 +308,9 @@ def evaluate_history_gate(history: Optional[TransferHistorySnapshot],
                           file_modify_time: Optional[float] = None,
                           fileid: Optional[str] = None,
                           retry_count: Optional[int] = None) -> str:
-    """依据整理历史和文件版本判断本次是否跳过整理。"""
+    """
+    依据整理历史和文件版本判断本次是否跳过整理。
+    """
     if history is None:
         return HistoryGateAction.PASS_NO_RECORD
     recorded_fingerprint = history_src_fingerprint(history)
@@ -306,7 +342,9 @@ def describe_history_gate(history: Optional[TransferHistorySnapshot],
                           file_size: Optional[float] = None,
                           file_modify_time: Optional[float] = None,
                           fileid: Optional[str] = None) -> str:
-    """生成查重闸判定的可读说明，供日志定位拦截原因。"""
+    """
+    生成查重闸判定的可读说明，供日志定位拦截原因。
+    """
     if history is None:
         return "无整理记录"
     recorded_fingerprint = history_src_fingerprint(history)
@@ -344,7 +382,9 @@ def next_failed_retry_count(
     file_modify_time: Optional[float] = None,
     fileid: Optional[str] = None,
 ) -> int:
-    """合并缓存与历史记录，计算下一次失败应持久化的连续次数。"""
+    """
+    合并缓存与历史记录，计算下一次失败应持久化的连续次数。
+    """
     cached_count = failed_retry_count(
         src_path,
         storage,

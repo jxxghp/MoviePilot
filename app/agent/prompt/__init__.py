@@ -1,4 +1,6 @@
-"""提示词管理器"""
+"""
+提示词管理器
+"""
 
 import shutil
 from dataclasses import dataclass, field
@@ -18,8 +20,8 @@ from app.schemas.notification import (
     ChannelCapabilities,
     ChannelCapability,
     ChannelCapabilityManager,
-    NotificationChannel,
 )
+from app.schemas.types import NotificationChannel
 
 SYSTEM_TASKS_FILE = "System Tasks.yaml"
 SYSTEM_TASKS_SCHEMA_VERSION = 2
@@ -48,14 +50,46 @@ COMMON_SHELL_COMMANDS = (
     "yt-dlp",
 )
 
+_AGENT_OUTPUT_LANGUAGE_NAMES = {
+    "zh-CN": "Simplified Chinese",
+    "zh-TW": "Traditional Chinese",
+    "en-US": "English",
+    "ja-JP": "Japanese",
+    "ko-KR": "Korean",
+}
+_AGENT_OUTPUT_LANGUAGE_ALIASES = {
+    "zh": "zh-CN",
+    "zh-cn": "zh-CN",
+    "zh-tw": "zh-TW",
+    "en": "en-US",
+    "en-us": "en-US",
+    "ja": "ja-JP",
+    "ja-jp": "ja-JP",
+    "ko": "ko-KR",
+    "ko-kr": "ko-KR",
+}
+
 
 class PromptConfigError(ValueError):
-    """程序内置提示词定义加载异常。"""
+    """
+    程序内置提示词定义加载异常。
+    """
 
 
 @dataclass
 class SystemTaskTypeDefinition:
-    """单个后台系统任务定义。"""
+    """
+    单个后台系统任务定义。
+
+    :param header: 任务提示的标题模板
+    :param objective: 任务目标说明模板
+    :param context_title: 上下文段落标题；None 时不提供标题
+    :param context_lines: 上下文模板行，默认独立空列表
+    :param steps_title: 执行步骤段落标题；None 时不提供标题
+    :param steps: 按执行顺序排列的步骤模板，默认独立空列表
+    :param task_rules: 此类任务额外遵守的规则，默认独立空列表
+    :param empty_result: 无结果时的回复模板；未定义时为 None
+    """
 
     header: str
     objective: str
@@ -69,7 +103,14 @@ class SystemTaskTypeDefinition:
 
 @dataclass
 class SystemTasksDefinition:
-    """程序内置后台系统任务定义。"""
+    """
+    程序内置后台系统任务定义。
+
+    :param path: 系统任务配置的来源路径，用于报告配置问题
+    :param version: 配置文件声明的格式版本号
+    :param shared_rules: 所有系统任务共享的行为规则
+    :param task_types: 按任务类型名称索引的已验证提示模板定义
+    """
 
     path: Path
     version: int
@@ -82,8 +123,10 @@ class PromptManager:
     提示词管理器
     """
 
-    def __init__(self, prompts_dir: str = None):
-        """初始化提示词来源与运行信息缓存。"""
+    def __init__(self, prompts_dir: Optional[str] = None) -> None:
+        """
+        初始化提示词来源与运行信息缓存。
+        """
         if prompts_dir is None:
             self.prompts_dir = Path(__file__).parent
         else:
@@ -115,7 +158,7 @@ class PromptManager:
             logger.error(f"加载提示词失败: {prompt_name}, 错误: {e}")
             raise
 
-    def get_agent_prompt(self, channel: str = None) -> str:
+    def get_agent_prompt(self, channel: Optional[str] = None) -> str:
         """
         获取智能体提示词
         :param channel: 消息渠道（Telegram、微信、Slack等）
@@ -152,10 +195,30 @@ class PromptManager:
             rich_message_spec=rich_message_spec,
         )
 
+        base_prompt = f"{base_prompt}\n\n{self._get_output_language_instruction()}"
+
         return base_prompt
 
+    @staticmethod
+    def _get_output_language_instruction() -> str:
+        """
+        根据系统设置生成内置智能助手的回复语言约束。
+        """
+        configured = str(get_runtime_setting("AI_AGENT_OUTPUT_LANGUAGE") or "zh-CN").strip()
+        normalized = configured.casefold()
+        language_code = _AGENT_OUTPUT_LANGUAGE_ALIASES.get(normalized, configured)
+        language_name = _AGENT_OUTPUT_LANGUAGE_NAMES.get(language_code, "Simplified Chinese")
+        return (
+            "Output language policy:\n"
+            f"- Always reply to the user in {language_name}.\n"
+            "- Keep this language for explanations, conclusions, and user-facing messages unless the user explicitly asks for another language. "
+            "Preserve code, file paths, media titles, proper nouns, and tool arguments when they need to remain in their original form."
+        )
+
     def load_system_tasks_definition(self) -> SystemTasksDefinition:
-        """加载程序内置的后台系统任务定义。"""
+        """
+        加载程序内置的后台系统任务定义。
+        """
         system_tasks_path = self.prompts_dir / SYSTEM_TASKS_FILE
         try:
             stat = system_tasks_path.stat()
@@ -169,6 +232,7 @@ class PromptManager:
 
         try:
             content = system_tasks_path.read_text(encoding="utf-8", errors="replace")
+        # 将文件读取边界的异常统一转换为带来源路径的配置错误，供上层报告。
         except Exception as err:  # noqa: BLE001
             logger.error(f"读取系统任务定义失败: {system_tasks_path}, 错误: {err}")
             raise PromptConfigError(f"读取系统任务定义失败 {system_tasks_path}: {err}") from err
@@ -192,7 +256,9 @@ class PromptManager:
         template_context: Optional[dict[str, Any]] = None,
         extra_rules: Optional[list[str]] = None,
     ) -> str:
-        """根据程序内置 YAML 渲染后台系统任务提示词。"""
+        """
+        根据程序内置 YAML 渲染后台系统任务提示词。
+        """
         system_tasks = self.load_system_tasks_definition()
         task_definition = system_tasks.task_types.get(task_type)
         if not task_definition:
@@ -297,7 +363,9 @@ class PromptManager:
 
     @staticmethod
     def _get_runtime_path_lines() -> list[str]:
-        """返回基础系统提示词需要常驻注入的全局运行路径。"""
+        """
+        返回基础系统提示词需要常驻注入的全局运行路径。
+        """
         paths = {
             "项目根目录": get_runtime_setting("ROOT_PATH"),
             "配置目录": get_runtime_setting("CONFIG_PATH"),
@@ -306,7 +374,9 @@ class PromptManager:
         return [f"  - {label}: `{path}`" for label, path in paths.items()]
 
     def _get_available_shell_command_names(self) -> list[str]:
-        """探测 PATH 中可用的常用命令名称，不把绝对路径注入提示词。"""
+        """
+        探测 PATH 中可用的常用命令名称，不把绝对路径注入提示词。
+        """
         if self._available_shell_command_names_cache is not None:
             return self._available_shell_command_names_cache
 
@@ -315,7 +385,9 @@ class PromptManager:
         return available_commands
 
     def clear_available_shell_command_names_cache(self) -> None:
-        """清理可用命令名称缓存，供测试或运行时手动刷新使用。"""
+        """
+        清理可用命令名称缓存，供测试或运行时手动刷新使用。
+        """
         self._available_shell_command_names_cache = None
 
     @staticmethod
@@ -337,7 +409,9 @@ class PromptManager:
 
     @staticmethod
     def _generate_voice_reply_instructions() -> str:
-        """根据语音能力约束回复方式，避免语音和文本重复交付。"""
+        """
+        根据语音能力约束回复方式，避免语音和文本重复交付。
+        """
         if not AgentCapabilityManager.supports_audio_output():
             return "Audio output is disabled; do not call `send_voice_message`."
         return (
@@ -353,9 +427,11 @@ class PromptManager:
 
     @staticmethod
     def _generate_rich_message_instructions(
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
     ) -> str:
-        """根据渠道生成 Telegram Rich Message 回复提示。"""
+        """
+        根据渠道生成 Telegram Rich Message 回复提示。
+        """
         if channel != NotificationChannel.Telegram:
             return ""
         return (
@@ -369,9 +445,11 @@ class PromptManager:
 
     @staticmethod
     def _generate_button_choice_instructions(
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
     ) -> str:
-        """按渠道能力选择按钮交互或文字提问，明确终结本轮的交付约束。"""
+        """
+        按渠道能力选择按钮交互或文字提问，明确终结本轮的交付约束。
+        """
         if (
             channel
             and ChannelCapabilityManager.supports_buttons(channel)
@@ -392,7 +470,9 @@ class PromptManager:
         path: Path,
         data: dict[str, Any],
     ) -> SystemTasksDefinition:
-        """把 YAML 结构转换成系统任务定义对象。"""
+        """
+        把 YAML 结构转换成系统任务定义对象。
+        """
         version = self._normalize_positive_int(data.get("version"), "version", default=1)
         if version < SYSTEM_TASKS_SCHEMA_VERSION:
             raise PromptConfigError(
@@ -536,7 +616,7 @@ class PromptManager:
                 normalized.append(text)
         return normalized
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """
         清空缓存
         """

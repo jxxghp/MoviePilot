@@ -1,4 +1,6 @@
-"""下载器自动整理按存储身份读取源文件，不把远程路径当成本地路径。"""
+"""
+下载器自动整理按存储身份读取源文件，不把远程路径当成本地路径。
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,7 +18,9 @@ from app.schemas.transfer import DownloaderTorrent
 
 @pytest.fixture
 def monitored_source(monkeypatch):
-    """只替换存储和下载器边界，执行真实的自动整理目录准入流程。"""
+    """
+    只替换存储和下载器边界，执行真实的自动整理目录准入流程。
+    """
     directory = TransferDirectoryConf(
         storage="smb", download_path="/incoming", monitor_type="downloader",
         library_storage="smb", library_path="/media", transfer_type="copy",
@@ -44,7 +48,9 @@ def monitored_source(monkeypatch):
 
 @pytest.mark.parametrize("storage_type", ["smb", "local"])
 def test_downloader_monitor_reads_source_through_storage(monitored_source, storage_type):
-    """仅有 SMB 监控目录也会整理；本地目录沿用同一存储查询合同。"""
+    """
+    仅有 SMB 监控目录也会整理；本地目录沿用同一存储查询合同。
+    """
     state = monitored_source
     state.directory.storage = storage_type
     state.source.storage = storage_type
@@ -69,7 +75,9 @@ def test_downloader_monitor_reads_source_through_storage(monitored_source, stora
     "/incoming/Movie/movie.mkv", "smb:/incoming2/movie.mkv", "smb:/incoming/../outside/movie.mkv",
 ])
 def test_downloader_monitor_rejects_other_storage_or_sibling_prefix(monitored_source, task_path):
-    """同名本地路径、相似目录前缀及越界路径不能命中远程下载目录。"""
+    """
+    同名本地路径、相似目录前缀及越界路径不能命中远程下载目录。
+    """
     state = monitored_source
     state.torrent.path = Path(task_path)
 
@@ -81,7 +89,9 @@ def test_downloader_monitor_rejects_other_storage_or_sibling_prefix(monitored_so
 
 @pytest.mark.parametrize("failure", [None, StorageQueryError("SMB permission denied")])
 def test_unavailable_source_is_not_enqueued_and_can_retry(monitored_source, failure):
-    """文件缺失或存储查询失败不入队，恢复后下一次扫描仍能处理。"""
+    """
+    文件缺失或存储查询失败不入队，恢复后下一次扫描仍能处理。
+    """
     state = monitored_source
     state.storage.get_file_item_strict.side_effect = [failure, state.source]
     # process 会释放下载器返回的列表，每次扫描需要返回新的列表。
@@ -96,7 +106,9 @@ def test_unavailable_source_is_not_enqueued_and_can_retry(monitored_source, fail
 
 
 def test_unmapped_remote_directory_reports_actionable_warning(monitored_source, monkeypatch):
-    """远程监控目录收到未映射的本地路径时，提示配置映射且不能误读本地文件。"""
+    """
+    远程监控目录收到未映射的本地路径时，提示配置映射且不能误读本地文件。
+    """
     state = monitored_source
     state.torrent.path = Path("/incoming/Movie/movie.mkv")
     warning = Mock()

@@ -1,10 +1,13 @@
-"""订阅写入端口的 SQLAlchemy 事务适配器。"""
+"""
+订阅写入端口的 SQLAlchemy 事务适配器。
+"""
 
 from __future__ import annotations
 
 import builtins
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar, cast
 from uuid import uuid4
@@ -20,6 +23,7 @@ from app.application.outbox import (
     OutboxDispatchStore,
     OutboxLeaseLostError,
 )
+from app.application.subscription.activity import lifecycle_activity
 from app.application.subscription.contract import (
     AfterCommitEffect as TypedAfterCommitEffect,
 )
@@ -56,6 +60,7 @@ from app.db.adapters.outbox import (
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.subscribeactivity import SubscribeActivityOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.schemas.common import JsonData
@@ -65,15 +70,20 @@ T = TypeVar("T")
 
 
 def _media_source(value: Optional[str]) -> Optional[MediaSource]:
-    """把持久化字符串恢复为稳定媒体来源枚举。"""
+    """
+    把持久化字符串恢复为稳定媒体来源枚举。
+    """
     return MediaSource(value) if value else None
 
 
 def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
-    """在 ORM 所属 Session 内复制完整订阅记录。"""
+    """
+    在 ORM 所属 Session 内复制完整订阅记录。
+    """
     return SubscriptionSnapshot(
         id=record.id,
         name=record.name,
+        activity_key=record.activity_key,
         year=record.year,
         type=record.type,
         keyword=record.keyword,
@@ -130,10 +140,13 @@ def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
 
 
 def _project_history(record: SubscribeHistory) -> SubscriptionHistorySnapshot:
-    """在 ORM 所属 Session 内复制完整订阅历史记录。"""
+    """
+    在 ORM 所属 Session 内复制完整订阅历史记录。
+    """
     return SubscriptionHistorySnapshot(
         id=record.id,
         name=record.name,
+        activity_key=record.activity_key,
         year=record.year,
         type=record.type,
         keyword=record.keyword,
@@ -185,7 +198,9 @@ def _project_history(record: SubscribeHistory) -> SubscriptionHistorySnapshot:
 
 
 class _TransactionalSubscriptionWriter:
-    """封装独立 Session 内的订阅新增与 durable intent 结算。"""
+    """
+    封装独立 Session 内的订阅新增与 durable intent 结算。
+    """
 
     def __init__(
         self,
@@ -195,7 +210,9 @@ class _TransactionalSubscriptionWriter:
             AbstractAsyncContextManager[AsyncSession],
         ],
     ) -> None:
-        """注入同步会话工厂和异步会话作用域。"""
+        """
+        注入同步会话工厂和异步会话作用域。
+        """
         self._sync_session = sync_session
         self._async_session = async_session
 
@@ -208,7 +225,9 @@ class _TransactionalSubscriptionWriter:
         notification: Mapping[str, JsonData] | None = None,
         occurrence_id: str | None = None,
     ) -> tuple[int, str]:
-        """在独占同步会话内执行一次完整订阅新增事务。"""
+        """
+        在独占同步会话内执行一次完整订阅新增事务。
+        """
         resolved_occurrence_id = occurrence_id or uuid4().hex
         write_payload = payload.to_payload()
         notification_payload = dict(notification) if notification else None
@@ -223,7 +242,9 @@ class _TransactionalSubscriptionWriter:
             )
 
             def delivered(subscribe_id: int) -> None:
-                """执行提交后编排，分别收口已确认的 durable intent。"""
+                """
+                执行提交后编排，分别收口已确认的 durable intent。
+                """
                 if after_commit:
                     _deliver_added_effects(
                         dispatch_store,
@@ -254,7 +275,9 @@ class _TransactionalSubscriptionWriter:
         notification: Mapping[str, JsonData] | None = None,
         occurrence_id: str | None = None,
     ) -> tuple[int, str]:
-        """在独占异步会话作用域内执行一次完整订阅新增事务。"""
+        """
+        在独占异步会话作用域内执行一次完整订阅新增事务。
+        """
         resolved_occurrence_id = occurrence_id or uuid4().hex
         write_payload = payload.to_payload()
         notification_payload = dict(notification) if notification else None
@@ -268,7 +291,9 @@ class _TransactionalSubscriptionWriter:
             )
 
             async def delivered(subscribe_id: int) -> None:
-                """异步执行提交后编排，分别收口已确认的 durable intent。"""
+                """
+                异步执行提交后编排，分别收口已确认的 durable intent。
+                """
                 if after_commit:
                     await _deliver_added_effects_async(
                         dispatch_store,
@@ -290,10 +315,14 @@ class _TransactionalSubscriptionWriter:
 
 
 class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
-    """以独立短 Session 实现订阅查询、新增和历史查询端口。"""
+    """
+    以独立短 Session 实现订阅查询、新增和历史查询端口。
+    """
 
     def _read(self, operation: Callable[[SubscribeOper], T]) -> T:
-        """在独立同步 Session 中执行查询并投影快照。"""
+        """
+        在独立同步 Session 中执行查询并投影快照。
+        """
         with self._sync_session() as session:
             return operation(SubscribeOper(session))
 
@@ -301,7 +330,9 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         self,
         operation: Callable[[SubscribeOper], Awaitable[T]],
     ) -> T:
-        """在独立异步 Session 中执行查询并投影快照。"""
+        """
+        在独立异步 Session 中执行查询并投影快照。
+        """
         async with self._async_session() as session:
             return await operation(SubscribeOper(session))
 
@@ -309,7 +340,9 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         self,
         operation: Callable[[SubscribeOper], Awaitable[T]],
     ) -> T:
-        """在独立异步 Session 中执行写入并提交事务。"""
+        """
+        在独立异步 Session 中执行写入并提交事务。
+        """
         async with self._async_session() as session:
             unit_of_work = SqlAlchemyAsyncUnitOfWork(session)
             try:
@@ -321,7 +354,9 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
                 raise
 
     def exists(self, identity: SubscriptionIdentity) -> bool:
-        """同步判断媒体身份是否已有订阅。"""
+        """
+        同步判断媒体身份是否已有订阅。
+        """
         return bool(
             self._read(
                 lambda repository: repository.exists(
@@ -330,12 +365,15 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
                     identity.season,
                     identity.episode_group,
                     identity.music_type,
+                    identity.type,
                 )
             )
         )
 
     def history_exists(self, identity: SubscriptionIdentity) -> bool:
-        """同步判断媒体身份是否已有订阅历史。"""
+        """
+        同步判断媒体身份是否已有订阅历史。
+        """
         with self._sync_session() as session:
             return SubscribeHistoryOper(session).exists(
                 identity.media_source,
@@ -346,7 +384,9 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
             )
 
     def get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
-        """同步按主键读取订阅快照。"""
+        """
+        同步按主键读取订阅快照。
+        """
         return self._read(
             lambda repository: (
                 _project_subscription(record) if (record := repository.get(subscribe_id)) is not None else None
@@ -354,7 +394,9 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         )
 
     def get_by(self, identity: SubscriptionIdentity) -> Optional[SubscriptionSnapshot]:
-        """同步按来源身份读取订阅快照。"""
+        """
+        同步按来源身份读取订阅快照。
+        """
         if identity.type is None:
             return None
         return self._read(
@@ -367,6 +409,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
                         media_id=identity.media_id,
                         season=identity.season,
                         music_type=identity.music_type,
+                        episode_group=identity.episode_group,
                     )
                 )
                 is not None
@@ -375,7 +418,9 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         )
 
     def list(self, state: Optional[str] = None) -> builtins.list[SubscriptionSnapshot]:
-        """同步按可选状态读取订阅快照。"""
+        """
+        同步按可选状态读取订阅快照。
+        """
         return self._read(lambda repository: [_project_subscription(record) for record in repository.list(state)])
 
     async def async_exists(
@@ -385,37 +430,51 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[SubscriptionSnapshot]:
-        """异步按媒体身份、季号及可选剧集组读取命中的订阅快照。"""
+        """
+        异步按媒体身份、季号及可选剧集组读取命中的订阅快照。
+        """
 
         async def operation(repository: SubscribeOper) -> Optional[SubscriptionSnapshot]:
-            """在独立 Session 中执行 Servarr 查重并投影快照。"""
+            """
+            在独立 Session 中执行 Servarr 查重并投影快照。
+            """
             record = await repository.async_exists(
                 media_source=media_source,
                 media_id=media_id,
                 season=season,
                 episode_group=episode_group,
                 music_type=music_type,
+                mtype=mtype,
             )
             return _project_subscription(record) if record is not None else None
 
         return await self._async_read(operation)
 
     async def async_get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
-        """异步按主键读取订阅快照。"""
+        """
+        异步按主键读取订阅快照。
+        """
 
         async def operation(repository: SubscribeOper) -> Optional[SubscriptionSnapshot]:
-            """读取并在当前 Session 中投影订阅。"""
+            """
+            读取并在当前 Session 中投影订阅。
+            """
             record = await repository.async_get(subscribe_id)
             return _project_subscription(record) if record is not None else None
 
         return await self._async_read(operation)
 
     async def async_delete(self, subscribe_id: int) -> None:
-        """在独立异步事务中删除订阅。"""
+        """
+        在独立异步事务中删除订阅。
+        """
 
         async def operation(repository: SubscribeOper) -> None:
-            """在当前独立 Session 中暂存订阅删除。"""
+            """
+            在当前独立 Session 中暂存订阅删除。
+            """
             await repository.async_delete(subscribe_id)
 
         await self._async_write(operation)
@@ -426,12 +485,16 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态和窗口读取订阅快照。"""
+        """
+        异步按可选状态和窗口读取订阅快照。
+        """
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
-            """读取并在当前 Session 中投影订阅列表。"""
+            """
+            读取并在当前 Session 中投影订阅列表。
+            """
             records = await repository.async_list(state, page=page, count=count)
             return [_project_subscription(record) for record in records]
 
@@ -445,12 +508,16 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态、类型和窗口读取订阅快照。"""
+        """
+        异步按用户、状态、类型和窗口读取订阅快照。
+        """
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
-            """读取并在当前 Session 中投影用户订阅。"""
+            """
+            读取并在当前 Session 中投影用户订阅。
+            """
             records = await repository.async_list_by_username(
                 username,
                 state,
@@ -468,7 +535,9 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         username: Optional[str] = None,
         mtype: Optional[str] = None,
     ) -> int:
-        """按公开列表筛选范围返回订阅精确总数。"""
+        """
+        按公开列表筛选范围返回订阅精确总数。
+        """
         return await self._async_read(
             lambda repository: repository.async_count(
                 state=state,
@@ -483,12 +552,16 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         media_id: str,
         music_type: Optional[str] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按规范媒体身份读取订阅快照。"""
+        """
+        异步按规范媒体身份读取订阅快照。
+        """
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
-            """读取并在当前 Session 中投影媒体订阅。"""
+            """
+            读取并在当前 Session 中投影媒体订阅。
+            """
             records = await repository.async_list_by_media_identity(media_source, media_id, music_type)
             return [_project_subscription(record) for record in records]
 
@@ -499,12 +572,16 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         title: str,
         season: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按标题和季读取订阅快照。"""
+        """
+        异步按标题和季读取订阅快照。
+        """
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
-            """读取并在当前 Session 中投影标题订阅。"""
+            """
+            读取并在当前 Session 中投影标题订阅。
+            """
             records = await repository.async_list_by_title(title, season)
             return [_project_subscription(record) for record in records]
 
@@ -512,20 +589,26 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
 
 
 class TransactionalSubscriptionHistoryRepository:
-    """以独立短 AsyncSession 实现 Agent 等后台入口的订阅历史查询。"""
+    """
+    以独立短 AsyncSession 实现 Agent 等后台入口的订阅历史查询。
+    """
 
     def __init__(
         self,
         async_session: Callable[[], AbstractAsyncContextManager[AsyncSession]],
     ) -> None:
-        """注入每次查询创建独立会话的异步作用域。"""
+        """
+        注入每次查询创建独立会话的异步作用域。
+        """
         self._async_session = async_session
 
     async def async_get(
         self,
         history_id: int,
     ) -> Optional[SubscriptionHistorySnapshot]:
-        """在短 Session 内按主键读取并投影历史快照。"""
+        """
+        在短 Session 内按主键读取并投影历史快照。
+        """
         async with self._async_session() as session:
             record = await SubscribeHistoryOper(session).async_get(history_id)
             return _project_history(record) if record is not None else None
@@ -536,7 +619,9 @@ class TransactionalSubscriptionHistoryRepository:
         page: int = 1,
         count: int = 30,
     ) -> builtins.list[SubscriptionHistorySnapshot]:
-        """在短 Session 内按类型分页读取并投影历史快照。"""
+        """
+        在短 Session 内按类型分页读取并投影历史快照。
+        """
         async with self._async_session() as session:
             records = await SubscribeHistoryOper(session).async_list_by_type(
                 mtype,
@@ -552,7 +637,9 @@ class TransactionalSubscriptionHistoryRepository:
         page: int = 1,
         count: int = 30,
     ) -> builtins.list[SubscriptionHistorySnapshot]:
-        """在短 Session 内按类型和用户分页读取并投影历史快照。"""
+        """
+        在短 Session 内按类型和用户分页读取并投影历史快照。
+        """
         async with self._async_session() as session:
             records = await SubscribeHistoryOper(session).async_list_by_type_and_username(
                 mtype,
@@ -563,7 +650,9 @@ class TransactionalSubscriptionHistoryRepository:
             return [_project_history(record) for record in records]
 
     async def async_count_by_type(self, mtype: str) -> int:
-        """在短 Session 内统计指定媒体类型的历史数量。"""
+        """
+        在短 Session 内统计指定媒体类型的历史数量。
+        """
         async with self._async_session() as session:
             return await SubscribeHistoryOper(session).async_count_by_type(mtype)
 
@@ -572,7 +661,9 @@ class TransactionalSubscriptionHistoryRepository:
         mtype: str,
         username: str,
     ) -> int:
-        """在短 Session 内统计指定媒体类型和 owner 的历史数量。"""
+        """
+        在短 Session 内统计指定媒体类型和 owner 的历史数量。
+        """
         async with self._async_session() as session:
             return await SubscribeHistoryOper(
                 session
@@ -580,32 +671,44 @@ class TransactionalSubscriptionHistoryRepository:
 
 
 class SessionSubscriptionRepository:
-    """复用调用方 Session，负责订阅查询投影和暂存且不提交。"""
+    """
+    复用调用方 Session，负责订阅查询投影和暂存且不提交。
+    """
 
     def __init__(self, session: Session | AsyncSession) -> None:
-        """绑定请求或命令作用域持有的 Session。"""
+        """
+        绑定请求或命令作用域持有的 Session。
+        """
         self._session = session
         self._repository = SubscribeOper(session)
 
     def _sync_repository(self) -> SubscribeOper:
-        """返回同步 Oper，并拒绝会话类型混用。"""
+        """
+        返回同步 Oper，并拒绝会话类型混用。
+        """
         if not isinstance(self._session, Session):
             raise RuntimeError("该订阅操作需要同步 Session")
         return self._repository
 
     def _async_repository(self) -> SubscribeOper:
-        """返回异步 Oper，并拒绝会话类型混用。"""
+        """
+        返回异步 Oper，并拒绝会话类型混用。
+        """
         if not isinstance(self._session, AsyncSession):
             raise RuntimeError("该订阅操作需要异步 Session")
         return self._repository
 
     def get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
-        """同步按主键读取订阅快照。"""
+        """
+        同步按主键读取订阅快照。
+        """
         record = self._sync_repository().get(subscribe_id)
         return _project_subscription(record) if record is not None else None
 
     def exists(self, identity: SubscriptionIdentity) -> bool:
-        """同步判断完整媒体身份是否已有订阅。"""
+        """
+        同步判断完整媒体身份是否已有订阅。
+        """
         return bool(
             self._sync_repository().exists(
                 identity.media_source,
@@ -613,11 +716,14 @@ class SessionSubscriptionRepository:
                 identity.season,
                 identity.episode_group,
                 identity.music_type,
+                identity.type,
             )
         )
 
     def history_exists(self, identity: SubscriptionIdentity) -> bool:
-        """同步判断完整媒体身份是否已有订阅历史。"""
+        """
+        同步判断完整媒体身份是否已有订阅历史。
+        """
         if not isinstance(self._session, Session):
             raise RuntimeError("订阅历史查询需要同步 Session")
         return SubscribeHistoryOper(self._session).exists(
@@ -632,7 +738,9 @@ class SessionSubscriptionRepository:
         self,
         identity: SubscriptionIdentity,
     ) -> Optional[SubscriptionSnapshot]:
-        """同步按来源身份读取订阅快照。"""
+        """
+        同步按来源身份读取订阅快照。
+        """
         if identity.type is None:
             return None
         record = self._sync_repository().get_by(
@@ -641,11 +749,14 @@ class SessionSubscriptionRepository:
             media_id=identity.media_id,
             season=identity.season,
             music_type=identity.music_type,
+            episode_group=identity.episode_group,
         )
         return _project_subscription(record) if record is not None else None
 
     def list(self, state: Optional[str] = None) -> builtins.list[SubscriptionSnapshot]:
-        """同步按可选状态读取订阅快照。"""
+        """
+        同步按可选状态读取订阅快照。
+        """
         return [_project_subscription(record) for record in self._sync_repository().list(state)]
 
     def list_by_media_identity(
@@ -654,12 +765,16 @@ class SessionSubscriptionRepository:
         media_id: str,
         music_type: Optional[str] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """同步按规范媒体身份读取订阅快照。"""
+        """
+        同步按规范媒体身份读取订阅快照。
+        """
         records = self._sync_repository().list_by_media_identity(media_source, media_id, music_type)
         return [_project_subscription(record) for record in records]
 
     async def async_get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
-        """异步按主键读取订阅快照。"""
+        """
+        异步按主键读取订阅快照。
+        """
         record = await self._async_repository().async_get(subscribe_id)
         return _project_subscription(record) if record is not None else None
 
@@ -670,19 +785,25 @@ class SessionSubscriptionRepository:
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[SubscriptionSnapshot]:
-        """异步按媒体身份、季号及可选剧集组读取命中的订阅快照。"""
+        """
+        异步按媒体身份、季号及可选剧集组读取命中的订阅快照。
+        """
         record = await self._async_repository().async_exists(
             media_source=media_source,
             media_id=media_id,
             season=season,
             episode_group=episode_group,
             music_type=music_type,
+            mtype=mtype,
         )
         return _project_subscription(record) if record is not None else None
 
     async def async_delete(self, subscribe_id: int) -> None:
-        """在调用方异步事务中暂存订阅删除，不提交事务。"""
+        """
+        在调用方异步事务中暂存订阅删除，不提交事务。
+        """
         await self._async_repository().stage_delete(subscribe_id)
 
     async def async_list(
@@ -691,7 +812,9 @@ class SessionSubscriptionRepository:
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态和窗口读取订阅快照。"""
+        """
+        异步按可选状态和窗口读取订阅快照。
+        """
         records = await self._async_repository().async_list(
             state,
             page=page,
@@ -700,7 +823,9 @@ class SessionSubscriptionRepository:
         return [_project_subscription(record) for record in records]
 
     def list_for_reference_rewrite(self) -> builtins.list[SubscriptionSnapshot]:
-        """同步锁定全部订阅，供跨表规则组引用事务稳定重写。"""
+        """
+        同步锁定全部订阅，供跨表规则组引用事务稳定重写。
+        """
         session = self._session
         if not isinstance(session, Session):
             raise RuntimeError("规则组引用重写需要调用方提供同步 Session")
@@ -712,7 +837,9 @@ class SessionSubscriptionRepository:
     async def async_list_for_reference_rewrite(
         self,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步锁定全部订阅，供跨表规则组引用事务稳定重写。"""
+        """
+        异步锁定全部订阅，供跨表规则组引用事务稳定重写。
+        """
         session = self._session
         if not isinstance(session, AsyncSession):
             raise RuntimeError("规则组引用重写需要调用方提供 AsyncSession")
@@ -729,7 +856,9 @@ class SessionSubscriptionRepository:
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态、类型和窗口读取订阅快照。"""
+        """
+        异步按用户、状态、类型和窗口读取订阅快照。
+        """
         records = await self._async_repository().async_list_by_username(
             username,
             state,
@@ -745,7 +874,9 @@ class SessionSubscriptionRepository:
         username: Optional[str] = None,
         mtype: Optional[str] = None,
     ) -> int:
-        """按公开列表筛选范围返回订阅精确总数。"""
+        """
+        按公开列表筛选范围返回订阅精确总数。
+        """
         return await self._async_repository().async_count(
             state=state,
             username=username,
@@ -758,7 +889,9 @@ class SessionSubscriptionRepository:
         media_id: str,
         music_type: Optional[str] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按规范媒体身份读取订阅快照。"""
+        """
+        异步按规范媒体身份读取订阅快照。
+        """
         records = await self._async_repository().async_list_by_media_identity(media_source, media_id, music_type)
         return [_project_subscription(record) for record in records]
 
@@ -767,7 +900,9 @@ class SessionSubscriptionRepository:
         title: str,
         season: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按标题和季读取订阅快照。"""
+        """
+        异步按标题和季读取订阅快照。
+        """
         records = await self._async_repository().async_list_by_title(title, season)
         return [_project_subscription(record) for record in records]
 
@@ -777,8 +912,13 @@ class SessionSubscriptionRepository:
         payload: SubscriptionPatch,
         username: Optional[str] = None,
     ) -> SubscriptionWriteResult:
-        """同步暂存新增订阅。"""
+        """
+        同步暂存新增订阅。
+        """
         result = self._sync_repository().stage_add(identity.to_payload(), payload.to_payload(), username)
+        if result.created and result.subscribe_id:
+            record = cast(Session, self._session).get(Subscribe, result.subscribe_id)
+            self._stage_activity(_project_subscription(record) if record is not None else None, "created")
         return SubscriptionWriteResult(result.subscribe_id, result.message, result.created)
 
     async def async_stage_add(
@@ -787,8 +927,13 @@ class SessionSubscriptionRepository:
         payload: SubscriptionPatch,
         username: Optional[str] = None,
     ) -> SubscriptionWriteResult:
-        """异步暂存新增订阅。"""
+        """
+        异步暂存新增订阅。
+        """
         result = await self._async_repository().async_stage_add(identity.to_payload(), payload.to_payload(), username)
+        if result.created and result.subscribe_id:
+            record = await cast(AsyncSession, self._session).get(Subscribe, result.subscribe_id)
+            self._stage_activity(_project_subscription(record) if record is not None else None, "created")
         return SubscriptionWriteResult(result.subscribe_id, result.message, result.created)
 
     def stage_update(
@@ -796,24 +941,36 @@ class SessionSubscriptionRepository:
         subscribe_id: int,
         patch: SubscriptionPatch,
     ) -> Optional[SubscriptionSnapshot]:
-        """同步暂存更新并返回事务内订阅快照。"""
+        """
+        同步暂存更新并返回事务内订阅快照。
+        """
+        previous = self.get(subscribe_id)
         record = self._sync_repository().update(subscribe_id, patch.to_payload())
-        return _project_subscription(record) if record is not None else None
+        updated = _project_subscription(record) if record is not None else None
+        self._stage_activity(updated, "updated", previous.to_dict() if previous else None)
+        return updated
 
     async def async_stage_update(
         self,
         subscribe_id: int,
         patch: SubscriptionPatch,
     ) -> Optional[SubscriptionSnapshot]:
-        """异步暂存更新并返回事务内订阅快照。"""
+        """
+        异步暂存更新并返回事务内订阅快照。
+        """
+        previous = await self.async_get(subscribe_id)
         record = await self._async_repository().async_stage_update(subscribe_id, patch.to_payload())
-        return _project_subscription(record) if record is not None else None
+        updated = _project_subscription(record) if record is not None else None
+        self._stage_activity(updated, "updated", previous.to_dict() if previous else None)
+        return updated
 
     async def get_candidate(
         self,
         subscribe_id: int,
     ) -> Optional[SubscribeDeletionCandidate]:
-        """异步读取删除候选快照。"""
+        """
+        异步读取删除候选快照。
+        """
         snapshot = await self.async_get(subscribe_id)
         return self._candidate(snapshot)
 
@@ -821,14 +978,18 @@ class SessionSubscriptionRepository:
         self,
         subscribe_id: int,
     ) -> Optional[SubscribeDeletionCandidate]:
-        """同步读取删除候选快照。"""
+        """
+        同步读取删除候选快照。
+        """
         return self._candidate(self.get(subscribe_id))
 
     @staticmethod
     def _candidate(
         snapshot: Optional[SubscriptionSnapshot],
     ) -> Optional[SubscribeDeletionCandidate]:
-        """把订阅快照裁剪为删除候选。"""
+        """
+        把订阅快照裁剪为删除候选。
+        """
         if snapshot is None:
             return None
         return SubscribeDeletionCandidate(
@@ -841,7 +1002,9 @@ class SessionSubscriptionRepository:
         self,
         identity: SubscriptionIdentity,
     ) -> builtins.list[SubscribeDeletionCandidate]:
-        """异步按媒体身份读取去重删除候选。"""
+        """
+        异步按媒体身份读取去重删除候选。
+        """
         records = await self.async_list_by_media_identity(identity.media_source, identity.media_id, identity.music_type)
         candidates: builtins.list[SubscribeDeletionCandidate] = []
         for snapshot in records:
@@ -858,7 +1021,9 @@ class SessionSubscriptionRepository:
         state: str,
         mtype: Optional[str] = None,
     ) -> builtins.list[int]:
-        """异步读取用户或管理员指定媒体类型范围内的订阅主键。"""
+        """
+        异步读取用户或管理员指定媒体类型范围内的订阅主键。
+        """
         snapshots = (
             await self.async_list_by_username(username, state, mtype=mtype)
             if username is not None
@@ -871,32 +1036,60 @@ class SessionSubscriptionRepository:
         ]
 
     async def stage_delete(self, subscribe_id: int) -> None:
-        """异步暂存删除订阅。"""
+        """
+        异步暂存删除订阅。
+        """
         await self._async_repository().stage_delete(subscribe_id)
 
     def stage_delete_sync(self, subscribe_id: int) -> None:
-        """同步暂存删除订阅。"""
+        """
+        同步暂存删除订阅。
+        """
         self._sync_repository().stage_delete_sync(subscribe_id)
 
     def stage_history(self, payload: SubscriptionHistoryPatch) -> None:
-        """同步暂存订阅历史。"""
+        """
+        同步暂存订阅历史。
+        """
         if not isinstance(self._session, Session):
             raise RuntimeError("订阅历史暂存需要同步 Session")
         SubscribeHistoryOper(self._session).stage_add(payload.to_payload())
+        values = payload.to_payload()
+        history_record = SubscribeHistory(**values)
+        history_record.id = 0
+        history_snapshot = _project_history(history_record)
+
+        self._stage_activity(history_snapshot, "completed")
+
+    def _stage_activity(self, snapshot: Optional[SubscriptionSnapshot | SubscriptionHistorySnapshot], kind: str,
+                        old: Optional[Mapping[str, JsonData]] = None) -> None:
+        """
+        在订阅拥有的同一事务中暂存由应用层定义的生命周期事实。
+        """
+        if snapshot is not None:
+            event = lifecycle_activity(snapshot, kind, old=old)
+            if event is not None:
+                SubscribeActivityOper(self._session).stage(asdict(event))
 
 
 class SessionSubscriptionHistoryRepository:
-    """复用请求 AsyncSession 的订阅历史查询与删除适配器。"""
+    """
+    复用请求 AsyncSession 的订阅历史查询与删除适配器。
+    """
 
     def __init__(self, session: AsyncSession) -> None:
-        """绑定请求持有的 AsyncSession。"""
+        """
+        绑定请求持有的 AsyncSession。
+        """
         self._repository = SubscribeHistoryOper(session)
 
     async def async_get(
         self,
         history_id: int,
     ) -> Optional[SubscriptionHistorySnapshot]:
-        """异步按主键读取订阅历史快照。"""
+        """
+        异步按主键读取订阅历史快照。
+        """
         record = await self._repository.async_get(history_id)
         return _project_history(record) if record is not None else None
 
@@ -906,7 +1099,9 @@ class SessionSubscriptionHistoryRepository:
         page: int = 1,
         count: int = 30,
     ) -> builtins.list[SubscriptionHistorySnapshot]:
-        """异步按类型分页读取订阅历史快照。"""
+        """
+        异步按类型分页读取订阅历史快照。
+        """
         records = await self._repository.async_list_by_type(mtype, page, count)
         return [_project_history(record) for record in records]
 
@@ -917,12 +1112,16 @@ class SessionSubscriptionHistoryRepository:
         page: int = 1,
         count: int = 30,
     ) -> builtins.list[SubscriptionHistorySnapshot]:
-        """异步按类型和用户分页读取订阅历史快照。"""
+        """
+        异步按类型和用户分页读取订阅历史快照。
+        """
         records = await self._repository.async_list_by_type_and_username(mtype, username, page, count)
         return [_project_history(record) for record in records]
 
     async def async_count_by_type(self, mtype: str) -> int:
-        """在请求 Session 中统计指定媒体类型的订阅历史。"""
+        """
+        在请求 Session 中统计指定媒体类型的订阅历史。
+        """
         return await self._repository.async_count_by_type(mtype)
 
     async def async_count_by_type_and_username(
@@ -930,19 +1129,25 @@ class SessionSubscriptionHistoryRepository:
         mtype: str,
         username: str,
     ) -> int:
-        """在请求 Session 中统计指定类型和用户的订阅历史。"""
+        """
+        在请求 Session 中统计指定类型和用户的订阅历史。
+        """
         return await self._repository.async_count_by_type_and_username(
             mtype,
             username,
         )
 
     async def stage_delete(self, history_id: int) -> None:
-        """异步暂存删除订阅历史。"""
+        """
+        异步暂存删除订阅历史。
+        """
         await self._repository.async_delete(history_id)
 
 
 class SessionSubscriptionBatchWriter:
-    """使用请求级共享异步 Session 原子新增一组订阅并结算提交后效果。"""
+    """
+    使用请求级共享异步 Session 原子新增一组订阅并结算提交后效果。
+    """
 
     def __init__(
         self,
@@ -952,7 +1157,9 @@ class SessionSubscriptionBatchWriter:
         outbox: AsyncSubscriptionOutboxStager,
         dispatch_store: AsyncOutboxDispatchStore,
     ) -> None:
-        """注入同一请求事务的写端口和 durable intent 结算能力。"""
+        """
+        注入同一请求事务的写端口和 durable intent 结算能力。
+        """
         self._command = AsyncCreateSubscriptionBatchCommand(
             repository=repository,
             unit_of_work=unit_of_work,
@@ -964,20 +1171,26 @@ class SessionSubscriptionBatchWriter:
         self,
         requests: Sequence[SubscriptionCreateRequest],
     ) -> tuple[SubscriptionWriteResult, ...]:
-        """提交整批订阅后逐条认领并结算与单条新增一致的 intents。"""
+        """
+        提交整批订阅后逐条认领并结算与单条新增一致的 intents。
+        """
 
         async def settle(
             subscribe_id: int,
             request: SubscriptionCreateRequest,
         ) -> None:
-            """在批量事务提交后结算一条订阅的事件和统计 intents。"""
+            """
+            在批量事务提交后结算一条订阅的事件和统计 intents。
+            """
             payload = request.payload.to_payload()
             notification = (
                 dict(request.notification) if request.notification else None
             )
 
             async def invoke() -> bool | None:
-                """复用准备阶段冻结的单条新增提交后副作用。"""
+                """
+                复用准备阶段冻结的单条新增提交后副作用。
+                """
                 if request.after_commit is None:
                     return True
                 delivered = await request.after_commit(subscribe_id)
@@ -1001,7 +1214,9 @@ def _added_effect_keys(
     notification: Optional[dict[str, JsonData]],
     occurrence_id: str,
 ) -> tuple[str, ...]:
-    """返回组合回调实际包含的独立 durable effect 键。"""
+    """
+    返回组合回调实际包含的独立 durable effect 键。
+    """
     keys = [
         subscription_added_event_key(
             subscribe_id,
@@ -1032,7 +1247,9 @@ def _claim_added_effects(
     keys: tuple[str, ...],
     now: datetime,
 ) -> Optional[tuple[ClaimedOutboxMessage, ...]]:
-    """全量认领组合回调；竞争丢失时释放本次已取得的 lease。"""
+    """
+    全量认领组合回调；竞争丢失时释放本次已取得的 lease。
+    """
     claimed: builtins.list[ClaimedOutboxMessage] = []
     for key in keys:
         message = store.claim_by_event_key(
@@ -1063,7 +1280,9 @@ def _deliver_added_effects(
     *,
     occurrence_id: str,
 ) -> None:
-    """认领组合回调并按事件、通知、统计的确认结果分别结算。"""
+    """
+    认领组合回调并按事件、通知、统计的确认结果分别结算。
+    """
     now = datetime.now(timezone.utc)
     claimed = _claim_added_effects(
         store,
@@ -1106,7 +1325,9 @@ async def _claim_added_effects_async(
     keys: tuple[str, ...],
     now: datetime,
 ) -> Optional[tuple[ClaimedOutboxMessage, ...]]:
-    """异步全量认领组合回调，竞争丢失时释放已取得 lease。"""
+    """
+    异步全量认领组合回调，竞争丢失时释放已取得 lease。
+    """
     claimed: builtins.list[ClaimedOutboxMessage] = []
     for key in keys:
         message = await store.claim_by_event_key(
@@ -1137,7 +1358,9 @@ async def _deliver_added_effects_async(
     *,
     occurrence_id: str,
 ) -> None:
-    """异步认领组合回调并按各 intent 的确认结果分别结算。"""
+    """
+    异步认领组合回调并按各 intent 的确认结果分别结算。
+    """
     now = datetime.now(timezone.utc)
     claimed = await _claim_added_effects_async(
         store,

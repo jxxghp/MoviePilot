@@ -1,11 +1,18 @@
-"""真实 Agent 图与 SQLite 回执联合验证写工具防重和未知结果核验。"""
+"""
+真实 Agent 图与 SQLite 回执联合验证写工具防重和未知结果核验。
+"""
 
 import asyncio
 import json
+from contextlib import nullcontext
+from copy import deepcopy
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -15,14 +22,21 @@ from pydantic import Field
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
 from app.agent.mcp import AgentMcpToolSpec
 from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME, InvocationMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.policy.contracts import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
+from app.agent.policy.sanitizer import sanitize_for_host
 from app.agent.tools.base import ToolExecutionTimeoutError
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import McpExternalTool, create_external_mcp_tools
+from app.agent.tools.result import inspect_tool_result
+from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.plugin import get_plugin_config_command
+from app.api.endpoints.plugin import set_plugin_config
 from app.application.invocation import InvocationIdentity
+from app.application.plugin.config import PluginConfigCommand
 from app.db.adapters.invocation import TransactionalInvocationRepository
 from app.db.models.agentinvocation import AgentInvocation
 from app.schemas.agent import AgentMcpServerConfig
@@ -33,26 +47,34 @@ WRITE_ARGUMENTS = {"operation_id": "download.add", "body": {
 
 
 class _ScriptModel(FakeMessagesListChatModel):
-    """按固定响应驱动真实图，记录模型绑定的实际工具实例。"""
+    """
+    按固定响应驱动真实图，记录模型绑定的实际工具实例。
+    """
 
     bound_tools: list[list[Any]] = Field(default_factory=list)
 
     def bind_tools(self, tools, **_kwargs):
-        """接受真实 ToolNode 的工具声明，无需访问任何模型供应商。"""
+        """
+        接受真实 ToolNode 的工具声明，无需访问任何模型供应商。
+        """
         self.bound_tools.append(list(tools))
         return self
 
 
 @pytest.fixture
 def invocation_runtime(tmp_path):
-    """提供线程可见的真实 SQLite 文件及只读回执快照函数。"""
+    """
+    提供线程可见的真实 SQLite 文件及只读回执快照函数。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'middleware.db'}", connect_args={"timeout": 20})
     AgentInvocation.__table__.create(engine)
     factory = sessionmaker(bind=engine)
     repository = TransactionalInvocationRepository(factory)
 
     def records():
-        """在独立连接读取持久化事实，避免只断言模拟端口调用。"""
+        """
+        在独立连接读取持久化事实，避免只断言模拟端口调用。
+        """
         with factory() as session:
             return [row.to_dict() for row in session.execute(select(AgentInvocation).order_by(AgentInvocation.id)).scalars()]
 
@@ -61,7 +83,9 @@ def invocation_runtime(tmp_path):
 
 
 def _context(user_id="owner", session_id="invocation-chat"):
-    """以宿主身份约束所有回执查询和写入。"""
+    """
+    以宿主身份约束所有回执查询和写入。
+    """
     return ToolPolicyContext(
         session_id=session_id, user_id=user_id, origin=ToolOrigin.AGENT_INTERACTIVE,
         principal_type=PrincipalType.HUMAN, auth_source=AuthSource.INTERNAL,
@@ -70,12 +94,16 @@ def _context(user_id="owner", session_id="invocation-chat"):
 
 
 def _call(call_id, arguments=None, name="moviepilot_api"):
-    """生成模型标准工具调用，参数默认是固定下载写操作。"""
+    """
+    生成模型标准工具调用，参数默认是固定下载写操作。
+    """
     return {"id": call_id, "name": name, "args": WRITE_ARGUMENTS if arguments is None else arguments}
 
 
 def _graph(repository, responses, *, context=None, tools=None):
-    """使用生产顺序的策略和持久回执中间件构造可重复调用的真实图。"""
+    """
+    使用生产顺序的策略和持久回执中间件构造可重复调用的真实图。
+    """
     context = context or _context()
     tools = tools if tools is not None else [MoviePilotApiTool(session_id=context.session_id, user_id=context.user_id)]
     middleware = InvocationMiddleware(context, repository, tools)
@@ -89,7 +117,9 @@ def _graph(repository, responses, *, context=None, tools=None):
 
 
 async def _invoke(graph, prompt="请执行操作", thread_id="graph-thread"):
-    """以真实用户消息进入图，触发每轮私有意图身份更新。"""
+    """
+    以真实用户消息进入图，触发每轮私有意图身份更新。
+    """
     return await graph.ainvoke(
         {"messages": [HumanMessage(content=prompt)]},
         {"configurable": {"thread_id": thread_id}},
@@ -97,13 +127,17 @@ async def _invoke(graph, prompt="请执行操作", thread_id="graph-thread"):
 
 
 def _tool_messages(result):
-    """提取实际进入模型历史的工具响应。"""
+    """
+    提取实际进入模型历史的工具响应。
+    """
     return [message for message in result["messages"] if isinstance(message, ToolMessage)]
 
 
 @pytest.mark.asyncio
 async def test_parallel_equivalent_api_calls_execute_once_but_new_request_can_repeat(invocation_runtime, monkeypatch):
-    """并行同参数且默认字段写法不同只执行一次，下一条用户意图仍可有意重做。"""
+    """
+    并行同参数且默认字段写法不同只执行一次，下一条用户意图仍可有意重做。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({"success": True, "data": {"id": "download-1"}}))
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -136,7 +170,9 @@ async def test_parallel_equivalent_api_calls_execute_once_but_new_request_can_re
 
 @pytest.mark.asyncio
 async def test_unknown_api_result_blocks_same_input_in_new_turn(invocation_runtime, monkeypatch):
-    """投递结果未知时保留恢复状态，跨用户请求不能直接重放原写入。"""
+    """
+    投递结果未知时保留恢复状态，跨用户请求不能直接重放原写入。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({"execution_outcome": "unknown", "task_id": "job-1"}))
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -158,7 +194,9 @@ async def test_unknown_api_result_blocks_same_input_in_new_turn(invocation_runti
 
 @pytest.mark.asyncio
 async def test_confirmed_submission_deduplicates_turn_but_allows_new_intent(invocation_runtime, monkeypatch):
-    """明确接受的异步提交保留 pending；同一轮不重复，新用户意图可再次提交。"""
+    """
+    明确接受的异步提交保留 pending；同一轮不重复，新用户意图可再次提交。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({"execution_outcome": "pending", "task_id": "job-1"}))
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -186,7 +224,9 @@ async def test_confirmed_submission_deduplicates_turn_but_allows_new_intent(invo
 
 @pytest.mark.asyncio
 async def test_timeout_remains_unknown_and_new_turn_does_not_reexecute(invocation_runtime, monkeypatch):
-    """真实工具超时经策略层转为未知消息，已认领的副作用不会再次执行。"""
+    """
+    真实工具超时经策略层转为未知消息，已认领的副作用不会再次执行。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(side_effect=ToolExecutionTimeoutError("timed out"))
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -212,12 +252,16 @@ async def test_timeout_remains_unknown_and_new_turn_does_not_reexecute(invocatio
 async def test_setting_unknown_is_reconciled_only_by_safe_matching_read(
     invocation_runtime, monkeypatch, setting_key, current_value, redacted, operation, expected_reads, reconciled,
 ):
-    """只有非敏感完整替换且只读确认实际值一致时才收口，其他情况保持未知。"""
+    """
+    只有非敏感完整替换且只读确认实际值一致时才收口，其他情况保持未知。
+    """
     repository, records = invocation_runtime
     operations = []
 
     async def run(_self, operation_id, **kwargs):
-        """首次写入模拟结果丢失，核验必须调用同一个工具的真实只读入口。"""
+        """
+        首次写入模拟结果丢失，核验必须调用同一个工具的真实只读入口。
+        """
         operations.append((operation_id, kwargs))
         if operation_id == "config.system.update":
             return json.dumps({"execution_outcome": "unknown"})
@@ -245,6 +289,9 @@ async def test_setting_unknown_is_reconciled_only_by_safe_matching_read(
     assert records()[0]["status"] == ("succeeded" if reconciled else "unknown")
     payload = json.loads(_tool_messages(result)[-1].content)
     assert payload.get("reconciled", False) is reconciled
+    if reconciled:
+        assert payload["execution_outcome"] == "replayed"
+        assert payload["previous_status"] == "succeeded"
 
 
 @pytest.mark.asyncio
@@ -252,13 +299,17 @@ async def test_setting_unknown_is_reconciled_only_by_safe_matching_read(
 async def test_persistence_failure_never_grants_unrecorded_or_repeat_execution(
     invocation_runtime, monkeypatch, failing_method,
 ):
-    """认领失败不执行，收口失败保留认领并阻止下一轮重复副作用。"""
+    """
+    认领失败不执行，收口失败保留认领并阻止下一轮重复副作用。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({"success": True}))
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
 
     def unavailable(*_args, **_kwargs):
-        """模拟真实仓储事务故障，原仓储其他操作仍访问 SQLite。"""
+        """
+        模拟真实仓储事务故障，原仓储其他操作仍访问 SQLite。
+        """
         raise RuntimeError("storage unavailable")
 
     monkeypatch.setattr(repository, failing_method, unavailable)
@@ -276,12 +327,16 @@ async def test_persistence_failure_never_grants_unrecorded_or_repeat_execution(
 
 @pytest.mark.asyncio
 async def test_cancellation_propagates_and_preserves_unknown_receipt(invocation_runtime, monkeypatch):
-    """取消图任务必须传播到调用方，同时记录已开始写入的未知结果。"""
+    """
+    取消图任务必须传播到调用方，同时记录已开始写入的未知结果。
+    """
     repository, records = invocation_runtime
     started = asyncio.Event()
 
     async def run(_self, **_kwargs):
-        """模拟已发出副作用但结果尚未返回的工具。"""
+        """
+        模拟已发出副作用但结果尚未返回的工具。
+        """
         started.set()
         await asyncio.Event().wait()
 
@@ -298,7 +353,9 @@ async def test_cancellation_propagates_and_preserves_unknown_receipt(invocation_
 
 @pytest.mark.asyncio
 async def test_receipt_query_is_bound_to_host_owner_and_never_journaled(invocation_runtime, monkeypatch):
-    """真实绑定的回执查询只读工具不能读取其他用户或会话，也不产生新回执。"""
+    """
+    真实绑定的回执查询只读工具不能读取其他用户或会话，也不产生新回执。
+    """
     repository, records = invocation_runtime
     original = repository.claim(
         InvocationIdentity("owner", "invocation-chat", "known-call"),
@@ -323,7 +380,9 @@ async def test_receipt_query_is_bound_to_host_owner_and_never_journaled(invocati
 
 @pytest.mark.asyncio
 async def test_unresolved_write_does_not_block_another_host_user_or_session(invocation_runtime, monkeypatch):
-    """相同工具参数的未知写入只阻止原用户会话，模型参数无法替换宿主 owner。"""
+    """
+    相同工具参数的未知写入只阻止原用户会话，模型参数无法替换宿主 owner。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({"execution_outcome": "unknown"}))
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -346,12 +405,16 @@ async def test_unresolved_write_does_not_block_another_host_user_or_session(invo
 
 @pytest.mark.asyncio
 async def test_generic_writes_keep_distinct_calls_and_read_tools_remain_unjournaled(invocation_runtime):
-    """通用写工具保留调用 ID 语义，明确只读标签的工具不进入写回执系统。"""
+    """
+    通用写工具保留调用 ID 语义，明确只读标签的工具不进入写回执系统。
+    """
     repository, records = invocation_runtime
     calls = []
 
     async def perform(value: str):
-        """记录通用工具的真实执行次数。"""
+        """
+        记录通用工具的真实执行次数。
+        """
         calls.append(value)
         return json.dumps({"success": True})
 
@@ -384,12 +447,16 @@ async def test_generic_writes_keep_distinct_calls_and_read_tools_remain_unjourna
     ),
 ])
 async def test_api_effective_parameters_prevent_unknown_retry_bypass(invocation_runtime, monkeypatch, first, retry):
-    """嵌套默认值、模型忽略字段和 GET 位置变化不能绕过未知写入防重。"""
+    """
+    嵌套默认值、模型忽略字段和 GET 位置变化不能绕过未知写入防重。
+    """
     repository, records = invocation_runtime
     writes = []
 
     async def run(_self, operation_id, **kwargs):
-        """记录实际执行参数，核验读取返回未匹配值使旧写入继续保持未知。"""
+        """
+        记录实际执行参数，核验读取返回未匹配值使旧写入继续保持未知。
+        """
         if operation_id == "config.system.get":
             return json.dumps({"success": True, "data": {"settings": [{
                 "setting_key": "PROJECT_NAME", "value": "not-yet-confirmed", "redacted": False,
@@ -435,7 +502,9 @@ async def test_api_effective_parameters_prevent_unknown_retry_bypass(invocation_
     ),
 ])
 async def test_api_read_errors_reach_model_and_corrected_call_executes_once(invocation_runtime, invalid, corrected, hint):
-    """真实 Agent 图把纠错回执交给下一轮模型，只有修正后的只读调用到达执行器。"""
+    """
+    真实 Agent 图把纠错回执交给下一轮模型，只有修正后的只读调用到达执行器。
+    """
     repository, records = invocation_runtime
     executor = AsyncMock()
     executor.execute.return_value = '{"success":true}'
@@ -460,7 +529,9 @@ async def test_api_read_errors_reach_model_and_corrected_call_executes_once(invo
 
 @pytest.mark.asyncio
 async def test_flattened_write_arguments_fail_before_claim(invocation_runtime, monkeypatch):
-    """即使请求体本身合法，额外顶层写入字段也必须在认领前失败并提示位置。"""
+    """
+    即使请求体本身合法，额外顶层写入字段也必须在认领前失败并提示位置。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value='{"success":true}')
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -476,7 +547,9 @@ async def test_flattened_write_arguments_fail_before_claim(invocation_runtime, m
 
 @pytest.mark.asyncio
 async def test_api_forbidden_query_keys_do_not_execute_or_claim(invocation_runtime, monkeypatch):
-    """路径和查询合同禁止的字段在认领前拒绝，不能仅从指纹丢弃后仍传给服务端。"""
+    """
+    路径和查询合同禁止的字段在认领前拒绝，不能仅从指纹丢弃后仍传给服务端。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value='{"success":true}')
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -496,7 +569,9 @@ async def test_api_forbidden_query_keys_do_not_execute_or_claim(invocation_runti
 
 
 def test_api_schema_normalization_preserves_free_setting_values_and_explicit_null():
-    """自由字典和显式 null 保持原意，引用模型里的显式默认值仍可规范。"""
+    """
+    自由字典和显式 null 保持原意，引用模型里的显式默认值仍可规范。
+    """
     tool = MoviePilotApiTool(session_id="canonical", user_id="owner")
     free_value = {"unknown_keys_are_business_data": {"force": "false"}, "optional": None}
     result = tool.canonical_arguments({"operation_id": "config.system.update", "body": {
@@ -515,7 +590,9 @@ def test_api_schema_normalization_preserves_free_setting_values_and_explicit_nul
 @pytest.mark.asyncio
 @pytest.mark.parametrize("resource_id", [True, False])
 async def test_boolean_resource_id_never_becomes_numeric_write_target(invocation_runtime, monkeypatch, resource_id):
-    """布尔路径参数不能被规范成数字 ID，认领和真实删除都必须被阻止。"""
+    """
+    布尔路径参数不能被规范成数字 ID，认领和真实删除都必须被阻止。
+    """
     repository, records = invocation_runtime
     run = AsyncMock(return_value='{"success":true}')
     monkeypatch.setattr(MoviePilotApiTool, "run", run)
@@ -532,7 +609,9 @@ async def test_boolean_resource_id_never_becomes_numeric_write_target(invocation
 
 @pytest.mark.asyncio
 async def test_mcp_read_tag_does_not_bypass_persistent_identity(invocation_runtime, monkeypatch):
-    """外部 MCP 的固定 Read 标签不构成只读证明，同 ID 防重而新 ID 仍照常执行。"""
+    """
+    外部 MCP 的固定 Read 标签不构成只读证明，同 ID 防重而新 ID 仍照常执行。
+    """
     repository, records = invocation_runtime
     spec = AgentMcpToolSpec(
         server=AgentMcpServerConfig(id="external", name="Remote", transport="stdio", command="unused"),
@@ -553,3 +632,229 @@ async def test_mcp_read_tag_does_not_bypass_persistent_identity(invocation_runti
     assert len(records()) == 2
     assert replies[0]["data"] == replies[2]["data"] == "remote-result"
     assert replies[1]["replayed"] is True
+
+
+@pytest.mark.asyncio
+async def test_successful_write_replay_is_not_a_new_success(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    同一轮命中成功回执时明确区分旧状态，本次调用没有再次执行。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
+    """
+    repository, records = invocation_runtime
+    run = AsyncMock(return_value=json.dumps({"success": True}))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("original")]),
+        AIMessage(content="", tool_calls=[_call("duplicate")]),
+        AIMessage(content="查看既有回执"),
+    ])
+
+    messages = _tool_messages(await _invoke(graph))
+    replay = json.loads(messages[-1].content)
+    assert run.await_count == 1
+    assert len(records()) == 1
+    assert replay["execution_outcome"] == "replayed"
+    assert replay["previous_status"] == "succeeded"
+    assert replay["replayed"] is True
+    assert replay["invocation_id"] == records()[0]["invocation_id"]
+    assert messages[-1].status == "error"
+    assert inspect_tool_result(messages[-1]).value == "replayed"
+
+
+@pytest.mark.asyncio
+async def test_distinct_secret_values_do_not_share_write_receipts(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    不同凭据的规范参数必须区分，持久回执仅保存摘要而不保存输入。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
+    """
+    repository, records = invocation_runtime
+    first = {"enabled": True, "taobao_cookie": "session=synthetic-first"}
+    second = {"enabled": True, "taobao_cookie": "session=synthetic-second"}
+    assert sanitize_for_host(first) == sanitize_for_host(second)
+    run = AsyncMock(return_value=json.dumps({"execution_outcome": "unknown"}))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("first", {
+            "operation_id": "plugin.config.update", "path_params": {"plugin_id": "DemoPlugin"}, "body": first,
+        })]),
+        AIMessage(content="等待核验"),
+        AIMessage(content="", tool_calls=[_call("second", {
+            "operation_id": "plugin.config.update", "path_params": {"plugin_id": "DemoPlugin"}, "body": second,
+        })]),
+        AIMessage(content="等待核验"),
+    ])
+
+    await _invoke(graph)
+    await _invoke(graph, "执行不同配置")
+    persisted = records()
+    assert run.await_count == 2
+    assert len({record["arguments_digest"] for record in persisted}) == 2
+    assert all(len(record["arguments_digest"]) == 64 for record in persisted)
+    assert "synthetic-first" not in str(persisted)
+    assert "synthetic-second" not in str(persisted)
+
+
+@pytest.mark.asyncio
+async def test_failed_write_replay_retains_previous_failure_without_reexecuting(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    失败回执同样只描述旧调用，不能变成第二次调用的执行结果。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
+    """
+    repository, records = invocation_runtime
+    run = AsyncMock(return_value=json.dumps({"success": False, "message": "操作被拒绝"}))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("original")]),
+        AIMessage(content="", tool_calls=[_call("duplicate")]),
+        AIMessage(content="查看既有回执"),
+    ])
+
+    replay = json.loads(_tool_messages(await _invoke(graph))[-1].content)
+    assert run.await_count == 1
+    assert records()[0]["status"] == "failed"
+    assert replay["execution_outcome"] == "replayed"
+    assert replay["previous_status"] == "failed"
+    assert replay["replayed"] is True
+
+
+@pytest.mark.asyncio
+async def test_lower_level_replay_does_not_settle_current_write_as_success(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    下层只返回历史回执时保留未知认领，后续请求不得据此重复副作用。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
+    """
+    repository, records = invocation_runtime
+    run = AsyncMock(return_value=json.dumps({
+        "execution_outcome": "replayed", "previous_status": "succeeded", "replayed": True,
+    }))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("original")]), AIMessage(content="先核验"),
+        AIMessage(content="", tool_calls=[_call("retry")]), AIMessage(content="仍需核验"),
+    ])
+
+    first = _tool_messages(await _invoke(graph))[-1]
+    assert inspect_tool_result(first).value == "replayed"
+    assert records()[0]["status"] == "unknown"
+    retry = json.loads(_tool_messages(await _invoke(graph, "再次检查"))[-1].content)
+    assert retry["execution_outcome"] == "unknown"
+    assert retry["replayed"] is True
+    assert run.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_real_agent_to_plugin_endpoint_preserves_configuration_and_services(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    真实图经 API 网关与 HTTP 路由写配置，回放和无效写入不影响插件数据及服务。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实认证和网络传输的测试夹具
+    """
+    repository, records = invocation_runtime
+    stored = {"enabled": True, "cookie": "session=synthetic-cookie", "keywords": list(range(60))}
+    plugin_data = {"tracked": ["synthetic-item"]}
+    services = list(range(8))
+    initializations: list[dict[str, Any]] = []
+
+    def save(_plugin_id: str, config: dict[str, Any], _force: bool) -> bool:
+        """
+        模拟配置端口的整份持久化替换。
+        """
+        stored.clear()
+        stored.update(deepcopy(config))
+        return True
+
+    def refresh(_plugin_id: str) -> None:
+        """
+        模拟按最新配置重新协调定时服务。
+        """
+        services[:] = list(range(8)) if stored.get("enabled") else []
+
+    def delete_data(_plugin_id: str, _force: bool) -> bool:
+        """
+        如果错误进入删除路径，让测试观察到独立插件数据的变化。
+        """
+        plugin_data.clear()
+        return True
+
+    command = PluginConfigCommand(
+        read_config=lambda _plugin_id: deepcopy(stored),
+        save_config=save,
+        initialize=lambda _plugin_id, config: initializations.append(deepcopy(config)),
+        stop=lambda _plugin_id: None,
+        delete_config=lambda _plugin_id, _force: True,
+        delete_data=delete_data,
+        reload_runtime=lambda _plugin_id: None,
+        publish_reset=lambda _plugin_id: None,
+        refresh_registrations=refresh,
+        mutation=lambda _operation: nullcontext(),
+        delete_plugin_data_rows=lambda _plugin_id: None,
+        destroy_own_database=lambda _plugin_id: None,
+        delete_data_directory=lambda _plugin_id: True,
+        purge_instance=lambda _plugin_id: True,
+        is_clone=lambda _plugin_id: False,
+    )
+    app = FastAPI()
+    app.add_api_route("/api/v1/plugin/{plugin_id}", set_plugin_config, methods=["PUT"])
+    app.dependency_overrides[get_current_active_superuser] = lambda: None
+    app.dependency_overrides[get_plugin_config_command] = lambda: command
+    calls = []
+    with TestClient(app) as client:
+        async def send(**kwargs: Any) -> SimpleNamespace:
+            """
+            仅把实际 HTTP 传输换成内存 ASGI，保留真实路由与应用命令。
+
+            :param kwargs: API 执行器传入的请求方法、地址和 JSON 内容
+            :return: 可由执行器消费的内存响应
+            """
+            calls.append(kwargs)
+            response = client.request(kwargs["method"], kwargs["url"], json=kwargs["json"])
+            return SimpleNamespace(status_code=response.status_code, headers=response.headers,
+                                   json=response.json, aclose=AsyncMock())
+
+        executor = MoviePilotApiExecutor(
+            context=ApiExecutionContext(user_id="1", username="admin", is_admin=True),
+            request_factory=Mock(return_value=SimpleNamespace(request=send)),
+        )
+        monkeypatch.setattr(executor, "_build_headers", lambda: {})
+        monkeypatch.setattr(executor, "_resolve_base_url", lambda: "http://testserver")
+        tool = MoviePilotApiTool(session_id="invocation-chat", user_id="owner", executor=executor)
+        tool.set_agent_context({"is_admin": True})
+        body = {**stored, "keywords": [*stored["keywords"], "new"]}
+        arguments = {"operation_id": "plugin.config.update", "path_params": {"plugin_id": "DemoPlugin"}, "body": body}
+        graph, _model, _middleware = _graph(repository, [
+            AIMessage(content="", tool_calls=[_call("original", arguments)]),
+            AIMessage(content="", tool_calls=[_call("duplicate", arguments)]),
+            AIMessage(content="", tool_calls=[_call("empty", {**arguments, "body": {}})]),
+            AIMessage(content="", tool_calls=[_call("masked", {**arguments, "body": {**body, "cookie": "***"}})]),
+            AIMessage(content="已检查回执"),
+        ], tools=[tool])
+        messages = [json.loads(message.content) for message in _tool_messages(await _invoke(graph))]
+
+    assert messages[0]["success"] is True
+    assert messages[1]["execution_outcome"] == "replayed"
+    assert messages[1]["previous_status"] == "succeeded"
+    assert messages[2]["execution_outcome"] == "failed"
+    assert messages[3]["execution_outcome"] == "failed"
+    assert len(calls) == len(records()) == len(initializations) == 1
+    assert stored == body
+    assert plugin_data == {"tracked": ["synthetic-item"]}
+    assert services == list(range(8))

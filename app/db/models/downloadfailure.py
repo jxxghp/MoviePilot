@@ -1,4 +1,10 @@
-from typing import List, Optional
+"""
+下载失败及重试状态的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
+from typing import List, Optional, Self
 
 from sqlalchemy import Float, Index, Integer, String, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -24,9 +30,9 @@ class DownloadFailure(Base):
     # 媒体数据源与原生ID
     media_source: Mapped[Optional[str]] = mapped_column(String)
     media_id: Mapped[Optional[str]] = mapped_column(String)
-    # Sxx
+    # 失败资源的季范围文本，使用 Sxx 格式。
     seasons: Mapped[Optional[str]] = mapped_column(String)
-    # Exx
+    # 失败资源的集范围文本，使用 Exx 格式。
     episodes: Mapped[Optional[str]] = mapped_column(String)
     # 站点ID
     site: Mapped[Optional[int]] = mapped_column(Integer)
@@ -90,7 +96,7 @@ class DownloadFailure(Base):
         """
         新增或更新资源失败记录。
         """
-        failure = db.execute(
+        failure: Optional[Self] = db.execute(
             select(cls).where(cls.fingerprint == fingerprint)
         ).scalars().first()
         payload = {

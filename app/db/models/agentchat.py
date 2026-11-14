@@ -1,6 +1,12 @@
+"""
+Agent 会话索引与消息历史的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Any, Optional
 
-from sqlalchemy import Integer, String, JSON, Index, select
+from sqlalchemy import JSON, Index, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -59,7 +65,8 @@ class AgentChat(Base):
         statement = select(cls).where(cls.session_id == session_id)
         if user_id is not None:
             statement = statement.where(cls.user_id == user_id)
-        return db.execute(statement.order_by(cls.id.desc())).scalars().first()
+        chat: Optional[AgentChat] = db.execute(statement.order_by(cls.id.desc())).scalars().first()
+        return chat
 
     @classmethod
     async def async_get_by_session(
@@ -72,7 +79,8 @@ class AgentChat(Base):
         if user_id is not None:
             statement = statement.where(cls.user_id == user_id)
         result = await db.execute(statement.order_by(cls.id.desc()))
-        return result.scalars().first()
+        chat: Optional[AgentChat] = result.scalars().first()
+        return chat
 
     @classmethod
     def list_by_page(
@@ -88,7 +96,10 @@ class AgentChat(Base):
         """
         statement = select(cls)
         if user_id is not None and username is not None:
-            statement = statement.where((cls.user_id == user_id) | (cls.username == username))
+            statement = statement.where(
+                (cls.user_id == user_id)
+                | (((cls.user_id.is_(None)) | (cls.user_id == "")) & (cls.username == username))
+            )
         elif user_id is not None:
             statement = statement.where(cls.user_id == user_id)
         elif username is not None:
@@ -113,7 +124,10 @@ class AgentChat(Base):
         """
         statement = select(cls)
         if user_id is not None and username is not None:
-            statement = statement.where((cls.user_id == user_id) | (cls.username == username))
+            statement = statement.where(
+                (cls.user_id == user_id)
+                | (((cls.user_id.is_(None)) | (cls.user_id == "")) & (cls.username == username))
+            )
         elif user_id is not None:
             statement = statement.where(cls.user_id == user_id)
         elif username is not None:

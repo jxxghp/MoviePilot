@@ -1,4 +1,6 @@
-"""字符串模块方法协议的可检查契约清单。"""
+"""
+字符串模块方法协议的可检查契约清单。
+"""
 
 from __future__ import annotations
 
@@ -8,51 +10,104 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
+from pydantic import BaseModel
+
 
 class ModuleResultAggregation(StrEnum):
-    """描述多模块结果沿调用链的兼容聚合方式。"""
+    """
+    描述多模块结果沿调用链的兼容聚合方式。
+    """
 
+    # 沿用历史模块方法的结果聚合规则
     LEGACY = "legacy"
+    # 采用首个非空结果并停止后续调用
     FIRST_NON_EMPTY = "first_non_empty"
+    # 按调用顺序合并列表结果
     ORDERED_LIST_MERGE = "ordered_list_merge"
+    # 按调用顺序合并映射结果
     ORDERED_MAPPING_MERGE = "ordered_mapping_merge"
+    # 将上一结果作为下一调用的输入
     PIPELINE_RELAY = "pipeline_relay"
+    # 向各实现方分发同一调用
     FAN_OUT = "fan_out"
 
 
 class ModuleResultShape(StrEnum):
-    """描述模块 provider 返回值的基础 Python 形状。"""
+    """
+    描述模块 provider 返回值的基础 Python 形状或模型对象。
 
+    MODEL 用于 Pydantic 分页等模型对象，MAPPING 仍只接受字典。
+    """
+
+    # 接受任意结果形状
     ANY = "any"
+    # 结果应为列表
     LIST = "list"
+    # 结果应为字符串
     STRING = "string"
+    # 结果应为键值映射
     MAPPING = "mapping"
+    MODEL = "model"
+    # 结果应为布尔值
     BOOLEAN = "boolean"
+    # 结果应为字节序列
     BYTES = "bytes"
 
 
 class ModuleExecutionMode(StrEnum):
-    """描述 provider 可以采用的执行形态。"""
+    """
+    描述 provider 可以采用的执行形态。
+    """
 
+    # 允许同步或异步实现，由调度器适配调用
     SYNC_OR_ASYNC = "sync_or_async"
 
 
 class ModuleErrorPolicy(StrEnum):
-    """描述单个 provider 失败后的兼容处理策略。"""
+    """
+    描述单个 provider 失败后的兼容处理策略。
+    """
 
+    # 隔离单个实现方的异常，按聚合规则处理其余实现
     ISOLATE_PROVIDER = "isolate_provider"
 
 
 class ModuleCapability(Protocol):
-    """宿主和新插件可用于声明动态能力的最小 Protocol。"""
+    """
+    宿主和新插件可用于声明动态能力的最小 Protocol。
+    """
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """执行模块能力并返回契约声明的结果。"""
+        """
+        执行模块能力并返回契约声明的结果。
+
+        :param args: 模块方法契约规定的位置参数
+        :param kwargs: 模块方法契约规定的关键字参数
+        :return: 该模块方法契约规定的业务结果；异步实现返回供调度器等待的对象
+        """
 
 
 @dataclass(frozen=True, slots=True)
 class ModuleMethodContract:
-    """记录模块方法的输入、结果、执行与兼容错误协议。"""
+    """
+    记录模块方法的输入、结果、执行与兼容错误协议。
+
+    :param family: 方法所属的业务能力族
+    :param aggregation: 多个提供方返回结果的聚合策略
+    :param version: 模块方法协议版本，默认从 1 开始
+    :param input_contract: 输入参数协议名称
+    :param result_contract: 返回值业务协议名称
+    :param result_shape: 用于运行时检查的返回值基础形状
+    :param required_parameters: 调用该能力必须提供的参数名
+    :param execution: 允许使用的同步或异步执行形态
+    :param timeout_policy: 执行预算的归属策略，默认沿用调用方预算
+    :param error_policy: 单个提供方失败时的隔离策略
+    :param public_to_plugins: 是否允许插件实现此模块能力
+    :param supports_sync: 是否支持同步调用入口
+    :param supports_async: 是否支持异步调用入口
+    :param plugin_short_circuit: 插件返回有效结果后是否短路宿主模块调用
+    :param optional_parameters: 兼容调用时可选择传入的参数名
+    """
 
     family: str
     aggregation: ModuleResultAggregation = ModuleResultAggregation.LEGACY
@@ -68,6 +123,7 @@ class ModuleMethodContract:
     supports_sync: bool = True
     supports_async: bool = True
     plugin_short_circuit: bool = True
+    optional_parameters: tuple[str, ...] = ()
 
 
 _DEFAULT_CONTRACT = ModuleMethodContract(family="legacy")
@@ -147,6 +203,7 @@ _METHOD_CONTRACTS = {
         result_contract="Iterable[MediaServerItem] | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "library_id", "start_index", "limit"),
+        optional_parameters=("query",),
     ),
     "mediaserver_iteminfo": ModuleMethodContract(
         family="media-server",
@@ -154,6 +211,7 @@ _METHOD_CONTRACTS = {
         result_contract="MediaServerItem | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "item_id"),
+        optional_parameters=("query",),
     ),
     "mediaserver_play_url": ModuleMethodContract(
         family="media-server",
@@ -169,6 +227,7 @@ _METHOD_CONTRACTS = {
         result_contract="list[MediaServerPlayItem]",
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "item_id"),
+        optional_parameters=("query",),
     ),
     "media_exists": ModuleMethodContract(
         family="media-server",
@@ -176,6 +235,7 @@ _METHOD_CONTRACTS = {
         result_contract="ExistMediaInfo | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("mediainfo", "itemid", "server"),
+        optional_parameters=("query",),
     ),
     "media_statistic": ModuleMethodContract(
         family="media-server",
@@ -206,6 +266,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "count", "username"),
+        optional_parameters=("query",),
     ),
     "mediaserver_latest_images": ModuleMethodContract(
         family="media-server",
@@ -214,6 +275,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "count", "remote", "username"),
+        optional_parameters=("query",),
     ),
     "mediaserver_librarys": ModuleMethodContract(
         family="media-server",
@@ -222,6 +284,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "username", "hidden"),
+        optional_parameters=("query",),
     ),
     "mediaserver_playing": ModuleMethodContract(
         family="media-server",
@@ -230,6 +293,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "count", "username"),
+        optional_parameters=("query",),
     ),
     "mediaserver_season_episode_ids": ModuleMethodContract(
         family="media-server",
@@ -238,6 +302,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.MAPPING,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "item_id", "season"),
+        optional_parameters=("query",),
     ),
     "any_files": ModuleMethodContract(
         family="storage",
@@ -276,6 +341,15 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("fileitem", "path", "new_name"),
     ),
+    "link_file": ModuleMethodContract(
+        family="storage",
+        input_contract="StorageLinkRequest",
+        result_contract="bool | None",
+        result_shape=ModuleResultShape.BOOLEAN,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("fileitem", "target_file"),
+        public_to_plugins=False,
+    ),
     "list_files": ModuleMethodContract(
         family="storage",
         input_contract="StorageListRequest",
@@ -296,6 +370,14 @@ _METHOD_CONTRACTS = {
         family="storage",
         input_contract="StorageItemRequest",
         result_contract="FileItem | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("storage", "path"),
+    ),
+    "get_file_item_strict": ModuleMethodContract(
+        family="storage",
+        input_contract="StorageItemRequest",
+        result_contract="FileItemQueryResult | None",
+        result_shape=ModuleResultShape.MODEL,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("storage", "path"),
     ),
@@ -406,6 +488,81 @@ _METHOD_CONTRACTS = {
         result_contract="int | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("site", "keyword"),
+    ),
+    "restore_search_torrent": ModuleMethodContract(
+        family="site",
+        input_contract="SearchTorrentRestoreRequest",
+        result_contract="TorrentInfo | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("site", "record"),
+        public_to_plugins=False,
+    ),
+    "test_site": ModuleMethodContract(
+        family="site",
+        input_contract="SiteConnectionTestRequest",
+        result_contract="SiteConnectionResult",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("site",),
+        optional_parameters=("raise_exception",),
+        public_to_plugins=False,
+        supports_async=False,
+    ),
+    "parse_torrent_download_response": ModuleMethodContract(
+        family="site",
+        input_contract="TorrentDownloadResponseRequest",
+        result_contract="str | None",
+        result_shape=ModuleResultShape.STRING,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("request_params", "status_code", "payload"),
+        # 错误策略读取此控制参数；不接受它的响应解析器由兼容调用层移除，避免业务拒绝触发系统告警。
+        optional_parameters=("raise_exception", "response_text"),
+        public_to_plugins=False,
+        supports_async=False,
+    ),
+    "get_site_domain": ModuleMethodContract(
+        family="site", input_contract="SiteDomainRequest", result_contract="str",
+        result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("url",), public_to_plugins=False, supports_async=False,
+    ),
+    "torrent_resource_identity": ModuleMethodContract(
+        family="site", input_contract="TorrentResourceIdentityRequest", result_contract="tuple[str, str] | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("torrent",),
+        public_to_plugins=False, supports_async=False,
+    ),
+    "is_expiring_download_url": ModuleMethodContract(
+        family="site", input_contract="TorrentDownloadUrlRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("url",), public_to_plugins=False, supports_async=False,
+    ),
+    "is_torrent_download_confirmation": ModuleMethodContract(
+        family="site", input_contract="TorrentDownloadContentRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("content",), public_to_plugins=False, supports_async=False,
+    ),
+    "parse_torrent_download_confirmation": ModuleMethodContract(
+        family="site", input_contract="TorrentDownloadConfirmationRequest", result_contract="tuple[str, dict[str, Any]] | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("text", "url"),
+        public_to_plugins=False, supports_async=False,
+    ),
+    "get_site_rss_recipe": ModuleMethodContract(
+        family="site", input_contract="SiteRssRecipeRequest", result_contract="RssLinkRecipe",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("url",),
+        public_to_plugins=False, supports_async=False,
+    ),
+    "is_site_rss_expired": ModuleMethodContract(
+        family="site", input_contract="SiteRssResponseRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("text",), public_to_plugins=False, supports_async=False,
+    ),
+    "has_site_subtitle_api": ModuleMethodContract(
+        family="site", input_contract="SiteSubtitleCapabilityRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("site",), public_to_plugins=False, supports_async=False,
+    ),
+    "encrypt_site_payload": ModuleMethodContract(
+        family="site", input_contract="SitePayloadEncryptionRequest", result_contract="str",
+        result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("data_str", "key"), public_to_plugins=False, supports_async=False,
     ),
     "refresh_userdata": ModuleMethodContract(
         family="site",
@@ -635,6 +792,38 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("doubanid",),
+    ),
+    "douban_movie_interests": ModuleMethodContract(
+        family="douban",
+        input_contract="DoubanCommentRequest",
+        result_contract="MediaCommentPage",
+        result_shape=ModuleResultShape.MODEL,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("doubanid", "start", "count"),
+    ),
+    "douban_tv_interests": ModuleMethodContract(
+        family="douban",
+        input_contract="DoubanCommentRequest",
+        result_contract="MediaCommentPage",
+        result_shape=ModuleResultShape.MODEL,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("doubanid", "start", "count"),
+    ),
+    "douban_movie_reviews": ModuleMethodContract(
+        family="douban",
+        input_contract="DoubanCommentRequest",
+        result_contract="MediaReviewPage",
+        result_shape=ModuleResultShape.MODEL,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("doubanid", "start", "count"),
+    ),
+    "douban_tv_reviews": ModuleMethodContract(
+        family="douban",
+        input_contract="DoubanCommentRequest",
+        result_contract="MediaReviewPage",
+        result_shape=ModuleResultShape.MODEL,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("doubanid", "start", "count"),
     ),
     "bangumi_calendar": ModuleMethodContract(
         family="bangumi",
@@ -1251,6 +1440,7 @@ _METHOD_CONTRACTS = {
         result_contract="DownloadTaskResult | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader"),
+        optional_parameters=("custom_words",),
     ),
     "download_added": ModuleMethodContract(
         family="downloader",
@@ -1366,11 +1556,15 @@ _METHOD_CONTRACTS.update(
         "async_douban_discover": _METHOD_CONTRACTS["douban_discover"],
         "async_douban_info": _METHOD_CONTRACTS["douban_info"],
         "async_douban_movie_credits": _METHOD_CONTRACTS["douban_movie_credits"],
+        "async_douban_movie_interests": _METHOD_CONTRACTS["douban_movie_interests"],
         "async_douban_movie_recommend": _METHOD_CONTRACTS["douban_movie_recommend"],
+        "async_douban_movie_reviews": _METHOD_CONTRACTS["douban_movie_reviews"],
         "async_douban_person_credits": _METHOD_CONTRACTS["douban_person_credits"],
         "async_douban_person_detail": _METHOD_CONTRACTS["douban_person_detail"],
         "async_douban_tv_credits": _METHOD_CONTRACTS["douban_tv_credits"],
+        "async_douban_tv_interests": _METHOD_CONTRACTS["douban_tv_interests"],
         "async_douban_tv_recommend": _METHOD_CONTRACTS["douban_tv_recommend"],
+        "async_douban_tv_reviews": _METHOD_CONTRACTS["douban_tv_reviews"],
         "async_bangumi_calendar": _METHOD_CONTRACTS["bangumi_calendar"],
         "async_bangumi_credits": _METHOD_CONTRACTS["bangumi_credits"],
         "async_bangumi_discover": _METHOD_CONTRACTS["bangumi_discover"],
@@ -1452,11 +1646,15 @@ _OBSERVED_HOST_METHODS = (
     "async_douban_discover",
     "async_douban_info",
     "async_douban_movie_credits",
+    "async_douban_movie_interests",
     "async_douban_movie_recommend",
+    "async_douban_movie_reviews",
     "async_douban_person_credits",
     "async_douban_person_detail",
     "async_douban_tv_credits",
+    "async_douban_tv_interests",
     "async_douban_tv_recommend",
+    "async_douban_tv_reviews",
     "async_identify_music_by_fingerprint",
     "async_match_doubaninfo",
     "async_match_music_album",
@@ -1507,11 +1705,15 @@ _OBSERVED_HOST_METHODS = (
     "douban_discover",
     "douban_info",
     "douban_movie_credits",
+    "douban_movie_interests",
     "douban_movie_recommend",
+    "douban_movie_reviews",
     "douban_person_credits",
     "douban_person_detail",
     "douban_tv_credits",
+    "douban_tv_interests",
     "douban_tv_recommend",
+    "douban_tv_reviews",
     "download",
     "download_added",
     "download_discord_file_bytes",
@@ -1657,7 +1859,9 @@ _FAMILY_IO_CONTRACTS = {
 
 
 def _infer_observed_family(method: str) -> str:
-    """按稳定能力前缀把已观察宿主方法归入可审计的输入/结果族。"""
+    """
+    按稳定能力前缀把已观察宿主方法归入可审计的输入/结果族。
+    """
     for prefix, contract in _PREFIX_CONTRACTS:
         if method.startswith(prefix):
             return contract.family
@@ -1771,7 +1975,9 @@ def _infer_observed_family(method: str) -> str:
 
 
 def _register_observed_host_contracts() -> None:
-    """为全部宿主字符串调用登记完整 V2 字段，保留未知插件方法的 legacy fallback。"""
+    """
+    为全部宿主字符串调用登记完整 V2 字段，保留未知插件方法的 legacy fallback。
+    """
     for method in _OBSERVED_HOST_METHODS:
         if method in _METHOD_CONTRACTS:
             continue
@@ -1788,7 +1994,9 @@ _register_observed_host_contracts()
 
 
 def get_module_method_contract(method: str) -> ModuleMethodContract:
-    """返回方法的显式能力族契约，未知方法保持既有 legacy 协议。"""
+    """
+    返回方法的显式能力族契约，未知方法保持既有 legacy 协议。
+    """
     if contract := _METHOD_CONTRACTS.get(method):
         return contract
     for prefix, contract in _PREFIX_CONTRACTS:
@@ -1798,12 +2006,16 @@ def get_module_method_contract(method: str) -> ModuleMethodContract:
 
 
 def is_explicit_module_method(method: str) -> bool:
-    """判断方法是否已进入首批显式能力族清单。"""
+    """
+    判断方法是否已进入首批显式能力族清单。
+    """
     return get_module_method_contract(method) is not _DEFAULT_CONTRACT
 
 
 def diagnose_module_callable(method: str, callback: Callable[..., Any]) -> tuple[str, ...]:
-    """诊断显式能力的基础签名；兼容阶段只返回问题，不拒绝 provider。"""
+    """
+    诊断显式能力的基础签名；兼容阶段只返回问题，不拒绝 provider。
+    """
     contract = get_module_method_contract(method)
     if contract is _DEFAULT_CONTRACT:
         return ()
@@ -1820,8 +2032,30 @@ def diagnose_module_callable(method: str, callback: Callable[..., Any]) -> tuple
     return tuple(f"missing-parameter:{name}" for name in missing)
 
 
+def compatible_module_kwargs(
+    method: str, callback: Callable[..., Any], kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    仅移除显式登记的新可选参数，保留旧 provider 签名和其它参数错误。
+
+    接受该参数或 **kwargs 的 provider 收到完整输入；无法检查签名时不推断兼容性。
+    """
+    optional = get_module_method_contract(method).optional_parameters
+    if not optional or not any(name in kwargs for name in optional):
+        return kwargs
+    try:
+        parameters = inspect.signature(callback).parameters
+    except (TypeError, ValueError):
+        return kwargs
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+        return kwargs
+    return {name: value for name, value in kwargs.items() if name not in optional or name in parameters}
+
+
 def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:
-    """诊断显式模块结果的基础形状，兼容阶段只告警而不改写返回值。"""
+    """
+    诊断显式模块结果的基础形状，兼容阶段只告警而不改写返回值。
+    """
     shape = get_module_method_contract(method).result_shape
     if shape is ModuleResultShape.ANY or result is None:
         return ()
@@ -1829,6 +2063,7 @@ def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:
         ModuleResultShape.LIST: isinstance(result, list),
         ModuleResultShape.STRING: isinstance(result, str),
         ModuleResultShape.MAPPING: isinstance(result, dict),
+        ModuleResultShape.MODEL: isinstance(result, BaseModel),
         ModuleResultShape.BOOLEAN: isinstance(result, bool),
         ModuleResultShape.BYTES: isinstance(result, bytes),
     }
@@ -1838,5 +2073,7 @@ def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:
 
 
 def list_explicit_module_contracts() -> dict[str, ModuleMethodContract]:
-    """返回显式方法清单的副本，供架构基线和 SDK 文档使用。"""
+    """
+    返回显式方法清单的副本，供架构基线和 SDK 文档使用。
+    """
     return dict(_METHOD_CONTRACTS)

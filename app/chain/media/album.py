@@ -1,12 +1,15 @@
-"""专辑目录扫描、曲目对齐与缓存编排 owner。"""
+"""
+专辑目录扫描、曲目对齐与缓存编排 owner。
+"""
 
+import hashlib
 import json
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Optional, Union, cast
+from typing import Any, Literal, Optional, Union, cast
 
-from app.application.audio import AudioMetadataHelper
+from app.application.audio import AudioMetadataHelper, music_cue_enabled
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.music.catalog import MusicSourcePort
 from app.application.music.observation import capture_music_recognition, report_music_recognition
@@ -31,14 +34,37 @@ from app.domain.music import (
     music_text_key,
 )
 from app.foundation.text import convert as zhconv_convert
+from app.foundation.text import natural_sort_key
 from app.runtime.execution import run_in_threadpool
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MusicEntityType
+
+
+def _album_file_signature(path: Path, directory: Path) -> tuple[str, int, int, str]:
+    """
+    生成文件身份签名，CUE 额外比较有界原始内容，避免等长且 mtime 不变时复用旧曲目。
+
+    :param path: 音频或 CUE 文件路径
+    :param directory: 当前专辑根目录
+    :return: 相对路径、大小、修改时间与 CUE 内容摘要；读取失败时标记未知
+    """
+    relative = str(path.relative_to(directory))
+    try:
+        stat = path.stat()
+        digest = ""
+        if path.suffix.casefold() == ".cue":
+            with path.open("rb") as stream:
+                digest = hashlib.sha256(stream.read(1024 * 1024 + 1)).hexdigest()
+        return relative, stat.st_size, stat.st_mtime_ns, digest
+    except OSError:
+        return relative, -1, -1, ""
 
 
 def _source_directory_result(
     owner: _MediaOwnerBase, files: list[Path], metas: list[MetaMusic], album: Optional[MusicAlbumInfo], diagnostic: dict[str, Any],
 ) -> MusicDirectoryMatch:
-    """次级目录身份不代表具体发行；保留本地多碟曲序、当前年份和原始年份。"""
+    """
+    次级目录身份不代表具体发行；保留本地多碟曲序、当前年份和原始年份。
+    """
     if album is None:
         return MusicDirectoryMatch(recognition=diagnostic)
     result = owner._album_track_map(files, metas, album)
@@ -62,14 +88,18 @@ def _source_directory_result(
 
 
 def _directory_sources(meta: Optional[MetaMusic]) -> tuple[MediaSource, ...]:
-    """发行MBID固定其来源，未绑定时使用当前配置的有序音乐来源。"""
+    """
+    发行MBID固定其来源，未绑定时使用当前配置的有序音乐来源。
+    """
     if meta and any((meta.musicbrainz_release_id, meta.musicbrainz_release_group_id, meta.musicbrainz_release_track_id)):
         return (MediaSource.MusicBrainz,)
     return music_recognition_sources(get_chain_runtime_config_snapshot().search_source)
 
 
 def _verified_source_album(albums: list[MusicAlbumInfo], meta: MetaMusic, tracks: list[MetaMusic]) -> Optional[MusicAlbumInfo]:
-    """只使用完整对位的唯一专辑，返回副本以免污染来源自己的详情缓存。"""
+    """
+    只使用完整对位的唯一专辑，返回副本以免污染来源自己的详情缓存。
+    """
     matched = unique_music_match([album for album in albums if music_album_candidate_matches(album, meta, tracks)])
     if matched is None:
         return None
@@ -81,7 +111,9 @@ def _verified_source_album(albums: list[MusicAlbumInfo], meta: MetaMusic, tracks
 def _lookup_source_album(
         chain: MusicSourcePort, source: MediaSource, meta: MetaMusic, tracks: list[MetaMusic],
 ) -> Optional[MusicAlbumInfo]:
-    """通过来源链驱动纯检索计划，豆瓣不将专辑搜索结果伪装成独立录音。"""
+    """
+    通过来源链驱动纯检索计划，豆瓣不将专辑搜索结果伪装成独立录音。
+    """
     plan = music_album_lookup_plan(source, meta, tracks)
     response: list[MusicInfo] | MusicAlbumInfo | None
     kinds: tuple[MusicEntityType, ...]
@@ -107,7 +139,9 @@ def _lookup_source_album(
 async def _async_lookup_source_album(
         chain: MusicSourcePort, source: MediaSource, meta: MetaMusic, tracks: list[MetaMusic],
 ) -> Optional[MusicAlbumInfo]:
-    """异步来源采用同一检索计划及候选核验，保持请求顺序和选择结果一致。"""
+    """
+    异步来源采用同一检索计划及候选核验，保持请求顺序和选择结果一致。
+    """
     plan = music_album_lookup_plan(source, meta, tracks)
     response: list[MusicInfo] | MusicAlbumInfo | None
     kinds: tuple[MusicEntityType, ...]
@@ -138,7 +172,9 @@ def _album_directory_cache_key(
     file_scope: Optional[list[str]] = None,
     music_sources: Optional[tuple[MediaSource, ...]] = None,
 ) -> str:
-    """将发行偏好及资源证据纳入缓存键，同目录更换种子线索时重新识别。"""
+    """
+    隔离发行偏好、CUE 开关和资源证据，避免复用不同识别策略的曲目映射。
+    """
     evidence = {
         key: getattr(contextual_meta, key, None)
         for key in (*MUSIC_CREDIT_FIELDS, "album", "artists", "album_artist", "year", "version", "musicbrainz_release_id",
@@ -151,11 +187,14 @@ def _album_directory_cache_key(
     if evidence and contextual_meta:
         evidence["weak_album"] = not contextual_meta.album or music_album_title_is_weak(contextual_meta)
     sources = [source.value for source in music_sources or _directory_sources(contextual_meta)]
-    return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope, sources], ensure_ascii=False, sort_keys=True)
+    cue_enabled = music_cue_enabled()
+    return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope, sources, cue_enabled], ensure_ascii=False, sort_keys=True)
 
 
 def _apply_album_resource_credits(album_meta: MetaMusic, contextual_meta: MetaMusic) -> None:
-    """只复制明确绑定当前发行的角色，不聚合不同曲目的表演阵容或制造来源。"""
+    """
+    只复制明确绑定当前发行的角色，不聚合不同曲目的表演阵容或制造来源。
+    """
     for key, value in music_credit_values(contextual_meta).items():
         if value:
             setattr(album_meta, key, value)
@@ -168,7 +207,9 @@ def _album_context_with_resource(
     metas: list[MetaMusic],
     contextual_meta: Optional[MetaMusic],
 ) -> MetaMusic:
-    """以文件自身专辑线索为先，用绑定到本次文件的资源证据补足目录查询。"""
+    """
+    以文件自身专辑线索为先，用绑定到本次文件的资源证据补足目录查询。
+    """
     album_meta = MetaMusic.from_album_context(directory.name, metas)
     for key in ("album", "album_artist"):
         tagged = {
@@ -221,16 +262,22 @@ def _album_context_with_resource(
 
 
 class MediaAlbumOwner(_MediaOwnerBase):
-    """专辑目录扫描、曲目对齐与缓存编排 owner。"""
+    """
+    专辑目录扫描、曲目对齐与缓存编排 owner。
+    """
 
     @classmethod
     def clear_music_album_cache(cls) -> None:
-        """手动刷新音乐识别时清空所有目录状态，并隔离此前仍在进行的查询。"""
+        """
+        手动刷新音乐识别时清空所有目录状态，并隔离此前仍在进行的查询。
+        """
         cls._album_dir_cache.clear()
 
     @classmethod
     def _directory_audio_files(cls, directory: Path, file_paths: Optional[list[Path]] = None) -> list[Path]:
-        """收集专辑目录及其一级碟片子目录中的音频文件。"""
+        """
+        收集专辑目录及其一级碟片子目录中的音频文件。
+        """
         if file_paths is not None:
             root = directory.absolute()
             return sorted({
@@ -241,7 +288,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files: list[Path] = []
 
         def collect(current: Path) -> None:
-            """收集单层目录中的可见音频文件。"""
+            """
+            收集单层目录中的可见音频文件。
+            """
             try:
                 entries = sorted(current.iterdir())
             except OSError:
@@ -271,8 +320,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         directory: Path,
         files: list[Path],
     ) -> AlbumSignature:
-        """把音频及同目录 CUE 的路径、大小和修改时间纳入缓存签名。"""
-        signature: list[tuple[str, int, int]] = []
+        """
+        把音频元数据与同目录 CUE 的有界内容摘要纳入缓存签名。
+        """
         paths = set(files)
         for parent in {path.parent for path in files}:
             try:
@@ -280,23 +330,12 @@ class MediaAlbumOwner(_MediaOwnerBase):
                                     if not path.name.startswith(".") and path.suffix.casefold() == ".cue" and path.is_file())[:32])
             except OSError:
                 continue
-        for path in sorted(paths):
-            try:
-                stat = path.stat()
-            except OSError:
-                signature.append((str(path.relative_to(directory)).casefold(), -1, -1))
-            else:
-                signature.append(
-                    (
-                        str(path.relative_to(directory)).casefold(),
-                        stat.st_size,
-                        stat.st_mtime_ns,
-                    )
-                )
-        return tuple(signature)
+        return tuple(_album_file_signature(path, directory) for path in sorted(paths))
 
     def _directory_audio_scan(self, directory: Path, file_paths: Optional[list[Path]] = None) -> tuple[list[Path], AlbumSignature]:
-        """在同一工作线程收集文件和CUE签名，避免异步入口直接执行目录和stat I/O。"""
+        """
+        在同一工作线程收集文件和CUE签名，避免异步入口直接执行目录和stat I/O。
+        """
         if not directory.is_dir():
             return [], ()
         files = self._directory_audio_files(directory, file_paths) if file_paths is not None else self._directory_audio_files(directory)
@@ -304,10 +343,13 @@ class MediaAlbumOwner(_MediaOwnerBase):
 
     @staticmethod
     def _music_track_title_key(value: Optional[str]) -> str:
-        """统一繁简、大小写和标点，生成专辑曲目精确对位键。"""
+        """
+        统一繁简、大小写和标点，生成专辑曲目精确对位键。
+        """
         text = str(value or "")
         try:
             text = zhconv_convert(text, "zh-hans")
+        # 繁简转换失败时保留原文本继续曲目对位，避免中断专辑识别。
         except Exception:  # pylint: disable=broad-except
             pass
         return str(MetaMusic.compact_text(text))
@@ -321,7 +363,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         *,
         allow_title_override: bool = False,
     ) -> dict[Path, MusicInfo]:
-        """只输出有唯一曲目证据的文件，不对剩余文件进行排序猜测。"""
+        """
+        只输出有唯一曲目证据的文件，不对剩余文件进行排序猜测。
+        """
         if len(files) != len(metas):
             return {}
         return {
@@ -334,9 +378,17 @@ class MediaAlbumOwner(_MediaOwnerBase):
         cls,
         files: list[Path],
         album: MusicAlbumInfo,
+        *,
+        track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
     ) -> dict[str, MusicInfo]:
-        """读取本地标签，并把手动选择发行版的曲目对齐到文件。"""
-        return cls._album_track_map(files, AudioMetadataHelper.read_many(files), album, allow_title_override=True)
+        """
+        读取本地标签，按本次手动策略将所选发行版曲目对齐到文件。
+        """
+        if track_match == "sequential":
+            # 路径自然排序固定目录扫描与多选请求的顺序，保证预览和实际提交一致。
+            files = sorted(files, key=lambda path: natural_sort_key(path.as_posix()))
+        return cls._album_track_map(files, AudioMetadataHelper.read_many(files), album,
+                                   allow_title_override=True, track_match=track_match)
 
     @classmethod
     def _album_track_map(
@@ -346,12 +398,15 @@ class MediaAlbumOwner(_MediaOwnerBase):
         album: MusicAlbumInfo,
         *,
         allow_title_override: bool = False,
+        track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
     ) -> dict[str, MusicInfo]:
-        """逻辑曲目全部对位后才输出对应物理文件，整轨始终保持 Album 身份。"""
+        """
+        逻辑曲目全部对位后才输出对应物理文件，整轨始终保持 Album 身份。
+        """
         if len(files) != len(metas) or not music_album_has_consistent_tracks(album):
             return {}
         logical, owners = expand_music_tracks(metas)
-        aligned = align_music_tracks(logical, album.tracks, allow_title_override=allow_title_override)
+        aligned = align_music_tracks(logical, album.tracks, allow_title_override=allow_title_override, track_match=track_match)
         result: dict[str, MusicInfo] = {}
         for index, path in enumerate(files):
             positions = [position for position, owner in enumerate(owners) if owner == index]
@@ -383,7 +438,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         contextual_meta: Optional[MetaMusic] = None,
         music_sources: Optional[tuple[MediaSource, ...]] = None,
     ) -> dict[str, MusicInfo]:
-        """汇总本地发行证据，已配置来源只有完整对位后才能接管整专整理。"""
+        """
+        汇总本地发行证据，已配置来源只有完整对位后才能接管整专整理。
+        """
         metas = AudioMetadataHelper.read_many(files)
         album_meta = _album_context_with_resource(directory, metas, contextual_meta)
         logical, _owners = expand_music_tracks(metas)
@@ -402,7 +459,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
             music_sources or _directory_sources(album_meta))
         if sources != (MediaSource.MusicBrainz,):
             def recognize(source: MediaSource) -> Optional[MusicAlbumInfo]:
-                """MusicBrainz保留具体发行匹配，其它来源必须取得真实曲目表。"""
+                """
+                MusicBrainz保留具体发行匹配，其它来源必须取得真实曲目表。
+                """
                 if source == MediaSource.MusicBrainz:
                     return MusicBrainzChain().match_music_album(album_meta, logical,
                                                                music_release_regions=list(regions), music_release_scripts=list(scripts))
@@ -435,7 +494,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         contextual_meta: Optional[MetaMusic] = None,
         music_sources: Optional[tuple[MediaSource, ...]] = None,
     ) -> dict[str, MusicInfo]:
-        """异步整专回退使用相同来源选择、候选范围与完整对位规则。"""
+        """
+        异步整专回退使用相同来源选择、候选范围与完整对位规则。
+        """
         metas = await run_in_threadpool(AudioMetadataHelper.read_many, files)
         album_meta = _album_context_with_resource(directory, metas, contextual_meta)
         logical, _owners = expand_music_tracks(metas)
@@ -454,7 +515,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
             music_sources or _directory_sources(album_meta))
         if sources != (MediaSource.MusicBrainz,):
             async def recognize(source: MediaSource) -> Optional[MusicAlbumInfo]:
-                """通过已有异步来源端口获取发行或专辑，避免同步HTTP进入事件循环。"""
+                """
+                通过已有异步来源端口获取发行或专辑，避免同步HTTP进入事件循环。
+                """
                 if source == MediaSource.MusicBrainz:
                     return await MusicBrainzChain().async_match_music_album(album_meta, logical,
                                                                            music_release_regions=list(regions), music_release_scripts=list(scripts))
@@ -486,7 +549,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         contextual_meta: Optional[MetaMusic] = None,
         file_paths: Optional[list[Path]] = None,
     ) -> dict[str, MusicInfo]:
-        """按目录级线索批量识别整张专辑并返回文件到曲目的映射。"""
+        """
+        按目录级线索批量识别整张专辑并返回文件到曲目的映射。
+        """
         directory = Path(path).absolute()
         if not directory.is_dir():
             return {}
@@ -523,7 +588,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         contextual_meta: Optional[MetaMusic] = None,
         file_paths: Optional[list[Path]] = None,
     ) -> dict[str, MusicInfo]:
-        """异步按目录级线索批量识别整张专辑。"""
+        """
+        异步按目录级线索批量识别整张专辑。
+        """
         directory = Path(path).absolute()
         files, signature = await run_in_threadpool(self._directory_audio_scan, directory, file_paths)
         if not files:
@@ -555,7 +622,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         regions: Optional[list[str]],
         scripts: Optional[list[str]],
     ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        """解析请求级发行偏好；未指定时继承一次稳定的系统配置快照。"""
+        """
+        解析请求级发行偏好；未指定时继承一次稳定的系统配置快照。
+        """
         runtime = get_chain_runtime_config_snapshot()
         normalized_regions = tuple(regions) if regions is not None else runtime.music_release_region_priority
         normalized_scripts = tuple(scripts) if scripts is not None else runtime.music_release_script_priority

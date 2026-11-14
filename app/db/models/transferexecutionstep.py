@@ -1,4 +1,6 @@
-"""整理任务外部操作步骤的持久化模型。"""
+"""
+整理任务外部操作步骤的持久化模型。
+"""
 
 from __future__ import annotations
 
@@ -27,7 +29,9 @@ from app.db.models.transferpending import TransferPending
 
 
 class TransferExecutionStep(Base):
-    """保存一次稳定外部操作的意图、尝试身份与结果证据。"""
+    """
+    保存一次稳定外部操作的意图、尝试身份与结果证据。
+    """
 
     id = get_id_column()
     task_id: Mapped[str] = mapped_column(
@@ -75,7 +79,9 @@ class TransferExecutionStep(Base):
             *,
             operation_id: str,
     ) -> Optional["TransferExecutionStep"]:
-        """按稳定操作标识读取步骤。"""
+        """
+        按稳定操作标识读取步骤。
+        """
         if not operation_id:
             return None
         return cast(
@@ -92,7 +98,9 @@ class TransferExecutionStep(Base):
             *,
             task_id: str,
     ) -> list["TransferExecutionStep"]:
-        """按全局序号读取任务的全部外部操作步骤。"""
+        """
+        按全局序号读取任务的全部外部操作步骤。
+        """
         if not task_id:
             return []
         return list(
@@ -118,7 +126,9 @@ class TransferExecutionStep(Base):
             intent_payload: dict[str, Any],
             now_time: str,
     ) -> "TransferExecutionStep":
-        """在调用方事务中暂存尚未执行的稳定步骤意图。"""
+        """
+        在调用方事务中暂存尚未执行的稳定步骤意图。
+        """
         step = cls(
             task_id=task_id,
             operation_id=operation_id,
@@ -148,7 +158,9 @@ class TransferExecutionStep(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效任务租约 CAS 开始一次新的步骤尝试。"""
+        """
+        以有效任务租约 CAS 开始一次新的步骤尝试。
+        """
         return execute_dml(
             db,
             update(cls)
@@ -190,7 +202,9 @@ class TransferExecutionStep(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以 NOT_APPLIED 证据和旧 attempt token CAS 重启遗留步骤。"""
+        """
+        以 NOT_APPLIED 证据和旧 attempt token CAS 重启遗留步骤。
+        """
         return execute_dml(
             db,
             update(cls)
@@ -230,7 +244,9 @@ class TransferExecutionStep(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以重试调度的新 lease CAS 恢复 FAILED 步骤并保留失败证据。"""
+        """
+        以重试调度的新 lease CAS 恢复 FAILED 步骤并保留失败证据。
+        """
         return execute_dml(
             db,
             update(cls)
@@ -270,7 +286,9 @@ class TransferExecutionStep(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以租约与 attempt 双 CAS 提交步骤成功证据。"""
+        """
+        以租约与 attempt 双 CAS 提交步骤成功证据。
+        """
         return execute_dml(
             db,
             update(cls)
@@ -312,7 +330,9 @@ class TransferExecutionStep(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以租约与 attempt 双 CAS 提交已知失败证据。"""
+        """
+        以租约与 attempt 双 CAS 提交已知失败证据。
+        """
         return execute_dml(
             db,
             update(cls)
@@ -354,7 +374,9 @@ class TransferExecutionStep(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以当前尝试身份隔离外部结果不可判定的步骤。"""
+        """
+        以当前尝试身份隔离外部结果不可判定的步骤。
+        """
         attempt_match = (
             cls.attempt_token == attempt_token
             if attempt_token is not None
@@ -399,7 +421,9 @@ class TransferExecutionStep(Base):
             result_payload: Optional[dict[str, Any]],
             updated_at: str,
     ) -> int:
-        """仅在 pending 同为无租约人工态时 CAS 提交步骤判定。"""
+        """
+        仅在 pending 同为无租约人工态时 CAS 提交步骤判定。
+        """
         if target_state not in {"failed", "succeeded"}:
             return 0
         return execute_dml(
@@ -425,7 +449,9 @@ class TransferExecutionStep(Base):
 
     @classmethod
     def delete_by_task_id(cls, db: Session, *, task_id: str) -> int:
-        """在终态成功结算事务中删除任务的步骤证据。"""
+        """
+        在终态成功结算事务中删除任务的步骤证据。
+        """
         if not task_id:
             return 0
         return execute_dml(
@@ -441,7 +467,9 @@ class TransferExecutionStep(Base):
             lease_token: str,
             now_utc: str,
     ) -> Exists:
-        """构造关联 pending 行仍持有当前有效租约的 SQL 谓词。"""
+        """
+        构造关联 pending 行仍持有当前有效租约的 SQL 谓词。
+        """
         return exists(
             select(TransferPending.id).where(
                 and_(
@@ -459,7 +487,9 @@ class TransferExecutionStep(Base):
 
     @staticmethod
     def _manual_review_pending_exists(*, task_id: str) -> Exists:
-        """构造关联 pending 行处于无租约人工复核态的 SQL 谓词。"""
+        """
+        构造关联 pending 行处于无租约人工复核态的 SQL 谓词。
+        """
         return exists(
             select(TransferPending.id).where(
                 TransferPending.task_id == task_id,

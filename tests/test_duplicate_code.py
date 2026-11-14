@@ -1,4 +1,5 @@
-"""函数级重复代码门禁。
+"""
+函数级重复代码门禁。
 
 对非插件模块做归一化 AST 指纹比对：两个及以上不同模块中出现同构函数
 （变量名、字面量已归一，仅保留结构与属性名），且指纹规模超过阈值时告警。
@@ -21,7 +22,8 @@ KNOWN_DUPLICATES: set[tuple[str, str]] = set()
 
 
 def _normalize(node: ast.AST) -> str:
-    """把函数 AST 归一化为指纹字符串。
+    """
+    把函数 AST 归一化为指纹字符串。
 
     只保留控制流骨架与属性访问名，统一变量名与字面量，
     使改名、改常量的复制粘贴仍能被识别为同构。
@@ -88,7 +90,9 @@ def _normalize(node: ast.AST) -> str:
 
 
 def _collect_duplicates() -> dict[int, list[tuple[str, str, int, int]]]:
-    """扫描非插件模块，按归一化指纹分组收集跨模块同构函数。"""
+    """
+    扫描非插件模块，按归一化指纹分组收集跨模块同构函数。
+    """
     fingerprints: dict[int, list[tuple[str, str, int, int]]] = defaultdict(list)
     for path in APP_ROOT.rglob("*.py"):
         if path.relative_to(APP_ROOT).parts[0] == "plugins":
@@ -117,7 +121,9 @@ def _collect_duplicates() -> dict[int, list[tuple[str, str, int, int]]]:
 
 
 def test_no_new_large_duplicate_functions():
-    """跨模块同构大函数（指纹 >= 1000）不得出现，存量白名单除外。"""
+    """
+    跨模块同构大函数（指纹 >= 1000）不得出现，存量白名单除外。
+    """
     violations: list[list[tuple[str, str, int, int]]] = []
     for items in _collect_duplicates().values():
         modules = {module_name for module_name, _, _, _ in items}

@@ -1,3 +1,7 @@
+"""
+接收外部服务回调并交给对应消息或业务流程处理。
+"""
+
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
@@ -12,7 +16,7 @@ from app.schemas.response import Response as _SchemaResponse
 router = ResponseAPIRouter()
 
 
-def start_webhook_chain(body: Any, form: Any, args: Any):
+def start_webhook_chain(body: Any, form: Any, args: Any) -> None:
     """
     启动链式任务
     """

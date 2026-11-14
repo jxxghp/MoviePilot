@@ -1,3 +1,7 @@
+"""
+认证用户查询、管理员令牌构造与插件一次性登录票据。
+"""
+
 import copy
 import secrets
 import threading
@@ -9,6 +13,8 @@ from typing import Any, Optional, Protocol, cast
 from app.application.configuration import get_api_runtime_config_snapshot, get_chain_runtime_config_snapshot
 from app.application.security.token import create_access_token
 from app.application.security.user import FrozenJson
+
+# 站点目录由资源扩展提供，静态环境可能没有生成模块，保留现有导入检查豁免。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.foundation.singleton import Singleton
 from app.schemas.token import Token as _SchemaToken
@@ -24,7 +30,7 @@ class AuthTicketStore(metaclass=Singleton):
     _ttl_seconds = 120
     _max_items = 1024
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化内存票据缓存。
         """
@@ -118,62 +124,119 @@ def consume_plugin_auth_ticket(ticket: str) -> Optional[dict[str, Any]]:
 
 
 class AuthUser(Protocol):
-    """认证服务需要的最小用户投影。"""
+    """
+    认证服务需要的最小用户投影。
+    """
 
     @property
     def id(self) -> int:
-        """返回用户 ID。"""
+        """
+        返回用户 ID。
+
+        :return: 用户的数据库主键
+        """
 
     @property
     def name(self) -> str:
-        """返回用户名。"""
+        """
+        返回用户名。
+
+        :return: 本地用户名
+        """
 
     @property
     def is_active(self) -> bool:
-        """返回账号启用状态。"""
+        """
+        返回账号启用状态。
+
+        :return: 账号启用时为 True
+        """
 
     @property
     def is_superuser(self) -> bool:
-        """返回超级用户状态。"""
+        """
+        返回超级用户状态。
+
+        :return: 具备超级管理员身份时为 True
+        """
 
     @property
     def avatar(self) -> Optional[str]:
-        """返回用户头像。"""
+        """
+        返回用户头像。
+
+        :return: 用户头像；未设置时为 None
+        """
 
     @property
     def permissions(self) -> Mapping[str, FrozenJson]:
-        """返回只读权限快照。"""
+        """
+        返回只读权限快照。
+
+        :return: 可供鉴权读取的权限快照
+        """
 
 
 class AuthUserRepository(Protocol):
-    """认证服务的用户数据端口。"""
+    """
+    认证服务的用户数据端口。
+    """
 
     def get_by_name(self, name: str) -> Optional[AuthUser]:
-        """按用户名查询用户。"""
+        """
+        按用户名查询用户。
+
+        :param name: 待查询或更新的本地用户名
+        :return: 匹配的用户投影；不存在时返回 None
+        """
 
     def get_by_id(self, user_id: int) -> Optional[AuthUser]:
-        """按 ID 查询用户。"""
+        """
+        按 ID 查询用户。
+
+        :param user_id: 目标用户的数据库主键
+        :return: 匹配的用户投影；不存在时返回 None
+        """
 
     def get_active_superuser(self) -> Optional[AuthUser]:
-        """返回按稳定顺序选出的启用超级管理员。"""
+        """
+        返回按稳定顺序选出的启用超级管理员。
+
+        :return: 稳定顺序中的首个启用超级管理员；不存在时返回 None
+        """
 
 
 class AuthPasskeyRepository(Protocol):
-    """认证提供方查询端口。"""
+    """
+    认证提供方查询端口。
+    """
 
     def list(self) -> list[Any]:
-        """返回已启用的 PassKey。"""
+        """
+        返回已启用的 PassKey。
+
+        :return: 已启用的凭证列表；无凭证时为空列表
+        """
 
 
 class AuthConfigRepository(Protocol):
-    """认证配置读取端口。"""
+    """
+    认证配置读取端口。
+    """
 
     def get(self, key: Any) -> Any:
-        """读取配置值。"""
+        """
+        读取配置值。
+
+        :param key: 认证服务需要读取的系统配置键
+        :return: 配置值；缺失时沿用配置仓库的空值约定
+        """
 
 
 class AuthService:
-    """认证应用服务，编排用户、配置和 PassKey 端口。"""
+    """
+    认证应用服务，编排用户、配置和 PassKey 端口。
+    """
 
     def __init__(
         self,
@@ -181,7 +244,9 @@ class AuthService:
         config: AuthConfigRepository,
         passkeys: AuthPasskeyRepository,
     ) -> None:
-        """注入认证所需的数据端口。"""
+        """
+        注入认证所需的数据端口。
+        """
         self._users = users
         self._config = config
         self._passkeys = passkeys
@@ -189,15 +254,21 @@ class AuthService:
         self._superuser_binding_id: int | None = None
 
     def get_user_by_id(self, user_id: int) -> Optional[AuthUser]:
-        """按 ID 查询本地用户。"""
+        """
+        按 ID 查询本地用户。
+        """
         return self._users.get_by_id(user_id)
 
     def has_passkey(self) -> bool:
-        """判断系统是否已有 PassKey。"""
+        """
+        判断系统是否已有 PassKey。
+        """
         return bool(self._passkeys.list())
 
     def build_superuser_token_payload(self) -> _SchemaTokenPayload:
-        """从持久化用户和站点认证状态构造超级用户令牌载荷。"""
+        """
+        从持久化用户和站点认证状态构造超级用户令牌载荷。
+        """
         configured_name = str(
             get_chain_runtime_config_snapshot().superuser or ""
         ).strip()
@@ -233,7 +304,9 @@ class AuthService:
         )
 
     def validate_token_identity(self, payload: _SchemaTokenPayload) -> None:
-        """按当前持久化用户状态校验令牌身份与权限声明。"""
+        """
+        按当前持久化用户状态校验令牌身份与权限声明。
+        """
         if payload.sub is None:
             raise PermissionError("用户不存在或已禁用")
         user = self._users.get_by_id(payload.sub)
@@ -243,7 +316,9 @@ class AuthService:
             raise PermissionError("令牌身份或权限上下文不匹配")
 
     def build_token_response(self, user: AuthUser) -> _SchemaToken:
-        """使用统一逻辑构造登录 Token 响应。"""
+        """
+        使用统一逻辑构造登录 Token 响应。
+        """
         level = SitesHelper().auth_level
         config = get_api_runtime_config_snapshot()
         return _SchemaToken(
@@ -268,39 +343,53 @@ _configured_auth_service: AuthService | None = None
 
 
 def configure_auth_service(service: AuthService) -> None:
-    """由启动组合根登记认证应用服务。"""
+    """
+    由启动组合根登记认证应用服务。
+    """
     global _configured_auth_service
     _configured_auth_service = service
 
 
 def reset_auth_service() -> None:
-    """清除当前 lifespan 的认证应用服务。"""
+    """
+    清除当前应用生命周期 的认证应用服务。
+    """
     global _configured_auth_service
     _configured_auth_service = None
 
 
 def _get_auth_service() -> AuthService:
-    """返回启动阶段登记的认证应用服务。"""
+    """
+    返回启动阶段登记的认证应用服务。
+    """
     if _configured_auth_service is None:
         raise RuntimeError("认证服务尚未配置")
     return _configured_auth_service
 
 
 def get_configured_auth_service() -> AuthService:
-    """返回启动阶段登记的认证服务。"""
+    """
+    返回启动阶段登记的认证服务。
+    """
     return _get_auth_service()
 
 
 def build_superuser_token_payload() -> _SchemaTokenPayload:
-    """使用启动组合根注入的认证服务构造超级用户令牌载荷。"""
+    """
+    使用启动组合根注入的认证服务构造超级用户令牌载荷。
+    """
     return _get_auth_service().build_superuser_token_payload()
 
 
 def validate_token_identity(payload: _SchemaTokenPayload) -> None:
-    """使用启动组合根注入的认证服务校验当前令牌身份。"""
+    """
+    使用启动组合根注入的认证服务校验当前令牌身份。
+    """
     _get_auth_service().validate_token_identity(payload)
 
 
 def build_token_response(user: AuthUser) -> _SchemaToken:
-    """使用启动组合根注入的认证服务构造登录 Token 响应。"""
+    """
+    使用启动组合根注入的认证服务构造登录 Token 响应。
+    """
     return _get_auth_service().build_token_response(user)

@@ -1,24 +1,23 @@
-"""MoviePilot 自定义工具筛选中间件。"""
+"""
+MoviePilot 自定义工具筛选中间件。
+"""
 
-from dataclasses import dataclass, replace
 import json
 import re
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, NotRequired
+from dataclasses import dataclass, replace
+from typing import Annotated, Any, NotRequired, cast
 
-from langchain.agents.middleware.types import (
-    AgentState,
-    ContextT,
-    ModelRequest,
-    ModelResponse,
-    ResponseT,
-)
-from langchain.agents.middleware.types import (
-    PrivateStateAttr,  # noqa
-)
 from langchain.agents.middleware.tool_selection import (
     DEFAULT_SYSTEM_PROMPT,
     LLMToolSelectorMiddleware,
+)
+from langchain.agents.middleware.types import (
+    AgentState,
+    ModelRequest,
+    ModelResponse,
+    PrivateStateAttr,  # noqa
+    ResponseT,
 )
 from langchain.tools import ToolRuntime
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -100,22 +99,32 @@ MoviePilot tool-chain hints:
 
 
 def _merge_discovered_tool_names(current: list[str], added: list[str]) -> list[str]:
-    """按图更新顺序合并最近发现窗口，重复发现刷新优先级且窗口外能力自动淘汰。"""
+    """
+    按图更新顺序合并最近发现窗口，重复发现刷新优先级且窗口外能力自动淘汰。
+    """
     latest = list(dict.fromkeys(added))
     return [*[name for name in current if name not in latest], *latest][-TOOL_DISCOVERY_WINDOW_SIZE:]
 
 
 class ToolSelectionState(AgentState):
-    """工具筛选中间件私有状态。"""
+    """
+    工具筛选中间件私有状态。
+
+    :ivar selected_tool_names: 本条用户请求首轮筛选得到的工具列表；缺失或 None 表示尚未完成筛选
+    :ivar discovered_tool_names: 图归并器维护的已发现工具增量，新用户请求开始时清空
+    """
 
     selected_tool_names: NotRequired[Annotated[list[str] | None, PrivateStateAttr]]
-    """当前这条用户请求首轮筛选得到的工具名列表。"""
     discovered_tool_names: Annotated[list[str], PrivateStateAttr, _merge_discovered_tool_names]
-    """图归并器初始化的工具增量；新用户请求开始时清空。"""
 
 
 class ToolSelectionStateUpdate(TypedDict):
-    """工具筛选中间件状态更新项。"""
+    """
+    工具筛选中间件状态更新项。
+
+    :ivar selected_tool_names: 要更新的筛选结果；None 表示重置为尚未选择
+    :ivar discovered_tool_names: 需要整体覆盖工具增量时提供的 Overwrite；缺失时保留原值
+    """
 
     selected_tool_names: list[str] | None
     discovered_tool_names: NotRequired[Overwrite]
@@ -123,9 +132,16 @@ class ToolSelectionStateUpdate(TypedDict):
 
 @dataclass(frozen=True)
 class _ToolSelectionAttempt:
-    """工具筛选尝试结果，用于统一记录最终日志。"""
+    """
+    工具筛选尝试结果，用于统一记录最终日志。
 
-    request: ModelRequest
+    :param request: 应用本次工具选择后的模型请求
+    :param selected_tool_names: 本次选择的工具名称列表
+    :param status: 选择过程的成功、回退或失败状态标识
+    :param detail: 选择原因或回退说明；无需补充时为空字符串
+    """
+
+    request: ModelRequest[Any]
     selected_tool_names: list[str]
     status: str
     detail: str = ""
@@ -159,7 +175,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             always_include: list[str] | None = None,
             enable_discovery: bool = False,
     ) -> None:
-        """配置首轮筛选与按需发现，新增能力受最近窗口和额外参数预算约束。"""
+        """
+        配置首轮筛选与按需发现，新增能力受最近窗口和额外参数预算约束。
+        """
         super().__init__(
             model=model,
             system_prompt=self._append_tool_selection_hint(system_prompt),
@@ -174,7 +192,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             self.always_include = [*self.always_include, TOOL_DISCOVERY_NAME]
 
     def _build_discovery_tool(self) -> StructuredTool:
-        """注册仅供当前 Agent 使用的发现工具，保持目录身份与模型参数可序列化。"""
+        """
+        注册仅供当前 Agent 使用的发现工具，保持目录身份与模型参数可序列化。
+        """
         tool = StructuredTool.from_function(
             coroutine=self._asearch_tools,
             name=TOOL_DISCOVERY_NAME,
@@ -196,14 +216,18 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     @staticmethod
     def _matches_discovery_term(term: str, text: str) -> bool:
-        """中文短语允许句内匹配，英文使用完整单词避免把子串误认成能力。"""
+        """
+        中文短语允许句内匹配，英文使用完整单词避免把子串误认成能力。
+        """
         if re.search(r"[\u4e00-\u9fff]", term):
             return term in text
         return bool(re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", text))
 
     @classmethod
     def _discovery_score(cls, tool: BaseTool, search: str, keywords: list[str], capabilities: set[str]) -> int:
-        """按工具名、能力标签和说明排序，优先保留精确名称命中的能力。"""
+        """
+        按工具名、能力标签和说明排序，优先保留精确名称命中的能力。
+        """
         name = tool.name.casefold()
         description = str(tool.description or "").casefold()
         tool_tags = cls._normalize_tool_tags(tool)
@@ -218,7 +242,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         )
 
     def _find_discovery_tools(self, search: str, limit: int) -> list[BaseTool]:
-        """只在当前授权目录内离线匹配关键词，空白或无关查询不会展开全量工具。"""
+        """
+        只在当前授权目录内离线匹配关键词，空白或无关查询不会展开全量工具。
+        """
         query = search.strip().casefold()
         keywords = [word for word in dict.fromkeys(re.findall(r"[^\W_]+", query)) if word not in TOOL_DISCOVERY_STOP_WORDS]
         if not keywords:
@@ -246,8 +272,10 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
                 ge=1, le=TOOL_DISCOVERY_MAX_RESULTS,
                 description="Maximum number of matching tools to enable for subsequent model calls.",
             )] = 5,
-    ) -> Command:
-        """返回有界工具目录并以图状态增量启用结果，不修改共享中间件实例。"""
+    ) -> Command[Any]:
+        """
+        返回有界工具目录并以图状态增量启用结果，不修改共享中间件实例。
+        """
         matched_tools = self._find_discovery_tools(search, limit)
         baseline_names = set(self.always_include) | set(getattr(runtime, "state", {}).get("selected_tool_names") or [])
         catalog = [
@@ -280,7 +308,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         })
 
     def _selection_state_update(self, selected_tool_names: list[str] | None) -> ToolSelectionStateUpdate:
-        """写入首轮筛选结果并清空前一用户请求的工具发现状态。"""
+        """
+        写入首轮筛选结果并清空前一用户请求的工具发现状态。
+        """
         update = ToolSelectionStateUpdate(selected_tool_names=selected_tool_names)
         if self.tools:
             update["discovered_tool_names"] = Overwrite([])
@@ -288,7 +318,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     @staticmethod
     def _discovery_availability_notice(statuses: dict[str, str]) -> str:
-        """给模型提供当前绑定结果，覆盖发现工具此前返回的候选状态。"""
+        """
+        给模型提供当前绑定结果，覆盖发现工具此前返回的候选状态。
+        """
         return (
             "<tool_discovery_availability>\n"
             "Authoritative availability for this model call (supersedes pending search_tools results):\n"
@@ -299,8 +331,10 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             "</tool_discovery_availability>"
         )
 
-    def _discovery_budget(self, request: ModelRequest, statuses: dict[str, str]) -> tuple[int, int]:
-        """复用最终请求估算器，为额外工具预留上下文余量并限制结构化参数总成本。"""
+    def _discovery_budget(self, request: ModelRequest[Any], statuses: dict[str, str]) -> tuple[int, int]:
+        """
+        复用最终请求估算器，为额外工具预留上下文余量并限制结构化参数总成本。
+        """
         budget_request = request.override(system_message=append_to_system_message(
             request.system_message, self._discovery_availability_notice(statuses),
         ))
@@ -313,8 +347,10 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             context_budget = max(0, int(context_window * TOOL_DISCOVERY_INPUT_FRACTION) - budget["estimated_input_tokens"])
         return schema_budget, context_budget
 
-    def _budget_discovery_tools(self, request: ModelRequest, candidates: list[BaseTool], statuses: dict[str, str]) -> list[str]:
-        """按最近发现优先接纳可容纳的工具，估算失败时只禁用额外发现能力。"""
+    def _budget_discovery_tools(self, request: ModelRequest[Any], candidates: list[BaseTool], statuses: dict[str, str]) -> list[str]:
+        """
+        按最近发现优先接纳可容纳的工具，估算失败时只禁用额外发现能力。
+        """
         try:
             schema_budget, context_budget = self._discovery_budget(request, statuses)
         except Exception as error:
@@ -341,10 +377,12 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             context_budget -= cost
         return enabled
 
-    def _bind_discovery_tools(self, request: ModelRequest, selected_tool_names: list[str]) -> ModelRequest:
-        """从当前请求精确工具实例中绑定预算内发现项，并保留初选、强制和供应商工具。"""
+    def _bind_discovery_tools(self, request: ModelRequest[Any], selected_tool_names: list[str]) -> ModelRequest[Any]:
+        """
+        从当前请求精确工具实例中绑定预算内发现项，并保留初选、强制和供应商工具。
+        """
         baseline_names = list(dict.fromkeys([*selected_tool_names, *self.always_include]))
-        discovered_names = list(reversed(request.state.get("discovered_tool_names", [])[-TOOL_DISCOVERY_WINDOW_SIZE:]))
+        discovered_names = list(reversed(cast(ToolSelectionState, request.state).get("discovered_tool_names", [])[-TOOL_DISCOVERY_WINDOW_SIZE:]))
         baseline = self._apply_selected_tools(request, baseline_names)
         if not discovered_names:
             return baseline
@@ -369,7 +407,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             cls,
             messages: list[Any],
     ) -> tuple[str, int]:
-        """渲染最近对话上下文，供工具筛选模型理解多轮追问。"""
+        """
+        渲染最近对话上下文，供工具筛选模型理解多轮追问。
+        """
         rendered_messages = []
         for message in messages:
             if isinstance(message, HumanMessage):
@@ -399,7 +439,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             messages: list[Any],
             last_user_message: HumanMessage,
     ) -> HumanMessage:
-        """根据最近对话构造工具筛选专用用户消息。"""
+        """
+        根据最近对话构造工具筛选专用用户消息。
+        """
         context, message_count = cls._render_recent_conversation_context(messages)
         if message_count <= 1:
             return last_user_message
@@ -416,9 +458,11 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     def _prepare_selection_request(
             self,
-            request: ModelRequest[ContextT],
+            request: ModelRequest[Any],
     ) -> Any | None:
-        """准备带最近对话上下文的工具筛选请求。"""
+        """
+        准备带最近对话上下文的工具筛选请求。
+        """
         selection_request = super()._prepare_selection_request(request)
         if selection_request is None:
             return None
@@ -433,20 +477,26 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     @staticmethod
     def _append_tool_selection_hint(system_prompt: str) -> str:
-        """追加 MoviePilot 工具组选择提示，避免复杂链路只选中首个工具。"""
+        """
+        追加 MoviePilot 工具组选择提示，避免复杂链路只选中首个工具。
+        """
         if "MoviePilot tool-chain hints:" in system_prompt:
             return system_prompt
         return f"{system_prompt.rstrip()}{MOVIEPILOT_TOOL_SELECTION_HINT}"
 
     def _get_tool_selection_limit(self, valid_tool_names: list[str]) -> int:
-        """计算补齐筛选结果时允许使用的工具数量上限。"""
+        """
+        计算补齐筛选结果时允许使用的工具数量上限。
+        """
         if self.max_tools:
             return min(self.max_tools, len(valid_tool_names))
         return len(valid_tool_names)
 
     @staticmethod
     def _normalize_tool_tags(tool: BaseTool) -> list[str]:
-        """读取工具的业务标签，过滤掉无法表达工具组的通用标签。"""
+        """
+        读取工具的业务标签，过滤掉无法表达工具组的通用标签。
+        """
         tags = getattr(tool, "tags", None) or []
         if isinstance(tags, str):
             tags = [tags]
@@ -468,7 +518,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             available_tools: list[BaseTool],
             valid_tool_names: list[str],
     ) -> list[tuple[str, list[str]]]:
-        """根据工具标签构造能力组，保留当前工具列表中的稳定顺序。"""
+        """
+        根据工具标签构造能力组，保留当前工具列表中的稳定顺序。
+        """
         valid_tool_set = set(valid_tool_names)
         tool_groups: dict[str, list[str]] = {}
         for tool in available_tools:
@@ -493,7 +545,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             available_tools: list[BaseTool],
             valid_tool_names: list[str],
     ) -> list[tuple[str, list[str]]]:
-        """返回已选工具命中的标签能力组。"""
+        """
+        返回已选工具命中的标签能力组。
+        """
         groups_by_tag = {
             tag: tool_names
             for tag, tool_names in cls._build_tool_groups(
@@ -576,8 +630,10 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             response: dict[str, Any],
             available_tools: list[BaseTool],
             valid_tool_names: list[str],
-            request: ModelRequest[ContextT],
-    ) -> ModelRequest[ContextT]:
+            request: ModelRequest[Any],
+            *,
+            apply_max_tools: bool = True,
+    ) -> ModelRequest[Any]:
         """
         处理工具筛选响应，并在正常空结果时禁用可筛选工具。
         """
@@ -604,6 +660,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             available_tools,
             valid_tool_names,
             request,
+            apply_max_tools=apply_max_tools,
         )
         return modified_request
 
@@ -638,7 +695,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     @classmethod
     def _render_tool_list(cls, available_tools: list[Any]) -> str:
-        """把工具名和描述渲染成稳定的文本列表。"""
+        """
+        把工具名和描述渲染成稳定的文本列表。
+        """
         lines = []
         for tool in available_tools:
             tags = cls._normalize_tool_tags(tool)
@@ -648,7 +707,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     @classmethod
     def _render_tool_groups(cls, available_tools: list[BaseTool]) -> str:
-        """把当前可用工具按标签渲染成能力组提示。"""
+        """
+        把当前可用工具按标签渲染成能力组提示。
+        """
         valid_tool_names = [
             tool.name
             for tool in available_tools
@@ -733,18 +794,24 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         return self._normalize_selection_response(response)
 
     @staticmethod
-    def _extract_selected_tool_names(request: ModelRequest) -> list[str]:
-        """从已筛选后的请求中提取最终工具名，保留原有顺序。"""
+    def _extract_selected_tool_names(request: ModelRequest[Any]) -> list[str]:
+        """
+        从已筛选后的请求中提取最终工具名，保留原有顺序。
+        """
         return [tool.name for tool in request.tools if not isinstance(tool, dict)]
 
     @staticmethod
-    def _count_request_tools(request: ModelRequest) -> int:
-        """统计当前请求中的 LangChain 工具数量，不包含 provider 原生工具字典。"""
+    def _count_request_tools(request: ModelRequest[Any]) -> int:
+        """
+        统计当前请求中的 LangChain 工具数量，不包含 provider 原生工具字典。
+        """
         return len([tool for tool in request.tools if not isinstance(tool, dict)])
 
     @classmethod
     def _log_selection_attempt(cls, attempt: _ToolSelectionAttempt) -> None:
-        """按工具筛选最终状态记录稳定日志。"""
+        """
+        按工具筛选最终状态记录稳定日志。
+        """
         tool_count = cls._count_request_tools(attempt.request)
         if attempt.status == "selected":
             selected_text = ", ".join(attempt.selected_tool_names) or "无有效工具"
@@ -764,9 +831,9 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     @staticmethod
     def _apply_selected_tools(
-            request: ModelRequest[ContextT],
+            request: ModelRequest[Any],
             selected_tool_names: list[str],
-    ) -> ModelRequest[ContextT]:
+    ) -> ModelRequest[Any]:
         """
         将已筛选出的工具集应用到当前模型请求。
 
@@ -785,8 +852,8 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         return request.override(tools=[*selected_tools, *provider_tools])
 
     async def _aselect_request_once(
-            self, request: ModelRequest[ContextT]
-    ) -> ModelRequest[ContextT]:
+            self, request: ModelRequest[Any]
+    ) -> ModelRequest[Any]:
         """
         执行一次真实工具筛选，并返回筛选后的请求对象。
 
@@ -796,7 +863,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         return (await self._aselect_request_once_with_status(request)).request
 
     async def _aselect_request_once_with_status(
-            self, request: ModelRequest[ContextT]
+            self, request: ModelRequest[Any]
     ) -> _ToolSelectionAttempt:
         """
         执行一次真实工具筛选，并携带最终状态供调用方统一记录日志。
@@ -833,10 +900,10 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
 
     async def abefore_agent(  # noqa
             self,
-            state: ToolSelectionState,
-            runtime: Runtime,  # noqa
-            config: RunnableConfig,
-    ) -> ToolSelectionStateUpdate | None:  # ty: ignore[invalid-method-override]
+            state: AgentState,
+            runtime: Runtime[Any],  # noqa
+            config: RunnableConfig | None = None,
+    ) -> dict[str, Any] | None:
         """
         在本轮 Agent 执行开始前完成一次真实工具筛选。
 
@@ -845,21 +912,8 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         """
         if not self.selection_tools or self.model is None:
             detail = "没有可筛选工具" if not self.selection_tools else "未配置筛选模型"
-            self._log_selection_attempt(
-                _ToolSelectionAttempt(
-                    request=ModelRequest(
-                        model=self.model,
-                        tools=list(self.selection_tools),
-                        messages=state["messages"],
-                        state=state,
-                        runtime=runtime,
-                    ),
-                    selected_tool_names=[],
-                    status="skipped",
-                    detail=detail,
-                )
-            )
-            return self._selection_state_update(selected_tool_names=None)
+            logger.info(f"工具筛选跳过: {detail}。")
+            return dict(self._selection_state_update(selected_tool_names=None))
 
         selection_request = ModelRequest(
             model=self.model,
@@ -871,19 +925,19 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         attempt = await self._aselect_request_once_with_status(selection_request)
         self._log_selection_attempt(attempt)
         selected_tool_names = attempt.selected_tool_names
-        return self._selection_state_update(selected_tool_names=selected_tool_names)
+        return dict(self._selection_state_update(selected_tool_names=selected_tool_names))
 
     async def awrap_model_call(
             self,
-            request: ModelRequest[ContextT],
+            request: ModelRequest[Any],
             handler: Callable[
-                [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
+                [ModelRequest[Any]], Awaitable[ModelResponse[ResponseT]]
             ],
     ) -> ModelResponse[ResponseT]:
         """
         复用首轮筛选并合入本轮按需发现结果，无需追加工具筛选模型调用。
         """
-        selected_tool_names = request.state.get("selected_tool_names")  # noqa
+        selected_tool_names = cast(ToolSelectionState, request.state).get("selected_tool_names")  # noqa
 
         # 正常路径下，`abefore_agent()` 已经提前写入状态；这里只保留一层兜底，
         # 兼容直接单测或未来某些绕过 before_agent 的调用场景。
@@ -896,7 +950,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             self._log_selection_attempt(attempt)
             request = attempt.request
             selected_tool_names = attempt.selected_tool_names
-            request.state["selected_tool_names"] = selected_tool_names  # noqa
+            cast(ToolSelectionState, request.state)["selected_tool_names"] = selected_tool_names  # noqa
 
         if selected_tool_names is not None:
             request = self._bind_discovery_tools(request, selected_tool_names)

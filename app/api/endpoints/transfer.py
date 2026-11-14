@@ -1,6 +1,10 @@
+"""
+提供文件整理任务查询、执行、重试和控制接口。
+"""
+
 import re
 from pathlib import Path
-from typing import Annotated, Any, List, Literal, Optional, cast
+from typing import Annotated, Any, List, Literal, Optional
 
 from fastapi import Depends, HTTPException, Query, status
 
@@ -35,6 +39,8 @@ from app.chain.transfer.facade import TransferChain
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.common import NameData as _SchemaNameData
+from app.schemas.file import FileItem
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -48,19 +54,21 @@ from app.schemas.transfer import ManualTransferSubmissionItem as _SchemaManualTr
 from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
 from app.schemas.transfer import TransferManualReviewData as _SchemaTransferManualReviewData
+from app.schemas.transfer import TransferManualReviewDiscardData as _SchemaTransferManualReviewDiscardData
+from app.schemas.transfer import TransferManualReviewDiscardRequest as _SchemaTransferManualReviewDiscardRequest
 from app.schemas.transfer import TransferManualReviewPageData as _SchemaTransferManualReviewPageData
 from app.schemas.transfer import TransferManualReviewRequest as _SchemaTransferManualReviewRequest
 from app.schemas.transfer import TransferManualReviewTaskData as _SchemaTransferManualReviewTaskData
 from app.schemas.transfer import TransferQueuePageData as _SchemaTransferQueuePageData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
-from app.schemas.workflow import FileItem
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
 
 
 def _public_transfer_message(message: Optional[object]) -> Optional[str]:
-    """把整理链返回的错误转换为前端可直接展示的文案。"""
+    """
+    把整理链返回的错误转换为前端可直接展示的文案。
+    """
     if message is None or not str(message).strip():
         return None
     from app.runtime.errors import public_error_message
@@ -69,7 +77,9 @@ def _public_transfer_message(message: Optional[object]) -> Optional[str]:
 
 
 def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
-    """裁剪整理结果中的错误字段，保留预览数据的原有结构。"""
+    """
+    裁剪整理结果中的错误字段，保留预览数据的原有结构。
+    """
     from app.application.transfer.feedback import classify_transfer_failure
 
     result = dict(data)
@@ -98,8 +108,12 @@ def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> dict:
-    """构造手动整理预览失败项。"""
+def _build_failure_preview_item(
+        file_item: FileItem, message: Optional[str]
+) -> dict[str, Any]:
+    """
+    构造手动整理预览失败项。
+    """
     from app.application.transfer.feedback import classify_transfer_failure
 
     feedback = classify_transfer_failure(message)
@@ -127,13 +141,24 @@ def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> 
     }
 
 
+def _restore_history_fileitem(payload: object) -> Optional[FileItem]:
+    """
+    从整理历史的 JSON 快照恢复文件项，拒绝缺失或非对象载荷。
+    """
+    if not isinstance(payload, dict):
+        return None
+    return FileItem.model_validate(payload)
+
+
 def _format_manual_transfer_failure(
     *,
     message: Optional[object],
     source_path: Optional[str],
     target_path: Optional[str] = None,
 ) -> str:
-    """把手动整理失败转换为包含路径、阶段和下一步动作的用户提示。"""
+    """
+    把手动整理失败转换为包含路径、阶段和下一步动作的用户提示。
+    """
     from app.application.transfer.feedback import format_transfer_failure_message
 
     public_message = _public_transfer_message(message) or "整理失败"
@@ -145,7 +170,9 @@ def _format_manual_transfer_failure(
 
 
 def _merge_transfer_messages(messages: List[str]) -> str:
-    """合并手动整理批量预览提示信息，并统一转换错误文案。"""
+    """
+    合并手动整理批量预览提示信息，并统一转换错误文案。
+    """
     valid_messages = [
         public_message
         for msg in messages
@@ -163,7 +190,9 @@ def _merge_transfer_messages(messages: List[str]) -> str:
 def _manual_submission_items(
     fileitem: FileItem, success: bool, result: object, target_path: Optional[Path],
 ) -> list[_SchemaManualTransferSubmissionItem]:
-    """映射真实执行回执，旧返回值最多确认接收，不能推断入库完成。"""
+    """
+    映射真实执行回执，旧返回值最多确认接收，不能推断入库完成。
+    """
     if isinstance(result, dict):
         items = _public_transfer_result(result).get("items")
         if isinstance(items, list):
@@ -180,7 +209,9 @@ def _manual_submission_items(
 def _manual_submission_response(
     success: bool, items: list[_SchemaManualTransferSubmissionItem],
 ) -> Any:
-    """保留部分成功文件，并继续为旧客户端提供包含失败路径的总提示。"""
+    """
+    保留部分成功文件，并继续为旧客户端提供包含失败路径的总提示。
+    """
     errors = [
         _format_manual_transfer_failure(
             message=item.message, source_path=item.source,
@@ -195,15 +226,133 @@ def _manual_submission_response(
     )
 
 
+# 显式音乐批次允许一并提交的旁挂扩展名，实际归属仍由整理链按同名音轨确认。
+_MUSIC_COMPANION_SUFFIXES = (
+    ".cue",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+)
+_MUSIC_LEGACY_LYRICS_SUFFIXES = (".txt", ".lyricsfile.yaml")
+_MEDIA_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def _is_music_companion_file(fileitem: FileItem) -> bool:
+    """
+    判断显式多选项是否属于音乐音轨可携带的旁挂文件。
+
+    :param fileitem: 待判断的文件项
+    :return: 文件名以支持的歌词、CUE 或封面扩展名结尾时返回 True
+    """
+    name = str(fileitem.path or fileitem.name or "").casefold()
+    config = get_api_runtime_config_snapshot()
+    lyrics_extensions = tuple(
+        str(extension).casefold()
+        for extension in getattr(config, "lyrics_extensions", ())
+    )
+    return name.endswith(_MUSIC_COMPANION_SUFFIXES + _MUSIC_LEGACY_LYRICS_SUFFIXES) or any(
+        name.endswith(extension) for extension in lyrics_extensions
+    )
+
+
+def _is_media_companion_file(fileitem: FileItem, media_type: MediaType) -> bool:
+    """
+    判断显式影视批次中的文件是否为可随主媒体迁移的附属文件。
+
+    :param fileitem: 用户选中的文件项
+    :param media_type: 当前批次的影视类型
+    :return: 文件属于字幕、歌词、外挂音轨或标准图片后缀时返回 True
+    """
+    config = get_api_runtime_config_snapshot()
+    name = str(fileitem.path or fileitem.name or "").casefold()
+    suffix = Path(fileitem.path or fileitem.name or "").suffix.lower()
+    lyrics_extensions = tuple(
+        str(extension).casefold()
+        for extension in getattr(config, "lyrics_extensions", ())
+    )
+    if suffix in getattr(config, "subtitle_extensions", ()) or any(
+        name.endswith(extension) for extension in lyrics_extensions
+    ):
+        return True
+    if suffix in getattr(config, "audio_extensions", ()):
+        return True
+    return suffix in _MEDIA_IMAGE_SUFFIXES and media_type in (MediaType.MOVIE, MediaType.TV)
+
+
+def _is_media_file_batch(fileitems: List[FileItem], media_type: MediaType) -> bool:
+    """
+    判断显式影视选择是否包含主视频及其附属文件。
+
+    :param fileitems: 用户在整理界面显式选中的文件项
+    :param media_type: 当前批次的影视类型
+    :return: 至少包含一个视频且其他文件均为支持的附属文件时返回 True
+    """
+    if len(fileitems) < 2 or any(fileitem.type != "file" for fileitem in fileitems):
+        return False
+    video_extensions = set(getattr(get_api_runtime_config_snapshot(), "video_extensions", ()))
+    video_count = 0
+    for fileitem in fileitems:
+        suffix = Path(fileitem.path or fileitem.name or "").suffix.lower()
+        if suffix in video_extensions:
+            video_count += 1
+            continue
+        if not _is_media_companion_file(fileitem, media_type):
+            return False
+    return video_count > 0
+
+
 def _is_music_file_batch(fileitems: List[FileItem]) -> bool:
-    """判断显式选中项是否为可按专辑识别的多音轨批次。"""
+    """
+    判断显式选中项是否为可按音乐批次识别的音轨与旁挂文件。
+
+    显式列表可以包含单个或多个音轨，只要其余项是歌词、CUE 或封面；
+    这些项必须一起进入整理链，才能复用对应音轨的媒体上下文。
+
+    :param fileitems: 用户在整理界面显式选中的文件项
+    :return: 列表包含至少一个音轨且其余项均为音乐旁挂文件时返回 True
+    """
     if len(fileitems) < 2 or any(fileitem.type != "file" for fileitem in fileitems):
         return False
     audio_extensions = set(get_api_runtime_config_snapshot().audio_extensions)
-    return all(
+    audio_count = 0
+    for fileitem in fileitems:
+        if Path(fileitem.path or fileitem.name or "").suffix.lower() in audio_extensions:
+            audio_count += 1
+            continue
+        if not _is_music_companion_file(fileitem):
+            return False
+    return audio_count > 0
+
+
+def _music_batch_entity_type(fileitems: List[FileItem]) -> str:
+    """
+    根据显式批次中的音轨数量选择默认音乐实体类型。
+
+    :param fileitems: 已确认属于同一音乐批次的文件项
+    :return: 多音轨时返回专辑实体，单音轨时返回录音实体
+    """
+    audio_extensions = set(get_api_runtime_config_snapshot().audio_extensions)
+    audio_count = sum(
         Path(fileitem.path or fileitem.name or "").suffix.lower() in audio_extensions
         for fileitem in fileitems
     )
+    return MUSIC_ENTITY_ALBUM if audio_count > 1 else MUSIC_ENTITY_RECORDING
+
+
+def _resolve_music_batch_entity_type(
+    fileitems: Optional[List[FileItem]], requested: Optional[str],
+) -> Optional[str]:
+    """
+    合并请求指定的音乐实体类型与显式批次的默认类型。
+
+    :param fileitems: 已识别的音乐批次；未成批时为 None
+    :param requested: 请求明确指定的音乐实体类型
+    :return: 批次实体类型；未成批时返回 None
+    """
+    if fileitems is None:
+        return None
+    return requested or _music_batch_entity_type(fileitems)
 
 
 def _selected_music_fileitems(
@@ -212,7 +361,9 @@ def _selected_music_fileitems(
     explicitly_selected: bool,
     media_type: Optional[MediaType],
 ) -> Optional[List[FileItem]]:
-    """仅在用户明确选择音乐类型时，将显式多选音轨作为专辑批次处理。"""
+    """
+    仅在用户明确选择音乐类型时，将显式多选音轨作为专辑批次处理。
+    """
     if not explicitly_selected or media_type != MediaType.MUSIC:
         return None
     if not _is_music_file_batch(fileitems):
@@ -247,8 +398,31 @@ def _selected_music_fileitems(
     return fileitems
 
 
+def _selected_media_fileitems(
+    fileitems: List[FileItem],
+    *,
+    explicitly_selected: bool,
+    media_type: Optional[MediaType],
+) -> Optional[List[FileItem]]:
+    """
+    将显式影视主文件与字幕、歌词和封面作为一个批次交给整理链。
+
+    :param fileitems: 用户显式选中的文件项
+    :param explicitly_selected: 是否来自前端多选或历史恢复
+    :param media_type: 请求指定的媒体类型
+    :return: 可批次整理的文件列表；不满足条件时返回 None
+    """
+    if not explicitly_selected or media_type not in (MediaType.MOVIE, MediaType.TV):
+        return None
+    if not _is_media_file_batch(fileitems, media_type):
+        return None
+    return fileitems
+
+
 def _manual_review_actor(current_user: object) -> str:
-    """按名称、用户名和用户 ID 的稳定顺序提取人工复核操作者。"""
+    """
+    按名称、用户名和用户 ID 的稳定顺序提取人工复核操作者。
+    """
     for attribute in ("name", "username", "id"):
         value = getattr(current_user, attribute, None)
         if value is not None and str(value).strip():
@@ -262,10 +436,10 @@ def _manual_review_actor(current_user: object) -> str:
 def _manual_review_task_data(
     task: TransferManualReviewTaskView,
 ) -> _SchemaTransferManualReviewTaskData:
-    """把 Application 人工复核投影映射为严格公开响应。"""
-    return cast(
-        _SchemaTransferManualReviewTaskData,
-        _SchemaTransferManualReviewTaskData.model_validate({
+    """
+    把 Application 人工复核投影映射为严格公开响应。
+    """
+    return _SchemaTransferManualReviewTaskData.model_validate({
             "task_id": task.task_id,
             "source": {
                 "storage": task.source.storage,
@@ -280,11 +454,10 @@ def _manual_review_task_data(
                 "error": _public_transfer_message(task.step.error),
             },
             "review_revision": task.review_revision,
-        }),
-    )
+        })
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/tasks/manual-reviews",
     summary="分页查询 durable 整理人工复核任务",
     response_model=_SchemaResponse[_SchemaTransferManualReviewPageData],
@@ -301,7 +474,9 @@ def list_transfer_manual_reviews(
         get_transfer_execution_repository
     ),
 ) -> Any:
-    """分页返回待复核或已判定等待 durable 恢复的任务。"""
+    """
+    分页返回待复核或已判定等待 durable 恢复的任务。
+    """
     del current_user
     result = TransferManualReviewQuery(repository).list(
         state=TransferExecutionState(state_filter),
@@ -319,7 +494,7 @@ def list_transfer_manual_reviews(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/tasks/{task_id}/manual-review",
     summary="查询 durable 整理人工复核详情",
     response_model=_SchemaResponse[_SchemaTransferManualReviewTaskData],
@@ -331,7 +506,9 @@ def get_transfer_manual_review(
         get_transfer_execution_repository
     ),
 ) -> Any:
-    """按任务标识返回严格裁剪的人工复核详情。"""
+    """
+    按任务标识返回严格裁剪的人工复核详情。
+    """
     del current_user
     task = TransferManualReviewQuery(repository).get(task_id=task_id)
     if task is None:
@@ -342,7 +519,7 @@ def get_transfer_manual_review(
     return _SchemaResponse(success=True, data=_manual_review_task_data(task))
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/tasks/{task_id}/manual-review",
     summary="人工判定整理步骤的外部执行结果",
     response_model=_SchemaResponse[_SchemaTransferManualReviewData],
@@ -355,7 +532,9 @@ def resolve_transfer_manual_review(
         get_transfer_execution_repository
     ),
 ) -> Any:
-    """提交无租约人工判定，并返回不含 attempt 与 lease 的公开状态。"""
+    """
+    提交无租约人工判定，并返回不含 attempt 与 lease 的公开状态。
+    """
     result = (
         TransferStepResult(payload=dict(review.result_payload))
         if review.result_payload is not None
@@ -381,9 +560,49 @@ def resolve_transfer_manual_review(
         data=_SchemaTransferManualReviewData(
             task_id=resolved.task_id,
             operation_id=resolved.operation_id,
-            decision=resolved.decision.value,
+            decision=(
+                "applied"
+                if resolved.decision is TransferManualReviewDecision.APPLIED
+                else "not_applied"
+            ),
             state=resolved.state.value,
             review_revision=resolved.review_revision,
+        ),
+    )
+
+
+@router.post(
+    "/tasks/{task_id}/manual-review/discard",
+    summary="放弃人工复核整理任务但保留文件",
+    response_model=_SchemaResponse[_SchemaTransferManualReviewDiscardData],
+)
+def discard_transfer_manual_review(
+    task_id: str,
+    review: _SchemaTransferManualReviewDiscardRequest,
+    current_user: object = Depends(get_current_active_manage_user),
+    repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
+) -> Any:
+    """解除无法确认的整理任务；不删除、不移动且不回滚任何文件。"""
+    try:
+        discarded = TransferExecutionCommand(repository).discard_manual_review(
+            task_id=task_id,
+            operation_id=review.operation_id,
+            actor=_manual_review_actor(current_user),
+            reason=review.reason,
+        )
+    except TransferExecutionConflictError as error:
+        logger.warning(f"整理人工复核放弃请求冲突：{error}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="整理任务状态已变化，请刷新后重试",
+        ) from error
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaTransferManualReviewDiscardData(
+            task_id=discarded.task_id,
+            operation_id=discarded.operation_id,
+            discarded=discarded.discarded,
+            message=discarded.message,
         ),
     )
 
@@ -398,6 +617,7 @@ def query_name(
 ) -> Any:
     """
     查询整理后的名称
+
     :param path: 文件路径
     :param filetype: 文件类型
     :param _: Token校验
@@ -414,17 +634,20 @@ def query_name(
     if not new_path:
         return _SchemaResponse(success=False, message="未识别到新名称")
     if filetype == "dir":
+        media_type = context.media_info.type
+        if media_type is None:
+            return _SchemaResponse(success=False, message="未识别到媒体类型")
         media_path = DirectoryHelper.get_media_root_path(
             rename_format=get_api_runtime_config_snapshot().rename_format(
-                context.media_info.type
+                media_type
             ),
             rename_path=Path(new_path),
-            media_type=context.media_info.type,
+            media_type=media_type,
         )
         if media_path:
             new_name = media_path.name
         else:
-            # fallback
+            # 模板未提供媒体根目录时，沿用已有父目录层级推导名称。
             parents = Path(new_path).parents
             if len(parents) > 2:
                 new_name = parents[1].name
@@ -439,12 +662,13 @@ def query_name(
 async def query_queue(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询整理队列
+
     :param _: Token校验
     """
     return TransferChain().get_queue_tasks()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/queue/page",
     summary="查询受限整理队列快照",
     response_model=_SchemaTransferQueuePageData,
@@ -454,7 +678,9 @@ async def query_queue_page(
     page: int = Query(1, ge=1),
     count: int = Query(100, ge=1, le=COLLECTION_MAX_PAGE_SIZE),
 ) -> _SchemaTransferQueuePageData:
-    """返回前端所需的有限整理队列窗口，避免序列化完整云盘目录树。"""
+    """
+    返回前端所需的有限整理队列窗口，避免序列化完整云盘目录树。
+    """
     items, total = TransferChain().get_queue_tasks_page(page, count)
     return _SchemaTransferQueuePageData(
         items=items,
@@ -468,15 +694,18 @@ async def query_queue_page(
     "/queue", summary="从整理队列中删除任务", response_model=_SchemaResponse[None]
 )
 async def remove_queue(
-    fileitem: _SchemaFileItem, _: _SchemaTokenPayload = Depends(verify_token)
+    fileitem: _SchemaFileItem, _: Any = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     查询整理队列
+
     :param fileitem: 文件项
     :param _: Token校验
     """
     TransferChain().remove_from_queue(fileitem)
     # 取消整理
+    if not fileitem.path:
+        return _SchemaResponse(success=False, message="文件路径为空")
     runtime_stop_state.stop_transfer(fileitem.path)
     return _SchemaResponse(success=True)
 
@@ -494,19 +723,26 @@ def _resolve_manual_transfer_source_fileitems(
             history = history_query.get(logid)
             if not history:
                 return [], f"整理记录不存在，ID：{logid}"
-            if history.status and ("move" in history.mode):
-                fileitems.append(FileItem(**history.dest_fileitem))
+            if history.status and ("move" in (history.mode or "")):
+                fileitem = _restore_history_fileitem(history.dest_fileitem)
             else:
-                fileitems.append(FileItem(**history.src_fileitem))
+                fileitem = _restore_history_fileitem(history.src_fileitem)
+            if fileitem is None:
+                return [], f"整理记录缺少文件项，ID：{logid}"
+            fileitems.append(fileitem)
         return fileitems, None
 
     if transer_item.logid:
         history = history_query.get(transer_item.logid)
         if not history:
             return [], f"整理记录不存在，ID：{transer_item.logid}"
-        if history.status and ("move" in history.mode):
-            return [FileItem(**history.dest_fileitem)], None
-        return [FileItem(**history.src_fileitem)], None
+        if history.status and ("move" in (history.mode or "")):
+            fileitem = _restore_history_fileitem(history.dest_fileitem)
+        else:
+            fileitem = _restore_history_fileitem(history.src_fileitem)
+        if fileitem is None:
+            return [], f"整理记录缺少文件项，ID：{transer_item.logid}"
+        return [fileitem], None
 
     if transer_item.fileitems:
         return [fileitem for fileitem in transer_item.fileitems if fileitem], None
@@ -594,6 +830,8 @@ def match_manual_transfer_target_path(
     matched_directories: List[_SchemaTransferDirectoryConf] = []
     target_storage = transer_item.target_storage or None
     for src_fileitem in _deduplicate_fileitems(src_fileitems):
+        if not src_fileitem.path:
+            return _SchemaResponse(success=False, message="源文件路径为空")
         directory = DirectoryHelper().get_dir(
             media=None,
             storage=src_fileitem.storage or "local",
@@ -699,7 +937,9 @@ def _route_manual_transfer(
     background: Optional[bool],
     history_query: TransferHistoryLookupService,
 ) -> Any:
-    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
+    """
+    执行历史恢复、批量预览与 TransferChain 兼容编排。
+    """
     if not transer_item.logids:
         return _execute_manual_transfer(
             transer_item=transer_item,
@@ -734,6 +974,20 @@ def _route_manual_transfer(
     )
 
 
+def _manual_music_transfer_options(item: ManualTransferItem) -> dict[str, Any]:
+    """
+    仅传递显式启用的音乐选项，兼容未使用新能力的旧整理调用。
+    """
+    options: dict[str, Any] = {}
+    if item.musicbrainz_release_id is not None:
+        options["musicbrainz_release_id"] = item.musicbrainz_release_id
+    if item.music_track_match != "strict":
+        options["music_track_match"] = item.music_track_match
+    if item.music_target_path:
+        options["music_target_path"] = Path(item.music_target_path)
+    return options
+
+
 def _execute_manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool],
@@ -742,7 +996,9 @@ def _execute_manual_transfer(
     downloader: Optional[str] = None,
     download_hash: Optional[str] = None,
 ) -> Any:
-    """执行已还原源文件项的手动整理兼容编排。"""
+    """
+    执行已还原源文件项的手动整理兼容编排。
+    """
     src_fileitems: List[FileItem] = []
     cleanup_dest_fileitem: Optional[FileItem] = None
     target_path = Path(transer_item.target_path) if transer_item.target_path else None
@@ -758,18 +1014,19 @@ def _execute_manual_transfer(
         # 下载器与 Hash 是同一组下载上下文，重新识别时由当前文件路径重新匹配。
         downloader = history.downloader if transer_item.from_history else None
         download_hash = history.download_hash if transer_item.from_history else None
-        if history.status and ("move" in history.mode):
+        if history.status and ("move" in (history.mode or "")):
             # 重新整理成功的转移，则使用成功的 dest 做 in_path
-            src_fileitems = [FileItem(**history.dest_fileitem)]
+            fileitem = _restore_history_fileitem(history.dest_fileitem)
         else:
             # 源路径
-            src_fileitems = [FileItem(**history.src_fileitem)]
+            fileitem = _restore_history_fileitem(history.src_fileitem)
             if (
                 history.dest_fileitem
                 and not transer_item.preview
                 and not transer_item.reorganize
             ):
-                cleanup_dest_fileitem = FileItem(**history.dest_fileitem)
+                cleanup_dest_fileitem = _restore_history_fileitem(history.dest_fileitem)
+        src_fileitems = [fileitem] if fileitem else []
 
         # 从历史数据获取信息
         if transer_item.from_history:
@@ -790,15 +1047,18 @@ def _execute_manual_transfer(
     mtype = None
     type_name = str(transer_item.type_name).strip() if transer_item.type_name else ""
     if type_name and type_name.lower() not in {"自动", "auto", "none"}:
+        # 先按 Agent 使用的 movie/tv/music 取值解析，再回退到原生中文枚举值。
         try:
-            mtype = MediaType(type_name)
+            mtype = MediaType.from_agent(type_name) or MediaType(type_name)
         except ValueError:
             return _SchemaResponse(
                 success=False, message=f"不支持的媒体类型：{type_name}"
             )
 
     def _resolve_music_type(file_item: FileItem) -> Optional[str]:
-        """为未显式指定实体的旧客户端按源项类型补全音乐命名空间。"""
+        """
+        为未显式指定实体的旧客户端按源项类型补全音乐命名空间。
+        """
         if mtype != MediaType.MUSIC or transer_item.music_type:
             return transer_item.music_type
         return (
@@ -824,17 +1084,20 @@ def _execute_manual_transfer(
     selected_music_fileitems = _selected_music_fileitems(
         src_fileitems, explicitly_selected=explicit_selected_files, media_type=mtype
     )
-    mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
-    explicit_selected_files = explicit_selected_files and selected_music_fileitems is None
-
-    release_kwargs: dict[str, Any] = (
-        {"musicbrainz_release_id": transer_item.musicbrainz_release_id}
-        if transer_item.musicbrainz_release_id is not None else {}
+    selected_media_fileitems = selected_music_fileitems or _selected_media_fileitems(
+        src_fileitems, explicitly_selected=explicit_selected_files, media_type=mtype,
     )
+    mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
+    explicit_selected_files = explicit_selected_files and selected_media_fileitems is None
+    selected_music_type = _resolve_music_batch_entity_type(
+        selected_music_fileitems, transer_item.music_type,
+    )
+
+    release_kwargs = _manual_music_transfer_options(transer_item)
 
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
-        preview_items: List[dict] = []
+        preview_items: List[dict[str, Any]] = []
         submission_items: list[_SchemaManualTransferSubmissionItem] = []
         error_messages: List[str] = []
         all_success = True
@@ -848,6 +1111,7 @@ def _execute_manual_transfer(
                 music_type=_resolve_music_type(src_fileitem),
                 music_release_regions=transer_item.music_release_regions,
                 music_release_scripts=transer_item.music_release_scripts,
+                music_cue_enable=transer_item.music_cue_enable,
                 **release_kwargs,
                 mtype=mtype,
                 season=transer_item.season,
@@ -875,7 +1139,8 @@ def _execute_manual_transfer(
                         _public_transfer_result(errormsg).get("items") or []
                     )
                     if errormsg.get("message"):
-                        error_messages.append(errormsg.get("message"))
+                        message = _public_transfer_message(errormsg.get("message"))
+                        error_messages.append(message or "")
                     if not state:
                         all_success = False
                 else:
@@ -895,7 +1160,7 @@ def _execute_manual_transfer(
                 submission_items.extend(_manual_submission_items(src_fileitem, state, errormsg, target_path))
 
         if transer_item.preview:
-            merged_preview_items: List[dict] = []
+            merged_preview_items: List[dict[str, Any]] = []
             seen_sources = set()
             for preview_item in preview_items:
                 source = (preview_item.get("source_storage"), preview_item.get("source"))
@@ -923,7 +1188,7 @@ def _execute_manual_transfer(
             }
             return _SchemaResponse(
                 success=True,
-                message=merged_message or None,
+                message=merged_message or "",
                 data=preview_data,
             )
 
@@ -938,12 +1203,13 @@ def _execute_manual_transfer(
         media_source=transer_item.media_source,
         media_id=transer_item.media_id,
         music_type=(
-            MUSIC_ENTITY_ALBUM
+            selected_music_type
             if selected_music_fileitems is not None
             else _resolve_music_type(src_fileitem)
         ),
         music_release_regions=transer_item.music_release_regions,
         music_release_scripts=transer_item.music_release_scripts,
+        music_cue_enable=transer_item.music_cue_enable,
         **release_kwargs,
         mtype=mtype,
         season=transer_item.season,
@@ -961,9 +1227,10 @@ def _execute_manual_transfer(
         preview=transer_item.preview,
         reorganize=transer_item.reorganize,
         skip_success=transer_item.skip_success,
-        sync_extra_files=selected_music_fileitems is None,
+        # 单文件/目录入口和显式媒体批次都必须保留可识别的旁挂文件。
+        sync_extra_files=True,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
-        selected_fileitems=selected_music_fileitems,
+        selected_fileitems=selected_media_fileitems,
         report_results=not transer_item.preview,
     )
     if not transer_item.preview:
@@ -971,7 +1238,7 @@ def _execute_manual_transfer(
     # 预览失败仍返回完整预览列表，实际提交的总状态已在上方独立处理。
     if isinstance(errormsg, dict):
         public_result = _public_transfer_result(errormsg)
-        return _SchemaResponse(success=True, message=public_result.get("message"), data=public_result)
+        return _SchemaResponse(success=True, message=public_result.get("message") or "", data=public_result)
     if state:
         return _SchemaResponse(success=True, data=errormsg or {})
     return _SchemaResponse(success=False, message=_format_manual_transfer_failure(
@@ -991,6 +1258,7 @@ def recommend_episode_format(
 ) -> Any:
     """
     根据目录样本推荐集数定位模板
+
     :param recommend_item: 推荐请求
     :param _: Token校验
     """
@@ -1004,7 +1272,7 @@ def recommend_episode_format(
         logger.warn(f"推荐集数定位模板失败：{target_path} - {errmsg}")
         return _SchemaResponse(
             success=False,
-            message=_public_transfer_message(errmsg),
+            message=_public_transfer_message(errmsg) or "",
         )
     logger.info(
         f"推荐集数定位模板成功：{target_path} - 规则 {data.get('rule_name') if data else None}"

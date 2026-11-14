@@ -1,3 +1,7 @@
+"""
+绿联内部加密接口与 Emby 兼容媒体库服务的两套独立 API 客户端。
+"""
+
 import base64
 import uuid
 from dataclasses import dataclass
@@ -13,29 +17,37 @@ from app.runtime.log import logger
 @dataclass
 class ApiResult:
     """
-    绿联接口标准响应封装。
+    绿联内部接口的业务响应，保留原始负载供调用方诊断。
+
+    :param code: 业务状态码，200 表示成功；响应无有效状态码时为 -1
+    :param msg: 服务端业务说明，缺失时为空字符串
+    :param data: 业务数据，形状由具体接口决定；无数据时为 None
+    :param debug: 可选服务端调试信息
+    :param raw: 解析后的原始响应字典；响应不是映射时为 None
     """
 
     code: int = -1
     msg: str = ""
     data: Any = None
     debug: Optional[str] = None
-    raw: Optional[dict] = None
+    raw: Optional[dict[str, Any]] = None
 
     @property
     def success(self) -> bool:
-        """判断绿联接口是否返回成功状态"""
+        """
+        判断业务响应是否成功。
+
+        :return: 仅 code 等于 200 时返回 True，不按 HTTP 状态码判断
+        """
         return self.code == 200
 
 
 class Api:
     """
-    绿联影视 API 客户端（统一加密通道）。
+    绿联内部影视接口客户端，管理登录、加密上下文及业务响应。
 
-    说明：
-    1. 所有业务接口调用都应走 `request()`；
-    2. `request()` 会自动将明文查询参数加密为 `encrypt_query`；
-    3. 若响应包含 `encrypt_resp_body`，会自动完成解密后再返回。
+    业务接口统一通过 request 发送明文参数，由加密层处理查询串和请求体，并解密响应。
+    当前传输实现只实际发送 GET 与 POST；不提供通用 HTTP 方法透传。
     """
 
     __slots__ = (
@@ -71,7 +83,7 @@ class Api:
         :param client_version: 绿联 Web 客户端版本号
         :param language: 请求语言
         :param ug_agent: 绿联客户端标识
-        :param timeout: HTTP 请求超时时间
+        :param timeout: HTTP 请求超时时间，单位秒
         :param verify_ssl: 是否校验 HTTPS 证书
         """
         self._host = self._normalize_base_url(host)
@@ -98,27 +110,37 @@ class Api:
 
     @property
     def host(self) -> str:
-        """获取规范化后的绿联服务端地址"""
+        """
+        获取规范化后的绿联服务端地址。
+        """
         return self._host
 
     @property
     def token(self) -> Optional[str]:
-        """获取当前登录会话 token"""
+        """
+        获取当前登录会话 token。
+        """
         return self._token
 
     @property
     def static_token(self) -> Optional[str]:
-        """获取可用于静态资源访问的 token"""
+        """
+        获取可用于静态资源访问的 token。
+        """
         return self._static_token
 
     @property
     def is_ugk(self) -> bool:
-        """判断当前会话是否使用 ugk 访问参数"""
+        """
+        判断当前会话是否使用 ugk 访问参数。
+        """
         return self._is_ugk
 
     @property
     def public_key(self) -> Optional[str]:
-        """获取当前会话加密公钥"""
+        """
+        获取当前会话加密公钥。
+        """
         return self._public_key
 
     def close(self) -> None:
@@ -129,6 +151,12 @@ class Api:
 
     @staticmethod
     def _normalize_base_url(host: str) -> str:
+        """
+        将配置地址规整为服务根地址，移除路径、查询串和片段。
+
+        :param host: 绿联地址，空值返回空字符串
+        :return: 仅包含协议及主机端口的根地址，不带尾部斜杠
+        """
         if not host:
             return ""
         host = UrlUtils.standardize_base_url(host).rstrip("/")
@@ -137,6 +165,12 @@ class Api:
 
     @staticmethod
     def _decode_public_key(raw: Optional[str]) -> Optional[str]:
+        """
+        兼容原始 PEM 与 Base64 包裹的公钥文本。
+
+        :param raw: 登录响应中的公钥文本
+        :return: 解码后的公钥；空值或 Base64 解码失败时返回 None
+        """
         if not raw:
             return None
         value = str(raw).strip()
@@ -150,16 +184,24 @@ class Api:
             return None
 
     @staticmethod
-    def _extract_rsa_token(resp_json: dict, headers: Mapping[str, str]) -> Optional[str]:
+    def _extract_rsa_token(resp_json: dict[str, Any], headers: Mapping[str, str]) -> Optional[str]:
+        """
+        按响应头、顶层负载和 data 的顺序提取登录公钥令牌。
+
+        :param resp_json: 登录预检接口解析后的响应字典
+        :param headers: HTTP 响应头
+        :return: 首个可用的 RSA 令牌文本；不存在时返回 None
+        """
         token = headers.get("x-rsa-token") or headers.get("X-Rsa-Token")
-        if token:
+        if isinstance(token, str) and token:
             return token
         token = resp_json.get("xRsaToken") or resp_json.get("x-rsa-token")
-        if token:
+        if isinstance(token, str) and token:
             return token
         data = resp_json.get("data") if isinstance(resp_json, Mapping) else None
         if isinstance(data, Mapping):
-            return data.get("xRsaToken") or data.get("x-rsa-token")
+            token = data.get("xRsaToken") or data.get("x-rsa-token")
+            return token if isinstance(token, str) else None
         return None
 
     def _common_headers(self) -> dict[str, str]:
@@ -179,10 +221,10 @@ class Api:
         self,
         url: str,
         method: str = "GET",
-        headers: Optional[dict] = None,
-        params: Optional[dict] = None,
-        json_data: Optional[dict] = None,
-    ) -> Optional[dict]:
+        headers: Optional[dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
+        json_data: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
         """
         发送 HTTP 请求并尝试解析为 JSON。
         """
@@ -208,18 +250,25 @@ class Api:
             if resp is None:
                 logger.error(f"请求绿联接口失败：{url} 未收到 HTTP 响应")
                 return None
-            return resp.json()
+            payload = resp.json()
+            return payload if isinstance(payload, dict) else None
         except Exception as err:
             logger.error(f"请求绿联接口失败：{url} {err}")
             return None
 
     @staticmethod
     def _build_result(payload: Any) -> ApiResult:
+        """
+        将解密后的响应规整为业务结果对象。
+
+        :param payload: 预期为包含 code、msg、data 的映射
+        :return: 统一响应；非法映射或无法转换的状态码使用 code=-1
+        """
         if not isinstance(payload, Mapping):
             return ApiResult(code=-1, msg="响应格式错误", raw=None)
         code = payload.get("code")
         try:
-            code = int(code)
+            code = int(code) if isinstance(code, (str, int, float)) else -1
         except Exception:
             code = -1
         return ApiResult(
@@ -232,12 +281,14 @@ class Api:
 
     def login(self, username: str, password: str, keepalive: bool = True) -> Optional[str]:
         """
-        登录绿联账号并初始化加密上下文。
+        执行公钥预检和账号登录，成功后更新实例的加密会话。
 
-        :param username: 用户名
-        :param password: 密码（会先做 RSA 分段加密）
-        :param keepalive: 是否保持登录
-        :return: 登录成功返回 token
+        保存访问令牌、静态资源令牌、公钥和客户端标识；公钥损坏或加密库错误会向上传播。
+
+        :param username: 绿联登录账号
+        :param password: 密码明文，发送前使用预检公钥进行 RSA 分块加密
+        :param keepalive: 是否请求服务端保持登录，默认启用
+        :return: 成功时返回会话令牌；凭据为空、预检或业务登录失败时返回 None
         """
         if not username or not password:
             return None
@@ -332,9 +383,11 @@ class Api:
         self._username = username
         return self._token
 
-    def export_session_state(self) -> Optional[dict]:
+    def export_session_state(self) -> Optional[dict[str, Any]]:
         """
-        导出当前登录会话，供持久化存储使用。
+        导出包含认证令牌、客户端身份和 Cookie 的会话快照。
+
+        :return: 可供持久化的会话字典；缺少令牌或公钥时返回 None，导出内容应按凭据保护
         """
         if not self._token or not self._public_key:
             return None
@@ -353,7 +406,12 @@ class Api:
 
     def import_session_state(self, state: Mapping[str, Any]) -> bool:
         """
-        从持久化数据恢复登录会话，避免重复登录。
+        恢复本地会话和加密上下文，不向服务端验证有效性。
+
+        恢复客户端标识以保持服务端会话绑定关系；更新 Cookie 失败时忽略该错误。
+
+        :param state: 之前导出的会话映射，必须包含非空 token 和可解码 public_key
+        :return: 必要字段有效且完成恢复时返回 True，否则返回 False；无效公钥构造异常向上传播
         """
         if not isinstance(state, Mapping):
             return False
@@ -445,22 +503,17 @@ class Api:
         self,
         path: str,
         method: str = "GET",
-        params: Optional[dict] = None,
-        data: Optional[dict] = None,
+        params: Optional[dict[str, Any]] = None,
+        data: Optional[dict[str, Any]] = None,
     ) -> ApiResult:
         """
-        统一请求入口。
+        加密查询参数、发送内部业务请求并解密响应。
 
-        核心行为：
-        1. 自动把 `params` 明文序列化并加密为 `encrypt_query`；
-        2. 自动注入绿联安全头（`X-Ugreen-*`）；
-        3. 对 `POST/PUT/PATCH` 的 JSON 体加密；
-        4. 自动解密 `encrypt_resp_body`。
-
-        :param path: `/ugreen/` 后的相对路径，例如 `v1/video/homepage/media_list`
-        :param method: HTTP 方法
-        :param params: 明文查询参数（无需自己处理 encrypt_query）
-        :param data: 明文 JSON 请求体（自动加密）
+        :param path: ugreen 根路径后的相对接口路径，如 v1/video/homepage/media_list
+        :param method: 当前仅 POST 会发送为 POST，其他值走 GET；调用方应使用 GET 或 POST
+        :param params: 明文查询参数，由本方法构造 encrypt_query
+        :param data: 明文请求体；POST 时加密后发送，其他传输方法当前不发送请求体
+        :return: 统一业务结果；未登录或 HTTP 请求失败时 code=-1，加解密异常向调用方传播
         """
         if not self._crypto:
             return ApiResult(code=-1, msg="未登录")
@@ -489,18 +542,22 @@ class Api:
         decrypted = self._crypto.decrypt_response(payload, req.aes_key)
         return self._build_result(decrypted)
 
-    def current_user(self) -> Optional[dict]:
+    def current_user(self) -> Optional[dict[str, Any]]:
         """
-        获取当前登录用户信息。
+        读取内部接口当前用户信息。
+
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         result = self.request("v1/user/current/user")
         if not result.success or not isinstance(result.data, Mapping):
             return None
         return dict(result.data)
 
-    def media_list(self) -> Optional[list[dict]]:
+    def media_list(self) -> Optional[list[dict[str, Any]]]:
         """
-        获取首页媒体库列表（`media_lib_info_list`）。
+        读取首页媒体库集合列表。
+
+        :return: media_lib_info_list 列表；业务失败或响应结构不符时返回 None
         """
         result = self.request("v1/video/homepage/media_list")
         if not result.success or not isinstance(result.data, Mapping):
@@ -508,9 +565,11 @@ class Api:
         items = result.data.get("media_lib_info_list")
         return items if isinstance(items, list) else None
 
-    def media_lib_users(self) -> list[dict]:
+    def media_lib_users(self) -> list[dict[str, Any]]:
         """
-        获取媒体库用户列表。
+        读取内部接口媒体库用户列表。
+
+        :return: user_info_arr 列表；业务失败或响应结构不符时返回空列表
         """
         result = self.request("v1/video/media_lib/get_user_list")
         if not result.success or not isinstance(result.data, Mapping):
@@ -518,9 +577,13 @@ class Api:
         users = result.data.get("user_info_arr")
         return users if isinstance(users, list) else []
 
-    def recently_played(self, page: int = 1, page_size: int = 12) -> Optional[dict]:
+    def recently_played(self, page: int = 1, page_size: int = 12) -> Optional[dict[str, Any]]:
         """
         获取继续观看列表。
+
+        :param page: 从 1 开始的页码
+        :param page_size: 每页最多返回条目数量
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         result = self.request(
             "v1/video/recently_played/get",
@@ -531,11 +594,15 @@ class Api:
                 "create_time_order": "false",
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def recently_updated(self, page: int = 1, page_size: int = 20) -> Optional[dict]:
+    def recently_updated(self, page: int = 1, page_size: int = 20) -> Optional[dict[str, Any]]:
         """
         获取最近更新列表。
+
+        :param page: 从 1 开始的页码
+        :param page_size: 每页最多返回条目数量
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         result = self.request(
             "v1/video/recently_update/get",
@@ -546,11 +613,14 @@ class Api:
                 "create_time_order": "false",
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def recently_played_info(self, item_id: Union[str, int]) -> Optional[dict]:
+    def recently_played_info(self, item_id: Union[str, int]) -> Optional[dict[str, Any]]:
         """
         获取单个视频的播放状态与基础详情信息。
+
+        :param item_id: 绿联内部视频条目标识
+        :return: 视频详情与播放状态字典；业务码 200 或 1303 均接受，其他错误或无数据时返回 None
         """
         result = self.request(
             "v1/video/recently_played/info",
@@ -563,9 +633,14 @@ class Api:
             return dict(result.data)
         return None
 
-    def search(self, keyword: str, offset: int = 0, limit: int = 200) -> Optional[dict]:
+    def search(self, keyword: str, offset: int = 0, limit: int = 200) -> Optional[dict[str, Any]]:
         """
         搜索媒体（电影/剧集）。
+
+        :param keyword: 媒体搜索关键词
+        :param offset: 结果起始偏移，默认 0
+        :param limit: 最多返回候选数量，默认 200
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         result = self.request(
             "v1/video/search",
@@ -577,15 +652,16 @@ class Api:
                 "keyword": keyword,
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def video_all(self, classification: int, page: int = 1, page_size: int = 20) -> Optional[dict]:
+    def video_all(self, classification: int, page: int = 1, page_size: int = 20) -> Optional[dict[str, Any]]:
         """
-        获取 `v1/video/all` 分类列表。
+        按绿联分类编号查询视频列表。
 
-        常用分类：
-        -102: 电影
-        -103: 电视剧
+        :param classification: 分类编号，-102 为电影，-103 为电视剧
+        :param page: 从 1 开始的页码
+        :param page_size: 每页最多返回条目数量
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         result = self.request(
             "v1/video/all",
@@ -604,7 +680,7 @@ class Api:
                 "clarity": -1,
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
     def poster_wall_get_folder(
         self,
@@ -613,9 +689,16 @@ class Api:
         page_size: int = 100,
         sort_type: int = 1,
         order_type: int = 1,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         获取海报墙文件夹与条目（可按目录路径递归展开）。
+
+        :param path: 目标目录路径，空值查询海报墙根目录
+        :param page: 从 1 开始的页码
+        :param page_size: 每页最多返回条目数量
+        :param sort_type: 服务端排序字段编号，默认 1，原样透传
+        :param order_type: 服务端排序方向编号，默认 1，原样透传
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         params: dict[str, Any] = {
             "page": page,
@@ -626,7 +709,7 @@ class Api:
         if path:
             params["path"] = path
         result = self.request("v1/video/poster_wall/media_lib/get_folder", params=params)
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
     def get_movie(
         self,
@@ -634,9 +717,15 @@ class Api:
         media_lib_set_id: Union[str, int],
         path: Optional[str] = None,
         folder_path: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         获取电影详情。
+
+        :param item_id: 绿联内部视频条目标识
+        :param media_lib_set_id: 电影所属媒体库集合标识
+        :param path: 可选具体文件路径
+        :param folder_path: 可选所在文件夹路径
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         params: dict[str, Any] = {
             "id": item_id,
@@ -648,11 +737,15 @@ class Api:
         if folder_path:
             params["folder_path"] = folder_path
         result = self.request("v1/video/details/getMovie", params=params)
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def get_tv(self, item_id: Union[str, int], folder_path: str = "ALL") -> Optional[dict]:
+    def get_tv(self, item_id: Union[str, int], folder_path: str = "ALL") -> Optional[dict[str, Any]]:
         """
         获取剧集详情（含季/集信息）。
+
+        :param item_id: 绿联内部视频条目标识
+        :param folder_path: 目录筛选条件，默认 ALL 表示全部目录
+        :return: 接口 data 中的业务字典；业务失败或 data 不是映射时返回 None
         """
         result = self.request(
             "v2/video/details/getTV",
@@ -661,15 +754,16 @@ class Api:
                 "folder_path": folder_path,
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
     def scan(self, media_lib_set_id: Union[str, int], scan_type: int = 2, op_type: int = 2) -> bool:
         """
         触发媒体库扫描。
 
-        :param media_lib_set_id: 媒体库 ID
-        :param scan_type: 扫描类型（1: 新添加和修改, 2: 补充缺失, 3: 覆盖扫描）
-        :param op_type: 操作类型（网页端常用 2）
+        :param media_lib_set_id: 要扫描的媒体库集合标识
+        :param scan_type: 1 扫描新建和修改，2 补充缺失，3 覆盖扫描，默认 2
+        :param op_type: 服务端操作类型，默认使用网页端的 2
+        :return: 扫描请求业务成功时返回 True，否则 False；不等待扫描完成
         """
         result = self.request(
             "v1/video/media_lib/scan",
@@ -681,9 +775,12 @@ class Api:
         )
         return result.success
 
-    def scan_status(self, only_brief: bool = True) -> list[dict]:
+    def scan_status(self, only_brief: bool = True) -> list[dict[str, Any]]:
         """
         获取媒体库扫描状态。
+
+        :param only_brief: 是否仅请求扫描概要，默认启用
+        :return: 扫描状态记录列表；业务失败或响应结构不符时返回空列表
         """
         result = self.request(
             "v1/video/media_lib/scan/status",
@@ -696,7 +793,9 @@ class Api:
 
     def preferences_all(self) -> Optional[Any]:
         """
-        获取影视偏好设置（`v1/video/preferences/all`）。
+        读取影视偏好设置。
+
+        :return: data 原始偏好数据，业务失败时返回 None
         """
         result = self.request("v1/video/preferences/all")
         return result.data if result.success else None
@@ -704,13 +803,18 @@ class Api:
     def history_get(self, num: int = 10) -> Optional[Any]:
         """
         获取历史记录（`v1/video/history/get`）。
+
+        :param num: 最多返回的历史记录数，默认 10
+        :return: 服务端 data 原始业务数据；业务失败时返回 None
         """
         result = self.request("v1/video/history/get", params={"num": num})
         return result.data if result.success else None
 
     def data_source_get_config(self) -> Optional[Any]:
         """
-        获取数据源配置（`v1/video/data_source/get_config`）。
+        读取元数据来源配置。
+
+        :return: data 原始来源配置，业务失败时返回 None
         """
         result = self.request("v1/video/data_source/get_config")
         return result.data if result.success else None
@@ -720,6 +824,10 @@ class Api:
     ) -> Optional[Any]:
         """
         获取首页轮播数据（`v1/video/homepage/slider`）。
+
+        :param language: 请求语言，空值使用实例配置语言
+        :param app_name: 客户端应用名称，默认 web
+        :return: 服务端 data 原始业务数据；业务失败时返回 None
         """
         result = self.request(
             "v1/video/homepage/slider",
@@ -732,7 +840,9 @@ class Api:
 
     def media_lib_guide_init(self) -> Optional[Any]:
         """
-        获取媒体库引导初始化信息（`v1/video/media_lib/guide_init`）。
+        读取媒体库引导初始化信息。
+
+        :return: data 原始引导信息，业务失败时返回 None
         """
         result = self.request("v1/video/media_lib/guide_init")
         return result.data if result.success else None
@@ -742,6 +852,10 @@ class Api:
     ) -> Optional[Any]:
         """
         获取媒体库筛选项（`v1/video/media_lib/filter/options`）。
+
+        :param media_type: 服务端筛选类型编号，默认 0
+        :param language: 请求语言，空值使用实例配置语言
+        :return: 服务端 data 原始业务数据；业务失败时返回 None
         """
         result = self.request(
             "v1/video/media_lib/filter/options",
@@ -755,6 +869,10 @@ class Api:
     def guide(self, guide_position: int = 1, client_type: int = 1) -> Optional[Any]:
         """
         获取引导位数据（`v1/video/guide`）。
+
+        :param guide_position: 服务端引导位置编号，默认 1
+        :param client_type: 服务端客户端类型编号，默认 1
+        :return: 服务端 data 原始业务数据；业务失败时返回 None
         """
         result = self.request(
             "v1/video/guide",
@@ -768,6 +886,9 @@ class Api:
     def homepage_v2(self, language: Optional[str] = None) -> Optional[Any]:
         """
         获取新版首页聚合数据（`v2/video/homepage`）。
+
+        :param language: 请求语言，空值使用实例配置语言
+        :return: 服务端 data 原始业务数据；业务失败时返回 None
         """
         result = self.request(
             "v2/video/homepage",
@@ -777,7 +898,9 @@ class Api:
 
     def media_lib_init_user_permission(self) -> Optional[Any]:
         """
-        初始化用户媒体库权限（`v1/video/media_lib/init_user_permission`）。
+        请求初始化当前用户的媒体库权限。
+
+        :return: data 原始业务结果，业务失败时返回 None
         """
         result = self.request("v1/video/media_lib/init_user_permission")
         return result.data if result.success else None
@@ -787,6 +910,10 @@ class Api:
     ) -> Optional[Any]:
         """
         获取全部媒体库集合（`v1/video/media_lib/get_all`）。
+
+        :param req_type: 服务端媒体库集合请求类型，默认 2
+        :param language: 请求语言，空值使用实例配置语言
+        :return: 服务端 data 原始业务数据；业务失败时返回 None
         """
         result = self.request(
             "v1/video/media_lib/get_all",
@@ -800,7 +927,14 @@ class Api:
 
 @dataclass(frozen=True)
 class UgreenMediaSession:
-    """绿联媒体库服务 Emby 兼容接口的登录会话。"""
+    """
+    绿联媒体库服务认证成功后的不可变会话信息。
+
+    :param token: 媒体库服务 AccessToken，访问接口时作为 api_key 使用
+    :param user_id: 认证用户标识，用于用户范围内的媒体库查询
+    :param server_id: 可选媒体服务器标识，服务端未提供时为 None
+    :param user: 认证响应中的原始用户详情；未提供时为 None
+    """
 
     token: str
     user_id: str
@@ -831,7 +965,7 @@ class UgreenMediaApi:
         初始化媒体库服务 API 客户端。
 
         :param host: 绿联媒体库服务地址
-        :param timeout: HTTP 请求超时时间
+        :param timeout: HTTP 请求超时时间，单位秒
         :param verify_ssl: 是否校验 HTTPS 证书
         """
         normalized_host = UrlUtils.standardize_base_url(host).rstrip("/")
@@ -850,30 +984,42 @@ class UgreenMediaApi:
 
     @property
     def host(self) -> str:
-        """获取规范化后的媒体库服务地址。"""
+        """
+        获取规范化后的媒体库服务地址。
+        """
         return self._host
 
     @property
     def token(self) -> Optional[str]:
-        """获取当前媒体库服务 AccessToken。"""
+        """
+        获取当前媒体库服务 AccessToken。
+        """
         return self._token
 
     @property
     def user_id(self) -> Optional[str]:
-        """获取认证响应中的媒体库用户 ID。"""
+        """
+        获取认证响应中的媒体库用户 ID。
+        """
         return self._user_id
 
     @property
     def server_id(self) -> Optional[str]:
-        """获取认证响应中的媒体服务器 ID。"""
+        """
+        获取认证响应中的媒体服务器 ID。
+        """
         return self._server_id
 
     def close(self) -> None:
-        """关闭媒体库服务的 HTTP 会话。"""
+        """
+        关闭媒体库服务的 HTTP 会话。
+        """
         self._request_utils.close()
 
     def _headers(self) -> dict[str, str]:
-        """构造 Emby 兼容接口所需的客户端请求头。"""
+        """
+        构造 Emby 兼容接口所需的客户端请求头。
+        """
         token = f', Token="{self._token}"' if self._token else ""
         return {
             "X-Emby-Authorization": (
@@ -972,14 +1118,22 @@ class UgreenMediaApi:
         )
 
     def current_user(self) -> Optional[dict[str, Any]]:
-        """获取当前媒体库账号的用户详情，用于检测 AccessToken 是否仍有效。"""
+        """
+        查询认证用户详情，以检查媒体库令牌有效性。
+
+        :return: 用户详情字典；未登录、请求失败或响应结构不符时返回 None
+        """
         if not self._user_id:
             return None
         payload = self._request(f"emby/Users/{self._user_id}")
         return dict(payload) if isinstance(payload, Mapping) else None
 
     def views(self) -> Optional[list[dict[str, Any]]]:
-        """获取当前媒体库账号可见的媒体库视图。"""
+        """
+        读取认证用户可见的媒体库视图。
+
+        :return: 媒体库字典列表；未登录、请求失败或响应结构不符时返回 None
+        """
         if not self._user_id:
             return None
         payload = self._request(f"emby/Users/{self._user_id}/Views")
@@ -1012,7 +1166,7 @@ class UgreenMediaApi:
         :param sort_by: 排序字段
         :param sort_order: 排序方向
         :param fields: 需要返回的字段
-        :return: Emby Items 响应
+        :return: 含 Items 和计数等字段的响应字典；未登录、请求失败或结构不符时返回 None
         """
         if not self._user_id:
             return None
@@ -1039,7 +1193,12 @@ class UgreenMediaApi:
         return dict(payload) if isinstance(payload, Mapping) else None
 
     def item(self, item_id: Union[str, int]) -> Optional[dict[str, Any]]:
-        """通过当前用户条目接口获取单个媒体条目详情。"""
+        """
+        通过当前用户的条目查询接口读取单个媒体详情。
+
+        :param item_id: 媒体库服务条目标识
+        :return: 首个匹配条目的字典；标识为空、未登录、无匹配或查询失败时返回 None
+        """
         if not self._user_id or not item_id:
             return None
         payload = self.items(ids=str(item_id), limit=1)
@@ -1049,12 +1208,21 @@ class UgreenMediaApi:
         return dict(items[0]) if isinstance(items, list) and items else None
 
     def counts(self) -> Optional[dict[str, Any]]:
-        """获取媒体库的电影、剧集、集数和音乐数量统计。"""
+        """
+        查询媒体库服务的媒体数量统计。
+
+        :return: 服务端原始统计字典；请求失败或响应结构不符时返回 None
+        """
         payload = self._request("emby/Items/Counts")
         return dict(payload) if isinstance(payload, Mapping) else None
 
     def resume(self, limit: int = 20) -> Optional[list[dict[str, Any]]]:
-        """获取当前媒体库账号的继续观看条目。"""
+        """
+        查询当前用户的继续观看列表。
+
+        :param limit: 最多返回条目数量，默认 20
+        :return: 播放条目字典列表；未登录、请求失败或响应结构不符时返回 None
+        """
         if not self._user_id:
             return None
         payload = self._request(
@@ -1074,7 +1242,7 @@ class UgreenMediaApi:
 
         :param series_id: 剧集条目 ID
         :param season: 可选季号
-        :return: Emby Episodes 条目列表
+        :return: 分集条目字典列表；剧集标识为空、请求失败或结构不符时返回 None
         """
         if not series_id:
             return None
@@ -1088,7 +1256,13 @@ class UgreenMediaApi:
         return [dict(item) for item in items if isinstance(item, Mapping)] if isinstance(items, list) else None
 
     def image_url(self, item_id: Union[str, int], image_type: str = "Primary") -> Optional[str]:
-        """生成当前媒体条目的 Emby 图片地址。"""
+        """
+        构造带媒体库访问令牌的图片地址。
+
+        :param item_id: 媒体库条目标识
+        :param image_type: 图片类型，默认 Primary 主封面
+        :return: 包含 api_key 的图片 URL；缺少条目标识或令牌时返回 None，不验证图片是否存在
+        """
         if not item_id or not self._token:
             return None
         return f"{self._host}/emby/Items/{item_id}/Images/{image_type}?api_key={self._token}"

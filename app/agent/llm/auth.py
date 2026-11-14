@@ -1,7 +1,10 @@
-"""LLM Provider 持久鉴权和外部授权协议的唯一 owner。"""
+"""
+LLM Provider 持久鉴权和外部授权协议的唯一 owner。
+"""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import copy
 import hashlib
@@ -25,7 +28,9 @@ from app.schemas.types import SystemConfigKey
 
 
 def render_auth_result_html(success: bool, message: str) -> str:
-    """生成 OAuth 回调落地页，并转义所有外部可控文本。"""
+    """
+    生成 OAuth 回调落地页，并转义所有外部可控文本。
+    """
     title = "授权成功" if success else "授权失败"
     accent = "#3aa675" if success else "#e24b4b"
     safe_title = html.escape(title, quote=True)
@@ -93,14 +98,19 @@ def render_auth_result_html(success: bool, message: str) -> str:
 
 
 class _ProviderAuth:
-    """LLM Provider 持久鉴权和外部授权协议的唯一 owner。"""
+    """
+    LLM Provider 持久鉴权和外部授权协议的唯一 owner。
+    """
 
     _lock: Any
+    _chatgpt_refresh_lock: asyncio.Lock
     _pending_sessions: dict[str, PendingAuthSession]
     _oauth_state_index: dict[str, str]
 
     def __getattr__(self, name: str) -> Any:
-        """将跨 owner 调用交给最终 Facade 的 MRO 解析。"""
+        """
+        将跨 owner 调用交给最终 Facade 的 MRO 解析。
+        """
         raise AttributeError(name)
 
     _CHATGPT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -113,7 +123,9 @@ class _ProviderAuth:
 
     @staticmethod
     def _read_agent_config() -> dict[str, Any]:
-        """读取 AI Agent 配置信息。"""
+        """
+        读取 AI Agent 配置信息。
+        """
         config = get_configured_system_config().get(SystemConfigKey.AIAgentConfig)
         if isinstance(config, dict):
             return config
@@ -133,7 +145,9 @@ class _ProviderAuth:
         )
 
     def _get_auth_store(self) -> dict[str, Any]:
-        """获取所有鉴权数据。"""
+        """
+        获取所有鉴权数据。
+        """
         config = self._read_agent_config()
         auth_store = config.get("provider_auth")
         if isinstance(auth_store, dict):
@@ -141,11 +155,15 @@ class _ProviderAuth:
         return {}
 
     def get_saved_auth(self, provider_id: str) -> dict[str, Any] | None:
-        """读取持久化 provider 鉴权信息。"""
+        """
+        读取持久化 provider 鉴权信息。
+        """
         return copy.deepcopy(self._get_auth_store().get(provider_id))
 
     async def save_auth(self, provider_id: str, auth_data: dict[str, Any]) -> None:
-        """写入 provider 鉴权信息。"""
+        """
+        写入 provider 鉴权信息。
+        """
         config = self._read_agent_config()
         auth_store = config.get("provider_auth")
         if not isinstance(auth_store, dict):
@@ -155,7 +173,9 @@ class _ProviderAuth:
         await self._write_agent_config(config)
 
     async def clear_auth(self, provider_id: str) -> None:
-        """移除 provider 鉴权信息。"""
+        """
+        移除 provider 鉴权信息。
+        """
         config = self._read_agent_config()
         auth_store = config.get("provider_auth")
         if not isinstance(auth_store, dict):
@@ -168,7 +188,9 @@ class _ProviderAuth:
         await self._write_agent_config(config)
 
     def get_auth_status(self, provider_id: str) -> dict[str, Any]:
-        """返回前端展示用的 provider 鉴权摘要。"""
+        """
+        返回前端展示用的 provider 鉴权摘要。
+        """
         auth = self.get_saved_auth(provider_id)
         if not auth:
             return {"connected": False}
@@ -182,7 +204,9 @@ class _ProviderAuth:
 
     @staticmethod
     def _jwt_claims(token: str) -> dict[str, Any]:
-        """解析 JWT token 内容（不验证签名）。"""
+        """
+        解析 JWT token 内容（不验证签名）。
+        """
         try:
             payload = jwt.decode(token, options={"verify_signature": False})
             return payload if isinstance(payload, dict) else {}
@@ -192,7 +216,9 @@ class _ProviderAuth:
 
     @staticmethod
     def _extract_chatgpt_account_id(token_payload: dict[str, Any]) -> Optional[str]:
-        """从 ChatGPT 的 Token payload 中提取 account id。"""
+        """
+        从 ChatGPT 的 Token payload 中提取 account id。
+        """
         if token_payload.get("chatgpt_account_id"):
             return str(token_payload["chatgpt_account_id"])
         auth_payload = token_payload.get("https://api.openai.com/auth") or {}
@@ -204,7 +230,9 @@ class _ProviderAuth:
         return None
 
     def _chatgpt_authorize_url(self, redirect_uri: str, challenge: str, state: str) -> str:
-        """构建 ChatGPT OAuth 授权链接。"""
+        """
+        构建 ChatGPT OAuth 授权链接。
+        """
         query = urlencode(
             {
                 "response_type": "code",
@@ -223,7 +251,9 @@ class _ProviderAuth:
 
     @staticmethod
     def _pkce_pair() -> tuple[str, str]:
-        """生成 PKCE verifier 和 challenge。"""
+        """
+        生成 PKCE verifier 和 challenge。
+        """
         verifier = secrets.token_urlsafe(64).replace("=", "")
         digest = hashlib.sha256(verifier.encode("utf-8")).digest()
         challenge = base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
@@ -362,7 +392,9 @@ class _ProviderAuth:
         error: Optional[str],
         error_description: Optional[str],
     ) -> tuple[bool, str]:
-        """处理 ChatGPT 浏览器 OAuth 回调。"""
+        """
+        处理 ChatGPT 浏览器 OAuth 回调。
+        """
         if provider_id != "chatgpt":
             return False, "当前 provider 不支持浏览器 OAuth 回调"
 
@@ -418,7 +450,9 @@ class _ProviderAuth:
     async def _exchange_chatgpt_code_for_tokens(
         self, code: str, redirect_uri: str, code_verifier: str
     ) -> dict[str, Any]:
-        """使用 authorization code 交换 ChatGPT 令牌。"""
+        """
+        使用 authorization code 交换 ChatGPT 令牌。
+        """
         response = await self._build_async_request(
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         ).post_res(
@@ -439,7 +473,9 @@ class _ProviderAuth:
         return payload
 
     async def _refresh_chatgpt_tokens(self, refresh_token: str) -> dict[str, Any]:
-        """刷新 ChatGPT 的 access_token。"""
+        """
+        刷新 ChatGPT 的 access_token。
+        """
         response = await self._build_async_request(
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         ).post_res(
@@ -451,6 +487,23 @@ class _ProviderAuth:
             },
             raise_exception=True,
         )
+        if response.status_code >= 400:
+            # 只展示已知错误码的本地说明，不把响应正文或令牌带入日志和管理接口。
+            try:
+                error = response.json().get("error")
+            except (ValueError, AttributeError):
+                error = None
+            code = error.get("code") if isinstance(error, dict) else error
+            messages = {
+                "refresh_token_reused": "ChatGPT 刷新令牌已被使用，请重新授权；请勿在多个客户端复制同一授权",
+                "refresh_token_expired": "ChatGPT 刷新令牌已过期，请重新授权",
+                "refresh_token_invalidated": "ChatGPT 授权已被撤销，请重新授权",
+                "invalid_grant": "ChatGPT 授权已失效，请重新授权",
+            }
+            message = messages.get(code) if isinstance(code, str) else None
+            raise LLMProviderAuthError(
+                message or f"ChatGPT 令牌刷新失败（HTTP {response.status_code}），请稍后重试"
+            )
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
@@ -458,7 +511,9 @@ class _ProviderAuth:
         return payload
 
     async def _poll_chatgpt_device_auth(self, session: PendingAuthSession) -> None:
-        """轮询 ChatGPT Device Auth 状态。"""
+        """
+        轮询 ChatGPT Device Auth 状态。
+        """
         response = await self._build_async_request(
             headers={
                 "Content-Type": "application/json",
@@ -501,7 +556,9 @@ class _ProviderAuth:
         )
 
     async def _poll_copilot_device_auth(self, session: PendingAuthSession) -> None:
-        """轮询 GitHub Copilot Device Auth 状态。"""
+        """
+        轮询 GitHub Copilot Device Auth 状态。
+        """
         try:
             exchange = await GithubAuthClient().exchange_device_code(
                 self._COPILOT_CLIENT_ID,
@@ -537,26 +594,30 @@ class _ProviderAuth:
             raise LLMProviderAuthError("GitHub Copilot 授权失败，请重新开始。")
 
     async def _resolve_chatgpt_oauth(self) -> dict[str, Any]:
-        """解析并返回 ChatGPT OAuth 鉴权，支持自动刷新 Token。"""
-        auth = self.get_saved_auth("chatgpt")
-        if not auth or auth.get("type") != "oauth":
-            raise LLMProviderAuthError("尚未完成 ChatGPT Plus/Pro 授权")
+        """
+        解析并返回 ChatGPT OAuth 鉴权，支持自动刷新 Token。
+        """
+        # 读取、刷新和持久化必须串行；等待者重新读取轮换后的令牌，不能重用旧令牌。
+        async with self._chatgpt_refresh_lock:
+            auth = self.get_saved_auth("chatgpt")
+            if not auth or auth.get("type") != "oauth":
+                raise LLMProviderAuthError("尚未完成 ChatGPT Plus/Pro 授权")
 
-        expires_at = auth.get("expires_at")
-        refresh_token = auth.get("refresh_token")
-        # 预留 60 秒刷新缓冲，避免刚发起请求就遇到过期。
-        if expires_at and refresh_token and int(expires_at) <= int(time.time()) + 60:
-            payload = await self._refresh_chatgpt_tokens(refresh_token)
-            claims = self._jwt_claims(payload.get("id_token") or payload["access_token"])
-            auth.update(
-                {
-                    "access_token": payload["access_token"],
-                    "refresh_token": payload.get("refresh_token") or refresh_token,
-                    "expires_at": int(time.time() + int(payload.get("expires_in") or 3600)),
-                    "account_id": auth.get("account_id") or self._extract_chatgpt_account_id(claims),
-                    "email": auth.get("email") or claims.get("email"),
-                    "label": auth.get("label") or claims.get("email") or auth.get("account_id") or "ChatGPT Plus/Pro",
-                }
-            )
-            await self.save_auth("chatgpt", auth)
-        return auth
+            expires_at = auth.get("expires_at")
+            refresh_token = auth.get("refresh_token")
+            # 预留 60 秒刷新缓冲，避免刚发起请求就遇到过期。
+            if expires_at and refresh_token and int(expires_at) <= int(time.time()) + 60:
+                payload = await self._refresh_chatgpt_tokens(refresh_token)
+                claims = self._jwt_claims(payload.get("id_token") or payload["access_token"])
+                auth.update(
+                    {
+                        "access_token": payload["access_token"],
+                        "refresh_token": payload.get("refresh_token") or refresh_token,
+                        "expires_at": int(time.time() + int(payload.get("expires_in") or 3600)),
+                        "account_id": auth.get("account_id") or self._extract_chatgpt_account_id(claims),
+                        "email": auth.get("email") or claims.get("email"),
+                        "label": auth.get("label") or claims.get("email") or auth.get("account_id") or "ChatGPT Plus/Pro",
+                    }
+                )
+                await self.save_auth("chatgpt", auth)
+            return auth

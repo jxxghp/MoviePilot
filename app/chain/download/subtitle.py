@@ -1,9 +1,12 @@
-"""字幕获取、解压和存储 owner。"""
+"""
+字幕获取、解压和存储 owner。
+"""
 
 from __future__ import annotations
 
 import re
 import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union, cast
@@ -12,6 +15,7 @@ from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import (
     DirectoryHelper,
     build_media_download_path,
+    specified_download_save_path,
     validate_download_save_path,
 )
 from app.application.torrent.download import TorrentHelper
@@ -30,6 +34,7 @@ from app.domain.context import (
     SubtitleInfo,
 )
 from app.domain.metainfo import MetaInfo
+from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import FileURI
@@ -100,7 +105,9 @@ def _resolve_site_subtitle_target_dir(
     downloader: Optional[str],
     list_torrents: Callable[..., Optional[List[DownloaderTorrent]]],
 ) -> Tuple[Optional[str], Optional[Path]]:
-    """结合下载器当前内容路径解析字幕目录，避免已包含的种子目录名被重复追加。"""
+    """
+    结合下载器当前内容路径解析字幕目录，避免已包含的种子目录名被重复追加。
+    """
     file_uri = FileURI.from_uri(download_dir.as_posix())
     storage = file_uri.storage or "local"
     if not file_uri.path:
@@ -126,7 +133,9 @@ def _get_completed_transfer_histories(
     repository: Any,
     download_hash: Optional[str],
 ) -> Optional[List[TransferHistorySnapshot]]:
-    """读取同一下载任务已成功整理的源文件与目标文件对应关系。"""
+    """
+    读取同一下载任务已成功整理的源文件与目标文件对应关系。
+    """
     if not download_hash:
         return []
     try:
@@ -148,7 +157,9 @@ def _prepare_site_subtitle_directory(
     transfer_history_repository: Any,
     download_hash: Optional[str],
 ) -> Tuple[Optional[_SchemaFileItem], bool]:
-    """等待下载目录或为已整理任务恢复空目录，仅返回字幕落盘所需状态。"""
+    """
+    等待下载目录或为已整理任务恢复空目录，仅返回字幕落盘所需状态。
+    """
     working_dir_item = None
     video_already_transferred = False
     for attempt in range(30):
@@ -201,7 +212,9 @@ def _enqueue_completed_site_subtitles(
     downloader: Optional[str],
     is_subtitle_file: Callable[[str], bool],
 ) -> None:
-    """把已整理任务下载目录中的站点字幕送入标准整理队列。"""
+    """
+    把已整理任务下载目录中的站点字幕送入标准整理队列。
+    """
     try:
         subtitle_items = [
             item
@@ -239,7 +252,9 @@ def _enqueue_completed_site_subtitles(
 
 
 class DownloadSubtitleOwner(_DownloadOwnerBase):
-    """字幕获取、解压和存储 owner。"""
+    """
+    字幕获取、解压和存储 owner。
+    """
 
     _SUBTITLE_ARCHIVE_FORMATS = {
         ".zip": "zip",
@@ -251,7 +266,9 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         """
         生成安全的字幕文件名。
         """
-        file_name = Path(file_name or fallback_name).name
+        file_name = Path((file_name or fallback_name).replace("\\", "/")).name
+        if file_name in ("", ".", ".."):
+            file_name = Path(fallback_name).name
         if not Path(file_name).suffix and Path(fallback_name).suffix:
             file_name = f"{file_name}{Path(fallback_name).suffix}"
         return file_name
@@ -318,9 +335,14 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             save_path: Optional[str] = None,
     ) -> Tuple[Optional[str], Optional[Path], str]:
         """
-        根据媒体信息解析下载目录。
+        显式路径沿用原有校验与分类规则，默认路径按配置优先级选择可用下载目录。
+
+        :param media_info: 待下载媒体信息
+        :param save_path: 显式保存路径；空白值视为未指定
+        :return: 存储类型、保存目录及错误信息
         """
         storage = 'local'
+        save_path = specified_download_save_path(save_path)
         if save_path is not None:
             try:
                 validated_save_path = validate_download_save_path(save_path)
@@ -348,10 +370,10 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
                 )
             return storage, target_dir, ""
 
-        dir_info = DirectoryHelper().get_dir(media_info, include_unsorted=True)
+        dir_info = DirectoryHelper().get_download_dir(media_info)
         storage = (dir_info.storage or storage) if dir_info else storage
         if not dir_info:
-            logger.error(f"未找到下载目录：{media_info.type.value} {media_info.title_year}")
+            logger.error(f"未找到下载目录：{media_info.type.value if media_info.type else ""} {media_info.title_year}")
             return None, None, "未找到下载目录"
 
         if not dir_info.download_path:
@@ -435,7 +457,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         保存字幕下载响应到目标目录。
         """
         fallback_name = self._detect_subtitle_fallback_name(subtitle, response.content)
-        file_name = subtitle.file_name or TorrentHelper.get_url_filename(response, subtitle.enclosure)
+        file_name = subtitle.file_name or TorrentHelper.get_url_filename(response, subtitle.enclosure or "")
         if not Path(file_name).suffix:
             file_name = fallback_name
         file_name = self._safe_subtitle_file_name(
@@ -457,10 +479,12 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             return False, message, []
 
         saved_files = []
-        temp_file = self.runtime_config.temporary_path / file_name
-        temp_extract_dir = temp_file.with_name(temp_file.stem)
+        temp_root = None
         try:
             self.runtime_config.temporary_path.mkdir(parents=True, exist_ok=True)
+            temp_root = Path(tempfile.mkdtemp(prefix="subtitle-", dir=self.runtime_config.temporary_path))
+            temp_file = temp_root / file_name
+            temp_extract_dir = temp_root / "extracted"
             temp_file.write_bytes(response.content)
             if self._is_subtitle_archive(file_name):
                 try:
@@ -478,6 +502,9 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
                     temp_extract_dir,
                     self.runtime_config.subtitle_extensions,
                 ):
+                    if not sub_file.resolve().is_relative_to(temp_extract_dir.resolve()):
+                        logger.warning("字幕解压结果越过临时目录，拒绝上传")
+                        continue
                     uploaded_path, message = self._upload_subtitle_file(
                         storage_chain=storage_chain,
                         storage=storage,
@@ -510,10 +537,8 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             return False, message, []
         finally:
             try:
-                if temp_extract_dir.exists():
-                    shutil.rmtree(temp_extract_dir)
-                if temp_file.exists():
-                    temp_file.unlink()
+                if temp_root is not None:
+                    shutil.rmtree(temp_root)
             except Exception as err:
                 logger.error(f"删除临时字幕文件失败：{str(err)}")
 
@@ -538,7 +563,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         if not subtitle or not subtitle.enclosure:
             return False, "字幕下载链接为空", []
 
-        metainfo = MetaInfo(title=subtitle.title, subtitle=subtitle.description)
+        metainfo = MetaInfo(title=subtitle.title or "", subtitle=subtitle.description)
         mediainfo = MediaChain().recognize_media(
             meta=metainfo,
             media_source=media_source,
@@ -614,66 +639,41 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         storage: str,
         working_dir_item: _SchemaFileItem,
     ) -> None:
-        """保存站点详情页返回的单个字幕响应，响应所有权仍归调用方。"""
+        """
+        保存站点详情页返回的单个字幕响应，响应所有权仍归调用方。
+        """
         if response.status_code != 200:
             logger.error(f"下载字幕文件失败：{sublink}")
             return
-        file_name = TorrentHelper.get_url_filename(response, sublink)
-        if not file_name:
+        raw_name = TorrentHelper.get_url_filename(response, sublink)
+        if not raw_name:
             logger.warn(f"链接不是字幕文件：{sublink}")
             return
-        archive_format = self._SUBTITLE_ARCHIVE_FORMATS.get(
-            Path(file_name).suffix.lower()
-        )
-        if not archive_format:
-            if Path(file_name).suffix.lower() not in self.runtime_config.subtitle_extensions:
-                logger.warn(f"链接不是支持的字幕文件：{sublink} - {file_name}")
-                return
-            sub_file = self.runtime_config.temporary_path / file_name
-            sub_file.write_bytes(response.content)
-            if not working_dir_item.path:
-                logger.error("字幕工作目录路径为空")
-                return
-            target_sub_file = Path(working_dir_item.path) / sub_file.name
-            if storage_chain.get_file_item(storage, target_sub_file):
-                logger.info(f"字幕文件已存在：{target_sub_file}")
-                return
-            logger.info(f"转移字幕 {sub_file} 到 {target_sub_file} ...")
-            storage_chain.upload_file(working_dir_item, sub_file)
+        file_name = self._safe_subtitle_file_name(raw_name, "subtitle.srt")
+        archive_format = self._subtitle_archive_format(file_name)
+        if not archive_format and Path(file_name).suffix.lower() not in self.runtime_config.subtitle_extensions:
+            logger.warn(f"链接不是支持的字幕文件：{sublink} - {file_name}")
             return
-
-        archive_file = self.runtime_config.temporary_path / file_name
-        archive_file.write_bytes(response.content)
-        archive_path = archive_file.with_name(archive_file.stem)
-        try:
-            archive_port.unpack(
-                archive_file,
-                archive_path,
-                archive_format=archive_format,
-            )
-            for sub_file in archive_port.list_files(
-                archive_path,
-                self.runtime_config.subtitle_extensions,
-            ):
-                if not working_dir_item.path:
-                    logger.error("字幕工作目录路径为空")
-                    return
-                target_sub_file = Path(working_dir_item.path) / sub_file.name
-                if storage_chain.get_file_item(storage, target_sub_file):
-                    logger.info(f"字幕文件已存在：{target_sub_file}")
-                    continue
-                logger.info(f"转移字幕 {sub_file} 到 {target_sub_file} ...")
-                storage_chain.upload_file(working_dir_item, sub_file)
-        except Exception as err:
-            logger.error(f"字幕压缩包解压失败：{archive_file} - {str(err)}")
-        finally:
+        self.runtime_config.temporary_path.mkdir(parents=True, exist_ok=True)
+        # 临时目录只属于本次响应；清理范围不由远端文件名或压缩包名称决定。
+        with tempfile.TemporaryDirectory(prefix="site-subtitle-", dir=self.runtime_config.temporary_path) as directory:
+            temporary = Path(directory)
+            subtitle_file = temporary / file_name
+            subtitle_file.write_bytes(response.content)
             try:
-                if archive_path.exists():
-                    shutil.rmtree(archive_path)
-                if archive_file.exists():
-                    archive_file.unlink()
+                if archive_format:
+                    archive_path = temporary / "extracted"
+                    archive_port.unpack(subtitle_file, archive_path, archive_format=archive_format)
+                    files = archive_port.list_files(archive_path, self.runtime_config.subtitle_extensions)
+                else:
+                    archive_path, files = temporary, [subtitle_file]
+                for sub_file in files:
+                    if not sub_file.resolve().is_relative_to(archive_path.resolve()):
+                        logger.warning("字幕解压结果越过临时目录，拒绝上传")
+                        continue
+                    self._upload_subtitle_file(storage_chain, storage, working_dir_item, sub_file)
             except Exception as err:
-                logger.error(f"删除临时文件失败：{str(err)}")
+                logger.error(f"保存站点字幕失败：{str(err)}")
 
     def download_site_subtitles(
             self,
@@ -689,17 +689,13 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         if not self.runtime_config.download_subtitle:
             return
 
-        # 没有种子文件不处理
         if not torrent_content:
             return
 
-        # 没有详情页不处理
         torrent = context.torrent_info
-        if not torrent.page_url:
+        if not torrent or not torrent.page_url:
             return
-        # 字幕下载目录
         logger.info("开始从站点下载字幕：%s" % torrent.page_url)
-        # 获取种子信息
         folder_name, _ = cast(Any, TorrentHelper)().get_fileinfo_from_torrent_content(
             torrent_content
         )
@@ -725,12 +721,10 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         if not working_dir_item:
             logger.error(f"下载目录不存在，无法保存字幕：{target_dir}")
             return
-        # 解析字幕下载链接
         sublink_list = self._site_subtitle_links(context)
         if not sublink_list:
             logger.warn(f"{torrent.page_url} 页面未找到字幕下载链接")
             return
-        # 下载所有字幕文件
         try:
             http, archive_port = _download_ports_snapshot()
         except RuntimeError as err:
@@ -741,7 +735,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             logger.info(f"找到字幕下载链接：{sublink}，开始下载...")
             ret = http.get(
                 sublink,
-                cookies=torrent.site_cookie,
+                cookies=torrent.site_cookie if UrlUtils.same_origin(torrent.page_url, sublink) else None,
                 ua=torrent.site_ua,
                 proxies=self.runtime_config.proxy if torrent.site_proxy else None,
             )

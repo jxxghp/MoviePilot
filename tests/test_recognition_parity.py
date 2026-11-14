@@ -1,4 +1,6 @@
-"""媒体识别 Chain 同步、异步入口的业务决策对称性测试。"""
+"""
+媒体识别 Chain 同步、异步入口的业务决策对称性测试。
+"""
 
 import asyncio
 from dataclasses import replace
@@ -14,17 +16,23 @@ from app.schemas.types import ChainEventType, MediaSource, MediaType
 
 
 async def _keep_async_candidate(**kwargs):
-    """异步插件补充替身保持原生候选不变。"""
+    """
+    异步插件补充替身保持原生候选不变。
+    """
     return kwargs["mediainfo"]
 
 
 def _keep_candidate(**kwargs):
-    """同步插件补充替身保持原生候选不变。"""
+    """
+    同步插件补充替身保持原生候选不变。
+    """
     return kwargs["mediainfo"]
 
 
 def _fallback(title: str) -> MediaInfo:
-    """构造不带远端身份的可观察回退结果。"""
+    """
+    构造不带远端身份的可观察回退结果。
+    """
     return MediaInfo(title=title, type=MediaType.MOVIE)
 
 
@@ -50,7 +58,9 @@ def test_sync_async_requests_build_identical_module_plans(
         request_kwargs,
         expected_identity,
 ) -> None:
-    """同一请求经双入口规范化后必须得到完全相同的模块参数。"""
+    """
+    同一请求经双入口规范化后必须得到完全相同的模块参数。
+    """
     chain = ChainBase()
     meta = MetaInfo("空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
     meta.episode_group = "group-1"
@@ -88,7 +98,9 @@ def test_sync_async_requests_build_identical_module_plans(
     ],
 )
 def test_sync_async_reject_the_same_invalid_explicit_identity(request_kwargs) -> None:
-    """显式身份缺半或为零时，双入口都必须在任何 I/O 前拒绝。"""
+    """
+    显式身份缺半或为零时，双入口都必须在任何 I/O 前拒绝。
+    """
     chain = ChainBase()
     sync_native = Mock()
     async_native = AsyncMock()
@@ -106,7 +118,9 @@ def test_sync_async_reject_the_same_invalid_explicit_identity(request_kwargs) ->
 
 
 def test_sync_async_share_miss_preserves_the_same_first_fallback() -> None:
-    """共享身份二次识别仍无身份时，双入口都保留最早的本地回退结果。"""
+    """
+    共享身份二次识别仍无身份时，双入口都保留最早的本地回退结果。
+    """
     chain = ChainBase()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -154,7 +168,9 @@ def test_sync_async_share_miss_preserves_the_same_first_fallback() -> None:
 
 
 def test_sync_async_share_hit_uses_same_second_plan_and_cache_backfill() -> None:
-    """共享身份命中后，双入口应按同一二次计划识别并回填各自本地缓存。"""
+    """
+    共享身份命中后，双入口应按同一二次计划识别并回填各自本地缓存。
+    """
     chain = ChainBase()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -228,7 +244,9 @@ def test_sync_async_share_hit_uses_same_second_plan_and_cache_backfill() -> None
 
 
 def test_sync_async_plugin_failures_use_one_payload_and_fallback_policy() -> None:
-    """插件返回无身份结果时，双入口发送同一载荷并保留各自原候选。"""
+    """
+    插件返回无身份结果时，双入口发送同一载荷并保留各自原候选。
+    """
     chain = ChainBase()
     meta = MetaInfo("插件回退电影 (2026)")
     sync_fallback = _fallback("同步回退")

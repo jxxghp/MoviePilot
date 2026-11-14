@@ -1,3 +1,7 @@
+"""
+验证Plex 媒体同步的超时传播与异常恢复。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 from xml.etree.ElementTree import fromstring
@@ -7,6 +11,8 @@ import pytest
 # 注册真实 Plex 音乐和电影类型，供列表 XML 解析测试使用。
 from plexapi.audio import Album, Artist, Track  # noqa: F401  # pylint: disable=unused-import
 from plexapi.library import MovieSection, MusicSection
+
+# 导入仅用于触发 Plex 类型注册，测试不直接引用该类。
 from plexapi.video import Movie  # noqa: F401  # pylint: disable=unused-import
 
 from app.modules.plex import plex as plex_module
@@ -14,11 +20,15 @@ from app.modules.plex.plex import Plex
 
 
 class _ReadTimeout(Exception):
-    """模拟 PlexAPI 底层 HTTP 客户端的 ReadTimeout。"""
+    """
+    模拟 PlexAPI 底层 HTTP 客户端的 ReadTimeout。
+    """
 
 
 def _make_client(section: Mock | MovieSection) -> Plex:
-    """构造不建立真实网络连接的 Plex 客户端。"""
+    """
+    构造不建立真实网络连接的 Plex 客户端。
+    """
     client = Plex.__new__(Plex)
     client._plex = SimpleNamespace(
         library=SimpleNamespace(sectionByID=Mock(return_value=section))
@@ -31,7 +41,9 @@ def _make_client(section: Mock | MovieSection) -> Plex:
 
 
 def test_plex_uses_configured_timeout_for_connect_and_reconnect():
-    """Plex 初次连接和重连都应使用媒体服务器配置的超时秒数。"""
+    """
+    Plex 初次连接和重连都应使用媒体服务器配置的超时秒数。
+    """
     server = SimpleNamespace(library=SimpleNamespace(sections=Mock(return_value=[])))
 
     with (
@@ -49,7 +61,9 @@ def test_plex_uses_configured_timeout_for_connect_and_reconnect():
 
 @pytest.mark.parametrize("timeout", [None, 0, -1, "invalid"])
 def test_plex_invalid_timeout_uses_default(timeout):
-    """无效的超时配置应回退到兼容默认值 30 秒。"""
+    """
+    无效的超时配置应回退到兼容默认值 30 秒。
+    """
     server = SimpleNamespace(library=SimpleNamespace(sections=Mock(return_value=[])))
 
     with (
@@ -63,7 +77,9 @@ def test_plex_invalid_timeout_uses_default(timeout):
 
 
 def test_plex_authentication_uses_configured_timeout():
-    """Plex 用户认证取得令牌后也应使用服务器配置的超时。"""
+    """
+    Plex 用户认证取得令牌后也应使用服务器配置的超时。
+    """
     client = Plex.__new__(Plex)
     client._host = "http://plex.local:32400/"
     client._timeout = 120
@@ -80,7 +96,9 @@ def test_plex_authentication_uses_configured_timeout():
 
 
 def test_plex_sync_reads_full_library_in_pages_and_retries_timeouts(monkeypatch):
-    """整库同步应分批读取，并在读取分页超时时重试后继续。"""
+    """
+    整库同步应分批读取，并在读取分页超时时重试后继续。
+    """
     monkeypatch.setattr(plex_module, "PLEX_LIBRARY_SYNC_PAGE_SIZE", 2)
     monkeypatch.setattr(plex_module.time, "sleep", lambda _seconds: None)
     items = [SimpleNamespace(key=f"item-{index}") for index in range(3)]
@@ -107,7 +125,9 @@ def test_plex_sync_reads_full_library_in_pages_and_retries_timeouts(monkeypatch)
 
 
 def test_plex_sync_honors_explicit_page_start_and_limit():
-    """显式分页调用应只读取请求的起点和条目数。"""
+    """
+    显式分页调用应只读取请求的起点和条目数。
+    """
     items = [SimpleNamespace(key=f"item-{index}") for index in range(2)]
     section = Mock()
     section.fetchItems.return_value = items
@@ -124,7 +144,9 @@ def test_plex_sync_honors_explicit_page_start_and_limit():
 
 
 def test_plex_sync_retries_item_conversion_timeout(monkeypatch):
-    """媒体项目转换超时时应重试当前项目，成功后继续产出结果。"""
+    """
+    媒体项目转换超时时应重试当前项目，成功后继续产出结果。
+    """
     monkeypatch.setattr(plex_module, "PLEX_LIBRARY_SYNC_PAGE_SIZE", 2)
     monkeypatch.setattr(plex_module.time, "sleep", lambda _seconds: None)
     item = SimpleNamespace(key="item-1")
@@ -141,7 +163,9 @@ def test_plex_sync_retries_item_conversion_timeout(monkeypatch):
 
 
 def test_plex_sync_raises_after_all_page_timeout_retries(monkeypatch):
-    """分页超时重试耗尽时应中止整库同步，不能静默跳过页面。"""
+    """
+    分页超时重试耗尽时应中止整库同步，不能静默跳过页面。
+    """
     monkeypatch.setattr(plex_module.time, "sleep", lambda _seconds: None)
     section = Mock()
     section.fetchItems.side_effect = _ReadTimeout("read timeout")
@@ -154,7 +178,9 @@ def test_plex_sync_raises_after_all_page_timeout_retries(monkeypatch):
 
 
 def test_plex_sync_raises_on_connection_failure_after_partial_page(monkeypatch):
-    """连接拒绝后不得把已读部分视作完整媒体库。"""
+    """
+    连接拒绝后不得把已读部分视作完整媒体库。
+    """
     monkeypatch.setattr(plex_module, "PLEX_LIBRARY_SYNC_PAGE_SIZE", 1)
     section = Mock()
     section.fetchItems.side_effect = [[SimpleNamespace(key="first")], ConnectionError("refused")]
@@ -164,7 +190,9 @@ def test_plex_sync_raises_on_connection_failure_after_partial_page(monkeypatch):
 
 
 def test_plex_sync_raises_on_item_conversion_failure():
-    """条目转换失败时不能跳过记录后继续执行陈旧清理。"""
+    """
+    条目转换失败时不能跳过记录后继续执行陈旧清理。
+    """
     section = Mock()
     section.fetchItems.return_value = [SimpleNamespace(key="first")]
     client = _make_client(section)
@@ -174,7 +202,9 @@ def test_plex_sync_raises_on_item_conversion_failure():
 
 
 def test_plex_sync_raises_when_server_or_library_is_unavailable():
-    """服务器失联或媒体库消失时不得返回空库并触发旧数据清理。"""
+    """
+    服务器失联或媒体库消失时不得返回空库并触发旧数据清理。
+    """
     section = Mock()
     client = _make_client(section)
     client._plex = None
@@ -188,7 +218,9 @@ def test_plex_sync_raises_when_server_or_library_is_unavailable():
 
 
 def test_plex_sync_uses_list_metadata_without_reloading_each_movie():
-    """列表中的文件路径和 Guid 足够生成缓存条目，不应发起逐条详情请求。"""
+    """
+    列表中的文件路径和 Guid 足够生成缓存条目，不应发起逐条详情请求。
+    """
     server = Mock()
     server.query.return_value = fromstring(
         '<MediaContainer size="1" totalSize="1" librarySectionID="1">'
@@ -217,7 +249,9 @@ def test_plex_sync_uses_list_metadata_without_reloading_each_movie():
 
 
 def test_plex_sync_converts_music_objects_without_detail_reload():
-    """音乐库中的艺人、专辑和曲目应按各自可用字段转换，不触发详情重载。"""
+    """
+    音乐库中的艺人、专辑和曲目应按各自可用字段转换，不触发详情重载。
+    """
     server = Mock()
     server.query.return_value = fromstring(
         '<MediaContainer size="3" totalSize="3" librarySectionID="8">'

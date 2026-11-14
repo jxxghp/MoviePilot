@@ -1,4 +1,6 @@
-"""原始消息的稳定身份与可归档文字投影。"""
+"""
+原始消息的稳定身份与可归档文字投影。
+"""
 
 import hashlib
 import json
@@ -11,13 +13,17 @@ from app.application.messaging.recall import RecallMessage
 
 
 def legacy_identity(session_id: str, position: int, message: BaseMessage) -> str:
-    """缺失旧消息 ID 时由来源位置和内容生成稳定标识，恢复与回填使用同一算法。"""
+    """
+    缺失旧消息 ID 时由来源位置和内容生成稳定标识，恢复与回填使用同一算法。
+    """
     payload = json.dumps([session_id, position, message.type, message.content], ensure_ascii=False, sort_keys=True)
     return 'legacy:' + hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
 
 def evidence(message: BaseMessage) -> RecallMessage | None:
-    """提取完整文字与工具调用，跳过合成摘要和请求临时投影。"""
+    """
+    提取完整文字与工具调用，跳过合成摘要和请求临时投影。
+    """
     if message.type not in {'human', 'ai', 'tool'}:
         return None
     if message.additional_kwargs.get('lc_source') == 'summarization' or message.additional_kwargs.get(TOOL_OBSERVATION_MARKER):

@@ -1,4 +1,6 @@
-"""每个 Python cell 独立的宿主身份、只读工具集合和调用预算。"""
+"""
+每个 Python cell 独立的宿主身份、只读工具集合和调用预算。
+"""
 
 import asyncio
 import contextvars
@@ -32,17 +34,23 @@ Dispatch = Callable[[Any, dict[str, Any]], Awaitable[Any]]
 
 
 def allowed_tools(tools: list[Any]) -> dict[str, Any]:
-    """只取本轮实际启用的原生工具对象，插件或 MCP 同名工具不能借用只读声明。"""
+    """
+    只取本轮实际启用的原生工具对象，插件或 MCP 同名工具不能借用只读声明。
+    """
     return {tool.name: tool for tool in tools if type(tool) in _READ_CLASSES
             and getattr(tool, '_agent_tool_source', None) == 'builtin'}
 
 
 class CellAuthority:
-    """当前 cell 的调用窗口；持久 socket 和 Python 状态不延长宿主调用身份。"""
+    """
+    当前 cell 的调用窗口；持久 socket 和 Python 状态不延长宿主调用身份。
+    """
 
     def __init__(self, scope: TerminalScope, context: ToolPolicyContext,
                  tools: dict[str, Any], dispatch: Dispatch) -> None:
-        """从正在执行的宿主协程复制上下文，每次 cell 都重新建立，结束即撤销。"""
+        """
+        从正在执行的宿主协程复制上下文，每次 cell 都重新建立，结束即撤销。
+        """
         self.scope, self.context, self.tools = scope, context, tools
         self._dispatch = dispatch
         self._context = contextvars.copy_context()
@@ -53,21 +61,27 @@ class CellAuthority:
         self.errors: list[dict[str, str]] = []
 
     def available(self) -> bool:
-        """角色引用随宿主更新而变化，排队或持久连接不得继续使用已撤销权限。"""
+        """
+        角色引用随宿主更新而变化，排队或持久连接不得继续使用已撤销权限。
+        """
         return (self._active and not self.scope.closed and bool(self.scope.user_id)
                 and self.scope.user_id == self.context.user_id
                 and self.context.principal.role is PrincipalRole.SYSTEM_ADMIN
                 and self.context.origin not in {ToolOrigin.SUBAGENT, ToolOrigin.AGENT_API})
 
     def _error(self, name: str, reason: str) -> dict[str, Any]:
-        """即使脚本忽略失败回执，外层结果仍保留最多五条明确错误。"""
+        """
+        即使脚本忽略失败回执，外层结果仍保留最多五条明确错误。
+        """
         if len(self.errors) < 5:
             self.errors.append({'tool': name, 'error': reason})
         return {'success': False, 'error': reason}
 
     @staticmethod
     def _read_allowed(tool: Any, arguments: dict[str, Any]) -> bool:
-        """API 的操作副作用与敏感参数都由宿主合同解析，不采用模型声明的读取标签。"""
+        """
+        API 的操作副作用与敏感参数都由宿主合同解析，不采用模型声明的读取标签。
+        """
         if type(tool) is not MoviePilotApiTool:
             return type(tool) in {ReadFileTool, SearchWebTool}
         operation = resolve_api_operation(str(arguments.get('operation_id') or ''))
@@ -78,7 +92,9 @@ class CellAuthority:
         return not requests_system_setting_secrets(normalized)
 
     async def call(self, name: str, arguments: dict[str, Any]) -> Any:
-        """逐次检查、计数并在当前 cell 上下文执行，串行 RPC 不会超发预算。"""
+        """
+        逐次检查、计数并在当前 cell 上下文执行，串行 RPC 不会超发预算。
+        """
         if not self.available():
             return self._error(name, '当前 Python 调用窗口已结束或用户权限已变化。')
         tool = self.tools.get(name)
@@ -107,12 +123,16 @@ class CellAuthority:
         return result
 
     def _record(self, name: str, arguments: dict[str, Any], started: float, outcome: ExecutionOutcome) -> None:
-        """每次实际准入调用都有脱敏回执，中断也不能从调用记录中消失。"""
+        """
+        每次实际准入调用都有脱敏回执，中断也不能从调用记录中消失。
+        """
         self.log.append({'tool': name, 'args_preview': summarize_input(arguments, max_chars=80),
                          'duration': round(time.monotonic() - started, 2), 'outcome': outcome.value})
 
     async def _invoke(self, tool: Any, arguments: dict[str, Any]) -> Any:
-        """重新检查排队期间变化的身份；工具异常只产生脱敏回执，取消保持传播。"""
+        """
+        重新检查排队期间变化的身份；工具异常只产生脱敏回执，取消保持传播。
+        """
         if not self.available():
             return self._error(tool.name, '当前 Python 调用窗口已结束或用户权限已变化。')
         try:
@@ -124,7 +144,9 @@ class CellAuthority:
         return result
 
     async def retire(self) -> None:
-        """先同步封口，再取消 cell 遗留调用并等待真实结算。"""
+        """
+        先同步封口，再取消 cell 遗留调用并等待真实结算。
+        """
         self._active = False
         pending = [task for task in self._pending if not task.done()]
         if pending:

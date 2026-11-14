@@ -1,4 +1,7 @@
-from pathlib import Path
+"""
+汇总仪表盘所需的服务统计、系统状态与活动数据。
+"""
+
 from typing import Annotated, Any, List, Optional
 
 from fastapi import Depends
@@ -7,6 +10,7 @@ from app.adapters.system.host import SystemUtils
 from app.adapters.web.security.access import verify_apitoken
 from app.api.context import get_api_runtime_config, resolve_api_runtime_config
 from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.dashboard import sample_downloader
 from app.api.dependencies.history import get_dashboard_query_service
 from app.api.response import (
     CompatibleCountParam,
@@ -15,10 +19,8 @@ from app.api.response import (
 )
 from app.application.configuration import ApiRuntimeConfig
 from app.application.dashboard import DashboardQueryService
-from app.application.directory import DirectoryHelper
 from app.application.scheduling import get_scheduler
 from app.chain.dashboard import DashboardChain
-from app.chain.storage import StorageChain
 from app.runtime.execution import run_in_threadpool
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
@@ -29,7 +31,6 @@ from app.schemas.dashboard import ScheduleProgress as _SchemaScheduleProgress
 from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.dashboard import Storage as _SchemaStorage
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.types import StorageAction
 
 router = ResponseAPIRouter()
 
@@ -38,24 +39,7 @@ def _build_storage() -> _SchemaStorage:
     """
     构建本地存储空间信息。
     """
-    total, available = 0, 0
-    dirs = DirectoryHelper().get_dirs()
-    if not dirs:
-        return _SchemaStorage(total_storage=total, used_storage=total - available)
-    # 下载目录按 storage、媒体库目录按 library_storage 汇总存储集合，
-    # 用 set 去重存储名，避免同一存储被重复统计；
-    # 各存储的 usage 内部已按磁盘（st_dev / Btrfs FSID）去重，相同磁盘的不同目录不会重复累加。
-    storages = set(
-        [d.storage for d in dirs if d.download_path and d.storage]
-        + [d.library_storage for d in dirs if d.library_path and d.library_storage]
-    )
-    for _storage in storages:
-        _result = StorageChain().manage_storage(storage=_storage, action=StorageAction.USAGE.value)
-        _usage = _result.get("data") if _result.get("success") else None
-        if _usage:
-            total += _usage.get("total") or 0
-            available += _usage.get("available") or 0
-    return _SchemaStorage(total_storage=total, used_storage=total - available)
+    return DashboardChain().storage()
 
 
 def _build_downloader(
@@ -64,25 +48,13 @@ def _build_downloader(
     btrfs_fsid_dedup: bool = False,
 ) -> _SchemaDownloaderInfo:
     """
-    构建下载器统计信息。
+    使用共用采样口径构建下载器统计，保持普通页面的宽容来源语义。
+
+    :param name: 下载器名称，None 表示全部
+    :param btrfs_fsid_dedup: 当前请求的 Btrfs 文件系统去重配置
+    :return: 原仪表盘的全局字节统计与本地目录可用容量
     """
-    # 下载目录空间
-    download_dirs = DirectoryHelper().get_local_download_dirs()
-    _, free_space = SystemUtils.space_usage(
-        [Path(d.download_path) for d in download_dirs],
-        btrfs_fsid_dedup=btrfs_fsid_dedup,
-    )
-    # 下载器信息
-    downloader_info = _SchemaDownloaderInfo()
-    transfer_infos = DashboardChain().downloader_info(name)
-    if transfer_infos:
-        for transfer_info in transfer_infos:
-            downloader_info.download_speed += transfer_info.download_speed
-            downloader_info.upload_speed += transfer_info.upload_speed
-            downloader_info.download_size += transfer_info.download_size
-            downloader_info.upload_size += transfer_info.upload_size
-        downloader_info.free_space = free_space
-    return downloader_info
+    return sample_downloader(name, btrfs_fsid_dedup=btrfs_fsid_dedup)
 
 
 @router.get("/statistic", summary="媒体数量统计", response_model=_SchemaStatistic)
@@ -247,7 +219,7 @@ async def transfer(
     """
     查询文件整理统计信息
     """
-    return await service.transfer(days)
+    return await service.transfer(days or 7)
 
 
 @router.get("/cpu", summary="获取当前CPU使用率", response_model=float)

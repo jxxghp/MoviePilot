@@ -1,3 +1,7 @@
+"""
+验证 Bangumi 人物资料归一化和运行配置快照。
+"""
+
 import asyncio
 from unittest.mock import MagicMock, patch
 
@@ -73,7 +77,9 @@ def test_async_bangumi_person_detail_normalizes_numeric_birthday():
 
 
 def test_bangumi_test_uses_generation_snapshot_until_reload(monkeypatch):
-    """长生命周期模块应在 init/reload 时换快照，而不是每次调用读取全局配置。"""
+    """
+    长生命周期模块应在 init/reload 时换快照，而不是每次调用读取全局配置。
+    """
     module = BangumiModule()
     monkeypatch.setattr(settings, "PROXY_HOST", "http://old-proxy")
     monkeypatch.setattr(settings, "BANGUMI_PROXY_ENABLE", True)
@@ -102,7 +108,9 @@ def test_bangumi_test_uses_generation_snapshot_until_reload(monkeypatch):
 
 
 def test_bangumi_stop_closes_client_without_clearing_cache() -> None:
-    """模块停止只关闭客户端；缓存键已含 API 地址，不在重载或关闭时清空缓存。"""
+    """
+    模块停止只关闭客户端；缓存键已含 API 地址，不在重载或关闭时清空缓存。
+    """
     module = BangumiModule.__new__(BangumiModule)
     module.bangumiapi = MagicMock()
 

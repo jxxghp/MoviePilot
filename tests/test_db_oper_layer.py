@@ -35,7 +35,9 @@ TMDB = str(MediaSource.TMDB)
 
 
 def test_oper_with_explicit_session_does_not_commit_caller_transaction(db, monkeypatch):
-    """显式会话写入只暂存，提交权必须留给 Application UoW。"""
+    """
+    显式会话写入只暂存，提交权必须留给 Application UoW。
+    """
     commit = Mock(wraps=db.session.commit)
     monkeypatch.setattr(db.session, "commit", commit)
 
@@ -48,7 +50,9 @@ def test_oper_with_explicit_session_does_not_commit_caller_transaction(db, monke
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把本文件涉及的表纳入用例级回收。"""
+    """
+    把本文件涉及的表纳入用例级回收。
+    """
     db.watermark(
         Site,
         SiteIcon,
@@ -70,7 +74,9 @@ def _track(db):
 
 
 def _site_kwargs(name: str, domain: str, **extra) -> dict:
-    """构造新增站点的参数。"""
+    """
+    构造新增站点的参数。
+    """
     return dict(name=name, domain=domain, url=f"https://{domain}/", **extra)
 
 
@@ -218,7 +224,9 @@ def test_site_oper_update_icon_creates_then_only_overwrites_with_content(db):
 
 
 def test_site_oper_icon_without_explicit_session_uses_transaction_runner(db):
-    """无显式会话的图标写入应由兼容事务执行器完成提交。"""
+    """
+    无显式会话的图标写入应由兼容事务执行器完成提交。
+    """
     oper = SiteOper()
 
     oper.update_icon(
@@ -249,7 +257,9 @@ def test_site_oper_success_accumulates_and_records_state(db):
 
 
 def test_site_oper_statistics_without_explicit_session_use_transaction_runner(db):
-    """无显式会话的站点统计必须由兼容事务执行器完成提交。"""
+    """
+    无显式会话的站点统计必须由兼容事务执行器完成提交。
+    """
     oper = SiteOper()
 
     oper.success("op-stat-no-session.test", seconds=3)
@@ -373,7 +383,9 @@ def test_plugindata_oper_async_accessors_match_sync(db):
 
 
 def _workflow_kwargs(name: str, **extra) -> dict:
-    """构造新增工作流的参数。"""
+    """
+    构造新增工作流的参数。
+    """
     return dict(
         name=name,
         description=name,
@@ -423,7 +435,9 @@ def test_workflow_oper_exposes_lists_and_staged_lifecycle(db):
 
 
 def test_workflow_oper_no_session_uses_configured_uow_writer(db):
-    """旧的无 Session Oper 写入口仍可用，但事务由组合根服务持有。"""
+    """
+    旧的无 Session Oper 写入口仍可用，但事务由组合根服务持有。
+    """
     flow = db.add(Workflow(**_workflow_kwargs("op-wf-legacy")))
     legacy = importlib.import_module("app.db.workflow_oper")
 
@@ -449,7 +463,7 @@ def test_workflow_oper_event_list_and_async_accessors(db):
 
 
 # --------------------------------------------------------------------------- #
-# UserOper / UserConfigOper
+# 用户与用户配置的持久化操作
 # --------------------------------------------------------------------------- #
 
 
@@ -530,7 +544,9 @@ def test_userconfig_oper_scopes_cache_by_username(db):
 
 
 def _server_item(item_id: str, **extra) -> dict:
-    """构造媒体服务器条目的写入参数。"""
+    """
+    构造媒体服务器条目的写入参数。
+    """
     payload = dict(
         server="emby",
         library="lib",

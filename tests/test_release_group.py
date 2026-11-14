@@ -1,9 +1,16 @@
+"""
+验证发布组名称识别与解析规则。
+"""
+
 from app.domain.meta import releasegroup as releasegroup_module
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
 from tests.cases.groups import release_group_cases
 
 
 def test_release_group():
+    """
+    逐站点核对既有发布标题的制作组识别结果。
+    """
     for info in release_group_cases:
         print(f"开始测试 {info.get('domain')}")
         for item in info.get('groups', []):
@@ -14,7 +21,9 @@ def test_release_group():
 
 
 def test_custom_release_group_matches_multiple_adjacent_groups(monkeypatch):
-    """自定义制作组共用分隔符时，应完整保留所有命中项。"""
+    """
+    自定义制作组共用分隔符时，应完整保留所有命中项。
+    """
     matcher = ReleaseGroupsMatcher()
     monkeypatch.setattr(
         releasegroup_module,
@@ -30,5 +39,7 @@ def test_custom_release_group_matches_multiple_adjacent_groups(monkeypatch):
 
 
 def test_release_group_ignores_empty_title():
-    """空标题不应进入制作组正则匹配。"""
+    """
+    空标题不应进入制作组正则匹配。
+    """
     assert ReleaseGroupsMatcher().match("") == ""

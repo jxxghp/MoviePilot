@@ -1,3 +1,7 @@
+"""
+分类标准字段目录、取值类型与扩展字段校验规则。
+"""
+
 from collections.abc import Iterable
 from math import isfinite
 from typing import Final, NotRequired, TypedDict, cast
@@ -8,6 +12,7 @@ from app.schemas.category import (
     ClassificationFactScalar,
     ClassificationFieldDefinition,
     ClassificationFieldOption,
+    ClassificationFieldValueType,
     ClassificationMediaType,
     ClassificationOperator,
 )
@@ -92,13 +97,23 @@ VALUE_TYPE_OPERATORS: Final[dict[str, tuple[str, ...]]] = {
 
 
 class _FieldSpec(TypedDict):
-    """标准字段的只读声明。"""
+    """
+    标准字段的只读声明。
+
+    :ivar id: 分类规则引用的稳定字段标识
+    :ivar label: 界面展示的中文字段名称
+    :ivar group: 可选的字段分组标识，缺失时不指定分组
+    :ivar description: 可选的字段用途说明
+    :ivar value_type: 分类事实的取值类型
+    :ivar media_types: 允许使用该字段的媒体类型
+    :ivar options: 可选的枚举取值目录，缺失时不限定为枚举
+    """
 
     id: str
     label: str
     group: NotRequired[str]
     description: NotRequired[str]
-    value_type: str
+    value_type: ClassificationFieldValueType
     media_types: tuple[str, ...]
     options: NotRequired[tuple[str, ...]]
 
@@ -240,7 +255,7 @@ _STANDARD_FIELD_SPECS: Final[tuple[_FieldSpec, ...]] = (
 
 def operators_for_value_type(value_type: str) -> tuple[str, ...]:
     """
-    返回值类型允许使用的确定性操作符集合
+    返回值类型允许使用的确定性操作符集合。
 
     :param value_type: 字段值类型
     :return: 按 UI 展示顺序排列的操作符；未知类型返回空元组
@@ -249,12 +264,16 @@ def operators_for_value_type(value_type: str) -> tuple[str, ...]:
 
 
 def get_standard_classification_fields() -> tuple[ClassificationFieldDefinition, ...]:
-    """返回前端与校验器共享的标准分类字段目录。"""
+    """
+    返回前端与校验器共享的标准分类字段目录。
+    """
     return standard_field_definitions()
 
 
 def standard_field_definitions() -> tuple[ClassificationFieldDefinition, ...]:
-    """构造包含内置来源覆盖信息的标准分类字段目录。"""
+    """
+    构造包含内置来源覆盖信息的标准分类字段目录。
+    """
     definitions: list[ClassificationFieldDefinition] = []
     for spec in _STANDARD_FIELD_SPECS:
         definitions.append(_build_field_definition(spec))
@@ -265,7 +284,7 @@ def merge_field_definitions(
     extra_fields: Iterable[ClassificationFieldDefinition] = (),
 ) -> tuple[ClassificationFieldDefinition, ...]:
     """
-    合并标准字段和扩展字段，字段 ID 重复时保留标准字段或先出现的扩展字段
+    合并标准字段和扩展字段，字段 ID 重复时保留标准字段或先出现的扩展字段。
 
     重复字段的错误归属于策略校验器；目录合并保持稳定顺序，避免前端字段列表抖动。
     """
@@ -283,7 +302,9 @@ def merge_field_definitions(
 def field_definition_map(
     extra_fields: Iterable[ClassificationFieldDefinition] = (),
 ) -> dict[str, ClassificationFieldDefinition]:
-    """返回按字段 ID 索引的标准与扩展字段定义。"""
+    """
+    返回按字段 ID 索引的标准与扩展字段定义。
+    """
     return {str(getattr(definition, "id", "")): definition for definition in merge_field_definitions(extra_fields)}
 
 
@@ -291,7 +312,9 @@ def classification_fact_matches_definition(
     value: object,
     definition: ClassificationFieldDefinition,
 ) -> bool:
-    """按字段值类型和封闭枚举目录校验一个有限 JSON 事实。"""
+    """
+    按字段值类型和封闭枚举目录校验一个有限 JSON 事实。
+    """
     if value is None:
         return True
     if definition.value_type == "string":
@@ -325,14 +348,18 @@ def classification_fact_matches_definition(
 
 
 def _is_json_scalar(value: object) -> bool:
-    """判断值是否为协议允许且可稳定序列化的有限 JSON 标量。"""
+    """
+    判断值是否为协议允许且可稳定序列化的有限 JSON 标量。
+    """
     if isinstance(value, float):
         return isfinite(value)
     return value is None or isinstance(value, (str, int, bool))
 
 
 def _build_field_definition(values: _FieldSpec) -> ClassificationFieldDefinition:
-    """将只读字段规格转换为严格 schema。"""
+    """
+    将只读字段规格转换为严格 schema。
+    """
     return ClassificationFieldDefinition(
         id=values["id"],
         label=values["label"],

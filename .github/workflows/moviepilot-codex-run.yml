@@ -1,4 +1,4 @@
-# Trusted run for jxxghp/MoviePilot. The protected control ref follows main.
+# 为 jxxghp/MoviePilot 执行可信任务；受保护的控制代码引用跟随 main 分支。
 name: MoviePilot Codex trusted run
 
 on:

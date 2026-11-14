@@ -1,3 +1,7 @@
+"""
+验证测试网络隔离边界与外部请求拦截。
+"""
+
 import socket
 
 import pytest
@@ -6,7 +10,9 @@ from app.testing.network import block_real_network
 
 
 def test_network_guard_fails_when_blocked_attempt_is_swallowed(monkeypatch):
-    """业务代码即使捕获网络异常，网络守卫仍应在用例收尾报告失败"""
+    """
+    业务代码即使捕获网络异常，网络守卫仍应在用例收尾报告失败
+    """
     fixture = block_real_network.__wrapped__(monkeypatch)
     next(fixture)
 

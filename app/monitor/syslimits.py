@@ -1,9 +1,13 @@
+"""
+检查系统目录监控限制并给出配置提示。
+"""
+
 import platform
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.runtime.log import logger
 from app.adapters.system.host import SystemUtils
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 
@@ -43,10 +47,11 @@ def check_system_limits() -> Dict[str, Any]:
     检查系统监控相关限制。
     :return: 系统限制信息
     """
+    warnings: List[str] = []
     limits = {
         'max_user_watches': 0,
         'max_user_instances': 0,
-        'warnings': []
+        'warnings': warnings
     }
 
     try:
@@ -57,7 +62,7 @@ def check_system_limits() -> Dict[str, Any]:
                     limits['max_user_watches'] = int(f.read().strip())
             except Exception as e:
                 logger.debug(f"读取 inotify 限制失败: {e}")
-                limits['max_user_watches'] = 8192  # 默认值
+                limits['max_user_watches'] = 8192
 
             try:
                 with open('/proc/sys/fs/inotify/max_user_instances', 'r', encoding='utf-8', errors='replace') as f:
@@ -65,7 +70,7 @@ def check_system_limits() -> Dict[str, Any]:
             except Exception as e:
                 logger.debug(f"读取 inotify 实例限制失败: {e}")
     except Exception as e:
-        limits['warnings'].append(f"检查系统限制时出错: {e}")
+        warnings.append(f"检查系统限制时出错: {e}")
 
     return limits
 

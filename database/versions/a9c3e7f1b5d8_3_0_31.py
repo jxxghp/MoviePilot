@@ -1,4 +1,6 @@
-"""3.0.31 保存订阅搜索重试站点并解除存量批次的累计空等。"""
+"""
+3.0.31 保存订阅搜索重试站点并解除存量批次的累计空等。
+"""
 
 # Alembic 的 op 是运行期代理。
 # pylint: disable=no-member
@@ -17,7 +19,9 @@ _TABLE = "subscriptionsearchtask"
 
 
 def upgrade() -> None:
-    """增加可恢复站点游标，只提前尚未执行的自动任务，不绕过冷却和用户停止。"""
+    """
+    增加可恢复站点游标，只提前尚未执行的自动任务，不绕过冷却和用户停止。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE not in inspector.get_table_names():
         return
@@ -40,7 +44,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除站点游标；恢复旧版本后未完成任务仍可完整重试。"""
+    """
+    移除站点游标；恢复旧版本后未完成任务仍可完整重试。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE in inspector.get_table_names():
         columns = {column["name"] for column in inspector.get_columns(_TABLE)}

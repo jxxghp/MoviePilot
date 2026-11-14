@@ -1,4 +1,6 @@
-"""SearchChain 结果处理的输入所有权与生命周期回归测试。"""
+"""
+SearchChain 结果处理的输入所有权与生命周期回归测试。
+"""
 
 import pytest
 
@@ -9,32 +11,44 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class ProgressProbe:
-    """记录搜索进度生命周期，避免测试依赖运行时全局进度状态。"""
+    """
+    记录搜索进度生命周期，避免测试依赖运行时全局进度状态。
+    """
 
     instances = []
 
     def __init__(self, _key):
-        """创建一条尚未启动的进度记录。"""
+        """
+        创建一条尚未启动的进度记录。
+        """
         self.started = False
         self.ended = False
         self.updates = []
         self.__class__.instances.append(self)
 
     def start(self):
-        """记录进度启动。"""
+        """
+        记录进度启动。
+        """
         self.started = True
 
     def update(self, **kwargs):
-        """记录一次进度更新。"""
+        """
+        记录一次进度更新。
+        """
         self.updates.append(kwargs)
 
     def end(self):
-        """记录进度结束。"""
+        """
+        记录进度结束。
+        """
         self.ended = True
 
 
 def _media() -> MediaInfo:
-    """构造带有可裁剪详情的目标媒体。"""
+    """
+    构造带有可裁剪详情的目标媒体。
+    """
     media = MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="1",
@@ -50,7 +64,9 @@ def _media() -> MediaInfo:
 
 
 def _torrent(site: int, title: str, description: str = "描述") -> TorrentInfo:
-    """构造一条可稳定匹配的测试资源。"""
+    """
+    构造一条可稳定匹配的测试资源。
+    """
     return TorrentInfo(
         site=site,
         site_name=f"站点{site}",
@@ -61,7 +77,9 @@ def _torrent(site: int, title: str, description: str = "描述") -> TorrentInfo:
 
 
 def _patch_match(monkeypatch):
-    """将匹配和排序边界替换为确定性的离线实现。"""
+    """
+    将匹配和排序边界替换为确定性的离线实现。
+    """
     monkeypatch.setattr(
         result_module.TorrentHelper,
         "match_torrent",
@@ -75,7 +93,9 @@ def _patch_match(monkeypatch):
 
 
 def test_parse_result_preserves_caller_inputs(monkeypatch):
-    """结果投影应裁剪媒体副本，同时保持调用方对象和资源容器不变。"""
+    """
+    结果投影应裁剪媒体副本，同时保持调用方对象和资源容器不变。
+    """
     _patch_match(monkeypatch)
     monkeypatch.setattr(
         result_module.TorrentHelper,
@@ -103,7 +123,9 @@ def test_parse_result_preserves_caller_inputs(monkeypatch):
 
 
 def test_parse_result_keeps_sort_and_duplicate_contract(monkeypatch):
-    """排序后去重应保留键的首次位置，并采用该键最后出现的资源。"""
+    """
+    排序后去重应保留键的首次位置，并采用该键最后出现的资源。
+    """
     _patch_match(monkeypatch)
     first = _torrent(1, "测试电影 2024 1080p")
     unique = _torrent(2, "测试电影 2024 2160p")
@@ -126,7 +148,9 @@ def test_parse_result_keeps_sort_and_duplicate_contract(monkeypatch):
 
 
 def test_progress_ends_when_rule_filter_returns_empty(monkeypatch):
-    """规则过滤提前返回空结果时也必须结束已启动的搜索进度。"""
+    """
+    规则过滤提前返回空结果时也必须结束已启动的搜索进度。
+    """
     ProgressProbe.instances.clear()
     monkeypatch.setattr(result_module, "ProgressHelper", ProgressProbe)
     monkeypatch.setattr(SearchChain, "filter_torrents", lambda *_args, **_kwargs: [])
@@ -144,12 +168,16 @@ def test_progress_ends_when_rule_filter_returns_empty(monkeypatch):
 
 
 def test_progress_ends_when_filter_raises(monkeypatch):
-    """附加参数过滤异常时应传播异常并结束已启动的搜索进度。"""
+    """
+    附加参数过滤异常时应传播异常并结束已启动的搜索进度。
+    """
     ProgressProbe.instances.clear()
     monkeypatch.setattr(result_module, "ProgressHelper", ProgressProbe)
 
     def raise_filter(*_args, **_kwargs):
-        """模拟过滤边界发生运行时异常。"""
+        """
+        模拟过滤边界发生运行时异常。
+        """
         raise RuntimeError("filter failed")
 
     monkeypatch.setattr(result_module.TorrentHelper, "filter_torrent", raise_filter)

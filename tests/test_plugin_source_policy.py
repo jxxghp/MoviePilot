@@ -1,4 +1,6 @@
-"""插件候选事实与来源选择策略测试。"""
+"""
+插件候选事实与来源选择策略测试。
+"""
 
 from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
@@ -24,7 +26,9 @@ OTHER_SOURCE = "github:other/moviepilot-plugins"
 
 
 def test_plugin_identity_normalization_keeps_existing_underscore_ids() -> None:
-    """来源身份必须兼容市场中已经存在的下划线插件 ID。"""
+    """
+    来源身份必须兼容市场中已经存在的下划线插件 ID。
+    """
     assert normalize_physical_plugin_id("Nullbr_Search") == "nullbr_search"
 
 
@@ -37,7 +41,9 @@ def _online(
     plugin_id: str = "DemoPlugin",
     repo_url: str = "https://github.com/example/moviepilot-plugins",
 ) -> PluginMarketCandidate:
-    """构造测试用在线候选。"""
+    """
+    构造测试用在线候选。
+    """
     return PluginMarketCandidate(
         plugin_id=plugin_id,
         source_key=source_key,
@@ -50,7 +56,9 @@ def _online(
 
 
 def _inventory(*reads: MarketRead, local=()) -> CandidateInventory:
-    """构造测试用候选快照。"""
+    """
+    构造测试用候选快照。
+    """
     return CandidateInventory(tuple(reads), tuple(local))
 
 
@@ -61,7 +69,9 @@ def _identity(
     payload_source_type: PluginPayloadSourceType = PluginPayloadSourceType.UNKNOWN,
     payload_version: str = "1.0.0",
 ) -> PluginIdentity:
-    """构造已绑定在线来源身份。"""
+    """
+    构造已绑定在线来源身份。
+    """
     from datetime import datetime, timezone
 
     now = datetime(2026, 8, 25, tzinfo=timezone.utc)
@@ -119,7 +129,9 @@ def _identity(
 
 
 def _local_only_identity(version: str = "3.0.0") -> PluginIdentity:
-    """构造只能由用户显式绑定在线仓库的本地身份。"""
+    """
+    构造只能由用户显式绑定在线仓库的本地身份。
+    """
     from datetime import datetime, timezone
 
     now = datetime(2026, 8, 25, tzinfo=timezone.utc)
@@ -148,7 +160,9 @@ def _local_only_identity(version: str = "3.0.0") -> PluginIdentity:
 
 
 def test_cross_source_high_version_does_not_win() -> None:
-    """已绑定来源过滤必须先于版本比较，跨源高版本不能覆盖允许来源。"""
+    """
+    已绑定来源过滤必须先于版本比较，跨源高版本不能覆盖允许来源。
+    """
     inventory = _inventory(
         MarketRead.present(
             "market-a",
@@ -173,7 +187,9 @@ def test_cross_source_high_version_does_not_win() -> None:
 
 
 def test_same_source_prefers_generation_then_version() -> None:
-    """同源候选先按运行代际，再在同代内按声明版本选择。"""
+    """
+    同源候选先按运行代际，再在同代内按声明版本选择。
+    """
     inventory = _inventory(
         MarketRead.present(
             "market-a",
@@ -199,7 +215,9 @@ def test_same_source_prefers_generation_then_version() -> None:
 
 
 def test_partial_market_failure_blocks_unique_third_party_tofu() -> None:
-    """部分市场失败时即使当前可见一个第三方，也不能证明其唯一。"""
+    """
+    部分市场失败时即使当前可见一个第三方，也不能证明其唯一。
+    """
     inventory = _inventory(
         MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),)),
         MarketRead.failure("market-b", "timeout"),
@@ -217,7 +235,9 @@ def test_partial_market_failure_blocks_unique_third_party_tofu() -> None:
 
 
 def test_partial_inventory_expectations_never_authorize_tofu() -> None:
-    """缺少任一预期维度时，快照不能证明第三方来源唯一。"""
+    """
+    缺少任一预期维度时，快照不能证明第三方来源唯一。
+    """
     reads = (MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),)),)
     markets_only = CandidateInventory(
         reads,
@@ -235,7 +255,9 @@ def test_partial_inventory_expectations_never_authorize_tofu() -> None:
 
 
 def test_local_scan_failure_blocks_automatic_selection_but_explicit_source_continues() -> None:
-    """本地扫描失败时自动路径闭锁，管理员明确选在线来源仍可继续。"""
+    """
+    本地扫描失败时自动路径闭锁，管理员明确选在线来源仍可继续。
+    """
     inventory = CandidateInventory(
         (
             MarketRead.present(
@@ -266,7 +288,9 @@ def test_local_scan_failure_blocks_automatic_selection_but_explicit_source_conti
 
 
 def test_non_explicit_source_hint_cannot_bypass_local_state() -> None:
-    """兼容来源参数不能替换本地载荷，也不能绕过本地读取失败闭锁。"""
+    """
+    兼容来源参数不能替换本地载荷，也不能绕过本地读取失败闭锁。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?path=/private/plugins",
@@ -306,7 +330,9 @@ def test_non_explicit_source_hint_cannot_bypass_local_state() -> None:
 
 
 def test_bound_online_and_local_candidates_choose_higher_version() -> None:
-    """已绑定在线来源与本地候选并存时，插件版本决定实际载荷。"""
+    """
+    已绑定在线来源与本地候选并存时，插件版本决定实际载荷。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?version=v3",
@@ -349,7 +375,9 @@ def test_bound_online_and_local_candidates_choose_higher_version() -> None:
 
 
 def test_explicit_local_candidate_bypasses_bound_online_version_comparison() -> None:
-    """本地开发同步明确指定的候选不受绑定仓库版本号阻断。"""
+    """
+    本地开发同步明确指定的候选不受绑定仓库版本号阻断。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?version=v3",
@@ -379,7 +407,9 @@ def test_explicit_local_candidate_bypasses_bound_online_version_comparison() -> 
 
 
 def test_equal_bound_and_local_versions_keep_current_payload_source() -> None:
-    """相同版本保持当前载荷来源，避免每次启动在本地与在线之间切换。"""
+    """
+    相同版本保持当前载荷来源，避免每次启动在本地与在线之间切换。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?version=v3",
@@ -422,7 +452,9 @@ def test_equal_bound_and_local_versions_keep_current_payload_source() -> None:
 
 
 def test_local_only_identity_never_uses_online_candidate_implicitly() -> None:
-    """本地专属身份只能由用户显式确认后建立在线绑定。"""
+    """
+    本地专属身份只能由用户显式确认后建立在线绑定。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?version=v3",
@@ -458,7 +490,9 @@ def test_local_only_identity_never_uses_online_candidate_implicitly() -> None:
 
 
 def test_uninstalled_unique_and_multiple_sources_are_distinct() -> None:
-    """未安装插件允许完整快照中的唯一来源，多来源必须返回冲突。"""
+    """
+    未安装插件允许完整快照中的唯一来源，多来源必须返回冲突。
+    """
     unique = select_plugin_candidate(
         _inventory(MarketRead.present("market-a", (_online(THIRD_PARTY_SOURCE),))),
         plugin_id="DemoPlugin",
@@ -481,7 +515,9 @@ def test_uninstalled_unique_and_multiple_sources_are_distinct() -> None:
 
 
 def test_official_candidate_is_selectable_and_local_projection_hides_path() -> None:
-    """官方来源可正常选择，本地公共投影不包含仓库路径。"""
+    """
+    官方来源可正常选择，本地公共投影不包含仓库路径。
+    """
     official = select_plugin_candidate(
         _inventory(
             MarketRead.present(

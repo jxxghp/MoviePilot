@@ -1,20 +1,28 @@
+"""
+验证系统与插件配置合并后使用的模型协议、思考级别和运行参数。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.agent import MoviePilotAgent
+from app.agent.orchestrator import MoviePilotAgent
 from app.runtime.config import settings
-from app.schemas import AgentLLMProviderEventData
+from app.schemas.event import AgentLLMProviderEventData
 from app.schemas.types import ChainEventType
 
 
 def test_resolve_llm_runtime_config_uses_system_thinking_level(monkeypatch) -> None:
-    """插件未提供有效思考强度时应使用系统配置。"""
+    """
+    插件未提供有效思考强度时应使用系统配置。
+    """
     monkeypatch.setattr(settings, "LLM_THINKING_LEVEL", "xhigh")
     agent = MoviePilotAgent(session_id="thinking-level-default", user_id="user-1")
 
     async def return_empty_config(event_type, event_data):
-        """模拟插件未返回有效运行时配置。"""
+        """
+        模拟插件未返回有效运行时配置。
+        """
         assert event_type == ChainEventType.AgentLLMProvider
         assert event_data.thinking_level == "xhigh"
         return SimpleNamespace(event_data=AgentLLMProviderEventData())
@@ -29,12 +37,16 @@ def test_resolve_llm_runtime_config_uses_system_thinking_level(monkeypatch) -> N
 
 
 def test_resolve_llm_runtime_config_prefers_plugin_thinking_level(monkeypatch) -> None:
-    """插件显式覆盖思考强度时应优先使用插件值。"""
+    """
+    插件显式覆盖思考强度时应优先使用插件值。
+    """
     monkeypatch.setattr(settings, "LLM_THINKING_LEVEL", "xhigh")
     agent = MoviePilotAgent(session_id="thinking-level-plugin", user_id="user-1")
 
     async def override_thinking_level(_event_type, event_data):
-        """模拟插件覆盖思考强度。"""
+        """
+        模拟插件覆盖思考强度。
+        """
         event_data.thinking_level = "high"
         return SimpleNamespace(event_data=event_data)
 
@@ -48,12 +60,16 @@ def test_resolve_llm_runtime_config_prefers_plugin_thinking_level(monkeypatch) -
 
 
 def test_resolve_llm_runtime_config_uses_system_api_protocol(monkeypatch) -> None:
-    """插件未提供 API 协议时应使用系统配置。"""
+    """
+    插件未提供 API 协议时应使用系统配置。
+    """
     monkeypatch.setattr(settings, "LLM_API_PROTOCOL", "responses")
     agent = MoviePilotAgent(session_id="api-protocol-default", user_id="user-1")
 
     async def return_empty_config(event_type, event_data):
-        """模拟插件未返回有效运行时配置。"""
+        """
+        模拟插件未返回有效运行时配置。
+        """
         assert event_type == ChainEventType.AgentLLMProvider
         assert event_data.api_protocol == "responses"
         return SimpleNamespace(event_data=AgentLLMProviderEventData())
@@ -68,12 +84,16 @@ def test_resolve_llm_runtime_config_uses_system_api_protocol(monkeypatch) -> Non
 
 
 def test_resolve_llm_runtime_config_prefers_plugin_api_protocol(monkeypatch) -> None:
-    """插件显式覆盖 API 协议时应优先使用插件值。"""
+    """
+    插件显式覆盖 API 协议时应优先使用插件值。
+    """
     monkeypatch.setattr(settings, "LLM_API_PROTOCOL", "responses")
     agent = MoviePilotAgent(session_id="api-protocol-plugin", user_id="user-1")
 
     async def override_api_protocol(_event_type, event_data):
-        """模拟插件覆盖 API 协议。"""
+        """
+        模拟插件覆盖 API 协议。
+        """
         event_data.api_protocol = "chat_completions"
         return SimpleNamespace(event_data=event_data)
 
@@ -87,12 +107,16 @@ def test_resolve_llm_runtime_config_prefers_plugin_api_protocol(monkeypatch) -> 
 
 
 def test_resolve_llm_runtime_config_prefers_plugin_web_search_mode(monkeypatch) -> None:
-    """插件显式覆盖联网搜索模式时应优先使用插件值。"""
+    """
+    插件显式覆盖联网搜索模式时应优先使用插件值。
+    """
     monkeypatch.setattr(settings, "LLM_WEB_SEARCH_MODE", "local")
     agent = MoviePilotAgent(session_id="web-search-plugin", user_id="user-1")
 
     async def override_web_search_mode(_event_type, event_data):
-        """模拟插件覆盖联网搜索模式。"""
+        """
+        模拟插件覆盖联网搜索模式。
+        """
         event_data.web_search_mode = "builtin"
         return SimpleNamespace(event_data=event_data)
 

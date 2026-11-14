@@ -1,3 +1,7 @@
+"""
+提供消息历史、通知回调和浏览器 Web Push 订阅管理接口。
+"""
+
 from __future__ import annotations
 
 import json
@@ -37,17 +41,24 @@ from app.schemas.types import NotificationChannel, SystemConfigKey
 
 router = ResponseAPIRouter()
 
+# WNS 未指定有效期时按一天发送，单位为秒。
 _WNS_DEFAULT_TTL = 86400
 
 
 class WebPushError(Protocol):
-    """Web Push 订阅状态判断所需的最小异常协议。"""
+    """
+    Web Push 订阅状态判断所需的最小异常协议。
 
-    response: Any  # 推送服务 HTTP 响应，失败前未收到响应时为 None
+    :ivar response: 推送服务的 HTTP 响应；失败前未收到响应时为 None
+    """
+
+    response: Any
 
 
 def is_webpush_subscription_gone(error: WebPushError) -> bool:
-    """判断 Web Push 订阅是否已在浏览器或推送服务侧失效。"""
+    """
+    判断 Web Push 订阅是否已在浏览器或推送服务侧失效。
+    """
     response: Any = getattr(error, "response", None)
     status_code = getattr(response, "status_code", None) or getattr(
         response,
@@ -58,12 +69,16 @@ def is_webpush_subscription_gone(error: WebPushError) -> bool:
 
 
 def is_wns_endpoint(endpoint: str | None) -> bool:
-    """判断是否为 Microsoft WNS 推送端点。"""
+    """
+    判断是否为 Microsoft WNS 推送端点。
+    """
     return bool(endpoint and "notify.windows.com" in endpoint)
 
 
 def webpush_options_for_endpoint(endpoint: str | None) -> dict[str, Any]:
-    """返回指定推送端点需要的 Web Push 附加参数（ttl 与请求头）。"""
+    """
+    返回指定推送端点需要的 Web Push 附加参数（ttl 与请求头）。
+    """
     if not is_wns_endpoint(endpoint):
         return {}
     return {
@@ -109,7 +124,7 @@ def _format_notification_clear_time(value: int) -> Optional[str]:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp))
 
 
-def start_message_chain(body: Any, form: Any, args: Any):
+def start_message_chain(body: Any, form: Any, args: Any) -> None:
     """
     启动链式任务
     """
@@ -121,7 +136,7 @@ async def user_message(
     task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     request: Request,
     _: _SchemaTokenPayload = Depends(verify_apitoken),
-):
+) -> _SchemaResponse[None]:
     """
     用户消息响应；推荐通过 X-API-KEY 请求头传递 API_TOKEN，查询参数 token 仅保留兼容。
     """
@@ -129,7 +144,7 @@ async def user_message(
     form = await request.form()
     args = request.query_params
     source = args.get("source")
-    content_type = request.headers.get("content-type", "")
+    content_type = request.headers.get("content-type") or ""
     body_text = body.decode("utf-8", errors="replace")
     image_markers = [
         marker
@@ -163,12 +178,12 @@ async def web_message(
     request: Request,
     text: Optional[str] = None,
     current_user: ApiPrincipal = Depends(get_current_active_superuser),
-):
+) -> _SchemaResponse[None]:
     """
     WEB消息响应
     """
     images = None
-    content_type = request.headers.get("content-type", "")
+    content_type = request.headers.get("content-type") or ""
     if "application/json" in content_type:
         try:
             payload = await request.json()
@@ -203,11 +218,14 @@ async def get_web_message(
     service: MessageQueryService = Depends(get_message_query_service),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-):
+) -> List[dict[str, Any]]:
     """
     获取WEB消息列表
     """
-    return await service.list_web(page=page, count=count)
+    return await service.list_web(
+        page=page if page is not None else 1,
+        count=count if count is not None else 20,
+    )
 
 
 @router.get("/notification", summary="获取通知消息", response_model=List[_SchemaMessageHistoryItem])
@@ -216,14 +234,14 @@ async def get_notification_message(
     service: MessageQueryService = Depends(get_message_query_service),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-):
+) -> List[_SchemaMessageHistoryItem]:
     """
     获取系统发送的通知消息列表。
     """
     clear_before = _get_notification_clear_before()
     messages = await service.list_notifications(
-        page=page,
-        count=count,
+        page=page if page is not None else 1,
+        count=count if count is not None else 20,
         all_clear_before=_format_notification_clear_time(clear_before.all),
         system_clear_before=_format_notification_clear_time(clear_before.system),
         media_clear_before=_format_notification_clear_time(clear_before.media),
@@ -238,8 +256,8 @@ async def get_notification_message(
 )
 async def clear_notification_message(
     scope: _SchemaMessageClearScope = _SchemaMessageClearScope.All,
-    _: _SchemaTokenPayload = Depends(verify_token),
-):
+    _: Any = Depends(get_current_active_superuser),
+) -> _SchemaResponse[dict[str, Any]]:
     """
     记录通知中心清理时间，后续通知历史查询会在服务端过滤。
     """
@@ -270,18 +288,19 @@ def wechat_verify(
             for config in client_configs
             if config.type == "wechat"
             and config.enabled
-            and config.config.get("WECHAT_MODE", "app") != "bot"
+            and (config.config or {}).get("WECHAT_MODE", "app") != "bot"
             and (not source or config.name == source)
         ),
         None,
     )
     if not client_config:
         return "未找到对应的消息配置"
+    config = client_config.config or {}
     try:
         wxcpt = WXBizMsgCrypt(
-            sToken=client_config.config.get("WECHAT_TOKEN"),
-            sEncodingAESKey=client_config.config.get("WECHAT_ENCODING_AESKEY"),
-            sReceiveId=client_config.config.get("WECHAT_CORPID"),
+            sToken=config.get("WECHAT_TOKEN"),
+            sEncodingAESKey=config.get("WECHAT_ENCODING_AESKEY"),
+            sReceiveId=config.get("WECHAT_CORPID"),
         )
         ret, sEchoStr = wxcpt.VerifyURL(
             sMsgSignature=msg_signature,
@@ -328,7 +347,7 @@ def incoming_verify(
     token: Optional[str] = None,
     echostr: Optional[str] = None,
     msg_signature: Optional[str] = None,
-    timestamp: Union[str, int] = None,
+    timestamp: Optional[Union[str, int]] = None,
     nonce: Optional[str] = None,
     source: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_apitoken),
@@ -337,7 +356,7 @@ def incoming_verify(
     微信/VoceChat等验证响应
     """
     logger.info(
-        f"收到验证请求: token={token}, echostr={echostr}, "
+        f"收到验证请求: echostr={echostr}, "
         f"msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}"
     )
     if echostr and msg_signature and timestamp and nonce:
@@ -352,7 +371,7 @@ def incoming_verify(
 )
 async def subscribe(
     subscription: _SchemaSubscription, _: _SchemaTokenPayload = Depends(verify_token)
-):
+) -> _SchemaResponse[None]:
     """
     客户端webpush通知订阅
     """
@@ -367,10 +386,10 @@ async def subscribe(
 )
 def send_notification(
     payload: _SchemaSubscriptionMessage,
-    _: _SchemaTokenPayload = Depends(verify_token),
-):
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+) -> _SchemaResponse[None]:
     """
-    发送webpush通知
+    发送webpush通知；会推送到全部已订阅浏览器，因此仅限超级管理员调用
     """
     from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
 

@@ -1,3 +1,7 @@
+"""
+验证文件整理计划的输入冻结、操作顺序、事件拦截和清理兼容。
+"""
+
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
@@ -9,8 +13,9 @@ from app.application.transfer.workflow import (
     TransferPlanItem,
     TransferPlanningInput,
 )
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.filemanager import transhandler as transhandler_module
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
@@ -21,43 +26,61 @@ from app.schemas.workflow import FileItem
 
 
 class ReadOnlyTreeStorage:
-    """提供目录只读遍历，并让任何写接口调用立即失败。"""
+    """
+    提供目录只读遍历，并让任何写接口调用立即失败。
+    """
 
     def __init__(self, children: dict[str, list[FileItem]]):
-        """保存按源目录路径索引的测试树。"""
+        """
+        保存按源目录路径索引的测试树。
+        """
         self.children = children
         self.reads: list[str] = []
 
     def list(self, fileitem: FileItem) -> list[FileItem]:
-        """返回目录孩子并记录只读访问。"""
+        """
+        返回目录孩子并记录只读访问。
+        """
         self.reads.append(fileitem.path)
         return self.children.get(fileitem.path, [])
 
     def __getattr__(self, name: str):
-        """拒绝规划期意外访问的存储接口。"""
+        """
+        拒绝规划期意外访问的存储接口。
+        """
         raise AssertionError(f"规划阶段不应访问存储接口：{name}")
 
 
 class RecordingStorage:
-    """记录执行期存储调用顺序并模拟同一网盘复制。"""
+    """
+    记录执行期存储调用顺序并模拟同一网盘复制。
+    """
 
     def __init__(self, calls: list[str], existing: FileItem = None):
-        """保存调用日志与可选同名目标。"""
+        """
+        保存调用日志与可选同名目标。
+        """
         self.calls = calls
-        self.existing = existing
+        self.files = {existing.path: existing} if existing else {}
 
     def get_item_strict(self, path: Path):
-        """记录严格目标查询。"""
+        """
+        记录严格目标查询。
+        """
         self.calls.append("strict")
-        return self.existing
+        return self.files.get(path.as_posix())
 
     def get_item(self, path: Path):
-        """记录普通目标查询。"""
+        """
+        记录普通目标查询。
+        """
         self.calls.append("get_item")
-        return self.existing
+        return self.files.get(path.as_posix())
 
     def get_folder(self, path: Path) -> FileItem:
-        """记录可能创建目录的接口。"""
+        """
+        记录可能创建目录的接口。
+        """
         self.calls.append("get_folder")
         return FileItem(
             storage="alist",
@@ -67,23 +90,45 @@ class RecordingStorage:
         )
 
     def delete(self, fileitem: FileItem) -> bool:
-        """记录删除副作用。"""
+        """
+        记录删除副作用。
+        """
         self.calls.append("delete")
-        self.existing = None
+        self.files.pop(fileitem.path, None)
+        return True
+
+    def rename(self, fileitem: FileItem, name: str) -> bool:
+        """
+        模拟拒绝覆盖已有目标的同目录重命名。
+        """
+        target = Path(fileitem.path).with_name(name)
+        self.calls.append(f"rename:{target.as_posix()}")
+        assert target.as_posix() not in self.files
+        source = self.files.pop(fileitem.path)
+        self.files[target.as_posix()] = source.model_copy(update={"path": target.as_posix(), "name": name})
         return True
 
     def is_support_transtype(self, transfer_type: str) -> bool:
-        """声明测试存储支持复制。"""
+        """
+        声明测试存储支持复制。
+        """
         return transfer_type == "copy"
 
     def copy(self, fileitem: FileItem, path: Path, name: str) -> bool:
-        """记录复制副作用。"""
+        """
+        记录复制副作用。
+        """
         self.calls.append(f"copy:{(path / name).as_posix()}")
+        self.files[(path / name).as_posix()] = fileitem.model_copy(update={
+            "path": (path / name).as_posix(), "name": name,
+        })
         return True
 
 
 def _build_media() -> tuple[MetaBase, MediaInfo]:
-    """构造文件规划所需的最小电视剧领域对象。"""
+    """
+    构造文件规划所需的最小电视剧领域对象。
+    """
     meta = MetaBase("Test.Show.S01E01.mkv")
     meta.type = MediaType.TV
     meta.name = "Test Show"
@@ -100,7 +145,9 @@ def _build_media() -> tuple[MetaBase, MediaInfo]:
 
 
 def _build_fileitem() -> FileItem:
-    """构造无需访问宿主文件系统的网盘源文件。"""
+    """
+    构造无需访问宿主文件系统的网盘源文件。
+    """
     return FileItem(
         storage="alist",
         path="/downloads/Test.Show.S01E01.mkv",
@@ -109,11 +156,14 @@ def _build_fileitem() -> FileItem:
         extension="mkv",
         type="file",
         size=1024,
+        modify_time=1.0,
     )
 
 
 def _build_input(fileitem: FileItem, **overrides) -> TransferPlanningInput:
-    """构造可持久化规划输入。"""
+    """
+    构造可持久化规划输入。
+    """
     values = {
         "source_fileitem": fileitem.model_dump(mode="json"),
         "target_storage": "alist",
@@ -133,7 +183,9 @@ def _plan_file(
     mediainfo: MediaInfo,
     source_oper,
 ):
-    """使用测试固定策略规划单个文件。"""
+    """
+    使用测试固定策略规划单个文件。
+    """
     return handler.plan_transfer(
         planning_input,
         meta=meta,
@@ -152,6 +204,9 @@ def _plan_file(
 
 
 def test_directory_planning_only_reads_source_and_freezes_ordered_leaf_operations():
+    """
+    目录规划只读取源目录，并冻结有序的叶子文件操作。
+    """
     root = FileItem(storage="alist", path="/source/disc", name="disc", type="dir")
     nested = FileItem(storage="alist", path="/source/disc/BDMV", name="BDMV", type="dir")
     first = FileItem(
@@ -208,12 +263,17 @@ def test_directory_planning_only_reads_source_and_freezes_ordered_leaf_operation
 def test_execute_uses_frozen_target_and_intercepts_before_directory_or_delete(
     monkeypatch,
 ):
+    """
+    执行阶段使用冻结目标，在创建目录和覆盖删除前完成拦截。
+    """
     calls: list[str] = []
     fileitem = _build_fileitem()
     meta, mediainfo = _build_media()
 
     def record_event(event_type, event_data):
-        """记录规划和执行事件顺序。"""
+        """
+        记录规划和执行事件顺序。
+        """
         calls.append(event_type.value)
         return None
 
@@ -235,7 +295,9 @@ def test_execute_uses_frozen_target_and_intercepts_before_directory_or_delete(
     original_get_runtime_setting = transhandler_module.get_runtime_setting
 
     def drifted_runtime_setting(name: str):
-        """让执行期重新读取重命名配置时立即失败。"""
+        """
+        让执行期重新读取重命名配置时立即失败。
+        """
         if name == "RENAME_FORMAT":
             raise AssertionError("执行冻结计划不应重新读取重命名配置")
         return original_get_runtime_setting(name)
@@ -252,6 +314,7 @@ def test_execute_uses_frozen_target_and_intercepts_before_directory_or_delete(
         type="file",
         extension="mkv",
         size=100,
+        modify_time=1.0,
     )
     storage = RecordingStorage(calls, existing=existing)
 
@@ -270,10 +333,14 @@ def test_execute_uses_frozen_target_and_intercepts_before_directory_or_delete(
     intercept_index = calls.index(ChainEventType.TransferIntercept.value)
     assert intercept_index < calls.index("get_folder")
     assert intercept_index < calls.index("delete")
-    assert f"copy:{frozen_target}" in calls
+    assert f"rename:{frozen_target}" in calls
+    assert next(index for index, call in enumerate(calls) if call.startswith("copy:")) < calls.index("delete")
 
 
 def test_module_preserves_admission_input_while_freezing_resolved_directory():
+    """
+    规划保留原始准入输入，同时冻结解析后的目录和媒体信息。
+    """
     fileitem = _build_fileitem()
     meta, mediainfo = _build_media()
     admission_input = _build_input(
@@ -314,8 +381,58 @@ def test_module_preserves_admission_input_while_freezing_resolved_directory():
     assert checkpoint.resolved_mediainfo["title"] == "Test Show"
 
 
+@pytest.mark.parametrize("configured", [False, True])
+@pytest.mark.parametrize("renaming", [False, True])
+@pytest.mark.parametrize("extension", ["flac", "lrc", "jpg"])
+def test_manual_music_final_directory_preserves_filename_and_frozen_input(monkeypatch, configured, renaming, extension):
+    """
+    手动最终目录覆盖分类及模板目录，音频歌词仍重命名，封面保持原名且规划不写文件。
+    """
+    fileitem = _build_fileitem().model_copy(update={
+        "path": f"/downloads/song.{extension}", "name": f"song.{extension}", "extension": extension,
+    })
+    meta = MetaMusic(title="Selected Song", album="Album", artists=["Artist"], track_number=1,
+                     sample_rate=48000, duration=30)
+    info = MusicInfo.from_meta(meta)
+    planning = _build_input(fileitem, options={"music_target_path": "/chosen/OST/Album"})
+    fingerprint = planning.fingerprint
+    original_get_setting = transhandler_module.get_runtime_setting
+
+    def setting(name):
+        """
+        以跨目录条件模板验证先完整渲染再提取文件名，其他配置仍走隔离默认值。
+        """
+        if name == "RENAME_FORMAT":
+            return lambda _type: "{% if sample_rate %}{{sample_rate}}/{{album}}/{% endif %}{{track}} - {{title}}{{fileExt}}"
+        return original_get_setting(name)
+
+    monkeypatch.setattr(transhandler_module, "get_runtime_setting", setting)
+    directory = TransferDirectoryConf(
+        library_path="/configured-library", library_storage="alist", transfer_type="reflink", renaming=renaming,
+        library_type_folder=True, library_category_folder=True, scraping=True, overwrite_mode="never",
+    ) if configured else None
+    checkpoint = FileManagerModule().plan_transfer(
+        fileitem=fileitem, meta=meta, mediainfo=info, target_directory=directory, target_path=Path("/default-root"),
+        target_storage="alist", transfer_type=None, library_type_folder=True, library_category_folder=True,
+        source_oper=ReadOnlyTreeStorage({}), planning_input=planning,
+    )
+    target = Path(checkpoint.final_target_path)
+    assert target.parent == Path("/chosen/OST/Album")
+    assert target.name == ("song.jpg" if extension == "jpg" else f"01 - Selected Song.{extension}")
+    assert checkpoint.root_target_path == "/chosen/OST/Album"
+    assert checkpoint.resolved_transfer_type == ("reflink" if configured else "copy")
+    assert checkpoint.planning_input.fingerprint == fingerprint
+    assert checkpoint.resolved_meta["sample_rate"] == 48000
+    assert checkpoint.resolved_meta["duration"] == 30
+    restored = TransferPlanCheckpoint.from_payload(checkpoint.to_payload())
+    assert restored.final_target_path == checkpoint.final_target_path
+    assert restored.planning_input.options["music_target_path"] == "/chosen/OST/Album"
+
+
 def _build_cleanup_checkpoint(monkeypatch, calls: list[str]):
-    """构造带冻结旧目标清理意图的单文件检查点。"""
+    """
+    构造带冻结旧目标清理意图的单文件检查点。
+    """
     fileitem = _build_fileitem()
     meta, mediainfo = _build_media()
     cleanup_item = FileItem(
@@ -331,7 +448,9 @@ def _build_cleanup_checkpoint(monkeypatch, calls: list[str]):
     )
 
     def record_event(event_type, event_data):
-        """记录执行事件顺序。"""
+        """
+        记录执行事件顺序。
+        """
         calls.append(event_type.value)
         return None
 
@@ -347,7 +466,10 @@ def _build_cleanup_checkpoint(monkeypatch, calls: list[str]):
     return checkpoint, meta, mediainfo, cleanup_item
 
 
-def test_cleanup_runs_after_intercept_and_before_transfer_side_effects(monkeypatch):
+def test_cleanup_runs_after_new_target_is_materialized(monkeypatch):
+    """
+    宿主重整理只能在新目标已完整落地后清理旧历史目的。
+    """
     calls: list[str] = []
     checkpoint, meta, mediainfo, cleanup_item = _build_cleanup_checkpoint(
         monkeypatch,
@@ -358,7 +480,9 @@ def test_cleanup_runs_after_intercept_and_before_transfer_side_effects(monkeypat
     cleaned_items: list[FileItem] = []
 
     def cleanup_media_file(fileitem: FileItem) -> bool:
-        """模拟含目录保护与插件路由的统一删除兼容能力。"""
+        """
+        模拟含目录保护与插件路由的统一删除兼容能力。
+        """
         calls.append("cleanup_compat")
         cleaned_items.append(fileitem)
         return True
@@ -375,21 +499,26 @@ def test_cleanup_runs_after_intercept_and_before_transfer_side_effects(monkeypat
     assert result.success is True
     intercept_index = calls.index(ChainEventType.TransferIntercept.value)
     assert intercept_index < calls.index("cleanup_compat")
-    assert calls.index("cleanup_compat") < calls.index("get_folder")
-    assert calls.index("cleanup_compat") < next(
+    assert calls.index("get_folder") < calls.index("cleanup_compat")
+    assert calls.index("cleanup_compat") > next(
         index for index, call in enumerate(calls) if call.startswith("copy:")
     )
     assert cleaned_items == [cleanup_item]
 
 
 def test_cleanup_compatibility_capability_can_report_idempotent_success(monkeypatch):
+    """
+    旧清理能力缺失时可报告幂等成功，不阻断已完成的整理。
+    """
     calls: list[str] = []
     checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
     transfer_storage = RecordingStorage(calls)
     module = FileManagerModule()
 
     def cleanup_media_file(fileitem: FileItem) -> bool:
-        """统一能力将目标不存在归一为幂等成功。"""
+        """
+        统一能力将目标不存在归一为幂等成功。
+        """
         calls.append("cleanup_compat_missing")
         return True
 
@@ -409,7 +538,9 @@ def test_cleanup_compatibility_capability_can_report_idempotent_success(monkeypa
 def test_replayed_checkpoint_skips_cleanup_already_completed_before_provider(
     monkeypatch,
 ):
-    """provider 前已完成 cleanup 的持久检查点在宿主重放时不得再次删除。"""
+    """
+    provider 前已完成 cleanup 的持久检查点在宿主重放时不得再次删除。
+    """
     calls: list[str] = []
     checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
     persisted_checkpoint = TransferPlanCheckpoint.from_payload(
@@ -421,7 +552,9 @@ def test_replayed_checkpoint_skips_cleanup_already_completed_before_provider(
     transfer_storage = RecordingStorage(calls)
 
     def unexpected_cleanup(_fileitem: FileItem) -> bool:
-        """若持久完成事实未被消费则立即暴露重复清理。"""
+        """
+        若持久完成事实未被消费则立即暴露重复清理。
+        """
         raise AssertionError("已完成的 provider 前 cleanup 不应在宿主重放时重复执行")
 
     result = FileManagerModule().execute_transfer_plan(
@@ -438,7 +571,10 @@ def test_replayed_checkpoint_skips_cleanup_already_completed_before_provider(
     assert any(call.startswith("copy:") for call in calls)
 
 
-def test_cleanup_failure_raises_before_directory_or_copy(monkeypatch):
+def test_cleanup_failure_keeps_the_new_target_and_raises_for_retry(monkeypatch):
+    """
+    旧目的清理失败可重试，已成功落地的新目标不能因此被删除。
+    """
     calls: list[str] = []
     checkpoint, meta, mediainfo, cleanup_item = _build_cleanup_checkpoint(
         monkeypatch,
@@ -448,7 +584,9 @@ def test_cleanup_failure_raises_before_directory_or_copy(monkeypatch):
     module = FileManagerModule()
 
     def cleanup_media_file(fileitem: FileItem) -> bool:
-        """模拟统一删除能力执行保护治理后的失败结果。"""
+        """
+        模拟统一删除能力执行保护治理后的失败结果。
+        """
         calls.append("cleanup_compat_failed")
         return False
 
@@ -464,13 +602,61 @@ def test_cleanup_failure_raises_before_directory_or_copy(monkeypatch):
 
     assert ChainEventType.TransferIntercept.value in calls
     assert "cleanup_compat_failed" in calls
-    assert "get_folder" not in calls
-    assert not any(call.startswith("copy:") for call in calls)
+    assert "get_folder" in calls
+    assert any(call.startswith("copy:") for call in calls)
+    assert checkpoint.final_target_path in transfer_storage.files
+
+
+def test_cleanup_is_not_called_when_materialization_fails(monkeypatch):
+    """
+    新目标未落地时保留历史旧目的，不调用任何兼容删除能力。
+    """
+    calls = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    storage = RecordingStorage(calls)
+    monkeypatch.setattr(storage, "copy", lambda *_args: False)
+    cleanup = Mock(return_value=True)
+    result = FileManagerModule().execute_transfer_plan(
+        checkpoint, meta=meta, mediainfo=mediainfo,
+        source_oper=storage, target_oper=storage, cleanup_media_file=cleanup,
+    )
+    assert result.success is False
+    cleanup.assert_not_called()
+
+
+@pytest.mark.parametrize("ancestor", [False, True])
+def test_cleanup_never_removes_the_new_target_or_its_parent(monkeypatch, ancestor):
+    """
+    同路径或祖先目录的历史目的交文件级覆盖，不能整块删除新版本。
+    """
+    calls = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    path = Path(checkpoint.final_target_path)
+    cleanup = FileItem(storage="alist", path=(path.parent if ancestor else path).as_posix(),
+                       type="dir" if ancestor else "file")
+    planning_input = replace(checkpoint.planning_input, options={
+        "cleanup_dest_fileitem": cleanup.model_dump(mode="json"),
+    })
+    checkpoint = replace(checkpoint, planning_input=planning_input)
+    storage = RecordingStorage(calls, existing=FileItem(
+        storage="alist", path=path.as_posix(), name=path.name, type="file", size=100, modify_time=1.0,
+    ))
+    unexpected_cleanup = Mock(side_effect=AssertionError("不可删除重合目的"))
+    result = FileManagerModule().execute_transfer_plan(
+        checkpoint, meta=meta, mediainfo=mediainfo,
+        source_oper=storage, target_oper=storage, cleanup_media_file=unexpected_cleanup,
+    )
+    assert result.success
+    assert path.as_posix() in storage.files
+    unexpected_cleanup.assert_not_called()
 
 
 def test_empty_directory_plan_is_zero_operation_without_intercept_or_cleanup(
     monkeypatch,
 ):
+    """
+    空目录生成零操作计划，执行时不触发拦截或清理。
+    """
     calls: list[str] = []
     root = FileItem(
         storage="alist",
@@ -508,7 +694,9 @@ def test_empty_directory_plan_is_zero_operation_without_intercept_or_cleanup(
     assert checkpoint.items == ()
 
     def unexpected_event(event_type, event_data):
-        """空计划若触发事件则立即失败。"""
+        """
+        空计划若触发事件则立即失败。
+        """
         raise AssertionError(f"空计划不应触发事件：{event_type}")
 
     monkeypatch.setattr(eventmanager, "send_event", unexpected_event)
@@ -521,11 +709,18 @@ def test_empty_directory_plan_is_zero_operation_without_intercept_or_cleanup(
         cleanup_media_file=lambda _fileitem: calls.append("cleanup") or True,
     )
 
-    assert result.success is True
+    assert result.success is False
+    assert result.message == "源目录中没有可整理文件"
+    assert result.failure_stage == "planning"
+    assert result.target_item is None
+    assert result.need_notify is False
     assert calls == []
 
 
 def test_directory_intercept_preserves_legacy_payload(monkeypatch):
+    """
+    目录拦截事件保留旧载荷约定，不额外声明元数据和选项字段。
+    """
     calls: list[str] = []
     root = FileItem(
         storage="alist",
@@ -559,7 +754,9 @@ def test_directory_intercept_preserves_legacy_payload(monkeypatch):
     intercept_payloads = []
 
     def capture_event(event_type, event_data):
-        """捕获目录根拦截事件。"""
+        """
+        捕获目录根拦截事件。
+        """
         if event_type == ChainEventType.TransferIntercept:
             intercept_payloads.append(event_data)
         return None
@@ -583,7 +780,9 @@ def test_directory_intercept_preserves_legacy_payload(monkeypatch):
 
 
 def test_directory_intercept_step_uses_frozen_source_after_size_projection():
-    """目录执行期修正根目录大小时，持久拦截意图仍使用冻结源快照。"""
+    """
+    目录执行期修正根目录大小时，持久拦截意图仍使用冻结源快照。
+    """
     root = FileItem(
         storage="alist",
         path="/downloads/disc",
@@ -624,7 +823,9 @@ def test_directory_intercept_step_uses_frozen_source_after_size_projection():
     steps = []
 
     def run_step(*, phase, kind, payload, execute, observe):
-        """模拟 durable runner，并记录其接受的冻结步骤意图。"""
+        """
+        模拟 durable runner，并记录其接受的冻结步骤意图。
+        """
         steps.append((phase, kind, payload))
         return execute()
 

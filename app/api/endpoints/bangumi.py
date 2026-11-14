@@ -1,3 +1,7 @@
+"""
+提供 Bangumi 条目搜索、发现和详情查询接口。
+"""
+
 from typing import Any, List, Optional
 
 from fastapi import Depends
@@ -6,9 +10,9 @@ from app.adapters.web.security.access import verify_token
 from app.api.response import ResponseAPIRouter
 from app.chain.bangumi import BangumiChain
 from app.domain.context import MediaInfo
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 
@@ -29,7 +33,9 @@ async def bangumi_credits(
     """
     persons = await BangumiChain().async_bangumi_credits(bangumiid)
     if persons:
-        return persons[(page - 1) * count : page * count]
+        page_value = page or 1
+        count_value = count or 20
+        return persons[(page_value - 1) * count_value : page_value * count_value]
     return []
 
 
@@ -49,7 +55,12 @@ async def bangumi_recommend(
     """
     medias = await BangumiChain().async_bangumi_recommend(bangumiid)
     if medias:
-        return [media.to_dict() for media in medias[(page - 1) * count : page * count]]
+        page_value = page or 1
+        count_value = count or 20
+        return [
+            media.to_dict()
+            for media in medias[(page_value - 1) * count_value : page_value * count_value]
+        ]
     return []
 
 
@@ -81,7 +92,12 @@ async def bangumi_person_credits(
     """
     medias = await BangumiChain().async_person_credits(person_id=person_id)
     if medias:
-        return [media.to_dict() for media in medias[(page - 1) * count : page * count]]
+        page_value = page or 1
+        count_value = count or 20
+        return [
+            media.to_dict()
+            for media in medias[(page_value - 1) * count_value : page_value * count_value]
+        ]
     return []
 
 

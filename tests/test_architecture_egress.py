@@ -1,4 +1,6 @@
-"""宿主 direct egress 事实与人工政策契约。"""
+"""
+宿主 direct egress 事实与人工政策契约。
+"""
 
 import json
 from pathlib import Path
@@ -66,6 +68,8 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.doctor.checks", "urllib.request"),
     },
     "type_or_compat_only": {
+        ("app.adapters.external.server", "httpx2"),
+        ("app.adapters.external.server", "requests"),
         ("app.adapters.external.plugin.client", "httpx2"),
         ("app.adapters.external.plugin.client", "requests"),
         ("app.modules.emby.emby", "requests"),
@@ -85,14 +89,19 @@ FROZEN_EGRESS_REASON_BY_EDGE = {
     for edge in edges
 }
 FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
-    ("app.adapters.cache.redis", "redis"): "49f0b28ef731b25aa772d6887febd762d03b981a1f52d6dfc8dff82f2f489f81",
+    # Redis 客户端局部化后，扫描器保留了完整调用面；传输边界未增加。
+    ("app.adapters.cache.redis", "redis"): "81a91a371296446093a9796421f72fb76ea54a040a3c288c469c6c5b4dfd6c39",
+    ("app.adapters.external.server", "httpx2"): "e9aeb562213af38c644c457850853bba9f3043c56e710c3adde98adc6a4b9dba",
+    ("app.adapters.external.server", "requests"): "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037",
     ("app.adapters.external.plugin.client", "httpx2"): "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d",
     ("app.adapters.external.plugin.client", "requests"): "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09",
-    ("app.adapters.network.browser", "cloakbrowser"): "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173",
+    # 同一浏览器 Adapter 保留 key 解析与六入口包装，未向上层扩展 SDK 直连。
+    ("app.adapters.network.browser", "cloakbrowser"): "42efc4434e0c8c55b6527356bc1f712efd6905fcb8c80b856a893745377f1f81",
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",
     ("app.adapters.network.http", "httpx"): "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3",
-    ("app.adapters.network.http", "httpx2"): "73879afc31531cc27241f21e0edf3b8e493a7d9aef973d0c2e28165d006e631d",
+    # 池构造移入同一 owner 的专用函数以支持恢复；调用种类、数量与外连边均未增加。
+    ("app.adapters.network.http", "httpx2"): "cf347be42a531743cdae292eecd31f714be16ad13584a88f49a9102688262682",
     ("app.adapters.network.http", "requests"): "c95df710a8536328f5ee005c0ce065b9528f2f4ebae1f077315102d8c0f4c01f",
     ("app.adapters.network.http", "urllib3"): "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
     ("app.adapters.network.ip", "socket.gethostbyname"): "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
@@ -112,24 +121,30 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.cli", "urllib.request"): "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
     ("app.doctor.checks", "socket.create_connection"): "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
-    ("app.modules.discord.discord", "discord"): "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86",
+    # 删除用户历史频道回落的get_channel/fetch_channel各一次；未新增网络能力或其它SDK调用。
+    ("app.modules.discord.discord", "discord"): "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
     ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
     ("app.modules.filemanager.storages.smb", "smbclient"): "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
-    ("app.modules.plex.plex", "plexapi"): "878d3f54d6cd10d582e9670bec1b2a499f1f4c5a359a3cead7eaee79361b8a97",
+    # 补充现有 SDK 返回类型导入；未增加客户端或请求路径。
+    # 新增 LibrarySection 类型绑定以描述音乐查询；SDK 外连操作集合保持一致。
+    ("app.modules.plex.plex", "plexapi"): "6109de36f963b5c6193ed60941a88856cbee9c37303dedf13da3a3be94478543",
     ("app.modules.plex.plex", "requests"): "e49c0856fd6c99a3409850898aac7e6e3fa611d4e91546634c178fbfd244e8da",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",
     ("app.modules.rtorrent.rtorrent", "http.client"): "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7",
     ("app.modules.rtorrent.rtorrent", "socket.create_connection"): "878114d6b1bda091bd3b3d8aa819831d84381682feba78267592d2593295af90",
     ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"): "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85",
-    ("app.modules.slack.slack", "slack_bolt"): "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6",
+    # Slack 客户端守卫和返回类型收紧后，扫描器保留了完整调用面；传输边界未增加。
+    ("app.modules.slack.slack", "slack_bolt"): "d970999c7c77ca5e93ec8a2773fa0b3db10df63ecce780b5fd52ca038734666a",
     ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
-    ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484",
-    ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
+    # Session 类型使扫描器识别原有的两处 close；未新增发送或会话关闭路径。
+    ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c",
+    # 区分添加与重复响应时只新增 Torrent 值对象构造，仍复用原 SDK 传输与会话握手。
+    ("app.modules.transmission.transmission", "transmission_rpc"): "43c697821ba063624f01a2c75f77f0ec9fe08a8e72a7ec991845c83c805bbc2b",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
     ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
@@ -138,19 +153,25 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
 
 
 def _module(tmp_path: Path, name: str, content: str) -> dict[str, Path]:
-    """创建供 direct egress collector 使用的独立模块。"""
+    """
+    创建供 direct egress collector 使用的独立模块。
+    """
     path = tmp_path / f"{name.replace('.', '_')}.py"
     path.write_text(content, encoding="utf-8")
     return {name: path}
 
 
 def _entries_by_target(value: dict[str, object]) -> dict[str, dict[str, object]]:
-    """把单 source 合成事实按 target 建索引。"""
+    """
+    把单 source 合成事实按 target 建索引。
+    """
     return {entry["target"]: entry for entry in value["entries"]}
 
 
 def _policy_facts(groups: list[dict[str, object]]) -> list[dict[str, str]]:
-    """展开按语义分组保存的人工 egress fact 引用。"""
+    """
+    展开按语义分组保存的人工 egress fact 引用。
+    """
     return [fact for group in groups for fact in group["facts"]]
 
 
@@ -158,7 +179,9 @@ def _policy_differences(
     facts: list[dict[str, object]],
     reviewed: list[dict[str, str]],
 ) -> tuple[list[str], list[str]]:
-    """按完整事实指纹返回未审查事实和陈旧人工 policy。"""
+    """
+    按完整事实指纹返回未审查事实和陈旧人工 policy。
+    """
     actual = {str(fact["fingerprint"]) for fact in facts}
     expected = {fact["fingerprint"] for fact in reviewed}
     return sorted(actual - expected), sorted(expected - actual)
@@ -168,7 +191,9 @@ def _classification_differences(
     facts: list[dict[str, object]],
     groups: list[dict[str, object]],
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[tuple[str, str]]]:
-    """返回新增边、陈旧分类和与初始语义不符的分类。"""
+    """
+    返回新增边、陈旧分类和与初始语义不符的分类。
+    """
     actual = {(str(fact["source"]), str(fact["target"])) for fact in facts}
     reviewed = {
         (str(fact["source"]), str(fact["target"])): str(group["reason_code"])
@@ -188,7 +213,9 @@ def _classification_differences(
 def _fingerprint_differences(
     facts: list[dict[str, object]],
 ) -> list[tuple[str, str]]:
-    """返回调用面已超过初始上界的 direct egress 边。"""
+    """
+    返回调用面已超过初始上界的 direct egress 边。
+    """
     actual = {
         (str(fact["source"]), str(fact["target"])): str(fact["fingerprint"])
         for fact in facts
@@ -203,7 +230,9 @@ def _fingerprint_differences(
 def test_egress_collector_distinguishes_bindings_and_runtime_uses(
     tmp_path: Path,
 ) -> None:
-    """类型导入、真实调用、lazy import、re-export 与 SDK 必须可区分。"""
+    """
+    类型导入、真实调用、lazy import、re-export 与 SDK 必须可区分。
+    """
     modules = _module(
         tmp_path,
         "app.sample",
@@ -266,7 +295,9 @@ def run():
 
 
 def test_egress_collector_preserves_type_only_runtime_import(tmp_path: Path) -> None:
-    """用于响应类型的运行期 import 必须保留，但不能伪报为外呼操作。"""
+    """
+    用于响应类型的运行期 import 必须保留，但不能伪报为外呼操作。
+    """
     value = collect_direct_egress(
         _module(tmp_path, "app.sample", "from requests import Response\n")
     )
@@ -286,7 +317,9 @@ def test_egress_collector_preserves_type_only_runtime_import(tmp_path: Path) -> 
 def test_egress_collector_tracks_aliases_contexts_and_protocol_operations(
     tmp_path: Path,
 ) -> None:
-    """Client 别名、上下文实例、socket 与 XML-RPC 获取都进入稳定 uses。"""
+    """
+    Client 别名、上下文实例、socket 与 XML-RPC 获取都进入稳定 uses。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -330,7 +363,9 @@ async def async_call():
 def test_egress_collector_keeps_lexical_scopes_and_merges_branches(
     tmp_path: Path,
 ) -> None:
-    """函数 lazy import 不得泄漏，分支与 self client 必须保留可证明来源。"""
+    """
+    函数 lazy import 不得泄漏，分支与 self client 必须保留可证明来源。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -374,7 +409,9 @@ class Service:
 def test_egress_collector_preserves_wildcard_chains_and_duplicate_calls(
     tmp_path: Path,
 ) -> None:
-    """高风险 wildcard、链式 client 和重复操作都必须改变事实 identity。"""
+    """
+    高风险 wildcard、链式 client 和重复操作都必须改变事实 identity。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -407,7 +444,9 @@ def run():
 def test_egress_collector_tracks_annotations_class_order_and_union_branches(
     tmp_path: Path,
 ) -> None:
-    """注入参数、后置初始化与双 transport 分支都必须保留 operation。"""
+    """
+    注入参数、后置初始化与双 transport 分支都必须保留 operation。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -456,7 +495,9 @@ def branch(flag):
 def test_egress_collector_tracks_dynamic_and_late_bound_modules(
     tmp_path: Path,
 ) -> None:
-    """注册目标的字面量动态导入与后置模块别名不能绕过门禁。"""
+    """
+    注册目标的字面量动态导入与后置模块别名不能绕过门禁。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -494,7 +535,9 @@ transport = requests
 
 
 def test_egress_collector_respects_local_shadow_scopes(tmp_path: Path) -> None:
-    """lambda、for、comprehension 与 except-as 局部名不得污染 import provenance。"""
+    """
+    lambda、for、comprehension 与 except-as 局部名不得污染 import provenance。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -519,7 +562,9 @@ def run():
 
 
 def test_egress_collector_stops_at_response_operations(tmp_path: Path) -> None:
-    """直接请求进入事实，但响应 json/text 解析不是新的 egress operation。"""
+    """
+    直接请求进入事实，但响应 json/text 解析不是新的 egress operation。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -537,7 +582,9 @@ def run():
 
 
 def test_egress_collector_tracks_local_wrapper_injections(tmp_path: Path) -> None:
-    """本地包装函数接收的可证明 client 必须传播，未知调用不得伪造来源。"""
+    """
+    本地包装函数接收的可证明 client 必须传播，未知调用不得伪造来源。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -573,7 +620,9 @@ def run():
 def test_egress_collector_handles_runtime_else_and_final_module_binding(
     tmp_path: Path,
 ) -> None:
-    """TYPE_CHECKING else 是运行期路径，函数使用模块最终绑定。"""
+    """
+    TYPE_CHECKING else 是运行期路径，函数使用模块最终绑定。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -602,7 +651,9 @@ def run():
 def test_egress_collector_merges_class_and_zero_iteration_paths(
     tmp_path: Path,
 ) -> None:
-    """类 client 清空与零次循环都不得抹掉已证明的可达能力。"""
+    """
+    类 client 清空与零次循环都不得抹掉已证明的可达能力。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -639,7 +690,9 @@ def loop():
 
 
 def test_egress_collector_preserves_annotated_optional_client(tmp_path: Path) -> None:
-    """None 默认值不得抹掉注解 client 经实例属性传递的真实调用。"""
+    """
+    None 默认值不得抹掉注解 client 经实例属性传递的真实调用。
+    """
     value = collect_direct_egress(
         _module(
             tmp_path,
@@ -663,7 +716,9 @@ class Service:
 
 
 def test_current_egress_facts_are_complete_and_self_consistent() -> None:
-    """当前宿主 egress identity 必须完整、可收缩、排序且统计自洽。"""
+    """
+    当前宿主 egress identity 必须完整、可收缩、排序且统计自洽。
+    """
     value = dependency_baseline()["direct_egress"]
     entries = value["entries"]
     application_entries = [
@@ -713,7 +768,9 @@ def test_current_egress_facts_are_complete_and_self_consistent() -> None:
 
 
 def test_current_egress_facts_match_exact_policy() -> None:
-    """现存事实必须逐条分类，且 registry/scope 不得与 collector 漂移。"""
+    """
+    现存事实必须逐条分类，且 registry/scope 不得与 collector 漂移。
+    """
     facts = dependency_baseline()["direct_egress"]
     policy = json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
     egress_policy = policy["direct_egress"]
@@ -750,7 +807,9 @@ def test_current_egress_facts_match_exact_policy() -> None:
 
 
 def test_egress_policy_enforces_debt_and_exception_schemas() -> None:
-    """债务必须绑定清零叶，精确例外必须有 owner 与业务理由。"""
+    """
+    债务必须绑定清零叶，精确例外必须有 owner 与业务理由。
+    """
     policy = json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
     groups = policy["direct_egress"]["groups"]
     debt_tracking = {
@@ -804,7 +863,9 @@ def test_egress_policy_enforces_debt_and_exception_schemas() -> None:
 
 
 def test_egress_policy_rejects_classification_swaps() -> None:
-    """事实即使仍被覆盖，也不能在债务与例外 reason 间互换。"""
+    """
+    事实即使仍被覆盖，也不能在债务与例外 reason 间互换。
+    """
     facts = [
         {"source": "app.adapters.network.http", "target": "httpx"},
         {"source": "app.agent.llm.capability", "target": "openai"},
@@ -831,7 +892,9 @@ def test_egress_policy_rejects_classification_swaps() -> None:
 
 
 def test_egress_policy_rejects_same_edge_surface_growth() -> None:
-    """同一 source/target 的调用面变化不能靠刷新 policy 绕过。"""
+    """
+    同一 source/target 的调用面变化不能靠刷新 policy 绕过。
+    """
     facts = [
         {
             "source": "app.adapters.network.http",
@@ -846,7 +909,9 @@ def test_egress_policy_rejects_same_edge_surface_growth() -> None:
 
 
 def test_egress_policy_rejects_add_remove_replacement_and_stale_entries() -> None:
-    """新增、事实变化和删除后未清 policy 都必须产生精确差异。"""
+    """
+    新增、事实变化和删除后未清 policy 都必须产生精确差异。
+    """
     original = [
         {
             "source": "app.sample",

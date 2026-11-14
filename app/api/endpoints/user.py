@@ -1,6 +1,10 @@
+"""
+提供用户账号、权限和个人配置管理接口。
+"""
+
 import base64
 import re
-from typing import Annotated, Any, List, Union
+from typing import Annotated, Any, List
 
 from fastapi import Body, Depends, File, HTTPException, Response, UploadFile
 
@@ -23,8 +27,12 @@ from app.application.security.user import (
     UserNameConflictError,
     UserService,
 )
-from app.application.security.userconfig import get_configured_user_configuration
+from app.application.security.userconfig import (
+    UserConfigurationValueTooLargeError,
+    get_configured_user_configuration,
+)
 from app.schemas.common import FileNameData as _SchemaFileNameData
+from app.schemas.common import JsonData
 from app.schemas.common import ValueData as _SchemaValueData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.user import CurrentUserUpdate as _SchemaCurrentUserUpdate
@@ -40,7 +48,9 @@ _INVALID_PASSWORD_MESSAGE = "密码须为6至50位，并包含字母、数字、
 
 
 def _prepare_password(user_info: dict[str, Any]) -> str | None:
-    """按统一密码规则处理用户写入，并移除不会持久化的明文密码字段。"""
+    """
+    按统一密码规则处理用户写入，并移除不会持久化的明文密码字段。
+    """
     password = user_info.pop("password", None)
     if not password:
         return None
@@ -60,7 +70,7 @@ def _prepare_password(user_info: dict[str, Any]) -> str | None:
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_users(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     service: UserService = Depends(get_user_service),
     current_user: Any = Depends(get_current_active_superuser_async),
     page: CompatiblePageParam = None,
@@ -86,12 +96,12 @@ async def create_user(
     新增用户
     """
     user_info = user_in.model_dump()
-    if user_info.get("password"):
+    password = user_info.pop("password", None)
+    if password:
         try:
-            user_info["hashed_password"] = get_password_hash(user_info["password"])
+            user_info["hashed_password"] = get_password_hash(password)
         except PasswordTooLongError as error:
             return _SchemaResponse(success=False, message=str(error))
-        user_info.pop("password")
     try:
         user = await service.create(user_info)
     except UserNameConflictError:
@@ -128,7 +138,7 @@ async def update_user(
     return _SchemaResponse(success=True)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/current", summary="更新当前用户资料", response_model=_SchemaUser
 )
 async def update_current_user(
@@ -137,7 +147,9 @@ async def update_current_user(
     user_in: _SchemaCurrentUserUpdate,
     current_user: Any = Depends(get_current_active_user_async),
 ) -> Any:
-    """仅更新当前用户允许自助维护的资料和通知身份设置。"""
+    """
+    仅更新当前用户允许自助维护的资料和通知身份设置。
+    """
     user_info = user_in.model_dump(exclude_unset=True)
     password_error = _prepare_password(user_info)
     if password_error:
@@ -172,7 +184,7 @@ async def upload_avatar(
     service: UserService = Depends(get_user_service),
     file: UploadFile = File(...),
     current_user: Any = Depends(get_current_active_user_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     上传用户头像
     """
@@ -180,7 +192,7 @@ async def upload_avatar(
         raise HTTPException(status_code=403, detail="用户权限不足")
 
     # 将文件转换为Base64
-    file_base64 = base64.b64encode(file.file.read())
+    file_base64 = base64.b64encode(await file.read()).decode("ascii")
     # 更新到用户表
     user = await service.get_by_id(user_id)
     if not user:
@@ -197,7 +209,7 @@ async def upload_avatar(
 async def get_config(
     key: str,
     current_user: Any = Depends(get_current_active_user_async),
-):
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询用户配置
     """
@@ -208,17 +220,20 @@ async def get_config(
 @router.post("/config/{key}", summary="更新用户配置", response_model=_SchemaResponse[None])
 async def set_config(
     key: str,
-    value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
+    value: Annotated[JsonData, Body()] = None,
     current_user: Any = Depends(get_current_active_user_async),
-):
+) -> _SchemaResponse[None]:
     """
-    更新用户配置
+    更新用户配置；助手形象私有数据（AgentPetState.*）超出大小上限时拒绝写入
     """
-    await get_configured_user_configuration().async_set(
-        username=current_user.name,
-        key=key,
-        value=value,
-    )
+    try:
+        await get_configured_user_configuration().async_set(
+            username=current_user.name,
+            key=key,
+            value=value,
+        )
+    except UserConfigurationValueTooLargeError as error:
+        return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True)
 
 

@@ -1,4 +1,6 @@
-"""缓存 Adapter 的宿主组合根。"""
+"""
+缓存 Adapter 的宿主组合根。
+"""
 
 from __future__ import annotations
 
@@ -14,15 +16,23 @@ _LOCAL_BACKEND_TYPE = "cachetools"
 
 @dataclass(frozen=True, slots=True)
 class CacheComposition:
-    """记录本进程启动时选定的缓存实现，供关闭与配置重载定位连接 owner。"""
+    """
+    记录本进程启动时选定的缓存实现，供关闭与配置重载定位连接 owner。
 
-    redis_enabled: bool  # 启动时 CACHE_BACKEND_TYPE 是否为 redis
-    sync_redis_owner: Optional[type[Any]] = None  # 同步 Redis 连接 Singleton 类型，未启用时为空
-    async_redis_owner: Optional[type[Any]] = None  # 异步 Redis 连接 Singleton 类型，未启用时为空
+    :param redis_enabled: 本次进程启动是否选择 Redis 缓存；配置切换不直接改变此快照
+    :param sync_redis_owner: 同步 Redis 连接的生命周期 owner；未接入时为 None
+    :param async_redis_owner: 异步 Redis 连接的生命周期 owner；未接入时为 None
+    """
+
+    redis_enabled: bool
+    sync_redis_owner: Optional[type[Any]] = None
+    async_redis_owner: Optional[type[Any]] = None
 
     @property
     def redis_owners(self) -> tuple[type[Any], ...]:
-        """返回已接入的 Redis 连接 owner 类型。"""
+        """
+        返回已接入的 Redis 连接 owner 类型。
+        """
         return tuple(
             owner
             for owner in (self.sync_redis_owner, self.async_redis_owner)
@@ -34,7 +44,8 @@ _composition = CacheComposition(redis_enabled=False)
 
 
 def configure_cache_composition() -> None:
-    """在业务模块导入前登记平台缓存具体实现。
+    """
+    在业务模块导入前登记平台缓存具体实现。
 
     缓存设置属于重启生效的配置组，因此只在启动时按 ``CACHE_BACKEND_TYPE`` 选一次实现。
     选用 Redis 时才导入 Redis 适配器，文件缓存实例不加载 redis 客户端库。启动时未接入
@@ -70,11 +81,15 @@ def configure_cache_composition() -> None:
 
 
 def get_cache_composition() -> CacheComposition:
-    """返回本进程当前的缓存组合结果。"""
+    """
+    返回本进程当前的缓存组合结果。
+    """
     return _composition
 
 
 def _local_backend_type() -> str:
-    """启动时未接入 Redis，运行中的 redis 设置在重启前不生效。"""
+    """
+    启动时未接入 Redis，运行中的 redis 设置在重启前不生效。
+    """
     backend_type = get_runtime_setting("CACHE_BACKEND_TYPE")
     return _LOCAL_BACKEND_TYPE if backend_type == "redis" else backend_type

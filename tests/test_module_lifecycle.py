@@ -1,3 +1,7 @@
+"""
+验证模块代次的串行重载、初始化及旧资源停止。
+"""
+
 import asyncio
 import json
 import threading
@@ -32,7 +36,9 @@ from app.runtime.execution import run_in_threadpool_to_completion
 
 
 def test_config_reload_stops_before_initializing_latest_generation():
-    """同一模块的重载必须串行，并依次停止和初始化 generation。"""
+    """
+    同一模块的重载必须串行，并依次停止和初始化 generation。
+    """
     module = TelegramModule()
     call_order = []
     reload_started = threading.Event()
@@ -66,7 +72,9 @@ def test_config_reload_stops_before_initializing_latest_generation():
 
 
 def test_initialization_does_not_stop_a_fresh_module_generation():
-    """首次初始化只创建资源，停止旧 generation 由重载入口负责。"""
+    """
+    首次初始化只创建资源，停止旧 generation 由重载入口负责。
+    """
     module = TelegramModule()
 
     with patch.object(module, "stop") as stop, patch.object(
@@ -79,7 +87,9 @@ def test_initialization_does_not_stop_a_fresh_module_generation():
 
 
 def test_config_reload_initializes_latest_generation_after_stop_failure():
-    """旧资源停止异常只记录错误，不阻止最新配置完成初始化。"""
+    """
+    旧资源停止异常只记录错误，不阻止最新配置完成初始化。
+    """
     module = TelegramModule()
     call_order = []
 
@@ -102,7 +112,9 @@ def test_config_reload_initializes_latest_generation_after_stop_failure():
 
 
 def test_tmdb_reload_closes_old_client_when_cache_save_fails():
-    """TMDB 缓存保存失败时仍须关闭旧客户端并初始化最新配置。"""
+    """
+    TMDB 缓存保存失败时仍须关闭旧客户端并初始化最新配置。
+    """
     module = TheMovieDbModule()
     module.cache = Mock()
     module.cache.save.side_effect = OSError("cache write failed")
@@ -116,7 +128,9 @@ def test_tmdb_reload_closes_old_client_when_cache_save_fails():
 
 
 def test_filter_reload_uses_shared_module_lifecycle_lock():
-    """过滤规则重载必须经过模块基类的串行 stop 和 init。"""
+    """
+    过滤规则重载必须经过模块基类的串行 stop 和 init。
+    """
     module = FilterModule()
     reload_started = threading.Event()
     reload_finished = threading.Event()
@@ -166,7 +180,9 @@ def test_filter_reload_uses_shared_module_lifecycle_lock():
 def test_module_stop_isolates_each_service_instance(
     module_type, stop_method, requires_authentication
 ):
-    """单个服务停止失败时必须继续关闭同模块的其余实例。"""
+    """
+    单个服务停止失败时必须继续关闭同模块的其余实例。
+    """
     module = module_type()
     failed_client = Mock()
     healthy_client = Mock()
@@ -183,7 +199,9 @@ def test_module_stop_isolates_each_service_instance(
 
 
 def _polling_telegram_client(bot, handler=None):
-    """构造只含停止路径所需状态的 Telegram 客户端，并启动真实轮询线程。"""
+    """
+    构造只含停止路径所需状态的 Telegram 客户端，并启动真实轮询线程。
+    """
     client = Telegram.__new__(Telegram)
     client._bot = bot
     client._typing_tasks = {}
@@ -201,7 +219,9 @@ def _polling_telegram_client(bot, handler=None):
 
 @pytest.mark.asyncio
 async def test_telegram_stop_does_not_wait_for_in_flight_long_poll():
-    """长轮询请求进行中时 stop 应立即收敛，请求返回的更新不得再分发。"""
+    """
+    长轮询请求进行中时 stop 应立即收敛，请求返回的更新不得再分发。
+    """
     bot = TelegramBotApi("123:test")
     entered = threading.Event()
     release = threading.Event()
@@ -233,7 +253,9 @@ async def test_telegram_stop_does_not_wait_for_in_flight_long_poll():
 
 @pytest.mark.asyncio
 async def test_telegram_stop_keeps_owner_until_running_handler_finishes():
-    """handler 超过关闭预算时返回未收敛并保留 owner，handler 结束后重试可收敛。"""
+    """
+    handler 超过关闭预算时返回未收敛并保留 owner，handler 结束后重试可收敛。
+    """
     bot = TelegramBotApi("123:test")
     entered = threading.Event()
     release = threading.Event()
@@ -273,7 +295,9 @@ async def test_telegram_stop_keeps_owner_until_running_handler_finishes():
 
 
 def test_telegram_stop_from_handler_does_not_wait_for_itself():
-    """handler 内触发的 stop（例如配置重载）不能等待自身持有的分发锁。"""
+    """
+    handler 内触发的 stop（例如配置重载）不能等待自身持有的分发锁。
+    """
     bot = TelegramBotApi("123:test")
     results = []
     holder = {}
@@ -309,7 +333,9 @@ def test_telegram_stop_from_handler_does_not_wait_for_itself():
 def test_message_channel_module_reports_nonconverging_instance_after_peers(
     module_type,
 ):
-    """渠道单实例未收敛时必须继续停止其余实例并返回 False。"""
+    """
+    渠道单实例未收敛时必须继续停止其余实例并返回 False。
+    """
     module = module_type()
     blocked_client = Mock()
     blocked_client.stop.return_value = False
@@ -326,7 +352,9 @@ def test_message_channel_module_reports_nonconverging_instance_after_peers(
 
 
 def test_qqbot_stop_retains_gateway_thread_until_retry() -> None:
-    """QQ Gateway 超时后不得把活线程伪装成已收敛。"""
+    """
+    QQ Gateway 超时后不得把活线程伪装成已收敛。
+    """
     client = QQBot.__new__(QQBot)
     client._gateway_stop = threading.Event()
     client._gateway_ws_holder = []
@@ -345,7 +373,9 @@ def test_qqbot_stop_retains_gateway_thread_until_retry() -> None:
 def test_qqbot_stop_retains_gateway_until_inflight_heartbeat_finishes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """心跳发送仍阻塞时 Gateway 必须保持存活，释放后才允许关闭成功。"""
+    """
+    心跳发送仍阻塞时 Gateway 必须保持存活，释放后才允许关闭成功。
+    """
     heartbeat_started = threading.Event()
     release_heartbeat = threading.Event()
     connection_closed = threading.Event()
@@ -354,23 +384,31 @@ def test_qqbot_stop_retains_gateway_until_inflight_heartbeat_finishes(
     hello_payload = json.dumps({"op": 10, "d": {"heartbeat_interval": 1}})
 
     def build_websocket(_url, **kwargs):
-        """保存 Gateway 回调并返回隔离的 WebSocket 桩。"""
+        """
+        保存 Gateway 回调并返回隔离的 WebSocket 桩。
+        """
         callbacks.update(kwargs)
         return fake_ws
 
     def send(payload: str) -> None:
-        """Identify 立即完成，首个心跳保持在发送中的故障状态。"""
+        """
+        Identify 立即完成，首个心跳保持在发送中的故障状态。
+        """
         if json.loads(payload).get("op") == 1:
             heartbeat_started.set()
             release_heartbeat.wait()
 
     def close() -> None:
-        """同步触发 close 回调，复现 QQBot.stop() 的真实调用线程。"""
+        """
+        同步触发 close 回调，复现 QQBot.stop() 的真实调用线程。
+        """
         callbacks["on_close"](fake_ws, 1000, "test close")
         connection_closed.set()
 
     def run_forever(**_kwargs) -> None:
-        """发送 Hello 后保持连接，直到 stop() 主动关闭。"""
+        """
+        发送 Hello 后保持连接，直到 stop() 主动关闭。
+        """
         callbacks["on_message"](fake_ws, hello_payload)
         connection_closed.wait()
 
@@ -421,7 +459,9 @@ def test_qqbot_stop_retains_gateway_until_inflight_heartbeat_finishes(
 def test_qq_gateway_replaces_heartbeat_generation_without_overlap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """重复 Hello 必须等待旧心跳终止，任何时刻只能有一个发送 generation。"""
+    """
+    重复 Hello 必须等待旧心跳终止，任何时刻只能有一个发送 generation。
+    """
     first_heartbeat_started = threading.Event()
     release_first_heartbeat = threading.Event()
     second_heartbeat_started = threading.Event()
@@ -440,12 +480,16 @@ def test_qq_gateway_replaces_heartbeat_generation_without_overlap(
     max_active_heartbeats = 0
 
     def build_websocket(_url, **kwargs):
-        """保存 Gateway 回调并返回隔离的 WebSocket 桩。"""
+        """
+        保存 Gateway 回调并返回隔离的 WebSocket 桩。
+        """
         callbacks.update(kwargs)
         return fake_ws
 
     def send(payload: str) -> None:
-        """阻塞第一代心跳，并记录是否出现跨 generation 并发发送。"""
+        """
+        阻塞第一代心跳，并记录是否出现跨 generation 并发发送。
+        """
         nonlocal heartbeat_count, active_heartbeats, max_active_heartbeats
         if json.loads(payload).get("op") != 1:
             return
@@ -471,18 +515,24 @@ def test_qq_gateway_replaces_heartbeat_generation_without_overlap(
                 active_heartbeats -= 1
 
     def run_forever(**_kwargs) -> None:
-        """发送首个 Hello 后保持连接，第二个 Hello 由测试线程注入。"""
+        """
+        发送首个 Hello 后保持连接，第二个 Hello 由测试线程注入。
+        """
         callbacks["on_message"](fake_ws, hello_payload)
         connection_ready.set()
         connection_closed.wait()
 
     def send_second_hello() -> None:
-        """从独立调用线程注入重复 Hello，以观测 generation 屏障。"""
+        """
+        从独立调用线程注入重复 Hello，以观测 generation 屏障。
+        """
         second_hello_entered.set()
         callbacks["on_message"](fake_ws, hello_payload)
 
     def send_third_hello() -> None:
-        """在第二代发送中再次注入 Hello，供 close 失效待发布 generation。"""
+        """
+        在第二代发送中再次注入 Hello，供 close 失效待发布 generation。
+        """
         third_hello_entered.set()
         callbacks["on_message"](fake_ws, hello_payload)
 
@@ -561,7 +611,9 @@ def test_qq_gateway_replaces_heartbeat_generation_without_overlap(
 def test_qq_gateway_reconnect_joins_old_heartbeat_and_ignores_stale_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """重连必须先回收旧心跳，迟到的旧连接 close 不得终止新 generation。"""
+    """
+    重连必须先回收旧心跳，迟到的旧连接 close 不得终止新 generation。
+    """
     first_callbacks = {}
     second_callbacks = {}
     first_ws = Mock()
@@ -579,7 +631,9 @@ def test_qq_gateway_reconnect_joins_old_heartbeat_and_ignores_stale_close(
     second_heartbeat_count = 0
 
     def build_websocket(_url, **kwargs):
-        """依次创建两条连接，并保留各自回调以注入迟到 close。"""
+        """
+        依次创建两条连接，并保留各自回调以注入迟到 close。
+        """
         nonlocal websocket_count
         websocket_count += 1
         if websocket_count == 1:
@@ -592,13 +646,17 @@ def test_qq_gateway_reconnect_joins_old_heartbeat_and_ignores_stale_close(
         raise AssertionError("Gateway 在停止后不应建立第三条测试连接")
 
     def send_first(payload: str) -> None:
-        """阻塞第一条连接的心跳，供重连屏障检查。"""
+        """
+        阻塞第一条连接的心跳，供重连屏障检查。
+        """
         if json.loads(payload).get("op") == 1:
             first_heartbeat_started.set()
             release_first_heartbeat.wait()
 
     def send_second(payload: str) -> None:
-        """阻塞新连接首个心跳，并记录迟到 close 后是否继续工作。"""
+        """
+        阻塞新连接首个心跳，并记录迟到 close 后是否继续工作。
+        """
         nonlocal second_heartbeat_count
         if json.loads(payload).get("op") != 1:
             return
@@ -610,12 +668,16 @@ def test_qq_gateway_reconnect_joins_old_heartbeat_and_ignores_stale_close(
             second_followup_started.set()
 
     def run_first(**_kwargs) -> None:
-        """第一条连接握手后按测试信号返回，触发真实 reconnect 路径。"""
+        """
+        第一条连接握手后按测试信号返回，触发真实 reconnect 路径。
+        """
         first_callbacks["on_message"](first_ws, hello_payload)
         return_first_connection.wait()
 
     def run_second(**_kwargs) -> None:
-        """第二条连接保持运行，直到测试完成迟到 close 校验。"""
+        """
+        第二条连接保持运行，直到测试完成迟到 close 校验。
+        """
         second_callbacks["on_message"](second_ws, hello_payload)
         return_second_connection.wait()
 
@@ -672,7 +734,9 @@ def test_qq_gateway_reconnect_joins_old_heartbeat_and_ignores_stale_close(
 
 
 def test_wechat_bot_stop_reports_each_live_thread_until_retry() -> None:
-    """企业微信网关或心跳任一存活时都必须返回未收敛。"""
+    """
+    企业微信网关或心跳任一存活时都必须返回未收敛。
+    """
     client = WeChatBot.__new__(WeChatBot)
     client._stop_event = threading.Event()
     client._authenticated = threading.Event()
@@ -696,7 +760,9 @@ def test_wechat_bot_stop_reports_each_live_thread_until_retry() -> None:
 
 
 def test_wechat_clawbot_stop_keeps_poll_owner_until_retry() -> None:
-    """ClawBot 轮询超时后必须保留线程句柄供后续关闭重试。"""
+    """
+    ClawBot 轮询超时后必须保留线程句柄供后续关闭重试。
+    """
     client = WechatClawBot.__new__(WechatClawBot)
     client._stop_event = threading.Event()
     poll_thread = Mock()
@@ -713,7 +779,9 @@ def test_wechat_clawbot_stop_keeps_poll_owner_until_retry() -> None:
 
 
 def test_feishu_stop_reports_live_ws_thread_until_retry() -> None:
-    """飞书长连接停止后线程仍存活时不得报告关闭完成。"""
+    """
+    飞书长连接停止后线程仍存活时不得报告关闭完成。
+    """
     client = Feishu.__new__(Feishu)
     client._ready = threading.Event()
     client._ws_client = Mock()
@@ -734,7 +802,9 @@ def test_feishu_stop_reports_live_ws_thread_until_retry() -> None:
 
 
 def test_discord_stop_reports_live_event_loop_thread_until_retry() -> None:
-    """Discord 强制停止循环后线程仍存活时必须返回未收敛。"""
+    """
+    Discord 强制停止循环后线程仍存活时必须返回未收敛。
+    """
     client = Discord.__new__(Discord)
     client._client = Mock()
     client._loop = Mock()
@@ -754,7 +824,9 @@ def test_discord_stop_reports_live_event_loop_thread_until_retry() -> None:
 
 
 def test_slack_stop_propagates_socket_close_failure() -> None:
-    """Slack Socket Mode close 失败必须保留给 Runtime 重试。"""
+    """
+    Slack Socket Mode close 失败必须保留给 Runtime 重试。
+    """
     client = Slack.__new__(Slack)
     service = Mock()
     service.close.side_effect = RuntimeError("close failed")

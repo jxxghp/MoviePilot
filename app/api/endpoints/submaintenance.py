@@ -1,4 +1,6 @@
-"""订阅维护命令端点。"""
+"""
+订阅维护命令端点。
+"""
 
 from typing import Annotated, Any, Optional
 
@@ -39,14 +41,18 @@ SubscriptionTypeParam = Annotated[
 
 
 def _subscription_job_kwargs(subscription_type: Optional[MediaType]) -> dict[str, str]:
-    """把可选媒体类型转换为调度任务参数，未指定时保留全量任务语义。"""
+    """
+    把可选媒体类型转换为调度任务参数，未指定时保留全量任务语义。
+    """
     if subscription_type is None:
         return {}
     return {"mtype": subscription_type.value}
 
 
 def _search_submission_message(submission: SubscriptionSearchSubmission) -> str:
-    """把搜索安排结果转换为用户能直接理解的提示。"""
+    """
+    把搜索安排结果转换为用户能直接理解的提示。
+    """
     if submission.target_count == 0:
         return "没有需要搜索的订阅"
     if submission.queued_count == 0:
@@ -68,7 +74,9 @@ def _search_submission_message(submission: SubscriptionSearchSubmission) -> str:
 def _search_submission_schema(
     submission: SubscriptionSearchSubmission,
 ) -> SubscriptionSearchSubmissionSchema:
-    """构造稳定的手工搜索响应数据。"""
+    """
+    构造稳定的手工搜索响应数据。
+    """
     return SubscriptionSearchSubmissionSchema(
         batch_id=submission.batch_id,
         batch_ids=list(submission.batch_ids),
@@ -79,35 +87,37 @@ def _search_submission_schema(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/refresh",
     summary="刷新订阅（兼容入口）",
     response_model=Response[None],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/refresh", summary="刷新订阅", response_model=Response[None]
 )
 def refresh_subscribes(
     subscription_type: SubscriptionTypeParam = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
-    """刷新订阅，可选按媒体类型限定处理范围。"""
+    """
+    刷新订阅，可选按媒体类型限定处理范围。
+    """
     if not current_user.is_superuser:
         return Response(success=False, message="订阅不存在")
-    get_scheduler().start("subscribe_refresh", **_subscription_job_kwargs(subscription_type))
+    get_scheduler().start("subscribe_refresh", source="manual", **_subscription_job_kwargs(subscription_type))
     return Response(success=True)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/reset/{subid}",
     summary="重置订阅（兼容入口）",
     response_model=Response[None],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/reset/{subid}", summary="重置订阅", response_model=Response[None]
 )
 async def reset_subscribes(
@@ -115,7 +125,9 @@ async def reset_subscribes(
     mutation: SubscriptionMutationService = Depends(get_subscription_mutation_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """重置一个订阅。"""
+    """
+    重置一个订阅。
+    """
     actor = SubscriptionActor(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
@@ -126,35 +138,37 @@ async def reset_subscribes(
     return Response(success=False, message="订阅不存在")
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/check",
     summary="刷新订阅 TMDB 信息（兼容入口）",
     response_model=Response[None],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/check", summary="刷新订阅 TMDB 信息", response_model=Response[None]
 )
 def check_subscribes(
     subscription_type: SubscriptionTypeParam = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
-    """刷新订阅 TMDB 信息，可选按媒体类型限定处理范围。"""
+    """
+    刷新订阅 TMDB 信息，可选按媒体类型限定处理范围。
+    """
     if not current_user.is_superuser:
         return Response(success=False, message="订阅不存在")
     get_scheduler().start("subscribe_tmdb", **_subscription_job_kwargs(subscription_type))
     return Response(success=True)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/search",
     summary="搜索所有订阅（兼容入口）",
     response_model=Response[SubscriptionSearchSubmissionSchema],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/search",
     summary="搜索所有订阅",
     response_model=Response[SubscriptionSearchSubmissionSchema],
@@ -164,7 +178,9 @@ async def search_subscribes(
     command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """搜索当前用户可管理的订阅，可选按媒体类型限定处理范围。"""
+    """
+    搜索当前用户可管理的订阅，可选按媒体类型限定处理范围。
+    """
     submission = await command.execute(
         SubscribeSearchActor(
             username=current_user.name,
@@ -181,14 +197,14 @@ async def search_subscribes(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/search/{subscribe_id}",
     summary="搜索订阅（兼容入口）",
     response_model=Response[SubscriptionSearchSubmissionSchema],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/search/{subscribe_id}",
     summary="搜索订阅",
     response_model=Response[SubscriptionSearchSubmissionSchema],
@@ -199,7 +215,9 @@ async def search_subscribe(
     command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """根据订阅编号搜索一个订阅，可选校验媒体类型。"""
+    """
+    根据订阅编号搜索一个订阅，可选校验媒体类型。
+    """
     submission = await command.execute(
         SubscribeSearchActor(
             username=current_user.name,

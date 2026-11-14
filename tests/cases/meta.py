@@ -1,3 +1,9 @@
+"""
+媒体文件名解析的输入与预期字段样本。
+
+title 和 subtitle 保留真实命名形式，target 列出解析后的类型、名称、年份及音视频属性。
+"""
+
 meta_cases = [{
     "title": "The Long Season 2017 2160p WEB-DL H265 120FPS AAC-XXX",
     "subtitle": "",
@@ -186,6 +192,7 @@ meta_cases = [{
         "fps": None
     }
 }, {
+    # 资源标签走影视解析；WEBRip 是片源，单独的声道数不作为音频编码。
     "title": "Thor Love and Thunder (2022) [1080p] [WEBRip] [5.1]",
     "subtitle": "",
     "target": {
@@ -196,10 +203,10 @@ meta_cases = [{
         "part": "",
         "season": "",
         "episode": "",
-        "restype": "",
+        "restype": "WEBRip",
         "pix": "1080p",
         "video_codec": "",
-        "audio_codec": "5.1",
+        "audio_codec": "",
         "fps": None
     }
 }, {

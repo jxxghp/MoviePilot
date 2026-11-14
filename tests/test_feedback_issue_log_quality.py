@@ -1,4 +1,6 @@
-"""Feedback Issue 日志压缩和 Doctor 摘要聚合测试。"""
+"""
+Feedback Issue 日志压缩和 Doctor 摘要聚合测试。
+"""
 
 import importlib.util
 import sys
@@ -7,12 +9,13 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT_DIR = Path(__file__).parents[1] / "skills" / "feedback-issue" / "scripts"
 
 
 def _load_module(name: str, path: Path):
-    """从脚本路径加载测试模块。"""
+    """
+    从脚本路径加载测试模块。
+    """
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -23,7 +26,9 @@ def _load_module(name: str, path: Path):
 
 @pytest.fixture
 def feedback_modules():
-    """加载 feedback 脚本，并在测试后恢复进程模块和搜索路径。"""
+    """
+    加载 feedback 脚本，并在测试后恢复进程模块和搜索路径。
+    """
     old_path = list(sys.path)
     module_names = ["feedback_issue_common", "feedback_issue_collect_quality_test"]
     old_modules = {name: sys.modules.get(name) for name in module_names}
@@ -48,7 +53,9 @@ def feedback_modules():
 
 
 def test_filter_lines_compacts_consecutive_repeated_templates(feedback_modules):
-    """关键词命中的连续轮询日志应压缩为首条、计数和末条。"""
+    """
+    关键词命中的连续轮询日志应压缩为首条、计数和末条。
+    """
     _, collect = feedback_modules
     now = datetime.now()
     lines = [
@@ -73,8 +80,26 @@ def test_filter_lines_compacts_consecutive_repeated_templates(feedback_modules):
     assert matched_keywords == ["等待转存"]
 
 
+def test_filter_lines_excludes_current_correlation_id_noise(feedback_modules):
+    """
+    当前带关联 ID 的 Agent 日志不能挤占有限的真实故障日志预算。
+    """
+    _, collect = feedback_modules
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    real = f"【ERROR】{timestamp},001 [fixture-id] - transfer.py - review fixture failure"
+    noise = f"【ERROR】{timestamp},002 [fixture-id] - message.py - review fixture failure"
+    lines, _ = collect.filter_lines(
+        real + "\n" + noise, keywords=["fixture"], max_lines=1,
+        window_start=now - timedelta(minutes=5),
+    )
+    assert lines == [real]
+
+
 def test_doctor_summary_groups_legacy_duplicate_advisories(feedback_modules):
-    """旧版 Doctor 的重复插件发现也应在反馈摘要中合并展示。"""
+    """
+    旧版 Doctor 的重复插件发现也应在反馈摘要中合并展示。
+    """
     common, _ = feedback_modules
     findings = [
         {

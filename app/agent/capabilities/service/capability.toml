@@ -1,7 +1,7 @@
 schema_version = 1
 id = "agent.service"
 kind = "agent_service"
-entrypoint = "app.agent.orchestrator:agent_manager"
+entrypoint = "app.agent.manager:agent_manager"
 depends_on = []
 
 [metadata]

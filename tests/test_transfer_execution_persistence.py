@@ -1,4 +1,6 @@
-"""验证整理执行证据、CAS fencing 与终态结算持久化。"""
+"""
+验证整理执行证据、CAS fencing 与终态结算持久化。
+"""
 
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -14,6 +16,7 @@ from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionState,
     TransferManualReviewDecision,
+    TransferManualReviewQuery,
     TransferOperationObservation,
     TransferOperationObservationState,
     TransferStepIntent,
@@ -44,7 +47,9 @@ from app.db.oper.transferpending import TransferPendingOper
 
 @pytest.fixture
 def execution_store():
-    """构造只含整理执行相关表的独立内存数据库。"""
+    """
+    构造只含整理执行相关表的独立内存数据库。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(
         engine,
@@ -62,7 +67,9 @@ def execution_store():
 
 
 def _planning_input(task_id: str) -> TransferPlanningInput:
-    """构造与测试源文件一致的持久规划输入。"""
+    """
+    构造与测试源文件一致的持久规划输入。
+    """
     return TransferPlanningInput(
         source_fileitem={
             "storage": "local",
@@ -76,7 +83,9 @@ def _planning_input(task_id: str) -> TransferPlanningInput:
 
 
 def _plan_checkpoint(task_id: str) -> TransferPlanCheckpoint:
-    """构造包含一个叶子文件计划的完整宿主检查点。"""
+    """
+    构造包含一个叶子文件计划的完整宿主检查点。
+    """
     planning_input = _planning_input(task_id)
     return TransferPlanCheckpoint(
         planning_input=planning_input,
@@ -94,7 +103,9 @@ def _plan_checkpoint(task_id: str) -> TransferPlanCheckpoint:
 
 
 def _plan_fingerprint(task_id: str) -> str:
-    """返回测试冻结计划使用的 canonical 指纹。"""
+    """
+    返回测试冻结计划使用的 canonical 指纹。
+    """
     return build_transfer_checkpoint_fingerprint(
         _plan_checkpoint(task_id).to_payload()
     )
@@ -108,7 +119,9 @@ def _seed_pending(
         state: str = "planned",
         with_checkpoint: bool = True,
 ):
-    """写入一条带有效租约与合法 planning checkpoint 的待执行任务。"""
+    """
+    写入一条带有效租约与合法 planning checkpoint 的待执行任务。
+    """
     planning_input = _planning_input(task_id)
     checkpoint = _plan_checkpoint(task_id) if with_checkpoint else None
     with factory() as session:
@@ -145,7 +158,9 @@ def _seed_failed_receipt(
         execution_state: str = "failed",
         settlement_revision: int = 1,
 ) -> int:
-    """写入带失败历史和步骤证据的无租约 durable 终态任务。"""
+    """
+    写入带失败历史和步骤证据的无租约 durable 终态任务。
+    """
     _seed_pending(factory, task_id=task_id)
     with factory() as session:
         pending = session.scalar(
@@ -189,7 +204,9 @@ def _seed_failed_receipt(
 
 
 def _repository(factory, token_values: list[str] | None = None):
-    """构造固定时钟与可预测 attempt token 的执行命令。"""
+    """
+    构造固定时钟与可预测 attempt token 的执行命令。
+    """
     repository = TransactionalTransferExecutionRepository(
         factory,
         local_clock=lambda: datetime(2026, 8, 27, 9, 30, 0),
@@ -203,7 +220,9 @@ def _repository(factory, token_values: list[str] | None = None):
 
 
 def _intent(*, task_id: str = "task-1", ordinal: int = 0) -> TransferStepIntent:
-    """构造稳定且可重复计算身份的测试步骤意图。"""
+    """
+    构造稳定且可重复计算身份的测试步骤意图。
+    """
     planning_input = _planning_input(task_id)
     return TransferStepIntent.create(
         task_id=task_id,
@@ -220,8 +239,153 @@ def _intent(*, task_id: str = "task-1", ordinal: int = 0) -> TransferStepIntent:
     )
 
 
+@pytest.mark.parametrize("state", ["accepted", "planned"])
+@pytest.mark.parametrize("retry_count", [0, 318])
+@pytest.mark.parametrize("execution_state", ["not_started", "retry_wait"])
+def test_unhandled_failure_is_counted_once_and_stops_recovery(
+        execution_store, state, retry_count, execution_state,
+):
+    """
+    补丁在步骤外抛异常时立即隔离，即使旧任务已反复领取也不再自动回放。
+    """
+    _seed_pending(execution_store, state=state, with_checkpoint=state == "planned")
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.retry_count = retry_count
+        pending.attempt_count = 319
+        pending.execution_state = execution_state
+        session.commit()
+    repository, _ = _repository(execution_store)
+    error = "TransferChain has no attribute _TransferChain__finish_scrape_batch_task"
+    assert repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error=error)
+    assert not repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error=error)
+    snapshot = repository.get_snapshot(task_id="task-1")
+    assert snapshot.state is TransferExecutionState.MANUAL_REVIEW
+    assert snapshot.retry_count == retry_count + 1
+    assert snapshot.last_error == error
+    assert snapshot.steps == ()
+    view = TransferManualReviewQuery(repository).get(task_id="task-1")
+    assert view.step.kind == "unhandled_execution_review"
+    assert view.step.error == error
+    assert TransferManualReviewQuery(repository).list().total == 1
+    admissions = TransactionalTransferAdmissionRepository(execution_store)
+    assert admissions.claim_recoverable(owner_id="recovery", limit=10, lease_seconds=120) == []
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.attempt_count == 319
+        assert pending.lease_owner is None
+        assert pending.lease_token is None
+        assert pending.lease_expires_at is None
+        assert pending.heartbeat_at is None
+        assert pending.retry_due_at is None
+
+
+@pytest.mark.parametrize("state,token,expires", [
+    ("retry_wait", None, "2099-01-01 00:00:00.000000"),
+    ("manual_review", "lease-1", "2099-01-01 00:00:00.000000"),
+    ("failed", "lease-1", "2099-01-01 00:00:00.000000"),
+    ("settling", "lease-1", "2099-01-01 00:00:00.000000"),
+    ("running", "new-owner-token", "2099-01-01 00:00:00.000000"),
+    ("running", "lease-1", "2000-01-01 00:00:00.000000"),
+])
+def test_unhandled_failure_cannot_overwrite_existing_disposition_or_lease(
+        execution_store, state, token, expires,
+):
+    """
+    步骤已决定重试或终态、结算中及租约失效时，不重复计数或覆盖新 owner。
+    """
+    _seed_pending(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.execution_state = state
+        pending.lease_token = token
+        pending.lease_expires_at = expires
+        pending.last_error = "previous evidence"
+        session.commit()
+    repository, _ = _repository(execution_store)
+    assert not repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error="outer")
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == state
+        assert pending.retry_count == 0
+        assert pending.last_error == "previous evidence"
+        assert pending.lease_token == token
+        assert session.scalar(select(TransferExecutionStep)) is None
+
+
+def test_unhandled_failure_isolation_rolls_back_with_review_evidence(execution_store, monkeypatch):
+    """
+    复核凭据写入失败时必须同时回滚状态、失败次数和租约释放。
+    """
+    _seed_pending(execution_store)
+    repository, _ = _repository(execution_store)
+
+    def fail_review(*_args, **_kwargs):
+        """
+        模拟复核凭据无法写入。
+        """
+        raise RuntimeError("review write failed")
+
+    monkeypatch.setattr(repository, "_stage_unhandled_review", fail_review)
+    with pytest.raises(RuntimeError, match="review write failed"):
+        repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error="outer")
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == "not_started"
+        assert pending.retry_count == 0
+        assert pending.lease_token == "lease-1"
+
+
+def test_unhandled_review_preserves_started_step_and_resumes_after_manual_confirmation(execution_store):
+    """
+    复核未记账异常后，真实 STARTED 仍需严格探测，诊断步骤不参与执行或结算。
+    """
+    _seed_pending(execution_store)
+    repository, command = _repository(execution_store)
+    prepared = command.prepare(task_id="task-1", lease_token="lease-1", intent=_intent())
+    started = command.begin(task_id="task-1", lease_token="lease-1", operation_id=prepared.operation_id)
+    assert repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error="outer")
+    snapshot = repository.get_snapshot(task_id="task-1")
+    assert snapshot.steps == (started,)
+    review = repository.get_manual_review(task_id="task-1")
+    with pytest.raises(TransferExecutionConflictError, match="人工回滚"):
+        command.resolve_manual_review(
+            task_id="task-1", operation_id=review.step.operation_id,
+            decision=TransferManualReviewDecision.APPLIED, actor="admin", reason="checked",
+            result=TransferStepResult(payload={"success": True}),
+        )
+    resolved = command.resolve_manual_review(
+        task_id="task-1", operation_id=review.step.operation_id,
+        decision=TransferManualReviewDecision.NOT_APPLIED, actor="admin", reason="plugin rolled back",
+    )
+    assert resolved.state is TransferExecutionState.RETRY_WAIT
+    assert repository.get_manual_review(task_id="task-1").review_revision == 1
+    admission = TransactionalTransferAdmissionRepository(execution_store).claim_task(
+        task_id="task-1", owner_id="recovery", lease_seconds=120,
+    )
+    command.prepare(task_id="task-1", lease_token=admission.lease_token, intent=_intent())
+    resumed = command.restart_after_not_applied(
+        task_id="task-1", lease_token=admission.lease_token, step=started,
+        evidence=TransferStepResult(payload={"observation": "not_applied"}),
+    )
+    completed = command.complete(
+        task_id="task-1", lease_token=admission.lease_token, step=resumed,
+        result=TransferStepResult(payload={"success": True}),
+    )
+    assert completed.state is TransferStepState.SUCCEEDED
+    assert repository.isolate_unhandled_failure(task_id="task-1", lease_token=admission.lease_token, error="again")
+    with execution_store() as session:
+        assert len(session.scalars(select(TransferExecutionStep)).all()) == 2
+    snapshot = repository.get_snapshot(task_id="task-1")
+    assert len(snapshot.steps) == 1
+    assert snapshot.steps[0].state is TransferStepState.SUCCEEDED
+    assert snapshot.retry_count == 2
+
+
 def test_stable_operation_and_checkpoint_identities_are_canonical():
-    """字段顺序不能改变 operation ID 或执行 checkpoint 指纹。"""
+    """
+    字段顺序不能改变 operation ID 或执行 checkpoint 指纹。
+    """
     first = build_transfer_operation_id(
         task_id="task",
         checkpoint_fingerprint="plan",
@@ -264,7 +428,9 @@ def test_prepare_rejects_task_without_executable_plan(
         state,
         with_checkpoint,
 ):
-    """接纳态或缺失完整 checkpoint 的任务不得进入外部步骤准备。"""
+    """
+    接纳态或缺失完整 checkpoint 的任务不得进入外部步骤准备。
+    """
     _seed_pending(
         execution_store,
         state=state,
@@ -284,8 +450,43 @@ def test_prepare_rejects_task_without_executable_plan(
         assert session.scalar(select(TransferExecutionStep)) is None
 
 
+@pytest.mark.parametrize("field", ["checkpoint_version", "checkpoint_payload", "planned_at"])
+def test_prepare_rejects_incomplete_plan_fields(execution_store, field):
+    """
+    缺少计划冻结字段仍须拒绝执行，并准确指出计划检查点缺失。
+    """
+    _seed_pending(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        setattr(pending, field, None)
+        session.commit()
+    _, command = _repository(execution_store)
+    with pytest.raises(TransferExecutionConflictError, match="计划检查点字段不完整"):
+        command.prepare(task_id="task-1", lease_token="lease-1", intent=_intent())
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == "not_started"
+        assert session.scalar(select(TransferExecutionStep)) is None
+
+
+def test_snapshot_reports_inconsistent_execution_checkpoint_fields(execution_store):
+    """
+    执行检查点列不一致的提示应与计划冻结字段缺失区分。
+    """
+    _seed_pending(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.execution_payload = {"outcome": "succeeded"}
+        session.commit()
+    repository, _ = _repository(execution_store)
+    with pytest.raises(TransferExecutionConflictError, match="执行检查点字段不一致"):
+        repository.get_snapshot(task_id="task-1")
+
+
 def test_prepare_rejects_noncanonical_plan_fingerprint(execution_store):
-    """步骤 intent 必须精确绑定当前持久计划的 canonical 指纹。"""
+    """
+    步骤 intent 必须精确绑定当前持久计划的 canonical 指纹。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     intent = TransferStepIntent.create(
@@ -305,7 +506,9 @@ def test_prepare_rejects_noncanonical_plan_fingerprint(execution_store):
 
 
 def test_prepare_rejects_forged_operation_id(execution_store):
-    """调用方手工构造的伪 operation ID 不得绕过稳定身份计算。"""
+    """
+    调用方手工构造的伪 operation ID 不得绕过稳定身份计算。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     valid = _intent()
@@ -328,7 +531,9 @@ def test_prepare_rejects_forged_operation_id(execution_store):
 def test_prepare_rejects_arbitrary_intent_with_known_plan_fingerprint(
         execution_store,
 ):
-    """已知计划指纹也不能构造计划未授权的操作类型或参数。"""
+    """
+    已知计划指纹也不能构造计划未授权的操作类型或参数。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     arbitrary = TransferStepIntent.create(
@@ -352,7 +557,9 @@ def test_prepare_rejects_arbitrary_intent_with_known_plan_fingerprint(
 
 
 def test_prepare_rejects_noncontiguous_ordinal(execution_store):
-    """新步骤只能在完整既有序列尾部连续追加。"""
+    """
+    新步骤只能在完整既有序列尾部连续追加。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     with pytest.raises(TransferExecutionConflictError, match="整理任务记录已失效"):
@@ -364,7 +571,9 @@ def test_prepare_rejects_noncontiguous_ordinal(execution_store):
 
 
 def test_stage_execution_running_cas_binds_exact_plan_identity(execution_store):
-    """running CAS 必须拒绝读取后已变化的准入状态或 checkpoint payload。"""
+    """
+    running CAS 必须拒绝读取后已变化的准入状态或 checkpoint payload。
+    """
     _seed_pending(execution_store)
     checkpoint = _plan_checkpoint("task-1")
     with execution_store() as session:
@@ -395,7 +604,9 @@ def test_stage_execution_running_cas_binds_exact_plan_identity(execution_store):
 def test_stage_execution_running_casts_postgresql_json_before_comparison(
         monkeypatch,
 ):
-    """PostgreSQL 的 JSON 计划比较必须转为 JSONB，避免缺少 json 等值操作符。"""
+    """
+    PostgreSQL 的 JSON 计划比较必须转为 JSONB，避免缺少 json 等值操作符。
+    """
     engine = create_mock_engine(
         "postgresql+psycopg://",
         lambda *_args, **_kwargs: None,
@@ -403,7 +614,9 @@ def test_stage_execution_running_casts_postgresql_json_before_comparison(
     statements = []
 
     def capture_statement(_db, statement, execution_options=None):
-        """捕获模型生成的 DML，检查生产 PostgreSQL 方言的 SQL。"""
+        """
+        捕获模型生成的 DML，检查生产 PostgreSQL 方言的 SQL。
+        """
         del execution_options
         statements.append(statement)
         return 1
@@ -433,7 +646,9 @@ def test_stage_execution_running_casts_postgresql_json_before_comparison(
 
 
 def test_success_path_persists_steps_and_execution_checkpoint(execution_store):
-    """成功路径应保留每步证据，并提交可供唯一 durable writer 结算的检查点。"""
+    """
+    成功路径应保留每步证据，并提交可供唯一 durable writer 结算的检查点。
+    """
     _seed_pending(execution_store)
     repository, command = _repository(execution_store)
     prepared = command.prepare(
@@ -473,11 +688,26 @@ def test_success_path_persists_steps_and_execution_checkpoint(execution_store):
 
 
 def test_provider_predecessor_remains_owned_after_host_plan_promotion(
-        execution_store,
+        execution_store, monkeypatch,
 ):
-    """provider 回退升级宿主计划后，序号零证据仍应被严格重建并纳入 checkpoint。"""
-    task_id = "task-1"
-    planning_input = _planning_input(task_id)
+    """
+    真实准入冻结 provider 后可执行，回退升级宿主计划仍保留序号零证据。
+    """
+    admission_repository = TransactionalTransferAdmissionRepository(execution_store)
+    planning_input = _planning_input("task-1")
+    admitted = admission_repository.admit(
+        storage="local",
+        src_path="/task-1.mkv",
+        planning_input=planning_input,
+    )
+    task_id = admitted.task_id
+    claimed = admission_repository.claim_task(
+        task_id=task_id,
+        owner_id="provider-worker",
+        lease_seconds=3600,
+    )
+    assert claimed is not None
+    lease_token = claimed.lease_token
     provider = TransferProviderReference(
         plugin_id="provider-a",
         plugin_name="Provider A",
@@ -503,13 +733,18 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
         legacy_transfer_providers=(provider,),
         provider_invocation=invocation,
     )
-    _seed_pending(execution_store)
+    monkeypatch.setattr(admission_repository, "_now", lambda: "2026-08-27 09:00:00")
+    admission_repository.checkpoint_plan(
+        task_id=task_id,
+        lease_token=lease_token,
+        input_fingerprint=planning_input.fingerprint,
+        checkpoint=provider_checkpoint,
+    )
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
         assert pending is not None
-        pending.state = "provider_pending"
-        pending.checkpoint_payload = provider_checkpoint.to_payload()
-        session.commit()
+        assert pending.state == "provider_pending"
+        assert pending.planned_at == "2026-08-27 09:00:00"
     _, command = _repository(execution_store)
     provider_intent = TransferStepIntent.create(
         task_id=task_id,
@@ -526,30 +761,42 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
     )
     prepared = command.prepare(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         intent=provider_intent,
-    )
-    started = command.begin(
-        task_id=task_id,
-        lease_token="lease-1",
-        operation_id=prepared.operation_id,
-    )
-    provider_succeeded = command.complete(
-        task_id=task_id,
-        lease_token="lease-1",
-        step=started,
-        result=TransferStepResult(payload={"handled": False}),
-    )
-    promoted_checkpoint = replace(
-        _plan_checkpoint(task_id),
-        pre_execution_cleanup_completed=True,
     )
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
         assert pending is not None
-        pending.state = "planned"
-        pending.checkpoint_payload = promoted_checkpoint.to_payload()
-        session.commit()
+        assert pending.execution_state == "running"
+        assert pending.state == "provider_pending"
+        assert session.scalar(select(TransferExecutionStep)).state == "prepared"
+    started = command.begin(
+        task_id=task_id,
+        lease_token=lease_token,
+        operation_id=prepared.operation_id,
+    )
+    provider_succeeded = command.complete(
+        task_id=task_id,
+        lease_token=lease_token,
+        step=started,
+        result=TransferStepResult(payload={"handled": False}),
+    )
+    promoted_checkpoint = replace(
+        _plan_checkpoint("task-1"),
+        pre_execution_cleanup_completed=True,
+    )
+    monkeypatch.setattr(admission_repository, "_now", lambda: "2026-08-27 09:01:00")
+    admission_repository.checkpoint_plan(
+        task_id=task_id,
+        lease_token=lease_token,
+        input_fingerprint=planning_input.fingerprint,
+        checkpoint=promoted_checkpoint,
+    )
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending is not None
+        assert pending.state == "planned"
+        assert pending.planned_at == "2026-08-27 09:01:00"
     promoted_fingerprint = build_transfer_checkpoint_fingerprint(
         promoted_checkpoint.to_payload()
     )
@@ -563,17 +810,17 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
     )
     host_prepared = command.prepare(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         intent=host_intent,
     )
     host_started = command.begin(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         operation_id=host_prepared.operation_id,
     )
     host_succeeded = command.complete(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         step=host_started,
         result=TransferStepResult(payload={"dest_exists": True}),
     )
@@ -586,7 +833,7 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
     )
     snapshot = command.checkpoint(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         checkpoint=execution_checkpoint,
     )
     assert snapshot.state is TransferExecutionState.SETTLING
@@ -594,7 +841,9 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
 
 
 def test_checkpoint_rejects_operation_ids_out_of_ordinal_order(execution_store):
-    """执行检查点必须按严格 ordinal 保存操作身份，集合相同也不能乱序。"""
+    """
+    执行检查点必须按严格 ordinal 保存操作身份，集合相同也不能乱序。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     completed = []
@@ -628,7 +877,9 @@ def test_checkpoint_rejects_operation_ids_out_of_ordinal_order(execution_store):
 
 
 def test_checkpoint_rejects_corrupted_persisted_operation_id(execution_store):
-    """checkpoint 前必须重新计算每个持久步骤的 operation ID。"""
+    """
+    checkpoint 前必须重新计算每个持久步骤的 operation ID。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     prepared = command.prepare(
@@ -665,7 +916,9 @@ def test_checkpoint_rejects_corrupted_persisted_operation_id(execution_store):
 
 
 def test_checkpoint_rejects_noncontiguous_persisted_ordinals(execution_store):
-    """checkpoint 前必须拒绝缺口或从非零开始的持久步骤序列。"""
+    """
+    checkpoint 前必须拒绝缺口或从非零开始的持久步骤序列。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     prepared = command.prepare(
@@ -711,7 +964,9 @@ def test_checkpoint_rejects_noncontiguous_persisted_ordinals(execution_store):
 
 
 def test_retry_wait_resumes_same_failed_operation_with_new_attempt(execution_store):
-    """到期重试必须复用 operation ID、保留失败证据并轮换 attempt token。"""
+    """
+    到期重试必须复用 operation ID、保留失败证据并轮换 attempt token。
+    """
     _seed_pending(execution_store)
     repository, command = _repository(execution_store)
     prepared = command.prepare(
@@ -758,7 +1013,9 @@ def test_retry_wait_resumes_same_failed_operation_with_new_attempt(execution_sto
 
 
 def test_orphan_started_requires_observation_before_attempt_rotation(execution_store):
-    """遗留 STARTED 只能凭 NOT_APPLIED 证据轮换 attempt，旧 attempt 随即失效。"""
+    """
+    遗留 STARTED 只能凭 NOT_APPLIED 证据轮换 attempt，旧 attempt 随即失效。
+    """
     _seed_pending(execution_store)
     repository, command = _repository(execution_store)
     prepared = command.prepare(
@@ -792,7 +1049,9 @@ def test_orphan_started_requires_observation_before_attempt_rotation(execution_s
 
 
 def test_zero_side_effect_checkpoint_is_vacuously_complete(execution_store):
-    """纯策略拒绝可在没有步骤行时提交带 skip_reason 的确定执行结果。"""
+    """
+    纯策略拒绝可在没有步骤行时提交带 skip_reason 的确定执行结果。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     checkpoint = TransferExecutionCheckpoint.create(
@@ -811,7 +1070,9 @@ def test_zero_side_effect_checkpoint_is_vacuously_complete(execution_store):
 
 
 def test_exhausted_step_builds_failure_checkpoint_and_keeps_lease(execution_store):
-    """预算耗尽应原子建立失败结算检查点，并为 durable writer 保留 lease。"""
+    """
+    预算耗尽应原子建立失败结算检查点，并为 durable writer 保留 lease。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     prepared = command.prepare(
@@ -842,7 +1103,9 @@ def test_exhausted_step_builds_failure_checkpoint_and_keeps_lease(execution_stor
 
 
 def test_user_retry_is_single_generation_and_rejects_manual_review(execution_store):
-    """FAILED 用户重试只递增一次世代，重复请求幂等且人工复核必须拒绝。"""
+    """
+    FAILED 用户重试只递增一次世代，重复请求幂等且人工复核必须拒绝。
+    """
     _seed_pending(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -893,7 +1156,9 @@ def test_user_retry_is_single_generation_and_rejects_manual_review(execution_sto
 def test_user_retry_clears_expired_claim_once_and_keeps_execution_evidence(
         execution_store, expires_at,
 ) -> None:
-    """失败任务残留的失效 token 应允许直接重试，重复点击不重复增加世代。"""
+    """
+    失败任务残留的失效 token 应允许直接重试，重复点击不重复增加世代。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -921,7 +1186,9 @@ def test_user_retry_clears_expired_claim_once_and_keeps_execution_evidence(
 
 
 def test_user_retry_preserves_active_failed_claim(execution_store) -> None:
-    """失败状态仍持有有效租约时，重试不得撤销活动 owner 的执行资格。"""
+    """
+    失败状态仍持有有效租约时，重试不得撤销活动 owner 的执行资格。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -948,7 +1215,9 @@ def test_user_retry_preserves_active_failed_claim(execution_store) -> None:
 def test_user_retry_cas_preserves_newly_committed_lease(
         execution_store, monkeypatch, winner,
 ) -> None:
-    """并发续租或重试接管先提交时，迟到的重试不能清掉新 owner 或重复调度。"""
+    """
+    并发续租或重试接管先提交时，迟到的重试不能清掉新 owner 或重复调度。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -963,7 +1232,9 @@ def test_user_retry_cas_preserves_newly_committed_lease(
     claimed = []
 
     def commit_winning_lease(session, *, pending, now_utc):
-        """在读取旧状态后由另一仓储提交续租或重试领取，再执行实际 CAS。"""
+        """
+        在读取旧状态后由另一仓储提交续租或重试领取，再执行实际 CAS。
+        """
         if winner == "heartbeat":
             monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(
                 2026, 8, 27, 1, 29, 30, tzinfo=timezone.utc,
@@ -1001,7 +1272,9 @@ def test_user_retry_cas_preserves_newly_committed_lease(
 
 
 def test_user_retry_failure_rolls_back_expired_claim(execution_store, monkeypatch) -> None:
-    """调度写入失败必须回滚失效租约清理，保持原任务、世代和历史完整。"""
+    """
+    调度写入失败必须回滚失效租约清理，保持原任务、世代和历史完整。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -1012,7 +1285,9 @@ def test_user_retry_failure_rolls_back_expired_claim(execution_store, monkeypatc
     _, command = _repository(execution_store)
 
     def reject_retry(_self, **_kwargs):
-        """模拟取得恢复权后持久重试调度写入失败。"""
+        """
+        模拟取得恢复权后持久重试调度写入失败。
+        """
         raise RuntimeError("重试写入失败")
 
     monkeypatch.setattr(TransferPendingOper, "stage_request_execution_retry", reject_retry)
@@ -1033,7 +1308,9 @@ def test_user_retry_failure_rolls_back_expired_claim(execution_store, monkeypatc
 def test_discard_failed_removes_execution_evidence_and_detaches_history(
         execution_store,
 ) -> None:
-    """放弃匹配的 FAILED 任务应删除执行证据，并把历史恢复为普通记录。"""
+    """
+    放弃匹配的 FAILED 任务应删除执行证据，并把历史恢复为普通记录。
+    """
     history_id = _seed_failed_receipt(execution_store)
     repository, _ = _repository(execution_store)
     command = TransferRecoveryCommand(repository)
@@ -1061,7 +1338,9 @@ def test_discard_failed_rejects_nonfailed_execution_state(
         execution_store,
         execution_state,
 ) -> None:
-    """等待重试和人工复核任务不得通过历史维护入口删除执行证据。"""
+    """
+    等待重试和人工复核任务不得通过历史维护入口删除执行证据。
+    """
     history_id = _seed_failed_receipt(
         execution_store,
         execution_state=execution_state,
@@ -1086,7 +1365,9 @@ def test_discard_failed_rejects_nonfailed_execution_state(
 
 
 def test_discard_failed_rejects_stale_settlement_revision(execution_store) -> None:
-    """陈旧页面携带的结算版本不能放弃已经变化的失败任务。"""
+    """
+    陈旧页面携带的结算版本不能放弃已经变化的失败任务。
+    """
     history_id = _seed_failed_receipt(execution_store, settlement_revision=3)
     repository, _ = _repository(execution_store)
     command = TransferRecoveryCommand(repository)
@@ -1109,7 +1390,9 @@ def test_discard_failed_rejects_stale_settlement_revision(execution_store) -> No
 
 
 def _discard_history_task(repository, history_id: int, method_name: str):
-    """统一调用普通失败与损坏历史的显式放弃入口。"""
+    """
+    统一调用普通失败与损坏历史的显式放弃入口。
+    """
     arguments = {"task_id": "task-1", "history_id": history_id}
     if method_name == "discard_failed":
         arguments["settlement_revision"] = 1
@@ -1118,7 +1401,9 @@ def _discard_history_task(repository, history_id: int, method_name: str):
 
 @pytest.mark.parametrize("active", [False, True])
 def test_explicit_history_discard_does_not_decode_corrupt_planning_json(execution_store, active):
-    """历史重整可放弃无法反序列化的旧记录，同时有效租约仍保护全部证据。"""
+    """
+    历史重整可放弃无法反序列化的旧记录，同时有效租约仍保护全部证据。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         session.execute(text(
@@ -1152,7 +1437,9 @@ def test_explicit_history_discard_does_not_decode_corrupt_planning_json(executio
 def test_discard_history_releases_expired_claim_and_preserves_history(
         execution_store, method_name, state, expires_at,
 ) -> None:
-    """过期或缺失期限的残留 token 不得永久阻止用户放弃旧任务重新整理。"""
+    """
+    过期或缺失期限的残留 token 不得永久阻止用户放弃旧任务重新整理。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -1179,7 +1466,9 @@ def test_discard_history_releases_expired_claim_and_preserves_history(
 def test_discard_history_preserves_active_claim_and_execution_evidence(
         execution_store, method_name,
 ) -> None:
-    """有效租约必须保留，不能因用户放弃旧历史而让活动执行失去证据。"""
+    """
+    有效租约必须保留，不能因用户放弃旧历史而让活动执行失去证据。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -1205,7 +1494,9 @@ def test_discard_history_preserves_active_claim_and_execution_evidence(
 def test_discard_history_cas_preserves_newly_committed_lease(
         execution_store, monkeypatch, method_name, winner,
 ) -> None:
-    """读到无活动租约后若续租或重试接管先提交，放弃必须保留新 owner。"""
+    """
+    读到无活动租约后若续租或重试接管先提交，放弃必须保留新 owner。
+    """
     history_id = _seed_failed_receipt(execution_store)
     if winner == "heartbeat":
         with execution_store() as session:
@@ -1221,7 +1512,9 @@ def test_discard_history_cas_preserves_newly_committed_lease(
     claimed = []
 
     def commit_winning_lease(session, *, pending, now_utc):
-        """在旧投影读取与实际 CAS 之间提交另一条真实仓储续租或领取操作。"""
+        """
+        在旧投影读取与实际 CAS 之间提交另一条真实仓储续租或领取操作。
+        """
         if winner == "heartbeat":
             # 心跳在到期前开始，但数据库提交晚于放弃入口读到旧期限。
             monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(
@@ -1261,7 +1554,9 @@ def test_discard_history_cas_preserves_newly_committed_lease(
 def test_discard_history_cleanup_failure_rolls_back_expired_claim(
         execution_store, monkeypatch, method_name,
 ) -> None:
-    """清理步骤失败必须回滚租约、任务和历史，避免只解锁却留下半份证据。"""
+    """
+    清理步骤失败必须回滚租约、任务和历史，避免只解锁却留下半份证据。
+    """
     history_id = _seed_failed_receipt(execution_store)
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
@@ -1272,7 +1567,9 @@ def test_discard_history_cleanup_failure_rolls_back_expired_claim(
     repository, _ = _repository(execution_store)
 
     def reject_cleanup(_self, *, task_id):
-        """模拟取得放弃权后，步骤证据删除失败。"""
+        """
+        模拟取得放弃权后，步骤证据删除失败。
+        """
         assert task_id == "task-1"
         raise RuntimeError("步骤清理失败")
 
@@ -1294,7 +1591,9 @@ def test_discard_history_cleanup_failure_rolls_back_expired_claim(
 def test_manual_not_applied_decision_is_audited_and_schedules_same_step(
         execution_store,
 ) -> None:
-    """人工判定未发生应无 lease 地恢复 FAILED，并只交给唯一调度器。"""
+    """
+    人工判定未发生应无 lease 地恢复 FAILED，并只交给唯一调度器。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     prepared = command.prepare(
@@ -1340,10 +1639,40 @@ def test_manual_not_applied_decision_is_audited_and_schedules_same_step(
         )
 
 
+def test_manual_review_discard_releases_only_matching_unleased_task(execution_store) -> None:
+    """放弃人工复核只删除 durable 任务与步骤，绝不触碰外部文件。"""
+    _seed_pending(execution_store)
+    repository, command = _repository(execution_store)
+    prepared = command.prepare(task_id="task-1", lease_token="lease-1", intent=_intent())
+    started = command.begin(task_id="task-1", lease_token="lease-1", operation_id=prepared.operation_id)
+    command.manual_review(
+        task_id="task-1", lease_token="lease-1", step=started,
+        error="external result unknown",
+    )
+    review = repository.get_manual_review(task_id="task-1")
+
+    stale = command.discard_manual_review(
+        task_id="task-1", operation_id="stale-operation", actor="admin", reason="stale",
+    )
+    assert not stale.discarded
+    assert repository.get_snapshot(task_id="task-1") is not None
+
+    discarded = command.discard_manual_review(
+        task_id="task-1", operation_id=review.step.operation_id,
+        actor="admin", reason="cannot verify provider result",
+    )
+    assert discarded.discarded
+    assert repository.get_snapshot(task_id="task-1") is None
+    with execution_store() as session:
+        assert session.scalar(select(TransferExecutionStep)) is None
+
+
 def test_manual_applied_requires_result_and_failed_decision_is_rejected(
         execution_store,
 ) -> None:
-    """人工判定已发生必须带结果证据，FAILED 不得绕过 lease durable 结算。"""
+    """
+    人工判定已发生必须带结果证据，FAILED 不得绕过 lease durable 结算。
+    """
     _seed_pending(execution_store)
     _, command = _repository(execution_store)
     prepared = command.prepare(

@@ -1,3 +1,7 @@
+"""
+验证服务端上报用例的输入投影与失败处理。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call
 
@@ -7,7 +11,9 @@ from app.application.server.report import ServerReportService
 
 
 def _service(**overrides) -> ServerReportService:
-    """构造不依赖数据库和网络的中心服务上报用例。"""
+    """
+    构造不依赖数据库和网络的中心服务上报用例。
+    """
     defaults = {
         "config_reader": Mock(return_value=None),
         "config_writer": Mock(),
@@ -30,7 +36,9 @@ def _service(**overrides) -> ServerReportService:
 
 
 def test_subscribe_report_uses_fake_local_reader_and_transport():
-    """订阅存量上报只依赖注入的数据读取和发送端口。"""
+    """
+    订阅存量上报只依赖注入的数据读取和发送端口。
+    """
     sender = Mock(return_value=SimpleNamespace(status_code=200))
     subscribe = SimpleNamespace(to_dict=lambda: {
         "name": "Demo",
@@ -54,7 +62,9 @@ def test_subscribe_report_uses_fake_local_reader_and_transport():
 
 
 def test_initial_report_marker_is_written_only_after_success():
-    """首次上报失败时不得提前写完成标记。"""
+    """
+    首次上报失败时不得提前写完成标记。
+    """
     writer = Mock()
     service = _service(config_writer=writer)
 
@@ -69,7 +79,9 @@ def test_initial_report_marker_is_written_only_after_success():
 
 @pytest.mark.asyncio
 async def test_async_initial_report_marker_uses_async_writer_after_success():
-    """异步首次上报成功后只通过异步配置端口写完成标记。"""
+    """
+    异步首次上报成功后只通过异步配置端口写完成标记。
+    """
     sync_writer = Mock()
     async_writer = AsyncMock()
     reporter = AsyncMock(return_value=True)
@@ -91,7 +103,9 @@ async def test_async_initial_report_marker_uses_async_writer_after_success():
 
 @pytest.mark.asyncio
 async def test_async_subscribe_report_uses_async_reader():
-    """异步订阅上报通过异步读取端口获取数据，不在事件循环内查同步库。"""
+    """
+    异步订阅上报通过异步读取端口获取数据，不在事件循环内查同步库。
+    """
     sync_reader = Mock(side_effect=AssertionError("不应调用同步订阅读取"))
     async_reader = AsyncMock(return_value=[])
     service = _service(
@@ -106,7 +120,9 @@ async def test_async_subscribe_report_uses_async_reader():
 
 
 def test_plugin_report_sanitizes_explicit_sources_before_transport():
-    """插件统计载荷在进入传输适配器前完成来源脱敏。"""
+    """
+    插件统计载荷在进入传输适配器前完成来源脱敏。
+    """
     sender = Mock(return_value=SimpleNamespace(status_code=200))
     service = _service(
         plugin_report_sender=sender,
@@ -125,7 +141,9 @@ def test_plugin_report_sanitizes_explicit_sources_before_transport():
 
 @pytest.mark.asyncio
 async def test_plugin_report_entries_share_payload_and_response_decisions(monkeypatch):
-    """插件同步、异步入口只替换发送端口，准入和结果判定必须同源。"""
+    """
+    插件同步、异步入口只替换发送端口，准入和结果判定必须同源。
+    """
     sync_sender = Mock(return_value=SimpleNamespace(status_code=200))
     async_sender = AsyncMock(return_value=SimpleNamespace(status_code=200))
     service = _service(
@@ -151,7 +169,9 @@ async def test_plugin_report_entries_share_payload_and_response_decisions(monkey
 
 @pytest.mark.asyncio
 async def test_subscribe_report_entries_share_payload_projection(monkeypatch):
-    """订阅读取后的过滤与终态决策必须由同步、异步入口共享。"""
+    """
+    订阅读取后的过滤与终态决策必须由同步、异步入口共享。
+    """
     subscribe = SimpleNamespace(to_dict=lambda: {
         "name": "Demo",
         "media_source": "themoviedb",

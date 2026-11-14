@@ -1,4 +1,6 @@
-"""目录来源 Module 同步/异步决策一致性测试。"""
+"""
+目录来源 Module 同步/异步决策一致性测试。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -28,7 +30,9 @@ from app.schemas.types import (
 def _meta(
     name: str, *, media_type: MediaType = MediaType.TV, year: str = "2023"
 ) -> MetaBase:
-    """构造带稳定标题、类型、年份和季号的识别元数据。"""
+    """
+    构造带稳定标题、类型、年份和季号的识别元数据。
+    """
     meta = MetaBase(name)
     meta.name = name
     meta.cn_name = name
@@ -39,7 +43,9 @@ def _meta(
 
 
 def _signature(media: Optional[MediaInfo]) -> Optional[tuple[Any, ...]]:
-    """提取同步和异步结果必须一致的统一媒体字段。"""
+    """
+    提取同步和异步结果必须一致的统一媒体字段。
+    """
     if media is None:
         return None
     return (
@@ -53,7 +59,9 @@ def _signature(media: Optional[MediaInfo]) -> Optional[tuple[Any, ...]]:
 
 
 def _music_signature(music: Optional[MusicInfo]) -> Optional[tuple[Any, ...]]:
-    """提取音乐识别双 ABI 必须一致的来源、身份和展示字段。"""
+    """
+    提取音乐识别双 ABI 必须一致的来源、身份和展示字段。
+    """
     if music is None:
         return None
     return (
@@ -69,7 +77,9 @@ def _music_signature(music: Optional[MusicInfo]) -> Optional[tuple[Any, ...]]:
 
 
 def _anilist_info() -> dict:
-    """构造可覆盖识别与搜索投影的 AniList 详情。"""
+    """
+    构造可覆盖识别与搜索投影的 AniList 详情。
+    """
     return {
         "id": 154587,
         "title": {
@@ -102,7 +112,9 @@ def test_anilist_recognition_sync_async_parity(
     mtype: Optional[MediaType],
     expected: bool,
 ) -> None:
-    """AniList 来源准入、ID 校验和结果投影在双 ABI 下应一致。"""
+    """
+    AniList 来源准入、ID 校验和结果投影在双 ABI 下应一致。
+    """
     info = _anilist_info()
     module = AniListModule()
     module.anilist_api = Mock()
@@ -125,7 +137,9 @@ def test_anilist_recognition_sync_async_parity(
 
 
 def _bangumi_info() -> dict:
-    """构造可覆盖识别与搜索投影的 Bangumi 详情。"""
+    """
+    构造可覆盖识别与搜索投影的 Bangumi 详情。
+    """
     return {
         "id": 400602,
         "name": "Sousou no Frieren",
@@ -153,7 +167,9 @@ def test_bangumi_recognition_sync_async_parity(
     mtype: Optional[MediaType],
     expected: bool,
 ) -> None:
-    """Bangumi 来源准入、候选选择和结果投影在双 ABI 下应一致。"""
+    """
+    Bangumi 来源准入、候选选择和结果投影在双 ABI 下应一致。
+    """
     info = _bangumi_info()
     candidate = {"id": 400602, "name": info["name"], "name_cn": info["name_cn"]}
     actors = [{"name": "种崎敦美"}]
@@ -180,7 +196,9 @@ def test_bangumi_recognition_sync_async_parity(
 
 
 def _imdb_title(primary_title: str = "Breaking Bad") -> ImdbTitle:
-    """构造无需外部请求的 IMDb 电视剧候选。"""
+    """
+    构造无需外部请求的 IMDb 电视剧候选。
+    """
     return ImdbTitle(
         id="tt0903747",
         type="tvSeries",
@@ -191,7 +209,9 @@ def _imdb_title(primary_title: str = "Breaking Bad") -> ImdbTitle:
 
 
 def _imdb_module(title: ImdbTitle, alias: str = "绝命毒师") -> ImdbModule:
-    """构造同步和异步客户端数据完全一致的 IMDb Module。"""
+    """
+    构造同步和异步客户端数据完全一致的 IMDb Module。
+    """
     api = Mock(spec=ImdbApi)
     api.search_titles.return_value = [title]
     api.get_title.return_value = title
@@ -229,7 +249,9 @@ def test_imdb_recognition_sync_async_parity(
     mtype: Optional[MediaType],
     expected: bool,
 ) -> None:
-    """IMDb 来源准入、别名候选和结果收尾在双 ABI 下应一致。"""
+    """
+    IMDb 来源准入、别名候选和结果收尾在双 ABI 下应一致。
+    """
     module = _imdb_module(_imdb_title(primary_title="Original Title"))
 
     sync_result = module.recognize_media(
@@ -261,7 +283,9 @@ def test_catalog_search_sync_async_projection_parity(
     selected_source: MediaSource,
     expected_none: bool,
 ) -> None:
-    """三个目录来源的搜索过滤、排序和投影结果在双 ABI 下应一致。"""
+    """
+    三个目录来源的搜索过滤、排序和投影结果在双 ABI 下应一致。
+    """
     if source == MediaSource.AniList:
         info = _anilist_info()
         module = AniListModule()
@@ -305,7 +329,9 @@ def test_douban_video_recognition_sync_async_decision_parity(
     media_source: MediaSource,
     expected: bool,
 ) -> None:
-    """豆瓣影视来源准入、原生 ID 规范化和详情投影在双 ABI 下应一致。"""
+    """
+    豆瓣影视来源准入、原生 ID 规范化和详情投影在双 ABI 下应一致。
+    """
     info = {
         "id": "200",
         "title": "测试电影",
@@ -344,7 +370,9 @@ def test_douban_video_recognition_sync_async_decision_parity(
 
 
 def test_douban_music_candidate_sync_async_decision_parity() -> None:
-    """豆瓣音乐标题、艺术家和曲目候选选择仅由共享决策完成。"""
+    """
+    豆瓣音乐标题、艺术家和曲目候选选择仅由共享决策完成。
+    """
     search_payload = {
         "items": [{
             "target_type": "music",
@@ -407,7 +435,9 @@ def test_douban_music_candidate_sync_async_decision_parity() -> None:
 
 
 def test_musicbrainz_candidate_sync_async_decision_parity() -> None:
-    """MusicBrainz 候选选择和兜底决策一致，仅检索 I/O 不同。"""
+    """
+    MusicBrainz 候选选择和兜底决策一致，仅检索 I/O 不同。
+    """
     wrong = MusicInfo(
         media_source=MediaSource.MusicBrainz,
         media_id="wrong",
@@ -442,7 +472,9 @@ def test_musicbrainz_candidate_sync_async_decision_parity() -> None:
 
 
 def test_theaudiodb_album_candidate_sync_async_decision_parity() -> None:
-    """TheAudioDB 专辑实体准入、候选选择和结果投影在双 ABI 下应一致。"""
+    """
+    TheAudioDB 专辑实体准入、候选选择和结果投影在双 ABI 下应一致。
+    """
     album = MusicAlbumInfo(
         media_source=MediaSource.TheAudioDB,
         media_id="2109619",

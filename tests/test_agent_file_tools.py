@@ -1,4 +1,6 @@
-"""Agent 本地文件搜索与安全编辑工具测试。"""
+"""
+Agent 本地文件搜索与安全编辑工具测试。
+"""
 
 import asyncio
 import hashlib
@@ -11,14 +13,18 @@ from app.foundation.identity import build_user_memory_key
 
 
 def _make_admin_tool(tool_class):
-    """创建带管理员上下文的文件工具实例。"""
+    """
+    创建带管理员上下文的文件工具实例。
+    """
     tool = tool_class(session_id="session-1", user_id="admin")
     tool.set_agent_context({"is_admin": True})
     return tool
 
 
 def test_edit_file_rejects_ambiguous_match_by_default(tmp_path):
-    """精确编辑默认应拒绝多处匹配，避免静默批量修改代码。"""
+    """
+    精确编辑默认应拒绝多处匹配，避免静默批量修改代码。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("enabled = False\nenabled = False\n", encoding="utf-8")
     tool = _make_admin_tool(EditFileTool)
@@ -31,7 +37,9 @@ def test_edit_file_rejects_ambiguous_match_by_default(tmp_path):
 
 
 def test_edit_file_replace_all_requires_explicit_flag(tmp_path):
-    """显式开启 replace_all 后才应替换全部精确匹配。"""
+    """
+    显式开启 replace_all 后才应替换全部精确匹配。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("old\nold\n", encoding="utf-8")
     tool = _make_admin_tool(EditFileTool)
@@ -43,7 +51,9 @@ def test_edit_file_replace_all_requires_explicit_flag(tmp_path):
 
 
 def test_edit_file_rejects_empty_match_and_missing_file(tmp_path):
-    """编辑工具不应再通过空匹配隐式创建文件。"""
+    """
+    编辑工具不应再通过空匹配隐式创建文件。
+    """
     file_path = tmp_path / "missing.py"
     tool = _make_admin_tool(EditFileTool)
 
@@ -57,7 +67,9 @@ def test_edit_file_rejects_empty_match_and_missing_file(tmp_path):
 
 
 def test_edit_file_rejects_stale_sha256(tmp_path):
-    """文件在读取后变化时，哈希保护应拒绝基于旧版本编辑。"""
+    """
+    文件在读取后变化时，哈希保护应拒绝基于旧版本编辑。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("before", encoding="utf-8")
     old_sha256 = hashlib.sha256(b"before").hexdigest()
@@ -78,7 +90,9 @@ def test_edit_file_rejects_stale_sha256(tmp_path):
 
 
 def test_write_file_protects_existing_file_and_supports_guarded_overwrite(tmp_path):
-    """完整写入应默认保护已有文件，并允许带版本校验的显式覆盖。"""
+    """
+    完整写入应默认保护已有文件，并允许带版本校验的显式覆盖。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("before", encoding="utf-8")
     expected_sha256 = hashlib.sha256(b"before").hexdigest()
@@ -110,7 +124,9 @@ def test_write_file_protects_existing_file_and_supports_guarded_overwrite(tmp_pa
 
 
 def test_read_file_can_return_sha256_metadata(tmp_path):
-    """读取工具应能返回供后续冲突检查使用的文件哈希。"""
+    """
+    读取工具应能返回供后续冲突检查使用的文件哈希。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("插件内容", encoding="utf-8")
     tool = _make_admin_tool(ReadFileTool)
@@ -125,7 +141,9 @@ def test_read_file_can_return_sha256_metadata(tmp_path):
 
 
 def test_non_admin_memory_access_is_scoped_to_current_user(tmp_path, monkeypatch):
-    """普通用户只能写自己的记忆，公共记忆和其他用户记忆不可写读。"""
+    """
+    普通用户只能写自己的记忆，公共记忆和其他用户记忆不可写读。
+    """
     config_path = tmp_path / "config"
     monkeypatch.setattr(
         "app.agent.tools.base.get_runtime_setting",
@@ -160,7 +178,9 @@ def test_non_admin_memory_access_is_scoped_to_current_user(tmp_path, monkeypatch
 
 
 def test_read_file_rejects_invalid_line_ranges(tmp_path):
-    """非法行号必须明确失败，不能静默裁剪成另一段内容。"""
+    """
+    非法行号必须明确失败，不能静默裁剪成另一段内容。
+    """
     file_path = tmp_path / "range.py"
     file_path.write_text("one\ntwo\n", encoding="utf-8")
     tool = _make_admin_tool(ReadFileTool)
@@ -173,7 +193,9 @@ def test_read_file_rejects_invalid_line_ranges(tmp_path):
 
 
 def test_read_file_returns_line_range_hint_when_truncated(tmp_path):
-    """超过50KB时应保留前段内容并提示按行号范围继续读取。"""
+    """
+    超过50KB时应保留前段内容并提示按行号范围继续读取。
+    """
     file_path = tmp_path / "large.py"
     exact_content = "a" * MAX_READ_SIZE
     file_path.write_text(exact_content, encoding="utf-8")
@@ -196,7 +218,9 @@ def test_read_file_returns_line_range_hint_when_truncated(tmp_path):
 
 
 def test_non_admin_history_and_learning_read_stays_in_own_runtime(tmp_path, monkeypatch):
-    """通用 read_file 不能绕过专用检索工具，读取另一用户消息或技能。"""
+    """
+    通用 read_file 不能绕过专用检索工具，读取另一用户消息或技能。
+    """
     config = tmp_path / 'config'
     monkeypatch.setattr('app.agent.tools.base.get_runtime_setting', lambda name: config if name == 'CONFIG_PATH' else None)
     reader = ReadFileTool(session_id='session', user_id='alice')
@@ -214,7 +238,9 @@ def test_non_admin_history_and_learning_read_stays_in_own_runtime(tmp_path, monk
 
 
 def test_non_admin_cannot_bypass_personal_skill_tool_to_write_public_library(tmp_path, monkeypatch):
-    """通用文件写入不能绕过个人技能管理边界而修改所有用户共用的技能。"""
+    """
+    通用文件写入不能绕过个人技能管理边界而修改所有用户共用的技能。
+    """
     config = tmp_path / 'config'
     monkeypatch.setattr('app.agent.tools.base.get_runtime_setting', lambda name: config if name == 'CONFIG_PATH' else None)
     writer = WriteFileTool(session_id='session', user_id='alice')

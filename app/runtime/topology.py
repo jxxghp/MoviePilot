@@ -1,10 +1,14 @@
-"""MoviePilot 进程拓扑约束。"""
+"""
+MoviePilot 进程拓扑约束。
+"""
 
 from typing import Optional
 
 
 class UnsupportedProcessTopologyError(RuntimeError):
-    """启动配置会复制当前只能单实例运行的控制面。"""
+    """
+    启动配置会复制当前只能单实例运行的控制面。
+    """
 
 
 def process_topology_issue(*, workers: int, safe_mode: bool) -> Optional[str]:

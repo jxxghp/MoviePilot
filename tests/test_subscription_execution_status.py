@@ -1,4 +1,6 @@
-"""订阅执行状态合并、批次权限和操作能力测试。"""
+"""
+订阅执行状态合并、批次权限和操作能力测试。
+"""
 
 import asyncio
 from dataclasses import replace
@@ -17,7 +19,9 @@ def _task(
     source: str = "manual",
     available_at: str | None = None,
 ) -> SearchTaskSnapshot:
-    """构造最小搜索任务快照。"""
+    """
+    构造最小搜索任务快照。
+    """
     return SearchTaskSnapshot(
         task_id=f"task-{subscription_id}",
         batch_id=batch_id,
@@ -45,10 +49,14 @@ def _task(
 
 
 class _Repository:
-    """保存测试快照的异步状态仓储。"""
+    """
+    保存测试快照的异步状态仓储。
+    """
 
     def __init__(self) -> None:
-        """初始化可由测试覆盖的快照集合。"""
+        """
+        初始化可由测试覆盖的快照集合。
+        """
         self.tasks: dict[int, SearchTaskSnapshot] = {}
         self.batch = SearchBatchSnapshot(
             batch_id="batch-1",
@@ -65,24 +73,34 @@ class _Repository:
         )
 
     async def latest_search_tasks(self, subscription_ids):
-        """返回请求范围内搜索任务。"""
+        """
+        返回请求范围内搜索任务。
+        """
         return {key: value for key, value in self.tasks.items() if key in subscription_ids}
 
     async def list_batches(self, *, limit):
-        """返回一个测试批次。"""
+        """
+        返回一个测试批次。
+        """
         return [self.batch][:limit]
 
     async def get_batch(self, batch_id):
-        """按 ID 返回测试批次。"""
+        """
+        按 ID 返回测试批次。
+        """
         return self.batch if batch_id == self.batch.batch_id else None
 
     async def list_batch_tasks(self, batch_id):
-        """返回属于测试批次的任务。"""
+        """
+        返回属于测试批次的任务。
+        """
         return [task for task in self.tasks.values() if task.batch_id == batch_id]
 
 
 def test_execution_status_exposes_site_wait_and_cancel_capability():
-    """站点预算等待必须保留当前站点和取消能力。"""
+    """
+    站点预算等待必须保留当前站点和取消能力。
+    """
     repository = _Repository()
     repository.tasks[1] = _task(1, phase="waiting_site_budget")
 
@@ -94,7 +112,9 @@ def test_execution_status_exposes_site_wait_and_cancel_capability():
 
 
 def test_execution_status_exposes_queued_site_wait_without_error():
-    """重新入队的站点繁忙应显示等待状态、说明和继续时间。"""
+    """
+    重新入队的站点繁忙应显示等待状态、说明和继续时间。
+    """
     repository = _Repository()
     retry_at = "2026-09-01T01:00:10+00:00"
     repository.tasks[2] = _task(
@@ -114,7 +134,9 @@ def test_execution_status_exposes_queued_site_wait_without_error():
 
 
 def test_execution_status_exposes_scheduled_new_search_without_failure():
-    """新订阅编辑等待期应显示为已安排，而不是跳过或失败。"""
+    """
+    新订阅编辑等待期应显示为已安排，而不是跳过或失败。
+    """
     repository = _Repository()
     retry_at = "2026-09-01T01:01:00+00:00"
     repository.tasks[4] = _task(
@@ -133,7 +155,9 @@ def test_execution_status_exposes_scheduled_new_search_without_failure():
 
 
 def test_failed_search_preserves_normalized_business_error():
-    """搜索失败文本必须压平空白并保留业务层给出的失败原因。"""
+    """
+    搜索失败文本必须压平空白并保留业务层给出的失败原因。
+    """
     repository = _Repository()
     repository.tasks[3] = _task(3, state="failed", phase="failed")
 
@@ -144,7 +168,9 @@ def test_failed_search_preserves_normalized_business_error():
 
 
 def test_batch_requires_complete_subscription_access():
-    """普通用户不得读取混合其他 owner 订阅的批次聚合。"""
+    """
+    普通用户不得读取混合其他 owner 订阅的批次聚合。
+    """
     repository = _Repository()
     repository.tasks = {1: _task(1), 2: _task(2)}
     service = SubscriptionExecutionStatusService(repository)
@@ -160,7 +186,9 @@ def test_batch_requires_complete_subscription_access():
 
 
 def test_batch_projection_exposes_skipped_count_as_processed_without_success():
-    """批次跳过应计入处理总数，同时保留独立的完成计数。"""
+    """
+    批次跳过应计入处理总数，同时保留独立的完成计数。
+    """
     repository = _Repository()
     repository.batch = replace(
         repository.batch,
@@ -189,12 +217,16 @@ def test_batch_projection_exposes_skipped_count_as_processed_without_success():
 
 
 def test_request_cancel_uses_injected_execution_boundary():
-    """取消必须通过组合根注入的异步执行边界并返回真实结果。"""
+    """
+    取消必须通过组合根注入的异步执行边界并返回真实结果。
+    """
     repository = _Repository()
     requested: list[str] = []
 
     async def request_cancel(batch_id: str) -> bool:
-        """记录测试请求并模拟队列接受取消。"""
+        """
+        记录测试请求并模拟队列接受取消。
+        """
         requested.append(batch_id)
         return True
 

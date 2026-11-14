@@ -1,4 +1,6 @@
-"""只向被测 Agent 公开用户任务与已知媒体、资源输入。"""
+"""
+只向被测 Agent 公开用户任务与已知媒体、资源输入。
+"""
 
 from dataclasses import dataclass
 from typing import Optional
@@ -18,7 +20,23 @@ _PUBLIC_INSTRUCTIONS = (
 
 @dataclass(frozen=True)
 class Scenario:
-    """场景的公开输入，不包含业务初态、故障配置或验收答案。"""
+    """
+    场景的公开输入，不包含业务初态、故障配置或验收答案。
+
+    :param scenario_id: 仅供评测器识别场景的稳定代号
+    :param task: 发送给被测 Agent 的用户任务
+    :param media_source: 已知媒体来源，非媒体任务可为空
+    :param media_id: 来源内的媒体标识，非媒体任务可为空
+    :param title: 已知媒体名称，非媒体任务可为空
+    :param magnet: 已知磁力链接，非下载任务可为空
+    :param infohash: 已知资源摘要，非下载任务可为空
+    :param kind: 场景交互类型，默认通过 API 完成
+    :param command: 代码或终端场景提供的完整命令
+    :param browser_url: 浏览器场景提供的目标页面地址
+    :param terminal_use_pty: 终端场景是否使用伪终端；None 表示沿用默认设置
+    :param steering_message: 单次运行中追加给 Agent 的补充消息
+    :param steering_plan: 按业务工具回执次数安排的补充消息序列
+    """
 
     scenario_id: str
     task: str
@@ -35,13 +53,17 @@ class Scenario:
     steering_plan: tuple[tuple[int, str], ...] = ()
 
     def steering_schedule(self) -> tuple[tuple[int, str], ...]:
-        """返回按业务工具回执次数触发的补充消息计划。"""
+        """
+        返回按业务工具回执次数触发的补充消息计划。
+        """
         if self.steering_plan:
             return self.steering_plan
         return ((1, self.steering_message),) if self.steering_message else ()
 
     def model_input(self) -> str:
-        """提供完整已知输入，但不把场景代号及隐藏故障布置传给模型。"""
+        """
+        提供完整已知输入，但不把场景代号及隐藏故障布置传给模型。
+        """
         if self.kind == "code":
             return f"{self.task}\n\n```python\n{self.command}\n```"
         if self.kind == "command":
@@ -302,7 +324,9 @@ _SCENARIOS = (
 
 
 def get_scenario(scenario_id: str) -> Scenario:
-    """取得不可变的公开场景定义，未知名称必须显式报错。"""
+    """
+    取得不可变的公开场景定义，未知名称必须显式报错。
+    """
     for scenario in _SCENARIOS:
         if scenario.scenario_id == scenario_id:
             return scenario
@@ -310,5 +334,7 @@ def get_scenario(scenario_id: str) -> Scenario:
 
 
 def list_scenarios() -> tuple[Scenario, ...]:
-    """列举公开任务，避免调用方意外修改其他运行的输入。"""
+    """
+    列举公开任务，避免调用方意外修改其他运行的输入。
+    """
     return _SCENARIOS

@@ -1,4 +1,6 @@
-"""数据库短事务 worker 的容量、取消与关闭合同测试。"""
+"""
+数据库短事务 worker 的容量、取消与关闭合同测试。
+"""
 
 import asyncio
 import concurrent.futures
@@ -18,7 +20,9 @@ from app.schemas.exception import (
 
 @pytest.mark.asyncio
 async def test_worker_requires_explicit_start() -> None:
-    """构造对象不会隐式创建可执行线程池。"""
+    """
+    构造对象不会隐式创建可执行线程池。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
 
     with pytest.raises(DatabaseWorkerClosedError):
@@ -27,14 +31,18 @@ async def test_worker_requires_explicit_start() -> None:
 
 @pytest.mark.asyncio
 async def test_worker_rejects_work_beyond_running_and_queue_capacity() -> None:
-    """运行与排队任务达到总容量后立即拒绝新任务。"""
+    """
+    运行与排队任务达到总容量后立即拒绝新任务。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     started = threading.Event()
     release = threading.Event()
 
     def block() -> None:
-        """占住唯一线程，以便验证排队额度与拒绝边界。"""
+        """
+        占住唯一线程，以便验证排队额度与拒绝边界。
+        """
         started.set()
         release.wait(1)
 
@@ -57,7 +65,9 @@ async def test_worker_rejects_work_beyond_running_and_queue_capacity() -> None:
 
 @pytest.mark.asyncio
 async def test_cancelling_queued_work_prevents_execution() -> None:
-    """尚未取得线程的任务取消后不得执行数据库操作。"""
+    """
+    尚未取得线程的任务取消后不得执行数据库操作。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     started = threading.Event()
@@ -65,7 +75,9 @@ async def test_cancelling_queued_work_prevents_execution() -> None:
     queued_executed = threading.Event()
 
     def block() -> None:
-        """保留一个运行中事务，使下一次调用稳定处于排队状态。"""
+        """
+        保留一个运行中事务，使下一次调用稳定处于排队状态。
+        """
         started.set()
         release.wait(1)
 
@@ -90,7 +102,9 @@ async def test_cancelling_queued_work_prevents_execution() -> None:
 
 @pytest.mark.asyncio
 async def test_cancelling_running_work_waits_for_transaction_terminal_state() -> None:
-    """线程内操作开始后，取消结果必须晚于操作的最终状态。"""
+    """
+    线程内操作开始后，取消结果必须晚于操作的最终状态。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     started = threading.Event()
@@ -98,7 +112,9 @@ async def test_cancelling_running_work_waits_for_transaction_terminal_state() ->
     completed = threading.Event()
 
     def operation() -> None:
-        """取消期间继续持有真实事务，直到调用方明确允许收口。"""
+        """
+        取消期间继续持有真实事务，直到调用方明确允许收口。
+        """
         started.set()
         release.wait(1)
         completed.set()
@@ -123,14 +139,18 @@ async def test_cancelling_running_work_waits_for_transaction_terminal_state() ->
 
 @pytest.mark.asyncio
 async def test_shutdown_rejects_new_work_and_waits_for_running_work() -> None:
-    """关闭期间不接收新任务，并等待已开始的操作结束。"""
+    """
+    关闭期间不接收新任务，并等待已开始的操作结束。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     started = threading.Event()
     release = threading.Event()
 
     def operation() -> None:
-        """保持已开始任务运行，使测试能观察关闭期间的拒绝策略。"""
+        """
+        保持已开始任务运行，使测试能观察关闭期间的拒绝策略。
+        """
         started.set()
         release.wait(1)
 
@@ -154,14 +174,18 @@ async def test_shutdown_rejects_new_work_and_waits_for_running_work() -> None:
 
 @pytest.mark.asyncio
 async def test_shutdown_timeout_keeps_running_owner_until_transaction_finishes() -> None:
-    """关闭超时应返回给生命周期编排，并保留执行器等待事务收敛。"""
+    """
+    关闭超时应返回给生命周期编排，并保留执行器等待事务收敛。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     started = threading.Event()
     release = threading.Event()
 
     def operation() -> None:
-        """让事务跨过关闭期限，验证执行器仍保有它的 owner。"""
+        """
+        让事务跨过关闭期限，验证执行器仍保有它的 owner。
+        """
         started.set()
         release.wait(1)
 
@@ -183,13 +207,17 @@ async def test_shutdown_timeout_keeps_running_owner_until_transaction_finishes()
 
 @pytest.mark.asyncio
 async def test_worker_depth_metrics_emit_deltas_and_return_to_zero() -> None:
-    """队列和运行量指标按增减量上报，不能把绝对值累加成漂移。"""
+    """
+    队列和运行量指标按增减量上报，不能把绝对值累加成漂移。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     started = threading.Event()
     release = threading.Event()
 
     def operation() -> None:
-        """控制开始和结束两个观测点，验证指标最终归零。"""
+        """
+        控制开始和结束两个观测点，验证指标最终归零。
+        """
         started.set()
         release.wait(1)
 
@@ -218,7 +246,9 @@ async def test_worker_depth_metrics_emit_deltas_and_return_to_zero() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fails", [False, True])
 async def test_completion_releases_capacity_before_publishing_result(monkeypatch, fails: bool) -> None:
-    """线程完成与事件循环发布之间的握手确保结果或异常不能早于容量回收。"""
+    """
+    线程完成与事件循环发布之间的握手确保结果或异常不能早于容量回收。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     loop = asyncio.get_running_loop()
@@ -229,9 +259,13 @@ async def test_completion_releases_capacity_before_publishing_result(monkeypatch
     original_schedule = worker._schedule_completion
 
     def pause_completion(completed: Future, item: Any) -> None:
-        """模拟线程在完成 callback 中暂时失去调度，结果转发不能越过这道边界。"""
+        """
+        模拟线程在完成 callback 中暂时失去调度，结果转发不能越过这道边界。
+        """
         def observe() -> None:
-            """在所属事件循环核验 Future 可见性，而非等待一个猜测性的延迟。"""
+            """
+            在所属事件循环核验 Future 可见性，而非等待一个猜测性的延迟。
+            """
             if not observed.done():
                 wrapped, _ = worker._futures[completed]
                 observed.set_result((wrapped.done(), worker.snapshot()))
@@ -243,7 +277,9 @@ async def test_completion_releases_capacity_before_publishing_result(monkeypatch
             original_schedule(completed, item)
 
     def operation() -> str:
-        """先等完成回调注册完毕，再交付成功值或原始业务异常。"""
+        """
+        先等完成回调注册完毕，再交付成功值或原始业务异常。
+        """
         operation_started.set()
         assert release_operation.wait(5)
         if fails:
@@ -278,13 +314,17 @@ async def test_completion_releases_capacity_before_publishing_result(monkeypatch
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["success", "error", "cancelled"])
 async def test_completion_callback_handles_future_finished_before_registration(monkeypatch, outcome: str) -> None:
-    """submit 已返回终态 Future 时 callback 会同步触发，仍需先登记 owner 再有序释放。"""
+    """
+    submit 已返回终态 Future 时 callback 会同步触发，仍需先登记 owner 再有序释放。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     submitted = []
 
     def submit(function, *args: Any) -> Future:
-        """模拟极快线程在 submit 返回前结束，保留真实 _execute 的开始记账路径。"""
+        """
+        模拟极快线程在 submit 返回前结束，保留真实 _execute 的开始记账路径。
+        """
         future: Future = Future()
         if outcome == "cancelled":
             future.cancel()
@@ -301,7 +341,9 @@ async def test_completion_callback_handles_future_finished_before_registration(m
         return future
 
     def operation() -> str:
-        """测试业务异常必须原样传递，完成顺序不能吞掉失败。"""
+        """
+        测试业务异常必须原样传递，完成顺序不能吞掉失败。
+        """
         if outcome == "error":
             raise ValueError("immediate failure")
         return "immediate result"
@@ -325,7 +367,9 @@ async def test_completion_callback_handles_future_finished_before_registration(m
 
 @pytest.mark.asyncio
 async def test_finished_future_cannot_publish_while_first_callback_is_pending(monkeypatch) -> None:
-    """Future 先变 FINISHED 再执行 callback；晚注册的转发不能绕过仍未排队的完成记账。"""
+    """
+    Future 先变 FINISHED 再执行 callback；晚注册的转发不能绕过仍未排队的完成记账。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     loop = asyncio.get_running_loop()
@@ -336,13 +380,17 @@ async def test_finished_future_cannot_publish_while_first_callback_is_pending(mo
     native_futures = []
 
     def submit(function, *args: Any) -> Future:
-        """保留真实线程/Future，只控制首次回调注册与后续注册之间的合法时序。"""
+        """
+        保留真实线程/Future，只控制首次回调注册与后续注册之间的合法时序。
+        """
         future = original_submit(function, *args)
         original_add = future.add_done_callback
         first = True
 
         def add(callback) -> None:
-            """首个回调已阻塞且 Future 已结束后，才允许主线程继续注册其余回调。"""
+            """
+            首个回调已阻塞且 Future 已结束后，才允许主线程继续注册其余回调。
+            """
             nonlocal first
             if not first:
                 original_add(callback)
@@ -350,7 +398,9 @@ async def test_finished_future_cannot_publish_while_first_callback_is_pending(mo
             first = False
 
             def paused(completed: Future) -> None:
-                """线程端在 FINISHED 状态暂停，后注册回调仍可能在调用线程立即执行。"""
+                """
+                线程端在 FINISHED 状态暂停，后注册回调仍可能在调用线程立即执行。
+                """
                 first_callback_entered.set()
                 assert release_callback.wait(5)
                 callback(completed)
@@ -365,7 +415,9 @@ async def test_finished_future_cannot_publish_while_first_callback_is_pending(mo
         return future
 
     def operation() -> str:
-        """用输入握手保证首次回调先注册，任务随后才结束。"""
+        """
+        用输入握手保证首次回调先注册，任务随后才结束。
+        """
         assert release_operation.wait(5)
         return "finished value"
 
@@ -391,11 +443,15 @@ async def test_finished_future_cannot_publish_while_first_callback_is_pending(mo
 
 
 class _DerivedCancellation(concurrent.futures.CancelledError):
-    """并发 Future 异常子类不属于 asyncio 的精确类型翻译范围。"""
+    """
+    并发 Future 异常子类不属于 asyncio 的精确类型翻译范围。
+    """
 
 
 class _DerivedInvalidState(concurrent.futures.InvalidStateError):
-    """业务声明的状态错误子类必须保持原对象，而非统一换成 asyncio 异常。"""
+    """
+    业务声明的状态错误子类必须保持原对象，而非统一换成 asyncio 异常。
+    """
 
 
 @pytest.mark.asyncio
@@ -407,13 +463,17 @@ class _DerivedInvalidState(concurrent.futures.InvalidStateError):
     (_DerivedInvalidState, _DerivedInvalidState),
 ])
 async def test_result_publication_preserves_future_exception_contract(source_type, expected_type) -> None:
-    """精确翻译原有 Future 异常，保留参数、业务 traceback 和其他异常的对象身份。"""
+    """
+    精确翻译原有 Future 异常，保留参数、业务 traceback 和其他异常的对象身份。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     source = source_type("native future error", 42)
 
     def operation() -> None:
-        """在真实 worker 线程抛出异常，验证跨线程发布后的 traceback。"""
+        """
+        在真实 worker 线程抛出异常，验证跨线程发布后的 traceback。
+        """
         raise source
 
     try:

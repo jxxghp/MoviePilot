@@ -1,3 +1,7 @@
+"""
+验证消息处理中状态的记录与完成清理。
+"""
+
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -10,6 +14,9 @@ from app.schemas.types import NotificationChannel
 
 
 def test_processing_status_capability_only_enabled_for_supported_channels() -> None:
+    """
+    只有支持处理状态反馈的消息渠道才声明对应能力。
+    """
     supported = {
         NotificationChannel.Telegram,
         NotificationChannel.Feishu,
@@ -24,6 +31,9 @@ def test_processing_status_capability_only_enabled_for_supported_channels() -> N
 
 
 def test_slack_processing_status_uses_reaction() -> None:
+    """
+    Slack 开始处理时添加表情回应，处理结束后移除同一回应。
+    """
     module = SlackModule()
     module._channel = NotificationChannel.Slack
     client = MagicMock()
@@ -66,6 +76,9 @@ def test_slack_processing_status_uses_reaction() -> None:
 
 
 def test_slack_parser_exposes_message_location_for_reaction_status() -> None:
+    """
+    Slack 消息解析保留频道和消息时间戳，供处理状态回应定位原消息。
+    """
     module = SlackModule()
 
     with patch.object(
@@ -93,6 +106,9 @@ def test_slack_parser_exposes_message_location_for_reaction_status() -> None:
 
 
 def test_discord_processing_status_starts_and_stops_typing() -> None:
+    """
+    Discord 开始和结束处理分别启停输入状态反馈。
+    """
     module = DiscordModule()
     module._channel = NotificationChannel.Discord
     client = MagicMock()
@@ -127,6 +143,9 @@ def test_discord_processing_status_starts_and_stops_typing() -> None:
 
 
 def test_agent_finish_processing_status_uses_module_interface() -> None:
+    """
+    Agent 结束处理时通过统一模块接口清理渠道状态，并传递备用用户标识。
+    """
     status = {
         "channel": NotificationChannel.Telegram.value,
         "source": "telegram-main",

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""通过 MoviePilot 本机配置调用下载器自身 API 的受控命令行工具。"""
+"""
+通过 MoviePilot 本机配置调用下载器自身 API 的受控命令行工具。
+"""
 
 from __future__ import annotations
 
@@ -17,7 +19,9 @@ SCRIPT_PATH = Path(__file__).resolve()
 
 
 def _find_project_root() -> Optional[Path]:
-    """从运行环境或目录标记定位 MoviePilot 程序目录。"""
+    """
+    从运行环境或目录标记定位 MoviePilot 程序目录。
+    """
     candidates = []
     configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
     if configured_root:
@@ -43,12 +47,23 @@ _UNSET = object()
 
 
 class OperationError(RuntimeError):
-    """可安全返回给 Agent 的下载器操作错误。"""
+    """
+    可安全返回给 Agent 的下载器操作错误。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class ArgumentSpec:
-    """描述一个 action 参数的公开调用合同。"""
+    """
+    单个动作参数的公开调用契约。
+
+    :param name: 动作调用中的精确参数名称
+    :param type: 公开模式使用的类型表达式，支持联合类型及数组
+    :param description: 供调用方理解参数用途、限制和单位的中文说明
+    :param required: 该参数是否必填，默认 False
+    :param default: 参数默认值；仅在明确声明默认值时向调用方公开
+    :param enum: 允许的参数值集合；空元组表示不限制枚举
+    """
 
     name: str
     type: str
@@ -58,7 +73,9 @@ class ArgumentSpec:
     enum: tuple[Any, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        """返回可直接交给 Agent 的参数 schema。"""
+        """
+        返回可直接交给 Agent 的参数模式。
+        """
         result: dict[str, Any] = {
             "name": self.name,
             "type": self.type,
@@ -74,7 +91,15 @@ class ArgumentSpec:
 
 @dataclass(frozen=True, slots=True)
 class ActionSpec:
-    """描述一个允许调用的下载器 action。"""
+    """
+    单个允许执行动作的能力、影响范围及参数契约。
+
+    :param description: 公开动作的用途与操作边界说明
+    :param effect: 策略分类标识，例如 safe_read、reversible_write 或 destructive_write；保持机器可读原值
+    :param providers: 支持该动作的服务标识，默认包括本脚本支持的全部服务
+    :param arguments: 按声明顺序排列的参数契约，默认无参数
+    :param argument_rules: 参数间的组合约束与安全要求，默认无附加规则
+    """
 
     description: str
     effect: str
@@ -84,11 +109,15 @@ class ActionSpec:
 
     @property
     def required(self) -> tuple[str, ...]:
-        """返回保持旧能力合同兼容的必填参数名。"""
+        """
+        返回保持旧能力合同兼容的必填参数名。
+        """
         return tuple(argument.name for argument in self.arguments if argument.required)
 
     def to_dict(self, name: str) -> dict[str, Any]:
-        """返回不包含实现对象的公开能力描述。"""
+        """
+        返回不包含实现对象的公开能力描述。
+        """
         return {
             "action": name,
             "description": self.description,
@@ -100,115 +129,115 @@ class ActionSpec:
         }
 
 
-TASK_ID = ArgumentSpec("task_id", "string", "One provider-native task hash or ID.")
+TASK_ID = ArgumentSpec("task_id", "string", "下载器自身返回的单个任务哈希或标识。")
 TASK_IDS = ArgumentSpec(
     "task_ids",
     "string[]",
-    "Multiple provider-native task hashes or IDs; mutually exclusive with task_id.",
+    "下载器自身返回的多个任务哈希或标识，与 task_id 互斥。",
 )
-OFFSET = ArgumentSpec("offset", "integer", "Zero-based list offset.", default=0)
-LIMIT = ArgumentSpec("limit", "integer", "Number of items to return, from 1 to 200.", default=DEFAULT_LIMIT)
+OFFSET = ArgumentSpec("offset", "integer", "列表偏移量，从 0 开始。", default=0)
+LIMIT = ArgumentSpec("limit", "integer", "返回条目数量，范围为 1 至 200。", default=DEFAULT_LIMIT)
 
 
 ACTIONS: dict[str, ActionSpec] = {
     "instances.list": ActionSpec(
-        "List configured downloader instances without connection secrets.",
+        "列出已配置的下载器实例，不返回连接凭据。",
         "safe_read",
     ),
     "capabilities.list": ActionSpec(
-        "List supported downloader actions and their complete argument contracts.",
+        "列出支持的下载器动作及完整参数契约。",
         "safe_read",
         arguments=(
             ArgumentSpec(
                 "action_name",
                 "string",
-                "Optional exact action name used to return one capability contract.",
+                "可选的精确动作名称，填写时只返回该动作的能力契约。",
             ),
         ),
     ),
     "tasks.list": ActionSpec(
-        "List and filter downloader tasks.",
+        "查询并筛选下载器任务。",
         "safe_read",
         arguments=(
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("status", "string", "Filter by the provider-native task status."),
-            ArgumentSpec("tags", "string|string[]", "Return only tasks that contain all specified tags."),
+            ArgumentSpec("status", "string", "按下载器原生任务状态筛选。"),
+            ArgumentSpec("tags", "string|string[]", "只返回包含全部指定标签的任务。"),
             OFFSET,
             LIMIT,
         ),
     ),
     "tasks.files": ActionSpec(
-        "List files and priorities for one task.",
+        "列出单个任务的文件及下载优先级。",
         "safe_read",
         arguments=(ArgumentSpec("task_id", "string", TASK_ID.description, required=True), OFFSET, LIMIT),
     ),
     "tasks.files.selection.set": ActionSpec(
-        "Select wanted and unwanted files within one task.",
+        "设置单个任务中需要下载或跳过的文件。",
         "reversible_write",
         arguments=(
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("wanted_file_ids", "integer[]", "Provider file indexes to download; provide this or unwanted_file_ids."),
-            ArgumentSpec("unwanted_file_ids", "integer[]", "Provider file indexes to skip; provide this or wanted_file_ids."),
+            ArgumentSpec("wanted_file_ids", "integer[]", "需要下载的文件在下载器中的索引；须提供本字段或 unwanted_file_ids。"),
+            ArgumentSpec("unwanted_file_ids", "integer[]", "需要跳过的文件在下载器中的索引；须提供本字段或 wanted_file_ids。"),
         ),
         argument_rules=(
-            "Provide wanted_file_ids or unwanted_file_ids, and never place one index in both lists.",
+            "须提供 wanted_file_ids 或 unwanted_file_ids，同一文件索引不得同时出现在两个列表中。",
         ),
     ),
     "tasks.trackers": ActionSpec(
-        "List trackers for one task.",
+        "列出单个任务的 Tracker。",
         "safe_read",
         ("qbittorrent", "transmission"),
         (ArgumentSpec("task_id", "string", TASK_ID.description, required=True),),
     ),
     "tasks.tags.get": ActionSpec(
-        "Read task tags or labels.",
+        "读取任务标签。",
         "safe_read",
         arguments=(ArgumentSpec("task_id", "string", TASK_ID.description, required=True),),
     ),
     "tasks.peers": ActionSpec(
-        "Read qBittorrent peer synchronization data.",
+        "读取 qBittorrent 的连接节点同步数据。",
         "safe_read",
         ("qbittorrent",),
         (ArgumentSpec("task_id", "string", TASK_ID.description, required=True),),
     ),
     "tasks.start": ActionSpec(
-        "Start or resume one or more tasks.",
+        "启动或恢复一个或多个任务。",
         "reversible_write",
         arguments=(TASK_ID, TASK_IDS),
-        argument_rules=("Provide exactly one of task_id and task_ids.",),
+        argument_rules=("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.stop": ActionSpec(
-        "Pause one or more tasks.",
+        "暂停一个或多个任务。",
         "reversible_write",
         arguments=(TASK_ID, TASK_IDS),
-        argument_rules=("Provide exactly one of task_id and task_ids.",),
+        argument_rules=("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.delete": ActionSpec(
-        "Delete tasks and optionally their data.",
+        "删除任务，并可选删除对应数据。",
         "destructive_write",
         arguments=(
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("delete_files", "boolean", "Also permanently delete the task data files.", default=False),
+            ArgumentSpec("delete_files", "boolean", "同时永久删除任务的数据文件。", default=False),
         ),
-        argument_rules=("Provide exactly one of task_id and task_ids.",),
+        argument_rules=("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.recheck": ActionSpec(
-        "Force data verification for tasks.",
+        "强制校验任务数据。",
         "external_side_effect",
         arguments=(TASK_ID, TASK_IDS),
-        argument_rules=("Provide exactly one of task_id and task_ids.",),
+        argument_rules=("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.reannounce": ActionSpec(
-        "Force tracker reannounce.",
+        "强制向 Tracker 重新汇报。",
         "external_side_effect",
         ("qbittorrent", "transmission"),
         (TASK_ID, TASK_IDS),
-        ("Provide exactly one of task_id and task_ids.",),
+        ("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.queue.move": ActionSpec(
-        "Move tasks to top, up, down, or bottom of the queue.",
+        "将任务移至队首、上移、下移或移至队尾。",
         "reversible_write",
         ("qbittorrent", "transmission"),
         (
@@ -217,101 +246,101 @@ ACTIONS: dict[str, ActionSpec] = {
             ArgumentSpec(
                 "position",
                 "string",
-                "Target queue position.",
+                "目标队列位置。",
                 required=True,
                 enum=("top", "up", "down", "bottom"),
             ),
         ),
-        ("Provide exactly one of task_id and task_ids.",),
+        ("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.force_start.set": ActionSpec(
-        "Enable or disable qBittorrent force-start for tasks.",
+        "启用或关闭 qBittorrent 任务的强制启动。",
         "reversible_write",
         ("qbittorrent",),
         (
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("enabled", "boolean", "Whether force-start is enabled.", required=True),
+            ArgumentSpec("enabled", "boolean", "是否启用强制启动。", required=True),
         ),
-        ("Provide exactly one of task_id and task_ids.",),
+        ("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.properties.set": ActionSpec(
-        "Set task speed, ratio, or seeding-time limits.",
+        "设置任务速率、分享率或做种时长限制。",
         "reversible_write",
         arguments=(
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("upload_limit", "number", "Upload limit in KB/s; 0 means unlimited."),
-            ArgumentSpec("download_limit", "number", "Download limit in KB/s; 0 means unlimited."),
-            ArgumentSpec("ratio_limit", "number", "Share-ratio limit; unsupported by rTorrent."),
-            ArgumentSpec("seeding_time_limit", "integer", "Seeding-time limit in minutes; unsupported by rTorrent."),
+            ArgumentSpec("upload_limit", "number", "上传上限，单位为 KB/s；0 表示不限速。"),
+            ArgumentSpec("download_limit", "number", "下载上限，单位为 KB/s；0 表示不限速。"),
+            ArgumentSpec("ratio_limit", "number", "分享率上限；rTorrent 不支持。"),
+            ArgumentSpec("seeding_time_limit", "integer", "做种时长上限，单位为分钟；rTorrent 不支持。"),
         ),
     ),
     "tasks.location.set": ActionSpec(
-        "Move or retarget one task to a provider-side path.",
+        "移动任务数据或将任务保存位置指向下载器端路径。",
         "external_side_effect",
         arguments=(
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("location", "string", "New provider-side save path.", required=True),
+            ArgumentSpec("location", "string", "下载器端的新保存路径。", required=True),
         ),
     ),
     "tasks.category.set": ActionSpec(
-        "Set qBittorrent category.",
+        "设置 qBittorrent 分类。",
         "reversible_write",
         ("qbittorrent",),
         (
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("category", "string", "Non-empty qBittorrent category name.", required=True),
+            ArgumentSpec("category", "string", "非空的 qBittorrent 分类名称。", required=True),
         ),
     ),
     "tasks.tags.set": ActionSpec(
-        "Set or add task tags/labels.",
+        "设置或添加任务标签。",
         "reversible_write",
         arguments=(
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("tags", "string[]", "Tags or labels to set or add.", required=True),
+            ArgumentSpec("tags", "string[]", "需要设置或添加的标签。", required=True),
         ),
-        argument_rules=("Provide exactly one of task_id and task_ids.",),
+        argument_rules=("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.trackers.update": ActionSpec(
-        "Add or replace task trackers.",
+        "添加或替换任务 Tracker。",
         "reversible_write",
         ("qbittorrent", "transmission"),
         (
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("trackers", "string[]", "Tracker URL list.", required=True),
+            ArgumentSpec("trackers", "string[]", "Tracker URL 列表。", required=True),
         ),
     ),
     "tasks.add.direct": ActionSpec(
-        "Submit a magnet, URL, or local torrent file directly to the provider.",
+        "直接向下载器提交磁力链接、URL 或本地种子文件。",
         "external_side_effect",
         arguments=(
-            ArgumentSpec("content", "string", "Magnet URI, torrent URL, or a local torrent path when torrent_file=true.", required=True),
-            ArgumentSpec("torrent_file", "boolean", "Interpret content as a local torrent-file path.", default=False),
-            ArgumentSpec("paused", "boolean", "Add the task in a paused state.", default=False),
-            ArgumentSpec("download_dir", "string", "Provider-side save path."),
-            ArgumentSpec("tags", "string[]", "Tags to assign to the new task."),
-            ArgumentSpec("category", "string", "qBittorrent category; ignored by other providers."),
+            ArgumentSpec("content", "string", "磁力链接或种子 URL；torrent_file=true 时为本地种子路径。", required=True),
+            ArgumentSpec("torrent_file", "boolean", "是否将 content 解释为本地种子文件路径。", default=False),
+            ArgumentSpec("paused", "boolean", "以暂停状态添加任务。", default=False),
+            ArgumentSpec("download_dir", "string", "下载器端的保存路径。"),
+            ArgumentSpec("tags", "string[]", "为新任务设置的标签。"),
+            ArgumentSpec("category", "string", "qBittorrent 分类；其他下载器忽略此参数。"),
         ),
     ),
-    "session.stats": ActionSpec("Read provider transfer/session statistics.", "safe_read"),
-    "session.speed_limits.get": ActionSpec("Read global speed limits.", "safe_read", ("qbittorrent", "transmission")),
+    "session.stats": ActionSpec("读取下载器传输或会话统计。", "safe_read"),
+    "session.speed_limits.get": ActionSpec("读取全局速率限制。", "safe_read", ("qbittorrent", "transmission")),
     "session.speed_limits.set": ActionSpec(
-        "Set global speed limits in KB/s.",
+        "设置全局速率限制，单位为 KB/s。",
         "reversible_write",
         ("qbittorrent", "transmission"),
         (
-            ArgumentSpec("download_limit", "number", "Global download limit in KB/s; 0 or omission means unlimited."),
-            ArgumentSpec("upload_limit", "number", "Global upload limit in KB/s; 0 or omission means unlimited."),
+            ArgumentSpec("download_limit", "number", "全局下载上限，单位为 KB/s；0 或省略表示不限速。"),
+            ArgumentSpec("upload_limit", "number", "全局上传上限，单位为 KB/s；0 或省略表示不限速。"),
         ),
     ),
     "session.details": ActionSpec(
-        "Read Transmission session configuration and capacity details.",
+        "读取 Transmission 会话配置与容量详情。",
         "safe_read",
         ("transmission",),
     ),
     "session.content_layout": ActionSpec(
-        "Read qBittorrent's default torrent content layout.",
+        "读取 qBittorrent 默认的种子内容布局。",
         "safe_read",
         ("qbittorrent",),
     ),
@@ -319,7 +348,9 @@ ACTIONS: dict[str, ActionSpec] = {
 
 
 def _ensure_project_import() -> None:
-    """确保脚本从任意工作目录都可导入 MoviePilot。"""
+    """
+    确保脚本从任意工作目录都可导入 MoviePilot。
+    """
     if PROJECT_ROOT is None:
         raise RuntimeError(
             "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
@@ -331,7 +362,9 @@ def _ensure_project_import() -> None:
 
 
 def _load_configs() -> list[Any]:
-    """通过独立短会话读取并校验本机下载器配置。"""
+    """
+    通过独立短会话读取并校验本机下载器配置。
+    """
     _ensure_project_import()
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.session import SessionFactory
@@ -346,13 +379,17 @@ def _load_configs() -> list[Any]:
 
 
 def _import_symbol(reference: str) -> type[Any]:
-    """按审核过的模块引用惰性导入 provider client。"""
+    """
+    按审核过的模块引用惰性导入服务客户端。
+    """
     module_name, symbol_name = reference.split(":", 1)
     return getattr(importlib.import_module(module_name), symbol_name)
 
 
 def _select_config(client_name: Optional[str]) -> Any:
-    """按实例名选择启用配置，省略名称时使用默认或唯一实例。"""
+    """
+    按实例名选择启用配置，省略名称时使用默认或唯一实例。
+    """
     enabled = [config for config in _load_configs() if config.enabled]
     if client_name:
         for config in enabled:
@@ -371,7 +408,9 @@ def _select_config(client_name: Optional[str]) -> Any:
 
 
 def _build_client(config: Any) -> Any:
-    """使用本机私有配置构造具体下载器 API client。"""
+    """
+    使用本机私有配置构造具体下载器 API client。
+    """
     provider = str(config.type or "").strip().lower()
     reference = PROVIDER_CLASSES.get(provider)
     if not reference:
@@ -385,7 +424,9 @@ def _build_client(config: Any) -> Any:
 
 
 def _jsonable(value: Any, *, depth: int = 0) -> Any:
-    """将 provider DTO 转成有界、无私有字段的 JSON 值。"""
+    """
+    将服务返回的数据对象转成有界、无私有字段的 JSON 值。
+    """
     if depth > 6:
         return str(value)
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -413,7 +454,9 @@ def _jsonable(value: Any, *, depth: int = 0) -> Any:
 
 
 def _is_sensitive_key(key: str) -> bool:
-    """识别 provider 结果中的凭据、会话和认证字段。"""
+    """
+    识别服务实现结果中的凭据、会话和认证字段。
+    """
     normalized = "".join(character for character in key.lower() if character.isalnum())
     return any(
         marker in normalized
@@ -431,7 +474,9 @@ def _is_sensitive_key(key: str) -> bool:
 
 
 def _page(items: Sequence[Any], arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """对列表结果执行统一偏移分页。"""
+    """
+    对列表结果执行统一偏移分页。
+    """
     offset = max(0, int(arguments.get("offset", 0)))
     limit = min(MAX_LIMIT, max(1, int(arguments.get("limit", DEFAULT_LIMIT))))
     materialized = list(items)
@@ -444,7 +489,9 @@ def _page(items: Sequence[Any], arguments: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _task_ids(arguments: Mapping[str, Any]) -> str | list[str]:
-    """读取一个或多个任务 ID，并保持 provider 接受的形态。"""
+    """
+    读取一个或多个任务 ID，并保持服务实现接受的形态。
+    """
     raw = arguments.get("task_ids", arguments.get("task_id"))
     if isinstance(raw, list):
         values = [str(item) for item in raw if str(item).strip()]
@@ -457,7 +504,9 @@ def _task_ids(arguments: Mapping[str, Any]) -> str | list[str]:
 
 
 def _require(arguments: Mapping[str, Any], name: str) -> Any:
-    """读取必填 action 参数。"""
+    """
+    读取必填动作参数。
+    """
     value = arguments.get(name)
     if value is None or value == "" or value == []:
         raise ValueError(f"缺少必填参数: {name}")
@@ -465,7 +514,9 @@ def _require(arguments: Mapping[str, Any], name: str) -> Any:
 
 
 def _matches_argument_type(value: Any, declared_type: str) -> bool:
-    """判断 JSON 值是否符合公开参数合同中的紧凑类型表达式。"""
+    """
+    判断 JSON 值是否符合公开参数合同中的紧凑类型表达式。
+    """
     for candidate in declared_type.split("|"):
         if candidate.endswith("[]"):
             if isinstance(value, list) and all(
@@ -487,7 +538,9 @@ def _matches_argument_type(value: Any, declared_type: str) -> bool:
 
 
 def _validate_action_arguments(action: str, spec: ActionSpec, arguments: Mapping[str, Any]) -> None:
-    """一次性校验 action 的全部参数，避免 Agent 按单个错误反复试调用。"""
+    """
+    一次性校验动作的全部参数，避免 Agent 按单个错误反复试调用。
+    """
     errors: list[str] = []
     argument_specs = {argument.name: argument for argument in spec.arguments}
     unknown = sorted(set(arguments) - set(argument_specs))
@@ -541,7 +594,9 @@ def _validate_action_arguments(action: str, spec: ActionSpec, arguments: Mapping
 
 
 def _validate_provider_arguments(action: str, provider: str, arguments: Mapping[str, Any]) -> None:
-    """拒绝会被特定 provider 静默忽略的参数。"""
+    """
+    拒绝会被特定服务实现静默忽略的参数。
+    """
     errors: list[str] = []
     if action == "tasks.properties.set" and provider == "rtorrent":
         unsupported = [
@@ -558,7 +613,9 @@ def _validate_provider_arguments(action: str, provider: str, arguments: Mapping[
 
 
 def _tasks_list(client: Any, arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """查询并分页返回下载任务。"""
+    """
+    查询并分页返回下载任务。
+    """
     tasks, error = client.get_torrents(
         ids=arguments.get("task_ids", arguments.get("task_id")),
         status=arguments.get("status"),
@@ -570,7 +627,9 @@ def _tasks_list(client: Any, arguments: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _tags_get(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
-    """按 provider 读取任务标签。"""
+    """
+    按服务实现读取任务标签。
+    """
     task_id = str(_require(arguments, "task_id"))
     getter = getattr(client, "get_torrent_tags", None)
     if callable(getter):
@@ -586,7 +645,9 @@ def _tags_get(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
 
 
 def _tags_set(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
-    """按 provider 设置任务标签。"""
+    """
+    按服务实现设置任务标签。
+    """
     ids = _task_ids(arguments)
     tags = [str(item) for item in _require(arguments, "tags")]
     if provider == "qbittorrent":
@@ -597,7 +658,9 @@ def _tags_set(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
 
 
 def _reannounce(client: Any, provider: str, arguments: Mapping[str, Any]) -> bool:
-    """调用 provider SDK 的固定重新汇报动作。"""
+    """
+    调用服务实现 SDK 的固定重新汇报动作。
+    """
     ids = _task_ids(arguments)
     if provider == "qbittorrent":
         client.qbc.torrents_reannounce(torrent_hashes=ids)
@@ -607,7 +670,9 @@ def _reannounce(client: Any, provider: str, arguments: Mapping[str, Any]) -> boo
 
 
 def _queue_move(client: Any, provider: str, arguments: Mapping[str, Any]) -> bool:
-    """按固定枚举调整任务队列位置。"""
+    """
+    按固定枚举调整任务队列位置。
+    """
     ids = _task_ids(arguments)
     position = str(_require(arguments, "position")).lower()
     if position not in {"top", "up", "down", "bottom"}:
@@ -628,7 +693,9 @@ def _queue_move(client: Any, provider: str, arguments: Mapping[str, Any]) -> boo
 
 
 def _set_file_selection(client: Any, provider: str, arguments: Mapping[str, Any]) -> bool:
-    """按统一 wanted/unwanted 合同设置任务内文件选择。"""
+    """
+    按统一 wanted/unwanted 合同设置任务内文件选择。
+    """
     task_id = str(_require(arguments, "task_id"))
     wanted = [int(item) for item in arguments.get("wanted_file_ids", [])]
     unwanted = [int(item) for item in arguments.get("unwanted_file_ids", [])]
@@ -654,7 +721,9 @@ def _set_file_selection(client: Any, provider: str, arguments: Mapping[str, Any]
 
 
 def _add_direct(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
-    """将显式内容直接提交到下载器，不接收 Cookie 或连接参数。"""
+    """
+    将显式内容直接提交到下载器，不接收 Cookie 或连接参数。
+    """
     content = _require(arguments, "content")
     torrent_file = bool(arguments.get("torrent_file"))
     if torrent_file:
@@ -677,7 +746,9 @@ def _add_direct(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any
 
 
 def _dispatch(client: Any, provider: str, action: str, arguments: Mapping[str, Any]) -> Any:
-    """执行 action 注册表中允许的下载器调用。"""
+    """
+    执行动作注册表中允许的下载器调用。
+    """
     if action == "tasks.list":
         return _tasks_list(client, arguments)
     if action == "tasks.files":
@@ -759,7 +830,9 @@ def _dispatch(client: Any, provider: str, action: str, arguments: Mapping[str, A
 
 
 def list_instances() -> dict[str, Any]:
-    """列出下载器实例的非敏感投影。"""
+    """
+    列出下载器实例的非敏感投影。
+    """
     instances = [
         {
             "name": config.name,
@@ -774,7 +847,9 @@ def list_instances() -> dict[str, Any]:
 
 
 def list_capabilities(client_name: Optional[str], action: Optional[str] = None) -> dict[str, Any]:
-    """返回全部或指定实例支持的 action 及完整参数合同。"""
+    """
+    返回全部或指定实例支持的动作及完整参数合同。
+    """
     provider = None
     if client_name:
         provider = str(_select_config(client_name).type or "").lower()
@@ -796,7 +871,9 @@ def list_capabilities(client_name: Optional[str], action: Optional[str] = None) 
 
 
 def call_action(client_name: Optional[str], action: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """校验 action/provider 合同并执行一次受控调用。"""
+    """
+    校验动作与服务实现合同并执行一次受控调用。
+    """
     spec = ACTIONS.get(action)
     if spec is None:
         raise ValueError(f"未知 downloader action: {action}")
@@ -839,7 +916,9 @@ def call_action(client_name: Optional[str], action: str, arguments: Mapping[str,
 
 
 def _parse_arguments(raw: str) -> dict[str, Any]:
-    """解析并限制调用参数为单个 JSON 对象。"""
+    """
+    解析并限制调用参数为单个 JSON 对象。
+    """
     value = json.loads(raw or "{}")
     if not isinstance(value, dict):
         raise ValueError("--arguments 必须是 JSON 对象")
@@ -847,14 +926,16 @@ def _parse_arguments(raw: str) -> dict[str, Any]:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """构建固定命令和参数解析器。"""
-    parser = argparse.ArgumentParser(description="MoviePilot downloader API helper")
+    """
+    构建固定命令和参数解析器。
+    """
+    parser = argparse.ArgumentParser(description="MoviePilot 下载器 API 操作工具")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("instances", help="list configured instances")
-    capabilities = subparsers.add_parser("capabilities", help="list allowed actions")
+    subparsers.add_parser("instances", help="列出已配置实例")
+    capabilities = subparsers.add_parser("capabilities", help="列出允许的动作")
     capabilities.add_argument("--client")
     capabilities.add_argument("--action")
-    call = subparsers.add_parser("call", help="call one allowed action")
+    call = subparsers.add_parser("call", help="调用一个允许的动作")
     call.add_argument("--client")
     call.add_argument("--action", required=True)
     call.add_argument("--arguments", default="{}")
@@ -862,7 +943,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """执行 CLI 并以稳定 JSON envelope 返回结果。"""
+    """
+    执行 CLI 并以稳定 JSON 封装返回结果。
+    """
     parser = _build_parser()
     args = parser.parse_args()
     try:
@@ -875,6 +958,7 @@ def main() -> int:
         else:
             parser.print_help()
             return 0
+    # 命令行边界统一转换底层异常，维持调用方可解析的 JSON 错误格式。
     except Exception as error:  # noqa: BLE001
         payload = {
             "success": False,

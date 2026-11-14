@@ -1,6 +1,10 @@
+"""
+从站点搜索候选资源并写入工作流上下文。
+"""
+
 import random
 import time
-from typing import List, Optional, cast
+from typing import List, Optional
 
 from pydantic import Field
 
@@ -38,7 +42,10 @@ class FetchTorrentsAction(BaseAction):
         "outputs": [{"name": "torrents", "label": "资源", "kind": "list"}],
     }
 
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str) -> None:
+        """
+        为当前动作建立独立的搜索结果集合。
+        """
         super().__init__(action_id)
         self._torrents: list[WorkflowContext] = []
 
@@ -48,34 +55,37 @@ class FetchTorrentsAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """
+        以动作完成状态报告执行结果。
+        """
         return self.done
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         搜索站点，获取资源列表
         """
-        params = FetchTorrentsParams(**params)
+        action_params = FetchTorrentsParams.model_validate(params)
         searchchain = SearchChain()
-        if params.search_type == "keyword":
+        if action_params.search_type == "keyword":
             # 按关键字搜索
             torrents = searchchain.search_by_title(
-                title=params.name or "",
-                sites=params.sites,
+                title=action_params.name or "",
+                sites=action_params.sites,
             )
             for torrent in torrents:
                 if runtime_stop_state.is_workflow_stopped(workflow_id):
                     break
                 meta_info = torrent.meta_info
-                if params.year and (not meta_info or meta_info.year != params.year):
+                if action_params.year and (not meta_info or meta_info.year != action_params.year):
                     continue
-                if params.type and torrent.media_info and torrent.media_info.type != MediaType(params.type):
+                if action_params.type and torrent.media_info and torrent.media_info.type != MediaType(action_params.type):
                     continue
-                if params.season is not None and (
-                    not meta_info or meta_info.begin_season != params.season
+                if action_params.season is not None and (
+                    not meta_info or meta_info.begin_season != action_params.season
                 ):
                     continue
                 # 识别媒体信息
-                if params.match_media:
+                if action_params.match_media:
                     if not meta_info:
                         continue
                     torrent.media_info = MediaChain().recognize_by_meta(
@@ -83,7 +93,7 @@ class FetchTorrentsAction(BaseAction):
                         obtain_images=False,
                     )
                     if not torrent.media_info:
-                        logger.warning(f"{torrent.torrent_info.title} 未识别到媒体信息")
+                        logger.warning(f"{torrent.torrent_info.title if torrent.torrent_info else ''} 未识别到媒体信息")
                         continue
                 self._torrents.append(self._to_workflow_context(torrent))
         else:
@@ -98,7 +108,7 @@ class FetchTorrentsAction(BaseAction):
                     media_source=media.media_source,
                     media_id=media.media_id,
                     mtype=MediaType(media.type),
-                    sites=params.sites,
+                    sites=action_params.sites,
                 )
                 for torrent in torrents:
                     self._torrents.append(self._to_workflow_context(torrent))
@@ -119,5 +129,7 @@ class FetchTorrentsAction(BaseAction):
 
     @staticmethod
     def _to_workflow_context(context: SearchContext) -> WorkflowContext:
-        """把领域搜索结果投影为工作流传输上下文。"""
-        return cast(WorkflowContext, WorkflowContext.model_validate(context.to_dict()))
+        """
+        把领域搜索结果投影为工作流传输上下文。
+        """
+        return WorkflowContext.model_validate(context.to_dict())

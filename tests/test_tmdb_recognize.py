@@ -1,3 +1,7 @@
+"""
+验证TMDB 媒体识别中的候选选择和身份保留。
+"""
+
 # -*- coding: utf-8 -*-
 import json
 from copy import deepcopy
@@ -25,7 +29,8 @@ _MARKER = TMDb._RESPONSE_SNAPSHOT_MARKER
 
 
 def _cassette_key(url: str) -> str:
-    """把 TMDB 请求 URL 归一化为 cassette 键：剥离易变的 api_key，其余 query 排序。
+    """
+    把 TMDB 请求 URL 归一化为 cassette 键：剥离易变的 api_key，其余 query 排序。
 
     `_build_url` 生成形如 `/3/movie/23155?api_key=...&append_to_response=...&language=zh`，
     剥离 api_key 后键在不同环境/不同 key 下保持稳定。
@@ -36,7 +41,9 @@ def _cassette_key(url: str) -> str:
 
 
 def _replay(url: str) -> dict:
-    """按归一化键回放录制的响应快照；未命中即报错提示重新录制，避免静默漏过新请求。"""
+    """
+    按归一化键回放录制的响应快照；未命中即报错提示重新录制，避免静默漏过新请求。
+    """
     key = _cassette_key(url)
     if key not in _CASSETTE:
         raise AssertionError(
@@ -46,13 +53,19 @@ def _replay(url: str) -> dict:
     return {_MARKER: True, "headers": {}, "json": deepcopy(_CASSETTE[key])}
 
 
-def _replay_request(self, method, url, data, json=None, **kwargs):  # noqa: A002 - 对齐被替换方法签名
-    """TMDb.request 的离线替身（同步）。"""
+# 对齐被替换方法签名。
+def _replay_request(self, method, url, data, json=None, **kwargs):  # noqa: A002
+    """
+    TMDb.request 的离线替身（同步）。
+    """
     return _replay(url)
 
 
-async def _replay_async_request(self, method, url, data, json=None, **kwargs):  # noqa: A002 - 同上
-    """TMDb.async_request 的离线替身（异步）。"""
+# 保持被替换客户端的 json 参数名，便于直接重放测试响应。
+async def _replay_async_request(self, method, url, data, json=None, **kwargs):  # noqa: A002
+    """
+    TMDb.async_request 的离线替身（异步）。
+    """
     return _replay(url)
 
 
@@ -60,7 +73,8 @@ _PATCHERS: list = []
 
 
 def setUpModule():
-    """整文件生效：离线化 TMDB HTTP 与共享识别 API，确保零真实请求。
+    """
+    整文件生效：离线化 TMDB HTTP 与共享识别 API，确保零真实请求。
 
     ChainBase.async_recognize_media 在识别成功后会经 MoviePilotServerHelper 向
     MP 服务器（movie-pilot.org）的「共享识别 API」上报/查询；识别失败时还会反向
@@ -91,14 +105,18 @@ def setUpModule():
 
 
 def tearDownModule():
-    """还原 TMDb HTTP 出口打桩，避免影响其它测试模块。"""
+    """
+    还原 TMDb HTTP 出口打桩，避免影响其它测试模块。
+    """
     for patcher in _PATCHERS:
         patcher.stop()
     _PATCHERS.clear()
 
 
 def test_tmdb_module_has_no_legacy_category_runtime_dependency() -> None:
-    """正常模块初始化不得构造旧分类门面或暴露旧模块调度方法。"""
+    """
+    正常模块初始化不得构造旧分类门面或暴露旧模块调度方法。
+    """
     with (
         patch("app.modules.themoviedb.TmdbCache"),
         patch("app.modules.themoviedb.TmdbApi"),
@@ -116,7 +134,9 @@ def test_tmdb_module_has_no_legacy_category_runtime_dependency() -> None:
 
 @pytest.fixture
 def tmdb_module():
-    """创建并在用例结束后关闭独立的 TMDB 模块实例。"""
+    """
+    创建并在用例结束后关闭独立的 TMDB 模块实例。
+    """
     module = TheMovieDbModule()
     module.init_module()
     yield module
@@ -125,13 +145,17 @@ def tmdb_module():
 
 @pytest.fixture
 def chain():
-    """在 pytest 组合根完成装配后创建端到端 Chain。"""
+    """
+    在 pytest 组合根完成装配后创建端到端 Chain。
+    """
     return ChainBase()
 
 
 @pytest.mark.asyncio
 async def test_tmdbid_priority_over_title(tmdb_module):
-    """文件名带 TMDB 身份时优先按身份识别，不回退标题搜索。"""
+    """
+    文件名带 TMDB 身份时优先按身份识别，不回退标题搜索。
+    """
     meta = MetaInfo(title="空之境界 {tmdbid=938416}")
     assert meta.media_source is MediaSource.TMDB
     assert meta.media_id == "938416"
@@ -149,7 +173,9 @@ async def test_tmdbid_priority_over_title(tmdb_module):
 
 @pytest.mark.asyncio
 async def test_tmdbid_disambiguation_tv_vs_movie(tmdb_module):
-    """同一 TMDB ID 同时命中电影和剧集时按标题证据消歧。"""
+    """
+    同一 TMDB ID 同时命中电影和剧集时按标题证据消歧。
+    """
     meta = MetaInfo(title="空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
     assert meta.media_source is MediaSource.TMDB
     assert meta.media_id == "23155"
@@ -167,7 +193,9 @@ async def test_tmdbid_disambiguation_tv_vs_movie(tmdb_module):
 
 @pytest.mark.asyncio
 async def test_tmdbid_with_explicit_type(tmdb_module):
-    """显式媒体类型与 TMDB 身份同时存在时直接查询指定类型。"""
+    """
+    显式媒体类型与 TMDB 身份同时存在时直接查询指定类型。
+    """
     meta = MetaInfo(title="空之境界 {tmdbid=23155}")
     result = await tmdb_module.async_recognize_media(
         meta=meta,
@@ -183,7 +211,9 @@ async def test_tmdbid_with_explicit_type(tmdb_module):
 
 @pytest.mark.asyncio
 async def test_tmdbid_only_movie_exists(tmdb_module):
-    """只有电影记录时忽略标题对 TV 类型的错误推断。"""
+    """
+    只有电影记录时忽略标题对 TV 类型的错误推断。
+    """
     meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
     assert meta.media_source is MediaSource.TMDB
     assert meta.media_id == "496891"
@@ -201,7 +231,9 @@ async def test_tmdbid_only_movie_exists(tmdb_module):
 
 @pytest.mark.asyncio
 async def test_chain_tmdbid_movie(chain):
-    """端到端 Chain 应按 TMDB 身份识别电影。"""
+    """
+    端到端 Chain 应按 TMDB 身份识别电影。
+    """
     meta = MetaInfo(title="空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
     result = await chain.async_recognize_media(meta=meta, cache=False)
     assert result is not None
@@ -211,7 +243,9 @@ async def test_chain_tmdbid_movie(chain):
 
 @pytest.mark.asyncio
 async def test_chain_tmdbid_ignores_inferred_type(chain):
-    """端到端 Chain 有 TMDB 身份时不采信标题误推断的类型。"""
+    """
+    端到端 Chain 有 TMDB 身份时不采信标题误推断的类型。
+    """
     meta = MetaInfo(title="少女与战车 最终章 ～第2话～ (2019) {tmdbid=496891}")
     assert meta.type is MediaType.TV, "meta.type 应被推断为 TV"
     assert meta.media_source is MediaSource.TMDB
@@ -225,7 +259,9 @@ async def test_chain_tmdbid_ignores_inferred_type(chain):
 
 @pytest.mark.asyncio
 async def test_chain_no_tmdbid_uses_inferred_type(chain):
-    """无 TMDB 身份时端到端 Chain 继续使用标题推断类型。"""
+    """
+    无 TMDB 身份时端到端 Chain 继续使用标题推断类型。
+    """
     meta = MetaInfo(title="进击的巨人 S01E01")
     assert meta.type is MediaType.TV
 

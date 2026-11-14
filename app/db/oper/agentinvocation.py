@@ -1,4 +1,6 @@
-"""调用方事务内的 Agent 写工具回执数据操作。"""
+"""
+调用方事务内的 Agent 写工具回执数据操作。
+"""
 
 from typing import cast
 
@@ -13,7 +15,9 @@ from app.db.models.agentinvocation import AgentInvocation
 
 
 def terminal_session_delete(principal_id: str, session_id: str) -> Delete:
-    """只构造已确认提交和终态历史删除语句，不创建会话或访问数据库。"""
+    """
+    只构造已确认提交和终态历史删除语句，不创建会话或访问数据库。
+    """
     return delete(AgentInvocation).where(
         AgentInvocation.principal_id == principal_id,
         AgentInvocation.session_id == session_id,
@@ -22,17 +26,23 @@ def terminal_session_delete(principal_id: str, session_id: str) -> Delete:
 
 
 class AgentInvocationOper(DbOper):
-    """必须显式传入 Session；唯一键认领和 token 条件更新均由数据库保证。"""
+    """
+    必须显式传入 Session；唯一键认领和 token 条件更新均由数据库保证。
+    """
 
     def __init__(self, db: Session) -> None:
-        """保存调用方事务的独占 Session，不自行提交。"""
+        """
+        保存调用方事务的独占 Session，不自行提交。
+        """
         super().__init__(db)
         self._session = db
 
     def get(
         self, principal_id: str, session_id: str, invocation_id: str,
     ) -> AgentInvocation | None:
-        """按完整身份读取单条回执，避免不同用户和会话交叉复用。"""
+        """
+        按完整身份读取单条回执，避免不同用户和会话交叉复用。
+        """
         return cast(AgentInvocation | None, self._session.execute(
             select(AgentInvocation).where(
                 AgentInvocation.principal_id == principal_id,
@@ -49,7 +59,9 @@ class AgentInvocationOper(DbOper):
         tool_name: str,
         arguments_digest: str,
     ) -> AgentInvocation | None:
-        """查询最近的相同参数恢复状态，不跨用户、会话或工具复用。"""
+        """
+        查询最近的相同参数恢复状态，不跨用户、会话或工具复用。
+        """
         return cast(AgentInvocation | None, self._session.execute(
             select(AgentInvocation).where(
                 AgentInvocation.principal_id == principal_id,
@@ -61,7 +73,9 @@ class AgentInvocationOper(DbOper):
         ).scalar_one_or_none())
 
     def stage_claim(self, record: AgentInvocation) -> bool:
-        """唯一身份首次插入才获得执行权，并发竞争不会先查后写。"""
+        """
+        唯一身份首次插入才获得执行权，并发竞争不会先查后写。
+        """
         dialect = self._session.get_bind().dialect.name
         if dialect == "postgresql":
             statement = postgres_insert(AgentInvocation)
@@ -90,7 +104,9 @@ class AgentInvocationOper(DbOper):
         summary: str,
         updated_at: str,
     ) -> bool:
-        """只有当前未收口 owner 可以记录执行或核验结果。"""
+        """
+        只有当前未收口 owner 可以记录执行或核验结果。
+        """
         return bool(execute_dml(
             self._session,
             update(AgentInvocation).where(
@@ -102,7 +118,9 @@ class AgentInvocationOper(DbOper):
         ))
 
     def stage_recover(self, *, claim_token: str, summary: str, updated_at: str) -> int:
-        """冷启动撤销旧执行权，未知状态不会依据时间再次进入运行态。"""
+        """
+        冷启动撤销旧执行权，未知状态不会依据时间再次进入运行态。
+        """
         return execute_dml(
             self._session,
             update(AgentInvocation).where(AgentInvocation.status == "running").values(
@@ -113,7 +131,9 @@ class AgentInvocationOper(DbOper):
         )
 
     def stage_delete_session(self, principal_id: str, session_id: str) -> int:
-        """仅暂存指定会话的已确认提交和终态回执删除。"""
+        """
+        仅暂存指定会话的已确认提交和终态回执删除。
+        """
         return execute_dml(
             self._session,
             terminal_session_delete(principal_id, session_id),

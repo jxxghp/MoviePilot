@@ -1,4 +1,6 @@
-"""PostgreSQL 驱动 A/B harness 的无 Docker 合同测试。"""
+"""
+PostgreSQL 驱动 A/B harness 的无 Docker 合同测试。
+"""
 
 from __future__ import annotations
 
@@ -8,13 +10,14 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "perf" / "postgresql_driver_ab.py"
 
 
 def load_harness():
-    """从脚本路径加载 harness，避免把 scripts 变成运行时 package。"""
+    """
+    从脚本路径加载 harness，避免把 scripts 变成运行时 package。
+    """
     spec = importlib.util.spec_from_file_location("postgresql_driver_ab_test", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -23,7 +26,9 @@ def load_harness():
 
 
 def sample(variant: str, value: float) -> dict:
-    """构造满足汇总合同的单个样本。"""
+    """
+    构造满足汇总合同的单个样本。
+    """
     return {
         "variant": variant,
         "postgresql_settings": {"server_version": "18.4"},
@@ -36,7 +41,9 @@ def sample(variant: str, value: float) -> dict:
 
 
 def test_campaign_and_image_arguments_are_strict() -> None:
-    """公开参数不得生成不安全名称或接受可变镜像标签。"""
+    """
+    公开参数不得生成不安全名称或接受可变镜像标签。
+    """
     harness = load_harness()
 
     assert harness.normalize_campaign("PG-AB.1") == "pg-ab.1"
@@ -48,7 +55,9 @@ def test_campaign_and_image_arguments_are_strict() -> None:
 
 
 def test_sample_order_covers_all_balanced_permutations() -> None:
-    """六轮中每个方案必须各占两次首、中、末位置。"""
+    """
+    六轮中每个方案必须各占两次首、中、末位置。
+    """
     harness = load_harness()
 
     orders = [harness.sample_order(index) for index in range(6)]
@@ -61,7 +70,9 @@ def test_sample_order_covers_all_balanced_permutations() -> None:
 
 
 def test_validate_sample_enforces_driver_and_gil_contracts() -> None:
-    """V3t 必须使用 psycopg C 且在基准结束后仍关闭 GIL。"""
+    """
+    V3t 必须使用 psycopg C 且在基准结束后仍关闭 GIL。
+    """
     harness = load_harness()
     valid = {
         "runtime": {
@@ -86,7 +97,9 @@ def test_validate_sample_enforces_driver_and_gil_contracts() -> None:
 
 
 def test_summary_keeps_three_variants_separate() -> None:
-    """汇总必须保留三方案，不能把两个标准 V3 驱动合并。"""
+    """
+    汇总必须保留三方案，不能把两个标准 V3 驱动合并。
+    """
     harness = load_harness()
     samples = []
     for variant, _driver in harness.VARIANTS:
@@ -104,7 +117,9 @@ def test_summary_keeps_three_variants_separate() -> None:
 
 
 def test_campaign_requires_complete_matching_results() -> None:
-    """三方案缺样本或业务结果不同都不能生成性能结论。"""
+    """
+    三方案缺样本或业务结果不同都不能生成性能结论。
+    """
     harness = load_harness()
     samples = []
     for variant, _driver in harness.VARIANTS:

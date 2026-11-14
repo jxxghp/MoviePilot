@@ -1,8 +1,14 @@
+"""
+验证 ListenBrainz 音乐数据接口的查询与领域映射。
+"""
+
 from app.modules.listenbrainz import ListenBrainzModule
 
 
 def test_recording_to_info_maps_listenbrainz_payload():
-    """ListenBrainz 榜单录音应转换为可搜索和订阅的 MusicInfo。"""
+    """
+    ListenBrainz 榜单录音应转换为可搜索和订阅的 MusicInfo。
+    """
     info = ListenBrainzModule._recording_to_info(
         {
             "artist_name": "Daft Punk",
@@ -24,12 +30,16 @@ def test_recording_to_info_maps_listenbrainz_payload():
 
 
 def test_music_chart_requests_requested_page(monkeypatch):
-    """音乐榜单模块应传递实体、周期、偏移量和数量并过滤无身份记录。"""
+    """
+    音乐榜单模块应传递实体、周期、偏移量和数量并过滤无身份记录。
+    """
     module = ListenBrainzModule()
     requested = {}
 
     def fake_request(entity, range_name, offset, count):
-        """记录榜单请求参数并返回一条有效录音。"""
+        """
+        记录榜单请求参数并返回一条有效录音。
+        """
         requested.update(entity=entity, range_name=range_name, offset=offset, count=count)
         return {
             "payload": {
@@ -58,12 +68,16 @@ def test_music_chart_requests_requested_page(monkeypatch):
 
 
 def test_music_chart_supports_album_entity(monkeypatch):
-    """热门专辑榜单应请求官方 release-groups 接口并返回专辑实体。"""
+    """
+    热门专辑榜单应请求官方 release-groups 接口并返回专辑实体。
+    """
     module = ListenBrainzModule()
     requested = {}
 
     def fake_request(entity, range_name, offset, count):
-        """记录请求实体并返回一条热门专辑。"""
+        """
+        记录请求实体并返回一条热门专辑。
+        """
         requested.update(entity=entity, range_name=range_name)
         return {
             "payload": {
@@ -91,12 +105,16 @@ def test_music_chart_supports_album_entity(monkeypatch):
 
 
 def test_music_chart_falls_back_to_supported_range(monkeypatch):
-    """非官方周期应回退到默认周期，避免请求被官方接口拒绝。"""
+    """
+    非官方周期应回退到默认周期，避免请求被官方接口拒绝。
+    """
     module = ListenBrainzModule()
     requested = {}
 
     def fake_request(entity, range_name, offset, count):
-        """仅记录周期取值。"""
+        """
+        仅记录周期取值。
+        """
         requested.update(range_name=range_name)
         return {"payload": {"recordings": []}}
 
@@ -107,12 +125,16 @@ def test_music_chart_falls_back_to_supported_range(monkeypatch):
 
 
 def test_music_fresh_releases_pages_official_window(monkeypatch):
-    """新发行探索应按官方排序请求并在结果集上分页。"""
+    """
+    新发行探索应按官方排序请求并在结果集上分页。
+    """
     module = ListenBrainzModule()
     requested = {}
 
     def fake_releases(days, sort, past, future):
-        """记录官方新发行请求参数并返回两条发行。"""
+        """
+        记录官方新发行请求参数并返回两条发行。
+        """
         requested.update(days=days, sort=sort, past=past, future=future)
         return [
             {
@@ -148,7 +170,9 @@ def test_music_fresh_releases_pages_official_window(monkeypatch):
 
 
 class _FakeListenBrainzResponse:
-    """模拟 ListenBrainz HTTP 响应，便于缓存回归测试统计网络调用次数。"""
+    """
+    模拟 ListenBrainz HTTP 响应，便于缓存回归测试统计网络调用次数。
+    """
 
     def __init__(self, payload, status_code=200):
         self._payload = payload
@@ -156,25 +180,35 @@ class _FakeListenBrainzResponse:
         self.text = ""
 
     def json(self):
-        """返回预设的 JSON 负载。"""
+        """
+        返回预设的 JSON 负载。
+        """
         return self._payload
 
     def __bool__(self):
-        """模拟 requests.Response：HTTP 错误状态在布尔判断中为 False。"""
+        """
+        模拟 requests.Response：HTTP 错误状态在布尔判断中为 False。
+        """
         return self.status_code < 400
 
     def close(self):
-        """无需释放的资源。"""
+        """
+        无需释放的资源。
+        """
 
 
 def test_request_json_caches_repeated_calls(monkeypatch):
-    """相同路径与参数的 ListenBrainz 请求应命中缓存，避免重复发起网络调用。"""
+    """
+    相同路径与参数的 ListenBrainz 请求应命中缓存，避免重复发起网络调用。
+    """
     import app.modules.listenbrainz as listenbrainz_module
 
     network_calls = {"count": 0}
 
     def fake_get_res(_self, url, params=None):
-        """记录网络调用次数并返回固定的榜单负载。"""
+        """
+        记录网络调用次数并返回固定的榜单负载。
+        """
         network_calls["count"] += 1
         return _FakeListenBrainzResponse(
             {"payload": {"recordings": [{"recording_mbid": "recording-cache", "track_name": "晴天"}]}}
@@ -196,13 +230,17 @@ def test_request_json_caches_repeated_calls(monkeypatch):
 
 
 def test_request_json_does_not_cache_errors(monkeypatch):
-    """失败请求返回的 None 不应缓存，以便下次重试。"""
+    """
+    失败请求返回的 None 不应缓存，以便下次重试。
+    """
     import app.modules.listenbrainz as listenbrainz_module
 
     network_calls = {"count": 0}
 
     def fake_get_res(_self, url, params=None):
-        """始终返回 500，用于验证空结果不会被缓存。"""
+        """
+        始终返回 500，用于验证空结果不会被缓存。
+        """
         network_calls["count"] += 1
         return _FakeListenBrainzResponse(None, status_code=500)
 

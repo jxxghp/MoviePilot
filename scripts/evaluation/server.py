@@ -1,4 +1,6 @@
-"""仅绑定回环地址的受控 MCP JSON-RPC 子集，不加载 MoviePilot 运行时或真实业务服务。"""
+"""
+仅绑定回环地址的受控 MCP JSON-RPC 子集，不加载 MoviePilot 运行时或真实业务服务。
+"""
 
 import asyncio
 import hashlib
@@ -40,14 +42,14 @@ API_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object", "required": ["operation_id"], "additionalProperties": False,
     "properties": {
         "operation_id": {"type": "string", "description": (
-            "Exact allowlisted MoviePilot operation ID selected from the loaded domain Skill. "
-            "Never supply a URL, authentication header, or API token."
+            "从已加载的领域 Skill 中选择准确的 MoviePilot 允许操作标识。"
+            "不要传入 URL、认证请求头或 API 令牌。"
         )},
-        "path_params": {"type": "object", "additionalProperties": True, "description": "Route placeholder values declared by the selected operation."},
-        "query": {"type": "object", "additionalProperties": True, "description": "Query-string fields declared by the selected operation."},
+        "path_params": {"type": "object", "additionalProperties": True, "description": "所选操作声明的路径占位参数。"},
+        "query": {"type": "object", "additionalProperties": True, "description": "所选操作声明的查询参数。"},
         "body": {"default": None, "description": (
-            "JSON request value declared by the selected operation and its loaded Skill contract. "
-            "Most operations use an object; a oneOf branch may require an exact scalar."
+            "所选操作及已加载 Skill 契约声明的 JSON 请求内容。"
+            "大多数操作使用对象；oneOf 分支也可能要求准确的标量值。"
         )},
     },
 }
@@ -55,7 +57,14 @@ API_INPUT_SCHEMA: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class _StoredResult:
-    """本次评测独占的有界结果归档，MCP 客户端会话共享但其他服务实例不可读取。"""
+    """
+    本次评测独占的有界结果归档，MCP 客户端会话共享但其他服务实例不可读取。
+
+    :param text: 已归档的工具结果正文
+    :param tool_name: 产生结果的工具名称
+    :param byte_size: 结果正文按 UTF-8 编码后的字节数
+    :param expires_at: 结果到期的单调时钟时间
+    """
 
     text: str
     tool_name: str
@@ -65,14 +74,21 @@ class _StoredResult:
 
 @dataclass
 class _Session:
-    """只保存 MCP 握手状态，不拥有或重置业务世界。"""
+    """
+    只保存 MCP 握手状态，不拥有或重置业务世界。
+
+    :param protocol: 客户端协商使用的协议版本
+    :param initialized: 是否已完成初始化握手
+    """
 
     protocol: str
     initialized: bool = False
 
 
 def _operation_input_contract(schema: dict[str, Any], operation_id: str) -> dict[str, Any]:
-    """压缩一个 operation 的参数字段，保持评测服务不依赖 MoviePilot 运行时。"""
+    """
+    压缩一个 operation 的参数字段，保持评测服务不依赖 MoviePilot 运行时。
+    """
     branch = next(
         (
             item for item in schema.get("oneOf", [])
@@ -122,29 +138,41 @@ def _operation_input_contract(schema: dict[str, Any], operation_id: str) -> dict
 
 
 class _LocalServer(uvicorn.Server):  # type: ignore[misc]  # follow_imports=skip 不展开外部 Server 基类。
-    """让控制器拥有服务启停，嵌入运行时不替换进程信号处理器。"""
+    """
+    让控制器拥有服务启停，嵌入运行时不替换进程信号处理器。
+    """
 
     def __init__(self, config: uvicorn.Config, ready: asyncio.Event) -> None:
-        """通过事件通知实际套接字监听已就绪。"""
+        """
+        通过事件通知实际套接字监听已就绪。
+        """
         super().__init__(config)
         self.ready = ready
 
     @contextmanager
     def capture_signals(self) -> Iterator[None]:
-        """主控制器处理取消和信号，MCP 服务不接管全局状态。"""
+        """
+        主控制器处理取消和信号，MCP 服务不接管全局状态。
+        """
         yield
 
     async def startup(self, sockets: Optional[list[socket.socket]] = None) -> None:
-        """完成 uvicorn 的真实监听后才允许模型开始握手。"""
+        """
+        完成 uvicorn 的真实监听后才允许模型开始握手。
+        """
         await super().startup(sockets=sockets)
         self.ready.set()
 
 
 class EvaluationMcpServer:
-    """为一个独立世界提供受认证的本地 Streamable HTTP 必需子集。"""
+    """
+    为一个独立世界提供受认证的本地 Streamable HTTP 必需子集。
+    """
 
     def __init__(self, world: EvaluationWorld, *, root_dir: Optional[Path] = None, max_world_calls: int = 32) -> None:
-        """固定世界与可信源码目录；模型只能读取预先列出的 Skill 文档。"""
+        """
+        固定世界与可信源码目录；模型只能读取预先列出的 Skill 文档。
+        """
         if type(max_world_calls) is not int or not 1 <= max_world_calls <= 32:
             raise ValueError("max_world_calls 必须为 1 到 32 的整数")
         self._world = world
@@ -168,37 +196,51 @@ class EvaluationMcpServer:
 
     @property
     def endpoint(self) -> str:
-        """控制器在 start 完成后取得回环 MCP 地址，不包含认证秘密。"""
+        """
+        控制器在 start 完成后取得回环 MCP 地址，不包含认证秘密。
+        """
         if self._endpoint is None or self._closed:
             raise RuntimeError("MCP 评测服务尚未运行")
         return self._endpoint
 
     @property
     def bearer_token(self) -> str:
-        """仅供控制器放入客户端局部环境，不会出现在任何工具或协议响应中。"""
+        """
+        仅供控制器放入客户端局部环境，不会出现在任何工具或协议响应中。
+        """
         return self._bearer_token
 
     @property
     def stats(self) -> dict[str, Any]:
-        """提供无场景答案、无参数正文的控制器计数快照。"""
+        """
+        提供无场景答案、无参数正文的控制器计数快照。
+        """
         return {"world_calls": self._world_calls, "blocked_world_calls": self._blocked_world_calls,
                 "tool_calls": dict(self._tool_calls), "max_world_calls": self._max_world_calls}
 
     @property
     def skill_sha256(self) -> str:
-        """控制器可记录实际公开技能正文的指纹，模型工具不暴露额外上下文。"""
+        """
+        控制器可记录实际公开技能正文的指纹，模型工具不暴露额外上下文。
+        """
         return hashlib.sha256(self._skill["content"].encode("utf-8")).hexdigest()
 
     async def __aenter__(self) -> "EvaluationMcpServer":
-        """异步上下文进入时等待真实端点就绪。"""
+        """
+        异步上下文进入时等待真实端点就绪。
+        """
         return await self.start()
 
     async def __aexit__(self, *_args: Any) -> None:
-        """控制器正常退出、失败或取消时均关闭端点。"""
+        """
+        控制器正常退出、失败或取消时均关闭端点。
+        """
         await self.close()
 
     async def start(self) -> "EvaluationMcpServer":
-        """绑定系统分配的 127.0.0.1 端口，不读取任何业务运行配置。"""
+        """
+        绑定系统分配的 127.0.0.1 端口，不读取任何业务运行配置。
+        """
         async with self._lifecycle_lock:
             if self._closed:
                 raise RuntimeError("已关闭的评测服务不能重新启动")
@@ -225,12 +267,16 @@ class EvaluationMcpServer:
         return self
 
     async def close(self) -> None:
-        """显式、幂等关闭 HTTP 服务，保留业务世界供控制器独立评分。"""
+        """
+        显式、幂等关闭 HTTP 服务，保留业务世界供控制器独立评分。
+        """
         async with self._lifecycle_lock:
             await self._stop()
 
     async def _stop(self) -> None:
-        """有限等待服务退出，异常路径也回收监听套接字与归档。"""
+        """
+        有限等待服务退出，异常路径也回收监听套接字与归档。
+        """
         self._closed = True
         try:
             if self._server is not None:
@@ -253,11 +299,15 @@ class EvaluationMcpServer:
 
     @staticmethod
     def _error(request_id: Any, code: int, message: str, status: int = 400) -> JSONResponse:
-        """错误只使用固定协议文案，不回显异常、环境、参数或私有文件路径。"""
+        """
+        错误只使用固定协议文案，不回显异常、环境、参数或私有文件路径。
+        """
         return JSONResponse({"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}, status_code=status)
 
     def _http_error(self, request: Request) -> Optional[Response]:
-        """先校验认证、Host 与 Origin，防止回环服务被浏览器或代理借用。"""
+        """
+        先校验认证、Host 与 Origin，防止回环服务被浏览器或代理借用。
+        """
         expected = f"Bearer {self._bearer_token}"
         if len(request.headers.getlist("authorization")) != 1 or not secrets.compare_digest(
             request.headers.get("authorization", "").encode("utf-8"), expected.encode("ascii"),
@@ -274,7 +324,9 @@ class EvaluationMcpServer:
         return None
 
     async def _handle(self, request: Request) -> Response:
-        """处理 JSON-RPC POST；本服务不提供服务器推送 SSE 或远程关闭能力。"""
+        """
+        处理 JSON-RPC POST；本服务不提供服务器推送 SSE 或远程关闭能力。
+        """
         rejected = self._http_error(request)
         if rejected is not None:
             return rejected
@@ -303,12 +355,16 @@ class EvaluationMcpServer:
 
     @staticmethod
     def _invalid_json_constant(_value: str) -> None:
-        """JSON-RPC 仅接受标准 JSON，拒绝 Python 默认允许的 NaN/Infinity 扩展。"""
+        """
+        JSON-RPC 仅接受标准 JSON，拒绝 Python 默认允许的 NaN/Infinity 扩展。
+        """
         raise ValueError("Non-finite JSON number")
 
     @staticmethod
     def _valid_request(payload: Any) -> bool:
-        """仅接受单条 JSON-RPC 请求或通知，拒绝 batch 和可混淆的标量类型。"""
+        """
+        仅接受单条 JSON-RPC 请求或通知，拒绝 batch 和可混淆的标量类型。
+        """
         return (type(payload) is dict and payload.get("jsonrpc") == "2.0"
                 and not set(payload) - {"jsonrpc", "id", "method", "params"}
                 and type(payload.get("method")) is str and bool(payload["method"])
@@ -317,7 +373,9 @@ class EvaluationMcpServer:
                 and ("id" not in payload or type(payload["id"]) in (str, int)))
 
     def _dispatch(self, request: Request, payload: dict[str, Any]) -> Response:
-        """握手会话只管理协议状态，所有合法工具调用始终进入同一评测世界。"""
+        """
+        握手会话只管理协议状态，所有合法工具调用始终进入同一评测世界。
+        """
         method, params, request_id = payload["method"], payload.get("params", {}), payload.get("id")
         if method == "initialize":
             return self._initialize(params, request_id) if "id" in payload else self._error(None, -32600, "initialize requires an id")
@@ -354,7 +412,9 @@ class EvaluationMcpServer:
         return JSONResponse({"jsonrpc": "2.0", "id": request_id, "result": result})
 
     def _initialize(self, params: dict[str, Any], request_id: Any) -> Response:
-        """按正式握手版本协商，新客户端会话不会重置业务状态或调用预算。"""
+        """
+        按正式握手版本协商，新客户端会话不会重置业务状态或调用预算。
+        """
         client = params.get("clientInfo")
         if (set(params) - {"protocolVersion", "capabilities", "clientInfo", "_meta"}
                 or type(params.get("protocolVersion")) is not str
@@ -374,20 +434,22 @@ class EvaluationMcpServer:
 
     @staticmethod
     def _tool_catalog() -> list[dict[str, Any]]:
-        """只公开与 MoviePilot 任务输入等价的工具合同，不注入场景答案。"""
+        """
+        只公开与 MoviePilot 任务输入等价的工具合同，不注入场景答案。
+        """
         return [
             {"name": "moviepilot_api", "description": (
-                "Call allowlisted MoviePilot business APIs through operation-specific input contracts. "
-                "Load the relevant domain Skill before calling and use operation error feedback to correct inputs. "
-                "Arbitrary URLs, commands, authentication endpoints, headers, and tokens are forbidden."
+                "按操作专属输入契约调用允许的 MoviePilot 业务 API。"
+                "调用前先加载相关领域 Skill，并依据操作错误修正输入。"
+                "禁止传入任意 URL、命令、认证端点、请求头或令牌。"
             ), "inputSchema": deepcopy(API_INPUT_SCHEMA)},
-            {"name": "read_skill", "description": "Read the named MoviePilot Skill or one of its listed supporting documents. Available skill: moviepilot-api.", "inputSchema": {
+            {"name": "read_skill", "description": "读取指定的 MoviePilot Skill 或其中列出的辅助文档。可用 Skill：moviepilot-api。", "inputSchema": {
                 "type": "object", "required": ["name"], "additionalProperties": False, "properties": {
                     "name": {"type": "string"},
-                    "file": {"type": "string", "description": "Relative supporting Skill document path listed by a prior read_skill call."},
+                    "file": {"type": "string", "description": "前一次 read_skill 调用列出的辅助文档相对路径。"},
                 },
             }},
-            {"name": "read_tool_result", "description": "Read an archived tool result using result_id and next_offset. Offsets count Unicode characters. Results expire after 15 minutes or eviction; never guess result IDs.", "inputSchema": {
+            {"name": "read_tool_result", "description": "用 result_id 和下一次读取偏移量读取归档结果。偏移量按 Unicode 字符计数；结果在 15 分钟后或被淘汰时失效，不要猜测结果 ID。", "inputSchema": {
                 "type": "object", "required": ["result_id"], "additionalProperties": False, "properties": {
                     "result_id": {"type": "string", "minLength": 32, "maxLength": 32},
                     "offset": {"type": "integer", "minimum": 0, "default": 0},
@@ -398,11 +460,15 @@ class EvaluationMcpServer:
 
     @staticmethod
     def _failure(error: str, message: str) -> dict[str, Any]:
-        """工具失败使用固定四态字段，异常细节不交给模型。"""
+        """
+        工具失败使用固定四态字段，异常细节不交给模型。
+        """
         return {"success": False, "execution_outcome": "failed", "error": error, "message": message}
 
     def _call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        """精确工具白名单与全局预算均在进入业务世界前检查。"""
+        """
+        精确工具白名单与全局预算均在进入业务世界前检查。
+        """
         self._tool_calls[name if name in {"moviepilot_api", "read_skill", "read_tool_result"} else "unknown"] += 1
         try:
             if name == "moviepilot_api":
@@ -431,7 +497,9 @@ class EvaluationMcpServer:
 
     @staticmethod
     def _load_skill(root: Path) -> dict[str, Any]:
-        """读取唯一可信技能文件，不从请求中接受路径，也不加载宿主元数据解析器。"""
+        """
+        读取唯一可信技能文件，不从请求中接受路径，也不加载宿主元数据解析器。
+        """
         skill_path = root / "skills/moviepilot-api/SKILL.md"
         with skill_path.open("rb") as handle:
             data = handle.read(MAX_SKILL_BYTES + 1)
@@ -452,7 +520,9 @@ class EvaluationMcpServer:
 
     @staticmethod
     def _load_api_contract(root: Path) -> dict[str, Any]:
-        """读取与生产网关相同的 operation schema，供评测错误回执提供纠正提示。"""
+        """
+        读取与生产网关相同的 operation schema，供评测错误回执提供纠正提示。
+        """
         path = root / "app/agent/policy/resources/api_mcp_schema.json"
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict) or not isinstance(payload.get("oneOf"), list):
@@ -460,7 +530,9 @@ class EvaluationMcpServer:
         return payload
 
     def _attach_input_contract(self, result: Any, arguments: dict[str, Any]) -> Any:
-        """为 operation 失败回执附加允许字段和必填字段，不回显错误请求值。"""
+        """
+        为 operation 失败回执附加允许字段和必填字段，不回显错误请求值。
+        """
         if not isinstance(result, dict) or result.get("success") is not False:
             return result
         operation_id = arguments.get("operation_id")
@@ -476,7 +548,9 @@ class EvaluationMcpServer:
         return payload
 
     def _prune_results(self) -> None:
-        """匹配 MoviePilot 的 15 分钟、8 项、4MiB 会话归档约束。"""
+        """
+        匹配 MoviePilot 的 15 分钟、8 项、4MiB 会话归档约束。
+        """
         now = time.monotonic()
         for key in list(self._results):
             if self._results[key].expires_at <= now:
@@ -486,7 +560,9 @@ class EvaluationMcpServer:
 
     @staticmethod
     def _bounded_page(build: Any, limit: int, length: int) -> str:
-        """按最终 JSON 文本长度二分页边界，游标只覆盖实际交付的字符。"""
+        """
+        按最终 JSON 文本长度二分页边界，游标只覆盖实际交付的字符。
+        """
         low, high = 0, length
         best = json.dumps(build(0), ensure_ascii=False, indent=2)
         while low <= high:
@@ -499,7 +575,9 @@ class EvaluationMcpServer:
         return best
 
     def _read_skill(self, arguments: dict[str, Any]) -> Any:
-        """返回真实 Skill 主体或一个分类文档的首屏及可续读归档。"""
+        """
+        返回真实 Skill 主体或一个分类文档的首屏及可续读归档。
+        """
         requested_file = arguments.get("file")
         if (
             set(arguments) - {"name", "file"}
@@ -544,7 +622,9 @@ class EvaluationMcpServer:
         self._prune_results()
 
         def page(length: int) -> dict[str, Any]:
-            """首屏与 MoviePilot 归档预览使用相同的定位字段。"""
+            """
+            首屏与 MoviePilot 归档预览使用相同的定位字段。
+            """
             return {"result_id": result_id, "read_tool": "read_tool_result", "expires_in_seconds": RESULT_TTL_SECONDS,
                     "offset_unit": "unicode_characters", "next_offset": length, "execution_outcome": "succeeded",
                     "tool_result_truncated": True, "tool_name": "read_skill", "total_chars": len(text),
@@ -553,7 +633,9 @@ class EvaluationMcpServer:
         return self._bounded_page(page, FIRST_PAGE_CHARS, len(text))
 
     def _read_result(self, arguments: dict[str, Any]) -> Any:
-        """按 Unicode 字符续读本次服务归档，非法位置不得生成伪观察内容。"""
+        """
+        按 Unicode 字符续读本次服务归档，非法位置不得生成伪观察内容。
+        """
         offset, limit, result_id = arguments.get("offset", 0), arguments.get("limit", 4000), arguments.get("result_id")
         if (set(arguments) - {"result_id", "offset", "limit"} or type(result_id) is not str or len(result_id) != 32
                 or type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= NEXT_PAGE_CHARS):
@@ -566,7 +648,9 @@ class EvaluationMcpServer:
             return self._failure("offset_out_of_range", "Result offset out of range")
 
         def page(length: int) -> dict[str, Any]:
-            """最终响应预算包含转义开销，next_offset 始终对应实际返回的正文。"""
+            """
+            最终响应预算包含转义开销，next_offset 始终对应实际返回的正文。
+            """
             end = offset + length
             return {"success": True, "result_id": result_id, "tool_name": result.tool_name, "offset": offset,
                     "next_offset": end if end < len(result.text) else None, "total_chars": len(result.text), "content": result.text[offset:end]}

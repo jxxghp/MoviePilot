@@ -1,4 +1,6 @@
-"""会话阅读、锚点窗口与首末书挡；只展开最终选择的消息。"""
+"""
+会话阅读、锚点窗口与首末书挡；只展开最终选择的消息。
+"""
 
 import sqlite3
 from typing import Any
@@ -8,7 +10,9 @@ from app.agent.policy.sanitizer import sanitize_for_host
 
 
 def shape(row: sqlite3.Row | dict[str, Any], *, cap: int, anchor: int = 0) -> dict[str, Any]:
-    """分别限制模型可见正文与工具参数，保留定位和截断证据。"""
+    """
+    分别限制模型可见正文与工具参数，保留定位和截断证据。
+    """
     item = dict(row)
     content = str(sanitize_for_host(item['content'][:cap]))
     result = {key: item[key] for key in ('id', 'role', 'timestamp', 'provenance')}
@@ -24,13 +28,17 @@ def shape(row: sqlite3.Row | dict[str, Any], *, cap: int, anchor: int = 0) -> di
 
 
 def metadata(connection: sqlite3.Connection, session_id: str) -> dict[str, Any]:
-    """不存在或隐藏来源都不返回可供猜测的会话元数据。"""
+    """
+    不存在或隐藏来源都不返回可供猜测的会话元数据。
+    """
     row = connection.execute('SELECT * FROM sessions WHERE id=?', (session_id,)).fetchone()
     return dict(row) if row and row['source'] not in HIDDEN_SOURCES else {}
 
 
 def lineage(connection: sqlite3.Connection, session_id: str) -> str:
-    """沿宿主记录的父链去重；环或异常长链按当前已知节点收口。"""
+    """
+    沿宿主记录的父链去重；环或异常长链按当前已知节点收口。
+    """
     visited: set[str] = set()
     current = session_id
     while current and current not in visited and len(visited) < 100:
@@ -43,7 +51,9 @@ def lineage(connection: sqlite3.Connection, session_id: str) -> str:
 
 
 def visible_history(connection: sqlite3.Connection, hit: dict[str, Any], current: str) -> bool:
-    """排除仍在活动上下文的本会话和分支，压缩及 reset 历史可重新发现。"""
+    """
+    排除仍在活动上下文的本会话和分支，压缩及 reset 历史可重新发现。
+    """
     if not current or lineage(connection, hit['session_id']) != lineage(connection, current):
         return True
     if hit.get('compacted'):
@@ -52,7 +62,9 @@ def visible_history(connection: sqlite3.Connection, hit: dict[str, Any], current
 
 
 def window(connection: sqlite3.Connection, session_id: str, anchor: int, radius: int) -> dict[str, Any]:
-    """锚点归属精确匹配后按消息序列展开，跨会话主键间隙不改变窗口大小。"""
+    """
+    锚点归属精确匹配后按消息序列展开，跨会话主键间隙不改变窗口大小。
+    """
     target = connection.execute(f'SELECT m.* FROM messages m WHERE session_id=? AND id=? AND {VISIBLE}',
                                 (session_id, anchor)).fetchone()
     if not target:
@@ -67,14 +79,18 @@ def window(connection: sqlite3.Connection, session_id: str, anchor: int, radius:
 
 
 def bookends(connection: sqlite3.Connection, session_id: str, head: int = 3, tail: int = 3) -> tuple[list[Any], list[Any]]:
-    """借助 session/id 索引只读首尾，不为截断返回值先加载全部会话。"""
+    """
+    借助 session/id 索引只读首尾，不为截断返回值先加载全部会话。
+    """
     first = list(connection.execute(f'SELECT m.* FROM messages m WHERE session_id=? AND {VISIBLE} ORDER BY id LIMIT ?', (session_id, head)))
     last = list(connection.execute(f'SELECT m.* FROM messages m WHERE session_id=? AND {VISIBLE} ORDER BY id DESC LIMIT ?', (session_id, tail)))
     return first, list(reversed(last))
 
 
 def hydrate(connection: sqlite3.Connection, hit: dict[str, Any], *, full: bool) -> dict[str, Any] | None:
-    """首结果默认展开 ±5 和首尾各3，其余只给锚点，保留继续阅读方向。"""
+    """
+    首结果默认展开 ±5 和首尾各3，其余只给锚点，保留继续阅读方向。
+    """
     view = window(connection, hit['session_id'], hit['id'], 5 if full else 0)
     if not view:
         return None
@@ -95,7 +111,9 @@ def hydrate(connection: sqlite3.Connection, hit: dict[str, Any], *, full: bool) 
 
 
 def read(connection: sqlite3.Connection, session_id: str) -> dict[str, Any]:
-    """阅读首20/尾10条消息，每条2000字符；不把消息数限制误当字节限制。"""
+    """
+    阅读首20/尾10条消息，每条2000字符；不把消息数限制误当字节限制。
+    """
     meta = metadata(connection, session_id)
     if not meta:
         return dict(success=False, error='session_not_found')
@@ -109,7 +127,9 @@ def read(connection: sqlite3.Connection, session_id: str) -> dict[str, Any]:
 
 
 def title_hit(connection: sqlite3.Connection, title: str) -> dict[str, Any] | None:
-    """先尝试精确标题及最新 #N 续篇，不把标题命中冒充正文命中。"""
+    """
+    先尝试精确标题及最新 #N 续篇，不把标题命中冒充正文命中。
+    """
     title = title.strip().strip("`'\"")
     escaped = title.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
     row = connection.execute(

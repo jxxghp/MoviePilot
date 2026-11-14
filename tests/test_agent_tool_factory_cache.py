@@ -1,3 +1,7 @@
+"""
+验证工具工厂缓存的隔离、失效和对外参数结构。
+"""
+
 from types import SimpleNamespace
 from typing import Iterator, Optional, Type
 from unittest.mock import patch
@@ -17,18 +21,24 @@ from app.runtime.extensions.plugin.manager import PluginManager
 
 
 class DemoAgentTool(MoviePilotTool):
-    """测试用插件工具。"""
+    """
+    测试用插件工具。
+    """
 
     name: str = "demo_agent_tool"
     description: str = "Demo agent tool for tests."
 
     async def run(self, **kwargs) -> str:
-        """返回测试结果。"""
+        """
+        返回测试结果。
+        """
         return "ok"
 
 
 class DemoMessageAgentTool(DemoAgentTool):
-    """测试用消息发送插件工具。"""
+    """
+    测试用消息发送插件工具。
+    """
 
     name: str = "demo_message_agent_tool"
     sends_message: bool = True
@@ -36,7 +46,9 @@ class DemoMessageAgentTool(DemoAgentTool):
 
 @pytest.fixture
 def plugin_manager() -> Iterator[PluginManager]:
-    """构造隔离的插件管理器实例，避免单例缓存污染其它用例。"""
+    """
+    构造隔离的插件管理器实例，避免单例缓存污染其它用例。
+    """
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
     manager = PluginManager()
     yield manager
@@ -48,10 +60,14 @@ def _build_plugin(
     state: bool = True,
     calls: Optional[list[int]] = None,
 ) -> SimpleNamespace:
-    """构造仅包含 Agent 工具接口的插件实例。"""
+    """
+    构造仅包含 Agent 工具接口的插件实例。
+    """
 
     def get_agent_tools() -> list[type[MoviePilotTool]]:
-        """返回测试预设的工具类列表。"""
+        """
+        返回测试预设的工具类列表。
+        """
         if calls is not None:
             calls.append(1)
         return tools
@@ -64,12 +80,16 @@ def _build_plugin(
 
 
 def _schema_properties(args_schema: Type[BaseModel]) -> dict:
-    """返回工具输入模型的 JSON Schema 属性。"""
+    """
+    返回工具输入模型的 JSON Schema 属性。
+    """
     return args_schema.model_json_schema().get("properties", {})
 
 
 def test_agent_tool_schemas_do_not_expose_explanation_parameter() -> None:
-    """仓库内置 Agent 工具和中间件输入模型不应暴露 explanation 参数。"""
+    """
+    仓库内置 Agent 工具和中间件输入模型不应暴露 explanation 参数。
+    """
     tool_classes = [
         *MoviePilotToolFactory.BUILTIN_TOOL_CLASSES,
         AskUserChoiceTool,
@@ -92,7 +112,9 @@ def test_agent_tool_schemas_do_not_expose_explanation_parameter() -> None:
 
 
 def test_ask_user_choice_option_schema_does_not_expose_description() -> None:
-    """询问用户意图工具的选项参数不应暴露 description 字段。"""
+    """
+    询问用户意图工具的选项参数不应暴露 description 字段。
+    """
     schema = AskUserChoiceInput.model_json_schema()
     option_schema = schema["$defs"]["UserChoiceOptionInput"]
 
@@ -101,7 +123,9 @@ def test_ask_user_choice_option_schema_does_not_expose_description() -> None:
 
 
 def test_plugin_agent_tools_are_cached(plugin_manager: PluginManager) -> None:
-    """插件智能体工具注册表应缓存，避免同一轮启动反复询问插件实例。"""
+    """
+    插件智能体工具注册表应缓存，避免同一轮启动反复询问插件实例。
+    """
     calls: list[int] = []
     plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool], calls=calls)
 
@@ -114,7 +138,9 @@ def test_plugin_agent_tools_are_cached(plugin_manager: PluginManager) -> None:
 
 
 def test_plugin_agent_tools_cache_returns_copy(plugin_manager: PluginManager) -> None:
-    """缓存命中时应返回副本，调用方修改结果不应污染注册表缓存。"""
+    """
+    缓存命中时应返回副本，调用方修改结果不应污染注册表缓存。
+    """
     plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool])
 
     first_result = plugin_manager.get_plugin_agent_tools()
@@ -128,7 +154,9 @@ def test_plugin_agent_tools_cache_returns_copy(plugin_manager: PluginManager) ->
 def test_plugin_agent_tools_cache_can_be_cleared(
     plugin_manager: PluginManager,
 ) -> None:
-    """清理缓存后应重新读取插件当前声明的智能体工具。"""
+    """
+    清理缓存后应重新读取插件当前声明的智能体工具。
+    """
     tools = [DemoAgentTool]
     calls: list[int] = []
     plugin_manager.running_plugins["DemoPlugin"] = _build_plugin(tools, calls=calls)
@@ -149,7 +177,9 @@ def test_plugin_agent_tools_cache_can_be_cleared(
 def test_plugin_agent_tools_revision_churn_is_bounded(
     plugin_manager: PluginManager,
 ) -> None:
-    """插件状态持续变化时注册表构造必须有界失败，不能卡住调用线程。"""
+    """
+    插件状态持续变化时注册表构造必须有界失败，不能卡住调用线程。
+    """
 
     def _changing_tools() -> list[type[MoviePilotTool]]:
         plugin_manager.clear_plugin_agent_tools_cache()
@@ -168,7 +198,9 @@ def test_plugin_agent_tools_revision_churn_is_bounded(
 def test_factory_reuses_plugin_registry_but_creates_new_tool_instances(
     plugin_manager: PluginManager,
 ) -> None:
-    """工具工厂可复用插件注册表缓存，但每次请求仍需创建新的工具实例。"""
+    """
+    工具工厂可复用插件注册表缓存，但每次请求仍需创建新的工具实例。
+    """
     calls: list[int] = []
     plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool], calls=calls)
 
@@ -193,7 +225,9 @@ def test_factory_reuses_plugin_registry_but_creates_new_tool_instances(
 def test_factory_suppresses_plugin_message_tools_for_subagents(
     plugin_manager: PluginManager,
 ) -> None:
-    """子代理静默工具列表不应包含会直接向用户发消息的插件工具。"""
+    """
+    子代理静默工具列表不应包含会直接向用户发消息的插件工具。
+    """
     plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool, DemoMessageAgentTool])
 
     tools = MoviePilotToolFactory.create_tools(
@@ -210,7 +244,9 @@ def test_factory_suppresses_plugin_message_tools_for_subagents(
 def test_factory_catalog_rejects_two_plugin_duplicate_names(
     plugin_manager: PluginManager,
 ) -> None:
-    """两个插件声明同名工具时，正式目录必须拒绝 first-wins。"""
+    """
+    两个插件声明同名工具时，正式目录必须拒绝 first-wins。
+    """
     plugin_manager.running_plugins["PluginOne"] = _build_plugin([DemoAgentTool])
     plugin_manager.running_plugins["PluginTwo"] = _build_plugin([DemoAgentTool])
 

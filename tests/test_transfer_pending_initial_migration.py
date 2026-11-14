@@ -1,4 +1,6 @@
-"""整理待处理表 3.0.4 初始迁移的中断恢复测试。"""
+"""
+整理待处理表 3.0.4 初始迁移的中断恢复测试。
+"""
 
 import importlib
 
@@ -11,7 +13,9 @@ MIGRATION = "database.versions.e3d9f4b7c806_3_0_4"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把 3.0.4 迁移绑定到隔离 SQLite 连接。"""
+    """
+    把 3.0.4 迁移绑定到隔离 SQLite 连接。
+    """
     migration = importlib.import_module(MIGRATION)
     monkeypatch.setattr(
         migration,
@@ -22,7 +26,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def test_upgrade_repairs_missing_and_malformed_identity_index(monkeypatch) -> None:
-    """建表后中断或同名错误索引都必须收敛为精确唯一索引。"""
+    """
+    建表后中断或同名错误索引都必须收敛为精确唯一索引。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(sa.text(
@@ -49,7 +55,9 @@ def test_upgrade_repairs_missing_and_malformed_identity_index(monkeypatch) -> No
 
 
 def test_upgrade_recreates_empty_partial_table(monkeypatch) -> None:
-    """中断留下的空残表可以无损重建为完整 3.0.4 结构。"""
+    """
+    中断留下的空残表可以无损重建为完整 3.0.4 结构。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(sa.text(
@@ -66,7 +74,9 @@ def test_upgrade_recreates_empty_partial_table(monkeypatch) -> None:
 
 
 def test_upgrade_keeps_current_schema_precreated_with_execution_fk(monkeypatch) -> None:
-    """首次初始化已由当前 ORM 建表时，旧迁移不得删除被步骤表依赖的父表。"""
+    """
+    首次初始化已由当前 ORM 建表时，旧迁移不得删除被步骤表依赖的父表。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.connect() as connection:
         connection.execute(sa.text("PRAGMA foreign_keys=ON"))
@@ -104,7 +114,9 @@ def test_upgrade_keeps_current_schema_precreated_with_execution_fk(monkeypatch) 
 
 
 def test_upgrade_rejects_nonempty_partial_table(monkeypatch) -> None:
-    """含数据残表无法可靠推断源身份时必须显式拒绝迁移。"""
+    """
+    含数据残表无法可靠推断源身份时必须显式拒绝迁移。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(sa.text(
@@ -120,7 +132,9 @@ def test_upgrade_rejects_nonempty_partial_table(monkeypatch) -> None:
 
 
 def test_downgrade_tolerates_interrupted_missing_index(monkeypatch) -> None:
-    """索引创建前中断时降级仍应安全删除残留表。"""
+    """
+    索引创建前中断时降级仍应安全删除残留表。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(sa.text(

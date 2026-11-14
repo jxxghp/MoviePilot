@@ -1,4 +1,6 @@
-"""下载历史媒体身份类型的整理回归测试。"""
+"""
+下载历史媒体身份类型的整理回归测试。
+"""
 
 from types import SimpleNamespace
 
@@ -6,6 +8,8 @@ import pytest
 
 from app.application.history import DownloadHistorySnapshot
 from app.application.transfer.workflow import TransferTask
+
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -24,12 +28,16 @@ from app.schemas.types import MediaSource, MediaType
 def test_download_history_type_wins_over_monitor_type_hint(
         monkeypatch, history_type: str, expected_type: MediaType
 ):
-    """TMDB 影视 ID 冲突时优先使用下载历史类型，并为无效类型保留调用提示。"""
+    """
+    TMDB 影视 ID 冲突时优先使用下载历史类型，并为无效类型保留调用提示。
+    """
     recognized_media = MediaInfo(type=MediaType.TV, title="兰香如故", year="2026")
     recognition_calls = []
 
     def recognize_media(**kwargs):
-        """记录持久身份的实际识别类型。"""
+        """
+        记录持久身份的实际识别类型。
+        """
         recognition_calls.append(kwargs)
         return recognized_media
 

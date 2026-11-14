@@ -20,14 +20,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 import app.db.engine as engine_module
-from app.db.engine import (_async_pool_enabled, _get_database_engine,
-                           _database_backend_label, get_engine,
-                           get_global_async_engine)
+from app.db.engine import (
+    _async_pool_enabled,
+    _database_backend_label,
+    _get_database_engine,
+    get_engine,
+    get_global_async_engine,
+)
 from app.db.plugin.registry import release_all_databases
-from app.runtime.loop import main_loop_registry
-from app.runtime.settings import get_runtime_setting
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.observability import record_metric
+from app.runtime.settings import get_runtime_setting
 
 # 会话工厂同样惰性：sessionmaker 在构造时就要绑定引擎，模块级构造等于把引擎的
 # 创建时机重新拉回 import 期，惰性化就白做了。
@@ -40,6 +44,7 @@ _scoped_session: Optional[scoped_session] = None
 def get_session_factory() -> sessionmaker:
     """
     获取同步会话工厂，首次调用时按需绑定引擎。
+
     :return: 同步会话工厂
     """
     global _session_factory
@@ -53,6 +58,7 @@ def get_session_factory() -> sessionmaker:
 def get_async_session_factory() -> async_sessionmaker:
     """
     获取异步会话工厂，首次调用时按需绑定全局异步引擎。
+
     :return: 异步会话工厂
     """
     global _async_session_factory
@@ -67,7 +73,8 @@ def get_async_session_factory() -> async_sessionmaker:
 def get_scoped_session() -> scoped_session:
     """
     获取线程局部的会话注册表，首次调用时创建。
-    :return: scoped_session
+
+    :return: 按线程保存同步会话的注册表；调用方使用 remove 释放当前线程会话
     """
     global _scoped_session
     if _scoped_session is None:
@@ -99,8 +106,9 @@ def get_scoped_session() -> scoped_session:
 # postgresql 模块、Alembic 迁移脚本）走的是直接导入，不受 __all__ 影响。
 def SessionFactory() -> Session:  # noqa: N802
     """
-    创建一个同步会话，引擎在首次调用时才建立。
-    :return: Session
+    创建一个同步数据库会话，引擎在首次调用时才建立。
+
+    :return: 新建会话；提交、回滚和关闭由调用方负责
     """
     return get_session_factory()()
 
@@ -108,20 +116,22 @@ def SessionFactory() -> Session:  # noqa: N802
 def AsyncSessionFactory() -> AsyncSession:  # noqa: N802
     """
     创建一个异步会话，全局异步引擎在首次调用时才建立。
-    :return: AsyncSession
+
+    :return: 新建异步会话；提交、回滚和关闭由调用方负责
     """
     return get_async_session_factory()()
 
 
 def ScopedSession() -> Session:  # noqa: N802
     """
-    取当前线程的会话，引擎在首次调用时才建立。
-    :return: Session
+    取得当前线程绑定的同步会话，引擎在首次调用时才建立。
+
+    :return: 当前线程复用的同步会话；应通过会话注册表 remove 释放
     """
     return get_scoped_session()()
 
 
-# ==================== 异步引擎的按事件循环池化 ====================
+# 异步引擎的按事件循环池化
 # NullPool 之所以被选用，是因为它「永不复用」从而「永不跨事件循环」——asyncpg 的
 # Connection 与 aiosqlite 的线程都绑定在创建它的循环上，跨循环复用会抛出
 # "Task got Future attached to a different loop"。
@@ -167,6 +177,7 @@ def _resolve_async_engine() -> Tuple[SaAsyncEngine, bool]:
     「是否池化」必须由这里给出，不能让调用方拿 `engine is not get_global_async_engine()`
     反推：那个比较本身就会把全局引擎创建出来——池化路径压根用不到它，却因为一次身份比较
     多出一个从未使用的活引擎，而且第一个异步请求会在事件循环内部去抢引擎创建锁。
+
     :return: (异步引擎, 是否池化)
     """
     loop = _pooled_loop()
@@ -189,12 +200,13 @@ def _resolve_async_engine() -> Tuple[SaAsyncEngine, bool]:
 def get_async_engine() -> SaAsyncEngine:
     """
     按事件循环获取异步引擎：常驻主循环用池化引擎，其余回退全局 NullPool 引擎。
+
     :return: 异步引擎
     """
     return _resolve_async_engine()[0]
 
 
-async def _acquire_fallback_slot():
+async def _acquire_fallback_slot() -> None:
     """
     为回退路径申请一个全局连接配额。
 
@@ -230,11 +242,11 @@ async def _acquire_fallback_slot():
 @asynccontextmanager
 async def async_session_scope() -> AsyncGenerator[AsyncSession, None]:
     """
-    获取异步数据库会话。
+    提供按当前事件循环选择连接池的异步会话作用域。
 
-    这是异步会话的唯一入口：池化与配额都在这里收口，调用方无需感知
-    当前运行在哪个事件循环上。
-    :return: AsyncSession
+    非主池回退连接先取得并发配额，退出时释放；会话自动关闭，不自动提交事务。
+
+    :yields: 本次作用域独占的异步会话
     """
     engine, pooled = _resolve_async_engine()
     if not pooled:
@@ -247,10 +259,11 @@ async def async_session_scope() -> AsyncGenerator[AsyncSession, None]:
             _fallback_slots.release()
 
 
-def get_db() -> Generator:
+def get_db() -> Generator[Session, None, None]:
     """
-    获取数据库会话，用于WEB请求
-    :return: Session
+    为 HTTP 请求提供同步数据库会话，并在依赖退出时关闭。
+
+    :yields: 本次请求使用的同步会话；事务提交或回滚由调用方负责
     """
     db = None
     try:
@@ -263,8 +276,9 @@ def get_db() -> Generator:
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    获取异步数据库会话，用于WEB请求
-    :return: AsyncSession
+    为 HTTP 请求提供受连接池与并发配额管理的异步会话。
+
+    :yields: 本次请求使用的异步会话；依赖退出时自动关闭，不自动提交事务
     """
     async with async_session_scope() as session:
         yield session
@@ -276,6 +290,7 @@ async def _dispose_engine(engine: Any, label: str) -> None:
 
     同步引擎的 dispose 是普通函数、异步引擎的返回协程，这里一并处理，
     好让三类引擎共用同一套异常隔离。
+
     :param engine: 待释放的引擎
     :param label: 出错时用于定位是哪一个引擎
     """
@@ -287,7 +302,7 @@ async def _dispose_engine(engine: Any, label: str) -> None:
         print(f"Error while disposing {label}: {err}")
 
 
-async def close_database():
+async def close_database() -> None:
     """
     关闭所有数据库连接并清理资源。
 

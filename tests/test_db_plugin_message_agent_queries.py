@@ -19,7 +19,9 @@ from app.db.oper.agenttask import AgentTaskOper
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把本文件涉及的表纳入用例级回收。"""
+    """
+    把本文件涉及的表纳入用例级回收。
+    """
     db.watermark(PluginData, Message, AgentChat, AgentTask, DownloadFailure)
 
 
@@ -95,7 +97,9 @@ def test_plugindata_delete_all_clears_only_that_plugin(db):
 
 def _message(reg_time: str, title: str, source: str = None, action: int = 1,
              image: str = None) -> Message:
-    """构造一条消息记录。"""
+    """
+    构造一条消息记录。
+    """
     return Message(channel="wechat", source=source, mtype="Manual", title=title,
                    text=title, reg_time=reg_time, action=action, image=image)
 
@@ -186,7 +190,9 @@ def test_message_async_list_sent_excludes_the_clear_boundary(db):
            _message(after, "bd-媒体-边界后", image="http://img/2.jpg"))
 
     def _titles(**clears) -> set:
-        """取本用例写入的消息标题集合，隔离其他用例可能残留的消息。"""
+        """
+        取本用例写入的消息标题集合，隔离其他用例可能残留的消息。
+        """
         rows = db.run_async_session(
             lambda session: Message.async_list_sent_by_page(
                 session, page=1, count=100, **clears
@@ -222,7 +228,9 @@ def test_message_create_and_to_dict_returns_persisted_fields(db):
 
 def _chat(session_id: str, user_id: str = "u1", updated_at: str = "2026-08-13 10:00:00",
           username: str = None) -> AgentChat:
-    """构造一条 Agent 会话记录。"""
+    """
+    构造一条 Agent 会话记录。
+    """
     return AgentChat(session_id=session_id, user_id=user_id, username=username,
                      channel="web", title=session_id, updated_at=updated_at,
                      created_at=updated_at, message_count=0)
@@ -257,7 +265,9 @@ def test_agentchat_get_by_session_enforces_user_scope(db):
 
 
 def test_agentchat_oper_reuses_explicit_query_sessions(db, monkeypatch):
-    """AgentChatOper 的同步与异步查询必须复用调用方会话。"""
+    """
+    AgentChatOper 的同步与异步查询必须复用调用方会话。
+    """
     db.add(_chat("s-explicit", user_id="explicit"))
     monkeypatch.setattr(
         db_base,
@@ -272,7 +282,9 @@ def test_agentchat_oper_reuses_explicit_query_sessions(db, monkeypatch):
     assert AgentChatOper(db.session).get("s-explicit", "explicit") is not None
 
     async def check() -> None:
-        """验证异步 Agent 会话查询复用显式 AsyncSession。"""
+        """
+        验证异步 Agent 会话查询复用显式 AsyncSession。
+        """
         from app.db.session import async_session_scope
 
         async with async_session_scope() as session:
@@ -288,19 +300,26 @@ def test_agentchat_oper_reuses_explicit_query_sessions(db, monkeypatch):
     asyncio.run(check())
 
 
-def test_agentchat_list_by_page_matches_either_user_or_username(db):
+def test_agentchat_list_by_page_matches_id_or_unbound_legacy_username(db):
     """
-    同时给出用户 ID 与用户名时按「或」匹配。
+    稳定用户 ID 优先，仅无 ID 的旧渠道记录按用户名兼容匹配。
 
-    渠道侧只有用户名、前端只有用户 ID，改成「与」会让两边各自都查不到自己的会话。
+    同名但明确属于其他 ID 的会话不能出现在列表，避免用户名回收后继承旧用户历史。
     """
     db.add(_chat("s-by-id", user_id="uid-1", username=None),
-           _chat("s-by-name", user_id="uid-other", username="alice"),
+           _chat("s-by-name", user_id=None, username="alice"),
+           _chat("s-empty-id", user_id="", username="alice"),
+           _chat("s-foreign-id", user_id="uid-other", username="alice"),
            _chat("s-neither", user_id="uid-x", username="bob"))
 
     listed = AgentChat.list_by_page(db.session, user_id="uid-1", username="alice")
 
-    assert {c.session_id for c in listed} == {"s-by-id", "s-by-name"}
+    expected = {"s-by-id", "s-by-name", "s-empty-id"}
+    assert {c.session_id for c in listed} == expected
+    async_listed = db.run_async_session(
+        lambda session: AgentChat.async_list_by_page(session, user_id="uid-1", username="alice")
+    )
+    assert {c.session_id for c in async_listed} == expected
 
 
 @pytest.mark.parametrize("kwargs,expected", [
@@ -343,7 +362,9 @@ def test_agentchat_list_by_page_is_newest_first_and_paged(db):
 
 def _task(name: str, user_id: str = "u1", enabled: bool = True,
           created_at: str = "2026-08-13 10:00:00") -> dict:
-    """构造 Agent 定时任务的新增参数。"""
+    """
+    构造 Agent 定时任务的新增参数。
+    """
     return dict(name=name, content="做点什么", trigger_type="cron",
                 cron_expression="0 * * * *", enabled=enabled, user_id=user_id,
                 session_id=f"sess-{name}", created_at=created_at,
@@ -362,7 +383,9 @@ def test_agenttask_get_for_user_enforces_ownership(db):
 
 
 def test_agenttask_oper_reads_with_explicit_session(db, monkeypatch):
-    """AgentTaskOper 的宿主查询使用调用方 Session，不再经过旧事务兼容执行器。"""
+    """
+    AgentTaskOper 的宿主查询使用调用方 Session，不再经过旧事务兼容执行器。
+    """
     task_id = AgentTask.add_task(db.session, **_task("canonical", user_id="alice"))
 
     monkeypatch.setattr(
@@ -420,7 +443,9 @@ def test_agenttask_update_enforces_ownership(db):
 # --------------------------------------------------------------------------- #
 
 def _failure(fingerprint: str, next_retry_at: str) -> dict:
-    """构造下载失败冷却记录的写入参数。"""
+    """
+    构造下载失败冷却记录的写入参数。
+    """
     return dict(fingerprint=fingerprint, now_time="2026-08-13 10:00:00",
                 next_retry_at=next_retry_at, title="片名", type="电影")
 

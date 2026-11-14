@@ -1,4 +1,6 @@
-"""工作流运行时 Application Facade 回归。"""
+"""
+工作流运行时 Application Facade 回归。
+"""
 
 import pytest
 
@@ -6,7 +8,9 @@ from app.application import workflow as workflow_application
 
 
 def test_workflow_runtime_facade_preserves_registered_identity(monkeypatch) -> None:
-    """Application Facade 必须返回组合根登记的同一个运行时对象。"""
+    """
+    Application Facade 必须返回组合根登记的同一个运行时对象。
+    """
     runtime = object()
     monkeypatch.setattr(
         workflow_application,
@@ -18,7 +22,9 @@ def test_workflow_runtime_facade_preserves_registered_identity(monkeypatch) -> N
 
 
 def test_workflow_runtime_facade_fails_before_composition(monkeypatch) -> None:
-    """未装配时不得隐式创建第二个 WorkflowManager Singleton。"""
+    """
+    未装配时不得隐式创建第二个 WorkflowManager Singleton。
+    """
     monkeypatch.setattr(
         workflow_application,
         "_workflow_runtime_provider",

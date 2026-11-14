@@ -1,3 +1,7 @@
+"""
+验证历史记录修改命令的参数传递和持久化边界。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -14,7 +18,9 @@ from app.application.transfer.execution import (
 
 
 def _transfer_command(*, history=None, delete_result=True, commit_error=None):
-    """构造可观察整理历史事务和外部副作用的命令。"""
+    """
+    构造可观察整理历史事务和外部副作用的命令。
+    """
     repository = Mock()
     repository.get.return_value = history
     download_repository = Mock()
@@ -35,7 +41,9 @@ def _transfer_command(*, history=None, delete_result=True, commit_error=None):
 
 
 def _history():
-    """构造包含源和目标文件信息的整理历史快照。"""
+    """
+    构造包含源和目标文件信息的整理历史快照。
+    """
     return SimpleNamespace(
         id=7,
         src="/downloads/demo.mkv",
@@ -50,7 +58,9 @@ def _history():
 
 
 def test_download_history_delete_rolls_back_commit_failure():
-    """下载历史提交失败时必须回滚请求级事务。"""
+    """
+    下载历史提交失败时必须回滚请求级事务。
+    """
     repository = Mock()
     unit_of_work = Mock()
     unit_of_work.commit.side_effect = RuntimeError("commit failed")
@@ -67,7 +77,9 @@ def test_download_history_delete_rolls_back_commit_failure():
 
 
 def test_transfer_source_delete_failure_keeps_database_unchanged():
-    """源文件删除失败时不得删除历史或更新下载文件状态。"""
+    """
+    源文件删除失败时不得删除历史或更新下载文件状态。
+    """
     command, dependencies = _transfer_command(
         history=_history(),
         delete_result=False,
@@ -85,7 +97,9 @@ def test_transfer_source_delete_failure_keeps_database_unchanged():
 
 
 def test_transfer_delete_commits_before_event_and_retry_cleanup():
-    """整理记录提交成功后才发送文件删除事件并清理失败计数。"""
+    """
+    整理记录提交成功后才发送文件删除事件并清理失败计数。
+    """
     calls = []
     command, dependencies = _transfer_command(history=_history())
     dependencies["unit_of_work"].commit.side_effect = lambda: calls.append("commit")
@@ -107,7 +121,9 @@ def test_transfer_delete_commits_before_event_and_retry_cleanup():
 
 
 def test_transfer_commit_failure_suppresses_event_and_retry_cleanup():
-    """数据库提交失败时不得发布已删除事件或清除重试状态。"""
+    """
+    数据库提交失败时不得发布已删除事件或清除重试状态。
+    """
     command, dependencies = _transfer_command(
         history=_history(),
         commit_error=RuntimeError("commit failed"),
@@ -122,7 +138,9 @@ def test_transfer_commit_failure_suppresses_event_and_retry_cleanup():
 
 
 def test_transfer_truncate_uses_single_transaction():
-    """清空整理历史只暂存一次并统一提交。"""
+    """
+    清空整理历史只暂存一次并统一提交。
+    """
     command, dependencies = _transfer_command()
 
     result = command.truncate()
@@ -134,7 +152,9 @@ def test_transfer_truncate_uses_single_transaction():
 
 
 def test_transfer_truncate_rolls_back_commit_failure():
-    """清空旧整理历史提交失败时必须回滚请求级事务。"""
+    """
+    清空旧整理历史提交失败时必须回滚请求级事务。
+    """
     command, dependencies = _transfer_command(
         commit_error=RuntimeError("commit failed"),
     )
@@ -147,7 +167,9 @@ def test_transfer_truncate_rolls_back_commit_failure():
 
 
 def test_transfer_cleanup_resolution_commits_and_clears_failure_state():
-    """人工完成下载器清理后应在单一事务中关闭清理失败状态。"""
+    """
+    人工完成下载器清理后应在单一事务中关闭清理失败状态。
+    """
     history = _history()
     history.cleanup_status = "failed"
     command, dependencies = _transfer_command(history=history)
@@ -165,7 +187,9 @@ def test_transfer_cleanup_resolution_commits_and_clears_failure_state():
 
 
 def test_transfer_cleanup_resolution_is_idempotent():
-    """重复确认已完成的下载器清理不得再次写库。"""
+    """
+    重复确认已完成的下载器清理不得再次写库。
+    """
     history = _history()
     history.cleanup_status = "resolved"
     command, dependencies = _transfer_command(history=history)
@@ -183,7 +207,9 @@ def test_transfer_cleanup_resolution_is_idempotent():
     (_history(), "这条记录没有待确认的下载器清理失败"),
 ])
 def test_transfer_cleanup_resolution_rejects_unclosable_history(history, message):
-    """缺失记录或没有清理失败的记录应返回明确原因且不写库。"""
+    """
+    缺失记录或没有清理失败的记录应返回明确原因且不写库。
+    """
     command, dependencies = _transfer_command(history=history)
 
     result = command.resolve_cleanup(7)
@@ -195,7 +221,9 @@ def test_transfer_cleanup_resolution_rejects_unclosable_history(history, message
 
 
 def test_transfer_delete_rejects_nonfailed_durable_receipt_before_file_side_effects():
-    """非 FAILED durable 回执不能被历史 API 连同文件一起删除。"""
+    """
+    非 FAILED durable 回执不能被历史 API 连同文件一起删除。
+    """
     history = _history()
     history.transfer_task_id = "task-durable"
     history.transfer_settlement_revision = 2
@@ -217,7 +245,9 @@ def test_transfer_delete_rejects_nonfailed_durable_receipt_before_file_side_effe
 
 
 def test_transfer_delete_discards_failed_durable_receipt_before_cleanup():
-    """FAILED durable 回执应先放弃任务，再按普通历史执行文件和记录删除。"""
+    """
+    FAILED durable 回执应先放弃任务，再按普通历史执行文件和记录删除。
+    """
     history = _history()
     history.transfer_task_id = "task-durable"
     history.transfer_settlement_revision = 3
@@ -242,7 +272,9 @@ def test_transfer_delete_discards_failed_durable_receipt_before_cleanup():
 
 
 def test_transfer_destination_delete_failure_keeps_history_and_reports_step():
-    """目标文件删除失败时必须保留历史，并向调用方报告失败步骤。"""
+    """
+    目标文件删除失败时必须保留历史，并向调用方报告失败步骤。
+    """
     command, dependencies = _transfer_command(
         history=_history(),
         delete_result=False,
@@ -259,7 +291,9 @@ def test_transfer_destination_delete_failure_keeps_history_and_reports_step():
 
 
 def test_transfer_delete_commits_completed_source_when_destination_fails():
-    """一项文件已完成而另一项失败时，已完成源文件状态仍应提交并保留历史。"""
+    """
+    一项文件已完成而另一项失败时，已完成源文件状态仍应提交并保留历史。
+    """
     repository = Mock()
     repository.get.return_value = _history()
     dependencies = {
@@ -289,7 +323,9 @@ def test_transfer_delete_commits_completed_source_when_destination_fails():
 
 
 def test_transfer_delete_treats_missing_requested_file_as_completed():
-    """重试时已被前一次尝试删除的文件应跳过外部删除并允许清理历史。"""
+    """
+    重试时已被前一次尝试删除的文件应跳过外部删除并允许清理历史。
+    """
     command, dependencies = _transfer_command(history=_history())
     dependencies["delete_media_file"].reset_mock()
     dependencies["file_exists"] = Mock(return_value=False)

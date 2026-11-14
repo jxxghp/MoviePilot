@@ -1,4 +1,6 @@
-"""插件媒体来源分类字段和受控事实的运行时注册表。"""
+"""
+插件媒体来源分类字段和受控事实的运行时注册表。
+"""
 
 from __future__ import annotations
 
@@ -28,12 +30,20 @@ _FIELD_SEGMENT_PATTERN = re.compile(MEDIA_SOURCE_IDENTIFIER_PATTERN)
 
 
 class PluginClassificationDeclarationError(ValueError):
-    """表示插件分类字段声明违反宿主命名空间或类型约束。"""
+    """
+    表示插件分类字段声明违反宿主命名空间或类型约束。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class _RegisteredMediaSource:
-    """保存一个插件媒体来源及其按局部字段路径索引的声明。"""
+    """
+    保存一个插件媒体来源及其按局部字段路径索引的声明。
+
+    :param plugin_id: 注册来源的插件实例标识
+    :param source: 插件声明的媒体来源元数据
+    :param fields: 按来源内部字段路径索引的分类字段定义
+    """
 
     plugin_id: str
     source: MediaSourceInfo
@@ -41,10 +51,14 @@ class _RegisteredMediaSource:
 
 
 class PluginClassificationRegistry:
-    """原子维护启用插件声明，并校验识别结果提供的扩展分类事实。"""
+    """
+    原子维护启用插件声明，并校验识别结果提供的扩展分类事实。
+    """
 
     def __init__(self, log: Any) -> None:
-        """保存日志端口并初始化空的插件和来源索引。"""
+        """
+        保存日志端口并初始化空的插件和来源索引。
+        """
         self._logger = log
         self._lock = threading.RLock()
         self._sources: dict[str, _RegisteredMediaSource] = {}
@@ -55,7 +69,9 @@ class PluginClassificationRegistry:
         plugin_id: str,
         declarations: Iterable[Mapping[str, Any] | MediaSourceInfo],
     ) -> None:
-        """完整替换一个插件的来源声明，任一声明无效时保持旧快照不变。"""
+        """
+        完整替换一个插件的来源声明，任一声明无效时保持旧快照不变。
+        """
         normalized_plugin_id = str(plugin_id or "").strip()
         if not normalized_plugin_id:
             raise PluginClassificationDeclarationError("插件 ID 不能为空")
@@ -92,7 +108,9 @@ class PluginClassificationRegistry:
                 self._plugin_sources.pop(normalized_plugin_id, None)
 
     def remove(self, plugin_id: str) -> None:
-        """移除一个插件拥有的全部来源和字段声明，重复调用保持幂等。"""
+        """
+        移除一个插件拥有的全部来源和字段声明，重复调用保持幂等。
+        """
         normalized_plugin_id = str(plugin_id or "").strip()
         with self._lock:
             source_ids = self._plugin_sources.pop(normalized_plugin_id, ())
@@ -100,7 +118,9 @@ class PluginClassificationRegistry:
                 self._sources.pop(source_id, None)
 
     def sources(self, plugin_id: str | None = None) -> list[dict[str, Any]]:
-        """返回当前有效来源声明的 JSON 隔离快照。"""
+        """
+        返回当前有效来源声明的 JSON 隔离快照。
+        """
         with self._lock:
             selected = self._selected_sources(plugin_id)
             return [
@@ -115,7 +135,9 @@ class PluginClassificationRegistry:
         self,
         plugin_id: str | None = None,
     ) -> tuple[ClassificationFieldDefinition, ...]:
-        """返回当前有效扩展字段的深拷贝稳定快照。"""
+        """
+        返回当前有效扩展字段的深拷贝稳定快照。
+        """
         with self._lock:
             return tuple(
                 field.model_copy(deep=True)
@@ -127,7 +149,9 @@ class PluginClassificationRegistry:
         self,
         media: Any,
     ) -> dict[str, dict[str, ClassificationFactValue]]:
-        """校验媒体对象携带的局部事实，只返回当前来源已登记且类型兼容的值。"""
+        """
+        校验媒体对象携带的局部事实，只返回当前来源已登记且类型兼容的值。
+        """
         source_id = _enum_text(getattr(media, "media_source", None))
         raw_facts = getattr(media, "classification_facts", None)
         if not source_id or not raw_facts:
@@ -200,7 +224,9 @@ class PluginClassificationRegistry:
         self,
         plugin_id: str | None,
     ) -> tuple[_RegisteredMediaSource, ...]:
-        """按注册顺序选择全部来源或指定插件拥有的来源。"""
+        """
+        按注册顺序选择全部来源或指定插件拥有的来源。
+        """
         if plugin_id is None:
             return tuple(
                 item
@@ -221,7 +247,9 @@ class PluginClassificationRegistry:
         plugin_id: str,
         declaration: Mapping[str, Any] | MediaSourceInfo,
     ) -> _RegisteredMediaSource:
-        """校验并补齐一个来源声明中的命名空间、媒体类型和支持等级。"""
+        """
+        校验并补齐一个来源声明中的命名空间、媒体类型和支持等级。
+        """
         try:
             source = MediaSourceInfo.model_validate(declaration)
         except ValidationError as error:
@@ -304,21 +332,27 @@ class PluginClassificationRegistry:
         )
 
     def _warn(self, code: str, source_id: str, message: str) -> None:
-        """以稳定诊断码记录被忽略的插件分类事实。"""
+        """
+        以稳定诊断码记录被忽略的插件分类事实。
+        """
         self._logger.warning(
             f"忽略插件分类事实 [{code}] 来源={source_id}：{message}"
         )
 
 
 def _enum_text(value: object) -> str:
-    """把字符串枚举或普通值规范为去空白文本。"""
+    """
+    把字符串枚举或普通值规范为去空白文本。
+    """
     if isinstance(value, Enum):
         value = value.value
     return str(value or "").strip()
 
 
 def _classification_media_type(value: object) -> ClassificationMediaType | None:
-    """把运行时媒体类型转换为分类协议支持的中文枚举值。"""
+    """
+    把运行时媒体类型转换为分类协议支持的中文枚举值。
+    """
     normalized = _enum_text(value)
     if normalized not in {"电影", "电视剧", "音乐"}:
         return None

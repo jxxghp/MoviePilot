@@ -1,4 +1,6 @@
-"""durable transfer 分类 checkpoint 3.0.28 数据迁移测试。"""
+"""
+durable transfer 分类 checkpoint 3.0.28 数据迁移测试。
+"""
 
 import importlib
 from copy import deepcopy
@@ -21,24 +23,36 @@ _SNAPSHOT_FIELDS = {
 
 
 class _MigrationModule(Protocol):
-    """声明测试调用的 3.0.28 Alembic 迁移接口。"""
+    """
+    声明测试调用的 3.0.28 Alembic 迁移接口。
+
+    :ivar revision: 待验证迁移的版本标识
+    :ivar down_revision: 该迁移依赖的上一版本标识
+    :ivar op: 绑定测试数据库连接的 Alembic 操作入口
+    """
 
     revision: str
     down_revision: str
     op: Any
 
     def upgrade(self) -> None:
-        """执行分类 checkpoint 升级。"""
+        """
+        执行分类 checkpoint 升级。
+        """
 
     def downgrade(self) -> None:
-        """执行分类 checkpoint 降级。"""
+        """
+        执行分类 checkpoint 降级。
+        """
 
 
 def _bind_migration(
     monkeypatch: pytest.MonkeyPatch,
     connection: Connection,
 ) -> _MigrationModule:
-    """把 3.0.28 迁移绑定到当前 SQLite 事务。"""
+    """
+    把 3.0.28 迁移绑定到当前 SQLite 事务。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
     monkeypatch.setattr(
         migration,
@@ -49,7 +63,9 @@ def _bind_migration(
 
 
 def _create_tables(connection: Connection) -> tuple[sa.Table, sa.Table]:
-    """创建迁移需要的最小 pending 和执行步骤表。"""
+    """
+    创建迁移需要的最小 pending 和执行步骤表。
+    """
     metadata = sa.MetaData()
     pending = sa.Table(
         "transferpending",
@@ -82,7 +98,9 @@ def _insert_pending(
     execution_state: str = "not_started",
     execution_payload: object = None,
 ) -> None:
-    """写入一条可精确控制执行证据的测试任务。"""
+    """
+    写入一条可精确控制执行证据的测试任务。
+    """
     connection.execute(
         pending.insert().values(
             id=row_id,
@@ -100,7 +118,9 @@ def _read_pending(
     pending: sa.Table,
     task_id: str,
 ) -> dict[str, Any]:
-    """读取一条任务的版本、计划和执行状态。"""
+    """
+    读取一条任务的版本、计划和执行状态。
+    """
     return dict(
         connection.execute(
             sa.select(pending).where(pending.c.task_id == task_id)
@@ -109,7 +129,9 @@ def _read_pending(
 
 
 def _v1_payload(media_payload: object) -> dict[str, Any]:
-    """构造仅保留迁移关注字段的 v1 检查点。"""
+    """
+    构造仅保留迁移关注字段的 v1 检查点。
+    """
     return {
         "schema_version": 1,
         "planning_input": {"schema_version": 1},
@@ -120,7 +142,9 @@ def _v1_payload(media_payload: object) -> dict[str, Any]:
 
 
 def _v2_payload(snapshot: dict[str, object]) -> dict[str, Any]:
-    """构造带顶层五字段分类快照的 v2 检查点。"""
+    """
+    构造带顶层五字段分类快照的 v2 检查点。
+    """
     return {
         "schema_version": 2,
         "planning_input": {"schema_version": 1},
@@ -130,7 +154,9 @@ def _v2_payload(snapshot: dict[str, object]) -> dict[str, Any]:
 
 
 def test_migration_revision_chain() -> None:
-    """3.0.28 必须直接衔接分类持久化 3.0.27。"""
+    """
+    3.0.28 必须直接衔接分类持久化 3.0.27。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
 
     assert migration.revision == "d8f2b6a4c1e7"
@@ -140,7 +166,9 @@ def test_migration_revision_chain() -> None:
 def test_sqlite_upgrade_is_idempotent_and_supports_reupgrade(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """有效 v1 应冻结最终 effective，重复升级和降级后再升级结果一致。"""
+    """
+    有效 v1 应冻结最终 effective，重复升级和降级后再升级结果一致。
+    """
     engine = sa.create_engine("sqlite://")
     media_payload = {
         "classification": {
@@ -199,7 +227,9 @@ def test_sqlite_upgrade_uses_provider_legacy_path_and_ignores_metadata(
     monkeypatch: pytest.MonkeyPatch,
     path_field: str,
 ) -> None:
-    """provider v1 两种旧路径都生成 legacy 快照，不能提升描述分类。"""
+    """
+    provider v1 两种旧路径都生成 legacy 快照，不能提升描述分类。
+    """
     engine = sa.create_engine("sqlite://")
     payload = _v1_payload(None)
     payload["provider_invocation"] = {
@@ -237,7 +267,9 @@ def test_sqlite_upgrade_uses_provider_legacy_path_and_ignores_metadata(
 def test_sqlite_upgrade_never_rewrites_v1_with_execution_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """运行态、execution payload 和步骤任一存在时都必须保留原 v1 身份。"""
+    """
+    运行态、execution payload 和步骤任一存在时都必须保留原 v1 身份。
+    """
     engine = sa.create_engine("sqlite://")
     original = _v1_payload({"library_category": "电影/旧计划"})
     with engine.begin() as connection:
@@ -284,7 +316,9 @@ def test_sqlite_upgrade_keeps_v1_when_classification_path_is_unsafe(
     monkeypatch: pytest.MonkeyPatch,
     unsafe_path: str,
 ) -> None:
-    """无执行证据的脏路径也不得被迁移规范化成不同的 v2 计划。"""
+    """
+    无执行证据的脏路径也不得被迁移规范化成不同的 v2 计划。
+    """
     engine = sa.create_engine("sqlite://")
     original = _v1_payload({"library_category": unsafe_path})
     with engine.begin() as connection:
@@ -308,7 +342,9 @@ def test_sqlite_upgrade_keeps_v1_when_classification_path_is_unsafe(
 def test_sqlite_downgrade_rejects_execution_evidence_without_partial_rewrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """任一 v2 已有步骤时必须整体拒绝降级，并保持其他安全行不变。"""
+    """
+    任一 v2 已有步骤时必须整体拒绝降级，并保持其他安全行不变。
+    """
     engine = sa.create_engine("sqlite://")
     snapshot = {
         "category_id": "movie.drama",

@@ -1,9 +1,11 @@
-"""整理记录匹配、文件键与手动历史辅助能力。"""
+"""
+整理记录匹配、文件键与手动历史辅助能力。
+"""
 
 import re
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union, cast
 
 from app.application.classification.reference import (
     apply_persisted_classification_snapshot,
@@ -28,11 +30,11 @@ from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation import text as text_tools
+from app.schemas.file import FileItem
 from app.schemas.types import (
     MediaSource,
     MediaType,
 )
-from app.schemas.workflow import FileItem
 
 from .retry import _request_durable_transfer_retry
 
@@ -43,7 +45,9 @@ def apply_download_history_classification(
         media: TransferMediaT,
         history: DownloadHistorySnapshot,
 ) -> TransferMediaT:
-    """按下载发生时的分类标量恢复媒体，不读取或解析当前活动策略。"""
+    """
+    按下载发生时的分类标量恢复媒体，不读取或解析当前活动策略。
+    """
     snapshot = persisted_classification_snapshot(
         category_id=getattr(history, "media_category_id", None),
         category_path=getattr(history, "media_category", None),
@@ -99,7 +103,9 @@ SUBTITLE_STEM_TAGS = {
 
 
 class HistoryMatchMixin(_TransferOwnerBase):
-    """提供下载历史定位与媒体身份一致性判定。"""
+    """
+    提供下载历史定位与媒体身份一致性判定。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -351,8 +357,10 @@ class HistoryMatchMixin(_TransferOwnerBase):
     def _optional_attr_equal(
             source: MetaBase,
             target: MetaBase,
-            attr: str,
-            normalizer: Callable = None,
+            attr: Literal[
+                "year", "begin_season", "end_season", "begin_episode", "end_episode"
+            ],
+            normalizer: Optional[Callable[[Union[int, str]], Union[int, str]]] = None,
     ) -> bool:
         """
         比较可选识别字段。
@@ -360,8 +368,8 @@ class HistoryMatchMixin(_TransferOwnerBase):
         字段两边都没有识别到时不参与判断；只要任意一边识别到了，就要求两边值一致，
         避免把同名不同年份或不同季集的附加文件误归到当前主视频。
         """
-        source_value = getattr(source, attr, None)
-        target_value = getattr(target, attr, None)
+        source_value: Optional[Union[int, str]] = getattr(source, attr, None)
+        target_value: Optional[Union[int, str]] = getattr(target, attr, None)
         if source_value is None and target_value is None:
             return True
         if source_value is None or target_value is None:
@@ -399,7 +407,9 @@ class HistoryMatchMixin(_TransferOwnerBase):
 
 
 class FileKeyMixin(_TransferOwnerBase):
-    """提供文件、目录及同名旁挂文件的稳定匹配键。"""
+    """
+    提供文件、目录及同名旁挂文件的稳定匹配键。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -416,7 +426,7 @@ class FileKeyMixin(_TransferOwnerBase):
         """
         获取文件主干名，用于判断同名附加文件。
         """
-        file_name = fileitem.name or Path(fileitem.path).name
+        file_name = fileitem.name or Path(fileitem.path or "").name
         return Path(file_name).stem.lower()
 
     @classmethod
@@ -439,7 +449,7 @@ class FileKeyMixin(_TransferOwnerBase):
         if self._is_subtitle_file(extra_fileitem):
             return self._get_subtitle_media_stem(extra_fileitem)
         if self._is_music_lyrics_file(extra_fileitem):
-            file_name = extra_fileitem.name or Path(extra_fileitem.path).name
+            file_name = extra_fileitem.name or Path(extra_fileitem.path or "").name
             lowered = file_name.casefold()
             suffix = ".lyricsfile.yaml" if lowered.endswith(".lyricsfile.yaml") else Path(file_name).suffix
             return file_name[:-len(suffix)].casefold() if suffix else lowered
@@ -483,20 +493,25 @@ class FileKeyMixin(_TransferOwnerBase):
         """
         获取目录缓存键。
         """
-        return dir_item.storage, self._normalize_dir_path(dir_item.path)
+        return (
+            dir_item.storage or "local",
+            self._normalize_dir_path(dir_item.path or ""),
+        )
 
     def _get_file_parent_key(self, current_item: FileItem) -> Tuple[str, str]:
         """
         获取文件父目录缓存键。
         """
         return (
-            current_item.storage,
-            self._normalize_dir_path(Path(current_item.path).parent),
+            current_item.storage or "local",
+            self._normalize_dir_path(Path(current_item.path or "").parent),
         )
 
 
 class ManualHistoryMixin(_TransferOwnerBase):
-    """提供手动整理历史查询、清理及持久重试入口。"""
+    """
+    提供手动整理历史查询、清理及持久重试入口。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -534,7 +549,9 @@ class ManualHistoryMixin(_TransferOwnerBase):
     def _is_successful_move_history(
             history: Optional[TransferHistorySnapshot],
     ) -> bool:
-        """判断历史记录是否为已成功完成的移动类整理。"""
+        """
+        判断历史记录是否为已成功完成的移动类整理。
+        """
         return bool(
             history
             and history.status
@@ -548,7 +565,9 @@ class ManualHistoryMixin(_TransferOwnerBase):
             transfer_history_oper: TransferHistoryRepository,
             include_move_dest: bool = False,
     ) -> Optional[TransferHistorySnapshot]:
-        """查询文件源路径历史，并兼容从成功移动后的目标现址重新整理。"""
+        """
+        查询文件源路径历史，并兼容从成功移动后的目标现址重新整理。
+        """
         if not fileitem.path:
             return None
         # resolve_history 在命中失败记录时会再确认一次有无成功记录，
@@ -568,13 +587,17 @@ class ManualHistoryMixin(_TransferOwnerBase):
         return history if self._is_successful_move_history(history) else None
 
     def _has_successful_manual_transfer_history(self, fileitem: FileItem) -> bool:
-        """仅为跳过选项匹配同存储的成功历史，源失败记录不得遮蔽成功移动目标。"""
+        """
+        仅为跳过选项匹配同存储的成功历史，源失败记录不得遮蔽成功移动目标。
+        """
         return bool(self._get_successful_manual_transfer_histories(fileitem))
 
     def _get_successful_manual_transfer_histories(
             self, fileitem: FileItem, recursive: bool = False,
     ) -> List[TransferHistorySnapshot]:
-        """统一界面检测与候选过滤；候选目录本身按路径匹配，只有界面目录检测递归。"""
+        """
+        统一界面检测与候选过滤；候选目录本身按路径匹配，只有界面目录检测递归。
+        """
         if not fileitem.path:
             return []
         repository = self.transfer_history_repository
@@ -589,7 +612,9 @@ class ManualHistoryMixin(_TransferOwnerBase):
             skip_success: bool,
             record_skipped: Callable[[FileItem], None],
     ) -> List[Tuple[FileItem, bool]]:
-        """规划前过滤成功记录，预览和执行共用候选范围，保留失败项的既有重试规则。"""
+        """
+        规划前过滤成功记录，预览和执行共用候选范围，保留失败项的既有重试规则。
+        """
         if not skip_success:
             return fileitems
         pending = []
@@ -629,14 +654,15 @@ class ManualHistoryMixin(_TransferOwnerBase):
             *,
             requested_by: str,
     ) -> Optional[Tuple[bool, str]]:
-        """将 durable 历史重试交还持久调度器，旧历史返回 ``None``。
+        """
+        将 持久化 历史重试交还持久调度器，旧历史返回 ``None``。
 
         普通重试和 AI 接管只登记重试意图；显式重新整理由
         ``_delete_manual_transfer_history`` 先放弃无有效租约的旧任务，再重新准入。
 
         :param history: 整理历史
         :param requested_by: 发起重试的稳定入口身份
-        :return: durable 请求结果；旧历史返回 ``None`` 继续兼容流程
+        :return: 持久化 请求结果；旧历史返回 ``None`` 继续兼容流程
         """
         return _request_durable_transfer_retry(
             history,
@@ -649,10 +675,16 @@ class ManualHistoryMixin(_TransferOwnerBase):
             history: TransferHistorySnapshot,
             transfer_history_oper: TransferHistoryRepository,
     ) -> Tuple[bool, str]:
-        """显式重新规划先原子放弃无有效租约的旧任务，再清理历史和旧目标。
+        """
+        显式重新规划先原子放弃无有效租约的旧任务，再清理历史和旧目标。
 
         用户已明确重新整理，缺失结算版本或停在重试、人工复核态的旧记录也必须
         能放弃；普通重试仍由持久调度器沿原计划继续，有效租约拒绝任何清理。
+        目标状态查询失败时保留历史与失败计数，不把未知状态当作目标已消失。
+
+        :param history: 用户明确要求重新整理的历史快照
+        :param transfer_history_oper: 删除历史所用的仓储端口
+        :return: 是否完成旧历史清理及可向用户展示的失败原因
         """
         task_id = getattr(history, "transfer_task_id", None)
         if task_id:
@@ -670,16 +702,27 @@ class ManualHistoryMixin(_TransferOwnerBase):
         ):
             if not isinstance(history.dest_fileitem, dict):
                 return False, "目标文件历史数据无效，请删除该整理记录后从文件管理重新整理"
-            dest_fileitem = FileItem(**history.dest_fileitem)
+            dest_fileitem = FileItem.model_validate(history.dest_fileitem)
+            if not dest_fileitem.storage or not dest_fileitem.path:
+                return False, "目标文件历史数据缺少存储或路径，请检查该整理记录"
             storage_chain = StorageChain()
-            if (
-                    storage_chain.exists(dest_fileitem)
-                    and not storage_chain.delete_media_file(dest_fileitem)
-            ):
-                return False, (
-                    f"旧目标文件 {dest_fileitem.path} 删除失败，请检查媒体库权限，"
-                    "或手动删除该文件后重试"
+            try:
+                target = storage_chain.get_file_item_strict(
+                    storage=dest_fileitem.storage, path=Path(dest_fileitem.path),
                 )
+                if target:
+                    deleted = storage_chain.delete_media_file(dest_fileitem)
+                    # 删除失败时，只有严格查询确认目标消失，才接受并发移除后的幂等成功。
+                    if not deleted and storage_chain.get_file_item_strict(
+                            storage=dest_fileitem.storage, path=Path(dest_fileitem.path),
+                    ):
+                        return False, (
+                            f"旧目标文件 {dest_fileitem.path} 删除失败，请检查媒体库权限，"
+                            "或手动删除该文件后重试"
+                        )
+            except Exception:  # pylint: disable=broad-except
+                return False, f"无法确认旧目标文件 {dest_fileitem.path} 的状态，请检查存储后重试"
+
         transfer_history_oper.delete(history.id)
         # 删除记录是用户显式要求重来，失败计数一并清零，否则重整仍会受上一轮次数限制
         clear_transfer_failures(history.src, history.src_storage)

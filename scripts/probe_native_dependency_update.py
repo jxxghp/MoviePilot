@@ -1,4 +1,6 @@
-"""验证已加载原生扩展的插件依赖在线升级行为。"""
+"""
+验证已加载原生扩展的插件依赖在线升级行为。
+"""
 
 from __future__ import annotations
 
@@ -34,12 +36,16 @@ SUCCESSFUL_ONLINE_CLASSIFICATIONS = (
 
 
 def online_attempt_succeeded(attempt: dict[str, Any]) -> bool:
-    """判断在线阶段是否已把目标载荷完整写入环境。"""
+    """
+    判断在线阶段是否已把目标载荷完整写入环境。
+    """
     return attempt.get("classification") in SUCCESSFUL_ONLINE_CLASSIFICATIONS
 
 
 def classify_online_attempt(attempt: dict[str, Any]) -> str:
-    """按安装回执、磁盘载荷和当前进程状态判定在线更新边界。"""
+    """
+    按安装回执、磁盘载荷和当前进程状态判定在线更新边界。
+    """
     if attempt.get("probe_error"):
         return "probe_error"
     fresh_process = attempt.get("fresh_process", {})
@@ -63,7 +69,9 @@ def classify_online_attempt(attempt: dict[str, Any]) -> str:
 
 
 def _sha256(path: Path) -> str | None:
-    """返回当前二进制摘要；安装失败删除文件时返回空值。"""
+    """
+    返回当前二进制摘要；安装失败删除文件时返回空值。
+    """
     if not path.is_file():
         return None
     digest = hashlib.sha256()
@@ -79,7 +87,9 @@ def _run(
     check: bool = True,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """执行探针子进程并保留完整文本结果。"""
+    """
+    执行探针子进程并保留完整文本结果。
+    """
     result = subprocess.run(
         command,
         capture_output=True,
@@ -99,7 +109,9 @@ def _write_probe_source(
     distribution_version: str,
     compiled_version: int,
 ) -> Path:
-    """生成具有固定模块路径和可辨识构建号的最小 C 扩展源码。"""
+    """
+    生成具有固定模块路径和可辨识构建号的最小 C 扩展源码。
+    """
     source_dir = root / f"source-{distribution_version}"
     source_dir.mkdir(parents=True)
     (source_dir / "pyproject.toml").write_text(
@@ -164,7 +176,9 @@ def _write_manifest(
     kind: str,
     distribution_version: str,
 ) -> Path:
-    """生成与插件 legacy/modern 清单形态一致的精确版本依赖。"""
+    """
+    生成与插件 旧式与现代清单形态一致的精确版本依赖。
+    """
     manifest_dir = root / f"{kind}-{distribution_version}"
     manifest_dir.mkdir(parents=True)
     requirement = f"{PROBE_DISTRIBUTION}=={distribution_version}"
@@ -189,7 +203,9 @@ dependencies = ["{requirement}"]
 
 
 def _sanitize_message(message: str, probe_root: Path) -> str:
-    """移除 CI 临时目录绝对路径，保留 uv 的原始错误语义。"""
+    """
+    移除 CI 临时目录绝对路径，保留 uv 的原始错误语义。
+    """
     return message.replace(str(probe_root), "<probe-root>").replace(
         str(Path(sys.executable).resolve()),
         "<python>",
@@ -197,7 +213,9 @@ def _sanitize_message(message: str, probe_root: Path) -> str:
 
 
 def _fresh_process_state() -> dict[str, Any]:
-    """由独立解释器读取磁盘上的发行版和原生构建号。"""
+    """
+    由独立解释器读取磁盘上的发行版和原生构建号。
+    """
     code = f"""
 import hashlib
 import importlib.metadata
@@ -233,7 +251,9 @@ async def _install_manifest(
     installer: str,
     force_reinstall: bool = False,
 ) -> tuple[bool, str]:
-    """通过指定安装入口安装清单，生产模式保留 PluginHelper 完整调用链。"""
+    """
+    通过指定安装入口安装清单，生产模式保留 插件安装入口的完整调用链。
+    """
     if installer == "plugin-helper":
         from app.adapters.external.market import PluginHelper
 
@@ -275,7 +295,9 @@ def _loaded_phase(
     output: Path,
     installer: str,
 ) -> None:
-    """保持 v1 原生扩展已加载时调用生产入口升级到 v2。"""
+    """
+    保持 v1 原生扩展已加载时调用生产入口升级到 v2。
+    """
     module = importlib.import_module(PROBE_MODULE)
     module_path = Path(module.__file__).resolve()
     before = {
@@ -332,7 +354,9 @@ def _loaded_phase_error(
     result: subprocess.CompletedProcess[str],
     probe_root: Path,
 ) -> str:
-    """整理加载进程异常，供最终 JSON 保留诊断语义。"""
+    """
+    整理加载进程异常，供最终 JSON 保留诊断语义。
+    """
     details = result.stderr.strip() or result.stdout.strip() or "没有输出"
     return _sanitize_message(
         f"loaded phase exited {result.returncode}: {details}",
@@ -341,7 +365,9 @@ def _loaded_phase_error(
 
 
 def _write_report(output: Path, report: dict[str, Any]) -> None:
-    """增量写入探针报告，避免失败证据随临时目录丢失。"""
+    """
+    增量写入探针报告，避免失败证据随临时目录丢失。
+    """
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -350,7 +376,9 @@ def _write_report(output: Path, report: dict[str, Any]) -> None:
 
 
 def _build_wheels(root: Path, uv: str) -> Path:
-    """用当前 Python 构建同模块路径的 v1/v2 原生 wheel。"""
+    """
+    用当前 Python 构建同模块路径的 v1/v2 原生 wheel。
+    """
     wheelhouse = root / "wheels"
     wheelhouse.mkdir()
     for distribution_version, compiled_version in (
@@ -378,7 +406,9 @@ def _build_wheels(root: Path, uv: str) -> Path:
 
 
 def _uninstall_probe(uv: str, *, installer: str) -> None:
-    """在下一个清单场景前移除已退出进程使用的探针包。"""
+    """
+    在下一个清单场景前移除已退出进程使用的探针包。
+    """
     if installer == "pip":
         command = [
             sys.executable,
@@ -411,7 +441,9 @@ def _run_manifest_scenario(
     wheelhouse: Path,
     installer: str,
 ) -> dict[str, Any]:
-    """执行安装 v1、在线升级 v2、退出加载进程后恢复三阶段。"""
+    """
+    执行安装 v1、在线升级 v2、退出加载进程后恢复三阶段。
+    """
     initial_manifest = _write_manifest(
         root,
         kind=kind,
@@ -500,7 +532,9 @@ def _run_manifest_scenario(
 
 
 def _installer_version(installer: str, uv: str) -> str:
-    """记录执行安装的工具版本，区分历史 pip 与当前 uv 证据。"""
+    """
+    记录执行安装的工具版本，区分历史 pip 与当前 uv 证据。
+    """
     if installer == "pip":
         command = [sys.executable, "-m", "pip", "--version"]
     else:
@@ -510,7 +544,9 @@ def _installer_version(installer: str, uv: str) -> str:
 
 
 def _wheel_evidence(wheelhouse: Path) -> list[dict[str, Any]]:
-    """记录输入 wheel 的名称、大小与摘要，保证跨平台结果可审计。"""
+    """
+    记录输入 wheel 的名称、大小与摘要，保证跨平台结果可审计。
+    """
     return [
         {
             "filename": wheel.name,
@@ -527,7 +563,9 @@ def validate_runtime_target(
     expected_machine: str | None = None,
     expected_python_platform_suffix: str | None = None,
 ) -> dict[str, str]:
-    """验证宿主平台与当前解释器的目标 ABI，避免跨架构证据误标。"""
+    """
+    验证宿主平台与当前解释器的目标 ABI，避免跨架构证据误标。
+    """
     target = {
         "system": platform.system(),
         "machine": platform.machine(),
@@ -559,7 +597,9 @@ def _orchestrate(
     expected_machine: str | None = None,
     expected_python_platform_suffix: str | None = None,
 ) -> None:
-    """在临时目录中运行两种插件清单场景并保留 JSON 证据。"""
+    """
+    在临时目录中运行两种插件清单场景并保留 JSON 证据。
+    """
     target = validate_runtime_target(
         expected_system=expected_system,
         expected_machine=expected_machine,
@@ -625,7 +665,9 @@ def _orchestrate(
 
 
 def main() -> None:
-    """解析 CI 与内部加载阶段参数。"""
+    """
+    解析 CI 与内部加载阶段参数。
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--loaded-phase", action="store_true")

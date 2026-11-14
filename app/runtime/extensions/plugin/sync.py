@@ -1,9 +1,10 @@
-"""插件市场同步运行时用例。"""
+"""
+插件市场同步运行时用例。
+"""
 
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Optional
 
 from app.runtime.extensions.plugin.system import PluginSystemServices
@@ -11,7 +12,9 @@ from app.schemas.plugin import PluginRuntimeStatus
 
 
 class PluginSyncService:
-    """根据已安装清单同步缺失或过期插件，不参与插件实例生命周期。"""
+    """
+    根据已安装清单同步缺失或过期插件，不参与插件实例生命周期。
+    """
 
     def __init__(
         self,
@@ -26,7 +29,9 @@ class PluginSyncService:
         runtime_status_writer: Callable[[str, PluginRuntimeStatus], None] | None = None,
         log: Any,
     ) -> None:
-        """保存目录读取、包安装和持久化报告端口。"""
+        """
+        保存目录读取、包安装和持久化报告端口。
+        """
         self._frozen = frozen
         self._installed_plugins = installed_plugins
         self._online_plugins = online_plugins
@@ -43,7 +48,12 @@ class PluginSyncService:
         *,
         online_restore_plugins: set[str] | None = None,
     ) -> list[str]:
-        """并发安装本地缺失、需要更新或应恢复在线载荷的插件。"""
+        """
+        在同一启动事务内依次安装缺失或需恢复的插件，单个失败后继续处理其余插件。
+
+        调用方已在线程中持有完整变更事务。沿用该线程的上下文，避免另建线程丢失
+        事务身份后被误判为竞争请求；顺序执行也防止插件加载和失败补偿互相交叠。
+        """
         if self._frozen():
             return []
 
@@ -53,7 +63,8 @@ class PluginSyncService:
         }
         try:
             local = self._local_plugins()
-        except Exception as error:  # noqa: BLE001 - 本地来源失败不能降级在线
+        # 本地来源失败不能降级在线
+        except Exception as error:  # noqa: BLE001
             if self._runtime_status_writer:
                 for plugin_id in installed:
                     self._runtime_status_writer(
@@ -136,7 +147,9 @@ class PluginSyncService:
         failed_recovery: list[str] = []
 
         def install_one(plugin: Any) -> None:
-            """安装一个插件并记录结果。"""
+            """
+            安装一个插件并记录结果。
+            """
             started = time.time()
             state, message = self._install(
                 plugin.id,
@@ -168,56 +181,61 @@ class PluginSyncService:
                 )
                 failed.append(plugin.id)
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(install_one, plugin): plugin for plugin in targets}
-            for future in as_completed(futures):
-                plugin = futures[future]
-                try:
-                    future.result()
-                except Exception as error:  # noqa: BLE001
-                    if plugin.id.lower() in recovery_ids:
-                        failed_recovery.append(plugin.id)
-                    if self._runtime_status_writer:
-                        self._runtime_status_writer(
-                            plugin.id,
-                            PluginRuntimeStatus.SYNC_FAILED,
-                        )
-                    self._logger.error(
-                        f"插件 {plugin.plugin_name} 安装过程中出现异常: {error}"
+        for plugin in targets:
+            try:
+                install_one(plugin)
+            # 单个插件初始化失败应记录其恢复状态，不中断其他插件初始化。
+            except Exception as error:  # noqa: BLE001
+                if plugin.id.lower() in recovery_ids:
+                    failed_recovery.append(plugin.id)
+                failed.append(plugin.id)
+                if self._runtime_status_writer:
+                    self._runtime_status_writer(
+                        plugin.id,
+                        PluginRuntimeStatus.SYNC_FAILED,
                     )
+                self._logger.error(
+                    f"插件 {plugin.plugin_name} 安装过程中出现异常: {error}"
+                )
 
         self._logger.info(
             f"第三方插件安装完成，成功：{len(synced)} 个，失败：{len(failed)} 个"
         )
         if failed_recovery:
-            raise RuntimeError(
-                "插件同步未完成："
+            self._logger.warning(
+                "以下插件恢复同步失败，继续处理其它可用插件："
                 f"{', '.join(sorted(set(failed_recovery)))}"
             )
         return synced
 
 
 class LocalPluginSyncService:
-    """同步本地插件仓源码到运行目录，并记录热重载抑制窗口。"""
+    """
+    同步本地插件仓源码到运行目录，并记录热重载抑制窗口。
+    """
 
     def __init__(
         self,
         *,
         installed_plugins: Callable[[], list[str]],
-        candidate: Callable[[str], Optional[dict]],
+        candidate: Callable[[str], Optional[dict[str, Any]]],
         system: Callable[[], PluginSystemServices],
         recent_sync: dict[str, float],
         log: Any,
     ) -> None:
-        """保存本地候选、包同步和运行态监控端口。"""
+        """
+        保存本地候选、包同步和运行态监控端口。
+        """
         self._installed_plugins = installed_plugins
         self._candidate = candidate
         self._system = system
         self._recent_sync = recent_sync
         self._logger = log
 
-    def sync(self, plugin_id: str, candidate: Optional[dict] = None) -> bool:
-        """同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。"""
+    def sync(self, plugin_id: str, candidate: Optional[dict[str, Any]] = None) -> bool:
+        """
+        同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。
+        """
         normalized_plugin_id = plugin_id.lower()
         installed = {
             installed_id.lower()

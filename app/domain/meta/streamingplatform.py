@@ -1,4 +1,8 @@
-from typing import Optional, List, Tuple
+"""
+识别标题中的流媒体平台标记并转换为标准名称。
+"""
+
+from typing import List, Optional, Tuple
 
 from app.foundation.singleton import Singleton
 
@@ -277,9 +281,11 @@ class StreamingPlatforms(metaclass=Singleton):
         ("OV", "OceanVeil"),
     ]
 
-    def __init__(self):
-        """初始化流媒体平台匹配器"""
-        self._lookup_cache = {}
+    def __init__(self) -> None:
+        """
+        初始化流媒体平台匹配器。
+        """
+        self._lookup_cache: dict[str, str] = {}
         self._build_cache()
 
     def _build_cache(self) -> None:
@@ -297,7 +303,7 @@ class StreamingPlatforms(metaclass=Singleton):
                 if alias:
                     self._lookup_cache[alias.upper()] = canonical_name
 
-    def get_lookup_cache(self) -> dict:
+    def get_lookup_cache(self) -> dict[str, str]:
         """
         返回流媒体平台查询表副本，供批量解析配置复用。
         """

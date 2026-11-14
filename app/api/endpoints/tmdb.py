@@ -1,3 +1,7 @@
+"""
+提供 TMDB 搜索、发现、媒体详情和人物信息接口。
+"""
+
 from typing import Any, List, Optional, Sequence
 
 from fastapi import Depends
@@ -11,6 +15,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.chain.tmdb import TmdbChain
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
@@ -18,13 +23,14 @@ from app.schemas.tmdb import TmdbRecognitionCacheData as _SchemaTmdbRecognitionC
 from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaType, SystemConfigKey
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 
 
 def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
-    """按 browse 端点统一的页码协议切片媒体结果。"""
+    """
+    按 browse 端点统一的页码协议切片媒体结果。
+    """
     normalized_page = max(page, 1)
     normalized_count = max(count, 1)
     start = (normalized_page - 1) * normalized_count
@@ -38,8 +44,10 @@ def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
 )
 async def tmdb_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
-    """查询可管理的 TheMovieDb 识别缓存。"""
+) -> _SchemaResponse[dict[str, Any]]:
+    """
+    查询可管理的 TheMovieDb 识别缓存。
+    """
     cache_items = TmdbChain().cache_items()
     recognized_count = sum(1 for item in cache_items if item["tmdb_id"])
     return _SchemaResponse(
@@ -65,8 +73,14 @@ async def tmdb_recognition_cache(
 async def delete_tmdb_recognition_cache(
     cache_key: str,
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
-    """按缓存键删除单条 TheMovieDb 识别缓存。"""
+) -> _SchemaResponse[None]:
+    """
+    按缓存键删除单条 TheMovieDb 识别缓存。
+
+    :param cache_key: 要删除的缓存键
+    :param _: 已验证的管理员身份
+    :return: 删除结果；缓存不存在时返回失败响应
+    """
     deleted_item = TmdbChain().delete_cache(cache_key)
     if not deleted_item:
         return _SchemaResponse(success=False, message="TheMovieDb 识别缓存不存在")
@@ -78,8 +92,13 @@ async def delete_tmdb_recognition_cache(
 )
 async def clear_tmdb_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
-    """清空全部 TheMovieDb 识别缓存。"""
+) -> _SchemaResponse[None]:
+    """
+    清空全部 TheMovieDb 识别缓存。
+
+    :param _: 已验证的管理员身份
+    :return: 缓存清理结果
+    """
     TmdbChain().clear_cache()
     return _SchemaResponse(success=True, message="TheMovieDb 识别缓存清理完成")
 
@@ -114,9 +133,9 @@ async def tmdb_similar(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据TMDBID查询类似电影/电视剧，type_name: 电影/电视剧
+    根据TMDBID查询类似电影/电视剧，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:
         medias = await TmdbChain().async_movie_similar(tmdbid=tmdbid)
     elif mediatype == MediaType.TV:
@@ -141,9 +160,9 @@ async def tmdb_recommend(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据TMDBID查询推荐电影/电视剧，type_name: 电影/电视剧
+    根据TMDBID查询推荐电影/电视剧，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:
         medias = await TmdbChain().async_movie_recommend(tmdbid=tmdbid)
     elif mediatype == MediaType.TV:
@@ -171,7 +190,11 @@ async def tmdb_collection(
     """
     medias = await TmdbChain().async_tmdb_collection(collection_id=collection_id)
     if medias:
-        return [media.to_dict() for media in medias][(page - 1) * count : page * count]
+        page_value = page if page is not None else 1
+        count_value = count if count is not None else 20
+        return _paginate_medias(
+            [media.to_dict() for media in medias], page_value, count_value
+        )
     return []
 
 
@@ -187,9 +210,9 @@ async def tmdb_credits(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据TMDBID查询演员阵容，type_name: 电影/电视剧
+    根据TMDBID查询演员阵容，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:
         persons = await TmdbChain().async_movie_credits(tmdbid=tmdbid, page=page)
     elif mediatype == MediaType.TV:

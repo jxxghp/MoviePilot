@@ -1,10 +1,15 @@
+"""
+提供 MCP 工具发现、调用以及流式会话的 HTTP 接入。
+"""
+
 from typing import Annotated, Any, Dict, List, Union
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.adapters.web.security.access import verify_apikey
-from app.agent.tools.manager import moviepilot_tool_manager
+from app.agent.tools.manager import ToolDefinition, moviepilot_tool_manager
+from app.agent.tools.projection import project_tool_schema
 from app.api.response import (
     RAW_RESPONSE_OPENAPI_KEY,
     CompatibleCountParam,
@@ -26,7 +31,8 @@ router = ResponseAPIRouter()
 
 # MCP 协议版本
 MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2024-11-05"]
-MCP_PROTOCOL_VERSION = MCP_PROTOCOL_VERSIONS[0]  # 默认使用最新版本
+# 默认使用最新版本
+MCP_PROTOCOL_VERSION = MCP_PROTOCOL_VERSIONS[0]
 # MCP 经 API_TOKEN / X-API-KEY 认证后是管理员级集成入口；隐藏工具只收敛暴露面，不构成权限边界。
 MCP_HIDDEN_TOOLS = {
     "execute_command",
@@ -38,7 +44,15 @@ MCP_HIDDEN_TOOLS = {
     "read_skill",
     "view_image",
 }
-MCP_JSONRPC_ERROR_RESPONSES = {
+
+# 客户端 schema 模式：默认 full 保持完整 oneOf 合同；compact 为显式 opt-in，
+# 把序列化后超出客户端压缩阈值的工具 schema 投影为顶层对象合同（见 projection 模块）。
+MCP_SCHEMA_MODE_FULL = "full"
+MCP_SCHEMA_MODE_COMPACT = "compact"
+MCP_SCHEMA_MODES = (MCP_SCHEMA_MODE_FULL, MCP_SCHEMA_MODE_COMPACT)
+MCP_SCHEMA_MODE_HEADER = "X-MCP-Schema-Mode"
+
+MCP_JSONRPC_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 请求错误"},
     401: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 认证失败"},
     403: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 访问被拒绝"},
@@ -49,11 +63,45 @@ MCP_JSONRPC_ERROR_RESPONSES = {
 }
 
 
-def list_exposed_tools():
+def list_exposed_tools() -> List[ToolDefinition]:
     """
     获取 MCP 可见工具列表
     """
-    return [tool for tool in moviepilot_tool_manager.list_tools() if tool.name not in MCP_HIDDEN_TOOLS]
+    tools: List[ToolDefinition] = list(moviepilot_tool_manager.list_tools())
+    return [tool for tool in tools if tool.name not in MCP_HIDDEN_TOOLS]
+
+
+def resolve_schema_mode(request: Request) -> str:
+    """
+    读取客户端的 schema 模式；未声明或取值不支持时保持默认 full。
+    """
+    raw = request.headers.get(MCP_SCHEMA_MODE_HEADER) or ""
+    mode = raw.strip().lower()
+    return mode if mode in MCP_SCHEMA_MODES else MCP_SCHEMA_MODE_FULL
+
+
+def list_client_tools(schema_mode: str = MCP_SCHEMA_MODE_FULL) -> List[ToolDefinition]:
+    """
+    按客户端 schema 模式返回工具；compact 模式下投影超出客户端阈值的 schema。
+    """
+    tools = list_exposed_tools()
+    if schema_mode != MCP_SCHEMA_MODE_COMPACT:
+        return tools
+
+    client_tools: List[ToolDefinition] = []
+    projected_names: List[str] = []
+    for tool in tools:
+        schema, projected = project_tool_schema(tool.input_schema)
+        if not projected:
+            client_tools.append(tool)
+            continue
+        projected_names.append(tool.name)
+        client_tools.append(
+            ToolDefinition(name=tool.name, description=tool.description, input_schema=schema)
+        )
+    if projected_names:
+        logger.debug(f"MCP schema compact 投影：{', '.join(projected_names)}")
+    return client_tools
 
 
 def create_jsonrpc_response(request_id: Union[str, int, None], result: Any) -> Dict[str, Any]:
@@ -70,13 +118,14 @@ def create_jsonrpc_error(
     """
     创建 JSON-RPC 错误响应
     """
+    error_detail: Dict[str, object] = {"code": code, "message": message}
     error = {
         "jsonrpc": "2.0",
         "id": request_id,
-        "error": {"code": code, "message": message},
+        "error": error_detail,
     }
     if data is not None:
-        error["error"]["data"] = data
+        error_detail["data"] = data
     return error
 
 
@@ -84,8 +133,11 @@ async def _dispatch_jsonrpc_method(
     method: Any,
     params: Dict[str, Any],
     request_id: Union[str, int, None],
+    schema_mode: str = MCP_SCHEMA_MODE_FULL,
 ) -> Union[JSONResponse, Response]:
-    """分派一个已经通过基础格式校验的 MCP JSON-RPC 方法。"""
+    """
+    分派一个已经通过基础格式校验的 MCP JSON-RPC 方法。
+    """
     if method == "initialize":
         result = await handle_initialize(params)
         return JSONResponse(content=create_jsonrpc_response(request_id, result))
@@ -97,7 +149,7 @@ async def _dispatch_jsonrpc_method(
             content=create_jsonrpc_error(request_id, -32600, "initialized must be a notification"),
         )
     if method == "tools/list":
-        result = await handle_tools_list()
+        result = await handle_tools_list(schema_mode)
         return JSONResponse(content=create_jsonrpc_response(request_id, result))
     if method == "tools/call":
         result = await handle_tools_call(params)
@@ -124,7 +176,7 @@ async def _dispatch_jsonrpc_method(
     },
 )
 async def mcp_jsonrpc(
-    request: Request, _: Annotated[str, Depends(verify_apikey)] = None
+    request: Request, _: Annotated[Union[str, None], Depends(verify_apikey)] = None
 ) -> Union[JSONResponse, Response]:
     """
     MCP 标准 JSON-RPC 2.0 端点
@@ -144,7 +196,9 @@ async def mcp_jsonrpc(
     if not isinstance(body, dict) or body.get("jsonrpc") != "2.0":
         return JSONResponse(
             status_code=400,
-            content=create_jsonrpc_error(body.get("id"), -32600, "Invalid Request"),
+            content=create_jsonrpc_error(
+                body.get("id") if isinstance(body, dict) else None, -32600, "Invalid Request"
+            ),
         )
 
     method = body.get("method")
@@ -152,7 +206,7 @@ async def mcp_jsonrpc(
     request_id = body.get("id")
 
     try:
-        return await _dispatch_jsonrpc_method(method, params, request_id)
+        return await _dispatch_jsonrpc_method(method, params, request_id, schema_mode=resolve_schema_mode(request))
 
     except ValueError as e:
         logger.warning(f"MCP 请求参数错误: {e}")
@@ -191,7 +245,8 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
         "protocolVersion": negotiated_version,
         "capabilities": {
             "tools": {
-                "listChanged": False  # 暂不支持工具列表变更通知
+                # 暂不支持工具列表变更通知
+                "listChanged": False
             },
             "logging": {},
         },
@@ -204,11 +259,11 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def handle_tools_list() -> Dict[str, Any]:
+async def handle_tools_list(schema_mode: str = MCP_SCHEMA_MODE_FULL) -> Dict[str, Any]:
     """
-    处理工具列表请求
+    处理工具列表请求（默认完整合同；compact 模式按客户端预算投影）
     """
-    tools = list_exposed_tools()
+    tools = list_client_tools(schema_mode)
 
     # 转换为 MCP 工具格式
     mcp_tools = []
@@ -260,7 +315,7 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     },
 )
 async def delete_mcp_session(
-    _: Annotated[str, Depends(verify_apikey)] = None,
+    _: Annotated[Union[str, None], Depends(verify_apikey)] = None,
 ) -> Union[JSONResponse, Response]:
     """
     终止 MCP 会话（无状态模式下仅返回成功）
@@ -268,9 +323,7 @@ async def delete_mcp_session(
     return Response(status_code=204)
 
 
-# ==================== HTTP 工具管理端点 ====================
-
-
+# HTTP 工具管理端点
 @router.get(
     "/tools",
     summary="列出所有可用工具",
@@ -307,12 +360,13 @@ async def list_tools(_: Annotated[str, Depends(verify_apikey)], page: Compatible
     summary="调用工具",
     response_model=_SchemaResponse[_SchemaToolCallData],
 )
-async def call_tool(request: _SchemaToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None) -> Any:
+async def call_tool(request: _SchemaToolCallRequest, _: Annotated[Union[str, None], Depends(verify_apikey)] = None) -> Any:
     """
-    调用指定的工具
+    调用对外开放的指定工具。
 
-    Returns:
-        工具执行结果
+    :param request: 工具名称和对应参数
+    :param _: 已通过 API Key 校验的依赖结果
+    :return: 工具执行结果；工具不可见、不存在或执行异常时返回失败响应
     """
     try:
         if request.tool_name in MCP_HIDDEN_TOOLS:
@@ -336,10 +390,12 @@ async def call_tool(request: _SchemaToolCallRequest, _: Annotated[str, Depends(v
 )
 async def get_tool_info(tool_name: str, _: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
-    获取指定工具的详细信息
+    获取对外开放工具的详细信息。
 
-    Returns:
-        工具的详细信息，包括名称、描述和参数定义
+    :param tool_name: 工具登记名称
+    :param _: 已验证的 API Key
+    :return: 工具名称、中文描述和输入 Schema
+    :raises HTTPException: 工具不存在时为 404，读取失败时为 500
     """
     try:
         # 获取所有工具
@@ -369,10 +425,12 @@ async def get_tool_info(tool_name: str, _: Annotated[str, Depends(verify_apikey)
 )
 async def get_tool_schema(tool_name: str, _: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
-    获取指定工具的参数Schema（JSON Schema格式）
+    读取对外开放工具的输入 JSON Schema。
 
-    Returns:
-        工具的JSON Schema定义
+    :param tool_name: 工具登记名称
+    :param _: 已验证的 API Key
+    :return: 工具输入 Schema
+    :raises HTTPException: 工具不存在时为 404，读取失败时为 500
     """
     try:
         # 获取所有工具

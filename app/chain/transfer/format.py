@@ -1,4 +1,6 @@
-"""整理剧集命名与格式规则推荐。"""
+"""
+整理剧集命名与格式规则推荐。
+"""
 
 from pathlib import Path
 from typing import List, Optional, Tuple, Union, cast
@@ -6,7 +8,7 @@ from typing import List, Optional, Tuple, Union, cast
 from app.application.configuration import (
     get_configured_system_config,
 )
-from app.application.formatting import EpisodeFormatRuleHelper
+from app.application.formatting import EpisodeFormatRecommendation, EpisodeFormatRuleHelper
 from app.application.history.retry import max_failed_retries
 from app.application.transfer.feedback import TransferFailureNotification, classify_transfer_failure
 from app.application.transfer.workflow import TransferTask
@@ -27,7 +29,9 @@ from app.schemas.types import (
 
 
 class EpisodeFormatMixin(_TransferOwnerBase):
-    """提供剧集命名建议、格式规则选择和样例发现。"""
+    """
+    提供剧集命名建议、格式规则选择和样例发现。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -38,6 +42,7 @@ class EpisodeFormatMixin(_TransferOwnerBase):
     ) -> Optional[str]:
         """
         获取重命名后的名称
+
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :return: 重命名后的名称（含目录）
@@ -47,12 +52,11 @@ class EpisodeFormatMixin(_TransferOwnerBase):
         # 获取集信息，供重命名模块使用
         episodes_info: Optional[List[TmdbEpisode]] = None
         if mediainfo.type == MediaType.TV:
-            # 判断注意season为0的情况
+            # 第零季表示特别篇，不能按空值回退为第一季。
             season_num = mediainfo.season
             if season_num is None and meta.season_seq:
                 if meta.season_seq.isdigit():
                     season_num = int(meta.season_seq)
-            # 默认值1
             if season_num is None:
                 season_num = 1
             episodes_info = self.run_module(
@@ -81,7 +85,7 @@ class EpisodeFormatMixin(_TransferOwnerBase):
             self,
             fileitem: Optional[FileItem],
             fileitems: Optional[List[FileItem]] = None,
-    ) -> Tuple[bool, str, Optional[dict]]:
+    ) -> Tuple[bool, str, Optional[EpisodeFormatRecommendation]]:
         """
         根据目录样本推荐集数定位模板
         """
@@ -148,6 +152,8 @@ class EpisodeFormatMixin(_TransferOwnerBase):
         """
         将文件或目录入参归一化为目录对象
         """
+        if not fileitem.path:
+            return None
         storage_chain = StorageChain()
         if fileitem.type == "dir":
             return storage_chain.get_item(fileitem)
@@ -236,7 +242,9 @@ def build_failure_notification(
     *, manual_identity: bool = False, retry_count: Optional[int] = None,
     auto_paused: bool = False,
 ) -> TransferFailureNotification:
-    """从整理工作项构造失败通知快照，不触发聚合或消息发送。"""
+    """
+    从整理工作项构造失败通知快照，不触发聚合或消息发送。
+    """
     from app.runtime.errors import public_error_message
     feedback = classify_transfer_failure(transferinfo.message)
     return TransferFailureNotification(

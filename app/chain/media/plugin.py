@@ -1,4 +1,6 @@
-"""插件识别选择、事件解析与辅助识别 owner。"""
+"""
+插件识别顺序选择、链式事件解析与辅助识别编排。
+"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -34,15 +36,25 @@ RecognitionPredicate = Callable[[Optional[MediaInfo]], bool]
 
 
 class _RecognitionSource(Enum):
-    """标识一次识别选择流程当前需要调用的真实 I/O 来源。"""
+    """
+    标识一次识别选择流程当前需要调用的真实 I/O 来源。
+    """
 
+    # 调用项目内置媒体识别来源。
     NATIVE = "native"
+    # 调用插件链式辅助识别事件。
     PLUGIN = "plugin"
 
 
 @dataclass(frozen=True, slots=True)
 class _RecognitionSelection:
-    """统一同步与异步识别入口的来源顺序、回退和结果采信决策。"""
+    """
+    统一同步与异步识别入口的来源顺序、回退和结果采信决策。
+
+    :param plugin_first: 是否先尝试插件辅助识别再回退内置来源
+    :param plugin_available: 当前媒体辅助识别事件是否存在处理器
+    :param is_recognized: 判断结果是否具有可采信媒体身份的谓词
+    """
 
     plugin_first: bool
     plugin_available: bool
@@ -51,7 +63,12 @@ class _RecognitionSelection:
     def flow(
         self,
     ) -> Generator[_RecognitionSource, Optional[MediaInfo], Optional[MediaInfo]]:
-        """按相同状态机产出 I/O 动作，并接收各入口自己的调用结果。"""
+        """
+        按统一顺序产出识别来源，并通过 send 接收对应入口的识别结果。
+
+        :yields: 下一步应调用的内置来源或插件来源
+        :return: 按身份有效性和回退顺序选出的结果，均未命中时为 None
+        """
         if self.plugin_first and self.plugin_available:
             helped = yield _RecognitionSource.PLUGIN
             if self.is_recognized(helped):
@@ -68,7 +85,14 @@ class _RecognitionSelection:
 
 @dataclass(frozen=True, slots=True)
 class _VideoHelpElements:
-    """保存影视辅助识别事件解析出的规范化标题要素。"""
+    """
+    保存影视辅助识别事件解析出的规范化标题要素。
+
+    :param title: 插件辅助识别后确认的媒体标题
+    :param year: 插件提供的发行年份，未知时为 None
+    :param season: 插件提供的季号，未指定时为 None
+    :param episode: 插件提供的集号，未指定时为 None
+    """
 
     title: str
     year: Optional[str]
@@ -77,25 +101,40 @@ class _VideoHelpElements:
 
 
 def _normalize_music_year(value: object) -> Optional[int]:
-    """把本地或插件音乐年份统一为正整数，空值和非法文本返回空。"""
+    """
+    把本地或插件音乐年份的数字文本转为整数，空值和非数字文本返回 None。
+    """
     text = str(value or "").strip()
     return int(text) if text.isdigit() else None
 
 
 class _EventResult(Protocol):
-    """声明插件链式事件返回值所需的最小读取合同。"""
+    """
+    声明插件链式事件返回值所需的最小读取合同。
+    """
 
     @property
     def event_data(self) -> Mapping[str, object]:
-        """返回插件写入的链式事件数据。"""
+        """
+        返回插件写入的链式事件数据。
+
+        :return: 插件处理后的链式事件数据，包含修正的媒体识别要素
+        """
         ...
 
 
 class _EventManagerPort(Protocol):
-    """声明插件识别 owner 使用的事件管理器能力。"""
+    """
+    声明插件辅助识别需要的事件管理器能力。
+    """
 
     def check(self, event_type: ChainEventType) -> bool:
-        """返回指定链式事件是否存在可用处理器。"""
+        """
+        返回指定链式事件是否存在可用处理器。
+
+        :param event_type: 待检查的影视或音乐辅助识别事件类型
+        :return: 至少存在一个已注册处理器时为 True
+        """
         ...
 
     def send_event(
@@ -103,7 +142,13 @@ class _EventManagerPort(Protocol):
         event_type: ChainEventType,
         data: Mapping[str, object],
     ) -> Optional[_EventResult]:
-        """同步发送链式事件并返回插件处理结果。"""
+        """
+        同步发送链式事件并返回插件处理结果。
+
+        :param event_type: 本次需要调用的辅助识别事件类型
+        :param data: 交给插件读取和修正的媒体识别上下文
+        :return: 携带插件处理数据的链式事件结果，无有效结果时为 None
+        """
         ...
 
     async def async_send_event(
@@ -111,14 +156,22 @@ class _EventManagerPort(Protocol):
         event_type: ChainEventType,
         data: Mapping[str, object],
     ) -> Optional[_EventResult]:
-        """异步发送链式事件并返回插件处理结果。"""
+        """
+        异步发送链式事件并返回插件处理结果。
+
+        :param event_type: 本次需要调用的辅助识别事件类型
+        :param data: 交给插件读取和修正的媒体识别上下文
+        :return: 携带插件处理数据的链式事件结果，无有效结果时为 None
+        """
         ...
 
 
 if TYPE_CHECKING:
 
     class _MediaPluginOwnerBase:
-        """声明插件识别 owner 依赖的跨 owner 能力。"""
+        """
+        声明插件辅助识别依赖的其他媒体组件能力。
+        """
 
         eventmanager: _EventManagerPort
 
@@ -131,7 +184,9 @@ if TYPE_CHECKING:
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """按修正后的元数据同步重新识别媒体。"""
+            """
+            按修正后的元数据同步重新识别媒体。
+            """
             ...
 
         async def async_recognize_media(
@@ -143,7 +198,9 @@ if TYPE_CHECKING:
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """按修正后的元数据异步重新识别媒体。"""
+            """
+            按修正后的元数据异步重新识别媒体。
+            """
             ...
 
 else:
@@ -151,14 +208,18 @@ else:
 
 
 class MediaPluginOwner(_MediaPluginOwnerBase):
-    """插件识别选择、事件解析与辅助识别 owner。"""
+    """
+    插件识别顺序选择、链式事件解析与辅助识别编排。
+    """
 
     def _recognition_selection(
         self,
         plugin_event: ChainEventType,
         is_recognized: Optional[RecognitionPredicate],
     ) -> _RecognitionSelection:
-        """冻结本次识别的插件可用性、优先级和结果采信谓词。"""
+        """
+        冻结本次识别的插件可用性、优先级和结果采信谓词。
+        """
         return _RecognitionSelection(
             plugin_first=get_chain_runtime_config_snapshot().recognize_plugin_first,
             plugin_available=self.eventmanager.check(plugin_event),
@@ -173,7 +234,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         log_name: str,
         log_context: str,
     ) -> None:
-        """在状态机请求真实 I/O 前记录统一的来源切换原因。"""
+        """
+        在状态机请求真实 I/O 前记录统一的来源切换原因。
+        """
         if action is _RecognitionSource.PLUGIN:
             if plugin_first:
                 logger.info(
@@ -200,7 +263,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         native_fn: RecognitionCallback,
         plugin_fn: RecognitionCallback,
     ) -> Optional[MediaInfo]:
-        """同步驱动共享选择状态机，并只在动作边界调用同步实现。"""
+        """
+        同步驱动共享选择状态机，并只在动作边界调用同步实现。
+        """
         flow = selection.flow()
         try:
             action = next(flow)
@@ -229,7 +294,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         native_fn: AsyncRecognitionCallback,
         plugin_fn: AsyncRecognitionCallback,
     ) -> Optional[MediaInfo]:
-        """异步驱动共享选择状态机，并只在动作边界等待异步实现。"""
+        """
+        异步驱动共享选择状态机，并只在动作边界等待异步实现。
+        """
         flow = selection.flow()
         try:
             action = next(flow)
@@ -295,7 +362,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
     def _video_help_elements(
         event_data: Mapping[str, object],
     ) -> Optional[_VideoHelpElements]:
-        """规范化影视辅助识别结果，标题为空或未知时拒绝该结果。"""
+        """
+        规范化影视辅助识别结果，标题为空或未知时拒绝该结果。
+        """
         recognized_title: Optional[str] = None
         recognized_year: Optional[str] = None
         if event_data.get("name"):
@@ -324,7 +393,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         org_meta: MetaBase,
         event_data: Mapping[str, object],
     ) -> Optional[MetaBase]:
-        """统一校验影视辅助要素并把有效变化应用到本次元数据。"""
+        """
+        统一校验影视辅助要素并把有效变化应用到本次元数据。
+        """
         elements = MediaPluginOwner._video_help_elements(event_data)
         if elements is None:
             return None
@@ -368,7 +439,6 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
                 media_source=media_source,
                 music_type=music_type,
             )
-        # 发送请求事件，等待结果
         result = self.eventmanager.send_event(
             ChainEventType.NameRecognize,
             {
@@ -432,7 +502,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         org_meta: MetaMusic,
         music_type: Optional[str],
     ) -> Mapping[str, object]:
-        """为同步与异步音乐辅助识别生成完全相同的事件载荷。"""
+        """
+        为同步与异步音乐辅助识别生成完全相同的事件载荷。
+        """
         return {
             "title": title,
             "artist": org_meta.artist,
@@ -446,7 +518,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         org_meta: MetaMusic,
         event_data: Mapping[str, object],
     ) -> Optional[MetaMusic]:
-        """统一校验音乐辅助要素，并仅为真实变化构造重新匹配元数据。"""
+        """
+        统一校验音乐辅助要素，并仅为真实变化构造重新匹配元数据。
+        """
         name, artist, album, year = MediaPluginOwner._parse_music_recognize_event(
             event_data
         )
@@ -501,7 +575,9 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         album: Optional[str],
         year: Optional[int],
     ) -> MetaMusic:
-        """按插件修正标题要素，并保留本地轨道与音频判定证据。"""
+        """
+        按插件修正标题要素，并保留本地轨道与音频判定证据。
+        """
         return MetaMusic(
             org_string=org_meta.org_string,
             title=name,
@@ -582,7 +658,6 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
                 media_source=media_source,
                 music_type=music_type,
             )
-        # 发送请求事件，等待结果
         result = await self.eventmanager.async_send_event(
             ChainEventType.NameRecognize,
             {
@@ -591,7 +666,6 @@ class MediaPluginOwner(_MediaPluginOwnerBase):
         )
         if not result:
             return None
-        # 获取返回事件数据
         event_data = result.event_data or {}
         logger.info(f"获取到辅助识别结果：{event_data}")
         rematch_meta = MediaPluginOwner._prepare_video_help_meta(org_meta, event_data)

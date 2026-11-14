@@ -1,14 +1,17 @@
-import time
-from typing import Optional, Union
+"""
+已发送通知与消息历史的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
 
+import time
+from typing import Any, Optional, Union
+
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, select
 
 from app.db.base import DbOper
 from app.db.models.message import Message
-from app.schemas.notification import NotificationChannel
-from app.schemas.message import MessageType
+from app.schemas.types import MessageType, NotificationChannel
 
 
 class MessageOper(DbOper):
@@ -29,10 +32,11 @@ class MessageOper(DbOper):
             link: Optional[str] = None,
             userid: Optional[str] = None,
             action: Optional[int] = 1,
-            note: Optional[Union[list, dict]] = None,
-            **kwargs) -> dict:
+            note: Optional[Union[list[Any], dict[str, Any]]] = None,
+            **kwargs: Any) -> dict[str, Any]:
         """
         新增消息
+
         :param channel: 消息渠道
         :param source: 来源
         :param mtype: 消息类型
@@ -64,7 +68,8 @@ class MessageOper(DbOper):
                 kwargs.pop(k)
 
         message = Message(**kwargs)
-        return self._execute_sync_write(message.create_and_to_dict)
+        result: dict[str, Any] = self._execute_sync_write(message.create_and_to_dict)
+        return result
 
     async def async_add(self,
                         channel: Optional[NotificationChannel] = None,
@@ -76,8 +81,8 @@ class MessageOper(DbOper):
                         link: Optional[str] = None,
                         userid: Optional[str] = None,
                         action: Optional[int] = 1,
-                        note: Optional[Union[list, dict]] = None,
-                        **kwargs) -> Message:
+                        note: Optional[Union[list[Any], dict[str, Any]]] = None,
+                        **kwargs: Any) -> Message:
         """
         异步新增消息
         """
@@ -106,7 +111,7 @@ class MessageOper(DbOper):
         """
         分页获取消息记录。
         """
-        return self._execute_sync_query(
+        messages: list[Message] = self._execute_sync_query(
             lambda session: list(session.execute(
                 select(Message)
                 .order_by(Message.reg_time.desc(), Message.id.desc())
@@ -114,6 +119,7 @@ class MessageOper(DbOper):
                 .limit(count)
             ).scalars().all())
         )
+        return messages
 
     def exists_by_source(self, source: str) -> bool:
         """
@@ -122,11 +128,12 @@ class MessageOper(DbOper):
         :param source: 消息来源唯一标识
         :return: 是否存在匹配记录
         """
-        return self._execute_sync_query(
+        exists: bool = self._execute_sync_query(
             lambda session: session.execute(
                 select(Message.id).where(Message.source == source).limit(1)
             ).scalars().first() is not None
         )
+        return exists
 
     async def async_list_by_page(
             self, page: int = 1, count: int = 30
@@ -135,7 +142,9 @@ class MessageOper(DbOper):
         分页获取消息记录。
         """
         async def query(session: AsyncSession) -> list[Message]:
-            """在调用方异步会话中执行消息分页查询。"""
+            """
+            在调用方异步会话中执行消息分页查询。
+            """
             result = await session.execute(
                 select(Message)
                 .order_by(Message.reg_time.desc(), Message.id.desc())
@@ -144,7 +153,8 @@ class MessageOper(DbOper):
             )
             return list(result.scalars().all())
 
-        return await self._execute_async_query(query)
+        messages: list[Message] = await self._execute_async_query(query)
+        return messages
 
     async def async_list_sent_by_page(
             self,
@@ -158,7 +168,9 @@ class MessageOper(DbOper):
         分页获取系统发送的通知消息。
         """
         async def query(session: AsyncSession) -> list[Message]:
-            """在调用方异步会话中执行通知消息分页查询。"""
+            """
+            在调用方异步会话中执行通知消息分页查询。
+            """
             statement = select(Message).where(Message.action == 1)
             if all_clear_before:
                 statement = statement.where(Message.reg_time > all_clear_before)
@@ -181,4 +193,5 @@ class MessageOper(DbOper):
             )
             return list(result.scalars().all())
 
-        return await self._execute_async_query(query)
+        messages: list[Message] = await self._execute_async_query(query)
+        return messages

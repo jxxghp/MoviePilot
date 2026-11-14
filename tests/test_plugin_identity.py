@@ -1,4 +1,6 @@
-"""插件身份事实、条件写和存量迁移决策测试。"""
+"""
+插件身份事实、条件写和存量迁移决策测试。
+"""
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -42,7 +44,9 @@ def _identity(
     *,
     declared_version: str | None = None,
 ) -> PluginIdentity:
-    """构造一份已从官方仓成功安装的物理插件身份。"""
+    """
+    构造一份已从官方仓成功安装的物理插件身份。
+    """
     installed_version = declared_version or "1.0.0"
     return PluginIdentity(
         plugin_id=plugin_id,
@@ -76,7 +80,9 @@ def _identity(
 
 @pytest.fixture
 def identity_store(tmp_path):
-    """创建可跨线程竞争的独立 SQLite 身份表。"""
+    """
+    创建可跨线程竞争的独立 SQLite 身份表。
+    """
     engine = sa.create_engine(
         f"sqlite:///{tmp_path / 'plugin-identity.db'}",
         connect_args={"check_same_thread": False},
@@ -90,7 +96,9 @@ def identity_store(tmp_path):
 
 
 def test_plugin_identity_model_is_registered_by_composition_entry() -> None:
-    """组合根加载模型后必须包含插件身份表及物理 ID 唯一约束。"""
+    """
+    组合根加载模型后必须包含插件身份表及物理 ID 唯一约束。
+    """
     load_all_models()
 
     table = PluginIdentityModel.__table__
@@ -106,7 +114,9 @@ def test_plugin_identity_model_is_registered_by_composition_entry() -> None:
 def test_plugin_identity_store_normalizes_reads_and_rejects_case_duplicate(
     identity_store,
 ) -> None:
-    """同一物理目录的大小写别名只能对应数据库中的一行。"""
+    """
+    同一物理目录的大小写别名只能对应数据库中的一行。
+    """
     created = identity_store.compare_and_set(
         _identity("DemoPlugin"),
         expected_revision=None,
@@ -123,7 +133,9 @@ def test_plugin_identity_store_normalizes_reads_and_rejects_case_duplicate(
 def test_plugin_identity_store_ignores_invalid_legacy_ids_on_read(
     identity_store,
 ) -> None:
-    """历史安装清单含不合规插件 ID 时，身份读取不得阻断插件列表。"""
+    """
+    历史安装清单含不合规插件 ID 时，身份读取不得阻断插件列表。
+    """
     created = identity_store.compare_and_set(
         _identity("DemoPlugin"),
         expected_revision=None,
@@ -136,7 +148,9 @@ def test_plugin_identity_store_ignores_invalid_legacy_ids_on_read(
 
 
 def test_plugin_identity_store_rejects_stale_revision(identity_store) -> None:
-    """旧安装事务不能覆盖已经提交的新身份。"""
+    """
+    旧安装事务不能覆盖已经提交的新身份。
+    """
     original = identity_store.compare_and_set(
         _identity(),
         expected_revision=None,
@@ -165,7 +179,9 @@ def test_plugin_identity_store_rejects_stale_revision(identity_store) -> None:
 
 
 def test_plugin_identity_store_rejects_implicit_source_change(identity_store) -> None:
-    """通用条件写不能代替管理员显式换源命令。"""
+    """
+    通用条件写不能代替管理员显式换源命令。
+    """
     original = identity_store.compare_and_set(
         _identity(),
         expected_revision=None,
@@ -192,7 +208,9 @@ def test_plugin_identity_store_rejects_implicit_source_change(identity_store) ->
 def test_plugin_identity_store_allows_only_one_same_revision_writer(
     identity_store,
 ) -> None:
-    """两个独立会话竞争同一 revision 时必须恰好一个提交成功。"""
+    """
+    两个独立会话竞争同一 revision 时必须恰好一个提交成功。
+    """
     original = identity_store.compare_and_set(
         _identity(),
         expected_revision=None,
@@ -200,7 +218,9 @@ def test_plugin_identity_store_allows_only_one_same_revision_writer(
     barrier = threading.Barrier(2)
 
     def update(version: str) -> str:
-        """在相同起点并发提交不同版本。"""
+        """
+        在相同起点并发提交不同版本。
+        """
         barrier.wait()
         try:
             identity_store.compare_and_set(
@@ -223,7 +243,9 @@ def test_plugin_identity_store_allows_only_one_same_revision_writer(
 
 
 def test_write_command_rolls_back_when_conditional_replace_loses_race() -> None:
-    """条件更新在最终 CAS 失利时必须确定回滚并报告竞争冲突。"""
+    """
+    条件更新在最终 CAS 失利时必须确定回滚并报告竞争冲突。
+    """
     current = _identity()
     repository = Mock()
     repository.get.return_value = current
@@ -247,7 +269,9 @@ def test_write_command_rolls_back_when_conditional_replace_loses_race() -> None:
 
 
 def test_local_payload_preserves_trusted_online_binding() -> None:
-    """本地开发覆盖只改变载荷事实，不得抹掉可信在线更新仓库。"""
+    """
+    本地开发覆盖只改变载荷事实，不得抹掉可信在线更新仓库。
+    """
     identity = replace(
         _identity(),
         payload_source_type=PluginPayloadSourceType.LOCAL,
@@ -274,7 +298,9 @@ def test_local_payload_preserves_trusted_online_binding() -> None:
 
 
 def test_first_local_sync_has_a_nonlegacy_identity_basis() -> None:
-    """首次本地同步不得被记录为未知存量插件迁移。"""
+    """
+    首次本地同步不得被记录为未知存量插件迁移。
+    """
     identity = replace(
         _identity(),
         trusted_source_type=TrustedPluginSourceType.UNKNOWN,
@@ -290,7 +316,9 @@ def test_first_local_sync_has_a_nonlegacy_identity_basis() -> None:
 
 
 def test_online_binding_rejects_local_only_basis() -> None:
-    """已绑定在线仓库不能冒用首次本地同步的身份依据。"""
+    """
+    已绑定在线仓库不能冒用首次本地同步的身份依据。
+    """
     with pytest.raises(ValueError, match="未绑定来源依据"):
         replace(_identity(), binding_basis=PluginBindingBasis.LOCAL_ONLY)
 
@@ -308,13 +336,17 @@ def test_plugin_identity_rejects_audit_times_outside_record_lifetime(
     field_name,
     value,
 ) -> None:
-    """来源审计时间必须落在该 revision 的创建和更新时间范围内。"""
+    """
+    来源审计时间必须落在该 revision 的创建和更新时间范围内。
+    """
     with pytest.raises(ValueError, match="审计时间"):
         replace(_identity(), **{field_name: value})
 
 
 def test_unknown_payload_rejects_version_and_receipt_evidence() -> None:
-    """存量载荷来源未知时不得保留看似经过安装确认的版本证据。"""
+    """
+    存量载荷来源未知时不得保留看似经过安装确认的版本证据。
+    """
     with pytest.raises(ValueError, match="未知载荷不能携带"):
         replace(
             _identity(),
@@ -325,7 +357,9 @@ def test_unknown_payload_rejects_version_and_receipt_evidence() -> None:
 
 
 def test_online_payload_must_match_trusted_source() -> None:
-    """在线载荷来源与可信更新仓库不一致时身份必须失败关闭。"""
+    """
+    在线载荷来源与可信更新仓库不一致时身份必须失败关闭。
+    """
     with pytest.raises(ValueError, match="必须与可信更新来源一致"):
         replace(
             _identity(),
@@ -345,7 +379,9 @@ def test_trusted_source_type_must_match_official_repository(
     source_type,
     source_key,
 ) -> None:
-    """官方仓库键与官方来源类型不能形成相互矛盾的信任事实。"""
+    """
+    官方仓库键与官方来源类型不能形成相互矛盾的信任事实。
+    """
     with pytest.raises(ValueError, match="官方来源类型"):
         replace(
             _identity(),
@@ -365,7 +401,9 @@ def test_source_candidate_type_must_match_official_repository(
     source_type,
     source_key,
 ) -> None:
-    """迁移候选也必须服从与持久化身份相同的来源分类合同。"""
+    """
+    迁移候选也必须服从与持久化身份相同的来源分类合同。
+    """
     with pytest.raises(ValueError, match="官方来源类型"):
         PluginSourceCandidate(source_type, source_key)
 
@@ -375,7 +413,9 @@ def test_source_candidate_type_must_match_official_repository(
     (" DemoPlugin", "DemoPlugin ", "A" * 129),
 )
 def test_plugin_identity_rejects_noncanonical_physical_id(plugin_id) -> None:
-    """物理 ID 不得靠静默裁剪或数据库方言差异改变身份。"""
+    """
+    物理 ID 不得靠静默裁剪或数据库方言差异改变身份。
+    """
     with pytest.raises(ValueError, match="插件 ID"):
         _identity(plugin_id)
 
@@ -391,13 +431,17 @@ def test_plugin_identity_rejects_values_longer_than_database_columns(
     value,
     message,
 ) -> None:
-    """SQLite 与 PostgreSQL 必须在进入持久化前共享相同长度边界。"""
+    """
+    SQLite 与 PostgreSQL 必须在进入持久化前共享相同长度边界。
+    """
     with pytest.raises(ValueError, match=message):
         replace(_identity(), **{field_name: value})
 
 
 def test_legacy_official_candidate_binds_updates_but_not_payload() -> None:
-    """官方默认只建立未来更新绑定，不能冒充存量载荷来源。"""
+    """
+    官方默认只建立未来更新绑定，不能冒充存量载荷来源。
+    """
     identity = plan_legacy_plugin_identity(
         plugin_id="DemoPlugin",
         market_availability=PluginMarketAvailability.AVAILABLE,
@@ -423,7 +467,9 @@ def test_legacy_official_candidate_binds_updates_but_not_payload() -> None:
 
 
 def test_legacy_single_third_party_candidate_uses_tofu() -> None:
-    """唯一第三方候选可建立一次性更新绑定，但载荷仍保持未知。"""
+    """
+    唯一第三方候选可建立一次性更新绑定，但载荷仍保持未知。
+    """
     identity = plan_legacy_plugin_identity(
         plugin_id="DemoPlugin",
         market_availability=PluginMarketAvailability.AVAILABLE,
@@ -466,7 +512,9 @@ def test_legacy_unavailable_empty_or_ambiguous_market_stays_unbound(
     availability,
     candidates,
 ) -> None:
-    """离线、无候选和多候选必须保持可区分输入，但均不得猜测绑定。"""
+    """
+    离线、无候选和多候选必须保持可区分输入，但均不得猜测绑定。
+    """
     identity = plan_legacy_plugin_identity(
         plugin_id="DemoPlugin",
         market_availability=availability,
@@ -484,7 +532,9 @@ def test_identity_oper_batch_read_survives_the_composition_root_session(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """无会话批量读必须在事务内取完行：会话关闭后再消费游标已经读不到数据。"""
+    """
+    无会话批量读必须在事务内取完行：会话关闭后再消费游标已经读不到数据。
+    """
     engine = sa.create_engine(f"sqlite:///{tmp_path / 'plugin-identity.db'}")
     PluginIdentityModel.__table__.create(engine)
     factory = sessionmaker(bind=engine)
@@ -515,7 +565,9 @@ def test_identity_oper_batch_read_survives_the_composition_root_session(
 
 
 def test_virtual_instance_does_not_create_independent_plugin_identity() -> None:
-    """有效 PluginInstances 派生实例只继承物理宿主身份。"""
+    """
+    有效 PluginInstances 派生实例只继承物理宿主身份。
+    """
     assert plan_legacy_plugin_identity(
         plugin_id="DemoPluginWork",
         market_availability=PluginMarketAvailability.AVAILABLE,

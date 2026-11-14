@@ -1,4 +1,6 @@
-"""API 响应中稳定集合与动态 JSON 字段的模型契约测试。"""
+"""
+API 响应中稳定集合与动态 JSON 字段的模型契约测试。
+"""
 
 from app.schemas.event import DiscoverMediaSource
 from app.schemas.file import FileItem, StorageTransType
@@ -14,7 +16,9 @@ from app.schemas.user import User, UserCreate, UserUpdate
 
 
 def _nonnull_branch(schema: dict) -> dict:
-    """返回可空字段中非 null 的 JSON Schema 分支。"""
+    """
+    返回可空字段中非 null 的 JSON Schema 分支。
+    """
     return next(
         branch
         for branch in schema.get("anyOf", [schema])
@@ -23,7 +27,9 @@ def _nonnull_branch(schema: dict) -> dict:
 
 
 def test_stable_collections_serialize_without_changing_payload_shape():
-    """稳定集合收窄后应继续输出原有对象、数组及字段名称。"""
+    """
+    稳定集合收窄后应继续输出原有对象、数组及字段名称。
+    """
     child = FileItem(type="file", name="episode.mkv")
     file_item = FileItem(type="dir", name="Season 1", children=[child])
     episode = TmdbEpisode(
@@ -64,7 +70,9 @@ def test_stable_collections_serialize_without_changing_payload_shape():
 
 
 def test_site_and_subscribe_legacy_values_remain_compatible():
-    """站点消息的三项、四项协议以及订阅集号列表应继续兼容。"""
+    """
+    站点消息的三项、四项协议以及订阅集号列表应继续兼容。
+    """
     userdata = SiteUserData(
         seeding_info=[[3, 1024]],
         message_unread_contents=[
@@ -86,7 +94,9 @@ def test_site_and_subscribe_legacy_values_remain_compatible():
 
 
 def test_permissions_and_extension_json_keep_values_but_have_explicit_schemas():
-    """权限分类和功能映射应保持原值，扩展数据应展示合法 JSON 类型。"""
+    """
+    权限分类和功能映射应保持原值，扩展数据应展示合法 JSON 类型。
+    """
     permissions = {
         "manage": True,
         "search": False,
@@ -137,7 +147,9 @@ def test_permissions_and_extension_json_keep_values_but_have_explicit_schemas():
 
 
 def test_collection_json_schemas_define_items_or_tuple_members():
-    """集合字段在 OpenAPI 生成前就应声明元素或元组成员结构。"""
+    """
+    集合字段在 OpenAPI 生成前就应声明元素或元组成员结构。
+    """
     file_schema = FileItem.model_json_schema()
     file_item_schema = file_schema["$defs"]["FileItem"]
     children_schema = _nonnull_branch(file_item_schema["properties"]["children"])
@@ -159,7 +171,9 @@ def test_collection_json_schemas_define_items_or_tuple_members():
 
 
 def test_discover_media_source_preserves_plugin_identifiers():
-    """发现源按插件标识补齐身份字段，不转换插件特定前缀。"""
+    """
+    发现源按插件标识补齐身份字段，不转换插件特定前缀。
+    """
     legacy = DiscoverMediaSource(
         name="哔哩哔哩",
         mediaid_prefix="bilibili",

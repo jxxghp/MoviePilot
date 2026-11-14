@@ -1,4 +1,6 @@
-"""API 后台任务必须进入宿主 TaskRegistry 的回归测试。"""
+"""
+API 后台任务必须进入宿主 TaskRegistry 的回归测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -12,16 +14,22 @@ from app.runtime.tasks import TaskRegistry
 
 
 class _TaskRegistry(TaskRegistry):
-    """记录同步任务提交参数，不在端点测试中执行真实业务。"""
+    """
+    记录同步任务提交参数，不在端点测试中执行真实业务。
+    """
 
     def __init__(self) -> None:
-        """初始化调用记录。"""
+        """
+        初始化调用记录。
+        """
         super().__init__()
         self.calls: list[tuple] = []
         self.threadsafe_calls: list[tuple] = []
 
     def create_sync(self, function, *args, owner: str, **kwargs) -> None:
-        """保存函数、参数和 owner。"""
+        """
+        保存函数、参数和 owner。
+        """
         self.calls.append((function, args, kwargs, owner))
 
     def create(
@@ -31,7 +39,9 @@ class _TaskRegistry(TaskRegistry):
         owner: str,
         cancel_on_shutdown: bool = True,
     ) -> None:
-        """保存异步任务登记参数，并关闭未执行的 coroutine。"""
+        """
+        保存异步任务登记参数，并关闭未执行的 coroutine。
+        """
         coroutine.close()
         self.calls.append((None, (), {"cancel_on_shutdown": cancel_on_shutdown}, owner))
 
@@ -43,16 +53,22 @@ class _TaskRegistry(TaskRegistry):
         owner: str,
         cancel_on_shutdown: bool = True,
     ) -> None:
-        """保存跨线程任务参数，并关闭未执行的 coroutine。"""
+        """
+        保存跨线程任务参数，并关闭未执行的 coroutine。
+        """
         coroutine.close()
         self.threadsafe_calls.append((loop, owner, cancel_on_shutdown))
 
 
 class _RunningTaskRegistry(TaskRegistry):
-    """执行协议流任务并保留 owner，验证真实 TaskRegistry 行为。"""
+    """
+    执行协议流任务并保留 owner，验证真实 TaskRegistry 行为。
+    """
 
     def __init__(self) -> None:
-        """初始化 owner 调用记录。"""
+        """
+        初始化 owner 调用记录。
+        """
         super().__init__()
         self.owners: list[str] = []
 
@@ -63,7 +79,9 @@ class _RunningTaskRegistry(TaskRegistry):
         owner: str,
         cancel_on_shutdown: bool = True,
     ) -> asyncio.Task:
-        """记录 owner 后委托真实登记器创建任务。"""
+        """
+        记录 owner 后委托真实登记器创建任务。
+        """
         self.owners.append(owner)
         return super().create(
             coroutine,
@@ -73,10 +91,14 @@ class _RunningTaskRegistry(TaskRegistry):
 
 
 class _CompletedSearchTaskRegistry(_TaskRegistry):
-    """返回已完成结果，验证手工搜索先保存安排再启动后台处理。"""
+    """
+    返回已完成结果，验证手工搜索先保存安排再启动后台处理。
+    """
 
     def create_sync(self, function, *args, owner: str, **kwargs) -> asyncio.Future:
-        """记录同步任务，并为测试提供可等待的安排结果。"""
+        """
+        记录同步任务，并为测试提供可等待的安排结果。
+        """
         super().create_sync(function, *args, owner=owner, **kwargs)
         future = asyncio.get_running_loop().create_future()
         result = None
@@ -91,50 +113,72 @@ class _CompletedSearchTaskRegistry(_TaskRegistry):
 
 
 class _SubscriptionSearchTargets:
-    """为手工搜索命令提供当前用户可访问的订阅编号。"""
+    """
+    为手工搜索命令提供当前用户可访问的订阅编号。
+    """
 
     async def list_search_ids(self, username, state) -> list[int]:
-        """返回稳定目标，并校验超级用户读取全部运行中订阅。"""
+        """
+        返回稳定目标，并校验超级用户读取全部运行中订阅。
+        """
         assert username is None
         assert state == "R"
         return [11, 12]
 
 
 class _ProtocolManager:
-    """提供兼容协议流结束时需要的最小 AgentManager 接口。"""
+    """
+    提供兼容协议流结束时需要的最小 AgentManager 接口。
+    """
 
     async def clear_session(self, **_kwargs) -> None:
-        """模拟清理临时协议会话。"""
+        """
+        模拟清理临时协议会话。
+        """
 
     async def stop_current_task(self, _session_id: str) -> None:
-        """模拟停止保留会话的当前任务。"""
+        """
+        模拟停止保留会话的当前任务。
+        """
 
 
 class _WebhookRequest:
-    """提供 webhook 端点读取的最小请求接口。"""
+    """
+    提供 webhook 端点读取的最小请求接口。
+    """
 
     query_params = {"source": "jellyfin"}
 
     async def body(self) -> bytes:
-        """返回最小请求体。"""
+        """
+        返回最小请求体。
+        """
         return b"{}"
 
     async def form(self) -> dict:
-        """返回空表单。"""
+        """
+        返回空表单。
+        """
         return {}
 
 
 class _MessageRequest(_WebhookRequest):
-    """复用 webhook 请求替身，覆盖用户消息入口所需字段。"""
+    """
+    复用 webhook 请求替身，覆盖用户消息入口所需字段。
+    """
 
     headers = {"content-type": "application/json"}
 
 
 class _SeerrRequest:
-    """提供 Seerr 电影订阅 webhook 所需的最小 JSON 请求。"""
+    """
+    提供 Seerr 电影订阅 webhook 所需的最小 JSON 请求。
+    """
 
     async def json(self) -> dict:
-        """返回一个已批准的电影订阅通知。"""
+        """
+        返回一个已批准的电影订阅通知。
+        """
         return {
             "notification_type": "MEDIA_APPROVED",
             "subject": "测试电影",
@@ -144,7 +188,9 @@ class _SeerrRequest:
 
 
 def test_webhook_post_uses_task_registry() -> None:
-    """POST webhook 应登记解析任务，响应仍只表示宿主已接受。"""
+    """
+    POST webhook 应登记解析任务，响应仍只表示宿主已接受。
+    """
     registry = _TaskRegistry()
     response = asyncio.run(
         webhook.webhook_message(registry, _WebhookRequest(), "token")
@@ -159,7 +205,9 @@ def test_webhook_post_uses_task_registry() -> None:
 
 
 def test_webhook_get_uses_task_registry() -> None:
-    """GET webhook 应保留旧参数形状并进入相同 owner。"""
+    """
+    GET webhook 应保留旧参数形状并进入相同 owner。
+    """
     registry = _TaskRegistry()
     response = asyncio.run(
         webhook.webhook_message_get(registry, _WebhookRequest(), "token")
@@ -174,7 +222,9 @@ def test_webhook_get_uses_task_registry() -> None:
 
 
 def test_cookiecloud_sync_uses_task_registry(monkeypatch) -> None:
-    """CookieCloud 手工同步应登记 Scheduler E1 任务而非 Starlette 后台回调。"""
+    """
+    CookieCloud 手工同步应登记 Scheduler E1 任务而非 Starlette 后台回调。
+    """
     registry = _TaskRegistry()
     scheduler = SimpleNamespace(start=lambda **_kwargs: None)
     monkeypatch.setattr(site, "get_scheduler", lambda: scheduler)
@@ -190,7 +240,9 @@ def test_cookiecloud_sync_uses_task_registry(monkeypatch) -> None:
 
 
 def test_user_message_uses_task_registry() -> None:
-    """消息入口应登记 E0 链任务并保持原始载荷。"""
+    """
+    消息入口应登记 E0 链任务并保持原始载荷。
+    """
     registry = _TaskRegistry()
     response = asyncio.run(message.user_message(registry, _MessageRequest(), None))
 
@@ -203,7 +255,9 @@ def test_user_message_uses_task_registry() -> None:
 
 
 def test_seerr_subscribe_uses_task_registry(monkeypatch) -> None:
-    """Seerr webhook 应登记订阅创建任务且保持旧参数投影。"""
+    """
+    Seerr webhook 应登记订阅创建任务且保持旧参数投影。
+    """
     registry = _TaskRegistry()
     monkeypatch.setattr(
         subscribe,
@@ -233,7 +287,9 @@ def test_seerr_subscribe_uses_task_registry(monkeypatch) -> None:
 
 
 def test_manual_subscription_search_uses_task_registry() -> None:
-    """手工订阅搜索命令应以稳定 owner 提交顺序搜索批次。"""
+    """
+    手工订阅搜索命令应以稳定 owner 提交顺序搜索批次。
+    """
     registry = _CompletedSearchTaskRegistry()
     repository = _SubscriptionSearchTargets()
     search_repository = SimpleNamespace(enqueue=lambda **_kwargs: None)
@@ -274,7 +330,9 @@ def test_manual_subscription_search_uses_task_registry() -> None:
 
 
 def test_history_ai_redo_uses_task_registry() -> None:
-    """单条历史 AI 重做应登记宿主任务并使用稳定 owner。"""
+    """
+    单条历史 AI 重做应登记宿主任务并使用稳定 owner。
+    """
     registry = _TaskRegistry()
     loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
 
@@ -301,7 +359,9 @@ def test_history_ai_redo_uses_task_registry() -> None:
 
 
 def test_history_progress_callback_uses_owned_threadsafe_submission() -> None:
-    """历史 AI 输出进度应进入同一宿主登记器并保留 payload。"""
+    """
+    历史 AI 输出进度应进入同一宿主登记器并保留 payload。
+    """
     registry = _TaskRegistry()
     progress = SimpleNamespace(update=AsyncMock())
     loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
@@ -326,7 +386,9 @@ def test_history_progress_callback_uses_owned_threadsafe_submission() -> None:
 
 
 def test_history_batch_ai_redo_uses_task_registry() -> None:
-    """批量历史 AI 重做应登记宿主任务并区分批量 owner。"""
+    """
+    批量历史 AI 重做应登记宿主任务并区分批量 owner。
+    """
     registry = _TaskRegistry()
     loop = SimpleNamespace(is_running=lambda: True, is_closed=lambda: False)
 
@@ -353,10 +415,14 @@ def test_history_batch_ai_redo_uses_task_registry() -> None:
 
 
 def test_openai_stream_uses_task_registry(monkeypatch) -> None:
-    """OpenAI SSE Agent 执行应登记为请求级后台任务。"""
+    """
+    OpenAI SSE Agent 执行应登记为请求级后台任务。
+    """
 
     async def run_agent(**kwargs):
-        """向协议队列写入一个增量后结束。"""
+        """
+        向协议队列写入一个增量后结束。
+        """
         await kwargs["event_queue"].put("reply")
         return "", []
 
@@ -385,10 +451,14 @@ def test_openai_stream_uses_task_registry(monkeypatch) -> None:
 
 
 def test_anthropic_stream_uses_task_registry(monkeypatch) -> None:
-    """Anthropic SSE Agent 执行应登记为请求级后台任务。"""
+    """
+    Anthropic SSE Agent 执行应登记为请求级后台任务。
+    """
 
     async def run_agent(**kwargs):
-        """向协议队列写入一个增量后结束。"""
+        """
+        向协议队列写入一个增量后结束。
+        """
         await kwargs["event_queue"].put("reply")
         return "", []
 

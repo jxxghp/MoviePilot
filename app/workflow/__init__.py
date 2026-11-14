@@ -1,6 +1,10 @@
+"""
+管理工作流实例及动作执行生命周期。
+"""
+
 import threading
 from time import monotonic, sleep
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from pydantic import BaseModel
 
@@ -20,13 +24,39 @@ from app.schemas.workflow import Action, ActionContext, ActionResult
 _WORKFLOW_STOP_TIMEOUT_SECONDS = 10.0
 
 
+class _ActionDeadlineToken:
+    """
+    把单次动作截止时间与工作流取消信号组合为协作停止令牌。
+    """
+
+    def __init__(self, workflow_id: int, deadline: float, cancel_token: Optional[Any]) -> None:
+        """
+        保存单调时钟截止时间和上层工作流令牌。
+        """
+        self.workflow_id = workflow_id
+        self.deadline = deadline
+        self.cancel_token = cancel_token
+
+    def is_cancelled(self) -> bool:
+        """
+        到达截止时间或收到上层停止请求时通知支持取消的动作退出。
+        """
+        return bool(
+            monotonic() >= self.deadline
+            or (self.cancel_token and self.cancel_token.is_cancelled())
+            or runtime_stop_state.is_workflow_stopped(self.workflow_id)
+        )
+
+
 class WorkflowManager(metaclass=Singleton):
     """
     工作流管理器
     """
 
     def __init__(self) -> None:
-        """创建动作、事件触发器和活动执行 owner 注册表。"""
+        """
+        创建动作、事件触发器和活动执行 owner 注册表。
+        """
         # 所有动作定义
         self._lock = threading.RLock()
         self._actions: Dict[str, Any] = {}
@@ -35,14 +65,14 @@ class WorkflowManager(metaclass=Singleton):
         self._executions: Dict[int, WorkflowExecutionOwner] = {}
         self.init()
 
-    def init(self):
+    def init(self) -> None:
         """
-        初始化
+        扫描并登记工作流动作与事件触发器。
         """
 
-        def filter_func(obj: Any):
+        def filter_func(obj: object) -> bool:
             """
-            过滤函数，确保只加载新定义的类
+            只接纳在工作流动作包中定义的具体动作类。
             """
             if not isinstance(obj, type):
                 return False
@@ -69,15 +99,21 @@ class WorkflowManager(metaclass=Singleton):
         self.load_workflow_events()
 
     def register_execution(self, owner: WorkflowExecutionOwner) -> bool:
-        """登记活动执行；生命周期封口后拒绝新的工作流。"""
+        """
+        在同一锁内登记执行，拒绝停机封口和同一工作流的重复准入。
+        """
         with self._lock:
             if not self._accepting_executions:
+                return False
+            if any(execution.workflow_id == owner.workflow_id for execution in self._executions.values()):
                 return False
             self._executions[id(owner)] = owner
             return True
 
     def unregister_execution(self, owner: WorkflowExecutionOwner) -> None:
-        """仅在执行及其节点线程池真实终止后释放 owner。"""
+        """
+        仅在执行及其节点线程池真实终止后释放 owner。
+        """
         with self._lock:
             self._executions.pop(id(owner), None)
 
@@ -124,20 +160,22 @@ class WorkflowManager(metaclass=Singleton):
                 self._actions = {}
         return converged
 
-    def execute(self, workflow_id: int, action: Action, context: ActionContext = None,
-                inputs: Optional[dict] = None, runtime: Optional[dict] = None,
+    def execute(self, workflow_id: int, action: Action, context: Optional[ActionContext] = None,
+                inputs: Optional[dict[str, Any]] = None,
+                runtime: Optional[dict[str, Any]] = None,
                 cancel_token: Optional[Any] = None) -> ActionResult:
         """
         执行工作流动作
         """
         if not context:
             context = ActionContext()
-        if action.type not in self._actions:
+        action_type = action.type
+        if not action_type or action_type not in self._actions:
             logger.error(f"未找到动作: {action.type} - {action.name}")
             return ActionResult(success=False, message=" ", context=context)
 
         retry_config = self._get_retry_config(action)
-        max_attempts = retry_config["max_attempts"]
+        max_attempts = int(retry_config["max_attempts"])
         interval = retry_config["interval"]
         backoff = retry_config["backoff"]
         action_result = ActionResult(success=False, message="", context=context)
@@ -173,7 +211,7 @@ class WorkflowManager(metaclass=Singleton):
         return action_result
 
     def excute(self, workflow_id: int, action: Action,
-               context: ActionContext = None) -> Tuple[bool, str, ActionContext]:
+               context: Optional[ActionContext] = None) -> Tuple[bool, str, ActionContext]:
         """
         执行工作流动作，兼容历史拼写错误的方法名。
         """
@@ -197,8 +235,15 @@ class WorkflowManager(metaclass=Singleton):
         )
 
     def _execute_action_once(self, workflow_id: int, action: Action, context: ActionContext,
-                             inputs: dict, runtime: dict, cancel_token: Optional[Any]) -> ActionResult:
-        action_obj = self._actions[action.type](action.id)
+                             inputs: dict[str, Any], runtime: dict[str, Any],
+                             cancel_token: Optional[Any]) -> ActionResult:
+        """
+        运行单次尝试，保留同步动作真实返回后再判断失败和超时的语义。
+        """
+        action_type = action.type
+        if not action_type or action_type not in self._actions:
+            return ActionResult(success=False, message="未找到动作", context=context)
+        action_obj = self._actions[action_type](action.id)
         logger.info(f"执行动作: {action.id} - {action.name}")
         try:
             action_result = self._run_action_with_loop(
@@ -216,30 +261,23 @@ class WorkflowManager(metaclass=Singleton):
         return action_result
 
     def _run_action_with_loop(self, workflow_id: int, action: Action, action_obj: Any,
-                              context: ActionContext, inputs: dict, runtime: dict,
+                              context: ActionContext, inputs: dict[str, Any], runtime: dict[str, Any],
                               cancel_token: Optional[Any]) -> ActionResult:
+        """
+        循环前后均检查截止时间，并向动作传递协作令牌；不分离阻塞节点线程。
+        """
         timeout = self._get_action_timeout(action)
-        started_at = monotonic()
-        action_result = self._call_action(
-            workflow_id=workflow_id,
-            action=action,
-            action_obj=action_obj,
-            context=context,
-            inputs=inputs,
-            runtime=runtime
-        )
+        deadline = monotonic() + timeout if timeout else None
+        action_token = _ActionDeadlineToken(workflow_id, deadline, cancel_token) if deadline is not None else cancel_token
+        runtime = {**runtime, "cancel_token": action_token, "deadline": deadline}
         loop = self._get_action_data_value(action, "loop")
         loop_interval = self._get_action_data_value(action, "loop_interval")
-        while loop and loop_interval and not action_obj.done:
+        action_result = ActionResult(success=False, context=context)
+        while True:
             if self._is_cancelled(workflow_id, cancel_token):
                 return ActionResult(success=False, message="工作流已取消", context=action_result.context or context)
-            if timeout and monotonic() - started_at >= timeout:
+            if deadline is not None and monotonic() >= deadline:
                 return ActionResult(success=False, message=f"动作执行超时（{timeout}秒）", context=action_result.context or context)
-            logger.info(f"{action.name} 等待 {loop_interval} 秒后继续执行 ...")
-            self._sleep_with_cancel(workflow_id, loop_interval, cancel_token)
-            if self._is_cancelled(workflow_id, cancel_token):
-                return ActionResult(success=False, message="工作流已取消", context=action_result.context or context)
-            logger.info(f"继续执行动作: {action.id} - {action.name}")
             action_result = self._call_action(
                 workflow_id=workflow_id,
                 action=action,
@@ -248,10 +286,24 @@ class WorkflowManager(metaclass=Singleton):
                 inputs=inputs,
                 runtime=runtime
             )
-        return action_result
+            if self._is_cancelled(workflow_id, cancel_token):
+                return ActionResult(success=False, message="工作流已取消", context=action_result.context or context)
+            if deadline is not None and monotonic() >= deadline:
+                return ActionResult(success=False, message=f"动作执行超时（{timeout}秒）", context=action_result.context or context)
+            if not (loop and loop_interval and not action_obj.done):
+                return action_result
+            wait_seconds = float(loop_interval)
+            if deadline is not None:
+                wait_seconds = min(wait_seconds, max(0.0, deadline - monotonic()))
+            logger.info(f"{action.name} 等待 {wait_seconds} 秒后继续执行 ...")
+            self._sleep_with_cancel(workflow_id, wait_seconds, action_token)
 
     def _call_action(self, workflow_id: int, action: Action, action_obj: Any,
-                     context: ActionContext, inputs: dict, runtime: dict) -> ActionResult:
+                     context: ActionContext, inputs: dict[str, Any],
+                     runtime: dict[str, Any]) -> ActionResult:
+        """
+        兼容新旧动作入口并把真实同步返回值转换为统一结果。
+        """
         if hasattr(action_obj, "execute_with_inputs"):
             result = action_obj.execute_with_inputs(workflow_id, action.data, inputs, runtime, context)
         else:
@@ -260,14 +312,23 @@ class WorkflowManager(metaclass=Singleton):
 
     @staticmethod
     def _get_action_data_value(action: Action, key: str) -> Any:
+        """
+        读取兼容旧版存放在 data 中的动作参数。
+        """
         data = action.data or {}
         return data.get(key) if isinstance(data, dict) else None
 
     def _get_action_timeout(self, action: Action) -> Optional[int]:
+        """
+        读取新旧动作配置中的单次尝试超时秒数。
+        """
         timeout = action.timeout or self._get_action_data_value(action, "timeout")
         return int(timeout) if timeout else None
 
-    def _get_retry_config(self, action: Action) -> dict:
+    def _get_retry_config(self, action: Action) -> dict[str, float | int]:
+        """
+        归一化动作重试次数、间隔和退避配置。
+        """
         retry_config = action.retry or self._get_action_data_value(action, "retry") or {}
         if isinstance(retry_config, BaseModel):
             retry_config = retry_config.model_dump(exclude_none=True)
@@ -281,18 +342,24 @@ class WorkflowManager(metaclass=Singleton):
 
     @staticmethod
     def _is_cancelled(workflow_id: int, cancel_token: Optional[Any]) -> bool:
+        """
+        组合调用方取消令牌和全局工作流停止状态。
+        """
         if cancel_token and cancel_token.is_cancelled():
             return True
         return runtime_stop_state.is_workflow_stopped(workflow_id)
 
     def _sleep_with_cancel(self, workflow_id: int, seconds: float, cancel_token: Optional[Any]) -> None:
+        """
+        分段等待，并在取消或截止时立即停止继续等待。
+        """
         deadline = monotonic() + seconds
         while monotonic() < deadline:
             if self._is_cancelled(workflow_id, cancel_token):
                 return
-            sleep(min(0.1, deadline - monotonic()))
+            sleep(max(0.0, min(0.1, deadline - monotonic())))
 
-    def list_actions(self) -> List[dict]:
+    def list_actions(self) -> List[dict[str, Any]]:
         """
         获取所有动作
         """
@@ -309,18 +376,20 @@ class WorkflowManager(metaclass=Singleton):
             } for key, action in self._actions.items()
         ]
 
-    def get_action_contract(self, action_type: str) -> dict:
+    def get_action_contract(self, action_type: str) -> dict[str, Any]:
         """
         获取动作输入输出契约。
         """
         action = self._actions.get(action_type)
         if not action or not hasattr(action, "get_contract"):
             return {}
-        return action.get_contract()
+        return cast(dict[str, Any], action.get_contract())
 
-    def update_workflow_event(self, workflow: WorkflowSnapshot):
+    def update_workflow_event(self, workflow: WorkflowSnapshot) -> None:
         """
-        更新工作流事件触发器
+        根据工作流当前配置更新事件触发器。
+
+        :param workflow: 待更新的工作流快照
         """
         # 工作流可能切换触发事件，先按工作流ID从所有事件映射中移除。
         self.remove_workflow_event(workflow_id=workflow.id)
@@ -329,9 +398,11 @@ class WorkflowManager(metaclass=Singleton):
             # 注册事件触发器
             self.register_workflow_event(workflow.id, workflow.event_type)
 
-    def load_workflow_events(self, workflow_id: Optional[int] = None):
+    def load_workflow_events(self, workflow_id: Optional[int] = None) -> None:
         """
-        加载工作流触发事件
+        从持久化快照加载工作流触发事件。
+
+        :param workflow_id: 指定工作流标识；None 加载全部已启用的事件工作流
         """
         workflows = []
         if workflow_id:
@@ -346,9 +417,14 @@ class WorkflowManager(metaclass=Singleton):
         except Exception as e:
             logger.error(f"加载事件触发工作流失败: {e}")
 
-    def register_workflow_event(self, workflow_id: int, event_type_str: str):
+    def register_workflow_event(
+            self, workflow_id: int, event_type_str: Optional[str]
+    ) -> None:
         """
-        注册工作流事件触发器
+        为有效事件类型注册工作流触发器。
+
+        :param workflow_id: 待触发的工作流标识
+        :param event_type_str: 事件类型值；为空时不登记
         """
         if not event_type_str:
             return
@@ -367,9 +443,15 @@ class WorkflowManager(metaclass=Singleton):
                     self._event_workflows[event_type.value].append(workflow_id)
                 logger.info(f"已注册工作流 {workflow_id} 事件触发器: {event_type.value}")
 
-    def remove_workflow_event(self, workflow_id: Optional[int] = None, event_type_str: Optional[str] = None):
+    def remove_workflow_event(
+            self, workflow_id: Optional[int] = None,
+            event_type_str: Optional[str] = None,
+    ) -> None:
         """
-        移除工作流事件触发器
+        移除指定工作流或事件类型对应的触发器。
+
+        :param workflow_id: 指定工作流标识；None 清空匹配事件的工作流
+        :param event_type_str: 指定事件类型；None 遍历已登记的全部事件
         """
         event_type_values = [event_type_str] if event_type_str else list(self._event_workflows.keys())
         for event_type_value in event_type_values:
@@ -391,12 +473,15 @@ class WorkflowManager(metaclass=Singleton):
                     eventmanager.remove_event_listener(event_type, self._handle_event)
                 logger.info(f"已移除工作流 {workflow_id or ''} 事件触发器")
 
-    def _handle_event(self, event: Event):
+    def _handle_event(self, event: Event) -> None:
         """
-        处理事件，触发相应的工作流
+        收到事件后触发已登记且匹配的工作流。
+
+        :param event: 当前事件及其载荷
         """
         try:
-            event_type_str = str(event.event_type.value)
+            event_type = event.event_type
+            event_type_str = str(getattr(event_type, "value", event_type))
             with self._lock:
                 if event_type_str not in self._event_workflows:
                     return
@@ -406,9 +491,12 @@ class WorkflowManager(metaclass=Singleton):
         except Exception as e:
             logger.error(f"处理工作流事件失败: {e}")
 
-    def _trigger_workflow(self, workflow_id: int, event: Event):
+    def _trigger_workflow(self, workflow_id: int, event: Event) -> None:
         """
-        触发工作流执行
+        确认工作流状态与事件条件后发出执行事件。
+
+        :param workflow_id: 候选工作流标识
+        :param event: 触发执行的原始事件
         """
         try:
             # 检查工作流是否存在且启用
@@ -426,7 +514,10 @@ class WorkflowManager(metaclass=Singleton):
                 logger.warning(f"工作流 {workflow.name} 正在运行中，跳过重复触发")
                 return
 
-            logger.info(f"事件 {event.event_type.value} 触发工作流: {workflow.name}")
+            event_type = event.event_type
+            logger.info(
+                f"事件 {getattr(event_type, 'value', event_type)} 触发工作流: {workflow.name}"
+            )
 
             # 发送工作流执行事件以启动工作流
             eventmanager.send_event(EventType.WorkflowExecute, {
@@ -436,7 +527,7 @@ class WorkflowManager(metaclass=Singleton):
         except Exception as e:
             logger.error(f"触发工作流 {workflow_id} 失败: {e}")
 
-    def _check_event_conditions(self, workflow, event: Event) -> bool:
+    def _check_event_conditions(self, workflow: Any, event: Event) -> bool:
         """
         检查事件是否满足工作流的触发条件
         """
@@ -444,7 +535,11 @@ class WorkflowManager(metaclass=Singleton):
             return True
 
         conditions = workflow.event_conditions
-        event_data = event.event_data or {}
+        event_data: Any = event.event_data
+        if isinstance(event_data, BaseModel):
+            event_data = event_data.model_dump()
+        if not isinstance(event_data, dict):
+            return False
 
         # 检查字段匹配条件
         for field, expected_value in conditions.items():
@@ -463,7 +558,9 @@ class WorkflowManager(metaclass=Singleton):
         return True
 
     @staticmethod
-    def _check_complex_condition(actual_value: any, condition: dict) -> bool:
+    def _check_complex_condition(
+            actual_value: Any, condition: dict[str, Any]
+    ) -> bool:
         """
         检查复杂条件匹配
         支持的操作符：equals, not_equals, contains, not_contains, in, not_in, regex
@@ -493,7 +590,7 @@ class WorkflowManager(metaclass=Singleton):
                     return False
         return True
 
-    def get_event_workflows(self) -> dict:
+    def get_event_workflows(self) -> dict[str, list[int]]:
         """
         获取所有事件触发的工作流
         """

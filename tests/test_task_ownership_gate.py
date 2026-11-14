@@ -1,4 +1,6 @@
-"""TaskRegistry owner 静态门禁回归测试。"""
+"""
+TaskRegistry owner 静态门禁回归测试。
+"""
 
 import textwrap
 from pathlib import Path
@@ -7,7 +9,9 @@ from scripts.architecture.task_ownership import collect_task_owner_violations
 
 
 def _scan_source(tmp_path: Path, source: str):
-    """构造最小宿主源码并通过公开扫描入口返回违规。"""
+    """
+    构造最小宿主源码并通过公开扫描入口返回违规。
+    """
     source_path = tmp_path / "app/api/sample.py"
     source_path.parent.mkdir(parents=True)
     source_path.write_text(textwrap.dedent(source), encoding="utf-8")
@@ -15,14 +19,18 @@ def _scan_source(tmp_path: Path, source: str):
 
 
 def test_host_task_registry_calls_use_literal_owner() -> None:
-    """当前 canonical 宿主的登记器调用必须保持 owner 零债务。"""
+    """
+    当前 canonical 宿主的登记器调用必须保持 owner 零债务。
+    """
     assert collect_task_owner_violations() == []
 
 
 def test_owner_gate_tracks_known_registry_without_matching_same_named_methods(
     tmp_path: Path,
 ) -> None:
-    """门禁只检查可证明的登记器接收者，并区分缺失、动态和空 owner。"""
+    """
+    门禁只检查可证明的登记器接收者，并区分缺失、动态和空 owner。
+    """
     violations = _scan_source(
         tmp_path,
         """
@@ -53,7 +61,9 @@ def test_owner_gate_tracks_known_registry_without_matching_same_named_methods(
 
 
 def test_owner_gate_accepts_aliases_and_stable_literal_owners(tmp_path: Path) -> None:
-    """类、模块和工厂别名仍应被识别，稳定字符串 owner 可以通过。"""
+    """
+    类、模块和工厂别名仍应被识别，稳定字符串 owner 可以通过。
+    """
     violations = _scan_source(
         tmp_path,
         """

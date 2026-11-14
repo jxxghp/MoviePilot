@@ -1,3 +1,7 @@
+"""
+提供语言模型配置、能力和服务连通性查询接口。
+"""
+
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Depends, Request, Response
@@ -24,7 +28,7 @@ async def manage_provider(
         request: Request,
         payload: _SchemaManageRequest,
         _: object = Depends(get_current_active_superuser_async),
-):
+) -> _SchemaResponse[object]:
     """
     LLM 提供商统一管理入口：前端上送 target/action/params 原样透传，
     端点不定义任何提供商特定的名称、参数或响应字段；
@@ -43,7 +47,7 @@ async def manage_provider(
     )
     return _SchemaResponse(
         success=bool(result.get("success")),
-        message=result.get("message"),
+        message=result.get("message") or "",
         data=result.get("data"),
     )
 
@@ -67,7 +71,7 @@ async def llm_provider_auth_callback(
     state: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
-):
+) -> HTMLResponse:
     """
     处理需要浏览器回跳的 OAuth provider。
     """

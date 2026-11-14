@@ -1,3 +1,7 @@
+"""
+渠道交互的通用状态存储、消息端口与按钮展示工具。
+"""
+
 import math
 import uuid
 from dataclasses import dataclass, field
@@ -22,7 +26,13 @@ from app.schemas.types import NotificationChannel
 
 
 class _UserInteractionEntry(Protocol):
-    """声明按用户维护的交互状态所需的最小字段。"""
+    """
+    声明按用户维护的交互状态所需的最小字段。
+
+    :ivar request_id: 当前交互请求标识，用于校验按钮是否仍属于活动会话
+    :ivar user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :ivar created_at: 会话创建的本地时间，用于计算过期时间
+    """
 
     request_id: str
     user_id: str
@@ -33,18 +43,24 @@ InteractionEntryT = TypeVar("InteractionEntryT", bound=_UserInteractionEntry)
 
 
 class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
-    """提供单用户单会话的过期状态存储和双向索引。"""
+    """
+    提供单用户单会话的过期状态存储和双向索引。
+    """
 
     _ttl = timedelta(hours=24)
 
     def __init__(self) -> None:
-        """初始化按请求 ID、用户 ID 查询的线程安全状态表。"""
+        """
+        初始化按请求 ID、用户 ID 查询的线程安全状态表。
+        """
         self._by_id: Dict[str, InteractionEntryT] = {}
         self._by_user: Dict[str, str] = {}
         self._lock = Lock()
 
     def _cleanup_locked(self) -> None:
-        """在持锁状态下移除超过统一保留时间的交互状态。"""
+        """
+        在持锁状态下移除超过统一保留时间的交互状态。
+        """
         expire_before = datetime.now() - self._ttl
         expired = [
             request_id
@@ -57,7 +73,9 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
                 self._by_user.pop(str(request.user_id), None)
 
     def _replace_locked(self, request: InteractionEntryT) -> None:
-        """在持锁状态下替换用户旧状态并写入新的双向索引。"""
+        """
+        在持锁状态下替换用户旧状态并写入新的双向索引。
+        """
         user_key = str(request.user_id)
         old_request_id = self._by_user.get(user_key)
         if old_request_id:
@@ -65,8 +83,10 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
         self._by_id[request.request_id] = request
         self._by_user[user_key] = request.request_id
 
-    def get_by_user(self, user_id: Union[str, int]) -> Optional[InteractionEntryT]:
-        """按用户返回当前仍有效的交互状态。"""
+    def get_by_user(self, user_id: Optional[Union[str, int]]) -> Optional[InteractionEntryT]:
+        """
+        按用户返回当前仍有效的交互状态。
+        """
         with self._lock:
             self._cleanup_locked()
             request_id = self._by_user.get(str(user_id))
@@ -77,7 +97,9 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
     def get_by_id(
             self, request_id: str, user_id: Union[str, int]
     ) -> Optional[InteractionEntryT]:
-        """按请求 ID 查询状态，并校验请求属于当前用户。"""
+        """
+        按请求 ID 查询状态，并校验请求属于当前用户。
+        """
         with self._lock:
             self._cleanup_locked()
             request = self._by_id.get(request_id)
@@ -86,14 +108,18 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
             return request
 
     def remove(self, request_id: str) -> None:
-        """删除指定交互状态及其用户索引。"""
+        """
+        删除指定交互状态及其用户索引。
+        """
         with self._lock:
             request = self._by_id.pop(request_id, None)
             if request:
                 self._by_user.pop(str(request.user_id), None)
 
     def clear(self) -> None:
-        """清空全部交互状态，供生命周期结束和测试场景使用。"""
+        """
+        清空全部交互状态，供生命周期结束和测试场景使用。
+        """
         with self._lock:
             self._by_id.clear()
             self._by_user.clear()
@@ -103,6 +129,16 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
 class PendingSlashInteraction:
     """
     通用 slash 命令交互上下文。
+
+    :param request_id: 当前交互请求标识，用于校验按钮是否仍属于活动会话
+    :param user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :param channel: 回复使用的通知渠道，None 表示未指定
+    :param source: 渠道实例标识，None 表示未指定实例
+    :param username: 用户显示名称，未知时为 None
+    :param command: 当前处理的斜杠命令名称
+    :param page: 当前列表页索引，从 0 开始
+    :param awaiting_input: 当前等待的文本输入用途，None 表示未等待补充输入
+    :param created_at: 会话创建的本地时间，用于计算过期时间
     """
 
     request_id: str
@@ -125,13 +161,15 @@ class SlashInteractionManager(
 
     def create_or_replace(
             self,
-            user_id: Union[str, int],
+            user_id: Optional[Union[str, int]],
             command: str,
             channel: Optional[NotificationChannel],
             source: Optional[str],
             username: Optional[str],
     ) -> PendingSlashInteraction:
-        """为用户创建 slash 会话并替换其上一条会话。"""
+        """
+        为用户创建 slash 会话并替换其上一条会话。
+        """
         with self._lock:
             self._cleanup_locked()
             user_key = str(user_id)
@@ -149,7 +187,17 @@ class SlashInteractionManager(
 
 @dataclass(frozen=True, slots=True)
 class InteractionContext:
-    """描述一次与渠道无关的用户交互上下文。"""
+    """
+    描述一次与渠道无关的用户交互上下文。
+
+    :param channel: 接收本次交互的通知渠道
+    :param source: 渠道实例标识，None 表示未指定实例
+    :param user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :param username: 用户显示名称，未知时为 None
+    :param original_message_id: 渠道原始消息标识，未知时为 None
+    :param original_chat_id: 渠道原始聊天标识，未知时为 None
+    :param is_channel_admin: 渠道管理员身份判断；None 表示尚未判定
+    """
 
     channel: NotificationChannel
     source: Optional[str]
@@ -162,23 +210,34 @@ class InteractionContext:
 
 @dataclass(frozen=True, slots=True)
 class InteractionDispatch:
-    """描述交互路由是否命中以及是否延迟结束处理状态。"""
+    """
+    描述交互路由是否命中以及是否延迟结束处理状态。
+
+    :param handled: 是否已由本次路由消费交互
+    :param defer_processing_finish: 是否由后续异步流程结束渠道处理状态，默认立即结束
+    """
 
     handled: bool
     defer_processing_finish: bool = False
 
 
 class MessageGateway(Protocol):
-    """声明交互控制器使用的消息发送和编辑能力。"""
+    """
+    声明交互控制器使用的消息发送和编辑能力。
+    """
 
     def post_message(self, message: Message) -> None:
-        """发送一条交互消息。"""
+        """
+        发送一条交互消息。
+
+        :param message: 包含渠道、接收用户和展示内容的消息
+        """
         ...
 
     def edit_message(
             self,
             channel: NotificationChannel,
-            source: str,
+            source: Optional[str],
             message_id: Union[str, int],
             chat_id: Union[str, int],
             text: str,
@@ -186,7 +245,19 @@ class MessageGateway(Protocol):
             buttons: Optional[List[List[Dict[str, Any]]]] = None,
             metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """编辑一条已发送的交互消息。"""
+        """
+        编辑一条已发送的交互消息。
+
+        :param channel: 原消息所属通知渠道
+        :param source: 原消息所属渠道实例标识
+        :param message_id: 渠道分配的原消息标识
+        :param chat_id: 原消息所在的聊天标识
+        :param text: 替换后的消息正文
+        :param title: 替换后的标题，None 表示不提供独立标题
+        :param buttons: 按行组织的新按钮，None 表示不提供按钮
+        :param metadata: 渠道特定的附加编辑参数，None 表示无附加参数
+        :return: 渠道确认编辑成功时为 True；失败或不支持编辑时为 False
+        """
         ...
 
 
@@ -228,10 +299,10 @@ def page_items(
 
 def build_navigation_buttons(
         prefix: str,
-        request: Any,
+        request: _UserInteractionEntry,
         page: int,
         total_pages: int,
-) -> List[List[dict]]:
+) -> List[List[dict[str, str]]]:
     """
     构造标准上一页/下一页按钮。
     """
@@ -257,14 +328,14 @@ def build_navigation_buttons(
 
 
 def update_or_post_message(
-        chain,
-        channel: NotificationChannel,
+        chain: MessageGateway,
+        channel: Optional[NotificationChannel],
         source: Optional[str],
-        userid: Union[str, int],
+        userid: Optional[Union[str, int]],
         username: Optional[str],
         title: str,
         text: str,
-        buttons: Optional[List[List[dict]]] = None,
+        buttons: Optional[List[List[dict[str, str]]]] = None,
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
 ) -> None:
@@ -274,6 +345,7 @@ def update_or_post_message(
     if (
             original_message_id
             and original_chat_id
+            and channel is not None
             and ChannelCapabilityManager.supports_editing(channel)
     ):
         edit_kwargs = {}

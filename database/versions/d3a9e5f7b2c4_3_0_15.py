@@ -1,8 +1,9 @@
-"""3.0.15 为整理恢复任务增加强 CAS 租约字段。
+"""
+3.0.15 为整理恢复任务增加强 CAS 租约字段。
 
-Revision ID: d3a9e5f7b2c4
-Revises: c2f8a4d6e1b3
-Create Date: 2026-08-27
+版本标识： d3a9e5f7b2c4
+前置版本： c2f8a4d6e1b3
+创建时间： 2026-08-27
 """
 
 import sqlalchemy as sa
@@ -25,7 +26,9 @@ _LEASE_COLUMNS = {
 
 
 def _column_names() -> set[str]:
-    """返回当前待整理登记表的字段集合。"""
+    """
+    返回当前待整理登记表的字段集合。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE_NAME not in inspector.get_table_names():
         return set()
@@ -36,7 +39,9 @@ def _column_names() -> set[str]:
 
 
 def _repair_lease_index() -> None:
-    """按列顺序和非唯一语义修复租约接管索引。"""
+    """
+    按列顺序和非唯一语义修复租约接管索引。
+    """
     indexes = {
         index.get("name"): index
         for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME)
@@ -60,7 +65,9 @@ def _repair_lease_index() -> None:
 
 
 def upgrade() -> None:
-    """增加租约身份、到期、心跳和接管次数，并支持中断后重跑。"""
+    """
+    增加租约身份、到期、心跳和接管次数，并支持中断后重跑。
+    """
     columns = _column_names()
     if not columns:
         return
@@ -112,7 +119,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除租约索引和字段，保留原业务状态及规划检查点。"""
+    """
+    移除租约索引和字段，保留原业务状态及规划检查点。
+    """
     columns = _column_names()
     if not columns or not (_LEASE_COLUMNS & columns):
         return

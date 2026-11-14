@@ -1,4 +1,6 @@
-"""插件运行目录与本地仓库的文件变化监控。"""
+"""
+插件运行目录与本地仓库的文件变化监控。
+"""
 
 from __future__ import annotations
 
@@ -6,23 +8,27 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
-FederatedChangeResolver = Callable[[Path], Optional[tuple[str, Optional[dict], bool]]]
+FederatedChangeResolver = Callable[[Path], Optional[tuple[str, Optional[dict[str, Any]], bool]]]
 RuntimePluginResolver = Callable[[Path], Optional[str]]
 MonitorSuppression = Callable[[str], bool]
-LocalCandidateResolver = Callable[[Path], Optional[dict]]
-LocalPluginSync = Callable[[str, Optional[dict]], bool]
+LocalCandidateResolver = Callable[[Path], Optional[dict[str, Any]]]
+LocalPluginSync = Callable[[str, Optional[dict[str, Any]]], bool]
 PluginReloader = Callable[[str], Any]
 DependencyManifestStatus = Callable[[Path], Optional[bool]]
 WatchFunction = Callable[..., Any]
 
 
 class PluginMonitorController:
-    """独立管理插件文件监控线程的启动、停止和重建。"""
+    """
+    独立管理插件文件监控线程的启动、停止和重建。
+    """
 
     def __init__(self, *, runner: Callable[[], None], log: Any) -> None:
-        """保存监控循环入口和日志端口，线程状态仅由本组件持有。"""
+        """
+        保存监控循环入口和日志端口，线程状态仅由本组件持有。
+        """
         self._runner = runner
         self._logger = log
         self._thread: Optional[threading.Thread] = None
@@ -32,17 +38,23 @@ class PluginMonitorController:
 
     @property
     def stop_event(self) -> threading.Event:
-        """返回供 watchfiles 监听的停止事件。"""
+        """
+        返回供 watchfiles 监听的停止事件。
+        """
         return self._stop_event
 
     def reload(self, enabled: bool) -> None:
-        """按当前配置停止旧线程，并在启用时创建新线程。"""
+        """
+        按当前配置停止旧线程，并在启用时创建新线程。
+        """
         stopped = self.stop()
         if enabled and stopped:
             self.start()
 
     def start(self) -> None:
-        """启动唯一的守护监控线程。"""
+        """
+        启动唯一的守护监控线程。
+        """
         with self._lifecycle_lock:
             if self._closed:
                 self._logger.info("插件文件修改监测已进入停机封口，跳过启动")
@@ -56,7 +68,9 @@ class PluginMonitorController:
             self._thread.start()
 
     def reopen(self) -> bool:
-        """为新的应用生命周期解除封口，仍有旧线程时拒绝重开。"""
+        """
+        为新的应用生命周期解除封口，仍有旧线程时拒绝重开。
+        """
         with self._lifecycle_lock:
             if self._thread and self._thread.is_alive():
                 self._logger.warning("旧插件文件监测线程仍在运行，无法开启新生命周期")
@@ -66,15 +80,21 @@ class PluginMonitorController:
             return True
 
     def stop(self, timeout: float = 5.0) -> bool:
-        """临时停止监控线程，并返回其是否在预算内真正退出。"""
+        """
+        临时停止监控线程，并返回其是否在预算内真正退出。
+        """
         return self._stop_with_budget(timeout=timeout, close=False)
 
     def close(self, timeout: float = 5.0) -> bool:
-        """永久封口当前生命周期，并返回监控线程是否真正退出。"""
+        """
+        永久封口当前生命周期，并返回监控线程是否真正退出。
+        """
         return self._stop_with_budget(timeout=timeout, close=True)
 
     def _stop_with_budget(self, *, timeout: float, close: bool) -> bool:
-        """在同一预算内取得生命周期锁、设置封口并等待线程退出。"""
+        """
+        在同一预算内取得生命周期锁、设置封口并等待线程退出。
+        """
         timeout = max(0.0, timeout)
         deadline = time.monotonic() + timeout
         self._stop_event.set()
@@ -107,7 +127,9 @@ class PluginMonitorController:
 
 
 class PluginChangeMonitor:
-    """把文件变化归并为本地同步和运行态重载动作。"""
+    """
+    把文件变化归并为本地同步和运行态重载动作。
+    """
 
     def __init__(
         self,
@@ -126,7 +148,9 @@ class PluginChangeMonitor:
         log: Any,
         monitor_suppressed: Optional[MonitorSuppression] = None,
     ) -> None:
-        """保存监控路径、变化解析器和副作用回调。"""
+        """
+        保存监控路径、变化解析器和副作用回调。
+        """
         self._runtime_root = runtime_root
         self._local_roots = local_roots
         self._stop_event = stop_event
@@ -142,7 +166,9 @@ class PluginChangeMonitor:
         self._logger = log
 
     def run(self) -> None:
-        """运行 watchfiles 主循环并按批次同步、重载插件。"""
+        """
+        运行 watchfiles 主循环并按批次同步、重载插件。
+        """
         plugin_paths = [str(self._runtime_root)]
         plugin_paths.extend(
             str(path)
@@ -161,7 +187,9 @@ class PluginChangeMonitor:
             self._process_changes(changes)
 
     def _process_changes(self, changes: Any) -> None:
-        """把一批文件事件归并为最多一次同步和一次重载。"""
+        """
+        把一批文件事件归并为最多一次同步和一次重载。
+        """
         plugins_to_reload = set()
         local_plugins_to_sync = {}
         for _change_type, path_str in changes:
@@ -225,7 +253,8 @@ class PluginChangeMonitor:
                         f"但跳过同步：{candidate.get('skip_reason')}"
                     )
                     continue
-                local_plugins_to_sync[candidate.get("id")] = (
+                # 本地市场候选的 id 来自仓库索引的插件标识。
+                local_plugins_to_sync[cast(str, candidate.get("id"))] = (
                     candidate,
                     event_path,
                     True,
@@ -266,7 +295,9 @@ class PluginChangeMonitor:
         *,
         active: bool,
     ) -> None:
-        """记录依赖文件变化，但不在监控线程中隐式安装依赖。"""
+        """
+        记录依赖文件变化，但不在监控线程中隐式安装依赖。
+        """
         candidate = self._local_candidate(event_path)
         if not candidate:
             return

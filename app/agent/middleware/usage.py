@@ -1,5 +1,9 @@
+"""
+估算最终模型请求预算并记录真实响应与缓存用量。
+"""
+
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -15,7 +19,9 @@ from app.runtime.log import logger
 
 
 class UsageMiddleware(AgentMiddleware):
-    """观察最终模型请求预算，并记录模型返回的真实 usage。"""
+    """
+    观察最终模型请求预算，并记录模型返回的真实 usage。
+    """
 
     def __init__(
         self,
@@ -24,6 +30,9 @@ class UsageMiddleware(AgentMiddleware):
         on_request_budget: Callable[[dict[str, Any]], None] | None = None,
         next_request_sequence: Callable[[], int] | None = None,
     ) -> None:
+        """
+        绑定用量、预算观测回调及可选的会话级请求序号生成器。
+        """
         self.on_usage = on_usage
         self.on_request_budget = on_request_budget
         self.next_request_sequence = next_request_sequence
@@ -31,6 +40,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @staticmethod
     def _coerce_int(value: Any) -> int | None:
+        """
+        尝试解析供应方的用量整数，无法解析时返回 None。
+        """
         if value is None:
             return None
         try:
@@ -39,15 +51,19 @@ class UsageMiddleware(AgentMiddleware):
             return None
 
     @staticmethod
-    def _coerce_positive_int(value: Any) -> int | None:
-        """仅接受模型 profile 和请求设置声明的非 bool 正整数。"""
+    def _coerce_positive_int(value: object) -> int | None:
+        """
+        仅接受模型 profile 和请求设置声明的非 bool 正整数。
+        """
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             return None
         return value
 
     @classmethod
     def _lookup_positive_int(cls, container: Any, *keys: str) -> int | None:
-        """按字段优先级读取 token 上限，拒绝隐式数值转换。"""
+        """
+        按字段优先级读取 token 上限，拒绝隐式数值转换。
+        """
         if not container:
             return None
 
@@ -71,6 +87,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _lookup_int(cls, container: Any, *keys: str) -> int | None:
+        """
+        按候选键读取字典或对象中的用量值，忽略无法解析的字段。
+        """
         if not container:
             return None
 
@@ -93,7 +112,9 @@ class UsageMiddleware(AgentMiddleware):
         cls,
         candidates: tuple[tuple[Any, tuple[str, ...]], ...],
     ) -> int | None:
-        """按优先级返回首个可用的 usage 整数值。"""
+        """
+        按优先级返回首个可用的 usage 整数值。
+        """
         for container, keys in candidates:
             value = cls._lookup_int(container, *keys)
             if value is not None:
@@ -101,10 +122,16 @@ class UsageMiddleware(AgentMiddleware):
         return None
 
     @classmethod
-    def _extract_model_name(cls, model: Any) -> str | None:
+    def _extract_model_name(cls, model: object) -> object | None:
+        """
+        按属性优先级保留模型给出的非空名称值。
+
+        :param model: 模型实例；第三方实现可能返回非字符串名称
+        :return: 首个非空名称值，未提供时返回 None
+        """
         for field in ("model", "model_name", "model_id"):
             try:
-                value = getattr(model, field, None)
+                value: object = getattr(model, field, None)
             except Exception:
                 continue
             if value:
@@ -113,6 +140,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_context_window_tokens(cls, model: Any) -> int | None:
+        """
+        从模型能力描述中读取上下文窗口上限，缺失时不猜测固定额度。
+        """
         try:
             profile = getattr(model, "profile", None)
         except Exception:
@@ -128,7 +158,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_model_max_output_tokens(cls, model: Any) -> int | None:
-        """读取模型输出能力上限；该值不代表单次请求已经预留的输出空间。"""
+        """
+        读取模型输出能力上限；该值不代表单次请求已经预留的输出空间。
+        """
         try:
             profile = getattr(model, "profile", None)
         except Exception:
@@ -143,7 +175,9 @@ class UsageMiddleware(AgentMiddleware):
             return None
 
     def _next_request_sequence(self) -> int | None:
-        """优先使用会话级序号，使图重建后的请求仍保持单调顺序。"""
+        """
+        优先使用会话级序号，使图重建后的请求仍保持单调顺序。
+        """
         if callable(self.next_request_sequence):
             try:
                 return self.next_request_sequence()
@@ -159,9 +193,11 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_configured_output_limit_tokens(
-        cls, request: ModelRequest
+        cls, request: ModelRequest[Any]
     ) -> int | None:
-        """读取最终请求显式配置的单次输出上限。"""
+        """
+        读取最终请求显式配置的单次输出上限。
+        """
         model_settings = request.model_settings or {}
         value = cls._lookup_positive_int(
             model_settings,
@@ -173,7 +209,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @staticmethod
     def _count_multimodal_blocks(messages: list[Any]) -> tuple[int, int]:
-        """统计图片和未知多模态块，不保留块内容或资源地址。"""
+        """
+        统计图片和未知多模态块，不保留块内容或资源地址。
+        """
         image_count = 0
         unknown_count = 0
         for message in messages:
@@ -194,8 +232,10 @@ class UsageMiddleware(AgentMiddleware):
         return image_count, unknown_count
 
     @classmethod
-    def estimate_request(cls, request: ModelRequest) -> dict[str, Any]:
-        """估算最终模型输入组成，仅返回可安全暴露的聚合数字。"""
+    def estimate_request(cls, request: ModelRequest[Any]) -> dict[str, Any]:
+        """
+        估算最终模型输入组成，仅返回可安全暴露的聚合数字。
+        """
         messages = list(request.messages or [])
         system_messages = [request.system_message] if request.system_message else []
         tools = list(request.tools or [])
@@ -257,6 +297,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_usage(cls, ai_message: AIMessage) -> dict[str, Any]:
+        """
+        汇总供应方实际用量及缓存计费字段，保留缺失与已报告值的区别。
+        """
         usage_metadata = getattr(ai_message, "usage_metadata", None)
 
         input_tokens = cls._lookup_int(usage_metadata, "input_tokens")
@@ -511,6 +554,9 @@ class UsageMiddleware(AgentMiddleware):
             [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
         ],
     ) -> ModelResponse[ResponseT]:
+        """
+        在请求前估算预算，调用后报告真实用量；观测失败不阻止模型调用。
+        """
         request_sequence = self._next_request_sequence()
         request_budget = None
         try:
@@ -553,7 +599,7 @@ class UsageMiddleware(AgentMiddleware):
             ai_message = next(
                 (
                     message
-                    for message in reversed(response.result)
+                    for message in reversed(cast(list[Any], response.result))
                     if isinstance(message, AIMessage)
                 ),
                 None,

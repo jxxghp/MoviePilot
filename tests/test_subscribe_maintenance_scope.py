@@ -1,4 +1,6 @@
-"""订阅维护按媒体类型收窄处理范围的回归测试。"""
+"""
+订阅维护按媒体类型收窄处理范围的回归测试。
+"""
 
 import asyncio
 import threading
@@ -23,7 +25,9 @@ from app.schemas.types import MediaType
 
 
 def _snapshot(subscribe_id: int, mtype: MediaType) -> SubscriptionSnapshot:
-    """构造指定媒体类型的活动订阅快照。"""
+    """
+    构造指定媒体类型的活动订阅快照。
+    """
     return SubscriptionSnapshot(
         id=subscribe_id,
         name=f"范围测试 {subscribe_id}",
@@ -38,7 +42,9 @@ def _snapshot(subscribe_id: int, mtype: MediaType) -> SubscriptionSnapshot:
     [(refresh_subscribes, "subscribe_refresh"), (check_subscribes, "subscribe_tmdb")],
 )
 def test_maintenance_endpoint_forwards_media_type(endpoint, job_id):
-    """管理员维护端点把当前媒体类型传给对应调度任务。"""
+    """
+    管理员维护端点把当前媒体类型传给对应调度任务。
+    """
     with patch("app.api.endpoints.submaintenance.get_scheduler") as scheduler:
         response = endpoint(
             subscription_type=MediaType.TV,
@@ -46,11 +52,16 @@ def test_maintenance_endpoint_forwards_media_type(endpoint, job_id):
         )
 
     assert response.success
-    scheduler.return_value.start.assert_called_once_with(job_id, mtype=MediaType.TV.value)
+    expected = {"mtype": MediaType.TV.value}
+    if endpoint is refresh_subscribes:
+        expected["source"] = "manual"
+    scheduler.return_value.start.assert_called_once_with(job_id, **expected)
 
 
 def test_search_endpoint_forwards_media_type_to_command():
-    """管理员搜索端点把当前媒体类型传给搜索用例。"""
+    """
+    管理员搜索端点把当前媒体类型传给搜索用例。
+    """
     command = Mock()
     command.execute = AsyncMock(
         return_value=SubscriptionSearchSubmission(
@@ -75,7 +86,9 @@ def test_search_endpoint_forwards_media_type_to_command():
 
 
 def test_query_owner_only_returns_sites_for_requested_media_type():
-    """刷新站点范围只采集当前媒体类型，并在无匹配订阅时停止刷新。"""
+    """
+    刷新站点范围只采集当前媒体类型，并在无匹配订阅时停止刷新。
+    """
     movie = _snapshot(1, MediaType.MOVIE)
     tv = _snapshot(2, MediaType.TV)
     owner = object.__new__(SubscribeQueryOwner)
@@ -87,8 +100,25 @@ def test_query_owner_only_returns_sites_for_requested_media_type():
     assert owner.get_subscribed_sites(MediaType.MUSIC.value) is None
 
 
+@pytest.mark.parametrize("states", [("S",), ("N",), ("S", "N")])
+def test_global_refresh_stops_when_no_subscription_is_eligible(states):
+    """
+    全局刷新只有暂停或尚未首次搜索的订阅时，不能回退到默认全部站点。
+    """
+    owner = object.__new__(SubscribeQueryOwner)
+    owner.subscription_repository = SimpleNamespace(list=lambda: [
+        SimpleNamespace(state=state, type=MediaType.TV.value) for state in states
+    ])
+    owner.get_states_for_search = lambda _state: "R,P"
+    owner.get_sub_sites = Mock()
+    assert owner.get_subscribed_sites() is None
+    owner.get_sub_sites.assert_not_called()
+
+
 def test_refresh_check_only_processes_requested_media_type():
-    """订阅元数据检查只把当前媒体类型交给单订阅检查器。"""
+    """
+    订阅元数据检查只把当前媒体类型交给单订阅检查器。
+    """
     movie = _snapshot(1, MediaType.MOVIE)
     tv = _snapshot(2, MediaType.TV)
     owner = object.__new__(SubscribeRefreshOwner)
@@ -96,7 +126,9 @@ def test_refresh_check_only_processes_requested_media_type():
     processed = []
 
     def check_subscription(subscribe, _fresh_fact_lease, **_kwargs):
-        """记录一次被范围过滤后的元数据检查。"""
+        """
+        记录一次被范围过滤后的元数据检查。
+        """
         processed.append(subscribe.id)
         return subscribe
 
@@ -107,7 +139,9 @@ def test_refresh_check_only_processes_requested_media_type():
 
 
 def test_match_only_processes_requested_media_type():
-    """订阅资源匹配只遍历当前媒体类型的活动订阅。"""
+    """
+    订阅资源匹配只遍历当前媒体类型的活动订阅。
+    """
     movie = _snapshot(1, MediaType.MOVIE)
     tv = _snapshot(2, MediaType.TV)
     owner = object.__new__(SubscribeChain)
@@ -123,7 +157,9 @@ def test_match_only_processes_requested_media_type():
     processed = []
 
     def match_subscription(**kwargs):
-        """记录一次被范围过滤后的资源匹配。"""
+        """
+        记录一次被范围过滤后的资源匹配。
+        """
         processed.append(kwargs["subscribe"].id)
         return "skipped"
 
@@ -135,7 +171,9 @@ def test_match_only_processes_requested_media_type():
 
 @pytest.mark.asyncio
 async def test_session_repository_filters_admin_search_ids_by_media_type():
-    """请求级订阅适配器为管理员保留全局权限但按类型裁剪编号。"""
+    """
+    请求级订阅适配器为管理员保留全局权限但按类型裁剪编号。
+    """
     movie = _snapshot(1, MediaType.MOVIE)
     tv = _snapshot(2, MediaType.TV)
     repository = object.__new__(SessionSubscriptionRepository)

@@ -1,4 +1,6 @@
-"""Cover installer wizard behavior that must work before MoviePilot starts."""
+"""
+验证 MoviePilot 启动前即可使用的安装向导行为。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +17,9 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 
 def load_local_setup_module():
-    """Load an isolated installer module for focused wizard tests."""
+    """
+    加载独立的安装模块，隔离向导测试中的模块状态。
+    """
     module_name = f"moviepilot_local_setup_wizard_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, MODULE_PATH)
     assert spec is not None and spec.loader is not None
@@ -27,7 +31,9 @@ def load_local_setup_module():
 def test_llm_provider_module_loads_when_repository_root_is_not_on_import_path(
     monkeypatch,
 ):
-    """The standalone installer must expose app imports to the LLM provider."""
+    """
+    独立安装器必须让模型提供方能够导入应用模块。
+    """
     module = load_local_setup_module()
     repository_root = str(module.ROOT)
     monkeypatch.setattr(
@@ -46,7 +52,9 @@ def test_llm_provider_module_loads_when_repository_root_is_not_on_import_path(
 def test_startup_python_resolution_preserves_virtualenv_symlink(
     monkeypatch, tmp_path: Path
 ):
-    """Autostart must invoke the venv launcher instead of its base interpreter."""
+    """
+    自动启动必须调用虚拟环境启动器，不能绕过环境使用基础解释器。
+    """
     module = load_local_setup_module()
     venv_dir = tmp_path / "venv"
     python_launcher = module.get_venv_python(venv_dir)
@@ -70,7 +78,9 @@ def test_startup_python_resolution_preserves_virtualenv_symlink(
 def test_startup_python_resolution_prefers_project_runtime_launcher(
     monkeypatch, tmp_path: Path
 ):
-    """Autostart must prefer the project runtime launcher over an external interpreter."""
+    """
+    自动启动优先使用项目运行时启动器，避免选择外部解释器。
+    """
     module = load_local_setup_module()
     venv_dir = tmp_path / "venv"
     runtime_launcher = module.get_venv_bin_dir(venv_dir) / "moviepilot-python"
@@ -92,19 +102,25 @@ def test_startup_python_resolution_prefers_project_runtime_launcher(
 
 
 def test_directory_config_keeps_download_path_as_downloader_path(monkeypatch):
-    """The wizard must preserve downloader paths without resolving them locally."""
+    """
+    向导保留下载器路径，不将其作为宿主路径解析。
+    """
     module = load_local_setup_module()
     text_prompts: list[tuple[str, str]] = []
     path_prompts: list[str] = []
     monkeypatch.setattr(module, "print_step", lambda _message: None)
 
     def prompt_text(label: str, default: str) -> str:
-        """Record downloader-path prompts and supply the container path."""
+        """
+        记录下载器路径提示，并返回容器内的路径。
+        """
         text_prompts.append((label, default))
         return "/downloads"
 
     def prompt_path(label: str, default: Path) -> str:
-        """Supply the host-side media library path."""
+        """
+        提供宿主侧媒体库路径。
+        """
         assert isinstance(default, Path)
         path_prompts.append(label)
         return "/video"
@@ -124,7 +140,9 @@ def test_directory_config_keeps_download_path_as_downloader_path(monkeypatch):
 def test_auth_site_definitions_load_without_database_transaction_runners(
     monkeypatch,
 ):
-    """Static authentication fields must load before setup initializes the DB."""
+    """
+    安装器初始化数据库之前必须能够加载静态认证字段。
+    """
     from app.db import uow
 
     module = load_local_setup_module()
@@ -132,10 +150,14 @@ def test_auth_site_definitions_load_without_database_transaction_runners(
     monkeypatch.setattr(uow, "_async_transaction_runner", None)
 
     class AuthSitesHelper:
-        """Return a static auth schema while exercising the temporary UOW."""
+        """
+        通过临时工作单元执行查询，并返回静态认证结构。
+        """
 
         def get_authsites(self) -> dict[str, object]:
-            """Read the active-site query through the temporary empty runner."""
+            """
+            通过临时空结果执行器读取活动站点查询。
+            """
             assert uow.run_sync_transaction(lambda _session: "queried") == []
             return {
                 "example": {
@@ -177,23 +199,31 @@ def test_auth_site_definitions_load_without_database_transaction_runners(
 
 
 def test_apply_config_does_not_create_downloader_internal_path(monkeypatch):
-    """Applying installer config must create only host-side media directories."""
+    """
+    应用安装配置时只创建宿主侧媒体目录。
+    """
     module = load_local_setup_module()
     created_directories: list[str] = []
     original_import = builtins.__import__
 
     def fake_path(value: str):
-        """Record directory creation without touching the host filesystem."""
+        """
+        记录目录创建请求，不修改宿主文件系统。
+        """
 
         def mkdir(*, parents: bool, exist_ok: bool) -> None:
-            """Record the requested directory creation."""
+            """
+            记录请求创建的目录。
+            """
             assert parents and exist_ok
             created_directories.append(value)
 
         return types.SimpleNamespace(mkdir=mkdir)
 
     def fail_before_runtime_initialization(name: str, *args, **kwargs):
-        """Stop before database setup after the path-creation phase."""
+        """
+        路径创建阶段结束后中止，避免进入数据库初始化。
+        """
         if name == "app.application.classification.reference":
             raise ModuleNotFoundError("stop after path setup")
         return original_import(name, *args, **kwargs)

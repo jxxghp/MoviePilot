@@ -1,20 +1,27 @@
+"""
+LRCLIB 歌词检索、严格候选匹配与请求缓存。
+"""
+
 import re
 import threading
 import time
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, cast
 
 from app.adapters.network.http import RequestUtils
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
+from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.runtime.cache import cached
+from app.runtime.cache import CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
 
 
 class LrclibModule(_ModuleBase):
-    """通过 LRCLIB 获取与单个音轨匹配的同步歌词或纯文本歌词。"""
+    """
+    通过 LRCLIB 获取与单个音轨匹配的同步歌词或纯文本歌词。
+    """
 
     _source = "lrclib"
     _request_interval = 0.3
@@ -24,44 +31,68 @@ class LrclibModule(_ModuleBase):
     _match_pattern = re.compile(r"[^\w]+", flags=re.UNICODE)
 
     def init_module(self) -> None:
-        """配置变化后清理跨实例请求缓存和供应商冷却状态。"""
-        self._request_json.cache_clear()
+        """
+        配置变化后清理跨实例请求缓存和供应商冷却状态。
+        """
+        cast(CacheControls, self._request_json).cache_clear()
         type(self)._cooldown_until = 0.0
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
-        """LRCLIB 无需密钥，是否请求由音乐歌词刮削策略控制。"""
+        """
+        LRCLIB 无需密钥，是否请求由音乐歌词刮削策略控制。
+        """
         return None
 
     def stop(self) -> None:
-        """停止模块；当前实现没有需要释放的持久资源。"""
+        """
+        停止模块；当前实现没有需要释放的持久资源。
+        """
 
     def test(self) -> Tuple[bool, str]:
-        """测试 LRCLIB 搜索接口连通性。"""
+        """
+        测试 LRCLIB 搜索接口连通性。
+        """
         result = self._request_json("/api/search", params={"track_name": "test"})
         return (True, "") if result is not None else (False, "LRCLIB 网络连接失败")
 
     @staticmethod
     def get_name() -> str:
-        """返回模块展示名称。"""
+        """
+        返回模块展示名称。
+        """
         return "LRCLIB"
 
     @staticmethod
     def get_type() -> ModuleType:
-        """返回模块所属的其它能力类型。"""
+        """
+        返回模块所属的其它能力类型。
+        """
         return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
-        """返回 LRCLIB 模块子类型。"""
+        """
+        返回 LRCLIB 模块子类型。
+        """
         return OtherModulesType.Lrclib
 
     @staticmethod
     def get_priority() -> int:
-        """返回歌词模块执行优先级。"""
+        """
+        返回歌词模块执行优先级。
+        """
         return 5
 
     def music_lyrics(self, music: Union[MetaMusic, MusicInfo]) -> Optional[MusicLyrics]:
-        """按标题、艺术家、专辑和时长查询单曲歌词，并对搜索回退结果严格匹配。"""
+        """
+        按单曲信息查询 LRCLIB，精确接口无结果时回退候选搜索。
+
+        艺术家优先取首位歌曲艺术家，缺失时使用专辑艺术家。
+        搜索回退校验标题、艺术家和可用时长，时长相差超过两秒的候选不接受。
+
+        :param music: 标题、艺术家、专辑和秒级时长线索，至少需要标题与艺术家
+        :return: 同步歌词、纯文本或纯音乐标记；线索不足、请求失败或无匹配时返回 None
+        """
         title = str(getattr(music, "title", None) or "").strip()
         artists = list(getattr(music, "artists", None) or [])
         artist = str((artists[0] if artists else getattr(music, "album_artist", None)) or "").strip()
@@ -70,12 +101,15 @@ class LrclibModule(_ModuleBase):
         if not title or not artist:
             return None
 
+        query_title = self._query_text(title)
+        query_artist = self._query_text(artist)
+        query_album = self._query_text(album)
         exact_params: dict[str, Any] = {
-            "track_name": title,
-            "artist_name": artist,
+            "track_name": query_title,
+            "artist_name": query_artist,
         }
-        if album:
-            exact_params["album_name"] = album
+        if query_album:
+            exact_params["album_name"] = query_album
         if duration:
             exact_params["duration"] = duration
         payload = self._request_json("/api/get", params=exact_params)
@@ -84,16 +118,16 @@ class LrclibModule(_ModuleBase):
             results = self._request_json(
                 "/api/search",
                 params={
-                    "track_name": title,
-                    "artist_name": artist,
-                    **({"album_name": album} if album else {}),
+                    "track_name": query_title,
+                    "artist_name": query_artist,
+                    **({"album_name": query_album} if query_album else {}),
                 },
             )
             payload = self._select_result(
                 results if isinstance(results, list) else [],
-                title=title,
-                artist=artist,
-                album=album,
+                title=query_title,
+                artist=query_artist,
+                album=query_album,
                 duration=duration,
             )
             match_score = 90
@@ -103,7 +137,12 @@ class LrclibModule(_ModuleBase):
             self,
             music: Union[MetaMusic, MusicInfo],
     ) -> list[MusicLyrics]:
-        """向通用歌词链返回候选列表，保留旧单结果接口兼容插件生态。"""
+        """
+        把旧单结果歌词接口包装为通用候选列表。
+
+        :param music: 待查单曲信息，匹配规则与 music_lyrics 一致
+        :return: 包含一个候选的列表；没有可用歌词时为空列表
+        """
         lyrics = self.music_lyrics(music)
         return [lyrics] if lyrics else []
 
@@ -116,7 +155,9 @@ class LrclibModule(_ModuleBase):
             album: str,
             duration: Optional[int],
     ) -> Optional[dict[str, Any]]:
-        """从模糊搜索结果中选择标题和艺术家一致且时长可信的歌词。"""
+        """
+        从模糊搜索结果中选择标题和艺术家一致且时长可信的歌词。
+        """
         expected_title = cls._normalize_text(title)
         expected_artist = cls._normalize_text(artist)
         expected_album = cls._normalize_text(album)
@@ -145,17 +186,31 @@ class LrclibModule(_ModuleBase):
 
     @classmethod
     def _normalize_text(cls, value: Any) -> str:
-        """移除大小写、标点和空白差异，生成歌词匹配文本。"""
-        return cls._match_pattern.sub("", str(value or "").casefold())
+        """
+        移除大小写、标点和空白差异，生成歌词匹配文本。
+        """
+        simplified = zhconv_convert(str(value or "").casefold(), "zh-hans")
+        return cls._match_pattern.sub("", str(simplified))
+
+    @staticmethod
+    def _query_text(value: str) -> str:
+        """
+        将歌词查询字段统一为简体，适配 LRCLIB 的主流索引写法。
+        """
+        return str(zhconv_convert(value, "zh-hans")).strip()
 
     @staticmethod
     def _compatible_text(expected: str, candidate: str) -> bool:
-        """允许合作艺人字符串互相包含，同时拒绝完全无关的艺术家。"""
+        """
+        允许合作艺人字符串互相包含，同时拒绝完全无关的艺术家。
+        """
         return bool(expected and candidate and (expected in candidate or candidate in expected))
 
     @staticmethod
     def _optional_int(value: Any) -> Optional[int]:
-        """把歌词源返回的时长安全转换为整数秒。"""
+        """
+        把歌词源返回的时长安全转换为整数秒。
+        """
         try:
             return round(float(value)) if value not in (None, "") else None
         except (TypeError, ValueError):
@@ -163,7 +218,9 @@ class LrclibModule(_ModuleBase):
 
     @classmethod
     def _to_lyrics(cls, payload: Any, match_score: int = 90) -> Optional[MusicLyrics]:
-        """把 LRCLIB 响应转换为标准歌词对象。"""
+        """
+        把 LRCLIB 响应转换为标准歌词对象。
+        """
         if not isinstance(payload, dict) or payload.get("id") is None:
             return None
         plain_lyrics = str(payload.get("plainLyrics") or "").strip() or None
@@ -190,7 +247,9 @@ class LrclibModule(_ModuleBase):
             params: Optional[dict[str, Any]],
             base_url: Optional[str] = None,
     ) -> Any:
-        """串行执行一次 LRCLIB 请求，确保批量专辑刮削遵守最小请求间隔。"""
+        """
+        串行执行一次 LRCLIB 请求，确保批量专辑刮削遵守最小请求间隔。
+        """
         with cls._request_lock:
             if time.monotonic() < cls._cooldown_until:
                 return None
@@ -219,7 +278,9 @@ class LrclibModule(_ModuleBase):
             params: Optional[dict[str, Any]] = None,
             base_url: Optional[str] = None,
     ) -> Any:
-        """请求 LRCLIB JSON 接口，缓存命中与未命中结果并按 Retry-After 重试一次。"""
+        """
+        请求 LRCLIB JSON 接口，缓存命中与未命中结果并按 Retry-After 重试一次。
+        """
         response = cls._request_once(path, params, base_url)
         if response is None:
             return None
@@ -256,7 +317,9 @@ class LrclibModule(_ModuleBase):
 
     @staticmethod
     def _retry_after_seconds(value: Any) -> float:
-        """解析 LRCLIB 限流等待秒数，异常值回退到一秒。"""
+        """
+        解析 LRCLIB 限流等待秒数，异常值回退到一秒。
+        """
         try:
             return max(float(value), 0.0)
         except (TypeError, ValueError):

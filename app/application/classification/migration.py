@@ -1,4 +1,6 @@
-"""旧版 TMDB 分类配置到新版分类策略的纯迁移。"""
+"""
+旧版 TMDB 分类配置到新版分类策略的纯迁移。
+"""
 
 from __future__ import annotations
 
@@ -29,6 +31,7 @@ from app.schemas.category import (
     ClassificationCategory,
     ClassificationCondition,
     ClassificationConditionNode,
+    ClassificationFactScalar,
     ClassificationFieldDefinition,
     ClassificationMediaType,
     ClassificationPolicy,
@@ -37,14 +40,14 @@ from app.schemas.category import (
     ClassificationTarget,
 )
 
+# 旧分类配置支持的一级媒体类型键。
 LegacyMediaKey: TypeAlias = Literal["movie", "tv"]
-"""旧分类配置支持的一级媒体类型键。"""
 
+# 旧配置迁移诊断的严重级别。
 LegacyDiagnosticSeverity: TypeAlias = Literal["error", "warning"]
-"""旧配置迁移诊断的严重级别。"""
 
+# 旧配置迁移诊断路径允许的段类型。
 LegacyDiagnosticPathPart: TypeAlias = Union[str, int]
-"""旧配置迁移诊断路径允许的段类型。"""
 
 _TMDB_SOURCE: Final[str] = "themoviedb"
 _EXTENSION_PREFIX: Final[str] = f"extensions.{_TMDB_SOURCE}."
@@ -68,7 +71,14 @@ _COMMON_FALLBACKS: Final[dict[ClassificationMediaType, str]] = {
 
 @dataclass(frozen=True, slots=True)
 class LegacyClassificationDiagnostic:
-    """描述旧配置迁移或兼容投影中的结构化错误与警告。"""
+    """
+    描述旧配置迁移或兼容投影中的结构化错误与警告。
+
+    :param severity: 诊断级别，error 阻止自动发布，warning 提示兼容限制
+    :param code: 供调用方区分问题类型的稳定诊断码
+    :param message: 供用户阅读的具体问题说明
+    :param path: 旧配置中问题所在的键和下标路径；空元组指向整体配置
+    """
 
     severity: LegacyDiagnosticSeverity
     code: str
@@ -78,7 +88,13 @@ class LegacyClassificationDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class LegacyClassificationMigrationResult:
-    """承载旧配置迁移后的策略、动态字段目录和全部诊断。"""
+    """
+    承载旧配置迁移后的策略、动态字段目录和全部诊断。
+
+    :param policy: 从旧配置生成的候选分类策略
+    :param extra_fields: 为保留旧规则语义额外生成的来源字段定义
+    :param issues: 迁移过程收集的错误和警告，决定是否允许自动发布
+    """
 
     policy: ClassificationPolicy
     extra_fields: tuple[ClassificationFieldDefinition, ...]
@@ -86,28 +102,42 @@ class LegacyClassificationMigrationResult:
 
     @property
     def valid(self) -> bool:
-        """返回迁移结果是否不存在阻止自动发布的错误。"""
+        """
+        返回迁移结果是否不存在阻止自动发布的错误。
+        """
         return not any(item.severity == "error" for item in self.issues)
 
     @property
     def field_definitions(self) -> tuple[ClassificationFieldDefinition, ...]:
-        """兼容返回迁移生成的动态字段声明。"""
+        """
+        兼容返回迁移生成的动态字段声明。
+        """
         return self.extra_fields
 
     @property
     def diagnostics(self) -> tuple[LegacyClassificationDiagnostic, ...]:
-        """兼容返回迁移生成的结构化诊断。"""
+        """
+        兼容返回迁移生成的结构化诊断。
+        """
         return self.issues
 
     @property
     def publishable(self) -> bool:
-        """兼容返回迁移结果是否允许自动发布。"""
+        """
+        兼容返回迁移结果是否允许自动发布。
+        """
         return self.valid
 
 
 @dataclass(slots=True)
 class _MigrationContext:
-    """在一次纯迁移中收集动态字段、值别名和结构化诊断。"""
+    """
+    在一次纯迁移中收集动态字段、值别名和结构化诊断。
+
+    :param field_media_types: 扩展字段到适用媒体类型的累计映射
+    :param field_aliases: 每个字段的旧值到标准值别名映射
+    :param diagnostics: 本轮迁移逐步累积的错误与警告
+    """
 
     field_media_types: dict[str, list[ClassificationMediaType]] = field(default_factory=dict)
     field_aliases: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -120,7 +150,9 @@ class _MigrationContext:
         message: str,
         path: Sequence[LegacyDiagnosticPathPart],
     ) -> None:
-        """追加一条保持稳定路径的迁移诊断。"""
+        """
+        追加一条保持稳定路径的迁移诊断。
+        """
         self.diagnostics.append(
             LegacyClassificationDiagnostic(
                 severity=severity,
@@ -135,7 +167,9 @@ class _MigrationContext:
         field_name: str,
         media_type: ClassificationMediaType,
     ) -> str:
-        """登记一个受控 TMDB 旧比较字段并合并适用影视类型。"""
+        """
+        登记一个受控 TMDB 旧比较字段并合并适用影视类型。
+        """
         field_id = f"{_EXTENSION_PREFIX}{field_name}"
         media_types = self.field_media_types.setdefault(field_id, [])
         if media_type not in media_types:
@@ -143,7 +177,9 @@ class _MigrationContext:
         return field_id
 
     def register_aliases(self, field_id: str, values: Iterable[str]) -> None:
-        """把旧配置原始大小写映射到旧算法使用的大写比较值。"""
+        """
+        把旧配置原始大小写映射到旧算法使用的大写比较值。
+        """
         aliases = self.field_aliases.setdefault(field_id, {})
         for value in values:
             normalized = value.upper()
@@ -157,7 +193,9 @@ class _MigrationContext:
         *,
         canonicalizer: Callable[[str], str] | None = None,
     ) -> None:
-        """登记标准字符串字段的大小写别名，保持旧配置的无大小写比较语义。"""
+        """
+        登记标准字符串字段的大小写别名，保持旧配置的无大小写比较语义。
+        """
         aliases = self.field_aliases.setdefault(field_id, {})
         for value in values:
             canonical = canonicalizer(value) if canonicalizer else value.casefold()
@@ -166,7 +204,9 @@ class _MigrationContext:
                     aliases[alias] = canonical
 
     def build_field_definitions(self) -> tuple[ClassificationFieldDefinition, ...]:
-        """按首次出现顺序构造仅供已有规则解析的退役字段声明。"""
+        """
+        按首次出现顺序构造仅供已有规则解析的退役字段声明。
+        """
         return tuple(
             _legacy_field_definition(field_id, media_types) for field_id, media_types in self.field_media_types.items()
         )
@@ -220,7 +260,9 @@ def migrate_legacy_category_config(
 def legacy_extension_fields_from_policy(
     policy: ClassificationPolicy,
 ) -> tuple[ClassificationFieldDefinition, ...]:
-    """按策略条件和别名重建可直接注册的 TMDB 旧比较扩展字段声明。"""
+    """
+    按策略条件和别名重建可直接注册的 TMDB 旧比较扩展字段声明。
+    """
     context = _MigrationContext()
     for rule in policy.rules:
         for field_id in condition_field_ids(rule.when):
@@ -246,7 +288,9 @@ def legacy_extension_fields_from_policy(
 def _legacy_root_mapping(
     config: Union[CategoryConfig, Mapping[str, object]],
 ) -> Mapping[str, object]:
-    """把强类型旧配置投影为不访问文件的有序根映射。"""
+    """
+    把强类型旧配置投影为不访问文件的有序根映射。
+    """
     if isinstance(config, CategoryConfig):
         return {
             "movie": config.movie or {},
@@ -259,7 +303,9 @@ def _diagnose_unknown_top_level_keys(
     root: Mapping[str, object],
     context: _MigrationContext,
 ) -> None:
-    """拒绝旧契约未定义的一级媒体类型，避免静默丢失配置。"""
+    """
+    拒绝旧契约未定义的一级媒体类型，避免静默丢失配置。
+    """
     for key in root:
         if key in _MEDIA_TYPES:
             continue
@@ -281,7 +327,9 @@ def _migrate_media_categories(
     fallbacks: dict[ClassificationMediaType, str],
     context: _MigrationContext,
 ) -> None:
-    """按单个旧媒体类型的原始顺序迁移分类、规则和全局兜底。"""
+    """
+    按单个旧媒体类型的原始顺序迁移分类、规则和全局兜底。
+    """
     if raw_categories is None:
         return
     if not isinstance(raw_categories, Mapping):
@@ -413,7 +461,9 @@ def _migrate_media_categories(
 
 
 def _legacy_rule_mapping(raw_rule: object) -> Optional[Mapping[object, object]]:
-    """把 CategoryRule 或原始映射统一为只读字段映射。"""
+    """
+    把 CategoryRule 或原始映射统一为只读字段映射。
+    """
     if isinstance(raw_rule, CategoryRule):
         return cast(
             Mapping[object, object],
@@ -428,7 +478,9 @@ def _is_legacy_fallback(
     raw_rule: object,
     rule_mapping: Optional[Mapping[object, object]],
 ) -> bool:
-    """复现旧实现对空项及所有字段均为空映射的立即命中语义。"""
+    """
+    复现旧实现对空项及所有字段均为空映射的立即命中语义。
+    """
     if not raw_rule:
         return True
     return rule_mapping is not None and all(not value for value in rule_mapping.values())
@@ -440,7 +492,9 @@ def _diagnose_category_name(
     path: Sequence[LegacyDiagnosticPathPart],
     context: _MigrationContext,
 ) -> None:
-    """在仍保留分类的同时标记无法安全投影为目录路径的名称。"""
+    """
+    在仍保留分类的同时标记无法安全投影为目录路径的名称。
+    """
     invalid = (
         not isinstance(raw_name, str)
         or not name
@@ -457,12 +511,16 @@ def _diagnose_category_name(
 
 
 def _legacy_category_path(name: str) -> list[str]:
-    """把旧分类名中的斜杠还原为目录层级，同时保留原始显示名称。"""
+    """
+    把旧分类名中的斜杠还原为目录层级，同时保留原始显示名称。
+    """
     return name.split("/")
 
 
 def _legacy_path_segment_is_invalid(segment: str) -> bool:
-    """判断旧分类名拆出的目录段是否违反跨平台路径安全约束。"""
+    """
+    判断旧分类名拆出的目录段是否违反跨平台路径安全约束。
+    """
     illegal_characters = _ILLEGAL_PATH_CHARACTERS - frozenset({"/"})
     return (
         not segment
@@ -481,7 +539,9 @@ def _migrate_legacy_field(
     path: Sequence[LegacyDiagnosticPathPart],
     context: _MigrationContext,
 ) -> Optional[ClassificationConditionNode]:
-    """把一个旧字段编译为保持正值 OR、排除值 AND 的条件树。"""
+    """
+    把一个旧字段编译为保持正值 OR、排除值 AND 的条件树。
+    """
     if not isinstance(raw_field, str) or not _SAFE_FIELD_SEGMENT.fullmatch(raw_field):
         context.add_diagnostic(
             "error",
@@ -563,7 +623,9 @@ def _standard_string_condition(
     *,
     context: _MigrationContext,
 ) -> ClassificationConditionNode:
-    """把旧字符串枚举转换为标准字段的 in/not_in 条件。"""
+    """
+    把旧字符串枚举转换为标准字段的 in/not_in 条件。
+    """
     context.register_standard_aliases(
         field_id,
         (value for token in tokens for value in token.values),
@@ -598,7 +660,9 @@ def _standard_country_condition(
     *,
     context: _MigrationContext,
 ) -> ClassificationConditionNode:
-    """把旧电影/电视剧国家枚举转换为统一国家代码列表条件。"""
+    """
+    把旧电影/电视剧国家枚举转换为统一国家代码列表条件。
+    """
     context.register_standard_aliases(
         "media.countries",
         (value for token in tokens for value in token.values),
@@ -637,7 +701,9 @@ def _standard_numeric_condition(
     extension_field: str,
     context: _MigrationContext,
 ) -> ClassificationConditionNode:
-    """把可表示的旧数字枚举迁移为标准数值条件，其余值留在 TMDB 扩展字段。"""
+    """
+    把可表示的旧数字枚举迁移为标准数值条件，其余值留在 TMDB 扩展字段。
+    """
     positive_nodes: list[ClassificationConditionNode] = []
     negative_nodes: list[ClassificationConditionNode] = []
     extension_field_id: str | None = None
@@ -655,7 +721,7 @@ def _standard_numeric_condition(
                 ClassificationCondition(
                     field=field_id,
                     operator="not_in" if token.negative else "in",
-                    value=numeric_values,
+                    value=list[ClassificationFactScalar](numeric_values),
                 )
             )
         if unknown_values:
@@ -669,7 +735,7 @@ def _standard_numeric_condition(
                 ClassificationCondition(
                     field=extension_field_id,
                     operator=("contains_none" if token.negative else "contains_any"),
-                    value=unknown_values,
+                    value=list[ClassificationFactScalar](unknown_values),
                 )
             )
         if not token_nodes:
@@ -697,7 +763,9 @@ def _standard_boolean_condition(
     media_type: ClassificationMediaType,
     context: _MigrationContext,
 ) -> ClassificationConditionNode:
-    """把旧 TRUE/FALSE 条件迁移为标准成人标记，未知值继续使用 TMDB 扩展。"""
+    """
+    把旧 TRUE/FALSE 条件迁移为标准成人标记，未知值继续使用 TMDB 扩展。
+    """
     positive_nodes: list[ClassificationConditionNode] = []
     negative_nodes: list[ClassificationConditionNode] = []
     extension_field_id: str | None = None
@@ -728,7 +796,7 @@ def _standard_boolean_condition(
                 ClassificationCondition(
                     field=extension_field_id,
                     operator=("contains_none" if token.negative else "contains_any"),
-                    value=unknown_values,
+                    value=list[ClassificationFactScalar](unknown_values),
                 )
             )
         if not standard_nodes:
@@ -757,7 +825,9 @@ def _legacy_extension_condition(
     media_type: ClassificationMediaType,
     context: _MigrationContext,
 ) -> ClassificationConditionNode:
-    """把没有标准等价字段的旧值登记为来源受限扩展条件。"""
+    """
+    把没有标准等价字段的旧值登记为来源受限扩展条件。
+    """
     field_id = context.register_extension_field(field_name, media_type)
     context.register_aliases(
         field_id,
@@ -767,7 +837,9 @@ def _legacy_extension_condition(
 
 
 def _standard_country_code(value: str) -> str:
-    """把旧国家枚举值归一为标准事实使用的 ISO 代码。"""
+    """
+    把旧国家枚举值归一为标准事实使用的 ISO 代码。
+    """
     normalized = value.strip()
     if len(normalized) == 2 and normalized.isascii() and normalized.isalpha():
         return normalized.upper()
@@ -781,7 +853,9 @@ def _migrate_genre_tokens(
     media_type: ClassificationMediaType,
     context: _MigrationContext,
 ) -> ClassificationConditionNode:
-    """已知 Genre ID 使用标准风格键，混入未知值时整体保留 TMDB 原始视图。"""
+    """
+    已知 Genre ID 使用标准风格键，混入未知值时整体保留 TMDB 原始视图。
+    """
     if any(
         value.upper() not in _TMDB_GENRE_KEYS
         for token in tokens
@@ -807,7 +881,7 @@ def _migrate_genre_tokens(
                 ClassificationCondition(
                     field="media.genre_keys",
                     operator="contains_none" if token.negative else "contains_any",
-                    value=known_keys,
+                    value=list[ClassificationFactScalar](known_keys),
                 )
             )
         if token_nodes:
@@ -826,7 +900,9 @@ def _migrate_genre_tokens(
 
 
 def _tmdb_identity_condition() -> ClassificationCondition:
-    """为不可迁移但需保留的禁用规则构造稳定占位条件。"""
+    """
+    为不可迁移但需保留的禁用规则构造稳定占位条件。
+    """
     return ClassificationCondition(
         field="identity.media_source",
         operator="equals",
@@ -842,7 +918,9 @@ def _disabled_placeholder_rule(
     priority: int,
     archived: bool,
 ) -> ClassificationRule:
-    """保留不可达或非法旧分类的稳定规则身份，同时禁止执行。"""
+    """
+    保留不可达或非法旧分类的稳定规则身份，同时禁止执行。
+    """
     rule_kind, target = _retained_rule_output(category_id, archived)
     return ClassificationRule(
         id=f"{category_id}.rule",
@@ -868,7 +946,9 @@ def _fallback_metadata_rule(
     archived: bool,
     context: _MigrationContext,
 ) -> ClassificationRule:
-    """用禁用规则保留全空字段映射，运行时由全局兜底处理。"""
+    """
+    用禁用规则保留全空字段映射，运行时由全局兜底处理。
+    """
     nodes: list[ClassificationConditionNode] = []
     for raw_field in rule_mapping:
         field_path = [*path, str(raw_field)]
@@ -900,7 +980,9 @@ def _retained_rule_output(
     category_id: str,
     archived: bool,
 ) -> tuple[ClassificationRuleKind, ClassificationTarget]:
-    """为不可达规则生成不引用 disabled 分类的稳定归档输出。"""
+    """
+    为不可达规则生成不引用 disabled 分类的稳定归档输出。
+    """
     if archived:
         return (
             "label",
@@ -910,7 +992,9 @@ def _retained_rule_output(
 
 
 def _stable_category_id(media_key: LegacyMediaKey, name: str) -> str:
-    """以媒体类型和原始名称生成不依赖本地字符集的稳定 ASCII ID。"""
+    """
+    以媒体类型和原始名称生成不依赖本地字符集的稳定 ASCII ID。
+    """
     digest = hashlib.sha256(f"{media_key}\0{name}".encode("utf-8")).hexdigest()[:16]
     return f"legacy.{media_key}.{digest}"
 
@@ -919,7 +1003,9 @@ def _common_fallback_categories(
     legacy_categories: Sequence[ClassificationCategory],
     fallbacks: Mapping[ClassificationMediaType, str],
 ) -> list[ClassificationCategory]:
-    """构造不受来源限制且不与同类型旧目录冲突的稳定未分类目录。"""
+    """
+    构造不受来源限制且不与同类型旧目录冲突的稳定未分类目录。
+    """
     occupied = {(category.media_type, tuple(category.path)) for category in legacy_categories}
     categories: list[ClassificationCategory] = []
     for media_type, category_id in _COMMON_FALLBACKS.items():
@@ -940,11 +1026,15 @@ def _common_fallback_categories(
 
 
 def _error_count(diagnostics: Sequence[LegacyClassificationDiagnostic]) -> int:
-    """返回当前迁移诊断中的错误数量。"""
+    """
+    返回当前迁移诊断中的错误数量。
+    """
     return sum(item.severity == "error" for item in diagnostics)
 
 
 def _append_unique(values: list[str], value: str) -> None:
-    """按首次出现顺序追加非重复字符串。"""
+    """
+    按首次出现顺序追加非重复字符串。
+    """
     if value not in values:
         values.append(value)

@@ -1,4 +1,6 @@
-"""多消息渠道复用统一宿主回环入口的契约测试。"""
+"""
+多消息渠道复用统一宿主回环入口的契约测试。
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,35 +22,47 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _FakeMessageIngressPort:
-    """返回固定状态码并记录同步、异步回环投递。"""
+    """
+    返回固定状态码并记录同步、异步回环投递。
+    """
 
     def __init__(self, status_code=200) -> None:
-        """保存固定状态码。"""
+        """
+        保存固定状态码。
+        """
         self.status_code = status_code
         self.sync_calls = []
         self.async_calls = []
 
     def post(self, url, payload, *, headers, timeout):
-        """记录同步投递并返回固定状态码。"""
+        """
+        记录同步投递并返回固定状态码。
+        """
         self.sync_calls.append((url, payload, headers, timeout))
         return self.status_code
 
     async def async_post(self, url, payload, *, headers, timeout):
-        """记录异步投递并返回固定状态码。"""
+        """
+        记录异步投递并返回固定状态码。
+        """
         self.async_calls.append((url, payload, headers, timeout))
         return self.status_code
 
 
 @pytest.fixture(autouse=True)
 def restore_message_ingress_port():
-    """隔离消息回环端口并在用例结束后恢复。"""
+    """
+    隔离消息回环端口并在用例结束后恢复。
+    """
     previous = ingress.configure_message_ingress_port(_FakeMessageIngressPort())
     yield
     ingress.reset_message_ingress_port(previous)
 
 
 def _patch_ingress_settings(monkeypatch, **values):
-    """通过只读运行配置端口注入回环入口测试设置。"""
+    """
+    通过只读运行配置端口注入回环入口测试设置。
+    """
     settings = SimpleNamespace(**values)
     monkeypatch.setattr(
         ingress,
@@ -58,7 +72,9 @@ def _patch_ingress_settings(monkeypatch, **values):
 
 
 def test_forward_message_to_host_keeps_token_out_of_url(monkeypatch):
-    """统一入口仅编码来源参数，并通过请求头传递凭据和 payload 副本。"""
+    """
+    统一入口仅编码来源参数，并通过请求头传递凭据和 payload 副本。
+    """
     port = _FakeMessageIngressPort()
     ingress.configure_message_ingress_port(port)
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token value")
@@ -86,7 +102,9 @@ def test_forward_message_to_host_rejects_unconfirmed_response(
     monkeypatch,
     status_code,
 ):
-    """本地入口无响应或返回错误状态时不得宣称渠道消息已接收。"""
+    """
+    本地入口无响应或返回错误状态时不得宣称渠道消息已接收。
+    """
     ingress.configure_message_ingress_port(_FakeMessageIngressPort(status_code))
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token")
 
@@ -94,7 +112,9 @@ def test_forward_message_to_host_rejects_unconfirmed_response(
 
 
 def test_forward_message_to_host_fails_closed_when_port_is_unconfigured(monkeypatch):
-    """组合根未装配时公开入口稳定拒绝，不得懒加载具体 Adapter。"""
+    """
+    组合根未装配时公开入口稳定拒绝，不得懒加载具体 Adapter。
+    """
     ingress.reset_message_ingress_port()
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token")
 
@@ -103,7 +123,9 @@ def test_forward_message_to_host_fails_closed_when_port_is_unconfigured(monkeypa
 
 @pytest.mark.asyncio
 async def test_async_forward_message_to_host_uses_same_contract(monkeypatch):
-    """自有事件循环的渠道必须复用同一 URL、payload 和确认规则。"""
+    """
+    自有事件循环的渠道必须复用同一 URL、payload 和确认规则。
+    """
     port = _FakeMessageIngressPort()
     ingress.configure_message_ingress_port(port)
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token value")
@@ -124,7 +146,9 @@ async def test_async_forward_message_to_host_uses_same_contract(monkeypatch):
 
 
 def test_startup_message_ingress_adapter_closes_sync_response(monkeypatch):
-    """生产同步注入适配层必须负责关闭 HTTP 响应。"""
+    """
+    生产同步注入适配层必须负责关闭 HTTP 响应。
+    """
     from app.startup.composition import network as network_composition
 
     response = SimpleNamespace(status_code=202, close=MagicMock())
@@ -153,7 +177,9 @@ def test_startup_message_ingress_adapter_closes_sync_response(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_startup_message_ingress_adapter_closes_async_response(monkeypatch):
-    """生产异步注入适配层必须负责关闭 HTTP 响应。"""
+    """
+    生产异步注入适配层必须负责关闭 HTTP 响应。
+    """
     from app.startup.composition import network as network_composition
 
     response = SimpleNamespace(status_code=202, aclose=AsyncMock())
@@ -181,11 +207,15 @@ async def test_startup_message_ingress_adapter_closes_async_response(monkeypatch
 
 
 def test_submit_message_to_host_copies_payload_and_reports_admission_failure():
-    """异步渠道提交时冻结顶层 payload，执行器拒绝任务则返回 False。"""
+    """
+    异步渠道提交时冻结顶层 payload，执行器拒绝任务则返回 False。
+    """
     submitted = []
 
     def submit(function, *args, **kwargs):
-        """记录受管执行器收到的函数和参数。"""
+        """
+        记录受管执行器收到的函数和参数。
+        """
         submitted.append((function, args, kwargs))
 
     payload = {"text": "before"}
@@ -201,7 +231,9 @@ def test_submit_message_to_host_copies_payload_and_reports_admission_failure():
     assert submitted[0][2] == {"timeout": 15}
 
     def reject(*_args, **_kwargs):
-        """模拟生命周期关闭后的执行器拒绝新任务。"""
+        """
+        模拟生命周期关闭后的执行器拒绝新任务。
+        """
         raise RuntimeError("executor closed")
 
     assert ingress.submit_message_to_host({}, "channel", submit=reject) is False
@@ -221,12 +253,16 @@ def test_threaded_channels_submit_through_managed_executor(
     client_type,
     source_attr,
 ):
-    """原裸线程渠道必须把回环任务交给共享 ThreadHelper。"""
+    """
+    原裸线程渠道必须把回环任务交给共享 ThreadHelper。
+    """
     calls = []
     executor = SimpleNamespace(submit=lambda *_args, **_kwargs: None)
 
     def submit_message(payload, source, *, submit, timeout=15):
-        """记录渠道传给统一提交边界的参数。"""
+        """
+        记录渠道传给统一提交边界的参数。
+        """
         calls.append((payload, source, submit, timeout))
         return True
 
@@ -252,7 +288,9 @@ def test_sync_channels_forward_through_shared_ingress(
     client_type,
     source_attr,
 ):
-    """同步轮询渠道必须复用统一回环请求和确认语义。"""
+    """
+    同步轮询渠道必须复用统一回环请求和确认语义。
+    """
     forward = MagicMock(return_value=True)
     monkeypatch.setattr(module, "forward_message_to_host", forward)
     client = object.__new__(client_type)
@@ -263,7 +301,9 @@ def test_sync_channels_forward_through_shared_ingress(
 
 
 def test_slack_preserves_callback_timeout_through_shared_ingress(monkeypatch):
-    """Slack action 的历史长超时必须继续传给统一入口。"""
+    """
+    Slack action 的历史长超时必须继续传给统一入口。
+    """
     forward = MagicMock(return_value=True)
     monkeypatch.setattr(slack_module, "forward_message_to_host", forward)
     client = object.__new__(slack_module.Slack)
@@ -279,7 +319,9 @@ def test_slack_preserves_callback_timeout_through_shared_ingress(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_discord_uses_shared_async_ingress(monkeypatch):
-    """Discord 自有事件循环不得继续维护独立 httpx 回环实现。"""
+    """
+    Discord 自有事件循环不得继续维护独立 httpx 回环实现。
+    """
     forward = AsyncMock(return_value=True)
     monkeypatch.setattr(discord_module, "async_forward_message_to_host", forward)
     client = object.__new__(discord_module.Discord)
@@ -295,7 +337,9 @@ async def test_discord_uses_shared_async_ingress(monkeypatch):
 
 
 def test_message_modules_cannot_reimplement_loopback_endpoint():
-    """消息模块不得重新拼接宿主 URL，新增渠道必须复用统一 ingress。"""
+    """
+    消息模块不得重新拼接宿主 URL，新增渠道必须复用统一 ingress。
+    """
     violations = []
     for path in (PROJECT_ROOT / "app" / "modules").rglob("*.py"):
         if "/api/v1/message" in path.read_text(encoding="utf-8-sig"):

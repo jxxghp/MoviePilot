@@ -1,4 +1,6 @@
-"""真实古典角色标签、发行演奏阵容及序列化合同，不依赖在线服务。"""
+"""
+真实古典角色标签、发行演奏阵容及序列化合同，不依赖在线服务。
+"""
 
 import asyncio
 import hashlib
@@ -43,7 +45,9 @@ TITLE = "Violin Concerto in D major, op. 61: I. Allegro ma non troppo"
 
 
 def _native_audio(tmp_path, container):
-    """使用独立Mutagen原生字段制作音频，不能用被测写入器生成读测试输入。"""
+    """
+    使用独立Mutagen原生字段制作音频，不能用被测写入器生成读测试输入。
+    """
     path = tmp_path / f"01.{container}"
     if container == "wav":
         _write_wave(path)
@@ -83,7 +87,9 @@ def _native_audio(tmp_path, container):
 
 @pytest.mark.parametrize("container", ["flac", "mp3", "wav", "dsf", "m4a", "aiff", "dff", "wma"])
 def test_native_credits_survive_read_models_and_write_without_touching_seed(tmp_path, container):
-    """原生角色到模型/API/pickle均不丢失，库内改写指挥不会修改硬链接做种源或主署名。"""
+    """
+    原生角色到模型/API/pickle均不丢失，库内改写指挥不会修改硬链接做种源或主署名。
+    """
     source = _native_audio(tmp_path, container)
     original = hashlib.sha256(source.read_bytes()).digest()
     meta = AudioMetadataHelper.read_tags(source)
@@ -107,7 +113,9 @@ def test_native_credits_survive_read_models_and_write_without_touching_seed(tmp_
 
 
 def test_legacy_id3_personnel_keep_instruments_but_not_producers(tmp_path):
-    """ID3v2.3的IPLS经Mutagen转换后仍分离演奏和制作，并支持纠正旧演奏者。"""
+    """
+    ID3v2.3的IPLS经Mutagen转换后仍分离演奏和制作，并支持纠正旧演奏者。
+    """
     path = _native_audio(tmp_path, "mp3")
     tags = ID3(path)
     tags.update_to_v23()
@@ -121,7 +129,9 @@ def test_legacy_id3_personnel_keep_instruments_but_not_producers(tmp_path):
 
 
 def test_existing_credit_order_does_not_detach_identical_hardlink(tmp_path):
-    """乐器署名的原生顺序不影响语义，完整标签写回不能触发额外大文件复制。"""
+    """
+    乐器署名的原生顺序不影响语义，完整标签写回不能触发额外大文件复制。
+    """
     source = _native_audio(tmp_path, "mp3")
     target = tmp_path / "library.mp3"
     os.link(source, target)
@@ -131,7 +141,9 @@ def test_existing_credit_order_does_not_detach_identical_hardlink(tmp_path):
 
 
 def test_classical_tags_survive_offline_transfer_batch(tmp_path):
-    """完整古典标签走真实批次扫描和本地准入，保留主署名与角色且不伪造在线身份。"""
+    """
+    完整古典标签走真实批次扫描和本地准入，保留主署名与角色且不伪造在线身份。
+    """
     source = _native_audio(tmp_path, "flac")
     owner = make_transfer_chain()
     item = make_fileitem(str(source))
@@ -143,7 +155,9 @@ def test_classical_tags_survive_offline_transfer_batch(tmp_path):
 
 @pytest.mark.parametrize("container", ["mp3", "flac"])
 def test_custom_performer_tags_are_replaced_without_stale_names(tmp_path, container):
-    """支持读取的自定义演奏标签在纠正时也必须替换，不能把新旧独奏者合并。"""
+    """
+    支持读取的自定义演奏标签在纠正时也必须替换，不能把新旧独奏者合并。
+    """
     path = _native_audio(tmp_path, container)
     audio = MutagenFile(path)
     if container == "mp3":
@@ -161,7 +175,9 @@ def test_custom_performer_tags_are_replaced_without_stale_names(tmp_path, contai
 
 
 def test_mp4_role_correction_removes_case_variants_and_ensemble_alias(tmp_path):
-    """MP4自由字段可有不同大小写及乐团别名，纠正后不能读回混杂的新旧阵容。"""
+    """
+    MP4自由字段可有不同大小写及乐团别名，纠正后不能读回混杂的新旧阵容。
+    """
     path = _native_audio(tmp_path, "m4a")
     audio = MutagenFile(path)
     del audio.tags["----:com.apple.iTunes:ORCHESTRA"]
@@ -179,7 +195,9 @@ def test_mp4_role_correction_removes_case_variants_and_ensemble_alias(tmp_path):
 
 @pytest.mark.parametrize("model", [MetaMusic, MusicInfo, MusicAlbumInfo])
 def test_old_pickles_default_to_empty_roles(model):
-    """已有缓存缺少新增角色字段时仍可恢复，不能出现None映射或共享可变默认值。"""
+    """
+    已有缓存缺少新增角色字段时仍可恢复，不能出现None映射或共享可变默认值。
+    """
     old = model()
     for key in MUSIC_CREDIT_FIELDS:
         old.__dict__.pop(key, None)
@@ -189,7 +207,9 @@ def test_old_pickles_default_to_empty_roles(model):
 
 
 def test_explicit_torrent_roles_remain_independent_and_change_cache_identity():
-    """PT副标题的明确角色可作证据；更换演奏阵容必须隔离正负缓存。"""
+    """
+    PT副标题的明确角色可作证据；更换演奏阵容必须隔离正负缓存。
+    """
     meta = MetaMusic.parse_resource("Beethoven - Concerto FLAC", "作曲家：Beethoven；指挥：Karajan；乐团：Berlin；演奏者：Mutter")
     assert meta.artists == ["Beethoven"]
     assert meta.composers == ["Beethoven"] and meta.conductors == ["Karajan"] and meta.orchestras == ["Berlin"]
@@ -202,7 +222,9 @@ def test_explicit_torrent_roles_remain_independent_and_change_cache_identity():
 
 
 def _recording(identity="recording-one", soloist="Anne-Sophie Mutter"):
-    """按MusicBrainz实际的录音→作品→作曲家及录音→演奏者结构构造公共响应形状。"""
+    """
+    按MusicBrainz实际的录音→作品→作曲家及录音→演奏者结构构造公共响应形状。
+    """
     return {"id": identity, "title": TITLE, "length": 3000,
             "artist-credit": [{"artist": {"id": "soloist-id", "name": soloist}}],
             "relations": [
@@ -216,7 +238,9 @@ def _recording(identity="recording-one", soloist="Anne-Sophie Mutter"):
 
 
 def test_same_composer_different_performance_is_rejected():
-    """同作品、曲序和时长仍无法抵消独奏者差异；明确角色不进入主艺人别名。"""
+    """
+    同作品、曲序和时长仍无法抵消独奏者差异；明确角色不进入主艺人别名。
+    """
     meta = MetaMusic(title=TITLE, artists=CREDITS["composers"], track_number=1, duration=3, **CREDITS)
     correct = MusicBrainzModule._recording_to_info(_recording())
     wrong = MusicBrainzModule._recording_to_info(_recording("other", "Other Soloist"))
@@ -230,7 +254,9 @@ def test_same_composer_different_performance_is_rejected():
 
 
 def test_composer_credit_alone_cannot_confirm_a_recording():
-    """只有作曲家相同仍缺乏演奏版本证据；明确录音身份可补足这个缺口。"""
+    """
+    只有作曲家相同仍缺乏演奏版本证据；明确录音身份可补足这个缺口。
+    """
     meta = MetaMusic(title=TITLE, artists=CREDITS["composers"], composers=CREDITS["composers"])
     candidate = MusicBrainzModule._recording_to_info(_recording())
     candidate.artists = list(meta.artists)
@@ -240,7 +266,9 @@ def test_composer_credit_alone_cannot_confirm_a_recording():
 
 
 def test_singer_songwriter_remains_a_valid_primary_artist():
-    """普通歌曲的歌手同时作曲不应因新增角色字段被拒绝，但作曲关系不等于翻唱艺人。"""
+    """
+    普通歌曲的歌手同时作曲不应因新增角色字段被拒绝，但作曲关系不等于翻唱艺人。
+    """
     meta = MetaMusic(title="Song", artists=["Singer"], composers=["Singer"])
     original = MusicInfo(title="Song", artists=["Singer"], composers=["Singer"])
     cover = MusicInfo(title="Song", artists=["Cover Artist"], composers=["Singer"])
@@ -252,7 +280,9 @@ def test_singer_songwriter_remains_a_valid_primary_artist():
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_search_fetches_bounded_roles_and_rejects_wrong_recording_detail(monkeypatch, asynchronous):
-    """同步异步实际识别都核验角色详情，错误详情ID不应让同作品候选冒充正确演奏。"""
+    """
+    同步异步实际识别都核验角色详情，错误详情ID不应让同作品候选冒充正确演奏。
+    """
     module = object.__new__(MusicBrainzModule)
     monkeypatch.setattr(module, "_cached_recognition", lambda _plan: None)
     monkeypatch.setattr(module, "_update_recognize_cache", lambda *_args, **_kwargs: None)
@@ -260,7 +290,9 @@ def test_search_fetches_bounded_roles_and_rejects_wrong_recording_detail(monkeyp
     cards = [{key: value for key, value in item.items() if key != "relations"} for item in [wrong, correct]]
 
     def request(path, params):
-        """只替换HTTP边界；检索、投影、角色补证和候选选择仍走生产实现。"""
+        """
+        只替换HTTP边界；检索、投影、角色补证和候选选择仍走生产实现。
+        """
         if path == "/recording":
             assert "Anne-Sophie Mutter" in params["query"]
             return {"recordings": cards}
@@ -281,7 +313,9 @@ def test_search_fetches_bounded_roles_and_rejects_wrong_recording_detail(monkeyp
 
 
 def test_recording_detail_budget_is_deduplicated_and_ordinary_music_needs_none():
-    """最多补证三个录音身份，已含完整角色的摘要及普通音乐不增加详情请求。"""
+    """
+    最多补证三个录音身份，已含完整角色的摘要及普通音乐不增加详情请求。
+    """
     candidates = [MusicInfo(media_source=MediaSource.MusicBrainz, media_id=str(index // 2 + 1), title=TITLE) for index in range(10)]
     meta = MetaMusic(title=TITLE, **CREDITS)
     targets = MusicBrainzModule._recording_credit_targets(meta, candidates)
@@ -291,12 +325,16 @@ def test_recording_detail_budget_is_deduplicated_and_ordinary_music_needs_none()
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_role_detail_budget_is_shared_across_search_relaxations(monkeypatch, asynchronous):
-    """放宽搜索词不能恢复三个详情额度，重复候选或失败详情也不能重复消耗请求。"""
+    """
+    放宽搜索词不能恢复三个详情额度，重复候选或失败详情也不能重复消耗请求。
+    """
     module = object.__new__(MusicBrainzModule)
     monkeypatch.setattr(module, "_recording_queries", lambda _meta: ["strict", "loose"])
 
     def request(path, params):
-        """首轮返回三个不完整录音，次轮重复一个并引入新身份，所有角色仍无法确认。"""
+        """
+        首轮返回三个不完整录音，次轮重复一个并引入新身份，所有角色仍无法确认。
+        """
         if path != "/recording":
             return None
         ids = ["1", "2", "3"] if params["query"] == "strict" else ["1", "4", "5"]
@@ -313,7 +351,9 @@ def test_role_detail_budget_is_shared_across_search_relaxations(monkeypatch, asy
 
 
 def test_album_track_projection_and_local_merge_preserve_each_performance(tmp_path):
-    """整专逐曲角色不从专辑角色扩散，API卡片与路径合并保留本地明确角色。"""
+    """
+    整专逐曲角色不从专辑角色扩散，API卡片与路径合并保留本地明确角色。
+    """
     detail = {"id": "release", "title": "Violin Concerto", "artist-credit": [{"artist": {"name": "Ludwig van Beethoven"}}],
               "media": [{"position": 1, "tracks": [{"id": "track", "position": 1, "recording": _recording()}]}]}
     album = MusicBrainzModule._release_to_album(detail)
@@ -331,7 +371,9 @@ def test_album_track_projection_and_local_merge_preserve_each_performance(tmp_pa
 
 
 def test_album_roles_are_verified_by_actual_tracks_without_broadcasting(tmp_path):
-    """专辑层不含角色时可用真实曲目关系核验PT阵容，换演奏版本必须拒绝。"""
+    """
+    专辑层不含角色时可用真实曲目关系核验PT阵容，换演奏版本必须拒绝。
+    """
     local = MetaMusic(title=TITLE, album="Violin Concerto", artists=CREDITS["composers"], duration=3, **CREDITS,
                       field_sources={"album": "tag"})
     context = MetaMusic(album=local.album, artists=local.artists, **CREDITS)
@@ -351,7 +393,9 @@ def test_album_roles_are_verified_by_actual_tracks_without_broadcasting(tmp_path
 
 
 def test_artistless_roles_and_plugin_candidates_still_require_performance_evidence():
-    """没有ARTIST不能绕过角色校验；插件和各来源同样拒绝未知或冲突阵容。"""
+    """
+    没有ARTIST不能绕过角色校验；插件和各来源同样拒绝未知或冲突阵容。
+    """
     meta = MetaMusic(title=TITLE, performers=CREDITS["performers"])
     wrong = MusicInfo(media_source=MediaSource.TheAudioDB, media_id="123", title=TITLE, artists=["Other Soloist"])
     correct = MusicBrainzModule._recording_to_info(_recording())

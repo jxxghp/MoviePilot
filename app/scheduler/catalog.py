@@ -1,10 +1,12 @@
-"""调度器静态任务目录与 APScheduler 投影。"""
+"""
+调度器静态任务目录与 APScheduler 投影。
+"""
 
 import hashlib
 from datetime import datetime, timedelta
 from typing import List, Optional, TypedDict
 
-import pytz  # type: ignore[import-untyped]
+import pytz
 from apscheduler.executors.pool import BasePoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -29,7 +31,14 @@ from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
 
 
 class _MediaServerSchedule(TypedDict):
-    """媒体服务器同步任务的内部投影。"""
+    """
+    媒体服务器同步任务的内部投影。
+
+    :ivar id: 媒体服务器配置标识
+    :ivar name: 任务列表中显示的服务器名称
+    :ivar server: 媒体服务器类型
+    :ivar interval: 两次同步之间的分钟数
+    """
 
     id: str
     name: str
@@ -40,7 +49,9 @@ class _MediaServerSchedule(TypedDict):
 def _subscription_search_job_specs(
     services: SchedulerServices, search_interval: int = 24,
 ) -> tuple[JobSpec, ...]:
-    """构造订阅搜索、新增搜索与持久队列恢复任务目录。"""
+    """
+    构造订阅搜索、新增搜索与持久队列恢复任务目录。
+    """
     return (
         JobSpec(
             "subscribe_search", "订阅搜索补全", services.search_subscribe, "subscription",
@@ -58,6 +69,8 @@ def _subscription_search_job_specs(
             "恢复订阅搜索队列",
             services.resume_subscribe_search,
             "subscription",
+            # 单轮耗时由队列自身限额决定，取消又杀不掉同步消费者，因此不叠加总时长预算。
+            timeout_seconds=0,
             recovery=JobRecoveryPolicy.DURABLE_QUEUE,
         ),
     )
@@ -67,23 +80,35 @@ def _wallpaper_job_specs(
     services: SchedulerServices,
     wallpaper: str,
 ) -> tuple[JobSpec, ...]:
-    """仅在启用壁纸时返回壁纸缓存任务声明。"""
+    """
+    仅在启用壁纸时返回壁纸缓存任务声明。
+    """
     if not wallpaper:
         return ()
     return (JobSpec("random_wallpager", "壁纸缓存", services.get_wallpapers, "image"),)
 
 
 # APScheduler 未提供类型注解，基类在 mypy 中是 Any
+# 自主 Agent 任务只需独立的有限触发容量；协程执行仍由原主循环和句柄 owner 托管。
+_AGENT_SCHEDULER_WORKERS = 2
+
+
 class _SchedulerThreadPoolExecutor(BasePoolExecutor):  # type: ignore[misc]
-    """APScheduler 线程池执行器：定时任务线程按需增长、不收缩，空闲时交还各自的分配器线程缓存。"""
+    """
+    APScheduler 线程池执行器：定时任务线程按需增长、不收缩，空闲时交还各自的分配器线程缓存。
+    """
 
     def __init__(self, max_workers: int) -> None:
-        """以空闲时刷新线程缓存的线程池作为 APScheduler 的底层池。"""
+        """
+        以空闲时刷新线程缓存的线程池作为 APScheduler 的底层池。
+        """
         super().__init__(IdleCacheReleasingThreadPoolExecutor(max_workers))
 
 
 class SchedulerCatalogOwner(_SchedulerOwnerBase):
-    """调度器静态任务目录与 APScheduler 投影。"""
+    """
+    调度器静态任务目录与 APScheduler 投影。
+    """
 
     @staticmethod
     def _get_mediaserver_sync_interval(
@@ -143,7 +168,9 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
         self,
         config: SchedulerRuntimeConfig,
     ) -> None:
-        """在共享调度器中按当前配置维护唯一的数据库备份作业。"""
+        """
+        在共享调度器中按当前配置维护唯一的数据库备份作业。
+        """
         if not config.db_backup_enable or not config.db_backup_cron.strip():
             return
 
@@ -171,12 +198,16 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
         )
 
     def _poll_subscription_search_queue(self) -> None:
-        """仅在消费者空闲时唤醒托管协程，轮询不等待搜索也不重复报告重入。"""
+        """
+        仅在消费者空闲时唤醒托管协程，轮询不等待搜索也不重复报告重入。
+        """
         if not self._is_job_active("subscribe_search_queue"):
             self.start("subscribe_search_queue")
 
     def _register_subscription_search_queue_job(self, config: SchedulerRuntimeConfig) -> None:
-        """注册轻量轮询；搜索协程的真实生命周期由 Scheduler 持有。"""
+        """
+        注册轻量轮询；搜索协程的真实生命周期由 Scheduler 持有。
+        """
         self._scheduler.add_job(
             self._poll_subscription_search_queue,
             "interval",
@@ -186,8 +217,17 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=5),
         )
 
+    def _poll_subscription_refresh(self) -> None:
+        """
+        刷新空闲时才唤醒托管任务，在途扫描会合并到期站点，不重复报告重入。
+        """
+        if not self._is_job_active("subscribe_refresh"):
+            self.start("subscribe_refresh", scheduled=True)
+
     def _initialize_catalog(self, config: SchedulerRuntimeConfig) -> None:
-        """构建完整任务目录并投影到尚未启动的 APScheduler。"""
+        """
+        构建完整任务目录并投影到尚未启动的 APScheduler。
+        """
         services = self._scheduler_services()
         # 各服务的运行状态
         self._jobs = JobCatalog(
@@ -196,7 +236,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 JobSpec("mediaserver_sync", "同步媒体服务器", services.sync_mediaserver, "mediaserver"),
                 JobSpec("subscribe_tmdb", "订阅元数据更新", services.check_subscribe, "subscription"),
                 *_subscription_search_job_specs(services, config.subscribe_search_interval),
-                JobSpec("subscribe_refresh", "订阅刷新", services.refresh_subscribe, "subscription"),
+                JobSpec("subscribe_refresh", "订阅刷新", services.refresh_subscribe, "subscription", timeout_seconds=0),
                 JobSpec("subscribe_follow", "关注的订阅分享", services.follow_subscribe, "subscription"),
                 JobSpec(
                     "transfer",
@@ -242,7 +282,11 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
 
         self._scheduler = BackgroundScheduler(
             timezone=config.timezone,
-            executors={"default": _SchedulerThreadPoolExecutor(config.scheduler_workers)},
+            executors={
+                "default": _SchedulerThreadPoolExecutor(config.scheduler_workers),
+                "agent": _SchedulerThreadPoolExecutor(_AGENT_SCHEDULER_WORKERS),
+            },
+            job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": None},
         )
 
         self._register_database_backup_job(config)
@@ -266,7 +310,11 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             replace_existing=True,
         )
         # CookieCloud定时同步
-        if config.cookiecloud_interval and str(config.cookiecloud_interval).isdigit():
+        if (
+            config.cookiecloud_configured
+            and config.cookiecloud_interval
+            and str(config.cookiecloud_interval).isdigit()
+        ):
             self._scheduler.add_job(
                 self.start,
                 "interval",
@@ -337,18 +385,15 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             )
 
         if config.subscribe_mode == "spider":
-            # 站点首页种子定时刷新模式
-            triggers = TimerUtils.random_scheduler(num_executions=32)
-            for trigger in triggers:
-                self._scheduler.add_job(
-                    self.start,
-                    "cron",
-                    id=f"subscribe_refresh|{trigger.hour}:{trigger.minute}",
-                    name="订阅刷新",
-                    hour=trigger.hour,
-                    minute=trigger.minute,
-                    kwargs={"job_id": "subscribe_refresh"},
-                )
+            # 轻量检查逐站到期时间；实际请求受持久时间片和站点限流共同约束。
+            self._scheduler.add_job(
+                self._poll_subscription_refresh,
+                "interval",
+                id="subscribe_refresh",
+                name="订阅刷新",
+                minutes=1,
+                next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=15),
+            )
         else:
             # RSS订阅模式
             self._scheduler.add_job(
@@ -496,6 +541,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 self.start,
                 "interval",
                 id="agent_heartbeat",
+                executor="agent",
                 name="智能体定时任务",
                 hours=config.ai_agent_job_interval,
                 kwargs={"job_id": "agent_heartbeat"},

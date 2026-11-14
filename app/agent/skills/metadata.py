@@ -1,3 +1,7 @@
+"""
+解析技能前言并校验元数据，规范化调用权限与兼容性说明。
+"""
+
 import logging
 import re
 from typing import TypedDict
@@ -13,7 +17,20 @@ MAX_SKILL_COMPATIBILITY_LENGTH = 500
 
 
 class SkillMetadata(TypedDict):
-    """描述符合 Agent Skills 规范的已校验元数据。"""
+    """
+    描述符合 Agent Skills 规范的已校验元数据。
+
+    :ivar path: 经过校验的 SKILL.md 文件路径
+    :ivar id: 注册方分配的稳定技能标识
+    :ivar name: 前言声明的非空技能名称
+    :ivar version: 技能版本号；未声明或无法解析时为 0
+    :ivar description: 技能用途说明，超长时按规定长度截断
+    :ivar license: 技能许可证；未声明或为空时为 None
+    :ivar compatibility: 运行环境兼容性说明；未声明时为 None
+    :ivar metadata: 规范化为字符串键值的附加元数据
+    :ivar allowed_tools: 前言明确允许调用的工具名称列表；未声明时为空
+    :ivar allowed_api_operations: 前言明确允许的 API 操作标识列表；未声明时为空
+    """
 
     path: str
     id: str
@@ -28,7 +45,9 @@ class SkillMetadata(TypedDict):
 
 
 def _validate_metadata(raw: object, skill_path: str) -> dict[str, str]:
-    """将 YAML metadata 字段规范化为字符串键值映射。"""
+    """
+    将 YAML metadata 字段规范化为字符串键值映射。
+    """
     if not isinstance(raw, dict):
         if raw:
             logger.warning(
@@ -40,12 +59,15 @@ def _validate_metadata(raw: object, skill_path: str) -> dict[str, str]:
     return {str(key): str(value) for key, value in raw.items()}
 
 
+# 前言校验保持各字段的独立错误处理，避免不合法字段阻断其他元数据解析。
 def parse_skill_metadata(  # noqa: C901
     content: str,
     skill_path: str,
     skill_id: str,
 ) -> SkillMetadata | None:
-    """解析并校验一个 SKILL.md 的 YAML 前言。"""
+    """
+    解析并校验一个 SKILL.md 的 YAML 前言。
+    """
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
     if not match:
         logger.warning("Skipping %s: no valid YAML frontmatter found", skill_path)

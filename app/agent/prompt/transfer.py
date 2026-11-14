@@ -1,11 +1,15 @@
-"""整理记录 AI 重新整理提示词构造。"""
+"""
+整理记录 AI 重新整理提示词构造。
+"""
 from typing import Any
 
 from app.agent.prompt import prompt_manager
 
 
 def build_manual_redo_template_context(history: Any) -> dict[str, int | str]:
-    """把整理历史对象映射成 System Tasks 需要的模板变量。"""
+    """
+    把整理历史对象映射成 System Tasks 需要的模板变量。
+    """
     src_fileitem = history.src_fileitem or {}
     dest_fileitem = history.dest_fileitem or {}
     source_path = src_fileitem.get("path") if isinstance(src_fileitem, dict) else ""
@@ -20,6 +24,8 @@ def build_manual_redo_template_context(history: Any) -> dict[str, int | str]:
     is_music = str(history.type or "") in {"music", "音乐"}
     return {
         "history_id": history.id,
+        "durable_task_id": getattr(history, "transfer_task_id", None) or "legacy",
+        "settlement_revision": getattr(history, "transfer_settlement_revision", None) or "unknown",
         "current_status": "success" if history.status else "failed",
         "recognized_title": history.title or "unknown",
         "media_type": history.type or "unknown",
@@ -44,11 +50,15 @@ def build_manual_redo_template_context(history: Any) -> dict[str, int | str]:
 
 
 def format_manual_redo_record_context(history: Any) -> str:
-    """把单条整理记录格式化为批量任务可直接消费的上下文块。"""
+    """
+    把单条整理记录格式化为批量任务可直接消费的上下文块。
+    """
     context = build_manual_redo_template_context(history)
     return "\n".join(
         [
             f"Record #{context['history_id']}:",
+            f"- Durable task: {context['durable_task_id']}",
+            f"- Settlement revision: {context['settlement_revision']}",
             f"- Current status: {context['current_status']}",
             f"- Current recognized title: {context['recognized_title']}",
             f"- Media type: {context['media_type']}",
@@ -70,7 +80,9 @@ def format_manual_redo_record_context(history: Any) -> str:
 
 
 def build_manual_redo_prompt(history: Any) -> str:
-    """构建手动 AI 整理提示词。"""
+    """
+    构建手动 AI 整理提示词。
+    """
     return prompt_manager.render_system_task_message(
         "manual_transfer_redo",
         template_context=build_manual_redo_template_context(history),
@@ -78,7 +90,9 @@ def build_manual_redo_prompt(history: Any) -> str:
 
 
 def build_batch_manual_redo_template_context(histories: list[Any]) -> dict[str, int | str]:
-    """把多条整理历史对象映射成批量 System Tasks 需要的模板变量。"""
+    """
+    把多条整理历史对象映射成批量 System Tasks 需要的模板变量。
+    """
     return {
         "history_ids_csv": ", ".join(str(history.id) for history in histories),
         "history_count": len(histories),
@@ -89,7 +103,9 @@ def build_batch_manual_redo_template_context(histories: list[Any]) -> dict[str, 
 
 
 def build_batch_manual_redo_prompt(histories: list[Any]) -> str:
-    """构建批量手动 AI 整理提示词。"""
+    """
+    构建批量手动 AI 整理提示词。
+    """
     return prompt_manager.render_system_task_message(
         "batch_manual_transfer_redo",
         template_context=build_batch_manual_redo_template_context(histories),

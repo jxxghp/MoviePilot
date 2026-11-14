@@ -1,15 +1,19 @@
-"""Agent 自主定时任务统一工具。"""
+"""
+Agent 自主定时任务统一工具。
+"""
 
 import json
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Type, cast
 
-import pytz  # type: ignore[import-untyped]
+import pytz
 from pydantic import BaseModel, Field, model_validator
 
+from app.agent.identity import AgentIdentityError, resolve_task_user
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.application.agenttask import agent_task_run_to_dict, agent_task_to_dict
+from app.application.security.user import UserSnapshot
 from app.runtime.scheduling import TimerUtils
 from app.runtime.settings import get_runtime_setting
 
@@ -17,57 +21,59 @@ AgentTaskAction = Literal["create", "list", "update", "run", "delete"]
 AgentTaskTriggerType = Literal["date", "cron"]
 
 
-class AgentTaskInput(BaseModel):  # type: ignore[misc]
-    """统一管理 Agent 自主定时任务的输入参数。"""
+class AgentTaskInput(BaseModel):
+    """
+    统一管理 Agent 自主定时任务的输入参数。
+    """
 
     action: AgentTaskAction = Field(
         ...,
-        description=(
-            "Action to perform: create, list, update, run, or delete. "
-            "Use list before changing a task when its integer task_id is unknown."
-        ),
+        description="任务动作：create、list、update、run 或 delete；不知道整数 task_id 时应先 list 查询",
     )
     task_id: Optional[int] = Field(
         None,
         ge=1,
-        description="Task ID for list, update, run, or delete.",
+        description="list、update、run 或 delete 使用的任务整数标识",
     )
     name: Optional[str] = Field(
         None,
         min_length=1,
         max_length=100,
-        description="Task name for create or update.",
+        description="create 或 update 使用的任务名称",
     )
     content: Optional[str] = Field(
         None,
         min_length=1,
         max_length=10000,
-        description="Complete instructions for create or update.",
+        description="create 或 update 使用的完整任务指令",
     )
     trigger_type: Optional[AgentTaskTriggerType] = Field(
         None,
-        description="Use date for one future run or cron for recurring work.",
+        description="date 表示未来执行一次，cron 表示周期执行",
     )
     trigger: Optional[str] = Field(
         None,
         min_length=1,
         max_length=200,
-        description="ISO 8601 date or standard five-field cron expression.",
+        description="ISO 8601 日期时间或标准五字段 cron 表达式",
     )
     delay_minutes: Optional[int] = Field(
         None,
         ge=1,
         le=525600,
-        description=("Relative delay for a one-time date task. Use instead of trigger with trigger_type=date."),
+        description="一次性 date 任务的相对延迟分钟数，与 trigger 二选一",
     )
     enabled: Optional[bool] = Field(
         None,
-        description=("For list, optionally filter by enabled state. For update, set false to pause or true to resume."),
+        description="list 时按启用状态筛选；update 时 False 暂停、True 恢复",
     )
 
-    @model_validator(mode="after")  # type: ignore[misc]
+    # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
+    @model_validator(mode="after")
     def validate_action(self) -> "AgentTaskInput":
-        """按动作校验必填字段和触发参数组合。"""
+        """
+        按动作校验必填字段和触发参数组合。
+        """
         if self.name is not None:
             self.name = self.name.strip()
             if not self.name:
@@ -109,7 +115,9 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
         require_schedule: bool,
         normalize_exact: bool,
     ) -> None:
-        """校验 date/cron 触发组合，并按需规范化绝对触发值。"""
+        """
+        校验 date/cron 触发组合，并按需规范化绝对触发值。
+        """
         if require_schedule and self.trigger_type is None:
             raise ValueError("修改触发配置时必须提供 trigger_type")
         if self.trigger_type == "date":
@@ -124,7 +132,8 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
         if normalize_exact and self.trigger_type is not None:
             normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
                 trigger_type=self.trigger_type,
-                trigger_value=self.trigger,  # type: ignore[arg-type]
+                # 前置分支已拒绝缺失触发值，延迟任务也已提前返回。
+                trigger_value=cast(str, self.trigger),
                 timezone_name=get_runtime_setting("TZ"),
                 require_future=True,
             )
@@ -133,26 +142,43 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
 
 
 class AgentTaskTool(MoviePilotTool):
-    """通过一个动作式接口管理当前用户的自主定时任务。"""
+    """
+    通过一个动作式接口管理当前用户的自主定时任务。
+    """
 
-    name: str = "agent_task"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.Write,
-        ToolTag.AgentTask,
-        ToolTag.Admin,
-    ]
-    description: str = (
-        "Manage persistent autonomous agent tasks with one structured action. Use create "
-        "for explicitly requested delayed or recurring work, list to inspect current-user "
-        "tasks, update to change or pause one, run to queue one immediately, and delete "
-        "to permanently remove it. Task IDs are integers and are not scheduler job IDs."
+    name: str = Field(
+        default="agent_task",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = AgentTaskInput
-    require_admin: bool = True
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.Write, ToolTag.AgentTask, ToolTag.Admin],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "通过结构化动作管理持久化自主任务。"
+            "用户明确要求延迟或周期工作时用 create；"
+            "list 查看当前用户任务；"
+            "update 修改或暂停；"
+            "run 立即入队；"
+            "delete 永久删除。"
+            "任务标识是整数，与调度器作业标识不同。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=AgentTaskInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
+    require_admin: bool = Field(
+        default=True,
+        description="是否仅允许系统管理员调用",
+    )
 
     def get_tool_message(self, **kwargs: object) -> Optional[str]:
-        """生成统一任务操作的用户可见提示。"""
+        """
+        生成统一任务操作的用户可见提示。
+        """
         action = str(kwargs.get("action") or "list")
         action_name = {
             "create": "创建",
@@ -166,7 +192,9 @@ class AgentTaskTool(MoviePilotTool):
 
     @staticmethod
     def _absolute_trigger(payload: AgentTaskInput) -> str:
-        """将相对分钟或绝对表达式转换为规范化触发值。"""
+        """
+        将相对分钟或绝对表达式转换为规范化触发值。
+        """
         trigger_value = payload.trigger
         if payload.trigger_type == "date" and payload.delay_minutes is not None:
             timezone = pytz.timezone(get_runtime_setting("TZ"))
@@ -185,8 +213,16 @@ class AgentTaskTool(MoviePilotTool):
         )
         return normalized
 
-    def _create_task(self, payload: AgentTaskInput) -> dict[str, object]:
-        """持久化任务并立即注册到运行时调度器。"""
+    def _create_task(
+        self, payload: AgentTaskInput, user: UserSnapshot,
+    ) -> dict[str, object]:
+        """
+        持久化已验证的执行主体，保留渠道会话归属并注册调度。
+
+        :param payload: 已验证的任务定义及调度参数
+        :param user: 由可信入口解析的启用账号，不接受模型指定的身份
+        :return: 注册调度后的任务展示数据
+        """
         from app.application.scheduling import update_agent_task_job
 
         trigger_value = self._absolute_trigger(payload)
@@ -203,7 +239,9 @@ class AgentTaskTool(MoviePilotTool):
             cron_expression=(trigger_value if payload.trigger_type == "cron" else None),
             run_at=trigger_value if payload.trigger_type == "date" else None,
             user_id=str(self._user_id),
-            username=self._username or (chat.username if chat else None),
+            username=user.name,
+            execution_user_id=user.id,
+            execution_user_identity=user.notification_identity,
             session_id=str(self._session_id),
             channel=self._channel or (chat.channel if chat else None),
             source=self._source or (chat.source if chat else None),
@@ -222,7 +260,9 @@ class AgentTaskTool(MoviePilotTool):
         task_id: Optional[int],
         enabled: Optional[bool],
     ) -> list[dict[str, object]]:
-        """读取当前用户任务及运行时下一次触发时间。"""
+        """
+        读取当前用户任务及运行时下一次触发时间。
+        """
         from app.application.scheduling import get_agent_task_next_run
 
         oper = self.data.tasks
@@ -253,8 +293,15 @@ class AgentTaskTool(MoviePilotTool):
     def _update_task(
         self,
         payload: AgentTaskInput,
+        identity_payload: dict[str, object] | None = None,
     ) -> Optional[dict[str, object]]:
-        """更新当前用户任务并刷新运行时调度。"""
+        """
+        更新当前用户任务并刷新运行时调度。
+
+        :param payload: 已验证的更新参数
+        :param identity_payload: 仅供旧任务一次性确认的身份字段；仓储拒绝覆盖已确认账号
+        :return: 更新后的展示数据、运行中提示，或未找到任务时返回 None
+        """
         from app.application.scheduling import update_agent_task_job
 
         if payload.task_id is None:
@@ -297,7 +344,7 @@ class AgentTaskTool(MoviePilotTool):
                 ),
             )
 
-        update_payload: dict[str, object] = {}
+        update_payload: dict[str, object] = dict(identity_payload or {})
         if payload.name is not None:
             update_payload["name"] = payload.name
         if payload.content is not None:
@@ -340,7 +387,9 @@ class AgentTaskTool(MoviePilotTool):
         )
 
     def _get_task_state(self, task_id: int) -> tuple[str, Optional[str]]:
-        """校验任务归属和状态，返回可执行性及任务名称。"""
+        """
+        校验任务归属和状态，返回可执行性及任务名称。
+        """
         task = self.data.tasks.get(task_id=task_id, user_id=str(self._user_id))
         if not task:
             return "not_found", None
@@ -351,7 +400,9 @@ class AgentTaskTool(MoviePilotTool):
         return "ready", task.name
 
     def _delete_task(self, task_id: int) -> bool:
-        """删除当前用户任务并移除运行时调度。"""
+        """
+        删除当前用户任务并移除运行时调度。
+        """
         from app.application.scheduling import remove_agent_task_job
 
         deleted = self.data.tasks.delete(
@@ -362,6 +413,61 @@ class AgentTaskTool(MoviePilotTool):
             remove_agent_task_job(task_id)
         return deleted
 
+    async def _execution_identity(self) -> UserSnapshot:
+        """
+        从可信入口解析创建主体；渠道用户名和旧会话昵称不参与认证。
+
+        :return: 真实用户的身份与权限快照
+        :raises AgentIdentityError: 无法解析唯一启用的用户
+        """
+        context_id = self._agent_context.get("execution_user_id")
+        chat = await self.run_blocking(
+            "db", self.data.chat.get_sync, session_id=self._session_id, user_id=self._user_id,
+        )
+        return await resolve_task_user(
+            self.data.users,
+            user_id=str(self._user_id or ""),
+            username=self._username or (chat.username if chat else None),
+            channel=self._channel or (chat.channel if chat else None),
+            source=self._source or (chat.source if chat else None),
+            is_admin=await self.is_admin_user(),
+            execution_user_id=context_id if isinstance(context_id, int) else None,
+            execution_user_identity=str(self._agent_context.get("execution_user_identity") or ""),
+        )
+
+    async def _update(self, payload: AgentTaskInput) -> str:
+        """
+        更新任务；旧任务只允许从创建时的原会话确认执行主体，暂停不要求补绑。
+
+        :param payload: 已验证的任务更新参数
+        :return: 更新后的任务或不能更新的明确原因
+        """
+        current = await self.run_blocking(
+            "db", self.data.tasks.get, task_id=payload.task_id, user_id=str(self._user_id),
+        )
+        identity_payload: dict[str, object] = {}
+        if current is not None and current.execution_user_id is None and payload.enabled is not False:
+            if (current.session_id, current.channel, current.source) != (
+                self._session_id, self._channel, self._source,
+            ):
+                return "请从创建任务的原会话更新执行账号，或在原会话删除后重新创建。"
+            try:
+                user = await self._execution_identity()
+            except AgentIdentityError as error:
+                return str(error)
+            identity_payload = {
+                "execution_user_id": user.id,
+                "execution_user_identity": user.notification_identity,
+                "username": user.name,
+            }
+        task = await self.run_blocking("db", self._update_task, payload, identity_payload)
+        if not task:
+            return f"Agent 定时任务 {payload.task_id} 不存在或不属于当前用户"
+        if update_error := task.get("error"):
+            return str(update_error)
+        return json.dumps(task, ensure_ascii=False, indent=2)
+
+    # 具体参数由 args_schema 验证，执行入口保留与工具基类的动态分发兼容。
     async def run(  # type: ignore[override]
         self,
         action: AgentTaskAction,
@@ -374,7 +480,9 @@ class AgentTaskTool(MoviePilotTool):
         enabled: Optional[bool] = None,
         **kwargs: object,
     ) -> str:
-        """执行一项任务创建、查询、更新、立即运行或删除操作。"""
+        """
+        执行一项任务创建、查询、更新、立即运行或删除操作。
+        """
         payload = AgentTaskInput(
             action=action,
             task_id=task_id,
@@ -388,7 +496,11 @@ class AgentTaskTool(MoviePilotTool):
         if payload.action == "create":
             if not get_runtime_setting("AI_AGENT_ENABLE"):
                 return "AI Agent 未启用，无法创建自主定时任务"
-            task = await self.run_blocking("db", self._create_task, payload)
+            try:
+                user = await self._execution_identity()
+            except AgentIdentityError as error:
+                return str(error)
+            task = await self.run_blocking("db", self._create_task, payload, user)
             return json.dumps(task, ensure_ascii=False, indent=2)
         if payload.action == "list":
             tasks = await self.run_blocking(
@@ -403,18 +515,15 @@ class AgentTaskTool(MoviePilotTool):
                 indent=2,
             )
         if payload.action == "update":
-            task = await self.run_blocking("db", self._update_task, payload)
-            if not task:
-                return f"Agent 定时任务 {payload.task_id} 不存在或不属于当前用户"
-            if error := task.get("error"):
-                return str(error)
-            return json.dumps(task, ensure_ascii=False, indent=2)
+            return await self._update(payload)
         if payload.action == "run":
             return await self._run_now(payload.task_id)
         return await self._delete(payload.task_id)
 
     async def _run_now(self, task_id: Optional[int]) -> str:
-        """立即提交一项已启用且属于当前用户的任务。"""
+        """
+        立即提交一项已启用且属于当前用户的任务。
+        """
         from app.application.scheduling import start_agent_task
 
         if task_id is None:
@@ -435,7 +544,9 @@ class AgentTaskTool(MoviePilotTool):
         return f"Agent 定时任务 {task_id} 已提交立即执行：{task_name}。执行完成后将通过已配置的通知渠道广播结果"
 
     async def _delete(self, task_id: Optional[int]) -> str:
-        """永久删除一项属于当前用户的自主定时任务。"""
+        """
+        永久删除一项属于当前用户的自主定时任务。
+        """
         if task_id is None:
             raise ValueError("delete 缺少 task_id")
         deleted = await self.run_blocking("db", self._delete_task, task_id)

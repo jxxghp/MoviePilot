@@ -1,4 +1,6 @@
-"""跨来源分类事实补充服务的协议、缓存和并发边界测试。"""
+"""
+跨来源分类事实补充服务的协议、缓存和并发边界测试。
+"""
 
 from __future__ import annotations
 
@@ -26,41 +28,58 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _Catalog:
-    """返回固定 provider，并记录是否发生运行时能力发现。"""
+    """
+    返回固定 provider，并记录是否发生运行时能力发现。
+    """
 
     def __init__(self, *providers: ClassificationEnrichmentProvider) -> None:
-        """保存按优先级排列的 provider。"""
+        """
+        保存按优先级排列的 provider。
+        """
         self._providers = tuple(providers)
         self.calls = 0
 
     def providers(self) -> tuple[ClassificationEnrichmentProvider, ...]:
-        """记录并返回 provider 快照。"""
+        """
+        记录并返回 provider 快照。
+        """
         self.calls += 1
         return self._providers
 
 
 class _MemoryCache:
-    """保存测试进程内的富化终态缓存。"""
+    """
+    保存测试进程内的富化终态缓存。
+    """
 
     def __init__(self) -> None:
-        """创建空缓存。"""
+        """
+        创建空缓存。
+        """
         self.values: dict[str, ClassificationEnrichmentCacheEntry] = {}
 
     def get(self, key: str) -> ClassificationEnrichmentCacheEntry | None:
-        """按稳定键返回缓存项。"""
+        """
+        按稳定键返回缓存项。
+        """
         return self.values.get(key)
 
     def set(self, key: str, entry: ClassificationEnrichmentCacheEntry) -> None:
-        """保存已校验的有效或空响应。"""
+        """
+        保存已校验的有效或空响应。
+        """
         self.values[key] = entry
 
 
 def _inline_submit(callback: Any, *args: Any) -> Future[Any]:
-    """同步执行线程任务并用 Future 复刻生产提交端口。"""
+    """
+    同步执行线程任务并用 Future 复刻生产提交端口。
+    """
     future: Future[Any] = Future()
     try:
         future.set_result(callback(*args))
-    except Exception as error:  # noqa: BLE001 测试端口必须把 provider 故障保留在 Future 中
+    # 测试端口必须把 服务实现 故障保留在 Future 中。
+    except Exception as error:  # noqa: BLE001
         future.set_exception(error)
     return future
 
@@ -70,7 +89,9 @@ def _policy(
     enrichment_mode: str = "enrich_missing",
     revision: int = 1,
 ) -> ClassificationPolicy:
-    """构造同时引用已有和缺失标准事实的最小电影策略。"""
+    """
+    构造同时引用已有和缺失标准事实的最小电影策略。
+    """
     return ClassificationPolicy.model_validate(
         {
             "revision": revision,
@@ -123,7 +144,9 @@ def _policy(
 
 
 def _movie() -> MediaInfo:
-    """构造带可验证外部 ID、但缺少国家和语言的主来源结果。"""
+    """
+    构造带可验证外部 ID、但缺少国家和语言的主来源结果。
+    """
     return MediaInfo(
         media_source=MediaSource.Douban,
         media_id="1291561",
@@ -141,7 +164,9 @@ def _external_response(
     media_id: str,
     facts: dict[str, object],
 ) -> ClassificationEnrichmentResponse:
-    """构造由已知外部 ID 证明的 provider 响应。"""
+    """
+    构造由已知外部 ID 证明的 provider 响应。
+    """
     return ClassificationEnrichmentResponse(
         media_source=source,
         match=ClassificationEnrichmentMatch(
@@ -154,7 +179,9 @@ def _external_response(
 
 
 def test_primary_only_never_discovers_or_calls_enrichment_providers() -> None:
-    """默认模式必须保持原识别成本，不触发 provider 目录读取。"""
+    """
+    默认模式必须保持原识别成本，不触发 provider 目录读取。
+    """
     media = _movie()
     facts = build_classification_facts(media)
     catalog = _Catalog(
@@ -178,13 +205,17 @@ def test_primary_only_never_discovers_or_calls_enrichment_providers() -> None:
 
 
 def test_enrichment_requests_only_missing_fields_and_merges_by_provider_order() -> None:
-    """并发响应只填缺失字段，冲突值按稳定 provider 顺序决定。"""
+    """
+    并发响应只填缺失字段，冲突值按稳定 provider 顺序决定。
+    """
     media = _movie()
     facts = build_classification_facts(media)
     requests: list[tuple[str, tuple[str, ...]]] = []
 
     def tmdb_provider(*, request: Any) -> ClassificationEnrichmentResponse:
-        """返回国家并尝试夹带非请求字段。"""
+        """
+        返回国家并尝试夹带非请求字段。
+        """
         requests.append(("tmdb", tuple(request.missing_fields)))
         return _external_response(
             source=MediaSource.TMDB.value,
@@ -197,7 +228,9 @@ def test_enrichment_requests_only_missing_fields_and_merges_by_provider_order() 
         )
 
     def imdb_provider(*, request: Any) -> ClassificationEnrichmentResponse:
-        """返回冲突国家和语言，由合并器保留先到目录中的国家。"""
+        """
+        返回冲突国家和语言，由合并器保留先到目录中的国家。
+        """
         requests.append(("imdb", tuple(request.missing_fields)))
         return _external_response(
             source=MediaSource.IMDb.value,
@@ -250,17 +283,23 @@ def test_enrichment_requests_only_missing_fields_and_merges_by_provider_order() 
 
 
 def test_invalid_match_and_provider_failure_are_isolated() -> None:
-    """错误证明和 provider 异常不得阻断后续有效补充或主分类。"""
+    """
+    错误证明和 provider 异常不得阻断后续有效补充或主分类。
+    """
     media = _movie()
     facts = build_classification_facts(media)
     warnings: list[str] = []
 
     def failed_provider(**_kwargs: Any) -> None:
-        """模拟 provider 内部故障。"""
+        """
+        模拟 provider 内部故障。
+        """
         raise RuntimeError("provider failed")
 
     def invalid_provider(**_kwargs: Any) -> ClassificationEnrichmentResponse:
-        """返回不属于当前媒体的外部 ID。"""
+        """
+        返回不属于当前媒体的外部 ID。
+        """
         return _external_response(
             source=MediaSource.TMDB.value,
             media_id="999",
@@ -268,7 +307,9 @@ def test_invalid_match_and_provider_failure_are_isolated() -> None:
         )
 
     def valid_provider(**_kwargs: Any) -> ClassificationEnrichmentResponse:
-        """在前序故障后提供可验证事实。"""
+        """
+        在前序故障后提供可验证事实。
+        """
         return _external_response(
             source=MediaSource.IMDb.value,
             media_id="tt0245429",
@@ -310,16 +351,21 @@ def test_invalid_match_and_provider_failure_are_isolated() -> None:
     assert all("classification_enrichment_error" in warning for warning in warnings)
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_valid_response_cache_is_shared_by_sync_and_async_and_revision_scoped() -> None:
-    """同步异步共用有效缓存，但策略 revision 变化必须重新调用 provider。"""
+    """
+    同步异步共用有效缓存，但策略 revision 变化必须重新调用 provider。
+    """
     media = _movie()
     facts = build_classification_facts(media)
     cache = _MemoryCache()
     calls = 0
 
     def provider(**_kwargs: Any) -> ClassificationEnrichmentResponse:
-        """记录实际 provider 调用次数。"""
+        """
+        记录实际 provider 调用次数。
+        """
         nonlocal calls
         calls += 1
         return _external_response(
@@ -351,7 +397,9 @@ async def test_valid_response_cache_is_shared_by_sync_and_async_and_revision_sco
 
 
 def test_sync_enrichment_enforces_total_timeout_and_concurrency_limit() -> None:
-    """慢 provider 只能占用有限工作槽，且调用方按总预算及时返回。"""
+    """
+    慢 provider 只能占用有限工作槽，且调用方按总预算及时返回。
+    """
     media = _movie()
     facts = build_classification_facts(media)
     release = threading.Event()
@@ -362,7 +410,9 @@ def test_sync_enrichment_enforces_total_timeout_and_concurrency_limit() -> None:
     warnings: list[str] = []
 
     def slow_provider(**_kwargs: Any) -> None:
-        """占用工作槽直到测试释放，并记录峰值并发。"""
+        """
+        占用工作槽直到测试释放，并记录峰值并发。
+        """
         nonlocal active, max_active, started
         with lock:
             active += 1

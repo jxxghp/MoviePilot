@@ -1,4 +1,6 @@
-"""插件市场、包安装和依赖安装同步异步一致性测试。"""
+"""
+插件市场、包安装和依赖安装同步异步一致性测试。
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +11,7 @@ import pytest
 from app.adapters.external.plugin.client import PluginMarketTransport
 from app.adapters.system.plugin.dependency import PluginDependencyInstaller
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.runtime import cache as cache_module
 
 REPO_URL = "https://github.com/example/moviepilot-plugins"
 SYNC_INDEX_REQUEST = "_PluginMarketTransport__request_plugin_index_with_fallback"
@@ -35,15 +38,25 @@ async def test_plugin_index_sync_async_result_contract_is_identical(
     expected: dict | None,
     error: str | None,
 ) -> None:
-    """同步与异步索引传输必须经过同一响应分类和错误语义。"""
+    """
+    同步与异步索引传输必须经过同一响应分类和错误语义。
+    """
+    # 每种响应是独立仓库状态，不能沿用前一参数用例的短时失败缓存。
+    monkeypatch.setattr(cache_module.MemoryBackend, "_region_caches", {})
     transport = PluginMarketTransport()
 
     def request(_url: str, *, headers: dict) -> tuple[int, str] | None:
+        """
+        返回本参数用例的固定同步传输结果。
+        """
         return response
 
     async def async_request(
         _url: str, *, headers: dict
     ) -> tuple[int, str] | None:
+        """
+        返回与同步入口相同的异步传输结果。
+        """
         return response
 
     monkeypatch.setattr(transport, SYNC_INDEX_REQUEST, request)
@@ -87,7 +100,9 @@ async def test_plugin_package_sync_async_preflight_failures_are_identical(
     selected: str | None,
     expected: tuple[bool, str],
 ) -> None:
-    """远端包安装的环境、参数、仓库和代际失败必须保持同一结果。"""
+    """
+    远端包安装的环境、参数、仓库和代际失败必须保持同一结果。
+    """
     manager = PluginPackageManager(source=Mock())
     monkeypatch.setattr(manager, "is_local_repo_url", lambda _repo_url: False)
     monkeypatch.setattr(
@@ -145,7 +160,9 @@ async def test_plugin_package_sync_async_execute_same_selected_strategy(
     release_items: list[dict],
     expected_calls: list[str],
 ) -> None:
-    """共享安装选择必须让同步与异步外壳执行相同 Release 回退路径。"""
+    """
+    共享安装选择必须让同步与异步外壳执行相同 Release 回退路径。
+    """
     manager = PluginPackageManager(source=Mock())
     sync_calls: list[str] = []
     async_calls: list[str] = []
@@ -237,7 +254,9 @@ async def test_plugin_package_sync_async_execute_same_selected_strategy(
 async def test_dependency_install_sync_async_share_request_and_result(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """依赖安装必须向同步与异步包端口提交同一份规范请求。"""
+    """
+    依赖安装必须向同步与异步包端口提交同一份规范请求。
+    """
     manifest_path = tmp_path / "requirements.txt"
     wheels_dir = tmp_path / "wheels"
     packages = SimpleNamespace(
@@ -270,7 +289,9 @@ async def test_dependency_install_sync_async_share_request_and_result(
 async def test_dependency_install_sync_async_share_error_mapping(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """清单准备和包端口异常必须映射为完全一致的公开失败结果。"""
+    """
+    清单准备和包端口异常必须映射为完全一致的公开失败结果。
+    """
     packages = SimpleNamespace(
         install_packages_with_fallback=Mock(side_effect=OSError("disk full")),
         async_install_packages_with_fallback=AsyncMock(

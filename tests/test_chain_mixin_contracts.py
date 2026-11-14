@@ -1,4 +1,6 @@
-"""Chain mixin Host Protocol 与依赖方向门禁。"""
+"""
+Chain mixin Host Protocol 与依赖方向门禁。
+"""
 
 import ast
 from pathlib import Path
@@ -23,7 +25,9 @@ from app.chain.transfer.scrape import ScrapeBatchMixin
 
 
 def test_all_chain_mixins_declare_their_host_protocol() -> None:
-    """每个存量 Chain mixin 都必须显式声明宿主能力契约。"""
+    """
+    每个存量 Chain mixin 都必须显式声明宿主能力契约。
+    """
     expected = {
         RecognitionMixin: ChainRuntimeMixinHost,
         MessageProcessingMixin: ChainRuntimeMixinHost,
@@ -45,7 +49,9 @@ def test_all_chain_mixins_declare_their_host_protocol() -> None:
 
 
 def test_mixin_hosts_provide_injected_chain_factories() -> None:
-    """具体 Chain 必须提供 mixin 契约要求的链工厂接缝。"""
+    """
+    具体 Chain 必须提供 mixin 契约要求的链工厂接缝。
+    """
     for name in (
         "_music_media_chain",
         "_music_download_chain",
@@ -63,7 +69,9 @@ def test_mixin_hosts_provide_injected_chain_factories() -> None:
 
 
 def test_domain_mixins_keep_concrete_imports_explicit_until_next_migration() -> None:
-    """第一阶段先锁定契约标记，具体导入在后续批次逐步下沉到宿主工厂。"""
+    """
+    第一阶段先锁定契约标记，具体导入在后续批次逐步下沉到宿主工厂。
+    """
     root = Path(__file__).resolve().parents[1]
     violations = []
     for relative in (

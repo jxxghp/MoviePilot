@@ -1,10 +1,13 @@
-"""内置媒体来源的标准分类字段能力声明。"""
+"""
+内置媒体来源的标准分类字段能力声明。
+"""
 
 from typing import Final
 
 from app.schemas.category import ClassificationSourceSupport
 from app.schemas.types import MediaSource
 
+# 分类体系已有标准投影测试样例的内置来源顺序。
 FIXTURE_CLASSIFICATION_SOURCES: Final[tuple[str, ...]] = (
     MediaSource.TMDB.value,
     MediaSource.Douban.value,
@@ -16,11 +19,11 @@ FIXTURE_CLASSIFICATION_SOURCES: Final[tuple[str, ...]] = (
     MediaSource.TheAudioDB.value,
     MediaSource.DoubanMusic.value,
 )
-"""首版分类体系具备真实标准投影 fixture 的内置来源顺序。"""
 
+# 仅保留宿主模块实现的来源；插件来源由启用插件声明，不预占标识。
 BUILTIN_CLASSIFICATION_SOURCES: Final[tuple[str, ...]] = FIXTURE_CLASSIFICATION_SOURCES
-"""仅保留宿主模块实现的来源；插件来源由启用插件声明，不预占标识。"""
 
+# 来源能力矩阵必须覆盖的标准字段稳定顺序。
 STANDARD_CLASSIFICATION_FIELD_IDS: Final[tuple[str, ...]] = (
     "identity.media_source",
     "media.type",
@@ -42,7 +45,6 @@ STANDARD_CLASSIFICATION_FIELD_IDS: Final[tuple[str, ...]] = (
     "music.artist_country",
     "music.release_status",
 )
-"""来源能力矩阵必须覆盖的标准字段稳定顺序。"""
 
 _NATIVE: Final[ClassificationSourceSupport] = "native"
 _DERIVED: Final[ClassificationSourceSupport] = "derived"
@@ -154,7 +156,9 @@ _SOURCE_FIELD_SUPPORT: Final[dict[str, dict[str, ClassificationSourceSupport]]] 
 def builtin_field_source_support(
     field_id: str,
 ) -> dict[str, ClassificationSourceSupport]:
-    """返回一个标准字段对全部内置来源的显式支持等级。"""
+    """
+    返回一个标准字段对全部内置来源的显式支持等级。
+    """
     return {
         source: _SOURCE_FIELD_SUPPORT[source].get(field_id, _UNAVAILABLE)
         for source in BUILTIN_CLASSIFICATION_SOURCES
@@ -164,7 +168,9 @@ def builtin_field_source_support(
 def builtin_source_field_support(
     media_source: str,
 ) -> dict[str, ClassificationSourceSupport]:
-    """返回一个内置来源对全部标准字段的显式支持等级。"""
+    """
+    返回一个内置来源对全部标准字段的显式支持等级。
+    """
     support = _SOURCE_FIELD_SUPPORT.get(str(media_source), {})
     return {
         field_id: support.get(field_id, _UNAVAILABLE)

@@ -1,4 +1,6 @@
-"""MoviePilot Server 应用服务的宿主组合根。"""
+"""
+MoviePilot Server 应用服务的宿主组合根。
+"""
 
 from app.adapters.external.server import (
     MoviePilotServerHelper,
@@ -17,7 +19,9 @@ def configure_server_services(
     workflow_query: WorkflowQueryService,
     subscription_repository: SubscriptionRepository,
 ) -> None:
-    """构造并登记中心服务上报与分享用例，构造阶段不执行外部请求。"""
+    """
+    构造并登记中心服务上报与分享用例，构造阶段不执行外部请求。
+    """
     configure_server_application_services(
         report_service=ServerReportService(
             config_reader=lambda key: get_configured_system_config().get(key),
@@ -52,5 +56,7 @@ def configure_server_services(
 
 
 def reset_server_services() -> None:
-    """撤销当前 lifespan 发布的中心服务上报与分享用例。"""
+    """
+    撤销当前 lifespan 发布的中心服务上报与分享用例。
+    """
     reset_server_application_services()

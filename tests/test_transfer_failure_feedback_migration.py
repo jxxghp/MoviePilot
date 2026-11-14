@@ -1,4 +1,6 @@
-"""整理失败反馈字段的数据库迁移测试。"""
+"""
+整理失败反馈字段的数据库迁移测试。
+"""
 
 import importlib
 
@@ -18,7 +20,9 @@ EXPECTED_COLUMNS = {
 
 
 def _columns(connection) -> set[str]:
-    """返回测试整理历史表的字段集合。"""
+    """
+    返回测试整理历史表的字段集合。
+    """
     return {
         column["name"]
         for column in sa.inspect(connection).get_columns("transferhistory")
@@ -26,7 +30,9 @@ def _columns(connection) -> set[str]:
 
 
 def test_transfer_failure_feedback_migration_is_idempotent_and_reversible(monkeypatch) -> None:
-    """升级应幂等补齐失败闭环字段，降级应完整移除且保留原字段。"""
+    """
+    升级应幂等补齐失败闭环字段，降级应完整移除且保留原字段。
+    """
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()
     table = sa.Table(

@@ -1,4 +1,6 @@
-"""V3 API 数据面与宿主控制面进程拓扑测试。"""
+"""
+V3 API 数据面与宿主控制面进程拓扑测试。
+"""
 
 import asyncio
 from unittest.mock import MagicMock
@@ -21,13 +23,17 @@ from app.startup import lifecycle
 
 @pytest.mark.parametrize("safe_mode", [False, True])
 def test_single_worker_is_supported_in_every_mode(safe_mode: bool):
-    """单 worker 是正常模式和安全模式共同支持的默认拓扑。"""
+    """
+    单 worker 是正常模式和安全模式共同支持的默认拓扑。
+    """
     assert process_topology_issue(workers=1, safe_mode=safe_mode) is None
     validate_process_topology(workers=1, safe_mode=safe_mode)
 
 
 def test_full_runtime_rejects_multiple_workers():
-    """全功能模式不得复制插件、调度器、监控器和工作流。"""
+    """
+    全功能模式不得复制插件、调度器、监控器和工作流。
+    """
     with pytest.raises(
         UnsupportedProcessTopologyError,
         match="全功能模式仅支持 API_WORKERS=1",
@@ -36,20 +42,26 @@ def test_full_runtime_rejects_multiple_workers():
 
 
 def test_safe_mode_temporarily_allows_multiple_workers():
-    """安全模式跳过控制面时允许多 worker 作为故障诊断手段。"""
+    """
+    安全模式跳过控制面时允许多 worker 作为故障诊断手段。
+    """
     assert process_topology_issue(workers=2, safe_mode=True) is None
     validate_process_topology(workers=2, safe_mode=True)
 
 
 @pytest.mark.parametrize("workers", [0, -1, "invalid"])
 def test_api_workers_configuration_rejects_invalid_values(workers):
-    """worker 数量的边界或类型错误必须在配置解析阶段暴露。"""
+    """
+    worker 数量的边界或类型错误必须在配置解析阶段暴露。
+    """
     with pytest.raises(ValidationError):
         ConfigModel(API_WORKERS=workers)
 
 
 def test_main_rejects_topology_before_startup_side_effects(monkeypatch):
-    """主入口应在注册信号、迁移数据库和启动服务器前拒绝错误拓扑。"""
+    """
+    主入口应在注册信号、迁移数据库和启动服务器前拒绝错误拓扑。
+    """
     from app import main
 
     original_setting = main.get_runtime_setting
@@ -78,7 +90,9 @@ def test_main_rejects_topology_before_startup_side_effects(monkeypatch):
 
 
 def test_asgi_lifespan_rejects_topology_before_runtime_initialization(monkeypatch):
-    """外部 ASGI supervisor 也必须在生命周期副作用前执行同一校验。"""
+    """
+    外部 ASGI supervisor 也必须在生命周期副作用前执行同一校验。
+    """
     monkeypatch.setattr(settings, "API_WORKERS", 2)
     monkeypatch.setattr(settings, "MOVIEPILOT_SAFE_MODE", False)
     register_loop = MagicMock()
@@ -95,7 +109,9 @@ def test_asgi_lifespan_rejects_topology_before_runtime_initialization(monkeypatc
 
 
 def test_doctor_fails_unsupported_full_runtime_topology(monkeypatch):
-    """Doctor 应把正常模式多 worker 报告为影响整体状态的失败。"""
+    """
+    Doctor 应把正常模式多 worker 报告为影响整体状态的失败。
+    """
     monkeypatch.setattr(settings, "API_WORKERS", 2)
     monkeypatch.setattr(settings, "MOVIEPILOT_SAFE_MODE", False)
     runner = DoctorRunner()
@@ -109,7 +125,9 @@ def test_doctor_fails_unsupported_full_runtime_topology(monkeypatch):
 
 
 def test_doctor_marks_safe_mode_multi_worker_as_degraded(monkeypatch):
-    """安全模式多 worker 可运行，但 Doctor 必须提醒它不是正式扩容方案。"""
+    """
+    安全模式多 worker 可运行，但 Doctor 必须提醒它不是正式扩容方案。
+    """
     monkeypatch.setattr(settings, "API_WORKERS", 2)
     monkeypatch.setattr(settings, "MOVIEPILOT_SAFE_MODE", True)
     runner = DoctorRunner()

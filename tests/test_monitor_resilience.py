@@ -1,3 +1,7 @@
+"""
+验证目录监控异常后的退避、模式降级与停止行为。
+"""
+
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -330,7 +334,9 @@ def test_dispatcher_drops_pending_after_max_attempts(monkeypatch):
 
 
 def test_dispatcher_reports_retry_queue_capacity_drop():
-    """待重试队列已满时必须通知用户被丢弃的具体文件和恢复原因。"""
+    """
+    待重试队列已满时必须通知用户被丢弃的具体文件和恢复原因。
+    """
     from app.monitor.dispatcher import TransferDispatcher
 
     abandoned = MagicMock()

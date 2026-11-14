@@ -1,4 +1,8 @@
-from typing import Tuple, Union
+"""
+PostgreSQL 数据库的模块声明与连通性检查。
+"""
+
+from typing import Optional, Tuple
 
 from app.application.database import get_database_governance
 from app.modules import _ModuleBase
@@ -8,50 +12,60 @@ from app.schemas.types import ModuleType, OtherModulesType
 
 class PostgreSQLModule(_ModuleBase):
     """
-    PostgreSQL 数据库模块
+    PostgreSQL 数据库模块。
     """
 
     def init_module(self) -> None:
-        """PostgreSQL 连接由数据库 adapter 管理，无需模块级初始化。"""
+        """
+        PostgreSQL 连接由数据库适配器 管理，无需模块级初始化。
+        """
         pass
 
     @staticmethod
     def get_name() -> str:
-        """返回模块展示名称。"""
+        """
+        返回模块展示名称。
+        """
         return "PostgreSQL"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return OtherModulesType.PostgreSQL
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 0
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """数据库类型由部署配置决定，不声明独立模块开关。"""
+    def init_setting(self) -> None:
+        """
+        数据库类型由部署配置决定，不声明独立模块开关。
+        """
         pass
 
     def stop(self) -> None:
-        """连接池由数据库生命周期释放，本模块无独立资源。"""
+        """
+        连接池由数据库生命周期释放，本模块无独立资源。
+        """
         pass
 
-    def test(self):
+    def test(self) -> Optional[Tuple[bool, str]]:
         """
-        测试模块连接性
+        检查部署配置选中的 PostgreSQL 数据库。
+
+        :return: 连接结果和错误说明；部署未使用 PostgreSQL 时返回 None
         """
         if get_runtime_setting('DB_TYPE') != "postgresql":
             return None

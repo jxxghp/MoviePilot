@@ -6,7 +6,7 @@
   "repeat": 3,
   "targets": {
     "app.startup.lifecycle": {
-      "loaded_app_module_count": 578,
+      "loaded_app_module_count": 604,
       "max_ms": 1293.338,
       "median_ms": 1156.239,
       "min_ms": 1102.806,
@@ -17,7 +17,7 @@
       ]
     },
     "app.factory": {
-      "loaded_app_module_count": 591,
+      "loaded_app_module_count": 618,
       "max_ms": 1127.911,
       "median_ms": 1122.382,
       "min_ms": 1119.221,
@@ -28,7 +28,7 @@
       ]
     },
     "app.main": {
-      "loaded_app_module_count": 593,
+      "loaded_app_module_count": 620,
       "max_ms": 1188.652,
       "median_ms": 1183.509,
       "min_ms": 1174.522,
@@ -161,7 +161,7 @@
         ],
         "median_startup_ms": 0.694,
         "median_full_lifespan_ms": 1.909,
-        "enabled_component_count": 32,
+        "enabled_component_count": 34,
         "enabled_components": [
           "文件日志",
           "后台任务登记器",
@@ -176,7 +176,9 @@
           "路由",
           "插件运行时装配",
           "模块服务",
+          "社区勋章缓存",
           "插件服务装配",
+          "浏览器空闲回收",
           "插件备份恢复",
           "消息队列",
           "插件",
@@ -295,7 +297,7 @@
         ],
         "median_startup_ms": 0.553,
         "median_full_lifespan_ms": 1.197,
-        "enabled_component_count": 20,
+        "enabled_component_count": 22,
         "enabled_components": [
           "文件日志",
           "后台任务登记器",
@@ -310,7 +312,9 @@
           "路由",
           "插件运行时装配",
           "模块服务",
+          "社区勋章缓存",
           "插件服务装配",
+          "浏览器空闲回收",
           "消息队列",
           "整理后台服务",
           "AI智能体会话",

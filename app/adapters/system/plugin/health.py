@@ -1,4 +1,6 @@
-"""插件依赖安装后的运行环境准入、健康检查与自动修复。"""
+"""
+插件依赖安装后的运行环境准入、健康检查与自动修复。
+"""
 
 from __future__ import annotations
 
@@ -10,6 +12,8 @@ import sys
 import tempfile
 import threading
 from collections import deque
+from dataclasses import dataclass
+from enum import Enum
 from importlib.metadata import distributions
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -43,8 +47,40 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 
+class _RecoveryState(Enum):
+    """
+    插件安装后相对原健康基线的四种恢复结果。
+    """
+
+    # 没有新增异常，无需恢复。
+    UNCHANGED = "unchanged"
+    # 修复命令成功，复检已回到安装前的健康基线。
+    RESTORED = "restored"
+    # 修复命令失败，尚未复检。
+    REPAIR_FAILED = "repair_failed"
+    # 修复命令成功，但复检仍有新增异常。
+    STILL_BROKEN = "still_broken"
+
+
+@dataclass(frozen=True)
+class _RuntimeRecovery:
+    """
+    同步和异步 I/O 驱动共享的恢复事实，不持有进程、锁或临时文件。
+
+    :param state: 恢复结果，决定是否终止策略降级及刷新导入缓存
+    :param regression: 安装引入的原始健康异常；未回退时为空
+    :param detail: 修复命令失败输出或复检残留异常；无失败详情时为空
+    """
+
+    state: _RecoveryState
+    regression: str = ""
+    detail: str = ""
+
+
 class PluginRuntimeHealth:
-    """负责插件依赖写入的运行环境保护、检查和故障恢复。"""
+    """
+    负责插件依赖写入的运行环境保护、检查和故障恢复。
+    """
 
     _package_install_lock = threading.Lock()
     _protected_runtime_packages = frozenset({
@@ -62,6 +98,7 @@ class PluginRuntimeHealth:
         获取已安装的包及其版本
         使用 importlib.metadata 获取当前环境中已安装的包，标准化包名并转换版本信息
         对于无法解析的版本，记录警告日志并跳过
+
         :return: 已安装包的字典，格式为 {package_name: Version}
         """
         installed_packages: Dict[str, Version] = {}
@@ -100,7 +137,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __build_runtime_uv_check_command() -> List[str]:
-        """构造绑定当前解释器环境的 uv 依赖诊断命令。"""
+        """
+        构造绑定当前解释器环境的 uv 依赖诊断命令。
+        """
         uv_bin = find_uv(Path(sys.executable))
         if not uv_bin:
             return []
@@ -108,7 +147,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __format_package_name(name: str) -> str:
-        """将内部包名转换为依赖清单常用的连字符形式。"""
+        """
+        将内部包名转换为依赖清单常用的连字符形式。
+        """
         return name.replace("_", "-")
 
     @staticmethod
@@ -131,7 +172,9 @@ class PluginRuntimeHealth:
             cls,
             project_file: Path,
     ) -> Dict[str, Set[str]]:
-        """解析主项目 pyproject，收集当前平台生效的根依赖和 extras。"""
+        """
+        解析主项目 pyproject，收集当前平台生效的根依赖和 extras。
+        """
         roots: Dict[str, Set[str]] = {}
         if not project_file.exists():
             logger.warning(f"主项目依赖文件不存在：{project_file}")
@@ -254,7 +297,9 @@ class PluginRuntimeHealth:
 
     @classmethod
     def __get_strict_runtime_packages(cls) -> Set[str]:
-        """返回核心包及当前 ABI profile 中不得被插件改写的根包。"""
+        """
+        返回核心包及当前 ABI profile 中不得被插件改写的根包。
+        """
         packages = set(cls._protected_runtime_packages)
         project_file = get_runtime_setting('ROOT_PATH') / "pyproject.toml"
         try:
@@ -403,7 +448,9 @@ class PluginRuntimeHealth:
             cls,
             protected_packages: Dict[str, Version],
     ) -> Path:
-        """创建临时约束文件，取消时等待创建收口并删除已产生的文件。"""
+        """
+        创建临时约束文件，取消时等待创建收口并删除已产生的文件。
+        """
         create_task = asyncio.create_task(
             asyncio.to_thread(
                 cls.__create_runtime_constraints_file,
@@ -414,6 +461,9 @@ class PluginRuntimeHealth:
             return await asyncio.shield(create_task)
         except asyncio.CancelledError:
             async def cleanup_created_file() -> None:
+                """
+                等待后台创建约束文件结束，再删除取消请求遗留的临时文件。
+                """
                 try:
                     created_file = await create_task
                 except BaseException:
@@ -464,32 +514,119 @@ class PluginRuntimeHealth:
         )
 
     @classmethod
-    def __repair_if_runtime_broken(
+    def __repair_install_runtime(
             cls,
-            snapshot_file: Optional[Path] = None,
-            baseline_health: Optional[Dict[str, Tuple[bool, str]]] = None
-    ) -> Tuple[bool, str]:
+            health_message: str,
+            snapshot_file: Optional[Path],
+            baseline_health: Dict[str, Tuple[bool, str]],
+    ) -> _RuntimeRecovery:
         """
-        安装失败后检查主运行环境；若相对安装前新增异常，先恢复主程序依赖再返回。
+        同步执行恢复所需的 I/O，恢复结果由共享规则判定。
+
+        :param health_message: 本次安装新增异常；空串表示无需恢复
+        :param snapshot_file: 安装前的依赖约束快照；None 时使用项目锁文件
+        :param baseline_health: 安装前健康基线
+        :return: 未发生回退、已恢复、修复失败或复检失败的事实
         """
-        current_health = cls.__run_runtime_healthcheck()
-        health_message = cls.__runtime_health_regression_message(
-            baseline_health or {},
-            current_health
-        )
         if not health_message:
-            return True, ""
-        repair_ok, repair_message = cls.__repair_main_runtime_dependencies(snapshot_file)
-        if not repair_ok:
-            return False, f"插件依赖安装失败后主运行环境异常，且恢复失败：{health_message}; {repair_message}"
-        restored_health = cls.__run_runtime_healthcheck()
-        restored_message = cls.__runtime_health_regression_message(
-            baseline_health or {},
-            restored_health
+            return _RuntimeRecovery(_RecoveryState.UNCHANGED)
+        repair_result = cls.__repair_main_runtime_dependencies(snapshot_file)
+        restored_health = cls.__run_runtime_healthcheck() if repair_result[0] else {}
+        return cls.__runtime_recovery_outcome(
+            health_message, repair_result, baseline_health, restored_health,
         )
-        if restored_message:
-            return False, f"插件依赖安装失败后主运行环境异常，恢复后仍异常：{restored_message}"
-        return True, "主运行环境已恢复"
+
+    @classmethod
+    def __runtime_recovery_outcome(
+            cls,
+            health_message: str,
+            repair_result: Tuple[bool, str],
+            baseline_health: Dict[str, Tuple[bool, str]],
+            restored_health: Dict[str, Tuple[bool, str]],
+    ) -> _RuntimeRecovery:
+        """
+        统一判定修复命令和复检结果，不把命令成功当作环境已恢复。
+
+        :param health_message: 安装导致的原始健康回退
+        :param repair_result: 修复命令的成功标志和输出
+        :param baseline_health: 安装前健康基线
+        :param restored_health: 修复成功后的复检快照；命令失败时为空
+        :return: 带原始回退和失败详情的恢复事实
+        """
+        repair_ok, repair_message = repair_result
+        if not repair_ok:
+            return _RuntimeRecovery(_RecoveryState.REPAIR_FAILED, health_message, repair_message)
+        remaining = cls.__runtime_health_regression_message(baseline_health, restored_health)
+        if remaining:
+            return _RuntimeRecovery(_RecoveryState.STILL_BROKEN, health_message, remaining)
+        return _RuntimeRecovery(_RecoveryState.RESTORED, health_message)
+
+    @classmethod
+    def __installation_regression(
+            cls,
+            success: bool,
+            baseline_health: Dict[str, Tuple[bool, str]],
+            current_health: Dict[str, Tuple[bool, str]],
+    ) -> str:
+        """
+        检测安装新增的环境异常，并保留安装成功后回退的原有错误日志。
+        """
+        message = cls.__runtime_health_regression_message(baseline_health, current_health)
+        if success and message:
+            logger.error(f"[UV] 依赖安装后运行环境自检失败：{message}")
+        return message
+
+    @classmethod
+    def __installation_result(
+            cls,
+            success: bool,
+            message: str,
+            strategy_name: str,
+            recovery: _RuntimeRecovery,
+    ) -> Optional[Tuple[bool, str]]:
+        """
+        统一决定策略结果、导入刷新及是否允许尝试下一策略。
+
+        :param success: 安装子进程是否成功
+        :param message: 安装子进程的原始输出
+        :param strategy_name: 当前安装策略名称
+        :param recovery: 安装后的环境恢复事实
+        :return: 终态结果；仅安装失败且环境无新增异常时返回 None 继续降级
+        """
+        if success:
+            if recovery.state == _RecoveryState.UNCHANGED:
+                cls.__refresh_import_system()
+                return True, message
+            if recovery.state == _RecoveryState.RESTORED:
+                cls.__refresh_import_system()
+                return False, f"依赖安装后运行环境自检失败，已自动恢复主程序依赖：{recovery.regression}"
+            if recovery.state == _RecoveryState.STILL_BROKEN:
+                return False, f"依赖安装后运行环境自检失败，恢复主程序依赖后仍异常：{recovery.detail}"
+            return False, f"依赖安装后运行环境自检失败，且自动恢复主程序依赖失败：{recovery.detail}"
+
+        logger.error(f"[UV] 策略：{strategy_name} 安装依赖失败，错误信息：{message}")
+        if recovery.state == _RecoveryState.UNCHANGED:
+            return None
+        if recovery.state == _RecoveryState.RESTORED:
+            repair_message = "主运行环境已恢复"
+        elif recovery.state == _RecoveryState.STILL_BROKEN:
+            repair_message = f"插件依赖安装失败后主运行环境异常，恢复后仍异常：{recovery.detail}"
+        else:
+            repair_message = (
+                f"插件依赖安装失败后主运行环境异常，且恢复失败：{recovery.regression}; {recovery.detail}"
+            )
+        return False, cls.__with_free_threaded_reason(
+            f"策略 {strategy_name} 安装依赖失败：{message}；{repair_message}"
+        )
+
+    @classmethod
+    def __exhausted_install_result(cls, last_error: str) -> Tuple[bool, str]:
+        """
+        所有策略失败后保留最后一个错误及既有 free-threaded 诊断。
+        """
+        if last_error:
+            return False, cls.__with_free_threaded_reason(f"[UV] 所有策略均安装依赖失败：{last_error}")
+        return False, "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束"
 
     @classmethod
     def __run_runtime_healthcheck(cls) -> Dict[str, Tuple[bool, str]]:
@@ -516,7 +653,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __runtime_health_error_lines(check_name: str, message: str) -> set[str]:
-        """提取未被项目依赖策略排除的稳定诊断项。"""
+        """
+        提取未被项目依赖策略排除的稳定诊断项。
+        """
         lines = {line.strip() for line in message.splitlines() if line.strip()}
         if check_name != "uv check":
             return lines
@@ -637,7 +776,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __with_free_threaded_reason(message: str) -> str:
-        """free-threaded 运行时下为 uv 安装失败补充可读原因，原始输出保留在后面便于排查。"""
+        """
+        free-threaded 运行时下为 uv 安装失败补充可读原因，原始输出保留在后面便于排查。
+        """
         if not is_free_threaded_runtime():
             return message
         reason = describe_free_threaded_install_failure(message)
@@ -674,7 +815,9 @@ class PluginRuntimeHealth:
             cls,
             request: PackageInstallRequest,
     ) -> Optional[str]:
-        """__free_threaded_preflight 的异步版本，取消时由子进程工具回收 uv 进程组。"""
+        """
+        __free_threaded_preflight 的异步版本，取消时由子进程工具回收 uv 进程组。
+        """
         if not is_free_threaded_runtime():
             return None
         failures: List[str] = []
@@ -697,6 +840,7 @@ class PluginRuntimeHealth:
                                        find_links_dirs: Optional[List[Path]] = None) -> Tuple[bool, str]:
         """
         使用自动降级策略安装依赖，并确保新安装的包可被动态导入
+
         :param dependency_files: 一个或多个插件依赖清单路径
         :param find_links_dirs: 额外的本地 wheels 目录列表
         :return: (是否成功, 错误信息)
@@ -794,74 +938,37 @@ class PluginRuntimeHealth:
                     )
                     if success:
                         logger.debug(f"[UV] 策略：{strategy.strategy_name} 安装依赖成功，输出：{message}")
-                        current_health = cls.__run_runtime_healthcheck()
-                        health_message = cls.__runtime_health_regression_message(
-                            baseline_health,
-                            current_health
-                        )
-                        if health_message:
-                            logger.error(f"[UV] 依赖安装后运行环境自检失败：{health_message}")
-                            repair_ok, repair_message = cls.__repair_main_runtime_dependencies(
-                                constraints_file if protected_packages else None
-                            )
-                            if repair_ok:
-                                restored_health = cls.__run_runtime_healthcheck()
-                                restored_message = cls.__runtime_health_regression_message(
-                                    baseline_health,
-                                    restored_health
-                                )
-                                if not restored_message:
-                                    cls.__refresh_import_system()
-                                    return False, (
-                                        f"依赖安装后运行环境自检失败，已自动恢复主程序依赖：{health_message}"
-                                    )
-                                logger.error(
-                                    f"[UV] 主程序依赖恢复后仍未通过健康检查：{restored_message}"
-                                )
-                                return False, (
-                                    f"依赖安装后运行环境自检失败，恢复主程序依赖后仍异常："
-                                    f"{restored_message}"
-                                )
-                            return False, (
-                                f"依赖安装后运行环境自检失败，且自动恢复主程序依赖失败："
-                                f"{repair_message}"
-                            )
-
+                    current_health = cls.__run_runtime_healthcheck()
+                    health_message = cls.__installation_regression(success, baseline_health, current_health)
+                    recovery = cls.__repair_install_runtime(health_message, constraints_file, baseline_health)
+                    if success and recovery.state == _RecoveryState.UNCHANGED:
                         remaining_health_message = cls.__runtime_health_regression_message({}, current_health)
                         if remaining_health_message:
                             logger.warning(
                                 f"[UV] 依赖安装成功，安装前已有的运行环境异常仍然存在："
                                 f"{remaining_health_message}"
                             )
-
-                        cls.__refresh_import_system()
-                        loaded_modules_after_install = set(sys.modules.keys())
-                        loaded_modules_during_install = loaded_modules_after_install - loaded_modules_before_install
-                        logger.debug(f"[UV] 已刷新导入系统，新加载的模块: {loaded_modules_during_install}")
-                        return True, message
-
+                    elif success and recovery.state == _RecoveryState.STILL_BROKEN:
+                        logger.error(f"[UV] 主程序依赖恢复后仍未通过健康检查：{recovery.detail}")
+                    result = cls.__installation_result(success, message, strategy.strategy_name, recovery)
+                    if result is not None:
+                        if result[0]:
+                            loaded_modules_after_install = set(sys.modules.keys())
+                            loaded_modules_during_install = loaded_modules_after_install - loaded_modules_before_install
+                            logger.debug(f"[UV] 已刷新导入系统，新加载的模块: {loaded_modules_during_install}")
+                        return result
                     last_error = message
-                    repair_ok, repair_message = cls.__repair_if_runtime_broken(
-                        constraints_file if protected_packages else None,
-                        baseline_health
-                    )
-                    logger.error(f"[UV] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}")
-                    if not repair_ok or repair_message:
-                        return False, cls.__with_free_threaded_reason(
-                            f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
-                            f"{repair_message}"
-                        )
         finally:
             if constraints_file:
                 constraints_file.unlink(missing_ok=True)
 
-        if last_error:
-            return False, cls.__with_free_threaded_reason(f"[UV] 所有策略均安装依赖失败：{last_error}")
-        return False, "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束"
+        return cls.__exhausted_install_result(last_error)
 
     @classmethod
     async def __async_run_runtime_healthcheck(cls) -> Dict[str, Tuple[bool, str]]:
-        """异步执行插件安装后的运行环境检查。"""
+        """
+        异步执行插件安装后的运行环境检查。
+        """
         health_snapshot: Dict[str, Tuple[bool, str]] = {}
         uv_check = cls.__build_runtime_uv_check_command()
         if uv_check:
@@ -889,7 +996,9 @@ class PluginRuntimeHealth:
             cls,
             snapshot_file: Optional[Path] = None,
     ) -> Tuple[bool, str]:
-        """异步恢复主程序运行依赖，避免修复命令绕过可取消进程边界。"""
+        """
+        异步恢复主程序运行依赖，避免修复命令绕过可取消进程边界。
+        """
         repair_target = snapshot_file
         repair_desc = "主程序依赖快照"
         if repair_target and not await _await_thread_operation(repair_target.exists):
@@ -933,45 +1042,36 @@ class PluginRuntimeHealth:
         return False, last_error or f"恢复{repair_desc}失败"
 
     @classmethod
-    async def __async_repair_if_runtime_broken(
+    async def __async_repair_install_runtime(
             cls,
+            health_message: str,
             snapshot_file: Optional[Path],
             baseline_health: Dict[str, Tuple[bool, str]],
-    ) -> Tuple[bool, str]:
-        """异步检查并修复安装过程中新增的主程序环境异常。"""
-        current_health = await cls.__async_run_runtime_healthcheck()
-        health_message = cls.__runtime_health_regression_message(
-            baseline_health,
-            current_health,
-        )
+    ) -> _RuntimeRecovery:
+        """
+        通过可取消子进程执行修复与复检，使用同步入口相同的恢复判定。
+
+        :param health_message: 本次安装新增异常；空串表示无需恢复
+        :param snapshot_file: 安装前的依赖约束快照；None 时使用项目锁文件
+        :param baseline_health: 安装前健康基线
+        :return: 未发生回退、已恢复、修复失败或复检失败的事实
+        """
         if not health_message:
-            return True, ""
-        repair_ok, repair_message = (
-            await cls.__async_repair_main_runtime_dependencies(snapshot_file)
+            return _RuntimeRecovery(_RecoveryState.UNCHANGED)
+        repair_result = await cls.__async_repair_main_runtime_dependencies(snapshot_file)
+        restored_health = await cls.__async_run_runtime_healthcheck() if repair_result[0] else {}
+        return cls.__runtime_recovery_outcome(
+            health_message, repair_result, baseline_health, restored_health,
         )
-        if not repair_ok:
-            return False, (
-                f"插件依赖安装失败后主运行环境异常，且恢复失败："
-                f"{health_message}; {repair_message}"
-            )
-        restored_health = await cls.__async_run_runtime_healthcheck()
-        restored_message = cls.__runtime_health_regression_message(
-            baseline_health,
-            restored_health,
-        )
-        if restored_message:
-            return False, (
-                f"插件依赖安装失败后主运行环境异常，恢复后仍异常："
-                f"{restored_message}"
-            )
-        return True, "主运行环境已恢复"
 
     async def async_install_packages_with_fallback(
             self,
             dependency_files: Path | Sequence[Path],
             find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
-        """通过可取消子进程异步安装一组插件依赖清单。"""
+        """
+        通过可取消子进程异步安装一组插件依赖清单。
+        """
         return await self.__async_install_packages_with_fallback(
             dependency_files,
             find_links_dirs,
@@ -983,7 +1083,9 @@ class PluginRuntimeHealth:
             dependency_files: Path | Sequence[Path],
             find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
-        """异步安装插件依赖，并让取消能够终止 uv 子进程。"""
+        """
+        异步安装插件依赖，并让取消能够终止 uv 子进程。
+        """
         resolved_dependency_files: tuple[Path, ...]
         if isinstance(dependency_files, Path):
             resolved_dependency_files = (dependency_files,)
@@ -1081,61 +1183,14 @@ class PluginRuntimeHealth:
                     safe_command=strategy.safe_log_command,
                     timeout=cls.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT,
                 )
-                if success:
-                    current_health = await cls.__async_run_runtime_healthcheck()
-                    health_message = cls.__runtime_health_regression_message(
-                        baseline_health,
-                        current_health,
-                    )
-                    if health_message:
-                        logger.error(f"[UV] 依赖安装后运行环境自检失败：{health_message}")
-                        repair_ok, repair_message = (
-                            await cls.__async_repair_main_runtime_dependencies(
-                                constraints_file if protected_packages else None
-                            )
-                        )
-                        if repair_ok:
-                            restored_health = await cls.__async_run_runtime_healthcheck()
-                            restored_message = cls.__runtime_health_regression_message(
-                                baseline_health,
-                                restored_health,
-                            )
-                            if not restored_message:
-                                cls.__refresh_import_system()
-                                return False, (
-                                    f"依赖安装后运行环境自检失败，已自动恢复主程序依赖："
-                                    f"{health_message}"
-                                )
-                            return False, (
-                                f"依赖安装后运行环境自检失败，恢复主程序依赖后仍异常："
-                                f"{restored_message}"
-                            )
-                        return False, (
-                            f"依赖安装后运行环境自检失败，且自动恢复主程序依赖失败："
-                            f"{repair_message}"
-                        )
-
-                    cls.__refresh_import_system()
-                    return True, message
-
+                current_health = await cls.__async_run_runtime_healthcheck()
+                health_message = cls.__installation_regression(success, baseline_health, current_health)
+                recovery = await cls.__async_repair_install_runtime(health_message, constraints_file, baseline_health)
+                result = cls.__installation_result(success, message, strategy.strategy_name, recovery)
+                if result is not None:
+                    return result
                 last_error = message
-                repair_ok, repair_message = await cls.__async_repair_if_runtime_broken(
-                    constraints_file if protected_packages else None,
-                    baseline_health,
-                )
-                logger.error(
-                    f"[UV] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}"
-                )
-                if not repair_ok or repair_message:
-                    return False, cls.__with_free_threaded_reason(
-                        f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
-                        f"{repair_message}"
-                    )
-            return False, (
-                cls.__with_free_threaded_reason(f"[UV] 所有策略均安装依赖失败：{last_error}")
-                if last_error
-                else "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束"
-            )
+            return cls.__exhausted_install_result(last_error)
         finally:
             if acquired:
                 cls._package_install_lock.release()

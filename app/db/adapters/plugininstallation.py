@@ -1,4 +1,6 @@
-"""插件安装事务 Application Port 的同步 SQLAlchemy 实现。"""
+"""
+插件安装事务 Application Port 的同步 SQLAlchemy 实现。
+"""
 
 from __future__ import annotations
 
@@ -40,7 +42,9 @@ AtomicMembershipUpdater = Callable[
 
 
 def _identity_from_model(model: IdentityModel) -> PluginIdentity:
-    """把同一 Session 读出的身份模型还原为应用记录。"""
+    """
+    把同一 Session 读出的身份模型还原为应用记录。
+    """
     return PluginIdentity(
         plugin_id=model.plugin_id,
         normalized_plugin_id=model.normalized_plugin_id,
@@ -74,7 +78,9 @@ def _identity_from_model(model: IdentityModel) -> PluginIdentity:
 
 
 def _identity_model_values(identity: PluginIdentity) -> dict[str, object]:
-    """把应用身份映射为不含自增主键的模型列值。"""
+    """
+    把应用身份映射为不含自增主键的模型列值。
+    """
     return {
         "plugin_id": identity.plugin_id,
         "normalized_plugin_id": identity.normalized_plugin_id,
@@ -104,31 +110,41 @@ def _identity_model_values(identity: PluginIdentity) -> dict[str, object]:
 
 
 class TransactionalPluginInstallationStore(PluginInstallationStore):
-    """以单张事务表协调单插件 membership、来源身份和 phase。"""
+    """
+    以单张事务表协调单插件 membership、来源身份和 phase。
+    """
 
     def __init__(
         self,
         session_factory: Callable[[], Session],
         update_membership_atomically: AtomicMembershipUpdater,
     ) -> None:
-        """保存事务会话工厂和配置 membership 的窄原子写入口。"""
+        """
+        保存事务会话工厂和配置 membership 的窄原子写入口。
+        """
         self._session_factory = session_factory
         self.__update_membership_atomically = update_membership_atomically
 
     def __session(self) -> Session:
-        """创建不会在提交后过期状态的短生命周期 Session。"""
+        """
+        创建不会在提交后过期状态的短生命周期 Session。
+        """
         session = self._session_factory()
         session.expire_on_commit = False
         return session
 
     @staticmethod
     def __now() -> str:
-        """生成带时区的持久化更新时间。"""
+        """
+        生成带时区的持久化更新时间。
+        """
         return datetime.now(timezone.utc).isoformat()
 
     @staticmethod
     def __phase(value: PluginInstallationPhase | str) -> PluginInstallationPhase:
-        """把调用方 phase 转为受限枚举。"""
+        """
+        把调用方 phase 转为受限枚举。
+        """
         try:
             return (
                 value
@@ -142,13 +158,16 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
 
     @staticmethod
     def __to_record(model: PluginInstallation) -> PluginInstallationRecord:
-        """把 ORM 行还原为经过应用层校验的事务记录。"""
+        """
+        把 ORM 行还原为经过应用层校验的事务记录。
+        """
         try:
             return PluginInstallationRecord(
                 transaction_id=model.transaction_id,
                 plugin_id=model.plugin_id,
                 phase=PluginInstallationPhase(model.phase),
                 membership_before=model.membership_before,
+                host_enabled_before=model.host_enabled_before,
                 membership_target=model.membership_target,
                 identity_before_revision=model.identity_before_revision,
                 identity_target_revision=model.identity_target_revision,
@@ -165,16 +184,21 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
 
     @staticmethod
     def __identity_query(session: Session, plugin_id: str) -> IdentityModel | None:
-        """读取并锁定指定插件的身份行。"""
-        return session.execute(
+        """
+        读取并锁定指定插件的身份行。
+        """
+        identity: IdentityModel | None = session.execute(
             select(IdentityModel)
             .where(IdentityModel.normalized_plugin_id == plugin_id.lower())
             .with_for_update()
         ).scalar_one_or_none()
+        return identity
 
     @staticmethod
     def __membership_state(current: object, plugin_id: str) -> bool:
-        """只读取目标插件 membership，不把其他插件写入事务快照。"""
+        """
+        只读取目标插件 membership，不把其他插件写入事务快照。
+        """
         if current is None:
             return False
         if not isinstance(current, list) or any(
@@ -192,7 +216,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         plugin_id: str,
         target: bool,
     ) -> list[str]:
-        """在配置写锁内只增删目标插件，保留其他插件并发变更。"""
+        """
+        在配置写锁内只增删目标插件，保留其他插件并发变更。
+        """
         if current is None:
             values: list[str] = []
         elif isinstance(current, list) and all(
@@ -216,7 +242,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         session: Session,
         plugin_id: str,
     ) -> int | None:
-        """读取锁定身份行的 revision；缺行表示 CAS 的 null。"""
+        """
+        读取锁定身份行的 revision；缺行表示 CAS 的 null。
+        """
         identity = cls.__identity_query(session, plugin_id)
         return identity.revision if identity is not None else None
 
@@ -227,7 +255,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         plugin_id: str,
         identity: PluginIdentity | None,
     ) -> None:
-        """在调用方事务中写入或删除目标插件身份。"""
+        """
+        在调用方事务中写入或删除目标插件身份。
+        """
         current = cls.__identity_query(session, plugin_id)
         if identity is None:
             if current is not None:
@@ -249,7 +279,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         record: PluginInstallationRecord,
         identity: PluginIdentity,
     ) -> None:
-        """确认目标身份属于当前插件且 revision 只前进一步。"""
+        """
+        确认目标身份属于当前插件且 revision 只前进一步。
+        """
         if identity.plugin_id != record.plugin_id:
             raise PluginInstallationConflictError(
                 "PluginIdentity target 与事务 plugin_id 不一致"
@@ -263,7 +295,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
 
     @staticmethod
     def __require_row(session: Session, transaction_id: str) -> PluginInstallation:
-        """读取并锁定事务行，缺失时拒绝继续写入。"""
+        """
+        读取并锁定事务行，缺失时拒绝继续写入。
+        """
         row = session.execute(
             select(PluginInstallation)
             .where(PluginInstallation.transaction_id == transaction_id)
@@ -281,7 +315,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         row: PluginInstallation,
         expected_phase: PluginInstallationPhase | str,
     ) -> PluginInstallationPhase:
-        """执行写操作共用的 phase CAS。"""
+        """
+        执行写操作共用的 phase CAS。
+        """
         expected = cls.__phase(expected_phase)
         try:
             actual = PluginInstallationPhase(row.phase)
@@ -303,7 +339,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         session: Session,
         current_membership: object,
     ) -> None:
-        """确认目标插件仍处于事务创建时的 before 状态。"""
+        """
+        确认目标插件仍处于事务创建时的 before 状态。
+        """
         membership = cls.__membership_state(current_membership, record.plugin_id)
         revision = cls.__identity_revision(session, record.plugin_id)
         if membership != record.membership_before:
@@ -316,12 +354,16 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
             )
 
     def create(self, record: PluginInstallationRecord) -> PluginInstallationRecord:
-        """原子预留单插件 journal 槽位并立即 flush 唯一键竞争。"""
+        """
+        原子预留单插件 journal 槽位并立即 flush 唯一键竞争。
+        """
         def reserve(
             session: Session,
             current_membership: object,
         ) -> tuple[PluginInstallationRecord, object]:
-            """在配置写事务内阻断同一物理插件的未收尾 journal。"""
+            """
+            在配置写事务内阻断同一物理插件的未收尾 journal。
+            """
             existing = session.execute(
                 select(PluginInstallation)
                 .where(
@@ -341,6 +383,7 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
                     plugin_id=record.plugin_id,
                     phase=record.phase.value,
                     membership_before=record.membership_before,
+                    host_enabled_before=record.host_enabled_before,
                     membership_target=record.membership_target,
                     identity_before_revision=record.identity_before_revision,
                     identity_target_revision=record.identity_target_revision,
@@ -355,20 +398,20 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
             return record, current_membership
 
         try:
-            return cast(
-                PluginInstallationRecord,
-                self.__update_membership_atomically(
-                    _INSTALLED_PLUGINS_KEY,
-                    reserve,
-                ),
+            updated_record: PluginInstallationRecord = self.__update_membership_atomically(
+                _INSTALLED_PLUGINS_KEY,
+                reserve,
             )
+            return updated_record
         except IntegrityError as error:
             raise PluginInstallationConflictError(
                 f"插件安装事务创建发生并发竞争: {record.transaction_id}"
             ) from error
 
     def get(self, transaction_id: str) -> PluginInstallationRecord | None:
-        """按事务 ID 读取记录。"""
+        """
+        按事务 ID 读取记录。
+        """
         session = self.__session()
         try:
             row = session.execute(
@@ -385,7 +428,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         *,
         plugin_id: str | None = None,
     ) -> list[PluginInstallationRecord]:
-        """按创建时间稳定列出事务记录。"""
+        """
+        按创建时间稳定列出事务记录。
+        """
         session = self.__session()
         try:
             statement = select(PluginInstallation).order_by(
@@ -414,7 +459,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         identity_target: PluginIdentity | None,
         expected_phase: PluginInstallationPhase,
     ) -> PluginInstallationRecord:
-        """按 phase CAS 登记目标 membership 和身份 revision，不写业务状态。"""
+        """
+        按 phase CAS 登记目标 membership 和身份 revision，不写业务状态。
+        """
         if not isinstance(membership_target, bool):
             raise PluginInstallationConflictError("membership_target 必须是布尔值")
         session = self.__session()
@@ -442,12 +489,16 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         identity_target: PluginIdentity | None,
         expected_phase: PluginInstallationPhase,
     ) -> PluginInstallationRecord:
-        """原子提交目标 membership、身份 CAS 和 COMMITTED phase。"""
+        """
+        原子提交目标 membership、身份 CAS 和 COMMITTED phase。
+        """
         def commit(
             session: Session,
             current_membership: object,
         ) -> tuple[PluginInstallationRecord, list[str]]:
-            """在配置行锁持有期间完成事务行、身份和 membership 写入。"""
+            """
+            在配置行锁持有期间完成事务行、身份和 membership 写入。
+            """
             row = self.__require_row(session, transaction_id)
             self.__check_phase(row, expected_phase)
             record = self.__to_record(row)
@@ -479,13 +530,11 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
             return self.__to_record(row), updated_membership
 
         try:
-            return cast(
-                PluginInstallationRecord,
-                self.__update_membership_atomically(
-                    _INSTALLED_PLUGINS_KEY,
-                    commit,
-                ),
+            updated_record: PluginInstallationRecord = self.__update_membership_atomically(
+                _INSTALLED_PLUGINS_KEY,
+                commit,
             )
+            return updated_record
         except IntegrityError as error:
             raise PluginInstallationConflictError(
                 f"插件 {transaction_id} 的身份提交发生唯一键竞争"
@@ -497,7 +546,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
         *,
         expected_phase: PluginInstallationPhase,
     ) -> bool:
-        """按 phase CAS 删除事务记录；缺失记录按幂等删除处理。"""
+        """
+        按 phase CAS 删除事务记录；缺失记录按幂等删除处理。
+        """
         session = self.__session()
         try:
             with session.begin():

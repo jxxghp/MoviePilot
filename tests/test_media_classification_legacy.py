@@ -1,4 +1,6 @@
-"""旧版 TMDB 分类配置到新版策略的纯迁移与兼容投影测试。"""
+"""
+旧版 TMDB 分类配置到新版策略的纯迁移与兼容投影测试。
+"""
 
 from collections.abc import Mapping
 from pathlib import Path
@@ -31,11 +33,14 @@ from app.schemas.category import (
 from app.schemas.types import MediaType
 
 
+# 保留旧分类算法作为差异对照，不拆分以免改变基准实现。
 def _legacy_tmdb_category(  # noqa: C901, PLR0912
     categories: Mapping[str, Optional[Mapping[str, str]]],
     tmdb_info: Mapping[str, object],
 ) -> str:
-    """冻结旧 CategoryHelper 求值算法，仅用于证明迁移前后语义等价。"""
+    """
+    冻结旧 CategoryHelper 求值算法，仅用于证明迁移前后语义等价。
+    """
     if not tmdb_info or not categories:
         return ""
     for name, conditions in categories.items():
@@ -91,7 +96,9 @@ def _legacy_tmdb_category(  # noqa: C901, PLR0912
 
 
 def _legacy_config() -> dict[str, dict[str, Optional[dict[str, str]]]]:
-    """构造覆盖默认式顺序、来源字段和空兜底的旧配置。"""
+    """
+    构造覆盖默认式顺序、来源字段和空兜底的旧配置。
+    """
     return {
         "movie": {
             "动画电影": {"genre_ids": "16"},
@@ -108,12 +115,16 @@ def _legacy_config() -> dict[str, dict[str, Optional[dict[str, str]]]]:
 
 
 def _media_enum(media_type: ClassificationMediaType) -> MediaType:
-    """把分类媒体类型转换为领域媒体枚举。"""
+    """
+    把分类媒体类型转换为领域媒体枚举。
+    """
     return MediaType.MOVIE if media_type == "电影" else MediaType.TV
 
 
 def _year_from_tmdb(tmdb_info: Mapping[str, object]) -> Optional[str]:
-    """按旧优先级从 TMDB 详情提取年份文本。"""
+    """
+    按旧优先级从 TMDB 详情提取年份文本。
+    """
     release = tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
     return str(release)[:4] if release else None
 
@@ -123,7 +134,9 @@ def _tmdb_facts(
     tmdb_info: Mapping[str, object],
     media_type: ClassificationMediaType,
 ) -> ClassificationFacts:
-    """用真实标准事实构造器和迁移扩展投影组装 TMDB 分类事实。"""
+    """
+    用真实标准事实构造器和迁移扩展投影组装 TMDB 分类事实。
+    """
     media = MediaInfo(
         media_source="themoviedb",
         media_id=str(tmdb_info.get("id") or "fixture"),
@@ -150,7 +163,9 @@ def _category_name(
     result: LegacyClassificationMigrationResult,
     facts: ClassificationFacts,
 ) -> str:
-    """执行新版求值并把稳定分类 ID 还原为目录分类名称。"""
+    """
+    执行新版求值并把稳定分类 ID 还原为目录分类名称。
+    """
     evaluation = ClassificationEvaluator.evaluate(result.policy, facts)
     category_id = evaluation.result.recommended.category_id
     categories: dict[str, str] = {str(category.id): str(category.name) for category in result.policy.categories}
@@ -158,7 +173,9 @@ def _category_name(
 
 
 def _policy_category_name(policy: ClassificationPolicy, facts: ClassificationFacts) -> str:
-    """执行指定策略并返回推荐分类名称，用于比较不同策略的业务结果。"""
+    """
+    执行指定策略并返回推荐分类名称，用于比较不同策略的业务结果。
+    """
     evaluation = ClassificationEvaluator.evaluate(policy, facts)
     category_id = evaluation.result.recommended.category_id
     categories = {str(category.id): str(category.name) for category in policy.categories}
@@ -166,7 +183,9 @@ def _policy_category_name(policy: ClassificationPolicy, facts: ClassificationFac
 
 
 def _leaf_fields(node: ClassificationConditionNode) -> list[str]:
-    """按条件树顺序提取叶子字段。"""
+    """
+    按条件树顺序提取叶子字段。
+    """
     if isinstance(node, ClassificationCondition):
         return [node.field]
     children: list[ClassificationConditionNode]
@@ -182,7 +201,9 @@ def _leaf_fields(node: ClassificationConditionNode) -> list[str]:
 
 
 def test_default_style_config_preserves_order_and_migrates_equivalent_fields() -> None:
-    """默认式配置应保持顺序，具有等价语义的字段直接迁移到标准字段。"""
+    """
+    默认式配置应保持顺序，具有等价语义的字段直接迁移到标准字段。
+    """
     result = migrate_legacy_category_config(_legacy_config())
 
     assert result.valid
@@ -213,7 +234,9 @@ def test_default_style_config_preserves_order_and_migrates_equivalent_fields() -
 
 
 def test_official_category_yaml_has_no_unknown_genre_ids() -> None:
-    """仓库官方旧模板中的 Genre ID 均应直接迁移为标准风格键。"""
+    """
+    仓库官方旧模板中的 Genre ID 均应直接迁移为标准风格键。
+    """
     config = yaml.safe_load(
         (Path(__file__).resolve().parents[1] / "config" / "category.yaml").read_text(),
     )
@@ -252,7 +275,9 @@ def test_builtin_and_migration_keep_explicit_region_naming(
     tmdb_info: Mapping[str, object],
     expected: str,
 ) -> None:
-    """旧配置迁移保持原结果；新版模板将覆盖多个亚洲国家的分类如实命名。"""
+    """
+    旧配置迁移保持原结果；新版模板将覆盖多个亚洲国家的分类如实命名。
+    """
     config = yaml.safe_load(
         (Path(__file__).resolve().parents[1] / "config" / "category.yaml").read_text(),
     )
@@ -266,7 +291,9 @@ def test_builtin_and_migration_keep_explicit_region_naming(
 
 
 def test_deleted_legacy_rules_keep_alias_only_fields_registered() -> None:
-    """删除最后一条旧规则后，仍需登记孤立别名字段以通过策略校验。"""
+    """
+    删除最后一条旧规则后，仍需登记孤立别名字段以通过策略校验。
+    """
     migrated = migrate_legacy_category_config(
         {
             "movie": {"中文电影": {"original_language": "zh"}},
@@ -282,7 +309,9 @@ def test_deleted_legacy_rules_keep_alias_only_fields_registered() -> None:
 
 
 def test_first_empty_rule_becomes_global_fallback_and_later_entries_are_disabled() -> None:
-    """首个全空项应成为媒体类型全局兜底，后续分类和规则保留但永远禁用。"""
+    """
+    首个全空项应成为媒体类型全局兜底，后续分类和规则保留但永远禁用。
+    """
     result = migrate_legacy_category_config(
         {
             "movie": {
@@ -316,7 +345,9 @@ def test_first_empty_rule_becomes_global_fallback_and_later_entries_are_disabled
 
 
 def test_mixed_genre_ids_keep_positive_or_and_negative_and_semantics() -> None:
-    """用户自定义未知 Genre ID 与已知值混用时仍保持旧的 OR 与排除语义。"""
+    """
+    用户自定义未知 Genre ID 与已知值混用时仍保持旧的 OR 与排除语义。
+    """
     result = migrate_legacy_category_config(
         {
             "movie": {
@@ -347,7 +378,9 @@ def test_mixed_genre_ids_keep_positive_or_and_negative_and_semantics() -> None:
 
 
 def test_known_negative_genre_ids_use_standard_field() -> None:
-    """官方词表内的排除 Genre ID 也应直接迁移到标准风格字段。"""
+    """
+    官方词表内的排除 Genre ID 也应直接迁移到标准风格字段。
+    """
     result = migrate_legacy_category_config(
         {
             "movie": {
@@ -373,7 +406,9 @@ def test_large_value_sets_remain_compact_and_preserve_legacy_semantics(
     field_name: str,
     negative: bool,
 ) -> None:
-    """大枚举只产生集合条件，旧 API 投影后每个正向或排除值仍保持原语义。"""
+    """
+    大枚举只产生集合条件，旧 API 投影后每个正向或排除值仍保持原语义。
+    """
     values = [str(index) for index in range(1, 61)]
     prefix = "!" if negative else ""
     config = {
@@ -399,7 +434,9 @@ def test_large_value_sets_remain_compact_and_preserve_legacy_semantics(
 
 
 def test_safe_unknown_field_is_declared_but_unsafe_field_blocks_publish() -> None:
-    """合法未知 TMDB 一级字段可迁移，非法字段段必须产生阻断错误。"""
+    """
+    合法未知 TMDB 一级字段可迁移，非法字段段必须产生阻断错误。
+    """
     safe = migrate_legacy_category_config(
         {
             "movie": {"已发行": {"status": "released"}, "兜底": None},
@@ -424,7 +461,9 @@ def test_safe_unknown_field_is_declared_but_unsafe_field_blocks_publish() -> Non
 
 
 def test_extension_fact_projection_reproduces_legacy_string_views() -> None:
-    """扩展事实应严格复现假值缺失、国家提取及列表标量大写语义。"""
+    """
+    扩展事实应严格复现假值缺失、国家提取及列表标量大写语义。
+    """
     result = migrate_legacy_category_config(
         {
             "movie": {
@@ -465,7 +504,9 @@ def test_extension_fact_projection_reproduces_legacy_string_views() -> None:
 
 
 def test_missing_fact_and_positive_negative_combination_match_legacy() -> None:
-    """缺失事实不得命中排除条件，正值 OR 与负值排除应同时生效。"""
+    """
+    缺失事实不得命中排除条件，正值 OR 与负值排除应同时生效。
+    """
     config = {
         "movie": {
             "指定地区": {"origin_country": "CN,TW,!HK"},
@@ -491,7 +532,9 @@ def test_missing_fact_and_positive_negative_combination_match_legacy() -> None:
 
 
 def test_release_year_supports_values_ranges_and_non_numeric_hyphen_endpoints() -> None:
-    """年份单值、多值、闭区间和非数字端点应沿用旧展开语义。"""
+    """
+    年份单值、多值、闭区间和非数字端点应沿用旧展开语义。
+    """
     config = {
         "movie": {
             "近年": {"release_year": "2020-2022,2024"},
@@ -520,7 +563,9 @@ def test_release_year_supports_values_ranges_and_non_numeric_hyphen_endpoints() 
 
 
 def test_stable_ids_are_repeatable_ascii_and_media_type_scoped() -> None:
-    """相同输入必须生成相同 ASCII ID，同名电影和电视剧分类不能碰撞。"""
+    """
+    相同输入必须生成相同 ASCII ID，同名电影和电视剧分类不能碰撞。
+    """
     config = {
         "movie": {"同名": {"adult": "TRUE"}},
         "tv": {"同名": {"adult": "TRUE"}},
@@ -535,6 +580,7 @@ def test_stable_ids_are_repeatable_ascii_and_media_type_scoped() -> None:
     assert all(category_id.isascii() for category_id in first_ids)
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("media_key", "tmdb_info"),
     [
@@ -551,7 +597,9 @@ def test_tmdb_fixtures_match_category_helper_directory_classification(
     media_key: str,
     tmdb_info: dict[str, object],
 ) -> None:
-    """同一 TMDB 详情经旧算法和迁移策略求值后必须得到相同目录分类。"""
+    """
+    同一 TMDB 详情经旧算法和迁移策略求值后必须得到相同目录分类。
+    """
     config = _legacy_config()
     result = migrate_legacy_category_config(config)
     media_type: ClassificationMediaType = "电影" if media_key == "movie" else "电视剧"
@@ -563,7 +611,9 @@ def test_tmdb_fixtures_match_category_helper_directory_classification(
 
 
 def test_non_tmdb_source_uses_the_same_media_type_fallback() -> None:
-    """媒体类型全局兜底对不同数据源保持一致。"""
+    """
+    媒体类型全局兜底对不同数据源保持一致。
+    """
     result = migrate_legacy_category_config(_legacy_config())
     facts = ClassificationFacts.model_validate(
         {
@@ -580,7 +630,9 @@ def test_non_tmdb_source_uses_the_same_media_type_fallback() -> None:
 
 
 def test_config_without_empty_entry_remains_valid_and_uses_common_fallback() -> None:
-    """没有旧空兜底时不应拒绝迁移，未命中项统一进入通用未分类。"""
+    """
+    没有旧空兜底时不应拒绝迁移，未命中项统一进入通用未分类。
+    """
     result = migrate_legacy_category_config(
         {
             "movie": {"成人内容": {"adult": "TRUE"}},
@@ -597,7 +649,9 @@ def test_config_without_empty_entry_remains_valid_and_uses_common_fallback() -> 
 
 
 def test_migrated_policy_round_trips_to_category_config() -> None:
-    """迁移器生成的标准配置应通过兼容投影恢复原始字段和值。"""
+    """
+    迁移器生成的标准配置应通过兼容投影恢复原始字段和值。
+    """
     config = {
         "movie": {
             "组合": {
@@ -623,7 +677,9 @@ def test_migrated_policy_round_trips_to_category_config() -> None:
 
 
 def test_migration_does_not_create_unused_duplicate_fallback_categories() -> None:
-    """已有旧默认分类时直接复用，不能再创建未分类/通用的无用目录。"""
+    """
+    已有旧默认分类时直接复用，不能再创建未分类/通用的无用目录。
+    """
     result = migrate_legacy_category_config({"movie": {"未分类": None}, "tv": {"未分类": None}})
     assert result.valid
     assert [item.path for item in result.policy.categories if item.media_type == "电影"] == [["未分类"]]
@@ -633,7 +689,9 @@ def test_migration_does_not_create_unused_duplicate_fallback_categories() -> Non
 
 
 def test_legacy_country_dictionary_keeps_country_codes_and_genre_ids_distinct() -> None:
-    """旧地区条件能直接选择代码，未知旧风格编号不能误填为标准风格键。"""
+    """
+    旧地区条件能直接选择代码，未知旧风格编号不能误填为标准风格键。
+    """
     result = migrate_legacy_category_config({"tv": {"日韩剧": {"origin_country": "JP,KR", "genre_ids": "999"}}})
     fields = {item.id: item for item in result.extra_fields}
     assert all(field_id != "extensions.themoviedb.origin_country" for field_id in fields)

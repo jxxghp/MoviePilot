@@ -23,7 +23,9 @@ def _b64url(data: bytes) -> str:
 
 @pytest.fixture
 def browser():
-    """模拟浏览器 PushSubscription：接收方 P-256 密钥对与 16 字节 auth 密钥。"""
+    """
+    模拟浏览器 PushSubscription：接收方 P-256 密钥对与 16 字节 auth 密钥。
+    """
     private_key = ec.generate_private_key(ec.SECP256R1())
     public_raw = private_key.public_key().public_bytes(
         serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
@@ -38,7 +40,9 @@ def browser():
 
 @pytest.fixture
 def vapid():
-    """生成与宿主 VAPID 配置同格式（base64url 原始私钥）的服务端密钥。"""
+    """
+    生成与宿主 VAPID 配置同格式（base64url 原始私钥）的服务端密钥。
+    """
     key = Vapid()
     key.generate_keys()
     raw = key.private_key.private_numbers().private_value.to_bytes(32, "big")
@@ -46,7 +50,9 @@ def vapid():
 
 
 def _post(status_code=201):
-    """拦截 RequestUtils 构造与 POST，记录请求头和正文。"""
+    """
+    拦截 RequestUtils 构造与 POST，记录请求头和正文。
+    """
     captured = {}
 
     class _Utils:
@@ -54,6 +60,9 @@ def _post(status_code=201):
             captured.update(headers=headers, timeout=timeout, verify=verify)
 
         def post_res(self, url, data=None, **_):
+            """
+            记录推送地址与加密请求体，并返回指定 HTTP 状态的离线响应。
+            """
             captured.update(url=url, body=data)
             return SimpleNamespace(status_code=status_code, reason="R", text="detail")
 
@@ -61,7 +70,9 @@ def _post(status_code=201):
 
 
 def test_payload_decrypts_with_browser_keys_and_vapid_verifies(browser, vapid):
-    """浏览器私钥能解出原文；VAPID JWT 由服务端公钥签名，aud 为端点源站。"""
+    """
+    浏览器私钥能解出原文；VAPID JWT 由服务端公钥签名，aud 为端点源站。
+    """
     captured, patcher = _post()
     payload = json.dumps({"title": "标题", "body": "内容"}, ensure_ascii=False)
     with patcher:
@@ -96,7 +107,9 @@ def test_payload_decrypts_with_browser_keys_and_vapid_verifies(browser, vapid):
 
 
 def test_each_send_uses_fresh_ephemeral_key(browser, vapid):
-    """同一内容两次加密结果不同（盐与临时 ECDH 公钥都随机），且都能解密。"""
+    """
+    同一内容两次加密结果不同（盐与临时 ECDH 公钥都随机），且都能解密。
+    """
     captured, patcher = _post()
     bodies = []
     with patcher:
@@ -110,7 +123,9 @@ def test_each_send_uses_fresh_ephemeral_key(browser, vapid):
 
 
 def test_endpoint_headers_and_ttl_are_forwarded(browser, vapid):
-    """WNS 等端点的附加请求头和 TTL 原样发送，VAPID 头不被调用方覆盖。"""
+    """
+    WNS 等端点的附加请求头和 TTL 原样发送，VAPID 头不被调用方覆盖。
+    """
     captured, patcher = _post()
     with patcher:
         send_webpush(browser.subscription, "x", vapid.private_key, "mailto:a@b.c",
@@ -122,7 +137,9 @@ def test_endpoint_headers_and_ttl_are_forwarded(browser, vapid):
 
 @pytest.mark.parametrize("status_code", [404, 410, 413])
 def test_rejected_delivery_raises_with_response(browser, vapid, status_code):
-    """推送服务返回 202 以上状态码时抛错并带上响应，供调用方清理失效订阅。"""
+    """
+    推送服务返回 202 以上状态码时抛错并带上响应，供调用方清理失效订阅。
+    """
     _, patcher = _post(status_code)
     with patcher, pytest.raises(WebPushDeliveryError) as exc:
         send_webpush(browser.subscription, "x", vapid.private_key, "mailto:a@b.c")
@@ -131,7 +148,9 @@ def test_rejected_delivery_raises_with_response(browser, vapid, status_code):
 
 @pytest.mark.parametrize("keys", [{}, {"p256dh": "AAAA", "auth": "AAAA"}])
 def test_invalid_subscription_keys_are_rejected_before_request(vapid, keys):
-    """缺少或格式错误的订阅密钥在发请求前报错，且不带响应（不会被当成失效订阅删除）。"""
+    """
+    缺少或格式错误的订阅密钥在发请求前报错，且不带响应（不会被当成失效订阅删除）。
+    """
     captured, patcher = _post()
     with patcher, pytest.raises(WebPushDeliveryError) as exc:
         send_webpush({"endpoint": "https://push.example.com/x", "keys": keys}, "x",
@@ -141,7 +160,9 @@ def test_invalid_subscription_keys_are_rejected_before_request(vapid, keys):
 
 
 def test_no_response_is_reported(browser, vapid):
-    """网络失败（RequestUtils 返回 None）时抛错而不是静默成功。"""
+    """
+    网络失败（RequestUtils 返回 None）时抛错而不是静默成功。
+    """
     with patch("app.adapters.network.webpush.RequestUtils") as utils:
         utils.return_value.post_res.return_value = None
         with pytest.raises(WebPushDeliveryError):
@@ -149,7 +170,9 @@ def test_no_response_is_reported(browser, vapid):
 
 
 def test_host_configured_vapid_key_signs(browser):
-    """宿主内置的 VAPID 私钥（base64url 原始格式）可以签出有效的 Authorization 头。"""
+    """
+    宿主内置的 VAPID 私钥（base64url 原始格式）可以签出有效的 Authorization 头。
+    """
     from app.runtime.settings import get_runtime_setting
 
     vapid_config = get_runtime_setting("VAPID")

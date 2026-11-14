@@ -1,12 +1,20 @@
+"""
+验证订阅媒体标识冲突时的拒绝与兼容行为。
+"""
+
 from types import SimpleNamespace
 
-from app.chain.subscribe import SubscribeChain
+import pytest
+
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
 
 
 def _target_media(tmdb_id=106449, douban_id=None, **kwargs) -> MediaInfo:
-    """构造订阅目标媒体。"""
+    """
+    构造订阅目标媒体。
+    """
     media_source = MediaSource.TMDB if tmdb_id is not None else MediaSource.Douban
     media_id = str(tmdb_id) if tmdb_id is not None else douban_id
     defaults = {
@@ -28,7 +36,9 @@ def _target_media(tmdb_id=106449, douban_id=None, **kwargs) -> MediaInfo:
 
 
 def _candidate_media(tmdb_id=285479, douban_id=None, **kwargs) -> MediaInfo:
-    """构造由 RSS 标题推断出的候选媒体。"""
+    """
+    构造由 RSS 标题推断出的候选媒体。
+    """
     media_source = MediaSource.TMDB if tmdb_id is not None else MediaSource.Douban
     media_id = str(tmdb_id) if tmdb_id is not None else douban_id
     defaults = {
@@ -47,7 +57,9 @@ def _candidate_media(tmdb_id=285479, douban_id=None, **kwargs) -> MediaInfo:
 
 
 def _torrent_meta(*, en_name="A Record Of A Mortals Journey To Immortality", tmdbid=None):
-    """构造不触发外部识别的标题解析结果。"""
+    """
+    构造不触发外部识别的标题解析结果。
+    """
     return SimpleNamespace(
         media_source=MediaSource.TMDB if tmdbid else None,
         media_id=str(tmdbid) if tmdbid else None,
@@ -60,7 +72,9 @@ def _torrent_meta(*, en_name="A Record Of A Mortals Journey To Immortality", tmd
 
 
 def _context(meta, candidate, torrent) -> Context:
-    """构造 RSS 候选上下文。"""
+    """
+    构造 RSS 候选上下文。
+    """
     return Context(
         meta_info=meta,
         media_info=candidate,
@@ -73,7 +87,9 @@ def _context(meta, candidate, torrent) -> Context:
 
 
 def _reconcile(target, candidate, meta, torrent, context):
-    """调用订阅链的候选媒体冲突复核。"""
+    """
+    调用订阅链的候选媒体冲突复核。
+    """
     return SubscribeChain._SubscribeChain__reconcile_candidate_media(
         target_mediainfo=target,
         candidate_mediainfo=candidate,
@@ -83,8 +99,10 @@ def _reconcile(target, candidate, meta, torrent, context):
     )
 
 
-def test_inferred_tmdb_conflict_falls_back_to_strict_alias_match():
-    """标题推断到重复 TMDB 条目时应允许订阅目标别名复核。"""
+def test_inferred_tmdb_conflict_rejects_matching_alias_and_year():
+    """
+    别名和首播年份一致也不能覆盖候选自身的不同 TMDB ID。
+    """
     target = _target_media()
     candidate = _candidate_media()
     meta = _torrent_meta()
@@ -97,15 +115,17 @@ def test_inferred_tmdb_conflict_falls_back_to_strict_alias_match():
 
     result = _reconcile(target, candidate, meta, torrent, context)
 
-    assert result is target
-    assert context.media_info is target
-    assert context.match_source == "title"
-    assert context.candidate_recognized is False
-    assert context.media_info_is_target is True
+    assert result is None
+    assert context.media_info is candidate
+    assert context.match_source == "tmdbid"
+    assert context.candidate_recognized is True
+    assert context.media_info_is_target is False
 
 
 def test_no_year_alias_rejects_candidate_with_different_first_air_year():
-    """无年份别名命中另一个首播年份的同名作品时应拒绝。"""
+    """
+    无年份别名命中另一个首播年份的同名作品时应拒绝。
+    """
     target = _target_media(
         tmdb_id=236356,
         title="家族计划",
@@ -135,8 +155,10 @@ def test_no_year_alias_rejects_candidate_with_different_first_air_year():
     assert context.match_source == "tmdbid"
 
 
-def test_explicit_target_year_can_override_wrong_same_name_candidate():
-    """资源明确携带目标年份时应允许纠正同名候选的错误识别。"""
+def test_explicit_target_year_cannot_override_other_media_identity():
+    """
+    资源年份与订阅一致时，仍须拒绝已识别为不同作品的候选。
+    """
     target = _target_media(
         tmdb_id=236356,
         title="家族计划",
@@ -162,13 +184,15 @@ def test_explicit_target_year_can_override_wrong_same_name_candidate():
     )
     context = _context(meta, candidate, torrent)
 
-    assert _reconcile(target, candidate, meta, torrent, context) is target
-    assert context.media_info is target
-    assert context.match_source == "title"
+    assert _reconcile(target, candidate, meta, torrent, context) is None
+    assert context.media_info is candidate
+    assert context.match_source == "tmdbid"
 
 
 def test_inferred_tmdb_conflict_rejects_nonmatching_title():
-    """ID 冲突且标题和别名不匹配时应继续拒绝候选。"""
+    """
+    ID 冲突且标题和别名不匹配时应继续拒绝候选。
+    """
     target = _target_media()
     candidate = _candidate_media()
     meta = _torrent_meta(en_name="Different Series")
@@ -186,8 +210,10 @@ def test_inferred_tmdb_conflict_rejects_nonmatching_title():
     assert context.media_info_is_target is False
 
 
-def test_inferred_douban_conflict_falls_back_to_strict_alias_match():
-    """豆瓣 ID 推断冲突时应使用同一套严格标题复核。"""
+def test_inferred_douban_conflict_rejects_matching_alias():
+    """
+    豆瓣 ID 冲突同样不能由相同别名覆盖。
+    """
     target = _target_media(tmdb_id=None, douban_id="30170816")
     candidate = _candidate_media(tmdb_id=None, douban_id="36612345")
     meta = _torrent_meta()
@@ -200,13 +226,15 @@ def test_inferred_douban_conflict_falls_back_to_strict_alias_match():
 
     result = _reconcile(target, candidate, meta, torrent, context)
 
-    assert result is target
-    assert context.media_info is target
-    assert context.match_source == "title"
+    assert result is None
+    assert context.media_info is candidate
+    assert context.match_source == "tmdbid"
 
 
 def test_explicit_tmdb_identity_keeps_strict_conflict_rejection():
-    """标题显式携带媒体 ID 时不得被标题别名覆盖。"""
+    """
+    标题显式携带媒体 ID 时不得被标题别名覆盖。
+    """
     target = _target_media()
     candidate = _candidate_media()
     meta = _torrent_meta(tmdbid=285479)
@@ -223,7 +251,9 @@ def test_explicit_tmdb_identity_keeps_strict_conflict_rejection():
 
 
 def test_conflict_rejects_target_without_same_source_identity():
-    """订阅目标缺少候选同来源 ID 时不得用标题跨来源放行。"""
+    """
+    订阅目标缺少候选同来源 ID 时不得用标题跨来源放行。
+    """
     target = _target_media(tmdb_id=None)
     candidate = _candidate_media()
     meta = _torrent_meta()
@@ -239,7 +269,9 @@ def test_conflict_rejects_target_without_same_source_identity():
 
 
 def test_matching_media_id_preserves_candidate_identity():
-    """媒体 ID 原本一致时应保持候选识别上下文。"""
+    """
+    媒体 ID 原本一致时应保持候选识别上下文。
+    """
     target = _target_media()
     candidate = _candidate_media(tmdb_id=106449)
     meta = _torrent_meta()
@@ -257,3 +289,41 @@ def test_matching_media_id_preserves_candidate_identity():
     assert context.match_source == "tmdbid"
     assert context.candidate_recognized is True
     assert context.media_info_is_target is False
+
+
+@pytest.mark.parametrize("candidate_source", [MediaSource.Douban, MediaSource.Bangumi, MediaSource.AniList])
+def test_same_numeric_id_from_different_source_is_rejected(candidate_source: MediaSource) -> None:
+    """
+    不同媒体来源中的相同数字 ID 不是同一作品，标题一致也不能跨来源放行。
+    """
+    target = _target_media()
+    candidate = _candidate_media(tmdb_id=target.tmdb_id)
+    candidate.media_source = candidate_source
+    meta = _torrent_meta()
+    torrent = TorrentInfo(
+        title="A Record Of A Mortals Journey To Immortality S01E186",
+        site_name="测试站点",
+        category=MediaType.TV.value,
+    )
+    context = _context(meta, candidate, torrent)
+
+    assert _reconcile(target, candidate, meta, torrent, context) is None
+    assert context.media_info is candidate
+    assert context.candidate_recognized is True
+    assert context.media_info_is_target is False
+
+
+def test_unrecognized_no_year_alias_resource_matches_subscription():
+    """
+    资源自身识别不到作品时没有反证，无年份英文别名也按订阅目标处理，避免资源一直下不下来。
+    """
+    from app.chain.subscribe.match import _is_title_match_allowed
+    from app.domain.metainfo import MetaInfo
+
+    target = MediaInfo(media_source=MediaSource.TMDB, media_id="96102", tmdb_id=96102, type=MediaType.TV,
+                       title="机智的医生生活", original_title="슬기로운 의사생활", names=["Hospital Playlist"],
+                       year="2020", season_years={1: "2020", 2: "2021"})
+    title = "Hospital Playlist S02 1080p NF WEB-DL DDP2.0 x264-DoA"
+    meta = MetaInfo(title=title)
+    assert _is_title_match_allowed(mediainfo=target, torrent_meta=meta,
+                                   torrent_info=TorrentInfo(title=title, site_name="测试站点"))

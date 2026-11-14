@@ -1,8 +1,9 @@
-"""3.0.10 add durable plugin installation transactions.
+"""
+3.0.10 增加插件安装事务的持久状态表。
 
-Revision ID: e4f7a1b2c3d5
-Revises: d2e4f6a8b0c1
-Create Date: 2026-08-25
+版本标识： e4f7a1b2c3d5
+前置版本： d2e4f6a8b0c1
+创建时间： 2026-08-25
 """
 
 import sqlalchemy as sa
@@ -15,7 +16,9 @@ depends_on = None
 
 
 def _id_column(dialect_name: str) -> sa.Column:
-    """保持 PostgreSQL Identity 与 SQLite 整数主键的当前模型语义一致。"""
+    """
+    保持 PostgreSQL Identity 与 SQLite 整数主键的当前模型语义一致。
+    """
     if dialect_name == "postgresql":
         return sa.Column(
             "id",
@@ -27,7 +30,9 @@ def _id_column(dialect_name: str) -> sa.Column:
 
 
 def upgrade() -> None:
-    """创建单插件安装事务状态存储。"""
+    """
+    创建单插件安装事务状态存储。
+    """
     inspector = sa.inspect(op.get_bind())
     if "plugininstallation" in inspector.get_table_names():
         return
@@ -67,7 +72,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """删除插件安装事务状态表。"""
+    """
+    删除插件安装事务状态表。
+    """
     inspector = sa.inspect(op.get_bind())
     if "plugininstallation" not in inspector.get_table_names():
         return

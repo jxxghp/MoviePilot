@@ -1,4 +1,6 @@
-"""分类事实归一化与编辑选项共享的离线词表。"""
+"""
+分类事实归一化与编辑选项共享的离线词表。
+"""
 
 from app.schemas.category import ClassificationFieldOption
 
@@ -25,6 +27,13 @@ TMDB_GENRE_KEYS = {
     "10764": "reality",
     "10767": "talk",
     "10770": "tv_movie",
+}
+
+# 复合电视剧类型只在事实归一化时展开；旧分类迁移仍保留原始 Genre ID 的精确语义。
+TMDB_COMPOSITE_GENRE_KEYS = {
+    "10759": ("action", "adventure"),
+    "10765": ("science_fiction", "fantasy"),
+    "10768": ("war",),
 }
 
 GENRE_KEY_ALIASES = {
@@ -607,7 +616,9 @@ LANGUAGE_NAMES = {
 
 
 def classification_field_options(field_id: str) -> list[ClassificationFieldOption]:
-    """返回可直接保存的规范值；开放字段的字典是建议，不限制未知来源值。"""
+    """
+    返回可直接保存的规范值；开放字段的字典是建议，不限制未知来源值。
+    """
     genre_names = {value: key for key, value in GENRE_KEY_ALIASES.items() if not key.isascii()}
     catalogs = {
         "media.countries": COUNTRY_NAMES,
@@ -620,7 +631,9 @@ def classification_field_options(field_id: str) -> list[ClassificationFieldOptio
 
 
 def classification_source_options(field_id: str) -> dict[str, list[ClassificationFieldOption]]:
-    """来源原始风格沿用发现页候选，开放标签不伪装成完整枚举。"""
+    """
+    来源原始风格沿用发现页候选，开放标签不伪装成完整枚举。
+    """
     music_catalogs = {
         "music.album_type": {"Album": "专辑", "Single": "单曲", "EP": "迷你专辑", "Broadcast": "广播", "Other": "其他"},
         "music.secondary_types": {

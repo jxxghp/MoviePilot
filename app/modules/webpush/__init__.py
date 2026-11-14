@@ -1,75 +1,94 @@
+"""
+按通知配置向已登记浏览器订阅投递 Web Push 消息。
+"""
+
 import json
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
+from app.modules import _MessageBase, _ModuleBase
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.webpush import webpush_registry
-
-from app.runtime.log import logger
-from app.modules import _ModuleBase, _MessageBase
 from app.schemas.message import Message
 from app.schemas.types import ModuleType, NotificationChannel
 
 
-class WebPushModule(_ModuleBase, _MessageBase):
-    """通过浏览器 Web Push 通道发送通知消息。"""
+class WebPushModule(_ModuleBase, _MessageBase[object]):
+    """
+    通过浏览器 Web Push 通道发送通知消息。
+    """
 
     def init_module(self) -> None:
         """
-        初始化模块
+        读取 Web Push 通知配置并声明浏览器推送渠道。
         """
         super().init_service(service_name=self.get_name().lower())
         self._channel = NotificationChannel.WebPush
 
     @staticmethod
     def get_name() -> str:
+        """
+        返回浏览器推送模块的展示名称。
+        """
         return "WebPush"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return NotificationChannel.WebPush
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 6
 
-    def stop(self):
-        """Web Push 模块没有需要释放的长连接资源。"""
+    def stop(self) -> None:
+        """
+        Web Push 模块没有需要释放的长连接资源。
+        """
         pass
 
     def test(self) -> Tuple[bool, str]:
         """
-        测试模块连接性
+        返回模块可用状态，不向浏览器推送端点发起探测。
+
+        :return: 固定成功结果；实际投递错误由发送时记录
         """
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """Web Push 使用全局 VAPID 配置，不提供模块级设置。"""
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
+        """
+        Web Push 使用全局 VAPID 配置，不提供模块级设置。
+
+        :return: 始终为 None，表示不检查模块级配置项
+        """
         pass
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
-        发送消息
-        :param message: 消息内容
-        :return: 成功或失败
+        向匹配通知配置的浏览器订阅逐个投递消息。
+
+        投递失败仅记录日志，不中断其他订阅；端点返回 404 或 410 时移除失效订阅。
+
+        :param message: 待发送的标题、正文、目标用户与跳转链接
+        :param kwargs: 为模块分发接口保留的扩展参数，本实现不使用
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            webpush_users = conf.config.get("WEBPUSH_USERNAME") or ""
+            webpush_users = (conf.config or {}).get("WEBPUSH_USERNAME") or ""
             if webpush_users:
                 # 设定了接收用户时，非该用户的消息不接收
                 if not message.username or message.username not in webpush_users.split(","):
@@ -79,7 +98,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
                 return
             try:
                 if message.title:
-                    caption = message.title
+                    caption: Optional[str] = message.title
                     content = message.text
                 else:
                     caption = message.text

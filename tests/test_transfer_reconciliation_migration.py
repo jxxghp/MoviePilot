@@ -1,4 +1,6 @@
-"""整理状态 3.0.17 数据收口与完整迁移链测试。"""
+"""
+整理状态 3.0.17 数据收口与完整迁移链测试。
+"""
 
 import hashlib
 import importlib
@@ -54,7 +56,9 @@ RECONCILIATION_MIGRATION = "database.versions.f6d8b0c2e4a7_3_0_17"
 
 
 def _bind_migration(monkeypatch, connection, module_name: str):
-    """把指定整理迁移绑定到隔离数据库连接。"""
+    """
+    把指定整理迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(module_name)
     monkeypatch.setattr(
         migration,
@@ -65,7 +69,9 @@ def _bind_migration(monkeypatch, connection, module_name: str):
 
 
 def _canonical_fingerprint(payload: dict[str, object]) -> str:
-    """按运行时规范计算测试检查点指纹。"""
+    """
+    按运行时规范计算测试检查点指纹。
+    """
     canonical = json.dumps(
         payload,
         ensure_ascii=True,
@@ -77,7 +83,9 @@ def _canonical_fingerprint(payload: dict[str, object]) -> str:
 
 
 def _create_3_0_15_tables(connection) -> sa.Table:
-    """创建执行迁移前的 pending 与最小 history 表。"""
+    """
+    创建执行迁移前的 pending 与最小 history 表。
+    """
     metadata = sa.MetaData()
     pending = sa.Table(
         "transferpending",
@@ -116,7 +124,9 @@ def _create_3_0_15_tables(connection) -> sa.Table:
 
 
 def _seed_execution_rows(connection, pending: sa.Table) -> None:
-    """写入待收口的非法状态以及应保持不变的合法状态。"""
+    """
+    写入待收口的非法状态以及应保持不变的合法状态。
+    """
     base = {
         "storage": "local",
         "created_at": "2026-08-27 10:00:00",
@@ -165,7 +175,9 @@ def _seed_execution_rows(connection, pending: sa.Table) -> None:
 
 
 def _execution_checkpoint() -> tuple[dict[str, object], str]:
-    """构造合法且可由运行时恢复的零副作用执行检查点。"""
+    """
+    构造合法且可由运行时恢复的零副作用执行检查点。
+    """
     payload = {
         "schema_version": 1,
         "payload": {"outcome": "succeeded", "preview": True},
@@ -176,7 +188,9 @@ def _execution_checkpoint() -> tuple[dict[str, object], str]:
 
 
 def test_upgrade_reconciles_invalid_execution_combinations(monkeypatch) -> None:
-    """非法执行组合必须留证转人工态，合法结算与失败终态不得被破坏。"""
+    """
+    非法执行组合必须留证转人工态，合法结算与失败终态不得被破坏。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending = _create_3_0_15_tables(connection)
@@ -436,7 +450,9 @@ def test_upgrade_reconciles_invalid_execution_combinations(monkeypatch) -> None:
 
 
 def test_reconciliation_migration_runs_on_postgresql(monkeypatch) -> None:
-    """配置隔离 PostgreSQL 时真实验证人工态归一、租约清理与可逆 DDL。"""
+    """
+    配置隔离 PostgreSQL 时真实验证人工态归一、租约清理与可逆 DDL。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")
@@ -526,7 +542,9 @@ def test_reconciliation_migration_runs_on_postgresql(monkeypatch) -> None:
 
 
 def _planning_input(path: str) -> TransferPlanningInput:
-    """构造完整且可持久恢复的规划输入。"""
+    """
+    构造完整且可持久恢复的规划输入。
+    """
     return TransferPlanningInput(
         source_fileitem={"storage": "local", "path": path, "type": "file"},
         meta={"name": "Movie", "year": 2026},
@@ -539,7 +557,9 @@ def _planning_input(path: str) -> TransferPlanningInput:
 
 
 def _host_checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheckpoint:
-    """构造完整宿主计划检查点。"""
+    """
+    构造完整宿主计划检查点。
+    """
     return TransferPlanCheckpoint(
         planning_input=planning_input,
         target_storage="local",
@@ -559,7 +579,9 @@ def _host_checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheck
 def _provider_checkpoint(
         planning_input: TransferPlanningInput,
 ) -> TransferPlanCheckpoint:
-    """构造完整 provider 待执行检查点。"""
+    """
+    构造完整 provider 待执行检查点。
+    """
     invocation = TransferProviderInvocationSnapshot(
         fileitem=planning_input.source_fileitem,
         meta=planning_input.meta,
@@ -588,7 +610,9 @@ def _provider_checkpoint(
 
 
 def _create_history_table(connection) -> None:
-    """创建迁移链所需的最小整理历史表。"""
+    """
+    创建迁移链所需的最小整理历史表。
+    """
     connection.execute(sa.text(
         "CREATE TABLE transferhistory ("
         "id INTEGER PRIMARY KEY, src VARCHAR, "
@@ -597,7 +621,9 @@ def _create_history_table(connection) -> None:
 
 
 def _run_upgrade_chain(monkeypatch, connection) -> list[object]:
-    """从 3.0.13 顺序升级到 3.0.17 并返回迁移模块。"""
+    """
+    从 3.0.13 顺序升级到 3.0.17 并返回迁移模块。
+    """
     migrations = [
         _bind_migration(monkeypatch, connection, module_name)
         for module_name in (
@@ -616,7 +642,9 @@ def _run_upgrade_chain(monkeypatch, connection) -> list[object]:
 def test_full_legacy_chain_projects_after_downgrade_and_reupgrade(
         monkeypatch,
 ) -> None:
-    """旧登记经完整升级、人工判定、降级再升级后仍可被真实仓储投影。"""
+    """
+    旧登记经完整升级、人工判定、降级再升级后仍可被真实仓储投影。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         initial = _bind_migration(monkeypatch, connection, INITIAL_MIGRATION)

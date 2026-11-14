@@ -1,4 +1,6 @@
-"""服务端统计兼容入口的后台任务生命周期回归。"""
+"""
+服务端统计兼容入口的后台任务生命周期回归。
+"""
 
 import asyncio
 from unittest.mock import Mock, patch
@@ -9,19 +11,25 @@ from app.runtime.tasks import TaskRegistry
 
 
 def _replace_loop(loop):
-    """替换测试投递循环并返回可用于恢复的旧值。"""
+    """
+    替换测试投递循环并返回可用于恢复的旧值。
+    """
     previous = main_loop_registry.current
     main_loop_registry.replace_compat(loop)
     return previous
 
 
 def test_legacy_subscription_reports_use_owned_threadsafe_tasks() -> None:
-    """旧同步统计入口应保留 ABI，并让宿主等待已开始的线程工作。"""
+    """
+    旧同步统计入口应保留 ABI，并让宿主等待已开始的线程工作。
+    """
     loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
     registry = Mock()
 
     def submit(coroutine, **_kwargs):
-        """关闭测试协程，避免替身提交留下未等待警告。"""
+        """
+        关闭测试协程，避免替身提交留下未等待警告。
+        """
         coroutine.close()
         return Mock()
 
@@ -50,7 +58,9 @@ def test_legacy_subscription_reports_use_owned_threadsafe_tasks() -> None:
 
 
 def test_legacy_subscription_report_rejects_without_runtime_loop() -> None:
-    """宿主生命周期不可用时应拒绝提交，并保持布尔返回合同。"""
+    """
+    宿主生命周期不可用时应拒绝提交，并保持布尔返回合同。
+    """
     previous = _replace_loop(None)
     try:
         assert MoviePilotServerHelper.sub_done_async({"media_id": "1"}) is False
@@ -59,7 +69,9 @@ def test_legacy_subscription_report_rejects_without_runtime_loop() -> None:
 
 
 def test_legacy_subscription_report_handles_closed_task_registry() -> None:
-    """运行 loop 尚在但宿主已封口时，兼容入口应保持布尔失败合同。"""
+    """
+    运行 loop 尚在但宿主已封口时，兼容入口应保持布尔失败合同。
+    """
     registry = TaskRegistry()
     asyncio.run(registry.shutdown(timeout_seconds=0.01))
     loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})

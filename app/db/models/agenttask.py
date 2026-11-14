@@ -1,6 +1,12 @@
+"""
+Agent 定时任务定义和执行状态的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Optional
 
-from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
+from sqlalchemy import Boolean, Index, Integer, Select, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
@@ -10,8 +16,10 @@ def _get_for_user_statement(
         model: type["AgentTask"],
         task_id: int,
         user_id: Optional[str] = None,
-):
-    """构造按任务 ID 与可选用户归属收窄的查询语句。"""
+) -> "Select[tuple[AgentTask]]":
+    """
+    构造按任务 ID 与可选用户归属收窄的查询语句。
+    """
     statement = select(model).where(model.id == task_id)
     if user_id is not None:
         statement = statement.where(model.user_id == user_id)
@@ -22,8 +30,10 @@ def _list_for_user_statement(
         model: type["AgentTask"],
         user_id: Optional[str] = None,
         enabled: Optional[bool] = None,
-):
-    """构造按用户、启用状态和创建时间排序的任务列表语句。"""
+) -> "Select[tuple[AgentTask]]":
+    """
+    构造按用户、启用状态和创建时间排序的任务列表语句。
+    """
     statement = select(model)
     if user_id is not None:
         statement = statement.where(model.user_id == user_id)
@@ -53,6 +63,10 @@ class AgentTask(Base):
     # 创建任务的用户与会话上下文
     user_id: Mapped[str] = mapped_column(String, nullable=False)
     username: Mapped[Optional[str]] = mapped_column(String)
+    # 固定的真实执行账号主键；旧任务保持空值，显式更新后才允许执行
+    execution_user_id: Mapped[Optional[int]] = mapped_column(Integer)
+    # 防止 SQLite 自增主键在删除账号后被另一个账号复用
+    execution_user_identity: Mapped[Optional[str]] = mapped_column(String(32))
     session_id: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[Optional[str]] = mapped_column(String)
     source: Mapped[Optional[str]] = mapped_column(String)
@@ -81,7 +95,8 @@ class AgentTask(Base):
         task = cls(**kwargs)
         db.add(task)
         db.flush()
-        return task.id
+        task_id: int = task.id
+        return task_id
 
     @classmethod
     def get_for_user(
@@ -90,10 +105,13 @@ class AgentTask(Base):
             task_id: int,
             user_id: Optional[str] = None,
     ) -> Optional["AgentTask"]:
-        """在调用方会话中按任务 ID 和可选用户 ID 查询。"""
-        return db.execute(
+        """
+        在调用方会话中按任务 ID 和可选用户 ID 查询。
+        """
+        task: Optional[AgentTask] = db.execute(
             _get_for_user_statement(cls, task_id=task_id, user_id=user_id)
         ).scalars().first()
+        return task
 
     @classmethod
     def list_for_user(
@@ -102,7 +120,9 @@ class AgentTask(Base):
             user_id: Optional[str] = None,
             enabled: Optional[bool] = None,
     ) -> list["AgentTask"]:
-        """在调用方会话中按用户和启用状态查询。"""
+        """
+        在调用方会话中按用户和启用状态查询。
+        """
         return list(db.execute(
             _list_for_user_statement(cls, user_id=user_id, enabled=enabled)
         ).scalars().all())
@@ -112,7 +132,7 @@ class AgentTask(Base):
             cls,
             db: Session,
             task_id: int,
-            payload: dict,
+            payload: dict[str, object],
             user_id: Optional[str] = None,
     ) -> bool:
         """
@@ -127,4 +147,7 @@ class AgentTask(Base):
         )
         if user_id is not None:
             statement = statement.where(cls.user_id == user_id)
+        if "execution_user_id" in payload:
+            # 执行账号只能从未绑定状态确认一次，并发更新不能替换已确认的主体。
+            statement = statement.where(cls.execution_user_id.is_(None))
         return bool(execute_dml(db, statement.values(payload)))

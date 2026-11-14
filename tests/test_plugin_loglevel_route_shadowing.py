@@ -1,4 +1,5 @@
-"""插件实例日志等级路由防遮蔽回归测试。
+"""
+插件实例日志等级路由防遮蔽回归测试。
 
 背景：`pluginloglevel.router` 与 `plugin.router` 在 `app/api/routers.py` 里共享同一个
 `/plugin` 前缀，且 `plugin.router` 先注册、其中含有 `GET/PUT/DELETE /{plugin_id}` 这类
@@ -42,14 +43,17 @@ from app.startup.initializers.routers import init_routers
 
 @pytest.fixture(scope="module")
 def app() -> FastAPI:
-    """按生产环境同款组合根装配真实应用，仅用于路由匹配断言，不涉及运行期状态。"""
+    """
+    按生产环境同款组合根装配真实应用，仅用于路由匹配断言，不涉及运行期状态。
+    """
     application = FastAPI()
     init_routers(application)
     return application
 
 
 def _flatten_route_candidates(app: FastAPI) -> list[Any]:
-    """按真实注册/尝试顺序展平应用路由表，得到可直接 `.matches()` 的叶子候选列表。
+    """
+    按真实注册/尝试顺序展平应用路由表，得到可直接 `.matches()` 的叶子候选列表。
 
     与 `tests/test_router_aggregation.py::_v1_routes` 使用同一套展平方式：FastAPI 的
     `include_router` 是惰性组合，`app.routes` 里挂的是 `_IncludedRouter` 包装节点，
@@ -67,7 +71,9 @@ def _flatten_route_candidates(app: FastAPI) -> list[Any]:
 
 
 def _build_scope(method: str, path: str) -> dict[str, Any]:
-    """构造路由匹配所需的最小 ASGI scope。"""
+    """
+    构造路由匹配所需的最小 ASGI scope。
+    """
     return {
         "type": "http",
         "method": method,
@@ -78,7 +84,8 @@ def _build_scope(method: str, path: str) -> dict[str, Any]:
 
 
 def _resolve_route(app: FastAPI, method: str, path: str) -> Any:
-    """复现真实分发循环：按注册顺序找第一个完整匹配（`Match.FULL`）的候选路由。
+    """
+    复现真实分发循环：按注册顺序找第一个完整匹配（`Match.FULL`）的候选路由。
 
     刻意不用字符串比较路径模板，而是交给每个候选自身的 `matches()`（对真实
     `APIRoute` 就是路径正则 + 方法集合判定），确保任何会影响真实分发结果的因素
@@ -108,7 +115,9 @@ def _resolve_route(app: FastAPI, method: str, path: str) -> Any:
 def _assert_route_resolves(
     app: FastAPI, method: str, path: str, expected_endpoint: Callable[..., Any]
 ) -> None:
-    """断言指定方法+路径按真实路由匹配落在预期端点函数上，否则报出抢先命中的路由。"""
+    """
+    断言指定方法+路径按真实路由匹配落在预期端点函数上，否则报出抢先命中的路由。
+    """
     route = _resolve_route(app, method, path)
     assert route.endpoint is expected_endpoint, (
         f"{method} {path} 被路由 {route.path!r}（methods={sorted(route.methods or ())}）抢先命中，"
@@ -120,18 +129,24 @@ def _assert_route_resolves(
 
 
 def test_get_loglevel_overview_resolves_to_pluginloglevel_endpoint(app: FastAPI) -> None:
-    """GET /plugin/loglevel/{plugin_id} 应命中 pluginloglevel.plugin_instance_log_levels。"""
+    """
+    GET /plugin/loglevel/{plugin_id} 应命中 pluginloglevel.plugin_instance_log_levels。
+    """
     path = f"{settings.API_V1_STR}/plugin/loglevel/sample-plugin"
     _assert_route_resolves(app, "GET", path, pluginloglevel.plugin_instance_log_levels)
 
 
 def test_put_loglevel_override_resolves_to_pluginloglevel_endpoint(app: FastAPI) -> None:
-    """PUT /plugin/loglevel/{plugin_id}/{instance_id} 应命中 pluginloglevel.set_plugin_instance_log_level。"""
+    """
+    PUT /plugin/loglevel/{plugin_id}/{instance_id} 应命中 pluginloglevel.set_plugin_instance_log_level。
+    """
     path = f"{settings.API_V1_STR}/plugin/loglevel/sample-plugin/sample-instance"
     _assert_route_resolves(app, "PUT", path, pluginloglevel.set_plugin_instance_log_level)
 
 
 def test_delete_loglevel_override_resolves_to_pluginloglevel_endpoint(app: FastAPI) -> None:
-    """DELETE /plugin/loglevel/{plugin_id}/{instance_id} 应命中 pluginloglevel.clear_plugin_instance_log_level。"""
+    """
+    DELETE /plugin/loglevel/{plugin_id}/{instance_id} 应命中 pluginloglevel.clear_plugin_instance_log_level。
+    """
     path = f"{settings.API_V1_STR}/plugin/loglevel/sample-plugin/sample-instance"
     _assert_route_resolves(app, "DELETE", path, pluginloglevel.clear_plugin_instance_log_level)

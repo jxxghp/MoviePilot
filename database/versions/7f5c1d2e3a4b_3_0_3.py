@@ -1,9 +1,9 @@
-"""3.0.3
-整理历史按源存储与源路径唯一
+"""
+3.0.3 整理历史按源存储与源路径唯一
 
-Revision ID: 7f5c1d2e3a4b
-Revises: 8a4c7e1d2f90
-Create Date: 2026-08-04
+版本标识： 7f5c1d2e3a4b
+前置版本： 8a4c7e1d2f90
+创建时间： 2026-08-04
 """
 
 from collections import defaultdict
@@ -31,12 +31,16 @@ transferhistory = sa.table(
 
 
 def _table_exists(inspector: sa.Inspector) -> bool:
-    """检查整理历史表是否存在。"""
+    """
+    检查整理历史表是否存在。
+    """
     return TABLE_NAME in inspector.get_table_names()
 
 
 def _has_unique_index(inspector: sa.Inspector) -> bool:
-    """检查源路径与源存储的唯一索引是否已存在。"""
+    """
+    检查源路径与源存储的唯一索引是否已存在。
+    """
     return any(
         tuple(index.get("column_names") or []) == tuple(INDEX_COLUMNS)
         and bool(index.get("unique"))
@@ -45,7 +49,9 @@ def _has_unique_index(inspector: sa.Inspector) -> bool:
 
 
 def _deduplicate_rows() -> None:
-    """归一化旧存储值并按现有查重语义清理重复历史。"""
+    """
+    归一化旧存储值并按现有查重语义清理重复历史。
+    """
     bind = op.get_bind()
     bind.execute(
         transferhistory.update()
@@ -90,7 +96,9 @@ def _deduplicate_rows() -> None:
 
 
 def _make_src_storage_required(inspector: sa.Inspector) -> None:
-    """将源存储设为非空，使唯一索引同样约束本地存储记录。"""
+    """
+    将源存储设为非空，使唯一索引同样约束本地存储记录。
+    """
     column = next(
         (
             current
@@ -111,7 +119,9 @@ def _make_src_storage_required(inspector: sa.Inspector) -> None:
 
 
 def upgrade() -> None:
-    """归一化并唯一化整理历史的源路径记录。"""
+    """
+    归一化并唯一化整理历史的源路径记录。
+    """
     inspector = sa.inspect(op.get_bind())
     if not _table_exists(inspector):
         return
@@ -125,7 +135,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除整理历史源路径唯一约束。"""
+    """
+    移除整理历史源路径唯一约束。
+    """
     inspector = sa.inspect(op.get_bind())
     if not _table_exists(inspector):
         return

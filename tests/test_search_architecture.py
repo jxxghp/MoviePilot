@@ -1,4 +1,6 @@
-"""搜索 Chain 包化后的静态边界与稳定继承结构回归测试。"""
+"""
+搜索 Chain 包化后的静态边界与稳定继承结构回归测试。
+"""
 
 from __future__ import annotations
 
@@ -22,6 +24,8 @@ EXPECTED_SEARCH_MODULES = {
     "execution.py",
     "facade.py",
     "media.py",
+    "manual.py",
+    "scan.py",
     "music.py",
     "pagination.py",
     "plan.py",
@@ -35,7 +39,9 @@ EXPECTED_SEARCH_MODULES = {
 
 
 def test_search_chain_is_a_single_named_package_without_legacy_module():
-    """同名包必须完整取代旧单文件，且子模块名维持单词职责名。"""
+    """
+    同名包必须完整取代旧单文件，且子模块名维持单词职责名。
+    """
     assert SEARCH_PACKAGE.is_dir()
     assert not (SEARCH_PACKAGE.parent / "search.py").exists()
     assert {path.name for path in SEARCH_PACKAGE.glob("*.py")} == EXPECTED_SEARCH_MODULES
@@ -43,7 +49,9 @@ def test_search_chain_is_a_single_named_package_without_legacy_module():
 
 
 def test_search_package_root_lazily_exports_only_search_chain(tmp_path):
-    """隔离进程验证包根不会因导入而提前装载门面和所有 owner。"""
+    """
+    隔离进程验证包根不会因导入而提前装载门面和所有 owner。
+    """
     script = """
 import sys
 from app.testing.bootstrap import prepare_backend
@@ -74,7 +82,9 @@ assert "app.chain.search.facade" in sys.modules
 
 
 def test_search_owners_do_not_import_package_root_or_facade():
-    """owner 只能依赖明确子模块，禁止反向依赖公开包根或门面。"""
+    """
+    owner 只能依赖明确子模块，禁止反向依赖公开包根或门面。
+    """
     forbidden_modules = {"app.chain.search", "app.chain.search.facade"}
     violations: list[str] = []
     for path in sorted(SEARCH_PACKAGE.glob("*.py")):
@@ -95,7 +105,9 @@ def test_search_owners_do_not_import_package_root_or_facade():
 
 
 def test_search_facade_directly_extends_chain_base_with_stable_mro():
-    """插件依赖的直接父类和完整 MRO 不得因职责拆分发生漂移。"""
+    """
+    插件依赖的直接父类和完整 MRO 不得因职责拆分发生漂移。
+    """
     assert SearchChain.__bases__ == (ChainBase,)
     assert SearchChain.__mro__ == (
         SearchChain,
@@ -105,3 +117,25 @@ def test_search_facade_directly_extends_chain_base_with_stable_mro():
         NotificationMixin,
         object,
     )
+
+
+def test_search_diagnostic_models_stay_lazy_during_startup(tmp_path):
+    """
+    共享 owner 不在应用冷导入时加载搜索诊断模型。
+    """
+    script = """
+import sys
+from app.testing.bootstrap import ensure_sites_stub
+
+ensure_sites_stub()
+import app.factory
+
+assert "app.schemas.search" not in sys.modules
+"""
+    environment = os.environ.copy()
+    environment["CONFIG_DIR"] = str(tmp_path / "config")
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=PROJECT_ROOT, env=environment,
+        check=False, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout

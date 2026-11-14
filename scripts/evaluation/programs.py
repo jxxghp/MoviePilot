@@ -1,4 +1,6 @@
-"""固定只读聚合程序与独立假世界验收；不把任意模型代码带入真实宿主。"""
+"""
+固定只读聚合程序与独立假世界验收；不把任意模型代码带入真实宿主。
+"""
 
 import json
 from collections import Counter
@@ -35,7 +37,9 @@ print(json.dumps({"status": "completed", "subscription_count": len(subscriptions
 
 
 def seed_code_state(state: dict[str, Any]) -> None:
-    """45条长订阅强制跨页，站点资源只来自已缓存搜索，不调用有副作用的站点抓取。"""
+    """
+    45条长订阅强制跨页，站点资源只来自已缓存搜索，不调用有副作用的站点抓取。
+    """
     state['subscriptions'] = [{'id': index + 1, 'name': f'订阅 {index}', 'media_source': 'themoviedb',
                                'media_id': str(8000 + index), 'description': '分页原文证据' * 2000}
                               for index in range(45)]
@@ -46,7 +50,9 @@ def seed_code_state(state: dict[str, Any]) -> None:
 
 
 def expected_code_report(state: dict[str, Any]) -> dict[str, Any]:
-    """验收器从隐藏终态独立计算事实，不能用模型输出或程序 stdout 生成答案。"""
+    """
+    验收器从隐藏终态独立计算事实，不能用模型输出或程序 stdout 生成答案。
+    """
     resources = [entry['torrent_info'] for entry in state['resources']]
     free = [row for row in resources if row['downloadvolumefactor'] == min(item['downloadvolumefactor'] for item in resources)]
     winner = sorted(free, key=lambda row: (-row['seeders'], row['site']))[0]
@@ -58,7 +64,9 @@ def expected_code_report(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def check_code_report(state: dict[str, Any], report: dict[str, Any], ledger: list[dict[str, Any]], trace: Any) -> list[str]:
-    """完整读取证据、生产 Python 成功回执和最终答案必须同时成立。"""
+    """
+    完整读取证据、生产 Python 成功回执和最终答案必须同时成立。
+    """
     errors = []
     expected = expected_code_report(state)
     if report != expected:

@@ -1,3 +1,7 @@
+"""
+业务异常的分类与可识别错误类型。
+"""
+
 __all__ = (
     "ImmediateException",
     "LimitException",
@@ -43,20 +47,42 @@ class RateLimitExceededException(LimitException):
     pass
 
 
+class BusinessRejectedError(Exception):
+    """
+    表示模块按业务规则拒绝处理当前输入，属于预期结果而不是系统故障。
+    Chain 的系统错误处理只记录 info 日志，不写入错误堆栈、系统错误通知和 SystemError 事件；
+    严格调用仍按调用方约定传播该异常。
+    """
+    pass
+
+
+class SiteDomainConflictError(BusinessRejectedError):
+    """
+    站点域名已被另一持久化配置占用，当前事务应回滚并报告业务冲突。
+    """
+
+
 class OperationInterrupted(KeyboardInterrupt):
     """
-    用于表示操作被中断
+    用于表示操作被中断。
     """
     pass
 
 
 class PluginMutationRejectedError(RuntimeError):
-    """表示插件运行时已封口，新的可变事务未获准执行。"""
+    """
+    表示插件运行时已封口或正忙，当前操作未获准执行。
+    """
 
-    def __init__(self, operation: str) -> None:
-        """保存被拒绝的操作名称并生成稳定诊断消息。"""
+    def __init__(self, operation: str, reason: str = "插件运行时已进入停机阶段") -> None:
+        """
+        保存被拒绝的操作名称并生成稳定诊断消息。
+
+        :param operation: 尚未取得执行权的操作
+        :param reason: 拒绝原因，可包含持有方信息，不包含插件配置
+        """
         self.operation = operation
-        super().__init__(f"插件运行时已进入停机阶段，拒绝{operation}")
+        super().__init__(f"{reason}，拒绝{operation}")
 
 
 class StorageQueryError(Exception):
@@ -69,19 +95,27 @@ class StorageQueryError(Exception):
 
 
 class PersistenceUnavailableError(RuntimeError):
-    """持久化执行能力暂时拒绝新操作，调用方可在稍后重试。"""
+    """
+    持久化执行能力暂时拒绝新操作，调用方可在稍后重试。
+    """
 
 
 class DatabaseWorkerClosedError(PersistenceUnavailableError):
-    """数据库执行器尚未启动或已经停止。"""
+    """
+    数据库执行器尚未启动或已经停止。
+    """
 
 
 class DatabaseWorkerOverloadedError(PersistenceUnavailableError):
-    """数据库执行器的运行与排队容量已经用尽。"""
+    """
+    数据库执行器的运行与排队容量已经用尽。
+    """
 
 
 class AgentChatPersistenceUnavailableError(PersistenceUnavailableError):
-    """AgentChat 持久化服务因关闭或自身容量限制拒绝新写入。"""
+    """
+    AgentChat 持久化服务因关闭或自身容量限制拒绝新写入。
+    """
 
 
 class TMDbException(Exception):

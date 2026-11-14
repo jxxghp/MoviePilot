@@ -1,4 +1,6 @@
-"""LLM 公开 Facade、Gateway 与旧插件导入路径的治理门禁。"""
+"""
+LLM 公开 Facade、Gateway 与旧插件导入路径的治理门禁。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +17,9 @@ FACADE_FIXTURE = (
 
 
 def _run_isolated(script: str) -> dict[str, object]:
-    """在全新解释器中运行导入探针，避免当前测试进程模块缓存干扰。"""
+    """
+    在全新解释器中运行导入探针，避免当前测试进程模块缓存干扰。
+    """
     completed = subprocess.run(
         [sys.executable, "-c", script],
         check=True,
@@ -26,7 +30,9 @@ def _run_isolated(script: str) -> dict[str, object]:
 
 
 def _manager_facade_snapshot() -> dict[str, object]:
-    """从源码提取 Manager 稳定公开方法，不导入重量 provider 实现。"""
+    """
+    从源码提取 Manager 稳定公开方法，不导入重量 provider 实现。
+    """
     path = PROJECT_ROOT / "app" / "agent" / "llm" / "provider.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     manager = next(
@@ -53,14 +59,18 @@ def _manager_facade_snapshot() -> dict[str, object]:
 
 
 def test_llm_provider_manager_public_facade_matches_signature_snapshot() -> None:
-    """Manager 拆分不得静默删除、改名或改变既有公开调用签名。"""
+    """
+    Manager 拆分不得静默删除、改名或改变既有公开调用签名。
+    """
     expected = json.loads(FACADE_FIXTURE.read_text(encoding="utf-8"))
 
     assert _manager_facade_snapshot() == expected
 
 
 def test_llm_helper_three_paths_share_identity_and_keep_provider_lazy() -> None:
-    """包根、canonical 子模块与旧 helper 路径必须解析为同一惰性 Helper。"""
+    """
+    包根、canonical 子模块与旧 helper 路径必须解析为同一惰性 Helper。
+    """
     result = _run_isolated(
         """
 import json
@@ -98,7 +108,9 @@ print(json.dumps({
 
 
 def test_llm_gateway_protocol_and_registration_delegate_to_one_runtime() -> None:
-    """Gateway 只保存组合根 runtime，并完整声明 Helper/API 所需 Facade 协议。"""
+    """
+    Gateway 只保存组合根 runtime，并完整声明 Helper/API 所需 Facade 协议。
+    """
     from app.agent.llm import gateway
 
     protocol_methods = {
@@ -125,7 +137,9 @@ def test_llm_gateway_protocol_and_registration_delegate_to_one_runtime() -> None
 
 
 def test_agent_package_root_uses_only_precise_compat_symbols() -> None:
-    """Agent 包根保持冷启动，旧公开符号精确解析且未知编排内部不再泄漏。"""
+    """
+    Agent 包根保持冷启动，旧公开符号精确解析且未知编排内部不再泄漏。
+    """
     result = _run_isolated(
         """
 import json
@@ -171,7 +185,9 @@ print(json.dumps({
 
 
 def test_oauth_result_html_escapes_external_error_description() -> None:
-    """OAuth provider 返回的错误描述必须作为文本展示，不能注入落地页。"""
+    """
+    OAuth provider 返回的错误描述必须作为文本展示，不能注入落地页。
+    """
     from app.agent.llm.auth import render_auth_result_html
 
     html = render_auth_result_html(False, '<script>alert("x")</script>')
@@ -181,7 +197,9 @@ def test_oauth_result_html_escapes_external_error_description() -> None:
 
 
 def test_llm_package_root_does_not_duplicate_internal_owner_exports() -> None:
-    """LLM 包根不得保留实现或重复导出，旧 Helper 只由 Compat 精确承接。"""
+    """
+    LLM 包根不得保留实现或重复导出，旧 Helper 只由 Compat 精确承接。
+    """
     from app.runtime.compat.manifest import MODULE_ALIASES, SYMBOL_ALIASES
 
     path = PROJECT_ROOT / "app" / "agent" / "llm" / "__init__.py"
@@ -196,7 +214,9 @@ def test_llm_package_root_does_not_duplicate_internal_owner_exports() -> None:
 
 
 def test_agent_tool_plugin_contracts_keep_canonical_identity() -> None:
-    """官方插件使用的工具基类、管理器实例和显式刷新入口保持原 owner。"""
+    """
+    官方插件使用的工具基类、管理器实例和显式刷新入口保持原 owner。
+    """
     from app.agent.tools.base import MoviePilotTool
     from app.agent.tools.manager import MoviePilotToolsManager, moviepilot_tool_manager
 

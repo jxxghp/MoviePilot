@@ -1,17 +1,23 @@
+"""
+验证音乐种子的站点分类、浏览和 RSS 识别路由。
+"""
+
 import asyncio
 import copy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.chain.torrents import TorrentsChain
-from app.domain.meta.metamusic import MetaMusic
 from app.domain.context import Context, MusicInfo, TorrentInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.indexer.spider import SiteSpider
 from app.schemas.types import MediaType
 
 
 def test_async_browse_passes_music_type_to_indexer():
-    """站点浏览应把音乐类型传入现有索引刷新接口。"""
+    """
+    站点浏览应把音乐类型传入现有索引刷新接口。
+    """
     chain = TorrentsChain()
     chain.async_refresh_torrents = AsyncMock(return_value=[])
     sites_helper = Mock()
@@ -38,7 +44,9 @@ def test_async_browse_passes_music_type_to_indexer():
 
 
 def test_music_cache_context_uses_music_models():
-    """站点缓存识别到音乐分类时不应进入影视识别链。"""
+    """
+    站点缓存识别到音乐分类时不应进入影视识别链。
+    """
     chain = TorrentsChain()
     torrent = Mock(
         title="Daft Punk - Get Lucky",
@@ -73,7 +81,9 @@ def test_music_cache_context_uses_music_models():
 
 
 def test_rss_sets_music_category_from_site_media_type():
-    """RSS 报文不带分类，音乐站点的种子应按站点媒体类型补充音乐分类。"""
+    """
+    RSS 报文不带分类，音乐站点的种子应按站点媒体类型补充音乐分类。
+    """
     chain = TorrentsChain()
     site = {
         "id": 9,
@@ -107,7 +117,9 @@ def test_rss_sets_music_category_from_site_media_type():
 
 
 def test_music_browse_paths_detects_dedicated_entry():
-    """站点用 type=music 声明的独立音乐入口应被识别，默认入口已覆盖时不重复抓取。"""
+    """
+    站点用 type=music 声明的独立音乐入口应被识别，默认入口已覆盖时不重复抓取。
+    """
     mixed_site = {
         "search": {
             "paths": [
@@ -134,7 +146,9 @@ def test_music_browse_paths_detects_dedicated_entry():
 
 
 def test_spider_music_entry_browse_resolves_music_category():
-    """音乐入口浏览应请求专用页面，并把音乐分类种子解析为音乐类型。"""
+    """
+    音乐入口浏览应请求专用页面，并把音乐分类种子解析为音乐类型。
+    """
     indexer = {
         "id": "hhanclub",
         "name": "憨憨",
@@ -195,7 +209,9 @@ def test_spider_music_entry_browse_resolves_music_category():
 
 
 def test_refresh_include_music_fetches_music_entry():
-    """存在音乐订阅时，spider 刷新应额外抓取音乐专用入口，并把音乐写入独立缓存。"""
+    """
+    存在音乐订阅时，spider 刷新应额外抓取音乐专用入口，并把音乐写入独立缓存。
+    """
     chain = TorrentsChain()
     default_torrent = TorrentInfo(
         site=1, site_name="Test",
@@ -220,6 +236,9 @@ def test_refresh_include_music_fetches_music_entry():
     )
 
     def _fake_browse(domain, keyword=None, cat=None, page=None, mtype=None):
+        """
+        提供普通与音乐独立入口的合成分页，后页为空。
+        """
         if mtype == MediaType.MUSIC:
             # 第二页返回空，验证分页提前结束；首页返回音乐种子
             return [] if page else [music_torrent, duplicated_torrent]
@@ -239,7 +258,7 @@ def test_refresh_include_music_fetches_music_entry():
     }]
     # 保存时对入参做快照，避免后续合并返回值修改同一字典引用
     saved = {}
-    save_cache = Mock(side_effect=lambda data, filename: saved.__setitem__(filename, copy.deepcopy(data)))
+    save_cache = Mock(side_effect=lambda data, filename, **_kwargs: saved.__setitem__(filename, copy.deepcopy(data)))
 
     with (
         patch.object(chain, "load_cache", return_value=None),
@@ -273,10 +292,13 @@ def test_refresh_include_music_fetches_music_entry():
     }
     assert video_titles == {"Some.Movie.2026.1080p"}
     assert music_titles == {"Daft Punk - Get Lucky [FLAC]"}
+    assert all(call.kwargs == {"strict": True} for call in save_cache.call_args_list)
 
 
 def test_rss_refresh_include_music_fetches_dedicated_entry():
-    """RSS 模式有音乐订阅时也应补抓独立音乐入口，并写入音乐缓存。"""
+    """
+    RSS 模式有音乐订阅时也应补抓独立音乐入口，并写入音乐缓存。
+    """
     chain = TorrentsChain()
     video_torrent = TorrentInfo(
         site=1,
@@ -296,7 +318,9 @@ def test_rss_refresh_include_music_fetches_dedicated_entry():
     )
 
     def _fake_browse(domain, keyword=None, cat=None, page=None, mtype=None):
-        """模拟音乐专用入口的两页抓取结果。"""
+        """
+        模拟音乐专用入口的两页抓取结果，不访问真实站点。
+        """
         assert mtype == MediaType.MUSIC
         return [music_torrent] if not page else []
 
@@ -321,14 +345,15 @@ def test_rss_refresh_include_music_fetches_dedicated_entry():
         patch.object(
             chain,
             "save_cache",
-            side_effect=lambda data, filename: saved.__setitem__(filename, copy.deepcopy(data)),
-        ),
+            side_effect=lambda data, filename, **_kwargs: saved.__setitem__(filename, copy.deepcopy(data)),
+        ) as save_cache,
         patch("app.chain.torrents.SitesHelper", return_value=sites_helper),
         patch("app.chain.torrents.MediaChain"),
     ):
         result = chain.refresh(stype="rss", sites=[1], include_music=True)
 
     browse.assert_called()
+    assert all(call.kwargs == {"strict": True} for call in save_cache.call_args_list)
     assert {
         context.torrent_info.title for context in result["example.com"]
     } == {video_torrent.title, music_torrent.title}
@@ -339,10 +364,15 @@ def test_rss_refresh_include_music_fetches_dedicated_entry():
 
 
 def test_music_cache_not_evicted_by_video_torrents():
-    """影视缓存按配额裁剪时，音乐独立缓存中的资源不应被挤出。"""
+    """
+    影视缓存按配额裁剪时，音乐独立缓存中的资源不应被挤出。
+    """
     chain = TorrentsChain()
 
     def _music_context(title, enclosure, pubdate):
+        """
+        构造已识别音乐缓存，验证影视配额不挤出该类资源。
+        """
         torrent = TorrentInfo(
             site=1, site_name="Test", title=title, enclosure=enclosure,
             category=MediaType.MUSIC.value, pubdate=pubdate,
@@ -368,11 +398,17 @@ def test_music_cache_not_evicted_by_video_torrents():
     ]
 
     def _fake_load(filename):
+        """
+        仅返回合成音乐缓存，其余文件视为空。
+        """
         if filename == TorrentsChain._music_spider_file:
             return {"example.com": existing_music}
         return None
 
     def _fake_browse(domain, keyword=None, cat=None, page=None, mtype=None):
+        """
+        提供超过影视缓存上限的单页资源。
+        """
         return video_torrents if not page else []
 
     sites_helper = Mock()
@@ -380,7 +416,7 @@ def test_music_cache_not_evicted_by_video_torrents():
         "id": 1, "name": "Test", "domain": "https://example.com",
     }]
     saved = {}
-    save_cache = Mock(side_effect=lambda data, filename: saved.__setitem__(filename, copy.deepcopy(data)))
+    save_cache = Mock(side_effect=lambda data, filename, **_kwargs: saved.__setitem__(filename, copy.deepcopy(data)))
     fake_settings = Mock()
     # 公共参数：缓存上限 2，刷新配额 5，音乐与影视各自独立计算
     fake_settings.CONF = SimpleNamespace(torrents=2, refresh=5)
@@ -402,6 +438,7 @@ def test_music_cache_not_evicted_by_video_torrents():
 
     # 影视缓存独立按配额裁剪，仅保留最新的两条
     assert len(saved[TorrentsChain._spider_file]["example.com"]) == 2
+    assert all(call.kwargs == {"strict": True} for call in save_cache.call_args_list)
     # 音乐独立缓存不受影视种子大量涌入影响，既有的两条音乐完整保留
     music_titles = {
         context.torrent_info.title

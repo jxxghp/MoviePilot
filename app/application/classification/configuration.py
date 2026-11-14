@@ -1,4 +1,6 @@
-"""分类策略初始化、发布、历史和回滚应用服务。"""
+"""
+分类策略初始化、发布、历史和回滚应用服务。
+"""
 
 from __future__ import annotations
 
@@ -21,7 +23,9 @@ from app.schemas.category import (
     ClassificationCategory,
     ClassificationCondition,
     ClassificationConditionGroup,
+    ClassificationFactScalar,
     ClassificationFieldDefinition,
+    ClassificationMediaType,
     ClassificationOperator,
     ClassificationPolicy,
     ClassificationPolicyState,
@@ -43,7 +47,7 @@ _DEFAULT_MUSIC_CATEGORIES = (
     ("music.single", "Single", ("Single",)),
 )
 
-_DEFAULT_MEDIA_CATEGORIES = (
+_DEFAULT_MEDIA_CATEGORIES: tuple[tuple[str, ClassificationMediaType, str, tuple[str, ...]], ...] = (
     ("movie.animation", "电影", "动画电影", ("动画电影",)),
     ("movie.chinese", "电影", "华语电影", ("华语电影",)),
     ("movie.foreign", "电影", "外语电影", ("外语电影",)),
@@ -63,7 +67,9 @@ _DEFAULT_MEDIA_CATEGORIES = (
 
 
 def _build_builtin_media_categories() -> list[ClassificationCategory]:
-    """构造内置媒体分类目录。"""
+    """
+    构造内置媒体分类目录。
+    """
     categories = [
         ClassificationCategory(
             id=category_id,
@@ -77,7 +83,9 @@ def _build_builtin_media_categories() -> list[ClassificationCategory]:
 
 
 def _build_builtin_movie_rules() -> list[ClassificationRule]:
-    """构造内置电影分类规则。"""
+    """
+    构造内置电影分类规则。
+    """
     return [
         ClassificationRule(
             id="movie.animation.default",
@@ -122,13 +130,28 @@ def _build_builtin_movie_rules() -> list[ClassificationRule]:
 
 
 def _build_builtin_tv_rules() -> list[ClassificationRule]:
-    """构造内置电视剧分类规则。"""
+    """
+    构造内置电视剧分类规则，儿童优先于按地区划分的动画分类。
+    """
     return [
+        ClassificationRule(
+            id="tv.kids.default",
+            name="儿童",
+            kind="category",
+            priority=3,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.genre_keys",
+                operator="contains_any",
+                value=["kids"],
+            ),
+            target=ClassificationTarget(category_id="tv.kids"),
+        ),
         ClassificationRule(
             id="tv.dongman.cn.default",
             name="国漫",
             kind="category",
-            priority=2,
+            priority=4,
             media_types=["电视剧"],
             when=ClassificationConditionGroup(
                 all=[
@@ -150,7 +173,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.dongman.jp.default",
             name="日番",
             kind="category",
-            priority=3,
+            priority=5,
             media_types=["电视剧"],
             when=ClassificationConditionGroup(
                 all=[
@@ -172,7 +195,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.animation.other.default",
             name="其他动画",
             kind="category",
-            priority=4,
+            priority=6,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.genre_keys",
@@ -185,7 +208,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.documentary.default",
             name="纪录片",
             kind="category",
-            priority=4,
+            priority=7,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.genre_keys",
@@ -195,23 +218,10 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             target=ClassificationTarget(category_id="tv.documentary"),
         ),
         ClassificationRule(
-            id="tv.kids.default",
-            name="儿童",
-            kind="category",
-            priority=5,
-            media_types=["电视剧"],
-            when=ClassificationCondition(
-                field="media.genre_keys",
-                operator="contains_any",
-                value=["kids"],
-            ),
-            target=ClassificationTarget(category_id="tv.kids"),
-        ),
-        ClassificationRule(
             id="tv.variety.default",
             name="综艺",
             kind="category",
-            priority=6,
+            priority=8,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.genre_keys",
@@ -224,7 +234,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.chinese.default",
             name="国产剧",
             kind="category",
-            priority=7,
+            priority=9,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.countries",
@@ -237,7 +247,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.western.default",
             name="欧美剧",
             kind="category",
-            priority=8,
+            priority=10,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.countries",
@@ -254,7 +264,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.asian.default",
             name="亚洲剧",
             kind="category",
-            priority=9,
+            priority=11,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.countries",
@@ -267,7 +277,9 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
 
 
 def build_builtin_classification_policy() -> ClassificationPolicy:
-    """构造显式区分外语与未知信息的默认模板，不改写已保存的旧策略。"""
+    """
+    构造显式区分外语与未知信息的默认模板，不改写已保存的旧策略。
+    """
     rules = [*_build_builtin_movie_rules(), *_build_builtin_tv_rules()]
     for priority, rule in enumerate(rules):
         rule.priority = priority
@@ -285,24 +297,34 @@ def build_builtin_classification_policy() -> ClassificationPolicy:
 
 
 class ClassificationPolicyNotInitializedError(RuntimeError):
-    """表示分类策略服务尚未加载或初始化活动快照。"""
+    """
+    表示分类策略服务尚未加载或初始化活动快照。
+    """
 
 
 class ClassificationPolicyRevisionNotFoundError(LookupError):
-    """表示请求回滚的历史 revision 不在有界历史中。"""
+    """
+    表示请求回滚的历史 revision 不在有界历史中。
+    """
 
 
 class ClassificationPolicyValidationError(ValueError):
-    """表示策略包含阻止发布的结构化校验错误。"""
+    """
+    表示策略包含阻止发布的结构化校验错误。
+    """
 
     def __init__(self, result: ClassificationValidationResult) -> None:
-        """保存完整校验结果，供 API 层返回字段级错误。"""
+        """
+        保存完整校验结果，供 API 层返回字段级错误。
+        """
         self.result = result.model_copy(deep=True)
         super().__init__("分类策略校验失败")
 
 
 def _build_uncategorized_classification_policy() -> ClassificationPolicy:
-    """构造旧版仅包含媒体类型兜底分类的初始草稿。"""
+    """
+    构造旧版仅包含媒体类型兜底分类的初始草稿。
+    """
     categories = [
         ClassificationCategory(
             id="movie.uncategorized",
@@ -334,9 +356,11 @@ def _build_uncategorized_classification_policy() -> ClassificationPolicy:
 
 
 def with_default_music_classification(policy: ClassificationPolicy) -> ClassificationPolicy:
-    """为尚未配置音乐分类的策略追加安全、结构化的常用专辑分类。"""
+    """
+    为尚未配置音乐分类的策略追加安全、结构化的常用专辑分类。
+    """
     if not needs_default_music_classification(policy):
-        return cast(ClassificationPolicy, policy.model_copy(deep=True))
+        return policy.model_copy(deep=True)
 
     categories = [
         *(item.model_copy(deep=True) for item in policy.categories),
@@ -362,7 +386,9 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
         value: Union[str, list[str]],
         category_id: str,
     ) -> None:
-        """按既有规则之后的顺序追加单个音乐规则。"""
+        """
+        按既有规则之后的顺序追加单个音乐规则。
+        """
         nonlocal priority
         rules.append(
             ClassificationRule(
@@ -374,7 +400,7 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
                 when=ClassificationCondition(
                     field=field,
                     operator=operator,
-                    value=value,
+                    value=list[ClassificationFactScalar](value) if isinstance(value, list) else value,
                 ),
                 target=ClassificationTarget(category_id=category_id),
             )
@@ -403,17 +429,16 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
             value=album_type,
             category_id=category_id,
         )
-    return cast(
-        ClassificationPolicy,
-        policy.model_copy(
+    return policy.model_copy(
             deep=True,
             update={"categories": categories, "rules": rules},
-        ),
-    )
+        )
 
 
 def needs_default_music_classification(policy: ClassificationPolicy) -> bool:
-    """判断音乐侧是否仍为旧版原始兜底，未包含任何用户分类。"""
+    """
+    判断音乐侧是否仍为旧版原始兜底，未包含任何用户分类。
+    """
     music_rules = [item for item in policy.rules if "音乐" in item.media_types]
     music_categories = [
         item for item in policy.categories if item.media_type == "音乐"
@@ -432,12 +457,16 @@ def needs_default_music_classification(policy: ClassificationPolicy) -> bool:
 
 
 def build_default_classification_policy() -> ClassificationPolicy:
-    """构造带稳定兜底和常用音乐专辑分类的初始草稿。"""
+    """
+    构造带稳定兜底和常用音乐专辑分类的初始草稿。
+    """
     return build_builtin_classification_policy()
 
 
 class ClassificationPolicyConfigurationService:
-    """维护分类策略的进程内完整快照和数据库 CAS 发布语义。"""
+    """
+    维护分类策略的进程内完整快照和数据库 CAS 发布语义。
+    """
 
     def __init__(
         self,
@@ -451,7 +480,9 @@ class ClassificationPolicyConfigurationService:
         async_executor: AsyncDatabaseExecutor | None = None,
         reference_validator: ClassificationPolicyReferenceValidator | None = None,
     ) -> None:
-        """注入状态仓储、字段目录、时钟、异步端口和外部引用校验器。"""
+        """
+        注入状态仓储、字段目录、时钟、异步端口和外部引用校验器。
+        """
         self._store = store
         self._extra_fields = tuple(
             field.model_copy(deep=True)
@@ -469,7 +500,9 @@ class ClassificationPolicyConfigurationService:
         self,
         initial_policy: ClassificationPolicy | None = None,
     ) -> ClassificationPolicy:
-        """加载已发布状态；配置不存在时以指定草稿或默认策略发布 revision 1。"""
+        """
+        加载已发布状态；配置不存在时以指定草稿或默认策略发布 revision 1。
+        """
         with self._lock:
             stored = self._store.load()
             if stored is not None:
@@ -483,7 +516,9 @@ class ClassificationPolicyConfigurationService:
             )
 
     def reload(self) -> ClassificationPolicy:
-        """从持久化事实源重新加载完整状态包并替换进程内快照。"""
+        """
+        从持久化事实源重新加载完整状态包并替换进程内快照。
+        """
         with self._lock:
             stored = self._store.load()
             if stored is None:
@@ -492,23 +527,23 @@ class ClassificationPolicyConfigurationService:
             return self.active()
 
     def active(self) -> ClassificationPolicy:
-        """返回与内部活动引用隔离的当前策略副本。"""
+        """
+        返回与内部活动引用隔离的当前策略副本。
+        """
         with self._lock:
-            return cast(
-                ClassificationPolicy,
-                self._require_state().active.model_copy(deep=True),
-            )
+            return self._require_state().active.model_copy(deep=True)
 
     def state(self) -> ClassificationPolicyState:
-        """返回与内部活动引用隔离的完整状态包副本。"""
+        """
+        返回与内部活动引用隔离的完整状态包副本。
+        """
         with self._lock:
-            return cast(
-                ClassificationPolicyState,
-                self._require_state().model_copy(deep=True),
-            )
+            return self._require_state().model_copy(deep=True)
 
     def history(self) -> tuple[ClassificationPolicy, ...]:
-        """按 revision 从新到旧返回隔离的有界历史快照。"""
+        """
+        按 revision 从新到旧返回隔离的有界历史快照。
+        """
         with self._lock:
             return tuple(
                 policy.model_copy(deep=True)
@@ -516,7 +551,9 @@ class ClassificationPolicyConfigurationService:
             )
 
     def validate(self, draft: ClassificationPolicy) -> ClassificationValidationResult:
-        """使用发布时相同字段和外部引用约束校验草稿，但不修改状态。"""
+        """
+        使用发布时相同字段和外部引用约束校验草稿，但不修改状态。
+        """
         with self._lock:
             policy_result = ClassificationPolicyValidator.validate(
                 draft,
@@ -538,7 +575,9 @@ class ClassificationPolicyConfigurationService:
         self,
         extra_fields: Iterable[ClassificationFieldDefinition],
     ) -> tuple[ClassificationFieldDefinition, ...]:
-        """合并动态来源字段目录并返回隔离后的当前扩展字段快照。"""
+        """
+        合并动态来源字段目录并返回隔离后的当前扩展字段快照。
+        """
         with self._lock:
             merged = merge_field_definitions((*self._extra_fields, *tuple(extra_fields)))
             self._extra_fields = tuple(
@@ -549,7 +588,9 @@ class ClassificationPolicyConfigurationService:
             return tuple(field.model_copy(deep=True) for field in self._extra_fields)
 
     def extra_fields(self) -> tuple[ClassificationFieldDefinition, ...]:
-        """返回与内部字段目录隔离的动态来源字段定义。"""
+        """
+        返回与内部字段目录隔离的动态来源字段定义。
+        """
         with self._lock:
             return tuple(
                 field.model_copy(deep=True)
@@ -557,14 +598,17 @@ class ClassificationPolicyConfigurationService:
             )
 
     def _current_extra_fields(self) -> tuple[ClassificationFieldDefinition, ...]:
-        """合并静态兼容字段和插件运行时当前快照，不缓存可卸载声明。"""
+        """
+        合并静态兼容字段和插件运行时当前快照，不缓存可卸载声明。
+        """
         try:
             dynamic = (
                 tuple(self._extra_fields_provider())
                 if self._extra_fields_provider is not None
                 else ()
             )
-        except Exception:  # noqa: BLE001  可选插件目录不可阻断静态策略管理
+        # 可选插件目录不可阻断静态策略管理
+        except Exception:  # noqa: BLE001
             dynamic = ()
         return tuple(
             field.model_copy(deep=True)
@@ -578,7 +622,9 @@ class ClassificationPolicyConfigurationService:
         *,
         expected_revision: int,
     ) -> ClassificationPolicy:
-        """校验草稿并以 CAS 发布下一个 revision。"""
+        """
+        校验草稿并以 CAS 发布下一个 revision。
+        """
         with self._lock:
             current_state = self._require_state()
             return self._publish_locked(
@@ -593,7 +639,9 @@ class ClassificationPolicyConfigurationService:
         *,
         expected_revision: int,
     ) -> ClassificationPolicy:
-        """选择历史内容并以新的单调 revision 发布，不复用旧版本号。"""
+        """
+        选择历史内容并以新的单调 revision 发布，不复用旧版本号。
+        """
         with self._lock:
             current_state = self._require_state()
             target = next(
@@ -618,11 +666,15 @@ class ClassificationPolicyConfigurationService:
         self,
         initial_policy: ClassificationPolicy | None = None,
     ) -> ClassificationPolicy:
-        """在线程执行端口中初始化分类策略，避免阻塞异步启动流程。"""
+        """
+        在线程执行端口中初始化分类策略，避免阻塞异步启动流程。
+        """
         return await self._run_async(partial(self.initialize, initial_policy))
 
     async def async_reload(self) -> ClassificationPolicy:
-        """在线程执行端口中重新加载分类策略。"""
+        """
+        在线程执行端口中重新加载分类策略。
+        """
         return await self._run_async(self.reload)
 
     async def async_publish(
@@ -631,7 +683,9 @@ class ClassificationPolicyConfigurationService:
         *,
         expected_revision: int,
     ) -> ClassificationPolicy:
-        """在线程执行端口中校验并原子发布分类策略。"""
+        """
+        在线程执行端口中校验并原子发布分类策略。
+        """
         return await self._run_async(
             partial(self.publish, draft, expected_revision=expected_revision)
         )
@@ -642,7 +696,9 @@ class ClassificationPolicyConfigurationService:
         *,
         expected_revision: int,
     ) -> ClassificationPolicy:
-        """在线程执行端口中把历史内容发布为新的 revision。"""
+        """
+        在线程执行端口中把历史内容发布为新的 revision。
+        """
         return await self._run_async(
             partial(
                 self.rollback,
@@ -658,7 +714,9 @@ class ClassificationPolicyConfigurationService:
         expected_revision: int,
         current_state: ClassificationPolicyState | None,
     ) -> ClassificationPolicy:
-        """在进程锁内构造、校验、CAS 持久化并发布完整状态包。"""
+        """
+        在进程锁内构造、校验、CAS 持久化并发布完整状态包。
+        """
         current_revision = current_state.active.revision if current_state else 0
         if expected_revision != current_revision:
             raise ClassificationPolicyConflictError(
@@ -696,17 +754,18 @@ class ClassificationPolicyConfigurationService:
                 self._publish_memory_snapshot(stored)
             raise
         self._publish_memory_snapshot(desired)
-        return cast(
-            ClassificationPolicy,
-            desired.active.model_copy(deep=True),
-        )
+        return desired.active.model_copy(deep=True)
 
     def _publish_memory_snapshot(self, state: ClassificationPolicyState) -> None:
-        """以深拷贝整体替换内部快照，禁止暴露持久化对象引用。"""
+        """
+        以深拷贝整体替换内部快照，禁止暴露持久化对象引用。
+        """
         self._state = state.model_copy(deep=True)
 
     def _require_state(self) -> ClassificationPolicyState:
-        """返回内部活动状态；未初始化时明确失败。"""
+        """
+        返回内部活动状态；未初始化时明确失败。
+        """
         if self._state is None:
             raise ClassificationPolicyNotInitializedError("分类策略尚未初始化")
         return self._state
@@ -715,7 +774,9 @@ class ClassificationPolicyConfigurationService:
         self,
         operation: Callable[[], ClassificationPolicy],
     ) -> ClassificationPolicy:
-        """通过注入的数据库执行端口运行一个同步短事务操作。"""
+        """
+        通过注入的数据库执行端口运行一个同步短事务操作。
+        """
         if self._async_executor is None:
             raise RuntimeError("分类策略异步数据库执行端口尚未配置")
         return cast(

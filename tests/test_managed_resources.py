@@ -1,4 +1,6 @@
-"""Managed Resource 与 Capability Runtime 的集成合同测试。"""
+"""
+Managed Resource 与 Capability Runtime 的集成合同测试。
+"""
 
 from __future__ import annotations
 
@@ -40,7 +42,9 @@ PROJECT_ROOT = Path(__file__).parents[1]
 
 @pytest.fixture(autouse=True)
 def isolate_managed_resource_facade(monkeypatch: pytest.MonkeyPatch) -> None:
-    """每个用例使用独立 Runtime，避免不可逆关闭态泄漏到后续测试。"""
+    """
+    每个用例使用独立 Runtime，避免不可逆关闭态泄漏到后续测试。
+    """
     monkeypatch.setattr(
         managed_resource_facade,
         "_managed_resource_runtime",
@@ -51,7 +55,9 @@ def isolate_managed_resource_facade(monkeypatch: pytest.MonkeyPatch) -> None:
 def _write_manifest(
     root: Path, *, capability_id: str, kind: str, entrypoint: str
 ) -> None:
-    """写入一个最小 on-first-use 托管资源声明。"""
+    """
+    写入一个最小 on-first-use 托管资源声明。
+    """
     resource_dir = root / capability_id.replace(".", "_")
     resource_dir.mkdir(parents=True)
     (resource_dir / "capability.toml").write_text(
@@ -77,7 +83,9 @@ def _write_manifest(
 
 
 def _runtime(root: Path) -> CapabilityRuntime:
-    """构造同时支持同步与异步资源的测试 Runtime。"""
+    """
+    构造同时支持同步与异步资源的测试 Runtime。
+    """
     registry = build_managed_resource_registry((root,))
     return CapabilityRuntime(
         registry,
@@ -92,12 +100,16 @@ def test_sync_managed_resource_is_single_flight(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """并发首用只能发布一个同步资源实例。"""
+    """
+    并发首用只能发布一个同步资源实例。
+    """
     module_name = "fixture_sync_managed_resource"
     module = ModuleType(module_name)
 
     class SyncResource:
-        """记录同步资源的创建、启动和停止次数。"""
+        """
+        记录同步资源的创建、启动和停止次数。
+        """
 
         instances: list["SyncResource"] = []
 
@@ -107,9 +119,15 @@ def test_sync_managed_resource_is_single_flight(
             type(self).instances.append(self)
 
         def start(self) -> None:
+            """
+            累计同步资源启动次数。
+            """
             self.started += 1
 
         def stop(self) -> None:
+            """
+            累计同步资源停止次数。
+            """
             self.stopped += 1
 
     module.SyncResource = SyncResource
@@ -156,12 +174,16 @@ def test_async_managed_resource_uses_async_adapter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """异步资源通过异步 Runtime 入口启动并关闭。"""
+    """
+    异步资源通过异步 Runtime 入口启动并关闭。
+    """
     module_name = "fixture_async_managed_resource"
     module = ModuleType(module_name)
 
     class AsyncResource:
-        """记录异步资源生命周期调用。"""
+        """
+        记录异步资源生命周期调用。
+        """
 
         instances: list["AsyncResource"] = []
 
@@ -170,9 +192,15 @@ def test_async_managed_resource_uses_async_adapter(
             type(self).instances.append(self)
 
         async def start(self) -> None:
+            """
+            记录异步启动事件，供生命周期顺序断言使用。
+            """
             self.events.append("start")
 
         async def stop(self) -> None:
+            """
+            记录异步停止事件，供生命周期顺序断言使用。
+            """
             self.events.append("stop")
 
     module.AsyncResource = AsyncResource
@@ -204,20 +232,30 @@ def test_async_managed_resource_recreates_owner_across_event_loops(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """停止后的下一次激活必须在新事件循环创建新资源，不能复用旧 owner。"""
+    """
+    停止后的下一次激活必须在新事件循环创建新资源，不能复用旧 owner。
+    """
     module_name = "fixture_loop_bound_managed_resource"
     module = ModuleType(module_name)
 
     class LoopBoundResource:
-        """记录资源实际启动和停止所在的事件循环。"""
+        """
+        记录资源实际启动和停止所在的事件循环。
+        """
 
         def __init__(self) -> None:
             self.loop = None
 
         async def start(self) -> None:
+            """
+            保存启动时的事件循环，供关闭阶段核对。
+            """
             self.loop = asyncio.get_running_loop()
 
         async def stop(self) -> None:
+            """
+            断言资源仍在启动时的事件循环中关闭。
+            """
             assert asyncio.get_running_loop() is self.loop
 
     module.LoopBoundResource = LoopBoundResource
@@ -231,7 +269,9 @@ def test_async_managed_resource_recreates_owner_across_event_loops(
     runtime = _runtime(tmp_path)
 
     async def exercise() -> LoopBoundResource:
-        """在当前事件循环完成一次资源启动与停止。"""
+        """
+        在当前事件循环完成一次资源启动与停止。
+        """
         resource = await runtime.activate_async(
             "fixture.loop_bound",
             reason="loop_cycle",
@@ -250,22 +290,30 @@ def test_shutdown_propagates_stop_failure_and_retains_owner_for_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """托管资源关闭失败必须向 startup 传播，并保留同一 owner 重试。"""
+    """
+    托管资源关闭失败必须向 startup 传播，并保留同一 owner 重试。
+    """
     module_name = "fixture_retry_stop_managed_resource"
     module = ModuleType(module_name)
 
     class RetryStopResource:
-        """首次停止失败、第二次停止收敛的同步资源。"""
+        """
+        首次停止失败、第二次停止收敛的同步资源。
+        """
 
         def __init__(self) -> None:
             self.stop_calls = 0
             self.fail_stop = True
 
         def start(self) -> None:
-            """资源启动无需额外动作。"""
+            """
+            资源启动无需额外动作。
+            """
 
         def stop(self) -> None:
-            """按测试开关模拟资源释放失败。"""
+            """
+            按测试开关模拟资源释放失败。
+            """
             self.stop_calls += 1
             if self.fail_stop:
                 raise RuntimeError("stop failed")
@@ -299,12 +347,16 @@ def test_failed_start_is_cleaned_before_explicit_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """启动失败的候选必须先清理，显式 retry 才能发布下一代资源。"""
+    """
+    启动失败的候选必须先清理，显式 retry 才能发布下一代资源。
+    """
     module_name = "fixture_retry_managed_resource"
     module = ModuleType(module_name)
 
     class RetryResource:
-        """首个候选启动失败，后续候选正常启动。"""
+        """
+        首个候选启动失败，后续候选正常启动。
+        """
 
         instances: list["RetryResource"] = []
 
@@ -314,11 +366,17 @@ def test_failed_start_is_cleaned_before_explicit_retry(
             type(self).instances.append(self)
 
         def start(self) -> None:
+            """
+            记录启动尝试，并让首个候选失败以验证重试。
+            """
             self.events.append("start")
             if self.fail_start:
                 raise RuntimeError("start failed")
 
         def stop(self) -> None:
+            """
+            记录失败候选和正常实例的停止事件。
+            """
             self.events.append("stop")
 
     module.RetryResource = RetryResource
@@ -357,20 +415,30 @@ def test_shutdown_does_not_materialize_unused_resource(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """关闭未激活 Runtime 时不得构造资源或调用 start。"""
+    """
+    关闭未激活 Runtime 时不得构造资源或调用 start。
+    """
     module_name = "fixture_unused_managed_resource"
     module = ModuleType(module_name)
 
     class UnusedResource:
-        """任何实例化都表示关闭路径发生反向激活。"""
+        """
+        任何实例化都表示关闭路径发生反向激活。
+        """
 
         def __init__(self) -> None:
             raise AssertionError("unused resource must not be materialized")
 
         def start(self) -> None:
+            """
+            拒绝启动从未被使用的资源。
+            """
             raise AssertionError("unused resource must not start")
 
         def stop(self) -> None:
+            """
+            拒绝为未创建的资源执行停止。
+            """
             raise AssertionError("unused resource must not stop")
 
     module.UnusedResource = UnusedResource
@@ -387,7 +455,9 @@ def test_shutdown_does_not_materialize_unused_resource(
 
 
 def test_startup_initializer_discovers_manifest_without_importing_resource() -> None:
-    """启动装配只能读取声明，不得提前导入或构造虚拟显示实现。"""
+    """
+    启动装配只能读取声明，不得提前导入或构造虚拟显示实现。
+    """
     script = """
 import asyncio
 import sys
@@ -416,7 +486,9 @@ assert "pyvirtualdisplay" not in sys.modules
 
 
 def test_startup_shutdown_without_init_does_not_build_registry(monkeypatch) -> None:
-    """未执行启动装配时，关闭入口不得通过发现声明反向初始化 Runtime。"""
+    """
+    未执行启动装配时，关闭入口不得通过发现声明反向初始化 Runtime。
+    """
     from app.startup.composition import resource as resource_composition
     from app.startup.initializers import resources as managed_resources_initializer
 

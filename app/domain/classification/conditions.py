@@ -1,4 +1,6 @@
-"""分类条件树的共享纯函数。"""
+"""
+分类条件树的共享纯函数。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +12,9 @@ from app.schemas.category import (
 
 
 def condition_field_ids(node: ClassificationConditionNode) -> tuple[str, ...]:
-    """按条件树声明顺序递归返回全部叶子字段 ID。"""
+    """
+    按条件树声明顺序递归返回全部叶子字段 ID。
+    """
     if isinstance(node, ClassificationCondition):
         return (node.field,)
     if not isinstance(node, ClassificationConditionGroup):

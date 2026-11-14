@@ -1,4 +1,6 @@
-"""插件市场候选库存读取与外部事实映射。"""
+"""
+插件市场候选库存读取与外部事实映射。
+"""
 
 from __future__ import annotations
 
@@ -45,7 +47,9 @@ LocalCandidateLoader: TypeAlias = Callable[
 
 
 class PluginCandidateInventoryReader:
-    """按配置市场和 V3 代际顺序保留全部候选及读取终态。"""
+    """
+    按配置市场和 V3 代际顺序保留全部候选及读取终态。
+    """
 
     def __init__(
         self,
@@ -56,7 +60,9 @@ class PluginCandidateInventoryReader:
         generations: Sequence[str] = PLUGIN_V3_GENERATIONS,
         max_concurrency: int = 24,
     ) -> None:
-        """保存读取端口，并限制异步市场请求的进程内并发。"""
+        """
+        保存读取端口，并限制异步市场请求的进程内并发。
+        """
         normalized_generations = tuple(
             normalize_package_generation(generation)
             for generation in generations
@@ -77,7 +83,9 @@ class PluginCandidateInventoryReader:
         *,
         force: bool = False,
     ) -> CandidateInventory:
-        """同步读取全部配置市场，不把失败市场伪装成空仓库。"""
+        """
+        同步读取全部配置市场，不把失败市场伪装成空仓库。
+        """
         normalized_markets = _normalize_markets(markets)
         reads = tuple(
             self._read_market_generation(market, generation, force=force)
@@ -99,7 +107,9 @@ class PluginCandidateInventoryReader:
         *,
         force: bool = False,
     ) -> CandidateInventory:
-        """有界并发读取全部市场，同时保持配置与代际的稳定顺序。"""
+        """
+        有界并发读取全部市场，同时保持配置与代际的稳定顺序。
+        """
         normalized_markets = _normalize_markets(markets)
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
@@ -143,7 +153,9 @@ class PluginCandidateInventoryReader:
         *,
         force: bool,
     ) -> MarketRead:
-        """同步读取一个市场代际并映射为候选事实。"""
+        """
+        同步读取一个市场代际并映射为候选事实。
+        """
         try:
             source_key, repo_url, source_type = _market_source(market)
             payload = self._market_loader(
@@ -159,7 +171,8 @@ class PluginCandidateInventoryReader:
                 source_type=source_type,
                 repo_url=repo_url,
             )
-        except Exception as error:  # noqa: BLE001 - 失败事实必须进入快照
+        # 失败事实必须进入快照
+        except Exception as error:  # noqa: BLE001
             return MarketRead.failure(
                 market,
                 _error_message(error),
@@ -173,7 +186,9 @@ class PluginCandidateInventoryReader:
         *,
         force: bool,
     ) -> MarketRead:
-        """异步读取一个市场代际并映射为候选事实。"""
+        """
+        异步读取一个市场代际并映射为候选事实。
+        """
         try:
             source_key, repo_url, source_type = _market_source(market)
             if self._async_market_loader is None:
@@ -197,7 +212,8 @@ class PluginCandidateInventoryReader:
                 source_type=source_type,
                 repo_url=repo_url,
             )
-        except Exception as error:  # noqa: BLE001 - 失败事实必须进入快照
+        # 失败事实必须进入快照
+        except Exception as error:  # noqa: BLE001
             return MarketRead.failure(
                 market,
                 _error_message(error),
@@ -205,7 +221,9 @@ class PluginCandidateInventoryReader:
             )
 
     def _load_local_candidates(self) -> LocalCandidateRead:
-        """映射本地候选，并保留扫描失败而非伪装为空仓库。"""
+        """
+        映射本地候选，并保留扫描失败而非伪装为空仓库。
+        """
         if self._local_candidate_loader is None:
             return LocalCandidateRead.absent()
         try:
@@ -214,7 +232,8 @@ class PluginCandidateInventoryReader:
                 return LocalCandidateRead.failure(
                     "本地插件仓库读取未返回可判定结果"
                 )
-        except Exception as error:  # noqa: BLE001 - 失败事实必须进入快照
+        # 失败事实必须进入快照
+        except Exception as error:  # noqa: BLE001
             return LocalCandidateRead.failure(_error_message(error))
         entries: Iterable[tuple[object, Mapping[str, Any]]]
         try:
@@ -237,7 +256,8 @@ class PluginCandidateInventoryReader:
                     continue
                 if candidate is not None:
                     candidates.append(candidate)
-        except Exception as error:  # noqa: BLE001 - 迭代或映射失败也要保留状态
+        # 迭代或映射失败也要保留状态
+        except Exception as error:  # noqa: BLE001
             return LocalCandidateRead.failure(_error_message(error))
         return LocalCandidateRead.present(candidates)
 
@@ -249,7 +269,9 @@ def build_plugin_candidate_inventory(
     local_candidate_loader: LocalCandidateLoader | None = None,
     force: bool = False,
 ) -> CandidateInventory:
-    """使用注入的同步读取端口构建一次候选库存。"""
+    """
+    使用注入的同步读取端口构建一次候选库存。
+    """
     return PluginCandidateInventoryReader(
         market_loader=market_loader,
         local_candidate_loader=local_candidate_loader,
@@ -257,7 +279,9 @@ def build_plugin_candidate_inventory(
 
 
 def normalize_github_plugin_source(value: str) -> tuple[str, str]:
-    """把 GitHub 仓库 URL 或来源键归一为持久来源键和公开地址。"""
+    """
+    把 GitHub 仓库 URL 或来源键归一为持久来源键和公开地址。
+    """
     normalized = str(value).strip().rstrip("/")
     if normalized.lower().startswith("github:"):
         source_key = validate_online_source_key(normalized)
@@ -279,7 +303,9 @@ def normalize_github_plugin_source(value: str) -> tuple[str, str]:
 
 
 def _normalize_markets(markets: Iterable[str]) -> tuple[str, ...]:
-    """规范化并去除重复市场，保留无效配置供读取快照报错。"""
+    """
+    规范化并去除重复市场，保留无效配置供读取快照报错。
+    """
     result: list[str] = []
     seen: set[str] = set()
     for market in markets:
@@ -297,7 +323,9 @@ def _normalize_markets(markets: Iterable[str]) -> tuple[str, ...]:
 def _market_source(
     market: str,
 ) -> tuple[str, str, TrustedPluginSourceType]:
-    """解析 GitHub 市场来源，并固定官方仓库分类。"""
+    """
+    解析 GitHub 市场来源，并固定官方仓库分类。
+    """
     source_key, repo_url = normalize_github_plugin_source(market)
     source_type = (
         TrustedPluginSourceType.OFFICIAL
@@ -316,7 +344,9 @@ def _successful_read(
     source_type: TrustedPluginSourceType,
     repo_url: str,
 ) -> MarketRead:
-    """把 Adapter 读取结果映射为一个市场代际的三态事实。"""
+    """
+    把 Adapter 读取结果映射为一个市场代际的三态事实。
+    """
     if payload is None:
         return MarketRead.absent(
             market,
@@ -345,7 +375,9 @@ def _market_candidates(
     repo_url: str,
     package_generation: str,
 ) -> tuple[PluginMarketCandidate, ...]:
-    """过滤并映射一个代际索引中的 V3 可兼容条目。"""
+    """
+    过滤并映射一个代际索引中的 V3 可兼容条目。
+    """
     result: list[PluginMarketCandidate] = []
     for index_plugin_id, raw_info in payload.items():
         if not isinstance(raw_info, Mapping):
@@ -385,7 +417,9 @@ def _local_candidate(
     plugin_id: str,
     plugin_info: Mapping[str, Any],
 ) -> PluginLocalCandidate | None:
-    """把本地插件索引条目转换为应用候选。"""
+    """
+    把本地插件索引条目转换为应用候选。
+    """
     generation = normalize_package_generation(
         str(
             plugin_info.get("package_version")
@@ -417,11 +451,15 @@ def _local_candidate(
 
 
 def _package_version(package_generation: str) -> str | None:
-    """把公共代际转换为市场索引文件参数。"""
+    """
+    把公共代际转换为市场索引文件参数。
+    """
     return None if package_generation == "v1" else package_generation
 
 
 def _error_message(error: Exception) -> str:
-    """保留可诊断的读取失败说明，并避免空异常丢失状态。"""
+    """
+    保留可诊断的读取失败说明，并避免空异常丢失状态。
+    """
     message = str(error).strip()
     return message or error.__class__.__name__

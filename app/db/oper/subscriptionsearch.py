@@ -1,16 +1,20 @@
-"""订阅搜索批次与任务的持久队列读写。"""
+"""
+订阅搜索批次与任务的持久队列读写。
+"""
 
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Mapping, Optional
 from uuid import uuid4
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper, execute_dml
+from app.db.models.searchsession import SearchSession
 from app.db.models.subscriptionsearch import (
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
@@ -19,12 +23,16 @@ from app.db.models.subscriptionsearch import (
 
 
 def utc_now_text() -> str:
-    """返回可按字符串稳定排序的 UTC ISO 时间。"""
+    """
+    返回可按字符串稳定排序的 UTC ISO 时间。
+    """
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class SubscriptionSearchOper(DbOper):
-    """在调用方事务中维护搜索队列、租约和批次聚合。"""
+    """
+    在调用方事务中维护搜索队列、租约和批次聚合。
+    """
 
     def enqueue(
         self,
@@ -35,7 +43,9 @@ class SubscriptionSearchOper(DbOper):
         available_at_by_subscription: Optional[Mapping[int, str]],
         refresh_pending: bool = False,
     ) -> tuple[SubscriptionSearchBatch, int, int, tuple[str, ...]]:
-        """创建批次，并以活动键合并同一订阅的重叠搜索入口。"""
+        """
+        创建批次，并以活动键合并同一订阅的重叠搜索入口。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索入队需要调用方提供同步 Session")
         dialect = self._db.get_bind().dialect.name
@@ -43,6 +53,7 @@ class SubscriptionSearchOper(DbOper):
             raise RuntimeError(f"订阅搜索入队不支持数据库方言：{dialect}")
         insert = pg_insert if dialect == "postgresql" else sqlite_insert
         now = utc_now_text()
+        self._finish_expired_cancellations(now)
         batch = SubscriptionSearchBatch(
             batch_id=uuid4().hex,
             source=source,
@@ -144,11 +155,36 @@ class SubscriptionSearchOper(DbOper):
             active_batch_ids.insert(0, batch.batch_id)
         return batch, created, coalesced, tuple(dict.fromkeys(active_batch_ids))
 
+    def _finish_expired_cancellations(self, now: str) -> None:
+        """
+        原子结算取消且租约已过期的运行任务，释放活动键和分页快照。
+
+        :param now: 当前 UTC 时间文本；未过期租约继续由原执行者持有
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("取消任务结算需要调用方提供同步 Session")
+        rows = self._db.execute(update(SubscriptionSearchTask).where(
+            SubscriptionSearchTask.state == "running",
+            SubscriptionSearchTask.cancel_requested == 1,
+            or_(SubscriptionSearchTask.lease_expires_at.is_(None), SubscriptionSearchTask.lease_expires_at <= now),
+        ).values(
+            state="cancelled", phase="cancelled", active_key=None, lease_owner=None,
+            lease_token=None, lease_expires_at=None, current_site_id=None, updated_at=now, finished_at=now,
+        ).returning(SubscriptionSearchTask.task_id, SubscriptionSearchTask.batch_id)).all()
+        if not rows:
+            return
+        self._db.execute(delete(SearchSession).where(SearchSession.task_id.in_([row[0] for row in rows])))
+        for batch_id in {row[1] for row in rows}:
+            self._refresh_batch(batch_id, now=now, error=None)
+
     def claim_next(self, *, owner: str, lease_seconds: int) -> Optional[SubscriptionSearchTask]:
-        """CAS 认领任务并清除旧等待提示，过期 running 任务保留站点游标恢复。"""
+        """
+        CAS 认领任务并清除旧等待提示，过期 running 任务保留站点游标恢复。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索认领需要调用方提供同步 Session")
         now = utc_now_text()
+        self._finish_expired_cancellations(now)
         fairness_before = (
             datetime.now(timezone.utc) - timedelta(minutes=15)
         ).isoformat(timespec="seconds")
@@ -263,7 +299,9 @@ class SubscriptionSearchOper(DbOper):
         phase: str,
         current_site_id: Optional[int],
     ) -> bool:
-        """只允许当前运行租约推进用户可见阶段。"""
+        """
+        只允许当前运行租约推进用户可见阶段。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索阶段更新需要调用方提供同步 Session")
         task = self._db.execute(
@@ -309,7 +347,9 @@ class SubscriptionSearchOper(DbOper):
         state: str,
         error: Optional[str],
     ) -> bool:
-        """以当前租约令牌收口任务，并重新计算批次终态。"""
+        """
+        以当前租约令牌收口任务，并重新计算批次终态。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索收口需要调用方提供同步 Session")
         if state not in {"completed", "failed", "cancelled", "skipped"}:
@@ -348,6 +388,12 @@ class SubscriptionSearchOper(DbOper):
         )
         if not updated:
             return False
+        # 终态任务不会再被续用（同一订阅之后的搜索是新任务），分页检查点随之释放。
+        execute_dml(
+            self._db,
+            delete(SearchSession).where(SearchSession.task_id == task_id),
+            execution_options={"synchronize_session": False},
+        )
         self._refresh_batch(task.batch_id, now=now, error=error)
         return True
 
@@ -358,7 +404,9 @@ class SubscriptionSearchOper(DbOper):
         lease_token: str,
         cancelled: bool,
     ) -> bool:
-        """取消时收口，停机时把任务退回队列并保留稳定游标。"""
+        """
+        取消时收口，停机时把任务退回队列并保留稳定游标。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索释放需要调用方提供同步 Session")
         task = self._db.execute(
@@ -413,7 +461,9 @@ class SubscriptionSearchOper(DbOper):
         message: Optional[str],
         pending_site_ids: Optional[tuple[int, ...]] = None,
     ) -> bool:
-        """释放租约并保存重试站点；普通准入等待保留已有站点游标。"""
+        """
+        释放租约并保存重试站点；普通准入等待保留已有站点游标。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索延后需要调用方提供同步 Session")
         task = self._db.execute(
@@ -462,7 +512,9 @@ class SubscriptionSearchOper(DbOper):
         return True
 
     def is_cancel_requested(self, task_id: str) -> bool:
-        """读取任务和批次取消标记。"""
+        """
+        读取任务和批次取消标记。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索取消查询需要调用方提供同步 Session")
         task = self._db.execute(
@@ -471,7 +523,9 @@ class SubscriptionSearchOper(DbOper):
         return bool(task and (task.cancel_requested or self._batch_cancel_requested(task.batch_id)))
 
     def request_cancel(self, batch_id: str) -> bool:
-        """标记批次取消，并立即收口尚未发出的排队任务。"""
+        """
+        标记批次取消，并立即收口尚未发出的排队任务。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索取消需要调用方提供同步 Session")
         batch = self._db.execute(
@@ -515,11 +569,23 @@ class SubscriptionSearchOper(DbOper):
             .values(cancel_requested=1, phase="cancelling", updated_at=now),
             execution_options={"synchronize_session": False},
         )
+        execute_dml(
+            self._db,
+            delete(SearchSession).where(SearchSession.task_id.in_(
+                select(SubscriptionSearchTask.task_id).where(
+                    SubscriptionSearchTask.batch_id == batch_id,
+                    SubscriptionSearchTask.state == "cancelled",
+                )
+            )),
+            execution_options={"synchronize_session": False},
+        )
         self._refresh_batch(batch_id, now=now, error=None)
         return True
 
     def get_batch(self, batch_id: str) -> Optional[SubscriptionSearchBatch]:
-        """按稳定批次 ID 读取聚合记录。"""
+        """
+        按稳定批次 ID 读取聚合记录。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索批次查询需要调用方提供同步 Session")
         batch: Optional[SubscriptionSearchBatch] = self._db.execute(
@@ -533,8 +599,11 @@ class SubscriptionSearchOper(DbOper):
         site_id: int,
         owner: str,
         lease_seconds: int,
+        minimum_interval: float = 0,
     ) -> tuple[SubscriptionSiteBudget, bool]:
-        """以 CAS 认领单站点租约，返回当前或已认领预算记录。"""
+        """
+        以 CAS 认领单站点租约，返回当前或已认领预算记录。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅站点预算认领需要调用方提供同步 Session")
         now = utc_now_text()
@@ -545,12 +614,17 @@ class SubscriptionSearchOper(DbOper):
             and record.lease_expires_at > now
         )
         cooldown_active = bool(
-            record.last_outcome not in {None, "success", "skipped"}
+            (minimum_interval > 0 or record.last_outcome not in {None, "success", "skipped"})
             and record.next_allowed_at > now
         )
         if lease_busy or cooldown_active:
             return record, False
         lease_token = uuid4().hex
+        request_allowed = now
+        if minimum_interval:
+            # 预留下次请求开始时间；向上取整到秒，与其它秒精度时间比较时不会提前放行。
+            request_allowed = (datetime.now(timezone.utc).replace(microsecond=0)
+                               + timedelta(seconds=math.ceil(minimum_interval) + 1)).isoformat(timespec="seconds")
         lease_expires_at = (
             datetime.now(timezone.utc) + timedelta(seconds=max(1, lease_seconds))
         ).isoformat(timespec="seconds")
@@ -566,15 +640,15 @@ class SubscriptionSearchOper(DbOper):
                 ),
                 or_(
                     SubscriptionSiteBudget.next_allowed_at <= now,
-                    SubscriptionSiteBudget.last_outcome.is_(None),
-                    SubscriptionSiteBudget.last_outcome.in_(("success", "skipped")),
+                    SubscriptionSiteBudget.last_outcome.is_(None) if not minimum_interval else False,
+                    SubscriptionSiteBudget.last_outcome.in_(("success", "skipped")) if not minimum_interval else False,
                 ),
             )
             .values(
                 lease_owner=owner,
                 lease_token=lease_token,
                 lease_expires_at=lease_expires_at,
-                next_allowed_at=now,
+                next_allowed_at=request_allowed,
                 updated_at=now,
             ),
             execution_options={"synchronize_session": False},
@@ -606,7 +680,9 @@ class SubscriptionSearchOper(DbOper):
         next_allowed_at: str,
         error: Optional[str],
     ) -> bool:
-        """释放当前站点租约，并按结果推进失败或恢复计数。"""
+        """
+        释放当前站点租约，并按结果推进失败或恢复计数。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅站点预算收口需要调用方提供同步 Session")
         record = self._db.execute(
@@ -620,7 +696,8 @@ class SubscriptionSearchOper(DbOper):
         if outcome == "success":
             failures = max(0, record.consecutive_failures - 1)
             success_streak = record.success_streak + 1
-        elif outcome == "skipped":
+        elif outcome in {"skipped", "deferred"}:
+            # 本地流控拒绝没有发出请求，不累计失败，但保留未来冷却时间。
             failures = record.consecutive_failures
             success_streak = record.success_streak
         else:
@@ -649,7 +726,9 @@ class SubscriptionSearchOper(DbOper):
         ))
 
     def _ensure_site_budget(self, *, site_id: int, now: str) -> SubscriptionSiteBudget:
-        """并发安全地创建站点预算初始记录。"""
+        """
+        并发安全地创建站点预算初始记录。
+        """
         db = self._db
         if not isinstance(db, Session):
             raise RuntimeError("订阅站点预算初始化需要调用方提供同步 Session")
@@ -678,7 +757,9 @@ class SubscriptionSearchOper(DbOper):
         return created
 
     def _batch_cancel_requested(self, batch_id: str) -> bool:
-        """在当前事务中读取批次取消标记。"""
+        """
+        在当前事务中读取批次取消标记。
+        """
         db = self._db
         if not isinstance(db, Session):
             raise RuntimeError("订阅搜索批次取消查询需要调用方提供同步 Session")
@@ -689,7 +770,9 @@ class SubscriptionSearchOper(DbOper):
         ).scalar())
 
     def _refresh_batch(self, batch_id: str, *, now: str, error: Optional[str]) -> None:
-        """依据所属任务终态重新计算批次计数和聚合状态。"""
+        """
+        依据所属任务终态重新计算批次计数和聚合状态。
+        """
         db = self._db
         if not isinstance(db, Session):
             raise RuntimeError("订阅搜索批次刷新需要调用方提供同步 Session")
@@ -741,3 +824,21 @@ class SubscriptionSearchOper(DbOper):
             ),
             execution_options={"synchronize_session": False},
         )
+
+    def list_tasks(self, *, batch_id: Optional[str] = None, task_id: Optional[str] = None,
+                   batch_ids: Optional[tuple[str, ...]] = None) -> list[SubscriptionSearchTask]:
+        """
+        在当前事务中读取指定批次或单任务，供事件关联和终态收口使用。
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("读取搜索任务需要同步 Session")
+        statement = select(SubscriptionSearchTask)
+        if task_id:
+            statement = statement.where(SubscriptionSearchTask.task_id == task_id)
+        elif batch_id:
+            statement = statement.where(SubscriptionSearchTask.batch_id == batch_id)
+        elif batch_ids is not None:
+            statement = statement.where(SubscriptionSearchTask.batch_id.in_(batch_ids))
+        else:
+            return []
+        return list(self._db.execute(statement).scalars().all())

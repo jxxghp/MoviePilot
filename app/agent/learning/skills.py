@@ -1,4 +1,6 @@
-"""用户独立的技能维护：原子批次、所有权保护与本轮写前读取。"""
+"""
+用户独立的技能维护：原子批次、所有权保护与本轮写前读取。
+"""
 
 import hashlib
 import json
@@ -11,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from app.agent.learning.files import contained_path, mutation_lock, read_text, write_text
 from app.agent.learning.matching import format_no_match_hint, fuzzy_find_and_replace
@@ -30,7 +32,9 @@ from app.agent.skills.metadata import SkillMetadata, parse_skill_metadata
 
 
 def validate_document(name: str, content: str, *, new: bool = False) -> SkillMetadata:
-    """先验证可被现有加载器识别，拒绝通过技能前言扩展工具或 API 权限。"""
+    """
+    先验证可被现有加载器识别，拒绝通过技能前言扩展工具或 API 权限。
+    """
     metadata = parse_skill_metadata(content, f'{name}/SKILL.md', name)
     if metadata is None or metadata['name'] != name:
         raise ValueError('SKILL.md 需要与名称一致的 name、description 及 YAML 前言')
@@ -49,11 +53,15 @@ def validate_document(name: str, content: str, *, new: bool = False) -> SkillMet
 
 
 class SkillLibrary:
-    """只写当前用户个人库；公共、外部与无来源记录的技能对后台只读。"""
+    """
+    只写当前用户个人库；公共、外部与无来源记录的技能对后台只读。
+    """
 
     def __init__(self, root: Path, *, public_roots: tuple[Path, ...] = (), background: bool = False,
                  source: dict[str, Any] | None = None, cancelled: Callable[[], bool] = lambda: False) -> None:
-        """宿主绑定目录、执行来源与取消状态，模型参数不参与身份和所有权判断。"""
+        """
+        宿主绑定目录、执行来源与取消状态，模型参数不参与身份和所有权判断。
+        """
         self.root = root
         self.public_roots = public_roots
         self.background = background
@@ -62,12 +70,16 @@ class SkillLibrary:
         self._reads: dict[str, str] = {}
 
     def reset_reads(self) -> None:
-        """新前台轮次清除旧读取标记，后台复盘使用新实例单独登记。"""
+        """
+        新前台轮次清除旧读取标记，后台复盘使用新实例单独登记。
+        """
         self._reads.clear()
 
     @staticmethod
     def _documents(root: Path) -> list[Path]:
-        """只发现技能及一层分类目录，隐藏事务、其他用户和符号链接不进入目录。"""
+        """
+        只发现技能及一层分类目录，隐藏事务、其他用户和符号链接不进入目录。
+        """
         if not root.is_dir() or root.is_symlink():
             return []
         result = []
@@ -82,7 +94,9 @@ class SkillLibrary:
         return result
 
     def catalog(self) -> list[SkillMetadata]:
-        """个人技能不覆盖公共同名项，下一次加载即可见到已提交的技能。"""
+        """
+        个人技能不覆盖公共同名项，下一次加载即可见到已提交的技能。
+        """
         result: dict[str, SkillMetadata] = {}
         for root in (*self.public_roots, self.root):
             for path in self._documents(root):
@@ -92,7 +106,9 @@ class SkillLibrary:
         return list(result.values())
 
     def _find(self, name: str) -> Path | None:
-        """优先公共目录定位同名项，不能以同名个人技能冒充既有授权技能。"""
+        """
+        优先公共目录定位同名项，不能以同名个人技能冒充既有授权技能。
+        """
         for meta in self.catalog():
             if meta['name'] == name:
                 return Path(meta['path']).parent
@@ -100,7 +116,9 @@ class SkillLibrary:
 
     @staticmethod
     def _target(directory: Path, file_path: str) -> Path:
-        """支持文件仅能位于明确允许的包内目录，所有权 sidecar 不可由工具改写。"""
+        """
+        支持文件仅能位于明确允许的包内目录，所有权 sidecar 不可由工具改写。
+        """
         parts = Path(file_path).parts
         skill_document = bool(parts and parts[-1] == 'SKILL.md' and len(parts) in {1, 2})
         if not skill_document and (len(parts) < 2 or parts[0] not in {'references', 'templates', 'scripts', 'assets'}):
@@ -108,7 +126,9 @@ class SkillLibrary:
         return contained_path(directory, file_path)
 
     def view(self, name: str, file_path: str = 'SKILL.md') -> dict[str, Any]:
-        """实际读完整文件后记录版本；主对话曾引用文件不等于本次复盘已读。"""
+        """
+        实际读完整文件后记录版本；主对话曾引用文件不等于本次复盘已读。
+        """
         with mutation_lock(self.root):
             directory = self._find(name)
             if directory is None:
@@ -120,7 +140,9 @@ class SkillLibrary:
                         editable=directory.is_relative_to(self.root), source='personal' if directory.is_relative_to(self.root) else 'public')
 
     def _ownership(self) -> dict[str, Any]:
-        """损坏的来源记录不能被当作空库从而取得后台写入权限。"""
+        """
+        损坏的来源记录不能被当作空库从而取得后台写入权限。
+        """
         path = contained_path(self.root, '.ownership.json')
         if not path.exists():
             return {}
@@ -130,7 +152,9 @@ class SkillLibrary:
         return value
 
     def _guard(self, name: str, directory: Path, owners: dict[str, Any]) -> None:
-        """来源与 pinned 标志由宿主 sidecar 判定；未知来源的后台写入拒绝执行。"""
+        """
+        来源与 pinned 标志由宿主 sidecar 判定；未知来源的后台写入拒绝执行。
+        """
         if not directory.is_relative_to(self.root):
             raise ValueError('公共或外部技能受保护；不能由个人学习工具修改')
         record = owners.get(name)
@@ -138,14 +162,18 @@ class SkillLibrary:
             raise ValueError('后台只能维护未固定的 agent 自建技能；用户技能受保护')
 
     def _check_read(self, path: Path) -> None:
-        """后台必须本轮读取准确目标，读后被修改的文件也必须重新读取。"""
+        """
+        后台必须本轮读取准确目标，读后被修改的文件也必须重新读取。
+        """
         if self.background and path.exists():
             digest = hashlib.sha256(read_text(path).encode()).hexdigest()
             if self._reads.get(str(path)) != digest:
                 raise ValueError('写前请用 skill_view 重新读取该文件，再基于当前内容修改')
 
     def _plan(self, operations: list[SkillOperation], owners: dict[str, Any]) -> dict[Path, str | None]:
-        """先在内存中完整验证批次，后续失败不应留下前序操作的半成品。"""
+        """
+        先在内存中完整验证批次，后续失败不应留下前序操作的半成品。
+        """
         writes: dict[Path, str | None] = {}
         locations = {item['name']: Path(item['path']).parent for item in self.catalog()}
         content: str | None
@@ -187,7 +215,9 @@ class SkillLibrary:
 
     @staticmethod
     def _new_content(operation: SkillOperation, target: Path, writes: dict[Path, str | None]) -> str | None:
-        """依次尝试九级匹配、歧义拒绝和转义保护，保留原文缩进及 Unicode。"""
+        """
+        依次尝试九级匹配、歧义拒绝和转义保护，保留原文缩进及 Unicode。
+        """
         if isinstance(operation, RewriteSkill):
             return operation.content
         if isinstance(operation, WriteSkillFile):
@@ -211,7 +241,9 @@ class SkillLibrary:
         return updated
 
     def manage(self, request: ManageSkillsInput) -> dict[str, Any]:
-        """有序批次共用写锁和回滚边界，只有实际落盘才返回成功回执。"""
+        """
+        有序批次共用写锁和回滚边界，只有实际落盘才返回成功回执。
+        """
         with mutation_lock(self.root):
             owners = self._ownership()
             deletes = [operation for operation in request.operations if isinstance(operation, DeleteSkill)]
@@ -225,7 +257,9 @@ class SkillLibrary:
             return dict(success=True, applied=len(request.operations), skills=list(dict.fromkeys(op.name for op in request.operations)))
 
     def _commit(self, writes: dict[Path, str | None]) -> None:
-        """保留每个目标原文，发生普通 I/O 错误或取消时恢复已写文件。"""
+        """
+        保留每个目标原文，发生普通 I/O 错误或取消时恢复已写文件。
+        """
         originals = {path: read_text(path) if path.exists() else None for path in writes}
         new_directories = {parent for path in writes for parent in path.parents
                            if parent.is_relative_to(self.root) and not parent.exists()}
@@ -254,7 +288,9 @@ class SkillLibrary:
             raise
 
     def _delete(self, operation: DeleteSkill, owners: dict[str, Any]) -> dict[str, Any]:
-        """后台只接受有合并目标的可恢复归档，前台删除先移入隔离目录。"""
+        """
+        后台只接受有合并目标的可恢复归档，前台删除先移入隔离目录。
+        """
         directory = self._find(operation.name)
         if directory is None:
             raise ValueError('技能不存在')
@@ -285,7 +321,9 @@ class SkillLibrary:
         return dict(success=True, deleted=operation.name, absorbed_into=operation.absorbed_into)
 
     def _archive(self, operation: DeleteSkill, directory: Path, owners: dict[str, Any]) -> dict[str, Any]:
-        """保存完整技能包及原所有权，失败时恢复原目录，不把归档当硬删除。"""
+        """
+        保存完整技能包及原所有权，失败时恢复原目录，不把归档当硬删除。
+        """
         archive = contained_path(self.root, f'.archive/{operation.name}')
         if archive.exists():
             stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
@@ -305,7 +343,9 @@ class SkillLibrary:
         return dict(success=True, archived=operation.name, absorbed_into=operation.absorbed_into)
 
     def _restore(self, name: str) -> dict[str, Any]:
-        """用户恢复优先精确名称，其次最新时间后缀；拒绝覆盖现有或公共技能。"""
+        """
+        用户恢复优先精确名称，其次最新时间后缀；拒绝覆盖现有或公共技能。
+        """
         destination = contained_path(self.root, name)
         if self._find(name) is not None or destination.exists():
             raise ValueError('同名技能或目标目录已存在，不能覆盖恢复')
@@ -334,7 +374,9 @@ class SkillLibrary:
         return dict(success=True, restored=name)
 
     def control(self, name: str, action: str) -> dict[str, Any]:
-        """宿主显式用户命令变更个人技能的自动维护资格，公共技能始终不能接管。"""
+        """
+        宿主显式用户命令变更个人技能的自动维护资格，公共技能始终不能接管。
+        """
         with mutation_lock(self.root):
             if action == 'restore':
                 return self._restore(name)

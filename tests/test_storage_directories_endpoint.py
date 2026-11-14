@@ -1,4 +1,6 @@
-"""存储目录与存储选项查询接口测试。"""
+"""
+存储目录与存储选项查询接口测试。
+"""
 
 from unittest.mock import patch
 
@@ -7,7 +9,9 @@ from app.schemas.system import StorageConf, TransferDirectoryConf
 
 
 def test_directory_settings_projects_complete_selection_contract() -> None:
-    """目录设置查询应返回分类引用和所有路径分层开关。"""
+    """
+    目录设置查询应返回分类引用和所有路径分层开关。
+    """
     directory = TransferDirectoryConf(
         name="日番库",
         download_type_folder=True,
@@ -37,7 +41,9 @@ def test_directory_settings_projects_complete_selection_contract() -> None:
 
 
 def test_storage_options_excludes_connection_configuration() -> None:
-    """存储选项只能投影显示名称和类型，不得返回连接配置。"""
+    """
+    存储选项只能投影显示名称和类型，不得返回连接配置。
+    """
     storages = [
         StorageConf(type="local", name="本地", config={"path": "/secret"}),
         StorageConf(type="rclone", name="网盘", config={"password": "secret"}),
@@ -56,7 +62,9 @@ def test_storage_options_excludes_connection_configuration() -> None:
 
 
 def test_transfer_directory_round_trip_keeps_stable_reference_snapshot() -> None:
-    """SystemConfig JSON 往返不得丢失目录分类 ID 或路径快照。"""
+    """
+    SystemConfig JSON 往返不得丢失目录分类 ID 或路径快照。
+    """
     payload = {
         "name": "现场音乐",
         "media_type": "music",

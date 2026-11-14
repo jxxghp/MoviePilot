@@ -1,4 +1,6 @@
-"""宿主运行时、领域投影与共享依赖的唯一组合根。"""
+"""
+宿主运行时、领域投影与共享依赖的唯一组合根。
+"""
 
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ from app.application.history import (
     configure_transfer_history_repository,
     reset_transfer_history_repository,
 )
+from app.application.history.registration import LocalRegistrationEntry
 from app.application.site.contract import SiteRepository
 from app.application.site.health import (
     SiteHealthService,
@@ -60,7 +63,19 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeDependencies:
-    """保存 HostRuntime、Agent 与 Chain 复用的同一批有状态依赖。"""
+    """
+    保存 HostRuntime、Agent 与 Chain 复用的同一批有状态依赖。
+
+    :param download_history: 下载历史的持久化查询与写入端口
+    :param transfer_history: 整理历史的持久化查询端口
+    :param site: 站点数据仓储
+    :param subscription: 订阅数据仓储
+    :param subscription_history: 订阅历史查询端口
+    :param transfer_execution: 整理执行状态仓储
+    :param message_helper: 封装消息提交和状态查询的应用门面
+    :param message_queue: 进程级消息队列管理对象
+    :param subscription_search: 可选订阅搜索仓储；未配置时为 None
+    """
 
     download_history: DownloadHistoryRepository
     transfer_history: TransferHistoryRepository
@@ -75,7 +90,18 @@ class RuntimeDependencies:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeInputs:
-    """描述构造 HostRuntime 所需的已完成组合输入。"""
+    """
+    描述构造 HostRuntime 所需的已完成组合输入。
+
+    :param configuration: 配置与用户设置组合结果
+    :param database: 数据库查询与插件持久化组合结果
+    :param agent: Agent 数据端口及执行服务组合结果
+    :param authentication: 用户、通行密钥等认证端口组合结果
+    :param classification: 媒体分类运行时规则
+    :param classification_execution: 分类规则执行端口
+    :param dependencies: 各应用领域已注入的仓储和消息服务
+    :param tasks: 当前进程的后台任务登记器
+    """
 
     configuration: ConfigurationComposition
     database: DatabaseComposition
@@ -89,7 +115,15 @@ class RuntimeInputs:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeComposition:
-    """保存宿主运行时及其兼容与应用服务投影。"""
+    """
+    保存宿主运行时及其兼容与应用服务投影。
+
+    :param runtime: 一个 FastAPI lifespan 内共享的宿主运行时
+    :param dependencies: 组合过程中保留的领域数据端口
+    :param api_data: 供 API 依赖读取的应用数据端口集合
+    :param site_query: 站点目录查询服务
+    :param site_health: 站点连通性与健康状态服务
+    """
 
     runtime: HostRuntime
     dependencies: RuntimeDependencies
@@ -99,7 +133,9 @@ class RuntimeComposition:
 
 
 def compose_runtime_dependencies() -> RuntimeDependencies:
-    """构造一个 lifespan 内由 Agent、Chain 与 HostRuntime 共享的依赖。"""
+    """
+    构造一个 lifespan 内由 Agent、Chain 与 HostRuntime 共享的依赖。
+    """
     # 具体 DB adapter 延迟到执行期加载，导入组合 owner 不得启动或牵入数据库 worker。
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
@@ -150,9 +186,13 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
 
 
 def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
-    """从同一批组合输入构造 HostRuntime 及旧 API 数据投影。"""
+    """
+    从同一批组合输入构造 HostRuntime 及旧 API 数据投影。
+    """
     # 领域 Runtime 的具体持久化投影只在组合阶段解析，保持模块冷导入合同。
+    from app.adapters.system.registration import probe_local_entry
     from app.db.adapters.history.download import SessionDownloadHistoryRepository
+    from app.db.adapters.history.registration import TransferRegistrationScopeFactory
     from app.db.adapters.history.transfer import SessionTransferHistoryRepository
     from app.db.adapters.outbox import (
         SqlAlchemyAsyncOutboxDispatchStore,
@@ -163,13 +203,14 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
         SessionSubscriptionHistoryRepository,
         SessionSubscriptionRepository,
     )
+    from app.db.adapters.subscriptionactivity import TransactionalSubscriptionActivityRepository
     from app.db.adapters.subscriptionstatus import (
         SessionSubscriptionExecutionStatusRepository,
     )
     from app.db.oper.mediaserver import MediaServerOper
     from app.db.oper.message import MessageOper
     from app.db.oper.workflow import WorkflowOper
-    from app.db.session import async_session_scope, get_async_db, get_db
+    from app.db.session import SessionFactory, async_session_scope, get_async_db, get_db
     from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
     from app.startup.composition.subscription import (
         async_rule_group_mutation_scope,
@@ -187,6 +228,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
         standalone_user=inputs.authentication.standalone_user,
         system_config=inputs.authentication.system_config,
         passkey=inputs.authentication.passkey,
+        widget_scope=inputs.authentication.widget_scope,
     )
     async_rule_scope = partial(
         async_rule_group_mutation_scope,
@@ -218,6 +260,8 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             transfer_mutation_repository=SessionTransferHistoryRepository,
             media_server_repository=cast(RepositoryFactory, MediaServerOper),
             transfer_execution_repository=dependencies.transfer_execution,
+            registration_scope=TransferRegistrationScopeFactory(SessionFactory),
+            registration_local_entry=partial(probe_local_entry, entry_factory=LocalRegistrationEntry),
         ),
         site=SiteRuntime(
             repository=SessionSiteRepository,
@@ -229,6 +273,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             history_repository=SessionSubscriptionHistoryRepository,
             execution_status_repository=SessionSubscriptionExecutionStatusRepository,
             search_repository=dependencies.subscription_search,
+            activity_repository=TransactionalSubscriptionActivityRepository(SessionFactory, async_session_scope),
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
             dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(async_session_scope),
@@ -293,7 +338,9 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
 
 
 def publish_runtime(composition: RuntimeComposition) -> None:
-    """发布 HostRuntime 派生的兼容端口与共享领域服务。"""
+    """
+    发布 HostRuntime 派生的兼容端口与共享领域服务。
+    """
     configure_api_data_runtime(composition.api_data)
     configure_transfer_history_repository(lambda: composition.dependencies.transfer_history)
     configure_site_query_service(composition.site_query)
@@ -301,7 +348,9 @@ def publish_runtime(composition: RuntimeComposition) -> None:
 
 
 def reset_runtime() -> None:
-    """撤销当前 lifespan 由运行时组合根发布的全部投影。"""
+    """
+    撤销当前 lifespan 由运行时组合根发布的全部投影。
+    """
     reset_site_health_service()
     reset_site_query_service()
     reset_transfer_history_repository()

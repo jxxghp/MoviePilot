@@ -1,3 +1,7 @@
+"""
+宿主模块目录与生命周期门面，协调配置化模块启动及能力分发。
+"""
+
 from __future__ import annotations
 
 import sys
@@ -13,7 +17,8 @@ from app.runtime.capabilities.model import (
     CapabilitySpec,
 )
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.events import Event, EventHandlerBinding, eventmanager
+from app.runtime.event.binding import EventHandlerBinding
+from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.module.adapter import (
     HOST_MODULE_KIND,
     MODULE_ENABLE_SETTING,
@@ -38,7 +43,9 @@ from app.schemas.types import (
 
 
 class ModuleManager(metaclass=Singleton):
-    """以 Capability Runtime 管理宿主模块，并保留旧插件同步查询合同。"""
+    """
+    以 Capability Runtime 管理宿主模块，并保留旧插件同步查询合同。
+    """
 
     SubType = Union[
         DownloaderType,
@@ -50,7 +57,9 @@ class ModuleManager(metaclass=Singleton):
     ]
 
     def __init__(self) -> None:
-        """发现 data-only manifest，并按当前配置激活所需宿主模块。"""
+        """
+        发现 data-only manifest，并按当前配置激活所需宿主模块。
+        """
         self._lock = threading.RLock()
         self._lifecycle_lock = threading.RLock()
         self._modules: dict[str, type] = {}
@@ -77,7 +86,9 @@ class ModuleManager(metaclass=Singleton):
 
     @staticmethod
     def _observe_transition(observation: CapabilityObservation) -> None:
-        """把 Runtime 的稳定转换结果接入现有日志面。"""
+        """
+        把 Runtime 的稳定转换结果接入现有日志面。
+        """
         if observation.outcome == "failed":
             logger.error(
                 "Host Module %s %s 失败：%s",
@@ -96,7 +107,9 @@ class ModuleManager(metaclass=Singleton):
 
     @staticmethod
     def _event_changed_keys(event: Optional[Event]) -> set[str]:
-        """兼容对象和 dict 两种配置事件载荷。"""
+        """
+        兼容对象和 dict 两种配置事件载荷。
+        """
         if not event:
             return set()
         event_data = event.event_data
@@ -109,13 +122,17 @@ class ModuleManager(metaclass=Singleton):
         return {str(key) for key in (keys or set())}
 
     def _remember_materialized(self, module_id: str, implementation: type) -> type:
-        """更新旧 `_modules` 视图，但不改变能力资源生命周期。"""
+        """
+        更新旧 `_modules` 视图，但不改变能力资源生命周期。
+        """
         with self._lock:
             self._modules[module_id] = implementation
         return implementation
 
     def _consumer_materialized_class(self, spec: CapabilitySpec) -> Optional[type]:
-        """识别插件显式旧导入产生的真实类，不触发新的 Python import。"""
+        """
+        识别插件显式旧导入产生的真实类，不触发新的 Python import。
+        """
         module_name, symbol_name = spec.entrypoint.split(":", maxsplit=1)
         module = sys.modules.get(module_name)
         namespace = getattr(module, "__dict__", None) if module is not None else None
@@ -125,7 +142,9 @@ class ModuleManager(metaclass=Singleton):
         return implementation if isinstance(implementation, type) else None
 
     def _refresh_running_projection(self) -> None:
-        """从 Runtime 已发布实例重建插件可见的运行模块字典。"""
+        """
+        从 Runtime 已发布实例重建插件可见的运行模块字典。
+        """
         running = {
             spec.id: instance
             for spec in self._specs
@@ -138,7 +157,9 @@ class ModuleManager(metaclass=Singleton):
         self,
         owner_class: type,
     ) -> Optional[EventHandlerBinding]:
-        """按类型身份绑定管理器自身或运行模块，停止态阻断 fallback 构造。"""
+        """
+        按类型身份绑定管理器自身或运行模块，停止态阻断 fallback 构造。
+        """
         if owner_class is type(self):
             return EventHandlerBinding(
                 instance=self,
@@ -168,7 +189,9 @@ class ModuleManager(metaclass=Singleton):
         changed_keys: Optional[set[str]] = None,
         reload_running: bool = False,
     ) -> None:
-        """以一次配置快照串行协调需要启动、重载或停止的能力。"""
+        """
+        以一次配置快照串行协调需要启动、重载或停止的能力。
+        """
         with self._lifecycle_lock:
             selected = tuple(
                 spec
@@ -205,11 +228,15 @@ class ModuleManager(metaclass=Singleton):
             self._refresh_running_projection()
 
     def load_modules(self) -> None:
-        """按当前配置启动未运行模块；已运行模块保持当前 generation。"""
+        """
+        按当前配置启动未运行模块；已运行模块保持当前 generation。
+        """
         self._reconcile(reason="module_manager_load")
 
     def handle_config_changed(self, event: Event) -> None:
-        """配置变更时仅协调 watch 命中的能力，并保证单一生命周期 writer。"""
+        """
+        配置变更时仅协调 watch 命中的能力，并保证单一生命周期 writer。
+        """
         changed_keys = self._event_changed_keys(event)
         if not changed_keys:
             return
@@ -220,7 +247,9 @@ class ModuleManager(metaclass=Singleton):
         )
 
     def stop(self) -> None:
-        """停止全部运行模块但保留 Runtime，使旧插件可随后再次 load。"""
+        """
+        停止全部运行模块但保留 Runtime，使旧插件可随后再次 load。
+        """
         logger.info("正在停止所有模块...")
         with self._lifecycle_lock:
             for spec in reversed(self._specs):
@@ -238,7 +267,9 @@ class ModuleManager(metaclass=Singleton):
         logger.info("所有模块停止完成")
 
     def shutdown(self) -> bool:
-        """不可逆停止 Runtime，并返回所有模块 owner 是否收敛。"""
+        """
+        不可逆停止 Runtime，并返回所有模块 owner 是否收敛。
+        """
         logger.info("正在关闭模块运行时...")
         with self._lifecycle_lock:
             converged = self._runtime.shutdown(reason="application_shutdown")
@@ -255,14 +286,18 @@ class ModuleManager(metaclass=Singleton):
         return converged
 
     def reload(self) -> None:
-        """保留旧插件可观察的 stop、load、ModuleReload 同步顺序。"""
+        """
+        保留旧插件可观察的 stop、load、ModuleReload 同步顺序。
+        """
         with self._lifecycle_lock:
             self.stop()
             self.load_modules()
             eventmanager.send_event(etype=EventType.ModuleReload, data={})
 
     def test(self, modleid: str) -> Tuple[bool, str]:
-        """测试已运行模块；未启用模块保持旧合同返回 `(False, "")`。"""
+        """
+        测试已运行模块；未启用模块保持旧合同返回 `(False, "")`。
+        """
         module = self.get_running_module(modleid)
         if module is None:
             return False, ""
@@ -272,8 +307,10 @@ class ModuleManager(metaclass=Singleton):
         return True, "模块不支持测试"
 
     @staticmethod
-    def check_setting(setting: Optional[tuple]) -> bool:
-        """保留旧模块开关的 truthy 与 membership 判定语义。"""
+    def check_setting(setting: Optional[tuple[str, object]]) -> bool:
+        """
+        保留旧模块开关的 truthy 与 membership 判定语义。
+        """
         if not setting:
             return True
         switch, value = setting
@@ -285,40 +322,52 @@ class ModuleManager(metaclass=Singleton):
         return value in option
 
     def get_running_module(self, module_id: str) -> Any:
-        """根据模块 ID 返回已发布的运行实例，不触发物化。"""
+        """
+        根据模块 ID 返回已发布的运行实例，不触发物化。
+        """
         if not module_id or self._runtime.get_spec(module_id) is None:
             return None
         return self._runtime.get_running(module_id)
 
     def _running_snapshot(self) -> tuple[Any, ...]:
-        """直接读取 Runtime 发布视图，转换期间不暴露旧或候选实例。"""
+        """
+        直接读取 Runtime 发布视图，转换期间不暴露旧或候选实例。
+        """
         return tuple(
             instance
             for spec in self._specs
             if (instance := self._runtime.get_running(spec.id)) is not None
         )
 
-    def get_running_modules(self, method: str) -> Generator:
-        """返回实现了指定方法的运行模块快照。"""
+    def get_running_modules(self, method: str) -> Generator[object, None, None]:
+        """
+        返回实现了指定方法的运行模块快照。
+        """
         for module in self._running_snapshot():
             candidate = getattr(module, method, None)
             if callable(candidate) and ObjectUtils.check_method(candidate):
                 yield module
 
-    def get_running_type_modules(self, module_type: ModuleType) -> Generator:
-        """返回指定类型的运行模块快照。"""
+    def get_running_type_modules(self, module_type: ModuleType) -> Generator[object, None, None]:
+        """
+        返回指定类型的运行模块快照。
+        """
         for module in self._running_snapshot():
             if module.get_type() == module_type:
                 yield module
 
-    def get_running_subtype_module(self, module_subtype: SubType) -> Generator:
-        """返回指定子类型的运行模块快照。"""
+    def get_running_subtype_module(self, module_subtype: SubType) -> Generator[object, None, None]:
+        """
+        返回指定子类型的运行模块快照。
+        """
         for module in self._running_snapshot():
             if module.get_subtype() == module_subtype:
                 yield module
 
     def get_module(self, module_id: str) -> Any:
-        """显式物化并返回 canonical 模块类；失败保持旧合同返回 None。"""
+        """
+        显式物化并返回 canonical 模块类；失败保持旧合同返回 None。
+        """
         if not module_id or self._runtime.get_spec(module_id) is None:
             return None
         with self._lock:
@@ -336,22 +385,30 @@ class ModuleManager(metaclass=Singleton):
         return self._remember_materialized(module_id, implementation)
 
     def get_modules(self) -> dict[str, type]:
-        """兼容性显式物化全部真实类；单个失败不阻断其它模块。"""
+        """
+        兼容性显式物化全部真实类；单个失败不阻断其它模块。
+        """
         for spec in self._specs:
             self.get_module(spec.id)
         with self._lock:
             return dict(self._modules)
 
     def get_module_ids(self) -> List[str]:
-        """从 manifest 返回全部模块 ID，不物化实现。"""
+        """
+        从 manifest 返回全部模块 ID，不物化实现。
+        """
         return [spec.id for spec in self._specs]
 
     def list_specs(self) -> tuple[CapabilitySpec, ...]:
-        """返回全部轻量模块声明，包含物化或启动失败的能力。"""
+        """
+        返回全部轻量模块声明，包含物化或启动失败的能力。
+        """
         return self._specs
 
     def list_switchable_specs(self) -> tuple[CapabilitySpec, ...]:
-        """返回可由用户统一开关的内置媒体模块声明，排除核心模块及已有独立开关的模块。"""
+        """
+        返回可由用户统一开关的内置媒体模块声明，排除核心模块及已有独立开关的模块。
+        """
         return tuple(
             spec
             for spec in self._specs
@@ -360,7 +417,7 @@ class ModuleManager(metaclass=Singleton):
 
     def list_enabled_specs(self) -> tuple[CapabilitySpec, ...]:
         """
-        返回当前配置下应对外展示的模块声明
+        返回当前配置下应对外展示的模块声明。
 
         该视图按 selector 重新计算“应启用”状态，因此既不会展示未配置的服务模块，
         也不会因为模块启动失败而把应启用的模块从健康检查中隐藏。
@@ -373,5 +430,7 @@ class ModuleManager(metaclass=Singleton):
         )
 
     def get_specs(self) -> tuple[CapabilitySpec, ...]:
-        """兼容内部调用命名，返回与 `list_specs` 相同的声明快照。"""
+        """
+        兼容内部调用命名，返回与 `list_specs` 相同的声明快照。
+        """
         return self.list_specs()

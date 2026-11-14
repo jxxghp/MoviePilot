@@ -1,6 +1,11 @@
+"""
+文件管理模块的存储路由、整理计划边界和标准媒体库查询。
+"""
+
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from app.adapters.system.fsproxy import fsproxy
 from app.adapters.system.host import SystemUtils
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import MessageHelper
@@ -17,64 +22,87 @@ from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.file import StorageUsage
+from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem, FileItemQueryResult, StorageUsage
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType, StorageAction
-from app.schemas.workflow import FileItem
 
 
 class FileManagerModule(_ModuleBase):
     """
-    文件整理模块
+    提供存储能力调度、媒体文件查询和整理计划执行入口。
+
+    按存储标识解析适配器；整理路径规划与写入执行分开，具体传输交给 TransHandler。
     """
 
-    _storage_schemas = []
-    _support_storages = []
+    _storage_schemas: list[type[StorageBase]] = []
+    _support_storages: list[str] = []
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        初始化文件整理使用的目录和消息能力。
+        """
         super().__init__()
         self.directoryhelper = DirectoryHelper()
         self.messagehelper = MessageHelper()
 
     def init_module(self) -> None:
-        """初始化文件整理模块支持的存储实现"""
-        # 加载模块
+        """
+        发现声明存储类型的实现，并建立模块支持的存储标识列表。
+
+        此阶段仅加载实现类，不主动实例化各存储客户端。
+        """
         self._storage_schemas = ModuleHelper.load('app.modules.filemanager.storages',
                                                   filter_func=lambda _, obj: hasattr(obj, 'schema') and obj.schema)
-        # 获取存储类型
         self._support_storages = [storage.schema.value for storage in self._storage_schemas if storage.schema]
 
     @staticmethod
     def get_name() -> str:
-        """获取模块名称"""
+        """
+        返回供用户选择的文件整理模块名称。
+
+        :return: 固定为文件整理
+        """
         return "文件整理"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        返回文件整理模块所属的大类。
+
+        :return: 其他能力模块类型
         """
         return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
         """
-        获取模块子类型
+        返回文件整理能力的模块子类型。
+
+        :return: 文件管理子类型
         """
         return OtherModulesType.FileManager
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        返回同一能力接口内的模块选择优先级。
+
+        :return: 固定为 4，数值越小越优先
         """
         return 4
 
     def stop(self) -> bool:
-        """关闭已物化存储并释放其弱单例，未使用实现不会因关停而创建。"""
+        """
+        关闭已创建的存储实例并释放其弱单例。
+
+        未使用的实现不会因关停而创建；关闭返回 False 或抛出异常时保留实例供后续清理。
+
+        :return: 所有已创建实例均关闭并释放成功时为 True；任一失败时为 False
+        """
         converged = True
         for storage_schema in self._storage_schemas:
             get_existing = getattr(storage_schema, "get_existing_instance", None)
@@ -101,14 +129,16 @@ class FileManagerModule(_ModuleBase):
 
     def test(self) -> Tuple[bool, str]:
         """
-        测试模块连接性
+        检查目录配置、存储凭据和整理方式是否可用。
+
+        本地目录检查存在性，启用本地硬链接时还检查同盘约束；远端检查语义由存储实现决定。
+
+        :return: 检查结果及首个失败原因；成功时原因为空字符串
         """
-        # 检查目录
         dirs = self.directoryhelper.get_dirs()
         if not dirs:
             return False, "未设置任何目录"
         for d in dirs:
-            # 下载目录
             download_path = d.download_path
             if not download_path:
                 return False, f"{d.name} 的下载目录未设置"
@@ -121,13 +151,12 @@ class FileManagerModule(_ModuleBase):
                     return False, f"{d.name} 的媒体库目录未设置"
                 if d.library_storage == "local" and not Path(library_path).exists():
                     return False, f"{d.name} 的媒体库目录 {library_path} 不存在"
-                # 硬链接
-                if d.transfer_type == "link" \
+                if d.transfer_type in ("link", "reflink") \
                         and d.storage == "local" \
                         and d.library_storage == "local" \
                         and not SystemUtils.is_same_disk(Path(download_path), Path(library_path)):
-                    return False, f"{d.name} 的下载目录 {download_path} 与媒体库目录 {library_path} 不在同一磁盘，无法硬链接"
-            # 存储
+                    action_name = "引用链接" if d.transfer_type == "reflink" else "硬链接"
+                    return False, f"{d.name} 的下载目录 {download_path} 与媒体库目录 {library_path} 不在同一磁盘，无法{action_name}"
             storage_oper = self.__get_storage_oper(d.storage)
             if storage_oper:
                 if not storage_oper.check():
@@ -137,9 +166,13 @@ class FileManagerModule(_ModuleBase):
 
         return True, ""
 
-    def __get_storage_oper(self, _storage: str, _func: Optional[str] = None) -> Optional[StorageBase]:
+    def __get_storage_oper(self, _storage: Optional[str], _func: Optional[str] = None) -> Optional[StorageBase]:
         """
-        获取存储操作对象
+        按存储标识和可选方法要求取得适配器实例。
+
+        :param _storage: 已注册的存储标识；为空时无匹配结果
+        :param _func: 要求实现的方法名；为空时不限制方法
+        :return: 匹配的存储实例；无匹配时返回 None
         """
         for storage_schema in self._storage_schemas:
             if storage_schema.schema \
@@ -148,15 +181,26 @@ class FileManagerModule(_ModuleBase):
                 return storage_schema()
         return None
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        pass
-
-    def storage_manage(self, storage: str, action: StorageAction, **params) -> Dict[str, Any]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
-        网盘存储统一管理入口，按存储标识路由
+        保留文件整理模块的设置初始化扩展入口。
 
-        动作语义与参数解释交给具体存储实现，
-        统一返回 {"success": bool, "message": ..., "data": ...}
+        :return: 当前返回 None，不提供额外设置初始化结果
+        """
+        return None
+
+    def storage_manage(
+        self, storage: str, action: StorageAction, **params: Any
+    ) -> Dict[str, Any]:
+        """
+        按存储标识路由配置、容量和登录管理操作。
+
+        不支持的存储或动作返回失败结果；具体实现抛出的异常不在此处统一捕获。
+
+        :param storage: 已注册的存储标识
+        :param action: 存储管理动作枚举或其对应值
+        :param params: 具体动作参数；保存配置读取 conf，登录动作原样透传
+        :return: 含 success 的结果字典；按动作附带 message 或 data
         """
         try:
             action = StorageAction(action)
@@ -205,31 +249,33 @@ class FileManagerModule(_ModuleBase):
     def recommend_name(meta: MetaBase, mediainfo: MediaInfo,
                        episodes_info: Optional[List[TmdbEpisode]] = None) -> Optional[str]:
         """
-        获取重命名后的名称
-        :param meta: 元数据
-        :param mediainfo: 媒体信息
-        :param episodes_info: 集信息，由调用方链层预先获取
-        :return: 重命名后的名称（含目录）
+        根据配置的重命名模板生成建议的媒体相对路径。
+
+        :param meta: 文件名解析得到的元数据，原始标题用于推导扩展名
+        :param mediainfo: 已识别媒体信息，决定模板和命名变量
+        :param episodes_info: 由链层预取的当前季集信息；可为空
+        :return: 包含目录的建议路径文本；无法生成路径时返回空字符串
         """
         handler = TransHandler()
-        # 重命名格式
         rename_format = get_runtime_setting('RENAME_FORMAT')(mediainfo.type)
-        # 获取重命名后的名称
         path = handler.get_rename_path(
             template_string=rename_format,
             rename_dict=handler.get_naming_dict(meta=meta,
                                                 mediainfo=mediainfo,
                                                 episodes_info=episodes_info,
-                                                file_ext=Path(meta.title).suffix)
+                                                file_ext=Path(meta.title or "").suffix)
         )
         return path.as_posix() if path else ""
 
     def list_files(self, fileitem: FileItem, recursion: Optional[bool] = False) -> Optional[List[FileItem]]:
         """
-        浏览文件
-        :param fileitem: 源文件
-        :param recursion: 是否递归，此时只浏览文件
-        :return: 文件项列表
+        通过对应存储列举目录子项或递归收集文件。
+
+        存储查询异常向上传播，递归结果保持存储返回的遍历顺序。
+
+        :param fileitem: 提供存储标识及源路径的文件项
+        :param recursion: 为真时递归进入子目录且只返回文件，默认仅列举直接子项
+        :return: 查询结果列表；不支持该存储时返回 None
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -238,9 +284,12 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
             return None
 
-        def __get_files(_item: FileItem, _r: Optional[bool] = False):
+        def __get_files(_item: FileItem, _r: Optional[bool] = False) -> None:
             """
-            递归处理
+            将当前目录子项追加到外层结果，按需递归子目录。
+
+            :param _item: 当前待查询文件项
+            :param _r: 是否递归并只收集文件
             """
             _items = storage_oper.list(_item)
             if _items:
@@ -253,15 +302,20 @@ class FileManagerModule(_ModuleBase):
                 else:
                     result.extend(_items)
 
-        # 返回结果
-        result = []
+        result: list[FileItem] = []
         __get_files(fileitem, recursion)
 
         return result
 
-    def any_files(self, fileitem: FileItem, extensions: list = None) -> Optional[bool]:
+    def any_files(self, fileitem: FileItem, extensions: Optional[list[str]] = None) -> Optional[bool]:
         """
-        查询当前目录下是否存在指定扩展名任意文件
+        查询目录下是否存在指定扩展名的文件或任意子项。
+
+        提供扩展名过滤时递归检查子目录；未提供时目录子项本身也会满足条件。
+
+        :param fileitem: 待检查目录及其存储标识
+        :param extensions: 带点的小写扩展名列表；为空时只要直接子项非空就返回 True
+        :return: 匹配时为 True，无匹配时为 False，不支持该存储时为 None
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -270,9 +324,12 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
             return None
 
-        def __any_file(_item: FileItem):
+        def __any_file(_item: FileItem) -> bool:
             """
-            递归处理
+            按外层扩展名过滤条件查找任意匹配子项。
+
+            :param _item: 当前待检查的目录项
+            :return: 出现匹配文件或未过滤的非空目录时为 True
             """
             _items = storage_oper.list(_item)
             if _items:
@@ -288,15 +345,15 @@ class FileManagerModule(_ModuleBase):
                             return True
             return False
 
-        # 返回结果
         return __any_file(fileitem)
 
     def create_folder(self, fileitem: FileItem, name: str) -> Optional[FileItem]:
         """
-        创建目录
-        :param fileitem: 源文件
-        :param name: 目录名
-        :return: 创建的目录
+        在指定存储的父目录下创建子目录。
+
+        :param fileitem: 带存储标识的父目录项
+        :param name: 新的直接子目录名称
+        :return: 存储返回的目录项；不支持或创建失败时返回 None
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -308,7 +365,11 @@ class FileManagerModule(_ModuleBase):
 
     def get_folder(self, storage: str, path: Path) -> Optional[FileItem]:
         """
-        获取目录，如目录不存在则创建
+        取得目录并由存储实现按需创建缺失路径。
+
+        :param storage: 已注册的存储标识
+        :param path: 存储内的目录路径
+        :return: 目录项；不支持或无法取得时返回 None
         """
         if storage not in self._support_storages:
             return None
@@ -320,7 +381,10 @@ class FileManagerModule(_ModuleBase):
 
     def delete_file(self, fileitem: FileItem) -> Optional[bool]:
         """
-        删除文件或目录
+        委托对应存储删除文件或目录。
+
+        :param fileitem: 携带存储和文件定位信息的目标项
+        :return: 存储返回的删除结果；未注册存储返回 None，找不到适配器返回 False
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -332,7 +396,11 @@ class FileManagerModule(_ModuleBase):
 
     def rename_file(self, fileitem: FileItem, name: str) -> Optional[bool]:
         """
-        重命名文件或目录
+        委托对应存储重命名文件或目录。
+
+        :param fileitem: 携带存储和文件定位信息的目标项
+        :param name: 新的名称，不包含父目录
+        :return: 存储返回的结果；未注册存储返回 None，找不到适配器返回 False
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -342,9 +410,13 @@ class FileManagerModule(_ModuleBase):
             return False
         return storage_oper.rename(fileitem, name)
 
-    def download_file(self, fileitem: FileItem, path: Path = None) -> Optional[Path]:
+    def download_file(self, fileitem: FileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
-        下载文件
+        委托源存储将文件下载到本地目录。
+
+        :param fileitem: 携带存储和源文件信息的文件项
+        :param path: 本地目标目录；为空时由存储选择默认目录
+        :return: 本地文件路径；不支持或下载失败时返回 None
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -356,7 +428,14 @@ class FileManagerModule(_ModuleBase):
 
     def upload_file(self, fileitem: FileItem, path: Path, new_name: Optional[str] = None) -> Optional[FileItem]:
         """
-        上传文件
+        委托目标存储接收本地文件。
+
+        源文件是否保留以及同名处理方式遵循具体存储的上传契约。
+
+        :param fileitem: 带目标存储标识的目录项
+        :param path: 本地源文件路径
+        :param new_name: 远端文件名；为空时由存储沿用源名称
+        :return: 目标文件项；不支持或上传失败时返回 None
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -366,9 +445,30 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.upload(fileitem, path, new_name)
 
+    def link_file(self, fileitem: FileItem, target_file: Path) -> bool:
+        """
+        在源文件所属存储内创建硬链接。
+
+        :param fileitem: 已存在的源文件项
+        :param target_file: 目标存储中的完整文件路径
+        :return: 存储实现完成链接时返回 True，否则返回 False
+        """
+        if not fileitem.storage or fileitem.storage not in self._support_storages:
+            return False
+        storage_oper = self.__get_storage_oper(fileitem.storage, "link")
+        if not storage_oper:
+            return False
+        return bool(storage_oper.link(fileitem, target_file))
+
     def get_file_item(self, storage: str, path: Path) -> Optional[FileItem]:
         """
-        根据路径严格获取文件项；普通兼容调度仍会隔离异常并投影为空结果。
+        根据路径严格查询文件或目录。
+
+        本方法保留查询异常；普通兼容模块调度层可能隔离异常并投影为空结果。
+
+        :param storage: 已注册的存储标识
+        :param path: 存储内的目标路径
+        :return: 查询到的文件项；不存在或不支持存储时返回 None
         """
         if storage not in self._support_storages:
             return None
@@ -378,9 +478,28 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.get_item_strict(path)
 
+    def get_file_item_strict(self, storage: str, path: Path) -> Optional[FileItemQueryResult]:
+        """
+        为支持的存储返回明确查询回执，不支持时让调度器继续寻找其他提供方。
+
+        :param storage: 目标存储标识
+        :param path: 存储内的文件或目录路径
+        :return: 已完成查询的回执；不支持该存储时返回 None
+        :raises StorageQueryError: 已注册存储的适配器无法取得时抛出
+        """
+        if storage not in self._support_storages:
+            return None
+        storage_oper = self.__get_storage_oper(storage)
+        if storage_oper is None:
+            raise StorageQueryError(f"存储 {storage} 的文件查询适配器不可用")
+        return FileItemQueryResult(item=storage_oper.get_item_strict(path))
+
     def get_parent_item(self, fileitem: FileItem) -> Optional[FileItem]:
         """
-        获取上级目录项
+        通过对应存储查询上级目录。
+
+        :param fileitem: 带存储标识的当前文件或目录项
+        :return: 父目录项；不支持或查询失败时返回 None
         """
         if fileitem.storage not in self._support_storages:
             return None
@@ -391,15 +510,19 @@ class FileManagerModule(_ModuleBase):
         return storage_oper.get_parent(fileitem)
 
     def snapshot_storage(self, storage: str, path: Path,
-                         last_snapshot_time: float = None, max_depth: int = 5,
-                         previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
+                         last_snapshot_time: Optional[float] = None, max_depth: int = 5,
+                         previous_snapshot: Optional[Dict[str, Dict[str, Any]]] = None) -> Optional[Dict[str, Dict[str, Any]]]:
         """
-        快照存储
-        :param storage: 存储类型
-        :param path: 路径
-        :param last_snapshot_time: 上次快照时间，用于增量快照
-        :param max_depth: 最大递归深度，避免过深遍历
-        :param previous_snapshot: 上次完整快照，用于增量对账
+        委托存储生成目录树快照或增量快照。
+
+        扫描失败语义由存储实现定义，调用方不得将未知状态视为文件已删除。
+
+        :param storage: 已注册的存储标识
+        :param path: 快照根目录
+        :param last_snapshot_time: 上次快照的 Unix 时间秒数；为空时执行完整扫描
+        :param max_depth: 最大递归深度，默认 5，具体层级语义由存储实现定义
+        :param previous_snapshot: 用于增量对账的上次完整快照；为空时沿用存储的兼容增量模式
+        :return: 以路径为键的元数据快照；不支持存储时返回 None
         """
         if storage not in self._support_storages:
             return None
@@ -432,72 +555,86 @@ class FileManagerModule(_ModuleBase):
     ) -> TransferPlanCheckpoint:
         """
         解析整理策略并生成零写副作用的冻结计划。
-        :param fileitem:  文件信息
+
+        目录配置优先于显式目标路径；未匹配配置时保留自定义路径能力并告警，
+        未提供显式路径时业务拒绝，不自动使用存储根目录。
+
+        本次音乐最终目录沿用匹配目录的整理策略，未匹配目录且方式为自动时使用复制。
+
+        :param fileitem: 文件信息
         :param meta: 预识别的元数据
-        :param mediainfo:  识别的媒体信息
-        :param target_directory:  目标目录配置
-        :param target_storage:  目标存储
-        :param target_path:  目标路径
-        :param transfer_type:  转移模式
+        :param mediainfo: 识别的媒体信息
+        :param target_directory: 目标目录配置
+        :param target_storage: 目标存储
+        :param target_path: 调用方显式指定的目标根路径；未匹配目录配置时使用
+        :param transfer_type: 转移模式
         :param scrape: 是否刮削元数据
         :param library_type_folder: 是否按媒体类型创建目录
         :param library_category_folder: 是否按媒体类别创建目录
         :param episodes_info: 当前季的全部集信息
         :param source_oper: 源存储操作对象
-        :param preview: 是否预览模式
-        :param planning_input: admission 阶段冻结的原始请求，传入时不得改写
+        :param preview: 是否仅预览；目录预览不冻结叶子操作
+        :param planning_input: 请求接纳阶段冻结的原始请求，传入时不得改写
         :return: 可持久化的整理计划检查点
+        :raises TransferPlanningRejectedError: 未匹配到可用媒体库目录
+        :raises ValueError: 源路径、目标路径、整理方式或存储配置无效
         """
         handler = TransHandler()
-        # 检查目录路径
+        music_target = (
+            planning_input.options.get("music_target_path")
+            if planning_input is not None and mediainfo.type == MediaType.MUSIC else None
+        )
+        music_target_path = Path(music_target) if isinstance(music_target, str) and music_target else None
+        target_path = music_target_path or target_path
+        library_type_folder = False if music_target_path else library_type_folder
+        library_category_folder = False if music_target_path else library_category_folder
         if (
                 fileitem.storage == "local"
                 and (not fileitem.path or not Path(fileitem.path).exists())
         ):
             raise ValueError(f"{fileitem.path} 不存在")
-        # 目标路径不能是文件
         if target_path and target_path.is_file():
             logger.error(f"整理目标路径 {target_path} 是一个文件")
             raise ValueError(f"{target_path} 不是有效目录")
-        # 获取目标路径
         if target_directory:
-            # 目标媒体库目录未设置
             if not target_directory.library_path:
                 logger.error(f"目标媒体库目录未设置，无法整理文件，源路径：{fileitem.path}")
                 raise ValueError("目标媒体库目录未设置")
-            # 整理方式
             if not transfer_type:
                 transfer_type = target_directory.transfer_type
-            # 目标存储
             if not target_storage:
                 target_storage = target_directory.library_storage
-            # 是否需要重命名
             need_rename = target_directory.renaming
-            # 是否需要通知
             need_notify = target_directory.notify
-            # 覆盖模式
             overwrite_mode = target_directory.overwrite_mode
-            # 是否需要刮削
             need_scrape = target_directory.scraping if scrape is None else scrape
-            # 拼装媒体库一、二级子目录
             target_path = handler.get_dest_dir(mediainfo=mediainfo, target_dir=target_directory,
                                                need_type_folder=library_type_folder,
                                                need_category_folder=library_category_folder)
         elif target_path:
+            explicit_target_path = target_path
+            transfer_type = transfer_type or ("copy" if music_target_path else None)
             need_scrape = scrape or False
             need_rename = True
             need_notify = False
             overwrite_mode = "never"
-            # 手动整理的场景，有自定义目标路径
             target_path = handler.get_dest_path(mediainfo=mediainfo, target_path=target_path,
                                                 need_type_folder=library_type_folder,
                                                 need_category_folder=library_category_folder)
+            logger.warning(
+                "未匹配到媒体库目录配置，使用调用方显式指定的目标路径："
+                f"【{target_storage or fileitem.storage or 'local'}】{explicit_target_path}，"
+                f"计算后的目标路径：{target_path}，源路径："
+                f"【{fileitem.storage or 'local'}】{fileitem.path}；"
+                "如需使用存储目录配置的媒体库路径，请将目标路径设为自动匹配"
+            )
         else:
             # 目录匹配失败按业务拒绝结算，避免进入异常重试和堆栈日志路径。
             logger.error(
                 f"{mediainfo.type.value if mediainfo.type else '未知类型'} {mediainfo.title_year} 未找到有效的媒体库目录，无法整理文件，源路径：{fileitem.path}")
             raise TransferPlanningRejectedError("未找到有效的媒体库目录")
-        # 整理方式
+        target_path = music_target_path or target_path
+        need_rename = bool(music_target_path) or need_rename
         if not transfer_type:
             directory_name = target_directory.name if target_directory else "目标目录"
             logger.error(f"{directory_name} 未设置整理方式")
@@ -505,7 +642,6 @@ class FileManagerModule(_ModuleBase):
         if target_path is None:
             raise ValueError("整理规划缺少目标路径")
 
-        # 源操作对象
         source_storage = fileitem.storage or "local"
         if not source_oper:
             source_oper = self.__get_storage_oper(source_storage)
@@ -557,6 +693,32 @@ class FileManagerModule(_ModuleBase):
             preview=bool(preview),
         )
 
+    @staticmethod
+    def __cleanup_overlaps_new_target(checkpoint: TransferPlanCheckpoint, cleanup_item: FileItem) -> bool:
+        """
+        检查历史清理路径与新目标是否重合或互为祖先。
+
+        本地路径解析符号链接父目录，避免不同字符串实际指向同一目标。
+
+        :raises ValueError: 历史目标缺少路径
+        :param checkpoint: 包含最终目标和叶子目标的冻结计划
+        :param cleanup_item: 拟清理的历史目标项
+        :return: 同一存储且路径重叠时为 True，否则为 False
+        """
+        if not cleanup_item.path:
+            raise ValueError("历史整理目的缺少文件路径")
+        if cleanup_item.storage != checkpoint.target_storage:
+            return False
+        cleanup_path = Path(cleanup_item.path)
+        new_paths = [Path(checkpoint.final_target_path)] + [Path(item.target_path) for item in checkpoint.items]
+        if checkpoint.target_storage == "local":
+            # 历史路径可通过符号链接父目录指向新目标；仅比较字符串会误删新文件。
+            # strict=False 允许尚未落地的目标，已有父目录的别名仍必须解析。
+            cleanup_path = fsproxy.realpath(cleanup_path)
+            new_paths = [fsproxy.realpath(path) for path in new_paths]
+        return any(cleanup_path == path or cleanup_path in path.parents or path in cleanup_path.parents
+                   for path in new_paths)
+
     def execute_transfer_plan(
             self,
             checkpoint: TransferPlanCheckpoint,
@@ -570,7 +732,9 @@ class FileManagerModule(_ModuleBase):
             step_runner: Optional[TransferStepRunner] = None,
             raise_exception: bool = False,
     ) -> TransferInfo:
-        """解析存储适配器并通过统一删除能力执行已冻结计划。
+        """
+        解析存储适配器并通过统一删除能力执行已冻结计划。
+
         :param checkpoint: 冻结的整理计划检查点
         :param meta: 预识别的元数据
         :param mediainfo: 识别的媒体信息
@@ -580,34 +744,57 @@ class FileManagerModule(_ModuleBase):
         :param observe_cleanup_media_file: 统一删除能力的只读观察接口，返回 True 表示已清理
         :param step_runner: 传入时使用自定义的步骤执行器，None 时使用默认的串行执行器
         :param raise_exception: 仅供模块调度器控制异常是否传播，模块不改变执行语义
+        :return: 整理执行结果；存储不支持时返回失败结果，执行冲突或清理异常可向上传播
         """
         del raise_exception
-        source_fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
+        source_fileitem = FileItem.model_validate(checkpoint.planning_input.source_fileitem)
         cleanup_before_transfer = None
         observe_cleanup_before_transfer = None
         cleanup_payload = checkpoint.planning_input.options.get(
             "cleanup_dest_fileitem"
         )
+        cleanup_fileitem: Optional[FileItem] = None
         if (
                 isinstance(cleanup_payload, dict)
                 and not checkpoint.preview
                 and not checkpoint.pre_execution_cleanup_completed
         ):
             cleanup_fileitem = FileItem.model_validate(cleanup_payload)
+            # 重合目的由文件级覆盖处理，统一删除目录会误删已经落地的新版本。
+            if self.__cleanup_overlaps_new_target(checkpoint, cleanup_fileitem):
+                cleanup_fileitem = None
+        else:
+            cleanup_fileitem = None
+        if cleanup_fileitem is not None:
+            cleanup_target: FileItem = cleanup_fileitem
             if not cleanup_media_file:
                 raise RuntimeError("整理计划缺少统一媒体删除兼容能力")
 
-            def cleanup_before_transfer() -> None:
-                """拦截通过后委托统一能力治理旧目标及父空目录。"""
-                if not cleanup_media_file(cleanup_fileitem):
+            def cleanup_before_transfer(item: FileItem = cleanup_target) -> None:
+                """
+                新目标落地后清理不重叠的历史目标及其空父目录。
+
+                执行前再次核对路径是否重叠；统一删除能力失败时抛出 RuntimeError 以保留重试状态。
+
+                :param item: 冻结的历史目标，默认使用计划中的清理项
+                """
+                # 落地期间目录链接也可能变化，清理边界再次核对实际目标。
+                if self.__cleanup_overlaps_new_target(checkpoint, item):
+                    return
+                if not cleanup_media_file(item):
                     raise RuntimeError(
-                        f"{cleanup_fileitem.path} 删除失败，整理计划保留待重试"
+                        f"{item.path} 删除失败，整理计划保留待重试"
                     )
 
             if observe_cleanup_media_file:
-                def observe_cleanup_before_transfer() -> bool:
-                    """只读确认旧目标是否已经由统一能力清理。"""
-                    return observe_cleanup_media_file(cleanup_fileitem)
+                def observe_cleanup_before_transfer(item: FileItem = cleanup_target) -> bool:
+                    """
+                    只读确认历史目标是否已由统一删除能力清理。
+
+                    :param item: 冻结的历史目标，默认使用计划中的清理项
+                    :return: 观察接口确认已清理时为 True
+                    """
+                    return observe_cleanup_media_file(item)
 
         source_storage = source_fileitem.storage or "local"
         if not source_oper:
@@ -617,7 +804,7 @@ class FileManagerModule(_ModuleBase):
                 success=False,
                 message=f"不支持的存储类型：{source_storage}",
                 fileitem=source_fileitem,
-                fail_list=[source_fileitem.path],
+                fail_list=[source_fileitem.path or ""],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -628,7 +815,7 @@ class FileManagerModule(_ModuleBase):
                 success=False,
                 message=f"不支持的存储类型：{checkpoint.target_storage}",
                 fileitem=source_fileitem,
-                fail_list=[source_fileitem.path],
+                fail_list=[source_fileitem.path or ""],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -645,7 +832,13 @@ class FileManagerModule(_ModuleBase):
 
     @staticmethod
     def _serialize_transfer_model(value: object) -> dict[str, Any]:
-        """校验旧领域对象的动态序列化结果，避免 Any 穿透规划边界。"""
+        """
+        校验领域对象的动态序列化结果可作为整理快照。
+
+        :raises TypeError: 不提供序列化方法或返回值不是字典
+        :param value: 提供 to_dict 方法的领域对象
+        :return: 对象返回的字典
+        """
         serializer = getattr(value, "to_dict", None)
         if not callable(serializer):
             raise TypeError(f"{type(value).__name__} 不支持整理快照序列化")
@@ -658,18 +851,31 @@ class FileManagerModule(_ModuleBase):
     def _build_library_lookup_meta(
             mediainfo: Union[MediaInfo, MusicInfo],
     ) -> MetaBase:
-        """构造标准媒体库路径反查使用的最小元数据。"""
+        """
+        构造标准媒体库路径反查使用的最小命名元数据。
+
+        :param mediainfo: 已识别的影视或音乐信息
+        :return: 带必要命名字段的元数据；影视缺少季集时补为第 1 季第 1 集
+        """
         if mediainfo.type == MediaType.MUSIC:
             music_type = getattr(mediainfo, "music_type", None)
             album = getattr(mediainfo, "album", None)
             if not album and music_type == MUSIC_ENTITY_ALBUM:
                 album = mediainfo.title
+            year_value = mediainfo.year
+            year = (
+                year_value
+                if isinstance(year_value, int)
+                else int(year_value)
+                if isinstance(year_value, str) and year_value.isdigit()
+                else None
+            )
             return MetaMusic(
-                title=mediainfo.title,
+                title=mediainfo.title or "",
                 artists=list(getattr(mediainfo, "artists", None) or []),
                 album=album,
                 album_artist=getattr(mediainfo, "album_artist", None),
-                year=mediainfo.year,
+                year=year,
                 disc_number=getattr(mediainfo, "disc_number", None),
                 track_number=getattr(mediainfo, "track_number", None),
                 total_tracks=getattr(mediainfo, "total_tracks", None),
@@ -677,7 +883,7 @@ class FileManagerModule(_ModuleBase):
                 media_id=getattr(mediainfo, "media_id", None),
             )
 
-        meta = MetaInfo(mediainfo.title)
+        meta = MetaInfo(mediainfo.title or "")
         if meta.type == MediaType.UNKNOWN and mediainfo.type is not None:
             meta.type = mediainfo.type
         if meta.year is None:
@@ -690,7 +896,12 @@ class FileManagerModule(_ModuleBase):
 
     @staticmethod
     def _music_file_identity(fileitem: FileItem) -> Tuple[Optional[int], Optional[int], str]:
-        """从标准音乐文件路径提取碟号、曲序和归一化曲名。"""
+        """
+        从标准音乐路径解析曲目去重身份。
+
+        :param fileitem: 提供文件路径或名称的音乐文件项
+        :return: 碟号、曲序和归一化曲名；缺失碟号或曲序保留为 None
+        """
         file_path = Path(fileitem.path or fileitem.name or "")
         file_meta = MetaMusic(
             org_string=file_path.name,
@@ -708,7 +919,13 @@ class FileManagerModule(_ModuleBase):
             fileitems: List[FileItem],
             mediainfo: MusicInfo,
     ) -> bool:
-        """按曲名和可用曲序判断单曲是否存在，避免专辑内任一文件造成误判。"""
+        """
+        按曲名及可用碟号、曲序判断目标单曲是否已存在。
+
+        :param fileitems: 媒体库中候选音频文件
+        :param mediainfo: 待查询的单曲身份
+        :return: 存在曲名相同且已知碟号、曲序不冲突的文件时为 True
+        """
         target_title = text_tools.normalize_upper(mediainfo.title or "")
         target_track = getattr(mediainfo, "track_number", None)
         target_disc = getattr(mediainfo, "disc_number", None)
@@ -731,7 +948,15 @@ class FileManagerModule(_ModuleBase):
             fileitems: List[FileItem],
             total_tracks: Optional[int],
     ) -> bool:
-        """按去重后的曲序或曲名判断本地专辑是否达到目标曲目数。"""
+        """
+        按去重曲目身份判断专辑是否达到目标曲目数。
+
+        缺少碟号按第 1 碟处理；有曲序时用曲序，否则用归一化曲名去重。
+
+        :param fileitems: 媒体库中候选音频文件
+        :param total_tracks: 目标总曲数；缺失或为 0 时无法认定完整
+        :return: 去重曲数不少于目标总曲数时为 True
+        """
         if not fileitems:
             return False
         if not total_tracks:
@@ -750,46 +975,41 @@ class FileManagerModule(_ModuleBase):
 
     def media_files(self, mediainfo: Union[MediaInfo, MusicInfo]) -> List[FileItem]:
         """
-        获取对应媒体的媒体库文件列表
-        :param mediainfo: 媒体信息
+        按标准命名模板反查各媒体库中的匹配媒体文件。
+
+        音乐使用音频扩展名配置，影视使用媒体扩展名配置；无法安全限定媒体根目录时跳过扫描。
+
+        :param mediainfo: 影视或音乐身份，用于推导分类目录和命名路径
+        :return: 去重后的媒体文件列表；未匹配到有效路径时为空
         """
         handler = TransHandler()
         ret_fileitems = []
-        # 检查本地媒体库
         dest_dirs = DirectoryHelper().get_library_dirs()
-        # 检查每一个媒体库目录
         for dest_dir in dest_dirs:
-            # 存储
             storage_oper = self.__get_storage_oper(dest_dir.library_storage)
             if not storage_oper:
                 continue
-            # 媒体分类路径
             dir_path = handler.get_dest_dir(mediainfo=mediainfo, target_dir=dest_dir)
-            # 重命名格式
             rename_format = get_runtime_setting('RENAME_FORMAT')(mediainfo.type)
             # 元数据补上常用属性，尽可能确保重命名后的路径不出现空白
             meta = self._build_library_lookup_meta(mediainfo)
-            # 获取路径（重命名路径）
             target_path = handler.get_rename_path(
                 path=dir_path,
                 template_string=rename_format,
                 rename_dict=handler.get_naming_dict(meta=meta,
                                                     mediainfo=mediainfo)
             )
-            # 获取重命名后的媒体文件根路径
             media_path = DirectoryHelper.get_media_root_path(
                 rename_format,
                 rename_path=target_path,
                 media_type=mediainfo.type,
             )
             if not media_path:
-                # 忽略
                 continue
             if dir_path != media_path and dir_path.is_relative_to(media_path):
                 # 兜底检查，避免不必要的扫盘
                 logger.warn(f"{media_path} 是媒体库目录 {dir_path} 的父目录，忽略获取媒体文件列表，请检查重命名格式！")
                 continue
-            # 检索媒体文件
             fileitem = storage_oper.get_item(media_path)
             if not fileitem:
                 continue
@@ -816,13 +1036,17 @@ class FileManagerModule(_ModuleBase):
     def media_exists(
             self,
             mediainfo: Union[MediaInfo, MusicInfo],
-            **kwargs,
+            **kwargs: object,
     ) -> Optional[ExistMediaInfo]:
         """
-        判断媒体文件是否存在于文件系统（网盘或本地文件），只支持标准媒体库结构
-        :param mediainfo:  识别的媒体信息
-        :param server:  指定媒体服务器名称时跳过本地文件系统检查
-        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        判断配置的本地或网盘媒体库是否已包含目标媒体。
+
+        仅支持标准媒体库结构。电影存在任一匹配文件即可；音乐按单曲身份或完整专辑曲数判断；
+        剧集从文件名提取季集，未标季号按第 1 季处理。
+
+        :param mediainfo: 待查询的影视或音乐信息
+        :param kwargs: 兼容调度选项；server 非空时跳过文件系统检查
+        :return: 存在媒体时返回类型及已知季集信息；未找到或未启用检查时返回 None
         """
         if kwargs.get("server"):
             return None
@@ -832,7 +1056,6 @@ class FileManagerModule(_ModuleBase):
 
         logger.debug(f"正在本地媒体库中查找 {mediainfo.title_year}...")
 
-        # 检查媒体库
         fileitems = self.media_files(mediainfo)
         if not fileitems:
             logger.debug(f"{mediainfo.title_year} 不在本地媒体库中")
@@ -849,6 +1072,8 @@ class FileManagerModule(_ModuleBase):
                     getattr(mediainfo, "total_tracks", None),
                 )
             else:
+                if not isinstance(mediainfo, MusicInfo):
+                    return None
                 exists = self._music_recording_exists(fileitems, mediainfo)
             if not exists:
                 logger.debug(f"{mediainfo.title_year} 在本地音乐库中尚不完整")
@@ -856,19 +1081,18 @@ class FileManagerModule(_ModuleBase):
             logger.info(f"{mediainfo.title_year} 在本地音乐库中找到了")
             return ExistMediaInfo(type=MediaType.MUSIC)
         if mediainfo.type == MediaType.TV:
-            # 电视剧检索集数
-            seasons: Dict[int, list] = {}
+            seasons: Dict[int, list[int]] = {}
             for fileitem in fileitems:
-                file_meta = MetaInfo(fileitem.basename)
+                file_meta = MetaInfo(fileitem.basename or "")
                 season_index = file_meta.begin_season if file_meta.begin_season is not None else 1
-                episode_index = file_meta.begin_episode
-                if not episode_index:
+                episode_indexes = file_meta.episode_list
+                if not episode_indexes:
                     continue
                 if season_index not in seasons:
                     seasons[season_index] = []
-                if episode_index not in seasons[season_index]:
-                    seasons[season_index].append(episode_index)
-            # 返回剧集情况
+                for episode_index in episode_indexes:
+                    if episode_index not in seasons[season_index]:
+                        seasons[season_index].append(episode_index)
             logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了这些季集：{seasons}")
             return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
         return None

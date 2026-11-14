@@ -1,4 +1,6 @@
-"""插件实例的启停与默认调用目标接口。"""
+"""
+插件实例的启停与默认调用目标接口。
+"""
 
 from typing import Any
 
@@ -18,7 +20,7 @@ from app.schemas.response import Response as _SchemaResponse
 router = ResponseAPIRouter()
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/instance/{instance_id}/enabled",
     summary="启用或停用插件实例",
     response_model=_SchemaResponse[None],
@@ -52,7 +54,7 @@ def set_plugin_instance_enabled(
     return _SchemaResponse(success=True)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/instances/{plugin_id}/{instance_id}/default_target",
     summary="设置插件实例的默认调用目标",
     response_model=_SchemaResponse[None],
@@ -83,7 +85,7 @@ def set_plugin_instance_default_target(
     return _SchemaResponse(success=True)
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/instances/{plugin_id}/{instance_id}/default_target",
     summary="清除插件实例的默认调用目标",
     response_model=_SchemaResponse[None],

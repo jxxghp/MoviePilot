@@ -1,4 +1,6 @@
-"""整理计划检查点的 JSON 与分类快照编解码。"""
+"""
+整理计划检查点的 JSON 与分类快照编解码。
+"""
 
 import json
 from copy import deepcopy
@@ -33,7 +35,9 @@ CLASSIFICATION_SNAPSHOT_FIELDS = (
 def copy_json_mapping(
     value: Optional[dict[str, JSONValue]],
 ) -> Optional[dict[str, JSONValue]]:
-    """复制可选 JSON 对象，隔离检查点与调用方的可变状态。"""
+    """
+    复制可选 JSON 对象，隔离检查点与调用方的可变状态。
+    """
     if value is None:
         return None
     return deepcopy(value)
@@ -43,7 +47,9 @@ def read_json_mapping(
     payload: dict[str, Any],
     key: str,
 ) -> Optional[dict[str, JSONValue]]:
-    """读取可选 JSON 对象并拒绝不匹配的持久类型。"""
+    """
+    读取可选 JSON 对象并拒绝不匹配的持久类型。
+    """
     value = payload.get(key)
     if value is None:
         return None
@@ -56,7 +62,9 @@ def read_json_tuple(
     payload: dict[str, Any],
     key: str,
 ) -> tuple[dict[str, JSONValue], ...]:
-    """读取 JSON 对象数组并冻结为独立元组。"""
+    """
+    读取 JSON 对象数组并冻结为独立元组。
+    """
     value = payload.get(key, [])
     if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
         raise ValueError(f"整理计划字段 {key} 必须是 JSON 对象数组")
@@ -64,7 +72,9 @@ def read_json_tuple(
 
 
 def canonical_json(payload: dict[str, JSONValue]) -> str:
-    """生成用于验证和指纹计算的确定性 JSON。"""
+    """
+    生成用于验证和指纹计算的确定性 JSON。
+    """
     try:
         return json.dumps(
             payload,
@@ -80,7 +90,9 @@ def canonical_json(payload: dict[str, JSONValue]) -> str:
 def classification_snapshot_payload(
     snapshot: EffectiveClassificationSnapshot,
 ) -> dict[str, JSONValue]:
-    """把最终分类快照投影为稳定的五字段 checkpoint 对象。"""
+    """
+    把最终分类快照投影为稳定的五字段检查点对象。
+    """
     return {
         "category_id": snapshot.category_id,
         "library_category": snapshot.path,
@@ -95,7 +107,9 @@ def read_classification_snapshot(
     *,
     require_all_fields: bool,
 ) -> EffectiveClassificationSnapshot:
-    """从 checkpoint 标量恢复安全分类快照，禁止路径穿越与描述性分类。"""
+    """
+    从检查点标量恢复安全分类快照，禁止路径穿越与描述性分类。
+    """
     if not isinstance(payload, dict):
         raise ValueError("整理计划分类快照必须是 JSON 对象")
     if require_all_fields and any(
@@ -140,7 +154,9 @@ def read_classification_snapshot(
 def legacy_classification_snapshot(
     payload: dict[str, Any],
 ) -> EffectiveClassificationSnapshot:
-    """只从 v1 checkpoint 自身媒体载荷恢复分类，不读取当前活动策略。"""
+    """
+    只从 v1 检查点自身媒体载荷恢复分类，不读取当前活动策略。
+    """
     media_payload = payload.get("resolved_mediainfo")
     if not isinstance(media_payload, dict):
         invocation = payload.get("provider_invocation")

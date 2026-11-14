@@ -1,3 +1,7 @@
+"""
+验证整理流程对下载历史的查找与关联。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -5,7 +9,9 @@ from app.chain.transfer.facade import TransferChain
 
 
 class FakeDownloadHistoryOper:
-    """提供下载历史回查测试所需的内存桩。"""
+    """
+    提供下载历史回查测试所需的内存桩。
+    """
 
     def __init__(
         self,
@@ -14,36 +20,50 @@ class FakeDownloadHistoryOper:
         files_by_fullpath=None,
         files_by_savepath=None,
     ):
-        """初始化各查询维度的测试数据。"""
+        """
+        初始化各查询维度的测试数据。
+        """
         self.histories_by_hash = histories_by_hash or {}
         self.histories_by_path = histories_by_path or {}
         self.files_by_fullpath = files_by_fullpath or {}
         self.files_by_savepath = files_by_savepath or {}
 
     def get_by_hash(self, download_hash: str):
-        """按下载哈希返回历史。"""
+        """
+        按下载哈希返回历史。
+        """
         return self.histories_by_hash.get(download_hash)
 
     def get_by_path(self, path: str):
-        """按下载路径返回历史。"""
+        """
+        按下载路径返回历史。
+        """
         return self.histories_by_path.get(path)
 
     def get_file_by_fullpath(self, fullpath: str):
-        """按完整文件路径返回下载文件记录。"""
+        """
+        按完整文件路径返回下载文件记录。
+        """
         return self.files_by_fullpath.get(fullpath)
 
     def get_files_by_savepath(self, savepath: str):
-        """按保存路径返回下载文件记录。"""
+        """
+        按保存路径返回下载文件记录。
+        """
         return self.files_by_savepath.get(savepath, [])
 
 
 def _make_chain() -> TransferChain:
-    """构造不启动后台线程的整理链实例。"""
+    """
+    构造不启动后台线程的整理链实例。
+    """
     return object.__new__(TransferChain)
 
 
 def _download_dir(**overrides):
-    """构造下载目录配置桩。"""
+    """
+    构造下载目录配置桩。
+    """
     values = {
         "download_path": "/downloads",
         "media_type": None,
@@ -56,7 +76,9 @@ def _download_dir(**overrides):
 
 
 def test_resolve_download_history_falls_back_to_parent_download_path():
-    """文件记录缺失时应按种子父目录回查下载历史。"""
+    """
+    文件记录缺失时应按种子父目录回查下载历史。
+    """
     expected = SimpleNamespace(download_hash="hash1", downloader="qb")
     oper = FakeDownloadHistoryOper(
         histories_by_hash={"hash1": expected},
@@ -72,7 +94,9 @@ def test_resolve_download_history_falls_back_to_parent_download_path():
 
 
 def test_resolve_download_history_falls_back_to_unique_savepath_hash():
-    """父目录只有一个下载哈希时应返回对应历史。"""
+    """
+    父目录只有一个下载哈希时应返回对应历史。
+    """
     expected = SimpleNamespace(download_hash="hash1", downloader="qb")
     oper = FakeDownloadHistoryOper(
         histories_by_hash={"hash1": expected},
@@ -93,7 +117,9 @@ def test_resolve_download_history_falls_back_to_unique_savepath_hash():
 
 
 def test_resolve_download_history_skips_ambiguous_savepath_hashes():
-    """父目录关联多个下载哈希时不应猜测下载历史。"""
+    """
+    父目录关联多个下载哈希时不应猜测下载历史。
+    """
     oper = FakeDownloadHistoryOper(
         histories_by_hash={
             "hash1": SimpleNamespace(download_hash="hash1", downloader="qb"),
@@ -116,7 +142,9 @@ def test_resolve_download_history_skips_ambiguous_savepath_hashes():
 
 
 def test_resolve_download_history_stops_at_shared_download_root_path(monkeypatch):
-    """共享下载根目录上的路径历史不应污染同级文件。"""
+    """
+    共享下载根目录上的路径历史不应污染同级文件。
+    """
     oper = FakeDownloadHistoryOper(
         histories_by_path={"/downloads": SimpleNamespace(download_hash="hash1", downloader="qb")}
     )
@@ -134,7 +162,9 @@ def test_resolve_download_history_stops_at_shared_download_root_path(monkeypatch
 
 
 def test_resolve_download_history_stops_at_shared_download_root_savepath(monkeypatch):
-    """共享下载根目录上的其它文件记录不应污染当前文件。"""
+    """
+    共享下载根目录上的其它文件记录不应污染当前文件。
+    """
     expected = SimpleNamespace(download_hash="hash1", downloader="qb")
     oper = FakeDownloadHistoryOper(
         histories_by_hash={"hash1": expected},
@@ -162,7 +192,9 @@ def test_resolve_download_history_stops_at_shared_download_root_savepath(monkeyp
 
 
 def test_resolve_download_history_accepts_shared_root_savepath_for_exact_file(monkeypatch):
-    """共享根目录存在当前文件的明确记录时应允许命中。"""
+    """
+    共享根目录存在当前文件的明确记录时应允许命中。
+    """
     expected = SimpleNamespace(download_hash="hash1", downloader="qb")
     oper = FakeDownloadHistoryOper(
         histories_by_hash={"hash1": expected},
@@ -190,7 +222,9 @@ def test_resolve_download_history_accepts_shared_root_savepath_for_exact_file(mo
 
 
 def test_resolve_download_history_stops_at_type_category_download_root(monkeypatch):
-    """按类型和类别生成的共享目录不应回查该目录自身的历史。"""
+    """
+    按类型和类别生成的共享目录不应回查该目录自身的历史。
+    """
     oper = FakeDownloadHistoryOper(
         histories_by_path={"/downloads/电视剧/动漫": SimpleNamespace(download_hash="hash1", downloader="qb")}
     )
@@ -217,7 +251,9 @@ def test_resolve_download_history_stops_at_type_category_download_root(monkeypat
 
 
 def test_get_shared_download_roots_includes_nested_category(monkeypatch):
-    """多级分类的每一级目录都应成为共享下载边界。"""
+    """
+    多级分类的每一级目录都应成为共享下载边界。
+    """
     monkeypatch.setattr(
         "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
         lambda _: [_download_dir(download_category_folder=True)],
@@ -238,7 +274,9 @@ def test_get_shared_download_roots_includes_nested_category(monkeypatch):
 
 
 def test_get_shared_download_roots_excludes_torrent_subdirectory(monkeypatch):
-    """分类目录下由种子创建的子目录不应成为共享下载边界。"""
+    """
+    分类目录下由种子创建的子目录不应成为共享下载边界。
+    """
     monkeypatch.setattr(
         "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
         lambda _: [_download_dir(download_category_folder=True)],
@@ -255,7 +293,9 @@ def test_get_shared_download_roots_excludes_torrent_subdirectory(monkeypatch):
 
 
 def test_get_shared_download_roots_keeps_first_level_without_category_config(monkeypatch):
-    """分类配置不可用时应保留原有的一级共享边界保护。"""
+    """
+    分类配置不可用时应保留原有的一级共享边界保护。
+    """
     monkeypatch.setattr(
         "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
         lambda _: [_download_dir(download_category_folder=True)],
@@ -271,7 +311,9 @@ def test_get_shared_download_roots_keeps_first_level_without_category_config(mon
 
 
 def test_resolve_download_history_stops_at_nested_category_root(monkeypatch):
-    """多级分类叶子目录中的其它任务历史不应污染当前文件。"""
+    """
+    多级分类叶子目录中的其它任务历史不应污染当前文件。
+    """
     oper = FakeDownloadHistoryOper(
         histories_by_path={"/downloads/动漫/日本番剧": SimpleNamespace(download_hash="other-hash", downloader="qb")}
     )

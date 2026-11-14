@@ -1,3 +1,7 @@
+"""
+插件临时接管用户输入的会话管理与事件回传。
+"""
+
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -5,15 +9,23 @@ from threading import Lock
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 from app.application.messaging.interaction import InteractionContext, MessageGateway
-from app.schemas.message import Message
+from app.schemas.message import IncomingMessage, Message
 from app.schemas.types import EventType, NotificationChannel
 
 
 class PluginEventPublisher(Protocol):
-    """声明插件输入交互所需的同步事件发布端口。"""
+    """
+    声明插件输入交互所需的同步事件发布端口。
+    """
 
-    def send_event(self, event_type: EventType, payload: dict) -> Any:
-        """同步发布插件输入事件，并返回宿主事件分发结果。"""
+    def send_event(self, event_type: EventType, payload: dict[str, object]) -> Any:
+        """
+        同步发布插件输入事件，并返回宿主事件分发结果。
+
+        :param event_type: 本次插件交互使用的宿主事件类型
+        :param payload: 包含插件、用户、提示和输入上下文的事件数据
+        :return: 宿主事件分发器的原始返回结果，交互层不解析该结果
+        """
         ...
 
 
@@ -21,6 +33,19 @@ class PluginEventPublisher(Protocol):
 class PendingPluginInputInteraction:
     """
     记录插件临时接管用户下一条文本输入的会话。
+
+    :param request_id: 当前交互请求标识，用于校验按钮是否仍属于活动会话
+    :param user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :param plugin_id: 接管本次输入的插件标识
+    :param channel: 回复使用的通知渠道，None 表示未指定
+    :param source: 渠道实例标识，None 表示未指定实例
+    :param username: 用户显示名称，未知时为 None
+    :param chat_id: 限定接收回复的渠道聊天标识，None 表示不限定聊天
+    :param prompt_id: 插件提供的提示业务标识，原样回传输入事件
+    :param payload: 插件附带的业务上下文，原样回传输入事件
+    :param timeout_seconds: 等待用户输入的秒数，默认 120；过期计算至少使用 1 秒
+    :param created_at: 会话创建的本地时间，用于计算过期时间
+    :param prompt_message_id: 提示消息在渠道中的标识，用于支持回复关联的渠道校验回复对象
     """
 
     request_id: str
@@ -34,12 +59,13 @@ class PendingPluginInputInteraction:
     payload: Optional[Any] = None
     timeout_seconds: int = 120
     created_at: datetime = field(default_factory=datetime.now)
-    # Optional reply binding for channels that can report reply_to_message_id.
     prompt_message_id: Optional[str] = None
 
     @property
     def expires_at(self) -> datetime:
-        """返回输入会话的绝对过期时间。"""
+        """
+        返回输入会话的绝对过期时间。
+        """
         return self.created_at + timedelta(seconds=max(1, self.timeout_seconds))
 
 
@@ -52,8 +78,10 @@ class PluginInputInteractionManager:
 
     EXPIRED_GRACE_SECONDS = 300
 
-    def __init__(self):
-        """初始化活动输入会话、用户渠道索引和过期墓碑。"""
+    def __init__(self) -> None:
+        """
+        初始化活动输入会话、用户渠道索引和过期墓碑。
+        """
         self._by_id: Dict[str, PendingPluginInputInteraction] = {}
         self._by_user_channel: Dict[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]], str] = {}
         self._expired_by_user_channel: Dict[
@@ -69,7 +97,9 @@ class PluginInputInteractionManager:
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
     ) -> Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]:
-        """归一化用户、渠道、来源和会话 ID 的联合索引键。"""
+        """
+        归一化用户、渠道、来源和会话 ID 的联合索引键。
+        """
         return str(user_id), channel, source, str(chat_id) if chat_id not in (None, "") else None
 
     @classmethod
@@ -78,7 +108,9 @@ class PluginInputInteractionManager:
             left: Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]],
             right: Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]],
     ) -> bool:
-        """判断两个输入会话键是否会争用同一条用户回复。"""
+        """
+        判断两个输入会话键是否会争用同一条用户回复。
+        """
         left_user, left_channel, left_source, left_chat_id = left
         right_user, right_channel, right_source, right_chat_id = right
         if left_user != right_user:
@@ -92,7 +124,9 @@ class PluginInputInteractionManager:
         return channel_overlap and source_overlap
 
     def _cleanup_locked(self) -> None:
-        """在持锁状态下淘汰过期会话并维护短期过期墓碑。"""
+        """
+        在持锁状态下淘汰过期会话并维护短期过期墓碑。
+        """
         now = datetime.now()
         expired_tombstones = [
             key
@@ -133,7 +167,9 @@ class PluginInputInteractionManager:
             *,
             prompt_message_id: Optional[Union[str, int]] = None,
     ) -> PendingPluginInputInteraction:
-        """创建插件输入会话并替换键范围重叠的旧会话。"""
+        """
+        创建插件输入会话并替换键范围重叠的旧会话。
+        """
         with self._lock:
             self._cleanup_locked()
             key = self._user_channel_source_key(user_id, channel, source, chat_id)
@@ -186,7 +222,9 @@ class PluginInputInteractionManager:
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
     ) -> Optional[PendingPluginInputInteraction]:
-        """按用户和渠道上下文查询活动输入会话。"""
+        """
+        按用户和渠道上下文查询活动输入会话。
+        """
         with self._lock:
             self._cleanup_locked()
             request_id = self._find_request_id_locked(user_id, channel, source, chat_id)
@@ -201,12 +239,15 @@ class PluginInputInteractionManager:
             source: Optional[str] = None,
             chat_id: Optional[Union[str, int]] = None,
     ) -> Optional[PendingPluginInputInteraction]:
-        """取出并删除活动或刚过期的输入会话。"""
+        """
+        取出并删除活动或刚过期的输入会话。
+        """
         with self._lock:
             self._cleanup_locked()
             key, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
             if request_id:
-                self._by_user_channel.pop(key, None)
+                if key is not None:
+                    self._by_user_channel.pop(key, None)
                 return self._by_id.pop(request_id, None)
             expired_key, request = self._find_expired_key_and_request_locked(user_id, channel, source, chat_id)
             if expired_key:
@@ -223,16 +264,20 @@ class PluginInputInteractionManager:
             reply_to_message_id: Optional[Union[str, int]] = None,
             bypass_reply_check: bool = False,
     ) -> Tuple[Optional[PendingPluginInputInteraction], Optional[str]]:
-        """消费匹配回复的输入会话，并返回 active 或 expired 状态。"""
+        """
+        消费匹配回复的输入会话，并返回 active 或 expired 状态。
+        """
         with self._lock:
             key, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
 
             if request_id:
                 request = self._by_id.get(request_id)
                 if not request:
-                    self._by_user_channel.pop(key, None)
+                    if key is not None:
+                        self._by_user_channel.pop(key, None)
                 elif request.expires_at < datetime.now():
-                    self._by_user_channel.pop(key, None)
+                    if key is not None:
+                        self._by_user_channel.pop(key, None)
                     self._by_id.pop(request_id, None)
                     if request.prompt_message_id:
                         return None, None
@@ -245,13 +290,15 @@ class PluginInputInteractionManager:
                 ):
                     return None, None
                 else:
-                    self._by_user_channel.pop(key, None)
+                    if key is not None:
+                        self._by_user_channel.pop(key, None)
                     self._by_id.pop(request_id, None)
                     return request, "active"
             self._cleanup_locked()
             key, request = self._find_expired_key_and_request_locked(user_id, channel, source, chat_id)
             if request:
-                self._expired_by_user_channel.pop(key, None)
+                if key is not None:
+                    self._expired_by_user_channel.pop(key, None)
                 if request.prompt_message_id:
                     return None, None
                 return request, "expired"
@@ -266,7 +313,9 @@ class PluginInputInteractionManager:
             *,
             ignore_reply_to_message_id: bool = False,
     ) -> bool:
-        """校验消息回复关系是否绑定到原始提示。"""
+        """
+        校验消息回复关系是否绑定到原始提示。
+        """
         if not request.prompt_message_id:
             return True
         if not request.chat_id or chat_id in (None, ""):
@@ -286,7 +335,9 @@ class PluginInputInteractionManager:
             source: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
     ) -> Optional[str]:
-        """在持锁状态下查找活动请求 ID。"""
+        """
+        在持锁状态下查找活动请求 ID。
+        """
         _, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
         return request_id
 
@@ -297,7 +348,9 @@ class PluginInputInteractionManager:
             source: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
     ) -> Tuple[Optional[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]], Optional[str]]:
-        """返回首个候选键及其活动请求 ID。"""
+        """
+        返回首个候选键及其活动请求 ID。
+        """
         for key in self._candidate_keys(user_id, channel, source, chat_id):
             request_id = self._by_user_channel.get(key)
             if request_id:
@@ -312,7 +365,9 @@ class PluginInputInteractionManager:
             chat_id: Optional[Union[str, int]] = None,
     ) -> Tuple[Optional[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]],
                Optional[PendingPluginInputInteraction]]:
-        """返回仍在宽限期内的过期会话及其索引键。"""
+        """
+        返回仍在宽限期内的过期会话及其索引键。
+        """
         now = datetime.now()
         for key in self._candidate_keys(user_id, channel, source, chat_id):
             request = self._expired_by_user_channel.get(key)
@@ -331,7 +386,9 @@ class PluginInputInteractionManager:
             source: Optional[str],
             chat_id: Optional[Union[str, int]] = None,
     ) -> List[Tuple[str, Optional[NotificationChannel], Optional[str], Optional[str]]]:
-        """按精确到宽松顺序生成输入会话候选键。"""
+        """
+        按精确到宽松顺序生成输入会话候选键。
+        """
         chat_key = str(chat_id) if chat_id not in (None, "") else None
         candidates = [
             self._user_channel_source_key(user_id, channel, source, chat_key),
@@ -354,7 +411,9 @@ class PluginInputInteractionManager:
         return candidates
 
     def remove(self, request_id: str) -> None:
-        """删除指定插件输入会话及其联合索引。"""
+        """
+        删除指定插件输入会话及其联合索引。
+        """
         with self._lock:
             request = self._by_id.pop(request_id, None)
             if request:
@@ -364,7 +423,9 @@ class PluginInputInteractionManager:
                 )
 
     def clear(self) -> None:
-        """清空活动和过期的插件输入会话。"""
+        """
+        清空活动和过期的插件输入会话。
+        """
         with self._lock:
             self._by_id.clear()
             self._by_user_channel.clear()
@@ -375,14 +436,18 @@ plugin_input_interaction_manager = PluginInputInteractionManager()
 
 
 class PluginInputInteractionHandler:
-    """消费插件申请接管的下一条用户文本输入。"""
+    """
+    消费插件申请接管的下一条用户文本输入。
+    """
 
     def __init__(
             self,
             messenger: MessageGateway,
             event_publisher: PluginEventPublisher,
     ):
-        """保存消息投递接口和宿主注入的事件发布端口。"""
+        """
+        保存消息投递接口和宿主注入的事件发布端口。
+        """
         self._messenger = messenger
         self._event_publisher = event_publisher
 
@@ -392,12 +457,14 @@ class PluginInputInteractionHandler:
             context: InteractionContext,
             text: str,
             reply_to_message_id: Optional[Union[str, int]] = None,
-            images=None,
-            audio_refs=None,
-            files=None,
+            images: Optional[List[IncomingMessage.MessageImage]] = None,
+            audio_refs: Optional[List[str]] = None,
+            files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
     ) -> bool:
-        """消费插件输入会话，并派发 MessageAction 事件。"""
+        """
+        消费插件输入会话，并派发 MessageAction 事件。
+        """
         if not text or not text.strip() or images or audio_refs or files or has_audio_input:
             return False
         if text.startswith("CALLBACK:"):
@@ -505,7 +572,9 @@ class PluginInputInteractionHandler:
 
     @staticmethod
     def parse_callback(callback_data: str) -> Optional[Tuple[str, str]]:
-        """解析插件按钮回调，格式错误时返回 None。"""
+        """
+        解析插件按钮回调，格式错误时返回 None。
+        """
         if not callback_data.startswith("[PLUGIN]"):
             return None
         # 用 partition 避免缺少分隔符的回调抛异常

@@ -1,4 +1,6 @@
-"""Durable transfer 分类快照的版本化冻结与离线恢复合同。"""
+"""
+Durable transfer 分类快照的版本化冻结与离线恢复合同。
+"""
 
 from dataclasses import replace
 from types import SimpleNamespace
@@ -50,7 +52,9 @@ def _classified_media(
     revision: int = 42,
     source: str = "automatic",
 ) -> MediaInfo:
-    """构造同时包含推荐、生效和描述性分类的最终媒体对象。"""
+    """
+    构造同时包含推荐、生效和描述性分类的最终媒体对象。
+    """
     return MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="123",
@@ -82,7 +86,9 @@ def _v2_checkpoint(
     classification_snapshot: dict[str, object] = FROZEN_CLASSIFICATION,
     resolved_mediainfo: dict[str, object] | None = None,
 ):
-    """从现有 planned fixture 构造带顶层分类快照的 v2 检查点。"""
+    """
+    从现有 planned fixture 构造带顶层分类快照的 v2 检查点。
+    """
     payload = _resolved_checkpoint().to_payload()
     payload["schema_version"] = 2
     payload["classification_snapshot"] = dict(classification_snapshot)
@@ -94,7 +100,9 @@ def _v2_checkpoint(
 def _provider_v2_checkpoint(
     classification_snapshot: dict[str, object] = FROZEN_CLASSIFICATION,
 ):
-    """构造冻结旧 provider 调用和分类事实的 provider_pending 检查点。"""
+    """
+    构造冻结旧 provider 调用和分类事实的 provider_pending 检查点。
+    """
     resolved = _resolved_checkpoint()
     invocation = transfer_application.TransferProviderInvocationSnapshot(
         fileitem=_source_snapshot(),
@@ -146,7 +154,9 @@ def _assert_classification_snapshot(
     *,
     expect_payload: bool = True,
 ) -> EffectiveClassificationSnapshot:
-    """断言类型化快照，并按版本要求核对五字段 JSON 投影。"""
+    """
+    断言类型化快照，并按版本要求核对五字段 JSON 投影。
+    """
     snapshot = getattr(checkpoint, "classification_snapshot")
     assert isinstance(snapshot, EffectiveClassificationSnapshot)
     assert {
@@ -165,11 +175,15 @@ def _assert_classification_snapshot(
 
 
 def _capture_checkpoint_repository(task, captured: list[object]) -> Mock:
-    """构造回读持久投影并记录每次 CAS 提交内容的仓储替身。"""
+    """
+    构造回读持久投影并记录每次 CAS 提交内容的仓储替身。
+    """
     repository = Mock()
 
     def checkpoint_plan(**kwargs):
-        """记录待持久检查点，并模拟仓储 JSON 往返后的 planned 投影。"""
+        """
+        记录待持久检查点，并模拟仓储 JSON 往返后的 planned 投影。
+        """
         checkpoint = kwargs["checkpoint"]
         persisted = transfer_application.TransferPlanCheckpoint.from_payload(
             checkpoint.to_payload()
@@ -182,7 +196,9 @@ def _capture_checkpoint_repository(task, captured: list[object]) -> Mock:
 
 
 def test_v2_classification_snapshot_round_trip_preserves_all_five_fields() -> None:
-    """v2 JSON 往返必须保留分类 ID、路径、规则、revision 和来源。"""
+    """
+    v2 JSON 往返必须保留分类 ID、路径、规则、revision 和来源。
+    """
     checkpoint = _v2_checkpoint()
 
     restored = transfer_application.TransferPlanCheckpoint.from_payload(
@@ -201,7 +217,9 @@ def test_v2_classification_snapshot_round_trip_preserves_all_five_fields() -> No
 def test_v2_classification_snapshot_rejects_unsafe_relative_paths(
     unsafe_path: str,
 ) -> None:
-    """v2 快照不得接受目录穿越、绝对路径或非 POSIX 分隔符。"""
+    """
+    v2 快照不得接受目录穿越、绝对路径或非 POSIX 分隔符。
+    """
     payload = _resolved_checkpoint().to_payload()
     payload["schema_version"] = 2
     payload["classification_snapshot"] = {
@@ -214,7 +232,9 @@ def test_v2_classification_snapshot_rejects_unsafe_relative_paths(
 
 
 def test_host_checkpoint_creation_freezes_effective_selection_only() -> None:
-    """宿主计划只冻结 effective，不得使用 recommended 或 metadata_category。"""
+    """
+    宿主计划只冻结 effective，不得使用 recommended 或 metadata_category。
+    """
     captured: list[object] = []
     task = _task()
     task.meta = MetaBase("Frozen.Movie.2026.mkv")
@@ -240,7 +260,9 @@ def test_host_checkpoint_creation_freezes_effective_selection_only() -> None:
 
 
 def test_provider_pending_creation_freezes_effective_selection_only() -> None:
-    """provider_pending 必须在插件副作用前冻结与宿主相同的 effective 分类。"""
+    """
+    provider_pending 必须在插件副作用前冻结与宿主相同的 effective 分类。
+    """
     captured: list[object] = []
     task = _task()
     task.meta = MetaBase("Frozen.Movie.2026.mkv")
@@ -281,7 +303,9 @@ def test_provider_pending_creation_freezes_effective_selection_only() -> None:
 
 
 def test_planned_replay_restores_top_level_snapshot_without_live_dependencies() -> None:
-    """策略、识别和目录服务漂移或失效时，planned 恢复仍使用顶层旧分类。"""
+    """
+    策略、识别和目录服务漂移或失效时，planned 恢复仍使用顶层旧分类。
+    """
     drifted_media = _classified_media(
         category_id="movie.drifted",
         category_path=("电影", "新策略"),
@@ -300,7 +324,9 @@ def test_planned_replay_restores_top_level_snapshot_without_live_dependencies() 
     chain._TransferChain__finish_scrape_batch_task = Mock()
 
     def unavailable(*_args, **_kwargs):
-        """确保 planned 恢复没有读取任何当前在线分类依赖。"""
+        """
+        确保 planned 恢复没有读取任何当前在线分类依赖。
+        """
         raise AssertionError("planned replay 不得读取当前识别、目录或分类策略")
 
     with (
@@ -330,7 +356,9 @@ def test_planned_replay_restores_top_level_snapshot_without_live_dependencies() 
 
 
 def test_provider_pending_host_promotion_preserves_original_snapshot() -> None:
-    """provider 未接管后的宿主升级只能沿用已提交分类，不得按新策略改写。"""
+    """
+    provider 未接管后的宿主升级只能沿用已提交分类，不得按新策略改写。
+    """
     provider_checkpoint = _provider_v2_checkpoint()
     promoted: list[object] = []
     task = _task()
@@ -362,7 +390,9 @@ def test_provider_pending_host_promotion_preserves_original_snapshot() -> None:
 
 
 def test_v1_payload_derives_snapshot_from_persisted_effective_media() -> None:
-    """v1 双读只能从自身媒体 payload 的 effective 构造冻结分类。"""
+    """
+    v1 双读只能从自身媒体 payload 的 effective 构造冻结分类。
+    """
     payload = _resolved_checkpoint().to_payload()
     payload["schema_version"] = 1
     payload.pop("classification_snapshot", None)
@@ -391,7 +421,9 @@ def test_v1_payload_derives_snapshot_from_persisted_effective_media() -> None:
 
 
 def test_v1_payload_ignores_recommended_and_uses_legacy_library_path() -> None:
-    """v1 无 effective 时不得冻结推荐或元数据分类，只兼容安全库路径。"""
+    """
+    v1 无 effective 时不得冻结推荐或元数据分类，只兼容安全库路径。
+    """
     media = _classified_media()
     assert media.classification is not None
     media.classification.effective = None
@@ -424,7 +456,9 @@ def test_v1_payload_ignores_recommended_and_uses_legacy_library_path() -> None:
 def test_v1_unsafe_classification_is_ignored_without_changing_plan_identity(
     unsafe_path: str,
 ) -> None:
-    """v1 历史脏分类应降级为空快照，同时保持原 payload 与计划指纹。"""
+    """
+    v1 历史脏分类应降级为空快照，同时保持原 payload 与计划指纹。
+    """
     media = _classified_media()
     assert media.classification is not None
     media.classification.effective = None
@@ -447,7 +481,9 @@ def test_v1_unsafe_classification_is_ignored_without_changing_plan_identity(
 
 
 def test_recognition_rejection_persists_explicit_empty_classification_snapshot() -> None:
-    """尚无媒体对象的确定性拒绝也必须保存五字段显式空快照。"""
+    """
+    尚无媒体对象的确定性拒绝也必须保存五字段显式空快照。
+    """
     captured: list[object] = []
     task = _task()
     task.meta = MetaBase("Unrecognized.Movie.2026.mkv")

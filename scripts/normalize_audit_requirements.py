@@ -1,4 +1,6 @@
-"""将 uv 导出的锁定 URL 依赖转换为漏洞审计可识别的精确版本。"""
+"""
+将 uv 导出的锁定 URL 依赖转换为漏洞审计可识别的精确版本。
+"""
 
 from __future__ import annotations
 
@@ -7,24 +9,37 @@ import re
 import tomllib
 from pathlib import Path
 
-
 DIRECT_REFERENCE = re.compile(
     r"^(?P<indent>\s*)(?P<name>[A-Za-z0-9_.-]+)\s+@\s+"
     r"(?P<url>\S+)(?P<suffix>.*)$"
 )
 
+# free-threaded Brotli 保留 1.2.0 包元数据以使用无 GIL 源码，但源码提交已包含
+# 1.2.1 的安全修复；仅在漏洞数据库匹配时使用修复版本，不改变实际安装来源。
+AUDIT_VERSION_OVERRIDES = {
+    (
+        "brotli",
+        "https://github.com/google/brotli/archive/0ed4268a4401abcb4472096340477cf4af7d1a2b.tar.gz",
+    ): "1.2.1",
+}
+
 
 def _canonicalize_name(name: str) -> str:
-    """按 Python 包索引规则规范化分发包名。"""
+    """
+    按 Python 包索引规则规范化分发包名。
+    """
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def _locked_url_versions(lock_file: Path) -> dict[tuple[str, str], str]:
-    """读取锁文件中 URL 来源与已解析版本的唯一映射。"""
+    """
+    读取锁文件中 URL 来源与已解析版本的唯一映射。
+    """
     with lock_file.open("rb") as file:
         document = tomllib.load(file)
 
     versions: dict[tuple[str, str], str] = {}
+    locked_versions: dict[tuple[str, str], str] = {}
     for package in document.get("package", []):
         source = package.get("source") or {}
         url = source.get("url")
@@ -33,14 +48,25 @@ def _locked_url_versions(lock_file: Path) -> dict[tuple[str, str], str]:
         if not all(isinstance(value, str) and value for value in (url, name, version)):
             continue
         key = (_canonicalize_name(name), url)
-        previous = versions.setdefault(key, version)
-        if previous != version:
+        locked_previous = locked_versions.setdefault(key, version)
+        if locked_previous != version:
+            raise ValueError(f"锁文件包含冲突的 URL 依赖版本：{name} @ {url}")
+        audit_version = AUDIT_VERSION_OVERRIDES.get(key, version)
+        previous = versions.setdefault(key, audit_version)
+        if previous != audit_version:
             raise ValueError(f"锁文件包含冲突的 URL 依赖版本：{name} @ {url}")
     return versions
 
 
 def normalize_requirements(requirements: str, lock_file: Path) -> str:
-    """保留 marker 和注释，将直接引用替换为锁文件中的精确版本。"""
+    """
+    保留环境标记和注释，将直接引用替换为锁文件中的精确版本。
+
+    :param requirements: uv 导出的完整依赖文本，保留环境标记、注释与换行
+    :param lock_file: 用于核对包名、URL 和精确版本的锁文件
+    :return: 将直接 URL 引用替换为精确版本后的审计清单
+    :raises ValueError: 锁文件版本存在冲突，或某个直接引用无法定位
+    """
     versions = _locked_url_versions(lock_file)
     normalized_lines = []
     for line in requirements.splitlines(keepends=True):
@@ -70,7 +96,9 @@ def normalize_requirements(requirements: str, lock_file: Path) -> str:
 
 
 def main() -> None:
-    """读取 uv 导出文件并写入适合 pip-audit 的锁定版本清单。"""
+    """
+    读取 uv 导出文件并写入适合 pip-audit 的锁定版本清单。
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--lock", type=Path, required=True)
     parser.add_argument("--input", type=Path, required=True)

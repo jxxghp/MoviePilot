@@ -1,8 +1,9 @@
-"""3.0.16 增加整理步骤执行证据与幂等终态结算字段。
+"""
+3.0.16 增加整理步骤执行证据与幂等终态结算字段。
 
-Revision ID: e5c7a9b1d3f6
-Revises: d3a9e5f7b2c4
-Create Date: 2026-08-27
+版本标识： e5c7a9b1d3f6
+前置版本： d3a9e5f7b2c4
+创建时间： 2026-08-27
 """
 
 import hashlib
@@ -21,6 +22,7 @@ _PENDING_TABLE = "transferpending"
 _HISTORY_TABLE = "transferhistory"
 _STEP_TABLE = "transferexecutionstep"
 _RECEIPT_TABLE = "transfersettlementreceipt"
+# 降级时保留终态结算证据的归档表，再升级时按原身份恢复。
 _RECEIPT_ARCHIVE_TABLE = "transfersettlementreceipt_3_0_16_archive"
 _PENDING_INDEX = "ix_transferpending_execution_due"
 _HISTORY_INDEX = "ux_transferhistory_transfer_task_id"
@@ -32,7 +34,9 @@ _RECEIPT_HISTORY_INDEX = "ix_transfersettlementreceipt_history_id"
 _RECEIPT_TASK_REVISION_INDEX = "ix_transfersettlementreceipt_task_revision"
 _MANUAL_REVIEW_DIAGNOSTIC = "升级检测到既有执行迹象，需人工确认后再处理"
 _LEGACY_REVIEW_STEP_KIND = "legacy_execution_review"
+# 用有符号 32 位整数上限标记迁移补建的人工复核步骤，区别于正常执行顺序。
 _LEGACY_REVIEW_STEP_ORDINAL = 2_147_483_647
+# 历史记录没有可用时间时采用的固定兜底值，避免重复迁移产生不同证据。
 _LEGACY_REVIEW_FALLBACK_TIME = "1970-01-01 00:00:00"
 
 _PENDING_COLUMNS = {
@@ -147,12 +151,16 @@ _RECEIPT_COLUMN_TYPES = {
 
 
 def _table_names() -> set[str]:
-    """返回当前数据库的表名集合。"""
+    """
+    返回当前数据库的表名集合。
+    """
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def _column_names(table_name: str) -> set[str]:
-    """返回指定表的字段集合。"""
+    """
+    返回指定表的字段集合。
+    """
     if table_name not in _table_names():
         return set()
     return {
@@ -162,7 +170,9 @@ def _column_names(table_name: str) -> set[str]:
 
 
 def _index_names(table_name: str) -> set[str]:
-    """返回指定表的显式索引名称集合。"""
+    """
+    返回指定表的显式索引名称集合。
+    """
     if table_name not in _table_names():
         return set()
     return {
@@ -173,7 +183,9 @@ def _index_names(table_name: str) -> set[str]:
 
 
 def _table_row_count(table_name: str) -> int:
-    """不依赖业务字段读取迁移表行数，供残缺结构修复决策使用。"""
+    """
+    不依赖业务字段读取迁移表行数，供残缺结构修复决策使用。
+    """
     return op.get_bind().execute(
         sa.select(sa.func.count()).select_from(sa.table(table_name))
     ).scalar_one()
@@ -185,7 +197,9 @@ def _repair_unique_constraints(
         expected: dict[str, tuple[str, ...]],
         create_table: Callable[[], None],
 ) -> None:
-    """把迁移自有表的唯一约束收敛到命名的 ORM 精确集合。"""
+    """
+    把迁移自有表的唯一约束收敛到命名的 ORM 精确集合。
+    """
     constraints = sa.inspect(op.get_bind()).get_unique_constraints(table_name)
     unnamed = [item for item in constraints if not item.get("name")]
     if unnamed:
@@ -228,7 +242,9 @@ def _repair_indexes(
         table_name: str,
         expected: dict[str, tuple[str, ...]],
 ) -> None:
-    """把迁移自有表的显式索引收敛到 ORM 精确集合。"""
+    """
+    把迁移自有表的显式索引收敛到 ORM 精确集合。
+    """
     actual = {
         item["name"]: tuple(item.get("column_names") or ())
         for item in sa.inspect(op.get_bind()).get_indexes(table_name)
@@ -255,7 +271,9 @@ def _repair_owned_index(
         columns: tuple[str, ...],
         unique: bool,
 ) -> None:
-    """按列顺序和唯一性精确修复宿主表上的迁移自有索引。"""
+    """
+    按列顺序和唯一性精确修复宿主表上的迁移自有索引。
+    """
     indexes = {
         item["name"]: item
         for item in sa.inspect(op.get_bind()).get_indexes(table_name)
@@ -278,7 +296,9 @@ def _repair_owned_index(
 
 
 def _column_type_signature(column_type: sa.types.TypeEngine) -> tuple[str, object]:
-    """把方言反射类型归一为迁移可稳定比较的类型与长度。"""
+    """
+    把方言反射类型归一为迁移可稳定比较的类型与长度。
+    """
     if isinstance(column_type, sa.JSON):
         return "json", None
     if isinstance(column_type, sa.Boolean):
@@ -301,7 +321,9 @@ def _validate_or_recreate_empty_table(
         expected_foreign_keys: set[tuple[str, str, str, str]],
         create_table: Callable[[], None],
 ) -> None:
-    """校验中断升级留下的表结构；仅空表允许无损重建。"""
+    """
+    校验中断升级留下的表结构；仅空表允许无损重建。
+    """
     inspected_columns = sa.inspect(op.get_bind()).get_columns(table_name)
     actual_columns = {column["name"] for column in inspected_columns}
     actual_nullable = {
@@ -373,7 +395,9 @@ def _validate_or_recreate_empty_table(
 
 
 def _add_pending_columns() -> None:
-    """补齐 pending 执行 checkpoint、重试与结算字段。"""
+    """
+    补齐 pending 执行 checkpoint、重试与结算字段。
+    """
     columns = _column_names(_PENDING_TABLE)
     additions = (
         ("execution_state", sa.Column("execution_state", sa.String(32))),
@@ -402,7 +426,9 @@ def _add_pending_columns() -> None:
 
 
 def _backfill_pending() -> None:
-    """保守隔离旧执行迹象，并补齐新增非空字段。"""
+    """
+    保守隔离旧执行迹象，并补齐新增非空字段。
+    """
     columns = _column_names(_PENDING_TABLE)
     if not _PENDING_COLUMNS.issubset(columns):
         return
@@ -474,7 +500,9 @@ def _backfill_pending() -> None:
 
 
 def _add_history_columns() -> None:
-    """补齐成功删除 pending 后仍可幂等回读的历史身份字段。"""
+    """
+    补齐成功删除 pending 后仍可幂等回读的历史身份字段。
+    """
     columns = _column_names(_HISTORY_TABLE)
     if "transfer_task_id" not in columns:
         op.add_column(
@@ -489,7 +517,9 @@ def _add_history_columns() -> None:
 
 
 def _create_step_table() -> None:
-    """按 ORM 契约创建整理步骤执行证据表。"""
+    """
+    按 ORM 契约创建整理步骤执行证据表。
+    """
     op.create_table(
         _STEP_TABLE,
         sa.Column("id", sa.Integer(), nullable=False),
@@ -530,7 +560,9 @@ def _create_step_table() -> None:
 
 
 def _create_or_repair_step_table() -> None:
-    """创建步骤证据表，并在任何查询前拒绝有数据的残缺结构。"""
+    """
+    创建步骤证据表，并在任何查询前拒绝有数据的残缺结构。
+    """
     if _STEP_TABLE not in _table_names():
         _create_step_table()
     else:
@@ -558,7 +590,9 @@ def _create_or_repair_step_table() -> None:
 
 
 def _create_receipt_table() -> None:
-    """按 append-only ORM 契约创建任务终态结算回执表。"""
+    """
+    按 仅追加 ORM 契约创建任务终态结算回执表。
+    """
     op.create_table(
         _RECEIPT_TABLE,
         sa.Column("id", sa.Integer(), nullable=False),
@@ -585,7 +619,9 @@ def _create_receipt_table() -> None:
 
 
 def _restore_receipt_archive() -> None:
-    """在重升时原子恢复降级保留的 append-only 结算证据。"""
+    """
+    在重升时原子恢复降级保留的 仅追加 结算证据。
+    """
     tables = _table_names()
     if _RECEIPT_ARCHIVE_TABLE not in tables:
         return
@@ -606,7 +642,9 @@ def _restore_receipt_archive() -> None:
 
 
 def _create_or_repair_receipt_table() -> None:
-    """创建结算回执表，并只对空的残缺表执行无损重建。"""
+    """
+    创建结算回执表，并只对空的残缺表执行无损重建。
+    """
     if _RECEIPT_TABLE not in _table_names():
         _create_receipt_table()
     else:
@@ -641,14 +679,18 @@ def _create_or_repair_receipt_table() -> None:
 
 
 def _legacy_review_identity(*, task_id: str, suffix: str) -> str:
-    """生成迁移遗留复核步骤使用的确定性 SHA-256 身份。"""
+    """
+    生成迁移遗留复核步骤使用的确定性 SHA-256 身份。
+    """
     return hashlib.sha256(
         f"moviepilot:3.0.16:legacy-review:{suffix}:{task_id}".encode("utf-8")
     ).hexdigest()
 
 
 def _backfill_legacy_review_steps() -> None:
-    """为没有可判定人工步骤的遗留人工态补一条 synthetic 审计步骤。"""
+    """
+    为没有可判定人工步骤的遗留人工态补一条 迁移生成的 审计步骤。
+    """
     if _STEP_TABLE not in _table_names():
         return
     pending = sa.table(
@@ -751,7 +793,9 @@ def _backfill_legacy_review_steps() -> None:
 
 
 def upgrade() -> None:
-    """增加执行证据、幂等结算身份和恢复调度字段，支持中断重跑。"""
+    """
+    增加执行证据、幂等结算身份和恢复调度字段，支持中断重跑。
+    """
     tables = _table_names()
     if _PENDING_TABLE not in tables:
         return
@@ -790,7 +834,9 @@ def upgrade() -> None:
 
 
 def _mark_downgrade_uncertain() -> None:
-    """在丢弃执行证据前恢复旧版可消费状态并保留再升级诊断。"""
+    """
+    在丢弃执行证据前恢复旧版可消费状态并保留再升级诊断。
+    """
     columns = _column_names(_PENDING_TABLE)
     if "execution_state" not in columns:
         return
@@ -861,7 +907,9 @@ def _mark_downgrade_uncertain() -> None:
 
 
 def downgrade() -> None:
-    """保守折叠执行状态后移除 3.0.16 字段、索引与步骤表。"""
+    """
+    保守折叠执行状态后移除 3.0.16 字段、索引与步骤表。
+    """
     if _PENDING_TABLE not in _table_names():
         return
     _mark_downgrade_uncertain()

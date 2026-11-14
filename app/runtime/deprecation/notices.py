@@ -1,4 +1,5 @@
-"""废弃登记与文案。
+"""
+废弃登记与文案。
 
 全仓所有「即将废弃」的对外文案集中在本模块的 ``NOTICES`` 里，调用点只引用稳定的
 ``key``，不各自拼写提示语。旧 Facade 的登记标识与 ``compat.facade.hit`` 指标的
@@ -11,7 +12,9 @@ from typing import Dict, Optional
 
 
 class DeprecationStage(IntEnum):
-    """废弃生命周期阶段，数值越大距离物理删除越近。"""
+    """
+    废弃生命周期阶段，数值越大距离物理删除越近。
+    """
 
     # 仅登记：功能照常且不打扰用户，只靠指标观察真实用量
     SILENT = 0
@@ -26,7 +29,7 @@ class DeprecationStage(IntEnum):
 @dataclass(frozen=True)
 class DeprecationNotice:
     """
-    单条废弃登记
+    单条废弃登记。
 
     :param key: 稳定标识，用作开关配置项与告警去重的键
     :param subject: 被废弃的符号或能力
@@ -47,7 +50,7 @@ class DeprecationNotice:
 
     def message(self, context: Optional[str] = None) -> str:
         """
-        构造面向调用方的提示语
+        构造面向调用方的提示语。
 
         :param context: 触发来源，例如具体方法名或插件标识
         :return: 单行提示语

@@ -1,3 +1,7 @@
+"""
+启动和停止 MoviePilot 的 Uvicorn 服务进程。
+"""
+
 import os
 import shutil
 import sys
@@ -38,6 +42,7 @@ _prepare_direct_execution_import_path()
 import signal
 import threading
 from pathlib import Path
+from types import FrameType
 from typing import Optional
 
 import setproctitle
@@ -66,7 +71,6 @@ elif SystemUtils.is_frozen():
 from app.factory import app
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
-
 from app.runtime.topology import (
     UnsupportedProcessTopologyError,
     validate_process_topology,
@@ -76,9 +80,17 @@ setproctitle.setproctitle(get_runtime_setting('PROJECT_NAME'))
 
 
 class MoviePilotServer(uvicorn.Server):
-    """在 Uvicorn 开始优雅退出前发布应用协作停止标志"""
+    """
+    在 Uvicorn 开始优雅退出前发布应用协作停止标志
+    """
 
-    def handle_exit(self, sig, frame) -> None:
+    def handle_exit(self, sig: int, frame: Optional[FrameType]) -> None:
+        """
+收到退出信号时先通知业务任务收尾，再交给 Uvicorn 处理。
+
+        :param sig: 操作系统传入的退出信号
+        :param frame: 信号触发时的执行帧
+        """
         runtime_stop_state.stop_system()
         super().handle_exit(sig, frame)
 
@@ -88,7 +100,9 @@ Server: Optional[MoviePilotServer] = None
 
 
 def create_server() -> MoviePilotServer:
-    """创建不带 reload/multiprocess supervisor 的单进程生产服务器。"""
+    """
+    创建不带 reload/multiprocess supervisor 的单进程生产服务器。
+    """
     server = MoviePilotServer(
         Config(
             app,
@@ -106,7 +120,9 @@ def create_server() -> MoviePilotServer:
 
 
 def run_api_server() -> None:
-    """按开发 reload、安全模式多进程或生产单进程选择 Uvicorn 入口。"""
+    """
+    按开发 reload、安全模式多进程或生产单进程选择 Uvicorn 入口。
+    """
     global Server
     supervised = get_runtime_setting('DEV') or get_runtime_setting('API_WORKERS') > 1
     if supervised:
@@ -138,13 +154,15 @@ def run_api_server() -> None:
 
 
 def request_shutdown() -> None:
-    """发布协作停止标志并请求 Uvicorn 退出"""
+    """
+    发布协作停止标志并请求 Uvicorn 退出
+    """
     runtime_stop_state.stop_system()
     if Server is not None:
         Server.should_exit = True
 
 
-def start_tray():
+def start_tray() -> None:
     """
     启动托盘图标
     """
@@ -155,14 +173,14 @@ def start_tray():
     if not SystemUtils.is_windows():
         return
 
-    def open_web():
+    def open_web() -> None:
         """
         调用浏览器打开前端页面
         """
         import webbrowser
         webbrowser.open(f"http://localhost:{get_runtime_setting('NGINX_PORT')}")
 
-    def quit_app():
+    def quit_app() -> None:
         """
         退出程序
         """
@@ -188,7 +206,7 @@ def start_tray():
     threading.Thread(target=TrayIcon.run, daemon=True).start()
 
 
-def signal_handler(signum, frame):
+def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
     """
     信号处理函数，用于优雅停止服务
     """
@@ -197,7 +215,9 @@ def signal_handler(signum, frame):
 
 
 def run_application() -> None:
-    """初始化进程并启动 API 服务"""
+    """
+    初始化进程并启动 API 服务
+    """
     validate_process_topology(
         workers=get_runtime_setting('API_WORKERS'),
         safe_mode=get_runtime_setting('MOVIEPILOT_SAFE_MODE'),

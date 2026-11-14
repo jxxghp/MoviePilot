@@ -1,4 +1,6 @@
-"""调度器事件循环提交与异步句柄桥接。"""
+"""
+调度器事件循环提交与异步句柄桥接。
+"""
 
 import asyncio
 import concurrent.futures
@@ -11,13 +13,17 @@ from app.scheduler.registry import SchedulerHandle
 
 
 class SchedulerBridgeOwner(_SchedulerOwnerBase):
-    """调度器事件循环提交与异步句柄桥接。"""
+    """
+    调度器事件循环提交与异步句柄桥接。
+    """
 
     def _remove_handle(
         self,
         handle: asyncio.Future[Any] | concurrent.futures.Future[Any],
     ) -> None:
-        """执行句柄完成后从 owner registry 移除。"""
+        """
+        执行句柄完成后从 owner registry 移除。
+        """
         with self._lock:
             self._registry.remove_handle(handle)
 
@@ -30,7 +36,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
         completion: asyncio.Future[Any] | concurrent.futures.Future[Any] | None = None,
         kind: str = "job",
     ) -> bool:
-        """登记调度器拥有的句柄；关闭竞态下拒绝并取消新句柄。"""
+        """
+        登记调度器拥有的句柄；关闭竞态下拒绝并取消新句柄。
+        """
         if completion is None:
             completion = handle
         with self._lock:
@@ -54,7 +62,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
         return True
 
     def _accepts_handle(self, job_id: str, generation: int) -> bool:
-        """判断新句柄是否属于当前运行期或热重载中的既有任务。"""
+        """
+        判断新句柄是否属于当前运行期或热重载中的既有任务。
+        """
         if self._accepting_submissions():
             return True
         current_job = self._jobs.get(job_id)
@@ -67,7 +77,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
 
     @staticmethod
     def _cancel_handle(handle: SchedulerHandle) -> None:
-        """从句柄所属线程安全地请求取消。"""
+        """
+        从句柄所属线程安全地请求取消。
+        """
         target = handle.handle
         if isinstance(target, concurrent.futures.Future):
             target.cancel()
@@ -81,7 +93,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
 
     @staticmethod
     async def _wait_handle(handle: SchedulerHandle) -> None:
-        """等待取消请求到达协程 finally，而不是只等待提交代理变为 cancelled。"""
+        """
+        等待取消请求到达协程 finally，而不是只等待提交代理变为 cancelled。
+        """
         target = handle.completion
         if isinstance(target, concurrent.futures.Future):
             await asyncio.shield(asyncio.wrap_future(target))
@@ -93,7 +107,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
         self,
         handles: tuple[SchedulerHandle, ...],
     ) -> None:
-        """等待已投递协程结束，关闭总预算由应用生命周期统一控制。"""
+        """
+        等待已投递协程结束，关闭总预算由应用生命周期统一控制。
+        """
         if not handles:
             return
         await asyncio.gather(
@@ -102,7 +118,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
         )
 
     async def _await_progress_handles(self, job_id: str, generation: int) -> None:
-        """等待同一轮任务已提交的进度更新，保证最终状态最后写入缓存。"""
+        """
+        等待同一轮任务已提交的进度更新，保证最终状态最后写入缓存。
+        """
         with self._lock:
             handles = self._registry.handles(
                 job_id=job_id,
@@ -122,7 +140,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
         completion: concurrent.futures.Future[Any],
         started: threading.Event,
     ) -> Any:
-        """把跨线程提交代理与协程真实终态分离。"""
+        """
+        把跨线程提交代理与协程真实终态分离。
+        """
 
         async def _tracked() -> None:
             started.set()
@@ -150,7 +170,9 @@ class SchedulerBridgeOwner(_SchedulerOwnerBase):
         on_unstarted_cancel: Optional[Callable[[], None]] = None,
         kind: str = "job",
     ) -> bool:
-        """向主循环提交协程，并以独立完成信号跟踪真实收尾。"""
+        """
+        向主循环提交协程，并以独立完成信号跟踪真实收尾。
+        """
         completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
         handle: concurrent.futures.Future[Any] = concurrent.futures.Future()
         started = threading.Event()

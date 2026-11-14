@@ -1,22 +1,24 @@
+"""
+SynologyChat 通知渠道的消息解析、管理员校验与附件下载入口。
+"""
+
 import json
-from typing import Optional, Union, List, Tuple, Any
+from collections.abc import Buffer, Mapping
+from typing import Any, List, Optional, Sequence, SupportsIndex, SupportsInt, Union
 from urllib.parse import quote, unquote
 
-from app.domain.context import MediaInfo, Context
+from app.adapters.network.http import RequestUtils
 from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.runtime.log import logger
+from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.synologychat.synologychat import SynologyChat
-from app.schemas.notification import NotificationChannel
-from app.schemas.message import IncomingMessage
-from app.schemas.message import Message
-from app.schemas.types import ModuleType
-from app.adapters.network.http import RequestUtils
-
+from app.runtime.log import logger
+from app.schemas.message import IncomingMessage, Message
+from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.SynologyChat,
@@ -25,9 +27,11 @@ register_channel_admin_resolver(
 
 
 class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
-    """负责 Synology Chat 消息收发、附件解析和管理员命令校验。"""
+    """
+    负责 Synology Chat 消息收发、附件解析和管理员命令校验。
+    """
 
-    # 管理员配置键，与渠道 resolver 保持一致
+    # 管理员配置键，与渠道管理员解析器保持一致
     _admin_config_key = "SYNOLOGYCHAT_ADMINS"
     _notification_user_target_keys = ("synologychat_userid",)
     _IMAGE_SUFFIXES = (
@@ -57,7 +61,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     def init_module(self) -> None:
         """
-        初始化模块
+        初始化模块。
         """
         super().init_service(service_name=SynologyChat.__name__.lower(),
                              service_type=SynologyChat)
@@ -65,40 +69,48 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @staticmethod
     def get_name() -> str:
-        """获取模块显示名称"""
+        """
+        获取模块显示名称。
+        """
         return "Synology Chat"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return NotificationChannel.SynologyChat
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 5
 
     def _commands_enabled(self, config: Optional[dict[str, Any]]) -> bool:
-        """客户端不提供命令菜单注册或删除 API，跳过基类的菜单注册流程。"""
+        """
+        客户端不提供命令菜单注册或删除 API，跳过基类的菜单注册流程。
+        """
         return False
 
-    def stop(self):
-        """客户端没有需要在模块停止时释放的后台资源。"""
+    def stop(self) -> None:
+        """
+        客户端没有需要在模块停止时释放的后台资源。
+        """
         pass
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """实例由通知服务配置管理，不额外声明环境开关。"""
+    def init_setting(self) -> None:
+        """
+        实例由通知服务配置管理，不额外声明环境开关。
+        """
         pass
 
     @staticmethod
@@ -114,37 +126,38 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
     def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[IncomingMessage]:
         """
-        解析消息内容，返回字典，注意以下约定值：
-        userid: 用户ID
-        username: 用户名
-        text: 内容
-        :param source: 消息来源
-        :param body: 请求体
-        :param form: 表单
-        :param args: 参数
-        :return: 渠道、消息体
+        将 SynologyChat 入站消息转换为统一消息，并校验管理员命令权限。
+
+        群晖回调令牌必须与配置一致；文本、图片、音频和普通附件均可构成有效消息。
+
+        :param source: 通知服务配置名称
+        :param body: 原始 JSON 请求体；Synology Chat 使用 form 字段
+        :param form: 群晖回调表单；VoceChat 不使用此参数
+        :param args: 兼容统一入口的查询参数，当前不使用
+        :return: 有效文本或附件消息；配置缺失、格式无效、被拒绝或解析失败时返回 None
         """
         try:
-            # 获取服务配置
             client_config = self.get_config(source)
             if not client_config:
                 return None
-            client: SynologyChat = self.get_instance(client_config.name)
+            client = self.get_instance(client_config.name)
             if not client:
                 return None
-            # 解析消息
-            message: dict = form
+            message: Mapping[str, object] = form
             if not message:
                 return None
-            # 校验token
             token = message.get("token")
-            if not token or not client.check_token(token):
+            if not isinstance(token, str) or not token or not client.check_token(token):
                 return None
-            # 文本
-            text = message.get("text")
-            # 用户ID
-            user_id = int(message.get("user_id"))
-            # 获取用户名
+            raw_text = message.get("text")
+            if raw_text and not isinstance(raw_text, str):
+                return None
+            text = raw_text if isinstance(raw_text, str) else None
+            # 保留 int 原有的字符串、缓冲区与数值转换协议。
+            raw_user_id = message.get("user_id")
+            if not isinstance(raw_user_id, (str, Buffer, SupportsInt, SupportsIndex)):
+                return None
+            user_id = int(raw_user_id)
             user_name = message.get("username")
             images = self._extract_images(message)
             audio_refs = self._extract_audio_refs(message)
@@ -162,7 +175,8 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                     f"files={len(files) if files else 0}"
                 )
                 return IncomingMessage(channel=NotificationChannel.SynologyChat, source=client_config.name,
-                                       userid=user_id, username=user_name,
+                                       userid=user_id,
+                                       username=str(user_name) if user_name is not None else None,
                                        is_channel_admin=matches_channel_admin(
                                            NotificationChannel.SynologyChat,
                                            client_config.config,
@@ -175,9 +189,11 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _extract_images(
-        cls, message: dict
+        cls, message: Mapping[str, object]
     ) -> Optional[List[IncomingMessage.MessageImage]]:
-        """从消息字段和附件中提取并去重图片引用"""
+        """
+        从消息字段和附件中提取并去重图片引用。
+        """
         images = []
         for key in ("file_url", "image_url", "pic_url"):
             value = message.get(key)
@@ -209,15 +225,17 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                             )
                         )
 
-        deduped = []
+        deduped: List[IncomingMessage.MessageImage] = []
         for image in images:
             if image.ref not in [item.ref for item in deduped]:
                 deduped.append(image)
         return deduped or None
 
     @classmethod
-    def _extract_audio_refs(cls, message: dict) -> Optional[List[str]]:
-        """从消息字段和附件中提取并去重音频下载引用"""
+    def _extract_audio_refs(cls, message: Mapping[str, object]) -> Optional[List[str]]:
+        """
+        从消息字段和附件中提取并去重音频下载引用。
+        """
         audio_refs = []
         for key in ("audio_url", "voice_url", "file_url"):
             value = message.get(key)
@@ -261,7 +279,9 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _looks_like_image(cls, value: str) -> bool:
-        """判断 HTTP 地址是否包含支持的图片扩展名"""
+        """
+        判断 HTTP 地址是否包含支持的图片扩展名。
+        """
         if not value or not isinstance(value, str):
             return False
         lowered = value.lower()
@@ -271,7 +291,9 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _looks_like_audio(cls, value: str) -> bool:
-        """判断 HTTP 地址是否包含支持的音频扩展名"""
+        """
+        判断 HTTP 地址是否包含支持的音频扩展名。
+        """
         if not value or not isinstance(value, str):
             return False
         lowered = value.lower()
@@ -281,9 +303,11 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _extract_files(
-        cls, message: dict
+        cls, message: Mapping[str, object]
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
-        """提取普通附件下载引用，排除已归类的图片和音频"""
+        """
+        提取普通附件下载引用，排除已归类的图片和音频。
+        """
         files = []
         for key in ("attachments", "files"):
             raw_value = message.get(key)
@@ -332,7 +356,11 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     def download_synologychat_file_bytes(self, file_ref: str, source: str) -> Optional[bytes]:
         """
-        下载 Synology Chat 音频文件并返回原始字节
+        下载 SynologyChat 文件引用并返回原始字节。
+
+        :param file_ref: synologychat://file/ 开头的内部文件引用
+        :param source: 所属通知服务配置名称
+        :return: 非空文件内容；引用、配置或响应不可用时返回 None
         """
         if not file_ref or not file_ref.startswith("synology://file/"):
             return None
@@ -341,38 +369,46 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         file_url = unquote(file_ref.replace("synology://file/", "", 1))
         resp = RequestUtils(timeout=30).get_res(file_url)
         if resp and resp.content:
-            return resp.content
+            content: bytes = resp.content
+            return content
         return None
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
-        发送消息
-        :param message: 消息体
-        :return: 成功或失败
+        向通过渠道范围筛选的 SynologyChat 配置发送普通通知。
+
+        不汇总客户端发送结果；客户端负责记录发送失败。
+
+        :param message: 提供渠道范围、接收人和标题等信息的通知消息
+        :param kwargs: 兼容统一通知入口的扩展参数，当前不使用
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
-                client.send_msg(title=message.title, text=message.text,
-                                image=message.image,
-                                userid=self.get_notification_userid(
-                                    message, "synologychat_userid"
-                                ),
-                                link=message.link)
+                texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.SynologyChat) or [message.text]
+                for text in texts:
+                    client.send_msg(title=message.title, text=text,
+                                    image=message.image,
+                                    userid=self.get_notification_userid(
+                                        message, "synologychat_userid"
+                                    ),
+                                    link=message.link)
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
-        发送媒体信息选择列表
-        :param message: 消息体
-        :param medias: 媒体列表
-        :return: 成功或失败
+        向通过渠道范围筛选的 SynologyChat 配置发送媒体候选列表。
+
+        不汇总客户端发送结果；客户端负责记录发送失败。
+
+        :param message: 提供渠道范围、接收人和标题等信息的通知消息
+        :param medias: 待展示的媒体列表
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(
                     title=message.title,
@@ -384,15 +420,17 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
-        发送种子信息选择列表
-        :param message: 消息体
-        :param torrents: 种子列表
-        :return: 成功或失败
+        向通过渠道范围筛选的 SynologyChat 配置发送种子候选列表。
+
+        不汇总客户端发送结果；客户端负责记录发送失败。
+
+        :param message: 提供渠道范围、接收人和标题等信息的通知消息
+        :param torrents: 待展示的种子上下文列表
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(
                     title=message.title,

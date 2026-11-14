@@ -1,3 +1,7 @@
+"""
+Agent 会话索引与消息历史的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 import time
 from typing import Any, Optional, Union
 
@@ -18,29 +22,40 @@ class AgentChatOper(DbOper):
     """
 
     def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
-        """复用调用方会话，兼容既有插件入口的事务委托。"""
+        """
+        复用调用方会话，兼容既有插件入口的事务委托。
+        """
         super().__init__(db)
 
     @staticmethod
     def _now() -> str:
-        """返回数据库统一使用的当前时间字符串。"""
+        """
+        返回数据库统一使用的当前时间字符串。
+        """
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     @staticmethod
     def _channel_value(channel: Optional[Union[NotificationChannel, str]]) -> Optional[str]:
-        """获取渠道枚举的字符串值。"""
+        """
+        获取渠道枚举的字符串值。
+        """
         if isinstance(channel, NotificationChannel):
-            return channel.value
+            value: str = channel.value
+            return value
         return channel
 
     @staticmethod
-    def _normalize_messages(messages: Optional[list[dict]]) -> list[dict]:
-        """规范化展示消息列表，避免 JSON 字段存入 None。"""
+    def _normalize_messages(messages: Optional[list[dict[str, object]]]) -> list[dict[str, object]]:
+        """
+        规范化展示消息列表，避免 JSON 字段存入 None。
+        """
         return messages if isinstance(messages, list) else []
 
     @staticmethod
-    def _normalize_title(value: Optional[str], messages: list[dict]) -> str:
-        """生成会话标题。"""
+    def _normalize_title(value: Optional[str], messages: list[dict[str, object]]) -> str:
+        """
+        生成会话标题。
+        """
         if value and value.strip():
             return value.strip()[:120]
         for message in messages:
@@ -57,12 +72,16 @@ class AgentChatOper(DbOper):
 
     @staticmethod
     def has_custom_title(value: Optional[str]) -> bool:
-        """判断会话是否已有真实标题。"""
+        """
+        判断会话是否已有真实标题。
+        """
         return bool(value and value.strip() and value.strip() != DEFAULT_AGENT_CHAT_TITLE)
 
     @staticmethod
-    def _normalize_preview(messages: list[dict]) -> str:
-        """生成会话预览文本。"""
+    def _normalize_preview(messages: list[dict[str, object]]) -> str:
+        """
+        生成会话预览文本。
+        """
         for message in reversed(messages):
             content = str(message.get("content") or "").strip()
             if content:
@@ -147,7 +166,7 @@ class AgentChatOper(DbOper):
         self,
         session_id: str,
         user_id: Optional[str],
-        messages: list[dict],
+        messages: list[dict[str, object]],
     ) -> None:
         """
         保存可恢复 Agent 上下文的原始消息。
@@ -210,7 +229,7 @@ class AgentChatOper(DbOper):
         self,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
@@ -233,6 +252,9 @@ class AgentChatOper(DbOper):
         )
         if not chat:
             return None
+        from app.domain.chat import merge_choice_state
+
+        normalized_messages = merge_choice_state(chat.display_messages or [], normalized_messages)
         normalized_title = (
             chat.title
             if self.has_custom_title(chat.title)
@@ -254,7 +276,7 @@ class AgentChatOper(DbOper):
         self,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
@@ -318,15 +340,21 @@ class AgentChatOper(DbOper):
         异步删除 Agent 会话历史。
         """
         async def stage(session: AsyncSession) -> bool:
-            """在同一事务删除会话和已确认回执，保留未知写入的恢复依据。"""
+            """
+            在同一事务删除会话和已确认回执，保留未知写入的恢复依据。
+            """
             return await AgentChatOper(session).async_stage_delete(session_id, user_id)
 
         return await self._execute_async_write(stage)
 
     def delete_by_id(self, chat_id: int) -> None:
-        """在同一事务按主键删除 Agent 会话及对应已确认回执。"""
+        """
+        在同一事务按主键删除 Agent 会话及对应已确认回执。
+        """
         def stage(session: Session) -> None:
-            """仅在会话存在时回收成功、失败或已确认提交的调用记录。"""
+            """
+            仅在会话存在时回收成功、失败或已确认提交的调用记录。
+            """
             chat = AgentChat.get(session, chat_id)
             if chat is None:
                 return
@@ -341,7 +369,9 @@ class AgentChatOper(DbOper):
         session_id: str,
         user_id: Optional[str] = None,
     ) -> bool:
-        """暂存 Agent 会话删除并 flush，不提交请求级事务。"""
+        """
+        暂存 Agent 会话删除并 flush，不提交请求级事务。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("Agent 会话暂存删除需要调用方提供 AsyncSession")
         chat = await self.async_get(session_id=session_id, user_id=user_id)

@@ -14,34 +14,54 @@ import pytest
 from app import schemas
 from app.chain.storage import StorageChain
 from app.foundation.singleton import WeakSingleton
-from app.modules.filemanager import FileManagerModule
+from app.modules.filemanager.module import FileManagerModule
 
 
 class _FakeStorageOper:
-    """记录管理动作调用情况的假存储实现"""
+    """
+    记录管理动作调用情况的假存储实现
+    """
 
     schema = SimpleNamespace(value="fakestore")
     calls = []
 
     def set_config(self, conf):
+        """
+        记录传入的存储配置，不连接真实存储服务。
+        """
         _FakeStorageOper.calls.append(("set_config", conf))
 
     def reset_config(self):
+        """
+        记录配置重置调用，供存储管理入口断言使用。
+        """
         _FakeStorageOper.calls.append(("reset_config", None))
 
     def usage(self):
+        """
+        返回固定的总容量与可用容量，隔离实际存储空间查询。
+        """
         return schemas.StorageUsage(total=100, available=40)
 
     def support_transtype(self):
+        """
+        声明虚拟存储只支持移动，供传输能力查询使用。
+        """
         return {"move": True}
 
     def check_login(self, **kwargs):
+        """
+        记录登录检查参数，并返回固定成功结果。
+        """
         _FakeStorageOper.calls.append(("check_login", kwargs))
         return {"status": True}, None
 
 
 @pytest.fixture
 def module(monkeypatch):
+    """
+    构造仅支持虚拟存储的文件管理模块，并清空前一用例的调用记录。
+    """
     _FakeStorageOper.calls.clear()
     module = FileManagerModule()
     monkeypatch.setattr(module, "_support_storages", ["fakestore"])
@@ -50,7 +70,9 @@ def module(monkeypatch):
 
 
 def test_manage_request_schema():
-    """ManageRequest 仅定义目标标识、动作标识与透传参数，无任何特定领域字段。"""
+    """
+    ManageRequest 仅定义目标标识、动作标识与透传参数，无任何特定领域字段。
+    """
     request = schemas.ManageRequest(target="fakestore", action="usage")
     assert request.target == "fakestore"
     assert request.action == "usage"
@@ -58,7 +80,9 @@ def test_manage_request_schema():
 
 
 def test_storage_chain_forwards_target_action_and_params(monkeypatch):
-    """链层按 storage_manage 契约原样透传，不引入存储特定逻辑。"""
+    """
+    链层按 storage_manage 契约原样透传，不引入存储特定逻辑。
+    """
     captured = {}
 
     def fake_run_module(self, method, **kwargs):
@@ -75,7 +99,9 @@ def test_storage_chain_forwards_target_action_and_params(monkeypatch):
 
 
 def test_storage_chain_reports_missing_module(monkeypatch):
-    """无模块实现 storage_manage 时返回统一失败结构。"""
+    """
+    无模块实现 storage_manage 时返回统一失败结构。
+    """
     monkeypatch.setattr(StorageChain, "run_module", lambda self, method, **kwargs: None)
     chain = StorageChain.__new__(StorageChain)
     result = chain.manage_storage(storage="unknown", action="usage")
@@ -84,21 +110,29 @@ def test_storage_chain_reports_missing_module(monkeypatch):
 
 
 def test_filemanager_stop_closes_only_materialized_storage_and_releases_owner():
-    """关停不得物化未使用存储，已物化 owner 关闭后必须允许下次重建。"""
+    """
+    关停不得物化未使用存储，已物化 owner 关闭后必须允许下次重建。
+    """
 
     class LifecycleStorage(metaclass=WeakSingleton):
-        """记录构造与关闭次数的生命周期存储替身。"""
+        """
+        记录构造与关闭次数的生命周期存储替身。
+        """
 
         schema = SimpleNamespace(value="lifecycle")
         created = 0
         closed = 0
 
         def __init__(self) -> None:
-            """记录 owner 物化。"""
+            """
+            记录 owner 物化。
+            """
             self.__class__.created += 1
 
         def close(self) -> None:
-            """记录 owner 关闭。"""
+            """
+            记录 owner 关闭。
+            """
             self.__class__.closed += 1
 
     module = object.__new__(FileManagerModule)
@@ -120,19 +154,27 @@ def test_filemanager_stop_closes_only_materialized_storage_and_releases_owner():
 
 
 def test_filemanager_stop_retains_unconverged_storage_for_retry():
-    """存储显式返回未收敛时必须保留原 owner，后续关停才能继续重试。"""
+    """
+    存储显式返回未收敛时必须保留原 owner，后续关停才能继续重试。
+    """
 
     class RetryingStorage(metaclass=WeakSingleton):
-        """首次拒绝关闭、再次收敛的生命周期存储替身。"""
+        """
+        首次拒绝关闭、再次收敛的生命周期存储替身。
+        """
 
         schema = SimpleNamespace(value="retrying")
 
         def __init__(self) -> None:
-            """初始化关闭尝试次数。"""
+            """
+            初始化关闭尝试次数。
+            """
             self.close_count = 0
 
         def close(self) -> bool:
-            """第二次关闭时才报告收敛。"""
+            """
+            第二次关闭时才报告收敛。
+            """
             self.close_count += 1
             return self.close_count >= 2
 
@@ -147,21 +189,27 @@ def test_filemanager_stop_retains_unconverged_storage_for_retry():
 
 
 def test_storage_manage_rejects_unknown_action(module):
-    """动作词汇表之外的请求返回统一错误结构。"""
+    """
+    动作词汇表之外的请求返回统一错误结构。
+    """
     result = module.storage_manage(storage="fakestore", action="not_an_action")
     assert result["success"] is False
     assert "不支持" in result["message"]
 
 
 def test_storage_manage_rejects_unknown_storage(module):
-    """未注册的存储标识直接返回错误，不进入动作分发。"""
+    """
+    未注册的存储标识直接返回错误，不进入动作分发。
+    """
     result = module.storage_manage(storage="unknown_store", action="usage")
     assert result["success"] is False
     assert "不支持的存储类型" in result["message"]
 
 
 def test_storage_manage_save_config_passes_conf_through(module):
-    """save_config 动作将 params.conf 原样交给存储实现持久化。"""
+    """
+    save_config 动作将 params.conf 原样交给存储实现持久化。
+    """
     result = module.storage_manage(
         storage="fakestore", action="save_config", conf={"token": "abc"}
     )
@@ -170,14 +218,17 @@ def test_storage_manage_save_config_passes_conf_through(module):
 
 
 def test_storage_manage_usage_returns_oper_data(module):
-    """usage 动作返回纯 dict 用量数据，空结果同样成功。"""
+    """
+    usage 动作返回纯 dict 用量数据，空结果同样成功。
+    """
     result = module.storage_manage(storage="fakestore", action="usage")
     assert result["success"] is True
     assert result["data"] == {"total": 100.0, "available": 40.0}
 
 
 def test_storage_manage_usage_data_passes_open_mapping_response(module):
-    """用量数据必须能透过通用响应 Response[Dict[str, Any]] 的开放映射校验。
+    """
+    用量数据必须能透过通用响应 Response[Dict[str, Any]] 的开放映射校验。
 
     回归守护：存储实现返回 pydantic 模型时若未转 dict，
     端点响应校验会直接 500，前端存储页整体报未知错误。
@@ -190,7 +241,9 @@ def test_storage_manage_usage_data_passes_open_mapping_response(module):
 
 
 def test_storage_manage_usage_defaults_when_oper_returns_none(module, monkeypatch):
-    """存储实现查不到用量时返回成功的默认空结构而非业务失败。"""
+    """
+    存储实现查不到用量时返回成功的默认空结构而非业务失败。
+    """
     monkeypatch.setattr(_FakeStorageOper, "usage", lambda self: None)
     result = module.storage_manage(storage="fakestore", action="usage")
     assert result["success"] is True
@@ -198,14 +251,18 @@ def test_storage_manage_usage_defaults_when_oper_returns_none(module, monkeypatc
 
 
 def test_storage_manage_support_transtype(module):
-    """support_transtype 动作返回值包装为 transtype，与旧契约结构一致。"""
+    """
+    support_transtype 动作返回值包装为 transtype，与旧契约结构一致。
+    """
     result = module.storage_manage(storage="fakestore", action="support_transtype")
     assert result["success"] is True
     assert result["data"] == {"transtype": {"move": True}}
 
 
 def test_storage_manage_support_transtype_empty_still_succeeds(module, monkeypatch):
-    """存储不支持任何整理方式时返回成功空结构，避免前端把空结果当业务失败。"""
+    """
+    存储不支持任何整理方式时返回成功空结构，避免前端把空结果当业务失败。
+    """
     monkeypatch.setattr(_FakeStorageOper, "support_transtype", lambda self: {})
     result = module.storage_manage(storage="fakestore", action="support_transtype")
     assert result["success"] is True
@@ -213,7 +270,9 @@ def test_storage_manage_support_transtype_empty_still_succeeds(module, monkeypat
 
 
 def test_storage_manage_login_action_forwards_params(module):
-    """登录类动作透传表单参数并归一化元组返回值。"""
+    """
+    登录类动作透传表单参数并归一化元组返回值。
+    """
     result = module.storage_manage(storage="fakestore", action="check_login", ck="ck1", t="t1")
     assert result["success"] is True
     assert result["data"] == {"status": True}
@@ -221,7 +280,9 @@ def test_storage_manage_login_action_forwards_params(module):
 
 
 def test_storage_manage_reports_unsupported_login_action(module):
-    """存储实现未提供对应登录方法时返回明确失败信息。"""
+    """
+    存储实现未提供对应登录方法时返回明确失败信息。
+    """
     result = module.storage_manage(storage="fakestore", action="generate_qrcode")
     assert result["success"] is False
     assert "不支持" in result["message"]

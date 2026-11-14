@@ -1,19 +1,22 @@
+"""
+按词元解析影视标题，提取名称、季集与音视频规格。
+"""
+
 import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional
+from typing import Optional, Sequence
 
 from Pinyin2Hanzi import is_pinyin
 
 from app.domain.meta.customization import CustomizationMatcher
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
-from app.schemas.types import MediaType
-from app.foundation import text as text_tools
-from app.domain.tokens import Tokens
-from app.domain.meta.streamingplatform import StreamingPlatforms
 from app.domain.meta.runtime import get_media_extensions
-
+from app.domain.meta.streamingplatform import StreamingPlatforms
+from app.domain.tokens import Tokens
+from app.foundation import text as text_tools
+from app.schemas.types import MediaType
 
 SEASON_FULL_RE = re.compile(r"^(?:Season\s+|S)(\d{1,3})$", re.IGNORECASE)
 FIRST_BRACKET_RE = re.compile(r'^[\[【](.+?)[\]】]')
@@ -54,29 +57,58 @@ SOURCE_NAMES = {
 
 
 class _VideoTokenKind(Enum):
-    """记录会影响后续词元判断的识别类型。"""
+    """
+    记录会影响后续词元判断的识别类型。
+    """
 
+    # 已纳入英文标题的词元
     ENGLISH_NAME = auto()
+    # 已纳入中文标题的词元
     CHINESE_NAME = auto()
+    # 属于标题正文的 Season 词元
     NAME_SEASON_WORD = auto()
+    # 分卷或碟片标记
     PART = auto()
+    # 发行年份
     YEAR = auto()
+    # 画面分辨率
     PIX = auto()
+    # 已解析的季号
     SEASON = auto()
+    # 等待后续数字的季标记
     SEASON_MARKER = auto()
+    # 已解析的集号
     EPISODE = auto()
+    # 等待后续数字的集标记
     EPISODE_MARKER = auto()
+    # 资源发行来源或载体
     SOURCE = auto()
+    # 画面或音效特征
     EFFECT = auto()
+    # 已识别的视频编码
     VIDEO_ENCODE = auto()
+    # 已识别的视频位深
     VIDEO_BIT = auto()
+    # 已识别的音频编码
     AUDIO_ENCODE = auto()
+    # 视频帧率
     FPS = auto()
 
 
 @dataclass(slots=True)
 class _VideoParseState:
-    """保存一次视频标题解析中跨词元延续的状态。"""
+    """
+    保存一次视频标题解析中跨词元延续的状态。
+
+    :param token_index: 当前解析词元的零基序号
+    :param last_token: 上一条参与上下文判断的词元原文
+    :param last_kind: 上一词元的识别类型；尚未识别时为 None
+    :param stop_name: 是否停止将后续词元纳入名称
+    :param stop_cn_name: 是否停止将后续中文词元纳入名称
+    :param pending_name: 等待下一词元确认用途的名称片段
+    :param sources: 已识别的资源来源，按首次出现顺序去重
+    :param effects: 已识别的画面或音效特征
+    """
 
     token_index: int = 0
     last_token: str = ""
@@ -88,17 +120,23 @@ class _VideoParseState:
     effects: list[str] = field(default_factory=list)
 
     def advance(self) -> None:
-        """进入下一个由解析管线处理的词元。"""
+        """
+        进入下一个由解析管线处理的词元。
+        """
         self.token_index += 1
 
     def remember(self, kind: _VideoTokenKind, token: Optional[str] = None) -> None:
-        """原子更新后续规则依赖的上一词元类型和值。"""
+        """
+        原子更新后续规则依赖的上一词元类型和值。
+        """
         self.last_kind = kind
         if token is not None:
             self.last_token = token
 
     def append_source(self, source: str) -> None:
-        """按出现顺序追加规范化资源类型并忽略重复项。"""
+        """
+        按出现顺序追加规范化资源类型并忽略重复项。
+        """
         source_name = SOURCE_NAMES.get(source.upper(), source)
         if source_name.casefold() not in {
             item.casefold() for item in self.sources
@@ -106,7 +144,9 @@ class _VideoParseState:
             self.sources.append(source_name)
 
     def replace_last_source(self, source: str, replacement: str) -> None:
-        """将拆分的资源类型前缀替换为完整规范名称。"""
+        """
+        将拆分的资源类型前缀替换为完整规范名称。
+        """
         if self.sources and self.sources[-1].casefold() == source.casefold():
             self.sources.pop()
         self.append_source(replacement)
@@ -114,9 +154,8 @@ class _VideoParseState:
 
 class MetaVideo(MetaBase):
     """
-    识别电影、电视剧
+    识别电影、电视剧。
     """
-    # 正则式区
     _season_re = r"S(\d{3})|^S(\d{1,3})$|S(\d{1,3})E"
     _episode_re = r"EP?(\d{2,4})$|^EP?(\d{1,4})$|^S\d{1,2}EP?(\d{1,4})$|S\d{2}EP?(\d{2,4})"
     _part_re = r"(^PART[0-9ABI]{0,2}$|^CD[0-9]{0,2}$|^DVD[0-9]{0,2}$|^DISK[0-9]{0,2}$|^DISC[0-9]{0,2}$)"
@@ -160,19 +199,19 @@ class MetaVideo(MetaBase):
     _audio_encode_pattern = re.compile(r"(%s)" % _audio_encode_re, re.IGNORECASE)
     _fps_pattern = re.compile(r"(%s)" % _fps_re, re.IGNORECASE)
 
-    def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
+    def __init__(self, title: str, subtitle: Optional[str] = None, isfile: bool = False):
         """
-        初始化
+        初始化。
+
         :param title: 标题，文件为去掉了后缀
         :param subtitle: 副标题
         :param isfile: 是否是文件名
         """
-        super().__init__(title, subtitle, isfile)
+        super().__init__(title, subtitle or "", isfile)
         if not title:
             return
         original_title = title
         state = _VideoParseState()
-        # 判断是否纯数字命名
         if isfile \
                 and title.isdigit() \
                 and len(title) < 5:
@@ -189,7 +228,6 @@ class MetaVideo(MetaBase):
                 self.begin_season = int(season)
                 self.total_season = 1
             return
-        # 去掉名称中第1个[]的内容
         _first_bracket = FIRST_BRACKET_RE.match(title)
         if _first_bracket:
             _bracket_content = _first_bracket.group(1)
@@ -201,52 +239,41 @@ class MetaVideo(MetaBase):
                 title = title[_first_bracket.end():]
         # 把xxxx-xxxx年份换成前一个年份，常出现在季集上
         title = YEAR_RANGE_RE.sub(r'\1\2', title)
-        # 把大小去掉
         title = FILE_SIZE_RE.sub("", title)
-        # 把年月日去掉
         title = DATE_RE.sub("", title)
         media_exts = get_media_extensions()
-        # 拆分tokens
         tokens = Tokens(title)
-        # 实例化StreamingPlatforms对象
         streaming_platforms = StreamingPlatforms()
-        # 解析名称、年份、季、集、资源类型、分辨率等
         token = tokens.get_next()
         while token:
             state.advance()
             self.__parse_token(token, tokens, streaming_platforms, media_exts, state)
             token = tokens.get_next()
-        # 合成质量
         if state.effects:
             self.resource_effect = " ".join(reversed(state.effects))
         if state.sources:
             self.resource_type = " ".join(state.sources)
-        # 提取原盘DIY
         if self.resource_type and "BluRay" in self.resource_type:
             if (self.subtitle and DIY_RE.search(self.subtitle)) \
                     or DIY_TITLE_RE.search(original_title):
                 self.resource_type = f"{self.resource_type} DIY"
         # 解析副标题，只要季和集
-        self.init_subtitle(self.org_string)
+        self.init_subtitle(self.org_string or "")
         if not self._subtitle_flag and self.subtitle:
             self.init_subtitle(self.subtitle)
         # 去掉名字中不需要的干扰字符，过短的纯数字不要
         self.cn_name = self.__fix_name(self.cn_name)
         self.en_name = text_tools.title_case(self.__fix_name(self.en_name))
-        # 处理part
         if self.part and self.part.upper() == "PART":
             self.part = None
         # 没有中文标题时，尝试中描述中获取中文名
         if not self.cn_name and self.en_name and self.subtitle:
             if self.__is_pinyin(self.en_name):
-                # 英文名是拼音
                 cn_name = self.__get_title_from_description(self.subtitle)
                 if cn_name and len(cn_name) == len(self.en_name.split()):
                     # 中文名和拼音单词数相同，认为是中文名
                     self.cn_name = cn_name
-        # 制作组/字幕组
         self.resource_team = ReleaseGroupsMatcher().match(title=original_title) or None
-        # 自定义占位符
         self.customization = CustomizationMatcher().match(title=original_title) or None
         if not self.video_bit:
             self.video_bit = self.extract_video_bit(self.video_encode)
@@ -256,10 +283,12 @@ class MetaVideo(MetaBase):
         token: str,
         tokens: Tokens,
         streaming_platforms: StreamingPlatforms,
-        media_exts: list,
+        media_exts: Sequence[str],
         state: _VideoParseState,
     ) -> None:
-        """按固定优先级处理单个词元，首个命中的阶段终止后续识别。"""
+        """
+        按固定优先级处理单个词元，首个命中的阶段终止后续识别。
+        """
         if self.__init_part(token, tokens, state):
             return
         if self.__init_name(token, media_exts, state):
@@ -287,7 +316,7 @@ class MetaVideo(MetaBase):
     @staticmethod
     def __get_title_from_description(description: str) -> Optional[str]:
         """
-        从描述中提取标题
+        从描述中提取标题。
         """
         if not description:
             return None
@@ -299,7 +328,7 @@ class MetaVideo(MetaBase):
     @staticmethod
     def __is_pinyin(name_str: Optional[str]) -> bool:
         """
-        判断是否拼音
+        判断是否拼音。
         """
         if not name_str:
             return False
@@ -308,9 +337,9 @@ class MetaVideo(MetaBase):
                 return False
         return True
 
-    def __fix_name(self, name: Optional[str]):
+    def __fix_name(self, name: Optional[str]) -> Optional[str]:
         """
-        去掉名字中不需要的干扰字符
+        去掉名字中不需要的干扰字符。
         """
         if not name:
             return name
@@ -334,7 +363,7 @@ class MetaVideo(MetaBase):
     def __init_name(
         self,
         token: Optional[str],
-        media_exts: list,
+        media_exts: Sequence[str],
         state: _VideoParseState,
     ) -> bool:
         """
@@ -342,7 +371,6 @@ class MetaVideo(MetaBase):
         """
         if not token:
             return False
-        # 回收标题
         if state.pending_name:
             if not self.cn_name:
                 if not self.en_name:
@@ -408,7 +436,6 @@ class MetaVideo(MetaBase):
                     if not state.pending_name:
                         state.pending_name = token
             elif self._season_pattern.search(token):
-                # 季的处理
                 if self.en_name and SEASON_SUFFIX_RE.search(self.en_name):
                     # 如果匹配到季，英文名结尾为Season，说明Season属于标题，不应在后续作为干扰词去除
                     self.en_name += ' '
@@ -438,7 +465,7 @@ class MetaVideo(MetaBase):
 
     def __init_part(self, token: str, tokens: Tokens, state: _VideoParseState) -> bool:
         """
-        识别Part
+        识别Part。
         """
         if not self.name:
             return False
@@ -464,7 +491,7 @@ class MetaVideo(MetaBase):
 
     def __init_year(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别年份
+        识别年份。
         """
         if not self.name:
             return False
@@ -489,7 +516,7 @@ class MetaVideo(MetaBase):
 
     def __init_resource_pix(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别分辨率
+        识别分辨率。
         """
         if not self.name:
             return False
@@ -517,18 +544,18 @@ class MetaVideo(MetaBase):
                     and self.resource_pix[-1] not in 'kpi':
                 self.resource_pix = "%sp" % self.resource_pix
             return True
-        re_res = self._resources_pix_pattern2.search(token)
-        if re_res:
+        pix_match = self._resources_pix_pattern2.search(token)
+        if pix_match:
             state.remember(_VideoTokenKind.PIX)
             state.stop_name = True
             if not self.resource_pix:
-                self.resource_pix = re_res.group(1).lower()
+                self.resource_pix = pix_match.group(1).lower()
             return True
         return False
 
     def __init_season(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别季
+        识别季。
         """
         re_res = self._season_pattern.findall(token)
         if re_res:
@@ -581,7 +608,7 @@ class MetaVideo(MetaBase):
 
     def __init_episode(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别集
+        识别集。
         """
         re_res = self._episode_pattern.findall(token)
         if re_res:
@@ -655,7 +682,7 @@ class MetaVideo(MetaBase):
 
     def __init_resource_type(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别资源类型
+        识别资源类型。
         """
         if not self.name:
             return False
@@ -697,7 +724,7 @@ class MetaVideo(MetaBase):
         state: _VideoParseState,
     ) -> bool:
         """
-        识别流媒体平台
+        识别流媒体平台。
         """
         if not self.name:
             return False
@@ -749,7 +776,7 @@ class MetaVideo(MetaBase):
 
     def __init_video_encode(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别视频编码
+        识别视频编码。
         """
         if not self.name:
             return False
@@ -820,7 +847,7 @@ class MetaVideo(MetaBase):
 
     def __init_audio_encode(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别音频编码
+        识别音频编码。
         """
         if not self.name:
             return False
@@ -856,7 +883,7 @@ class MetaVideo(MetaBase):
 
     def __init_fps(self, token: str, state: _VideoParseState) -> bool:
         """
-        识别帧率
+        识别帧率。
         """
         if not self.name:
             return False
@@ -865,13 +892,12 @@ class MetaVideo(MetaBase):
         if re_res:
             state.stop_name = True
             state.remember(_VideoTokenKind.FPS)
-            # 提取帧率数值
             fps_value = None
-            if re_res.group(1):  # FPS格式
+            # FPS格式
+            if re_res.group(1):
                 fps_value = re_res.group(1)
 
             if fps_value and fps_value.isdigit():
-                # 只存储纯数值
                 self.fps = int(fps_value)
                 state.last_token = f"{self.fps}FPS"
             return True

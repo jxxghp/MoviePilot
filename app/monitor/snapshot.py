@@ -1,6 +1,10 @@
+"""
+保存、比较存储快照并调整监控间隔。
+"""
+
 import json
 import time
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Optional, Set, Tuple
 
 from app.runtime.cache import CacheBackend, FileCache
 from app.runtime.log import logger
@@ -37,7 +41,7 @@ class SnapshotStore:
         if legacy_cache.is_redis():
             self._legacy_cache = legacy_cache
 
-    def save(self, storage: str, snapshot: Dict, file_count: int = 0,
+    def save(self, storage: str, snapshot: dict[str, Any], file_count: int = 0,
              last_snapshot_time: Optional[float] = None,
              snapshot_time: Optional[float] = None) -> bool:
         """
@@ -57,8 +61,8 @@ class SnapshotStore:
                     last_snapshot_time or 0,
                     max((item.get('modify_time', 0) for item in snapshot.values()), default=0)
                 )
-            if not snapshot_time:
-                snapshot_time = time.time()
+                if not snapshot_time:
+                    snapshot_time = time.time()
             snapshot_data = {
                 'version': self.VERSION,
                 'timestamp': snapshot_time,
@@ -75,7 +79,7 @@ class SnapshotStore:
             logger.error(f"保存快照失败: {e}")
             return False
 
-    def load_checked(self, storage: str) -> Tuple[Optional[Dict], bool]:
+    def load_checked(self, storage: str) -> Tuple[Optional[dict[str, Any]], bool]:
         """
         从文件缓存加载快照，并区分「快照不存在」与「读取失败」。
         读取失败时不能当作首次快照处理，否则会静默丢弃已有基线。
@@ -99,7 +103,7 @@ class SnapshotStore:
             logger.error(f"加载快照失败: {e}")
             return None, False
 
-    def load(self, storage: str) -> Optional[Dict]:
+    def load(self, storage: str) -> Optional[dict[str, Any]]:
         """
         从文件缓存加载快照。
         :param storage: 存储名称
@@ -148,14 +152,16 @@ class SnapshotStore:
             return False
 
     @staticmethod
-    def compare(old_snapshot: Dict, new_snapshot: Dict) -> Dict[str, List]:
+    def compare(
+        old_snapshot: dict[str, object], new_snapshot: dict[str, object]
+    ) -> dict[str, list[str]]:
         """
         比对快照，找出变化的文件（只处理新增和修改，不处理删除）。
         :param old_snapshot: 旧快照
         :param new_snapshot: 新快照
         :return: 变化信息
         """
-        changes = {
+        changes: dict[str, list[str]] = {
             'added': [],
             'modified': []
         }
@@ -201,10 +207,10 @@ class SnapshotStore:
         :return: 监控间隔（分钟）
         """
         if file_count < 100:
-            return 5  # 5分钟
+            return 5
         elif file_count < 500:
-            return 10  # 10分钟
+            return 10
         elif file_count < 1000:
-            return 15  # 15分钟
+            return 15
         else:
-            return 30  # 30分钟
+            return 30

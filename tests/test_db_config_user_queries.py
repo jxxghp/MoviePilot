@@ -22,7 +22,9 @@ from app.db.session import async_session_scope
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把本文件涉及的表纳入用例级回收。"""
+    """
+    把本文件涉及的表纳入用例级回收。
+    """
     db.watermark(SystemConfig, UserConfig, User, PassKey)
 
 
@@ -52,7 +54,9 @@ def test_systemconfig_get_by_key_returns_none_when_absent(db):
 
 
 def test_systemconfig_queries_reuse_explicit_sessions(db, monkeypatch):
-    """SystemConfig 显式同步与异步会话不得触发兼容会话。"""
+    """
+    SystemConfig 显式同步与异步会话不得触发兼容会话。
+    """
     db.add(SystemConfig(key="mp-explicit-config", value=True))
     monkeypatch.setattr(
         db_base,
@@ -62,7 +66,9 @@ def test_systemconfig_queries_reuse_explicit_sessions(db, monkeypatch):
     assert SystemConfig.get_by_key(db.session, "mp-explicit-config") is not None
 
     async def check() -> None:
-        """验证异步配置查询复用显式 AsyncSession。"""
+        """
+        验证异步配置查询复用显式 AsyncSession。
+        """
         async with async_session_scope() as session:
             monkeypatch.setattr(
                 db_base,
@@ -219,7 +225,9 @@ def test_user_async_mutations_match_sync_behaviour(db):
 
 
 def test_legacy_user_oper_delete_cascades_user_children(db):
-    """旧 UserOper 删除入口保持可用，并由数据库清除配置和 PassKey。"""
+    """
+    旧 UserOper 删除入口保持可用，并由数据库清除配置和 PassKey。
+    """
     user = db.add(User(name="legacy-delete", is_active=True))
     user_id = user.id
     username = user.name
@@ -242,13 +250,17 @@ def test_legacy_user_oper_delete_cascades_user_children(db):
 
 
 def _passkey(user_id: int, credential_id: str, is_active: bool = True) -> PassKey:
-    """构造一条 PassKey 记录。"""
+    """
+    构造一条 PassKey 记录。
+    """
     return PassKey(user_id=user_id, credential_id=credential_id, public_key="pk", sign_count=0, is_active=is_active)
 
 
 @pytest.fixture(autouse=True)
 def _create_passkey_owners(request, db) -> None:
-    """PassKey 查询用例必须使用受外键保护的真实用户主体。"""
+    """
+    PassKey 查询用例必须使用受外键保护的真实用户主体。
+    """
     if not request.node.name.startswith("test_passkey_"):
         return
     db.add(
@@ -286,7 +298,9 @@ def test_passkey_listing_excludes_inactive_credentials(db):
 
 
 def test_passkey_oper_queries_use_explicit_session(db, monkeypatch):
-    """PassKeyOper 的宿主查询使用调用方 Session，不创建兼容事务。"""
+    """
+    PassKeyOper 的宿主查询使用调用方 Session，不创建兼容事务。
+    """
     db.add(_passkey(9002, "cred-oper"), _passkey(9002, "cred-oper-inactive", is_active=False))
     monkeypatch.setattr(
         "app.db.base.run_sync_transaction",
@@ -305,7 +319,9 @@ def test_passkey_oper_queries_use_explicit_session(db, monkeypatch):
 
 
 def test_passkey_oper_paginates_and_counts_active_credentials(db):
-    """PassKey 列表只统计有效凭据，并在数据库查询中稳定分页。"""
+    """
+    PassKey 列表只统计有效凭据，并在数据库查询中稳定分页。
+    """
     first = db.add(_passkey(9002, "cred-page-1"))
     second = db.add(_passkey(9002, "cred-page-2"))
     db.add(_passkey(9002, "cred-page-off", is_active=False))
@@ -330,7 +346,9 @@ def test_passkey_lookup_by_credential_id_skips_inactive(db):
 
 
 def test_passkey_remaining_queries_reuse_explicit_sessions(db, monkeypatch):
-    """PassKey 其余同步/异步查询必须复用调用方会话。"""
+    """
+    PassKey 其余同步/异步查询必须复用调用方会话。
+    """
     key = db.add(_passkey(9008, "cred-explicit"))
     monkeypatch.setattr(
         db_base,
@@ -340,7 +358,9 @@ def test_passkey_remaining_queries_reuse_explicit_sessions(db, monkeypatch):
     assert PassKey.get_by_id(db.session, key.id).credential_id == "cred-explicit"
 
     async def check() -> None:
-        """验证三个异步查询都复用显式 AsyncSession。"""
+        """
+        验证三个异步查询都复用显式 AsyncSession。
+        """
         async with async_session_scope() as session:
             monkeypatch.setattr(
                 db_base,
@@ -415,7 +435,9 @@ def test_passkey_update_last_used_persists_sign_count(db):
 
 
 def test_passkey_oper_sign_count_compare_and_swap_has_single_winner(db):
-    """两个基于同一旧计数的认证提交只能有一个更新成功。"""
+    """
+    两个基于同一旧计数的认证提交只能有一个更新成功。
+    """
     key = db.add(_passkey(9008, "cred-cas"))
     key.sign_count = 41
     db.session.flush()
@@ -443,7 +465,9 @@ def test_passkey_oper_sign_count_compare_and_swap_has_single_winner(db):
 
 
 def test_passkey_oper_sign_count_cas_rejects_inactive_or_regressed_key(db):
-    """停用凭证及未递增的非零计数都不得被认证提交覆盖。"""
+    """
+    停用凭证及未递增的非零计数都不得被认证提交覆盖。
+    """
     inactive = db.add(_passkey(9009, "cred-cas-inactive", is_active=False))
     active = db.add(_passkey(9010, "cred-cas-regressed"))
     active.sign_count = 5
@@ -477,7 +501,9 @@ def test_passkey_oper_sign_count_cas_rejects_inactive_or_regressed_key(db):
 
 
 def test_passkey_oper_sign_count_cas_allows_counterless_authenticator(db):
-    """不支持签名计数器的认证器允许按 WebAuthn 约定保持零计数。"""
+    """
+    不支持签名计数器的认证器允许按 WebAuthn 约定保持零计数。
+    """
     key = db.add(_passkey(9011, "cred-cas-counterless"))
     oper = PassKeyOper(db.session)
 

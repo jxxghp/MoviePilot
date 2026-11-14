@@ -1,4 +1,6 @@
-"""生产 Agent 评测运行器覆盖真实中间件、内存业务 API 和隔离回收。"""
+"""
+生产 Agent 评测运行器覆盖真实中间件、内存业务 API 和隔离回收。
+"""
 
 import json
 import re
@@ -8,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
 from sqlalchemy import create_engine, select
@@ -18,7 +20,10 @@ from app.agent import orchestrator
 from app.agent.api.executor import MoviePilotApiExecutor
 from app.agent.middleware import config as config_middleware
 from app.agent.middleware import subagents
-from app.agent.middleware.summarization import FinalRequestCompactionMiddleware
+from app.agent.middleware.summarization import (
+    ContextPreservingSummarizationMiddleware,
+    FinalRequestCompactionMiddleware,
+)
 from app.agent.terminal.ownership import TerminalScope, bind_terminal_scope, close_terminal_scope
 from app.db.adapters.invocation import TransactionalInvocationRepository
 from app.db.models.agentinvocation import AgentInvocation
@@ -28,40 +33,59 @@ from scripts.evaluation.world import EvaluationWorld
 
 
 class _ScriptModel(FakeMessagesListChatModel):
-    """脚本仅控制模型响应，不替换生产模型请求或工具执行路径。"""
+    """
+    脚本仅控制模型响应，不替换生产模型请求或工具执行路径。
+    """
 
     bound_tools: list[list[Any]] = Field(default_factory=list)
     requests: list[Any] = Field(default_factory=list)
 
     def bind_tools(self, tools: list[Any], **_kwargs: Any) -> Any:
-        """记录真实图每次传给模型的工具定义。"""
+        """
+        记录真实图每次传给模型的工具定义。
+        """
         self.bound_tools.append(list(tools))
         return self
 
     async def _agenerate(self, messages: list[Any], stop=None, run_manager=None, **kwargs: Any) -> Any:
-        """记录包含生产系统提示词和中间件动态上下文的最终请求。"""
+        """
+        记录包含生产系统提示词和中间件动态上下文的最终请求。
+        """
         self.requests.append(messages)
+        if run_manager is not None and run_manager.metadata.get("lc_source") == "summarization":
+            # 真实压缩会复用模型；摘要请求不能消耗下一条业务脚本响应。
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(
+                content="脚本摘要：保留原任务的范围、分页边界和输出格式，依据已取得的回执继续完成任务。",
+            ))])
         return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
 class _TerminalSharingModel(FakeMessagesListChatModel):
-    """按真实父/子图消息边界完成一次终端共享回放，不替换生产工具执行。"""
+    """
+    按真实父/子图消息边界完成一次终端共享回放，不替换生产工具执行。
+    """
 
     bound_tools: list[list[Any]] = Field(default_factory=list)
 
     def bind_tools(self, tools: list[Any], **_kwargs: Any) -> Any:
-        """记录主图和子图各自看到的真实工具目录。"""
+        """
+        记录主图和子图各自看到的真实工具目录。
+        """
         self.bound_tools.append(list(tools))
         return self
 
     @staticmethod
     def _text(message: BaseMessage) -> str:
-        """把模型消息内容压成可匹配的字符串，兼容多模态内容块。"""
+        """
+        把模型消息内容压成可匹配的字符串，兼容多模态内容块。
+        """
         return message.content if isinstance(message.content, str) else json.dumps(message.content, ensure_ascii=False)
 
     @classmethod
     def _session_id(cls, messages: list[BaseMessage]) -> str:
-        """从父 start 回执或子代理授权上下文提取真实会话句柄。"""
+        """
+        从父 start 回执或子代理授权上下文提取真实会话句柄。
+        """
         for message in messages:
             match = re.search(r'"session_id"\s*:\s*"([^"]+)"', cls._text(message))
             if match:
@@ -70,7 +94,9 @@ class _TerminalSharingModel(FakeMessagesListChatModel):
 
     @classmethod
     def _cursor(cls, messages: list[BaseMessage]) -> tuple[int, int]:
-        """从最近终端回执读取增量游标，避免 wait 反复返回同一已读输出。"""
+        """
+        从最近终端回执读取增量游标，避免 wait 反复返回同一已读输出。
+        """
         seq, offset = 0, 0
         for message in messages:
             text = cls._text(message)
@@ -84,10 +110,18 @@ class _TerminalSharingModel(FakeMessagesListChatModel):
 
     @classmethod
     def _generate(cls, messages: list[BaseMessage], stop: Any = None, run_manager: Any = None, **_kwargs: Any) -> ChatResult:
-        """根据当前图是否为静默子代理，生成下一次真实工具调用或最终 JSON。"""
+        """
+        根据当前图是否为静默子代理，生成下一次真实工具调用或最终 JSON。
+        """
         del stop, run_manager
         system_text = " ".join(cls._text(message) for message in messages if message.type == "system")
-        latest = messages[-1] if messages else None
+        terminal_results = [
+            json.loads(cls._text(message))
+            for message in messages
+            if isinstance(message, ToolMessage) and message.name == "execute_command"
+        ]
+        latest_terminal = terminal_results[-1] if terminal_results else {}
+        terminal_output = "".join(result.get("output", "") for result in terminal_results)
         delegated = any(
             isinstance(message, AIMessage)
             and any(call.get("name") == "task" for call in (message.tool_calls or []))
@@ -107,8 +141,7 @@ class _TerminalSharingModel(FakeMessagesListChatModel):
                 "args": {"action": "start", "command": "printf 'SHARED_READY\\n'; sleep 1; printf 'SHARED_DONE\\n'",
                          "use_pty": False},
             }])
-        elif isinstance(latest, ToolMessage) and not delegated and '"session_id"' in cls._text(latest) \
-                and "SHARED_READY" in cls._text(latest):
+        elif not delegated and "SHARED_READY" in terminal_output:
             session_id = cls._session_id(messages)
             response = AIMessage(content="", tool_calls=[{
                 "id": "delegate-read", "name": "task",
@@ -116,7 +149,8 @@ class _TerminalSharingModel(FakeMessagesListChatModel):
                     {"session_id": session_id, "actions": ["read"]},
                 ]},
             }])
-        elif isinstance(latest, ToolMessage) and delegated and "SHARED_DONE" in cls._text(latest):
+        elif delegated and "SHARED_DONE" in terminal_output \
+                and latest_terminal.get("status") == "exited" and latest_terminal.get("exit_code") == 0:
             response = AIMessage(content=json.dumps({
                 "status": "completed", "terminal_output": "SHARED_READY\nSHARED_DONE\n",
                 "terminal_exit_code": 0, "completed": ["terminal"], "unresolved": [],
@@ -133,13 +167,56 @@ class _TerminalSharingModel(FakeMessagesListChatModel):
         return ChatResult(generations=[ChatGeneration(message=response)])
 
 
+@pytest.mark.parametrize(("status", "exit_code"), [("running", None), ("exited", 0)])
+def test_terminal_script_requires_exit_receipt_after_final_output(status, exit_code):
+    """
+    读到最后一段输出时进程可能仍在退出，脚本只能在退出回执到达后报告完成。
+    """
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "delegate-read", "name": "task", "args": {}}]),
+        ToolMessage(content="子代理已读取。", tool_call_id="delegate-read", name="task"),
+        ToolMessage(content=json.dumps({
+            "session_id": "term-test", "output": "SHARED_READY\nSHARED_DONE\n",
+            "status": status, "exit_code": exit_code, "output_until_seq": 2, "output_until_offset": 0,
+        }), tool_call_id="parent-wait", name="execute_command"),
+    ]
+    response = _TerminalSharingModel(responses=[]).invoke(messages)
+
+    if status == "running":
+        assert response.tool_calls[0]["args"] == {
+            "action": "wait", "session_id": "term-test", "timeout_ms": 5000, "since_seq": 2, "since_offset": 0,
+        }
+    else:
+        assert response.tool_calls == []
+        assert json.loads(response.content)["status"] == "completed"
+
+
+def test_terminal_script_does_not_treat_echoed_command_as_output():
+    """
+    启动回执中的命令文本不是输出证据，尚未读到 READY 时不能委派子代理。
+    """
+    response = _TerminalSharingModel(responses=[]).invoke([
+        ToolMessage(content=json.dumps({
+            "session_id": "term-test", "command": "printf 'SHARED_READY\\n'; printf 'SHARED_DONE\\n'",
+            "output": "", "status": "running", "exit_code": None,
+        }), tool_call_id="parent-start", name="execute_command"),
+    ])
+
+    assert response.tool_calls[0]["name"] == "execute_command"
+    assert response.tool_calls[0]["args"]["action"] == "wait"
+
+
 def _call(name: str, arguments: dict[str, Any], identifier: str) -> AIMessage:
-    """构造标准模型工具调用，交给真实 ToolNode 执行。"""
+    """
+    构造标准模型工具调用，交给真实 ToolNode 执行。
+    """
     return AIMessage(content="", tool_calls=[{"id": identifier, "name": name, "args": arguments}])
 
 
 def _responses(world: EvaluationWorld) -> list[AIMessage]:
-    """提供三个明确标记为脚本的正确轨迹，由独立终态判定器核验。"""
+    """
+    提供三个明确标记为脚本的正确轨迹，由独立终态判定器核验。
+    """
     scenario = world.scenario
     responses = [
         _call("update_plan", {"objective": "完成用户任务并核验", "steps": [
@@ -189,8 +266,26 @@ def _responses(world: EvaluationWorld) -> list[AIMessage]:
 
 
 @pytest.mark.asyncio
-async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_store):
-    """生产图应在首个分页回执后注入补充 HumanMessage，并继续完成原任务。"""
+async def test_script_summary_does_not_consume_next_business_response():
+    """
+    真实摘要调用应使用独立脚本响应，避免吞掉业务终态并循环重放。
+    """
+    final_response = AIMessage(content='{"status":"completed"}')
+    model = _ScriptModel(responses=[final_response])
+    summarizer = ContextPreservingSummarizationMiddleware(model)
+
+    summary = await summarizer.acreate_summary([HumanMessage(content="保留任务边界并继续执行。")])
+    assert summary.startswith("脚本摘要：")
+    assert await model.ainvoke("继续") == final_response
+    assert len(model.requests) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("context_window", [128000, 256000])
+async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_store, context_window):
+    """
+    生产图应在首个分页回执后注入补充 HumanMessage，并继续完成原任务。
+    """
     world = EvaluationWorld("steering_long_context")
     model = _ScriptModel(responses=_responses(world))
     repository, _factory = invocation_store
@@ -198,7 +293,7 @@ async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_s
         world,
         model,
         model_name="scripted-steering-test",
-        context_window=128000,
+        context_window=context_window,
         max_iterations=48,
         invocation_repository=repository,
     )
@@ -211,16 +306,26 @@ async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_s
     )
     assert grade.passed, grade.violations
     assert [event["status"] for event in capture["steering_events"]] == ["queued", "applied"]
-    assert any(
-        message["type"] == "human"
-        and message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
-        for message in capture["raw_messages"]
-    )
+    applied_ids = [
+        event["message_id"] for event in capture["steering_events"] if event["status"] == "applied"
+    ]
+    # 最终历史可能已压缩；实际模型请求必须在 page-1 回执后收到同一条补充消息。
+    injection_boundaries = {}
+    for request in model.requests:
+        latest_tool = next((message for message in reversed(request) if isinstance(message, ToolMessage)), None)
+        for message in request:
+            message_id = message.additional_kwargs.get("moviepilot_steering_message_id")
+            if isinstance(message, HumanMessage) and message_id and message_id not in injection_boundaries:
+                injection_boundaries[message_id] = latest_tool.tool_call_id if latest_tool is not None else None
+    assert list(injection_boundaries.items()) == [(applied_ids[0], "page-1")]
 
 
 @pytest.mark.asyncio
-async def test_multiple_steering_messages_preserve_each_model_boundary(invocation_store):
-    """连续补充消息应在各自业务回执后进入生产图，并保留提交顺序。"""
+@pytest.mark.parametrize("context_window", [128000, 256000])
+async def test_multiple_steering_messages_preserve_each_model_boundary(invocation_store, context_window):
+    """
+    连续补充消息应在各自业务回执后进入生产图，并保留提交顺序。
+    """
     world = EvaluationWorld("steering_multi_message")
     model = _ScriptModel(responses=_responses(world))
     repository, _factory = invocation_store
@@ -228,7 +333,7 @@ async def test_multiple_steering_messages_preserve_each_model_boundary(invocatio
         world,
         model,
         model_name="scripted-multi-steering-test",
-        context_window=128000,
+        context_window=context_window,
         max_iterations=64,
         invocation_repository=repository,
     )
@@ -246,18 +351,22 @@ async def test_multiple_steering_messages_preserve_each_model_boundary(invocatio
     applied_ids = [
         event["message_id"] for event in capture["steering_events"] if event["status"] == "applied"
     ]
-    context_ids = [
-        message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
-        for message in capture["raw_messages"]
-        if message["type"] == "human"
-        and message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
-    ]
-    assert context_ids == applied_ids
+    # 最终图状态允许压缩历史；从实际模型请求核验每条消息首次出现的工具回执边界。
+    injection_boundaries = {}
+    for request in model.requests:
+        latest_tool = next((message for message in reversed(request) if isinstance(message, ToolMessage)), None)
+        for message in request:
+            message_id = message.additional_kwargs.get("moviepilot_steering_message_id")
+            if isinstance(message, HumanMessage) and message_id and message_id not in injection_boundaries:
+                injection_boundaries[message_id] = latest_tool.tool_call_id if latest_tool is not None else None
+    assert list(injection_boundaries.items()) == [(applied_ids[0], "page-1"), (applied_ids[1], "page-3")]
 
 
 @pytest.fixture
 def invocation_store(tmp_path):
-    """提供独立真实回执库，测试结束释放连接。"""
+    """
+    提供独立真实回执库，测试结束释放连接。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'invocations.db'}")
     AgentInvocation.__table__.create(engine)
     factory = sessionmaker(bind=engine)
@@ -268,7 +377,9 @@ def invocation_store(tmp_path):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scenario_id", ["dedup_existing", "unknown_download", "honest_unknown"])
 async def test_complete_production_agent_scenarios(scenario_id, invocation_store, monkeypatch):
-    """真实 process、策略、回执、计划、Skills 和最终压缩共同执行，不连真实业务。"""
+    """
+    真实 process、策略、回执、计划、Skills 和最终压缩共同执行，不连真实业务。
+    """
     world = EvaluationWorld(scenario_id)
     model = _ScriptModel(responses=_responses(world))
     repository, factory = invocation_store
@@ -281,14 +392,18 @@ async def test_complete_production_agent_scenarios(scenario_id, invocation_store
     original_compaction = FinalRequestCompactionMiddleware.awrap_model_call
 
     async def observe_compaction(self, request, handler):
-        """继续执行真实最终请求压缩，同时证明评测未绕过该边界。"""
+        """
+        继续执行真实最终请求压缩，同时证明评测未绕过该边界。
+        """
         compaction_requests.append(request)
         return await original_compaction(self, request, handler)
 
     monkeypatch.setattr(FinalRequestCompactionMiddleware, "awrap_model_call", observe_compaction)
 
     def refuse_network(*_args: Any, **_kwargs: Any) -> None:
-        """任何直接出站均令测试失败，包含模型目录、业务 API 和 MCP 发现。"""
+        """
+        任何直接出站均令测试失败，包含模型目录、业务 API 和 MCP 发现。
+        """
         raise AssertionError("评测不得访问网络")
 
     monkeypatch.setattr(socket, "getaddrinfo", refuse_network)
@@ -336,7 +451,9 @@ async def test_complete_production_agent_scenarios(scenario_id, invocation_store
 
 @pytest.mark.asyncio
 async def test_child_tool_instance_enforces_production_readonly():
-    """实际启动生产子图，写操作必须由子图策略拒绝且不触及业务世界。"""
+    """
+    实际启动生产子图，写操作必须由子图策略拒绝且不触及业务世界。
+    """
     world = EvaluationWorld("unknown_download")
     model = _ScriptModel(responses=[
         _call("task", {"description": "检查下载，尝试添加任务", "subagent_type": "general-purpose"}, "delegate"),
@@ -357,7 +474,9 @@ async def test_child_tool_instance_enforces_production_readonly():
 
 @pytest.mark.asyncio
 async def test_failed_model_restores_runtime_and_profile(monkeypatch):
-    """模型失败后的恢复继续走生产逻辑，临时模型 profile 和外部边界必须还原。"""
+    """
+    模型失败后的恢复继续走生产逻辑，临时模型 profile 和外部边界必须还原。
+    """
     original_runtime = orchestrator.agent_runtime_manager
     original_mcp = orchestrator.agent_mcp_manager
     original_headers = MoviePilotApiExecutor._build_headers
@@ -365,7 +484,9 @@ async def test_failed_model_restores_runtime_and_profile(monkeypatch):
     original_profile = model.profile
 
     async def fail_model(*_args: Any, **_kwargs: Any) -> None:
-        """在真实模型调用边界注入失败，不替换 Agent 的错误恢复路径。"""
+        """
+        在真实模型调用边界注入失败，不替换 Agent 的错误恢复路径。
+        """
         raise RuntimeError("评测模型暂不可用")
 
     monkeypatch.setattr(model, "_agenerate", fail_model)
@@ -385,7 +506,9 @@ async def test_failed_model_restores_runtime_and_profile(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_transport_rejects_external_and_unlisted_routes():
-    """真实执行器之外直接构造请求也不能让内存传输访问外网或未纳入业务。"""
+    """
+    真实执行器之外直接构造请求也不能让内存传输访问外网或未纳入业务。
+    """
     world = EvaluationWorld("dedup_existing")
     transport = _Transport(world)
     with pytest.raises(ValueError, match="内存 API"):
@@ -399,7 +522,9 @@ async def test_transport_rejects_external_and_unlisted_routes():
 
 @pytest.mark.asyncio
 async def test_evaluation_command_tool_rejects_wrong_input_with_correction(tmp_path):
-    """评测命令工具拒绝越界输入，并把可修正的合同返回给模型。"""
+    """
+    评测命令工具拒绝越界输入，并把可修正的合同返回给模型。
+    """
     world = EvaluationWorld("command_execution")
     tool = _EvaluationExecuteCommandTool(world=world, allowed_root=tmp_path, session_id="command-test", user_id="1")
     scope = TerminalScope(user_id="1", task_id="command-test", kind="conversation")
@@ -415,7 +540,9 @@ async def test_evaluation_command_tool_rejects_wrong_input_with_correction(tmp_p
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("scenario_id", "use_pty"), [("terminal_session", False), ("terminal_pty_session", True)])
 async def test_evaluation_terminal_tool_runs_session_and_writes_stdin(tmp_path, scenario_id: str, use_pty: bool):
-    """评测终端复用生产会话管理器，必须通过真实 session_id 写入并等待退出。"""
+    """
+    评测终端复用生产会话管理器，必须通过真实 session_id 写入并等待退出。
+    """
     world = EvaluationWorld(scenario_id)
     tool = _EvaluationExecuteCommandTool(world=world, allowed_root=tmp_path, session_id="terminal-test", user_id="1")
     scope = TerminalScope(user_id="1", task_id="terminal-test", kind="conversation")
@@ -454,7 +581,9 @@ async def test_evaluation_terminal_tool_runs_session_and_writes_stdin(tmp_path, 
 
 @pytest.mark.asyncio
 async def test_evaluation_terminal_tool_returns_correction_for_wrong_stdin(tmp_path):
-    """交互会话的错误 stdin 被结构化拒绝，并明确告知模型正确输入。"""
+    """
+    交互会话的错误 stdin 被结构化拒绝，并明确告知模型正确输入。
+    """
     world = EvaluationWorld("terminal_session")
     tool = _EvaluationExecuteCommandTool(world=world, allowed_root=tmp_path, session_id="terminal-test", user_id="1")
     scope = TerminalScope(user_id="1", task_id="terminal-test", kind="conversation")
@@ -470,7 +599,9 @@ async def test_evaluation_terminal_tool_returns_correction_for_wrong_stdin(tmp_p
 
 @pytest.mark.asyncio
 async def test_production_agent_shares_parent_terminal_with_read_only_subagent(invocation_store):
-    """真实生产子图只在显式 read grant 下读取父终端，并由父任务完成收尾。"""
+    """
+    真实生产子图只在显式 read grant 下读取父终端，并由父任务完成收尾。
+    """
     world = EvaluationWorld("subagent_terminal_share")
     model = _TerminalSharingModel(responses=[])
     repository, _factory = invocation_store
@@ -487,9 +618,14 @@ async def test_production_agent_shares_parent_terminal_with_read_only_subagent(i
     assert grade.passed, grade.violations
     assert "execute_command" in capture["child_tool_names"]
     scoped_events = [event for event in world.ledger if event.get("scope")]
-    assert [event["scope"]["kind"] for event in scoped_events] == ["conversation", "subagent", "conversation"]
-    assert scoped_events[0]["scope"]["task_id"] == scoped_events[2]["scope"]["task_id"]
-    assert scoped_events[0]["scope"]["task_id"] != scoped_events[1]["scope"]["task_id"]
+    scopes = [event["scope"]["kind"] for event in scoped_events]
+    assert scopes[0] == scopes[-1] == "conversation"
+    assert scopes.count("subagent") == 1
+    assert set(scopes) == {"conversation", "subagent"}
+    parent_tasks = {event["scope"]["task_id"] for event in scoped_events if event["scope"]["kind"] == "conversation"}
+    child_tasks = {event["scope"]["task_id"] for event in scoped_events if event["scope"]["kind"] == "subagent"}
+    assert len(parent_tasks) == 1
+    assert parent_tasks.isdisjoint(child_tasks)
     assert {event["observations"][0]["record"]["session_id"] for event in scoped_events} == {
         scoped_events[0]["observations"][0]["record"]["session_id"]
     }
@@ -501,7 +637,9 @@ async def test_production_agent_shares_parent_terminal_with_read_only_subagent(i
 
 @pytest.mark.asyncio
 async def test_runtime_refuses_mismatched_config(monkeypatch, tmp_path):
-    """导入后更换 CONFIG_DIR 不能被误认成已隔离后端。"""
+    """
+    导入后更换 CONFIG_DIR 不能被误认成已隔离后端。
+    """
     monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
     with pytest.raises(RuntimeError, match="不一致"):
         await run_moviepilot(
@@ -512,7 +650,9 @@ async def test_runtime_refuses_mismatched_config(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_production_python_aggregation_reads_full_pages_and_cached_resources(invocation_store):
-    """完整生产图用真实 Python 汇总分页原文、站点缓存及下载整理状态，业务零副作用。"""
+    """
+    完整生产图用真实 Python 汇总分页原文、站点缓存及下载整理状态，业务零副作用。
+    """
     from app.agent.code import manager as code_management
     from scripts.evaluation.programs import expected_code_report
 
@@ -541,7 +681,9 @@ async def test_production_python_aggregation_reads_full_pages_and_cached_resourc
 
 @pytest.mark.asyncio
 async def test_evaluation_python_rejects_modified_program_before_execution(invocation_store, tmp_path):
-    """评测模型不能改写给定程序访问假世界以外的文件或业务。"""
+    """
+    评测模型不能改写给定程序访问假世界以外的文件或业务。
+    """
     world = EvaluationWorld('code_readonly_report')
     outside = tmp_path / 'must-not-be-created'
     program = world.scenario.command + f'\nfrom pathlib import Path\nPath({str(outside)!r}).touch()'

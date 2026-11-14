@@ -1,4 +1,6 @@
-"""Agent API 路由与禁用响应的延迟加载合同。"""
+"""
+Agent API 路由与禁用响应的延迟加载合同。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +12,9 @@ from pathlib import Path
 
 
 def _run_isolated(script: str, config_dir: Path) -> dict:
-    """在隔离解释器中执行路由探针，并返回末行 JSON 结果。"""
+    """
+    在隔离解释器中执行路由探针，并返回末行 JSON 结果。
+    """
     env = os.environ.copy()
     env.update(
         {
@@ -32,7 +36,9 @@ def _run_isolated(script: str, config_dir: Path) -> dict:
 
 
 def test_full_api_openapi_keeps_agent_runtime_cold(tmp_path: Path) -> None:
-    """完整路由与 OpenAPI 注册不得物化 Agent、工具或模型运行时。"""
+    """
+    完整路由与 OpenAPI 注册不得物化 Agent、工具或模型运行时。
+    """
     result = _run_isolated(
         r"""
 import json
@@ -105,7 +111,9 @@ print(json.dumps({
 def test_disabled_protocol_requests_preserve_503_without_runtime_load(
     tmp_path: Path,
 ) -> None:
-    """禁用态兼容协议保持 503，并且不会因构造响应加载 Agent。"""
+    """
+    禁用态兼容协议保持 503，并且不会因构造响应加载 Agent。
+    """
     result = _run_isolated(
         r"""
 import asyncio
@@ -208,7 +216,9 @@ print(json.dumps({
 
 
 def test_runtime_agent_type_factories_are_single_flight(tmp_path: Path) -> None:
-    """并发首次解析必须返回同一 class，避免会话复用误判构造器已变化。"""
+    """
+    并发首次解析必须返回同一 class，避免会话复用误判构造器已变化。
+    """
     result = _run_isolated(
         r"""
 import json
@@ -285,13 +295,17 @@ print(json.dumps({
 def test_persistent_protocol_agent_rebinds_stream_queue_without_stale_output(
     tmp_path: Path,
 ) -> None:
-    """稳定协议会话复用 Agent 时必须保留 handler identity 并切换请求队列。"""
+    """
+    稳定协议会话复用 Agent 时必须保留 handler identity 并切换请求队列。
+    """
     result = _run_isolated(
         r"""
 import asyncio
 import json
 import sys
 import types
+from datetime import datetime
+from unittest.mock import Mock
 
 sites = types.ModuleType("app.application.site.sites")
 sites.SitesHelper = type("SitesHelper", (), {})
@@ -299,12 +313,13 @@ sites.__file__ = "<test-stub>"
 sys.modules["app.application.site.sites"] = sites
 
 from app.api.endpoints import openai
+from app.agent.graph import AgentGraphCache, CompiledAgentBundle, GraphResources
 
 class RuntimeAgent:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self.stream_handler = object()
-        self._compiled_agent_bundle = object()
+        self._graphs = AgentGraphCache(models_in_use=lambda: False)
 
 class TestStreamingHandler(openai._OpenAIStreamingHandlerMixin):
     pass
@@ -315,11 +330,23 @@ agent = agent_type(session_id="stable", user_id="api")
 first_queue = asyncio.Queue()
 second_queue = asyncio.Queue()
 
+resources = GraphResources()
+consumer = Mock(close=Mock(return_value=True))
+resources.own_middlewares([consumer])
+agent._graphs.publish(CompiledAgentBundle(
+    signature=("old",), agent=object(), streaming=False,
+    created_at=datetime.now(), resources=resources,
+))
 agent.configure_protocol_request(stream_mode=True, event_queue=first_queue)
+invalidated = agent._graphs.current is None
+retained = not resources.empty
+asyncio.run(agent._graphs.collect())
 handler = agent.stream_handler
 handler._event_queue.put_nowait("first")
-compiled_bundle = object()
-agent._compiled_agent_bundle = compiled_bundle
+compiled_bundle = CompiledAgentBundle(
+    signature=("new",), agent=object(), streaming=True, created_at=datetime.now(),
+)
+agent._graphs.publish(compiled_bundle)
 
 agent.configure_protocol_request(stream_mode=True, event_queue=second_queue)
 agent.release_protocol_request(first_queue)
@@ -327,8 +354,11 @@ handler._event_queue.put_nowait("second")
 agent.release_protocol_request(second_queue)
 
 print(json.dumps({
+    "invalidated": invalidated,
+    "retained_until_collection": retained,
+    "consumer_closes": consumer.close.call_count,
     "same_handler": agent.stream_handler is handler,
-    "same_bundle": agent._compiled_agent_bundle is compiled_bundle,
+    "same_bundle": agent._graphs.current is compiled_bundle,
     "first": first_queue.get_nowait(),
     "first_empty": first_queue.empty(),
     "second": second_queue.get_nowait(),
@@ -340,6 +370,9 @@ print(json.dumps({
     )
 
     assert result == {
+        "invalidated": True,
+        "retained_until_collection": True,
+        "consumer_closes": 1,
         "same_handler": True,
         "same_bundle": True,
         "first": "first",
@@ -351,7 +384,9 @@ print(json.dumps({
 
 
 def test_protocol_routes_follow_agent_service_lifecycle(tmp_path: Path) -> None:
-    """服务未运行时返回 503，运行态仍执行原有兼容协议响应流程。"""
+    """
+    服务未运行时返回 503，运行态仍执行原有兼容协议响应流程。
+    """
     result = _run_isolated(
         r"""
 import asyncio
@@ -418,7 +453,6 @@ class RuntimeAgent:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self.stream_handler = object()
-        self._compiled_agent_bundle = None
 
     async def process(self, _prompt, **_kwargs):
         return "runtime reply"

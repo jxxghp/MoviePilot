@@ -1,4 +1,6 @@
-"""TMDB 限流恢复必须有界，且只使用当前响应的限流状态。"""
+"""
+TMDB 限流恢复必须有界，且只使用当前响应的限流状态。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
@@ -13,7 +15,9 @@ from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
 
 @pytest.fixture(params=[False, True], ids=['sync', 'async'])
 def client_case(request, monkeypatch):
-    """同时驱动真实同步、异步缓存入口，只替换单次传输与等待。"""
+    """
+    同时驱动真实同步、异步缓存入口，只替换单次传输与等待。
+    """
     client = TMDb()
     client.api_key = 'test-key'
     client.domain = 'tmdb.example.test'
@@ -28,7 +32,9 @@ def client_case(request, monkeypatch):
         monkeypatch.setattr(tmdb_module.time, 'sleep', sleep)
 
     def invoke(method='GET'):
-        """在同一断言中调用同步或异步的完整响应解析入口。"""
+        """
+        在同一断言中调用同步或异步的完整响应解析入口。
+        """
         if request.param:
             return asyncio.run(client._async_request_obj('/movie/42', method=method))
         return client._request_obj('/movie/42', method=method)
@@ -42,14 +48,18 @@ def client_case(request, monkeypatch):
 
 
 def _response(headers):
-    """返回合法成功响应，保证失败来自限流处理而非响应解析。"""
+    """
+    返回合法成功响应，保证失败来自限流处理而非响应解析。
+    """
     return Mock(headers=headers, json=Mock(return_value={'id': 42}))
 
 
 @pytest.mark.parametrize('method', ['GET', 'POST'])
 @pytest.mark.parametrize('recovered_headers', [{}, {'X-RateLimit-Remaining': '39'}])
 def test_rate_limit_recovery_uses_current_headers(client_case, method, recovered_headers):
-    """重试绕过旧缓存，且成功响应缺少限流头时不继承上次耗尽状态。"""
+    """
+    重试绕过旧缓存，且成功响应缺少限流头时不继承上次耗尽状态。
+    """
     _, transport, sleep, invoke = client_case
     transport.side_effect = [
         _response({'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1002'}),
@@ -62,7 +72,9 @@ def test_rate_limit_recovery_uses_current_headers(client_case, method, recovered
 
 
 def test_persistent_rate_limit_stops_after_one_retry(client_case):
-    """持续限流至多重试一次，避免递归最终在 Cookie 等深层调用中爆栈。"""
+    """
+    持续限流至多重试一次，避免递归最终在 Cookie 等深层调用中爆栈。
+    """
     _, transport, sleep, invoke = client_case
     transport.return_value = _response(
         {'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1002'}
@@ -78,7 +90,9 @@ def test_persistent_rate_limit_stops_after_one_retry(client_case):
 
 @pytest.mark.parametrize('reset', ['998', '1000'])
 def test_expired_rate_limit_does_not_sleep(client_case, reset):
-    """已到期的重置时间不能取绝对值后继续等待和重试。"""
+    """
+    已到期的重置时间不能取绝对值后继续等待和重试。
+    """
     _, transport, sleep, invoke = client_case
     transport.return_value = _response(
         {'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': reset}
@@ -91,7 +105,9 @@ def test_expired_rate_limit_does_not_sleep(client_case, reset):
 
 @pytest.mark.parametrize('wait_enabled', [False, True])
 def test_incomplete_rate_limit_has_no_guessed_wait(client_case, wait_enabled):
-    """没有重置时间时报告限流，避免沿用旧时间或发生 None 减法异常。"""
+    """
+    没有重置时间时报告限流，避免沿用旧时间或发生 None 减法异常。
+    """
     client, transport, sleep, invoke = client_case
     client.wait_on_rate_limit = wait_enabled
     client._reset = 1002
@@ -105,7 +121,9 @@ def test_incomplete_rate_limit_has_no_guessed_wait(client_case, wait_enabled):
 
 
 def test_disabled_wait_reports_rate_limit_immediately(client_case):
-    """调用方关闭限流等待时，不执行重试或休眠。"""
+    """
+    调用方关闭限流等待时，不执行重试或休眠。
+    """
     client, transport, sleep, invoke = client_case
     client.wait_on_rate_limit = False
     transport.return_value = _response(
@@ -120,11 +138,15 @@ def test_disabled_wait_reports_rate_limit_immediately(client_case):
 
 
 def test_real_cookie_session_recovers_after_rate_limit(monkeypatch):
-    """保留真实 Session/Cookie 准备，验证缺失限流头的代理响应不会引发递归。"""
+    """
+    保留真实 Session/Cookie 准备，验证缺失限流头的代理响应不会引发递归。
+    """
     sent = []
 
     def send(_adapter, request, **kwargs):
-        """仅替换网络发送，依次返回耗尽配额与无配额头的成功响应。"""
+        """
+        仅替换网络发送，依次返回耗尽配额与无配额头的成功响应。
+        """
         sent.append(request)
         assert request.headers['Cookie'] == 'probe=present'
         assert kwargs['proxies']['https'] == 'http://proxy.example.test:8080'

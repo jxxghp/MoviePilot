@@ -1,4 +1,6 @@
-"""WebAgent 通知与原消息编辑事件桥接。"""
+"""
+WebAgent 通知与原消息编辑事件桥接。
+"""
 
 import copy
 from queue import Queue
@@ -18,7 +20,9 @@ _WEB_AGENT_MESSAGE_LOCK = Lock()
 def normalize_web_agent_button_rows(
     buttons: Optional[list[list[dict[str, Any]]]],
 ) -> list[list[dict[str, Any]]]:
-    """将消息按钮转换为 WebAgent 前端可识别的按钮行。"""
+    """
+    将消息按钮转换为 WebAgent 前端可识别的按钮行。
+    """
     button_rows: list[list[dict[str, Any]]] = []
     for row in buttons or []:
         normalized_row = []
@@ -43,7 +47,9 @@ def _resolve_web_agent_choice_id(
     message_id: Union[str, int],
     button_rows: list[list[dict[str, Any]]],
 ) -> str:
-    """从按钮回调中提取稳定的 WebAgent 选项 ID。"""
+    """
+    从按钮回调中提取稳定的 WebAgent 选项 ID。
+    """
     for row in button_rows:
         for button in row:
             callback_data = str(button.get("callback_data") or "").strip()
@@ -63,7 +69,9 @@ def build_web_agent_message_update_event(
     text: str,
     buttons: Optional[list[list[dict[str, Any]]]],
 ) -> dict[str, Any]:
-    """构造可应用到 WebAgent 原消息的 SSE 更新事件。"""
+    """
+    构造可应用到 WebAgent 原消息的 SSE 更新事件。
+    """
     button_rows = normalize_web_agent_button_rows(buttons)
     content_parts = [part for part in (title, text) if part]
     target_message: dict[str, Any] = {
@@ -94,7 +102,9 @@ def build_web_agent_message_update_event(
 def extract_web_agent_message_from_event_data(
     data: dict[str, Any],
 ) -> Optional[Message]:
-    """从兼容新旧结构的 NoticeMessage 事件数据中提取 WebAgent 通知。"""
+    """
+    从兼容新旧结构的 NoticeMessage 事件数据中提取 WebAgent 通知。
+    """
     if not isinstance(data, dict):
         return None
     try:
@@ -124,7 +134,9 @@ def extract_web_agent_message_from_event_data(
 
 
 def is_web_agent_message_for_user(message: Message, user_id: str) -> bool:
-    """判断 NoticeMessage 事件是否属于当前 WebAgent 用户。"""
+    """
+    判断 NoticeMessage 事件是否属于当前 WebAgent 用户。
+    """
     try:
         target_user = message.userid
         return target_user is None or str(target_user) == str(user_id)
@@ -133,7 +145,9 @@ def is_web_agent_message_for_user(message: Message, user_id: str) -> bool:
 
 
 def _get_web_agent_message_user_id(message: Message) -> Optional[str]:
-    """返回 WebAgent 通知的目标用户 ID，无目标时返回 None。"""
+    """
+    返回 WebAgent 通知的目标用户 ID，无目标时返回 None。
+    """
     try:
         channel = message.channel
         channel_value = (
@@ -148,7 +162,9 @@ def _get_web_agent_message_user_id(message: Message) -> Optional[str]:
 
 
 def dispatch_web_agent_message_event(event: object) -> None:
-    """将 WebAgent NoticeMessage 分发给正在等待的请求队列。"""
+    """
+    将 WebAgent NoticeMessage 分发给正在等待的请求队列。
+    """
     event_data = getattr(event, "event_data", None)
     data = event_data if isinstance(event_data, dict) else {}
     message = extract_web_agent_message_from_event_data(data)
@@ -172,7 +188,9 @@ def attach_web_agent_message_queue(
     user_id: str,
     message_queue: Queue[Message],
 ) -> None:
-    """为当前 WebAgent 请求挂载通知收集队列。"""
+    """
+    为当前 WebAgent 请求挂载通知收集队列。
+    """
     with _WEB_AGENT_MESSAGE_LOCK:
         _WEB_AGENT_MESSAGE_QUEUES.setdefault(str(user_id), []).append(message_queue)
 
@@ -181,7 +199,9 @@ def detach_web_agent_message_queue(
     user_id: str,
     message_queue: Queue[Message],
 ) -> None:
-    """移除当前 WebAgent 请求的通知收集队列。"""
+    """
+    移除当前 WebAgent 请求的通知收集队列。
+    """
     with _WEB_AGENT_MESSAGE_LOCK:
         queues = _WEB_AGENT_MESSAGE_QUEUES.get(str(user_id))
         if not queues:
@@ -197,7 +217,9 @@ def attach_web_agent_edit_queue(
     user_id: str,
     edit_queue: Queue[dict[str, Any]],
 ) -> None:
-    """为当前 WebAgent 请求挂载原消息编辑事件队列。"""
+    """
+    为当前 WebAgent 请求挂载原消息编辑事件队列。
+    """
     with _WEB_AGENT_EDIT_LOCK:
         _WEB_AGENT_EDIT_QUEUES.setdefault(str(user_id), []).append(edit_queue)
 
@@ -206,7 +228,9 @@ def detach_web_agent_edit_queue(
     user_id: str,
     edit_queue: Queue[dict[str, Any]],
 ) -> None:
-    """移除当前 WebAgent 请求的原消息编辑事件队列。"""
+    """
+    移除当前 WebAgent 请求的原消息编辑事件队列。
+    """
     with _WEB_AGENT_EDIT_LOCK:
         queues = _WEB_AGENT_EDIT_QUEUES.get(str(user_id))
         if not queues:
@@ -223,7 +247,9 @@ def dispatch_web_agent_edit_event(
     user_id: str,
     event: dict[str, Any],
 ) -> bool:
-    """将 WebAgent 原消息编辑事件分发给正在等待的请求队列。"""
+    """
+    将 WebAgent 原消息编辑事件分发给正在等待的请求队列。
+    """
     with _WEB_AGENT_EDIT_LOCK:
         queues = list(_WEB_AGENT_EDIT_QUEUES.get(str(user_id)) or [])
     for edit_queue in queues:
@@ -239,7 +265,9 @@ def edit_web_agent_message(
     text: str,
     buttons: Optional[list[list[dict[str, Any]]]] = None,
 ) -> bool:
-    """构造并投递 WebAgent 原消息更新事件。"""
+    """
+    构造并投递 WebAgent 原消息更新事件。
+    """
     if not user_id:
         return False
     event = build_web_agent_message_update_event(

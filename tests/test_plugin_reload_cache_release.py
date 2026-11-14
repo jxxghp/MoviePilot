@@ -1,4 +1,6 @@
-"""插件重载与路由移除后，旧插件代码不得被第三方进程级缓存留在内存中。"""
+"""
+插件重载与路由移除后，旧插件代码不得被第三方进程级缓存留在内存中。
+"""
 
 from __future__ import annotations
 
@@ -25,7 +27,9 @@ _SILENT_LOG = SimpleNamespace(
 
 
 def _install_plugin_module(name: str, source: str) -> types.ModuleType:
-    """以插件运行时命名空间登记一个内存模块，模拟已导入的插件源码。"""
+    """
+    以插件运行时命名空间登记一个内存模块，模拟已导入的插件源码。
+    """
     module = types.ModuleType(name)
     sys.modules[name] = module
     exec(compile(source, f"<{name}>", "exec"), module.__dict__)
@@ -33,7 +37,9 @@ def _install_plugin_module(name: str, source: str) -> types.ModuleType:
 
 
 def test_removed_plugin_route_releases_endpoint_from_fastapi_caches() -> None:
-    """插件路由移除后，FastAPI 可调用分类缓存不再持有旧端点及其模块。"""
+    """
+    插件路由移除后，FastAPI 可调用分类缓存不再持有旧端点及其模块。
+    """
     module = _install_plugin_module(
         "app.plugins.routecachedemo",
         "async def health():\n    return {'ok': True}\n",
@@ -72,7 +78,9 @@ def test_removed_plugin_route_releases_endpoint_from_fastapi_caches() -> None:
 
 
 def test_clear_modules_releases_plugin_classes_from_type_caches(tmp_path: Path) -> None:
-    """清除插件模块缓存后，Pydantic 泛型缓存与 typing 缓存不再持有旧插件类。"""
+    """
+    清除插件模块缓存后，Pydantic 泛型缓存与 typing 缓存不再持有旧插件类。
+    """
     module = _install_plugin_module(
         "app.plugins.typecachedemo",
         "from typing import Optional\n"
@@ -111,7 +119,9 @@ def test_clear_modules_releases_plugin_classes_from_type_caches(tmp_path: Path) 
 
 
 def test_clear_modules_without_matching_modules_keeps_type_caches(tmp_path: Path) -> None:
-    """没有可清除的插件模块时不触碰全局类型缓存。"""
+    """
+    没有可清除的插件模块时不触碰全局类型缓存。
+    """
     cached = typing.Optional[int]
     loader = PluginLoader(
         plugins_root=tmp_path,

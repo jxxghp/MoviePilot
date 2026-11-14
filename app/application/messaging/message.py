@@ -1,3 +1,7 @@
+"""
+消息查询、模板渲染、队列处理与实时通知分发。
+"""
+
 from __future__ import annotations
 
 import ast
@@ -11,17 +15,18 @@ import time
 from contextvars import Context, copy_context
 from datetime import datetime
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union, cast, overload
 
 from jinja2 import Template
 
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import get_chain_runtime_config_snapshot, get_configured_system_config
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import size as size_tools
 from app.foundation.crypto import HashUtils
 from app.foundation.singleton import Singleton, SingletonClass
+from app.foundation.text import convert as zhconv_convert
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
@@ -42,12 +47,20 @@ _SSE_QUEUE_MAXSIZE = 100
 
 
 class AsyncMessageQueryRepository(Protocol):
-    """消息查询用例依赖的异步持久化端口。"""
+    """
+    消息查询用例依赖的异步持久化端口。
+    """
 
     async def async_list_by_page(
             self, page: int = 1, count: int = 30
     ) -> list[Any]:
-        """分页读取 Web 消息。"""
+        """
+        分页读取 Web 消息。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数，默认 30
+        :return: 按记录时间和主键降序排列的消息记录
+        """
         ...
 
     async def async_list_sent_by_page(
@@ -58,19 +71,34 @@ class AsyncMessageQueryRepository(Protocol):
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
     ) -> list[Any]:
-        """分页读取清理水位之后的通知消息。"""
+        """
+        分页读取清理水位之后的通知消息。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数，默认 30
+        :param all_clear_before: 全部通知的清理时间水位，按存储层时间字符串比较；None 表示不限制
+        :param system_clear_before: 无图片通知的清理时间水位，None 表示不限制此类消息
+        :param media_clear_before: 含图片通知的清理时间水位，None 表示不限制此类消息
+        :return: 记录时间严格晚于相应水位的已发送通知，按时间和主键降序排列
+        """
         ...
 
 
 class MessageQueryService:
-    """封装消息历史读取与持久化对象投影。"""
+    """
+    封装消息历史读取与持久化对象投影。
+    """
 
     def __init__(self, repository: AsyncMessageQueryRepository):
-        """使用显式消息查询端口初始化服务。"""
+        """
+        使用显式消息查询端口初始化服务。
+        """
         self._repository = repository
 
     async def list_web(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
-        """分页返回可由 API schema 消费的 Web 消息字典。"""
+        """
+        分页返回可由 API schema 消费的 Web 消息字典。
+        """
         messages = await self._repository.async_list_by_page(page=page, count=count)
         result: list[dict[str, Any]] = []
         for message in messages:
@@ -88,7 +116,9 @@ class MessageQueryService:
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """分页返回清理水位之后的通知消息字典。"""
+        """
+        分页返回清理水位之后的通知消息字典。
+        """
         messages = await self._repository.async_list_sent_by_page(
             page=page,
             count=count,
@@ -115,20 +145,21 @@ class TemplateContextBuilder:
     def build(
             self,
             meta: Optional[MetaBase] = None,
-            mediainfo: Optional[MediaInfo] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
             transferinfo: Optional[TransferInfo] = None,
             file_extension: Optional[str] = None,
             episodes_info: Optional[List[TmdbEpisode]] = None,
             include_raw_objects: bool = True,
             aggregate_music_album: bool = False,
-            **kwargs
+            **kwargs: Any,
     ) -> Dict[str, Any]:
         """
         构建一次性渲染上下文字典。
 
         每次调用都新建本地 ``context`` 字典，依次填充各业务来源和当前实例的
         主机名后返回过滤掉 None 值的副本，调用之间互不影响。
+        音乐在字段取值完成后统一按开关转简体，避免原始标签覆盖在线转换结果。
 
         :param meta: 媒体元数据
         :param mediainfo: 识别的媒体信息
@@ -148,19 +179,34 @@ class TemplateContextBuilder:
         self._add_transfer_info(context, transferinfo)
         self._add_torrent_info(context, torrentinfo)
         self._add_file_info(context, file_extension)
+        if isinstance(meta, MetaMusic) or isinstance(mediainfo, MusicInfo):
+            self._simplify_music_context(context)
         context.update(kwargs, instance_name=socket.gethostname())
 
         if include_raw_objects:
             self._add_raw_objects(context, meta, mediainfo, torrentinfo, transferinfo, episodes_info)
 
-        # 移除空值
         return {k: v for k, v in context.items() if v is not None}
+
+    @staticmethod
+    def _simplify_music_context(context: Dict[str, Any]) -> None:
+        """
+        只转换最终音乐展示字段，保留原始文件名、标签、媒体身份和取值优先级。
+        """
+        if not get_chain_runtime_config_snapshot().music_metadata_to_simplified:
+            return
+        for field_name in ("title", "name", "artist", "album", "album_artist", "title_year", "version"):
+            value = context.get(field_name)
+            if isinstance(value, str):
+                context[field_name] = zhconv_convert(value, "zh-hans")
+        if "artists" in context:
+            context["artists"] = [zhconv_convert(artist, "zh-hans") for artist in context["artists"]]
 
     @classmethod
     def _add_media_info(
             cls,
             context: Dict[str, Any],
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             aggregate_music_album: bool = False,
     ) -> None:
         """
@@ -213,7 +259,7 @@ class TemplateContextBuilder:
                 else (context.get("track_number") or mediainfo.track_number)
             )
             context.update({
-                "type": mediainfo.type.value,
+                "type": (mediainfo.type.value if mediainfo.type else ""),
                 "title": title,
                 "name": title if is_album_context else (context.get("name") or title),
                 "artists": artists,
@@ -260,7 +306,7 @@ class TemplateContextBuilder:
             "original_title": cls.__convert_invalid_characters(mediainfo.original_title),
             # 季号
             "season": context.get("season") or mediainfo.season,
-            # Sxx
+            # 季号格式为 Sxx
             "season_fmt": context.get("season_fmt") or season_fmt,
             # 年份
             "year": mediainfo.year or context.get("year"),
@@ -271,7 +317,7 @@ class TemplateContextBuilder:
         _meta_season = context.get("season")
         media_info = {
             # 类型
-            "type": mediainfo.type.value,
+            "type": (mediainfo.type.value if mediainfo.type else ""),
             # 类别
             "category": mediainfo.category,
             # 评分
@@ -288,15 +334,15 @@ class TemplateContextBuilder:
             "actors": '、 '.join([actor['name'] for actor in mediainfo.actors[:5]]),
             # 简介
             "overview": mediainfo.overview,
-            # TMDBID
+            # TMDB 媒体标识
             "tmdbid": mediainfo.tmdb_id,
-            # IMDBID
+            # IMDb 媒体标识
             "imdbid": mediainfo.imdb_id,
             # 豆瓣ID
             "doubanid": mediainfo.douban_id,
-            # Bangumi ID
+            # Bangumi 条目标识
             "bangumiid": mediainfo.bangumi_id,
-            # AniList ID
+            # AniList 条目标识
             "anilistid": mediainfo.anilist_id,
             # 当前媒体数据源
             "media_source": media_source,
@@ -327,9 +373,9 @@ class TemplateContextBuilder:
                 "artist": cls.__convert_invalid_characters(meta.artist),
                 # 标签专辑名常自带尾部年份，与模板独立追加的年份去重（issue #6355）
                 "album": cls.__strip_album_trailing_year(
-                    cls.__convert_invalid_characters(meta.album), meta.year
+                    cls.__convert_invalid_characters(meta.album or ""), meta.year
                 ),
-                "album_artist": cls.__convert_invalid_characters(meta.album_artist),
+                "album_artist": cls.__convert_invalid_characters(meta.album_artist or ""),
                 "year": meta.year,
                 "disc_number": meta.disc_number,
                 "track_number": meta.track_number,
@@ -351,12 +397,12 @@ class TemplateContextBuilder:
             })
             return
 
-        episode_data = {"episode_title": None, "episode_date": None}
+        episode_data: Dict[str, Optional[str]] = {"episode_title": None, "episode_date": None}
         if meta.begin_episode and episodes:
             for episode in episodes:
                 if episode.episode_number == meta.begin_episode:
                     episode_data.update({
-                        "episode_title": cls.__convert_invalid_characters(episode.name),
+                        "episode_title": cls.__convert_invalid_characters(episode.name or ""),
                         "episode_date": episode.air_date if episode.air_date else None
                     })
                     break
@@ -375,7 +421,7 @@ class TemplateContextBuilder:
                 meta.name, meta.year) if meta.year else meta.name,
             # 季号
             "season": meta.season_seq,
-            # Sxx
+            # 季号格式为 Sxx
             "season_fmt": meta.season,
             # 集号
             "episode": meta.episode_seqs,
@@ -387,7 +433,7 @@ class TemplateContextBuilder:
             "part": meta.part,
             # 自定义占位符
             "customization": meta.customization,
-            # fps
+            # 每秒帧数
             "fps": meta.fps,
         }
 
@@ -426,11 +472,12 @@ class TemplateContextBuilder:
         """
         if not torrentinfo:
             return
+        size: Union[str, int] = 0
         if torrentinfo.size:
             if str(torrentinfo.size).replace(".", "").isdigit():
                 size = size_tools.format_compact_size(torrentinfo.size)
             else:
-                size = torrentinfo.size
+                size = str(torrentinfo.size)
         else:
             size = 0
 
@@ -450,7 +497,7 @@ class TemplateContextBuilder:
             "seeders": torrentinfo.seeders,
             # 促销信息
             "volume_factor": torrentinfo.volume_factor,
-            # Hit&Run
+            # 是否受下载后必须做种的 Hit&Run 规则约束
             "hit_and_run": "是" if torrentinfo.hit_and_run else "否",
             # 种子标签
             "labels": ' '.join(torrentinfo.labels),
@@ -473,7 +520,7 @@ class TemplateContextBuilder:
         ctx = {
             "transfer_type": transferinfo.transfer_type,
             "file_count": transferinfo.file_count,
-            "total_size": size_tools.format_compact_size(transferinfo.total_size),
+            "total_size": size_tools.format_compact_size(transferinfo.total_size or 0),
             "err_msg": transferinfo.message,
         }
         context.update(ctx)
@@ -495,7 +542,7 @@ class TemplateContextBuilder:
     def _add_raw_objects(
             context: Dict[str, Any],
             meta: Optional[MetaBase],
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             torrentinfo: Optional[TorrentInfo],
             transferinfo: Optional[TransferInfo],
             episodes_info: Optional[List[TmdbEpisode]],
@@ -520,25 +567,39 @@ class TemplateContextBuilder:
         context.update(raw_objects)
 
     @staticmethod
-    def __convert_invalid_characters(filename: str):
+    @overload
+    def __convert_invalid_characters(filename: str) -> str:
+        """
+        按文件名输入是否存在声明对应的清理结果，保留 None 的缺省语义。
+        """
+        ...
+
+    @staticmethod
+    @overload
+    def __convert_invalid_characters(filename: None) -> None:
+        """
+        按文件名输入是否存在声明对应的清理结果，保留 None 的缺省语义。
+        """
+        ...
+
+    @staticmethod
+    def __convert_invalid_characters(filename: Optional[str]) -> Optional[str]:
         """
         将不支持的字符转换为全角字符
         """
         if not filename:
             return filename
         invalid_characters = r'\/:*?"<>|'
-        # 创建半角到全角字符的转换表
         halfwidth_chars = "".join([chr(i) for i in range(33, 127)])
         fullwidth_chars = "".join([chr(i + 0xFEE0) for i in range(33, 127)])
         translation_table = str.maketrans(halfwidth_chars, fullwidth_chars)
-        # 将不支持的字符替换为对应的全角字符
         for char in invalid_characters:
             filename = filename.replace(char, char.translate(translation_table))
         return filename
 
     @staticmethod
     def __strip_album_trailing_year(
-            album: Optional[str], year: Optional[int]
+            album: Optional[str], year: Optional[Union[int, str]]
     ) -> Optional[str]:
         """
         去除专辑名尾部的括号年份标记（如 ``欲望反光 (2018)`` -> ``欲望反光``）。
@@ -557,13 +618,15 @@ class TemplateHelper(metaclass=SingletonClass):
     模板格式渲染帮助类
     """
 
-    def __init__(self):
-        """初始化模板上下文构建器和短期渲染缓存。"""
+    def __init__(self) -> None:
+        """
+        初始化模板上下文构建器和短期渲染缓存。
+        """
         self.builder = TemplateContextBuilder()
         self.cache = TTLCache(region="notification", maxsize=100, ttl=600)
 
     @staticmethod
-    def _generate_cache_key(cuntent: Union[str, dict]) -> str:
+    def _generate_cache_key(cuntent: Union[str, Dict[str, Any]]) -> str:
         """
         生成缓存键
         """
@@ -573,14 +636,14 @@ class TemplateHelper(metaclass=SingletonClass):
 
         return HashUtils.md5(cuntent)
 
-    def get_cache_context(self, cuntent: Union[str, dict]) -> Optional[dict]:
+    def get_cache_context(self, cuntent: Union[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
         获取缓存上下文
         """
         cache_key = self._generate_cache_key(cuntent)
-        return self.cache.get(cache_key)
+        return cast(Optional[Dict[str, Any]], self.cache.get(cache_key))
 
-    def set_cache_context(self, cuntent: Union[str, dict], context: dict) -> None:
+    def set_cache_context(self, cuntent: Union[str, Dict[str, Any]], context: Dict[str, Any]) -> None:
         """
         设置缓存上下文
         """
@@ -590,7 +653,7 @@ class TemplateHelper(metaclass=SingletonClass):
     def render(self,
                template_content: str,
                template_type: Literal['string', 'dict', 'literal'] = "literal",
-               **kwargs) -> Optional[Union[str, dict]]:
+               **kwargs: Any) -> Optional[Union[str, Dict[str, Any]]]:
         """
         根据模板格式渲染内容
         :param template_content: 模板字符串
@@ -600,7 +663,6 @@ class TemplateHelper(metaclass=SingletonClass):
         :return: 渲染后的结果
         """
         try:
-            # 解析模板字符
             parsed = self.parse_template_content(template_content, template_type)
             if not parsed:
                 raise ValueError("模板解析失败")
@@ -630,35 +692,32 @@ class TemplateHelper(metaclass=SingletonClass):
                 processed = rendered if template_type == 'string' else self.__process_formatted_string(rendered)
 
             if processed:
-                # 缓存上下文
                 self.set_cache_context(processed, context)
-                # 返回渲染结果
                 return processed
             return None
         except Exception as e:
             raise ValueError(f"模板处理失败: {str(e)}") from e
 
     @staticmethod
-    def render_with_context(template_content: str, context: dict) -> str:
+    def render_with_context(template_content: str, context: Dict[str, Any]) -> str:
         """
         使用指定上下文渲染 Jinja2 模板字符串
         template_content: Jinja2 模板字符串
         context: 渲染用的上下文数据
         """
-        # 渲染模板
         template = Template(template_content)
-        return template.render(context)
+        return cast(str, template.render(context))
 
     @staticmethod
-    def parse_template_content(template_content: Union[str, dict],
-                               template_type: Literal['string', 'dict', 'literal'] = None) -> Optional[Union[str, dict]]:
+    def parse_template_content(template_content: Union[str, Dict[str, Any]],
+                               template_type: Optional[Literal['string', 'dict', 'literal']] = None) -> Optional[Union[str, Dict[str, Any]]]:
         """
         解析模板字符
         :param template_content 模板格式字符
         :param template_type 模板字符类型
         """
 
-        def parse_literal(_template_content: str) -> Union[dict, str]:
+        def parse_literal(_template_content: str) -> Union[Dict[str, Any], str]:
             """
             解析Python字面量
             """
@@ -678,9 +737,8 @@ class TemplateHelper(metaclass=SingletonClass):
                     'dict': lambda x: x,
                     'literal': parse_literal
                 }
-                return parse_map[template_type](template_content)
+                return cast(Optional[Union[str, Dict[str, Any]]], parse_map[template_type](template_content))
 
-            # 自动判断模板类型
             if isinstance(template_content, dict):
                 return template_content
             elif isinstance(template_content, str):
@@ -700,14 +758,16 @@ class TemplateHelper(metaclass=SingletonClass):
             return None
 
     @staticmethod
-    def __process_formatted_string(rendered: str) -> Optional[Union[dict, str]]:
+    def __process_formatted_string(rendered: str) -> Optional[Union[Dict[str, Any], str]]:
         """
         处理格式化字符串
         保留转义字符
         """
 
         def restore_chars(obj: Any) -> Any:
-            """恢复特殊字符"""
+            """
+            恢复特殊字符
+            """
             if isinstance(obj, str):
                 return obj.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace('\\b', '\b').replace(
                     '\\f', '\f')
@@ -717,29 +777,31 @@ class TemplateHelper(metaclass=SingletonClass):
                 return [restore_chars(item) for item in obj]
             return obj
 
-            # 定义特殊字符映射
 
         special_chars = {
-            '\n': '\\n',  # 换行符
-            '\r': '\\r',  # 回车符
-            '\t': '\\t',  # 制表符
-            '\b': '\\b',  # 退格符
-            '\f': '\\f',  # 换页符
+            # 换行符
+            '\n': '\\n',
+            # 回车符
+            '\r': '\\r',
+            # 制表符
+            '\t': '\\t',
+            # 退格符
+            '\b': '\\b',
+            # 换页符
+            '\f': '\\f',
         }
 
-        # 处理特殊字符
         processed = rendered
         for char, escape in special_chars.items():
             processed = processed.replace(char, escape)
 
-        # 尝试解析为JSON
         try:
             rendered_dict = json.loads(processed)
-            return restore_chars(rendered_dict)
+            return cast(Optional[Union[Dict[str, Any], str]], restore_chars(rendered_dict))
         except json.JSONDecodeError:
             return rendered
 
-    def close(self):
+    def close(self) -> None:
         """
         清理资源
         """
@@ -753,10 +815,13 @@ class MessageTemplateHelper:
     """
 
     @staticmethod
-    def render(message: Message, *args, **kwargs) -> Optional[Message]:
+    def render(message: Message, *args: Any, **kwargs: Any) -> Optional[Message]:
         """
-        渲染消息模板
+        从媒体上下文补充独立海报并渲染模板，保留渠道原有图片和显式海报。
         """
+        mediainfo = kwargs.get("mediainfo")
+        if isinstance(message, Message) and not message.poster and isinstance(mediainfo, (MediaInfo, MusicInfo)):
+            message.poster = mediainfo.get_poster_image() or None
         if not MessageTemplateHelper.is_instance_valid(message):
             if MessageTemplateHelper.meets_update_conditions(message, *args, **kwargs):
                 logger.info("将使用模板渲染消息内容")
@@ -773,7 +838,7 @@ class MessageTemplateHelper:
         return False
 
     @staticmethod
-    def meets_update_conditions(message: Message, *args, **kwargs) -> bool:
+    def meets_update_conditions(message: Message, *args: Any, **kwargs: Any) -> bool:
         """
         判断是否满足消息实例更新条件
 
@@ -787,19 +852,17 @@ class MessageTemplateHelper:
         return False
 
     @staticmethod
-    def _apply_template_data(message: Message, *args, **kwargs) -> Optional[Message]:
+    def _apply_template_data(message: Message, *args: Any, **kwargs: Any) -> Optional[Message]:
         """
         更新消息实例
         """
         try:
             if template := MessageTemplateHelper._get_template(message):
                 try:
-                    rendered = TemplateHelper().render(
-                        template_content=template, *args, **kwargs
-                    )
+                    rendered = TemplateHelper().render(template, *args, **kwargs)
                 except ValueError as err:
                     logger.warning(
-                        f"通知模板 {message.ctype.value} 渲染失败，消息保持原样：{str(err)}"
+                        f"通知模板 {message.ctype.value if message.ctype else 'unknown'} 渲染失败，消息保持原样：{str(err)}"
                     )
                     return message
                 if not isinstance(rendered, dict):
@@ -820,7 +883,7 @@ class MessageTemplateHelper:
         try:
             template_dict = get_configured_system_config().get(SystemConfigKey.NotificationTemplates) or {}
             if isinstance(template_dict, dict):
-                configured = template_dict.get(message.ctype.value)
+                configured = template_dict.get(message.ctype.value) if message.ctype else None
                 if str(configured or "").strip() not in {"", "{}", "{ }"}:
                     return configured
         except Exception as err:
@@ -829,23 +892,31 @@ class MessageTemplateHelper:
 
 
 class MessageQueueClient:
-    """把当前 Chain 的发送回调绑定到共享消息队列，不持有后台资源。"""
+    """
+    把当前 Chain 的发送回调绑定到共享消息队列，不持有后台资源。
+    """
 
     def __init__(
         self,
         manager: "MessageQueueManager",
         send_callback: Callable[..., Any],
     ) -> None:
-        """保存共享队列和当前调用方回调。"""
+        """
+        保存共享队列和当前调用方回调。
+        """
         self._manager = manager
         self._send_callback = send_callback
 
     def send_message(self, *args: Any, **kwargs: Any) -> None:
-        """使用当前调用方回调同步派发或排队消息。"""
+        """
+        使用当前调用方回调同步派发或排队消息。
+        """
         self._manager.send_message_for(self._send_callback, *args, **kwargs)
 
     async def async_send_message(self, *args: Any, **kwargs: Any) -> None:
-        """使用当前调用方回调异步派发或排队消息。"""
+        """
+        使用当前调用方回调异步派发或排队消息。
+        """
         await self._manager.async_send_message_for(
             self._send_callback,
             *args,
@@ -860,7 +931,7 @@ class MessageQueueManager(metaclass=SingletonClass):
 
     def __init__(
             self,
-            send_callback: Optional[Callable] = None,
+            send_callback: Optional[Callable[..., Any]] = None,
             check_interval: Optional[int] = 10,
             auto_start: bool = True,
     ) -> None:
@@ -886,7 +957,9 @@ class MessageQueueManager(metaclass=SingletonClass):
             self.start()
 
     def start(self) -> None:
-        """显式启动唯一监控线程，重复调用保持幂等。"""
+        """
+        显式启动唯一监控线程，重复调用保持幂等。
+        """
         with self._state_lock:
             if self.thread is not None and self.thread.is_alive():
                 return
@@ -906,7 +979,9 @@ class MessageQueueManager(metaclass=SingletonClass):
                 raise
 
     def bind(self, send_callback: Callable[..., Any]) -> MessageQueueClient:
-        """为一个 Chain 创建不拥有线程的轻量发送客户端。"""
+        """
+        为一个 Chain 创建不拥有线程的轻量发送客户端。
+        """
         return MessageQueueClient(self, send_callback)
 
     def init_config(self) -> None:
@@ -918,12 +993,12 @@ class MessageQueueManager(metaclass=SingletonClass):
         )
 
     @staticmethod
-    def _parse_schedule(periods: Union[list, dict]) -> List[tuple[int, int, int, int]]:
+    def _parse_schedule(periods: Union[List[Dict[str, Any]], Dict[str, Any], None]) -> List[tuple[int, int, int, int]]:
         """
         将字符串时间格式转换为分钟数元组
         支持格式为 'HH:MM' 或 'HH:MM:SS' 的时间字符串
         """
-        parsed = []
+        parsed: List[tuple[int, int, int, int]] = []
         if not periods:
             return parsed
         if not isinstance(periods, list):
@@ -934,20 +1009,20 @@ class MessageQueueManager(metaclass=SingletonClass):
             if not period.get('start') or not period.get('end'):
                 continue
             try:
-                # 处理 start 时间
                 start_parts = period['start'].split(':')
                 if len(start_parts) == 2:
                     start_h, start_m = map(int, start_parts)
                 elif len(start_parts) >= 3:
-                    start_h, start_m = map(int, start_parts[:2])  # 只取前两个部分 (HH:MM)
+                    # 只取前两个部分 (HH:MM)
+                    start_h, start_m = map(int, start_parts[:2])
                 else:
                     continue
-                # 处理 end 时间
                 end_parts = period['end'].split(':')
                 if len(end_parts) == 2:
                     end_h, end_m = map(int, end_parts)
                 elif len(end_parts) >= 3:
-                    end_h, end_m = map(int, end_parts[:2])  # 只取前两个部分 (HH:MM)
+                    # 只取前两个部分 (HH:MM)
+                    end_h, end_m = map(int, end_parts[:2])
                 else:
                     continue
 
@@ -988,7 +1063,7 @@ class MessageQueueManager(metaclass=SingletonClass):
                     return True
         return False
 
-    def send_message(self, *args, **kwargs) -> None:
+    def send_message(self, *args: Any, **kwargs: Any) -> None:
         """
         发送消息（立即发送或加入队列）
         """
@@ -1000,10 +1075,12 @@ class MessageQueueManager(metaclass=SingletonClass):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        """使用显式调用方回调立即发送或排队，避免共享队列绑定首个 Chain。"""
+        """
+        使用显式调用方回调立即发送或排队，避免共享队列绑定首个 Chain。
+        """
         self._dispatch_message(send_callback, True, *args, **kwargs)
 
-    async def async_send_message(self, *args, **kwargs) -> None:
+    async def async_send_message(self, *args: Any, **kwargs: Any) -> None:
         """
         异步发送消息：``immediately=True`` 立即发送，否则按调度时段入队。
 
@@ -1020,7 +1097,9 @@ class MessageQueueManager(metaclass=SingletonClass):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        """使用显式调用方回调异步发送或排队。"""
+        """
+        使用显式调用方回调异步发送或排队。
+        """
         await self._async_dispatch_message(send_callback, True, *args, **kwargs)
 
     def _dispatch_message(
@@ -1030,7 +1109,9 @@ class MessageQueueManager(metaclass=SingletonClass):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        """执行同步消息入口，共享调度计划但保留同步回调边界。"""
+        """
+        执行同步消息入口，共享调度计划但保留同步回调边界。
+        """
         scheduled = (
             False
             if kwargs.get("immediately", False)
@@ -1060,7 +1141,9 @@ class MessageQueueManager(metaclass=SingletonClass):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        """执行异步消息入口，共享调度计划并在线程池运行同步回调。"""
+        """
+        执行异步消息入口，共享调度计划并在线程池运行同步回调。
+        """
         scheduled = (
             False
             if kwargs.get("immediately", False)
@@ -1097,7 +1180,9 @@ class MessageQueueManager(metaclass=SingletonClass):
         kwargs: dict[str, Any],
         scheduled: bool,
     ) -> tuple[bool, dict[str, Any]]:
-        """纯函数生成同步、异步入口共用的立即发送结论和队列载荷。"""
+        """
+        纯函数生成同步、异步入口共用的立即发送结论和队列载荷。
+        """
         dispatch_kwargs = dict(kwargs)
         immediately = bool(dispatch_kwargs.pop("immediately", False))
         message: dict[str, Any] = {
@@ -1109,11 +1194,13 @@ class MessageQueueManager(metaclass=SingletonClass):
         return immediately or scheduled, message
 
     def _enqueue_message(self, message: dict[str, Any]) -> None:
-        """写入一条已完成调度决策的消息并记录当前队列长度。"""
+        """
+        写入一条已完成调度决策的消息并记录当前队列长度。
+        """
         self.queue.put(message)
         logger.info(f"消息已加入队列，当前队列长度：{self.queue.qsize()}")
 
-    def _send(self, *args, **kwargs) -> None:
+    def _send(self, *args: Any, **kwargs: Any) -> None:
         """
         实际发送消息（可通过回调函数自定义）
         """
@@ -1125,7 +1212,9 @@ class MessageQueueManager(metaclass=SingletonClass):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        """调用一条消息携带的发送回调并隔离渠道异常。"""
+        """
+        调用一条消息携带的发送回调并隔离渠道异常。
+        """
         if send_callback:
             try:
                 logger.info(f"发送消息：{kwargs}")
@@ -1202,18 +1291,22 @@ class MessageHelper(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        """初始化系统消息队列和通知去重缓存。"""
+        """
+        初始化系统消息队列和通知去重缓存。
+        """
         self.sys_queue: queue.Queue[str] = queue.Queue(maxsize=_SSE_QUEUE_MAXSIZE)
         self._recent_notification_keys = TTLCache(region="message:notification", maxsize=500, ttl=60)
 
     def close(self) -> None:
-        """清空未推送的实时消息并关闭通知去重缓存；真实收敛后由生命周期释放单例身份。"""
+        """
+        清空未推送的实时消息并关闭通知去重缓存；真实收敛后由生命周期释放单例身份。
+        """
         self.drain()
         self._recent_notification_keys.close()
 
     @staticmethod
     def _build_system_notification_key(
-            message: Any, role: str, title: str = None, note: Union[list, dict] = None
+            message: Any, role: str, title: Optional[str] = None, note: Optional[Union[List[Any], Dict[str, Any]]] = None
     ) -> str:
         """
         构建系统通知短期去重键。
@@ -1231,7 +1324,7 @@ class MessageHelper(metaclass=Singleton):
         )
 
     def _is_recent_system_notification(
-            self, message: Any, role: str, title: str = None, note: Union[list, dict] = None
+            self, message: Any, role: str, title: Optional[str] = None, note: Optional[Union[List[Any], Dict[str, Any]]] = None
     ) -> bool:
         """
         判断系统通知是否在短时间内重复。
@@ -1246,11 +1339,11 @@ class MessageHelper(metaclass=Singleton):
             self,
             message: Any,
             role: str = "plugin",
-            title: str = None,
-            note: Union[list, dict] = None,
+            title: Optional[str] = None,
+            note: Optional[Union[List[Any], Dict[str, Any]]] = None,
             mtype: Optional[MessageType] = None,
             level: Optional[NotificationLevel] = None,
-    ):
+    ) -> None:
         """
         存消息
         :param message: 消息

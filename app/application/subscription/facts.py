@@ -1,4 +1,6 @@
-"""订阅单轮新鲜媒体事实租约。"""
+"""
+订阅单轮新鲜媒体事实租约。
+"""
 
 import copy
 from dataclasses import dataclass
@@ -12,7 +14,15 @@ from app.schemas.types import MediaType
 
 @dataclass(frozen=True, slots=True)
 class FreshFactKey:
-    """区分媒体身份、类型、季和剧集组的单轮事实键。"""
+    """
+    区分媒体身份、类型、季和剧集组的单轮事实键。
+
+    :param media_source: 订阅媒体的标准数据来源，与 media_id 配对使用
+    :param media_id: 数据来源中的原生媒体标识
+    :param media_type: 订阅媒体类型，用于隔离不同类别的事实
+    :param season: 目标季号；不按季区分时为 None
+    :param episode_group: 剧集组标识；未指定时使用来源默认剧集编排
+    """
 
     media_source: str
     media_id: str
@@ -22,7 +32,9 @@ class FreshFactKey:
 
     @classmethod
     def from_subscribe(cls, subscribe: SubscriptionSnapshot) -> Optional["FreshFactKey"]:
-        """从明确媒体身份的订阅构造事实键，身份缺失时禁止跨订阅复用。"""
+        """
+        从明确媒体身份的订阅构造事实键，身份缺失时禁止跨订阅复用。
+        """
         media_source, media_id = resolve_media_identity(media=subscribe)
         if not media_source or not media_id:
             return None
@@ -39,10 +51,14 @@ class FreshFactKey:
 
 
 class FreshFactLease:
-    """在一个批次内合并相同媒体的新鲜识别，并向消费者返回隔离副本。"""
+    """
+    在一个批次内合并相同媒体的新鲜识别，并向消费者返回隔离副本。
+    """
 
     def __init__(self) -> None:
-        """初始化仅在当前调用栈存活的事实缓存和命中计数。"""
+        """
+        初始化仅在当前调用栈存活的事实缓存和命中计数。
+        """
         self._facts: dict[FreshFactKey, Optional[MediaInfo]] = {}
         self.loads = 0
         self.hits = 0
@@ -52,7 +68,9 @@ class FreshFactLease:
         subscribe: SubscriptionSnapshot,
         loader: Callable[[], Optional[MediaInfo]],
     ) -> Optional[MediaInfo]:
-        """读取本轮隔离副本；首次仍由 loader 按 `cache=False` 获取新鲜事实。"""
+        """
+        读取本轮隔离副本；首次仍由 loader 按 `cache=False` 获取新鲜事实。
+        """
         key = FreshFactKey.from_subscribe(subscribe)
         if key is None:
             self.loads += 1

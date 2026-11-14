@@ -11,19 +11,18 @@ V3 起通知模板不再硬编码在程序中，默认模板由数据库升级�
    避免 JSON 序列化转义引号导致音乐下载/入库通知内容为空的历史问题；
 3. 模板完全由数据库配置驱动，配置缺失时不渲染、消息保持原样。
 """
-from pathlib import Path
-
 import importlib.util
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
+from app.application.messaging.message import MessageTemplateHelper, TemplateContextBuilder, TemplateHelper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.db.oper.systemconfig import SystemConfigOper
-from app.application.messaging.message import MessageTemplateHelper, TemplateContextBuilder, TemplateHelper
 from app.schemas.message import Message
 from app.schemas.types import ContentType, SystemConfigKey
 
@@ -54,7 +53,9 @@ MUSIC_CONTEXT = {
 
 @pytest.fixture()
 def notification_templates() -> SystemConfigOper:
-    """备份并还原通知模板配置，避免测试污染其它用例。"""
+    """
+    备份并还原通知模板配置，避免测试污染其它用例。
+    """
     config_oper = SystemConfigOper()
     original = config_oper.get(SystemConfigKey.NotificationTemplates)
     yield config_oper
@@ -176,6 +177,17 @@ def test_literal_template_skips_music_fields_for_video() -> None:
     assert "艺术家" not in rendered["text"]
     assert "专辑" not in rendered["text"]
     assert "类别：国产剧" in rendered["text"]
+
+
+def test_template_helper_supports_string_cache_keys_and_rejects_invalid_literal() -> None:
+    """
+    字符串模板缓存应可读回；显式 literal 模板解析失败时应给出明确错误。
+    """
+    helper = TemplateHelper()
+    helper.set_cache_context("template-key", {"title": "Demo"})
+
+    assert helper.get_cache_context("template-key") == {"title": "Demo"}
+    assert helper.parse_template_content("{'title':", "literal") is None
 
 
 def test_message_renders_from_db_config(notification_templates: SystemConfigOper) -> None:

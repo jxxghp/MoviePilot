@@ -1,3 +1,7 @@
+"""
+验证 MCP 服务配置归一化和发现工具的参数结构。
+"""
+
 import asyncio
 import sys
 import textwrap
@@ -15,7 +19,9 @@ from app.schemas.agent import AgentMcpServerConfig
 
 
 def _write_stdio_mcp_server(tmp_path):
-    """写入一个用于测试的最小 stdio MCP 服务。"""
+    """
+    写入一个用于测试的最小 stdio MCP 服务。
+    """
     server_path = tmp_path / "stdio_mcp_server.py"
     server_path.write_text(
         textwrap.dedent(
@@ -66,7 +72,9 @@ def _write_stdio_mcp_server(tmp_path):
 
 @pytest.mark.anyio
 async def test_stdio_mcp_server_lists_tools(tmp_path):
-    """stdio MCP 服务器应能被初始化并读取工具列表。"""
+    """
+    stdio MCP 服务器应能被初始化并读取工具列表。
+    """
     server_path = _write_stdio_mcp_server(tmp_path)
     manager = AgentMcpManager()
     server = AgentMcpServerConfig(
@@ -88,13 +96,17 @@ async def test_stdio_mcp_server_lists_tools(tmp_path):
 
 @pytest.mark.anyio
 async def test_stdio_mcp_session_waits_for_stderr_reader_shutdown() -> None:
-    """stdio MCP 会话退出时必须等待 stderr reader 真正完成。"""
+    """
+    stdio MCP 会话退出时必须等待 stderr reader 真正完成。
+    """
     session = _StdioMcpSession(AgentMcpServerConfig(id="fake", name="Fake MCP", transport="stdio"))
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
     async def reader() -> None:
-        """模拟持续读取 stderr 的会话子任务。"""
+        """
+        模拟持续读取 stderr 的会话子任务。
+        """
         started.set()
         try:
             await asyncio.Event().wait()
@@ -113,7 +125,9 @@ async def test_stdio_mcp_session_waits_for_stderr_reader_shutdown() -> None:
 
 @pytest.mark.anyio
 async def test_enabled_specs_preserve_cross_server_name_collisions() -> None:
-    """跨 MCP 服务器生成相同 Agent 名时必须把全部身份交给目录判断。"""
+    """
+    跨 MCP 服务器生成相同 Agent 名时必须把全部身份交给目录判断。
+    """
     manager = AgentMcpManager()
     first = AgentMcpServerConfig(id="one", name="one", transport="stdio", command="one")
     second = AgentMcpServerConfig(id="two", name="two", transport="stdio", command="two")
@@ -142,7 +156,9 @@ async def test_enabled_specs_preserve_cross_server_name_collisions() -> None:
 
 @pytest.mark.anyio
 async def test_mcp_catalog_uses_server_id_for_collision_audit() -> None:
-    """目录应区分同显示名服务器并保留冲突审计证据。"""
+    """
+    目录应区分同显示名服务器并保留冲突审计证据。
+    """
     first_server = AgentMcpServerConfig(
         id="one",
         name="Shared Name",
@@ -185,7 +201,9 @@ async def test_mcp_catalog_uses_server_id_for_collision_audit() -> None:
 
 @pytest.mark.anyio
 async def test_mcp_catalog_distinguishes_normalized_names_within_server() -> None:
-    """同一服务内规范化重名的原始工具仍应具有不同绑定身份。"""
+    """
+    同一服务内规范化重名的原始工具仍应具有不同绑定身份。
+    """
     server = AgentMcpServerConfig(
         id="shared",
         name="Shared",
@@ -231,7 +249,9 @@ async def test_mcp_catalog_distinguishes_normalized_names_within_server() -> Non
 
 @pytest.mark.anyio
 async def test_stdio_mcp_server_calls_tool(tmp_path):
-    """stdio MCP 工具应能通过 tools/call 返回内容。"""
+    """
+    stdio MCP 工具应能通过 tools/call 返回内容。
+    """
     server_path = _write_stdio_mcp_server(tmp_path)
     manager = AgentMcpManager()
     server = AgentMcpServerConfig(
@@ -249,7 +269,9 @@ async def test_stdio_mcp_server_calls_tool(tmp_path):
 
 
 def test_normalize_server_generates_runtime_defaults():
-    """MCP 配置规范化应补齐默认值并清理空字段。"""
+    """
+    MCP 配置规范化应补齐默认值并清理空字段。
+    """
     manager = AgentMcpManager()
 
     server = manager.normalize_server(
@@ -271,7 +293,9 @@ def test_normalize_server_generates_runtime_defaults():
 
 
 def test_mcp_external_tool_uses_discovered_schema():
-    """外部 MCP 工具应保留发现到的 JSON Schema。"""
+    """
+    外部 MCP 工具应保留发现到的 JSON Schema。
+    """
     server = AgentMcpServerConfig(id="fake", name="Fake MCP")
     spec = AgentMcpToolSpec(
         server=server,

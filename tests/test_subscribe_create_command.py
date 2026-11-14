@@ -1,4 +1,6 @@
-"""订阅新增事务所有权与默认入口集成测试。"""
+"""
+订阅新增事务所有权与默认入口集成测试。
+"""
 
 import asyncio
 from dataclasses import replace
@@ -38,7 +40,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _media(media_id: str) -> MediaInfo:
-    """构造默认事务写入路径所需的最小媒体信息。"""
+    """
+    构造默认事务写入路径所需的最小媒体信息。
+    """
     media = MediaInfo()
     media.type = MediaType.MOVIE
     media.title = "事务测试电影"
@@ -51,7 +55,9 @@ def _media(media_id: str) -> MediaInfo:
 
 
 def _writer() -> TransactionalSubscriptionRepository:
-    """按组合根合同构造显式短事务订阅仓储。"""
+    """
+    按组合根合同构造显式短事务订阅仓储。
+    """
     return TransactionalSubscriptionRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -62,7 +68,9 @@ def _batch_request(
     media_id: str,
     season: int,
 ) -> SubscriptionCreateRequest:
-    """构造真实数据库批量写测试使用的一季订阅请求。"""
+    """
+    构造真实数据库批量写测试使用的一季订阅请求。
+    """
     return SubscriptionCreateRequest(
         identity=SubscriptionIdentity(
             media_source=MediaSource.TMDB,
@@ -85,7 +93,9 @@ def _batch_request(
 
 
 def test_sync_command_orders_stage_commit_before_caller_effect() -> None:
-    """同步新增只有在仓储暂存和提交成功后才把结果交给外部副作用。"""
+    """
+    同步新增只有在仓储暂存和提交成功后才把结果交给外部副作用。
+    """
     calls: list[str] = []
     repository = Mock()
     repository.stage_add.side_effect = lambda *_: (
@@ -105,7 +115,9 @@ def test_sync_command_orders_stage_commit_before_caller_effect() -> None:
 
 
 def test_sync_command_rolls_back_commit_failure_and_skips_effect() -> None:
-    """提交失败必须回滚并传播原异常，调用方不能误执行提交后副作用。"""
+    """
+    提交失败必须回滚并传播原异常，调用方不能误执行提交后副作用。
+    """
     commit_error = RuntimeError("commit failed")
     repository = Mock()
     repository.stage_add.return_value = SubscribeStageResult(
@@ -128,7 +140,9 @@ def test_sync_command_rolls_back_commit_failure_and_skips_effect() -> None:
 
 
 def test_sync_command_does_not_commit_duplicate_request() -> None:
-    """查重命中沿用旧 ID 和消息，不开启无意义写事务。"""
+    """
+    查重命中沿用旧 ID 和消息，不开启无意义写事务。
+    """
     repository = Mock()
     repository.stage_add.return_value = SubscribeStageResult(
         12,
@@ -144,7 +158,9 @@ def test_sync_command_does_not_commit_duplicate_request() -> None:
 
 
 def test_sync_event_failure_does_not_roll_back_committed_subscription() -> None:
-    """事件属于提交后副作用，失败只向上传播且不能伪装成数据库回滚。"""
+    """
+    事件属于提交后副作用，失败只向上传播且不能伪装成数据库回滚。
+    """
     calls: list[str] = []
     repository = Mock()
     repository.stage_add.return_value = SubscribeStageResult(
@@ -157,7 +173,9 @@ def test_sync_event_failure_does_not_roll_back_committed_subscription() -> None:
     event_error = RuntimeError("event failed")
 
     def send_event(_subscribe_id: int) -> None:
-        """模拟 Chain 在提交后发送订阅事件失败。"""
+        """
+        模拟 Chain 在提交后发送订阅事件失败。
+        """
         calls.append("event")
         raise event_error
 
@@ -173,7 +191,9 @@ def test_sync_event_failure_does_not_roll_back_committed_subscription() -> None:
 
 @pytest.mark.asyncio
 async def test_async_command_rolls_back_staging_failure() -> None:
-    """异步 flush 或唯一约束失败同样由命令回滚，不留部分写入。"""
+    """
+    异步 flush 或唯一约束失败同样由命令回滚，不留部分写入。
+    """
     staging_error = RuntimeError("flush failed")
     repository = Mock()
     repository.async_stage_add = AsyncMock(side_effect=staging_error)
@@ -192,7 +212,9 @@ async def test_async_command_rolls_back_staging_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_async_report_failure_happens_after_event_without_rollback() -> None:
-    """异步上报失败保留事件先行顺序，也不回滚已经提交的订阅。"""
+    """
+    异步上报失败保留事件先行顺序，也不回滚已经提交的订阅。
+    """
     calls: list[str] = []
     repository = Mock()
     repository.async_stage_add = AsyncMock(
@@ -204,7 +226,9 @@ async def test_async_report_failure_happens_after_event_without_rollback() -> No
     report_error = RuntimeError("report failed")
 
     async def send_event_and_report(_subscribe_id: int) -> None:
-        """模拟 Chain 先发事件再执行统计上报。"""
+        """
+        模拟 Chain 先发事件再执行统计上报。
+        """
         calls.append("event")
         calls.append("report")
         raise report_error
@@ -220,11 +244,15 @@ async def test_async_report_failure_happens_after_event_without_rollback() -> No
 
 
 def test_async_batch_command_commits_once_and_stages_each_added_intent(db) -> None:
-    """真实数据库中的多季订阅与各自事件、通知、统计 intent 只提交一次。"""
+    """
+    真实数据库中的多季订阅与各自事件、通知、统计 intent 只提交一次。
+    """
     db.watermark(Subscribe, OutboxMessage)
 
     async def execute() -> tuple[tuple[int, ...], list[int]]:
-        """在真实 AsyncSession 中执行批量 writer 并记录提交后回调。"""
+        """
+        在真实 AsyncSession 中执行批量 writer 并记录提交后回调。
+        """
         async with async_session_scope() as session:
             actual_uow = SqlAlchemyAsyncUnitOfWork(session)
             unit_of_work = Mock()
@@ -233,7 +261,9 @@ def test_async_batch_command_commits_once_and_stages_each_added_intent(db) -> No
             effects: list[int] = []
 
             async def after_commit(subscribe_id: int) -> bool:
-                """证明冻结在每季请求内的副作用只在唯一提交后执行。"""
+                """
+                证明冻结在每季请求内的副作用只在唯一提交后执行。
+                """
                 assert unit_of_work.commit.await_count == 1
                 effects.append(subscribe_id)
                 return True
@@ -287,7 +317,9 @@ def test_async_batch_command_commits_once_and_stages_each_added_intent(db) -> No
 
 
 def test_async_batch_command_rolls_back_all_rows_when_later_season_fails(db) -> None:
-    """真实数据库中后一季暂存失败时回滚此前季和已经暂存的 outbox intents。"""
+    """
+    真实数据库中后一季暂存失败时回滚此前季和已经暂存的 outbox intents。
+    """
     db.watermark(Subscribe, OutboxMessage)
     requests = [
         _batch_request("servarr-batch-rollback", 1),
@@ -296,13 +328,17 @@ def test_async_batch_command_rolls_back_all_rows_when_later_season_fails(db) -> 
     failure = RuntimeError("second season failed")
 
     async def execute() -> None:
-        """让第二次暂存失败，并使用真实 UoW 验证完整回滚。"""
+        """
+        让第二次暂存失败，并使用真实 UoW 验证完整回滚。
+        """
         async with async_session_scope() as session:
             repository = SessionSubscriptionRepository(session)
             stage_calls = 0
 
             async def fail_second(*args, **kwargs):
-                """第一季真实 flush，第二季在同一事务内抛出失败。"""
+                """
+                第一季真实 flush，第二季在同一事务内抛出失败。
+                """
                 nonlocal stage_calls
                 stage_calls += 1
                 if stage_calls == 2:
@@ -345,7 +381,9 @@ def test_async_batch_command_rolls_back_all_rows_when_later_season_fails(db) -> 
 
 
 def test_default_sync_writer_persists_once_and_reuses_duplicate(db) -> None:
-    """Chain 默认入口使用独立事务写入，重复媒体身份返回同一订阅。"""
+    """
+    Chain 默认入口使用独立事务写入，重复媒体身份返回同一订阅。
+    """
     db.watermark(Subscribe)
     media = _media("arch-221-sync")
     after_commit = Mock()
@@ -376,7 +414,9 @@ def test_default_sync_writer_persists_once_and_reuses_duplicate(db) -> None:
 
 
 def test_default_sync_writer_allows_reused_subscribe_id_with_retained_outbox(db) -> None:
-    """删除订阅后复用数据库主键时，新增事件仍以本次创建事实区分。"""
+    """
+    删除订阅后复用数据库主键时，新增事件仍以本次创建事实区分。
+    """
     db.watermark(Subscribe, OutboxMessage)
     media = _media("arch-221-reused-id")
     writer = _writer()
@@ -413,7 +453,9 @@ def test_default_sync_writer_allows_reused_subscribe_id_with_retained_outbox(db)
 
 
 def test_default_sync_writer_keeps_failed_report_pending_without_raising(db) -> None:
-    """新增统计未确认时接口仍成功，事件 intent 收口而统计 intent 等待重试。"""
+    """
+    新增统计未确认时接口仍成功，事件 intent 收口而统计 intent 等待重试。
+    """
     db.watermark(Subscribe, OutboxMessage)
     media = _media("arch-221-report-pending")
 
@@ -437,12 +479,16 @@ def test_default_sync_writer_keeps_failed_report_pending_without_raising(db) -> 
 
 
 def test_default_async_writer_keeps_failed_report_pending_without_raising(db) -> None:
-    """异步新增入口同样返回成功，并只留下统计 intent 等待重试。"""
+    """
+    异步新增入口同样返回成功，并只留下统计 intent 等待重试。
+    """
     db.watermark(Subscribe, OutboxMessage)
     media = _media("arch-221-async-report-pending")
 
     async def report_failed(_subscribe_id: int) -> bool:
-        """模拟异步统计接口未确认。"""
+        """
+        模拟异步统计接口未确认。
+        """
         return False
 
     subscribe_id, message = asyncio.run(
@@ -467,7 +513,9 @@ def test_default_async_writer_keeps_failed_report_pending_without_raising(db) ->
 
 
 def test_stage_add_reuses_explicit_session_without_commit(db, monkeypatch) -> None:
-    """Oper 将调用方 Session 传给 Model 查询原语，暂存期间不自行提交。"""
+    """
+    Oper 将调用方 Session 传给 Model 查询原语，暂存期间不自行提交。
+    """
     db.watermark(Subscribe)
     commit = Mock(wraps=db.session.commit)
     exists = Mock(wraps=Subscribe.exists)
@@ -500,7 +548,9 @@ def test_stage_add_reuses_explicit_session_without_commit(db, monkeypatch) -> No
 
 
 def test_default_async_writer_persists_committed_row(db) -> None:
-    """Agent/API 使用的异步 Chain 入口在返回前已完成请求级提交。"""
+    """
+    Agent/API 使用的异步 Chain 入口在返回前已完成请求级提交。
+    """
     db.watermark(Subscribe)
     media = _media("arch-221-async")
 

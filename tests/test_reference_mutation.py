@@ -1,4 +1,6 @@
-"""SystemConfig 与 Subscription 跨表引用修改的真实事务测试。"""
+"""
+SystemConfig 与 Subscription 跨表引用修改的真实事务测试。
+"""
 
 import asyncio
 from collections.abc import Mapping
@@ -30,7 +32,9 @@ _INITIAL_CUSTOM_RULES = [{"id": "OLD", "name": "旧规则", "include": "old"}]
 
 
 def _seed_references(db) -> int:
-    """写入一组规则、RSS 和订阅引用，并刷新进程配置快照。"""
+    """
+    写入一组规则、RSS 和订阅引用，并刷新进程配置快照。
+    """
     db.watermark(SystemConfig, Subscribe)
     rows = [
         SystemConfig(
@@ -76,13 +80,17 @@ def _seed_references(db) -> int:
 
 
 def _config_value(db, key: SystemConfigKey):
-    """从真实数据库读取单项 SystemConfig 值。"""
+    """
+    从真实数据库读取单项 SystemConfig 值。
+    """
     db.session.expire_all()
     return db.session.query(SystemConfig).filter_by(key=key.value).one().value
 
 
 def test_rule_group_prune_commits_all_references_and_publishes_after_commit(db) -> None:
-    """通用 definitions 写入口应原子清悬空引用且不创建空默认配置。"""
+    """
+    通用 definitions 写入口应原子清悬空引用且不创建空默认配置。
+    """
     subscribe_id = _seed_references(db)
     published: list[Mapping[SystemConfigKey, JsonData]] = []
     with SessionFactory() as session:
@@ -114,7 +122,9 @@ def test_rule_group_prune_commits_all_references_and_publishes_after_commit(db) 
 
 @pytest.mark.parametrize("failure", ["configuration", "subscription"])
 def test_rule_group_stage_failure_rolls_back_every_table(db, failure: str) -> None:
-    """配置或订阅任一暂存失败时，定义、引用和订阅行必须完整回滚。"""
+    """
+    配置或订阅任一暂存失败时，定义、引用和订阅行必须完整回滚。
+    """
     subscribe_id = _seed_references(db)
     published = []
     with SessionFactory() as session:
@@ -125,20 +135,26 @@ def test_rule_group_stage_failure_rolls_back_every_table(db, failure: str) -> No
             original_stage_set = configuration.stage_set
 
             def fail_configuration(key, value) -> None:
-                """先暂存部分配置，再模拟配置适配器失败。"""
+                """
+                先暂存部分配置，再模拟配置适配器失败。
+                """
                 original_stage_set(key, value)
                 if key == SystemConfigKey.SubscribeFilterRuleGroups:
                     raise RuntimeError("configuration stage failed")
 
+            # 替换实例方法以注入确定的事务失败，验证回滚边界。
             configuration.stage_set = fail_configuration  # type: ignore[method-assign]
         else:
             original_stage_update = subscriptions.stage_update
 
             def fail_subscription(subscribe_id, patch):
-                """先暂存订阅更新，再模拟订阅适配器失败。"""
+                """
+                先暂存订阅更新，再模拟订阅适配器失败。
+                """
                 original_stage_update(subscribe_id, patch)
                 raise RuntimeError("subscription stage failed")
 
+            # 替换实例方法以注入确定的事务失败，验证回滚边界。
             subscriptions.stage_update = fail_subscription  # type: ignore[method-assign]
 
         service = SyncRuleGroupMutationService(
@@ -169,7 +185,9 @@ def test_rule_group_stage_failure_rolls_back_every_table(db, failure: str) -> No
 
 
 def test_combined_custom_rule_stage_failure_rolls_back_both_definitions(db) -> None:
-    """自定义规则与规则组组合写任一暂存失败时不得留下半更新。"""
+    """
+    自定义规则与规则组组合写任一暂存失败时不得留下半更新。
+    """
     subscribe_id = _seed_references(db)
     db.add(
         SystemConfig(
@@ -183,11 +201,14 @@ def test_combined_custom_rule_stage_failure_rolls_back_both_definitions(db) -> N
         original_stage_set = configuration.stage_set
 
         def fail_custom_rule_stage(key, value) -> None:
-            """先暂存两份定义，再在第二份配置上模拟数据库失败。"""
+            """
+            先暂存两份定义，再在第二份配置上模拟数据库失败。
+            """
             original_stage_set(key, value)
             if key == SystemConfigKey.CustomFilterRules:
                 raise RuntimeError("custom rule stage failed")
 
+        # 替换实例方法以注入确定的事务失败，验证回滚边界。
         configuration.stage_set = fail_custom_rule_stage  # type: ignore[method-assign]
         service = SyncRuleGroupMutationService(
             configuration=configuration,
@@ -220,7 +241,9 @@ def test_combined_custom_rule_stage_failure_rolls_back_both_definitions(db) -> N
 
 
 def test_site_reference_mutation_commits_and_rolls_back_atomically(db) -> None:
-    """RssSites 与 Subscription.sites 使用同一 UoW，失败不留下半更新。"""
+    """
+    RssSites 与 Subscription.sites 使用同一 UoW，失败不留下半更新。
+    """
     subscribe_id = _seed_references(db)
     with SessionFactory() as session:
         configuration = SessionSystemConfigurationRepository(session)
@@ -228,10 +251,13 @@ def test_site_reference_mutation_commits_and_rolls_back_atomically(db) -> None:
         original_stage_update = subscriptions.stage_update
 
         def fail_subscription(target_id, patch):
-            """暂存订阅站点清理后注入失败。"""
+            """
+            暂存订阅站点清理后注入失败。
+            """
             original_stage_update(target_id, patch)
             raise RuntimeError("site subscription stage failed")
 
+        # 替换实例方法以注入确定的事务失败，验证回滚边界。
         subscriptions.stage_update = fail_subscription  # type: ignore[method-assign]
         service = SyncSiteReferenceMutationService(
             configuration=configuration,
@@ -279,13 +305,19 @@ def test_site_reference_mutation_commits_and_rolls_back_atomically(db) -> None:
 
 
 def test_async_rule_group_path_commits_real_database_transaction(db) -> None:
-    """Agent 使用的异步服务与同步服务共享相同的原子引用语义。"""
+    """
+    Agent 使用的异步服务与同步服务共享相同的原子引用语义。
+    """
     subscribe_id = _seed_references(db)
 
     async def execute(session) -> None:
-        """在真实 AsyncSession 中执行一次改名。"""
+        """
+        在真实 AsyncSession 中执行一次改名。
+        """
         async def publish(values) -> None:
-            """模拟提交后发布配置快照。"""
+            """
+            模拟提交后发布配置快照。
+            """
             SystemConfigOper().publish_many(values)
 
         service = AsyncRuleGroupMutationService(
@@ -314,12 +346,16 @@ def test_async_rule_group_path_commits_real_database_transaction(db) -> None:
 
 
 def test_async_scope_serializes_writes_without_blocking_event_loop(db, monkeypatch) -> None:
-    """并发规则修改应串行收口，等待共享锁时事件循环仍能推进。"""
+    """
+    并发规则修改应串行收口，等待共享锁时事件循环仍能推进。
+    """
     subscribe_id = _seed_references(db)
     original_commit = subscription_composition.SqlAlchemyAsyncUnitOfWork.commit
 
     async def delayed_commit(unit_of_work) -> None:
-        """延长持锁事务，给并发等待和事件循环心跳留下观察窗口。"""
+        """
+        延长持锁事务，给并发等待和事件循环心跳留下观察窗口。
+        """
         await asyncio.sleep(0.04)
         await original_commit(unit_of_work)
 
@@ -330,12 +366,16 @@ def test_async_scope_serializes_writes_without_blocking_event_loop(db, monkeypat
     )
 
     async def execute() -> int:
-        """并发执行两个幂等 prune，并统计等待期间的 loop 心跳。"""
+        """
+        并发执行两个幂等 prune，并统计等待期间的 loop 心跳。
+        """
         running = True
         ticks = 0
 
         async def mutate(target_name: str) -> object:
-            """通过生产异步 scope 提交基于同一旧快照的不同改名意图。"""
+            """
+            通过生产异步 scope 提交基于同一旧快照的不同改名意图。
+            """
             async with subscription_composition.async_rule_group_mutation_scope(
                 SystemConfigOper().publish_many
             ) as service:
@@ -353,7 +393,9 @@ def test_async_scope_serializes_writes_without_blocking_event_loop(db, monkeypat
                     return error
 
         async def heartbeat() -> None:
-            """证明线程锁等待没有阻塞事件循环线程。"""
+            """
+            证明线程锁等待没有阻塞事件循环线程。
+            """
             nonlocal ticks
             while running:
                 ticks += 1

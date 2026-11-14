@@ -22,11 +22,16 @@ from app.schemas.types import LlmProviderAction
 
 @pytest.fixture
 def manager():
+    """
+    提供待测大语言模型提供方管理器实例。
+    """
     return LLMProviderManager()
 
 
 def test_provider_manage_rejects_unknown_action(manager):
-    """动作词汇表之外的请求返回统一错误结构。"""
+    """
+    动作词汇表之外的请求返回统一错误结构。
+    """
     result = asyncio.run(manager.provider_manage("openai", "not_an_action"))
     assert result["success"] is False
     assert "不支持" in result["message"]
@@ -34,7 +39,9 @@ def test_provider_manage_rejects_unknown_action(manager):
 
 
 def test_provider_manage_accepts_enum_and_string_action(manager, monkeypatch):
-    """动作标识兼容枚举对象与原始字符串，两种形式等价。"""
+    """
+    动作标识兼容枚举对象与原始字符串，两种形式等价。
+    """
     clear_mock = AsyncMock()
     monkeypatch.setattr(manager, "clear_auth", clear_mock)
     for action in (LlmProviderAction.DISCONNECT, "disconnect"):
@@ -45,7 +52,9 @@ def test_provider_manage_accepts_enum_and_string_action(manager, monkeypatch):
 
 
 def test_provider_manage_test_requires_ai_agent_enabled(manager):
-    """智能助手未启用时测试动作返回提示。"""
+    """
+    智能助手未启用时测试动作返回提示。
+    """
     with patch.object(settings, "AI_AGENT_ENABLE", False):
         result = asyncio.run(manager.provider_manage("deepseek", "test"))
     assert result["success"] is False
@@ -53,7 +62,9 @@ def test_provider_manage_test_requires_ai_agent_enabled(manager):
 
 
 def test_provider_manage_test_requires_model(manager):
-    """未配置模型时测试动作返回提示。"""
+    """
+    未配置模型时测试动作返回提示。
+    """
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         settings, "LLM_API_KEY", "sk-test"
     ), patch.object(settings, "LLM_MODEL", ""):
@@ -63,7 +74,9 @@ def test_provider_manage_test_requires_model(manager):
 
 
 def test_provider_manage_test_requires_api_key(manager, monkeypatch):
-    """无 OAuth 授权方式且无已保存凭据的提供商必须配置 API Key。"""
+    """
+    无 OAuth 授权方式且无已保存凭据的提供商必须配置 API Key。
+    """
     monkeypatch.setattr(manager, "get_saved_auth", lambda provider_id: None)
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         settings, "LLM_API_KEY", None
@@ -75,7 +88,9 @@ def test_provider_manage_test_requires_api_key(manager, monkeypatch):
 
 
 def test_provider_manage_test_exempts_oauth_providers_from_api_key(manager, monkeypatch):
-    """支持 OAuth 授权的提供商无需 API Key，端点与 Manager 均不硬编码提供商名。"""
+    """
+    支持 OAuth 授权的提供商无需 API Key，端点与 Manager 均不硬编码提供商名。
+    """
     monkeypatch.setattr(manager, "get_saved_auth", lambda provider_id: None)
     monkeypatch.setattr(
         manager, "get_provider", lambda provider_id: SimpleNamespace(oauth_methods=("browser_oauth",))
@@ -92,7 +107,9 @@ def test_provider_manage_test_exempts_oauth_providers_from_api_key(manager, monk
 
 
 def test_provider_manage_test_returns_reply_preview(manager, monkeypatch):
-    """测试成功时返回模型响应预览，显式参数优先于已保存配置。"""
+    """
+    测试成功时返回模型响应预览，显式参数优先于已保存配置。
+    """
     monkeypatch.setattr(manager, "get_saved_auth", lambda provider_id: None)
     test_mock = AsyncMock(
         return_value={"provider": "openai", "model": "gpt-4.1-mini", "duration_ms": 123, "reply_preview": "OK"}
@@ -130,7 +147,9 @@ def test_provider_manage_test_returns_reply_preview(manager, monkeypatch):
 
 
 def test_provider_manage_test_rejects_empty_reply(manager, monkeypatch):
-    """模型响应为空时返回失败但保留结果详情。"""
+    """
+    模型响应为空时返回失败但保留结果详情。
+    """
     monkeypatch.setattr(manager, "get_saved_auth", lambda provider_id: None)
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         LLMHelper,
@@ -146,7 +165,9 @@ def test_provider_manage_test_rejects_empty_reply(manager, monkeypatch):
 
 
 def test_provider_manage_test_maps_timeout_error(manager, monkeypatch):
-    """调用超时返回统一的超时提示。"""
+    """
+    调用超时返回统一的超时提示。
+    """
     monkeypatch.setattr(manager, "get_saved_auth", lambda provider_id: None)
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         LLMHelper,
@@ -161,7 +182,9 @@ def test_provider_manage_test_maps_timeout_error(manager, monkeypatch):
 
 
 def test_provider_manage_test_sanitizes_error_message(manager, monkeypatch):
-    """错误信息中的密钥与授权头必须脱敏。"""
+    """
+    错误信息中的密钥与授权头必须脱敏。
+    """
     monkeypatch.setattr(manager, "get_saved_auth", lambda provider_id: None)
     raw_error = (
         "request failed api_key=sk-secret "
@@ -181,7 +204,9 @@ def test_provider_manage_test_sanitizes_error_message(manager, monkeypatch):
 
 
 def test_provider_manage_test_maps_internal_error_to_base_url_hint(manager, monkeypatch):
-    """SDK 内部响应解析错误应改写为可定位的基础地址提示。"""
+    """
+    SDK 内部响应解析错误应改写为可定位的基础地址提示。
+    """
     monkeypatch.setattr(manager, "get_saved_auth", lambda provider_id: None)
     with patch.object(settings, "AI_AGENT_ENABLE", True), patch.object(
         LLMHelper,
@@ -198,7 +223,9 @@ def test_provider_manage_test_maps_internal_error_to_base_url_hint(manager, monk
 
 
 def test_provider_manage_list_models_sanitizes_base_url_hint(manager):
-    """模型列表查询遇到 SDK 内部错误时同样给出基础地址提示。"""
+    """
+    模型列表查询遇到 SDK 内部错误时同样给出基础地址提示。
+    """
     with patch.object(
         manager,
         "list_models",
@@ -214,7 +241,9 @@ def test_provider_manage_list_models_sanitizes_base_url_hint(manager):
 
 
 def test_provider_manage_list_models_returns_catalog_with_auth_status(manager):
-    """模型目录查询成功时附带授权状态摘要。"""
+    """
+    模型目录查询成功时附带授权状态摘要。
+    """
     models = [{"id": "gpt-4o"}]
     with patch.object(manager, "list_models", AsyncMock(return_value=models)), patch.object(
         manager, "get_auth_status", lambda provider_id: {"connected": False}
@@ -227,7 +256,9 @@ def test_provider_manage_list_models_returns_catalog_with_auth_status(manager):
 
 
 def test_llm_manage_endpoint_passes_through_manage_request(monkeypatch):
-    """端点仅透传 ManageRequest，并按具名回调路由注入 OAuth 回跳地址。"""
+    """
+    端点仅透传 ManageRequest，并按具名回调路由注入 OAuth 回跳地址。
+    """
     from app.api.endpoints import llm as llm_endpoint
 
     captured = {}
@@ -255,7 +286,8 @@ def test_llm_manage_endpoint_passes_through_manage_request(monkeypatch):
 
 
 def test_llm_manage_endpoint_accepts_empty_target(monkeypatch):
-    """目录类查询动作 target 可为空，不得因 url_for 空路径参数报 500。
+    """
+    目录类查询动作 target 可为空，不得因 url_for 空路径参数报 500。
 
     回归守护：前端加载提供商目录时 target 为空字符串，
     回调地址构造必须跳过空 target。
@@ -284,14 +316,20 @@ def test_llm_manage_endpoint_accepts_empty_target(monkeypatch):
 
 
 def test_llm_manage_endpoint_uses_registered_provider_runtime():
-    """管理端点必须使用组合根登记的 runtime，不得自行构造 provider Singleton。"""
+    """
+    管理端点必须使用组合根登记的 runtime，不得自行构造 provider Singleton。
+    """
     captured = {}
 
     class ProviderRuntime:
-        """记录端点调用的最小 provider runtime。"""
+        """
+        记录端点调用的最小 provider runtime。
+        """
 
         async def provider_manage(self, provider, action, **params):
-            """记录统一管理参数并返回可识别结果。"""
+            """
+            记录统一管理参数并返回可识别结果。
+            """
             captured.update(provider=provider, action=action, params=params)
             return {"success": True, "message": "", "data": {"runtime": "registered"}}
 
@@ -315,11 +353,15 @@ def test_llm_manage_endpoint_uses_registered_provider_runtime():
 
 
 def test_llm_oauth_callback_uses_registered_provider_runtime():
-    """OAuth 回调必须与管理端点复用组合根登记的 provider runtime。"""
+    """
+    OAuth 回调必须与管理端点复用组合根登记的 provider runtime。
+    """
     captured = {}
 
     class ProviderRuntime:
-        """记录 OAuth 回调参数的最小 provider runtime。"""
+        """
+        记录 OAuth 回调参数的最小 provider runtime。
+        """
 
         async def handle_chatgpt_callback(
             self,
@@ -329,7 +371,9 @@ def test_llm_oauth_callback_uses_registered_provider_runtime():
             error,
             error_description,
         ):
-            """记录回调并返回可渲染的成功结果。"""
+            """
+            记录回调并返回可渲染的成功结果。
+            """
             captured.update(
                 provider_id=provider_id,
                 code=code,
@@ -365,7 +409,8 @@ def test_llm_oauth_callback_uses_registered_provider_runtime():
 
 
 def test_llm_manage_endpoint_response_model_accepts_list_data():
-    """目录查询动作 data 为列表，响应模型须同时覆盖列表与映射形态。
+    """
+    目录查询动作 data 为列表，响应模型须同时覆盖列表与映射形态。
 
     回归守护：list_providers 返回 list[dict]，
     若响应模型声明为 Dict[str, Any] 会在序列化校验时直接 500；

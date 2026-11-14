@@ -1,4 +1,6 @@
-"""Synology Chat 不支持命令菜单时的渠道注册回归测试。"""
+"""
+Synology Chat 不支持命令菜单时的渠道注册回归测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -11,7 +13,9 @@ from app.modules.synologychat.synologychat import SynologyChat
 
 @pytest.mark.parametrize("commands", [{}, {"/version": {"description": "当前版本"}}])
 def test_synologychat_skips_command_menu_registration(commands):
-    """空菜单和非空菜单均应跳过客户端调用及菜单事件，重复注册也不报错。"""
+    """
+    空菜单和非空菜单均应跳过客户端调用及菜单事件，重复注册也不报错。
+    """
     module = SynologyChatModule()
     client = SynologyChat.__new__(SynologyChat)
     configs = {

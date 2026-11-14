@@ -1,6 +1,9 @@
+"""
+编排会话内的模型、工具、流式回复和确认流程，并管理执行图与用量状态。
+"""
+
 import asyncio
 import hashlib
-import inspect
 import json
 import re
 import time
@@ -10,9 +13,10 @@ import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import (  # noqa: F401
     AIMessage,
     BaseMessage,
@@ -24,6 +28,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
+from app.agent.graph import AgentGraphCache, CompiledAgentBundle
+from app.agent.identity import require_execution_user
 from app.agent.learning.session import LearningSession
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.tools import ServerToolRegistry
@@ -98,16 +104,19 @@ from app.runtime.events import eventmanager
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.observability import record_metric
+from app.runtime.priority import interactive_execution
 from app.runtime.settings import get_runtime_setting
 from app.schemas.event import AgentLLMProviderEventData, AgentTokensUsageEventData
-from app.schemas.message import Message, MessageType
+from app.schemas.message import Message
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
-from app.schemas.types import ChainEventType, EventType, NotificationChannel
+from app.schemas.types import ChainEventType, EventType, MessageType, NotificationChannel
 
 
 def _get_plugin_tools_revision() -> int:
-    """读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。"""
-    return get_plugin_manager().get_plugin_agent_tools_revision()
+    """
+    读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。
+    """
+    return int(get_plugin_manager().get_plugin_agent_tools_revision())
 
 
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
@@ -126,7 +135,9 @@ _KNOWN_AGENT_PROVIDER_TYPES = (
 
 
 def _agent_provider_metric_type(provider: object) -> str:
-    """把可配置 provider 名称收敛为有限指标类别，避免泄露自定义名称。"""
+    """
+    把可配置 provider 名称收敛为有限指标类别，避免泄露自定义名称。
+    """
     normalized = str(provider or "").strip().lower()
     if not normalized:
         return "unknown"
@@ -138,6 +149,50 @@ def _agent_provider_metric_type(provider: object) -> str:
 
 @dataclass
 class _SessionUsageSnapshot:
+    """
+    保存当前会话的最近请求预算与累计模型用量。
+
+    :param model: 最近一次请求使用的模型标识；未记录时为 None
+    :param context_window_tokens: 模型上下文窗口的 token 容量；未知时为 None
+    :param last_input_usage_available: 最近响应是否提供可用输入用量
+    :param last_input_tokens: 最近请求的输入 token 数；不可用时为 None
+    :param last_output_tokens: 最近请求的输出 token 数；不可用时为 None
+    :param last_total_tokens: 最近请求的总 token 数；不可用时为 None
+    :param last_context_usage_ratio: 最近输入占上下文容量的比例；无法计算时为 None
+    :param last_request_sequence: 本会话最近一次模型请求的递增序号
+    :param last_request_estimate_available: 最近请求是否取得输入预算估算
+    :param last_estimated_input_tokens: 最近请求预估的总输入 token 数；未知时为 None
+    :param last_estimated_message_tokens: 最近请求中消息正文预估 token 数；未知时为 None
+    :param last_estimated_system_tokens: 最近请求中系统提示词预估 token 数；未知时为 None
+    :param last_estimated_tool_tokens: 最近请求中工具声明预估 token 数；未知时为 None
+    :param last_estimated_multimodal_tokens: 最近请求中多模态内容预估 token 数；未知时为 None
+    :param last_estimated_input_ratio: 预估输入占允许输入预算的比例；无法计算时为 None
+    :param last_estimated_remaining_input_tokens: 预估剩余可用输入 token 数；无法计算时为 None
+    :param last_estimated_over_input_limit: 预估输入是否超过可用预算；无法判断时为 None
+    :param last_message_count: 最近请求中的消息数量
+    :param last_tool_count: 最近请求携带的工具数量
+    :param last_image_count: 最近请求中的图片数量
+    :param last_unknown_multimodal_count: 最近请求中无法估算的多模态内容数量
+    :param model_max_output_tokens: 模型允许的最大输出 token 数；未知时为 None
+    :param configured_output_limit_tokens: 当前配置的输出 token 上限；未配置或未知时为 None
+    :param last_actual_input_tokens: 最近响应返回的实际输入 token 数；不可用时为 None
+    :param last_estimate_error_tokens: 最近实际输入与预估输入的 token 差值；无法比较时为 None
+    :param last_estimate_error_ratio: 最近输入估算误差的比例；无法计算时为 None
+    :param last_cache_usage_available: 最近响应是否提供可用的提示词缓存用量
+    :param last_cache_read_input_tokens: 最近请求从缓存读取的输入 token 数
+    :param last_cache_write_input_tokens: 最近请求写入缓存的输入 token 数
+    :param last_uncached_input_tokens: 最近请求未命中缓存的输入 token 数
+    :param last_cache_hit_ratio: 最近输入 token 的缓存命中比例；无法计算时为 None
+    :param total_input_tokens: 当前会话累计输入 token 数
+    :param total_output_tokens: 当前会话累计输出 token 数
+    :param total_tokens: 当前会话累计总 token 数
+    :param total_cache_read_input_tokens: 当前会话累计从缓存读取的输入 token 数
+    :param total_cache_write_input_tokens: 当前会话累计写入缓存的输入 token 数
+    :param total_uncached_input_tokens: 当前会话累计未命中缓存的输入 token 数
+    :param cache_usage_available: 当前会话是否曾取得可用缓存统计
+    :param model_call_count: 当前会话累计模型调用次数
+    :param last_updated_at: 最近更新用量快照的时间；尚未更新时为 None
+    """
     model: Optional[str] = None
     context_window_tokens: Optional[int] = None
     last_input_usage_available: bool = False
@@ -180,6 +235,9 @@ class _SessionUsageSnapshot:
     last_updated_at: Optional[datetime] = None
 
     def to_dict(self, session_id: str) -> dict[str, Any]:
+        """
+        把用量快照投影为带会话 ID 的状态响应。
+        """
         return {
             "session_id": session_id,
             "model": self.model,
@@ -230,21 +288,6 @@ class _SessionUsageSnapshot:
         }
 
 
-@dataclass
-class _CompiledAgentBundle:
-    """会话内可复用的 Agent 图及其构造签名。"""
-
-    signature: tuple[Any, ...]
-    agent: Any
-    streaming: bool
-    created_at: datetime
-    tool_catalog: Optional[ToolCatalogSnapshot] = None
-    subagent_catalog: Optional[ToolCatalogSnapshot] = None
-    plugin_revision: int = -1
-    mcp_config_signature: str = ""
-    catalog_checked_at: Optional[datetime] = None
-
-
 class _ThinkTagStripper:
     """
     流式剥离 <think>...</think> 标签的辅助类。
@@ -257,24 +300,31 @@ class _ThinkTagStripper:
     _THINK_START_TAG = "<think>"
     _THINK_END_TAG = "</think>"
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        初始化思考标签解析缓冲与标签内状态。
+        """
         self.buffer = ""
         self.in_think_tag = False
 
-    def reset(self):
-        """重置状态"""
+    def reset(self) -> None:
+        """
+        重置状态
+        """
         self.buffer = ""
         self.in_think_tag = False
 
     @staticmethod
     def _find_partial_tag_length(text: str, tag: str) -> int:
-        """返回文本末尾匹配的标签前缀长度，完整标签不计入。"""
+        """
+        返回文本末尾匹配的标签前缀长度，完整标签不计入。
+        """
         for length in range(len(tag) - 1, 0, -1):
             if text.endswith(tag[:length]):
                 return length
         return 0
 
-    def process(self, text: str, on_output: Callable[[str], None]):
+    def process(self, text: str, on_output: Callable[[str], None]) -> bool:
         """
         将新文本送入处理，剥离 <think> 标签后通过 on_output 回调输出。
         :param text: 新增的文本片段
@@ -328,8 +378,10 @@ class _ThinkTagStripper:
                     break
         return emitted
 
-    def flush(self, on_output: Callable[[str], None]):
-        """流式结束时，输出缓冲区中剩余的非思考内容"""
+    def flush(self, on_output: Callable[[str], None]) -> None:
+        """
+        流式结束时，输出缓冲区中剩余的非思考内容
+        """
         if self.buffer and not self.in_think_tag:
             # 流结束时孤立的半截结束标签也属于协议标记，不应泄漏到回复正文。
             if self._find_partial_tag_length(self.buffer, self._THINK_END_TAG) >= 2:
@@ -340,7 +392,9 @@ class _ThinkTagStripper:
 
 
 def _is_thinking_content_block(block: Any) -> bool:
-    """判断内容块是否属于供应商返回的隐藏思考协议。"""
+    """
+    判断内容块是否属于供应商返回的隐藏思考协议。
+    """
     return bool(
         hasattr(block, "get")
         and (
@@ -358,7 +412,9 @@ def _start_thinking_if_protocol_signal(
     *,
     protocol_signal: bool = False,
 ) -> None:
-    """检测供应商思考协议后开启流式 thinking 生命周期。"""
+    """
+    检测供应商思考协议后开启流式 thinking 生命周期。
+    """
     start_thinking = getattr(stream_handler, "thinking_started", None)
     if not callable(start_thinking):
         return
@@ -401,7 +457,16 @@ SECRET_CANCEL_TEXT = "取消"
 
 @dataclass
 class _PendingSecretConfirmation:
-    """保存当前会话中一次待确认的敏感设置读取。"""
+    """
+    保存当前会话中一次待确认的敏感设置读取。
+
+    :param tool: 等待确认后执行敏感设置读取的网关工具实例
+    :param arguments: 已确定的敏感读取参数，确认时复用而不接受重新解释
+    :param created_at: 发起确认的时间，用于判定是否超过有效期
+    :param user_id: 发起敏感读取的可信用户标识
+    :param channel: 发起确认的消息渠道，用于限制确认来源
+    :param source: 渠道内的确认来源标识，用于限制确认上下文
+    """
 
     tool: MoviePilotApiTool
     arguments: Dict[str, Any]
@@ -435,7 +500,9 @@ class MoviePilotAgent:
         data: Optional[AgentDataContext] = None,
         memory: Optional[MemoryManager] = None,
     ):
-        """创建会话 Agent，并保存组合根注入的数据与记忆能力。"""
+        """
+        创建会话 Agent，并保存组合根注入的数据与记忆能力。
+        """
         self.session_id = session_id
         self.user_id = user_id
         self._terminal_scope = TerminalScope(
@@ -452,6 +519,9 @@ class MoviePilotAgent:
         self.channel = channel
         self.source = source
         self.username = username
+        # 自主任务的真实账号与会话渠道 owner 独立，队列宿主每轮覆盖以避免权限串用。
+        self.execution_user_id: int | None = None
+        self.execution_user_identity: str | None = None
         self.is_channel_admin = is_channel_admin
         self.original_message_id = original_message_id
         self.original_chat_id = original_chat_id
@@ -469,8 +539,7 @@ class MoviePilotAgent:
         self._llm_runtime_config: Optional[Dict[str, Any]] = None
         self._llm_provider_selection: Dict[str, Any] = {}
         self._agent_started_at: Optional[datetime] = None
-        self._compiled_agent_bundle: Optional[_CompiledAgentBundle] = None
-        self._subagent_middlewares: tuple[Any, ...] = ()
+        self._graphs = AgentGraphCache(models_in_use=self._learning_models_in_use)
         self._shutdown_started = False
         self._last_agent_cache_hit = False
 
@@ -479,17 +548,23 @@ class MoviePilotAgent:
 
     @property
     def steering_inbox(self) -> SteeringInbox:
-        """返回当前会话运行中消息的唯一 inbox。"""
+        """
+        返回当前会话运行中消息的唯一 inbox。
+        """
         return self._steering_inbox
 
     def configure_steering_inbox(self, inbox: SteeringInbox) -> None:
-        """把会话 owner 装配的 inbox 绑定到持久 Agent 实例。"""
+        """
+        把会话 owner 装配的 inbox 绑定到持久 Agent 实例。
+        """
         if inbox.session_id != self.session_id or inbox.user_id != str(self.user_id or ""):
             raise ValueError("steering inbox 与 Agent 会话身份不匹配")
         self._steering_inbox = inbox
 
     def start_steering_reply(self, original_message_id: Optional[str] = None) -> None:
-        """为已加入上下文的渠道输入开启新回复，前一段工具主动回复不抑制后续答案。"""
+        """
+        为已加入上下文的渠道输入开启新回复，前一段工具主动回复不抑制后续答案。
+        """
         self.original_message_id = original_message_id
         self._tool_context["user_reply_sent"] = False
         self.stream_handler.start_new_message(original_message_id)
@@ -499,7 +574,7 @@ class MoviePilotAgent:
         cls,
         role: str,
         content: str = "",
-        attachments: Optional[List[dict]] = None,
+        attachments: Optional[List[dict[str, Any]]] = None,
         status: str = "done",
     ) -> dict[str, Any]:
         """
@@ -524,7 +599,7 @@ class MoviePilotAgent:
         """
         return bool(self.channel and self.source)
 
-    async def _save_display_history_messages(self, messages: List[dict]) -> None:
+    async def _save_display_history_messages(self, messages: List[dict[str, Any]]) -> None:
         """
         将一组可见消息追加到 Agent 会话历史表。
         """
@@ -554,7 +629,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _sanitize_chat_title(value: str) -> str:
-        """清理模型返回的会话标题。"""
+        """
+        清理模型返回的会话标题。
+        """
         normalized_value = str(value or "").strip()
         title = normalized_value.splitlines()[0] if normalized_value else ""
         title = re.sub(r"^(标题|title)\s*[:：]\s*", "", title, flags=re.IGNORECASE)
@@ -565,7 +642,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _is_valid_chat_title(value: str) -> bool:
-        """判断模型返回内容是否符合会话标题格式。"""
+        """
+        判断模型返回内容是否符合会话标题格式。
+        """
         title = str(value or "").strip()
         if not title:
             return False
@@ -575,7 +654,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _parse_chat_title_response(value: str) -> str:
-        """从模型结构化响应中解析会话标题。"""
+        """
+        从模型结构化响应中解析会话标题。
+        """
         content = str(value or "").strip()
         if content.startswith("```"):
             content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.IGNORECASE)
@@ -590,7 +671,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _build_chat_title_message(message: str) -> str:
-        """构造标题生成模型调用的用户侧输入。"""
+        """
+        构造标题生成模型调用的用户侧输入。
+        """
         user_message = str(message or "").strip()[:1000]
         return (
             "请仅为下面 JSON 中的 user_message 生成会话标题。"
@@ -604,13 +687,15 @@ class MoviePilotAgent:
         """
         if not str(message or "").strip():
             return ""
-        model = await self._initialize_llm(streaming=False)
-        response = await model.ainvoke(
-            [
-                SystemMessage(content=AGENT_CHAT_TITLE_PROMPT),
-                HumanMessage(content=self._build_chat_title_message(message)),
-            ]
-        )
+        async with self._graphs.build() as resources:
+            model = await self._initialize_llm(streaming=False)
+            resources.own_model(model)
+            response = await model.ainvoke(
+                [
+                    SystemMessage(content=AGENT_CHAT_TITLE_PROMPT),
+                    HumanMessage(content=self._build_chat_title_message(message)),
+                ]
+            )
         content = LLMHelper.extract_text_content(getattr(response, "content", response))
         title = self._parse_chat_title_response(content)
         if not self._is_valid_chat_title(title):
@@ -631,6 +716,13 @@ class MoviePilotAgent:
                 session_id=self.session_id,
                 user_id=self.user_id,
             )
+            if not chat and self.channel == NotificationChannel.WebAgent.value and self.source == "web-agent":
+                existing = await get_configured_agent_chat_service().get(session_id=self.session_id)
+                if existing:
+                    legacy_owner = not existing.user_id and existing.username == self.username
+                    if not legacy_owner and not await self._can_restore_cross_owner_history():
+                        return
+                    chat = existing
             if chat and has_custom_agent_chat_title(chat.title):
                 return
             title = await self._generate_chat_title(message)
@@ -638,18 +730,21 @@ class MoviePilotAgent:
                 return
             await get_configured_agent_chat_persistence().async_update_title_if_empty(
                 session_id=self.session_id,
-                user_id=self.user_id,
+                user_id=chat.user_id if chat else self.user_id,
                 title=title,
-                username=self.username,
-                channel=self.channel,
-                source=self.source,
-                original_chat_id=self.original_chat_id,
+                username=chat.username if chat else self.username,
+                channel=chat.channel if chat else self.channel,
+                source=chat.source if chat else self.source,
+                original_chat_id=chat.original_chat_id if chat else self.original_chat_id,
             )
         except Exception as e:
             logger.debug(f"生成Agent会话标题失败: {e}")
 
     @staticmethod
     def _coerce_int(value: Any) -> Optional[int]:
+        """
+        把可转换的值归一化为整数，无效值返回空。
+        """
         if value is None:
             return None
         try:
@@ -658,15 +753,19 @@ class MoviePilotAgent:
             return None
 
     @staticmethod
-    def _coerce_positive_int(value: Any) -> Optional[int]:
-        """仅接受模型 profile 声明的非 bool 正整数。"""
+    def _coerce_positive_int(value: object) -> Optional[int]:
+        """
+        仅接受模型 profile 声明的非 bool 正整数。
+        """
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             return None
         return value
 
     @staticmethod
     def _get_recursion_limit() -> int:
-        """读取 LangGraph 递归上限，防止模型持续循环调用工具。"""
+        """
+        读取 LangGraph 递归上限，防止模型持续循环调用工具。
+        """
         try:
             limit = int(get_runtime_setting("LLM_MAX_ITERATIONS") or 0)
         except (TypeError, ValueError):
@@ -675,10 +774,16 @@ class MoviePilotAgent:
 
     @classmethod
     def _get_model_name(cls, model: Any) -> Optional[str]:
+        """
+        兼容不同模型实现的模型名称字段。
+        """
         return getattr(model, "model", None) or getattr(model, "model_name", None) or getattr(model, "model_id", None)
 
     @classmethod
     def _get_context_window_tokens(cls, model: Any) -> Optional[int]:
+        """
+        从模型 profile 读取明确声明的正整数输入窗口。
+        """
         profile = getattr(model, "profile", None)
         if not profile:
             return None
@@ -699,6 +804,9 @@ class MoviePilotAgent:
         return None
 
     def _sync_model_profile(self, model: Any) -> None:
+        """
+        把当前模型名称和输入窗口同步到会话用量快照。
+        """
         model_name = self._get_model_name(model)
         context_window_tokens = self._get_context_window_tokens(model)
         if model_name:
@@ -706,16 +814,22 @@ class MoviePilotAgent:
         self._session_usage.context_window_tokens = context_window_tokens
 
     def _next_request_sequence(self) -> int:
-        """为当前会话中的模型请求分配跨 Agent 图单调递增的序号。"""
+        """
+        为当前会话中的模型请求分配跨 Agent 图单调递增的序号。
+        """
         self._request_sequence += 1
         return self._request_sequence
 
     def _record_review_usage(self, usage: dict[str, Any]) -> None:
-        """累计后台模型花费，但不覆盖用户当前请求的上下文窗口与使用率快照。"""
+        """
+        累计后台模型花费，但不覆盖用户当前请求的上下文窗口与使用率快照。
+        """
         self._record_usage({**usage, 'request_sequence': -1})
 
     def _record_usage(self, usage: dict[str, Any]) -> None:
-        """累计会话模型用量，只有当前请求序号可以更新最近上下文预算。"""
+        """
+        累计会话模型用量，只有当前请求序号可以更新最近上下文预算。
+        """
         if not usage:
             return
 
@@ -828,7 +942,9 @@ class MoviePilotAgent:
             )
 
     def _record_request_budget(self, budget: dict[str, Any]) -> None:
-        """保存最终请求的脱敏估算，并清除不属于本轮的旧校准结果。"""
+        """
+        保存最终请求的脱敏估算，并清除不属于本轮的旧校准结果。
+        """
         if not budget:
             return
         request_sequence = self._coerce_int(budget.get("request_sequence"))
@@ -874,6 +990,9 @@ class MoviePilotAgent:
         self._session_usage.last_estimate_error_ratio = None
 
     def get_session_status(self) -> dict[str, Any]:
+        """
+        返回会话预算和用量，首轮请求前使用运行配置兜底。
+        """
         if not self._session_usage.model and self._session_usage.last_request_sequence == 0:
             self._session_usage.model = get_runtime_setting("LLM_MODEL")
         if not self._session_usage.context_window_tokens and self._session_usage.last_request_sequence == 0:
@@ -959,7 +1078,15 @@ class MoviePilotAgent:
     async def _is_system_admin_context(self) -> bool:
         """
         判断当前 Agent 会话是否应按系统管理员上下文运行工具。
+
+        自主任务使用已固定账号的实时权限，内部后台维护仍保留宿主管理员语义。
         """
+        if self.execution_user_id is not None:
+            execution_user = await require_execution_user(
+                self._data.users if self._data is not None else None, self.execution_user_id,
+                self.execution_user_identity or "",
+            )
+            return bool(execution_user.is_superuser)
         if self.is_background:
             return True
         if self.channel == NotificationChannel.Web.value and self.source in {
@@ -990,6 +1117,9 @@ class MoviePilotAgent:
             "reply_mode": None,
             "should_dispatch_reply": should_dispatch_reply,
             "is_admin": await self._is_system_admin_context(),
+            "execution_user_id": self.execution_user_id,
+            "execution_user_identity": self.execution_user_identity,
+            "execution_identity_error": {},
             "require_secret_confirmation": True,
             "secret_confirmation_handler": self._register_secret_confirmation,
             # 工具回调消息需要发回原会话（群聊@机器人时按钮选择等卡片不能发到私聊），
@@ -997,15 +1127,25 @@ class MoviePilotAgent:
             "original_chat_id": None if self.is_background else self.original_chat_id,
         }
 
+    async def _can_restore_cross_owner_history(self) -> bool:
+        """
+        默认只恢复本人或无归属旧历史，工具管理员语义不授予跨用户会话读取权。
+        """
+        return False
+
     def set_protected_output_callback(
         self,
         protected_output_callback: Optional[Callable[[str], Optional[bool]]],
     ) -> None:
-        """更新仅供当前请求接收的受保护文本输出回调。"""
+        """
+        更新仅供当前请求接收的受保护文本输出回调。
+        """
         self.protected_output_callback = protected_output_callback
 
     def has_pending_secret_confirmation(self) -> bool:
-        """判断当前会话是否存在仍在有效期内的敏感设置确认。"""
+        """
+        判断当前会话是否存在仍在有效期内的敏感设置确认。
+        """
         pending = self._pending_secret_confirmation
         if not pending:
             return False
@@ -1015,7 +1155,9 @@ class MoviePilotAgent:
         return False
 
     def _can_confirm_secret_read(self) -> bool:
-        """判断当前渠道能否把密钥结果直接交付给原用户。"""
+        """
+        判断当前渠道能否把密钥结果直接交付给原用户。
+        """
         if self.channel == NotificationChannel.WebAgent.value:
             return callable(self.protected_output_callback)
         return bool(self.user_id and self.source) and self.channel in {
@@ -1028,7 +1170,9 @@ class MoviePilotAgent:
         tool: MoviePilotApiTool,
         arguments: Dict[str, Any],
     ) -> str:
-        """校验并冻结一次待用户确认的敏感设置读取。"""
+        """
+        校验并冻结一次待用户确认的敏感设置读取。
+        """
         if self.has_pending_secret_confirmation():
             return "当前会话已有待确认的敏感设置读取，请先回复“确认”或“取消”。"
         if not self._can_confirm_secret_read():
@@ -1094,7 +1238,9 @@ class MoviePilotAgent:
         return confirmation_message
 
     async def _deliver_private_channel_message(self, content: str) -> bool:
-        """按渠道用户身份私聊投递，禁止回退群聊或广播。"""
+        """
+        按渠道用户身份私聊投递，禁止回退群聊或广播。
+        """
         if self.channel not in {
             NotificationChannel.Telegram.value,
             NotificationChannel.Feishu.value,
@@ -1103,17 +1249,17 @@ class MoviePilotAgent:
         try:
             response = await run_in_threadpool(
                 AgentChain().send_direct_message,
-                Message(
-                    channel=self.channel,
-                    source=self.source,
-                    mtype=MessageType.Agent,
-                    userid=self.user_id,
-                    username=self.username,
-                    text=content,
-                    private_delivery=True,
-                    parse_mode="plain",
-                    save_history=False,
-                ),
+                Message.model_validate({
+                    "channel": self.channel,
+                    "source": self.source,
+                    "mtype": MessageType.Agent,
+                    "userid": self.user_id,
+                    "username": self.username,
+                    "text": content,
+                    "private_delivery": True,
+                    "parse_mode": "plain",
+                    "save_history": False,
+                }),
             )
         except Exception as error:
             logger.error(f"Agent私聊投递失败: channel={self.channel}, error_type={type(error).__name__}")
@@ -1121,7 +1267,9 @@ class MoviePilotAgent:
         return bool(response and response.success)
 
     async def _deliver_protected_output(self, content: str) -> bool:
-        """绕过模型与会话历史，把敏感结果直接交付给当前用户。"""
+        """
+        绕过模型与会话历史，把敏感结果直接交付给当前用户。
+        """
         if callable(self.protected_output_callback):
             try:
                 delivered = self.protected_output_callback(content)
@@ -1136,7 +1284,9 @@ class MoviePilotAgent:
         content: str,
         fallback_message: str,
     ) -> bool:
-        """受保护投递失败时，仅通过普通回复报告不含敏感值的状态。"""
+        """
+        受保护投递失败时，仅通过普通回复报告不含敏感值的状态。
+        """
         delivered = await self._deliver_protected_output(content)
         if delivered:
             return True
@@ -1149,10 +1299,12 @@ class MoviePilotAgent:
         self,
         message: str,
         images: Optional[List[str]],
-        files: Optional[List[dict]],
+        files: Optional[List[dict[str, Any]]],
         has_audio_input: bool,
     ) -> Optional[str]:
-        """在进入模型前消费当前会话的确认或取消文本。"""
+        """
+        在进入模型前消费当前会话的确认或取消文本。
+        """
         command = str(message or "").strip()
         if command not in {SECRET_CONFIRM_TEXT, SECRET_CANCEL_TEXT}:
             return None
@@ -1183,6 +1335,9 @@ class MoviePilotAgent:
             return "当前入口不支持安全交付敏感设置，未执行读取。"
 
         async def _execute_confirmed() -> str:
+            """
+            再次确认工具权限后执行已批准的敏感读取。
+            """
             permission_result = await pending.tool._check_permission()
             if permission_result:
                 return permission_result
@@ -1216,7 +1371,9 @@ class MoviePilotAgent:
         return "敏感设置确认已处理。"
 
     def _build_policy_context(self) -> ToolPolicyContext:
-        """根据宿主入口建立模型参数无法伪造的策略上下文。"""
+        """
+        根据宿主入口建立模型参数无法伪造的策略上下文。
+        """
         if not self.has_message_context:
             origin = ToolOrigin.BACKGROUND
             principal_type = PrincipalType.BACKGROUND
@@ -1382,7 +1539,7 @@ class MoviePilotAgent:
         }
         return self._llm_runtime_config
 
-    async def _initialize_llm(self, streaming: bool = False):
+    async def _initialize_llm(self, streaming: bool = False) -> Any:
         """
         初始化 LLM
         :param streaming: 是否启用流式输出
@@ -1395,7 +1552,9 @@ class MoviePilotAgent:
         )
 
     def _build_prompt_cache_key(self) -> str:
-        """生成不暴露用户标识、且在同一会话内稳定的提示词缓存键。"""
+        """
+        生成不暴露用户标识、且在同一会话内稳定的提示词缓存键。
+        """
         cache_identity = f"{self.user_id or ''}\x00{self.session_id}"
         digest = hashlib.sha256(cache_identity.encode("utf-8")).hexdigest()[:32]
         return f"moviepilot-agent-{digest}"
@@ -1420,12 +1579,16 @@ class MoviePilotAgent:
 
     @classmethod
     def _messages_have_image_input(cls, messages: List[BaseMessage]) -> bool:
-        """检查本轮提交给模型的消息列表中是否包含图片输入。"""
+        """
+        检查本轮提交给模型的消息列表中是否包含图片输入。
+        """
         return any(cls._has_image_input_content(getattr(message, "content", None)) for message in messages or [])
 
     @staticmethod
     def _is_unsupported_image_input_error(error: Exception) -> bool:
-        """用户附件与工具图片共享同一明确的模型图片拒绝判定。"""
+        """
+        用户附件与工具图片共享同一明确的模型图片拒绝判定。
+        """
         return LLMHelper.is_unsupported_image_input_error(error)
 
     @staticmethod
@@ -1444,9 +1607,12 @@ class MoviePilotAgent:
         return ""
 
     @staticmethod
-    def _sanitize_execution_error_message(message: str) -> str:
+    def _sanitize_execution_error_message(message: object) -> str:
         """
         清理执行错误中的密钥和尾部长说明，避免把敏感字段或 SDK 调参文档直接发给用户。
+
+        :param message: 异常提供的消息值；空值会按空字符串处理
+        :return: 删除敏感信息和尾部说明后的单行消息
         """
         sanitized = re.sub(r"\s+", " ", str(message or "")).strip()
         if get_runtime_setting("LLM_API_KEY"):
@@ -1494,6 +1660,8 @@ class MoviePilotAgent:
         将 Agent 执行异常转换为用户可读消息。
         回复只携带主错误信息，完整 traceback 保留在日志中排查。
         """
+        if isinstance(error, TimeoutError):
+            return "本次请求执行超时，请稍后重试。已开始的后台操作可能仍在收尾，请先确认状态，避免重复执行。"
         message = cls._primary_exception_message(error)
         if not message:
             return AGENT_EXECUTION_ERROR_MESSAGE
@@ -1514,7 +1682,7 @@ class MoviePilotAgent:
         if self.should_dispatch_reply:
             await self.send_agent_message(message, title=title)
 
-    def _emit_output(self, text: str):
+    def _emit_output(self, text: str) -> None:
         """
         输出当前流式文本到外部回调。
         """
@@ -1528,7 +1696,7 @@ class MoviePilotAgent:
         except Exception as e:
             logger.debug(f"智能体输出回调失败: {e}")
 
-    def _handle_stream_text(self, text: str):
+    def _handle_stream_text(self, text: str) -> None:
         """
         统一处理一段可见流式文本，确保工具统计注入后的内容会同时进入
         消息缓冲区和外部流式回调。
@@ -1536,15 +1704,15 @@ class MoviePilotAgent:
         emitted_text = self.stream_handler.emit(text)
         self._emit_output(emitted_text)
 
-    def _initialize_tools(self) -> List:
+    def _initialize_tools(self) -> List[Any]:
         """
         初始化主 Agent 本地工具实例。
         """
         from app.agent.loader import get_tool_factory
 
-        return get_tool_factory().create_tools(
+        return list(get_tool_factory().create_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1552,12 +1720,14 @@ class MoviePilotAgent:
             agent_context=self._tool_context,
             allow_message_tools=self.allow_message_tools,
             data=self._data,
-        )
+        ))
 
     def _initialize_local_tool_catalogs(
         self,
     ) -> tuple[ToolCatalogSnapshot, ToolCatalogSnapshot]:
-        """在同一插件 revision 窗口内建立主图和子图工具目录。"""
+        """
+        在同一插件 revision 窗口内建立主图和子图工具目录。
+        """
         from app.agent.loader import get_tool_factory
 
         tool_factory = get_tool_factory()
@@ -1584,12 +1754,16 @@ class MoviePilotAgent:
         raise RuntimeError("插件工具目录持续变化，无法建立当前快照")
 
     def _initialize_tool_catalog(self) -> ToolCatalogSnapshot:
-        """兼容只需要主 Agent 工具目录的内部调用与测试。"""
+        """
+        兼容只需要主 Agent 工具目录的内部调用与测试。
+        """
         return self._initialize_local_tool_catalogs()[0]
 
     @staticmethod
-    def _filter_local_web_search_tools(tools: List, enabled: bool) -> List:
-        """按联网搜索策略保留或移除本地 search_web 工具。"""
+    def _filter_local_web_search_tools(tools: List[Any], enabled: bool) -> List[Any]:
+        """
+        按联网搜索策略保留或移除本地 search_web 工具。
+        """
         if enabled:
             return tools
         return [tool for tool in tools if getattr(tool, "name", None) != "search_web"]
@@ -1605,8 +1779,10 @@ class MoviePilotAgent:
         self._tool_context.update(values)
 
     @staticmethod
-    def _public_runtime_config_signature(runtime_config: Dict[str, Any]) -> tuple:
-        """生成不包含密钥明文的 LLM 运行时签名。"""
+    def _public_runtime_config_signature(runtime_config: Dict[str, Any]) -> tuple[Any, ...]:
+        """
+        生成不包含密钥明文的 LLM 运行时签名。
+        """
         api_key = runtime_config.get("api_key") or ""
         api_key_digest = hashlib.sha256(str(api_key).encode("utf-8")).hexdigest()[:12] if api_key else ""
         return (
@@ -1623,7 +1799,9 @@ class MoviePilotAgent:
         )
 
     async def _recall_session(self, model: Any) -> RecallSession | None:
-        """交互会话沿用真实身份；用户定时执行独立归档为 cron，系统内部工作不公开。"""
+        """
+        交互会话沿用真实身份；用户定时执行独立归档为 cron，系统内部工作不公开。
+        """
         scope = current_terminal_scope()
         if scope is not None and scope.kind == "scheduled":
             return RecallSession(f"agent-run:{scope.task_id}", source="cron", model=self._get_model_name(model) or "")
@@ -1642,7 +1820,9 @@ class MoviePilotAgent:
         tool_catalog: Optional[ToolCatalogSnapshot] = None,
         subagent_catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> tuple[Any, ...]:
-        """构造会话内 Agent 图缓存签名。"""
+        """
+        构造会话内 Agent 图缓存签名。
+        """
         runtime_config = await self._resolve_llm_runtime_config()
         scope = current_terminal_scope()
         return (
@@ -1657,6 +1837,7 @@ class MoviePilotAgent:
             self.has_message_context,
             self.is_background,
             get_runtime_setting("AI_AGENT_VERBOSE"),
+            get_runtime_setting("AI_AGENT_OUTPUT_LANGUAGE"),
             get_runtime_setting("LLM_TEMPERATURE"),
             get_runtime_setting("LLM_MAX_CONTEXT_TOKENS"),
             get_runtime_setting("LLM_MAX_TOOLS"),
@@ -1676,134 +1857,54 @@ class MoviePilotAgent:
 
     @staticmethod
     def _tool_factory_revision() -> str:
-        """在目录签名确实需要时解析工具工厂版本。"""
+        """
+        在目录签名确实需要时解析工具工厂版本。
+        """
         from app.agent.loader import get_tool_factory
 
-        return get_tool_factory().catalog_factory_revision()
-
-    def _get_cached_agent(self, signature: tuple[Any, ...], streaming: bool) -> Optional[Any]:
-        """按签名读取当前会话已编译的 Agent 图。"""
-        bundle = self._compiled_agent_bundle
-        if bundle and bundle.streaming == streaming and bundle.signature == signature:
-            return bundle.agent
-        return None
-
-    @staticmethod
-    def _seal_subagent_middleware_instances(
-        middlewares: tuple[Any, ...],
-    ) -> None:
-        """同步封住子代理控制器的新任务入口，不等待既有任务退出。"""
-        for middleware in middlewares:
-            seal = getattr(middleware, "seal", None)
-            if not callable(seal):
-                continue
-            try:
-                seal()
-            except Exception as error:
-                logger.debug(f"封住子代理中间件失败: {error}")
-
-    @staticmethod
-    async def _close_subagent_middleware_instances(
-        middlewares: tuple[Any, ...],
-    ) -> tuple[Any, ...]:
-        """关闭子代理控制器，并返回仍持有未收敛任务的实例。"""
-        pending_middlewares = []
-        for middleware in middlewares:
-            close = getattr(middleware, "close", None)
-            if not callable(close):
-                continue
-            try:
-                result = close()
-                if inspect.isawaitable(result):
-                    result = await result
-                if result is False:
-                    pending_middlewares.append(middleware)
-            except Exception as error:
-                logger.debug(f"关闭子代理中间件失败: {error}")
-                pending_middlewares.append(middleware)
-        return tuple(pending_middlewares)
-
-    @staticmethod
-    def _merge_subagent_middleware_owners(
-        *groups: tuple[Any, ...],
-    ) -> tuple[Any, ...]:
-        """按对象身份合并当前图与延迟收敛控制器的 owner 集合。"""
-        merged = []
-        for group in groups:
-            for middleware in group:
-                if not any(middleware is existing for existing in merged):
-                    merged.append(middleware)
-        return tuple(merged)
+        return str(get_tool_factory().catalog_factory_revision())
 
     def begin_shutdown(self) -> None:
-        """在任何异步等待前封住当前 Agent 的子代理提交和终端作用域。"""
+        """
+        在任何异步等待前封住图资源、后台复盘和终端作用域。
+        """
         if self._learning:
             self._learning.seal()
         self._terminal_scope.seal()
         for scope in self._scheduled_terminal_scopes:
             scope.seal()
         self._shutdown_started = True
-        self._seal_subagent_middleware_instances(self._subagent_middlewares)
+        self._graphs.seal()
 
-    async def _cache_agent(
-        self,
-        *,
-        signature: tuple[Any, ...],
-        agent: Any,
-        streaming: bool,
-        tool_catalog: ToolCatalogSnapshot,
-        subagent_catalog: ToolCatalogSnapshot,
-        mcp_config_signature: str,
-        subagent_middlewares: tuple[Any, ...] = (),
-    ) -> Any:
-        """保存当前会话可复用的 Agent 图。"""
-        previous_middlewares = tuple(
-            middleware
-            for middleware in self._subagent_middlewares
-            if not any(middleware is replacement for replacement in subagent_middlewares)
-        )
-        if self._shutdown_started:
-            self._seal_subagent_middleware_instances(subagent_middlewares)
-        pending_middlewares = await self._close_subagent_middleware_instances(previous_middlewares)
-        self._compiled_agent_bundle = _CompiledAgentBundle(
-            signature=signature,
-            agent=agent,
-            streaming=streaming,
-            created_at=datetime.now(),
-            tool_catalog=tool_catalog,
-            subagent_catalog=subagent_catalog,
-            plugin_revision=tool_catalog.plugin_revision,
-            mcp_config_signature=mcp_config_signature,
-            catalog_checked_at=datetime.now(),
-        )
-        self._subagent_middlewares = self._merge_subagent_middleware_owners(
-            pending_middlewares,
-            subagent_middlewares,
-        )
-        return agent
+    def _learning_models_in_use(self) -> bool:
+        """
+        后台复盘尚未退出时保留可能与其共享客户端的退休模型。
+        """
+        run = self._learning.run if self._learning else None
+        return bool(run and run.task and not run.task.done())
 
     async def _invalidate_cached_agent(self) -> bool:
-        """使当前图失效，未收敛的子代理控制器继续由 Agent 持有。"""
-        subagent_middlewares = self._subagent_middlewares
-        self._compiled_agent_bundle = None
-        pending_middlewares = await self._close_subagent_middleware_instances(subagent_middlewares)
-        self._subagent_middlewares = pending_middlewares
-        return not pending_middlewares
+        """
+        使图失效，由图资源 owner 保留未退出消费者和关闭失败的连接。
+        """
+        return await self._graphs.invalidate()
 
     @staticmethod
     def _latest_turn_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
-        """从完整历史中提取本轮新增用户消息。"""
+        """
+        从完整历史中提取本轮新增用户消息。
+        """
         return [messages[-1]] if messages else []
 
-    def _initialize_subagent_tools(self) -> List:
+    def _initialize_subagent_tools(self) -> List[Any]:
         """
         初始化子代理专用静默工具列表。
         """
         from app.agent.loader import get_tool_factory
 
-        return get_tool_factory().create_tools(
+        return list(get_tool_factory().create_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1813,19 +1914,22 @@ class MoviePilotAgent:
                 "reply_mode": None,
                 "should_dispatch_reply": False,
                 "is_admin": bool(self._tool_context.get("is_admin")),
+                "execution_user_id": self.execution_user_id,
+                "execution_user_identity": self.execution_user_identity,
+                "execution_identity_error": self._tool_context.get("execution_identity_error", {}),
                 "require_secret_confirmation": True,
             },
             allow_message_tools=False,
             data=self._data,
-        )
+        ))
 
-    async def _initialize_mcp_tools(self, specs=None) -> List:
+    async def _initialize_mcp_tools(self, specs: Optional[List[Any]] = None) -> List[Any]:
         """
         初始化外部 MCP 工具列表。
         """
         return await create_external_mcp_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1834,13 +1938,13 @@ class MoviePilotAgent:
             specs=specs,
         )
 
-    async def _initialize_subagent_mcp_tools(self, specs=None) -> List:
+    async def _initialize_subagent_mcp_tools(self, specs: Optional[List[Any]] = None) -> List[Any]:
         """
         初始化子代理可用的外部 MCP 工具列表。
         """
         return await create_external_mcp_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1850,6 +1954,9 @@ class MoviePilotAgent:
                 "reply_mode": None,
                 "should_dispatch_reply": False,
                 "is_admin": bool(self._tool_context.get("is_admin")),
+                "execution_user_id": self.execution_user_id,
+                "execution_user_identity": self.execution_user_identity,
+                "execution_identity_error": self._tool_context.get("execution_identity_error", {}),
             },
             specs=specs,
         )
@@ -1858,7 +1965,9 @@ class MoviePilotAgent:
     def _initialize_tool_selector(
         tools: list[Any], internal_tools: list[Any], model: Any,
     ) -> Optional[ToolSelectorMiddleware]:
-        """首轮限制业务工具数量，同时保留计划、技能和按需发现入口。"""
+        """
+        首轮限制业务工具数量，同时保留计划、技能和按需发现入口。
+        """
         max_tools = get_runtime_setting("LLM_MAX_TOOLS")
         if max_tools <= 0:
             return None
@@ -1874,252 +1983,241 @@ class MoviePilotAgent:
             enable_discovery=True,
         )
 
-    async def _create_agent(self, streaming: bool = False):
+    async def _create_agent(self, streaming: bool = False) -> Any:
         """
         创建 LangGraph Agent（使用 create_agent + SummarizationMiddleware）
         :param streaming: 是否启用流式输出
         """
-        temporary_subagent_middlewares: tuple[Any, ...] = ()
         try:
-            runtime_config = await self._resolve_llm_runtime_config()
-            plugin_revision = _get_plugin_tools_revision()
-            mcp_config_signature = agent_mcp_manager.config_signature()
-            cached_bundle = self._compiled_agent_bundle
-            catalog_is_fresh = bool(
-                cached_bundle
-                and cached_bundle.streaming == streaming
-                and cached_bundle.tool_catalog is not None
-                and cached_bundle.subagent_catalog is not None
-                and cached_bundle.plugin_revision == plugin_revision
-                and cached_bundle.mcp_config_signature == mcp_config_signature
-                and cached_bundle.catalog_checked_at is not None
-                and (datetime.now() - cached_bundle.catalog_checked_at).total_seconds()
-                < self.TOOL_CATALOG_REFRESH_SECONDS
-            )
-            if catalog_is_fresh:
+            async with self._graphs.build() as resources:
+                runtime_config = await self._resolve_llm_runtime_config()
+                plugin_revision = _get_plugin_tools_revision()
+                mcp_config_signature = agent_mcp_manager.config_signature()
+                cached_bundle = self._graphs.current
+                catalog_is_fresh = bool(
+                    cached_bundle
+                    and cached_bundle.streaming == streaming
+                    and cached_bundle.tool_catalog is not None
+                    and cached_bundle.subagent_catalog is not None
+                    and cached_bundle.plugin_revision == plugin_revision
+                    and cached_bundle.mcp_config_signature == mcp_config_signature
+                    and cached_bundle.catalog_checked_at is not None
+                    and (datetime.now() - cached_bundle.catalog_checked_at).total_seconds()
+                    < self.TOOL_CATALOG_REFRESH_SECONDS
+                )
+                if catalog_is_fresh and cached_bundle is not None:
+                    bundle_signature = await self._agent_bundle_signature(
+                        streaming,
+                        tool_catalog=cached_bundle.tool_catalog,
+                        subagent_catalog=cached_bundle.subagent_catalog,
+                    )
+                    cached_agent = self._graphs.get(bundle_signature, streaming)
+                    self._last_agent_cache_hit = bool(cached_agent)
+                    if cached_agent:
+                        logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
+                        return cached_agent
+                web_search_resolution = ServerToolRegistry.resolve_web_search(
+                    provider=str(runtime_config.get("provider") or ""),
+                    model=str(runtime_config.get("model") or ""),
+                    mode=runtime_config.get("web_search_mode"),
+                    api_protocol=runtime_config.get("api_protocol"),
+                    base_url=runtime_config.get("base_url"),
+                )
+                base_tool_catalog, base_subagent_catalog = self._initialize_local_tool_catalogs()
+                mcp_specs = await agent_mcp_manager.list_enabled_tool_specs()
+                local_tools = self._filter_local_web_search_tools(
+                    base_tool_catalog.tools,
+                    enabled=web_search_resolution.use_local_web_search,
+                )
+                mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
+                tools = [*local_tools, *mcp_tools]
+                local_subagent_tools = self._filter_local_web_search_tools(
+                    base_subagent_catalog.tools,
+                    enabled=web_search_resolution.use_local_web_search,
+                )
+                subagent_mcp_tools = await self._initialize_subagent_mcp_tools(specs=mcp_specs)
+                subagent_catalog = ToolCatalogSnapshot.from_tools(
+                    [*local_subagent_tools, *subagent_mcp_tools],
+                    plugin_revision=base_subagent_catalog.plugin_revision,
+                    factory_revision=base_subagent_catalog.factory_revision,
+                ).require_unique()
+                subagent_tools = [*local_subagent_tools, *subagent_mcp_tools]
+                # 系统提示词
+                system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
+
+                # LLM 模型（用于 agent 执行）
+                agent_model = await self._initialize_llm(streaming=streaming)
+                resources.own_model(agent_model)
+                self._sync_model_profile(agent_model)
+                # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
+                server_tools = LLMHelper.get_server_tools(agent_model)
+
+                # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
+                non_streaming_model = agent_model if not streaming else await self._initialize_llm(streaming=False)
+                if non_streaming_model is not agent_model:
+                    resources.own_model(non_streaming_model)
+                skills_middleware = SkillsMiddleware(
+                    sources=[str(agent_runtime_manager.skills_dir)],
+                    bundled_skills_dir=str(get_runtime_setting("ROOT_PATH") / "skills"),
+                    stream_handler=self.stream_handler,
+                )
+                skill_tools = list(getattr(skills_middleware, "tools", []) or [])
+                user_memory_dir = agent_runtime_manager.get_user_memory_dir(self.user_id)
+                memory_middleware = MemoryMiddleware(
+                    memory_dir=str(agent_runtime_manager.memory_dir),
+                    user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
+                    store=self._learning.tools.memory if self._learning else None,
+                    stream_handler=self.stream_handler,
+                )
+                memory_tools = list(getattr(memory_middleware, "tools", []) or [])
+                learning_middleware = LearningMiddleware(self._learning) if self._learning is not None and self._learning_enabled() else None
+                if learning_middleware:
+                    memory_tools.extend(learning_middleware.tools)
+                recall_service = getattr(self._data, "recall", None)
+                recall_middlewares = []
+                if recall_service and build_user_memory_key(self.user_id):
+                    history_session = await self._recall_session(agent_model)
+                    if history_session is not None:
+                        recall_middlewares.append(RecallMiddleware(recall_service, str(self.user_id), history_session))
+                memory_tools.extend(tool for middleware in recall_middlewares for tool in middleware.tools)
+                policy_context = self._build_policy_context()
+                subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
+                    model=non_streaming_model,
+                    tools=subagent_tools,
+                    server_tools=server_tools,
+                    stream_handler=self.stream_handler,
+                    policy_context=policy_context.for_subagent(),
+                    catalog=subagent_catalog,
+                )
+                resources.own_middlewares(subagent_middlewares)
+                plan_middleware = PlanMiddleware()
+                output_middleware = ToolOutputMiddleware(policy_context)
+                invocation_repository = getattr(self._data, "invocations", None)
+                invocation_middlewares = [InvocationMiddleware(policy_context, invocation_repository, tools)] if invocation_repository else []
+                internal_tools = [
+                    *skill_tools, *memory_tools, *subagent_task_tools, *plan_middleware.tools,
+                    *output_middleware.tools,
+                    *(tool for middleware in invocation_middlewares for tool in middleware.tools),
+                ]
+                tool_selector = self._initialize_tool_selector(tools, internal_tools, non_streaming_model)
+                # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
+                tool_catalog = ToolCatalogSnapshot.from_tools(
+                    [
+                        *local_tools,
+                        *mcp_tools,
+                        *internal_tools,
+                        *(tool_selector.tools if tool_selector else []),
+                    ],
+                    plugin_revision=base_tool_catalog.plugin_revision,
+                    factory_revision=base_tool_catalog.factory_revision,
+                ).require_unique()
                 bundle_signature = await self._agent_bundle_signature(
                     streaming,
-                    tool_catalog=cached_bundle.tool_catalog,
-                    subagent_catalog=cached_bundle.subagent_catalog,
+                    tool_catalog=tool_catalog,
+                    subagent_catalog=subagent_catalog,
                 )
-                cached_agent = self._get_cached_agent(bundle_signature, streaming)
+                cached_agent = self._graphs.get(bundle_signature, streaming)
                 self._last_agent_cache_hit = bool(cached_agent)
                 if cached_agent:
+                    # 目录新鲜条件已要求 bundle 存在；这里显式恢复该不变量供静态检查。
+                    if cached_bundle is None:
+                        raise RuntimeError("Agent 图缓存缺少目录快照")
+                    # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
+                    cached_bundle.catalog_checked_at = datetime.now()
                     logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
                     return cached_agent
-            web_search_resolution = ServerToolRegistry.resolve_web_search(
-                provider=str(runtime_config.get("provider") or ""),
-                model=str(runtime_config.get("model") or ""),
-                mode=runtime_config.get("web_search_mode"),
-                api_protocol=runtime_config.get("api_protocol"),
-                base_url=runtime_config.get("base_url"),
-            )
-            base_tool_catalog, base_subagent_catalog = self._initialize_local_tool_catalogs()
-            mcp_specs = await agent_mcp_manager.list_enabled_tool_specs()
-            local_tools = self._filter_local_web_search_tools(
-                base_tool_catalog.tools,
-                enabled=web_search_resolution.use_local_web_search,
-            )
-            mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
-            tools = [*local_tools, *mcp_tools]
-            local_subagent_tools = self._filter_local_web_search_tools(
-                base_subagent_catalog.tools,
-                enabled=web_search_resolution.use_local_web_search,
-            )
-            subagent_mcp_tools = await self._initialize_subagent_mcp_tools(specs=mcp_specs)
-            subagent_catalog = ToolCatalogSnapshot.from_tools(
-                [*local_subagent_tools, *subagent_mcp_tools],
-                plugin_revision=base_subagent_catalog.plugin_revision,
-                factory_revision=base_subagent_catalog.factory_revision,
-            ).require_unique()
-            subagent_tools = [*local_subagent_tools, *subagent_mcp_tools]
-            # 系统提示词
-            system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
-
-            # LLM 模型（用于 agent 执行）
-            agent_model = await self._initialize_llm(streaming=streaming)
-            self._sync_model_profile(agent_model)
-            # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
-            server_tools = LLMHelper.get_server_tools(agent_model)
-
-            # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
-            non_streaming_model = agent_model if not streaming else await self._initialize_llm(streaming=False)
-            skills_middleware = SkillsMiddleware(
-                sources=[str(agent_runtime_manager.skills_dir)],
-                bundled_skills_dir=str(get_runtime_setting("ROOT_PATH") / "skills"),
-                stream_handler=self.stream_handler,
-            )
-            skill_tools = list(getattr(skills_middleware, "tools", []) or [])
-            user_memory_dir = agent_runtime_manager.get_user_memory_dir(self.user_id)
-            memory_middleware = MemoryMiddleware(
-                memory_dir=str(agent_runtime_manager.memory_dir),
-                user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
-                store=self._learning.tools.memory if self._learning else None,
-                stream_handler=self.stream_handler,
-            )
-            memory_tools = list(getattr(memory_middleware, "tools", []) or [])
-            learning_middleware = LearningMiddleware(self._learning) if self._learning is not None and self._learning_enabled() else None
-            if learning_middleware:
-                memory_tools.extend(learning_middleware.tools)
-            recall_service = getattr(self._data, "recall", None)
-            recall_middlewares = []
-            if recall_service and build_user_memory_key(self.user_id):
-                history_session = await self._recall_session(agent_model)
-                if history_session is not None:
-                    recall_middlewares.append(RecallMiddleware(recall_service, str(self.user_id), history_session))
-            memory_tools.extend(tool for middleware in recall_middlewares for tool in middleware.tools)
-            policy_context = self._build_policy_context()
-            subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
-                model=non_streaming_model,
-                tools=subagent_tools,
-                server_tools=server_tools,
-                stream_handler=self.stream_handler,
-                policy_context=policy_context.for_subagent(),
-                catalog=subagent_catalog,
-            )
-            temporary_subagent_middlewares = tuple(subagent_middlewares)
-            plan_middleware = PlanMiddleware()
-            output_middleware = ToolOutputMiddleware(policy_context)
-            invocation_repository = getattr(self._data, "invocations", None)
-            invocation_middlewares = [InvocationMiddleware(policy_context, invocation_repository, tools)] if invocation_repository else []
-            internal_tools = [
-                *skill_tools, *memory_tools, *subagent_task_tools, *plan_middleware.tools,
-                *output_middleware.tools,
-                *(tool for middleware in invocation_middlewares for tool in middleware.tools),
-            ]
-            tool_selector = self._initialize_tool_selector(tools, internal_tools, non_streaming_model)
-            # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
-            tool_catalog = ToolCatalogSnapshot.from_tools(
-                [
-                    *local_tools,
-                    *mcp_tools,
-                    *internal_tools,
-                    *(tool_selector.tools if tool_selector else []),
-                ],
-                plugin_revision=base_tool_catalog.plugin_revision,
-                factory_revision=base_tool_catalog.factory_revision,
-            ).require_unique()
-            bundle_signature = await self._agent_bundle_signature(
-                streaming,
-                tool_catalog=tool_catalog,
-                subagent_catalog=subagent_catalog,
-            )
-            cached_agent = self._get_cached_agent(bundle_signature, streaming)
-            self._last_agent_cache_hit = bool(cached_agent)
-            if cached_agent:
-                # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
-                cached_bundle.catalog_checked_at = datetime.now()
-                pending_middlewares = await self._close_subagent_middleware_instances(temporary_subagent_middlewares)
-                self._subagent_middlewares = self._merge_subagent_middleware_owners(
-                    self._subagent_middlewares,
-                    pending_middlewares,
+                summarization_middleware = SummarizationMiddleware(
+                    model=non_streaming_model,
+                    trigger=("fraction", 0.85),
+                    keep=("messages", 20),
                 )
-                temporary_subagent_middlewares = ()
-                logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
-                return cached_agent
-            summarization_middleware = SummarizationMiddleware(
-                model=non_streaming_model,
-                trigger=("fraction", 0.85),
-                keep=("messages", 20),
-            )
 
-            # 中间件
-            guardrails = ToolGuardrailsMiddleware(policy_context)
-            policy_middleware = AgentPolicyMiddleware(
-                context=policy_context, catalog=tool_catalog, tools=tools, guardrails=guardrails,
-            )
-            code_middleware = CodeExecutionMiddleware(policy_middleware)
-            middlewares = [
-                # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
-                policy_middleware,
-                code_middleware,
-                # 运行中补充消息只在模型回合边界进入同一张图，不启动并行 Agent。
-                *([SteeringMiddleware()] if self._steering_inbox.running else []),
-                output_middleware,
-                *invocation_middlewares,
-                # Skills
-                skills_middleware,
-                # Jobs 任务管理
-                JobsMiddleware(
-                    sources=[str(agent_runtime_manager.jobs_dir)],
-                ),
-                # 运行时人格与核心规则
-                RuntimeConfigMiddleware(),
-                # 计划独立保存，最终请求压缩仍计入其系统上下文预算。
-                plan_middleware,
-                # 稳定偏好与原始会话证据分别管理。
-                memory_middleware,
-                *recall_middlewares,
-                # 以工具原文及模型请求顺序检测循环，外层归档仍保留真实回执。
-                guardrails,
-                *([learning_middleware] if learning_middleware else []),
-                # 错误工具调用修复
-                PatchToolCallsMiddleware(),
-                # 子代理委派
-                *subagent_middlewares,
-            ]
-
-            # 工具选择
-            if tool_selector is not None:
-                middlewares.append(tool_selector)
-            middlewares.append(CodeCaptureMiddleware(code_middleware))
-
-            # 所有压缩都在最终请求边界完成，避免主模型失败前写入摘要状态。
-            middlewares.append(
-                FinalRequestCompactionMiddleware(
-                    summarizer=summarization_middleware,
+                # 中间件
+                guardrails = ToolGuardrailsMiddleware(policy_context)
+                policy_middleware = AgentPolicyMiddleware(
+                    context=policy_context, catalog=tool_catalog, tools=tools, guardrails=guardrails,
                 )
-            )
-            middlewares.append(VisionMiddleware())
-            if learning_middleware:
-                middlewares.append(LearningCaptureMiddleware(learning_middleware.session))
+                code_middleware = CodeExecutionMiddleware(policy_middleware)
+                middlewares: list[AgentMiddleware[Any, Any, Any]] = [
+                    # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
+                    policy_middleware,
+                    code_middleware,
+                    # 运行中补充消息只在模型回合边界进入同一张图，不启动并行 Agent。
+                    *([SteeringMiddleware()] if self._steering_inbox.running else []),
+                    output_middleware,
+                    *invocation_middlewares,
+                    skills_middleware,
+                    # Jobs 任务管理
+                    JobsMiddleware(
+                        sources=[str(agent_runtime_manager.jobs_dir)],
+                    ),
+                    # 运行时人格与核心规则
+                    RuntimeConfigMiddleware(),
+                    # 计划独立保存，最终请求压缩仍计入其系统上下文预算。
+                    plan_middleware,
+                    # 稳定偏好与原始会话证据分别管理。
+                    memory_middleware,
+                    *recall_middlewares,
+                    # 以工具原文及模型请求顺序检测循环，外层归档仍保留真实回执。
+                    guardrails,
+                    *([learning_middleware] if learning_middleware else []),
+                    # 错误工具调用修复
+                    PatchToolCallsMiddleware(),
+                    # 子代理委派
+                    *subagent_middlewares,
+                ]
 
-            # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
-            middlewares.append(
-                UsageMiddleware(
-                    on_usage=self._record_usage,
-                    on_request_budget=self._record_request_budget,
-                    next_request_sequence=self._next_request_sequence,
+                # 工具选择
+                if tool_selector is not None:
+                    middlewares.append(tool_selector)
+                middlewares.append(CodeCaptureMiddleware(code_middleware))
+
+                # 所有压缩都在最终请求边界完成，避免主模型失败前写入摘要状态。
+                middlewares.append(
+                    FinalRequestCompactionMiddleware(
+                        summarizer=summarization_middleware,
+                    )
                 )
-            )
+                middlewares.append(VisionMiddleware())
+                if learning_middleware:
+                    middlewares.append(LearningCaptureMiddleware(learning_middleware.session))
 
-            agent = create_agent(
-                model=agent_model,
-                tools=[
-                    *tools,
-                    *skill_tools,
-                    *memory_tools,
-                    *server_tools,
-                ],
-                system_prompt=system_prompt,
-                middleware=middlewares,
-                checkpointer=InMemorySaver(),
-            )
-            cached_agent = await self._cache_agent(
-                signature=bundle_signature,
-                agent=agent,
-                streaming=streaming,
-                tool_catalog=tool_catalog,
-                subagent_catalog=subagent_catalog,
-                mcp_config_signature=mcp_config_signature,
-                subagent_middlewares=tuple(subagent_middlewares),
-            )
-            temporary_subagent_middlewares = ()
-            return cached_agent
-        except asyncio.CancelledError:
-            pending_middlewares = await self._close_subagent_middleware_instances(temporary_subagent_middlewares)
-            self._subagent_middlewares = self._merge_subagent_middleware_owners(
-                self._subagent_middlewares,
-                pending_middlewares,
-            )
-            raise
-        except Exception as e:
-            pending_middlewares = await self._close_subagent_middleware_instances(temporary_subagent_middlewares)
-            self._subagent_middlewares = self._merge_subagent_middleware_owners(
-                self._subagent_middlewares,
-                pending_middlewares,
-            )
-            logger.error(f"创建 Agent 失败: {e}")
+                # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
+                middlewares.append(
+                    UsageMiddleware(
+                        on_usage=self._record_usage,
+                        on_request_budget=self._record_request_budget,
+                        next_request_sequence=self._next_request_sequence,
+                    )
+                )
+
+                agent = create_agent(
+                    model=agent_model,
+                    tools=[
+                        *tools,
+                        *skill_tools,
+                        *memory_tools,
+                        *server_tools,
+                    ],
+                    system_prompt=system_prompt,
+                    middleware=middlewares,
+                    checkpointer=InMemorySaver(),
+                )
+                self._graphs.publish(CompiledAgentBundle(
+                    signature=bundle_signature,
+                    agent=agent,
+                    streaming=streaming,
+                    created_at=datetime.now(),
+                    tool_catalog=tool_catalog,
+                    subagent_catalog=subagent_catalog,
+                    plugin_revision=tool_catalog.plugin_revision,
+                    mcp_config_signature=mcp_config_signature,
+                    catalog_checked_at=datetime.now(),
+                    resources=resources,
+                ))
+                return agent
+        except Exception as error:
+            logger.error(f"创建 Agent 失败: {error}")
             raise
 
     async def process(
@@ -2131,7 +2229,9 @@ class MoviePilotAgent:
         *,
         terminal_scope: Optional[TerminalScope] = None,
     ) -> str:
-        """绑定宿主任务身份覆盖本轮全部推理；正常轮次和图重建保留对话归属。"""
+        """
+        绑定宿主任务身份覆盖本轮全部推理；正常轮次和图重建保留对话归属。
+        """
         scope = terminal_scope or self._terminal_scope
         if scope.closed or self._shutdown_started or scope.user_id != (self.user_id or ""):
             raise TerminalAccessError()
@@ -2139,15 +2239,23 @@ class MoviePilotAgent:
             self._scheduled_terminal_scopes.add(scope)
         steering_token = bind_steering_inbox(self._steering_inbox)
         try:
-            with bind_terminal_scope(scope):
-                return await self._process(
+            with bind_terminal_scope(scope), interactive_execution(
+                enabled=not self.is_background and scope.kind != "scheduled"
+            ):
+                result = await self._process(
                     message, images=images, files=files, has_audio_input=has_audio_input
                 )
+                identity_error = self._tool_context.get("execution_identity_error")
+                if self.execution_user_id is not None and isinstance(identity_error, dict) and identity_error.get("message"):
+                    return f"{AGENT_EXECUTION_ERROR_PREFIX}{identity_error['message']}"
+                return result
         finally:
             reset_steering_inbox(steering_token)
 
     async def release_terminal_scope(self, scope: TerminalScope) -> bool:
-        """收口宿主临时任务的终端；未真实收敛的作用域留给 Agent 清理重试。"""
+        """
+        收口宿主临时任务的终端；未真实收敛的作用域留给 Agent 清理重试。
+        """
         self._scheduled_terminal_scopes.add(scope)
         if not await close_terminal_scope(scope):
             return False
@@ -2161,7 +2269,9 @@ class MoviePilotAgent:
         files: Optional[List[dict[str, Any]]] = None,
         has_audio_input: bool = False,
     ) -> str:
-        """在已绑定的宿主任务上下文中流式推理并返回 Agent 回复。"""
+        """
+        在已绑定的宿主任务上下文中流式推理并返回 Agent 回复。
+        """
         user_display_saved = False
         try:
             logger.info(
@@ -2188,7 +2298,12 @@ class MoviePilotAgent:
             messages = list(
                 await self._memory.async_get_agent_messages(
                     session_id=self.session_id,
-                    user_id=self.user_id,
+                    user_id=self.user_id or "",
+                    allow_cross_owner=await self._can_restore_cross_owner_history(),
+                    legacy_username=(
+                        self.username if self.channel == NotificationChannel.WebAgent.value
+                        and self.source == "web-agent" else None
+                    ),
                 )
             )
 
@@ -2202,7 +2317,7 @@ class MoviePilotAgent:
                 "images": [{"index": index + 1, "type": "image"} for index, _ in enumerate(images or [])],
                 "files": files or [],
             }
-            content = [
+            content: list[str | dict[str, Any]] = [
                 {
                     "type": "text",
                     "text": json.dumps(request_payload, ensure_ascii=False, indent=2),
@@ -2234,8 +2349,8 @@ class MoviePilotAgent:
             # 执行推理
             result = await self._execute_agent(messages)
             if isinstance(result, tuple) and result:
-                return result[0]
-            return result
+                return cast(str, result[0])
+            return cast(str, result)
 
         except Exception as e:
             error_message = AGENT_EXECUTION_ERROR_MESSAGE
@@ -2261,13 +2376,13 @@ class MoviePilotAgent:
     def _build_input_display_attachments(
         self,
         images: Optional[List[str]] = None,
-        files: Optional[List[dict]] = None,
+        files: Optional[List[dict[str, Any]]] = None,
         has_audio_input: bool = False,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         构造用户输入附件的展示记录。
         """
-        attachments: List[dict] = []
+        attachments: List[dict[str, Any]] = []
         for index, image in enumerate(images or [], start=1):
             attachments.append(
                 {
@@ -2297,12 +2412,12 @@ class MoviePilotAgent:
 
     @staticmethod
     async def _stream_agent_tokens(
-        agent,
+        agent: Any,
         messages: dict[str, Any],
         config: dict[str, Any],
         on_token: Callable[[str], None],
         stream_handler: Any = None,
-    ):
+    ) -> None:
         """
         流式运行智能体，过滤工具调用token和思考内容，将模型生成的内容通过回调输出。
         :param agent: LangGraph Agent 实例
@@ -2313,7 +2428,9 @@ class MoviePilotAgent:
         stripper = _ThinkTagStripper()
 
         def emit_visible_token(text: str) -> None:
-            """只在真正产生可见答案时结束思考状态，再转发正文。"""
+            """
+            只在真正产生可见答案时结束思考状态，再转发正文。
+            """
             finish_thinking = getattr(stream_handler, "thinking_finished", None)
             if callable(finish_thinking):
                 finish_thinking()
@@ -2371,7 +2488,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _guardrail_final_text(agent: Any, config: dict[str, Any]) -> str:
-        """受控停止由宿主生成，不产生模型 token；流式入口须显式交付最终说明。"""
+        """
+        受控停止由宿主生成，不产生模型 token；流式入口须显式交付最终说明。
+        """
         get_state = getattr(agent, 'get_state', None)
         if not callable(get_state):
             return ''
@@ -2383,7 +2502,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _sanitize_recovery_message(message: BaseMessage) -> BaseMessage:
-        """为中断恢复复制消息，只保留脱敏正文与工具协议需要的字段。"""
+        """
+        为中断恢复复制消息，只保留脱敏正文与工具协议需要的字段。
+        """
         message = sanitize_tool_image_message(message)
         if isinstance(message, HumanMessage) and isinstance(message.content, list):
             # 用户主动提供的附件须保持有效，日志去像素策略不能用于恢复请求的图片块。
@@ -2411,7 +2532,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _requires_portable_recovery(messages: list[BaseMessage]) -> bool:
-        """带思考、签名或内容块的响应不能在脱敏后作为原供应商协议回放。"""
+        """
+        带思考、签名或内容块的响应不能在脱敏后作为原供应商协议回放。
+        """
         protocol_fields = {"reasoning_content", "__gemini_function_call_thought_signatures__"}
         return any(
             isinstance(message, AIMessage) and (
@@ -2423,7 +2546,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _portable_recovery_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
-        """把供应商签名工具链转换为历史事实文本，保留用户消息和实际回执。"""
+        """
+        把供应商签名工具链转换为历史事实文本，保留用户消息和实际回执。
+        """
         recovered: list[BaseMessage] = []
         for message in messages:
             facts: dict[str, Any]
@@ -2456,7 +2581,9 @@ class MoviePilotAgent:
     async def _recover_interrupted_agent(
         self, agent: Any, config: dict[str, Any], *, cancelled: bool = False
     ) -> None:
-        """有界保存中断事实后释放旧图，再次取消或恢复失败仍执行清理。"""
+        """
+        有界保存中断事实后释放旧图，再次取消或恢复失败仍执行清理。
+        """
         try:
             if agent is None or not self._should_persist_agent_chat():
                 return
@@ -2488,12 +2615,16 @@ class MoviePilotAgent:
             await self._invalidate_cached_agent()
 
     def _learning_enabled(self) -> bool:
-        """仅已认证交互会话启用学习，定时任务和内部后台任务始终跳过。"""
+        """
+        仅已认证交互会话启用学习，定时任务和内部后台任务始终跳过。
+        """
         scope = current_terminal_scope()
         return bool(self._learning and not self.is_background and not (scope and scope.kind == 'scheduled'))
 
     async def _handle_learning_control(self, message: str) -> str | None:
-        """直接使用宿主收到的用户文本处理审批，不能从模型生成的 HumanMessage 中提取权限。"""
+        """
+        直接使用宿主收到的用户文本处理审批，不能从模型生成的 HumanMessage 中提取权限。
+        """
         if not self._learning_enabled() or self._learning is None:
             return None
         await self._learning.wait_cancelled()
@@ -2506,7 +2637,9 @@ class MoviePilotAgent:
         return reply
 
     async def _save_final_agent_state(self, agent: Any, agent_config: dict[str, Any]) -> str:
-        """在触发学习前保存已交付回复与可恢复快照；失败时不得启动成功复盘。"""
+        """
+        在触发学习前保存已交付回复与可恢复快照；失败时不得启动成功复盘。
+        """
         display_text = self._streamed_output
         if not display_text:
             final_messages = agent.get_state(agent_config).values.get("messages", [])
@@ -2519,12 +2652,12 @@ class MoviePilotAgent:
         if self._should_persist_agent_chat():
             await self._memory.async_save_agent_messages(
                 session_id=self.session_id,
-                user_id=self.user_id,
+                user_id=self.user_id or "",
                 messages=agent.get_state(agent_config).values.get("messages", []),
             )
         return display_text
 
-    async def _execute_agent(self, messages: List[BaseMessage]):
+    async def _execute_agent(self, messages: List[BaseMessage]) -> Any:
         """
         调用 LangGraph Agent 执行推理。
         根据运行环境选择不同的执行模式：
@@ -2596,12 +2729,10 @@ class MoviePilotAgent:
                     # 流式输出未能发送全部内容（发送失败等）
                     # 通过常规方式发送剩余内容
                     remaining_text = await self.stream_handler.take()
-                    if remaining_text:
-                        unsent_text = remaining_text
-                        if self._streamed_output and remaining_text.startswith(self._streamed_output):
-                            unsent_text = remaining_text[len(self._streamed_output) :]
-                        if unsent_text:
-                            self._emit_output(unsent_text)
+                    # 正文 token 已经进入回调与历史；渠道回退不能再累计同一答案。
+                    # 没有正文 token 时仍保留工具结束后产生的残留展示内容。
+                    if remaining_text and not self._streamed_output:
+                        self._emit_output(remaining_text)
                     if remaining_text and self.should_dispatch_reply and not self._tool_context.get("user_reply_sent"):
                         await self.send_agent_message(remaining_text)
 
@@ -2685,19 +2816,19 @@ class MoviePilotAgent:
         rich_message = message if not broadcast and self.channel == NotificationChannel.Telegram.value else None
         await self._save_assistant_display_message_once(message)
         await AgentChain().async_post_message(
-            Message(
-                channel=None if broadcast else self.channel,
-                source=None if broadcast else self.source,
-                mtype=MessageType.Agent,
-                userid=None if broadcast else self.user_id,
-                username=self.username or (get_runtime_setting("SUPERUSER") if broadcast else None),
-                original_message_id=None if broadcast else self.original_message_id,
-                original_chat_id=None if broadcast else self.original_chat_id,
-                title=title,
-                text=message,
-                rich_message=rich_message,
-                save_history=False,
-            )
+            Message.model_validate({
+                "channel": None if broadcast else self.channel,
+                "source": None if broadcast else self.source,
+                "mtype": MessageType.Agent,
+                "userid": None if broadcast else self.user_id,
+                "username": self.username or (get_runtime_setting("SUPERUSER") if broadcast else None),
+                "original_message_id": None if broadcast else self.original_message_id,
+                "original_chat_id": None if broadcast else self.original_chat_id,
+                "title": title,
+                "text": message,
+                "rich_message": rich_message,
+                "save_history": False,
+            })
         )
 
     async def cleanup(self) -> bool:
@@ -2713,7 +2844,7 @@ class MoviePilotAgent:
             if not await self.release_terminal_scope(scope):
                 terminals_closed = False
         if not children_closed or not terminals_closed or not learning_closed:
-            logger.error(f"MoviePilot智能体仍有子代理或终端未收敛: session_id={self.session_id}")
+            logger.error(f"MoviePilot智能体仍有子代理、模型连接或终端未收敛: session_id={self.session_id}")
             return False
         self._pending_secret_confirmation = None
         self.protected_output_callback = None

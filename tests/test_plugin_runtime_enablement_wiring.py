@@ -1,4 +1,5 @@
-"""插件运行时组合根的启用语义接线测试：定向装载取数与默认目标存在性判据。
+"""
+插件运行时组合根的启用语义接线测试：定向装载取数与默认目标存在性判据。
 
 这两件事都只在 ``build_plugin_runtime`` 里成立：各能力类自己只认注入进来的端口，
 端口接到哪一个判据是组合根的决定，因而只能在这一层验证。
@@ -29,7 +30,9 @@ from app.schemas.types import SystemConfigKey
 
 
 def _logger() -> SimpleNamespace:
-    """提供运行时构造所需的最小日志对象。"""
+    """
+    提供运行时构造所需的最小日志对象。
+    """
     return SimpleNamespace(
         debug=lambda *_args, **_kwargs: None,
         info=lambda *_args, **_kwargs: None,
@@ -39,7 +42,9 @@ def _logger() -> SimpleNamespace:
 
 
 def _host() -> SimpleNamespace:
-    """提供运行时构造所需的最小宿主门面。"""
+    """
+    提供运行时构造所需的最小宿主门面。
+    """
     return SimpleNamespace(
         reload_plugin=lambda _plugin_id: None,
         remove_plugin=lambda _plugin_id: None,
@@ -55,7 +60,8 @@ def _build_runtime(
     records: dict[str, PluginInstance] | None = None,
     installed: list[str] | None = None,
 ) -> tuple[PluginRuntime, dict[str, PluginInstance]]:
-    """按给定实例行与安装清单装配一个全内存的插件运行时。
+    """
+    按给定实例行与安装清单装配一个全内存的插件运行时。
 
     :param records: 实例表初始行，键为实例 ID
     :param installed: ``UserInstalledPlugins`` 安装清单
@@ -111,7 +117,8 @@ def _build_runtime(
 
 
 def test_default_target_management_survives_all_instances_being_disabled():
-    """插件全部实例停用并重启后，默认目标置位接口仍要认得这个插件。
+    """
+    插件全部实例停用并重启后，默认目标置位接口仍要认得这个插件。
 
     启动只把启用中的本体与分身装进运行期类注册表，把存在性绑在注册表上就等于说
     「停用即不存在」；但它的安装记录与实例行都还在，停用不是卸载，在册的实例必须
@@ -135,14 +142,18 @@ def test_default_target_management_survives_all_instances_being_disabled():
 
 
 def test_default_target_management_accepts_an_installed_plugin_without_any_row():
-    """只有安装记录、还没有任何实例行的插件同样算在册。"""
+    """
+    只有安装记录、还没有任何实例行的插件同样算在册。
+    """
     runtime, _rows = _build_runtime(records={}, installed=["DemoPlugin"])
 
     assert runtime.default_target.set_target("DemoPlugin", "DemoPlugin") is True
 
 
 def test_default_target_management_still_rejects_a_plugin_that_is_not_installed():
-    """既没装过、也没有任何实例行的插件仍要按不存在拒绝。"""
+    """
+    既没装过、也没有任何实例行的插件仍要按不存在拒绝。
+    """
     runtime, _rows = _build_runtime(records={}, installed=[])
 
     with pytest.raises(LookupError):
@@ -155,7 +166,8 @@ def test_default_target_management_still_rejects_a_plugin_that_is_not_installed(
 
 
 def test_targeted_load_does_not_start_a_disabled_clone(monkeypatch):
-    """定向重载一个停用的分身不得把它重新拉起来。
+    """
+    定向重载一个停用的分身不得把它重新拉起来。
 
     源码变更触发的实例树重载会带着每个分身的实例 ID 走这条路；实例存储的读取口
     刻意返回全部在册行（含停用的），这条路不自己认启用位，用户停用的分身就会在
@@ -184,7 +196,9 @@ def test_targeted_load_does_not_start_a_disabled_clone(monkeypatch):
 
 
 def test_targeted_load_still_starts_an_enabled_clone(monkeypatch):
-    """启用中的分身仍按原路装载，启用位不得把正常重载一并挡掉。"""
+    """
+    启用中的分身仍按原路装载，启用位不得把正常重载一并挡掉。
+    """
     runtime, _rows = _build_runtime(
         records={
             "DemoPluginWork": PluginInstance(
@@ -208,7 +222,8 @@ def test_targeted_load_still_starts_an_enabled_clone(monkeypatch):
 
 
 def test_targeted_load_does_not_start_a_disabled_host(monkeypatch):
-    """定向重载一个停用的本体同样不得把它重新拉起来。
+    """
+    定向重载一个停用的本体同样不得把它重新拉起来。
 
     加载器在收到具体插件 ID 时只按这个 ID 找目录，完全不看传进来的可装载清单；
     本体的装载判据搬到启用位之后，这条路就绕开了那个判据。
@@ -236,7 +251,9 @@ def test_targeted_load_does_not_start_a_disabled_host(monkeypatch):
 
 
 def test_targeted_load_still_starts_an_enabled_host(monkeypatch):
-    """启用中的本体仍按原路装载。"""
+    """
+    启用中的本体仍按原路装载。
+    """
     runtime, _rows = _build_runtime(
         records={
             "DemoPlugin": PluginInstance(
@@ -265,7 +282,8 @@ def test_targeted_load_still_starts_an_enabled_host(monkeypatch):
 
 
 def test_log_level_management_survives_all_instances_being_disabled():
-    """插件全部实例停用并重启后，日志等级仍要可查询、可设置。
+    """
+    插件全部实例停用并重启后，日志等级仍要可查询、可设置。
 
     与默认调用目标同一个问题：这两个接口问的都是「这个插件还在不在册、能不能被
     管理」，不是「它此刻装载了没有」。绑在运行期类注册表上，用户停用一个插件之后
@@ -298,7 +316,9 @@ def test_log_level_management_survives_all_instances_being_disabled():
 
 
 def test_log_level_management_still_rejects_a_plugin_that_is_not_installed():
-    """既没装过、也没有任何实例行的插件仍要按不存在拒绝。"""
+    """
+    既没装过、也没有任何实例行的插件仍要按不存在拒绝。
+    """
     runtime, _rows = _build_runtime(records={}, installed=[])
 
     with pytest.raises(LookupError):

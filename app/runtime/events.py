@@ -1,3 +1,7 @@
+"""
+进程内事件注册与分发，管理处理器绑定、并发执行及关停收敛。
+"""
+
 import asyncio
 import concurrent.futures
 import random
@@ -7,7 +11,7 @@ import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
 from queue import Empty, PriorityQueue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union, cast
 
 from app.foundation.singleton import Singleton
 from app.runtime.correlation import get_correlation_id
@@ -25,16 +29,20 @@ from app.runtime.loop import main_loop_registry
 from app.runtime.observability import record_metric
 from app.runtime.rate import ExponentialBackoffRateLimiter
 from app.runtime.thread import ThreadHelper
-from app.schemas.event import ChainEventData
+from app.schemas.event import BaseEventData
 from app.schemas.types import ChainEventType, EventType
 
 if TYPE_CHECKING:
     from app.runtime.event.snapshot import EventPayloadSnapshot
 
-DEFAULT_EVENT_PRIORITY = 10  # 事件的默认优先级
-MIN_EVENT_CONSUMER_THREADS = 1  # 最小事件消费者线程数
-INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 1  # 事件队列空闲时的初始超时时间（秒）
-MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 5  # 事件队列空闲时的最大超时时间（秒）
+# 事件的默认优先级
+DEFAULT_EVENT_PRIORITY = 10
+# 最小事件消费者线程数
+MIN_EVENT_CONSUMER_THREADS = 1
+# 事件队列空闲时的初始超时时间（秒）
+INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 1
+# 事件队列空闲时的最大超时时间（秒）
+MAX_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS = 5
 _EVENT_STOP_SENTINEL = object()
 _CURRENT_EVENT_HANDLER_OWNER: ContextVar[object | None] = ContextVar(
     "current_event_handler_owner",
@@ -52,7 +60,12 @@ _EventRegistration = Union[
 
 @dataclass(slots=True)
 class _EventAsyncHandle:
-    """记录异步广播的取消代理和真实完成信号。"""
+    """
+    记录异步广播的取消代理和真实完成信号。
+
+    :param handle: 提供给广播调用方的取消代理
+    :param completion: 真实异步执行完成后才结束的信号，用于关停等待
+    """
 
     handle: concurrent.futures.Future[Any]
     completion: concurrent.futures.Future[Any]
@@ -60,14 +73,16 @@ class _EventAsyncHandle:
 
 class Event:
     """
-    事件类，封装事件的基本信息
+    事件类，封装事件的基本信息。
     """
 
     def __init__(self, event_type: Union[EventType, ChainEventType, str],
-                 event_data: Optional[Union[Dict, ChainEventData]] = None,
+                 event_data: Optional[Union[Dict[str, Any], BaseEventData]] = None,
                  priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
                  correlation_id: Optional[str] = None):
         """
+        归一化事件类型并创建携带关联标识的事件对象。
+
         :param event_type: 事件的类型，支持 EventType 或 ChainEventType
         :param event_data: 可选，事件携带的数据，默认为空字典
         :param priority: 可选，事件的优先级，默认为 10
@@ -81,27 +96,33 @@ class Event:
                 getattr(event_type, "value", event_type),
                 "; ".join(payload_problems),
             )
-        self.event_id = str(uuid.uuid4())  # 事件ID
-        self.event_type = event_type  # 事件类型
-        self.event_data = event_data or {}  # 事件数据
-        self.priority = priority  # 事件优先级
+        # 事件ID
+        self.event_id = str(uuid.uuid4())
+        # 事件类型
+        self.event_type = event_type
+        # 事件数据
+        self.event_data = event_data or {}
+        # 事件优先级
+        self.priority = priority if priority is not None else DEFAULT_EVENT_PRIORITY
         self.correlation_id = correlation_id or get_correlation_id()
 
     def __repr__(self) -> str:
         """
-        重写 __repr__ 方法，用于返回事件的详细信息，包括事件类型、事件ID和优先级
+        重写 __repr__ 方法，用于返回事件的详细信息，包括事件类型、事件ID和优先级。
         """
         event_kind = Event.get_event_kind(self.event_type)
         event_name = getattr(self.event_type, "value", self.event_type)
         return f"<{event_kind}: {event_name}, ID: {self.event_id}, Priority: {self.priority}>"
 
     def snapshot(self) -> "EventPayloadSnapshot":
-        """返回插件可安全读取的类型化 payload 快照，原始 event_data 保持不变。"""
+        """
+        返回插件可安全读取的类型化 payload 快照，原始 event_data 保持不变。
+        """
         from app.runtime.event.snapshot import snapshot_event_data
 
         return snapshot_event_data(self.event_type, self.event_data)
 
-    def __lt__(self, other):
+    def __lt__(self, other: "Event") -> bool:
         """
         定义事件对象的比较规则，基于优先级比较
         优先级小的事件会被认为“更小”，优先级高的事件将被认为“更大”
@@ -111,7 +132,8 @@ class Event:
     @staticmethod
     def get_event_kind(event_type: Union[EventType, ChainEventType, str]) -> str:
         """
-        根据事件类型判断事件是广播事件还是链式事件
+        根据事件类型判断事件是广播事件还是链式事件。
+
         :param event_type: 事件类型，支持 EventType 或 ChainEventType
         :return: 返回 Broadcast Event 或 Chain Event
         """
@@ -120,11 +142,13 @@ class Event:
 
 class EventManager(metaclass=Singleton):
     """
-    EventManager 负责管理和调度广播事件和链式事件，包括订阅、发送和处理事件
+    EventManager 负责管理和调度广播事件和链式事件，包括订阅、发送和处理事件。
     """
 
     def __init__(self) -> None:
-        """初始化订阅表、处理队列、解析器和消费者状态。"""
+        """
+        初始化订阅表、处理队列、解析器和消费者状态。
+        """
         # 动态线程池，用于消费事件
         self.__executor = ThreadHelper()
         # 用于保存启动的事件消费者线程
@@ -132,9 +156,9 @@ class EventManager(metaclass=Singleton):
         # 优先级队列
         self.__event_queue: PriorityQueue[Any] = PriorityQueue()
         # 广播事件的订阅者
-        self.__broadcast_subscribers: Dict[EventType, Dict[str, Callable]] = {}
+        self.__broadcast_subscribers: Dict[EventType, Dict[str, Callable[..., Any]]] = {}
         # 链式事件的订阅者
-        self.__chain_subscribers: Dict[ChainEventType, Dict[str, tuple[int, Callable]]] = {}
+        self.__chain_subscribers: Dict[ChainEventType, Dict[str, tuple[int, Callable[..., Any]]]] = {}
         # 禁用的事件处理器集合
         self.__disabled_handlers: Set[str] = set()
         # 禁用的事件处理器类集合
@@ -192,25 +216,33 @@ class EventManager(metaclass=Singleton):
         self.__binding_resolver.register(name, resolver)
 
     def unregister_handler_instance_resolver(self, name: str) -> None:
-        """撤销命名实例解析器；重复撤销不影响其它 owner。"""
+        """
+        撤销命名实例解析器；重复撤销不影响其它 owner。
+        """
         self.__binding_resolver.unregister(name)
 
     def unresolved_handler_bindings(self) -> tuple[str, ...]:
-        """返回未命中显式 resolver 的类处理器诊断清单。"""
+        """
+        返回未命中显式 resolver 的类处理器诊断清单。
+        """
         return self.__binding_resolver.unresolved_handlers()
 
     def set_error_notifier(self, notifier: Optional[EventErrorNotifier]) -> None:
-        """设置事件处理异常的外部通知回调。"""
+        """
+        设置事件处理异常的外部通知回调。
+        """
         with self.__lock:
             self.__error_notifier = notifier
 
     def reset_error_notifier(self) -> None:
-        """撤销当前 lifespan 的事件错误通知回调。"""
+        """
+        撤销当前 lifespan 的事件错误通知回调。
+        """
         self.set_error_notifier(None)
 
-    def start(self):
+    def start(self) -> None:
         """
-        开始广播事件处理线程
+        开始广播事件处理线程。
         """
         with self.__lifecycle_lock:
             if self.__lifecycle_state == "running":
@@ -224,13 +256,12 @@ class EventManager(metaclass=Singleton):
             self.__lifecycle_state = "running"
             self.__event.set()
             self.__consumer_threads = []
-        # 启动消费者线程用于处理广播事件
         for _ in range(MIN_EVENT_CONSUMER_THREADS):
             thread = threading.Thread(target=self.__broadcast_consumer_loop, daemon=True)
             thread.start()
-            self.__consumer_threads.append(thread)  # 将线程对象保存到列表中
+            self.__consumer_threads.append(thread)
 
-    def stop(self):
+    def stop(self) -> None:
         """
         兼容同步关闭入口，等待同步处理器并请求取消异步处理器。
 
@@ -254,7 +285,9 @@ class EventManager(metaclass=Singleton):
                 self.__consumer_threads = []
 
     async def stop_async(self) -> None:
-        """停止广播消费者，等待同步处理器并取消收口异步处理器。"""
+        """
+        停止广播消费者，等待同步处理器并取消收口异步处理器。
+        """
         logger.info("正在停止事件处理...")
         consumer_threads = self.__begin_stop()
         try:
@@ -299,7 +332,9 @@ class EventManager(metaclass=Singleton):
             self.__consumer_threads = []
 
     def __begin_stop(self) -> tuple[threading.Thread, ...]:
-        """关闭提交入口并唤醒消费者线程。"""
+        """
+        关闭提交入口并唤醒消费者线程。
+        """
         with self.__lifecycle_lock:
             self.__lifecycle_state = "stopping"
             self.__event.clear()
@@ -310,12 +345,16 @@ class EventManager(metaclass=Singleton):
 
     @staticmethod
     def __join_consumer_threads(consumer_threads: tuple[threading.Thread, ...]) -> None:
-        """在线程池或同步兼容入口中等待事件消费者退出。"""
+        """
+        在线程池或同步兼容入口中等待事件消费者退出。
+        """
         for consumer_thread in consumer_threads:
             consumer_thread.join()
 
     def __discard_stop_sentinels(self) -> None:
-        """清理仅用于唤醒消费者的标记，保留尚未消费的业务事件。"""
+        """
+        清理仅用于唤醒消费者的标记，保留尚未消费的业务事件。
+        """
         pending = []
         while True:
             try:
@@ -333,7 +372,9 @@ class EventManager(metaclass=Singleton):
             *,
             exclude_owner: object | None = None,
     ) -> None:
-        """请求取消异步处理器，并避免 handler 关闭事件总线时取消自身。"""
+        """
+        请求取消异步处理器，并避免 handler 关闭事件总线时取消自身。
+        """
         with self.__lifecycle_lock:
             handles = tuple(
                 handle
@@ -348,7 +389,9 @@ class EventManager(metaclass=Singleton):
             *,
             exclude_owner: object | None = None,
     ) -> None:
-        """等待同步处理器完成，并避免 handler 关闭事件总线时等待自身。"""
+        """
+        等待同步处理器完成，并避免 handler 关闭事件总线时等待自身。
+        """
         with self.__lifecycle_lock:
             handles = tuple(
                 handle
@@ -363,7 +406,9 @@ class EventManager(metaclass=Singleton):
             callback: Callable[..., Any],
             args: tuple[Any, ...],
     ) -> bool:
-        """在同一生命周期临界区提交并登记同步广播处理器。"""
+        """
+        在同一生命周期临界区提交并登记同步广播处理器。
+        """
         with self.__lifecycle_lock:
             if self.__lifecycle_state != "running":
                 logger.warning(
@@ -377,7 +422,9 @@ class EventManager(metaclass=Singleton):
                 self.__sync_handles[owner] = completion
 
                 def _tracked_sync() -> Any:
-                    """在同步 handler 调用栈中发布当前事件 owner。"""
+                    """
+                    在同步 handler 调用栈中发布当前事件 owner。
+                    """
                     context_token = _CURRENT_EVENT_HANDLER_OWNER.set(owner)
                     try:
                         return callback(*args)
@@ -393,7 +440,12 @@ class EventManager(metaclass=Singleton):
             def _complete_sync_handle(
                     completed: concurrent.futures.Future[Any],
             ) -> None:
-                """把真实线程句柄的结果转移到已登记的结算句柄。"""
+                """
+                真实线程结束后先清理 owner，再向结算句柄发布结果，避免关闭等待者先被唤醒。
+
+                :param completed: 已经完成或取消的原始线程任务句柄
+                """
+                self.__remove_sync_handle(owner)
                 if completed.cancelled():
                     completion.cancel()
                 else:
@@ -402,13 +454,14 @@ class EventManager(metaclass=Singleton):
                         completion.set_exception(error)
                     else:
                         completion.set_result(completed.result())
-                self.__remove_sync_handle(owner)
 
             handle.add_done_callback(_complete_sync_handle)
         return True
 
     def __remove_sync_handle(self, owner: object) -> None:
-        """同步处理器完成后移除其 owner 句柄。"""
+        """
+        同步处理器完成后移除其 owner 句柄。
+        """
         with self.__lifecycle_lock:
             self.__sync_handles.pop(owner, None)
 
@@ -416,7 +469,9 @@ class EventManager(metaclass=Singleton):
             self,
             coroutine: Any,
     ) -> bool:
-        """在同一生命周期临界区提交并登记异步广播处理器。"""
+        """
+        在同一生命周期临界区提交并登记异步广播处理器。
+        """
         with self.__lifecycle_lock:
             if self.__lifecycle_state != "running":
                 coroutine.close()
@@ -430,17 +485,23 @@ class EventManager(metaclass=Singleton):
             owner = object()
 
             async def _tracked() -> None:
+                """
+                在所属上下文中执行处理器，真实结束后先清理 owner，再发布完成信号。
+                """
                 started.set()
                 context_token = _CURRENT_EVENT_HANDLER_OWNER.set(owner)
                 try:
                     result = await coroutine
                 except asyncio.CancelledError:
+                    self.__remove_async_handle(owner)
                     if not completion.done():
                         completion.cancel()
                 except Exception as err:
+                    self.__remove_async_handle(owner)
                     if not completion.done():
                         completion.set_exception(err)
                 else:
+                    self.__remove_async_handle(owner)
                     if not completion.done():
                         completion.set_result(result)
                 finally:
@@ -465,20 +526,23 @@ class EventManager(metaclass=Singleton):
             def _complete_unstarted_submission(
                     submitted: concurrent.futures.Future[Any],
             ) -> None:
+                """
+                关闭尚未启动就被取消的协程，先移除 owner，再发布取消完成信号。
+
+                :param submitted: 跨线程提交到所属事件循环的代理句柄
+                """
                 if submitted.cancelled() and not started.is_set():
                     coroutine.close()
+                    self.__remove_async_handle(owner)
                     completion.cancel()
 
             handle.add_done_callback(_complete_unstarted_submission)
-        completion.add_done_callback(
-            lambda _completed, current_owner=owner: (
-                self.__remove_async_handle(current_owner)
-            )
-        )
         return True
 
     def __remove_async_handle(self, owner: object) -> None:
-        """异步处理器完成后移除其 owner 句柄。"""
+        """
+        异步处理器完成后移除其 owner 句柄。
+        """
         with self.__lifecycle_lock:
             self.__async_handles.pop(owner, None)
 
@@ -521,16 +585,18 @@ class EventManager(metaclass=Singleton):
 
     def check(self, etype: Union[EventType, ChainEventType]) -> bool:
         """
-        检查是否有启用的事件处理器可以响应某个事件类型
+        检查是否有启用的事件处理器可以响应某个事件类型。
+
         :param etype: 事件类型 (EventType 或 ChainEventType)
         :return: 返回是否存在可用的处理器
         """
         return self.__registry.check(etype)
 
-    def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Union[Dict, ChainEventData]] = None,
+    def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Union[Dict[str, Any], BaseEventData]] = None,
                    priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
         """
-        发送事件，根据事件类型决定是广播事件还是链式事件
+        发送事件，根据事件类型决定是广播事件还是链式事件。
+
         :param etype: 事件类型 (EventType 或 ChainEventType)
         :param data: 可选，事件数据
         :param priority: 广播事件的优先级，默认为 10
@@ -538,20 +604,42 @@ class EventManager(metaclass=Singleton):
         """
         event = Event(etype, data, priority)
         if isinstance(etype, EventType):
-            return self.__trigger_broadcast_event(event)
+            self.__trigger_broadcast_event(event)
+            return None
         elif isinstance(etype, ChainEventType):
             return self.__trigger_chain_event(event)
         else:
             logger.error(f"Unknown event type: {etype}")
         return None
 
+    def broadcast_handler_ids(self, etype: EventType) -> tuple[str, ...]:
+        """
+        返回已启用广播处理器的稳定标识快照，供持久投递冻结接收方。
+
+        此处只读取注册表，不解析实例或执行第三方代码。
+        """
+        with self.__lifecycle_lock:
+            if self.__lifecycle_state != "running":
+                raise RuntimeError(f"事件处理处于 {self.__lifecycle_state} 状态")
+        return tuple(
+            handler_id
+            for handler_id, handler in self.__registry.broadcast_snapshot(etype)
+            if self.__registry.is_handler_enabled(handler)
+        )
+
     def send_event_strict(
         self,
         etype: EventType,
-        data: Optional[Union[dict[str, object], ChainEventData]] = None,
+        data: Optional[Union[dict[str, object], BaseEventData]] = None,
         priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+        *,
+        handler_id: Optional[str] = None,
     ) -> Event:
-        """同步等待全部广播处理器完成，任一失败时阻止 durable 消息结算。"""
+        """
+        同步等待指定或全部广播处理器完成，失败阻止对应 durable 消息结算。
+
+        :param handler_id: 持久投递的目标处理器；None 保留全体派发的兼容行为
+        """
         event = Event(etype, data, priority)
         with self.__lifecycle_lock:
             if self.__lifecycle_state != "running":
@@ -559,16 +647,19 @@ class EventManager(metaclass=Singleton):
         self.__dispatcher.dispatch_broadcast_strict(
             event,
             self.__wait_strict_async_handler,
+            handler_id=handler_id,
         )
         return event
 
     async def async_send_event_strict(
         self,
         etype: EventType,
-        data: Optional[Union[dict[str, object], ChainEventData]] = None,
+        data: Optional[Union[dict[str, object], BaseEventData]] = None,
         priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
     ) -> Event:
-        """异步发送广播事件并等待全部处理器完成，保证配置写入返回时已完成重载。"""
+        """
+        异步发送广播事件并等待全部处理器完成，保证配置写入返回时已完成重载。
+        """
         event = Event(etype, data, priority)
         with self.__lifecycle_lock:
             if self.__lifecycle_state != "running":
@@ -578,7 +669,9 @@ class EventManager(metaclass=Singleton):
 
     @staticmethod
     def __wait_strict_async_handler(coroutine: Any) -> Any:
-        """在主事件循环等待异步处理器，禁止循环线程同步等待自身。"""
+        """
+        在主事件循环等待异步处理器，禁止循环线程同步等待自身。
+        """
         loop = main_loop_registry.require()
         try:
             running_loop = asyncio.get_running_loop()
@@ -590,10 +683,11 @@ class EventManager(metaclass=Singleton):
         return asyncio.run_coroutine_threadsafe(coroutine, loop).result()
 
     async def async_send_event(self, etype: Union[EventType, ChainEventType],
-                               data: Optional[Union[Dict, ChainEventData]] = None,
+                               data: Optional[Union[Dict[str, Any], BaseEventData]] = None,
                                priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
         """
-        异步发送事件，根据事件类型决定是广播事件还是链式事件
+        异步发送事件，根据事件类型决定是广播事件还是链式事件。
+
         :param etype: 事件类型 (EventType 或 ChainEventType)
         :param data: 可选，事件数据
         :param priority: 广播事件的优先级，默认为 10
@@ -601,74 +695,83 @@ class EventManager(metaclass=Singleton):
         """
         event = Event(etype, data, priority)
         if isinstance(etype, EventType):
-            return self.__trigger_broadcast_event(event)
+            self.__trigger_broadcast_event(event)
+            return None
         elif isinstance(etype, ChainEventType):
             return await self.__trigger_chain_event_async(event)
         else:
             logger.error(f"Unknown event type: {etype}")
         return None
 
-    def add_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable,
-                           priority: Optional[int] = DEFAULT_EVENT_PRIORITY):
+    def add_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable[..., Any],
+                           priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> None:
         """
-        注册事件处理器，将处理器添加到对应的事件订阅列表中
+        注册事件处理器，将处理器添加到对应的事件订阅列表中。
+
         :param event_type: 事件类型 (EventType 或 ChainEventType)
         :param handler: 处理器
         :param priority: 可选，链式事件的优先级，默认为 10；广播事件不需要优先级
         """
         self.__registry.add(event_type, handler, priority or DEFAULT_EVENT_PRIORITY)
 
-    def remove_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable):
+    def remove_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable[..., Any]) -> None:
         """
-        移除事件处理器，将处理器从对应事件的订阅列表中删除
+        移除事件处理器，将处理器从对应事件的订阅列表中删除。
+
         :param event_type: 事件类型 (EventType 或 ChainEventType)
         :param handler: 要移除的处理器
         """
         self.__registry.remove(event_type, handler)
 
-    def disable_event_handler(self, target: Union[Callable, type]):
+    def disable_event_handler(self, target: Union[Callable[..., Any], type]) -> None:
         """
-        禁用指定的事件处理器或事件处理器类
+        禁用指定的事件处理器或事件处理器类。
+
         :param target: 处理器函数或类
         """
         self.__registry.disable(target)
 
-    def enable_event_handler(self, target: Union[Callable, type]):
+    def enable_event_handler(self, target: Union[Callable[..., Any], type]) -> None:
         """
-        启用指定的事件处理器或事件处理器类
+        启用指定的事件处理器或事件处理器类。
+
         :param target: 处理器函数或类
         """
         self.__registry.enable(target)
 
-    def visualize_handlers(self) -> List[Dict]:
+    def visualize_handlers(self) -> List[Dict[str, Any]]:
         """
-        可视化所有事件处理器，包括是否被禁用的状态
+        可视化所有事件处理器，包括是否被禁用的状态。
+
         :return: 处理器列表，包含事件类型、处理器标识符、优先级（如果有）和状态
         """
 
         return self.__registry.visualize()
 
     @classmethod
-    def __get_handler_identifier(cls, target: Union[Callable, type]) -> Optional[str]:
+    def __get_handler_identifier(cls, target: Union[Callable[..., Any], type]) -> Optional[str]:
         """
-        获取处理器或处理器类的唯一标识符，包括模块名和类名/方法名
+        获取处理器或处理器类的唯一标识符，包括模块名和类名/方法名。
+
         :param target: 处理器函数或类
         :return: 唯一标识符
         """
         return EventRegistry.handler_identifier(target)
 
     @classmethod
-    def __get_class_from_callable(cls, handler: Callable) -> Optional[str]:
+    def __get_class_from_callable(cls, handler: Callable[..., Any]) -> Optional[str]:
         """
-        获取可调用对象所属类的唯一标识符
+        获取可调用对象所属类的唯一标识符。
+
         :param handler: 可调用对象（函数、方法等）
         :return: 类的唯一标识符
         """
         return EventRegistry.handler_class_identifier(handler)
 
-    def __is_handler_enabled(self, handler: Callable) -> bool:
+    def __is_handler_enabled(self, handler: Callable[..., Any]) -> bool:
         """
-        检查处理器是否已启用（没有被禁用）
+        检查处理器是否已启用（没有被禁用）。
+
         :param handler: 处理器函数
         :return: 如果处理器启用则返回 True，否则返回 False
         """
@@ -676,7 +779,7 @@ class EventManager(metaclass=Singleton):
 
     def __trigger_chain_event(self, event: Event) -> Optional[Event]:
         """
-        触发链式事件，按顺序调用订阅的处理器，并记录处理耗时
+        触发链式事件，按顺序调用订阅的处理器，并记录处理耗时。
         """
         logger.debug(f"Triggering synchronous chain event: {event}")
         dispatch = self.__dispatch_chain_event(event)
@@ -684,15 +787,16 @@ class EventManager(metaclass=Singleton):
 
     async def __trigger_chain_event_async(self, event: Event) -> Optional[Event]:
         """
-        异步触发链式事件，按顺序调用订阅的处理器，并记录处理耗时
+        异步触发链式事件，按顺序调用订阅的处理器，并记录处理耗时。
         """
         logger.debug(f"Triggering asynchronous chain event: {event}")
         dispatch = await self.__dispatch_chain_event_async(event)
         return event if dispatch else None
 
-    def __trigger_broadcast_event(self, event: Event):
+    def __trigger_broadcast_event(self, event: Event) -> None:
         """
-        触发广播事件，将事件插入到优先级队列中
+        触发广播事件，将事件插入到优先级队列中。
+
         :param event: 要处理的事件对象
         """
         logger.debug(f"Triggering broadcast event: {event}")
@@ -707,27 +811,30 @@ class EventManager(metaclass=Singleton):
             self.__event_queue.put((event.priority, event))
         record_metric(
             "event.queue.depth",
-            self.__event_queue.qsize(),
+            1,
             delivery="broadcast",
         )
 
     def __dispatch_chain_event(self, event: Event) -> bool:
         """
-        同步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间
+        同步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间。
+
         :param event: 要调度的事件对象
         """
         return self.__dispatcher.dispatch_chain(event)
 
     async def __dispatch_chain_event_async(self, event: Event) -> bool:
         """
-        异步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间
+        异步方式调度链式事件，按优先级顺序逐个调用事件处理器，并记录每个处理器的处理时间。
+
         :param event: 要调度的事件对象
         """
         return await self.__dispatcher.async_dispatch_chain(event)
 
-    def __dispatch_broadcast_event(self, event: Event):
+    def __dispatch_broadcast_event(self, event: Event) -> None:
         """
-        异步方式调度广播事件，通过线程池逐个调用事件处理器
+        异步方式调度广播事件，通过线程池逐个调用事件处理器。
+
         :param event: 要调度的事件对象
         """
         self.__dispatcher.dispatch_broadcast(event)
@@ -735,7 +842,7 @@ class EventManager(metaclass=Singleton):
     @classmethod
     def __should_dispatch_to_target_plugin(
             cls,
-            handler: Callable,
+            handler: Callable[..., Any],
             handler_identifier: str,
             target_plugin_id: str,
     ) -> bool:
@@ -748,62 +855,71 @@ class EventManager(metaclass=Singleton):
             target_plugin_id,
         )
 
-    def __safe_invoke_handler(self, handler: Callable, event: Event):
+    def __safe_invoke_handler(self, handler: Callable[..., Any], event: Event) -> None:
         """
-        调用处理器，处理链式或广播事件
+        调用处理器，处理链式或广播事件。
+
         :param handler: 处理器
         :param event: 事件对象
         """
         self.__dispatcher.safe_invoke_sync(handler, event)
 
-    async def __safe_invoke_handler_async(self, handler: Callable, event: Event):
+    async def __safe_invoke_handler_async(self, handler: Callable[..., Any], event: Event) -> None:
         """
-        异步调用处理器，处理链式事件
+        异步调用处理器，处理链式事件。
+
         :param handler: 处理器
         :param event: 事件对象
         """
         await self.__dispatcher.safe_invoke_async(handler, event)
 
-    def __invoke_handler_by_type_sync(self, handler: Callable, event: Event):
+    def __invoke_handler_by_type_sync(self, handler: Callable[..., Any], event: Event) -> None:
         """
-        同步方式根据处理器类型调用相应的方法
+        同步方式根据处理器类型调用相应的方法。
+
         :param handler: 处理器
         :param event: 要处理的事件对象
         """
         self.__dispatcher.invoke_sync(handler, event)
 
-    async def __invoke_handler_by_type_async(self, handler: Callable, event: Event):
+    async def __invoke_handler_by_type_async(self, handler: Callable[..., Any], event: Event) -> None:
         """
-        异步方式根据处理器类型调用相应的方法
+        异步方式根据处理器类型调用相应的方法。
+
         :param handler: 处理器
         :param event: 要处理的事件对象
         """
         await self.__dispatcher.invoke_async(handler, event)
 
     @staticmethod
-    def __parse_handler_names(handler: Callable) -> Tuple[str, str]:
+    def __parse_handler_names(handler: Callable[..., Any]) -> Tuple[str, str]:
         """
-        解析处理器的类名和方法名
+        解析处理器的类名和方法名。
+
         :param handler: 处理器
-        :return: (class_name, method_name)
+        :return: 类名与方法名的二元组，用于查找已绑定处理器
         """
         return EventBindingResolver.parse_handler_names(handler)
 
     @staticmethod
-    def __get_handler_owner_class(handler: Callable) -> Optional[Type[Any]]:
-        """从处理器对象本身解析声明它的类，不按命名约定动态导入模块。"""
+    def __get_handler_owner_class(handler: Callable[..., Any]) -> Optional[Type[Any]]:
+        """
+        从处理器对象本身解析声明它的类，不按命名约定动态导入模块。
+        """
         return EventBindingResolver.owner_class(handler)
 
     def __resolve_handler(
             self,
-            handler: Callable,
-    ) -> Optional[Tuple[Callable, EventHandlerBinding, str, str]]:
-        """将装饰阶段保存的函数解析为当前运行实例上的可调用方法。"""
+            handler: Callable[..., Any],
+    ) -> Optional[Tuple[Callable[..., Any], EventHandlerBinding, str, str]]:
+        """
+        将装饰阶段保存的函数解析为当前运行实例上的可调用方法。
+        """
         return self.__binding_resolver.resolve(handler)
 
-    def __broadcast_consumer_loop(self):
+    def __broadcast_consumer_loop(self) -> None:
         """
-        持续从队列中提取事件的后台广播消费者线程
+        持续从队列中提取事件的后台广播消费者线程。
         """
         jitter_factor = 0.1
         rate_limiter = ExponentialBackoffRateLimiter(base_wait=INITIAL_EVENT_QUEUE_IDLE_TIMEOUT_SECONDS,
@@ -819,7 +935,7 @@ class EventManager(metaclass=Singleton):
                         break
                     record_metric(
                         "event.queue.depth",
-                        self.__event_queue.qsize(),
+                        -1,
                         delivery="broadcast",
                     )
                     rate_limiter.reset()
@@ -831,16 +947,16 @@ class EventManager(metaclass=Singleton):
                 rate_limiter.trigger_limit()
 
     @staticmethod
-    def __log_event_lifecycle(event: Event, stage: str):
+    def __log_event_lifecycle(event: Event, stage: str) -> None:
         """
-        记录事件的生命周期日志
+        记录事件的生命周期日志。
         """
         logger.debug(f"{stage} - {event}")
 
     def __handle_event_error(self, event: Event, module_name: str,
-                             class_name: str, method_name: str, e: Exception):
+                             class_name: str, method_name: str, e: Exception) -> None:
         """
-        全局错误处理器，用于处理事件处理中的异常
+        全局错误处理器，用于处理事件处理中的异常。
         """
         self.__error_policy.handle(
             event=event,
@@ -856,8 +972,9 @@ class EventManager(metaclass=Singleton):
             priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
     ) -> Callable[[_EventHandler], _EventHandler]:
         """
-        事件注册装饰器，用于将函数注册为事件的处理器
-        :param etype:
+        事件注册装饰器，用于将函数注册为事件的处理器。
+
+        :param etype: 要登记的事件范围，支持以下形式
             - 单个事件类型成员 (如 EventType.MetadataScrape, ChainEventType.PluginAction)
             - 事件类型类 (EventType, ChainEventType)
             - 或事件类型成员的列表
@@ -865,20 +982,18 @@ class EventManager(metaclass=Singleton):
         """
 
         def decorator(f: _EventHandler) -> _EventHandler:
-            # 将输入的事件类型统一转换为列表格式
+            """
+            登记处理器的事件类型和优先级，返回原函数以保持直接调用行为。
+            """
             if isinstance(etype, list):
-                # 传入的已经是列表，直接使用
                 event_list = etype
             else:
-                # 不是列表则包裹成单一元素的列表
-                event_list = [etype]
+                event_list = [cast(_EventKind, etype)]
 
-            # 遍历列表，处理每个事件类型
             for event in event_list:
                 if isinstance(event, (EventType, ChainEventType)):
                     self.add_event_listener(event, f, priority)
                 elif event is EventType or event is ChainEventType:
-                    # 如果是 EventType 或 ChainEventType 类，提取该类中的所有成员
                     for et in event.__members__.values():
                         self.add_event_listener(et, f, priority)
                 else:

@@ -1,3 +1,7 @@
+"""
+验证 AniList 媒体标识、标题识别和续作匹配的来源语义。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock, Mock
 from xml.dom import minidom
@@ -18,7 +22,9 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture
 def anilist_info() -> dict:
-    """构造不依赖网络的AniList媒体详情。"""
+    """
+    构造不依赖网络的AniList媒体详情。
+    """
     return {
         "id": 154587,
         "title": {
@@ -76,7 +82,9 @@ def anilist_info() -> dict:
 
 
 def test_anilist_id_recognition_normalizes_media_info(anilist_info: dict) -> None:
-    """AniList ID识别应生成可供整理和刮削复用的统一媒体信息。"""
+    """
+    AniList ID识别应生成可供整理和刮削复用的统一媒体信息。
+    """
     module = AniListModule()
     module.anilist_api = Mock()
     module.anilist_api.detail.return_value = anilist_info
@@ -108,7 +116,9 @@ def test_anilist_id_recognition_normalizes_media_info(anilist_info: dict) -> Non
 def test_anilist_sequel_entry_matches_series_numbered_torrent(
     anilist_info: dict, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AniList 独立续季条目应按真实季号和基础别名匹配整部剧编号的资源。"""
+    """
+    AniList 独立续季条目应按真实季号和基础别名匹配整部剧编号的资源。
+    """
     info = {
         **anilist_info,
         "id": 135865,
@@ -166,7 +176,9 @@ def test_anilist_sequel_entry_matches_series_numbered_torrent(
 
 
 def test_anilist_sequel_without_torrent_year_uses_shared_tmdb_identity() -> None:
-    """无年份基础标题需要候选与 AniList 条目共享 TMDB 身份才能消歧。"""
+    """
+    无年份基础标题需要候选与 AniList 条目共享 TMDB 身份才能消歧。
+    """
     target = MediaInfo(
         media_source=MediaSource.AniList,
         media_id="135865",
@@ -204,7 +216,9 @@ def test_anilist_sequel_without_torrent_year_uses_shared_tmdb_identity() -> None
 
 
 def test_anilist_title_recognition_respects_request_source(anilist_info: dict) -> None:
-    """标题识别仅在本次请求明确选择AniList时使用AniList候选项。"""
+    """
+    标题识别仅在本次请求明确选择AniList时使用AniList候选项。
+    """
     module = AniListModule()
     module.anilist_api = Mock()
     module.anilist_api.search.return_value = [anilist_info]
@@ -223,7 +237,9 @@ def test_anilist_title_recognition_respects_request_source(anilist_info: dict) -
 
 
 def test_async_anilist_title_recognition(anilist_info: dict) -> None:
-    """异步AniList标题识别应与同步结果保持一致。"""
+    """
+    异步AniList标题识别应与同步结果保持一致。
+    """
     module = AniListModule()
     module.anilist_api = Mock()
     module.anilist_api.async_search = AsyncMock(return_value=[anilist_info])
@@ -241,7 +257,9 @@ def test_async_anilist_title_recognition(anilist_info: dict) -> None:
 
 
 def test_anilist_scraper_generates_nfo_and_images(anilist_info: dict) -> None:
-    """AniList媒体信息应生成带来源ID的NFO以及主海报和背景图。"""
+    """
+    AniList媒体信息应生成带来源ID的NFO以及主海报和背景图。
+    """
     module = AniListModule()
     module.scraper = MediaScraperHelper()
     media = MediaInfo(anilist_info=anilist_info)
@@ -262,7 +280,9 @@ def test_anilist_scraper_generates_nfo_and_images(anilist_info: dict) -> None:
 
 
 def test_anilist_api_extracts_graphql_errors_without_network() -> None:
-    """AniList客户端应把GraphQL错误响应统一视为无结果。"""
+    """
+    AniList客户端应把GraphQL错误响应统一视为无结果。
+    """
     response = Mock(status_code=200)
     response.json.return_value = {"errors": [{"message": "invalid"}]}
 
@@ -270,7 +290,9 @@ def test_anilist_api_extracts_graphql_errors_without_network() -> None:
 
 
 def test_anilist_title_falls_back_to_native_language(anilist_info: dict) -> None:
-    """anilist-chinese 未注入中文标题时应优先回退原语言标题。"""
+    """
+    anilist-chinese 未注入中文标题时应优先回退原语言标题。
+    """
     anilist_info["synonyms"] = ["Frieren"]
     anilist_info["title"].pop("chinese")
 
@@ -282,7 +304,9 @@ def test_anilist_title_falls_back_to_native_language(anilist_info: dict) -> None
 def test_anilist_title_uses_injected_chinese_synonym_for_latin_title(
     anilist_info: dict,
 ) -> None:
-    """代理主标题仍为拉丁字母时应选择其追加的中文别名。"""
+    """
+    代理主标题仍为拉丁字母时应选择其追加的中文别名。
+    """
     anilist_info["title"]["chinese"] = "Frieren"
     anilist_info["synonyms"] = ["Official Alias", "葬送的芙莉莲"]
 

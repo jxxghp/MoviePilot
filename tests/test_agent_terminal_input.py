@@ -1,4 +1,6 @@
-"""真实终端输入、EOF、中断与平台信号合同；测试只拥有自身创建的进程和描述符。"""
+"""
+真实终端输入、EOF、中断与平台信号合同；测试只拥有自身创建的进程和描述符。
+"""
 
 import asyncio
 import hashlib
@@ -26,19 +28,25 @@ pytestmark = pytest.mark.usefixtures("terminal_scope")
 
 
 def _command(code: str) -> str:
-    """使用当前虚拟环境，POSIX exec 让被测程序直接拥有会话进程与信号处理器。"""
+    """
+    使用当前虚拟环境，POSIX exec 让被测程序直接拥有会话进程与信号处理器。
+    """
     args = [sys.executable, "-u", "-c", code]
     return subprocess.list2cmdline(args) if os.name == "nt" else "exec " + shlex.join(args)
 
 
 def _cursor(payload: dict[str, Any]) -> dict[str, int]:
-    """只续传已经交付的位置，不把输入/信号回执的高水位当成消费证据。"""
+    """
+    只续传已经交付的位置，不把输入/信号回执的高水位当成消费证据。
+    """
     return {"since_seq": payload["output_until_seq"], "since_offset": payload["output_until_offset"]}
 
 
 @pytest_asyncio.fixture
 async def manager() -> AsyncIterator[_TerminalSessionManager]:
-    """每个测试拥有独立管理器，失败与取消时也终止全部测试子进程。"""
+    """
+    每个测试拥有独立管理器，失败与取消时也终止全部测试子进程。
+    """
     current = _TerminalSessionManager()
     try:
         yield current
@@ -47,7 +55,9 @@ async def manager() -> AsyncIterator[_TerminalSessionManager]:
 
 
 async def _ready(manager: _TerminalSessionManager, code: str, *, use_pty: bool = False) -> dict[str, Any]:
-    """等待程序显式发布 READY，不启动用户登录 shell，也不靠固定休眠猜就绪。"""
+    """
+    等待程序显式发布 READY，不启动用户登录 shell，也不靠固定休眠猜就绪。
+    """
     options = {"shell": "/bin/sh", "login": False} if os.name == "posix" else {}
     payload = await asyncio.wait_for(manager.start(
         command=_command(code), use_pty=use_pty, yield_time_ms=10000, since_offset=0, **options,
@@ -57,7 +67,9 @@ async def _ready(manager: _TerminalSessionManager, code: str, *, use_pty: bool =
 
 
 async def _read_to(manager: _TerminalSessionManager, current: dict[str, Any], marker: str = "") -> tuple[str, dict[str, Any]]:
-    """读到指定程序握手或输出最终收尾，超时仅用于测试失败保护。"""
+    """
+    读到指定程序握手或输出最终收尾，超时仅用于测试失败保护。
+    """
     output = current["output"]
     async with asyncio.timeout(5):
         while (marker and marker not in output) or (not marker and not current["output_complete"]):
@@ -68,7 +80,9 @@ async def _read_to(manager: _TerminalSessionManager, current: dict[str, Any], ma
 
 @pytest.mark.asyncio
 async def test_pipe_last_input_and_half_close_deliver_all_bytes(manager: _TerminalSessionManager) -> None:
-    """依赖 EOF 的真实程序必须收到全部末段输入，并能继续读完最终输出。"""
+    """
+    依赖 EOF 的真实程序必须收到全部末段输入，并能继续读完最终输出。
+    """
     payload = await _ready(manager, "import sys,hashlib\nprint('READY',flush=True)\ndata=sys.stdin.buffer.read()\nprint('RESULT:'+str(len(data))+':'+hashlib.sha256(data).hexdigest(),flush=True)")
     text = "\x03\x04" + "完整末段😀\n" * 6000
     data = text.encode()
@@ -90,7 +104,9 @@ async def test_pipe_last_input_and_half_close_deliver_all_bytes(manager: _Termin
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="本例验证 POSIX PTY 的双向描述符")
 async def test_pty_half_close_rejects_before_input_and_keeps_output_readable(manager: _TerminalSessionManager) -> None:
-    """不支持的组合不能先写入 BAD，也不能通过关闭 master 破坏输出。"""
+    """
+    不支持的组合不能先写入 BAD，也不能通过关闭 master 破坏输出。
+    """
     payload = await _ready(manager, "import sys,tty\ntty.setraw(0)\nprint('READY',flush=True)\ndata=sys.stdin.buffer.read(1)\nprint('GOT:'+str(data[0]),flush=True)", use_pty=True)
     session = manager._sessions[payload["session_id"]]
     descriptor = session.master_fd
@@ -107,7 +123,9 @@ async def test_pty_half_close_rejects_before_input_and_keeps_output_readable(man
 async def test_large_raw_pty_input_retries_short_writes_without_losing_tail(
     manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """独立控制管道暂停读者，确定性填满 PTY 后再释放，验证真实短写不会丢尾。"""
+    """
+    独立控制管道暂停读者，确定性填满 PTY 后再释放，验证真实短写不会丢尾。
+    """
     control_read, control_write = os.pipe()
     os.set_inheritable(control_read, True)
     text = "0123456789abcdef" * 4096
@@ -125,7 +143,9 @@ async def test_large_raw_pty_input_retries_short_writes_without_losing_tail(
         descriptor = manager._sessions[payload["session_id"]].master_fd
 
         def observe_write(fd: int, content: Any) -> int:
-            """只观察该测试 PTY 的真实写入计数与回压，不替换内核返回值。"""
+            """
+            只观察该测试 PTY 的真实写入计数与回压，不替换内核返回值。
+            """
             try:
                 count = original_write(fd, content)
             except BlockingIOError:
@@ -157,7 +177,9 @@ async def test_large_raw_pty_input_retries_short_writes_without_losing_tail(
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="本例验证 POSIX SIGINT 处理器")
 async def test_interrupt_calls_handler_once_and_program_remains_interactive(manager: _TerminalSessionManager) -> None:
-    """SIGINT 不设置 kill_requested，也不在等待后升级；处理器返回后仍能输入。"""
+    """
+    SIGINT 不设置 kill_requested，也不在等待后升级；处理器返回后仍能输入。
+    """
     code = ("import signal,sys\nsignal.signal(signal.SIGINT,lambda *_:print('INTERRUPTED',flush=True))\n"
             "print('READY',flush=True)\nfor line in sys.stdin:\n print('ECHO:'+line.strip(),flush=True)\n if line.strip()=='quit':break\n")
     payload = await _ready(manager, code)
@@ -175,7 +197,9 @@ async def test_interrupt_calls_handler_once_and_program_remains_interactive(mana
 @pytest.mark.asyncio
 @pytest.mark.parametrize("value", ["NOT_A_SIGNAL", "", 0, "0", True, False, -1, 99999, "SIG_IGN", "SIG_UNBLOCK"])
 async def test_invalid_signal_has_no_os_or_kill_intent_effect(value: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """未知信号、处理器常量和无效编号必须在任何状态变化之前拒绝。"""
+    """
+    未知信号、处理器常量和无效编号必须在任何状态变化之前拒绝。
+    """
     current = _TerminalSessionManager()
     session = _TerminalSession(owner=current_terminal_scope(), session_id="signal-validation", command="memory-only", cwd=".", pid=0, use_pty=False)
     current._sessions[session.session_id] = session
@@ -191,7 +215,9 @@ async def test_invalid_signal_has_no_os_or_kill_intent_effect(value: Any, monkey
 async def test_concurrent_pipe_write_then_close_serializes_final_segment(
     manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """真实管道首段尚未 drain 时，close 请求必须等待输入锁并完整交付末段。"""
+    """
+    真实管道首段尚未 drain 时，close 请求必须等待输入锁并完整交付末段。
+    """
     payload = await _ready(manager, "import sys\nprint('READY',flush=True)\nprint('DATA:'+sys.stdin.read(),flush=True)")
     session = manager._sessions[payload["session_id"]]
     writer = session.process.stdin
@@ -200,7 +226,9 @@ async def test_concurrent_pipe_write_then_close_serializes_final_segment(
     count = 0
 
     async def drain() -> None:
-        """通过事件放大真实 drain 的持锁窗口，不伪造实际字节交付。"""
+        """
+        通过事件放大真实 drain 的持锁窗口，不伪造实际字节交付。
+        """
         nonlocal count
         count += 1
         if count == 1:
@@ -230,13 +258,17 @@ async def test_concurrent_pipe_write_then_close_serializes_final_segment(
 
 @pytest.mark.asyncio
 async def test_concurrent_input_after_close_is_rejected_before_writer_receives_it() -> None:
-    """关闭写端等待收尾期间，后续输入不能插入 close 与完成确认之间。"""
+    """
+    关闭写端等待收尾期间，后续输入不能插入 close 与完成确认之间。
+    """
     current = _TerminalSessionManager()
     entered, release = asyncio.Event(), asyncio.Event()
     values: list[bytes] = []
 
     async def wait_closed() -> None:
-        """确定性保持关闭请求持有输入锁，测试不启动虚构 PID。"""
+        """
+        确定性保持关闭请求持有输入锁，测试不启动虚构 PID。
+        """
         entered.set()
         await release.wait()
 
@@ -261,7 +293,9 @@ async def test_concurrent_input_after_close_is_rejected_before_writer_receives_i
 
 @pytest.mark.asyncio
 async def test_input_control_preserves_cursor_validation_and_action_output_error(manager: _TerminalSessionManager) -> None:
-    """非法游标先于 stdin 动作，已发生 half-close 后的小页错误保留会话和输入事实。"""
+    """
+    非法游标先于 stdin 动作，已发生 half-close 后的小页错误保留会话和输入事实。
+    """
     payload = await _ready(manager, "import sys\nprint('READY',flush=True)\nprint('DATA:'+sys.stdin.read(),flush=True)")
     session = manager._sessions[payload["session_id"]]
     with pytest.raises(TerminalOutputError):
@@ -275,7 +309,9 @@ async def test_input_control_preserves_cursor_validation_and_action_output_error
 
 @pytest.mark.asyncio
 async def test_windows_interrupt_uses_actual_break_event_without_terminate(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Windows 控制事件与终止 API 分开，仅报告实际调用的 CTRL_BREAK_EVENT。"""
+    """
+    Windows 控制事件与终止 API 分开，仅报告实际调用的 CTRL_BREAK_EVENT。
+    """
     current = _TerminalSessionManager()
     process = SimpleNamespace(send_signal=Mock(), terminate=Mock(), kill=Mock())
     session = _TerminalSession(owner=current_terminal_scope(), session_id="windows-interrupt", command="memory-only", cwd=".", pid=0, use_pty=False, process=process)
@@ -292,7 +328,9 @@ async def test_windows_interrupt_uses_actual_break_event_without_terminate(monke
 
 @pytest.mark.asyncio
 async def test_windows_missing_control_event_and_unmapped_kill_never_terminate(monkeypatch: pytest.MonkeyPatch) -> None:
-    """缺少控制事件或请求未映射的信号时明确失败，不能静默执行 terminate。"""
+    """
+    缺少控制事件或请求未映射的信号时明确失败，不能静默执行 terminate。
+    """
     current = _TerminalSessionManager()
     process = SimpleNamespace(send_signal=Mock(), terminate=Mock(), kill=Mock())
     session = _TerminalSession(owner=current_terminal_scope(), session_id="windows-unavailable", command="memory-only", cwd=".", pid=0, use_pty=False, process=process)
@@ -315,12 +353,16 @@ async def test_windows_missing_control_event_and_unmapped_kill_never_terminate(m
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="验证 POSIX fork 后 exec 失败分支")
 async def test_pty_exec_failure_exits_child_without_parent_logic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """以模拟 fork 子分支验证失败必须 _exit，不能登记会话或回到父事件循环。"""
+    """
+    以模拟 fork 子分支验证失败必须 _exit，不能登记会话或回到父事件循环。
+    """
     current = _TerminalSessionManager()
     policy = AgentShell(kind="sh", executable="/bin/sh", arguments=("-c",), login=False)
 
     class ChildExited(BaseException):
-        """只用于替代不应真的退出 pytest 的 os._exit。"""
+        """
+        只用于替代不应真的退出 pytest 的 os._exit。
+        """
 
     exit_child = Mock(side_effect=ChildExited())
     monkeypatch.setattr(terminal._pty, "fork", lambda: (0, 12345))
@@ -338,7 +380,9 @@ async def test_pty_exec_failure_exits_child_without_parent_logic(tmp_path: Path,
 
 @pytest.mark.asyncio
 async def test_pipe_shell_policy_metadata_matches_explicit_non_login_execution(manager: _TerminalSessionManager) -> None:
-    """真实 pipe 命令回显由同一 AgentShell 合同选择的解释器和登录模式。"""
+    """
+    真实 pipe 命令回显由同一 AgentShell 合同选择的解释器和登录模式。
+    """
     payload = await _ready(manager, "import sys\nprint('READY',flush=True)\nsys.stdin.read()")
     if os.name == "posix":
         assert payload["shell"] == "/bin/sh" and payload["login"] is False

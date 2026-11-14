@@ -1,3 +1,7 @@
+"""
+验证 Agent 任务执行记录迁移兼容旧库、新库和 PostgreSQL 标识。
+"""
+
 import importlib
 
 import sqlalchemy as sa
@@ -13,7 +17,9 @@ MIGRATION = "database.versions.f4c8d2a7b1e6_3_0_6"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -21,7 +27,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _legacy_agent_task(metadata: sa.MetaData) -> None:
-    """建立迁移前的最小 AgentTask 表。"""
+    """
+    建立迁移前的最小 AgentTask 表。
+    """
     sa.Table(
         "agenttask",
         metadata,
@@ -33,7 +41,9 @@ def _legacy_agent_task(metadata: sa.MetaData) -> None:
 def test_agent_task_run_migration_upgrades_legacy_schema_and_downgrades(
         monkeypatch,
 ) -> None:
-    """旧 SQLite schema 应可重复升级并完整回滚新增结构。"""
+    """
+    旧 SQLite schema 应可重复升级并完整回滚新增结构。
+    """
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()
     _legacy_agent_task(metadata)
@@ -68,7 +78,9 @@ def test_agent_task_run_migration_upgrades_legacy_schema_and_downgrades(
 
 
 def test_agent_task_run_migration_accepts_fresh_current_schema(monkeypatch) -> None:
-    """create_all 已建立当前结构时，迁移重复升级不得创建冲突对象。"""
+    """
+    create_all 已建立当前结构时，迁移重复升级不得创建冲突对象。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         AgentTask.__table__.create(connection)
@@ -98,7 +110,9 @@ def test_agent_task_run_migration_accepts_fresh_current_schema(monkeypatch) -> N
 
 
 def test_agent_task_run_migration_matches_postgresql_identity() -> None:
-    """独立 Alembic 路径应与 PostgreSQL create_all 使用相同 Identity。"""
+    """
+    独立 Alembic 路径应与 PostgreSQL create_all 使用相同 Identity。
+    """
     migration = importlib.import_module(MIGRATION)
     metadata = sa.MetaData()
     table = sa.Table(

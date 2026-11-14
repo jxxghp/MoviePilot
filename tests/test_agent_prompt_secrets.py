@@ -1,10 +1,16 @@
+"""
+验证 Agent 提示词与环境说明不泄露凭据，并保留显式敏感读取边界。
+"""
+
 from app.agent.prompt import PromptManager
 from app.agent.tools.impl.api import MoviePilotApiInput
 from app.runtime.config import settings
 
 
 def test_moviepilot_info_does_not_expose_api_token_or_database_password(monkeypatch) -> None:
-    """系统提示词中的运行信息不能暴露敏感或细粒度部署信息。"""
+    """
+    系统提示词中的运行信息不能暴露敏感或细粒度部署信息。
+    """
     monkeypatch.setattr(settings, "API_TOKEN", "prompt-secret-token")
     monkeypatch.setattr(settings, "DB_TYPE", "postgresql")
     monkeypatch.setattr(settings, "DB_POSTGRESQL_HOST", "db.example.local")
@@ -43,7 +49,9 @@ def test_moviepilot_info_does_not_expose_api_token_or_database_password(monkeypa
 
 
 def test_moviepilot_info_lists_command_names_without_paths(monkeypatch) -> None:
-    """系统提示词可注入命令名称，但不应暴露命令绝对路径。"""
+    """
+    系统提示词可注入命令名称，但不应暴露命令绝对路径。
+    """
     command_paths = {
         "git": "/usr/bin/git",
         "rg": "/opt/homebrew/bin/rg",
@@ -68,7 +76,9 @@ def test_moviepilot_info_lists_command_names_without_paths(monkeypatch) -> None:
 
 
 def test_agent_prompt_delegates_explicit_secret_reads_to_host_confirmation() -> None:
-    """管理员明确索取密钥时，模型应发起工具调用并把授权交给宿主。"""
+    """
+    管理员明确索取密钥时，模型应发起工具调用并把授权交给宿主。
+    """
     prompt = PromptManager().get_agent_prompt(channel="webagent")
 
     assert "config.system.get" in prompt
@@ -80,4 +90,4 @@ def test_agent_prompt_delegates_explicit_secret_reads_to_host_confirmation() -> 
     assert "Never expose or repeat the secret" in prompt
 
     field_description = MoviePilotApiInput.model_fields["body"].description or ""
-    assert "Skill" in field_description
+    assert "已加载技能契约" in field_description

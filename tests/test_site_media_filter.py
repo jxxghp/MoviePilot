@@ -1,3 +1,7 @@
+"""
+验证站点媒体类型限制与资源筛选。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -22,7 +26,9 @@ from app.schemas.types import MediaType
     ],
 )
 def test_indexer_supports_requested_media_type(indexer, media_type, expected):
-    """站点媒体声明和分类配置应生成正确的媒体类型兼容结果。"""
+    """
+    站点媒体声明和分类配置应生成正确的媒体类型兼容结果。
+    """
     assert site_endpoint._indexer_supports_media_type(indexer, media_type) is expected
 
 
@@ -35,7 +41,9 @@ def test_indexer_supports_requested_media_type(indexer, media_type, expected):
     ],
 )
 def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, media_type, expected_ids):
-    """按媒体类型查询时应保留兼容启用站点，并维持数据库优先级顺序。"""
+    """
+    按媒体类型查询时应保留兼容启用站点，并维持数据库优先级顺序。
+    """
     sites = [
         SimpleNamespace(id=1, domain="movie.example", is_active=True),
         SimpleNamespace(id=2, domain="music.example", is_active=True),
@@ -52,7 +60,9 @@ def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, m
     ]
 
     async def list_sites_from_query(**filters):
-        """模拟站点查询端口在数据库层应用启用状态和站点标识筛选。"""
+        """
+        模拟站点查询端口在数据库层应用启用状态和站点标识筛选。
+        """
         site_ids = set(filters["site_ids"])
         domains = set(filters["domains"])
         return [
@@ -89,7 +99,9 @@ def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, m
 
 
 def test_read_sites_by_media_type_rejects_unknown_type():
-    """未知媒体类型应返回明确的客户端参数错误。"""
+    """
+    未知媒体类型应返回明确的客户端参数错误。
+    """
     with pytest.raises(HTTPException) as error:
         asyncio.run(
             site_endpoint.read_sites_by_media_type(
@@ -103,7 +115,9 @@ def test_read_sites_by_media_type_rejects_unknown_type():
 
 
 def test_site_mapping_uses_async_query_port():
-    """异步站点映射不得在事件循环内调用同步数据库查询。"""
+    """
+    异步站点映射不得在事件循环内调用同步数据库查询。
+    """
     sites = [
         SimpleNamespace(domain="one.example", name="One"),
         SimpleNamespace(domain="two.example", name="Two"),

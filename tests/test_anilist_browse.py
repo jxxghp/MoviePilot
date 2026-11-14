@@ -1,11 +1,29 @@
+"""
+验证 AniList 浏览筛选、官方查询的中文合并及季节参数映射。
+"""
+
 import asyncio
 from datetime import date
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from app.api.endpoints import anilist as anilist_endpoint
 from app.domain.context import MediaInfo
 from app.modules.anilist import AniListModule
+from app.modules.anilist import anilist as anilist_client
 from app.modules.anilist.anilist import AniListApi
+
+
+@pytest.fixture(autouse=True)
+def isolated_translations(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """
+    每个用例使用独立缓存目录及原始下载地址，防止中文数据跨用例串扰。
+    """
+    runtime_setting = anilist_client.get_runtime_setting
+    values = {"CACHE_PATH": tmp_path, "GITHUB_PROXY": None}
+    monkeypatch.setattr(anilist_client, "get_runtime_setting", lambda name: values[name] if name in values else runtime_setting(name))
 
 
 def _media_info(anilist_id: int = 154587) -> dict:
@@ -33,8 +51,10 @@ def _media_info(anilist_id: int = 154587) -> dict:
     }
 
 
-def test_anilist_client_uses_chinese_proxy_and_forwards_discover_filters() -> None:
-    """AniList 探索应通过中文代理并原样传递组合过滤条件。"""
+def test_anilist_client_forwards_discover_filters() -> None:
+    """
+    AniList 探索应原样传递组合过滤条件。
+    """
     client = AniListApi()
     client._invoke = Mock(return_value={"Page": {"media": [_media_info()]}})
 
@@ -51,7 +71,6 @@ def test_anilist_client_uses_chinese_proxy_and_forwards_discover_filters() -> No
         sort="SCORE_DESC",
     )
 
-    assert client._base_url == "https://trace.moe/anilist/"
     assert medias[0]["id"] == 154587
     variables = client._invoke.call_args.args[1]
     assert variables == {
@@ -70,9 +89,10 @@ def test_anilist_client_uses_chinese_proxy_and_forwards_discover_filters() -> No
     assert "synonyms" in client._page_query
 
 
-def test_anilist_client_falls_back_and_merges_chinese_dataset() -> None:
-    """中文代理不可用时应回退官方接口并合并项目中文数据。"""
-    proxy_response = Mock(status_code=403)
+def test_anilist_client_queries_official_and_merges_chinese_dataset() -> None:
+    """
+    直接请求官方接口并合并项目中文数据，避免探测已失效的中文代理。
+    """
     official_media = _media_info()
     official_media["title"].pop("chinese")
     official_media["synonyms"] = ["Official Alias"]
@@ -82,7 +102,7 @@ def test_anilist_client_falls_back_and_merges_chinese_dataset() -> None:
     }
     client = AniListApi()
     client._request = Mock()
-    client._request.post_res.side_effect = [proxy_response, official_response]
+    client._request.post_res.return_value = official_response
     client._request.get_json.return_value = [
         {
             "id": 154587,
@@ -99,16 +119,15 @@ def test_anilist_client_falls_back_and_merges_chinese_dataset() -> None:
         "Frieren at the Funeral",
     ]
     assert [call.args[0] for call in client._request.post_res.call_args_list] == [
-        client._base_url,
         client._official_url,
     ]
     client._request.get_json.assert_called_once_with(client._translations_url)
-    assert client._proxy_available is False
 
 
-def test_anilist_async_client_falls_back_without_real_network() -> None:
-    """异步中文代理失败时也应使用官方接口和同一中文数据集。"""
-    proxy_response = Mock(status_code=403)
+def test_anilist_async_client_queries_official_without_real_network() -> None:
+    """
+    异步查询也应直接使用官方接口和同一中文数据集。
+    """
     official_media = _media_info()
     official_media["title"].pop("chinese")
     official_response = Mock(status_code=200)
@@ -118,7 +137,7 @@ def test_anilist_async_client_falls_back_without_real_network() -> None:
     client = AniListApi()
     client._async_request = Mock()
     client._async_request.post_res = AsyncMock(
-        side_effect=[proxy_response, official_response]
+        return_value=official_response
     )
     client._async_request.get_json = AsyncMock(
         return_value=[
@@ -130,14 +149,15 @@ def test_anilist_async_client_falls_back_without_real_network() -> None:
 
     assert result["Page"]["media"][0]["title"]["chinese"] == "葬送的芙莉莲"
     assert [call.args[0] for call in client._async_request.post_res.call_args_list] == [
-        client._base_url,
         client._official_url,
     ]
     client._async_request.get_json.assert_awaited_once_with(client._translations_url)
 
 
 def test_anilist_current_season_maps_calendar_quarters() -> None:
-    """AniList 本季榜应按自然季度映射四季枚举。"""
+    """
+    AniList 本季榜应按自然季度映射四季枚举。
+    """
     assert AniListApi._current_season(date(2026, 1, 15)) == ("WINTER", 2026)
     assert AniListApi._current_season(date(2026, 4, 15)) == ("SPRING", 2026)
     assert AniListApi._current_season(date(2026, 7, 15)) == ("SUMMER", 2026)
@@ -145,7 +165,9 @@ def test_anilist_current_season_maps_calendar_quarters() -> None:
 
 
 def test_anilist_nested_media_relations_are_requeried_through_page() -> None:
-    """相关推荐和人物作品应通过根级 Page.media 回查以触发中文标题注入。"""
+    """
+    相关推荐和人物作品应通过根级 Page.media 回查以触发中文标题注入。
+    """
     recommendation_client = AniListApi()
     recommendation_client._invoke = Mock(
         side_effect=[
@@ -190,7 +212,9 @@ def test_anilist_nested_media_relations_are_requeried_through_page() -> None:
 
 
 def test_anilist_async_person_credits_uses_character_media() -> None:
-    """异步人物作品查询应读取配音角色关联，而不是制作岗位关联。"""
+    """
+    异步人物作品查询应读取配音角色关联，而不是制作岗位关联。
+    """
     client = AniListApi()
     client._async_invoke = AsyncMock(
         side_effect=[
@@ -209,7 +233,9 @@ def test_anilist_async_person_credits_uses_character_media() -> None:
 
 
 def test_anilist_credits_and_recommendations_use_separate_caches() -> None:
-    """相同分页参数的演员与推荐查询不得互相命中缓存。"""
+    """
+    相同分页参数的演员与推荐查询不得互相命中缓存。
+    """
     client = AniListApi()
     client._invoke = Mock(
         side_effect=[
@@ -234,7 +260,9 @@ def test_anilist_credits_and_recommendations_use_separate_caches() -> None:
 
 
 def test_anilist_module_normalizes_voice_actor_and_person_detail() -> None:
-    """AniList 模块应把配音关系和人物详情转换为前端通用人物结构。"""
+    """
+    AniList 模块应把配音关系和人物详情转换为前端通用人物结构。
+    """
     module = AniListModule()
     module.anilist_api = Mock()
     module.anilist_api.credits.return_value = [
@@ -282,7 +310,9 @@ def test_anilist_module_normalizes_voice_actor_and_person_detail() -> None:
 
 
 def test_anilist_discover_endpoint_forwards_all_filters(monkeypatch) -> None:
-    """AniList 独立探索端点应把全部过滤条件交给处理链。"""
+    """
+    AniList 独立探索端点应把全部过滤条件交给处理链。
+    """
     captured = {}
     chain = Mock()
     chain.async_discover = AsyncMock(
@@ -323,7 +353,9 @@ def test_anilist_discover_endpoint_forwards_all_filters(monkeypatch) -> None:
 
 
 def test_anilist_router_exposes_browse_and_deep_navigation_paths() -> None:
-    """AniList 独立路由应覆盖榜单、探索、作品、演员和相关推荐。"""
+    """
+    AniList 独立路由应覆盖榜单、探索、作品、演员和相关推荐。
+    """
     paths = {route.path for route in anilist_endpoint.router.routes}
 
     assert paths == {

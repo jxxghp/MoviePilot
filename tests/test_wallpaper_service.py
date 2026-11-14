@@ -1,3 +1,7 @@
+"""
+验证壁纸来源选择、缓存与图片响应。
+"""
+
 from collections.abc import Mapping
 from importlib import import_module
 from types import SimpleNamespace
@@ -20,10 +24,14 @@ from app.startup.composition.configuration import build_scheduler_runtime_config
 
 
 class _WallpaperTransport:
-    """返回固定 Bing JSON 的测试图片传输。"""
+    """
+    返回固定 Bing JSON 的测试图片传输。
+    """
 
     def __init__(self, path: str) -> None:
-        """保存壁纸路径。"""
+        """
+        保存壁纸路径。
+        """
         self.path = path
 
     def get(
@@ -32,7 +40,9 @@ class _WallpaperTransport:
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """返回带固定 JSON 的成功响应。"""
+        """
+        返回带固定 JSON 的成功响应。
+        """
         assert options == {"timeout": 5}
         return SimpleNamespace(
             status_code=200,
@@ -47,22 +57,30 @@ class _WallpaperTransport:
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """本用例不使用异步壁纸读取。"""
+        """
+        本用例不使用异步壁纸读取。
+        """
         assert options
         return None
 
 
 class _ExternalAddress:
-    """测试壁纸 URL 始终按外部地址处理。"""
+    """
+    测试壁纸 URL 始终按外部地址处理。
+    """
 
     @staticmethod
     def is_internal(_url: str) -> bool:
-        """返回 False。"""
+        """
+        返回 False。
+        """
         return False
 
 
 def test_wallpaper_service_uses_startup_providers(monkeypatch):
-    """壁纸服务通过组合根注入的 provider 访问业务 Chain。"""
+    """
+    壁纸服务通过组合根注入的 provider 访问业务 Chain。
+    """
     provider_names = (
         "_tmdb_wallpaper_provider",
         "_tmdb_wallpaper_list_provider",
@@ -102,7 +120,9 @@ def test_wallpaper_service_uses_startup_providers(monkeypatch):
 
 
 def test_reconfigure_image_ports_clears_wallpaper_cache():
-    """切换 transport 后不得复用旧实现写入的壁纸缓存。"""
+    """
+    切换 transport 后不得复用旧实现写入的壁纸缓存。
+    """
     previous = configure_image_ports(
         transport=_WallpaperTransport("/old.jpg"),
         internal_address=_ExternalAddress(),
@@ -122,7 +142,9 @@ def test_reconfigure_image_ports_clears_wallpaper_cache():
 
 
 def test_wallpaper_helper_clear_cache_refreshes_provider_result():
-    """壁纸配置热重载后必须丢弃旧来源缓存。"""
+    """
+    壁纸配置热重载后必须丢弃旧来源缓存。
+    """
     helper = WallpaperHelper()
     values = iter(("old-wallpaper", "new-wallpaper"))
     configure_wallpaper_providers(
@@ -140,7 +162,9 @@ def test_wallpaper_helper_clear_cache_refreshes_provider_result():
 
 
 def test_static_wallpaper_returns_local_or_remote_address_directly(monkeypatch):
-    """静态模式不发起 API 请求，直接沿用用户填写的本地路径或 URL。"""
+    """
+    静态模式不发起 API 请求，直接沿用用户填写的本地路径或 URL。
+    """
     config = SimpleNamespace(wallpaper="static", wallpaper_image_url="/local/wallpaper.jpg")
     monkeypatch.setattr(image_service, "get_chain_runtime_config_snapshot", lambda: config)
     helper = WallpaperHelper()
@@ -154,7 +178,9 @@ def test_static_wallpaper_returns_local_or_remote_address_directly(monkeypatch):
 
 
 def test_wallpaper_settings_define_backward_compatible_defaults():
-    """未配置壁纸时保持无壁纸，轮换间隔和静态地址沿用兼容默认值。"""
+    """
+    未配置壁纸时保持无壁纸，轮换间隔和静态地址沿用兼容默认值。
+    """
     assert ConfigModel.model_fields["WALLPAPER"].default == ""
     assert ChainRuntimeConfig(media_extensions=()).wallpaper == ""
     assert ConfigModel.model_fields["WALLPAPER_ROTATION_INTERVAL"].default == 15
@@ -162,14 +188,18 @@ def test_wallpaper_settings_define_backward_compatible_defaults():
 
 
 def test_scheduler_runtime_config_carries_wallpaper_setting():
-    """调度器快照必须读取当前壁纸来源，供任务目录决定是否注册缓存。"""
+    """
+    调度器快照必须读取当前壁纸来源，供任务目录决定是否注册缓存。
+    """
     settings = Settings(WALLPAPER="tmdb")
 
     assert build_scheduler_runtime_config(settings).wallpaper == "tmdb"
 
 
 def test_login_global_settings_expose_wallpaper_rotation_interval(monkeypatch):
-    """登录前全局设置必须下发轮换间隔，避免前端退回硬编码时钟。"""
+    """
+    登录前全局设置必须下发轮换间隔，避免前端退回硬编码时钟。
+    """
     values = {
         "GLOBAL_IMAGE_CACHE": False,
         "TMDB_IMAGE_DOMAIN": "image.tmdb.org",
@@ -191,7 +221,9 @@ def test_login_global_settings_expose_wallpaper_rotation_interval(monkeypatch):
 
 
 def test_image_legacy_helpers_keep_canonical_class_identity():
-    """旧 helper 路径必须继续导出 canonical 图片与壁纸类。"""
+    """
+    旧 helper 路径必须继续导出 canonical 图片与壁纸类。
+    """
     legacy_image = import_module("app.helper.image")
     legacy_wallpaper = import_module("app.helper.wallpaper")
 
@@ -200,7 +232,9 @@ def test_image_legacy_helpers_keep_canonical_class_identity():
 
 
 def test_wallpaper_caches_stay_in_process_under_redis_backend() -> None:
-    """Redis 缓存模式下壁纸缓存仍留在进程内，生命周期清空不触及 Redis。"""
+    """
+    Redis 缓存模式下壁纸缓存仍留在进程内，生命周期清空不触及 Redis。
+    """
     import json
     import os
     import subprocess

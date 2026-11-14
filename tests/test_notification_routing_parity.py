@@ -1,3 +1,7 @@
+"""
+验证通知渠道同步与异步路由的一致性。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from typing import Optional, Union
@@ -6,15 +10,20 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
+from app.modules.apppush import AppPushModule
+from app.modules.discord import DiscordModule
+from app.modules.slack import SlackModule
 from app.modules.telegram.module import TelegramModule
 from app.modules.wechat import WechatModule
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
-from app.schemas.types import MessageType
+from app.schemas.types import MessageType, NotificationChannel
 
 
 class _NotificationSettingsRepository:
-    """记录同步和异步通知设置查询，并返回同一份测试快照。"""
+    """
+    记录同步和异步通知设置查询，并返回同一份测试快照。
+    """
 
     def __init__(
         self,
@@ -22,7 +31,9 @@ class _NotificationSettingsRepository:
         *,
         failure: Optional[str] = None,
     ) -> None:
-        """保存测试设置、失败用户名和两种查询调用记录。"""
+        """
+        保存测试设置、失败用户名和两种查询调用记录。
+        """
         self.settings = settings
         self.failure = failure
         self.sync_calls: list[str] = []
@@ -31,7 +42,9 @@ class _NotificationSettingsRepository:
     def get_notification_settings(
         self, username: str
     ) -> Optional[dict[str, object]]:
-        """同步返回指定用户的通知设置。"""
+        """
+        同步返回指定用户的通知设置。
+        """
         self.sync_calls.append(username)
         if username == self.failure:
             raise RuntimeError(f"无法读取 {username} 的通知设置")
@@ -40,18 +53,41 @@ class _NotificationSettingsRepository:
     async def async_get_notification_settings(
         self, username: str
     ) -> Optional[dict[str, object]]:
-        """异步返回指定用户的通知设置。"""
+        """
+        异步返回指定用户的通知设置。
+        """
         self.async_calls.append(username)
         if username == self.failure:
             raise RuntimeError(f"无法读取 {username} 的通知设置")
         return self.settings.get(username)
 
+    def get_notification_broadcast_targets(self) -> dict[str, tuple[str, ...]]:
+        """
+        只为需要逐账号投递的 AppPush 提供测试用户身份，不读取真实数据库。
+        """
+        owners = tuple(
+            str(settings["apppush"])
+            for settings in self.settings.values()
+            if settings and settings.get("apppush")
+        )
+        return {"apppush": owners} if owners else {}
+
+    async def async_get_notification_broadcast_targets(self) -> dict[str, tuple[str, ...]]:
+        """
+        异步查询使用相同的测试账号集合。
+        """
+        return self.get_notification_broadcast_targets()
+
 
 class _NotificationHarness(MessageProcessingMixin, NotificationMixin):
-    """提供通知 mixin 所需的最小可观测同步和异步边界。"""
+    """
+    提供通知 mixin 所需的最小可观测同步和异步边界。
+    """
 
     def __init__(self, repository: _NotificationSettingsRepository) -> None:
-        """注入用户设置仓库及可断言的历史、事件和队列替身。"""
+        """
+        注入用户设置仓库及可断言的历史、事件和队列替身。
+        """
         self.user_repository = repository
         self.runtime_config = SimpleNamespace(superuser="admin")
         self.messageoper = SimpleNamespace(
@@ -70,7 +106,9 @@ class _NotificationHarness(MessageProcessingMixin, NotificationMixin):
 
 
 def _delivery_snapshot(mock: Union[Mock, AsyncMock]) -> list[tuple[dict, bool]]:
-    """把队列调用投影为与同步方式无关的消息和立即投递标志。"""
+    """
+    把队列调用投影为与同步方式无关的消息和立即投递标志。
+    """
     return [
         (
             call.kwargs["message"].model_dump(mode="json"),
@@ -81,7 +119,9 @@ def _delivery_snapshot(mock: Union[Mock, AsyncMock]) -> list[tuple[dict, bool]]:
 
 
 def _event_snapshot(mock: Union[Mock, AsyncMock]) -> list[dict]:
-    """返回通知事件调用中的稳定数据载荷。"""
+    """
+    返回通知事件调用中的稳定数据载荷。
+    """
     return [call.kwargs["data"] for call in mock.call_args_list]
 
 
@@ -115,7 +155,9 @@ def test_notification_routing_sync_async_parity(
     expected_users: list[str],
     expected_targets: list[Optional[dict[str, object]]],
 ) -> None:
-    """同步与异步入口应共享用户路由、管理员回退和原消息投递决策。"""
+    """
+    同步与异步入口应共享用户路由、管理员回退和原消息投递决策。
+    """
     monkeypatch.setattr(
         "app.chain._messaging.get_notification_switch",
         lambda _mtype: action,
@@ -149,8 +191,97 @@ def test_notification_routing_sync_async_parity(
     assert async_chain.messageoper.async_add.await_count == 1
 
 
+@pytest.mark.parametrize("mode", ["sync", "async", "strict"])
+@pytest.mark.parametrize("mtype", [MessageType.Download, MessageType.Organize, MessageType.Subscribe])
+@pytest.mark.parametrize(
+    ("action", "expected_owners"),
+    [
+        ("all", ["a" * 32, "b" * 32]),
+        ("user", ["a" * 32]),
+        ("admin", ["b" * 32]),
+        ("user,admin", ["a" * 32, "b" * 32]),
+        ("user,all", ["a" * 32, "b" * 32]),
+    ],
+)
+def test_apppush_receives_business_notifications_through_real_routing(
+    monkeypatch, mode: str, mtype: MessageType, action: str, expected_owners: list[str],
+) -> None:
+    """
+    业务消息经同步、异步和持久事件入口到达真实渠道，所有用户范围逐账号去重投递。
+    """
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: action)
+    repository = _NotificationSettingsRepository({
+        "alice": {"apppush": "a" * 32},
+        "admin": {"apppush": "b" * 32},
+    })
+    chain = _NotificationHarness(repository)
+    conf = NotificationConf(name="App", type="apppush", enabled=True, switchs=[mtype.value])
+    module = AppPushModule.__new__(AppPushModule)
+    module._channel = NotificationChannel.AppPush
+    module._configs = {conf.name: conf}
+    monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
+    requests = Mock(return_value={"total": 1, "accepted": 1})
+    monkeypatch.setattr(module, "_request", requests)
+
+    def deliver(_method: str, *, message: Message, **_kwargs: object) -> None:
+        """
+        仅在最终中转 HTTP 边界使用替身，保留链路和渠道的真实筛选。
+        """
+        module.post_message(message)
+
+    chain.messagequeue.send_message.side_effect = deliver
+    chain.messagequeue.async_send_message.side_effect = deliver
+    chain.run_module_strict = Mock(side_effect=deliver)
+    message = Message(mtype=mtype, title="业务通知", username="alice", save_history=False)
+    if mode == "async":
+        asyncio.run(chain.async_post_message(message))
+    elif mode == "strict":
+        chain.post_message_strict(message, event_key="download.added.notification:test")
+    else:
+        chain.post_message(message)
+
+    assert [call.args[3]["owner"] for call in requests.call_args_list] == expected_owners
+    assert all(call.args[2] == "messages" for call in requests.call_args_list)
+    assert message.targets is None
+    assert message.notification_route_scope is None
+
+
+@pytest.mark.parametrize(
+    ("module_type", "channel"),
+    [
+        (TelegramModule, NotificationChannel.Telegram),
+        (SlackModule, NotificationChannel.Slack),
+        (DiscordModule, NotificationChannel.Discord),
+        (WechatModule, NotificationChannel.Wechat),
+    ],
+)
+def test_all_user_apppush_targets_preserve_other_channel_defaults(monkeypatch, module_type, channel) -> None:
+    """
+    补齐 AppPush 账号后，其他渠道仍只发送一次默认通知，不误判为缺少个人绑定。
+    """
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: "all")
+    chain = _NotificationHarness(_NotificationSettingsRepository({"admin": {"apppush": "a" * 32}}))
+    chain.post_message(Message(mtype=MessageType.Download, title="下载完成"))
+    message = chain.messagequeue.send_message.call_args.kwargs["message"]
+    conf = NotificationConf(name="channel", type="channel", enabled=True, switchs=["资源下载"])
+    module = module_type.__new__(module_type)
+    module._channel = channel
+    module._configs = {conf.name: conf}
+    client = Mock()
+    module._instances = {conf.name: client}
+    monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
+    monkeypatch.setattr(module, "get_instance", lambda _name: client)
+
+    assert module.get_notification_targets(message) is None
+    module.post_message(message)
+    client.send_msg.assert_called_once()
+    assert client.send_msg.call_args.kwargs["userid"] is None
+
+
 def test_notification_routing_lookup_failure_sync_async_parity(monkeypatch) -> None:
-    """用户设置查询失败时两种入口都应传播错误且不得产生错误路由投递。"""
+    """
+    用户设置查询失败时两种入口都应传播错误且不得产生错误路由投递。
+    """
     monkeypatch.setattr(
         "app.chain._messaging.get_notification_switch",
         lambda _mtype: "user",
@@ -181,7 +312,9 @@ def test_notification_routing_lookup_failure_sync_async_parity(monkeypatch) -> N
 
 
 def test_untyped_notification_defaults_to_admin_sync_async(monkeypatch) -> None:
-    """未设置消息类型的通知应同步、异步都只查询管理员并按其设置投递。"""
+    """
+    未设置消息类型的通知应同步、异步都只查询管理员并按其设置投递。
+    """
     monkeypatch.setattr(
         "app.chain._messaging.get_notification_switch",
         lambda _mtype: None,
@@ -210,7 +343,9 @@ def test_untyped_notification_defaults_to_admin_sync_async(monkeypatch) -> None:
 
 
 def test_user_route_without_username_falls_back_to_admin(monkeypatch) -> None:
-    """用户范围通知缺少责任人时应回退管理员，不得恢复为全体广播。"""
+    """
+    用户范围通知缺少责任人时应回退管理员，不得恢复为全体广播。
+    """
     monkeypatch.setattr(
         "app.chain._messaging.get_notification_switch",
         lambda _mtype: "user,all",
@@ -231,7 +366,9 @@ def test_user_route_without_username_falls_back_to_admin(monkeypatch) -> None:
 
 
 def test_user_route_without_channel_binding_does_not_send(monkeypatch) -> None:
-    """已识别操作用户但没有渠道绑定时，仅操作用户范围不得产生投递。"""
+    """
+    已识别操作用户但没有渠道绑定时，仅操作用户范围不得产生投递。
+    """
     monkeypatch.setattr(
         "app.chain._messaging.get_notification_switch",
         lambda _mtype: "user",
@@ -251,7 +388,9 @@ def test_user_route_without_channel_binding_does_not_send(monkeypatch) -> None:
 def test_admin_route_keeps_default_target_scope_when_personal_binding_is_empty(
     monkeypatch,
 ) -> None:
-    """管理员没有个人绑定时仍产出管理员范围消息，交由渠道使用默认目标。"""
+    """
+    管理员没有个人绑定时仍产出管理员范围消息，交由渠道使用默认目标。
+    """
     monkeypatch.setattr(
         "app.chain._messaging.get_notification_switch",
         lambda _mtype: "admin",
@@ -267,7 +406,9 @@ def test_admin_route_keeps_default_target_scope_when_personal_binding_is_empty(
 
 
 def test_notification_channel_default_is_only_an_admin_target() -> None:
-    """渠道默认 ID 只允许管理员范围使用，用户范围必须有个人绑定。"""
+    """
+    渠道默认 ID 只允许管理员范围使用，用户范围必须有个人绑定。
+    """
     module = TelegramModule()
     config = NotificationConf(
         name="telegram-test",
@@ -308,7 +449,9 @@ def test_notification_channel_default_is_only_an_admin_target() -> None:
 
 
 def test_scoped_notification_still_honors_channel_switch() -> None:
-    """隔离路由只改变目标解析，不应绕过渠道消息类型开关。"""
+    """
+    隔离路由只改变目标解析，不应绕过渠道消息类型开关。
+    """
     module = TelegramModule()
     config = NotificationConf(
         name="telegram-test",
@@ -333,7 +476,9 @@ def test_scoped_notification_still_honors_channel_switch() -> None:
 
 
 def test_wechat_rejects_untyped_broadcast_without_explicit_targets(monkeypatch) -> None:
-    """企业微信渠道不得把无类型且无目标的消息交给客户端默认广播。"""
+    """
+    企业微信渠道不得把无类型且无目标的消息交给客户端默认广播。
+    """
     module = WechatModule()
     config = NotificationConf(name="wechat-test", type="wechat", enabled=True)
     module._configs = {config.name: config}

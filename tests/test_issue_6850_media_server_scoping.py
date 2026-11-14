@@ -1,4 +1,6 @@
-"""Issue #6850 媒体服务器缓存隔离与 Plex 回退回归测试。"""
+"""
+Issue #6850 媒体服务器缓存隔离与 Plex 回退回归测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -13,7 +15,9 @@ from app.schemas.types import MediaSource
 
 
 def test_media_server_item_lookup_scopes_identity_and_title_by_server(db):
-    """同一媒体身份在多服务器存在时，缓存 ID 查询必须限定目标服务器。"""
+    """
+    同一媒体身份在多服务器存在时，缓存 ID 查询必须限定目标服务器。
+    """
     db.add(
         MediaServerItem(
             server="trimemedia",
@@ -61,7 +65,9 @@ def test_media_server_item_lookup_scopes_identity_and_title_by_server(db):
 
 
 def test_download_existence_passes_cached_id_only_to_its_server():
-    """缺集检查逐个服务器查询缓存，避免把一个服务器的 ID 广播给其他服务器。"""
+    """
+    缺集检查逐个服务器查询缓存，避免把一个服务器的 ID 广播给其他服务器。
+    """
     chain = DownloadChain()
     chain.media_server_repository = Mock()
     chain.media_server_repository.get_item_id.side_effect = [
@@ -92,7 +98,9 @@ def test_download_existence_passes_cached_id_only_to_its_server():
 
 
 def test_plex_invalid_cached_item_id_falls_back_to_title_search():
-    """Plex 遇到其他服务器的十六进制缓存 ID 时不得拼接非法 URL。"""
+    """
+    Plex 遇到其他服务器的十六进制缓存 ID 时不得拼接非法 URL。
+    """
     plex = Plex.__new__(Plex)
     plex._plex = Mock()
     plex._plex.fetchItem.side_effect = InvalidURL(

@@ -1,4 +1,6 @@
-"""插件持久化备份与 Docker 重置恢复合同测试。"""
+"""
+插件持久化备份与 Docker 重置恢复合同测试。
+"""
 
 import errno
 from dataclasses import replace
@@ -12,7 +14,9 @@ from app.chain.system import SystemChain
 
 
 def _patch_docker_paths(monkeypatch, tmp_path: Path, *, reset: bool) -> Path:
-    """把插件恢复路径和 Docker 重置条件隔离到临时目录。"""
+    """
+    把插件恢复路径和 Docker 重置条件隔离到临时目录。
+    """
     config_dir = tmp_path / "config"
     runtime_dir = tmp_path / "app" / "plugins"
     config_dir.mkdir(parents=True)
@@ -44,7 +48,9 @@ def _patch_package_paths(
     monkeypatch,
     tmp_path: Path,
 ) -> tuple[PluginPackageManager, Path, Path]:
-    """把插件更新后的持久化备份路径隔离到临时目录。"""
+    """
+    把插件更新后的持久化备份路径隔离到临时目录。
+    """
     plugin_root = tmp_path / "app" / "plugins"
     config_dir = tmp_path / "config"
     plugin_root.mkdir(parents=True)
@@ -75,7 +81,9 @@ def _write_plugin(root: Path, plugin_id: str, filename: str, content: str) -> Pa
 
 
 def test_backup_plugins_refreshes_existing_snapshot(monkeypatch, tmp_path):
-    """关停备份应刷新同名插件并移除旧快照中的遗留文件。"""
+    """
+    关停备份应刷新同名插件并移除旧快照中的遗留文件。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=False)
     backup_root = tmp_path / "config" / "plugins_backup"
     backup_dir = backup_root / "demo"
@@ -90,7 +98,9 @@ def test_backup_plugins_refreshes_existing_snapshot(monkeypatch, tmp_path):
 
 
 def test_backup_plugins_failure_preserves_previous_snapshot(monkeypatch, tmp_path):
-    """复制新快照失败时应保留上一份可恢复内容。"""
+    """
+    复制新快照失败时应保留上一份可恢复内容。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=False)
     backup_root = tmp_path / "config" / "plugins_backup"
     backup_dir = backup_root / "demo"
@@ -108,7 +118,9 @@ def test_backup_plugins_failure_preserves_previous_snapshot(monkeypatch, tmp_pat
 
 
 def test_backup_plugins_keeps_snapshot_missing_from_runtime(monkeypatch, tmp_path):
-    """运行目录缺失时不得删除唯一的持久化备份。"""
+    """
+    运行目录缺失时不得删除唯一的持久化备份。
+    """
     _patch_docker_paths(monkeypatch, tmp_path, reset=False)
     backup_root = tmp_path / "config" / "plugins_backup"
     backup_file = _write_plugin(backup_root, "demo", "plugin.py", "recoverable")
@@ -119,7 +131,9 @@ def test_backup_plugins_keeps_snapshot_missing_from_runtime(monkeypatch, tmp_pat
 
 
 def test_restore_plugins_keeps_backup_on_regular_start(monkeypatch, tmp_path):
-    """普通重启保留备份，等待真正的容器重置场景消费。"""
+    """
+    普通重启保留备份，等待真正的容器重置场景消费。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=False)
     backup_dir = tmp_path / "config" / "plugins_backup"
     _write_plugin(backup_dir, "demo", "plugin.py", "stable")
@@ -131,7 +145,9 @@ def test_restore_plugins_keeps_backup_on_regular_start(monkeypatch, tmp_path):
 
 
 def test_restore_plugins_consumes_backup_after_source_restore(monkeypatch, tmp_path):
-    """源码恢复完成即可消费备份，依赖恢复由启动后台任务统一处理。"""
+    """
+    源码恢复完成即可消费备份，依赖恢复由启动后台任务统一处理。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=True)
     backup_dir = tmp_path / "config" / "plugins_backup"
     _write_plugin(backup_dir, "DemoPlugin", "plugin.py", "stable")
@@ -145,7 +161,9 @@ def test_restore_plugins_consumes_backup_after_source_restore(monkeypatch, tmp_p
 
 
 def test_restore_plugins_retries_only_missing_sources(monkeypatch, tmp_path):
-    """恢复失败后只补仍缺失的目录，不覆盖用户随后重新安装的插件。"""
+    """
+    恢复失败后只补仍缺失的目录，不覆盖用户随后重新安装的插件。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=True)
     backup_dir = tmp_path / "config" / "plugins_backup"
     _write_plugin(backup_dir, "DemoPlugin", "plugin.py", "backup")
@@ -182,7 +200,9 @@ def test_restore_plugins_retries_existing_target_after_copy_failure(
     monkeypatch,
     tmp_path,
 ):
-    """原目标已存在时，失败重试仍应完成备份版本的原子替换。"""
+    """
+    原目标已存在时，失败重试仍应完成备份版本的原子替换。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=True)
     backup_dir = tmp_path / "config" / "plugins_backup"
     _write_plugin(runtime_dir, "DemoPlugin", "plugin.py", "runtime-old")
@@ -220,7 +240,9 @@ def test_restore_plugins_falls_back_when_overlay_rename_returns_exdev(
     monkeypatch,
     tmp_path,
 ):
-    """镜像层目录拒绝 rename 时仍能完成可恢复的快照替换。"""
+    """
+    镜像层目录拒绝 rename 时仍能完成可恢复的快照替换。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=True)
     _write_plugin(runtime_dir, "DemoPlugin", "plugin.py", "runtime-old")
     backup_dir = tmp_path / "config" / "plugins_backup"
@@ -247,7 +269,9 @@ def test_restore_plugins_restores_previous_after_partial_overlay_removal(
     monkeypatch,
     tmp_path,
 ):
-    """overlayfs 删除旧目录部分失败时仍恢复完整旧快照。"""
+    """
+    overlayfs 删除旧目录部分失败时仍恢复完整旧快照。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=True)
     _write_plugin(runtime_dir, "DemoPlugin", "plugin.py", "runtime-old")
     _write_plugin(runtime_dir, "DemoPlugin", "settings.json", "settings-old")
@@ -287,7 +311,9 @@ def test_restore_plugins_restores_previous_after_partial_overlay_removal(
 
 
 def test_backup_keeps_restore_retry_marker(monkeypatch, tmp_path):
-    """关停备份不得清除尚未完成的恢复标记。"""
+    """
+    关停备份不得清除尚未完成的恢复标记。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=False)
     backup_dir = tmp_path / "config" / "plugins_backup"
     pending = backup_dir / SystemChain._plugin_restore_pending_file
@@ -301,7 +327,9 @@ def test_backup_keeps_restore_retry_marker(monkeypatch, tmp_path):
 
 
 def test_backup_does_not_overwrite_failed_restore_snapshot(monkeypatch, tmp_path):
-    """待重试项目的原快照必须跨关停保留，避免恢复材料被当前目录覆盖。"""
+    """
+    待重试项目的原快照必须跨关停保留，避免恢复材料被当前目录覆盖。
+    """
     runtime_dir = _patch_docker_paths(monkeypatch, tmp_path, reset=False)
     backup_dir = tmp_path / "config" / "plugins_backup"
     pending = backup_dir / SystemChain._plugin_restore_pending_file
@@ -318,7 +346,9 @@ def test_backup_does_not_overwrite_failed_restore_snapshot(monkeypatch, tmp_path
 
 
 def test_market_refresh_replaces_snapshot_and_removes_stale_files(monkeypatch, tmp_path):
-    """插件更新成功后应刷新对应持久化快照。"""
+    """
+    插件更新成功后应刷新对应持久化快照。
+    """
     package, plugin_root, backup_root = _patch_package_paths(monkeypatch, tmp_path)
     backup_dir = backup_root / "demo"
     _write_plugin(plugin_root, "demo", "plugin.py", "new")
@@ -332,7 +362,9 @@ def test_market_refresh_replaces_snapshot_and_removes_stale_files(monkeypatch, t
 
 
 def test_market_refresh_failure_preserves_previous_snapshot(monkeypatch, tmp_path):
-    """插件更新备份失败时应继续保留旧快照。"""
+    """
+    插件更新备份失败时应继续保留旧快照。
+    """
     package, plugin_root, backup_root = _patch_package_paths(monkeypatch, tmp_path)
     backup_dir = backup_root / "demo"
     _write_plugin(plugin_root, "demo", "plugin.py", "new")

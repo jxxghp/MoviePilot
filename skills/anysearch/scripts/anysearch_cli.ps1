@@ -97,6 +97,15 @@ function Call-Api {
     $result = $null
     try { $result = $resp.result } catch { $result = $resp }
 
+    $toolFailed = $false
+    try { $toolFailed = ($result.isError -eq $true) } catch { }
+    if ($toolFailed) {
+        $errMsg = ($result.content | Where-Object { $_.type -eq "text" } | ForEach-Object { $_.text }) -join "`n"
+        if (-not $errMsg) { $errMsg = "MCP tool failed" }
+        Write-Error "Tool Error: $errMsg"
+        exit 1
+    }
+
     if ($result -and $result.content) {
         foreach ($item in $result.content) {
             if ($item.type -eq "text") {

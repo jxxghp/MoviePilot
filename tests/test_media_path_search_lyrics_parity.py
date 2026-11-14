@@ -1,4 +1,6 @@
-"""媒体搜索、路径识别与歌词聚合的同步异步同形回归。"""
+"""
+媒体搜索、路径识别与歌词聚合的同步异步同形回归。
+"""
 
 import asyncio
 from collections.abc import Iterator
@@ -16,7 +18,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _release_media_chain_singleton() -> None:
-    """释放测试间共享的 MediaChain 单例，避免实例桩跨用例传播。"""
+    """
+    释放测试间共享的 MediaChain 单例，避免实例桩跨用例传播。
+    """
     instance = MediaChain.get_existing_instance()
     if instance is not None:
         MediaChain.release_existing_instance(instance)
@@ -24,14 +28,18 @@ def _release_media_chain_singleton() -> None:
 
 @pytest.fixture(autouse=True)
 def isolate_media_chain_singleton() -> Iterator[None]:
-    """隔离路径回归与其它测试对单例方法的 monkeypatch。"""
+    """
+    隔离路径回归与其它测试对单例方法的 monkeypatch。
+    """
     _release_media_chain_singleton()
     yield
     _release_media_chain_singleton()
 
 
 def _remote_music(stage: str) -> MusicInfo:
-    """构造指定回退层命中的标准远端音乐结果。"""
+    """
+    构造指定回退层命中的标准远端音乐结果。
+    """
     return MusicInfo(
         media_source=MediaSource.MusicBrainz,
         media_id=f"recording-{stage}",
@@ -44,7 +52,9 @@ def test_media_search_sync_async_share_projection_and_empty_result(
     monkeypatch: pytest.MonkeyPatch,
     empty: bool,
 ) -> None:
-    """搜索双入口应共享要素投影，并将所有空结果规范为新列表。"""
+    """
+    搜索双入口应共享要素投影，并将所有空结果规范为新列表。
+    """
     chain = MediaChain()
     source = (MediaSource.TMDB,)
     medias = [] if empty else [MediaInfo(type=MediaType.TV, title="Result")]
@@ -96,7 +106,9 @@ def test_media_search_sync_async_share_projection_and_empty_result(
 def test_media_search_sync_async_propagate_provider_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """搜索提供方异常不得被任一入口伪装为空结果。"""
+    """
+    搜索提供方异常不得被任一入口伪装为空结果。
+    """
     chain = MediaChain()
     monkeypatch.setattr(
         MediaChain,
@@ -130,7 +142,9 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
     hit_stage: str | None,
     expected_order: list[str],
 ) -> None:
-    """路径识别双入口应在同一层终止，并保持每层调用次数一致。"""
+    """
+    路径识别双入口应在同一层终止，并保持每层调用次数一致。
+    """
     chain = MediaChain()
     path = Path("Track.flac")
     merged = MetaMusic(title="Track", audio_format="FLAC")
@@ -144,12 +158,16 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
     )
 
     def sync_fingerprint(_self: AcoustIdChain, _path: Path) -> str | None:
-        """记录同步指纹层并按场景返回 Recording ID。"""
+        """
+        记录同步指纹层并按场景返回 Recording ID。
+        """
         sync_order.append("fingerprint")
         return "fingerprint-id" if hit_stage == "fingerprint" else None
 
     async def async_fingerprint(_self: AcoustIdChain, _path: Path) -> str | None:
-        """记录异步指纹层并按场景返回 Recording ID。"""
+        """
+        记录异步指纹层并按场景返回 Recording ID。
+        """
         async_order.append("fingerprint")
         return "fingerprint-id" if hit_stage == "fingerprint" else None
 
@@ -160,7 +178,9 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
         media_source: MediaSource | None,
         tier_name: str,
     ):
-        """模拟同步标签或文件名层的远端命中。"""
+        """
+        模拟同步标签或文件名层的远端命中。
+        """
         del meta, media_source
         stage = "tag" if tier_name == "文件标签" else "filename"
         sync_order.append(stage)
@@ -173,19 +193,25 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
         media_source: MediaSource | None,
         tier_name: str,
     ):
-        """模拟异步标签或文件名层的远端命中。"""
+        """
+        模拟异步标签或文件名层的远端命中。
+        """
         del meta, media_source
         stage = "tag" if tier_name == "文件标签" else "filename"
         async_order.append(stage)
         return _remote_music(stage) if hit_stage == stage else None
 
     def sync_album(_chain: MediaChain, _path: Path) -> MusicInfo | None:
-        """记录同步专辑目录兜底。"""
+        """
+        记录同步专辑目录兜底。
+        """
         sync_order.append("album")
         return _remote_music("album") if hit_stage == "album" else None
 
     async def async_album(_chain: MediaChain, _path: Path) -> MusicInfo | None:
-        """记录异步专辑目录兜底。"""
+        """
+        记录异步专辑目录兜底。
+        """
         async_order.append("album")
         return _remote_music("album") if hit_stage == "album" else None
 
@@ -238,7 +264,9 @@ def test_music_path_sync_async_stop_at_same_failing_tier(
     failed_stage: str,
     expected_order: list[str],
 ) -> None:
-    """指纹、标签或文件名 I/O 异常时双入口应在相同层停止。"""
+    """
+    指纹、标签或文件名 I/O 异常时双入口应在相同层停止。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="Track")
     sync_order: list[str] = []
@@ -249,13 +277,17 @@ def test_music_path_sync_async_stop_at_same_failing_tier(
     )
 
     def sync_fingerprint(_self: AcoustIdChain, _path: Path) -> None:
-        """记录同步指纹动作并按场景抛错。"""
+        """
+        记录同步指纹动作并按场景抛错。
+        """
         sync_order.append("fingerprint")
         if failed_stage == "fingerprint":
             raise RuntimeError("sync fingerprint failed")
 
     async def async_fingerprint(_self: AcoustIdChain, _path: Path) -> None:
-        """记录异步指纹动作并按场景抛错。"""
+        """
+        记录异步指纹动作并按场景抛错。
+        """
         async_order.append("fingerprint")
         if failed_stage == "fingerprint":
             raise RuntimeError("async fingerprint failed")
@@ -267,7 +299,9 @@ def test_music_path_sync_async_stop_at_same_failing_tier(
         media_source: MediaSource | None,
         tier_name: str,
     ):
-        """记录同步元数据层并在指定层抛错。"""
+        """
+        记录同步元数据层并在指定层抛错。
+        """
         del meta, media_source
         stage = "tag" if tier_name == "文件标签" else "filename"
         sync_order.append(stage)
@@ -282,7 +316,9 @@ def test_music_path_sync_async_stop_at_same_failing_tier(
         media_source: MediaSource | None,
         tier_name: str,
     ):
-        """记录异步元数据层并在指定层抛错。"""
+        """
+        记录异步元数据层并在指定层抛错。
+        """
         del meta, media_source
         stage = "tag" if tier_name == "文件标签" else "filename"
         async_order.append(stage)
@@ -319,7 +355,9 @@ def test_music_meta_tier_sync_async_share_direct_and_search_decisions(
     has_title: bool,
     expected_calls: list[str],
 ) -> None:
-    """标签 MBID 直查、身份清理和标题回退在双入口中必须同形。"""
+    """
+    标签 MBID 直查、身份清理和标题回退在双入口中必须同形。
+    """
     chain = MediaChain()
     meta = MetaMusic(
         title="Tagged" if has_title else None,
@@ -332,24 +370,32 @@ def test_music_meta_tier_sync_async_share_direct_and_search_decisions(
     search_result = _remote_music("search")
 
     def sync_direct(_chain: MediaChain, **_kwargs) -> MusicInfo | None:
-        """记录同步 MBID 直查。"""
+        """
+        记录同步 MBID 直查。
+        """
         sync_calls.append("direct")
         return direct_result
 
     async def async_direct(_chain: MediaChain, **_kwargs) -> MusicInfo | None:
-        """记录异步 MBID 直查。"""
+        """
+        记录异步 MBID 直查。
+        """
         async_calls.append("direct")
         return direct_result
 
     def sync_search(_chain: MediaChain, **kwargs) -> MusicInfo:
-        """记录同步标题搜索并验证身份已清理。"""
+        """
+        记录同步标题搜索并验证身份已清理。
+        """
         sync_calls.append("search")
         assert kwargs["meta"].media_source is None
         assert kwargs["meta"].media_id is None
         return search_result
 
     async def async_search(_chain: MediaChain, **kwargs) -> MusicInfo:
-        """记录异步标题搜索并验证身份已清理。"""
+        """
+        记录异步标题搜索并验证身份已清理。
+        """
         async_calls.append("search")
         assert kwargs["meta"].media_source is None
         assert kwargs["meta"].media_id is None
@@ -373,7 +419,9 @@ def test_music_album_fallback_sync_async_isolate_directory_errors(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """专辑目录识别异常在同步和异步入口都应降级为空结果。"""
+    """
+    专辑目录识别异常在同步和异步入口都应降级为空结果。
+    """
     path = tmp_path / "Track.flac"
     path.write_bytes(b"audio")
     chain = MediaChain()
@@ -395,7 +443,9 @@ def test_music_album_fallback_sync_async_isolate_directory_errors(
 def test_music_meta_tier_sync_async_reject_year_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """标签和文件名层都不能接受同名作品的冲突发行年份。"""
+    """
+    标签和文件名层都不能接受同名作品的冲突发行年份。
+    """
     chain = MediaChain()
     meta = MetaMusic(
         title="Enchanted",
@@ -430,7 +480,9 @@ def test_video_path_sync_async_share_route_and_failure_context(
     monkeypatch: pytest.MonkeyPatch,
     recognized: bool,
 ) -> None:
-    """影视路径双入口应共享路由参数，并在失败时都保留元数据 Context。"""
+    """
+    影视路径双入口应共享路由参数，并在失败时都保留元数据 Context。
+    """
     chain = MediaChain()
     info = MediaInfo(type=MediaType.MOVIE, title="Movie") if recognized else None
     sync_recognize = Mock(return_value=info)
@@ -466,7 +518,9 @@ def test_video_path_sync_async_share_route_and_failure_context(
 def test_music_path_route_sync_async_skip_video_recognition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """音乐路由双入口应直接返回音乐 Context，且不调用影视识别。"""
+    """
+    音乐路由双入口应直接返回音乐 Context，且不调用影视识别。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="Track")
     info = _remote_music("route")
@@ -495,7 +549,9 @@ def test_music_path_route_sync_async_skip_video_recognition(
 def test_lyrics_sync_async_share_deadline_fallback_dedup_and_call_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """歌词双入口应按旧、新、本地顺序聚合，并稳定替换重复候选。"""
+    """
+    歌词双入口应按旧、新、本地顺序聚合，并稳定替换重复候选。
+    """
     low = MusicLyrics(provider="same", plain_lyrics="duplicate", match_score=10)
     high = MusicLyrics(provider="same", plain_lyrics="duplicate", match_score=90)
     new = MusicLyrics(provider="new", synced_lyrics="[00:01]new", match_score=80)
@@ -506,12 +562,16 @@ def test_lyrics_sync_async_share_deadline_fallback_dedup_and_call_order(
     async_calls: list[str] = []
 
     def sync_module(method: str, **_kwargs):
-        """记录同步歌词接口顺序并返回对应候选。"""
+        """
+        记录同步歌词接口顺序并返回对应候选。
+        """
         sync_calls.append(method)
         return high if method == "music_lyrics" else [new]
 
     async def async_module(method: str, **_kwargs):
-        """记录异步歌词接口顺序并返回对应候选。"""
+        """
+        记录异步歌词接口顺序并返回对应候选。
+        """
         async_calls.append(method)
         return high if method == "music_lyrics" else [new]
 
@@ -530,7 +590,9 @@ def test_lyrics_sync_async_share_deadline_fallback_dedup_and_call_order(
 def test_lyrics_sync_async_deadline_skips_modules_and_local_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """预算耗尽时双入口只返回现有本地候选，不再调用模块或追加来源兜底。"""
+    """
+    预算耗尽时双入口只返回现有本地候选，不再调用模块或追加来源兜底。
+    """
     monkeypatch.setattr("app.chain.lyrics.time.monotonic", Mock(return_value=10.0))
     local = MusicLyrics(provider="embedded", plain_lyrics="local")
     music = MusicInfo(title="Track", lyrics="fallback")
@@ -553,7 +615,9 @@ def test_lyrics_sync_async_deadline_skips_modules_and_local_fallback(
 def test_lyrics_sync_async_empty_modules_without_fallback_return_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """新旧接口均为空且无本地歌词时，双入口应稳定返回空列表。"""
+    """
+    新旧接口均为空且无本地歌词时，双入口应稳定返回空列表。
+    """
     music = MusicInfo(title="Track")
     sync_chain = LyricsChain()
     async_chain = LyricsChain()
@@ -582,7 +646,9 @@ def test_lyrics_sync_async_propagate_same_module_exception(
     failed_method: str,
     expected_calls: list[str],
 ) -> None:
-    """旧或新模块接口异常时双入口应在同一步停止且不伪造兜底成功。"""
+    """
+    旧或新模块接口异常时双入口应在同一步停止且不伪造兜底成功。
+    """
     music = MusicInfo(title="Track", lyrics="fallback")
     sync_chain = LyricsChain()
     async_chain = LyricsChain()
@@ -590,14 +656,18 @@ def test_lyrics_sync_async_propagate_same_module_exception(
     async_calls: list[str] = []
 
     def sync_module(method: str, **_kwargs):
-        """在指定同步歌词接口抛出异常。"""
+        """
+        在指定同步歌词接口抛出异常。
+        """
         sync_calls.append(method)
         if method == failed_method:
             raise RuntimeError("sync failed")
         return None
 
     async def async_module(method: str, **_kwargs):
-        """在指定异步歌词接口抛出异常。"""
+        """
+        在指定异步歌词接口抛出异常。
+        """
         async_calls.append(method)
         if method == failed_method:
             raise RuntimeError("async failed")

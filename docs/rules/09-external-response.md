@@ -23,8 +23,17 @@ are forbidden.
 - User-Agent headers
 - Retry logic
 
+The shared asynchronous transport tracks consecutive `PoolTimeout` failures per
+event loop and configuration. After three failures it replaces that pool for
+subsequent requests and logs the recovery. Responses and other request errors
+reset the count. It does not replay the failed request. The retired pool closes
+after its existing client contexts exit, including streaming reads and
+cancellation. While a retired pool remains unclosed, the same configuration
+cannot rotate again, bounding the active generations to two. Caller-owned
+clients retain their own transport lifecycle.
+
 ```python
-# Adapter implementation example; Application/Chain consume an injected Port instead.
+# 此处展示适配器实现；应用服务和业务链通过注入的接口访问网络能力
 from app.adapters.network.http import RequestUtils
 
 res = RequestUtils(
@@ -46,15 +55,15 @@ All REST API responses use Pydantic schema models from `app/schemas/`. Do not re
 ### Standard Response Patterns
 
 ```python
-# Success with data
+# 成功响应携带业务结果
 from app.schemas.response import Response
 
 return Response(success=True, message="", data=result)
 
-# Success without data
+# 无业务结果时只返回成功状态和说明
 return Response(success=True, message="操作成功")
 
-# Error
+# 失败响应保留可向调用方展示的原因
 return Response(success=False, message="错误原因描述")
 ```
 
@@ -86,9 +95,12 @@ Do not raise `HTTPException` in chain or module code. Chains and modules return 
 | Endpoint | Translate `None` or failure result into a `Response(success=False, ...)` or `HTTPException` |
 
 ```python
-# Module layer
 def test(self) -> Optional[Tuple[bool, str]]:
-    """测试模块连通性"""
+    """
+    在模块层检查客户端连通性并归一化失败结果。
+
+    :return: 连接状态与说明组成的二元组；客户端异常会记录日志并转换为失败结果
+    """
     try:
         ok = self.client.ping()
         return (True, "连接成功") if ok else (False, "连接失败")
@@ -183,5 +195,15 @@ When calling TMDB, TheTVDB, Douban, or Bangumi via the module layer:
 Webhook payloads arrive at `app/api/endpoints/webhook.py` and are dispatched via `eventmanager.send_event(EventType.WebhookMessage, ...)`. Processing logic lives in the chain layer (`app/chain/webhook.py`).
 
 Do not add webhook-specific business logic directly in the endpoint. The endpoint parses the payload and fires the event; the chain handles the response.
+
+Jellyfin 的条目删除后无法通过播放接口反查路径。适配器优先使用 webhook 的 `Path`；
+非删除事件查到的路径会按服务器和条目 ID 缓存在进程内（最多 10000 条、有效期 30 天），
+删除事件消费缓存，不请求已删除条目的路径或图片。重启、过期或从未观察过的条目仍可能
+没有路径，此时告警并保留 `item_path=None`，消费方不得据此推断同片其他副本。
+
+插件兼容接口 `TransferHistoryOper.get_by` 及底层 `TransferHistory.list_by` 对电影和
+未指定类型的查询要求非空 `dest`，空路径默认返回空列表。确实需要按身份或标题年份查询
+全部版本时，调用方须显式传入 `match_all_versions=True`；路径未知的删除事件不得使用
+该参数。电视剧整剧、整季及单集路径精确匹配继续沿用原有查询语义。
 
 *Last Updated: 2026-08-14*

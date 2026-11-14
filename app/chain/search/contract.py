@@ -1,4 +1,6 @@
-"""SearchChain owner 的静态组合合同。"""
+"""
+SearchChain 各职责组件的静态组合契约。
+"""
 
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -8,7 +10,9 @@ if TYPE_CHECKING:
     from app.domain.context import Context
 
     class _SearchOwnerBase(ChainBase):
-        """向类型检查器声明稳定 Facade 上的跨 owner 能力。"""
+        """
+        向类型检查器声明稳定门面中各职责组件共用的能力。
+        """
 
         _AI_INDICES_CACHE_KEY: str
         _RESULT_CACHE_KEY: str
@@ -76,6 +80,8 @@ if TYPE_CHECKING:
         _torrent_type: Callable[..., Any]
         _unique_music_texts: Callable[..., Any]
         async_last_search_params: Callable[..., Any]
+        async_last_search_context: Callable[..., Any]
+        async_save_search_context: Callable[..., Any]
         async_last_search_results: Callable[..., Any]
         async_last_subtitle_search_results: Callable[..., Any]
         async_process: Callable[..., Awaitable[list[Context]]]
@@ -92,7 +98,13 @@ if TYPE_CHECKING:
         cancel_ai_recommend: Callable[..., Any]
         get_current_recommend_status_only: Callable[..., Any]
         get_recommend_status: Callable[..., Any]
-        is_ai_recommend_enabled: Callable[..., Any]
+        @property
+        def is_ai_recommend_enabled(self) -> bool:
+            """
+            返回宿主是否同时启用 Agent 与 AI 搜索推荐。
+            """
+            ...
+
         last_search_params: Callable[..., Any]
         last_search_results: Callable[..., Any]
         matches_music_resource: Callable[..., Any]

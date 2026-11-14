@@ -50,7 +50,7 @@ This repository maintains a structured documentation library covering the full d
 
 * **08 Comments and Documentation Style**
   * File: `08-comment-styles.md`
-  * Scope: Chinese docstring requirements, inline comment rules, and prohibited comment anti-patterns.
+  * Scope: Project-wide Chinese comments, multiline docstrings, reStructuredText / Sphinx field lists, module/function documentation, item-by-item dataclass / Pydantic / Protocol documentation, and review requirements. This is the sole detailed source for comment conventions.
 
 ### Section IV: Quality and Governance
 
@@ -74,6 +74,7 @@ Developers actively writing or modifying features should follow this reading pat
 2. **06 Code Standards** — ensures linting and logic compliance.
 3. **04 Design Patterns** — identifies the correct structural approach.
 4. **03 Commands** — required for local execution and validation.
+5. **08 Comments and Documentation Style** — mandatory conventions for new and modified comments; older single-line or English styles are not exceptions.
 
 ### System Architects and Reviewers
 
@@ -104,4 +105,4 @@ Those managing the application lifecycle post-development:
 
 ---
 
-*Last Updated: 2026-08-24*
+*Last Updated: 2026-10-17*

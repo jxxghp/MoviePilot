@@ -38,12 +38,16 @@ class WebPushDeliveryError(Exception):
 
 
 def _b64url_decode(value: str) -> bytes:
-    """解码浏览器订阅中去掉填充的 base64url 字段。"""
+    """
+    解码浏览器订阅中去掉填充的 base64url 字段。
+    """
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
 def _vapid_headers(endpoint: str, private_key: str, subject: str) -> Dict[str, str]:
-    """按推送端点源站生成 VAPID Authorization 请求头。"""
+    """
+    按推送端点源站生成 VAPID Authorization 请求头。
+    """
     url = urlparse(endpoint)
     claims = {
         "sub": subject,
@@ -54,7 +58,9 @@ def _vapid_headers(endpoint: str, private_key: str, subject: str) -> Dict[str, s
 
 
 def _encrypt(subscription: Mapping[str, Any], payload: bytes) -> bytes:
-    """用订阅公钥与 auth 密钥按 aes128gcm 加密消息体，每次使用新的临时 ECDH 密钥。"""
+    """
+    用订阅公钥与 auth 密钥按 aes128gcm 加密消息体，每次使用新的临时 ECDH 密钥。
+    """
     keys = subscription.get("keys") or {}
     if not keys.get("p256dh") or not keys.get("auth"):
         raise WebPushDeliveryError("订阅缺少 p256dh 或 auth 密钥")

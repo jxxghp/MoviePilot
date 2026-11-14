@@ -1,16 +1,16 @@
-"""3.0.0
-V3 大版本初始化默认通知模板
+"""
+3.0.0 V3 大版本初始化默认通知模板
 
-Revision ID: 4dadad1d161a
-Revises: e8b1c4d7a2f9
-Create Date: 2026-08-10
+版本标识： 4dadad1d161a
+前置版本： e8b1c4d7a2f9
+创建时间： 2026-08-10
 """
 
 from alembic import op
 import sqlalchemy as sa
 from app.runtime.log import logger
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = "4dadad1d161a"
 down_revision = "e8b1c4d7a2f9"
 branch_labels = None
@@ -21,6 +21,9 @@ def upgrade() -> None:
     # V3 为大版本升级，通知模板直接覆盖用户旧设置，且迁移只执行一次；
     # 默认模板同时兼容影视与音乐（音乐的下载、入库通知补齐艺术家/专辑/音质信息）。
     # 覆盖前先将用户现有模板完整输出到日志，作为备份供用户恢复参考。
+    """
+    将通知模板更新为 V3 默认模板，覆盖前把原模板内容写入日志。
+    """
     systemconfig = sa.table(
         "systemconfig",
         sa.column("key", sa.String()),
@@ -88,4 +91,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    本版本不执行回退操作，保留升级后的结构与数据。
+    """
     pass

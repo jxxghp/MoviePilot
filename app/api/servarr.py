@@ -1,3 +1,7 @@
+"""
+提供 Radarr 与 Sonarr 兼容接口，将外部请求转换为订阅和媒体查询。
+"""
+
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +12,7 @@ from app.api.dependencies.subscription import (
     get_servarr_subscription_service,
 )
 from app.api.response import ERROR_RESPONSES
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY
 from app.application.servarr import ServarrSubscription, ServarrSubscriptionService
 from app.application.subscription.write import (
     SubscriptionBatchWriteError,
@@ -20,7 +25,7 @@ from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.version import get_app_version
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.servarr import RadarrMovie, SonarrSeries
+from app.schemas.servarr import RadarrMovie, SonarrSeason, SonarrSeries
 from app.schemas.servarr import RadarrMovie as _SchemaRadarrMovie
 from app.schemas.servarr import ServarrIdResponse as _SchemaServarrIdResponse
 from app.schemas.servarr import ServarrLanguageProfile as _SchemaServarrLanguageProfile
@@ -35,7 +40,9 @@ arr_router = APIRouter(tags=["servarr"], responses=ERROR_RESPONSES)
 
 
 def _subscribe_error_message(error: Optional[object]) -> str:
-    """将 Servarr 订阅失败转换为调用方能理解的提示。"""
+    """
+    将 Servarr 订阅失败转换为调用方能理解的提示。
+    """
     from app.runtime.errors import public_error_message
 
     return public_error_message(
@@ -45,7 +52,9 @@ def _subscribe_error_message(error: Optional[object]) -> str:
 
 
 def _subscribe_tmdb_id(subscribe: ServarrSubscription) -> int | None:
-    """将通用订阅身份投影为 Servarr 固定使用的 TMDB ID。"""
+    """
+    将通用订阅身份投影为 Servarr 固定使用的 TMDB ID。
+    """
     if (
         subscribe.media_source == MediaSource.TMDB.value
         and subscribe.media_id
@@ -60,19 +69,22 @@ def _resolve_series_media(
     title: Optional[str] = None,
     year: Optional[str | int] = None,
 ) -> Optional[MediaInfo]:
-    """按 TVDB ID 或标题解析剧集媒体信息，用于补全 Seerr 请求体中缺失的媒体身份。"""
+    """
+    按 TVDB ID 或标题解析剧集媒体信息，用于补全 Seerr 请求体中缺失的媒体身份。
+    """
     meta = None
     if tvdbid:
         tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
-        if tvdbinfo and tvdbinfo.get("name"):
-            meta = MetaInfo(tvdbinfo.get("name"))
+        tvdb_name = tvdbinfo.get("name") if tvdbinfo else None
+        if isinstance(tvdb_name, str) and tvdb_name:
+            meta = MetaInfo(tvdb_name)
     if not meta and title:
         meta = MetaInfo(title)
     if not meta:
         return None
     meta.type = MediaType.TV
     if year:
-        meta.year = year
+        meta.year = str(year)
     return MediaChain().recognize_by_meta(meta, obtain_images=False)
 
 
@@ -330,9 +342,7 @@ async def arr_movies(
     return result
 
 
-@arr_router.get(
-    "/movie/lookup", summary="查询电影", response_model=List[_SchemaRadarrMovie]
-)
+@arr_router.get("/movie/lookup", summary="查询电影", response_model=List[_SchemaRadarrMovie])
 def arr_movie_lookup(
     term: str,
     _: Annotated[str, Depends(verify_apikey)],
@@ -355,7 +365,7 @@ def arr_movie_lookup(
     if not mediainfo:
         return [RadarrMovie()]
     # 查询是否已存在
-    exists = MediaChain().media_exists(mediainfo=mediainfo)
+    exists = MediaChain().media_exists(mediainfo=mediainfo, query=MEDIA_SERVER_EXISTENCE_QUERY)
     if not exists:
         # 文件不存在
         hasfile = False
@@ -446,10 +456,12 @@ async def arr_add_movie(
     )
     if subscribes:
         return _SchemaServarrIdResponse(id=subscribes[0].id)
+    if not movie.title or movie.year is None:
+        raise HTTPException(status_code=422, detail="电影标题和年份不能为空")
     # 添加订阅
     sid, message = await SubscribeChain().async_add(
         title=movie.title,
-        year=movie.year,
+        year=str(movie.year),
         mtype=MediaType.MOVIE,
         media_source=MediaSource.TMDB,
         media_id=str(movie.tmdbId),
@@ -611,10 +623,7 @@ async def arr_series(
                 title=subscribe.name,
                 seasonCount=1,
                 seasons=[
-                    {
-                        "seasonNumber": subscribe.season,
-                        "monitored": True,
-                    }
+                    SonarrSeason(seasonNumber=subscribe.season, monitored=True)
                 ],
                 remotePoster=subscribe.poster,
                 year=subscribe.year,
@@ -664,18 +673,22 @@ def arr_series_lookup(
             continue
 
         # 季信息(只取默认季类型，排除特别季)
+        seasons_data = tvdbinfo.get("seasons") or []
         sea_num = len(
             [
                 season
-                for season in tvdbinfo.get("seasons")
-                if season["type"]["id"] == tvdbinfo.get("defaultSeasonType")
-                and season["number"] > 0
+                for season in seasons_data
+                if isinstance(season, dict)
+                if season["type"]["id"] == tvdbinfo.get("defaultSeasonType") and season["number"] > 0
             ]
         )
         seas = list(range(1, int(sea_num) + 1)) if sea_num else []
 
         # 根据TVDB查询媒体信息
-        meta = MetaInfo(tvdbinfo.get("name"))
+        tvdb_name = tvdbinfo.get("name")
+        if not isinstance(tvdb_name, str) or not tvdb_name:
+            continue
+        meta = MetaInfo(tvdb_name)
         meta.type = MediaType.TV
         mediainfo = MediaChain().recognize_by_meta(
             meta,
@@ -687,14 +700,14 @@ def arr_series_lookup(
         if not seas and mediainfo.seasons:
             seas = [season for season in mediainfo.seasons if season > 0]
         # 查询是否存在
-        exists = MediaChain().media_exists(mediainfo)
+        exists = MediaChain().media_exists(mediainfo, query=MEDIA_SERVER_EXISTENCE_QUERY)
         if exists:
             hasfile = True
         else:
             hasfile = False
 
         # 查询订阅信息
-        seasons: List[dict] = []
+        seasons: List[SonarrSeason] = []
         subscribes = subscriptions.list_by_media_identity_sync(
             MediaSource.TMDB,
             str(mediainfo.tmdb_id),
@@ -707,17 +720,11 @@ def arr_series_lookup(
             for sea in seas:
                 if sea in sub_seas:
                     seasons.append(
-                        {
-                            "seasonNumber": sea,
-                            "monitored": True,
-                        }
+                        SonarrSeason(seasonNumber=sea, monitored=True)
                     )
                 else:
                     seasons.append(
-                        {
-                            "seasonNumber": sea,
-                            "monitored": False,
-                        }
+                        SonarrSeason(seasonNumber=sea, monitored=False)
                     )
             subid = subscribes[-1].id
         else:
@@ -725,10 +732,7 @@ def arr_series_lookup(
             monitored = False
             for sea in seas:
                 seasons.append(
-                    {
-                        "seasonNumber": sea,
-                        "monitored": False,
-                    }
+                    SonarrSeason(seasonNumber=sea, monitored=False)
                 )
         sonarr_series = SonarrSeries(
             id=subid,
@@ -771,10 +775,7 @@ async def arr_serie(
             title=subscribe.name,
             seasonCount=1,
             seasons=[
-                {
-                    "seasonNumber": subscribe.season,
-                    "monitored": True,
-                }
+                SonarrSeason(seasonNumber=subscribe.season, monitored=True)
             ],
             year=subscribe.year,
             remotePoster=subscribe.poster,
@@ -840,20 +841,22 @@ async def arr_add_series(
         seasons = [(season, True) for season in (fallback_seasons or [1])]
     # 检查订阅是否存在
     left_seasons = []
+    existing_id = None
     for season, monitored in seasons:
         if not monitored:
             continue
-        subscribe = await subscriptions.exists(
+        subscribe = await subscriptions.get_existing(
             media_source=MediaSource.TMDB,
             media_id=str(tv.tmdbId),
             season=season,
         )
         if subscribe:
+            existing_id = subscribe.id
             continue
         left_seasons.append(season)
     # 全部已存在订阅
     if not left_seasons:
-        return _SchemaServarrIdResponse(id=1)
+        return _SchemaServarrIdResponse(id=existing_id or 0)
 
     # TMDB 身份完整时允许空标题交由识别链补全；年份统一为订阅写入合同的字符串。
     subscribe_title = tv.title or ""

@@ -1,4 +1,6 @@
-"""完整识别结果分类执行与 Chain 收口验收测试。"""
+"""
+完整识别结果分类执行与 Chain 收口验收测试。
+"""
 
 from __future__ import annotations
 
@@ -28,28 +30,38 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _Runtime:
-    """提供可变活动策略与隔离 legacy 快照的测试端口。"""
+    """
+    提供可变活动策略与隔离 legacy 快照的测试端口。
+    """
 
     def __init__(
         self,
         policy: ClassificationPolicy | None,
         legacy: CategoryConfig | None = None,
     ) -> None:
-        """保存测试需要的当前策略和旧配置。"""
+        """
+        保存测试需要的当前策略和旧配置。
+        """
         self.policy = policy
         self.legacy = legacy or CategoryConfig()
 
     def active_policy(self) -> ClassificationPolicy | None:
-        """返回活动策略副本。"""
+        """
+        返回活动策略副本。
+        """
         return self.policy.model_copy(deep=True) if self.policy else None
 
     def legacy_config(self) -> CategoryConfig:
-        """返回 legacy 配置副本。"""
+        """
+        返回 legacy 配置副本。
+        """
         return self.legacy.model_copy(deep=True)
 
 
 def _policy(*, revision: int = 7, movie_category: str = "movie.jp") -> ClassificationPolicy:
-    """构造同时覆盖影视、音乐专辑和艺术家的分类策略。"""
+    """
+    构造同时覆盖影视、音乐专辑和艺术家的分类策略。
+    """
     return ClassificationPolicy.model_validate(
         {
             "schema_version": 2,
@@ -157,7 +169,9 @@ def _policy(*, revision: int = 7, movie_category: str = "movie.jp") -> Classific
 
 
 def test_execution_classifies_copy_and_preserves_source_identity() -> None:
-    """完整来源对象应被复制分类，主身份和来源对象不得被改写。"""
+    """
+    完整来源对象应被复制分类，主身份和来源对象不得被改写。
+    """
     source = MediaInfo(
         media_source="douban",
         media_id="1291561",
@@ -186,7 +200,9 @@ def test_execution_classifies_copy_and_preserves_source_identity() -> None:
 
 
 def test_legacy_tmdb_rules_use_non_tmdb_standard_facts() -> None:
-    """旧 TMDB 分类规则应使用豆瓣等来源已有的标准国家事实。"""
+    """
+    旧 TMDB 分类规则应使用豆瓣等来源已有的标准国家事实。
+    """
     migration = migrate_legacy_category_config(
         {
             "movie": {},
@@ -219,7 +235,9 @@ def test_legacy_tmdb_rules_use_non_tmdb_standard_facts() -> None:
 
 
 def test_legacy_compatibility_preserves_primary_source_provenance() -> None:
-    """旧 TMDB 规则兼容求值不得把非 TMDB 主身份伪装成 TMDB。"""
+    """
+    旧 TMDB 规则兼容求值不得把非 TMDB 主身份伪装成 TMDB。
+    """
     migration = migrate_legacy_category_config(
         {"movie": {"华语电影": {"original_language": "zh"}}, "tv": {}}
     )
@@ -240,7 +258,9 @@ def test_legacy_compatibility_preserves_primary_source_provenance() -> None:
 
 
 def test_non_tmdb_tmdb_info_does_not_override_primary_standard_facts() -> None:
-    """非 TMDB 媒体携带的旧 tmdb_info 不得覆盖主来源标准事实。"""
+    """
+    非 TMDB 媒体携带的旧 tmdb_info 不得覆盖主来源标准事实。
+    """
     migration = migrate_legacy_category_config(
         {
             "movie": {
@@ -264,7 +284,9 @@ def test_non_tmdb_tmdb_info_does_not_override_primary_standard_facts() -> None:
 
 
 def test_execution_builds_complete_facts_without_mutating_media() -> None:
-    """影响分析事实入口应复用插件字段构造，并保持原媒体对象不变。"""
+    """
+    影响分析事实入口应复用插件字段构造，并保持原媒体对象不变。
+    """
     source = MediaInfo(
         media_source=MediaSource.Douban,
         media_id="native-1",
@@ -291,7 +313,9 @@ def test_execution_builds_complete_facts_without_mutating_media() -> None:
 
 
 def test_execution_reclassifies_cached_result_after_policy_revision_changes() -> None:
-    """缓存对象携带旧 revision 时必须按当前策略重新分类。"""
+    """
+    缓存对象携带旧 revision 时必须按当前策略重新分类。
+    """
     runtime = _Runtime(_policy(revision=7))
     service = ClassificationExecutionService(runtime)
     source = MediaInfo(
@@ -314,7 +338,9 @@ def test_execution_reclassifies_cached_result_after_policy_revision_changes() ->
 
 
 def test_execution_refreshes_same_revision_after_auxiliary_facts_change() -> None:
-    """来源缓存恢复后即使 revision 相同，也必须按当前完整事实重新求值。"""
+    """
+    来源缓存恢复后即使 revision 相同，也必须按当前完整事实重新求值。
+    """
     service = ClassificationExecutionService(_Runtime(_policy()))
     source = MediaInfo(
         media_source="anilist",
@@ -335,7 +361,9 @@ def test_execution_refreshes_same_revision_after_auxiliary_facts_change() -> Non
 
 
 def test_execution_preserves_automatic_category_when_supplement_drops_facts() -> None:
-    """裁剪过字段的媒体再次分类时，同策略已命中的自动分类不得被兜底覆盖。"""
+    """
+    裁剪过字段的媒体再次分类时，同策略已命中的自动分类不得被兜底覆盖。
+    """
     migration = migrate_legacy_category_config(
         {
             "movie": {},
@@ -375,7 +403,9 @@ def test_execution_preserves_automatic_category_when_supplement_drops_facts() ->
 
 
 def test_execution_keeps_fallback_when_complete_facts_no_longer_match() -> None:
-    """事实读齐后不再命中规则时，兜底结果必须生效而不是复用旧自动分类。"""
+    """
+    事实读齐后不再命中规则时，兜底结果必须生效而不是复用旧自动分类。
+    """
     service = ClassificationExecutionService(_Runtime(_policy()))
     source = MediaInfo(
         media_source="douban",
@@ -398,7 +428,9 @@ def test_execution_keeps_fallback_when_complete_facts_no_longer_match() -> None:
 
 
 def test_execution_applies_manual_effective_override_without_losing_recommendation() -> None:
-    """订阅或目录人工覆盖只替换 effective，仍保留自动推荐供 UI 解释。"""
+    """
+    订阅或目录人工覆盖只替换 effective，仍保留自动推荐供 UI 解释。
+    """
     source = MediaInfo(
         media_source="douban",
         media_id="1",
@@ -424,7 +456,9 @@ def test_execution_applies_manual_effective_override_without_losing_recommendati
 
 
 def test_execution_preserves_subscription_override_during_auxiliary_refresh() -> None:
-    """补充来源事实再次分类时必须保留已装配的订阅人工覆盖。"""
+    """
+    补充来源事实再次分类时必须保留已装配的订阅人工覆盖。
+    """
     service = ClassificationExecutionService(_Runtime(_policy()))
     source = MediaInfo(
         media_source="douban",
@@ -451,15 +485,21 @@ def test_execution_preserves_subscription_override_during_auxiliary_refresh() ->
 
 
 class _StaticEnrichment:
-    """为同步和异步收口补充同一组国家事实。"""
+    """
+    为同步和异步收口补充同一组国家事实。
+    """
 
     def __init__(self) -> None:
-        """创建空调用记录。"""
+        """
+        创建空调用记录。
+        """
         self.calls: list[str] = []
 
     @staticmethod
     def _enrich(facts: ClassificationFacts) -> ClassificationFacts:
-        """复制事实并填入当前缺失的国家。"""
+        """
+        复制事实并填入当前缺失的国家。
+        """
         enriched = facts.model_copy(deep=True)
         enriched.media.countries = ["JP"]
         return enriched
@@ -470,7 +510,9 @@ class _StaticEnrichment:
         facts: ClassificationFacts,
         media: object,
     ) -> ClassificationFacts:
-        """记录同步调用并返回补充事实。"""
+        """
+        记录同步调用并返回补充事实。
+        """
         del policy, media
         self.calls.append("sync")
         return self._enrich(facts)
@@ -481,14 +523,18 @@ class _StaticEnrichment:
         facts: ClassificationFacts,
         media: object,
     ) -> ClassificationFacts:
-        """记录异步调用并返回同一补充事实。"""
+        """
+        记录异步调用并返回同一补充事实。
+        """
         del policy, media
         self.calls.append("async")
         return self._enrich(facts)
 
 
 def test_execution_sync_and_async_apply_the_same_enriched_facts() -> None:
-    """同步和异步执行服务必须在同一求值边界消费补充事实。"""
+    """
+    同步和异步执行服务必须在同一求值边界消费补充事实。
+    """
     source = MediaInfo(
         media_source=MediaSource.Douban,
         media_id="1291561",
@@ -514,7 +560,9 @@ def test_execution_sync_and_async_apply_the_same_enriched_facts() -> None:
 
 
 def test_offline_classification_keeps_policy_without_external_enrichment() -> None:
-    """离线结果仍遵守用户分类和手工覆盖，但同步异步都不调用外部补充。"""
+    """
+    离线结果仍遵守用户分类和手工覆盖，但同步异步都不调用外部补充。
+    """
     source = MusicInfo(title="晴天", artists=["周杰伦"], album="叶惠美")
     enrichment = _StaticEnrichment()
     service = ClassificationExecutionService(_Runtime(_policy()), enrichment=enrichment)
@@ -536,7 +584,9 @@ def test_offline_classification_keeps_policy_without_external_enrichment() -> No
 
 
 def test_music_metadata_category_is_never_promoted_without_a_rule() -> None:
-    """音乐来源描述分类只能形成事实，目录分类必须来自规则或兜底。"""
+    """
+    音乐来源描述分类只能形成事实，目录分类必须来自规则或兜底。
+    """
     music = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -554,7 +604,9 @@ def test_music_metadata_category_is_never_promoted_without_a_rule() -> None:
 
 
 def test_artist_detail_uses_music_entity_facts() -> None:
-    """完整艺术家详情应支持 music.entity_type 分类并保留描述类型。"""
+    """
+    完整艺术家详情应支持 music.entity_type 分类并保留描述类型。
+    """
     artist = MusicArtistInfo(
         media_source="musicbrainz",
         media_id="artist-1",
@@ -571,7 +623,9 @@ def test_artist_detail_uses_music_entity_facts() -> None:
 
 
 def test_incomplete_identity_remains_not_evaluated() -> None:
-    """本地音乐兜底缺少远端身份时不得伪造已完成分类。"""
+    """
+    本地音乐兜底缺少远端身份时不得伪造已完成分类。
+    """
     music = MusicInfo(
         title="Local Track",
         metadata_category="Rock",
@@ -587,7 +641,9 @@ def test_incomplete_identity_remains_not_evaluated() -> None:
 
 
 def test_active_legacy_policy_builds_tmdb_extension_facts_at_execution() -> None:
-    """迁移策略使用的 TMDB 动态字段应在收口点从受控原始详情构造。"""
+    """
+    迁移策略使用的 TMDB 动态字段应在收口点从受控原始详情构造。
+    """
     migration = migrate_legacy_category_config(
         CategoryConfig(
             movie={"特别电影": CategoryRule(custom_flag="yes")},
@@ -611,7 +667,9 @@ def test_active_legacy_policy_builds_tmdb_extension_facts_at_execution() -> None
 
 
 def test_invalid_policy_uses_read_only_legacy_tmdb_fallback() -> None:
-    """策略不可用时只对 TMDB 恢复旧分类，并明确标记 invalid_policy。"""
+    """
+    策略不可用时只对 TMDB 恢复旧分类，并明确标记 invalid_policy。
+    """
     legacy = CategoryConfig(
         movie={
             "日本动画": CategoryRule(
@@ -641,10 +699,14 @@ def test_invalid_policy_uses_read_only_legacy_tmdb_fallback() -> None:
 
 
 class _OrderingClassificationService:
-    """记录共享上报与分类收口顺序的测试执行服务。"""
+    """
+    记录共享上报与分类收口顺序的测试执行服务。
+    """
 
     def __init__(self, events: list[str]) -> None:
-        """保存共享顺序记录列表。"""
+        """
+        保存共享顺序记录列表。
+        """
         self.events = events
         self.calls: list[MediaInfo] = []
 
@@ -655,7 +717,9 @@ class _OrderingClassificationService:
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
     ) -> MediaInfo:
-        """复制候选并写入可观察分类。"""
+        """
+        复制候选并写入可观察分类。
+        """
         del effective_override, refresh
         self.events.append("finalize")
         self.calls.append(media)
@@ -670,7 +734,9 @@ class _OrderingClassificationService:
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
     ) -> MediaInfo:
-        """记录异步分类收口，并返回独立结果。"""
+        """
+        记录异步分类收口，并返回独立结果。
+        """
         del effective_override, refresh
         self.events.append("async_finalize")
         self.calls.append(media)
@@ -680,18 +746,24 @@ class _OrderingClassificationService:
 
 
 def _keep_candidate(**kwargs: object) -> Optional[MediaInfo]:
-    """保持原生候选不变，隔离插件补充分支。"""
+    """
+    保持原生候选不变，隔离插件补充分支。
+    """
     value = kwargs.get("mediainfo")
     return value if isinstance(value, MediaInfo) else None
 
 
 async def _async_keep_candidate(**kwargs: object) -> Optional[MediaInfo]:
-    """异步保持原生候选不变。"""
+    """
+    异步保持原生候选不变。
+    """
     return _keep_candidate(**kwargs)
 
 
 def test_sync_recognition_finalizes_after_share_report() -> None:
-    """同步完整识别应先完成共享上报，再通过应用服务分类返回副本。"""
+    """
+    同步完整识别应先完成共享上报，再通过应用服务分类返回副本。
+    """
     chain = ChainBase()
     events: list[str] = []
     classifier = _OrderingClassificationService(events)
@@ -720,7 +792,9 @@ def test_sync_recognition_finalizes_after_share_report() -> None:
 
 
 def test_async_recognition_uses_the_same_finalize_boundary() -> None:
-    """异步完整识别应调用同一应用服务的有界异步分类收口。"""
+    """
+    异步完整识别应调用同一应用服务的有界异步分类收口。
+    """
     chain = ChainBase()
     events: list[str] = []
     classifier = _OrderingClassificationService(events)
@@ -737,7 +811,9 @@ def test_async_recognition_uses_the_same_finalize_boundary() -> None:
     )
 
     async def exercise() -> MediaInfo | None:
-        """执行异步识别并返回分类后的媒体。"""
+        """
+        执行异步识别并返回分类后的媒体。
+        """
         with patch.object(
             chain,
             "_async_run_native_media_recognize",

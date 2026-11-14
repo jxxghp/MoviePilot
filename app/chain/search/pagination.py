@@ -1,4 +1,6 @@
-"""搜索分页计划与异步逐页调度 owner。"""
+"""
+搜索分页计划与异步逐页调度 owner。
+"""
 
 import asyncio
 import time
@@ -23,16 +25,17 @@ async def _run_site_page(
     site: SiteIndexer,
     page_number: int,
 ) -> PageResult:
-    """执行一页请求，并把业务异常交回编排层统一传播。"""
+    """
+    执行一页请求，并把业务异常交回编排层统一传播。
+    """
     async with semaphore:
         started_at = time.perf_counter()
         try:
             return await search_page(site, page_number) or [], None, time.perf_counter() - started_at
         except asyncio.CancelledError:
             raise
+        # 将业务异常交给等待方传播，避免任务登记器和调用链重复记录同一故障。
         except Exception as error:  # noqa: BLE001
-            # TaskRegistry 会报告未收口的后台异常；这里由等待方同步传播，
-            # 避免同一 provider 故障同时被登记器和调用链重复记录。
             return [], error, time.perf_counter() - started_at
 
 
@@ -46,7 +49,9 @@ def _submit_site_page(
     search_page: Callable[[SiteIndexer, int], Awaitable[Optional[List[Any]]]],
     task_owner: str,
 ) -> None:
-    """登记一页请求及其续页位置，供统一终态收口。"""
+    """
+    登记一页请求及其续页位置，供统一终态收口。
+    """
     page_number = search_pages[page_index]
     task = get_task_registry().create(
         _run_site_page(semaphore, search_page, site, page_number),
@@ -58,7 +63,9 @@ def _submit_site_page(
 
 
 async def _cancel_pending_pages(pending_tasks: PendingPages) -> None:
-    """取消并等待仍由本次分页会话持有的全部任务。"""
+    """
+    取消并等待仍由本次分页会话持有的全部任务。
+    """
     tasks = tuple(pending_tasks)
     for task in tasks:
         if not task.done():
@@ -68,7 +75,9 @@ async def _cancel_pending_pages(pending_tasks: PendingPages) -> None:
 
 
 class SearchPaginationOwner(_SearchOwnerBase):
-    """搜索分页计划与异步逐页调度 owner。"""
+    """
+    搜索分页计划与异步逐页调度 owner。
+    """
 
     @staticmethod
     def _get_search_resource_pages() -> int:
@@ -129,7 +138,9 @@ class SearchPaginationOwner(_SearchOwnerBase):
         should_continue: Callable[[SiteIndexer, List[Any]], bool],
         task_owner: str,
     ) -> AsyncIterator[Tuple[SiteIndexer, int, List[Any], bool, float]]:
-        """统一调度站点逐页请求，并在调用方退出时取消、等待全部请求。"""
+        """
+        统一调度站点逐页请求，并在调用方退出时取消、等待全部请求。
+        """
         total_num = len(indexer_sites) * len(search_pages)
         semaphore = asyncio.Semaphore(self.runtime_config.search_threadpool_size or max(1, total_num))
         pending_tasks: PendingPages = {}

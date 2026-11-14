@@ -1,4 +1,5 @@
-"""订阅洗版优先级与缺失集计算的领域规则。
+"""
+订阅洗版优先级与缺失集计算的领域规则。
 
 本模块是订阅按集事实（note / episode_priority）、洗版准入基线
 （current_priority）和目标范围推导的唯一算法来源；链层只保留薄委托，
@@ -286,7 +287,7 @@ def prepare_best_version_total_expansion_fields(
                     total_episode=old_total_episode,
                 )
             }
-        update_data["episode_priority"] = episode_priority
+        update_data["episode_priority"] = cast(JsonData, episode_priority)
         working_episode_priority = episode_priority
         if is_full_best_version_enabled(subscribe):
             update_data["current_priority"] = 0
@@ -343,7 +344,7 @@ def prepare_best_version_total_change_fields(
                 episode_priority=filtered_priority,
             )
         )
-    update_data["episode_priority"] = filtered_priority
+    update_data["episode_priority"] = cast(JsonData, filtered_priority)
     update_data["current_priority"] = current_priority
     working_snapshot = replace(working_snapshot, current_priority=current_priority)
     update_data.update(prepare_subscribe_progress_fields(subscribe=working_snapshot, no_exists={}))
@@ -553,7 +554,7 @@ def should_prefer_full_pack_for_episode_best_version(
     priority: int,
 ) -> bool:
     """
-    判断分集洗版是否应优先下载整包。
+    判断分集洗版或首次下载的整包候选是否通过按集优先级门槛。
 
     整包优先级必须严格高于每个目标集；否则交回按集路径，只下载能提升质量的集。
     """
@@ -573,14 +574,39 @@ def should_prefer_full_pack_for_episode_best_version(
     return all(resource_priority > episode_priority.get(str(episode), 0) for episode in target_episodes)
 
 
+def should_prefer_full_pack_for_initial_download(
+    subscribe: SubscriptionSnapshot,
+    mediakey: Union[int, str],
+    no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]],
+) -> bool:
+    """
+    普通电视剧尚无下载记录且媒体库缺少全部目标集时，允许首轮优先整包。
+
+    缺集事实优先于缓存的 lack_episode；已有任意下载记录或媒体库已有目标集时保留补集行为。
+    """
+    if subscribe.best_version or subscribe.type != MediaType.TV.value or subscribe.note or subscribe.season is None:
+        return False
+    if any(priority > 0 for priority in normalize_episode_priority(subscribe.episode_priority).values()):
+        return False
+    target_episodes = get_best_version_target_episodes(subscribe)
+    missing = (no_exists or {}).get(mediakey, {}).get(subscribe.season)
+    if not target_episodes or missing is None:
+        return False
+    missing_episodes = missing.episodes or list(range(missing.start_episode or 1, (missing.total_episode or 0) + 1))
+    return set(target_episodes) == set(missing_episodes)
+
+
 def build_full_pack_first_no_exists(
     subscribe: SubscriptionSnapshot,
     mediakey: Union[int, str],
+    no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]] = None,
 ) -> Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
     """
-    构造分集洗版优先全集时使用的整季缺失范围。
+    构造分集洗版或普通电视剧首次下载优先全集时使用的完整目标范围。
     """
-    if not subscribe.best_version or is_full_best_version_enabled(subscribe) or subscribe.type != MediaType.TV.value:
+    if is_full_best_version_enabled(subscribe) or subscribe.type != MediaType.TV.value:
+        return None
+    if not subscribe.best_version and not should_prefer_full_pack_for_initial_download(subscribe, mediakey, no_exists):
         return None
 
     target_episodes = get_best_version_target_episodes(subscribe)
@@ -597,3 +623,31 @@ def build_full_pack_first_no_exists(
         )
     }
     return {mediakey: cast(Dict[int, NotExistMediaInfo], season_map)}
+
+
+def annotate_subscription_download(subscribe: SubscriptionSnapshot, context: Context) -> None:
+    """
+    按提交前订阅事实与最终选集冻结下载来源，不把开启洗版等同于已发生升级。
+
+    整包同时包含已下载集和缺集时归入洗版，并分别保留两类集数。
+    非电视剧按已提交过版本的优先级事实区分，普通订阅始终记录为首次订阅。
+    """
+    selected = set(context.selected_episodes or [])
+    downloaded = set(get_downloaded_best_version_episodes(subscribe))
+    if is_full_best_version_enabled(subscribe) and subscribe.current_priority:
+        downloaded.update(get_best_version_target_episodes(subscribe))
+    if subscribe.type == MediaType.TV.value:
+        if not selected:
+            selected = set(get_best_version_target_episodes(subscribe))
+        upgraded = selected & downloaded if subscribe.best_version else set()
+        is_upgrade = bool(upgraded)
+    else:
+        upgraded = set()
+        is_upgrade = bool(subscribe.best_version and subscribe.current_priority)
+    context.subscription_download = cast(dict[str, JsonData], {
+        "subscription_id": subscribe.id,
+        "submission_type": "upgrade" if is_upgrade else "initial",
+        "best_version_full": is_full_best_version_enabled(subscribe),
+        "initial_episodes": sorted(selected - upgraded),
+        "upgrade_episodes": sorted(upgraded),
+    })

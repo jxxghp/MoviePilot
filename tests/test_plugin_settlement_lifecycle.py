@@ -1,3 +1,7 @@
+"""
+验证插件安装结算与生命周期状态衔接。
+"""
+
 import asyncio
 from concurrent.futures import Future
 from unittest.mock import AsyncMock, MagicMock
@@ -11,7 +15,9 @@ from app.startup import lifecycle
 
 @pytest.mark.asyncio
 async def test_runtime_ready_waits_for_scheduler_and_command_refresh(monkeypatch) -> None:
-    """插件 ready 只在调度任务和命令注册完成后对外可见。"""
+    """
+    插件 ready 只在调度任务和命令注册完成后对外可见。
+    """
     order: list[str] = []
     startup_tokens: list[PluginStartupLease] = []
     manager = MagicMock()

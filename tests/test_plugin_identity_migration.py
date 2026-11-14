@@ -1,4 +1,6 @@
-"""插件身份表 Alembic 迁移测试。"""
+"""
+插件身份表 Alembic 迁移测试。
+"""
 
 import importlib
 import os
@@ -32,7 +34,9 @@ def _bind_migration(
     connection,
     module_name: str = BASE_MIGRATION,
 ):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(module_name)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -42,7 +46,9 @@ def _bind_migration(
 def test_plugin_identity_migration_upgrades_twice_and_downgrades(
     monkeypatch,
 ) -> None:
-    """SQLite 应可从旧身份表升级到声明快照并按逆序完整回滚。"""
+    """
+    SQLite 应可从旧身份表升级到声明快照并按逆序完整回滚。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         migration = _bind_migration(monkeypatch, connection)
@@ -105,7 +111,9 @@ def test_plugin_identity_migration_upgrades_twice_and_downgrades(
 
 
 def test_plugin_identity_migration_accepts_fresh_current_schema(monkeypatch) -> None:
-    """create_all 已建当前表时重复升级不得创建冲突对象。"""
+    """
+    create_all 已建当前表时重复升级不得创建冲突对象。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         PluginIdentity.__table__.create(connection)
@@ -127,7 +135,9 @@ def test_plugin_identity_migration_accepts_fresh_current_schema(monkeypatch) -> 
 def test_plugin_identity_declaration_migration_backfills_and_restores_legacy_fields(
     monkeypatch,
 ) -> None:
-    """声明迁移应保守回填旧字段，并能在降级时恢复旧投影。"""
+    """
+    声明迁移应保守回填旧字段，并能在降级时恢复旧投影。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         base = _bind_migration(monkeypatch, connection)
@@ -215,7 +225,9 @@ def test_plugin_identity_declaration_migration_backfills_and_restores_legacy_fie
 def test_plugin_identity_declaration_migration_rejects_partial_legacy_schema(
     monkeypatch,
 ) -> None:
-    """非 canonical 旧字段集合必须停止迁移，不能静默丢弃残余声明。"""
+    """
+    非 canonical 旧字段集合必须停止迁移，不能静默丢弃残余声明。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         base = _bind_migration(monkeypatch, connection)
@@ -242,7 +254,9 @@ def test_plugin_identity_declaration_migration_rejects_partial_legacy_schema(
 
 
 def test_plugin_identity_migration_matches_postgresql_identity() -> None:
-    """独立 Alembic 路径应保留 PostgreSQL 循环 Identity 主键。"""
+    """
+    独立 Alembic 路径应保留 PostgreSQL 循环 Identity 主键。
+    """
     migration = importlib.import_module(BASE_MIGRATION)
     metadata = sa.MetaData()
     table = sa.Table(
@@ -262,7 +276,9 @@ def test_plugin_identity_migration_matches_postgresql_identity() -> None:
 
 
 def test_plugin_identity_migration_runs_on_postgresql(monkeypatch) -> None:
-    """已配置的隔离 PostgreSQL 应执行真实建表、约束和回滚。"""
+    """
+    已配置的隔离 PostgreSQL 应执行真实建表、约束和回滚。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")

@@ -1,4 +1,6 @@
-"""提交 feedback-issue payload 到目标 GitHub 仓库。"""
+"""
+提交 feedback-issue 提交数据到目标 GitHub 仓库。
+"""
 
 from __future__ import annotations
 
@@ -52,7 +54,9 @@ REQUIRED_PAYLOAD_FIELDS = (
 
 
 def normalize_payload(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """规范化提交 payload 并返回缺失字段。"""
+    """
+    规范化提交提交数据并返回缺失字段。
+    """
     payload = {key: str(raw.get(key) or "").strip() for key in REQUIRED_PAYLOAD_FIELDS}
     missing = [key for key, value in payload.items() if not value]
     payload["title"] = truncate(payload["title"], MAX_TITLE_CHARS, marker="...")
@@ -61,7 +65,9 @@ def normalize_payload(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
 
 
 def validate_payload(payload: dict[str, Any], logs: str) -> Optional[str]:
-    """校验提交 payload 的枚举值和内容质量。"""
+    """
+    校验提交提交数据的枚举值和内容质量。
+    """
     for value, allowed, field_name in (
         (payload["environment"], ALLOWED_ENVIRONMENTS, "environment"),
         (payload["issue_type"], ALLOWED_ISSUE_TYPES, "issue_type"),
@@ -82,7 +88,9 @@ def validate_payload(payload: dict[str, Any], logs: str) -> Optional[str]:
 
 
 def build_no_token_result(payload: dict[str, Any], logs: str) -> dict[str, Any]:
-    """构造未配置 GitHub Token 时的预填链接降级结果。"""
+    """
+    构造未配置 GitHub Token 时的预填链接降级结果。
+    """
     prefill_url = build_prefill_url(
         title=payload["title"],
         version=payload["version"],
@@ -109,7 +117,9 @@ def post_github_issue(
     body: str,
     auth_headers: dict[str, str],
 ) -> Any:
-    """调用 GitHub REST API 创建 Issue 并返回响应对象。"""
+    """
+    调用 GitHub REST API 创建 Issue 并返回响应对象。
+    """
     request_headers = {
         **auth_headers,
         "Accept": "application/vnd.github+json",
@@ -137,7 +147,9 @@ def build_api_failure_result(
     logs: str,
     github_message: str | None = None,
 ) -> dict[str, Any]:
-    """构造 GitHub API 失败后的预填链接兜底结果。"""
+    """
+    构造 GitHub API 失败后的预填链接兜底结果。
+    """
     prefill_url = build_prefill_url(
         title=payload["title"],
         version=payload["version"],
@@ -158,7 +170,9 @@ def build_api_failure_result(
 
 
 def submit_issue(payload_file: str | Path, username: str) -> dict[str, Any]:
-    """读取 payload 文件并执行提交或预填链接降级流程。"""
+    """
+    读取提交数据文件并执行提交或预填链接降级流程。
+    """
     raw = read_json_file(payload_file)
     payload, missing = normalize_payload(raw)
     if missing:
@@ -279,7 +293,9 @@ def submit_issue(payload_file: str | Path, username: str) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行参数。"""
+    """
+    解析命令行参数。
+    """
     parser = argparse.ArgumentParser(description="提交 MoviePilot 反馈 Issue")
     parser.add_argument("--payload-file", required=True, help="prepare 脚本生成的 payload JSON 文件")
     parser.add_argument(
@@ -291,7 +307,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """脚本入口：输出 JSON 提交结果。"""
+    """
+    脚本入口：输出 JSON 提交结果。
+    """
     args = parse_args()
     result = submit_issue(args.payload_file, args.username)
     print(result_payload(**result))

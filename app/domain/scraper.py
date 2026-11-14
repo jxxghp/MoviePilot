@@ -1,3 +1,7 @@
+"""
+读取 Kodi 风格媒体 NFO，并按标准媒体信息构造元数据文档和图片清单。
+"""
+
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Optional
@@ -5,44 +9,64 @@ from urllib.parse import urlparse
 from xml.dom import minidom
 
 from app.domain.context import MediaInfo
-from app.schemas.types import MediaSource, MediaType
 from app.foundation.dom import DomUtils
+from app.schemas.types import MediaSource, MediaType
 
 
 class NfoReader:
-    """读取 Kodi 风格 NFO XML 中的元素值。"""
+    """
+    读取 Kodi 风格 NFO XML 中的元素值。
+    """
 
-    def __init__(self, xml_file_path: Path):
-        """解析指定 NFO 文件并保存根元素。"""
+    def __init__(self, xml_file_path: Path) -> None:
+        """
+        解析指定 NFO 文件并保存根元素。
+        """
         self.xml_file_path = xml_file_path
         self.tree = ET.parse(xml_file_path)
         self.root = self.tree.getroot()
 
-    def get_element_value(self, element_path) -> Optional[str]:
-        """返回首个匹配元素的文本。"""
+    def get_element_value(self, element_path: str) -> Optional[str]:
+        """
+        返回首个匹配元素的文本。
+        """
         element = self.root.find(element_path)
         return element.text if element is not None else None
 
-    def get_elements(self, element_path) -> List[ET.Element]:
-        """返回路径匹配的全部 XML 元素。"""
+    def get_elements(self, element_path: str) -> List[ET.Element]:
+        """
+        返回路径匹配的全部 XML 元素。
+        """
         return self.root.findall(element_path)
 
 
 class MediaScraperHelper:
     """
-    基于统一媒体信息生成通用 NFO 与图片清单，供缺少专用刮削格式的数据源复用
+    基于统一媒体信息生成通用 NFO 与图片清单，供缺少专用刮削格式的数据源复用。
     """
 
     @staticmethod
     def _media_identity(
         mediainfo: MediaInfo,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
     ) -> tuple[Optional[MediaSource], Optional[str]]:
         """
         获取媒体信息中的来源与来源原生 ID。
 
         :param mediainfo: 统一媒体信息
-        :return: 数据源名称与原生 ID
+        :param season: 单集所属季号；主媒体或季元数据时为空
+        :param episode: 单集集号；为空时使用主媒体身份
+        :return: 数据源名称与原生 ID；IMDb 单集缺少独立身份时 ID 为 None，不使用剧集主 ID
         """
+        if mediainfo.media_source == MediaSource.IMDb and season is not None and episode is not None:
+            for detail in mediainfo.season_info:
+                if detail.get("season_number") != season:
+                    continue
+                for item in detail.get("episodes") or []:
+                    if item.get("episode_number") == episode:
+                        return MediaSource.IMDb, item.get("id")
+            return MediaSource.IMDb, None
         return mediainfo.media_source, mediainfo.media_id
 
     @staticmethod
@@ -61,7 +85,9 @@ class MediaScraperHelper:
         cls,
         mediainfo: MediaInfo,
         doc: minidom.Document,
-        root: minidom.Node,
+        root: minidom.Element,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
     ) -> None:
         """
         向 NFO 根节点写入各媒体类型共享的标准字段。
@@ -69,6 +95,8 @@ class MediaScraperHelper:
         :param mediainfo: 统一媒体信息
         :param doc: XML 文档
         :param root: NFO 根节点
+        :param season: 单集季号，用于选择来源原生身份
+        :param episode: 单集集号，不使用剧集主身份代替单集
         """
         DomUtils.add_node(doc, root, "title", mediainfo.title or "")
         DomUtils.add_node(doc, root, "originaltitle", mediainfo.original_title or "")
@@ -81,7 +109,7 @@ class MediaScraperHelper:
         outline = DomUtils.add_node(doc, root, "outline")
         outline.appendChild(doc.createCDATASection(mediainfo.overview or ""))
 
-        source, media_id = cls._media_identity(mediainfo)
+        source, media_id = cls._media_identity(mediainfo, season=season, episode=episode)
         if source and media_id:
             unique_id = DomUtils.add_node(doc, root, "uniqueid", media_id)
             unique_id.setAttribute("type", str(source))
@@ -135,7 +163,7 @@ class MediaScraperHelper:
         :param mediainfo: 统一媒体信息
         :param season: 季号
         :param episode: 集号
-        :return: NFO XML 文本
+        :return: UTF-8 编码声明的 NFO XML 文本；媒体信息为空时返回 None
         """
         if not mediainfo:
             return None
@@ -146,7 +174,7 @@ class MediaScraperHelper:
             cls._append_common_nodes(mediainfo, doc, root)
         elif season is not None and episode is not None:
             root = DomUtils.add_node(doc, doc, "episodedetails")
-            cls._append_common_nodes(mediainfo, doc, root)
+            cls._append_common_nodes(mediainfo, doc, root, season=season, episode=episode)
             DomUtils.add_node(doc, root, "season", str(season))
             DomUtils.add_node(doc, root, "episode", str(episode))
             DomUtils.add_node(
@@ -165,7 +193,7 @@ class MediaScraperHelper:
             DomUtils.add_node(doc, root, "season", "-1")
             DomUtils.add_node(doc, root, "episode", "-1")
 
-        return doc.toprettyxml(indent="  ", encoding="utf-8")
+        return doc.toprettyxml(indent="  ", encoding="utf-8").decode("utf-8")
 
     @classmethod
     def get_metadata_img(
@@ -173,7 +201,7 @@ class MediaScraperHelper:
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-    ) -> dict:
+    ) -> dict[str, str]:
         """
         根据统一媒体信息生成主海报和背景图下载清单。
 

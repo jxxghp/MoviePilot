@@ -1,5 +1,8 @@
-from app.runtime.config import Settings
+"""
+验证代理地址配置的解析与网络请求应用。
+"""
 
+from app.runtime.config import Settings
 
 PROXY_ENV_NAMES = (
     "PROXY_HOST",

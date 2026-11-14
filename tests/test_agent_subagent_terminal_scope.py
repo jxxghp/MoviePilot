@@ -1,4 +1,6 @@
-"""子任务终端授权必须按真实调用隔离，缓存图和已知句柄不产生隐式权限。"""
+"""
+子任务终端授权必须按真实调用隔离，缓存图和已知句柄不产生隐式权限。
+"""
 
 import asyncio
 import builtins
@@ -40,16 +42,22 @@ from app.agent.tools.impl.execute_command import ExecuteCommandTool
 
 
 class _TerminalReadModel(FakeMessagesListChatModel):
-    """只固定工具协议，终端动作经过真实子图 ToolNode、策略和管理器。"""
+    """
+    只固定工具协议，终端动作经过真实子图 ToolNode、策略和管理器。
+    """
 
     terminal_handle: str
 
     def bind_tools(self, _tools: Any, **_kwargs: Any) -> "_TerminalReadModel":
-        """使用提供器装配的真实工具列表，无供应商或网络调用。"""
+        """
+        使用提供器装配的真实工具列表，无供应商或网络调用。
+        """
         return self
 
     def _generate(self, messages: list[BaseMessage], stop: Any = None, run_manager: Any = None, **_kwargs: Any) -> ChatResult:
-        """按本次图状态生成确定性工具调用，不用共享响应序号串扰并发子图。"""
+        """
+        按本次图状态生成确定性工具调用，不用共享响应序号串扰并发子图。
+        """
         previous = next((item for item in reversed(messages) if isinstance(item, ToolMessage)), None)
         message = AIMessage(content=str(previous.content)) if previous else AIMessage(
             content="", tool_calls=[{"id": "read-terminal", "name": "execute_command", "args": {
@@ -60,7 +68,9 @@ class _TerminalReadModel(FakeMessagesListChatModel):
 
 
 def _policy() -> ToolPolicyContext:
-    """使用固定宿主用户，测试输入不能覆盖该身份。"""
+    """
+    使用固定宿主用户，测试输入不能覆盖该身份。
+    """
     return ToolPolicyContext(
         session_id="conversation", user_id="owner", origin=ToolOrigin.SUBAGENT,
         principal_type=PrincipalType.SUBAGENT, auth_source=AuthSource.INTERNAL,
@@ -69,7 +79,9 @@ def _policy() -> ToolPolicyContext:
 
 
 def _provider() -> _SubAgentAgentProvider:
-    """保留真实缓存提供器，以离线图边界观察调用上下文。"""
+    """
+    保留真实缓存提供器，以离线图边界观察调用上下文。
+    """
     return _SubAgentAgentProvider(
         model=FakeListChatModel(responses=["unused"]), profiles=_builtin_subagent_profiles(),
         tools=[], policy_context=_policy(),
@@ -77,7 +89,9 @@ def _provider() -> _SubAgentAgentProvider:
 
 
 def _command() -> str:
-    """测试进程用 stdout 发布证据，并等待父任务输入后才退出。"""
+    """
+    测试进程用 stdout 发布证据，并等待父任务输入后才退出。
+    """
     code = "import sys\nprint('PARENT_ONLY',flush=True)\ndata=sys.stdin.buffer.read()\nprint('BYTES:'+str(len(data)),flush=True)"
     args = [sys.executable, "-u", "-c", code]
     return subprocess.list2cmdline(args) if os.name == "nt" else "exec " + shlex.join(args)
@@ -85,7 +99,9 @@ def _command() -> str:
 
 @pytest_asyncio.fixture
 async def terminal_parent(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[tuple[_TerminalSessionManager, TerminalScope, str]]:
-    """测试独占管理器和父进程，失败时也回收自身创建的子进程。"""
+    """
+    测试独占管理器和父进程，失败时也回收自身创建的子进程。
+    """
     manager = _TerminalSessionManager()
     monkeypatch.setattr(terminal_module, "terminal_session_manager", manager)
     parent = TerminalScope(user_id="owner", task_id="parent-task", kind="interactive")
@@ -105,14 +121,18 @@ async def terminal_parent(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[tupl
 async def test_cached_profile_keeps_parallel_child_grants_separate(
     terminal_parent: tuple[_TerminalSessionManager, TerminalScope, str], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """同一缓存图并发执行，只有显式获授权的真实子任务能读父终端。"""
+    """
+    同一缓存图并发执行，只有显式获授权的真实子任务能读父终端。
+    """
     manager, parent, session_id = terminal_parent
     arrived = asyncio.Event()
     observations: dict[str, tuple[TerminalScope, str]] = {}
     calls = 0
 
     async def invoke(state: dict[str, Any], **_kwargs: Any) -> dict[str, list[AIMessage]]:
-        """在两个子调用重叠期间读取真实管理器，不用假权限替代隔离检查。"""
+        """
+        在两个子调用重叠期间读取真实管理器，不用假权限替代隔离检查。
+        """
         scope = require_terminal_scope()
         assert scope is not parent and scope.user_id == parent.user_id
         assert scope.task_id in {"shared-child", "sibling-child"}
@@ -133,7 +153,9 @@ async def test_cached_profile_keeps_parallel_child_grants_separate(
     graph = SimpleNamespace(ainvoke=invoke)
 
     def create_graph(**_kwargs: Any) -> Any:
-        """记录缓存图创建次数，防止通过每次新建图掩盖共享工具问题。"""
+        """
+        记录缓存图创建次数，防止通过每次新建图掩盖共享工具问题。
+        """
         nonlocal calls
         calls += 1
         return graph
@@ -161,13 +183,17 @@ async def test_cached_profile_keeps_parallel_child_grants_separate(
 async def test_cancel_child_revokes_grants_and_preserves_parent_input(
     terminal_parent: tuple[_TerminalSessionManager, TerminalScope, str], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """取消获授权的子任务只关闭子作用域，父进程仍能收到唯一完整输入。"""
+    """
+    取消获授权的子任务只关闭子作用域，父进程仍能收到唯一完整输入。
+    """
     manager, parent, session_id = terminal_parent
     entered = asyncio.Event()
     child_scopes: list[TerminalScope] = []
 
     async def invoke(_state: Any, **_kwargs: Any) -> Any:
-        """真实读取授权生效后保持调用运行，让外部取消触发 finally 清理。"""
+        """
+        真实读取授权生效后保持调用运行，让外部取消触发 finally 清理。
+        """
         child_scopes.append(require_terminal_scope())
         assert "PARENT_ONLY" in (await manager.read(session_id=session_id))["output"]
         entered.set()
@@ -208,12 +234,16 @@ async def test_cancel_child_revokes_grants_and_preserves_parent_input(
 async def test_share_failure_never_invokes_child_model(
     terminal_parent: tuple[_TerminalSessionManager, TerminalScope, str], monkeypatch: pytest.MonkeyPatch, parent_kind: str,
 ) -> None:
-    """无父上下文或不拥有该终端的父任务不能通过委派执行模型。"""
+    """
+    无父上下文或不拥有该终端的父任务不能通过委派执行模型。
+    """
     _manager, _parent, session_id = terminal_parent
     invoked = False
 
     async def invoke(*_args: Any, **_kwargs: Any) -> Any:
-        """本边界不可触达，调用就表示授权失败仍执行了模型。"""
+        """
+        本边界不可触达，调用就表示授权失败仍执行了模型。
+        """
         nonlocal invoked
         invoked = True
         return {"messages": [AIMessage(content="unexpected")]}
@@ -235,19 +265,25 @@ async def test_share_failure_never_invokes_child_model(
 
 @pytest.mark.asyncio
 async def test_nonterminal_children_use_local_identity_without_loading_manager(monkeypatch: pytest.MonkeyPatch) -> None:
-    """无终端委派仍有独立子身份，但进入和退出都不物化终端单例。"""
+    """
+    无终端委派仍有独立子身份，但进入和退出都不物化终端单例。
+    """
     module_name = "app.agent.terminal.manager"
     monkeypatch.delitem(sys.modules, module_name)
     original_import = builtins.__import__
     scopes: list[TerminalScope] = []
 
     def guarded_import(name: str, *args: Any, **kwargs: Any) -> Any:
-        """未启用终端的测试禁止隐式导入终端管理器。"""
+        """
+        未启用终端的测试禁止隐式导入终端管理器。
+        """
         assert name != module_name
         return original_import(name, *args, **kwargs)
 
     async def invoke(_state: Any, **_kwargs: Any) -> dict[str, list[AIMessage]]:
-        """记录每次调用真实 scope，确保缓存图不缓存任务身份。"""
+        """
+        记录每次调用真实 scope，确保缓存图不缓存任务身份。
+        """
         scopes.append(require_terminal_scope())
         return {"messages": [AIMessage(content="只读分析完成")]}
 
@@ -266,7 +302,9 @@ async def test_nonterminal_children_use_local_identity_without_loading_manager(m
 async def test_nested_scope_restores_parent_and_rejects_redelegating_grant(
     terminal_parent: tuple[_TerminalSessionManager, TerminalScope, str],
 ) -> None:
-    """嵌套普通子调用结束还原上层，获授只读句柄的子任务不能再转授。"""
+    """
+    嵌套普通子调用结束还原上层，获授只读句柄的子任务不能再转授。
+    """
     manager, parent, session_id = terminal_parent
     grants = [SubAgentTerminalGrant(session_id=session_id)]
     with bind_terminal_scope(parent):
@@ -290,13 +328,17 @@ async def test_nested_scope_restores_parent_and_rejects_redelegating_grant(
 async def test_registered_task_entries_forward_per_task_terminal_grants(
     terminal_parent: tuple[_TerminalSessionManager, TerminalScope, str], monkeypatch: pytest.MonkeyPatch, entry: str,
 ) -> None:
-    """阻塞、异步、批量和管道的真实工具入口都按条目转发且分配独立 task_id。"""
+    """
+    阻塞、异步、批量和管道的真实工具入口都按条目转发且分配独立 task_id。
+    """
     manager, parent, session_id = terminal_parent
     scopes: list[TerminalScope] = []
     output: list[str] = []
 
     async def invoke(state: dict[str, Any], **_kwargs: Any) -> dict[str, list[AIMessage]]:
-        """直接读取真实管理器，授权随任务输入而非同缓存 profile 传播。"""
+        """
+        直接读取真实管理器，授权随任务输入而非同缓存 profile 传播。
+        """
         scopes.append(require_terminal_scope())
         description = state["messages"][0].content
         if description.startswith("shared"):
@@ -346,16 +388,22 @@ async def test_registered_task_entries_forward_per_task_terminal_grants(
 
 @pytest.mark.parametrize("actions", [["write"], ["interrupt"], ["kill"], ["read", "write"], []])
 def test_terminal_grant_schema_rejects_process_control(actions: list[str]) -> None:
-    """只读委派不因声明终端共享而增加写入、终止或其他控制能力。"""
+    """
+    只读委派不因声明终端共享而增加写入、终止或其他控制能力。
+    """
     with pytest.raises(ValidationError):
         SubAgentTerminalGrant.model_validate({"session_id": "parent-terminal", "actions": actions})
 
 
 @pytest.mark.asyncio
 async def test_batch_rejects_ambiguous_top_level_grants(monkeypatch: pytest.MonkeyPatch) -> None:
-    """批量顶层共享不能变成隐式广播，调用者须在每个任务明确声明。"""
+    """
+    批量顶层共享不能变成隐式广播，调用者须在每个任务明确声明。
+    """
     def create_graph(**_kwargs: Any) -> Any:
-        """输入被拒绝时不能构造或执行子图。"""
+        """
+        输入被拒绝时不能构造或执行子图。
+        """
         pytest.fail("批量输入校验失败不应构造子图")
 
     monkeypatch.setattr(subagent_module, "create_agent", create_graph)
@@ -374,7 +422,9 @@ async def test_batch_rejects_ambiguous_top_level_grants(monkeypatch: pytest.Monk
 
 @pytest.mark.asyncio
 async def test_real_cached_graph_carries_each_child_scope_to_tool_node(terminal_parent) -> None:
-    """同一实际缓存图并发调用时，ToolNode 只给获授权的子任务返回父终端证据。"""
+    """
+    同一实际缓存图并发调用时，ToolNode 只给获授权的子任务返回父终端证据。
+    """
     manager, parent, handle = terminal_parent
     provider = _SubAgentAgentProvider(
         model=_TerminalReadModel(responses=[AIMessage(content="unused")], terminal_handle=handle),

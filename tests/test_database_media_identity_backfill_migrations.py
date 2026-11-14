@@ -1,3 +1,7 @@
+"""
+验证媒体标识回填的来源优先级、旧库兼容和中断重试。
+"""
+
 import importlib
 import os
 import uuid
@@ -71,7 +75,9 @@ F7_INDEX_SIGNATURES = {
 
 
 def _bind_migration(monkeypatch, connection, module_name: str):
-    """把历史 revision 绑定到当前 disposable connection。"""
+    """
+    把历史 revision 绑定到当前 disposable connection。
+    """
     migration = importlib.import_module(module_name)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -79,7 +85,9 @@ def _bind_migration(monkeypatch, connection, module_name: str):
 
 
 def _column_names(connection, table_name: str) -> set[str]:
-    """返回指定测试表的字段集合。"""
+    """
+    返回指定测试表的字段集合。
+    """
     return {
         column["name"]
         for column in sa.inspect(connection).get_columns(table_name)
@@ -90,7 +98,9 @@ def _index_signatures(
         connection,
         table_name: str,
 ) -> dict[str, tuple[tuple[str, ...], bool]]:
-    """返回索引名称到字段顺序及唯一性的映射。"""
+    """
+    返回索引名称到字段顺序及唯一性的映射。
+    """
     return {
         index["name"]: (
             tuple(index.get("column_names") or ()),
@@ -104,13 +114,17 @@ def _assert_index_signatures(
         actual: dict[str, tuple[tuple[str, ...], bool]],
         expected: dict[str, tuple[tuple[str, ...], bool]],
 ) -> None:
-    """断言关键索引的字段顺序和唯一性均符合迁移契约。"""
+    """
+    断言关键索引的字段顺序和唯一性均符合迁移契约。
+    """
     for index_name, signature in expected.items():
         assert actual.get(index_name) == signature, (index_name, actual)
 
 
 def _rows(connection, table_name: str) -> list[dict]:
-    """按主键读取迁移后的测试数据。"""
+    """
+    按主键读取迁移后的测试数据。
+    """
     table = sa.Table(table_name, sa.MetaData(), autoload_with=connection)
     return list(
         connection.execute(sa.select(table).order_by(table.c.id)).mappings()
@@ -122,7 +136,9 @@ def _create_transferhistory(
         columns: tuple[str, ...],
         indexes: tuple[tuple[str, tuple[str, ...]], ...] = (),
 ) -> sa.Table:
-    """创建具有指定兼容字段和索引的最小整理历史表。"""
+    """
+    创建具有指定兼容字段和索引的最小整理历史表。
+    """
     metadata = sa.MetaData()
     table = sa.Table(
         "transferhistory",
@@ -142,7 +158,9 @@ def _create_transferhistory(
 def test_e6_backfill_preserves_priority_existing_identity_and_indexes(
         monkeypatch,
 ) -> None:
-    """e6 应保持 TMDB 优先级、豆瓣兜底和已有规范身份。"""
+    """
+    e6 应保持 TMDB 优先级、豆瓣兜底和已有规范身份。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         table = _create_transferhistory(
@@ -204,7 +222,9 @@ def test_e6_skips_only_missing_legacy_sources(
         values,
         expected_identity,
 ) -> None:
-    """e6 应仅执行物理存在的旧来源字段回填。"""
+    """
+    e6 应仅执行物理存在的旧来源字段回填。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         table = _create_transferhistory(connection, legacy_columns)
@@ -222,7 +242,9 @@ def test_e6_skips_only_missing_legacy_sources(
 def test_e6_retry_completes_interrupted_column_and_index_state(
         monkeypatch,
 ) -> None:
-    """e6 重试应独立补齐缺失的 revision-owned 字段和索引。"""
+    """
+    e6 重试应独立补齐缺失的 revision-owned 字段和索引。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         table = _create_transferhistory(
@@ -259,7 +281,9 @@ def _create_f7_tables(
         indexes: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] | None = None,
         transferhistory_identity: bool = True,
 ) -> dict[str, sa.Table]:
-    """创建五张具有不同历史字段状态的最小媒体表。"""
+    """
+    创建五张具有不同历史字段状态的最小媒体表。
+    """
     metadata = sa.MetaData()
     indexes = indexes or {}
     transferhistory_columns = (
@@ -296,7 +320,9 @@ def _create_f7_tables(
 def test_f7_backfill_uses_physical_columns_and_preserves_priority(
         monkeypatch,
 ) -> None:
-    """f7 应先用带前缀 ID，再按四类来源字段顺序回填。"""
+    """
+    f7 应先用带前缀 ID，再按四类来源字段顺序回填。
+    """
     engine = sa.create_engine("sqlite://")
     layouts = {
         "subscribe": (
@@ -399,7 +425,9 @@ def test_f7_backfill_uses_physical_columns_and_preserves_priority(
 
 
 def test_f7_retry_completes_mixed_partial_table_states(monkeypatch) -> None:
-    """f7 重试应跨表补齐混合缺失的字段和 revision-owned 索引。"""
+    """
+    f7 重试应跨表补齐混合缺失的字段和 revision-owned 索引。
+    """
     engine = sa.create_engine("sqlite://")
     layouts = {
         "subscribe": (
@@ -508,7 +536,9 @@ def test_f7_retry_completes_mixed_partial_table_states(monkeypatch) -> None:
 
 
 def _exercise_e6_f7_round_trip(monkeypatch, engine: sa.Engine) -> None:
-    """验证两个历史 revision 可升级、降级并再次升级。"""
+    """
+    验证两个历史 revision 可升级、降级并再次升级。
+    """
     layouts = {
         "subscribe": ("mediaid", "tmdbid", "doubanid", "bangumiid"),
         "subscribehistory": ("mediaid", "tmdbid", "doubanid", "bangumiid"),
@@ -627,12 +657,16 @@ def _exercise_e6_f7_round_trip(monkeypatch, engine: sa.Engine) -> None:
 
 
 def test_e6_f7_round_trip_on_sqlite(monkeypatch) -> None:
-    """SQLite 应支持两个 revision 的 upgrade/downgrade/re-upgrade。"""
+    """
+    SQLite 应支持两个 revision 的 upgrade/downgrade/re-upgrade。
+    """
     _exercise_e6_f7_round_trip(monkeypatch, sa.create_engine("sqlite://"))
 
 
 def test_e6_f7_round_trip_on_postgresql(monkeypatch) -> None:
-    """已配置的 PostgreSQL 15 应执行与 SQLite 相同的往返路径。"""
+    """
+    已配置的 PostgreSQL 15 应执行与 SQLite 相同的往返路径。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")

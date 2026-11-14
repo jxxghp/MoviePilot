@@ -1,29 +1,66 @@
+"""
+极影视 Emby 兼容客户端，负责会话认证、媒体检索及接口缺失时的回退。
+"""
+
 import json
 import re
 import traceback
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Generator, Tuple, Any
+from typing import Any, Dict, Generator, List, Mapping, Optional, Tuple, Union
 
 from requests import Response
 
+from app.adapters.network.http import RequestUtils
+from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
+from app.foundation.url import UrlUtils
+from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
-from app.runtime.log import logger
-from app.schemas.mediaserver import MediaServerItem
 from app.schemas.types import MediaSource, MediaType
-from app.adapters.network.http import RequestUtils
-from app.foundation.url import UrlUtils
 
-
+# 全量遍历时每次读取的原始条目数量
 DEFAULT_ITEMS_PAGE_SIZE = 100
 
 
+def _optional_text(value: object) -> Optional[str]:
+    """
+    读取服务端可空文本字段，不将非法类型隐式转成文本。
+    """
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError("极影视文本字段格式错误")
+
+
+def _user_id(value: object) -> Optional[Union[str, int]]:
+    """
+    读取兼容字符串和整数的用户标识，保留空值。
+    """
+    if value is None or isinstance(value, (str, int)):
+        return value
+    raise TypeError("极影视用户标识格式错误")
+
+
+def _library_items(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """
+    校验完整枚举的列表字段，非法结构不能代表成功空库。
+    """
+    items = result.get("Items")
+    if not isinstance(items, list):
+        raise ConnectionError("极影视媒体库列表响应格式错误")
+    return items
+
+
 class ZSpace:
+    """
+    通过极影视的 Emby 兼容接口提供媒体检索、登录和播放信息。
+
+    用户名和密码用于获取会话令牌；接口缺失时使用对应的兼容回退。
+    """
     _host: Optional[str] = None
     _playhost: Optional[str] = None
     _apikey: Optional[str] = None
@@ -34,7 +71,19 @@ class ZSpace:
 
     def __init__(self, host: Optional[str] = None, username: Optional[str] = None,
                  password: Optional[str] = None, play_host: Optional[str] = None,
-                 sync_libraries: list = None, **kwargs):
+                 sync_libraries: Optional[list[str]] = None, **kwargs: object) -> None:
+        """
+        保存连接配置并登录，随后缓存媒体库路径和服务器标识。
+
+        地址或账号密码缺失时提前结束初始化；登录失败记录日志，不抛出连接异常。
+
+        :param host: 极影视服务地址
+        :param username: 登录账号
+        :param password: 登录密码
+        :param play_host: 外网播放地址，未提供时部分链接使用服务地址
+        :param sync_libraries: 参与同步的库标识，空列表表示全部
+        :param kwargs: 通用配置中的额外参数，当前不读取
+        """
         if not host or not username or not password:
             logger.error("极影视服务器配置不完整！")
             return
@@ -48,8 +97,8 @@ class ZSpace:
         self._password = password
         self._sync_libraries = sync_libraries or []
         self.user = None
-        self.folders = []
-        self.serverid = None
+        self.folders: List[dict[str, Any]] = []
+        self.serverid: Optional[str] = None
         if not self.reconnect():
             logger.error(f"请检查极影视服务端地址 {host}")
 
@@ -77,7 +126,7 @@ class ZSpace:
     def __request_utils(self,
                         timeout: Optional[int] = None,
                         include_token: bool = True,
-                        headers: Optional[dict] = None) -> RequestUtils:
+                        headers: Optional[dict[str, str]] = None) -> RequestUtils:
         """
         统一构造极影视请求客户端。
 
@@ -95,7 +144,11 @@ class ZSpace:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        检查现有令牌和用户是否需要重新登录。
+
+        令牌与用户标识齐全时查询当前用户，并用返回值更新缓存的用户标识。
+
+        :return: 有完整连接配置且令牌或用户不可用时为 True；配置不完整时为 False
         """
         if not self._host or not self._username or not self._password:
             return False
@@ -109,7 +162,9 @@ class ZSpace:
 
     def reconnect(self) -> bool:
         """
-        重连
+        重新登录并更新令牌、用户、媒体库路径和服务器标识。
+
+        :return: 获得令牌和用户标识时为 True；失败时清除缓存的登录与库信息并返回 False
         """
         token, user_id = self.__login(self._username, self._password)
         if not token:
@@ -129,7 +184,7 @@ class ZSpace:
         self.serverid = self.get_server_id()
         return True
 
-    def get_library_folders(self) -> List[dict]:
+    def get_library_folders(self) -> List[dict[str, Any]]:
         """
         获取极影视媒体库路径列表。
 
@@ -145,13 +200,16 @@ class ZSpace:
         try:
             res = self.__request_utils().get_res(url)
             if res:
-                return res.json()
+                folders: object = res.json()
+                if not isinstance(folders, list) or not all(isinstance(folder, dict) for folder in folders):
+                    raise TypeError("极影视媒体库目录响应格式错误")
+                return folders
             logger.debug("Library/SelectableMediaFolders 未获取到返回数据，回退到 Users/{uid}/Views")
         except Exception as e:
             logger.debug(f"连接Library/SelectableMediaFolders 出错：{e}，回退到 Users/{{uid}}/Views")
         return self.__get_library_views() or []
 
-    def get_virtual_folders(self) -> List[dict]:
+    def get_virtual_folders(self) -> List[dict[str, Any]]:
         """
         获取极影视媒体库所有路径列表（包含共享路径）。
 
@@ -203,9 +261,9 @@ class ZSpace:
                 })
         return libraries
 
-    def __get_library_views(self, username: Optional[str] = None) -> Optional[List[dict]]:
+    def __get_library_views(self, username: Optional[str] = None) -> Optional[List[dict[str, Any]]]:
         """
-        获取极影视媒体库列表
+        获取极影视媒体库列表。
         """
         if not self._host or not self._apikey:
             return None
@@ -234,7 +292,11 @@ class ZSpace:
         hidden: Optional[bool] = False,
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        获取媒体服务器所有媒体库列表
+        查询可见媒体库并补充统一类型、数量和图片链接。
+
+        :param username: 目标用户名，空值使用当前用户；查找失败按用户接口规则回退
+        :param hidden: 是否隐藏未选入同步范围的库，默认不隐藏
+        :return: 统一媒体库列表；配置或用户不可用、查询失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -273,12 +335,12 @@ class ZSpace:
 
     def get_user(self, user_name: Optional[str] = None) -> Optional[Union[str, int]]:
         """
-        获取可用用户ID，优先按用户名匹配，失败时回退当前登录用户。
+        按用户名、管理员、首个有标识的用户依次选择可用账号。
 
-        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
-        对齐 Emby Server 4.7 协议）暂未实现 `Users` 全量列表端点（实测 404），
-        所以多用户名匹配在该服务端不可用；这里按"端点可用→按名匹配 / 端点不可用→
-        当前登录用户兜底"的顺序处理，避免主日志反复刷 ERROR。
+        已知极影视兼容版本未实现 Users 列表接口，回退使用当前用户避免依赖该端点。
+
+        :param user_name: 优先匹配的用户名；空值直接尝试管理员和其他用户
+        :return: 用户标识；全量用户接口无可用结果时回退当前登录用户，仍不可用时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -291,13 +353,13 @@ class ZSpace:
                     if user_name:
                         for user in users:
                             if user.get("Name") == user_name:
-                                return user.get("Id")
+                                return _user_id(user.get("Id"))
                     for user in users:
                         if user.get("Policy", {}).get("IsAdministrator"):
-                            return user.get("Id")
+                            return _user_id(user.get("Id"))
                     for user in users:
                         if user.get("Id"):
-                            return user.get("Id")
+                            return _user_id(user.get("Id"))
                 else:
                     logger.debug("Users 返回数据格式错误，回退到当前登录用户")
             else:
@@ -309,10 +371,11 @@ class ZSpace:
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
         """
-        用户认证
-        :param username: 用户名
-        :param password: 密码
-        :return: 认证token
+        使用指定账号获取独立访问令牌，不替换当前客户端登录状态。
+
+        :param username: 登录账号
+        :param password: 登录密码
+        :return: 登录令牌；配置不完整或认证失败时返回 None
         """
         token, _ = self.__login(username, password)
         if token:
@@ -321,7 +384,9 @@ class ZSpace:
 
     def get_server_id(self) -> Optional[str]:
         """
-        获得服务器信息
+        查询极影视服务器标识，用于构造网页链接。
+
+        :return: 服务器标识；未配置、请求失败或响应缺少标识时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -329,7 +394,7 @@ class ZSpace:
         try:
             res = self.__request_utils().get_res(url)
             if res:
-                return res.json().get("Id")
+                return _optional_text(res.json().get("Id"))
             else:
                 logger.error("System/Info 未获取到返回数据")
         except Exception as e:
@@ -353,6 +418,8 @@ class ZSpace:
             if res:
                 count = res.json().get("TotalRecordCount")
                 if count:
+                    if not isinstance(count, int):
+                        raise TypeError("极影视用户数量格式错误")
                     return count
             else:
                 # 极影视未实现该端点会走到这里，降为 debug 避免主日志误报
@@ -363,27 +430,13 @@ class ZSpace:
 
     def get_medias_count(self) -> _SchemaStatistic:
         """
-        获得电影、电视剧、动漫媒体数量。
+        查询媒体数量，聚合接口不可用时改按所选媒体库估算。
 
-        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
-        对齐 Emby Server 4.7 协议）相关接口实测：
-        - `Items/Counts` → 401 "无权限"；`Users/{uid}/Items/Counts` → 500，
-          两条标准聚合路径都拿不到全局统计。
-        - `Users/{uid}/Items` 的 `IncludeItemTypes` 参数：
-          - 在带 `ParentId` 时**完全被忽略**（同一库无论传 Movie/Series/
-            Episode/Folder/Audio，TotalRecordCount 都等于该库总条数）。
-          - 在不带 `ParentId` 的全局层面，单类型 `Movie` / `Series` 过滤
-            生效；`Episode` 与多类型逗号组合（如 `Movie,Series`）不生效。
-        - Views 返回的 `CollectionType` 在该服务端恒为 null，无法直接
-          区分库类型。
-        因为还要遵循 `_sync_libraries` 选中过滤，不能用"两次全局过滤请求"
-        的简化方案（全局聚合无 ParentId 入参）。降级流程：
-        1. 先尝试标准 `Items/Counts`；
-        2. 失败则遍历**被选中**的媒体库视图，按 `Users/{uid}/Items
-           ?ParentId=...&Limit=0` 拿单库 TotalRecordCount，再通过
-           `Limit=1` 采样首条目 `Type` 兜底分桶到 movie / tv；
-        3. 集数维度在该服务端无法可靠拿到，统一计 0。
-        :return: MovieCount SeriesCount EpisodeCount
+        标准 Items/Counts 成功时直接使用全局统计。失败后仅统计同步范围内的库，
+        使用库类型或首个条目类型区分电影与电视剧；该回退无法可靠统计分集和音乐。
+        极影视兼容接口可能忽略带 ParentId 的类型过滤，因此回退统计使用库的总条数。
+
+        :return: 电影、电视剧、分集和音乐数量；无法获取的数量为 0
         """
         if not self._host or not self._apikey:
             return _SchemaStatistic()
@@ -406,23 +459,15 @@ class ZSpace:
 
     def __count_medias_by_views(self) -> _SchemaStatistic:
         """
-        通过遍历媒体库视图累计条目数，兜底实现 `get_medias_count`。
+        按所选媒体库累计电影和电视剧数量，作为聚合接口的回退。
 
-        - 仅统计 `_sync_libraries` 选中的库；空集或包含 `"all"` 时视为
-          全部，与 `get_librarys` / `get_user_library_folders` 的过滤语义
-          保持一致。
-        - 对每个被选中的 View 调 `Users/{uid}/Items?ParentId=<libId>
-          &Recursive=true&Limit=0` 只拿 `TotalRecordCount`，再按视图类型
-          分桶到 movie / tv。极影视当前 Emby 兼容层返回的 View 中
-          `CollectionType` 恒为 null，无法直接判定库类型，因此优先用
-          `CollectionType`；缺失时用 `Limit=1` 采样一条目，按返回条目的
-          `Type`（Movie / Series / Episode）兜底分类。
-        - 集数维度在该服务端无法可靠拿到（见 `get_medias_count` 注释），
-          统一计为 0。
+        同步列表为空或包含 all 时统计全部库；优先使用库类型，缺失时采样首条记录。
+
+        :return: 估算统计，分集和音乐保持为 0
         """
         if not self._host or not self._apikey or not self.user:
             return _SchemaStatistic()
-        # 与 get_librarys / get_user_library_folders 保持一致的选中库过滤：
+        # 统计与 get_librarys 使用相同的同步范围：
         # _sync_libraries 为空或包含 "all" 视为全部库。
         sync_all = (not self._sync_libraries) or ("all" in self._sync_libraries)
         stat = _SchemaStatistic()
@@ -444,8 +489,11 @@ class ZSpace:
     def __count_view(self, view_id: str,
                      collection_type: Optional[str]) -> Tuple[int, Optional[str]]:
         """
-        返回单个媒体库视图的 (TotalRecordCount, 桶名)。桶名取 `movies`/`tvshows`，
-        无法判定时返回 None。CollectionType 缺失时采样首个 Item 的 `Type` 决定。
+        查询单个媒体库总数，并通过库类型或首条记录确定分类。
+
+        :param view_id: 媒体库视图标识
+        :param collection_type: 服务端库类型，缺失或未知时采样首条记录
+        :return: 总条数和 movies 或 tvshows 分类；数量查询失败时为 0 和 None，分类未知时保留总数
         """
         count_url = f"{self._host}emby/Users/{self.user}/Items"
         try:
@@ -482,12 +530,13 @@ class ZSpace:
             return total, "tvshows"
         return total, None
 
-    def __get_series_id_by_name(self, name: str, year: str) -> Optional[str]:
+    def __get_series_id_by_name(self, name: Optional[str], year: Optional[Union[str, int]]) -> Optional[str]:
         """
-        根据名称查询极影视中剧集的 SeriesId
-        :param name: 标题
-        :param year: 年份
-        :return: None 表示连不通，""表示未找到，找到返回ID
+        在最多 10 条电视剧搜索结果中匹配标题和年份。
+
+        :param name: 必须精确匹配的剧名
+        :param year: 可选年份，空值不限制
+        :return: 匹配的标识；未配置或捕获异常时返回 None，无匹配或无有效响应时返回空字符串
         """
         if not self._host or not self._apikey:
             return None
@@ -509,7 +558,7 @@ class ZSpace:
                     for res_item in res_items:
                         if res_item.get('Name') == name and (
                                 not year or str(res_item.get('ProductionYear')) == str(year)):
-                            return res_item.get('Id')
+                            return _optional_text(res_item.get('Id'))
         except Exception as e:
             logger.error(f"连接Items出错：{e}")
             return None
@@ -517,16 +566,17 @@ class ZSpace:
 
     def get_movies(self,
                    title: str,
-                   year: Optional[str] = None,
+                   year: Optional[Union[str, int]] = None,
                    media_source: Optional[MediaSource] = None,
                    media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
-        根据标题和年份，检查电影是否在极影视中存在，存在则返回列表
-        :param title: 标题
-        :param year: 年份，可以为空，为空时不按年份过滤
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :return: 含title、year属性的字典列表
+        在最多 10 条电影搜索结果中筛选标题、年份和来源身份。
+
+        :param title: 必须精确匹配的标题
+        :param year: 可选年份，空值不限制
+        :param media_source: 目标媒体来源
+        :param media_id: 目标来源的原生标识
+        :return: 统一电影条目列表；未配置或捕获异常时返回 None，无匹配或无有效响应时为空列表
         """
         if not self._host or not self._apikey:
             return None
@@ -569,7 +619,14 @@ class ZSpace:
             artist: Optional[str] = None,
             album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
-        """按歌曲、艺术家或专辑名称查询极影视音乐条目。"""
+        """
+        组合歌曲、艺术家和专辑名称搜索最多 20 条音乐记录。
+
+        :param title: 歌曲名称，可省略
+        :param artist: 艺术家名称，可省略
+        :param album: 专辑名称，可省略
+        :return: 转换成功的专辑或歌曲列表；无关键词、未配置或查询失败时为空列表
+        """
         if not self._host or not self._apikey:
             return []
         query = " ".join(filter(None, [title, artist, album])).strip()
@@ -595,20 +652,22 @@ class ZSpace:
     def get_tv_episodes(self,
                         item_id: Optional[str] = None,
                         title: Optional[str] = None,
-                        year: Optional[str] = None,
+                        year: Optional[Union[str, int]] = None,
                         media_source: Optional[MediaSource] = None,
                         media_id: Optional[str] = None,
                         season: Optional[int] = None
                         ) -> Tuple[Optional[str], Optional[Dict[int, List[int]]]]:
         """
-        根据标题和年份和季，返回极影视中的剧集列表
-        :param item_id: 极影视中的ID
-        :param title: 标题
-        :param year: 年份
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :param season: 季
-        :return: 每一季的已有集数
+        定位电视剧并读取指定季或全部季的已有集号。
+
+        :param item_id: 极影视条目标识
+        :param title: 缓存标识失效或未提供时用于回退搜索的剧名
+        :param year: 回退搜索使用的可选年份
+        :param media_source: 用于检查身份兼容性的媒体来源
+        :param media_id: 媒体来源的原生标识
+        :param season: 目标季号，None 表示全部季
+        :return: 电视剧标识与季集映射；未配置或捕获请求异常时为两项 None，
+            未找到、身份冲突或无有效响应时为 None 与空映射
         """
         if not self._host or not self._apikey:
             return None, None
@@ -644,7 +703,7 @@ class ZSpace:
             if res_json:
                 tv_item = res_json.json()
                 res_items = tv_item.get("Items")
-                season_episodes = {}
+                season_episodes: Dict[int, List[int]] = {}
                 for res_item in res_items or []:
                     season_index = res_item.get("ParentIndexNumber")
                     if season_index is None:
@@ -665,10 +724,11 @@ class ZSpace:
 
     def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
         """
-        根据ItemId从极影视查询TMDB的图片地址
-        :param item_id: 在极影视中的ID
-        :param image_type: 图片类型，poster或者backdrop等
-        :return: 图片对应在TMDB中的URL
+        查询 TMDB 原始图片链接，无匹配时探测外网播放地址的图片。
+
+        :param item_id: 极影视条目标识
+        :param image_type: 极影视图片类型，如 Backdrop 或 Primary，按原值匹配
+        :return: 图片 URL；未配置、捕获异常或回退探测失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -680,7 +740,7 @@ class ZSpace:
                 if images:
                     for image in images:
                         if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
-                            return image.get("Url")
+                            return _optional_text(image.get("Url"))
             logger.info("Items/RemoteImages 未获取到返回数据，采用本地图片")
             return self.generate_external_image_link(item_id, image_type)
         except Exception as e:
@@ -689,10 +749,11 @@ class ZSpace:
 
     def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
         """
-        根据ItemId和imageType查询本地对应图片
-        :param item_id: 在极影视中的ID
-        :param image_type: 图片类型，如Backdrop、Primary
-        :return: 图片对应在外网播放器中的URL
+        请求外网播放地址上的图片，返回重定向后的链接。
+
+        :param item_id: 极影视条目标识
+        :param image_type: 图片类型，如 Backdrop 或 Primary
+        :return: 最终图片 URL；未配置外网地址、图片不存在或请求失败时返回 None
         """
         if not self._playhost:
             logger.error("极影视外网播放地址未能获取或为空")
@@ -703,7 +764,7 @@ class ZSpace:
             res = self.__request_utils().get_res(url)
             if res and res.status_code != 404:
                 logger.info(f"影片图片链接:{res.url}")
-                return res.url
+                return _optional_text(res.url)
             else:
                 logger.info(f"Items/Id/Images 未获取到返回数据或无该影片{image_type}图片")
                 return None
@@ -713,12 +774,12 @@ class ZSpace:
 
     def __refresh_library_by_id(self, item_id: str) -> bool:
         """
-        通知极影视刷新一个项目的媒体库。
+        提交单个媒体条目或媒体库的递归扫描请求。
 
-        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
-        对齐 Emby Server 4.7 协议）未实现 `Items/{id}/Refresh`（实测 404），
-        因此该方法目前必然失败。保留实现以便兼容层补齐后自动复用，并把端点
-        缺失的常态情况降级为 debug，避免污染主日志。
+        已知极影视兼容版本未实现此端点；保留请求以支持后续实现，失败记录调试日志。
+
+        :param item_id: 极影视条目标识
+        :return: 收到成功响应时为 True，否则为 False
         """
         if not self._host or not self._apikey:
             return False
@@ -737,10 +798,11 @@ class ZSpace:
 
     def refresh_root_library(self) -> bool:
         """
-        通知极影视刷新整个媒体库。
+        提交全部媒体库的扫描请求。
 
-        与 `__refresh_library_by_id` 同源：极影视当前 Emby 兼容层未实现
-        `Library/Refresh`（实测 404）。保留实现并把常态失败降为 debug。
+        已知极影视兼容版本未实现 Library/Refresh，此时只记录调试日志并返回失败。
+
+        :return: 收到成功响应时为 True，否则为 False
         """
         if not self._host or not self._apikey:
             return False
@@ -756,8 +818,13 @@ class ZSpace:
 
     def refresh_library_by_items(self, items: List[_SchemaRefreshMediaItem]) -> Optional[bool]:
         """
-        按类型、名称、年份来刷新媒体库
-        :param items: 已识别的需要刷新媒体库的媒体信息列表
+        按媒体条目确定刷新范围，不能定位媒体库时刷新全库。
+
+        同一库的请求会去重；任意条目需要全库刷新时仅提交全库请求。
+
+        :param items: 已识别的媒体及目标路径列表
+        :return: 空输入返回 False；选定的扫描请求均成功时返回 True，
+            非空输入未产生需扫描标识时也返回 True
         """
         if not items:
             return False
@@ -779,8 +846,11 @@ class ZSpace:
 
     def __get_library_id_by_item(self, item: _SchemaRefreshMediaItem) -> Optional[str]:
         """
-        根据媒体信息查询在哪个媒体库，返回要刷新的位置的ID
-        :param item: {title, year, type, category, target_path}
+        依据已入库剧集、目标路径和分类目录确定刷新位置。
+
+        :param item: 包含媒体类型、标题、年份、分类和目标路径的刷新请求
+        :return: 条目或媒体库标识；无法匹配时返回 / 表示全库，
+            类型或路径缺失、电影已经存在时返回 None 表示不需要刷新
         """
         if not item.type or not item.target_path:
             return None
@@ -797,7 +867,7 @@ class ZSpace:
                 try:
                     subfolder_path = Path(subfolder.get("Path"))
                     if item_path.is_relative_to(subfolder_path):
-                        return folder.get("Id")
+                        return _optional_text(folder.get("Id"))
                 except Exception as err:
                     logger.debug(f"匹配子目录出错：{err} - {traceback.format_exc()}")
         if item.category:
@@ -806,17 +876,22 @@ class ZSpace:
                     if subfolder.get("Path") and re.search(
                             r"[/\\]%s" % re.escape(item.category), subfolder.get("Path")
                     ):
-                        return folder.get("Id")
+                        return _optional_text(folder.get("Id"))
         return "/"
 
     @staticmethod
-    def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
-        """通过统一 Emby 系转换契约生成极影视条目。"""
+    def __format_item_info(item: Mapping[str, object]) -> Optional[_SchemaMediaServerItem]:
+        """
+        通过统一 Emby 系转换契约生成极影视条目。
+        """
         return format_emby_family_item(item, server="zspace")
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
-        获取单个项目详情
+        查询当前用户可见的单条媒体详情。
+
+        :param itemid: 极影视条目标识
+        :return: 统一媒体模型；标识或登录信息缺失、请求或转换失败时返回 None
         """
         if not itemid:
             return None
@@ -832,9 +907,9 @@ class ZSpace:
             logger.error(f"连接/Users/{self.user}/Items/{itemid}出错：{e}")
         return None
 
-    def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
+    def get_items_count(self, parent: Optional[Union[str, int]]) -> Optional[int]:
         """
-        获取指定媒体库的媒体条目总数
+        获取指定媒体库的媒体条目总数。
 
         极影视当前兼容层会忽略条目类型过滤，因此以递归查询返回的
         TotalRecordCount 作为同步进度的总数。
@@ -859,21 +934,24 @@ class ZSpace:
             return None
 
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0,
-                  limit: Optional[int] = -1) -> Generator[MediaServerItem | None | Any, Any, None]:
+                  limit: Optional[int] = -1) -> Generator[MediaServerItem | None, None, None]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        分页遍历媒体库，展开合集并补查缺少身份或路径的条目。
 
-        :param parent: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+        仅产出电影、电视剧和音乐专辑。合集递归展开，因此产出数量可能超过单页限制。
+        未配置或任意分页请求失败会抛出异常，调用方不得清理未读到的缓存。
 
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+        :param parent: 媒体库或合集标识
+        :param start_index: 零基起始偏移，空值或负数按 0 处理
+        :param limit: None 或 -1 按每页 100 条读完整个库；其他值只请求一页，原值传给服务端
+        :yields: 统一媒体条目；底层转换未成功时可能为 None
+        :raises ConnectionError: 服务未连接、分页失败或列表响应结构错误
         """
         if not parent or not self._host or not self._apikey or not self.user:
-            return None
+            raise ConnectionError("极影视服务尚未连接或媒体库标识为空")
         url = f"{self._host}emby/Users/{self.user}/Items"
         fetch_all = limit is None or limit == -1
-        page_size = DEFAULT_ITEMS_PAGE_SIZE if fetch_all else limit
+        page_size = DEFAULT_ITEMS_PAGE_SIZE if limit is None or limit == -1 else limit
         current_start_index = max(start_index or 0, 0)
         while True:
             params = {
@@ -888,14 +966,15 @@ class ZSpace:
             try:
                 res = self.__request_utils().get_res(url, params=params)
                 if not res or res.status_code != 200:
-                    return None
+                    raise ConnectionError("读取极影视媒体库失败")
                 result = res.json() or {}
-                items = result.get("Items") or []
+                items = _library_items(result)
                 for item in items:
                     if not item:
                         continue
-                    if item.get("Type") == "BoxSet" and item.get("Id"):
-                        for sub_item in self.get_items(parent=item.get("Id")):
+                    item_id = item.get("Id")
+                    if item.get("Type") == "BoxSet" and item_id:
+                        for sub_item in self.get_items(parent=item_id):
                             if sub_item:
                                 yield sub_item
                         continue
@@ -910,15 +989,15 @@ class ZSpace:
                         or not item.get("ProductionYear")
                         or not item.get("Path")
                     )
-                    if needs_detail and item.get("Id"):
-                        detail_item = self.get_iteminfo(item.get("Id"))
+                    if needs_detail and item_id:
+                        detail_item = self.get_iteminfo(item_id)
                         if detail_item:
                             yield detail_item
                             continue
                     yield self.__format_item_info(item)
             except Exception as e:
                 logger.error(f"连接Users/Items出错：{e}")
-                return None
+                raise
 
             if not fetch_all:
                 break
@@ -932,9 +1011,13 @@ class ZSpace:
                 break
         return None
 
-    def get_webhook_message(self, form: Any, args: dict) -> Optional[_SchemaWebhookEventInfo]:
+    def get_webhook_message(self, form: Any, args: Mapping[str, object]) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析极影视 Webhook 报文
+        解析兼容 Emby 的极影视通知，并补充媒体身份和图片。
+
+        :param form: 包含 JSON 字符串 data 字段的表单，优先于查询参数
+        :param args: 没有表单 data 时作为通知内容的查询参数
+        :return: 统一事件对象；输入为空、JSON 解析失败或缺少 Event 时返回 None
         """
         if not form and not args:
             return None
@@ -1028,34 +1111,46 @@ class ZSpace:
 
     def get_data(self, url: str) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值。
-        极影视这里的 [APIKEY] 实际替换为登录返回的 AccessToken，以兼容现有占位符。
-        :param url: 请求地址
+        替换连接占位符并发送自定义 GET 请求。
+
+        [APIKEY] 替换为登录返回的会话令牌，同时请求头仍携带当前用户令牌。
+
+        :param url: 请求地址，支持 [HOST]、[APIKEY]、[USER] 占位符
+        :return: 原始 HTTP 响应；未配置或请求异常时返回 None
         """
         if not self._host or not self._apikey:
             return None
+        user = self.user or ''
+        if not isinstance(user, str):
+            raise TypeError(f"replace() argument 2 must be str, not {type(user).__name__}")
         url = url.replace("[HOST]", self._host or '') \
             .replace("[APIKEY]", self._apikey or '') \
-            .replace("[USER]", self.user or '')
+            .replace("[USER]", user)
         try:
             return self.__request_utils(headers={"Content-Type": "application/json"}).get_res(url=url)
         except Exception as e:
             logger.error(f"连接极影视出错：{e}")
             return None
 
-    def post_data(self, url: str, data: Optional[str] = None, headers: dict = None) -> Optional[Response]:
+    def post_data(self, url: str, data: Optional[str] = None, headers: Optional[dict[str, str]] = None) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值。
-        极影视这里的 [APIKEY] 实际替换为登录返回的 AccessToken，以兼容现有占位符。
-        :param url: 请求地址
-        :param data: 请求数据
-        :param headers: 请求头
+        替换连接占位符并发送自定义 POST 请求。
+
+        [APIKEY] 替换为登录返回的会话令牌，同时请求头仍携带当前用户令牌。
+
+        :param url: 请求地址，支持 [HOST]、[APIKEY]、[USER] 占位符
+        :param data: 请求正文，原样发送
+        :param headers: 额外请求头，可覆盖默认头
+        :return: 原始 HTTP 响应；未配置或请求异常时返回 None
         """
         if not self._host or not self._apikey:
             return None
+        user = self.user or ''
+        if not isinstance(user, str):
+            raise TypeError(f"replace() argument 2 must be str, not {type(user).__name__}")
         url = url.replace("[HOST]", self._host or '') \
             .replace("[APIKEY]", self._apikey or '') \
-            .replace("[USER]", self.user or '')
+            .replace("[USER]", user)
         try:
             return self.__request_utils(headers=headers).post_res(url=url, data=data)
         except Exception as e:
@@ -1064,18 +1159,22 @@ class ZSpace:
 
     def get_play_url(self, item_id: str) -> str:
         """
-        拼装媒体播放链接
-        :param item_id: 媒体的ID
+        构造媒体条目的网页播放链接。
+
+        :param item_id: 极影视条目标识
+        :return: 优先使用外网播放地址的链接，不验证配置或条目是否可用
         """
         return f"{self._playhost or self._host}web/index.html#!" \
             f"/item?id={item_id}&context=home&serverId={self.serverid}"
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """
-        获取极影视的Backdrop图片地址
-        :param item_id: 在极影视中的ID
-        :param image_tag: 图片的tag
-        :param remote: 是否远程使用，TG微信等客户端调用应为True
+        构造带登录令牌的背景图片链接。
+
+        :param item_id: 极影视条目标识
+        :param image_tag: 背景图片标签，空值不生成链接
+        :param remote: 是否优先使用外网播放地址
+        :return: 图片 URL；登录配置、条目标识或图片标签缺失时返回空字符串
         """
         if not self._host or not self._apikey:
             return ""
@@ -1088,9 +1187,10 @@ class ZSpace:
         return f"{host_url}emby/Items/{item_id}/" \
             f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
-    def __get_local_image_by_id(self, item_id: str) -> str:
+    def __get_local_image_by_id(self, item_id: object) -> str:
         """
-        根据ItemId从媒体服务器查询本地图片地址
+        根据ItemId从媒体服务器查询本地图片地址。
+
         :param item_id: 在极影视中的ID
         """
         if not self._host or not self._apikey:
@@ -1100,7 +1200,14 @@ class ZSpace:
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[
             List[_SchemaMediaServerPlayItem]]:
         """
-        获得继续观看
+        查询继续观看的电影和分集。
+
+        从服务端读取最多 100 条，在本地按类型和可用的库路径筛选。
+        库路径缺失时不执行路径过滤。
+
+        :param num: 最多返回的数量，0 返回空列表，None 或负值不截断已读取结果
+        :param username: 目标用户名，未提供或查找失败时使用当前用户
+        :return: 统一播放条目列表；登录信息不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1120,7 +1227,7 @@ class ZSpace:
             res = self.__request_utils().get_res(url, params=params)
             if res:
                 result = res.json().get("Items") or []
-                ret_resume = []
+                ret_resume: List[_SchemaMediaServerPlayItem] = []
                 library_folders = self.get_user_library_folders()
                 for item in result:
                     if len(ret_resume) == num:
@@ -1170,12 +1277,14 @@ class ZSpace:
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
             List[_SchemaMediaServerPlayItem]]:
         """
-        获得最近更新。
+        按入库时间降序查询最新电影和电视剧。
 
-        极影视当前 Emby 兼容层（`System/Info` 返回 ServerVersion=4.7.0.0，
-        对齐 Emby Server 4.7 协议）的 `Users/{uid}/Items/Latest` 端点实测
-        返回 500（疑似服务端 panic），无法使用。降级为以 `DateCreated` 倒序
-        查询 `Users/{uid}/Items`，语义上近似"最近添加"。
+        从服务端读取最多 100 条，在本地按类型和可用的库路径筛选。
+        库路径缺失时不执行路径过滤。
+
+        :param num: 最多返回的数量，0 返回空列表，None 或负值不截断已读取结果
+        :param username: 目标用户名，未提供或查找失败时使用当前用户
+        :return: 统一播放条目列表；登录信息不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1203,7 +1312,7 @@ class ZSpace:
                     result = payload.get("Items") or []
                 else:
                     result = payload or []
-                ret_latest = []
+                ret_latest: List[_SchemaMediaServerPlayItem] = []
                 library_folders = self.get_user_library_folders()
                 for item in result:
                     if len(ret_latest) == num:
@@ -1234,9 +1343,13 @@ class ZSpace:
             logger.error(f"连接 Users/Items（DateCreated 排序）出错：{e}")
         return None
 
-    def get_user_library_folders(self):
+    def get_user_library_folders(self) -> List[str]:
         """
-        获取极影视媒体库文件夹列表（排除黑名单）
+        汇总同步列表中明确选中的媒体库路径。
+
+        同步列表为空时包含全部库；非空时只按库标识逐项匹配，all 在本方法没有特殊含义。
+
+        :return: 路径列表；未配置或接口未提供路径时为空列表
         """
         if not self._host or not self._apikey:
             return []
@@ -1244,12 +1357,15 @@ class ZSpace:
         for library in self.get_virtual_folders() or []:
             if self._sync_libraries and library.get("Id") not in self._sync_libraries:
                 continue
-            library_folders += [folder for folder in library.get("Path")]
+            paths = library.get("Path")
+            if paths is None:
+                raise TypeError("'NoneType' object is not iterable")
+            library_folders += [folder for folder in paths]
         return library_folders
 
     def __login(self, username: Optional[str], password: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         """
-        使用用户名密码登录极影视，返回访问令牌和用户ID
+        使用用户名密码登录极影视，返回访问令牌和用户ID。
         """
         if not self._host or not username or not password:
             return None, None
@@ -1280,7 +1396,7 @@ class ZSpace:
             logger.error(f"连接Users/AuthenticateByName出错：{e}")
         return None, None
 
-    def __get_current_user(self) -> Optional[dict]:
+    def __get_current_user(self) -> Optional[dict[str, Any]]:
         """
         获取当前登录用户信息。
 
@@ -1302,13 +1418,13 @@ class ZSpace:
             logger.error(f"连接 {url} 出错：{e}")
         return None
 
-    def __get_current_user_id(self) -> Optional[str]:
+    def __get_current_user_id(self) -> Optional[Union[str, int]]:
         """
-        获取当前登录用户ID
+        获取当前登录用户ID。
         """
         current_user = self.__get_current_user()
         if current_user:
-            current_user_id = current_user.get("Id")
+            current_user_id = _user_id(current_user.get("Id"))
             if current_user_id:
                 self.user = current_user_id
                 return current_user_id

@@ -1,8 +1,9 @@
-"""3.0.14 为整理任务增加版本化规划输入与原子计划检查点。
+"""
+3.0.14 为整理任务增加版本化规划输入与原子计划检查点。
 
-Revision ID: c2f8a4d6e1b3
-Revises: b1e7d3f5a9c2
-Create Date: 2026-08-27
+版本标识： c2f8a4d6e1b3
+前置版本： b1e7d3f5a9c2
+创建时间： 2026-08-27
 """
 
 import hashlib
@@ -28,7 +29,9 @@ _NEW_COLUMNS = {
 
 
 def _column_names() -> set[str]:
-    """返回当前待整理登记表的字段集合。"""
+    """
+    返回当前待整理登记表的字段集合。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE_NAME not in inspector.get_table_names():
         return set()
@@ -39,7 +42,9 @@ def _column_names() -> set[str]:
 
 
 def _legacy_planning_payload(storage: str, src_path: str) -> dict[str, object]:
-    """构造与 Application 规划输入第一版一致的保守重规划 JSON。"""
+    """
+    构造与 Application 规划输入第一版一致的保守重规划 JSON。
+    """
     return {
         "schema_version": 1,
         "source_fileitem": {"storage": storage, "path": src_path},
@@ -63,7 +68,9 @@ def _legacy_planning_payload(storage: str, src_path: str) -> dict[str, object]:
 
 
 def _fingerprint(payload: dict[str, object]) -> str:
-    """按稳定 JSON 编码计算与 Application 一致的输入指纹。"""
+    """
+    按稳定 JSON 编码计算与 Application 一致的输入指纹。
+    """
     canonical = json.dumps(
         payload,
         ensure_ascii=True,
@@ -75,7 +82,9 @@ def _fingerprint(payload: dict[str, object]) -> str:
 
 
 def _backfill_planning_input() -> None:
-    """为 3.0.13 登记生成可辨识且必须重新规划的最小输入。"""
+    """
+    为 3.0.13 登记生成可辨识且必须重新规划的最小输入。
+    """
     pending = sa.table(
         _TABLE_NAME,
         sa.column("id", sa.Integer()),
@@ -122,7 +131,9 @@ def _backfill_planning_input() -> None:
 
 
 def upgrade() -> None:
-    """增加规划输入和完整检查点字段并保守回填旧登记。"""
+    """
+    增加规划输入和完整检查点字段并保守回填旧登记。
+    """
     columns = _column_names()
     if not columns:
         return
@@ -157,7 +168,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除规划字段并把旧版本无法识别的状态保守恢复为接纳态。"""
+    """
+    移除规划字段并把旧版本无法识别的状态保守恢复为接纳态。
+    """
     columns = _column_names()
     if not columns or not (_NEW_COLUMNS & columns):
         return

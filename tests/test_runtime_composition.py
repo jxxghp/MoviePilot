@@ -1,4 +1,6 @@
-"""宿主运行时组合根的对象身份、发布与冷导入测试。"""
+"""
+宿主运行时组合根的对象身份、发布与冷导入测试。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,9 @@ from app.startup.composition import runtime as runtime_composition
 
 
 def _inputs() -> runtime_composition.RuntimeInputs:
-    """构造不连接数据库、不启动线程的最小运行时输入。"""
+    """
+    构造不连接数据库、不启动线程的最小运行时输入。
+    """
     dependencies = runtime_composition.RuntimeDependencies(
         download_history=Mock(name="download_history"),
         transfer_history=Mock(name="transfer_history"),
@@ -51,6 +55,7 @@ def _inputs() -> runtime_composition.RuntimeInputs:
         standalone_user=Mock(name="standalone_user"),
         system_config=Mock(name="standalone_system_config"),
         passkey=Mock(name="standalone_passkey"),
+        widget_scope=Mock(name="widget_scope"),
     )
     return runtime_composition.RuntimeInputs(
         configuration=configuration,
@@ -65,7 +70,9 @@ def _inputs() -> runtime_composition.RuntimeInputs:
 
 
 def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> None:
-    """HostRuntime、Agent、Chain 依赖与旧 API 投影必须保持同一对象身份。"""
+    """
+    HostRuntime、Agent、Chain 依赖与旧 API 投影必须保持同一对象身份。
+    """
     inputs = _inputs()
 
     composition = runtime_composition.compose_runtime(inputs)
@@ -78,6 +85,7 @@ def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> 
     assert runtime.agent_chat.persistence is inputs.agent.persistence
     assert runtime.authentication.user_repository is inputs.authentication.user_repository
     assert runtime.authentication.passkey_repository is inputs.authentication.passkey_repository
+    assert runtime.authentication.widget_scope is inputs.authentication.widget_scope
     assert runtime.classification is inputs.classification
     assert runtime.classification_execution is inputs.classification_execution
     assert runtime.configuration is inputs.configuration.runtime
@@ -117,8 +125,31 @@ def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> 
     assert composition.site_health._repository is inputs.dependencies.site
 
 
+def test_runtime_composition_injects_application_owned_registration_fact(tmp_path) -> None:
+    """
+    系统适配器通过组合根注入的构造器返回应用冻结 DTO，不反向依赖应用包。
+    """
+    from app.application.history.registration import LocalRegistrationEntry
+
+    source = tmp_path / "registration.mkv"
+    source.write_bytes(b"film")
+    runtime = runtime_composition.compose_runtime(_inputs()).runtime
+    entry = runtime.history.registration_local_entry(str(source))
+    assert isinstance(entry, LocalRegistrationEntry)
+    assert entry.name == source.name
+    assert entry.is_file
+    assert not entry.is_symlink
+    assert entry.size == 4
+    with runtime.history.registration_scope() as first:
+        with runtime.history.registration_scope() as second:
+            assert first.repository is not second.repository
+            assert first.unit_of_work is not second.unit_of_work
+
+
 def test_runtime_composition_publishes_and_resets_exact_projection(monkeypatch) -> None:
-    """运行时 owner 应发布并按对称顺序撤销其拥有的全部投影。"""
+    """
+    运行时 owner 应发布并按对称顺序撤销其拥有的全部投影。
+    """
     composition = runtime_composition.compose_runtime(_inputs())
     published: dict[str, object] = {}
     reset_order: list[str] = []
@@ -180,7 +211,9 @@ def test_runtime_composition_publishes_and_resets_exact_projection(monkeypatch) 
 
 
 def test_runtime_composition_import_is_cold() -> None:
-    """导入 runtime owner 不得加载 initializer、启动 worker/队列或发布端口。"""
+    """
+    导入 runtime owner 不得加载 initializer、启动 worker/队列或发布端口。
+    """
     completed = subprocess.run(
         [
             sys.executable,

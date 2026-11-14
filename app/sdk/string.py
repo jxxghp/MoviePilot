@@ -1,11 +1,14 @@
-"""为插件保留历史 StringUtils 类的轻量兼容门面。"""
+"""
+为插件保留历史 StringUtils 类的轻量兼容门面。
+"""
 
 from functools import wraps
 from inspect import signature
-from typing import Callable
+from typing import Callable, TypeVar
 
+from app.application.site.protocol import site_domain
 from app.domain.episode import compact_numbers, format_ranges
-from app.domain.site import extract_domain, urls_match
+from app.domain.site import urls_match
 from app.domain.title import is_media_title_like, parse_search_keyword
 from app.domain.torrent import is_magnet_link
 from app.foundation.crypto import HashUtils
@@ -56,13 +59,32 @@ from app.foundation.url import (
 )
 from app.foundation.version import compare_version
 
+ReturnT = TypeVar("ReturnT")
 
-def _legacy_alias(function: Callable, **keyword_aliases: str) -> Callable:
-    """创建支持旧关键字名称的静态方法转发器。"""
+
+def _legacy_alias(
+    function: Callable[..., ReturnT], **keyword_aliases: str
+) -> Callable[..., ReturnT]:
+    """
+    创建支持旧关键字名称的静态方法转发器。
+
+    旧参数名由运行时映射，调用参数无法用固定静态签名表示；
+    转发器保留原函数的返回类型和供插件反射使用的历史签名。
+
+    :param function: 已拆分到实际所属模块的实现函数
+    :param keyword_aliases: 旧参数名到当前参数名的映射
+    :return: 兼容旧关键字调用且保留原结果类型的函数
+    """
 
     @wraps(function)
-    def call(*args, **kwargs):
-        """把旧关键字转换为 canonical 参数后调用真实实现。"""
+    def call(*args: object, **kwargs: object) -> ReturnT:
+        """
+        把旧关键字转换为 canonical 参数后调用真实实现。
+
+        :param args: 原样传递的位置参数
+        :param kwargs: 可包含旧参数名的关键字参数
+        :return: 真实实现返回的结果
+        """
         for legacy_name, canonical_name in keyword_aliases.items():
             if legacy_name in kwargs:
                 kwargs[canonical_name] = kwargs.pop(legacy_name)
@@ -72,26 +94,37 @@ def _legacy_alias(function: Callable, **keyword_aliases: str) -> Callable:
         canonical_name: legacy_name
         for legacy_name, canonical_name in keyword_aliases.items()
     }
-    call.__signature__ = signature(function).replace(
-        parameters=[
-            parameter.replace(
-                name=canonical_to_legacy.get(parameter.name, parameter.name)
-            )
-            for parameter in signature(function).parameters.values()
-        ]
+    setattr(
+        call,
+        "__signature__",
+        signature(function).replace(
+            parameters=[
+                parameter.replace(
+                    name=canonical_to_legacy.get(parameter.name, parameter.name)
+                )
+                for parameter in signature(function).parameters.values()
+            ]
+        ),
     )
     return call
 
 
-def _legacy_md5_hash(data) -> str:
-    """保持 StringUtils.md5_hash 对空值和对象文本化的历史语义。"""
+def _legacy_md5_hash(data: object) -> str:
+    """
+    保持 StringUtils.md5_hash 对空值和对象文本化的历史语义。
+
+    :param data: 待计算摘要的对象；空值保持旧接口的空字符串结果
+    :return: 对象文本的 MD5 摘要，或空字符串
+    """
     if not data:
         return ""
     return HashUtils.md5(str(data))
 
 
 class StringUtils:
-    """组合已拆分实现，保持插件使用的历史静态方法接口。"""
+    """
+    组合已拆分实现，保持插件使用的历史静态方法接口。
+    """
 
     num_filesize = staticmethod(parse_size)
     str_timelong = staticmethod(_legacy_alias(format_approx_duration, time_sec="seconds"))
@@ -115,7 +148,7 @@ class StringUtils:
     format_size = staticmethod(format_size)
     url_equal = staticmethod(_legacy_alias(urls_match, url1="first", url2="second"))
     get_url_netloc = staticmethod(split_netloc)
-    get_url_domain = staticmethod(extract_domain)
+    get_url_domain = staticmethod(site_domain)
     get_url_sld = staticmethod(second_level_label)
     get_url_host = staticmethod(host_label)
     get_base_url = staticmethod(base_url)

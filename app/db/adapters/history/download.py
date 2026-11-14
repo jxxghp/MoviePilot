@@ -1,4 +1,6 @@
-"""下载历史的类型化查询、写入与事务适配器。"""
+"""
+下载历史的类型化查询、写入与事务适配器。
+"""
 
 from __future__ import annotations
 
@@ -25,7 +27,9 @@ ResultT = TypeVar("ResultT")
 
 
 def _project_history(record: object) -> DownloadHistorySnapshot:
-    """在 Session 内把下载历史 ORM 记录投影为不可变快照。"""
+    """
+    在 Session 内把下载历史 ORM 记录投影为不可变快照。
+    """
     history_id = getattr(record, "id", None)
     path = getattr(record, "path", None)
     media_type = getattr(record, "type", None)
@@ -85,7 +89,9 @@ def _project_history(record: object) -> DownloadHistorySnapshot:
 
 
 def _project_file(record: object) -> DownloadFileSnapshot:
-    """在 Session 内把下载文件 ORM 记录投影为不可变快照。"""
+    """
+    在 Session 内把下载文件 ORM 记录投影为不可变快照。
+    """
     file_id = getattr(record, "id", None)
     state = getattr(record, "state", None)
     if not isinstance(file_id, int) or not isinstance(state, int):
@@ -103,7 +109,9 @@ def _project_file(record: object) -> DownloadFileSnapshot:
 
 
 class TransactionalDownloadHistoryRepository:
-    """为 Chain 和 Agent 下载历史读写创建短生命周期 Session。"""
+    """
+    为 Chain 和 Agent 下载历史读写创建短生命周期 Session。
+    """
 
     def __init__(
         self,
@@ -111,12 +119,16 @@ class TransactionalDownloadHistoryRepository:
         sync_session: Callable[[], Session],
         async_session: Callable[[], AbstractAsyncContextManager[AsyncSession]],
     ) -> None:
-        """保存由启动组合根提供的同步与异步 Session 工厂。"""
+        """
+        保存由启动组合根提供的同步与异步 Session 工厂。
+        """
         self._sync_session = sync_session
         self._async_session = async_session
 
     def _read(self, operation: Callable[[DownloadHistoryOper], ResultT]) -> ResultT:
-        """在独立同步 Session 中执行一次只读操作。"""
+        """
+        在独立同步 Session 中执行一次只读操作。
+        """
         session = self._sync_session()
         try:
             return operation(DownloadHistoryOper(session))
@@ -127,7 +139,9 @@ class TransactionalDownloadHistoryRepository:
         self,
         download_hash: str,
     ) -> Optional[DownloadHistorySnapshot]:
-        """按下载任务 Hash 返回最新历史快照。"""
+        """
+        按下载任务 Hash 返回最新历史快照。
+        """
         return self._read(
             lambda repository: (
                 _project_history(record)
@@ -140,7 +154,9 @@ class TransactionalDownloadHistoryRepository:
         self,
         download_hashes: list[str],
     ) -> dict[str, DownloadHistorySnapshot]:
-        """批量返回以下载任务 Hash 为键的最新历史快照。"""
+        """
+        批量返回以下载任务 Hash 为键的最新历史快照。
+        """
         return self._read(
             lambda repository: {
                 download_hash: _project_history(record)
@@ -149,7 +165,9 @@ class TransactionalDownloadHistoryRepository:
         )
 
     def get_by_path(self, path: str) -> Optional[DownloadHistorySnapshot]:
-        """按下载保存路径返回历史快照。"""
+        """
+        按下载保存路径返回历史快照。
+        """
         return self._read(
             lambda repository: (
                 _project_history(record)
@@ -164,7 +182,9 @@ class TransactionalDownloadHistoryRepository:
         media_id: str,
         music_type: Optional[str] = None,
     ) -> list[DownloadHistorySnapshot]:
-        """按规范媒体身份返回历史快照。"""
+        """
+        按规范媒体身份返回历史快照。
+        """
         return self._read(
             lambda repository: [
                 _project_history(record)
@@ -180,7 +200,9 @@ class TransactionalDownloadHistoryRepository:
         self,
         fullpath: str,
     ) -> Optional[DownloadFileSnapshot]:
-        """按完整路径返回一条有效下载文件快照。"""
+        """
+        按完整路径返回一条有效下载文件快照。
+        """
         return self._read(
             lambda repository: (
                 _project_file(record)
@@ -194,7 +216,9 @@ class TransactionalDownloadHistoryRepository:
         download_hash: str,
         state: Optional[int] = None,
     ) -> list[DownloadFileSnapshot]:
-        """按下载任务 Hash 返回文件快照。"""
+        """
+        按下载任务 Hash 返回文件快照。
+        """
         return self._read(
             lambda repository: [
                 _project_file(record)
@@ -206,7 +230,9 @@ class TransactionalDownloadHistoryRepository:
         )
 
     def get_files_by_savepath(self, savepath: str) -> list[DownloadFileSnapshot]:
-        """按保存目录返回下载文件快照。"""
+        """
+        按保存目录返回下载文件快照。
+        """
         return self._read(
             lambda repository: [
                 _project_file(record)
@@ -219,7 +245,9 @@ class TransactionalDownloadHistoryRepository:
         page: int = 1,
         count: int = 30,
     ) -> list[DownloadHistorySnapshot]:
-        """在独立异步 Session 内分页读取并投影历史。"""
+        """
+        在独立异步 Session 内分页读取并投影历史。
+        """
         async with self._async_session() as session:
             records = await DownloadHistoryOper(session).async_list_by_page(
                 page,
@@ -228,7 +256,9 @@ class TransactionalDownloadHistoryRepository:
             return [_project_history(record) for record in records]
 
     async def async_count(self) -> int:
-        """在独立异步 Session 内统计下载历史总数。"""
+        """
+        在独立异步 Session 内统计下载历史总数。
+        """
         async with self._async_session() as session:
             return await DownloadHistoryOper(session).async_count()
 
@@ -237,7 +267,9 @@ class TransactionalDownloadHistoryRepository:
         history: DownloadHistoryWrite,
         files: tuple[DownloadFileWrite, ...] = (),
     ) -> int:
-        """在一个同步事务中新增历史与关联文件。"""
+        """
+        在一个同步事务中新增历史与关联文件。
+        """
         session = self._sync_session()
         unit_of_work = SqlAlchemyUnitOfWork(session)
         try:
@@ -255,7 +287,9 @@ class TransactionalDownloadHistoryRepository:
             session.close()
 
     async def async_delete(self, history_id: int) -> None:
-        """在一个异步事务中删除指定下载历史。"""
+        """
+        在一个异步事务中删除指定下载历史。
+        """
         async with self._async_session() as session:
             unit_of_work = SqlAlchemyAsyncUnitOfWork(session)
             try:
@@ -267,10 +301,14 @@ class TransactionalDownloadHistoryRepository:
 
 
 class SessionDownloadHistoryRepository:
-    """把 API 请求持有的 Session 适配为下载历史查询和暂存端口。"""
+    """
+    把 API 请求持有的 Session 适配为下载历史查询和暂存端口。
+    """
 
     def __init__(self, session: Union[Session, AsyncSession]) -> None:
-        """保存由请求依赖独占的数据库 Session。"""
+        """
+        保存由请求依赖独占的数据库 Session。
+        """
         self._session = session
 
     async def async_list_by_page(
@@ -278,7 +316,9 @@ class SessionDownloadHistoryRepository:
         page: int = 1,
         count: int = 30,
     ) -> list[DownloadHistorySnapshot]:
-        """在请求异步 Session 内分页读取并投影历史。"""
+        """
+        在请求异步 Session 内分页读取并投影历史。
+        """
         if not isinstance(self._session, AsyncSession):
             raise RuntimeError("下载历史异步查询需要 AsyncSession")
         records = await DownloadHistoryOper(self._session).async_list_by_page(
@@ -288,19 +328,25 @@ class SessionDownloadHistoryRepository:
         return [_project_history(record) for record in records]
 
     async def async_count(self) -> int:
-        """在请求异步 Session 内统计下载历史总数。"""
+        """
+        在请求异步 Session 内统计下载历史总数。
+        """
         if not isinstance(self._session, AsyncSession):
             raise RuntimeError("下载历史异步统计需要 AsyncSession")
         return await DownloadHistoryOper(self._session).async_count()
 
     def stage_delete_history(self, history_id: int) -> None:
-        """在请求同步 Session 内暂存下载历史删除。"""
+        """
+        在请求同步 Session 内暂存下载历史删除。
+        """
         if not isinstance(self._session, Session):
             raise RuntimeError("下载历史同步删除需要 Session")
         DownloadHistoryOper(self._session).stage_delete_history(history_id)
 
     def stage_delete_file_by_fullpath(self, fullpath: str) -> None:
-        """在请求同步 Session 内暂存下载文件失效状态。"""
+        """
+        在请求同步 Session 内暂存下载文件失效状态。
+        """
         if not isinstance(self._session, Session):
             raise RuntimeError("下载文件同步变更需要 Session")
         DownloadHistoryOper(self._session).stage_delete_file_by_fullpath(fullpath)

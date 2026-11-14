@@ -1,9 +1,18 @@
+"""
+验证Nexus Audience 站点页面的种子信息解析。
+"""
+
 # -*- coding: utf-8 -*-
-from app.modules.indexer.parser.nexus_audiences import NexusAudiencesSiteUserInfo
+import pytest
+
 from app.foundation.size import parse_size
+from app.modules.indexer.parser.nexus_audiences import NexusAudiencesSiteUserInfo
 
 
 def test_audiences_userbar_metrics_override_generic_nexus_regex():
+    """
+    Audiences 专用用户栏指标优先于通用 Nexus 正则结果。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -37,7 +46,7 @@ def test_audiences_userbar_metrics_override_generic_nexus_regex():
 
     assert parser.userid == "18978"
     assert parser.username == "jxxghp"
-    assert parser.user_level == "(江湖儿女)Elite User"
+    assert parser.user_level == "Elite User"
     assert parser.upload == parse_size("10.150 TB")
     assert parser.download == parse_size("3.624 TB")
     assert parser.ratio == 2.801
@@ -46,7 +55,44 @@ def test_audiences_userbar_metrics_override_generic_nexus_regex():
     assert parser.leeching == 7
 
 
+@pytest.mark.parametrize("parse_method", ["_parse_user_traffic_info", "_parse_user_detail_info"])
+@pytest.mark.parametrize("badge, expected", [
+    ("(小鬼当家)User", "User"),
+    ("(江湖儿女)Elite User", "Elite User"),
+    ("  (江湖儿女)  Elite User  ", "Elite User"),
+    ("Elite User", "Elite User"),
+    ("  User  ", "User"),
+    ("(小鬼当家)", "Power User"),
+    ("  ", "Power User"),
+])
+def test_audiences_user_level_omits_site_group(parse_method, badge, expected):
+    """
+    解析用户等级时去除站点分组前缀，保留实际等级名称。
+    """
+    parser = NexusAudiencesSiteUserInfo(
+        site_name="Audiences",
+        url="https://audiences.me/",
+        site_cookie="",
+        apikey=None,
+        token=None,
+    )
+    parser.user_level = "Power User"
+    html_text = f"""
+    <html><body>
+      <a data-uploader-label="testuser" data-uploader-url="userdetails.php?id=123"
+         data-uploader-badge="{badge}">testuser</a>
+    </body></html>
+    """
+
+    getattr(parser, parse_method)(html_text)
+
+    assert parser.user_level == expected
+
+
 def test_audiences_inbox_total_unread_badge_uses_unread_part():
+    """
+    收件箱同时展示总数与未读数时，只提取未读部分。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -84,6 +130,9 @@ def test_audiences_inbox_total_unread_badge_uses_unread_part():
 
 
 def test_audiences_inbox_total_only_is_not_unread_count():
+    """
+    只有收件箱总数且没有未读标记时，不将总数误报为未读数。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -113,6 +162,9 @@ def test_audiences_inbox_total_only_is_not_unread_count():
 
 
 def test_audiences_unread_badge_plain_count_is_unread_count():
+    """
+    明确带未读标记的纯数字徽章可直接作为未读数量。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -142,6 +194,9 @@ def test_audiences_unread_badge_plain_count_is_unread_count():
 
 
 def test_audiences_unread_marker_without_count_uses_unknown_count():
+    """
+    只有未读标记而没有数量时保留数量未知的状态。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -170,6 +225,9 @@ def test_audiences_unread_marker_without_count_uses_unknown_count():
 
 
 def test_audiences_table_unread_links_ignore_content_rows():
+    """
+    从消息表格提取未读链接时排除消息正文行，避免重复计数。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -239,6 +297,9 @@ def test_audiences_table_unread_links_ignore_content_rows():
 
 
 def test_audiences_readpm_row_is_not_unread_message():
+    """
+    带已读图标的表格行不能计入未读消息。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",

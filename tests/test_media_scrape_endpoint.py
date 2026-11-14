@@ -1,25 +1,35 @@
+"""
+验证手动刮削接口传递规范媒体身份、来源与剧集组。
+"""
+
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from app.api.dependencies.auth import get_current_active_user
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints.media import recognize_file, scrape
-from app.domain.context import Context, MediaInfo
+from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.context import MusicInfo
 from app.schemas.file import FileItem
 from app.schemas.types import MediaSource, MediaType
 
 
 def test_scrape_uses_explicit_media_source_and_id() -> None:
-    """手动刮削应将 TMDB 剧集组与原生媒体身份传给识别流程。"""
+    """
+    手动刮削应将 TMDB 剧集组与原生媒体身份传给识别流程。
+    """
     fileitem = FileItem(storage="alist", path="/tv/Test Show S01E01.mkv", type="file")
     media_info = MediaInfo(title="测试剧集", type=MediaType.TV)
     chain = Mock()
     chain.recognize_media.return_value = media_info
 
     scraping_chain = Mock()
+    scraping_chain.scrape_metadata.return_value = (True, "刮削完成")
     with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain, \
             patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
@@ -50,7 +60,9 @@ def test_scrape_uses_explicit_media_source_and_id() -> None:
 
 
 def test_scrape_keeps_automatic_recognition_compatible() -> None:
-    """未指定媒体ID时按路径识别也应使用请求指定的数据源和剧集组。"""
+    """
+    未指定媒体ID时按路径识别也应使用请求指定的数据源和剧集组。
+    """
     fileitem = FileItem(storage="alist", path="/tv/Test Show S01E01.mkv", type="file")
     meta_info = MetaBase("Test Show S01E01")
     media_info = MediaInfo(title="测试剧集", type=MediaType.TV)
@@ -58,6 +70,7 @@ def test_scrape_keeps_automatic_recognition_compatible() -> None:
     chain.recognize_by_path.return_value = Context(meta_info=meta_info, media_info=media_info)
 
     scraping_chain = Mock()
+    scraping_chain.scrape_metadata.return_value = (True, "刮削完成")
     with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain, \
             patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
@@ -88,7 +101,9 @@ def test_scrape_keeps_automatic_recognition_compatible() -> None:
 
 
 def test_scrape_rejects_media_id_without_source() -> None:
-    """原生媒体ID缺少所属数据源时应直接返回明确错误。"""
+    """
+    原生媒体ID缺少所属数据源时应直接返回明确错误。
+    """
     result = scrape(
         fileitem=FileItem(storage="alist", path="/movies/Test.mkv", type="file"),
         storage="alist",
@@ -101,7 +116,9 @@ def test_scrape_rejects_media_id_without_source() -> None:
 
 
 def test_scrape_rejects_zero_media_id_before_recognition() -> None:
-    """刮削入口收到零值身份时不得进入识别或刮削链。"""
+    """
+    刮削入口收到零值身份时不得进入识别或刮削链。
+    """
     fileitem = FileItem(storage="local", path="/tmp/test.mkv", type="file")
     media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
     scraping_chain = Mock(side_effect=AssertionError("零值身份不应创建刮削链"))
@@ -123,16 +140,80 @@ def test_scrape_rejects_zero_media_id_before_recognition() -> None:
     scraping_chain.assert_not_called()
 
 
+def _post_scrape_as(monkeypatch, current_user):
+    """
+    以指定登录用户经真实路由提交刮削请求，返回响应和被替换的媒体链、刮削链。
+    """
+    media_chain = Mock()
+    # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
+    media_chain.is_audio_path.return_value = False
+    media_chain.return_value.recognize_by_path.return_value = Context(
+        meta_info=MetaBase("Test Show S01E01"),
+        media_info=MediaInfo(title="测试剧集", type=MediaType.TV),
+    )
+    scraping_chain = Mock()
+    scraping_chain.return_value.scrape_metadata.return_value = (True, "刮削完成")
+    monkeypatch.setattr(media_endpoint, "MediaChain", media_chain)
+    monkeypatch.setattr(media_endpoint, "ScrapingChain", scraping_chain)
+
+    app = FastAPI()
+    app.include_router(media_endpoint.router, prefix="/api/v1/media")
+    # 只替换登录用户解析，管理权限判断仍走真实依赖
+    app.dependency_overrides[get_current_active_user] = lambda: current_user
+    fileitem = FileItem(storage="alist", path="/tv/Test Show S01E01.mkv", type="file")
+    response = TestClient(app).post(
+        "/api/v1/media/scrape/alist",
+        json=fileitem.model_dump(mode="json"),
+    )
+    return response, media_chain, scraping_chain
+
+
+def test_scrape_http_rejects_user_without_manage_permission(monkeypatch) -> None:
+    """
+    手动刮削会覆盖目录内的图片和 NFO，没有管理权限的用户不得进入识别和刮削链。
+    """
+    user = SimpleNamespace(is_active=True, is_superuser=False, permissions={})
+
+    response, media_chain, scraping_chain = _post_scrape_as(monkeypatch, user)
+
+    assert response.status_code == 403
+    media_chain.assert_not_called()
+    scraping_chain.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "user",
+    [
+        SimpleNamespace(is_active=True, is_superuser=False, permissions={"manage": True}),
+        SimpleNamespace(is_active=True, is_superuser=True, permissions={}),
+    ],
+    ids=["manage", "superuser"],
+)
+def test_scrape_http_accepts_manage_user_and_superuser(monkeypatch, user) -> None:
+    """
+    具备管理权限的用户和超级管理员可与文件管理、手动整理一样执行手动刮削。
+    """
+    response, _, scraping_chain = _post_scrape_as(monkeypatch, user)
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    scraping_chain.return_value.scrape_metadata.assert_called_once()
+
+
 @pytest.mark.parametrize("media_source", list(MediaSource))
 def test_source_media_id_validator_rejects_zero_for_every_source(
         media_source: MediaSource,
 ) -> None:
-    """全部固定媒体来源都应把零值原生 ID 视为无效身份。"""
+    """
+    全部固定媒体来源都应把零值原生 ID 视为无效身份。
+    """
     assert not media_endpoint._is_valid_source_media_id(media_source, "0")
 
 
 def test_recognize_file_routes_audio_to_music_chain() -> None:
-    """文件管理识别音频文件时应经统一路径识别入口返回音乐专属上下文。"""
+    """
+    文件管理识别音频文件时应经统一路径识别入口返回音乐专属上下文。
+    """
     chain = Mock()
     chain.async_recognize_by_path = AsyncMock(
         return_value=Context(
@@ -159,7 +240,9 @@ def test_recognize_file_routes_audio_to_music_chain() -> None:
 
 
 def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
-    """手动音乐刮削应接受 MusicBrainz UUID 并经统一识别入口后写入音乐标签。"""
+    """
+    手动音乐刮削应接受 MusicBrainz UUID 并经统一识别入口后写入音乐标签。
+    """
     fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
     info = MusicInfo(
         media_source="musicbrainz",
@@ -199,7 +282,9 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
 
 
 def test_scrape_music_without_source_keeps_automatic_recognition() -> None:
-    """未选择音乐源时刮削入口应传递空来源，让底层比较全部识别源。"""
+    """
+    未选择音乐源时刮削入口应传递空来源，让底层比较全部识别源。
+    """
     fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
     media_chain = Mock()
     scraping_chain = Mock()
@@ -224,7 +309,9 @@ def test_scrape_music_without_source_keeps_automatic_recognition() -> None:
 
 
 def test_scrape_music_album_forwards_album_namespace() -> None:
-    """手动专辑刮削必须把 Release Group ID 标记为 album。"""
+    """
+    手动专辑刮削必须把 Release Group ID 标记为 album。
+    """
     fileitem = FileItem(storage="local", path="/music/叶惠美", type="dir")
     info = MusicInfo(
         media_source="musicbrainz",
@@ -254,7 +341,9 @@ def test_scrape_music_album_forwards_album_namespace() -> None:
 
 
 def test_scrape_music_accepts_douban_recording_composite_id() -> None:
-    """豆瓣音乐曲目 ID 使用“专辑ID:曲序”时应通过入口校验。"""
+    """
+    豆瓣音乐曲目 ID 使用“专辑ID:曲序”时应通过入口校验。
+    """
     fileitem = FileItem(storage="local", path="/music/晴天.flac", type="file")
     info = MusicInfo(
         media_source="doubanmusic",

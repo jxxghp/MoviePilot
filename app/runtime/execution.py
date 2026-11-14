@@ -1,19 +1,47 @@
+"""
+线程执行上下文与取消边界，供运行时统一判断可终止的工作。
+"""
+
 import asyncio
 import inspect
 import threading
 import time
+from collections.abc import Iterator
 from concurrent.futures import Executor, Future, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from contextvars import Context, copy_context
 from functools import partial, wraps
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, Awaitable, Callable, ParamSpec, TypeVar, cast
 
-from app.runtime.gc import flush_thread_allocator_cache
-from app.schemas.exception import ImmediateException
 from anyio.to_thread import run_sync
 
+from app.runtime.gc import flush_thread_allocator_cache
+from app.runtime.priority import background_thread_limiter, interactive_thread_limiter, is_interactive
+from app.schemas.exception import ImmediateException
 
 TaskResult = TypeVar("TaskResult")
 ExecutorResult = TypeVar("ExecutorResult")
+_Params = ParamSpec("_Params")
+_Result = TypeVar("_Result")
+
+# 包目录替换在线程池中执行，导入在同步生命周期线程中执行；两者须共享进程锁。
+_plugin_package_locks: dict[str, Any] = {}
+_plugin_package_locks_guard = threading.Lock()
+
+
+@contextmanager
+def plugin_package_lock(plugin_id: str) -> Iterator[None]:
+    """
+    串行化单个插件的代码导入、包替换和目录恢复。
+    """
+    normalized_id = plugin_id.casefold()
+    with _plugin_package_locks_guard:
+        lock = _plugin_package_locks.setdefault(
+            normalized_id,
+            threading.RLock(),
+        )
+    with lock:
+        yield
 
 
 def submit_with_context(
@@ -23,10 +51,15 @@ def submit_with_context(
         *args: Any,
         **kwargs: Any,
 ) -> Future[ExecutorResult]:
-    """从空线程上下文提交任务，并在执行时恢复调用方的独立上下文快照。"""
+    """
+    从空线程上下文提交任务，并在执行时恢复调用方的独立上下文快照。
+    """
     context = copy_context()
 
     def submit() -> Future[ExecutorResult]:
+        """
+        在无继承上下文中提交，再由 worker 执行已捕获的调用方快照。
+        """
         return executor.submit(context.run, func, *args, **kwargs)
 
     return Context().run(submit)
@@ -48,7 +81,9 @@ class IdleCacheReleasingThreadPoolExecutor(ThreadPoolExecutor):
             *args: Any,
             **kwargs: Any,
     ) -> Future[ExecutorResult]:
-        """提交任务，任务结束后在同一 worker 线程里按需交还线程缓存。"""
+        """
+        提交任务，任务结束后在同一 worker 线程里按需交还线程缓存。
+        """
         return super().submit(self._run_then_release_cache, fn, *args, **kwargs)
 
     def _run_then_release_cache(
@@ -58,7 +93,9 @@ class IdleCacheReleasingThreadPoolExecutor(ThreadPoolExecutor):
             *args: Any,
             **kwargs: Any,
     ) -> ExecutorResult:
-        """在 worker 线程中执行任务；队列已空说明该 worker 即将等待，此时刷新其线程缓存。"""
+        """
+        在 worker 线程中执行任务；队列已空说明该 worker 即将等待，此时刷新其线程缓存。
+        """
         try:
             return fn(*args, **kwargs)
         finally:
@@ -76,7 +113,9 @@ class OwnedThreadPoolExecutor(IdleCacheReleasingThreadPoolExecutor):
     """
 
     def __init__(self, max_workers: int | None = None) -> None:
-        """初始化线程池、提交准入状态和 Future owner 集合。"""
+        """
+        初始化线程池、提交准入状态和 Future owner 集合。
+        """
         super().__init__(max_workers=max_workers)
         self._ownership_lock = threading.RLock()
         self._accepting = True
@@ -84,7 +123,9 @@ class OwnedThreadPoolExecutor(IdleCacheReleasingThreadPoolExecutor):
 
     @property
     def accepting(self) -> bool:
-        """返回执行器是否仍允许提交新任务。"""
+        """
+        返回执行器是否仍允许提交新任务。
+        """
         with self._ownership_lock:
             return self._accepting
 
@@ -95,7 +136,9 @@ class OwnedThreadPoolExecutor(IdleCacheReleasingThreadPoolExecutor):
             *args: Any,
             **kwargs: Any,
     ) -> Future[ExecutorResult]:
-        """提交任务并在其达到终态前保留 owner。"""
+        """
+        提交任务并在其达到终态前保留 owner。
+        """
         with self._ownership_lock:
             future = super().submit(fn, *args, **kwargs)
             self._owned_futures.add(future)
@@ -108,7 +151,9 @@ class OwnedThreadPoolExecutor(IdleCacheReleasingThreadPoolExecutor):
             *,
             cancel_futures: bool = False,
     ) -> None:
-        """封口提交准入并保留标准库 shutdown 的调用语义。"""
+        """
+        封口提交准入并保留标准库 shutdown 的调用语义。
+        """
         with self._ownership_lock:
             self._accepting = False
             # 先在锁内封口；真正等待必须在锁外进行，否则 worker 的完成回调无法释放 owner。
@@ -117,7 +162,9 @@ class OwnedThreadPoolExecutor(IdleCacheReleasingThreadPoolExecutor):
             super().shutdown(wait=True, cancel_futures=cancel_futures)
 
     def _discard_future(self, future: Future[Any]) -> None:
-        """任务达到终态后释放 owner 记录。"""
+        """
+        任务达到终态后释放 owner 记录。
+        """
         with self._ownership_lock:
             self._owned_futures.discard(future)
 
@@ -157,7 +204,9 @@ class OwnedThreadPoolExecutor(IdleCacheReleasingThreadPoolExecutor):
 async def await_task_to_terminal(
     task: asyncio.Future[TaskResult],
 ) -> TaskResult:
-    """忽略当前调用方的重复取消，直到受保护任务进入真实终态。"""
+    """
+    忽略当前调用方的重复取消，直到受保护任务进入真实终态。
+    """
     while not task.done():
         try:
             await asyncio.shield(task)
@@ -169,23 +218,48 @@ async def await_task_to_terminal(
 
 
 async def run_in_threadpool(
-    func: Callable[..., Any],
+    func: Callable[..., _Result],
     *args: Any,
     **kwargs: Any,
-) -> Any:
-    """在线程中执行同步函数，保持 FastAPI 旧帮助函数的参数语义。"""
+) -> _Result:
+    """
+    在线程中执行同步函数，保持 FastAPI 旧帮助函数的参数语义。
+
+    交互调用使用保留配额；普通宿主调用使用独立后台配额，避免耗尽框架同步入口的令牌。
+
+    :param func: 在线程中执行的同步回调
+    :param args: 回调的位置参数
+    :param kwargs: 回调的关键字参数
+    :return: 回调完成后的原始结果
+    """
     if kwargs:
         func = partial(func, **kwargs)
     context = copy_context()
-    return await run_sync(context.run, func, *args)
+
+    def invoke() -> _Result:
+        """
+        在线程内恢复提交方上下文，确保嵌套调用沿用执行归属。
+        """
+        return context.run(func, *args)
+
+    limiter = interactive_thread_limiter() if is_interactive() else background_thread_limiter()
+    result: _Result = await run_sync(invoke, limiter=limiter)
+    return result
 
 
 async def run_in_threadpool_to_completion(
-    func: Callable[..., Any],
+    func: Callable[..., _Result],
     *args: Any,
     **kwargs: Any,
-) -> Any:
-    """在线程调用取得终态后传播取消，避免提前释放仍在使用的执行容量。"""
+) -> _Result:
+    """
+    在线程调用取得终态后传播取消，避免提前释放仍在使用的执行容量。
+
+    :param func: 在线程中执行的同步回调
+    :param args: 回调的位置参数
+    :param kwargs: 回调的关键字参数
+    :return: 回调完成后的原始结果；调用方取消时先等回调结束再传播取消
+    """
     worker_task = asyncio.create_task(run_in_threadpool(func, *args, **kwargs))
     cancellation: asyncio.CancelledError | None = None
     while not worker_task.done():
@@ -205,18 +279,34 @@ async def run_in_threadpool_to_completion(
     return result
 
 
-def retry(ExceptionToCheck: Any,
-          tries: int = 3, delay: int = 3, backoff: int = 2, logger: Any = None):
+def retry(
+    ExceptionToCheck: type[BaseException] | tuple[type[BaseException], ...],
+    tries: int = 3,
+    delay: int = 3,
+    backoff: int = 2,
+    logger: Any = None,
+) -> Callable[[Callable[_Params, _Result]], Callable[_Params, _Result]]:
     """
-    :param ExceptionToCheck: 需要捕获的异常
-    :param tries: 重试次数
-    :param delay: 延迟时间
-    :param backoff: 延迟倍数
-    :param logger: 日志对象
+    为同步或异步函数提供按异常类型筛选的退避重试装饰器。
+
+    最后一次尝试的异常直接向上传播；同步函数阻塞等待，异步函数使用异步等待。
+
+    :param ExceptionToCheck: 允许重试的异常类型或类型元组；ImmediateException 始终直接传播
+    :param tries: 总尝试次数，包含首次调用；小于等于 1 时仍调用一次
+    :param delay: 首次失败后的等待秒数，默认 3 秒
+    :param backoff: 每次重试后等待时间的乘数，默认 2
+    :param logger: 可选日志对象；未提供时将重试提示写入标准输出
+    :return: 保留原调用参数和结果语义的装饰器
     """
 
-    def deco_retry(f):
-        def f_retry(*args, **kwargs):
+    def deco_retry(f: Callable[_Params, _Result]) -> Callable[_Params, _Result]:
+        """
+        保留调用参数与返回类型，按原有检测方式选择同步或异步重试。
+        """
+        def f_retry(*args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
+            """
+            按既有退避间隔重试可捕获异常，立即终止异常直接交给调用方。
+            """
             mtries, mdelay = tries, delay
             while mtries > 1:
                 try:
@@ -234,11 +324,14 @@ def retry(ExceptionToCheck: Any,
                     mdelay *= backoff
             return f(*args, **kwargs)
 
-        async def async_f_retry(*args, **kwargs):
+        async def async_f_retry(*args: _Params.args, **kwargs: _Params.kwargs) -> object:
+            """
+            仅在原函数被识别为协程时调用，异步等待与同步分支相同的重试策略。
+            """
             mtries, mdelay = tries, delay
             while mtries > 1:
                 try:
-                    return await f(*args, **kwargs)
+                    return await cast(Awaitable[object], f(*args, **kwargs))
                 except ImmediateException:
                     raise
                 except ExceptionToCheck as e:
@@ -250,26 +343,35 @@ def retry(ExceptionToCheck: Any,
                     await asyncio.sleep(mdelay)
                     mtries -= 1
                     mdelay *= backoff
-            return await f(*args, **kwargs)
+            return await cast(Awaitable[object], f(*args, **kwargs))
 
-        # 根据函数类型返回相应的包装器
         if inspect.iscoroutinefunction(f):
-            return async_f_retry
+            # 仅协程分支可调用异步包装器，原 await 结果与参数原样透传。
+            return cast(Callable[_Params, _Result], async_f_retry)
         else:
             return f_retry
 
     return deco_retry
 
 
-def log_execution_time(logger: Any = None):
+def log_execution_time(
+    logger: Any = None,
+) -> Callable[[Callable[_Params, _Result]], Callable[_Params, _Result]]:
     """
-    记录函数执行时间的装饰器
+    记录函数执行时间的装饰器。
+
     :param logger: 日志记录器对象，用于记录异常信息
     """
 
-    def decorator(func: Callable):
+    def decorator(func: Callable[_Params, _Result]) -> Callable[_Params, _Result]:
+        """
+        保留原函数元数据及调用合同，按原分派方式记录执行耗时。
+        """
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
+            """
+            同步函数成功后记录耗时，结果和异常沿用原传播路径。
+            """
             start_time = time.time()
             result = func(*args, **kwargs)
             end_time = time.time()
@@ -281,9 +383,12 @@ def log_execution_time(logger: Any = None):
             return result
 
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> object:
+            """
+            协程成功结束后记录耗时，异常不产生成功耗时日志。
+            """
             start_time = time.time()
-            result = await func(*args, **kwargs)
+            result = await cast(Awaitable[object], func(*args, **kwargs))
             end_time = time.time()
             msg = f"{func.__name__} execution time: {end_time - start_time:.2f} seconds"
             if logger:
@@ -292,9 +397,9 @@ def log_execution_time(logger: Any = None):
                 print(msg)
             return result
 
-        # 根据函数类型返回相应的包装器
         if inspect.iscoroutinefunction(func):
-            return async_wrapper
+            # 已确认原函数返回协程，异步包装器保留同一 await 结果。
+            return cast(Callable[_Params, _Result], async_wrapper)
         else:
             return wrapper
 

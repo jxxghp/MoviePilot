@@ -1,9 +1,12 @@
+"""
+将诊断报告转换为 JSON 或面向终端阅读的文本。
+"""
+
 from __future__ import annotations
 
 import json
 
 from app.doctor.models import DoctorFinding, DoctorReport
-
 
 STATUS_LABELS = {
     "healthy": "healthy",
@@ -14,7 +17,10 @@ STATUS_LABELS = {
 
 def format_json_report(report: DoctorReport) -> str:
     """
-    将诊断报告格式化为 JSON 文本。
+    将诊断报告格式化为保留中文的缩进 JSON 文本。
+
+    :param report: 已收集诊断发现的报告
+    :return: 使用两个空格缩进的 JSON 字符串
     """
     return json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
 
@@ -22,6 +28,9 @@ def format_json_report(report: DoctorReport) -> str:
 def format_text_report(report: DoctorReport) -> str:
     """
     将诊断报告格式化为面向用户阅读的文本。
+
+    :param report: 要展示环境、发现项与统计信息的报告
+    :return: 以换行符分隔的报告文本，不附加终端颜色控制符
     """
     lines = [
         "MoviePilot Doctor",
@@ -46,6 +55,9 @@ def format_text_report(report: DoctorReport) -> str:
 
 
 def _format_finding(finding: DoctorFinding) -> list[str]:
+    """
+    生成单条发现的展示行，优先标记已修复，其次标记仅供参考。
+    """
     marker = finding.severity.value.upper()
     if finding.fixed:
         marker = "FIXED"

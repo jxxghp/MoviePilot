@@ -1,4 +1,4 @@
-# MoviePilot Codex event intake. This job has no OpenAI or Telegram secret.
+# 接收 MoviePilot Codex 事件；本任务不持有 OpenAI 或 Telegram 密钥。
 name: MoviePilot Codex event intake
 
 on:

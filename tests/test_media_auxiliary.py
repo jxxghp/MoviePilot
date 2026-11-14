@@ -1,4 +1,6 @@
-"""多媒体来源附加信息 provider 的单元测试。"""
+"""
+多媒体来源附加信息 provider 的单元测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -11,17 +13,23 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _FakeAuxiliaryProvider(MediaAuxiliaryProviderMixin):
-    """记录通用 mixin 下传给现有识别接口的参数。"""
+    """
+    记录通用 mixin 下传给现有识别接口的参数。
+    """
 
     auxiliary_media_source = MediaSource.AniList
 
     def __init__(self) -> None:
-        """初始化同步和异步调用记录。"""
+        """
+        初始化同步和异步调用记录。
+        """
         self.sync_kwargs = None
         self.async_kwargs = None
 
     def recognize_media(self, **kwargs) -> MediaInfo:
-        """记录同步识别参数并返回固定 AniList 媒体。"""
+        """
+        记录同步识别参数并返回固定 AniList 媒体。
+        """
         self.sync_kwargs = kwargs
         return MediaInfo(
             media_source=MediaSource.AniList,
@@ -32,13 +40,17 @@ class _FakeAuxiliaryProvider(MediaAuxiliaryProviderMixin):
         )
 
     async def async_recognize_media(self, **kwargs) -> MediaInfo:
-        """记录异步识别参数并返回固定 AniList 媒体。"""
+        """
+        记录异步识别参数并返回固定 AniList 媒体。
+        """
         self.async_kwargs = kwargs
         return self.recognize_media(**kwargs)
 
 
 def test_provider_only_runs_when_its_source_is_enabled() -> None:
-    """provider 只处理用户选中的自身来源，未选中时不得发起识别。"""
+    """
+    provider 只处理用户选中的自身来源，未选中时不得发起识别。
+    """
     provider = _FakeAuxiliaryProvider()
     media = MediaInfo(
         media_source=MediaSource.Douban,
@@ -66,7 +78,9 @@ def test_provider_only_runs_when_its_source_is_enabled() -> None:
 
 
 def test_provider_uses_native_identity_for_same_source_async() -> None:
-    """同来源补充应使用来源原生 ID，避免再次依赖标题消歧。"""
+    """
+    同来源补充应使用来源原生 ID，避免再次依赖标题消歧。
+    """
     provider = _FakeAuxiliaryProvider()
     media = MediaInfo(
         media_source=MediaSource.AniList,
@@ -87,7 +101,9 @@ def test_provider_uses_native_identity_for_same_source_async() -> None:
 
 
 def test_site_search_keywords_include_aggregated_aliases() -> None:
-    """站点搜索参数应优先使用附加信息聚合后的别名列表。"""
+    """
+    站点搜索参数应优先使用附加信息聚合后的别名列表。
+    """
     media = MediaInfo(
         media_source=MediaSource.Douban,
         media_id="1",

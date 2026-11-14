@@ -1,7 +1,12 @@
+"""
+验证文件监控事件转换、写入稳定等待和异常恢复。
+"""
+
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from watchfiles import Change
 
 from app.application.history import TransferHistorySnapshot
@@ -35,11 +40,15 @@ class CallbackRecorder:
         self.events.append((event, text, event_path, file_size))
 
     def event_unstable(self, event_path: Path):
-        """记录文件长时间未稳定告警。"""
+        """
+        记录文件长时间未稳定告警。
+        """
         self.stability_events.append(("unstable", event_path.as_posix()))
 
     def event_stable(self, event_path: Path):
-        """记录文件恢复稳定通知。"""
+        """
+        记录文件恢复稳定通知。
+        """
         self.stability_events.append(("stable", event_path.as_posix()))
 
 
@@ -138,7 +147,9 @@ def test_running_watcher_waits_for_file_stability_before_dispatch(tmp_path):
 
 
 def test_running_watcher_reports_long_unstable_file_and_recovery(tmp_path, monkeypatch):
-    """文件长时间写入应告警一次，并在稳定后发送恢复状态再继续整理。"""
+    """
+    文件长时间写入应告警一次，并在稳定后发送恢复状态再继续整理。
+    """
     movie_file = tmp_path / "long-writing.mkv"
     movie_file.write_bytes(b"part")
     callback = CallbackRecorder()
@@ -162,6 +173,130 @@ def test_running_watcher_reports_long_unstable_file_and_recovery(tmp_path, monke
         ("stable", movie_file.as_posix()),
     ]
     assert len(callback.events) == 1
+
+
+@pytest.mark.parametrize("suffix", [".!qB", ".!QB", ".part", ".PART", ".aria2"])
+def test_running_watcher_ignores_download_temporary_files(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    """
+    配置的临时下载后缀不进入稳定性队列，长期写入也不应告警。
+
+    :param tmp_path: 隔离的临时下载目录
+    :param monkeypatch: 替换运行配置、监控线程状态和单调时钟
+    :param suffix: 下载器使用的临时后缀，包含大小写和自定义后缀
+    """
+    monkeypatch.setattr("app.monitor.watcher.get_runtime_setting", lambda _: [".!qb", ".part", ".aria2"])
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 1000.0)
+    temporary_file = tmp_path / f"episode.mp4{suffix}"
+    temporary_file.write_bytes(b"downloading")
+    callback = CallbackRecorder()
+    watcher = LocalDirectoryWatcher(tmp_path, callback=callback, force_polling=True)
+    monkeypatch.setattr(watcher, "is_alive", lambda: True)
+
+    watcher._handle_changes({(Change.added, temporary_file.as_posix())})
+    temporary_file.write_bytes(b"still downloading")
+    watcher._handle_changes({(Change.modified, temporary_file.as_posix())})
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 2801.0)
+    watcher._process_pending_stability()
+
+    assert watcher._pending_stability == {}
+    assert callback.events == []
+    assert callback.stability_events == []
+
+
+def test_running_watcher_dispatches_completed_download_after_rename(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    临时文件下载完成并改名后，正式视频仍需稳定两次再分发一次。
+
+    :param tmp_path: 隔离的临时下载目录
+    :param monkeypatch: 替换临时后缀配置、监控线程状态和单调时钟
+    """
+    monkeypatch.setattr("app.monitor.watcher.get_runtime_setting", lambda _: [".!qb"])
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 1000.0)
+    temporary_file = tmp_path / "episode.mp4.!qB"
+    completed_file = tmp_path / "episode.mp4"
+    temporary_file.write_bytes(b"complete")
+    callback = CallbackRecorder()
+    watcher = LocalDirectoryWatcher(tmp_path, callback=callback, force_polling=True)
+    monkeypatch.setattr(watcher, "is_alive", lambda: True)
+    watcher._handle_changes({(Change.added, temporary_file.as_posix())})
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 2801.0)
+    watcher._process_pending_stability()
+
+    temporary_file.rename(completed_file)
+    watcher._handle_changes({
+        (Change.deleted, temporary_file.as_posix()),
+        (Change.added, completed_file.as_posix()),
+    })
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 2803.0)
+    watcher._process_pending_stability()
+    assert callback.events == []
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 2805.0)
+    watcher._process_pending_stability()
+
+    assert [event[2] for event in callback.events] == [completed_file.as_posix()]
+    assert watcher._pending_stability == {}
+    assert callback.stability_events == []
+
+
+def test_running_watcher_rechecks_temporary_suffix_for_pending_file(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    临时后缀配置热更新后，已入队的文件不应继续产生超时告警。
+
+    :param tmp_path: 隔离的临时下载目录
+    :param monkeypatch: 替换运行配置、监控线程状态和单调时钟
+    """
+    temporary_extensions: list[str] = []
+    monkeypatch.setattr("app.monitor.watcher.get_runtime_setting", lambda _: temporary_extensions)
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 1000.0)
+    temporary_file = tmp_path / "episode.mp4.!qB"
+    temporary_file.write_bytes(b"downloading")
+    callback = CallbackRecorder()
+    watcher = LocalDirectoryWatcher(tmp_path, callback=callback, force_polling=True)
+    monkeypatch.setattr(watcher, "is_alive", lambda: True)
+    watcher._handle_changes({(Change.added, temporary_file.as_posix())})
+    assert temporary_file.as_posix() in watcher._pending_stability
+
+    temporary_extensions.append(".!qb")
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 2801.0)
+    watcher._process_pending_stability()
+
+    assert watcher._pending_stability == {}
+    assert callback.events == []
+    assert callback.stability_events == []
+
+
+def test_running_watcher_filters_temporary_files_in_added_directory(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    新增目录递归展开时跳过临时文件，并保留正式视频的稳定性检测。
+
+    :param tmp_path: 隔离的目录树
+    :param monkeypatch: 替换监控运行配置和线程状态
+    """
+    runtime_settings = {"DOWNLOAD_TMPEXT": [".!qb"], "MONITOR_RESCAN_DELAYS": "30,120"}
+    monkeypatch.setattr("app.monitor.watcher.get_runtime_setting", runtime_settings.__getitem__)
+    added_dir = tmp_path / "season"
+    added_dir.mkdir()
+    temporary_file = added_dir / "episode.mp4.!qB"
+    completed_file = added_dir / "complete.mp4"
+    temporary_file.write_bytes(b"downloading")
+    completed_file.write_bytes(b"complete")
+    callback = CallbackRecorder()
+    watcher = LocalDirectoryWatcher(tmp_path, callback=callback, force_polling=True)
+    monkeypatch.setattr(watcher, "is_alive", lambda: True)
+
+    watcher._handle_changes({(Change.added, added_dir.as_posix())})
+
+    assert set(watcher._pending_stability) == {completed_file.as_posix()}
+    assert callback.events == []
+    assert callback.stability_events == []
 
 
 def test_handle_changes_skips_missing_paths(tmp_path):
@@ -329,7 +464,9 @@ def test_handle_file_skips_transfer_when_history_exists(monkeypatch):
             )
 
         def get_success_by_src(self, src: str, storage: str = None):
-            """成功记录已由首次查询返回，无需二次回退。"""
+            """
+            成功记录已由首次查询返回，无需二次回退。
+            """
             return None
 
     transfer_chain = MagicMock()
@@ -375,7 +512,9 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
             return None
 
         def get_success_by_src(self, src: str, storage: str = None):
-            """空仓储没有成功历史。"""
+            """
+            空仓储没有成功历史。
+            """
             return None
 
     transfer_chain_instance = MagicMock()
@@ -401,7 +540,9 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
 
 
 def test_handle_file_prefers_music_type_from_monitor_directory(monkeypatch):
-    """音乐目录监控触发整理时应透传音乐类型，避免音频按影视名称识别。"""
+    """
+    音乐目录监控触发整理时应透传音乐类型，避免音频按影视名称识别。
+    """
     dispatcher = TransferDispatcher(all_exts=[".flac"], cache={})
     event_path = Path("/downloads/music/album/track.flac")
     directories = [

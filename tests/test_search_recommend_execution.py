@@ -1,4 +1,6 @@
-"""AI 搜索推荐执行与代际栅栏回归测试。"""
+"""
+AI 搜索推荐执行与代际栅栏回归测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -12,7 +14,9 @@ from app.runtime.tasks import TaskRegistry
 
 
 def _result(title: str):
-    """构造一条具有稳定推荐身份的候选资源。"""
+    """
+    构造一条具有稳定推荐身份的候选资源。
+    """
     return SimpleNamespace(
         torrent_info=SimpleNamespace(
             site=1,
@@ -27,7 +31,9 @@ def _result(title: str):
 
 
 def _chain() -> SearchChain:
-    """构造只包含推荐执行所需依赖的搜索链。"""
+    """
+    构造只包含推荐执行所需依赖的搜索链。
+    """
     chain = object.__new__(SearchChain)
     chain.runtime_config = ChainRuntimeConfig(
         media_extensions=(),
@@ -41,7 +47,9 @@ def _chain() -> SearchChain:
 
 
 def test_request_hash_distinguishes_same_count_candidates():
-    """候选数量相同但资源身份不同时不得复用同一推荐请求。"""
+    """
+    候选数量相同但资源身份不同时不得复用同一推荐请求。
+    """
     first = SearchChain._calculate_recommend_request_hash(None, 1, [_result("资源一")])
     second = SearchChain._calculate_recommend_request_hash(None, 1, [_result("资源二")])
 
@@ -49,7 +57,9 @@ def test_request_hash_distinguishes_same_count_candidates():
 
 
 def test_execution_helpers_are_not_exported_on_search_facade():
-    """推荐执行步骤应留在 owner 内部，不扩大插件可见的 SearchChain 门面。"""
+    """
+    推荐执行步骤应留在 owner 内部，不扩大插件可见的 SearchChain 门面。
+    """
     assert "_generate_recommend_indices" not in SearchChain.__dict__
     assert "_run_recommend" not in SearchChain.__dict__
     assert "_parse_recommend_response" not in SearchChain.__dict__
@@ -57,7 +67,9 @@ def test_execution_helpers_are_not_exported_on_search_facade():
 
 
 def test_empty_candidates_publish_error_and_finish(monkeypatch):
-    """没有有效候选时应发布错误并结束任务，不调用模型或写缓存。"""
+    """
+    没有有效候选时应发布错误并结束任务，不调用模型或写缓存。
+    """
 
     async def scenario():
         recommend_coordinator.cancel()
@@ -88,7 +100,9 @@ def test_empty_candidates_publish_error_and_finish(monkeypatch):
 
 
 def test_stale_generation_cannot_publish_or_cache(monkeypatch):
-    """旧任务即使忽略取消并返回结果，也不得覆盖新代际状态和缓存。"""
+    """
+    旧任务即使忽略取消并返回结果，也不得覆盖新代际状态和缓存。
+    """
 
     async def scenario():
         recommend_coordinator.cancel()
@@ -101,7 +115,9 @@ def test_stale_generation_cannot_publish_or_cache(monkeypatch):
         call_count = 0
 
         async def invoke(_text: str) -> str:
-            """让第一代任务跨越第二代完成点后再返回。"""
+            """
+            让第一代任务跨越第二代完成点后再返回。
+            """
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -113,7 +129,9 @@ def test_stale_generation_cannot_publish_or_cache(monkeypatch):
             return "[0]"
 
         async def save_cache(payload, filename):
-            """记录真正越过代际栅栏的缓存写入。"""
+            """
+            记录真正越过代际栅栏的缓存写入。
+            """
             saved.append((filename, payload))
 
         chain._invoke_recommend_llm = invoke

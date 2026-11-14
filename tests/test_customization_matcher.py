@@ -1,10 +1,16 @@
+"""
+验证自定义识别规则更新和 SDK 分隔符配置。
+"""
+
 from app.domain.meta import customization as customization_module
 from app.domain.meta.customization import CustomizationMatcher
 from app.sdk.media import set_custom_separator
 
 
 def test_match_uses_latest_customization_setting(monkeypatch):
-    """自定义占位符修改后，下一次识别应直接使用新配置。"""
+    """
+    自定义占位符修改后，下一次识别应直接使用新配置。
+    """
     matcher = CustomizationMatcher()
     values = [["GROUP"], ["TEAM"]]
     monkeypatch.setattr(
@@ -19,7 +25,9 @@ def test_match_uses_latest_customization_setting(monkeypatch):
 
 
 def test_sdk_set_custom_separator_updates_matcher_and_restores_default(monkeypatch):
-    """插件只能通过 SDK 设置分隔符，清空后恢复宿主默认值。"""
+    """
+    插件只能通过 SDK 设置分隔符，清空后恢复宿主默认值。
+    """
     matcher = CustomizationMatcher()
     monkeypatch.setattr(
         customization_module,

@@ -1,4 +1,6 @@
-"""验证搜索与路径解析在两种后端下保持相同的全局识别词回退语义。"""
+"""
+验证搜索与路径解析在两种后端下保持相同的全局识别词回退语义。
+"""
 
 from pathlib import Path
 from unittest.mock import Mock
@@ -21,7 +23,9 @@ GLOBAL_WORD = f"{TITLE} => {TITLE.replace('S03', 'S04')}"
 
 @pytest.fixture
 def recognition_words(monkeypatch):
-    """隔离全局识别词及解析配置缓存，避免规则污染其它测试。"""
+    """
+    隔离全局识别词及解析配置缓存，避免规则污染其它测试。
+    """
     global_words = [GLOBAL_WORD]
     monkeypatch.setattr(words_module, "_custom_words_provider", lambda: global_words)
     metainfo_module.clear_rust_parse_options_cache()
@@ -46,7 +50,9 @@ def test_custom_words_fallback_matches_across_parsers(
     monkeypatch, recognition_words, backend, entry, custom_words,
     expected_season, applied_words,
 ):
-    """空列表沿用全局规则，非空列表独立覆盖；真实 Rust 不得靠 Python 兜底通过。"""
+    """
+    空列表沿用全局规则，非空列表独立覆盖；真实 Rust 不得靠 Python 兜底通过。
+    """
     assert recognition_words == [GLOBAL_WORD]
     if backend == "rust":
         if not rust_accel.is_available():
@@ -89,7 +95,9 @@ def test_custom_words_fallback_matches_across_parsers(
 def test_empty_custom_words_without_global_rules(
     monkeypatch, recognition_words, global_words, custom_words,
 ):
-    """未配置全局规则时，缺省与空列表均生成空识别词配置。"""
+    """
+    未配置全局规则时，缺省与空列表均生成空识别词配置。
+    """
     recognition_words.clear()
     monkeypatch.setattr(words_module, "_custom_words_provider", lambda: global_words)
 

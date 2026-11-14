@@ -1,3 +1,7 @@
+"""
+消息渠道的媒体搜索、资源选择、下载和订阅交互编排。
+"""
+
 import math
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -486,6 +490,10 @@ class MediaInteractionChain(ChainBase):
         """
         处理媒体选择阶段的序号输入。
         """
+        if request.phase != "media":
+            self._post_invalid_input(channel=channel, source=source, userid=userid, username=username,
+                                     title="媒体选择已结束，请使用当前资源列表")
+            return
         page_items, page, _ = self._page_items(
             items=request.items,
             page=request.page,
@@ -597,7 +605,7 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
-                title=f"开始搜索 {mediainfo.type.value} {mediainfo.title_year} ...",
+                    title=f"开始搜索 {(mediainfo.type or MediaType.UNKNOWN).value} {mediainfo.title_year} ...",
                 save_history=False,
             )
         )
@@ -1262,6 +1270,8 @@ class MediaInteractionChain(ChainBase):
         current_row: List[Dict[str, str]] = []
         for index, context in enumerate(items, start=1):
             torrent = context.torrent_info
+            if torrent is None:
+                continue
             if max_per_row == 1:
                 button_text = f"{index}. {torrent.site_name} - {torrent.seeders}↑"
                 if len(button_text) > max_text_length:

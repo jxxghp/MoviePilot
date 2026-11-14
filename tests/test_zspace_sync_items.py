@@ -1,3 +1,7 @@
+"""
+验证极空间媒体条目同步中的字段映射与分页。
+"""
+
 from unittest.mock import patch
 
 from app.modules.zspace.zspace import ZSpace
@@ -5,19 +9,25 @@ from app.schemas.types import MediaSource
 
 
 class _FakeResponse:
-    """模拟极影视 HTTP 响应。"""
+    """
+    模拟极影视 HTTP 响应。
+    """
 
     def __init__(self, payload: dict, status_code: int = 200):
         self._payload = payload
         self.status_code = status_code
 
     def json(self) -> dict:
-        """返回模拟的 JSON 数据。"""
+        """
+        返回模拟的 JSON 数据。
+        """
         return self._payload
 
 
 def _build_client() -> ZSpace:
-    """构造不触发登录流程的极影视客户端。"""
+    """
+    构造不触发登录流程的极影视客户端。
+    """
     client = ZSpace.__new__(ZSpace)
     client._host = "http://zspace.local/"
     client._apikey = "zspace-token"
@@ -26,7 +36,9 @@ def _build_client() -> ZSpace:
 
 
 def test_get_items_fetches_all_recursive_pages() -> None:
-    """全量同步应递归查询并持续翻页，且忽略非媒体条目。"""
+    """
+    全量同步应递归查询并持续翻页，且忽略非媒体条目。
+    """
     client = _build_client()
     responses = [
         _FakeResponse({
@@ -78,7 +90,9 @@ def test_get_items_fetches_all_recursive_pages() -> None:
 
 
 def test_get_items_expands_boxset_movies() -> None:
-    """电影合集应向下查询并返回全部子电影。"""
+    """
+    电影合集应向下查询并返回全部子电影。
+    """
     client = _build_client()
     responses = [
         _FakeResponse({
@@ -137,7 +151,9 @@ def test_get_items_expands_boxset_movies() -> None:
 
 
 def test_get_items_expands_boxset_series() -> None:
-    """电视剧合集应向下展开并返回全部子 Series。"""
+    """
+    电视剧合集应向下展开并返回全部子 Series。
+    """
     client = _build_client()
     responses = [
         _FakeResponse({
@@ -184,7 +200,9 @@ def test_get_items_expands_boxset_series() -> None:
 
 
 def test_get_items_loads_detail_when_list_metadata_is_incomplete() -> None:
-    """列表项缺少关键元数据时应使用详情接口补全。"""
+    """
+    列表项缺少关键元数据时应使用详情接口补全。
+    """
     client = _build_client()
     responses = [
         _FakeResponse({
@@ -231,7 +249,9 @@ def test_get_items_loads_detail_when_list_metadata_is_incomplete() -> None:
 
 
 def test_get_items_uses_total_count_when_server_returns_short_pages() -> None:
-    """服务端单页少于请求数量时应以总记录数决定是否继续翻页。"""
+    """
+    服务端单页少于请求数量时应以总记录数决定是否继续翻页。
+    """
     client = _build_client()
     responses = [
         _FakeResponse({

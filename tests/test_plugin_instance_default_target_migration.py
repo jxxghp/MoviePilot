@@ -1,4 +1,6 @@
-"""插件实例默认调用目标标记列与条件唯一索引 Alembic 迁移测试。"""
+"""
+插件实例默认调用目标标记列与条件唯一索引 Alembic 迁移测试。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +20,9 @@ MIGRATION_MODULE = "database.versions.e0e68cbd5756_3_0_37"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION_MODULE)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -26,7 +30,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _create_legacy_table(connection: sa.engine.Connection) -> None:
-    """建出加列前的表结构，模拟迁移前的存量数据库。"""
+    """
+    建出加列前的表结构，模拟迁移前的存量数据库。
+    """
     now = datetime.now(timezone.utc).isoformat()
     table = sa.Table(
         "plugininstance",
@@ -55,7 +61,9 @@ def _create_legacy_table(connection: sa.engine.Connection) -> None:
 
 
 def test_default_target_migration_adds_column_and_keeps_existing_rows(monkeypatch) -> None:
-    """新增列必须非空默认为假，且不得影响已有行；重复升级与完整回滚都要幂等。"""
+    """
+    新增列必须非空默认为假，且不得影响已有行；重复升级与完整回滚都要幂等。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_table(connection)
@@ -109,7 +117,9 @@ def test_default_target_migration_adds_column_and_keeps_existing_rows(monkeypatc
 
 
 def test_default_target_migration_accepts_fresh_current_schema(monkeypatch) -> None:
-    """create_all 已建当前表时重复升级不得因列或索引已存在而报错。"""
+    """
+    create_all 已建当前表时重复升级不得因列或索引已存在而报错。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         PluginInstance.__table__.create(connection)
@@ -128,7 +138,9 @@ def test_default_target_migration_accepts_fresh_current_schema(monkeypatch) -> N
 
 
 def test_default_target_migration_index_rejects_a_second_default_target(monkeypatch) -> None:
-    """迁移建出的条件唯一索引必须在真实数据库连接上拒绝第二条置位。"""
+    """
+    迁移建出的条件唯一索引必须在真实数据库连接上拒绝第二条置位。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_table(connection)
@@ -156,7 +168,8 @@ def test_default_target_migration_index_rejects_a_second_default_target(monkeypa
 
 
 def test_default_target_index_is_partial_in_both_dialects() -> None:
-    """模型（``create_all`` 路径）建出的索引在两种方言下都必须带谓词。
+    """
+    模型（``create_all`` 路径）建出的索引在两种方言下都必须带谓词。
 
     本仓测试库是 SQLite，PostgreSQL 分支只能靠编译期 DDL 证明：谓词整个丢失会
     退化成「每个源插件只能有一行实例」，把插件分身整个锁死。

@@ -1,6 +1,8 @@
 #!/bin/bash
 # shellcheck shell=bash
+# curl 选项与请求头保存在空格分隔的参数串中，调用时需要展开为多个参数。
 # shellcheck disable=SC2086
+# 归档按单个 MoviePilot-* 根目录处理；多个匹配项不在该条件表达式的支持范围。
 # shellcheck disable=SC2144
 
 Green="\033[32m"
@@ -33,6 +35,9 @@ PUBLIC_DIR=/public
 UPDATE_PENDING_FILE="${MOVIEPILOT_UPDATE_PENDING_FILE:-/var/lib/moviepilot/update/__update_pending__}"
 UPDATE_PREVIOUS_APP="${APP_DIR}.__update_previous__"
 UPDATE_PREVIOUS_PUBLIC="${PUBLIC_DIR}.__update_previous__"
+# 镜像构建时写入的系统基线；旧镜像缺少该文件时按机制引入前的下限比较。
+SYSTEM_BASELINE_FILE="${MOVIEPILOT_SYSTEM_BASELINE_FILE:-/etc/moviepilot/system-baseline}"
+LEGACY_SYSTEM_BASELINE="2026-01-01"
 
 function apply_package_cache_env() {
     PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
@@ -64,7 +69,21 @@ function set_package_proxy_env() {
     fi
 }
 
-# 下载及解压
+# 按调用时配置拼接 GitHub 下载地址；兼容无尾斜杠、路径前缀和首尾空白。
+function github_download_url() {
+    local proxy
+    proxy="$(printf '%s' "${GITHUB_PROXY:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if [[ -z "${proxy}" ]]; then
+        printf '%s\n' "$1"
+        return
+    fi
+    if [[ "${proxy}" != http://* && "${proxy}" != https://* ]]; then
+        proxy="http://${proxy}"
+    fi
+    printf '%s\n' "${proxy%/}/$1"
+}
+
+# 下载归档到临时目录；失败最多尝试三次，成功后归一化后端根目录名称。
 function download_and_unzip() {
     local retries=0
     local max_retries=3
@@ -88,6 +107,37 @@ function download_and_unzip() {
     else
         return 0
     fi
+}
+
+# 输出去除空白后的 YYYY-MM-DD 基线；格式无效时返回失败。
+function normalize_system_baseline() {
+    local value
+    value="$(printf '%s' "$1" | tr -d '[:space:]')"
+    [[ "${value}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+    printf '%s\n' "${value}"
+}
+
+# 目标版本要求的系统基线高于当前镜像时拒绝更新：系统组件只能随镜像更新。
+# 未声明 MIN_SYSTEM_BASELINE 的旧版本视为无要求；声明无效时同样拒绝，保留当前版本。
+function check_system_baseline() {
+    local version_file="$1"
+    local required_raw
+    local required
+    local current
+
+    grep -Eq '^MIN_SYSTEM_BASELINE[[:space:]]*=' "${version_file}" 2>/dev/null || return 0
+    required_raw="$(sed -n "s/^MIN_SYSTEM_BASELINE[[:space:]]*=[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" "${version_file}" | head -n 1)"
+    if ! required="$(normalize_system_baseline "${required_raw}")"; then
+        WARN "更新包声明的系统基线无效（${required_raw}），已跳过本次更新并保留当前版本"
+        return 1
+    fi
+    current="$(normalize_system_baseline "$(cat "${SYSTEM_BASELINE_FILE}" 2>/dev/null)")" || current=""
+    # 基线均为 YYYY-MM-DD，字符串顺序与日期顺序一致。
+    if [[ "${required}" > "${current:-${LEGACY_SYSTEM_BASELINE}}" ]]; then
+        WARN "该版本包含系统组件安全更新，需要先更新 Docker 镜像（要求系统基线 ${required}，当前 ${current:-未标记}），已跳过本次更新并保留当前版本"
+        return 1
+    fi
+    return 0
 }
 
 function sync_project_dependencies() {
@@ -290,13 +340,15 @@ function existing_resource_dir() {
     printf '%s\n' "${resource_source_dir}"
 }
 
+# 资源只写暂存目录；连接抖动有限重试，耗尽后才回退到当前已安装资源。
 function download_staged_resource() {
     local url="$1"
     local destination="$2"
     local fallback="$3"
     local label="$4"
 
-    if curl ${CURL_OPTIONS} --fail "${url}" -o "${destination}" \
+    if curl ${CURL_OPTIONS} --fail --connect-timeout 10 --max-time 180 \
+        --retry 2 --retry-delay 1 --retry-all-errors "${url}" -o "${destination}" \
         && [ -s "${destination}" ]; then
         return 0
     fi
@@ -309,6 +361,7 @@ function download_staged_resource() {
     return 1
 }
 
+# 暂存插件与站点资源，规范化镜像前缀后下载匹配当前 Python ABI 的资源。
 function stage_runtime_payload() {
     local stage_app="${TMP_PATH}/App"
     local stage_plugin_dir="${stage_app}/app/plugins"
@@ -366,12 +419,12 @@ function stage_runtime_payload() {
     fi
     sites_file="sites.${python_version}-${arch_suffix}.so"
     download_staged_resource \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" \
+        "$(github_download_url "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin")" \
         "${stage_resource_dir}/user.sites.v3.bin" \
         "${resource_source_dir}/user.sites.v3.bin" \
         "user.sites.v3.bin" || return 1
     download_staged_resource \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}" \
+        "$(github_download_url "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}")" \
         "${stage_resource_dir}/${sites_file}" \
         "${resource_source_dir}/${sites_file}" \
         "${sites_file}" || return 1
@@ -390,14 +443,16 @@ function swap_staged_payload() {
     fi
 }
 
-# 下载程序资源，$1: 后端版本路径
+# 通过规范化镜像地址准备前后端归档；$1 为后端版本路径，全部准备成功后才切换。
 function install_backend_and_download_resources() {
-    # 更新后端程序
-    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
+    if ! download_and_unzip "$(github_download_url "https://github.com/jxxghp/MoviePilot/archive/refs/${1}")" "App"; then
         WARN "后端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
     INFO "后端程序包准备成功"
+    if ! check_system_baseline "${TMP_PATH}/App/version.py"; then
+        return 1
+    fi
     
     # 检查依赖清单，实际同步延后到所有运行载荷准备完成之后。
     INFO "→ 检查依赖变化..."
@@ -416,13 +471,11 @@ function install_backend_and_download_resources() {
     # 如果是"heads/v3.zip"，则查找v3开头的最新版本号
     if [[ "${1}" == "heads/v3.zip" ]]; then
         INFO "→ 正在获取前端最新版本号..."
-        # 获取所有发布的版本列表，并筛选出以v3开头的版本号
         releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v3\.")
         if [ -z "$releases" ]; then
             WARN "未找到任何v3前端版本，继续启动..."
             return 1
         else
-            # 找到最新的v3版本
             frontend_version=$(echo "$releases" | sort -V | tail -n 1)
         fi
         INFO "前端最新版本号：${frontend_version}"
@@ -436,8 +489,7 @@ function install_backend_and_download_resources() {
         fi
         INFO "前端版本号：${frontend_version}"
     fi
-    # 更新前端程序
-    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
+    if ! download_and_unzip "$(github_download_url "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip")" "dist"; then
         WARN "前端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
@@ -561,12 +613,13 @@ function test_connectivity_package() {
     esac
 }
 
-# 测试Github连通性
+# 按传入模式检测镜像或全局代理，镜像探测与实际下载共用地址规则。
+# 直连模式仅配置参数，不额外探测。
 function test_connectivity_github() {
     case "$1" in
     0)
         if [[ -n "${GITHUB_PROXY}" ]]; then
-            if curl -sL --connect-timeout 5 --max-time 10 "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md" > /dev/null 2>&1; then
+            if curl -sL --connect-timeout 5 --max-time 10 "$(github_download_url "https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md")" > /dev/null 2>&1; then
                 GITHUB_LOG="镜像代理模式"
                 return 0
             fi

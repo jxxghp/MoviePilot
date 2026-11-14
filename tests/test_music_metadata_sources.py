@@ -1,4 +1,6 @@
-"""TheAudioDB 与豆瓣音乐识别源的标准化和路由测试。"""
+"""
+TheAudioDB 与豆瓣音乐识别源的标准化和路由测试。
+"""
 
 from unittest.mock import AsyncMock, Mock, call
 
@@ -15,7 +17,9 @@ from app.schemas.types import MediaRecognizeType, MediaSource, MediaType
 
 
 def test_theaudiodb_module_maps_track_and_album(monkeypatch):
-    """TheAudioDB 原生响应应保留来源 ID，并换算毫秒时长。"""
+    """
+    TheAudioDB 原生响应应保留来源 ID，并换算毫秒时长。
+    """
     module = TheAudioDbModule()
     request = Mock(side_effect=[
         {
@@ -50,7 +54,9 @@ def test_theaudiodb_module_maps_track_and_album(monkeypatch):
 
 
 def _selected_music_candidate(source, music_type, meta, candidate):
-    """使用各来源真实确认入口，保留专辑与曲目各自的数据结构。"""
+    """
+    使用各来源真实确认入口，保留专辑与曲目各自的数据结构。
+    """
     if source == MediaSource.TheAudioDB:
         if music_type == "recording":
             return TheAudioDbModule._select_track(meta, [candidate])
@@ -73,7 +79,9 @@ def _selected_music_candidate(source, music_type, meta, candidate):
 ])
 def test_alternate_sources_share_music_name_and_artist_rules(source, music_type, title, artists,
                                                              candidate_title, candidate_artists):
-    """备选来源确认同样支持繁简、变音符、复合艺名和来自同一实体的可信别名。"""
+    """
+    备选来源确认同样支持繁简、变音符、复合艺名和来自同一实体的可信别名。
+    """
     meta = MetaMusic(title=title, artists=artists)
     candidate = MusicInfo(media_source=source, media_id="candidate", music_type=music_type,
                           title=candidate_title, artists=candidate_artists,
@@ -88,7 +96,9 @@ def test_alternate_sources_share_music_name_and_artist_rules(source, music_type,
     ("Example Work", False), ("Example Work (Live)", True), ("Ｅｘａｍｐｌｅ　Ｗｏｒｋ（Ｌｉｖｅ）", True),
 ])
 def test_alternate_sources_verify_recording_versions(source, music_type, candidate_title, matched):
-    """标题中的版本与独立版本字段可以互认，但现场版不能被确认成普通录音。"""
+    """
+    标题中的版本与独立版本字段可以互认，但现场版不能被确认成普通录音。
+    """
     meta = MetaMusic(title="Example Work", artists=["Artist"], version="Live")
     candidate = MusicInfo(media_source=source, media_id="candidate", music_type=music_type,
                           title=candidate_title, artists=["Artist"])
@@ -103,7 +113,9 @@ def test_alternate_sources_verify_recording_versions(source, music_type, candida
     ("Example Work (Live Deluxe Edition)", "Example Work (Live)"),
 ])
 def test_alternate_sources_keep_existing_edition_boundaries(source, music_type, requested, candidate_title):
-    """共用录音版本规则时不能放宽备选来源原有的发行版名称约束。"""
+    """
+    共用录音版本规则时不能放宽备选来源原有的发行版名称约束。
+    """
     candidate = MusicInfo(media_source=source, media_id="candidate", music_type=music_type,
                           title=candidate_title, artists=["Artist"])
     meta = MetaMusic(title=requested, artists=["Artist"])
@@ -111,7 +123,9 @@ def test_alternate_sources_keep_existing_edition_boundaries(source, music_type, 
 
 
 def test_theaudiodb_preserves_source_track_alias_for_all_matching():
-    """TheAudioDB 已提供的曲名别名应同时用于元数据确认和资源搜索匹配。"""
+    """
+    TheAudioDB 已提供的曲名别名应同时用于元数据确认和资源搜索匹配。
+    """
     candidate = TheAudioDbModule._track_to_info({
         "idTrack": "1", "strTrack": "晴天", "strTrackAlternate": "Fine Day", "strArtist": "Artist",
     })
@@ -121,7 +135,9 @@ def test_theaudiodb_preserves_source_track_alias_for_all_matching():
 
 
 def test_theaudiodb_album_query_and_matching_use_album_artist():
-    """合辑的专辑艺人用于专辑检索和确认，单曲查询则保持独立表演者署名。"""
+    """
+    合辑的专辑艺人用于专辑检索和确认，单曲查询则保持独立表演者署名。
+    """
     meta = MetaMusic(title="Song", artists=["Performer"], album="Sampler", album_artist="Various Artists")
     album = MusicAlbumInfo(title="Sampler", artists=["Various Artists"])
     assert TheAudioDbModule._track_search_params(meta) == {"t": "Song", "s": "Performer"}
@@ -130,7 +146,9 @@ def test_theaudiodb_album_query_and_matching_use_album_artist():
 
 
 def test_theaudiodb_isrc_identity_precedes_title_matches():
-    """明确的 ISRC 录音身份必须优先于首条同名候选。"""
+    """
+    明确的 ISRC 录音身份必须优先于首条同名候选。
+    """
     meta = MetaMusic(title="Song", artists=["Artist"], isrc="USABC2600001")
     first = MusicInfo(title="Song", artists=["Artist"], media_source="theaudiodb", media_id="wrong")
     exact = MusicInfo(title="Alternate Name", artists=["Other Credit"], media_source="theaudiodb",
@@ -139,7 +157,9 @@ def test_theaudiodb_isrc_identity_precedes_title_matches():
 
 
 def test_theaudiodb_placeholder_isrc_does_not_override_music_evidence():
-    """外部数据中的相同 ISRC 占位值不能让另一首作品抢占正确候选。"""
+    """
+    外部数据中的相同 ISRC 占位值不能让另一首作品抢占正确候选。
+    """
     meta = MetaMusic(title="Song", artists=["Artist"], isrc="N/A")
     first = MusicInfo(title="Other Song", artists=["Other Artist"], isrc="N/A")
     correct = MusicInfo(title="Song", artists=["Artist"])
@@ -151,7 +171,9 @@ def test_theaudiodb_placeholder_isrc_does_not_override_music_evidence():
 @pytest.mark.parametrize("music_type", ["recording", "album"])
 @pytest.mark.parametrize("async_mode", [False, True])
 async def test_alternate_source_entrypoints_select_the_matching_version(source, music_type, async_mode):
-    """同步异步入口都跳过首条普通版本，并从真实响应投影中确认后续现场版本。"""
+    """
+    同步异步入口都跳过首条普通版本，并从真实响应投影中确认后续现场版本。
+    """
     meta = MetaMusic(title="Example Work", artists=["Artist"], version="Live")
     if music_type == "album":
         meta.album = meta.title
@@ -201,7 +223,9 @@ async def test_alternate_source_entrypoints_select_the_matching_version(source, 
 
 
 def test_theaudiodb_module_ignores_other_sources(monkeypatch):
-    """显式选择其它来源时 TheAudioDB 不得发起请求或占用识别结果。"""
+    """
+    显式选择其它来源时 TheAudioDB 不得发起请求或占用识别结果。
+    """
     module = TheAudioDbModule()
     request = Mock()
     monkeypatch.setattr(module, "_request_json", request)
@@ -221,7 +245,9 @@ def test_theaudiodb_module_ignores_other_sources(monkeypatch):
 
 @pytest.mark.parametrize("module_class", [DoubanModule, TheAudioDbModule])
 def test_music_search_modules_accept_entity_filter_from_shared_dispatch(module_class):
-    """共享模块调度器广播实体过滤参数时，各内置音乐来源都必须保持签名兼容。"""
+    """
+    共享模块调度器广播实体过滤参数时，各内置音乐来源都必须保持签名兼容。
+    """
     module = module_class()
 
     assert module.search_music(
@@ -232,7 +258,9 @@ def test_music_search_modules_accept_entity_filter_from_shared_dispatch(module_c
 
 
 def test_theaudiodb_title_only_search_skips_incomplete_track_and_album_requests(monkeypatch):
-    """缺少艺术家时只搜索艺术家，避免请求会返回空正文的曲目和专辑接口。"""
+    """
+    缺少艺术家时只搜索艺术家，避免请求会返回空正文的曲目和专辑接口。
+    """
     module = TheAudioDbModule()
     request = Mock(return_value={"artists": []})
     monkeypatch.setattr(module, "_request_json", request)
@@ -247,7 +275,9 @@ def test_theaudiodb_title_only_search_skips_incomplete_track_and_album_requests(
 
 
 def test_theaudiodb_search_uses_album_artist_for_required_artist_parameter(monkeypatch):
-    """音轨没有独立艺术家时应使用专辑艺术家补齐 TheAudioDB 必填参数。"""
+    """
+    音轨没有独立艺术家时应使用专辑艺术家补齐 TheAudioDB 必填参数。
+    """
     module = TheAudioDbModule()
     request = Mock(side_effect=[{"track": []}, {"album": []}])
     monkeypatch.setattr(module, "_request_json", request)
@@ -266,7 +296,9 @@ def test_theaudiodb_search_uses_album_artist_for_required_artist_parameter(monke
 
 
 def test_theaudiodb_empty_response_is_soft_failure_and_closes_response(monkeypatch):
-    """TheAudioDB 返回 HTTP 200 空正文时应软失败并及时关闭同步连接。"""
+    """
+    TheAudioDB 返回 HTTP 200 空正文时应软失败并及时关闭同步连接。
+    """
     response = Mock(
         status_code=200,
         content=b"",
@@ -286,7 +318,9 @@ def test_theaudiodb_empty_response_is_soft_failure_and_closes_response(monkeypat
 
 @pytest.mark.asyncio
 async def test_theaudiodb_async_empty_response_is_soft_failure_and_closes_response(monkeypatch):
-    """TheAudioDB 返回 HTTP 200 空正文时应软失败并及时关闭异步连接。"""
+    """
+    TheAudioDB 返回 HTTP 200 空正文时应软失败并及时关闭异步连接。
+    """
     response = Mock(
         status_code=200,
         content=b"",
@@ -309,7 +343,9 @@ async def test_theaudiodb_async_empty_response_is_soft_failure_and_closes_respon
 
 
 def test_theaudiodb_detail_respects_requested_entity(monkeypatch):
-    """TheAudioDB 数值 ID 必须按显式实体调用对应接口，不能跨表探测。"""
+    """
+    TheAudioDB 数值 ID 必须按显式实体调用对应接口，不能跨表探测。
+    """
     module = TheAudioDbModule()
     request = Mock(return_value={"album": []})
     monkeypatch.setattr(module, "_request_json", request)
@@ -325,7 +361,9 @@ def test_theaudiodb_detail_respects_requested_entity(monkeypatch):
 
 
 def test_theaudiodb_album_related_excludes_current_album(monkeypatch):
-    """TheAudioDB 关联专辑应按当前专辑艺术家查询并排除自身。"""
+    """
+    TheAudioDB 关联专辑应按当前专辑艺术家查询并排除自身。
+    """
     module = TheAudioDbModule()
     request = Mock(side_effect=[
         {"album": [{"idAlbum": "album-1", "idArtist": "artist-1"}]},
@@ -345,7 +383,9 @@ def test_theaudiodb_album_related_excludes_current_album(monkeypatch):
 
 
 def test_douban_detail_rejects_album_id_as_recording(monkeypatch):
-    """豆瓣单曲使用专辑加曲序复合 ID，纯专辑 ID 不能作为 Recording。"""
+    """
+    豆瓣单曲使用专辑加曲序复合 ID，纯专辑 ID 不能作为 Recording。
+    """
     module = DoubanModule()
     module.doubanapi = Mock()
 
@@ -360,7 +400,9 @@ def test_douban_detail_rejects_album_id_as_recording(monkeypatch):
 
 
 def test_douban_music_search_and_album_mapping(monkeypatch):
-    """豆瓣模块应把音乐条目映射为专辑，并生成可用于曲目识别的复合 ID。"""
+    """
+    豆瓣模块应把音乐条目映射为专辑，并生成可用于曲目识别的复合 ID。
+    """
     module = DoubanModule()
     module.doubanapi = Mock()
     module.doubanapi.music_search.return_value = {
@@ -429,12 +471,16 @@ def test_douban_music_search_and_album_mapping(monkeypatch):
     ],
 )
 def test_douban_music_card_subtitle_artist_fallback(subtitle, expected):
-    """搜索副标题回退应保留完整署名，且不能把纯年份误判为艺术家。"""
+    """
+    搜索副标题回退应保留完整署名，且不能把纯年份误判为艺术家。
+    """
     assert DoubanModule._douban_music_search_artists({"card_subtitle": subtitle}) == expected
 
 
 def test_douban_music_search_prefers_structured_artists_over_card_subtitle():
-    """搜索响应已有结构化艺术家时不能被卡片副标题覆盖。"""
+    """
+    搜索响应已有结构化艺术家时不能被卡片副标题覆盖。
+    """
     assert DoubanModule._douban_music_search_artists({
         "artists": [{"name": "结构化艺术家"}],
         "card_subtitle": "回退艺术家 / 2024",
@@ -442,7 +488,9 @@ def test_douban_music_search_prefers_structured_artists_over_card_subtitle():
 
 
 def test_douban_music_discover_and_related_accept_collection_wrappers(monkeypatch):
-    """豆瓣新碟榜与相关推荐应兼容 subject 包装并保留专辑身份。"""
+    """
+    豆瓣新碟榜与相关推荐应兼容 subject 包装并保留专辑身份。
+    """
     module = DoubanModule()
     module.doubanapi = Mock()
     wrapped_item = {
@@ -475,7 +523,9 @@ def test_douban_music_discover_and_related_accept_collection_wrappers(monkeypatc
 
 
 def test_douban_music_tag_discover_intersects_official_tag_results():
-    """豆瓣音乐组合筛选应按原生条目 ID 求交集，并保持主风格排序。"""
+    """
+    豆瓣音乐组合筛选应按原生条目 ID 求交集，并保持主风格排序。
+    """
     module = DoubanModule()
     module.doubanapi = Mock()
     module.doubanapi.music_tag.side_effect = [
@@ -502,7 +552,9 @@ def test_douban_music_tag_discover_intersects_official_tag_results():
 
 
 def test_douban_music_recognize_expands_album_to_matching_track(monkeypatch):
-    """自动文件识别有专辑线索时，豆瓣应返回专辑内音轨而不是专辑实体。"""
+    """
+    自动文件识别有专辑线索时，豆瓣应返回专辑内音轨而不是专辑实体。
+    """
     module = DoubanModule()
     module.doubanapi = Mock()
     module.doubanapi.music_search.return_value = {
@@ -543,7 +595,9 @@ def test_douban_music_recognize_expands_album_to_matching_track(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("async_mode", [False, True])
 async def test_douban_compilation_lookup_preserves_performer_evidence(async_mode):
-    """先按合辑署名确认所属专辑，再按实际表演者确认曲目，不用合辑署名覆盖单曲。"""
+    """
+    先按合辑署名确认所属专辑，再按实际表演者确认曲目，不用合辑署名覆盖单曲。
+    """
     module = DoubanModule()
     search_result = {"items": [{"id": "1", "title": "Sampler", "artists": [{"name": "Various Artists"}]}]}
     detail = {"id": "1", "title": "Sampler", "artists": [{"name": "Various Artists"}],
@@ -564,7 +618,9 @@ async def test_douban_compilation_lookup_preserves_performer_evidence(async_mode
 
 
 def test_douban_music_mapping_keeps_legacy_attrs_tracks():
-    """豆瓣旧响应中的 attrs.singer 与 attrs.tracks 仍应保持兼容。"""
+    """
+    豆瓣旧响应中的 attrs.singer 与 attrs.tracks 仍应保持兼容。
+    """
     album = DoubanModule._douban_music_to_album({
         "id": "1401853",
         "title": "范特西",
@@ -580,7 +636,9 @@ def test_douban_music_mapping_keeps_legacy_attrs_tracks():
 
 @pytest.mark.asyncio
 async def test_douban_music_async_recognize_maps_real_songs(monkeypatch):
-    """异步豆瓣自动识别应从真实 songs 字段返回具体音轨。"""
+    """
+    异步豆瓣自动识别应从真实 songs 字段返回具体音轨。
+    """
     module = DoubanModule()
     module.doubanapi = Mock()
     module.doubanapi.async_music_search = AsyncMock(return_value={
@@ -615,7 +673,9 @@ async def test_douban_music_async_recognize_maps_real_songs(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_douban_recognize_media_routes_only_douban_music(monkeypatch):
-    """豆瓣音乐使用独立数据源，不能与影视豆瓣入口或其它音乐源串线。"""
+    """
+    豆瓣音乐使用独立数据源，不能与影视豆瓣入口或其它音乐源串线。
+    """
     module = DoubanModule()
     expected = MusicInfo(media_source="doubanmusic", media_id="1401853", title="范特西")
     recognize_music = Mock(return_value=expected)
@@ -648,7 +708,9 @@ async def test_douban_recognize_media_routes_only_douban_music(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_media_chain_defaults_to_musicbrainz_and_forwards_explicit_source(monkeypatch):
-    """音乐搜索默认 MusicBrainz，手动选择时原样转发其它音乐源。"""
+    """
+    音乐搜索默认 MusicBrainz，手动选择时原样转发其它音乐源。
+    """
     chain = MediaChain()
     musicbrainz = Mock()
     musicbrainz.search_music.return_value = []
@@ -673,7 +735,9 @@ async def test_media_chain_defaults_to_musicbrainz_and_forwards_explicit_source(
 
 @pytest.mark.asyncio
 async def test_media_chain_aggregates_music_sources_and_isolates_source_failure(monkeypatch):
-    """多音乐来源应按选择顺序聚合，单一来源失败不能清空其它来源结果。"""
+    """
+    多音乐来源应按选择顺序聚合，单一来源失败不能清空其它来源结果。
+    """
     chain = MediaChain()
     musicbrainz = Mock()
     musicbrainz.async_search_music = AsyncMock(return_value=[
@@ -738,7 +802,9 @@ async def test_media_chain_aggregates_music_sources_and_isolates_source_failure(
 
 
 def test_music_scrape_resolves_with_selected_source(tmp_path, monkeypatch):
-    """无显式 ID 的音乐刮削应使用用户选择的来源识别本地音频。"""
+    """
+    无显式 ID 的音乐刮削应使用用户选择的来源识别本地音频。
+    """
     path = tmp_path / "Yellow.flac"
     path.write_bytes(b"audio")
     expected = MusicInfo(media_source="theaudiodb", media_id="32793500", title="Yellow")

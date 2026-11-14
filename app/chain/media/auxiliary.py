@@ -1,4 +1,6 @@
-"""媒体辅助来源聚合与补充 owner。"""
+"""
+媒体辅助来源聚合与补充 owner。
+"""
 
 from typing import Iterable, Optional, Union
 
@@ -21,7 +23,9 @@ from app.schemas.types import (
 
 
 class MediaAuxiliaryOwner(_MediaOwnerBase):
-    """媒体辅助来源聚合与补充 owner。"""
+    """
+    媒体辅助来源聚合与补充 owner。
+    """
 
     @staticmethod
     def _merge_tmdb_auxiliary(
@@ -42,6 +46,15 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         mediainfo.tmdb_info = tmdb_media.tmdb_info or mediainfo.tmdb_info
         if not mediainfo.genre_ids:
             mediainfo.genre_ids = list(tmdb_media.genre_ids or [])
+        # Bangumi/AniList 等主来源没有语言与国家标准字段，引用这些字段的
+        # 分类规则会整体失效并落入未分类；已关联 TMDB 详情时补齐标准事实，
+        # 仅填充主来源缺失的字段，不覆盖主来源自身的投影。
+        if not mediainfo.original_language:
+            mediainfo.original_language = tmdb_media.original_language
+        if not mediainfo.origin_country:
+            mediainfo.origin_country = list(tmdb_media.origin_country or [])
+        if not mediainfo.production_countries:
+            mediainfo.production_countries = list(tmdb_media.production_countries or [])
         for field in ("imdb_id", "tvdb_id", "tvdb_slug", "collection_id"):
             if not getattr(mediainfo, field, None):
                 setattr(mediainfo, field, getattr(tmdb_media, field, None))
@@ -52,7 +65,9 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         mediainfo: MediaInfo,
         metainfo: Optional[MetaBase] = None,
     ) -> MetaBase:
-        """构造兼容旧调用方的 TMDB 附加识别参数。"""
+        """
+        构造兼容旧调用方的 TMDB 附加识别参数。
+        """
         title = mediainfo.title or getattr(metainfo, "name", None) or ""
         tmdb_meta = MetaInfo(title)
         tmdb_meta.en_name = mediainfo.en_title or getattr(metainfo, "en_name", None)
@@ -61,13 +76,15 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         tmdb_meta.begin_season = season
         season_year = None
         if season is not None and mediainfo.season_years:
-            season_year = mediainfo.season_years.get(season) or mediainfo.season_years.get(str(season))
+            season_year = mediainfo.season_years.get(season)
         tmdb_meta.year = season_year or mediainfo.year or getattr(metainfo, "year", None)
         return tmdb_meta
 
     @staticmethod
     def _media_alias_candidates(mediainfo: object) -> list[str]:
-        """按稳定字段顺序提取单个来源可参与搜索匹配的标题候选。"""
+        """
+        按稳定字段顺序提取单个来源可参与搜索匹配的标题候选。
+        """
         candidates = [
             getattr(mediainfo, field, None)
             for field in (
@@ -89,7 +106,9 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         auxiliary_medias: Iterable[object],
         selected_sources: Optional[MediaSourceSelection],
     ) -> MediaInfo:
-        """合并多来源别名，并仅接受 TMDB 的兼容字段补充。"""
+        """
+        合并多来源别名，并仅接受 TMDB 的兼容字段补充。
+        """
         aliases = cls._media_alias_candidates(mediainfo)
         seen_aliases = {" ".join(alias.casefold().split()) for alias in aliases}
         selected = {selected_sources} if isinstance(selected_sources, MediaSource) else set(selected_sources or ())
@@ -112,7 +131,9 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
     def _resolve_auxiliary_sources(
         media_source: Optional[MediaSourceSelection],
     ) -> Optional[MediaSourceSelection]:
-        """解析请求级来源，未指定时使用用户配置的影视搜索来源集合。"""
+        """
+        解析请求级来源，未指定时使用用户配置的影视搜索来源集合。
+        """
         if media_source:
             return media_source
         configured = get_chain_runtime_config_snapshot().search_source
@@ -128,7 +149,9 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         media_source: Optional[MediaSourceSelection] = None,
         metainfo: Optional[MetaBase] = None,
     ) -> Optional[Union[MediaInfo, MusicInfo]]:
-        """按用户启用的数据源聚合影视别名和受控的 TMDB 附加字段。"""
+        """
+        按用户启用的数据源聚合影视别名和受控的 TMDB 附加字段。
+        """
         if not mediainfo or isinstance(mediainfo, MusicInfo) or mediainfo.type == MediaType.MUSIC:
             return mediainfo
         selected_sources = self._resolve_auxiliary_sources(media_source)
@@ -161,7 +184,9 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         media_source: Optional[MediaSourceSelection] = None,
         metainfo: Optional[MetaBase] = None,
     ) -> Optional[Union[MediaInfo, MusicInfo]]:
-        """异步按用户启用的数据源聚合影视别名和受控 TMDB 字段。"""
+        """
+        异步按用户启用的数据源聚合影视别名和受控 TMDB 字段。
+        """
         if not mediainfo or isinstance(mediainfo, MusicInfo) or mediainfo.type == MediaType.MUSIC:
             return mediainfo
         selected_sources = self._resolve_auxiliary_sources(media_source)

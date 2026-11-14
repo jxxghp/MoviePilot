@@ -1,4 +1,6 @@
-"""发行曲目对位不依赖排序，并在名称、身份、曲序和时长之间保留证据边界。"""
+"""
+发行曲目对位不依赖排序，并在名称、身份、曲序和时长之间保留证据边界。
+"""
 
 from itertools import permutations
 from pathlib import Path
@@ -8,20 +10,24 @@ import pytest
 
 from app.chain.media import MediaChain
 from app.chain.transfer.facade import TransferChain
-from app.domain.context import MusicInfo
+from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import align_music_tracks
 from tests.test_transfer_sync_extra_files import make_fileitem
 
 
 def _track(title, number, duration=None, **kwargs):
-    """构造带独立录音身份和实际发行位置的来源曲目。"""
+    """
+    构造带独立录音身份和实际发行位置的来源曲目。
+    """
     return MusicInfo(title=title, media_source="musicbrainz", media_id=f"recording-{number}",
                      track_number=number, duration=duration, **kwargs)
 
 
 def test_unmatched_remainder_is_never_zipped_to_remaining_song():
-    """前曲匹配不代表剩余文件自动属于最后一曲。"""
+    """
+    前曲匹配不代表剩余文件自动属于最后一曲。
+    """
     files = [Path("01.flac"), Path("bonus.flac")]
     metas = [MetaMusic(title="First", track_number=1), MetaMusic(title="Unrelated Bonus")]
     tracks = [_track("First", 1), _track("Second", 2)]
@@ -31,12 +37,16 @@ def test_unmatched_remainder_is_never_zipped_to_remaining_song():
 
 @pytest.mark.parametrize("title", ["01", "Track 01", "audio_01", "音轨 01", ""])
 def test_placeholder_name_can_use_unique_position(title):
-    """不完整的抓轨命名可用发行位置补全，不要求占位曲名命中。"""
+    """
+    不完整的抓轨命名可用发行位置补全，不要求占位曲名命中。
+    """
     assert align_music_tracks([MetaMusic(title=title, track_number=1)], [_track("Actual Song", 1)]) == {0: 0}
 
 
 def test_numeric_title_from_real_tags_is_not_a_placeholder():
-    """真实数字歌曲名会与候选比较，不能被错误曲序吞掉。"""
+    """
+    真实数字歌曲名会与候选比较，不能被错误曲序吞掉。
+    """
     local = MetaMusic(title="22", track_number=1, field_sources={"title": "tag"})
     tracks = [_track("Different Song", 1), _track("22", 2)]
 
@@ -44,14 +54,18 @@ def test_numeric_title_from_real_tags_is_not_a_placeholder():
 
 
 def test_placeholder_stored_in_tags_is_still_weak():
-    """抓轨器把 Track 01 写进标签也不会使它成为真实歌曲名。"""
+    """
+    抓轨器把 Track 01 写进标签也不会使它成为真实歌曲名。
+    """
     local = MetaMusic(title="Track 01", track_number=1, field_sources={"title": "tag"})
 
     assert align_music_tracks([local], [_track("Actual Song", 1)]) == {0: 0}
 
 
 def test_same_title_and_missing_disc_remains_ambiguous():
-    """多碟重复曲名及曲序需要碟号或时长区分，不能默认分配到第一碟。"""
+    """
+    多碟重复曲名及曲序需要碟号或时长区分，不能默认分配到第一碟。
+    """
     tracks = [_track("Song", 1, disc_number=disc) for disc in (1, 2)]
 
     assert align_music_tracks([MetaMusic(title="Song", track_number=1)], tracks) == {}
@@ -59,14 +73,18 @@ def test_same_title_and_missing_disc_remains_ambiguous():
 
 
 def test_duplicate_local_editions_cannot_race_for_one_track():
-    """相同证据的两份音源不能由遍历顺序决定谁冒充对应发行曲目。"""
+    """
+    相同证据的两份音源不能由遍历顺序决定谁冒充对应发行曲目。
+    """
     metas = [MetaMusic(title="First", track_number=1) for _ in range(2)]
 
     assert align_music_tracks(metas, [_track("First", 1)]) == {}
 
 
 def test_unlabeled_tracks_can_use_unique_durations_and_ignore_filename_sort():
-    """缺少曲序时，彼此明显不同的时长仍可恢复顺序；两个方向均需唯一。"""
+    """
+    缺少曲序时，彼此明显不同的时长仍可恢复顺序；两个方向均需唯一。
+    """
     local = [MetaMusic(title="Track", duration=seconds) for seconds in (240, 180, 300)]
     remote = [_track("First", 1, 180), _track("Second", 2, 240), _track("Third", 3, 300)]
     for metas in permutations(local):
@@ -78,7 +96,9 @@ def test_unlabeled_tracks_can_use_unique_durations_and_ignore_filename_sort():
 
 
 def test_near_equal_durations_do_not_break_ambiguity():
-    """测量取整的一秒差异不能在两个同样合理的候选之间制造唯一性。"""
+    """
+    测量取整的一秒差异不能在两个同样合理的候选之间制造唯一性。
+    """
     local = MetaMusic(title="01", duration=180)
 
     assert align_music_tracks([local], [_track("First", 1, 179), _track("Second", 2, 181)]) == {}
@@ -86,21 +106,66 @@ def test_near_equal_durations_do_not_break_ambiguity():
 
 @pytest.mark.parametrize("manual", [False, True])
 def test_duration_conflict_blocks_even_exact_title_and_position(manual):
-    """曲名和位置都相同也不能覆盖实际时长指示的不同内容。"""
+    """
+    曲名和位置都相同也不能覆盖实际时长指示的不同内容。
+    """
     local = MetaMusic(title="First", track_number=1, duration=300)
 
     assert align_music_tracks([local], [_track("First", 1, 180)], allow_title_override=manual) == {}
 
 
+def test_ignoring_duration_keeps_unique_title_and_position_evidence():
+    """
+    手动忽略时长允许片段对位，同时保留重复曲目的歧义与原始时长。
+    """
+    local = MetaMusic(title="First", track_number=1, duration=30)
+    track = _track("First", 1, 240)
+    options = {"allow_title_override": True, "track_match": "ignore_duration"}
+    assert align_music_tracks([local], [track], **options) == {0: 0}
+    assert align_music_tracks([local, local], [track], **options) == {}
+    assert align_music_tracks([MetaMusic(title="Track", duration=30)], [track], **options) == {}
+    assert local.duration == 30 and track.duration == 240
+
+
+def test_sequential_alignment_requires_equal_counts_and_uses_input_order():
+    """
+    用户明确顺序套用时跳过曲名曲序时长证据，数量不一致时不生成部分映射。
+    """
+    metas = [MetaMusic(title="Unrelated", track_number=99, duration=30), MetaMusic(title="Other", duration=40)]
+    tracks = [_track("First", 1, 240), _track("Second", 2, 300)]
+    assert align_music_tracks(metas, tracks, track_match="sequential") == {0: 0, 1: 1}
+    assert align_music_tracks(metas[:1], tracks, track_match="sequential") == {}
+    assert align_music_tracks(metas, tracks[:1], track_match="sequential") == {}
+
+
+def test_selected_album_sequential_order_is_natural_and_independent_of_request_order(tmp_path, monkeypatch):
+    """
+    顺序套用按完整路径自然排序，目录扫描和倒序多选都将 2 放在 10 之前。
+    """
+    paths = [tmp_path / "10.flac", tmp_path / "2.flac"]
+    tracks = [_track("First", 1, 180), _track("Second", 2, 240)]
+    album = MusicAlbumInfo(media_source="musicbrainz", tracks=tracks)
+    monkeypatch.setattr("app.chain.media.album.AudioMetadataHelper.read_many",
+                        lambda files: [MetaMusic(title=path.stem, track_number=99, duration=30) for path in files])
+    for files in (paths, list(reversed(paths))):
+        matched = MediaChain._align_selected_music_album(files, album, track_match="sequential")
+        assert matched[str(paths[1].resolve())].title == "First"
+        assert matched[str(paths[0].resolve())].title == "Second"
+
+
 def test_conflicting_position_does_not_beat_exact_title_or_duration():
-    """错标曲序应由明确的曲名或唯一时长纠正，不能先按序号绑定。"""
+    """
+    错标曲序应由明确的曲名或唯一时长纠正，不能先按序号绑定。
+    """
     tracks = [_track("First", 1, 180), _track("Second", 2, 195)]
     assert align_music_tracks([MetaMusic(title="Second", track_number=1, duration=195)], tracks) == {0: 1}
     assert align_music_tracks([MetaMusic(title="01", track_number=1, duration=195)], tracks) == {0: 1}
 
 
 def test_manual_release_can_correct_titles_without_enabling_automatic_guessing():
-    """明确手选发行可用唯一曲序纠名；自动匹配对同一冲突仍然拒绝。"""
+    """
+    明确手选发行可用唯一曲序纠名；自动匹配对同一冲突仍然拒绝。
+    """
     local = MetaMusic(title="Wrong Name", track_number=1)
     tracks = [_track("Correct Name", 1)]
 
@@ -109,7 +174,9 @@ def test_manual_release_can_correct_titles_without_enabling_automatic_guessing()
 
 
 def test_explicit_release_identity_rejects_different_release():
-    """具体发行 ID 不能被相同曲名及曲序抵消，手选新发行可纠正旧标签身份。"""
+    """
+    具体发行 ID 不能被相同曲名及曲序抵消，手选新发行可纠正旧标签身份。
+    """
     local = MetaMusic(title="First", track_number=1, musicbrainz_release_id="release-a")
     track = _track("First", 1, musicbrainz_release_id="release-b")
 
@@ -118,7 +185,9 @@ def test_explicit_release_identity_rejects_different_release():
 
 
 def test_release_track_id_resolves_repeated_recording():
-    """同一录音多次出现在发行时，Release Track ID 可确定实际槽位。"""
+    """
+    同一录音多次出现在发行时，Release Track ID 可确定实际槽位。
+    """
     local = MetaMusic(title="Song", musicbrainz_release_track_id="slot-b")
     tracks = [_track("Song", number, musicbrainz_release_track_id=slot) for number, slot in ((1, "slot-a"), (2, "slot-b"))]
 
@@ -126,26 +195,34 @@ def test_release_track_id_resolves_repeated_recording():
 
 
 def test_recording_id_conflict_is_not_ignored():
-    """相同标题不能覆盖已知的另一个录音身份。"""
+    """
+    相同标题不能覆盖已知的另一个录音身份。
+    """
     local = MetaMusic(title="First", media_source="musicbrainz", media_id="other-recording")
 
     assert align_music_tracks([local], [_track("First", 1)]) == {}
 
 
 def test_symbolic_names_and_recording_versions_keep_distinct_identities():
-    """纯符号歌曲名不能归一为空，同名现场/混音也不能当作普通录音。"""
+    """
+    纯符号歌曲名不能归一为空，同名现场/混音也不能当作普通录音。
+    """
     assert align_music_tracks([MetaMusic(title="!!!")], [_track("???", 1), _track("!!!", 2)]) == {0: 1}
     assert align_music_tracks([MetaMusic(title="Song (Live)", track_number=1)], [_track("Song", 1)]) == {}
 
 
 def test_mismatched_file_metadata_lengths_are_rejected():
-    """元数据读取丢项时不能用截断 zip 悄悄改变文件对应关系。"""
+    """
+    元数据读取丢项时不能用截断 zip 悄悄改变文件对应关系。
+    """
     assert MediaChain._align_music_album_tracks([Path("first.flac"), Path("second.flac")],
                                                [MetaMusic(title="First")], [_track("First", 1)]) == {}
 
 
 def test_numbered_filename_survives_transfer_album_evidence_check(monkeypatch):
-    """专辑已经按位置对位后，整理层不能再次用占位曲名把正确曲目拒绝。"""
+    """
+    专辑已经按位置对位后，整理层不能再次用占位曲名把正确曲目拒绝。
+    """
     path = Path("/music/Artist - Album/01.flac")
     track = _track("Actual Song (Live)", 1, 180, album="Album", artists=["Artist"])
     monkeypatch.setattr(MediaChain, "recognize_music_album_directory", Mock(return_value={str(path.resolve()): track}))

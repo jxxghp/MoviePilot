@@ -1,4 +1,6 @@
-"""枚举宿主原生并发原语并维护稳定 owner 事实。"""
+"""
+枚举宿主原生并发原语并维护稳定归属事实。
+"""
 
 from __future__ import annotations
 
@@ -12,8 +14,10 @@ from typing import Iterable, TypedDict, cast
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/concurrency-baseline.json"
 SCAN_ROOTS = ("app",)
+# 插件副本、SDK 和兼容层由各自的兼容契约治理，不计入宿主调用债务。
 EXCLUDED_ROOTS = ("app/plugins", "app/sdk", "app/runtime/compat")
 
+# 按规范来源登记受治理的任务、线程和进程创建入口，避免按短名称误报。
 _RECORDED_CALLS = frozenset({
     "app.runtime.execution.run_in_threadpool",
     "app.runtime.execution.run_in_threadpool_to_completion",
@@ -42,6 +46,7 @@ _EXECUTOR_TYPES = frozenset({
 _EVENT_LOOP_KIND = "asyncio.AbstractEventLoop"
 _TASK_GROUP_KIND = "asyncio.TaskGroup"
 _EXECUTOR_KIND = "concurrent.futures.Executor"
+# 实例方法统一映射到稳定接口路径，避免具体事件循环或执行器类型影响基线。
 _RECEIVER_CALLS = {
     (_EVENT_LOOP_KIND, "create_task"): "asyncio.AbstractEventLoop.create_task",
     (_EVENT_LOOP_KIND, "run_in_executor"): "asyncio.AbstractEventLoop.run_in_executor",
@@ -52,7 +57,12 @@ _RECEIVER_CALLS = {
 
 
 class ConcurrencyRecord(TypedDict):
-    """描述一种原生并发调用在文件内的 owner 计数。"""
+    """
+    描述一种原生并发调用在文件内的归属计数。
+
+    :ivar target: 并发原语的规范导入路径，用于区分同名调用
+    :ivar owners: 所属函数或类限定名到静态调用次数的映射
+    """
 
     target: str
     owners: dict[str, int]
@@ -60,7 +70,13 @@ class ConcurrencyRecord(TypedDict):
 
 @dataclass(frozen=True, slots=True)
 class ConcurrencyFact:
-    """描述一个已确认来源的原生并发调用及其静态 owner。"""
+    """
+    描述一个已确认来源的原生并发调用及其静态归属。
+
+    :param path: 相对于仓库根目录的源码路径
+    :param target: 已确认来源的并发原语规范导入路径
+    :param owner: 调用所在函数或类的限定名；模块级调用记为 <module>
+    """
 
     path: str
     target: str
@@ -68,12 +84,16 @@ class ConcurrencyFact:
 
     @property
     def key(self) -> str:
-        """返回不依赖物理行号的事实键。"""
+        """
+        返回不依赖物理行号的事实键。
+        """
         return f"{self.path}:{self.target}"
 
 
 def _iter_python_files(root: Path, scan_roots: Iterable[str]) -> Iterable[Path]:
-    """遍历完整宿主源码，并只排除有独立治理契约的兼容表面。"""
+    """
+    遍历完整宿主源码，并只排除有独立治理契约的兼容表面。
+    """
     for scan_root in scan_roots:
         path = root / scan_root
         if path.is_file():
@@ -93,10 +113,14 @@ def _iter_python_files(root: Path, scan_roots: Iterable[str]) -> Iterable[Path]:
 
 
 class _ConcurrencyVisitor(ast.NodeVisitor):
-    """按 canonical import、局部来源和词法 owner 收集并发调用。"""
+    """
+    按规范来源导入、局部来源和词法归属收集并发调用。
+    """
 
     def __init__(self, relative_path: str) -> None:
-        """初始化文件位置、owner 栈和逐作用域名称绑定。"""
+        """
+        初始化文件位置、归属栈和逐作用域名称绑定。
+        """
         self._relative_path = relative_path
         self._owners: list[str] = []
         self._class_owners: list[str] = []
@@ -106,31 +130,43 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
 
     @property
     def _owner(self) -> str:
-        """返回最具体的可定位 owner。"""
+        """
+        返回最具体的可定位归属。
+        """
         return ".".join(self._owners) if self._owners else "<module>"
 
     @property
     def _class_owner(self) -> str:
-        """返回当前类路径，用于区分不同类的实例属性。"""
+        """
+        返回当前类路径，用于区分不同类的实例属性。
+        """
         return ".".join(self._class_owners)
 
     def _bind_name(self, name: str, origin: str | None) -> None:
-        """在当前作用域绑定名称；None 表示显式遮蔽外层导入。"""
+        """
+        在当前作用域绑定名称；None 表示显式遮蔽外层导入。
+        """
         self._bindings[-1][name] = origin
 
     def _lookup_name(self, name: str) -> str | None:
-        """按 Python 词法作用域顺序解析名称来源。"""
+        """
+        按 Python 词法作用域顺序解析名称来源。
+        """
         for scope in reversed(self._bindings):
             if name in scope:
                 return scope[name]
         return None
 
     def _attribute_key(self, node: ast.Attribute) -> tuple[str, str]:
-        """为实例属性生成带类 owner 的稳定绑定键。"""
+        """
+        为实例属性生成带类归属的稳定绑定键。
+        """
         return self._class_owner, ast.unparse(node)
 
     def _resolve_expression(self, node: ast.AST) -> str | None:
-        """解析名称、属性或构造结果的 canonical 来源。"""
+        """
+        解析名称、属性或构造结果的规范来源。
+        """
         if isinstance(node, ast.Name):
             return self._lookup_name(node.id)
         if isinstance(node, ast.Attribute):
@@ -150,7 +186,9 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
         return None
 
     def _resolve_call_target(self, node: ast.Call) -> str | None:
-        """仅在调用来源可证明时返回受治理的 canonical target。"""
+        """
+        仅在调用来源可证明时返回受治理的规范目标。
+        """
         direct = self._resolve_expression(node.func)
         if direct in _RECORDED_CALLS:
             return direct
@@ -160,7 +198,9 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
         return None
 
     def _bind_target(self, target: ast.expr, origin: str | None) -> None:
-        """把赋值目标关联到可证明来源，并显式遮蔽未知名称。"""
+        """
+        把赋值目标关联到可证明来源，并显式遮蔽未知名称。
+        """
         if isinstance(target, ast.Name):
             self._bind_name(target.id, origin)
         elif isinstance(target, ast.Attribute):
@@ -174,7 +214,9 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
                 self._bind_target(item, None)
 
     def _bind_annotated_arguments(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        """根据参数注解标记事件循环、TaskGroup 和 Executor 来源。"""
+        """
+        根据参数注解标记事件循环、TaskGroup 和 Executor 来源。
+        """
         arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
         if node.args.vararg:
             arguments.append(node.args.vararg)
@@ -196,7 +238,9 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
                 self._bind_name(argument.arg, _EXECUTOR_KIND)
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        """进入函数 owner 和局部作用域后扫描全部子节点。"""
+        """
+        进入函数归属和局部作用域后扫描全部子节点。
+        """
         self._bind_name(node.name, None)
         self._owners.append(node.name)
         self._bindings.append({})
@@ -206,14 +250,18 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
         self._owners.pop()
 
     def visit_Import(self, node: ast.Import) -> None:
-        """登记模块导入及其别名。"""
+        """
+        登记模块导入及其别名。
+        """
         for alias in node.names:
             bound_name = alias.asname or alias.name.split(".", 1)[0]
             origin = alias.name if alias.asname else bound_name
             self._bind_name(bound_name, origin)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        """登记直接导入符号及其别名。"""
+        """
+        登记直接导入符号及其别名。
+        """
         if not node.module:
             return
         for alias in node.names:
@@ -222,7 +270,9 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
             self._bind_name(alias.asname or alias.name, f"{node.module}.{alias.name}")
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        """把类名纳入 owner 路径并隔离类体名称绑定。"""
+        """
+        把类名纳入归属路径并隔离类体名称绑定。
+        """
         self._bind_name(node.name, None)
         self._owners.append(node.name)
         self._class_owners.append(node.name)
@@ -233,34 +283,46 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
         self._owners.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """扫描同步函数及其嵌套 owner。"""
+        """
+        扫描同步函数及其嵌套归属。
+        """
         self._visit_function(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        """扫描异步函数及其嵌套 owner。"""
+        """
+        扫描异步函数及其嵌套归属。
+        """
         self._visit_function(node)
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        """记录赋值右侧调用并传播可证明的运行时来源。"""
+        """
+        记录赋值右侧调用并传播可证明的运行时来源。
+        """
         self.visit(node.value)
         origin = self._resolve_expression(node.value)
         for target in node.targets:
             self._bind_target(target, origin)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        """处理带注解赋值并传播右侧来源。"""
+        """
+        处理带注解赋值并传播右侧来源。
+        """
         self.visit(node.annotation)
         if node.value:
             self.visit(node.value)
         self._bind_target(node.target, self._resolve_expression(node.value) if node.value else None)
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
-        """处理海象表达式中的来源传播。"""
+        """
+        处理海象表达式中的来源传播。
+        """
         self.visit(node.value)
         self._bind_target(node.target, self._resolve_expression(node.value))
 
     def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
-        """先解析上下文管理器，再让其绑定在语句体内可见。"""
+        """
+        先解析上下文管理器，再让其绑定在语句体内可见。
+        """
         for item in node.items:
             self.visit(item.context_expr)
             if item.optional_vars:
@@ -269,15 +331,21 @@ class _ConcurrencyVisitor(ast.NodeVisitor):
             self.visit(statement)
 
     def visit_With(self, node: ast.With) -> None:
-        """扫描同步上下文管理器及其绑定。"""
+        """
+        扫描同步上下文管理器及其绑定。
+        """
         self._visit_with(node)
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
-        """扫描异步上下文管理器及其绑定。"""
+        """
+        扫描异步上下文管理器及其绑定。
+        """
         self._visit_with(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        """记录来源明确的原语并继续访问参数中的嵌套调用。"""
+        """
+        记录来源明确的原语并继续访问参数中的嵌套调用。
+        """
         target = self._resolve_call_target(node)
         if target:
             self.facts.append(
@@ -295,7 +363,13 @@ def collect_concurrency(
     *,
     scan_roots: Iterable[str] = SCAN_ROOTS,
 ) -> dict[str, ConcurrencyRecord]:
-    """按文件、canonical target 和 owner 计数收集原生并发事实。"""
+    """
+    按文件、规范目标和归属计数收集原生并发事实。
+
+    :param root: 用于解析相对源码路径的仓库根目录
+    :param scan_roots: 仓库内待扫描的文件或目录路径
+    :return: 文件与原语组成的稳定键到调用目标及所属位置计数的映射
+    """
     records: dict[str, ConcurrencyRecord] = {}
     for path in _iter_python_files(root, scan_roots):
         relative = path.relative_to(root).as_posix()
@@ -312,7 +386,9 @@ def compare_concurrency(
     baseline: dict[str, ConcurrencyRecord],
     current: dict[str, ConcurrencyRecord],
 ) -> list[str]:
-    """拒绝新增/增长，并要求事实减少时同步下调低水位基线。"""
+    """
+    拒绝新增/增长，并要求事实减少时同步下调低水位基线。
+    """
     problems: list[str] = []
     for key in sorted(baseline.keys() | current.keys()):
         previous = baseline.get(key)
@@ -346,7 +422,9 @@ def compare_concurrency(
 
 
 def main() -> int:
-    """执行原生并发事实 ratchet。"""
+    """
+    执行原生并发事实只降不增检查。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="写入当前并发事实基线")
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)

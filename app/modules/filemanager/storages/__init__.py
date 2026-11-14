@@ -1,6 +1,10 @@
+"""
+文件管理存储接口、传输进度展示和可增量更新的目录快照。
+"""
+
 from abc import ABCMeta, abstractmethod
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 from tqdm import tqdm
 
@@ -9,16 +13,20 @@ from app.foundation.crypto import HashUtils
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.system import StorageConf as _SchemaStorageConf
-from app.schemas.workflow import FileItem as _SchemaFileItem
+from app.schemas.types import StorageSchema
 
 _SnapshotInfo = Dict[str, Dict[str, Any]]
 
 
 def transfer_process(path: str) -> Callable[[int | float], None]:
     """
-    传输进度回调
+    启动终端与界面进度展示，并返回更新回调。
+
+    :param path: 传输源标识，用于进度展示和进度任务键
+    :return: 接收百分比的回调；达到 100 时结束进度并关闭终端进度条
     """
     pbar = tqdm(total=100, desc="进度", unit="%")
     progress = ProgressHelper(HashUtils.md5(path))
@@ -26,14 +34,14 @@ def transfer_process(path: str) -> Callable[[int | float], None]:
 
     def update_progress(percent: Union[int, float]) -> None:
         """
-        更新进度百分比
+        更新一次传输进度，达到完成值时释放展示资源。
+
+        :param percent: 完成百分比，浮点数保留两位小数；不在此方法校验范围
         """
         percent_value = round(percent, 2) if isinstance(percent, float) else percent
         pbar.n = percent_value
-        # 更新进度
         pbar.refresh()
         progress.update(value=percent_value, text=f"{path} 进度：{percent_value}%")
-        # 完成时结束
         if percent_value >= 100:
             progress.end()
             pbar.close()
@@ -43,84 +51,129 @@ def transfer_process(path: str) -> Callable[[int | float], None]:
 
 class StorageBase(metaclass=ABCMeta):
     """
-    存储基类
+    定义文件管理的存储接口及通用目录快照行为。
+
+    具体实现负责外部资源、路径含义和失败语义。普通查询可返回空结果，
+    覆盖保护等需要区分不存在与失败的场景必须使用严格查询接口。
     """
-    schema = None
-    transtype = {}
+    schema: ClassVar[StorageSchema]
+    transtype: dict[str, str] = {}
 
     @property
     def snapshot_check_folder_modtime(self) -> bool:
-        """返回存储快照目录时间检查的默认开关。"""
+        """
+        决定增量快照是否根据目录修改时间跳过未变化子树。
+
+        :return: 默认 True；目录时间不能反映子项变化的存储应覆盖为 False
+        """
         return True
 
     @property
     def snapshot_strict_query(self) -> bool:
-        """声明快照是否使用严格查询；未适配的存储沿用原查询合同。"""
+        """
+        声明快照是否启用能区分缺失与故障的严格查询。
+
+        :return: 默认 False；适配严格目录和路径查询的存储可覆盖为 True
+        """
         return False
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        取得用于读取和保存存储配置的应用服务。
+        """
         self.storagehelper = StorageHelper()
 
     def close(self) -> bool | None:
-        """关闭外部资源；返回 False 表示 owner 尚未收敛且必须保留。"""
+        """
+        提供存储资源释放钩子，默认没有资源需要清理。
+
+        :return: 默认 None；实现返回 False 时表示资源尚未释放完成，调用方须保留实例
+        """
         return None
 
     @abstractmethod
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
-        初始化
+        按当前配置初始化具体存储的连接或客户端。
         """
         pass
 
-    def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
-        """生成存储登录二维码"""
+    def generate_qrcode(self, *args: Any, **kwargs: Any) -> Optional[Tuple[dict[str, object], str]]:
+        """
+        提供存储二维码登录扩展入口。
+
+        :param args: 由具体存储定义的登录位置参数
+        :param kwargs: 由具体存储定义的登录关键字参数
+        :return: 二维码数据及说明的二元组；基类默认返回 None
+        """
         pass
 
-    def generate_auth_url(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
+    def generate_auth_url(self, *args: Any, **kwargs: Any) -> Optional[Tuple[dict[str, object], str]]:
         """
-        生成 OAuth2 授权 URL
+        提供存储 OAuth2 授权地址扩展入口。
+
+        :param args: 由具体存储定义的授权位置参数
+        :param kwargs: 由具体存储定义的授权关键字参数
+        :return: 授权数据与说明的二元组；基类返回空数据和不支持说明
         """
         return {}, "此存储不支持 OAuth2 授权"
 
-    def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
-        """检查存储登录状态"""
+    def check_login(self, *args: Any, **kwargs: Any) -> Optional[Tuple[dict[str, Any], str]]:
+        """
+        提供存储登录状态查询扩展入口。
+
+        :param args: 由具体存储定义的登录位置参数
+        :param kwargs: 由具体存储定义的登录关键字参数
+        :return: 具体存储定义的登录结果字典；基类默认返回 None
+        """
         pass
 
     def get_config(self) -> Optional[_SchemaStorageConf]:
         """
-        获取配置
+        按当前存储类型读取完整配置。
+
+        :return: 存储配置对象；未配置时返回 None
         """
         return self.storagehelper.get_storage(self.schema.value)
 
-    def get_conf(self) -> dict:
+    def get_conf(self) -> dict[str, Any]:
         """
-        获取配置
+        读取当前存储的配置内容。
+
+        :return: 配置字典；未配置时返回空字典
         """
         conf = self.get_config()
-        return conf.config if conf else {}
+        return conf.config or {} if conf else {}
 
-    def set_config(self, conf: dict):
+    def set_config(self, conf: dict[str, object]) -> None:
         """
-        设置配置
+        持久化当前存储配置并立即重新初始化。
+
+        :param conf: 当前存储的新配置字典
         """
         self.storagehelper.set_storage(self.schema.value, conf)
         self.init_storage()
 
-    def support_transtype(self) -> dict:
+    def support_transtype(self) -> dict[str, str]:
         """
-        支持的整理方式
+        提供当前存储支持的整理方式。
+
+        :return: 整理方式标识到显示名称的映射，直接返回类配置
         """
         return self.transtype
 
     def is_support_transtype(self, transtype: str) -> bool:
         """
-        是否支持整理方式
+        判断当前存储是否声明支持某种整理方式。
+
+        :param transtype: 整理方式标识，如 copy 或 move
+        :return: 标识存在于 transtype 中返回 True
         """
         return transtype in self.transtype
 
-    def reset_config(self):
+    def reset_config(self) -> None:
         """
-        重置置配置
+        清除当前存储配置并重新初始化实例。
         """
         self.storagehelper.reset_storage(self.schema.value)
         self.init_storage()
@@ -160,81 +213,113 @@ class StorageBase(metaclass=ABCMeta):
     @abstractmethod
     def check(self) -> bool:
         """
-        检查存储是否可用
+        检查存储是否可用。
         """
         pass
 
     @abstractmethod
     def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
-        浏览文件
+        列举目录内容，或按具体存储约定返回单个文件。
+
+        :param fileitem: 需要浏览的存储文件或目录项
+        :return: 子项列表；普通查询的空结果不保证能区分空目录与查询失败
         """
         pass
 
     def list_strict(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
-        """完整列举目录；空列表表示确认无子项，无法确认时抛出 StorageQueryError。"""
+        """
+        完整列举目录，并区分空目录与查询失败。
+
+        :param fileitem: 需要确认全部直接子项的目录
+        :return: 完整直接子项列表；空列表只表示确认无子项
+        :raises StorageQueryError: 基类未实现严格列举，具体存储也必须在无法确认完整结果时抛出
+        """
         raise StorageQueryError(f"存储 {self.schema} 未实现严格目录查询: {fileitem.path}")
 
     @abstractmethod
     def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
         """
-        创建目录
-        :param fileitem: 父目录
-        :param name: 目录名
+        在指定父目录下创建子目录。
+
+        :param fileitem: 父目录项
+        :param name: 需要创建的子目录名称
+        :return: 创建或已存在的目录项；无法取得结果时为 None
         """
         pass
 
     @abstractmethod
     def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取目录，如目录不存在则创建
+        取得目录项，按存储实现约定创建缺失目录。
+
+        :param path: 存储中的目录路径；实现可按需创建缺失目录
+        :return: 目标目录项；无法取得结果时为 None
         """
         pass
 
     @abstractmethod
     def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取文件或目录，不存在返回None
+        查询路径对应的文件或目录。
+
+        :param path: 存储中的文件或目录路径
+        :return: 文件或目录项；不存在或实现无法取得结果时为 None
         """
         pass
 
     def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
+        严格查询路径，无法确认状态时拒绝返回不存在。
 
-        默认保守失败：未覆写的存储无法区分「不存在」与「查询失败」，沿用
-        get_item() 会让 overwrite_mode=size 的覆盖保护在查询失败时被绕过，
-        把「无法确认」当成「目标不存在」而放行覆盖。具体存储必须先实现
-        「确认不存在」的判定，再覆写本方法。
+        基类保守失败，具体存储必须自行实现。覆盖保护不能把查询故障当作目标不存在。
+
+        :param path: 需要确认是否存在的目标路径
+        :return: 文件或目录项；只有确认不存在时返回 None
+        :raises StorageQueryError: 未实现严格查询或无法确认路径状态
         """
         raise StorageQueryError(f"存储 {self.schema} 未实现严格查询，无法确认目标状态: {path}")
 
     def get_parent(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
-        获取父目录
+        查询存储项父路径对应的目录。
+
+        :param fileitem: 需要查找父目录的文件或目录项
+        :return: 父路径对应的存储项；普通查询无结果时返回 None
         """
+        if not fileitem.path:
+            return None
         return self.get_item(Path(fileitem.path).parent)
 
     @abstractmethod
     def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
-        删除文件
+        删除指定存储项。
+
+        :param fileitem: 需要删除的文件或目录项
+        :return: 实现报告的操作成功标记，缺失项语义由具体存储定义
         """
         pass
 
     @abstractmethod
     def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
-        重命名文件
+        在同一父目录中重命名存储项。
+
+        :param fileitem: 需要改名的文件或目录项
+        :param name: 同一父目录下的新名称
+        :return: 实现报告的操作成功标记
         """
         pass
 
     @abstractmethod
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Path:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
-        下载文件，保存到本地，返回本地临时文件地址
-        :param fileitem: 文件项
-        :param path: 文件保存路径
+        取得源文件可供本地读取的路径。
+
+        :param fileitem: 需要下载的源文件
+        :param path: 可选本地保存目录；具体默认位置由实现决定
+        :return: 本地可读路径；实现失败时可返回 None，本地存储可直接返回源路径
         """
         pass
 
@@ -242,63 +327,101 @@ class StorageBase(metaclass=ABCMeta):
     def upload(self, fileitem: _SchemaFileItem, path: Path,
                new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """
-        上传文件
-        :param fileitem: 上传目录项
-        :param path: 本地文件路径
-        :param new_name: 上传后文件名
+        把本地文件放入目标存储目录。
+
+        :param fileitem: 目标存储目录项
+        :param path: 需要上传的本地文件路径
+        :param new_name: 上传后的可选名称；未指定时通常使用源文件名
+        :return: 上传后的目标文件项；无法取得结果时为 None
         """
         pass
 
     @abstractmethod
     def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
-        获取文件详情
+        查询文件详细信息。
+
+        :param fileitem: 需要重新查询详情的文件项
+        :return: 最新文件项；无法取得结果时为 None
         """
         pass
 
     @abstractmethod
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(
+        self,
+        fileitem: _SchemaFileItem,
+        path: Path,
+        new_name: str,
+        **kwargs: Any,
+    ) -> bool:
         """
-        复制文件
-        :param fileitem: 文件项
-        :param path: 目标目录
-        :param new_name: 新文件名
+        复制文件到同一存储的目标目录。
+
+        :param fileitem: 源文件项
+        :param path: 同一存储中的目标目录
+        :param new_name: 目标文件名
+        :param kwargs: 存储特定的扩展参数（如本地存储的 try_reflink）
+        :return: 实现报告的复制成功标记
         """
         pass
 
     @abstractmethod
     def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        移动文件
-        :param fileitem: 文件项
-        :param path: 目标目录
-        :param new_name: 新文件名
+        移动文件到同一存储的目标目录。
+
+        :param fileitem: 源文件项
+        :param path: 同一存储中的目标目录
+        :param new_name: 目标文件名
+        :return: 实现报告的移动成功标记
         """
         pass
 
     @abstractmethod
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
-        硬链接文件
+        在支持硬链接的存储中创建目标链接。
+
+        :param fileitem: 硬链接源文件项
+        :param target_file: 完整目标链接路径
+        :return: 链接创建成功标记；不支持的实现可不执行并返回 None
         """
         pass
 
     @abstractmethod
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
-        软链接文件
+        在支持符号链接的存储中创建目标链接。
+
+        :param fileitem: 符号链接源文件项
+        :param target_file: 完整目标链接路径
+        :return: 链接创建成功标记；不支持的实现可不执行并返回 None
         """
         pass
+
+    def reflink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """
+        在支持引用链接的存储中创建目标文件。
+
+        :param fileitem: 源文件项
+        :param target_file: 完整目标文件路径
+        :return: 引用链接创建成功标记；不支持的实现返回 False
+        """
+        return False
 
     @abstractmethod
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """
-        存储使用情况
+        查询存储容量使用情况。
+
+        :return: 以字节为单位的总容量与可用容量；不支持或查询失败时可返回 None
         """
         pass
 
     def _snapshot_list(self, fileitem: _SchemaFileItem) -> Optional[List[_SchemaFileItem]]:
-        """按存储能力读取目录，严格快照不能把无结果当作可以跳过的子树。"""
+        """
+        按存储能力读取目录，严格快照不能把无结果当作可以跳过的子树。
+        """
         if not self.snapshot_strict_query:
             return self.list(fileitem)
         items = self.list_strict(fileitem)
@@ -307,7 +430,9 @@ class StorageBase(metaclass=ABCMeta):
         return items
 
     def _snapshot_read_error(self, fileitem: _SchemaFileItem, error: Exception) -> None:
-        """严格快照传播读取故障；未适配的存储保留原来的子树容错行为。"""
+        """
+        严格快照传播读取故障；未适配的存储保留原来的子树容错行为。
+        """
         if self.snapshot_strict_query:
             if isinstance(error, StorageQueryError):
                 raise error
@@ -359,7 +484,9 @@ class StorageBase(metaclass=ABCMeta):
         previous_children: Dict[PurePosixPath, set[PurePosixPath]],
         previous_files: Dict[PurePosixPath, str],
     ) -> None:
-        """沿旧快照索引移除一个已经消失的直接子树。"""
+        """
+        沿旧快照索引移除一个已经消失的直接子树。
+        """
         pending = [path]
         while pending:
             current_path = pending.pop()
@@ -385,8 +512,14 @@ class StorageBase(metaclass=ABCMeta):
         :param previous_children: 旧快照目录直接子项索引
         :param previous_files: 旧快照路径反向索引
         """
+        if not fileitem.path:
+            return
         directory_path = PurePosixPath(fileitem.path)
-        child_paths = {PurePosixPath(sub_file.path) for sub_file in sub_files}
+        child_paths = {
+            PurePosixPath(sub_file.path)
+            for sub_file in sub_files
+            if sub_file.path
+        }
         for direct_child_path in previous_children.pop(directory_path, ()):
             if direct_child_path not in child_paths:
                 StorageBase._snapshot_remove_previous_subtree(
@@ -399,7 +532,7 @@ class StorageBase(metaclass=ABCMeta):
         files_info: _SnapshotInfo,
         previous_children: Dict[PurePosixPath, set[PurePosixPath]],
         previous_files: Dict[PurePosixPath, str],
-        last_snapshot_time: float,
+        last_snapshot_time: Optional[float],
         max_depth: int,
         current_depth: int = 0,
     ) -> None:
@@ -410,11 +543,13 @@ class StorageBase(metaclass=ABCMeta):
         :param files_info: 当前正在构建的快照
         :param previous_children: 旧快照目录直接子项索引
         :param previous_files: 旧快照路径反向索引
-        :param last_snapshot_time: 上次快照时间
+        :param last_snapshot_time: 上次快照的 Unix 秒级时间
         :param max_depth: 最大递归深度
         :param current_depth: 当前递归深度
         """
         try:
+            if not fileitem.path:
+                return
             if fileitem.type == "dir":
                 if current_depth >= max_depth:
                     return
@@ -458,15 +593,19 @@ class StorageBase(metaclass=ABCMeta):
         except Exception as error:
             self._snapshot_read_error(fileitem, error)
 
-    def snapshot(self, path: Path, last_snapshot_time: float = None, max_depth: int = 5,
-                 previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
+    def snapshot(self, path: Path, last_snapshot_time: Optional[float] = None, max_depth: int = 5,
+                 previous_snapshot: Optional[_SnapshotInfo] = None) -> Optional[_SnapshotInfo]:
         """
-        快照文件系统，输出所有层级文件信息（不含目录）
-        :param path: 路径
-        :param last_snapshot_time: 上次快照时间，用于增量快照
-        :param max_depth: 最大递归深度，避免过深遍历
-        :param previous_snapshot: 上次完整快照，用于保留未变化目录并清理已删除文件
-        :return: 有效快照（允许为空）；严格查询失败返回 None，调用方必须保留旧基线
+        递归记录文件信息，并复用增量快照中未变化的子树。
+
+        空字典为有效结果；返回 None 时调用方必须保留旧基线。
+        普通查询模式仍沿用具体存储的容错行为，无法保证区分缺失与故障。
+
+        :param path: 快照根路径
+        :param last_snapshot_time: 上一轮快照的 Unix 秒级时间；为空时不按目录时间跳过子树
+        :param max_depth: 目录递归深度上限，根目录深度为 0，默认 5
+        :param previous_snapshot: 上一轮完整快照；保留未遍历子树并删除已确认消失的文件
+        :return: 路径到文件大小、修改时间、标识和类型的映射，不含目录；严格查询失败返回 None
         """
         strict_query = self.snapshot_strict_query
         root_path = PurePosixPath(path.as_posix())

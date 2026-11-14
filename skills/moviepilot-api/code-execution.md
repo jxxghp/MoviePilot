@@ -16,3 +16,8 @@ kernel loses that state. Each cell has 300 seconds and 50 tool calls. Inspect
 slices with `read_file(file_path=..., start_line=..., end_line=...)`; do not rerun
 the program solely to recover output. This administrator capability is host
 Python, not an OS sandbox, and is absent from external MCP/HTTP tool catalogs.
+
+The kernel inherits the host deployment environment, including database
+configuration and connection credentials, without automatically printing it.
+Host `PYTHONPATH` is excluded and output uses UTF-8. Reset the kernel after
+deployment environment or `app.env` changes so scripts reload current settings.

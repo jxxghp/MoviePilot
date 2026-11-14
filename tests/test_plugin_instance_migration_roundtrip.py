@@ -1,4 +1,5 @@
-"""插件实例迁移链在真实 Alembic 运行器上的升降级往返验证。
+"""
+插件实例迁移链在真实 Alembic 运行器上的升降级往返验证。
 
 同目录下按单个 revision 调 ``upgrade()`` 的用例只验证单步搬迁逻辑，绕过了
 Alembic 自己的版本解析、顺序编排与 ``alembic_version`` 记账。真实事故恰恰出在
@@ -43,7 +44,9 @@ _CLONE_CONFIG = {"enabled": False, "cron": "0 2 * * *", "notify": True}
 
 
 def _instance_table() -> sa.TableClause:
-    """按列类型声明实例表，使 JSON 配置列读出时自动解码。"""
+    """
+    按列类型声明实例表，使 JSON 配置列读出时自动解码。
+    """
     return sa.table(
         _TABLE,
         sa.column("instance_id", sa.String()),
@@ -58,7 +61,9 @@ def _instance_table() -> sa.TableClause:
 
 
 def _seed_legacy_rows(engine: sa.Engine) -> None:
-    """写入迁移前的 systemconfig 存量：实例描述符单键与两条 plugin.* 配置键。"""
+    """
+    写入迁移前的 systemconfig 存量：实例描述符单键与两条 plugin.* 配置键。
+    """
     with engine.begin() as connection:
         for key, value in (
             (_LEGACY_KEY, _LEGACY_INSTANCES),
@@ -72,7 +77,9 @@ def _seed_legacy_rows(engine: sa.Engine) -> None:
 
 
 def _systemconfig_keys(engine: sa.Engine) -> set[str]:
-    """读取当前库里的全部 systemconfig 键。"""
+    """
+    读取当前库里的全部 systemconfig 键。
+    """
     with engine.connect() as connection:
         return {
             row[0]
@@ -81,7 +88,9 @@ def _systemconfig_keys(engine: sa.Engine) -> set[str]:
 
 
 def _systemconfig_value(engine: sa.Engine, key: str):
-    """读取一条 systemconfig 值并解码，键不存在时返回 ``None``。"""
+    """
+    读取一条 systemconfig 值并解码，键不存在时返回 ``None``。
+    """
     with engine.connect() as connection:
         row = connection.execute(
             sa.text("SELECT value FROM systemconfig WHERE key = :key"), {"key": key}
@@ -93,7 +102,9 @@ def _systemconfig_value(engine: sa.Engine, key: str):
 
 
 def _instance_rows(engine: sa.Engine) -> dict[str, sa.Row]:
-    """按实例 ID 读出实例表全部行。"""
+    """
+    按实例 ID 读出实例表全部行。
+    """
     table = _instance_table()
     with engine.connect() as connection:
         return {
@@ -103,7 +114,9 @@ def _instance_rows(engine: sa.Engine) -> dict[str, sa.Row]:
 
 
 def _current_revision(engine: sa.Engine) -> str | None:
-    """读取库里记账的当前 revision。"""
+    """
+    读取库里记账的当前 revision。
+    """
     with engine.connect() as connection:
         if "alembic_version" not in sa.inspect(connection).get_table_names():
             return None
@@ -113,14 +126,17 @@ def _current_revision(engine: sa.Engine) -> str | None:
 
 
 def _table_names(engine: sa.Engine) -> set[str]:
-    """读取库中已有表名。"""
+    """
+    读取库中已有表名。
+    """
     with engine.connect() as connection:
         return set(sa.inspect(connection).get_table_names())
 
 
 @pytest.fixture
 def official_head_database(tmp_path):
-    """造一个停在官方 head 的落盘 SQLite 库，并塞入迁移前的存量数据。
+    """
+    造一个停在官方 head 的落盘 SQLite 库，并塞入迁移前的存量数据。
 
     官方 head 与本分支的 schema 差异只有 ``plugininstance`` 一张表，因此「按当前
     模型建表但跳过该表，再把版本记账戳到官方 head」与真实的官方库等价；从链条最
@@ -165,7 +181,9 @@ def official_head_database(tmp_path):
 def test_upgrade_from_official_head_lands_legacy_payloads_on_instance_rows(
     official_head_database,
 ) -> None:
-    """整条链升上来后，描述符与两条配置都应落到实例表，旧配置键就地移除。"""
+    """
+    整条链升上来后，描述符与两条配置都应落到实例表，旧配置键就地移除。
+    """
     config, engine = official_head_database
 
     command.upgrade(config, CHAIN_HEAD)
@@ -201,7 +219,9 @@ def test_upgrade_from_official_head_lands_legacy_payloads_on_instance_rows(
 def test_downgrade_back_to_official_head_restores_the_legacy_config_keys(
     official_head_database,
 ) -> None:
-    """降回官方 head 不应报错，实例表整张移除且配置回到旧键，回退路径不丢配置。"""
+    """
+    降回官方 head 不应报错，实例表整张移除且配置回到旧键，回退路径不丢配置。
+    """
     config, engine = official_head_database
     command.upgrade(config, CHAIN_HEAD)
 
@@ -217,7 +237,9 @@ def test_downgrade_back_to_official_head_restores_the_legacy_config_keys(
 def test_upgrade_is_idempotent_on_an_already_migrated_database(
     official_head_database,
 ) -> None:
-    """重复升级与降级后重升都不应报错，且不会把行搬成两份。"""
+    """
+    重复升级与降级后重升都不应报错，且不会把行搬成两份。
+    """
     config, engine = official_head_database
     command.upgrade(config, CHAIN_HEAD)
     first_pass = _instance_rows(engine)
@@ -242,7 +264,9 @@ def test_upgrade_is_idempotent_on_an_already_migrated_database(
 def test_chain_applies_one_revision_at_a_time_in_the_declared_order(
     official_head_database,
 ) -> None:
-    """逐级升级应按声明顺序推进记账，确认三个迁移的链接方向没有接反。"""
+    """
+    逐级升级应按声明顺序推进记账，确认三个迁移的链接方向没有接反。
+    """
     config, engine = official_head_database
 
     for revision in CHAIN:

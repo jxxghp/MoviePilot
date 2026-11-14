@@ -1,31 +1,25 @@
-"""sys.modules 临时打桩与快照还原工具。
+"""
+临时替换模块缓存并按快照恢复的测试工具。
 
-测试常需在 import 目标模块前，用假模块替换其依赖（避免连真实库 / 外部服务 / 重依赖）。
-若打桩后不还原，假模块会残留在 ``sys.modules`` 中污染后续测试的 import。本模块提供两类能力：
-
-1. :func:`stub_modules` —— 上下文管理器，进入时替换、退出时精确还原；
-2. :func:`snapshot_modules` / :func:`restore_modules` —— 快照与还原 ``sys.modules``，
-   供测试在 setUp/tearDown 做整体自隔离，消除测试间通过 ``sys.modules`` 传播的污染。
+stub_modules 在上下文中替换指定模块，snapshot_modules 和 restore_modules 可成对用于
+测试夹具的准备与清理。所有操作只调整 sys.modules 映射，不会撤销导入期间的其他副作用，
+也不会更新调用方已经绑定的对象引用或父包上的模块属性。
 """
 import sys
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, Optional
 
 
 @contextmanager
 def stub_modules(stubs: Dict[str, Any]) -> Iterator[None]:
-    """在上下文内用假模块临时替换 ``sys.modules`` 中的指定项，退出时还原。
+    """
+    在上下文中替换指定模块，退出时恢复原有模块对象。
 
-    典型用法：在测试模块顶层包裹依赖打桩的 import，使打桩只在 import 期生效、
-    随后立即还原，从而既满足导入需求又不污染其他测试。
+    原条目缺失或值为 None 时，退出后移除该键；其他原值按对象恢复。
+    仅恢复显式列出的模块，目标模块导入时产生的其他状态由调用方负责清理。
 
-    :param stubs: ``{模块全名: 假模块对象}``，假模块通常为 ``MagicMock()`` 或自建桩。
-
-    用例::
-
-        with stub_modules({"app.application.site.sites": MagicMock()}):
-            from app.chain.media import MediaChain
-        # 此处 app.application.site.sites 已还原为真实模块，MediaChain 已绑定可用
+    :param stubs: 模块全名到占位对象的映射，通常使用 ModuleType 或 MagicMock
+    :yields: 已替换模块的执行区间，不提供额外值
     """
     saved: Dict[str, Any] = {}
     for name, module in stubs.items():
@@ -42,11 +36,13 @@ def stub_modules(stubs: Dict[str, Any]) -> Iterator[None]:
 
 
 def snapshot_modules(prefix: Optional[str] = None) -> Dict[str, Any]:
-    """对当前 ``sys.modules`` 取浅快照，用于稍后还原。
+    """
+    对指定范围内的模块缓存创建浅快照。
 
-    :param prefix: 仅快照名称匹配该前缀的模块（如 ``"app."``）；为 ``None`` 时快照全部。
-                   还原以快照为准，能恢复被替换、删除的条目，并移除快照后新增的条目。
-    :return: 快照字典（模块名 -> 模块对象），传给 :func:`restore_modules`。
+    快照不复制模块内部状态，也不冻结模块对象属性。
+
+    :param prefix: 包名前缀；None 表示全部模块，末尾点号忽略，只匹配父包及其子模块
+    :return: 模块全名到原对象的映射，可交给 restore_modules 恢复
     """
     if prefix is None:
         return dict(sys.modules)
@@ -56,18 +52,21 @@ def snapshot_modules(prefix: Optional[str] = None) -> Dict[str, Any]:
 
 
 def restore_modules(snapshot: Dict[str, Any], prefix: Optional[str] = None) -> None:
-    """把 ``sys.modules`` 还原到 :func:`snapshot_modules` 的状态。
-
-    被替换 / 删除的恢复为快照值；快照之后新增的（同前缀范围内）移除，避免假桩残留。
-
-    :param snapshot: :func:`snapshot_modules` 返回的快照。
-    :param prefix: 还原范围前缀；须与取快照时一致。为 ``None`` 时按全量还原。
     """
+    恢复快照范围内的模块映射，并移除该范围内后来新增的条目。
+
+    仅恢复对象引用，不撤销模块内部属性变化或导入的其他副作用。
+
+    :param snapshot: 此前 snapshot_modules 返回的浅快照
+    :param prefix: 与取快照时一致的包名前缀；None 表示恢复全部模块
+    """
+    in_scope: Callable[[str], bool]
     if prefix is None:
+        # 两个分支统一保存一个局部判定函数，保留赋值式 lambda 的既有写法。
         in_scope = lambda name: True  # noqa: E731
     else:
         head = prefix.rstrip(".")
-        # 同 snapshot_modules：精确父模块或其子模块路径，避免 prefix="app" 误配 "apple"
+        # 与快照使用相同的包边界；局部 lambda 统一后续遍历的范围判定。
         in_scope = lambda name: name == head or name.startswith(head + ".")  # noqa: E731
     # 移除范围内、快照中没有的新增项（通常是测试塞入的假桩）
     for name in [n for n in sys.modules if in_scope(n) and n not in snapshot]:

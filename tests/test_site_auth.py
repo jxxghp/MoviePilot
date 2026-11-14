@@ -1,3 +1,7 @@
+"""
+验证站点认证信息处理与认证流程。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -22,7 +26,9 @@ HAIDAN_AUTH_SITES = {
 
 
 def test_normalize_site_auth_params_accepts_resource_field_names() -> None:
-    """站点原始字段名应转换为认证资源读取的环境变量式键名。"""
+    """
+    站点原始字段名应转换为认证资源读取的环境变量式键名。
+    """
     assert normalize_site_auth_params(
         "haidan",
         {"id": 63632, "passkey": "secret"},
@@ -31,7 +37,9 @@ def test_normalize_site_auth_params_accepts_resource_field_names() -> None:
 
 
 def test_normalize_site_auth_config_preserves_unknown_fields() -> None:
-    """认证配置中的扩展字段不能因参数规范化而丢失。"""
+    """
+    认证配置中的扩展字段不能因参数规范化而丢失。
+    """
     assert normalize_site_auth_config(
         {
             "site": "haidan",
@@ -49,7 +57,9 @@ def test_normalize_site_auth_config_preserves_unknown_fields() -> None:
 
 
 def _patch_auth_endpoint(monkeypatch, helper: Mock, config: Mock) -> None:
-    """替换认证端点的外部运行时依赖。"""
+    """
+    替换认证端点的外部运行时依赖。
+    """
     monkeypatch.setattr(site_endpoint, "SitesHelper", Mock(return_value=helper))
     monkeypatch.setattr(site_endpoint, "get_configured_system_config", Mock(return_value=config))
     monkeypatch.setattr(site_endpoint, "get_plugin_manager", Mock(return_value=Mock()))
@@ -59,7 +69,9 @@ def _patch_auth_endpoint(monkeypatch, helper: Mock, config: Mock) -> None:
 
 
 def test_auth_site_normalizes_parameters_before_check_and_persist(monkeypatch) -> None:
-    """认证端点应以规范化键名调用资源并只持久化成功配置。"""
+    """
+    认证端点应以规范化键名调用资源并只持久化成功配置。
+    """
     helper = Mock()
     helper.get_authsites.return_value = HAIDAN_AUTH_SITES
     helper.check_user.return_value = (True, "haidan")
@@ -86,7 +98,9 @@ def test_auth_site_normalizes_parameters_before_check_and_persist(monkeypatch) -
 
 
 def test_auth_site_does_not_persist_failed_parameters(monkeypatch) -> None:
-    """失败认证不能覆盖已有配置并屏蔽环境变量认证。"""
+    """
+    失败认证不能覆盖已有配置并屏蔽环境变量认证。
+    """
     helper = Mock()
     helper.get_authsites.return_value = HAIDAN_AUTH_SITES
     helper.check_user.return_value = (False, "api parameter loss")
@@ -103,7 +117,9 @@ def test_auth_site_does_not_persist_failed_parameters(monkeypatch) -> None:
 
 
 def test_startup_auth_prefers_environment_configuration(monkeypatch) -> None:
-    """设置环境变量时启动认证应从环境读取，而不是使用旧持久化配置。"""
+    """
+    设置环境变量时启动认证应从环境读取，而不是使用旧持久化配置。
+    """
     helper = Mock()
     helper.auth_level = 1
     helper.get_authsites.return_value = HAIDAN_AUTH_SITES
@@ -128,7 +144,9 @@ def test_startup_auth_prefers_environment_configuration(monkeypatch) -> None:
 
 
 def test_scheduler_auth_prefers_environment_configuration(monkeypatch) -> None:
-    """定时认证应与启动认证使用相同的环境变量优先级。"""
+    """
+    定时认证应与启动认证使用相同的环境变量优先级。
+    """
     helper = Mock()
     helper.auth_level = 1
     helper.get_authsites.return_value = HAIDAN_AUTH_SITES

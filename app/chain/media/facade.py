@@ -1,4 +1,6 @@
-"""媒体识别、音乐、搜索与来源投影的稳定 Facade。"""
+"""
+媒体识别、音乐、搜索与来源投影的稳定 Facade。
+"""
 
 from typing import Any, Awaitable, Callable, Optional, Union, cast
 
@@ -42,7 +44,9 @@ _AsyncSearchCall = Callable[
 
 
 class MediaChain(ChainBase, metaclass=Singleton):
-    """组合识别、音乐目录、搜索和来源投影的稳定媒体处理门面。"""
+    """
+    组合识别、音乐目录、搜索和来源投影的稳定媒体处理门面。
+    """
 
     __module__ = _PUBLIC_MODULE
 
@@ -68,33 +72,49 @@ class MediaChain(ChainBase, metaclass=Singleton):
     )
 
     _music_source_chain = staticmethod(MediaCatalogOwner._music_source_chain)
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _music_search_sources = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner._music_search_sources.__func__  # type: ignore[attr-defined]
     )
     _async_search_music_source = staticmethod(MediaCatalogOwner._async_search_music_source)
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     normalize_music_candidates = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner.normalize_music_candidates.__func__  # type: ignore[attr-defined]
     )
     _music_catalog = MediaCatalogOwner._music_catalog
     search_music = cast(_MusicListCall, MediaCatalogOwner.search_music)
     async_search_music = cast(_AsyncMusicListCall, MediaCatalogOwner.async_search_music)
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _validate_music_result = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner._validate_music_result.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _simplify_recognized_music_info = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner._simplify_recognized_music_info.__func__  # type: ignore[attr-defined]
     )
     _contains_han = staticmethod(MediaCatalogOwner._contains_han)
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _music_artist_aliases = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner._music_artist_aliases.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _simplify_music_artist_name = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner._simplify_music_artist_name.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _simplify_music_artist_names = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner._simplify_music_artist_names.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _simplify_recognized_music_mapping = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaCatalogOwner._simplify_recognized_music_mapping.__func__  # type: ignore[attr-defined]
     )
     recognize_music_from_source = cast(
@@ -124,7 +144,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
         Callable[..., Awaitable[list[MusicArtistInfo]]],
         MediaCatalogOwner.async_get_music_artist_related,
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _directory_audio_files = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaAlbumOwner._directory_audio_files.__func__  # type: ignore[attr-defined]
     )
     _album_directory_signature = staticmethod(MediaAlbumOwner._album_directory_signature)
@@ -132,13 +154,19 @@ class MediaChain(ChainBase, metaclass=Singleton):
     clear_music_album_cache = cast(Any, classmethod(cast(Any, MediaAlbumOwner.clear_music_album_cache).__func__))
     _music_release_preferences = staticmethod(MediaAlbumOwner._music_release_preferences)
     _music_track_title_key = staticmethod(MediaAlbumOwner._music_track_title_key)
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _align_music_album_tracks = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaAlbumOwner._align_music_album_tracks.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _align_selected_music_album = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaAlbumOwner._align_selected_music_album.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _album_track_map = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaAlbumOwner._album_track_map.__func__  # type: ignore[attr-defined]
     )
     _match_music_album_directory = MediaAlbumOwner._match_music_album_directory
@@ -153,7 +181,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
     _merge_tmdb_auxiliary = staticmethod(MediaAuxiliaryOwner._merge_tmdb_auxiliary)
     _build_tmdb_supplement_meta = staticmethod(MediaAuxiliaryOwner._build_tmdb_supplement_meta)
     _media_alias_candidates = staticmethod(MediaAuxiliaryOwner._media_alias_candidates)
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _merge_media_auxiliary = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaAuxiliaryOwner._merge_media_auxiliary.__func__  # type: ignore[attr-defined]
     )
     _resolve_auxiliary_sources = staticmethod(MediaAuxiliaryOwner._resolve_auxiliary_sources)
@@ -166,13 +196,19 @@ class MediaChain(ChainBase, metaclass=Singleton):
     supplement_tmdb_info = cast(
         _MediaOrMusicCall, MediaAuxiliaryOwner.supplement_tmdb_info
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     is_audio_path = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaPathOwner.is_audio_path.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     read_path_meta = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaPathOwner.read_path_meta.__func__  # type: ignore[attr-defined]
     )
+    # 重新绑定原类方法，保留组合后的方法解析与调用签名。
     _music_info_from_path_meta = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，静态类型检查无法推导该属性。
         MediaPathOwner._music_info_from_path_meta.__func__  # type: ignore[attr-defined]
     )
     _merge_music_audio_quality = staticmethod(MediaPathOwner._merge_music_audio_quality)

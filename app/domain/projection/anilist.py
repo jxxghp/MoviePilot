@@ -1,4 +1,6 @@
-"""AniList 详情到统一媒体字段的纯投影规则。"""
+"""
+AniList 详情到统一媒体字段的纯投影规则。
+"""
 
 from __future__ import annotations
 
@@ -26,7 +28,9 @@ UNICODE_SEASONS = {value: season for season, value in enumerate("ⅡⅢⅣⅤⅥ
 
 
 def _season_title(value: str) -> tuple[int, str] | None:
-    """从明确的续季后缀提取整部剧标题和季号，保留其他片名原样。"""
+    """
+    从明确的续季后缀提取整部剧标题和季号，保留其他片名原样。
+    """
     match = SEASON_TITLE_PATTERN.fullmatch(value.strip())
     if not match:
         return None
@@ -41,7 +45,9 @@ def _season_title(value: str) -> tuple[int, str] | None:
 
 
 def _season_aliases(titles: list[str]) -> tuple[int | None, list[str]]:
-    """仅在各别名的续季编号一致时补充可匹配整部剧种子的基础标题。"""
+    """
+    仅在各别名的续季编号一致时补充可匹配整部剧种子的基础标题。
+    """
     parsed = [_season_title(title) for title in titles if title]
     found = [item for item in parsed if item]
     seasons = {season for season, _ in found}
@@ -51,12 +57,16 @@ def _season_aliases(titles: list[str]) -> tuple[int | None, list[str]]:
 
 
 def resolve_media_type(info: Mapping[str, Any]) -> MediaType:
-    """根据 AniList 发布格式返回标准媒体类型。"""
+    """
+    根据 AniList 发布格式返回标准媒体类型。
+    """
     return MediaType.MOVIE if str(info.get("format") or "").upper() in MOVIE_FORMATS else MediaType.TV
 
 
 def format_date(date_info: Mapping[str, Any]) -> Optional[str]:
-    """将 AniList 模糊日期转换为 YYYY、YYYY-MM 或 YYYY-MM-DD。"""
+    """
+    将 AniList 模糊日期转换为 YYYY、YYYY-MM 或 YYYY-MM-DD。
+    """
     if not date_info or not date_info.get("year"):
         return None
     values = [str(date_info.get("year"))]
@@ -68,7 +78,9 @@ def format_date(date_info: Mapping[str, Any]) -> Optional[str]:
 
 
 def select_chinese_title(info: Mapping[str, Any]) -> Optional[str]:
-    """从 anilist-chinese 标题和别名中选择中文标题。"""
+    """
+    从 anilist-chinese 标题和别名中选择中文标题。
+    """
     titles = info.get("title")
     translated = titles.get("chinese") if isinstance(titles, Mapping) else None
     if not translated:
@@ -85,7 +97,9 @@ def project(
     current: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """将只读 AniList 详情投影为统一媒体字段，不修改输入。"""
+    """
+    将只读 AniList 详情投影为统一媒体字段，不修改输入。
+    """
     if not info:
         return {}
     builder = ProjectionBuilder(current)

@@ -1,4 +1,6 @@
-"""内置媒体来源投影与分类能力声明的一致性测试。"""
+"""
+内置媒体来源投影与分类能力声明的一致性测试。
+"""
 
 from collections.abc import Iterable
 
@@ -19,19 +21,25 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _facts(items: Iterable[object]) -> tuple[ClassificationFacts, ...]:
-    """把来源投影对象批量转换为分类事实快照。"""
+    """
+    把来源投影对象批量转换为分类事实快照。
+    """
     return tuple(build_classification_facts(item) for item in items)
 
 
 def _fact_value(facts: ClassificationFacts, field_id: str) -> object:
-    """按字段目录 ID 读取强类型事实值。"""
+    """
+    按字段目录 ID 读取强类型事实值。
+    """
     section_name, field_name = field_id.split(".", 1)
     section = getattr(facts, section_name)
     return getattr(section, field_name) if section is not None else None
 
 
 def _tmdb_fixtures() -> tuple[ClassificationFacts, ...]:
-    """构造 TMDB 详情与摘要投影。"""
+    """
+    构造 TMDB 详情与摘要投影。
+    """
     return _facts(
         [
             MediaInfo(
@@ -67,7 +75,9 @@ def _tmdb_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _douban_fixtures() -> tuple[ClassificationFacts, ...]:
-    """构造豆瓣影视详情投影。"""
+    """
+    构造豆瓣影视详情投影。
+    """
     return _facts(
         [
             MediaInfo(
@@ -94,7 +104,9 @@ def _douban_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _bangumi_fixtures() -> tuple[ClassificationFacts, ...]:
-    """构造 Bangumi 详情投影。"""
+    """
+    构造 Bangumi 详情投影。
+    """
     return _facts(
         [
             MediaInfo(
@@ -120,7 +132,9 @@ def _bangumi_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _anilist_fixtures() -> tuple[ClassificationFacts, ...]:
-    """构造 AniList 详情投影。"""
+    """
+    构造 AniList 详情投影。
+    """
     return _facts(
         [
             MediaInfo(
@@ -154,7 +168,9 @@ def _anilist_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _imdb_fixtures() -> tuple[ClassificationFacts, ...]:
-    """通过 IMDb Module 的统一投影构造详情事实。"""
+    """
+    通过 IMDb Module 的统一投影构造详情事实。
+    """
     media = ImdbModule._to_media_info(
         ImdbTitle(
             id="tt0000501",
@@ -180,7 +196,9 @@ def _imdb_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _tvdb_fixtures() -> tuple[ClassificationFacts, ...]:
-    """通过 TVDB 候选解析构造带年份和缺年份的标准投影。"""
+    """
+    通过 TVDB 候选解析构造带年份和缺年份的标准投影。
+    """
     module = object.__new__(TheTvDbModule)
     base = MediaInfo(
         media_source=MediaSource.Douban,
@@ -200,7 +218,9 @@ def _tvdb_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _musicbrainz_fixtures() -> tuple[ClassificationFacts, ...]:
-    """构造 MusicBrainz 单曲、专辑、艺术家和最小摘要投影。"""
+    """
+    构造 MusicBrainz 单曲、专辑、艺术家和最小摘要投影。
+    """
     recording = MusicBrainzModule._recording_to_info(
         {
             "id": "recording-1",
@@ -248,7 +268,9 @@ def _musicbrainz_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _theaudiodb_fixtures() -> tuple[ClassificationFacts, ...]:
-    """构造 TheAudioDB 单曲、专辑、艺术家和最小摘要投影。"""
+    """
+    构造 TheAudioDB 单曲、专辑、艺术家和最小摘要投影。
+    """
     track = TheAudioDbModule._track_to_info(
         {
             "idTrack": "track-1",
@@ -284,7 +306,9 @@ def _theaudiodb_fixtures() -> tuple[ClassificationFacts, ...]:
 
 
 def _douban_music_fixtures() -> tuple[ClassificationFacts, ...]:
-    """构造豆瓣音乐搜索摘要、专辑详情和曲目投影。"""
+    """
+    构造豆瓣音乐搜索摘要、专辑详情和曲目投影。
+    """
     summary = DoubanModule._build_music_search_results(
         {"items": [{"id": "album-2", "type": "music", "title": "摘要专辑"}]}
     )[0]
@@ -317,7 +341,9 @@ _SOURCE_FIXTURE_BUILDERS = {
 
 
 def test_source_capability_declarations_match_real_projection_fixtures() -> None:
-    """可用能力必须有真实正例，部分能力还必须保留缺失样本。"""
+    """
+    可用能力必须有真实正例，部分能力还必须保留缺失样本。
+    """
     for media_source in FIXTURE_CLASSIFICATION_SOURCES:
         fixtures = _SOURCE_FIXTURE_BUILDERS[media_source]()
         support = builtin_source_field_support(media_source)
@@ -332,7 +358,9 @@ def test_source_capability_declarations_match_real_projection_fixtures() -> None
 
 
 def test_unavailable_source_fields_remain_missing_in_real_fixtures() -> None:
-    """声明不可用的字段不能因领域默认值而伪装成来源事实。"""
+    """
+    声明不可用的字段不能因领域默认值而伪装成来源事实。
+    """
     for media_source in FIXTURE_CLASSIFICATION_SOURCES:
         fixtures = _SOURCE_FIXTURE_BUILDERS[media_source]()
         support = builtin_source_field_support(media_source)
@@ -346,12 +374,16 @@ def test_unavailable_source_fields_remain_missing_in_real_fixtures() -> None:
 
 
 def test_source_fixtures_cover_every_builtin_catalog_source() -> None:
-    """能力目录新增内置来源时必须同步提供真实投影 fixture。"""
+    """
+    能力目录新增内置来源时必须同步提供真实投影 fixture。
+    """
     assert tuple(_SOURCE_FIXTURE_BUILDERS) == FIXTURE_CLASSIFICATION_SOURCES
 
 
 def test_country_and_genre_normalization_produce_cross_source_keys() -> None:
-    """来源名称差异必须收敛为稳定国家代码和类型键。"""
+    """
+    来源名称差异必须收敛为稳定国家代码和类型键。
+    """
     douban = _douban_fixtures()[0]
     theaudiodb = _theaudiodb_fixtures()
 
@@ -362,7 +394,9 @@ def test_country_and_genre_normalization_produce_cross_source_keys() -> None:
 
 
 def test_unknown_genre_name_does_not_create_unstable_key() -> None:
-    """未知来源类型只保留显示名，不能自动制造不稳定分类键。"""
+    """
+    未知来源类型只保留显示名，不能自动制造不稳定分类键。
+    """
     facts = build_classification_facts(
         MediaInfo(
             media_source=MediaSource.Douban,

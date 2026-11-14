@@ -1,3 +1,7 @@
+"""
+监听本地目录变化并等待文件写入稳定。
+"""
+
 import threading
 import time
 import traceback
@@ -15,6 +19,10 @@ from app.runtime.settings import get_runtime_setting
 class DirectoryChangeEvent:
     """
     目录文件变化事件，隔离底层 watchfiles 事件结构。
+
+    :param change_type: 底层观察到的新增、修改或删除类型
+    :param src_path: 发生变化的文件或目录路径
+    :param is_directory: 变化对象是否为目录
     """
     change_type: Change
     src_path: str
@@ -22,7 +30,18 @@ class DirectoryChangeEvent:
 
 
 class _PendingStability(TypedDict):
-    """记录同一文件版本的稳定采样、检查期限和告警状态。"""
+    """
+    记录同一文件版本的稳定采样、检查期限和告警状态。
+
+    :ivar change_type: 需要延后分发的变化类型
+    :ivar path: 正在观察的文件路径
+    :ivar file_size: 上一次采样时的字节数
+    :ivar mtime_ns: 上一次采样时的纳秒修改时间
+    :ivar stable_checks: 连续两次内容未变化的采样次数
+    :ivar due: 下一次检查的单调时钟时间
+    :ivar first_seen: 首次观察到该文件版本的单调时钟时间
+    :ivar warning_sent: 是否已发送长时间不稳定告警
+    """
 
     change_type: Change
     path: Path
@@ -32,6 +51,24 @@ class _PendingStability(TypedDict):
     due: float
     first_seen: float
     warning_sent: bool
+
+
+class _PendingRescan(TypedDict):
+    """
+    保留延迟重扫目录、已见文件、轮次、到期时间与连续失败次数。
+
+    :ivar path: 等待重扫的目录路径
+    :ivar seen: 前次扫描已观察到的文件路径集合
+    :ivar round: 当前延迟重扫轮次
+    :ivar due: 下一轮扫描的单调时钟时间
+    :ivar failures: 连续完整扫描失败的次数
+    """
+
+    path: Path
+    seen: set[str]
+    round: int
+    due: float
+    failures: int
 
 
 class LocalDirectoryWatcher:
@@ -68,7 +105,7 @@ class LocalDirectoryWatcher:
     FILE_STABILITY_WARNING_SECONDS = 30 * 60
 
     def __init__(self, mon_path: Path, callback: Any, force_polling: Optional[bool] = None,
-                 poll_delay_ms: Optional[int] = None):
+                 poll_delay_ms: Optional[int] = None) -> None:
         """
         初始化本地目录监控。
         :param mon_path: 监控目录
@@ -90,7 +127,7 @@ class LocalDirectoryWatcher:
         # 累计自动重启次数
         self._restart_count: int = 0
         # 待延迟重扫的新增目录
-        self._pending_rescans: list[dict] = []
+        self._pending_rescans: list[_PendingRescan] = []
         # 仍在写入中的文件事件；键为规范化路径，值保存上次采样和连续稳定次数
         self._pending_stability: dict[str, _PendingStability] = {}
 
@@ -126,7 +163,7 @@ class LocalDirectoryWatcher:
         """
         return self._poll_delay_ms
 
-    def start(self):
+    def start(self) -> None:
         """
         启动本地目录监控线程。
         """
@@ -154,13 +191,13 @@ class LocalDirectoryWatcher:
         )
         self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         """
         请求停止本地目录监控线程。
         """
         self._stop_event.set()
 
-    def join(self, timeout: Optional[float] = None):
+    def join(self, timeout: Optional[float] = None) -> None:
         """
         等待本地目录监控线程退出。
         :param timeout: 最长等待秒数
@@ -201,7 +238,7 @@ class LocalDirectoryWatcher:
         self._last_activity = time.monotonic()
         self._last_activity_wall = time.time()
 
-    def _run(self):
+    def _run(self) -> None:
         """
         运行 watchfiles 主循环，异常时退避重启，避免一次故障导致监控永久停摆。
         """
@@ -235,7 +272,7 @@ class LocalDirectoryWatcher:
                 if self._stop_event.wait(timeout=delay):
                     return
 
-    def _run_watch(self, force_polling: Optional[bool]):
+    def _run_watch(self, force_polling: Optional[bool]) -> None:
         """
         执行一次 watchfiles 监控循环。
         :param force_polling: 是否强制轮询
@@ -263,7 +300,7 @@ class LocalDirectoryWatcher:
             self._handle_changes(changes)
             self._mark_activity()
 
-    def _handle_changes(self, changes: set[tuple[Change, str]]):
+    def _handle_changes(self, changes: set[tuple[Change, str]]) -> None:
         """
         将 watchfiles 原始变更转换为目录监控事件。
         :param changes: watchfiles 返回的变更集合
@@ -285,6 +322,9 @@ class LocalDirectoryWatcher:
             if change_type not in self._HANDLE_CHANGES:
                 continue
             event_path = Path(path_str)
+            # 下载临时文件会持续写入，须在稳定性排队前排除，避免正常下载触发超时告警。
+            if self._is_download_temporary_file(event_path):
+                continue
             event = self._build_event(change_type=change_type, event_path=event_path)
             if not event:
                 # 「文件已消失」与「挂载抖动瞬时不可见」在此刻无法区分，静默丢弃就是
@@ -315,6 +355,19 @@ class LocalDirectoryWatcher:
                 )
             except Exception as err:
                 logger.error(f"处理本地目录监控事件失败: {path_str} - {err}")
+
+    @staticmethod
+    def _is_download_temporary_file(event_path: Path) -> bool:
+        """
+        按当前下载临时后缀配置过滤文件，沿用整理分发器的大小写不敏感匹配。
+
+        :param event_path: 待检查的监控路径
+        :return: 文件后缀是否属于配置的下载临时后缀
+        """
+        return bool(event_path.suffix) and event_path.suffix.casefold() in {
+            extension.casefold()
+            for extension in get_runtime_setting('DOWNLOAD_TMPEXT')
+        }
 
     def _queue_stability_event(self, change_type: Change, event_path: Path,
                                file_size: int) -> None:
@@ -372,6 +425,9 @@ class LocalDirectoryWatcher:
             if not item:
                 continue
             event_path = item["path"]
+            # 配置可能在文件入队后变化，告警前再次核对，避免旧条目继续误报。
+            if self._is_download_temporary_file(event_path):
+                continue
             if (
                     not item.get("warning_sent")
                     and now - item.get("first_seen", now) >= self.FILE_STABILITY_WARNING_SECONDS
@@ -407,7 +463,9 @@ class LocalDirectoryWatcher:
             self._dispatch_changes({(item["change_type"], path_str)}, defer_unstable=False)
 
     def _notify_stability_state(self, event_path: Path, *, stable: bool) -> None:
-        """把长期不稳定和后续恢复事件交给监控门面；兼容旧回调时静默跳过。"""
+        """
+        把长期不稳定和后续恢复事件交给监控门面；兼容旧回调时静默跳过。
+        """
         callback_name = "event_stable" if stable else "event_unstable"
         callback = getattr(self._callback, callback_name, None)
         if not callable(callback):
@@ -529,7 +587,7 @@ class LocalDirectoryWatcher:
             return collected, False, True
         return collected, False, False
 
-    def _schedule_rescan(self, directory: Path, seen: set[str]):
+    def _schedule_rescan(self, directory: Path, seen: set[str]) -> None:
         """
         安排一个新增目录的延迟重扫。
         :param directory: 新增目录
@@ -561,7 +619,7 @@ class LocalDirectoryWatcher:
             "failures": 0,
         })
 
-    def _process_pending_rescans(self):
+    def _process_pending_rescans(self) -> None:
         """
         对到期的新增目录做延迟重扫，补回首次展开时尚不可见的文件。
         """

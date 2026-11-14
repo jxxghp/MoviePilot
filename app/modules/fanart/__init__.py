@@ -1,12 +1,17 @@
+"""
+Fanart 图片查询、语言选择和媒体刮削清单生成。
+"""
+
 import asyncio
 import hashlib
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, cast
+from urllib.parse import urlsplit
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import MediaInfo
 from app.modules import _ModuleBase
-from app.runtime.cache import cached
+from app.runtime.cache import AsyncCacheControls, CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
@@ -15,310 +20,27 @@ from app.schemas.types import MediaType, ModuleType, OtherModulesType
 
 class FanartModule(_ModuleBase):
     """
-    {
-        "name": "The Wheel of Time",
-        "thetvdb_id": "355730",
-        "tvposter": [
-            {
-                "id": "174068",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvposter/the-wheel-of-time-64b009de9548d.jpg",
-                "lang": "en",
-                "likes": "3"
-            },
-            {
-                "id": "176424",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvposter/the-wheel-of-time-64de44fe42073.jpg",
-                "lang": "00",
-                "likes": "3"
-            },
-            {
-                "id": "176407",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvposter/the-wheel-of-time-64dde63c7c941.jpg",
-                "lang": "en",
-                "likes": "0"
-            },
-            {
-                "id": "177321",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvposter/the-wheel-of-time-64eda10599c3d.jpg",
-                "lang": "cz",
-                "likes": "0"
-            },
-            {
-                "id": "155050",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvposter/the-wheel-of-time-6313adbd1fd58.jpg",
-                "lang": "pl",
-                "likes": "0"
-            },
-            {
-                "id": "140198",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvposter/the-wheel-of-time-61a0d7b11952e.jpg",
-                "lang": "en",
-                "likes": "0"
-            },
-            {
-                "id": "140034",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvposter/the-wheel-of-time-619e65b73871d.jpg",
-                "lang": "en",
-                "likes": "0"
-            }
-        ],
-        "hdtvlogo": [
-            {
-                "id": "139835",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-6197d9392faba.png",
-                "lang": "en",
-                "likes": "3"
-            },
-            {
-                "id": "140039",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-619e87941a128.png",
-                "lang": "pt",
-                "likes": "3"
-            },
-            {
-                "id": "140092",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-619fa2347bada.png",
-                "lang": "en",
-                "likes": "3"
-            },
-            {
-                "id": "164312",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-63c8185cb8824.png",
-                "lang": "hu",
-                "likes": "1"
-            },
-            {
-                "id": "139827",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-6197539658a9e.png",
-                "lang": "en",
-                "likes": "1"
-            },
-            {
-                "id": "177214",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-64ebae44c23a6.png",
-                "lang": "cz",
-                "likes": "0"
-            },
-            {
-                "id": "177215",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-64ebae472deef.png",
-                "lang": "cz",
-                "likes": "0"
-            },
-            {
-                "id": "156163",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-63316bef1ff9d.png",
-                "lang": "cz",
-                "likes": "0"
-            },
-            {
-                "id": "155051",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-6313add04ca92.png",
-                "lang": "pl",
-                "likes": "0"
-            },
-            {
-                "id": "152668",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-62ced3775a40a.png",
-                "lang": "pl",
-                "likes": "0"
-            },
-            {
-                "id": "142266",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdtvlogo/the-wheel-of-time-61ccd93eeac2b.png",
-                "lang": "de",
-                "likes": "0"
-            }
-        ],
-        "hdclearart": [
-            {
-                "id": "164313",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdclearart/the-wheel-of-time-63c81871c982c.png",
-                "lang": "en",
-                "likes": "3"
-            },
-            {
-                "id": "140284",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdclearart/the-wheel-of-time-61a2128ed1df2.png",
-                "lang": "pt",
-                "likes": "3"
-            },
-            {
-                "id": "139828",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdclearart/the-wheel-of-time-61975401e894c.png",
-                "lang": "en",
-                "likes": "1"
-            },
-            {
-                "id": "164314",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdclearart/the-wheel-of-time-63c8188488a5f.png",
-                "lang": "hu",
-                "likes": "1"
-            },
-            {
-                "id": "177322",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdclearart/the-wheel-of-time-64eda135933b6.png",
-                "lang": "cz",
-                "likes": "0"
-            },
-            {
-                "id": "142267",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/hdclearart/the-wheel-of-time-61ccda9918c5c.png",
-                "lang": "de",
-                "likes": "0"
-            }
-        ],
-        "seasonposter": [
-            {
-                "id": "140199",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/seasonposter/the-wheel-of-time-61a0d7c2976de.jpg",
-                "lang": "en",
-                "likes": "1",
-                "season": "1"
-            },
-            {
-                "id": "176395",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/seasonposter/the-wheel-of-time-64dd80b3d79a9.jpg",
-                "lang": "en",
-                "likes": "0",
-                "season": "1"
-            },
-            {
-                "id": "140035",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/seasonposter/the-wheel-of-time-619e65c4d5357.jpg",
-                "lang": "en",
-                "likes": "0",
-                "season": "1"
-            }
-        ],
-        "tvthumb": [
-            {
-                "id": "140242",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvthumb/the-wheel-of-time-61a1813035506.jpg",
-                "lang": "en",
-                "likes": "1"
-            },
-            {
-                "id": "177323",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvthumb/the-wheel-of-time-64eda15b6dce6.jpg",
-                "lang": "cz",
-                "likes": "0"
-            },
-            {
-                "id": "176399",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvthumb/the-wheel-of-time-64dd85c9b618c.jpg",
-                "lang": "en",
-                "likes": "0"
-            },
-            {
-                "id": "152669",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvthumb/the-wheel-of-time-62ced53d16574.jpg",
-                "lang": "pl",
-                "likes": "0"
-            },
-            {
-                "id": "141983",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvthumb/the-wheel-of-time-61c6d04a6d701.jpg",
-                "lang": "en",
-                "likes": "0"
-            }
-        ],
-        "showbackground": [
-            {
-                "id": "177324",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/showbackground/the-wheel-of-time-64eda1833ccb1.jpg",
-                "lang": "",
-                "likes": "0",
-                "season": "all"
-            },
-            {
-                "id": "141986",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/showbackground/the-wheel-of-time-61c6d08f7c7e2.jpg",
-                "lang": "",
-                "likes": "0",
-                "season": "all"
-            },
-            {
-                "id": "139868",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/showbackground/the-wheel-of-time-6198ce358b98a.jpg",
-                "lang": "",
-                "likes": "0",
-                "season": "all"
-            }
-        ],
-        "seasonthumb": [
-            {
-                "id": "176396",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/seasonthumb/the-wheel-of-time-64dd80c8593f9.jpg",
-                "lang": "en",
-                "likes": "0",
-                "season": "1"
-            },
-            {
-                "id": "176400",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/seasonthumb/the-wheel-of-time-64dd85da7c5e9.jpg",
-                "lang": "en",
-                "likes": "0",
-                "season": "0"
-            }
-        ],
-        "tvbanner": [
-            {
-                "id": "176397",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvbanner/the-wheel-of-time-64dd80da9a255.jpg",
-                "lang": "en",
-                "likes": "0"
-            },
-            {
-                "id": "176401",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvbanner/the-wheel-of-time-64dd85e8904ea.jpg",
-                "lang": "en",
-                "likes": "0"
-            },
-            {
-                "id": "141988",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvbanner/the-wheel-of-time-61c6d34bceb5f.jpg",
-                "lang": "en",
-                "likes": "0"
-            },
-            {
-                "id": "141984",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/tvbanner/the-wheel-of-time-61c6d06c1c21c.jpg",
-                "lang": "en",
-                "likes": "0"
-            }
-        ],
-        "seasonbanner": [
-            {
-                "id": "176398",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/seasonbanner/the-wheel-of-time-64dd80e7dbd9f.jpg",
-                "lang": "en",
-                "likes": "0",
-                "season": "1"
-            },
-            {
-                "id": "176402",
-                "url": "http://assets.fanart.tv/fanart/tv/355730/seasonbanner/the-wheel-of-time-64dd85fb4f1b1.jpg",
-                "lang": "en",
-                "likes": "0",
-                "season": "0"
-            }
-        ]
-    }
+    从 Fanart 补充媒体展示图片，并生成媒体服务器兼容的刮削图片清单。
+
+    电影使用 TMDB 标识，电视剧使用 TVDB 标识。普通图片按语言偏好和点赞数选择，
+    季图片按季号取服务端首次提供的同名资源，不支持分集图片。
     """
 
     def init_module(self) -> None:
-        """初始化 Fanart 模块。
+        """
+        初始化 Fanart 模块。
 
         请求缓存键包含 API Key 指纹，更换 Key 后自然使用新键，无需在每次启动或重载时清空缓存。
         """
 
-    def stop(self):
-        """停止 Fanart 模块；请求资源由每次调用按当前配置创建。"""
+    def stop(self) -> None:
+        """
+        停止 Fanart 模块；请求资源由每次调用按当前配置创建。
+        """
 
     def test(self) -> Tuple[bool, str]:
         """
-        测试模块连接性
+        测试模块连接性。
         """
         ret = RequestUtils().get_res("https://webservice.fanart.tv")
         if ret and ret.status_code == 200:
@@ -328,39 +50,47 @@ class FanartModule(_ModuleBase):
         return False, "fanart网络连接失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """由 Fanart 总开关控制模块是否参与宿主运行时。"""
+        """
+        由 Fanart 总开关控制模块是否参与宿主运行时。
+        """
         return "FANART_ENABLE", True
 
     @staticmethod
     def get_name() -> str:
+        """
+        返回 Fanart 模块的稳定名称。
+        """
         return "Fanart"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return OtherModulesType.Fanart
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 0
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
-        获取图片
-        :param mediainfo:  识别的媒体信息
-        :return: 更新后的媒体信息
+        获取 Fanart 图片并填充媒体当前缺失的展示图片字段。
+
+        已有图片不覆盖，其他 Fanart 图片仅用于刮削清单，不写入未声明字段。
+
+        :param mediainfo: 待补充的媒体对象，将原地修改海报、背景图或标志字段
+        :return: 原媒体对象；模块关闭、缺少身份或没有图片时为 None
         """
         images = self.__obtain_fanart_images(mediainfo=mediainfo)
         if not images:
@@ -371,9 +101,12 @@ class FanartModule(_ModuleBase):
 
     async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """
-        获取图片（异步版本）
-        :param mediainfo:  识别的媒体信息
-        :return: 更新后的媒体信息
+        异步获取 Fanart 图片并填充媒体当前缺失的展示图片字段。
+
+        已有图片不覆盖，其他 Fanart 图片仅用于刮削清单，不写入未声明字段。
+
+        :param mediainfo: 待补充的媒体对象，将原地修改海报、背景图或标志字段
+        :return: 原媒体对象；模块关闭、缺少身份或没有图片时为 None
         """
         images = await self.__async_obtain_fanart_images(mediainfo=mediainfo)
         if not images:
@@ -383,9 +116,11 @@ class FanartModule(_ModuleBase):
         return mediainfo
 
     @classmethod
-    def __set_mediainfo_images(cls, mediainfo: MediaInfo, images: dict) -> None:
+    def __set_mediainfo_images(
+        cls, mediainfo: MediaInfo, images: dict[str, Any]
+    ) -> None:
         """
-        显式回填 MediaInfo 支持的展示图片字段
+        显式回填 MediaInfo 支持的展示图片字段。
         """
         for image_name, image_url in images.items():
             image_attr = cls.__mediainfo_image_attr(image_name)
@@ -398,12 +133,14 @@ class FanartModule(_ModuleBase):
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
-        获取图片名称和url
-        :param mediainfo: 媒体信息
-        :param season: 季号
-        :param episode: 集号
+        查询媒体级或指定季的图片清单。
+
+        :param mediainfo: 含来源标识的统一媒体信息
+        :param season: 指定季号；None 包含媒体级及所有季图片
+        :param episode: 分集图片请求，非 None 时直接返回 None
+        :return: 图片文件名与下载 URL 映射；模块关闭、缺少身份或没有图片时为 None
         """
         if episode is not None:
             # Fanart 没有集图片
@@ -412,9 +149,9 @@ class FanartModule(_ModuleBase):
 
     def __obtain_fanart_images(
         self, mediainfo: MediaInfo, season: Optional[int] = None
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
-        获取 Fanart 图片并转换为刮削图片名称
+        获取 Fanart 图片并转换为刮削图片名称。
         """
         query = self.__fanart_query(mediainfo=mediainfo)
         if not query:
@@ -426,9 +163,9 @@ class FanartModule(_ModuleBase):
         self,
         mediainfo: MediaInfo,
         season: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
-        异步获取 Fanart 图片并转换为刮削图片名称
+        异步获取 Fanart 图片并转换为刮削图片名称。
         """
         query = self.__fanart_query(mediainfo=mediainfo)
         if not query:
@@ -441,41 +178,52 @@ class FanartModule(_ModuleBase):
         mediainfo: MediaInfo,
     ) -> Optional[Tuple[MediaType, Union[str, int]]]:
         """
-        获取 Fanart 查询参数
+        获取 Fanart 查询参数。
         """
         if not get_runtime_setting('FANART_ENABLE'):
             return None
         if not mediainfo.tmdb_id and not mediainfo.tvdb_id:
             return None
-        if mediainfo.type == MediaType.MOVIE:
-            return mediainfo.type, mediainfo.tmdb_id
+        if mediainfo.type == MediaType.MOVIE and mediainfo.tmdb_id is not None:
+            return MediaType.MOVIE, mediainfo.tmdb_id
         if mediainfo.tvdb_id:
-            return mediainfo.type, mediainfo.tvdb_id
+            return MediaType.TV, mediainfo.tvdb_id
         logger.info(f"{mediainfo.title_year} 没有tvdbid，无法获取fanart图片")
         return None
 
     def __extract_images(
         self,
         mediainfo: MediaInfo,
-        result: Optional[dict],
+        result: Optional[dict[str, Any]],
         season: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
-        从 Fanart 响应中提取图片名称和地址
+        把服务端图片类型转换为刮削文件名，并筛选所需季号。
+
+        季图片中同名文件只保留首次出现的地址，特别篇使用 season-specials 前缀。
+
+        :param mediainfo: 用于失败日志的媒体信息
+        :param result: Fanart 原始响应
+        :param season: 指定季号；None 同时保留媒体级与所有季图片
+        :return: 文件名到 URL 的映射；响应失败或没有可用图片时为 None
         """
         if not result or result.get("status") == "error":
             logger.warn(f"没有获取到 {mediainfo.title_year} 的fanart图片数据")
             return None
 
-        ret = {}
-        # 获取所有图片
+        ret: dict[str, Any] = {}
         for name, images in result.items():
             if not images:
                 continue
             if not isinstance(images, list):
                 continue
 
-            # 图片属性xx_path
+            if (
+                name.lower() in {"show4kbackground", "movie4kbackground"}
+                and not get_runtime_setting("SCRAP_4K_BACKGROUND", True)
+            ):
+                continue
+
             image_name = self.__name(name)
             if image_name.startswith("season"):
                 image_type = image_name[6:]
@@ -485,7 +233,6 @@ class FanartModule(_ModuleBase):
                     if image_season is not None:
                         if season is not None and str(image_season) != str(season):
                             continue
-                        # 包括poster,thumb,banner
                         if image_season == "0":
                             season_image = f"season-specials-{image_type}"
                         else:
@@ -494,21 +241,21 @@ class FanartModule(_ModuleBase):
                             )
                         if image_url := image_obj.get("url"):
                             ret.setdefault(
-                                f"{season_image}{Path(image_url).suffix}", image_url
+                                f"{season_image}{self.__image_suffix(image_url)}", image_url
                             )
             else:
                 if season is not None:
                     continue
                 image_obj = self.__pick_best_image(images)
                 if image_url := image_obj.get("url"):
-                    ret[f"{image_name}{Path(image_url).suffix}"] = image_url
+                    ret[f"{image_name}{self.__image_suffix(image_url)}"] = image_url
 
         return ret or None
 
     @staticmethod
     def __mediainfo_image_attr(image_name: str) -> Optional[str]:
         """
-        将 Fanart 刮削图片名映射为 MediaInfo 的显式图片字段
+        将 Fanart 刮削图片名映射为 MediaInfo 的显式图片字段。
         """
         image_key = Path(image_name).stem
         if image_key == "poster":
@@ -520,9 +267,15 @@ class FanartModule(_ModuleBase):
         return None
 
     @staticmethod
-    def __pick_best_image(_images: list):
+    def __pick_best_image(_images: list[dict[str, Any]]) -> dict[str, Any]:
         """
-        其他图片，优先环境变量指定语言，再like最多
+        按配置语言顺序选择图片，再按点赞数从高到低选择。
+
+        配置语言无结果时依次回退中文、英文和全部图片。
+        回退到全部图片时会原地排序输入列表。
+
+        :param _images: 非空图片列表，候选需提供可转为整数的 likes 值
+        :return: 选中的原始图片记录
         """
         lang_env = get_runtime_setting('FANART_LANG')
         if lang_env:
@@ -532,7 +285,7 @@ class FanartModule(_ModuleBase):
                 if lang_images:
                     lang_images.sort(key=lambda x: int(x.get("likes", 0)), reverse=True)
                     return lang_images[0]
-        # 没设置或没找到，按原逻辑 zh、en、like最多
+        # 自定义语言没有命中时，依次尝试中文、英文和点赞数最高的图片。
         zh_images = [img for img in _images if img.get("lang") == "zh"]
         if zh_images:
             zh_images.sort(key=lambda x: int(x.get("likes", 0)), reverse=True)
@@ -547,9 +300,12 @@ class FanartModule(_ModuleBase):
     _FANART_NAME_MAP = {
         "showbackground": "fanart",
         "moviebackground": "fanart",
+        "show4kbackground": "background",
+        "movie4kbackground": "background",
         "hdtvlogo": "logo",
         "hdmovielogo": "logo",
         "movielogo": "logo",
+        "clearlogo": "logo",
         "tvposter": "poster",
         "movieposter": "poster",
         "tvthumb": "thumb",
@@ -569,22 +325,49 @@ class FanartModule(_ModuleBase):
     @classmethod
     def __name(cls, fanart_name: str) -> str:
         """
-        转换Fanart图片的名字为媒体服务器兼容名称
+        转换Fanart图片的名字为媒体服务器兼容名称。
         """
         return cls._FANART_NAME_MAP.get(fanart_name.lower(), fanart_name)
+
+    @staticmethod
+    def __image_suffix(image_url: str) -> str:
+        """
+        将 Fanart URL 的后缀归一为小写媒体图片后缀。
+
+        JPEG 的两种常见写法共享 ``.jpg`` 文件名；无法从 URL 判断格式时沿用
+        ``.jpg``，避免把查询参数或未知后缀写入媒体目录。
+
+        :param image_url: Fanart 图片地址
+        :return: 归一后的图片后缀
+        """
+        suffix = Path(urlsplit(image_url).path).suffix.lower()
+        if suffix == ".jpeg":
+            return ".jpg"
+        if suffix in {".jpg", ".png", ".webp"}:
+            return suffix
+        return ".jpg"
 
     @classmethod
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     def __request_fanart(
         cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
+        """
+        查询 Fanart 图集并使用密钥指纹隔离缓存。
+
+        :param media_type: 电影使用 movies 端点，其他类型使用 tv 端点
+        :param queryid: 电影的 TMDB 标识或电视剧的 TVDB 标识
+        :param _key_token: API 密钥摘要，仅参与缓存身份，不作为接口参数
+        :return: 原始图集；无有效响应时为空映射，捕获请求异常时为 None
+        """
         image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
         try:
             ret = RequestUtils(proxies=get_runtime_setting("PROXY"), timeout=10).get_res(
                 image_url, raise_exception=True
             )
             if ret:
-                return ret.json()
+                payload = ret.json()
+                return payload if isinstance(payload, dict) else {}
             else:
                 logger.debug(f"未能获取到 {queryid} 的Fanart图片")
                 return {}
@@ -596,7 +379,15 @@ class FanartModule(_ModuleBase):
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     async def __async_request_fanart(
         cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
+        """
+        异步查询 Fanart 图集并使用密钥指纹隔离缓存。
+
+        :param media_type: 电影使用 movies 端点，其他类型使用 tv 端点
+        :param queryid: 电影的 TMDB 标识或电视剧的 TVDB 标识
+        :param _key_token: API 密钥摘要，仅参与缓存身份，不作为接口参数
+        :return: 原始图集；无有效响应时为空映射，捕获请求异常时为 None
+        """
         image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
         try:
             ret = await AsyncRequestUtils(
@@ -604,7 +395,7 @@ class FanartModule(_ModuleBase):
             ).get_json(
                 image_url
             )
-            if ret:
+            if isinstance(ret, dict):
                 return ret
             logger.debug(f"未能获取到 {queryid} 的Fanart图片")
             return {}
@@ -614,7 +405,8 @@ class FanartModule(_ModuleBase):
 
     @staticmethod
     def __key_token() -> str:
-        """返回当前 API Key 的指纹，只用于区分缓存键，不把 Key 原文写进缓存。
+        """
+        返回当前 API Key 的指纹，只用于区分缓存键，不把 Key 原文写进缓存。
 
         Key 无效时 Fanart 返回空图集并被长期缓存；换 Key 后指纹变化，旧结果不再命中。
         """
@@ -624,7 +416,7 @@ class FanartModule(_ModuleBase):
     @classmethod
     def __fanart_url(cls, media_type: MediaType, queryid: Union[str, int]) -> str:
         """
-        生成 Fanart 请求地址
+        生成 Fanart 请求地址。
         """
         api_key = get_runtime_setting("FANART_API_KEY")
         if media_type == MediaType.MOVIE:
@@ -632,10 +424,12 @@ class FanartModule(_ModuleBase):
         return f"https://webservice.fanart.tv/v3/tv/{queryid}?api_key={api_key}"
 
     def clear_cache(self) -> None:
-        """清理同步缓存，并由宿主登记运行中事件循环的异步清理。"""
+        """
+        清理同步缓存，并由宿主登记运行中事件循环的异步清理。
+        """
         logger.info(f"开始清除{self.get_name()}缓存 ...")
-        self.__request_fanart.cache_clear()
-        async_cache_clear = self.__async_request_fanart.cache_clear()
+        cast(CacheControls, self.__request_fanart).cache_clear()
+        async_cache_clear = cast(AsyncCacheControls, self.__async_request_fanart).cache_clear()
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -647,6 +441,6 @@ class FanartModule(_ModuleBase):
                     owner="module.fanart.cache_clear",
                 )
             except RuntimeError:
-                # 关停阶段拒绝新 owner 时，同步缓存已清理且登记器会关闭 coroutine。
+                # 关停阶段拒绝登记新任务时，同步缓存已清理，登记器负责关闭协程。
                 return
         logger.info(f"{self.get_name()}缓存清除完成")

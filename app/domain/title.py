@@ -1,4 +1,6 @@
-"""媒体标题候选判断和搜索关键字解析规则。"""
+"""
+媒体标题候选判断和搜索关键字解析规则。
+"""
 
 import re
 from typing import Optional, Tuple
@@ -7,7 +9,6 @@ import cn2an
 
 from app.foundation.text import count_words
 from app.schemas.types import MediaType
-
 
 _MAX_TITLE_WORDS = 10
 _MIN_TITLE_LENGTH = 2
@@ -23,7 +24,9 @@ _TITLE_CHARACTER_PATTERN = re.compile(r"[\u4e00-\u9fffA-Za-z]")
 
 
 def is_media_title_like(value: str) -> bool:
-    """判断短文本是否具备影视标题特征而不是对话或链接。"""
+    """
+    判断短文本是否具备影视标题特征而不是对话或链接。
+    """
     if not value:
         return False
     normalized = re.sub(r"\s+", " ", value).strip()
@@ -49,7 +52,9 @@ def is_media_title_like(value: str) -> bool:
 def parse_search_keyword(
     content: str,
 ) -> Tuple[Optional[MediaType], Optional[str], Optional[int], Optional[int], Optional[str], Optional[str]]:
-    """从搜索文本中提取媒体类型、标题、季、集和年份。"""
+    """
+    从搜索文本中提取媒体类型、标题、季、集和年份。
+    """
     if not content:
         return None, None, None, None, None, None
 
@@ -76,7 +81,7 @@ def parse_search_keyword(
 
     year_match = re.search(r"[\s(]+(\d{4})[\s)]*", content)
     year = year_match.group(1) if year_match else None
-    keyword = re.sub(
+    keyword: Optional[str] = re.sub(
         r"第\s*[0-9一二三四五六七八九十]+\s*季|"
         r"第\s*[0-9一二三四五六七八九十百零]+\s*集|"
         r"[\s(]+(\d{4})[\s)]*",

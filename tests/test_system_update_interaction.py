@@ -1,4 +1,6 @@
-"""通知渠道主程序升级交互的状态机、进度编辑和路由测试。"""
+"""
+通知渠道主程序升级交互的状态机、进度编辑和路由测试。
+"""
 
 from __future__ import annotations
 
@@ -25,29 +27,41 @@ from app.schemas.types import NotificationChannel
 
 
 class _Messenger:
-    """记录交互发送与编辑调用的内存消息网关。"""
+    """
+    记录交互发送与编辑调用的内存消息网关。
+    """
 
     def __init__(self, *, edit_success: bool = True) -> None:
-        """初始化消息记录并配置编辑调用结果。"""
+        """
+        初始化消息记录并配置编辑调用结果。
+        """
         self.messages: list[Message] = []
         self.edits: list[dict[str, Any]] = []
         self.edit_success = edit_success
 
     def post_message(self, message: Message) -> None:
-        """记录一条新发送的消息。"""
+        """
+        记录一条新发送的消息。
+        """
         self.messages.append(message)
 
     def edit_message(self, **kwargs: Any) -> bool:
-        """记录一次原消息编辑并返回可控结果。"""
+        """
+        记录一次原消息编辑并返回可控结果。
+        """
         self.edits.append(kwargs)
         return self.edit_success
 
 
 class _Actions:
-    """提供可排队状态和结果的系统更新应用用例替身。"""
+    """
+    提供可排队状态和结果的系统更新应用用例替身。
+    """
 
     def __init__(self, check_status: SystemUpdateStatus) -> None:
-        """使用初始检查状态构造更新用例替身。"""
+        """
+        使用初始检查状态构造更新用例替身。
+        """
         self.check_status = check_status
         self.current_status = check_status
         self.monitor_statuses: list[SystemUpdateStatus] = []
@@ -57,25 +71,33 @@ class _Actions:
         self.install_calls: list[str] = []
 
     def check_update(self) -> SystemUpdateStatus:
-        """返回配置的检查结果。"""
+        """
+        返回配置的检查结果。
+        """
         self.current_status = self.check_status
         return self.check_status
 
     def update_status(self) -> SystemUpdateStatus:
-        """按顺序返回监视状态，耗尽后保留最后状态。"""
+        """
+        按顺序返回监视状态，耗尽后保留最后状态。
+        """
         if self.monitor_statuses:
             self.current_status = self.monitor_statuses.pop(0)
         return self.current_status
 
     def download_update(self, target: str = "application") -> SystemOperationResult:
-        """记录下载目标并返回配置结果。"""
+        """
+        记录下载目标并返回配置结果。
+        """
         self.download_calls.append(target)
         if isinstance(self.download_result.data, SystemUpdateStatus):
             self.current_status = self.download_result.data
         return self.download_result
 
     def install_update(self, target: str = "application") -> SystemOperationResult:
-        """记录安装目标并返回配置结果。"""
+        """
+        记录安装目标并返回配置结果。
+        """
         self.install_calls.append(target)
         return self.install_result
 
@@ -88,7 +110,9 @@ def _status(
     total_bytes: int = 0,
     error: str | None = None,
 ) -> SystemUpdateStatus:
-    """构造只包含主程序明细的聚合更新快照。"""
+    """
+    构造只包含主程序明细的聚合更新快照。
+    """
     version = "v3.1.0" if state != "idle" or error else None
     item = SystemUpdateItemStatus(
         type="application",
@@ -122,7 +146,9 @@ def _status(
 
 @pytest.fixture(autouse=True)
 def _reset_update_interactions() -> None:
-    """隔离全局更新会话和活动监视请求。"""
+    """
+    隔离全局更新会话和活动监视请求。
+    """
     update_interaction_manager.clear()
     with update_module._monitor_lock:
         update_module._monitored_requests.clear()
@@ -140,7 +166,9 @@ def _handler(
     mark_restart: Mock | None = None,
     clear_restart_marker: Mock | None = None,
 ) -> SystemUpdateInteractionHandler:
-    """构造零等待且可观察后台协程的更新交互控制器。"""
+    """
+    构造零等待且可观察后台协程的更新交互控制器。
+    """
     return SystemUpdateInteractionHandler(
         messenger=messenger,
         actions=actions,
@@ -157,12 +185,16 @@ async def _run_sync(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    """在测试事件循环内直接执行同步更新操作。"""
+    """
+    在测试事件循环内直接执行同步更新操作。
+    """
     return function(*args, **kwargs)
 
 
 def test_update_command_prompts_for_download_when_release_is_available() -> None:
-    """检测到新版本后应显示版本信息和确认升级按钮。"""
+    """
+    检测到新版本后应显示版本信息和确认升级按钮。
+    """
     messenger = _Messenger()
     actions = _Actions(_status("available"))
     submitted: list[Coroutine[Any, Any, None]] = []
@@ -192,7 +224,9 @@ def test_update_command_prompts_for_download_when_release_is_available() -> None
 
 
 def test_download_callback_edits_same_message_until_restart_confirmation() -> None:
-    """下载进度应持续编辑回调原消息，完成后在同一消息显示重启按钮。"""
+    """
+    下载进度应持续编辑回调原消息，完成后在同一消息显示重启按钮。
+    """
     messenger = _Messenger()
     actions = _Actions(_status("available"))
     actions.download_result = SystemOperationResult(
@@ -258,7 +292,9 @@ def test_download_callback_edits_same_message_until_restart_confirmation() -> No
 
 
 def test_text_confirmation_uses_milestone_messages_without_editing_support() -> None:
-    """无编辑能力的渠道仍应通过文本确认并按进度里程碑继续流程。"""
+    """
+    无编辑能力的渠道仍应通过文本确认并按进度里程碑继续流程。
+    """
     messenger = _Messenger()
     actions = _Actions(_status("available"))
     actions.download_result = SystemOperationResult(
@@ -310,7 +346,9 @@ def test_text_confirmation_uses_milestone_messages_without_editing_support() -> 
 def test_restart_confirmation_marks_receipt_and_recovers_failed_install(
     install_success: bool,
 ) -> None:
-    """确认重启应先更新消息，成功结束会话，失败则清理回执并恢复按钮。"""
+    """
+    确认重启应先更新消息，成功结束会话，失败则清理回执并恢复按钮。
+    """
     messenger = _Messenger()
     ready = _status(
         "ready",
@@ -372,7 +410,9 @@ def test_restart_confirmation_marks_receipt_and_recovers_failed_install(
 
 
 def test_update_session_and_callback_are_registered_in_message_router(monkeypatch) -> None:
-    """统一消息路由应识别更新会话文本和 update 回调前缀。"""
+    """
+    统一消息路由应识别更新会话文本和 update 回调前缀。
+    """
     request = update_interaction_manager.create_or_replace(
         user_id="10001",
         command="/update",
@@ -410,7 +450,9 @@ def test_update_session_and_callback_are_registered_in_message_router(monkeypatc
 
 
 def test_restart_finish_reports_actual_versions_for_update_receipt() -> None:
-    """升级重启完成通知应报告当前运行版本而非旧版远端查询。"""
+    """
+    升级重启完成通知应报告当前运行版本而非旧版远端查询。
+    """
     chain = SystemChain()
     with (
         patch.object(

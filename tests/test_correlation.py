@@ -1,4 +1,6 @@
-"""请求关联 ID 在 HTTP、线程、事件和外部请求边界的传播测试。"""
+"""
+请求关联 ID 在 HTTP、线程、事件和外部请求边界的传播测试。
+"""
 
 import asyncio
 import logging
@@ -29,17 +31,25 @@ from app.schemas.types import EventType
 
 
 def _correlation_app() -> Starlette:
-    """构造同时包含普通响应和 SSE 风格流式响应的最小应用。"""
+    """
+    构造同时包含普通响应和 SSE 风格流式响应的最小应用。
+    """
 
     async def current_id(_request):
-        """返回当前协程看到的关联 ID。"""
+        """
+        返回当前协程看到的关联 ID。
+        """
         await asyncio.sleep(0)
         return JSONResponse({"request_id": get_correlation_id()})
 
     async def stream_id(_request):
-        """在响应开始后读取关联 ID，验证上下文覆盖完整流生命周期。"""
+        """
+        在响应开始后读取关联 ID，验证上下文覆盖完整流生命周期。
+        """
         async def content():
-            """生成一条 SSE 数据。"""
+            """
+            生成一条 SSE 数据。
+            """
             await asyncio.sleep(0)
             yield f"data: {get_correlation_id()}\n\n"
 
@@ -57,7 +67,9 @@ def _correlation_app() -> Starlette:
 
 @pytest.mark.asyncio
 async def test_concurrent_requests_keep_isolated_ids_and_stream_context() -> None:
-    """并发请求及流式响应必须各自保留入口 ID。"""
+    """
+    并发请求及流式响应必须各自保留入口 ID。
+    """
     transport = httpx.ASGITransport(app=_correlation_app())
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         first, second = await asyncio.gather(
@@ -78,7 +90,9 @@ async def test_concurrent_requests_keep_isolated_ids_and_stream_context() -> Non
 
 @pytest.mark.asyncio
 async def test_invalid_request_id_is_replaced_and_threadpool_copies_context() -> None:
-    """日志注入型入口值被替换，线程池仍读取替换后的安全 ID。"""
+    """
+    日志注入型入口值被替换，线程池仍读取替换后的安全 ID。
+    """
     transport = httpx.ASGITransport(app=_correlation_app())
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(
@@ -94,11 +108,15 @@ async def test_invalid_request_id_is_replaced_and_threadpool_copies_context() ->
 
 
 def test_event_dispatch_restores_producer_correlation_id() -> None:
-    """后台事件处理器使用事件生产时固化的 ID，而非消费者线程上下文。"""
+    """
+    后台事件处理器使用事件生产时固化的 ID，而非消费者线程上下文。
+    """
     observed = []
 
     def handler(_event):
-        """记录处理器实际看到的关联 ID。"""
+        """
+        记录处理器实际看到的关联 ID。
+        """
         observed.append(get_correlation_id())
 
     resolver = MagicMock()
@@ -128,7 +146,9 @@ def test_event_dispatch_restores_producer_correlation_id() -> None:
 
 
 def test_sync_external_request_and_formatter_receive_correlation_id() -> None:
-    """同步外呼头和结构化日志字段使用同一个当前 ID。"""
+    """
+    同步外呼头和结构化日志字段使用同一个当前 ID。
+    """
     configure_correlation_id_provider(get_correlation_id)
     response = httpx.Response(200)
     session = MagicMock()
@@ -146,7 +166,9 @@ def test_sync_external_request_and_formatter_receive_correlation_id() -> None:
 
 
 def test_process_entry_restores_serialized_correlation_id() -> None:
-    """多进程入口使用显式 payload 恢复 ID，不依赖 fork 偶然继承上下文。"""
+    """
+    多进程入口使用显式 payload 恢复 ID，不依赖 fork 偶然继承上下文。
+    """
     with correlation_scope("parent-request"):
         observed = call_with_correlation(
             "serialized-request",
@@ -160,11 +182,15 @@ def test_process_entry_restores_serialized_correlation_id() -> None:
 
 @pytest.mark.asyncio
 async def test_async_external_request_preserves_explicit_header() -> None:
-    """异步外呼默认传播当前 ID，但不得覆盖调用方显式 trace 边界。"""
+    """
+    异步外呼默认传播当前 ID，但不得覆盖调用方显式 trace 边界。
+    """
     observed = []
 
     async def respond(request: httpx2.Request) -> httpx2.Response:
-        """记录 MockTransport 收到的请求头。"""
+        """
+        记录 MockTransport 收到的请求头。
+        """
         observed.append(request.headers[CORRELATION_ID_HEADER])
         return httpx2.Response(200)
 

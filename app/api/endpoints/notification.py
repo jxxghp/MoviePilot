@@ -1,12 +1,18 @@
+"""
+提供通知渠道配置查询、管理和测试接口。
+"""
+
 from typing import Any, Dict
 
 from fastapi import Body, Depends
 
-from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.auth import get_current_active_superuser, get_current_active_user
+from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_configured_system_config
 from app.chain.notification import NotificationChain
 from app.schemas.common import ManageRequest as _SchemaManageRequest
+from app.schemas.push import AppPushInstanceRequest, AppPushRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import NotificationConf
 from app.schemas.types import SystemConfigKey
@@ -14,11 +20,50 @@ from app.schemas.types import SystemConfigKey
 router = ResponseAPIRouter()
 
 
-def _normalize_configs(value: list[NotificationConf]) -> list[dict[str, Any]]:
-    """规整通知配置身份和名称，拒绝会导致运行目录覆盖的输入。"""
+@router.post("/app/instance", summary="轮换 App 通知实例凭据", response_model=_SchemaResponse[Dict[str, Any]])
+def manage_app_instance(request: AppPushInstanceRequest,
+                        current_user: ApiPrincipal = Depends(get_current_active_superuser)) -> _SchemaResponse[object]:
+    """
+    仅容器管理员能轮换整个实例的发送凭据，响应只包含结果，不下发密钥。
+    """
+    result = NotificationChain().manage_channel(channel="AppPush", action="rotate_instance", source=request.source,
+                                               owner=current_user.notification_identity, administrative=True)
+    return _SchemaResponse(success=bool(result.get("success")), message=result.get("message") or "", data=result.get("data"))
+
+
+@router.post("/app", summary="管理当前用户的 App 通知", response_model=_SchemaResponse[Dict[str, Any]])
+def manage_app_notification(
+    request: AppPushRequest,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+) -> _SchemaResponse[object]:
+    """
+    复用现有用户认证并强制注入账号通知身份，客户端不能操作其他用户设备。
+    """
+    if not current_user.notification_identity:
+        return _SchemaResponse(success=False, message="请完成数据库升级后重新登录")
+    params = request.model_dump(exclude={"action"})
+    result = NotificationChain().manage_channel(channel="AppPush", action=request.action,
+                                               owner=current_user.notification_identity, **params)
+    return _SchemaResponse(success=bool(result.get("success")), message=result.get("message") or "", data=result.get("data"))
+
+
+def _normalize_configs(value: list[NotificationConf], *, validate_identities: bool = True) -> list[dict[str, Any]]:
+    """
+    规整通知配置身份和名称，拒绝会导致运行目录覆盖的输入。
+
+    :param value: 待规整的通知配置集合
+    :param validate_identities: 新保存值校验稳定身份；旧值只用于缓存对账，允许读取以修复历史重复
+    :return: 已规整的独立配置字典列表
+    :raises ValueError: 名称为空或重复，或新值稳定身份为空或重复
+    """
     normalized: list[dict[str, Any]] = []
     names: set[str] = set()
+    identities: set[str] = set()
     for config in value:
+        identity = config.id.strip()
+        if validate_identities and (not identity or identity in identities):
+            raise ValueError("通知渠道稳定身份ID不能为空或重复")
+        identities.add(identity)
         name = (config.name or "").strip()
         if not name:
             raise ValueError("通知渠道名称不能为空")
@@ -27,6 +72,7 @@ def _normalize_configs(value: list[NotificationConf]) -> list[dict[str, Any]]:
             raise ValueError(f"通知渠道名称重复：{name}")
         names.add(key)
         data = config.model_dump()
+        data["id"] = identity
         data["name"] = name
         normalized.append(data)
     return normalized
@@ -40,8 +86,10 @@ def _normalize_configs(value: list[NotificationConf]) -> list[dict[str, Any]]:
 async def save_config(
     configs: list[NotificationConf] = Body(...),
     _: object = Depends(get_current_active_superuser),
-):
-    """一次保存通知配置，并由渠道模块处理改名与删除缓存。"""
+) -> _SchemaResponse[object]:
+    """
+    一次保存通知配置，并由渠道模块处理改名与删除缓存。
+    """
     try:
         current = _normalize_configs(configs)
         previous = get_configured_system_config().get(SystemConfigKey.Notifications) or []
@@ -53,7 +101,7 @@ async def save_config(
             if not legacy.get("id"):
                 legacy["id"] = f"legacy-{legacy.get('type') or 'notification'}-{legacy.get('name') or 'unnamed'}"
             previous_models.append(NotificationConf(**legacy))
-        previous_data = _normalize_configs(previous_models)
+        previous_data = _normalize_configs(previous_models, validate_identities=False)
         saved = await get_configured_system_config().async_set(SystemConfigKey.Notifications, current)
         if saved is False:
             return _SchemaResponse(success=False, message="通知配置保存失败")
@@ -84,7 +132,7 @@ async def save_config(
 def manage_channel(
     request: _SchemaManageRequest,
     _: object = Depends(get_current_active_superuser),
-):
+) -> _SchemaResponse[object]:
     """
     通知渠道统一管理入口
 
@@ -98,6 +146,6 @@ def manage_channel(
     )
     return _SchemaResponse(
         success=bool(result.get("success")),
-        message=result.get("message"),
+        message=result.get("message") or "",
         data=result.get("data"),
     )

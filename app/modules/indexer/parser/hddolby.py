@@ -1,14 +1,21 @@
 # -*- coding: utf-8 -*-
+"""
+解析 HDDolby 站点的用户资料、流量和做种信息。
+"""
+
 import json
 from typing import Optional, Tuple
 
 from app.domain import site as site_rules
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 from app.runtime.log import logger
 
 
 class HDDolbySiteUserInfo(SiteParserBase):
+    """
+    解析 HDDolby 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.HDDolby
     request_mode = "apikey"
 
@@ -39,15 +46,19 @@ class HDDolbySiteUserInfo(SiteParserBase):
         "22": "Staff Leader",
     }
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        获取站点页面地址
+        使用资源声明的 API 基础地址配置用户资料和做种接口。
+
+        未配置 api_url 时保留旧站的 api 子域，前端地址继续用于读取站点消息。
+
+        :param html_text: API 模式不使用首页内容
         """
-        # 更换api地址
-        self._base_url = f"https://api.{site_rules.extract_domain(self._base_url)}"
+        api_url = self._api_url or f"https://api.{site_rules.extract_domain(self._base_url)}/api/v1"
+        self._base_url = f"{api_url.rstrip('/')}/"
         self._user_traffic_page = None
         self._user_detail_page = None
-        self._user_basic_page = "api/v1/user/data"
+        self._user_basic_page = "user/data"
         self._user_basic_params = {}
         self._user_basic_headers = {
             "Content-Type": "application/json",
@@ -56,7 +67,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self._sys_mail_unread_page = None
         self._user_mail_unread_page = None
         self._mail_unread_params = {}
-        self._torrent_seeding_page = "api/v1/user/peers"
+        self._torrent_seeding_page = "user/peers"
         self._torrent_seeding_params = {}
         self._torrent_seeding_headers = {
             "Content-Type": "application/json",
@@ -66,21 +77,23 @@ class HDDolbySiteUserInfo(SiteParserBase):
             "x-api-key": self.apikey,
         }
 
-    def _parse_logged_in(self, html_text):
+    def _parse_logged_in(self, html_text: str) -> bool:
         """
-        判断是否登录成功, 通过判断是否存在用户信息
-        暂时跳过检测，待后续优化
-        :param html_text:
-        :return:
+        API 认证结果由请求响应判定，此入口不检查页面登录标记。
+
+        :param html_text: 未使用的页面文本
+        :return: 始终返回 True
         """
         return True
 
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析用户基本信息，这里把_parse_user_traffic_info和_parse_user_detail_info合并到这里
+        解析用户基本信息，这里把_parse_user_traffic_info和_parse_user_detail_info合并到这里。
         """
         if not html_text:
             return None
+        if isinstance(html_text, dict):
+            raise TypeError("the JSON object must be str, bytes or bytearray, not dict")
         detail = json.loads(html_text)
         if not detail or detail.get("status") != 0:
             return
@@ -111,21 +124,21 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self.bonus = float(user_info.get("seedbonus") or "0")
         self.message_unread = int(user_info.get("unread_messages") or '0')
 
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户流量信息
+        解析用户流量信息。
         """
         pass
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户详细信息
+        解析用户详细信息。
         """
         pass
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        解析用户做种信息
+        解析用户做种信息。
         """
         if not html_text:
             return None
@@ -146,21 +159,21 @@ class HDDolbySiteUserInfo(SiteParserBase):
 
         return None
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
-        解析未读消息链接
+        解析未读消息链接。
         HDDolby 使用 API 模式，消息正文通过 _pase_unread_msgs 走网页接口读取。
         """
         return None
 
-    def _parse_message_content(self, html_text) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _parse_message_content(self, html_text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        解析消息内容
+        解析消息内容。
         HDDolby 使用 API 模式，消息正文通过 _pase_unread_msgs 走网页接口读取。
         """
         return None, None, None
 
-    def _pase_unread_msgs(self):
+    def _pase_unread_msgs(self) -> None:
         """
         HDDolby API 仅返回未读消息数量，正文需通过 NexusPHP 网页接口读取。
         """

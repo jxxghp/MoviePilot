@@ -6,6 +6,9 @@ SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MOVIEPILOT_BIN="$PROJECT_ROOT/moviepilot"
 VENV_PYTHON="$PROJECT_ROOT/venv/bin/python"
+if [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
+  VENV_PYTHON="$PROJECT_ROOT/.venv/bin/python"
+fi
 
 show_usage() {
   cat <<'EOF'
@@ -19,6 +22,11 @@ show_usage() {
   ./scripts/start-local.sh help                   显示本帮助
 EOF
 }
+
+if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  show_usage
+  exit 0
+fi
 
 if [[ ! -x "$MOVIEPILOT_BIN" ]]; then
   printf '未找到本地 CLI：%s\n' "$MOVIEPILOT_BIN" >&2

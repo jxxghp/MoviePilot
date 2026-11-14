@@ -1,3 +1,7 @@
+"""
+请求语言解析和受控语言资源的文本翻译。
+"""
+
 import json
 import re
 from contextvars import ContextVar, Token
@@ -176,19 +180,20 @@ class LocaleHelper:
 
     @staticmethod
     @lru_cache(maxsize=16)
-    def _load_catalog(locale: str) -> dict[str, Any]:
+    def _load_catalog(locale: str) -> dict[str, object]:
         """
         加载指定语言的翻译表。
         """
         catalog_path = LocaleHelper._LOCALES_DIR / f"{locale}.json"
         try:
             with catalog_path.open("r", encoding="utf-8") as file:
-                return json.load(file)
+                catalog: dict[str, object] = json.load(file)
+                return catalog
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
     @staticmethod
-    def _lookup(catalog: dict[str, Any], key: str) -> Optional[str]:
+    def _lookup(catalog: dict[str, object], key: str) -> Optional[str]:
         """
         按点分隔键从结构化翻译表中查找文本。
         """
@@ -200,7 +205,7 @@ class LocaleHelper:
         return current if isinstance(current, str) else None
 
     @staticmethod
-    def _lookup_message(catalog: dict[str, Any], text: str) -> Optional[str]:
+    def _lookup_message(catalog: dict[str, object], text: str) -> Optional[str]:
         """
         从精确消息表中查找存量中文文本。
         """

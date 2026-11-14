@@ -1,4 +1,6 @@
-"""插件媒体来源分类扩展协议的稳定公开入口。"""
+"""
+插件媒体来源分类扩展协议的稳定公开入口。
+"""
 
 from copy import deepcopy
 from typing import Final, TypeVar, cast
@@ -14,8 +16,8 @@ from app.schemas.category import (
 )
 from app.schemas.event import MediaSourceInfo
 
+# 宿主支持的插件媒体来源分类扩展协议版本
 MEDIA_SOURCE_CLASSIFICATION_PROTOCOL_VERSION: Final[int] = 2
-"""宿主支持的插件媒体来源分类扩展协议版本。"""
 
 _ClassificationSubjectT = TypeVar(
     "_ClassificationSubjectT",
@@ -24,7 +26,12 @@ _ClassificationSubjectT = TypeVar(
 
 
 def classify_media(media: _ClassificationSubjectT) -> _ClassificationSubjectT:
-    """使用当前活动策略分类媒体副本；宿主尚未装配时返回隔离副本。"""
+    """
+    使用当前活动策略对媒体副本进行分类，不修改调用方对象。
+
+    :param media: 待分类的媒体对象，须符合宿主分类服务的输入契约
+    :return: 分类后的同类对象；宿主尚未装配分类服务时返回输入的深拷贝
+    """
     try:
         service = get_chain_runtime_context().classification_service
     except RuntimeError:

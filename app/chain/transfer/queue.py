@@ -1,4 +1,6 @@
-"""整理队列、工作线程、租约与恢复调度。"""
+"""
+整理队列、工作线程、租约与恢复调度。
+"""
 
 import asyncio
 import queue
@@ -23,6 +25,11 @@ from app.application.transfer.execution import (
     TransferExecutionSnapshot,
     TransferExecutionState,
 )
+from app.application.transfer.jobs import JobId
+from app.application.transfer.notifications import (
+    TransferNotificationAggregator,
+    TransferSuccessNotification,
+)
 from app.application.transfer.workflow import (
     JobManager,
     TransferAdmission,
@@ -40,16 +47,16 @@ from app.chain.transfer.records import apply_download_history_classification
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
+from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
-from app.schemas.transfer import TransferInfo, TransferJob, TransferQueueItemData
+from app.schemas.transfer import DownloaderTorrent, TransferInfo, TransferJob, TransferQueueItemData
 from app.schemas.types import (
     MediaSource,
     MediaType,
     ProgressKey,
     TorrentStatus,
 )
-from app.schemas.workflow import FileItem
 
 task_lock = threading.Lock()
 downloader_lock = threading.Lock()
@@ -59,8 +66,31 @@ _WORKER_CLOSE_TIMEOUT_SECONDS = 30.0
 _QUEUE_ADMISSION_LOCK_WAIT_SECONDS = 0.1
 
 
+def _unique_pending_torrents(
+    torrents: List[DownloaderTorrent], existing_hashes: set[str]
+) -> List[DownloaderTorrent]:
+    """
+    按下载器返回顺序排除已整理和本轮重复的任务。
+
+    :param torrents: 本轮已完成的下载任务
+    :param existing_hashes: 整理队列中已有的任务哈希
+    :return: 保留首次出现的待整理任务
+    """
+    seen: set[Optional[str]] = set()
+    pending: List[DownloaderTorrent] = []
+    for torrent in torrents:
+        torrent_hash = torrent.hash
+        if torrent_hash in existing_hashes or torrent_hash in seen:
+            continue
+        seen.add(torrent_hash)
+        pending.append(torrent)
+    return pending
+
+
 class TransferQueueOwner(_TransferOwnerBase):
-    """唯一持有整理工作线程、队列、租约和恢复调度。"""
+    """
+    唯一持有整理工作线程、队列、租约和恢复调度。
+    """
 
     _WORKER_RESTART_TIMEOUT_SECONDS = _WORKER_RESTART_TIMEOUT_SECONDS
     _WORKER_CLOSE_TIMEOUT_SECONDS = _WORKER_CLOSE_TIMEOUT_SECONDS
@@ -69,40 +99,36 @@ class TransferQueueOwner(_TransferOwnerBase):
             self,
             runtime_context: Optional[ChainRuntimeContext] = None,
     ) -> None:
-        """初始化文件整理处理链。"""
+        """
+        初始化文件整理处理链。
+        """
         super().__init__(runtime_context=runtime_context)
         self._refresh_file_extensions()
-        # 待整理任务队列
-        self._queue = queue.Queue()
-        # 文件整理线程
-        self._transfer_threads = []
+        self._queue: queue.Queue[TransferQueue | object] = queue.Queue()
+        self._transfer_threads: list[threading.Thread] = []
         # 队列间隔时间（秒）
         self._transfer_interval = 15
-        # 事件管理器
         self.jobview = JobManager()
-        # Agent重试管理器
         # 整理失败通知聚合器
         self.failure_notification_aggregator = TransferFailureNotificationAggregator()
-        # durable admission 仓储先于内存入队保存任务，进程退出后仍可恢复。
+        self.success_notification_aggregator = TransferNotificationAggregator[TransferSuccessNotification]()
+        # 持久准入仓库先于内存入队保存任务，进程退出后仍可恢复。
         self._transfer_admissions = self.transfer_admission_repository
         self._transfer_executions = self.transfer_execution_repository
-        # 转移成功的文件清单
-        self._success_target_files: Dict[Tuple, List[str]] = {}
+        self._success_target_files: Dict[JobId, List[str]] = {}
         # 批次级刮削缓冲，避免同一批多文件入库重复触发目录刮削
         self._scrape_batches: Dict[str, Dict[str, Any]] = {}
-        # 整理进度进度
         self._progress = ProgressHelper(ProgressKey.FileTransfer)
-        # 队列相关状态
-        self._threads = []
+        self._threads: list[threading.Thread] = []
         self._retiring_threads: List[threading.Thread] = []
         self._queue_active = False
-        # 每一代 worker 使用独立停止信号，避免热更新启动新 worker 后旧线程重新取任务
+        # 每一代执行线程 使用独立停止信号，避免热更新启动新执行线程 后旧线程重新取任务
         self._worker_stop_event = threading.Event()
         # 生命周期操作串行化；状态锁只保护短临界区，不覆盖同步文件 I/O 等待
         self._worker_lifecycle_lock = threading.RLock()
         self._worker_state_lock = threading.RLock()
         self._closing = False
-        # 恢复调度与租约续期均由整理链持有，关闭时与 worker 一并收敛。
+        # 恢复调度与租约续期均由整理链持有，关闭时与执行线程 一并收敛。
         self._worker_owner_id = uuid.uuid4().hex
         self._owned_leases: Dict[str, Tuple[str, float]] = {}
         self._queued_lease_tokens: set[Tuple[str, str]] = set()
@@ -117,20 +143,24 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._processed_num = 0
         self._fail_num = 0
         self._total_num = 0
-        # 启动整理任务
         self._TransferChain__init()
 
     def _refresh_file_extensions(self) -> None:
-        """按最新运行配置更新整理允许的媒体、字幕和音频后缀。"""
+        """
+        按最新运行配置更新整理允许的媒体、字幕、歌词和音频后缀。
+        """
         self._media_exts = self.runtime_config.video_extensions
         self._subtitle_exts = self.runtime_config.subtitle_extensions
+        self._lyrics_exts = getattr(self.runtime_config, "lyrics_extensions", ())
         self._audio_exts = self.runtime_config.audio_extensions
-        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
-            ".lrc", ".txt", ".yaml",
+        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + self._lyrics_exts + (
+            ".txt", ".yaml", ".jpg", ".jpeg", ".png", ".webp",
         )
 
     def _TransferChain__init(self) -> bool:
-        """启动一代文件整理线程，并返回是否成功取得 worker 所有权。"""
+        """
+        启动一代文件整理线程，并返回是否成功取得 执行线程 所有权。
+        """
         with self._worker_lifecycle_lock:
             with self._worker_state_lock:
                 if self._closing:
@@ -169,7 +199,9 @@ class TransferQueueOwner(_TransferOwnerBase):
     def _TransferChain__join_threads(
             threads: List[threading.Thread], deadline: float
     ) -> List[threading.Thread]:
-        """在统一截止时间内等待线程，返回仍未收敛且继续由调用方持有的线程。"""
+        """
+        在统一截止时间内等待线程，返回仍未收敛且继续由调用方持有的线程。
+        """
         current_thread = threading.current_thread()
         for thread in threads:
             if thread is current_thread or not thread.is_alive():
@@ -178,13 +210,17 @@ class TransferQueueOwner(_TransferOwnerBase):
         return [thread for thread in threads if thread.is_alive()]
 
     def _TransferChain__acquire_worker_lifecycle_lock(self, deadline: float) -> bool:
-        """在统一截止时间内取得 worker 生命周期锁，并兼容同线程 RLock 重入。"""
+        """
+        在统一截止时间内取得 执行线程 生命周期锁，并兼容同线程 RLock 重入。
+        """
         return self._worker_lifecycle_lock.acquire(
             timeout=max(0.0, deadline - time.monotonic())
         )
 
     def _TransferChain__request_worker_stop(self) -> List[threading.Thread]:
-        """发布当前 worker 代的停止信号，并用哨兵唤醒空闲线程。"""
+        """
+        发布当前 执行线程 代的停止信号，并用哨兵唤醒空闲线程。
+        """
         with self._worker_state_lock:
             self._queue_active = False
             self._worker_stop_event.set()
@@ -195,7 +231,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             return threads
 
     def _TransferChain__stop(self, timeout_seconds: float = _WORKER_RESTART_TIMEOUT_SECONDS) -> bool:
-        """在锁等待与线程 join 的共享预算内停止当前 worker 代。"""
+        """
+        在锁等待与线程 join 的共享预算内停止当前 执行线程 代。
+        """
         deadline = time.monotonic() + max(0.0, timeout_seconds)
         if not self._TransferChain__acquire_worker_lifecycle_lock(deadline):
             logger.error(
@@ -223,12 +261,13 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     def close_workers(self, timeout_seconds: float = _WORKER_CLOSE_TIMEOUT_SECONDS) -> bool:
         """
-        关闭整理 worker 与 pending 回放，并拒绝后续队列写入。
+        关闭整理 执行线程 与 pending 回放，并拒绝后续队列写入。
 
         这是宿主生命周期使用的同步边界。停止信号只能阻止线程领取下一项工作，不能
         取消已经进入同步文件或数据库 I/O 的调用；超过预算时保留活线程句柄并返回
         False，调用方据此避免过早释放仍被使用的数据库等下游资源。
-        :param timeout_seconds: 生命周期锁、worker 与回放线程共享的最大等待秒数
+
+        :param timeout_seconds: 生命周期锁、执行线程 与回放线程共享的最大等待秒数
         :return: 全部后台线程均已收敛时返回 True，否则返回 False
         """
         self._TransferChain__ensure_lease_runtime_state()
@@ -312,10 +351,11 @@ class TransferQueueOwner(_TransferOwnerBase):
         收口整理线程和失败通知，并返回依赖是否可以安全释放。
 
         同步文件 I/O 在线程内无法被 asyncio 取消，因此先在线程池中执行有界
-        ``close_workers``。只有 worker 与 replay 全部退出后才关闭通知和重试；若
+        ``close_workers``。只有 执行线程 与 replay 全部退出后才关闭通知和重试；若
         超时则保留通知依赖，供仍在运行的整理回调继续使用。
-        :param timeout_seconds: worker 与 replay 共享的最大等待秒数
-        :return: 所有整理后台 owner 均已收敛时返回 True
+
+        :param timeout_seconds: 执行线程 与 replay 共享的最大等待秒数
+        :return: 所有整理后台任务 均已收敛时返回 True
         """
         workers_closed = await asyncio.to_thread(
             self.close_workers,
@@ -324,10 +364,13 @@ class TransferQueueOwner(_TransferOwnerBase):
         if not workers_closed:
             return False
         self.failure_notification_aggregator.close()
+        self.success_notification_aggregator.close()
         return True
 
     def on_config_changed(self) -> None:
-        """配置变更时重启文件整理线程。"""
+        """
+        配置变更时重启文件整理线程。
+        """
         with self._worker_lifecycle_lock:
             if self._closing:
                 logger.info("文件整理链正在关闭，忽略 worker 配置热更新")
@@ -360,12 +403,13 @@ class TransferQueueOwner(_TransferOwnerBase):
     def put_to_queue(self, task: TransferTask) -> bool:
         """
         串行准入并入队，数据库等待不占用心跳所需的状态锁。
+
         :param task: 任务信息
         :return: 新任务入队或相同恢复租约已被接收时返回 True；关闭、无效或冲突返回 False
         :raises Exception: 持久准入、批次登记或内存入队失败
         """
         self._TransferChain__ensure_lease_runtime_state()
-        # 关闭会持生命周期锁等待 worker/replay，等待入队锁时必须能响应关闭。
+        # 关闭会持生命周期锁等待 执行线程或恢复任务，等待入队锁时必须能响应关闭。
         while not self._closing:
             if not self._worker_lifecycle_lock.acquire(timeout=_QUEUE_ADMISSION_LOCK_WAIT_SECONDS):
                 continue
@@ -381,7 +425,9 @@ class TransferQueueOwner(_TransferOwnerBase):
         return False
 
     def _transfer_queue_service(self) -> TransferQueueService:
-        """构建保持旧队列对象和私有兼容接缝的应用服务。"""
+        """
+        构建保持旧队列对象和私有兼容接缝的应用服务。
+        """
         return TransferQueueService(
             register_task=self._TransferChain__put_to_jobview,
             admit_task=self._TransferChain__admit_transfer,
@@ -396,15 +442,17 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     def replay_pending(self) -> None:
         """
-        启动唯一恢复调度 owner，并唤醒一次即时恢复扫描。
+        启动唯一恢复调度任务，并唤醒一次即时恢复扫描。
 
         启动回放、同进程入队补偿和租约过期接管都经由这个入口。调度线程只负责
-        claim 和重新入队；实际业务仍由普通整理 worker 执行。
+        claim 和重新入队；实际业务仍由普通整理 执行线程 执行。
         """
         self._TransferChain__ensure_recovery_scheduler(immediate=True)
 
     def _TransferChain__ensure_recovery_scheduler(self, *, immediate: bool) -> None:
-        """确保唯一恢复调度 owner 存在，并只为显式请求执行即时扫描。"""
+        """
+        确保唯一恢复调度任务 存在，并只为显式请求执行即时扫描。
+        """
         self._TransferChain__ensure_lease_runtime_state()
         with self._worker_state_lock:
             if self._closing:
@@ -432,7 +480,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             stop_event: threading.Event,
             initial_immediate: bool = True,
     ) -> None:
-        """按初次扫描意图持续恢复，失败兜底新建 owner 时先等待固定轮询。"""
+        """
+        按初次扫描意图持续恢复，失败兜底新建调度任务 时先等待固定轮询。
+        """
         try:
             if not initial_immediate:
                 self._recovery_wakeup_event.wait(
@@ -450,7 +500,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                     self._replay_thread = None
 
     def _TransferChain__ensure_lease_runtime_state(self) -> None:
-        """为绕过构造器的兼容调用补齐进程 owner 与租约线程状态。"""
+        """
+        为绕过构造器的兼容调用补齐进程持有者 与租约线程状态。
+        """
         if not hasattr(self, "_worker_owner_id"):
             self._worker_owner_id = uuid.uuid4().hex
         if not hasattr(self, "_owned_leases"):
@@ -477,7 +529,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._closing = False
 
     def _TransferChain__start_lease_heartbeat_owner_locked(self) -> None:
-        """在状态锁内确保当前进程只有一个租约续期线程。"""
+        """
+        在状态锁内确保当前进程只有一个租约续期线程。
+        """
         heartbeat_thread = self._lease_heartbeat_thread
         if heartbeat_thread and heartbeat_thread.is_alive():
             return
@@ -491,14 +545,18 @@ class TransferQueueOwner(_TransferOwnerBase):
         heartbeat_thread.start()
 
     def _TransferChain__ensure_lease_heartbeat_owner(self) -> None:
-        """按需启动进程级租约续期 owner，供启动前到达的普通任务使用。"""
+        """
+        按需启动进程级租约续期任务，供启动前到达的普通任务使用。
+        """
         self._TransferChain__ensure_lease_runtime_state()
         with self._worker_state_lock:
             if not self._closing:
                 self._TransferChain__start_lease_heartbeat_owner_locked()
 
     def _TransferChain__claim_recovery_batch(self) -> List[TransferAdmission]:
-        """按 worker 并发度 claim 当前可安全占用的恢复租约槽位。"""
+        """
+        按 执行线程 并发度 claim 当前可安全占用的恢复租约槽位。
+        """
         runtime_config = getattr(self, "runtime_config", None)
         worker_capacity = max(
             1,
@@ -519,7 +577,9 @@ class TransferQueueOwner(_TransferOwnerBase):
         )
 
     def _TransferChain__run_lease_heartbeat(self, stop_event: threading.Event) -> None:
-        """按固定周期续期本进程已 claim 且尚未结算的任务。"""
+        """
+        按固定周期续期本进程已 claim 且尚未结算的任务。
+        """
         try:
             while not stop_event.wait(self._LEASE_HEARTBEAT_INTERVAL_SECONDS):
                 self._TransferChain__heartbeat_owned_leases()
@@ -529,7 +589,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                     self._lease_heartbeat_thread = None
 
     def _TransferChain__heartbeat_owned_leases(self) -> None:
-        """经 Application Port 续期所有排队中或执行中的任务租约。"""
+        """
+        经 Application Port 续期所有排队中或执行中的任务租约。
+        """
         self._TransferChain__ensure_lease_runtime_state()
         with self._worker_state_lock:
             owned_leases = list(self._owned_leases.items())
@@ -568,7 +630,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                     )
 
     def _TransferChain__forget_owned_lease(self, task_id: str, lease_token: str) -> None:
-        """仅在 token 仍匹配时移除本进程租约镜像，避免删掉新接管记录。"""
+        """
+        仅在 token 仍匹配时移除本进程租约镜像，避免删掉新接管记录。
+        """
         with self._worker_state_lock:
             current = self._owned_leases.get(task_id)
             if current and current[0] == lease_token:
@@ -576,7 +640,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._queued_lease_tokens.discard((task_id, lease_token))
 
     def _TransferChain__is_claimed_task_enqueued(self, task_id: str, lease_token: str) -> bool:
-        """返回 claim 是否已被队列接收，包含刚被 worker 取走但尚未完成的任务。"""
+        """
+        返回 claim 是否已被队列接收，包含刚被 执行线程 取走但尚未完成的任务。
+        """
         with self._worker_state_lock:
             return (task_id, lease_token) in self._queued_lease_tokens or any(
                 (task.admission_task_id, task.lease_token) == (task_id, lease_token)
@@ -584,7 +650,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             )
 
     def _TransferChain__owns_lease(self, task_id: str, lease_token: Optional[str]) -> bool:
-        """返回本地续期镜像是否仍持有指定 token。"""
+        """
+        返回本地续期镜像是否仍持有指定 token。
+        """
         if not lease_token:
             return False
         with self._worker_state_lock:
@@ -592,7 +660,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             return bool(current and current[0] == lease_token)
 
     def _TransferChain__assert_owned_lease(self, task: TransferTask) -> None:
-        """拒绝无 token、已过本地期限或已被 heartbeat 判失效的任务推进。"""
+        """
+        拒绝无 token、已过本地期限或已被 heartbeat 判失效的任务推进。
+        """
         if task.preview:
             return
         task_id = task.admission_task_id
@@ -620,7 +690,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             *,
             error: Optional[str] = None,
     ) -> bool:
-        """按 task token 释放未到终态的 claim，并按固定轮询等待恢复。"""
+        """
+        按 task token 释放未到终态的 claim，并按固定轮询等待恢复。
+        """
         task_id = task.admission_task_id if task else None
         lease_token = task.lease_token if task else None
         if not task_id or not lease_token:
@@ -646,7 +718,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             *,
             error: Optional[str] = None,
     ) -> None:
-        """释放尚未绑定或成功入队的恢复 claim。"""
+        """
+        释放尚未绑定或成功入队的恢复 claim。
+        """
         if not admission.lease_token:
             return
         try:
@@ -661,7 +735,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._TransferChain__forget_owned_lease(admission.task_id, admission.lease_token)
 
     def _TransferChain__release_all_owned_leases(self, *, error: str) -> None:
-        """在执行 owner 全部收敛后释放剩余 claim，避免关停后等待租约自然过期。"""
+        """
+        在执行任务 全部收敛后释放剩余租约，避免关停后等待租约自然过期。
+        """
         with self._worker_state_lock:
             owned_leases = list(self._owned_leases.items())
         for task_id, (lease_token, _deadline) in owned_leases:
@@ -679,7 +755,9 @@ class TransferQueueOwner(_TransferOwnerBase):
     def _TransferChain__start_lease_release_owner_locked(
             self, *, error: str
     ) -> Optional[threading.Thread]:
-        """启动并持有唯一租约释放线程，使同步数据库阻塞不突破关闭预算。"""
+        """
+        启动并持有唯一租约释放线程，使同步数据库阻塞不突破关闭预算。
+        """
         release_thread = self._lease_release_thread
         if release_thread is not None:
             return release_thread
@@ -697,14 +775,18 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     @staticmethod
     def _resident_task_key(task: TransferTask) -> Tuple[str, str]:
-        """真实队列凭证使用存储与路径，不依赖媒体识别分组或视图状态。"""
+        """
+        真实队列凭证使用存储与路径，不依赖媒体识别分组或视图状态。
+        """
         assert task.fileitem is not None
         assert task.fileitem.path
         path = Path(str(task.fileitem.path).replace("\\", "/")).as_posix().rstrip("/") or "/"
         return task.fileitem.storage or "local", path
 
     def _enqueue_transfer_task(self, item: TransferQueue) -> None:
-        """入队成功后登记真实任务及其租约，登记持续到 worker 完成该队列项。"""
+        """
+        入队成功后登记真实任务及其租约，登记持续到 执行线程 完成该队列项。
+        """
         task = item.task
         assert task is not None
         key = self._resident_task_key(task)
@@ -715,7 +797,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                 self._queued_lease_tokens.add((task.admission_task_id, task.lease_token))
 
     def _finish_queue_item(self, task: TransferTask) -> None:
-        """仅移除当前队列项的执行登记，避免旧 worker 清掉同源新任务。"""
+        """
+        仅移除当前队列项的执行登记，避免旧 执行线程 清掉同源新任务。
+        """
         with self._worker_state_lock:
             residents = getattr(self, "_resident_tasks", {})
             key = self._resident_task_key(task)
@@ -726,7 +810,9 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._queue.task_done()
 
     def _TransferChain__enqueue_claimed_task(self, task: TransferTask) -> bool:
-        """复用持有相同租约的真实队列任务；残留视图必须重新入队才能算恢复。"""
+        """
+        复用持有相同租约的真实队列任务；残留视图必须重新入队才能算恢复。
+        """
         self._TransferChain__assert_owned_lease(task)
         with self._worker_state_lock:
             resident = self._resident_tasks.get(self._resident_task_key(task))
@@ -760,6 +846,7 @@ class TransferQueueOwner(_TransferOwnerBase):
 
         accepted 记录按原始请求重新规划；planned 记录绑定已提交检查点，重新识别
         领域对象后只执行冻结路径，不再次触发重命名或目标计算。
+
         :param stop_event: 宿主关闭信号；只阻止处理下一条登记，不取消运行中的同步 I/O
         """
         stop_event = stop_event or threading.Event()
@@ -800,6 +887,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                     or execution_snapshot.state is not TransferExecutionState.NOT_STARTED
                     or execution_snapshot.steps
                 )
+                fileitem: Optional[FileItem]
                 if use_frozen_source:
                     planning_input = admission.planning_input
                     if planning_input is None:
@@ -921,7 +1009,9 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     @staticmethod
     def _TransferChain__log_replay_summary(replayed: int, claimed: int) -> None:
-        """按实际入队结果记录恢复汇总，避免零任务仍输出成功标记。"""
+        """
+        按实际入队结果记录恢复汇总，避免零任务仍输出成功标记。
+        """
         if replayed:
             logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
             return
@@ -934,7 +1024,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             self,
             admission: TransferAdmission,
     ) -> TransferExecutionSnapshot:
-        """读取已 claim 的执行快照，确保任何步骤证据都先于源文件探测。"""
+        """
+        读取已 claim 的执行快照，确保任何步骤证据都先于源文件探测。
+        """
         repository: Optional[TransferExecutionRepository] = getattr(
             self,
             "_transfer_executions",
@@ -958,7 +1050,9 @@ class TransferQueueOwner(_TransferOwnerBase):
     def _TransferChain__build_replay_kwargs(
             planning_input: Optional[TransferPlanningInput],
     ) -> dict[str, Any]:
-        """从持久请求快照恢复公开整理入口可接受的稳定参数。"""
+        """
+        从持久请求快照恢复公开整理入口可接受的稳定参数。
+        """
         if planning_input is None:
             return {}
         options = planning_input.options
@@ -1016,7 +1110,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             fileitem: FileItem,
             admission: TransferAdmission,
     ) -> bool:
-        """从 accepted 输入离线恢复显式领域上下文并送入单任务队列。"""
+        """
+        从 accepted 输入离线恢复显式领域上下文并送入单任务队列。
+        """
         planning_input = admission.planning_input
         if planning_input is None:
             raise TransferPlanningStateError("accepted 回放缺少整理规划输入")
@@ -1075,7 +1171,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             *,
             execution_checkpoint: Optional[TransferExecutionCheckpoint] = None,
     ) -> bool:
-        """把已提交检查点直接恢复为单个任务，避免重新扫描、识别和规划。"""
+        """
+        把已提交检查点直接恢复为单个任务，避免重新扫描、识别和规划。
+        """
         checkpoint = admission.checkpoint
         if checkpoint is None:
             raise TransferPlanningStateError("planned 回放缺少整理计划检查点")
@@ -1138,6 +1236,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         Path.exists()：它在任何 OSError 下都返回 False，会把挂载抖动
         （Transport endpoint is not connected）误判成文件消失，进而注销登记
         ——那等于在故障期间主动丢件，正是本表要防的事。
+
         :param storage: 存储
         :param src_path: 源文件路径，以 / 结尾表示蓝光原盘目录
         :param planning_input: 准入时保存的完整源文件身份快照
@@ -1187,7 +1286,9 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     @staticmethod
     def _TransferChain__json_snapshot(value: Any) -> Any:
-        """把受控领域对象投影为可持久化 JSON 值。"""
+        """
+        把受控领域对象投影为可持久化 JSON 值。
+        """
         if value is None:
             return None
         return to_jsonable_python(value, serialize_unknown=True)
@@ -1197,7 +1298,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             task: TransferTask,
             error: Exception,
     ) -> None:
-        """按是否已经 claim 选择 fencing 失败记录，并撤销批次占位。"""
+        """
+        按是否已经 claim 选择 fencing 失败记录，并撤销批次占位。
+        """
         try:
             if task.lease_token:
                 self._TransferChain__release_task_claim(task, error=str(error))
@@ -1218,26 +1321,31 @@ class TransferQueueOwner(_TransferOwnerBase):
     def _TransferChain__put_to_jobview(self, task: TransferTask) -> bool:
         """
         添加到作业视图
+
         :return: True表示任务已添加，False表示任务无效或已存在（重复）
         """
         if task and task.manual:
             self.jobview.remove_task(task.fileitem, finished_only=True)
         return bool(self.jobview.add_task(task))
 
-    def remove_from_queue(self, fileitem: FileItem):
+    def remove_from_queue(self, fileitem: FileItem) -> None:
         """
         从待整理队列移除
         """
         self._transfer_queue_service().remove(fileitem)
 
-    def _TransferChain__start_job_execution(self, task: TransferTask):
-        """在作业视图支持执行租约时标记主程序任务开始执行。"""
+    def _TransferChain__start_job_execution(self, task: TransferTask) -> None:
+        """
+        在作业视图支持执行租约时标记主程序任务开始执行。
+        """
         marker = getattr(self.jobview, "start_execution", None)
         if marker:
             marker(task)
 
     def _TransferChain__expire_stale_transfer_tasks(self) -> None:
-        """清理外部接管后失去状态心跳的运行中整理任务。"""
+        """
+        清理外部接管后失去状态心跳的运行中整理任务。
+        """
         timeout_minutes = max(int(self.runtime_config.transfer_task_timeout), 0)
         expire_tasks = getattr(self.jobview, "expire_stale_running_tasks", None)
         expired_tasks = (
@@ -1252,9 +1360,11 @@ class TransferQueueOwner(_TransferOwnerBase):
             )
 
     def _TransferChain__settle_transfer_progress_if_idle(self) -> None:
-        """在没有 active 或未结算真实任务时结束进度并重置本批计数。"""
+        """
+        在没有 active 或未结算真实任务时结束进度并重置本批计数。
+        """
         with task_lock:
-            # unfinished_tasks 同时覆盖队列内任务和已被其他 worker 取走、尚未来得及
+            # unfinished_tasks 同时覆盖队列内任务和已被其他执行线程 取走、尚未来得及
             # 登记 active 的任务。持有 Queue 自身互斥锁完成判断和计数重置，使并发
             # enqueue 只能发生在旧批次归零之后；仍在 deque 中的停止哨兵不算真实任务。
             with self._queue.all_tasks_done:
@@ -1285,7 +1395,9 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._progress.end()
 
     def _finish_unclaimed_queue_task(self, task: TransferTask) -> None:
-        """收口未取得租约的队列项，避免 waiting 残影持续阻挡手动重整。"""
+        """
+        收口未取得租约的队列项，避免 waiting 残影持续阻挡手动重整。
+        """
         self.jobview.fail_unfinished_task(task)
         self.jobview.try_remove_job(task)
         self._finish_scrape_batch_task(task)
@@ -1294,13 +1406,13 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     def _TransferChain__start_transfer(self, stop_event: threading.Event) -> None:
         """
-        处理当前 worker 代的队列，停止后不领取下一项任务。
+        处理当前 执行线程 代的队列，停止后不领取下一项任务。
 
-        :param stop_event: 当前 worker 代专属停止信号，热更新后不会被重新清除
+        :param stop_event: 当前 执行线程 代专属停止信号，热更新后不会被重新清除
         """
         while not runtime_stop_state.is_system_stopped and not stop_event.is_set():
             try:
-                item: TransferQueue = self._queue.get(
+                item = self._queue.get(
                     block=True, timeout=self._transfer_interval
                 )
                 if item is self._QUEUE_STOP_SENTINEL:
@@ -1309,9 +1421,10 @@ class TransferQueueOwner(_TransferOwnerBase):
                     if stop_event.is_set() or runtime_stop_state.is_system_stopped:
                         break
                     continue
+                item = cast(TransferQueue, item)
                 if stop_event.is_set() or runtime_stop_state.is_system_stopped:
                     # 关闭信号与 queue.get 竞态时，把尚未处理的任务放回队列；其
-                    # TransferPending 登记保持不变，供同进程重启 worker 或下次启动回放。
+                    # TransferPending 登记保持不变，供同进程重启执行线程 或下次启动回放。
                     self._queue.put(item)
                     self._queue.task_done()
                     break
@@ -1344,7 +1457,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                     self._TransferChain__ensure_recovery_scheduler(immediate=False)
                     continue
 
-                # 文件信息
                 fileitem = task.fileitem
 
                 with task_lock:
@@ -1359,9 +1471,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                     # 如果当前没有在运行的任务且处理数为0，说明是一个新序列的开始
                     if self._active_tasks == 0 and self._processed_num == 0:
                         logger.info("开始整理队列处理...")
-                        # 启动进度
                         self._progress.start()
-                        # 重置计数
                         self._processed_num = 0
                         self._fail_num = 0
                         __process_msg = (
@@ -1369,7 +1479,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                         )
                         logger.info(__process_msg)
                         self._progress.update(value=0, text=__process_msg)
-                    # 增加运行中的任务数
                     self._active_tasks += 1
 
                 terminal = False
@@ -1381,7 +1490,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                         callback_task: TransferTask,
                         transferinfo: TransferInfo,
                 ) -> Tuple[bool, str]:
-                    """由默认回调原子提交历史、事件与 durable 终态。"""
+                    """
+                    由默认回调原子提交历史、事件与 持久化 终态。
+                    """
                     nonlocal terminal_settlement
                     if item.callback:
                         try:
@@ -1397,7 +1508,6 @@ class TransferQueueOwner(_TransferOwnerBase):
 
                 try:
                     self._TransferChain__start_job_execution(task)
-                    # 更新进度
                     __process_msg = f"正在整理 {fileitem.name} ..."
                     logger.info(__process_msg)
                     with task_lock:
@@ -1407,7 +1517,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                             else 0,
                             text=__process_msg,
                         )
-                    # 整理
                     state, err_msg = self._TransferChain__handle_transfer(
                         task=task,
                         callback=callback_after_terminal_settlement,
@@ -1416,9 +1525,7 @@ class TransferQueueOwner(_TransferOwnerBase):
 
                     with task_lock:
                         if not state:
-                            # 任务失败
                             self._fail_num += 1
-                        # 更新进度
                         self._processed_num += 1
                         __process_msg = f"{fileitem.name} 整理完成"
                         logger.info(__process_msg)
@@ -1454,7 +1561,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                     finally:
                         self._finish_queue_item(task)
                         with task_lock:
-                            # 减少运行中的任务数
                             self._active_tasks -= 1
                             if terminal and state and not durable_settled:
                                 self._fail_num += 1
@@ -1475,7 +1581,9 @@ class TransferQueueOwner(_TransferOwnerBase):
         return self._transfer_queue_service().list()
 
     def get_queue_tasks_page(self, page: int, count: int) -> Tuple[List[TransferQueueItemData], int]:
-        """获取供前端展示的受限整理队列快照。"""
+        """
+        获取供前端展示的受限整理队列快照。
+        """
         return self._transfer_queue_service().list_page(page, count)
 
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
@@ -1486,7 +1594,6 @@ class TransferQueueOwner(_TransferOwnerBase):
         """
         # 全局锁，避免定时服务重复
         with downloader_lock:
-            # 获取下载器监控目录
             download_dirs = DirectoryHelper().get_download_dirs()
 
             # 如果没有下载器监控的目录则不处理
@@ -1502,17 +1609,10 @@ class TransferQueueOwner(_TransferOwnerBase):
             if progress_callback:
                 progress_callback(value=0, text="正在查询已完成下载任务 ...")
 
-            # 从下载器获取种子列表
             if torrents_list := self.list_torrents(status=TorrentStatus.TRANSFER):
-                seen = set()
                 existing_hashes = self.jobview.get_all_torrent_hashes()
                 # 排除多下载器返回的重复种子
-                torrents = [
-                    torrent
-                    for torrent in torrents_list
-                    if (h := torrent.hash) not in existing_hashes
-                    and (h not in seen and (seen.add(h) or True))
-                ]
+                torrents = _unique_pending_torrents(torrents_list, existing_hashes)
             else:
                 torrents = []
 
@@ -1555,7 +1655,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                     if not fileitem:
                         continue
 
-                    # 查询下载记录识别情况
                     downloadhis: Optional[DownloadHistorySnapshot] = (
                         self.download_history_repository.get_by_hash(torrent.hash)
                         if torrent.hash
@@ -1564,12 +1663,10 @@ class TransferQueueOwner(_TransferOwnerBase):
                     # 下载记录中的媒体类型作为整理类型来源，无下载记录时留空由文件后缀兜底
                     mtype: Optional[MediaType] = None
                     if downloadhis:
-                        # 类型
                         try:
                             mtype = MediaType(downloadhis.type)
                         except ValueError:
                             mtype = MediaType.TV
-                        # 识别媒体信息
                         mediainfo = MediaChain().recognize_media(
                             mtype=mtype,
                             media_source=downloadhis.media_source,
@@ -1578,7 +1675,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                             episode_group=downloadhis.episode_group,
                         )
                         if mediainfo:
-                            # 补充图片
                             self.obtain_images(mediainfo)
                             mediainfo = apply_download_history_classification(
                                 mediainfo,

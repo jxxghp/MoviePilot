@@ -1,9 +1,12 @@
-"""持久整理计划构建、恢复与兼容 provider 执行。"""
+"""
+持久整理计划构建、恢复与兼容 provider 执行。
+"""
 
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
+from app.application.audio import music_cue_enabled
 from app.application.classification.reference import (
     EffectiveClassificationSnapshot,
     apply_persisted_classification_snapshot,
@@ -36,6 +39,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.metavideo import MetaVideo
 from app.runtime.log import logger
 from app.schemas.event import StorageOperSelectionEventData
+from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
@@ -44,7 +48,6 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
 )
-from app.schemas.workflow import FileItem
 
 from .checkpoint import build_planning_rejection_checkpoint, restore_planned_task
 from .execution import _DurableTransferStepRunner, _TransferRetryExhausted
@@ -52,7 +55,9 @@ from .music import music_planning_input
 
 
 class TransferPlanningOwner(_TransferOwnerBase):
-    """唯一持有整理准入后的冻结计划与 provider 选择。"""
+    """
+    唯一持有整理准入后的冻结计划与 provider 选择。
+    """
 
     _build_music_planning_input = music_planning_input
 
@@ -62,7 +67,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             *,
             cleanup_dest_fileitem: Optional[FileItem] = None,
     ) -> TransferPlanningInput:
-        """冻结准入时已知的请求参数，供 accepted 任务跨重启重新规划。"""
+        """
+        冻结准入时已知的请求参数，供 accepted 任务跨重启重新规划。
+        """
         target_directory = task.target_directory
         # 旧 ABI 允许省略 scrape，此时必须冻结目标目录开关，避免准入快照与执行检查点分叉。
         need_scrape = (
@@ -85,6 +92,8 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 type(task.mediainfo).__name__ if task.mediainfo else None
             ),
         }
+        if isinstance(task.meta, MetaMusic):
+            options["music_cue_enable"] = music_cue_enabled()
         return TransferPlanningInput(
             source_fileitem=self._TransferChain__json_snapshot(task.fileitem),
             meta=self._TransferChain__json_snapshot(task.meta),
@@ -111,7 +120,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             self,
             task: TransferTask,
     ) -> TransferProviderInvocationSnapshot:
-        """冻结目录解析后的旧 ABI 参数，并保留 None 与 False 的原值差异。"""
+        """
+        冻结目录解析后的旧 ABI 参数，并保留 None 与 False 的原值差异。
+        """
         return TransferProviderInvocationSnapshot(
             fileitem=self._TransferChain__json_snapshot(task.fileitem),
             meta=self._TransferChain__json_snapshot(task.meta),
@@ -138,7 +149,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             payload: Optional[dict[str, Any]],
             kind: object,
     ) -> MetaBase:
-        """从持久快照恢复元数据对象，不重新运行文件名解析。"""
+        """
+        从持久快照恢复元数据对象，不重新运行文件名解析。
+        """
         if not payload:
             raise TransferPlanningStateError("整理持久快照缺少已解析元数据")
         if kind == "MetaMusic" or payload.get("type") == MediaType.MUSIC.value:
@@ -165,7 +178,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             payload: Optional[dict[str, Any]],
             kind: object,
     ) -> Union[MediaInfo, MusicInfo]:
-        """从持久快照恢复媒体信息，不访问任何在线数据源。"""
+        """
+        从持久快照恢复媒体信息，不访问任何在线数据源。
+        """
         if not payload:
             raise TransferPlanningStateError("整理持久快照缺少已识别媒体信息")
         if kind == "MusicInfo" or payload.get("type") == MediaType.MUSIC.value:
@@ -175,7 +190,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
         return mediainfo
 
     def _TransferChain__restore_planned_task(self, task: TransferTask) -> None:
-        """用冻结检查点覆盖易受配置和在线识别变化影响的任务字段。"""
+        """
+        用冻结检查点覆盖易受配置和在线识别变化影响的任务字段。
+        """
         restore_planned_task(
             task,
             restore_meta=self._TransferChain__restore_meta_snapshot,
@@ -183,7 +200,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
         )
 
     def _TransferChain__select_storage_oper(self, storage: Optional[str]) -> Any:
-        """按冻结存储标识请求插件存储适配器，未接管时返回空值。"""
+        """
+        按冻结存储标识请求插件存储适配器，未接管时返回空值。
+        """
         event_data = StorageOperSelectionEventData(storage=storage)
         event = self.eventmanager.send_event(
             ChainEventType.StorageOperSelection,
@@ -199,7 +218,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             task: TransferTask,
             error: object,
     ) -> None:
-        """记录 checkpoint 前失败，保留 accepted 任务供后续重新规划。"""
+        """
+        记录 checkpoint 前失败，保留 accepted 任务供后续重新规划。
+        """
         if (
                 task.preview
                 or task.plan_checkpoint
@@ -221,13 +242,15 @@ class TransferPlanningOwner(_TransferOwnerBase):
             task: TransferTask,
             error: str,
     ) -> TransferInfo:
-        """把确定性规划拒绝冻结为零文件副作用计划并走统一终态结算。"""
+        """
+        把确定性规划拒绝冻结为零文件副作用计划并走统一终态结算。
+        """
         if task.preview:
             return TransferInfo(
                 success=False,
                 message=error,
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=task.transfer_type,
                 need_notify=False,
             )
@@ -260,7 +283,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             task: TransferTask,
             checkpoint: TransferPlanCheckpoint,
     ) -> TransferInfo:
-        """以可重放内部步骤确认冻结拒绝，并建立统一 execution checkpoint。"""
+        """
+        以可重放内部步骤确认冻结拒绝，并建立统一 execution checkpoint。
+        """
         error = checkpoint.rejection_error
         if not error:
             raise TransferPlanningStateError("整理拒绝计划缺少失败原因")
@@ -282,7 +307,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             success=False,
             message=error,
             fileitem=task.fileitem,
-            fail_list=[task.fileitem.path],
+            fail_list=[path for path in [task.fileitem.path] if path],
             transfer_type=checkpoint.resolved_transfer_type,
             need_notify=checkpoint.need_notify,
         )
@@ -294,7 +319,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             task: TransferTask,
             callback: Optional[Callable[[TransferTask, TransferInfo], Tuple[bool, str]]],
     ) -> Tuple[bool, str]:
-        """直接执行已提交检查点，不再触发识别、分类、选目录或重命名。"""
+        """
+        直接执行已提交检查点，不再触发识别、分类、选目录或重命名。
+        """
         self._TransferChain__restore_planned_task(task)
         self.jobview.running_task(task)
         settling_result = self._TransferChain__restore_settling_transfer_result(task)
@@ -324,7 +351,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             self,
             task: TransferTask,
     ) -> Optional[TransferInfo]:
-        """从 execution checkpoint 恢复终态结果，禁止再次执行外部步骤。"""
+        """
+        从 execution checkpoint 恢复终态结果，禁止再次执行外部步骤。
+        """
         repository: Optional[TransferExecutionRepository] = getattr(
             self,
             "_transfer_executions",
@@ -373,17 +402,14 @@ class TransferPlanningOwner(_TransferOwnerBase):
             ) from error
         transfer_payload = payload.get("transferinfo")
         if isinstance(transfer_payload, dict):
-            transferinfo = cast(
-                TransferInfo,
-                TransferInfo.model_validate(transfer_payload),
-            )
+            transferinfo = TransferInfo.model_validate(transfer_payload)
         elif outcome is TransferExecutionOutcome.FAILED:
             plan_checkpoint = task.plan_checkpoint
             transferinfo = TransferInfo(
                 success=False,
                 message=str(payload.get("error") or "整理失败"),
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=(
                     plan_checkpoint.resolved_transfer_type
                     if plan_checkpoint is not None
@@ -418,7 +444,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             task: TransferTask,
             checkpoint: TransferPlanCheckpoint,
     ) -> Optional[_DurableTransferStepRunner]:
-        """为非预览持久任务构造绑定计划指纹和当前租约的步骤 runner。"""
+        """
+        为非预览持久任务构造绑定计划指纹和当前租约的步骤 runner。
+        """
         if task.preview:
             return None
         repository = getattr(self, "_transfer_executions", None)
@@ -442,7 +470,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             target_oper: Any,
             step_runner: Optional[_DurableTransferStepRunner],
     ) -> Optional[TransferInfo]:
-        """通过模块边界执行宿主计划，并只向持久任务注入内部步骤 runner。"""
+        """
+        通过模块边界执行宿主计划，并只向持久任务注入内部步骤 runner。
+        """
         if step_runner is None:
             return cast(
                 Optional[TransferInfo],
@@ -478,7 +508,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             source_oper: Any = None,
             target_oper: Any = None,
     ) -> TransferInfo:
-        """先提交冻结 provider 调用，空结果时再提交并执行宿主计划。"""
+        """
+        先提交冻结 provider 调用，空结果时再提交并执行宿主计划。
+        """
         planning_input = task.planning_input or self._TransferChain__build_planning_input(task)
         task.bind_planning_input(planning_input)
         if not task.preview:
@@ -563,7 +595,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理操作多次失败，请稍后重试",
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -611,7 +643,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理操作多次失败，请稍后重试",
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -629,7 +661,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             source_oper: Any,
             classification_snapshot: EffectiveClassificationSnapshot,
     ) -> TransferPlanCheckpoint:
-        """在 provider 未接管时生成纯宿主计划，不执行任何文件写入。"""
+        """
+        在 provider 未接管时生成纯宿主计划，不执行任何文件写入。
+        """
         try:
             checkpoint = cast(
                 Optional[TransferPlanCheckpoint],
@@ -671,7 +705,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             planning_input: TransferPlanningInput,
             checkpoint: TransferPlanCheckpoint,
     ) -> TransferPlanCheckpoint:
-        """提交当前阶段检查点，并只消费仓储回读的持久投影。"""
+        """
+        提交当前阶段检查点，并只消费仓储回读的持久投影。
+        """
         if task.preview:
             return checkpoint
         if not task.admission_task_id:
@@ -693,7 +729,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             task: TransferTask,
             error: Exception,
     ) -> None:
-        """记录当前 checkpoint 阶段失败并保留原状态供重启恢复。"""
+        """
+        记录当前 checkpoint 阶段失败并保留原状态供重启恢复。
+        """
         if task.preview or not task.admission_task_id or not task.lease_token:
             return
         try:
@@ -715,7 +753,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             target_oper: Any,
             step_runner: Optional[_DurableTransferStepRunner] = None,
     ) -> Optional[TransferInfo]:
-        """在 checkpoint 提交后按冻结身份执行旧插件 transfer provider。"""
+        """
+        在 checkpoint 提交后按冻结身份执行旧插件 transfer provider。
+        """
         providers = checkpoint.legacy_transfer_providers
         if not providers:
             return None
@@ -755,7 +795,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
         ]
 
         def invoke_provider_sequence() -> Optional[TransferInfo]:
-            """按冻结顺序调用旧 provider，并校验其兼容返回类型。"""
+            """
+            按冻结顺序调用旧 provider，并校验其兼容返回类型。
+            """
             result = self._module_dispatcher.execute_frozen_plugin_providers(
                 "transfer",
                 providers,
@@ -782,7 +824,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             return result
 
         def execute_provider_sequence() -> TransferStepResult:
-            """执行冻结旧 provider 序列，并冻结是否接管及兼容结果。"""
+            """
+            执行冻结旧 provider 序列，并冻结是否接管及兼容结果。
+            """
             result = invoke_provider_sequence()
             return TransferStepResult(payload={
                 "handled": result is not None,
@@ -821,7 +865,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             *,
             checkpoint: TransferPlanCheckpoint,
     ) -> None:
-        """按旧批次语义在 provider 副作用前执行冻结 cleanup intent。"""
+        """
+        按旧批次语义在 provider 副作用前执行冻结 cleanup intent。
+        """
         invocation = checkpoint.provider_invocation
         if invocation is None:
             raise TransferPlanningStateError("旧 provider 执行缺少调用快照")
@@ -839,7 +885,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 )
 
     def _TransferChain__cleanup_transfer_destination(self, fileitem: FileItem) -> bool:
-        """经插件兼容的 StorageChain 幂等删除旧目标并治理父空目录。"""
+        """
+        经插件兼容的 StorageChain 幂等删除旧目标并治理父空目录。
+        """
         storage_chain = self._transfer_storage_chain()
         if not fileitem.path:
             return False
@@ -852,7 +900,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
         return bool(storage_chain.delete_media_file(current_item))
 
     def _TransferChain__observe_cleanup_destination(self, fileitem: FileItem) -> bool:
-        """只读确认统一清理目标已经不存在，查询错误由步骤 runner 隔离。"""
+        """
+        只读确认统一清理目标已经不存在，查询错误由步骤 runner 隔离。
+        """
         if not fileitem.path:
             return False
         return self._transfer_storage_chain().get_file_item_strict(
@@ -877,7 +927,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
             target_oper: Any = None,
             preview: bool = False,
     ) -> TransferInfo:
-        """把旧同步 ABI 适配为准入、检查点和终态结算共用的唯一命令。"""
+        """
+        把旧同步 ABI 适配为准入、检查点和终态结算共用的唯一命令。
+        """
         task = TransferTask(
             fileitem=fileitem,
             meta=meta,
@@ -907,7 +959,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理失败，请稍后重试",
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[path for path in [fileitem.path] if path],
                 transfer_type=transfer_type,
             )
         if preview:
@@ -922,7 +974,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理结果确认失败，后台将自动重试",
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[path for path in [fileitem.path] if path],
                 transfer_type=transfer_type,
             )
         return result

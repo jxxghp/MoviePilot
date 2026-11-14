@@ -1,5 +1,21 @@
+"""
+构造并缓存内置、插件及 MCP 工具实例，统一注入调用上下文。
+"""
+
 import hashlib
-from typing import Callable, List, Optional, Type
+from typing import (
+    TYPE_CHECKING,
+    List,
+    NotRequired,
+    Optional,
+    Type,
+    TypedDict,
+    Unpack,
+    cast,
+)
+
+if TYPE_CHECKING:
+    from app.agent.callback import StreamingHandler
 
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.tools.impl.agent_task import AgentTaskTool
@@ -35,10 +51,54 @@ from .base import MoviePilotTool
 from .catalog import ToolCatalogError, ToolCatalogSnapshot
 
 
-def _get_plugin_agent_tools() -> list[dict]:
-    """读取当前插件工具投影，隔离 Agent 工具工厂与 Runtime 管理器。"""
+class _PluginToolInfo(TypedDict):
+    """
+    插件运行时提供的一条 Agent 工具登记记录。
+
+    :ivar plugin_id: 插件的稳定标识
+    :ivar plugin_name: 插件显示名称
+    :ivar tools: 插件登记的工具类
+    """
+
+    plugin_id: str
+    plugin_name: str
+    tools: list[type[MoviePilotTool]]
+
+
+class _ToolFactoryOptions(TypedDict):
+    """
+    构造目录时原样交给工具创建入口的可选参数。
+
+    :ivar session_id: 当前会话标识
+    :ivar user_id: 当前用户标识
+    :ivar channel: 可缺省的消息渠道
+    :ivar source: 可缺省的消息来源
+    :ivar username: 可缺省的用户显示名
+    :ivar stream_handler: 可缺省的流式回调处理器
+    :ivar agent_context: 可缺省的 Agent 上下文
+    :ivar allow_message_tools: 是否允许消息工具
+    :ivar include_external_service_tools: 是否包含外部服务工具
+    :ivar data: 可缺省的 Agent 数据上下文
+    """
+
+    session_id: str
+    user_id: str
+    channel: NotRequired[Optional[str]]
+    source: NotRequired[Optional[str]]
+    username: NotRequired[Optional[str]]
+    stream_handler: NotRequired[Optional["StreamingHandler"]]
+    agent_context: NotRequired[Optional[dict[str, object]]]
+    allow_message_tools: NotRequired[bool]
+    include_external_service_tools: NotRequired[bool]
+    data: NotRequired[Optional[AgentDataContext]]
+
+
+def _get_plugin_agent_tools() -> list[_PluginToolInfo]:
+    """
+    读取当前插件工具投影，隔离 Agent 工具工厂与 Runtime 管理器。
+    """
     try:
-        return get_plugin_manager().get_plugin_agent_tools()
+        return cast(list[_PluginToolInfo], get_plugin_manager().get_plugin_agent_tools())
     except RuntimeError as error:
         # 纯工具目录探针可以在启动组合根之前运行；此时只跳过可选插件工具，
         # 不隐式创建 PluginManager，避免冷导入重新引入 Runtime 定位器。
@@ -97,7 +157,9 @@ class MoviePilotToolFactory:
 
     @classmethod
     def catalog_factory_revision(cls) -> str:
-        """返回当前内置工具工厂定义的稳定摘要。"""
+        """
+        返回当前内置工具工厂定义的稳定摘要。
+        """
         identities = (
             f"{tool_class.__module__}.{tool_class.__qualname__}"
             for tool_class in (*cls.BUILTIN_TOOL_CLASSES, *cls.EXTERNAL_SERVICE_TOOL_CLASSES)
@@ -106,7 +168,9 @@ class MoviePilotToolFactory:
 
     @staticmethod
     def _should_enable_choice_tool(channel: Optional[str] = None) -> bool:
-        """只在同时支持按钮与回调的渠道暴露交互选择能力。"""
+        """
+        只在同时支持按钮与回调的渠道暴露交互选择能力。
+        """
         if not channel:
             return False
         try:
@@ -144,7 +208,9 @@ class MoviePilotToolFactory:
 
     @staticmethod
     def _tool_class_name(tool_class: Type[MoviePilotTool]) -> str:
-        """读取工具类的稳定名称，兼容 Pydantic 字段未直接暴露在类对象上的情况。"""
+        """
+        读取工具类的稳定名称，兼容 Pydantic 字段未直接暴露在类对象上的情况。
+        """
         name = getattr(tool_class, "name", None)
         if isinstance(name, str) and name:
             return name
@@ -158,11 +224,11 @@ class MoviePilotToolFactory:
         cls,
         session_id: str,
         user_id: str,
-        channel: str = None,
-        source: str = None,
-        username: str = None,
-        stream_handler: Callable = None,
-        agent_context: dict = None,
+        channel: Optional[str] = None,
+        source: Optional[str] = None,
+        username: Optional[str] = None,
+        stream_handler: Optional["StreamingHandler"] = None,
+        agent_context: Optional[dict[str, object]] = None,
         allow_message_tools: bool = True,
         include_external_service_tools: bool = False,
         data: Optional[AgentDataContext] = None,
@@ -234,8 +300,10 @@ class MoviePilotToolFactory:
         return tools
 
     @classmethod
-    def create_catalog(cls, **tool_kwargs) -> ToolCatalogSnapshot:
-        """在插件目录稳定窗口内构造一份完整本地工具快照。"""
+    def create_catalog(cls, **tool_kwargs: Unpack[_ToolFactoryOptions]) -> ToolCatalogSnapshot:
+        """
+        在插件目录稳定窗口内构造一份完整本地工具快照。
+        """
         try:
             plugin_manager = get_plugin_manager()
         except RuntimeError as error:

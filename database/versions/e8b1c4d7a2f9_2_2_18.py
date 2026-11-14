@@ -1,9 +1,9 @@
-"""2.2.18
-增加音乐音质订阅条件、洗版状态和整理历史参数
+"""
+2.2.18 增加音乐音质订阅条件、洗版状态和整理历史参数
 
-Revision ID: e8b1c4d7a2f9
-Revises: d4f6a8c2e1b7
-Create Date: 2026-08-10
+版本标识： e8b1c4d7a2f9
+前置版本： d4f6a8c2e1b7
+创建时间： 2026-08-10
 """
 
 from alembic import op
@@ -17,7 +17,9 @@ depends_on = None
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
-    """检查数据表是否已存在指定字段。"""
+    """
+    检查数据表是否已存在指定字段。
+    """
     inspector = sa.inspect(op.get_bind())
     if table_name not in inspector.get_table_names():
         return False
@@ -25,16 +27,22 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 
 def _add_columns(table_name: str, columns: list[sa.Column]) -> None:
-    """为指定数据表幂等增加字段。"""
+    """
+    为指定数据表幂等增加字段。
+    """
     for column in columns:
         if not _has_column(table_name, column.name):
             op.add_column(table_name, column)
 
 
 def upgrade() -> None:
-    """增加音乐音质筛选、洗版快照和整理历史字段。"""
+    """
+    增加音乐音质筛选、洗版快照和整理历史字段。
+    """
     def subscribe_filter_columns() -> list[sa.Column]:
-        """构造可分别绑定到订阅表和历史表的筛选字段。"""
+        """
+        构造可分别绑定到订阅表和历史表的筛选字段。
+        """
         return [
             sa.Column("audio_quality", sa.String(), nullable=True),
             sa.Column("audio_format", sa.String(), nullable=True),
@@ -148,7 +156,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除音乐音质相关字段。"""
+    """
+    移除音乐音质相关字段。
+    """
     table_columns = {
         "subscribe": [
             "current_sample_rate", "current_bit_depth", "current_bitrate", "current_audio_format",

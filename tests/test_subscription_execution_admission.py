@@ -1,4 +1,6 @@
-"""订阅级进程内准入与显式执行上下文测试。"""
+"""
+订阅级进程内准入与显式执行上下文测试。
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -9,7 +11,9 @@ from app.application.subscription.execution import (
 
 
 def test_same_subscription_is_mutually_exclusive_across_channels() -> None:
-    """同一订阅只能由 Search 或 Match 中的一条路径持有。"""
+    """
+    同一订阅只能由 Search 或 Match 中的一条路径持有。
+    """
     admission = SubscriptionExecutionAdmission()
 
     search = admission.try_acquire(
@@ -34,11 +38,15 @@ def test_same_subscription_is_mutually_exclusive_across_channels() -> None:
 
 
 def test_concurrent_channels_admit_only_one_owner_for_same_subscription() -> None:
-    """Search 与 Match 同时申请同一订阅时只能有一个取得 owner。"""
+    """
+    Search 与 Match 同时申请同一订阅时只能有一个取得 owner。
+    """
     admission = SubscriptionExecutionAdmission()
 
     def acquire(operation: str):
-        """并发申请固定订阅的通道所有权。"""
+        """
+        并发申请固定订阅的通道所有权。
+        """
         return admission.try_acquire(
             subscription_id=11,
             operation=operation,
@@ -52,7 +60,9 @@ def test_concurrent_channels_admit_only_one_owner_for_same_subscription() -> Non
 
 
 def test_different_subscriptions_can_run_across_channels() -> None:
-    """不同订阅可以分别占用 Search 与 Match 通道。"""
+    """
+    不同订阅可以分别占用 Search 与 Match 通道。
+    """
     admission = SubscriptionExecutionAdmission()
 
     search = admission.try_acquire(
@@ -72,7 +82,9 @@ def test_different_subscriptions_can_run_across_channels() -> None:
 
 
 def test_expired_owner_keeps_ownership_until_finally_release() -> None:
-    """TTL 只请求 owner 协作退出，不允许后到任务强制接管活跃执行。"""
+    """
+    TTL 只请求 owner 协作退出，不允许后到任务强制接管活跃执行。
+    """
     now = [100.0]
     admission = SubscriptionExecutionAdmission(clock=lambda: now[0])
     lease = admission.try_acquire(
@@ -102,7 +114,9 @@ def test_expired_owner_keeps_ownership_until_finally_release() -> None:
 
 
 def test_execution_context_combines_cancel_ttl_and_download_boundary() -> None:
-    """执行上下文独立承载取消、TTL、阶段与下载副作用状态。"""
+    """
+    执行上下文独立承载取消、TTL、阶段与下载副作用状态。
+    """
     now = [100.0]
     cancelled = [False]
     phases: list[tuple[str, int | None]] = []

@@ -1,4 +1,6 @@
-"""整理历史写入所需的稳定字段投影。"""
+"""
+整理历史写入所需的稳定字段投影。
+"""
 
 from typing import Any, Optional, TypedDict, Union
 
@@ -15,7 +17,9 @@ from app.schemas.types import MUSIC_ENTITY_RECORDING
 def classification_fields(
     media: Union[MediaInfo, MusicInfo],
 ) -> dict[str, Any]:
-    """投影整理历史使用的最终分类标量，避免保存推荐分类。"""
+    """
+    投影整理历史使用的最终分类标量，避免保存推荐分类。
+    """
     snapshot = effective_classification_snapshot(media)
     return {
         "media_category_id": snapshot.category_id,
@@ -27,26 +31,32 @@ def classification_fields(
 
 
 def history_title(
-    meta: MetaBase,
+    meta: Optional[MetaBase],
     mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
 ) -> Optional[str]:
-    """音乐文件优先记录曲目标题，其它媒体保持识别标题。"""
+    """
+    音乐文件优先记录曲目标题，其它媒体保持识别标题；均未识别时不推测标题。
+    """
     if isinstance(meta, MetaMusic) and meta.title:
         return str(meta.title)
     if mediainfo and mediainfo.title:
         return str(mediainfo.title)
-    return str(meta.name) if meta.name else None
+    return str(meta.name) if meta and meta.name else None
 
 
 def history_source_path(fileitem: FileItem) -> str:
-    """返回整理历史必需的源路径，拒绝持久化无身份记录。"""
+    """
+    返回整理历史必需的源路径，拒绝持久化无身份记录。
+    """
     if not fileitem.path:
         raise ValueError("整理历史缺少源文件路径")
     return fileitem.path
 
 
 def history_year(value: object) -> Optional[str]:
-    """把媒体年份规范为整理历史稳定字符串。"""
+    """
+    把媒体年份规范为整理历史稳定字符串。
+    """
     return str(value) if value is not None else None
 
 
@@ -79,7 +89,7 @@ def success_fields(
         dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
         dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
         mode=mode,
-        type=mediainfo.type.value,
+        type=(mediainfo.type.value if mediainfo.type else ""),
         **classification_fields(mediainfo),
         title=history_title(meta, mediainfo),
         year=history_year(mediainfo.year),
@@ -97,6 +107,7 @@ def success_fields(
         image=mediainfo.get_poster_image(),
         downloader=downloader,
         download_hash=download_hash,
+        episode_group=mediainfo.episode_group,
         status=True,
         retry_count=0,
         auto_paused=False,
@@ -107,7 +118,7 @@ def success_fields(
 def failure_fields(
     fileitem: FileItem,
     mode: str,
-    meta: MetaBase,
+    meta: Optional[MetaBase],
     mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
     transferinfo: Optional[TransferInfo] = None,
     downloader: Optional[str] = None,
@@ -119,10 +130,12 @@ def failure_fields(
     投影转移失败记录，不执行数据库写入。
 
     识别结果与整理结果齐备时按完整字段落库；缺任一项则走「未识别到媒体信息」分支，
-    此时只有文件名解析出的元数据可用，不写目标路径。
+    此时仅保存已有的文件名元数据，不写目标路径。元数据为空时仍保留源文件与失败原因，
+    不推测年份或季集。
+
     :param fileitem: 源文件项
     :param mode: 整理方式
-    :param meta: 文件名识别结果
+    :param meta: 文件名识别结果，未解析时为 None
     :param mediainfo: 媒体识别结果，未识别时为 None
     :param transferinfo: 整理结果，未进入整理时为 None
     :param downloader: 下载器
@@ -151,10 +164,10 @@ def failure_fields(
             dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
             dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
             mode=mode,
-            type=mediainfo.type.value,
+            type=(mediainfo.type.value if mediainfo.type else ""),
             **classification_fields(mediainfo),
             title=history_title(meta, mediainfo),
-            year=history_year(mediainfo.year or meta.year),
+            year=history_year(mediainfo.year or (meta.year if meta else None)),
             media_source=media_source,
             media_id=media_id,
             music_type=getattr(mediainfo, "music_type", None),
@@ -164,8 +177,8 @@ def failure_fields(
             bit_depth=getattr(meta, "bit_depth", None),
             sample_rate=getattr(meta, "sample_rate", None),
             bitrate=getattr(meta, "bitrate", None),
-            seasons=meta.season,
-            episodes=meta.episode,
+            seasons=meta.season if meta else None,
+            episodes=meta.episode if meta else None,
             image=mediainfo.get_poster_image(),
             downloader=downloader,
             download_hash=download_hash,
@@ -183,9 +196,9 @@ def failure_fields(
     else:
         media_source, media_id = resolve_media_identity(media=meta)
         history = dict(
-            type=meta.type.value if meta.type else None,
+            type=meta.type.value if meta and meta.type else None,
             title=history_title(meta),
-            year=history_year(meta.year),
+            year=history_year(meta.year if meta else None),
             media_source=media_source,
             media_id=media_id,
             music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
@@ -198,8 +211,8 @@ def failure_fields(
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(),
             mode=mode,
-            seasons=meta.season,
-            episodes=meta.episode,
+            seasons=meta.season if meta else None,
+            episodes=meta.episode if meta else None,
             downloader=downloader,
             download_hash=download_hash,
             status=False,
@@ -213,7 +226,13 @@ def failure_fields(
 
 
 class HistoryFileFingerprint(TypedDict):
-    """查重描述与裁决共享的源文件版本字段。"""
+    """
+    查重描述与裁决共享的源文件版本字段。
+
+    :ivar file_size: 源文件大小，单位为字节；未知时为 None
+    :ivar file_modify_time: 源文件修改时间戳，单位为秒；未知时为 None
+    :ivar fileid: 存储后端提供的稳定文件标识；未提供时为 None
+    """
 
     file_size: Optional[int]
     file_modify_time: Optional[float]
@@ -221,7 +240,9 @@ class HistoryFileFingerprint(TypedDict):
 
 
 def history_file_fingerprint(fileitem: FileItem) -> HistoryFileFingerprint:
-    """从同一个文件快照取出查重所需的版本指纹。"""
+    """
+    从同一个文件快照取出查重所需的版本指纹。
+    """
     return {
         "file_size": fileitem.size,
         "file_modify_time": fileitem.modify_time,

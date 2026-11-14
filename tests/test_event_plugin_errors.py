@@ -1,4 +1,6 @@
-"""插件事件异常处理的回归测试。"""
+"""
+插件事件异常处理的回归测试。
+"""
 
 import pytest
 
@@ -8,22 +10,30 @@ from app.schemas.types import ChainEventType
 
 
 class FailingDiscoverPlugin:
-    """模拟只实现公开名称接口且事件处理失败的插件。"""
+    """
+    模拟只实现公开名称接口且事件处理失败的插件。
+    """
 
     @staticmethod
     def get_name() -> str:
-        """返回插件显示名称。"""
+        """
+        返回插件显示名称。
+        """
         return "测试发现插件"
 
     @staticmethod
     def handle(_event: Event) -> None:
-        """模拟插件事件处理失败。"""
+        """
+        模拟插件事件处理失败。
+        """
         raise RuntimeError("discover failed")
 
 
 @pytest.mark.asyncio
 async def test_plugin_event_error_uses_public_display_name(monkeypatch):
-    """同步和异步调度都应通过 get_name 获取插件名称并保留原始异常。"""
+    """
+    同步和异步调度都应通过 get_name 获取插件名称并保留原始异常。
+    """
     event_manager = EventManager()
     plugin_manager = PluginManager()
     plugin = FailingDiscoverPlugin()

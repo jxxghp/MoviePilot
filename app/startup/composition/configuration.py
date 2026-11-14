@@ -1,4 +1,6 @@
-"""把可变部署设置转换成宿主各领域使用的类型化配置快照。"""
+"""
+把可变部署设置转换成宿主各领域使用的类型化配置快照。
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +48,15 @@ from app.schemas.types import MediaType
 
 @dataclass(frozen=True, slots=True)
 class ConfigurationComposition:
-    """保存启动阶段加载完成的配置服务与类型化快照门面。"""
+    """
+    保存启动阶段加载完成的配置服务与类型化快照门面。
+
+    :param system_config: 读写 SystemConfig 表的持久化访问对象，由组合根管理其会话
+    :param system_service: 处理系统配置值和变更通知的应用服务
+    :param user_service: 按用户管理配置的应用服务
+    :param runtime: 从进程环境解析的运行配置快照
+    :param settings: 查询和修改可见系统设置的服务
+    """
 
     system_config: SystemConfigOper
     system_service: SystemConfigService
@@ -60,7 +70,9 @@ async def compose_configuration(
     executor: AsyncDatabaseExecutor,
     settings: Settings,
 ) -> ConfigurationComposition:
-    """加载系统与用户配置快照，并在全部成功后发布配置服务。"""
+    """
+    加载系统与用户配置快照，并在全部成功后发布配置服务。
+    """
     system_config = cast(Callable[[], SystemConfigOper], SystemConfigOper)()
     user_config = TransactionalUserConfigurationRepository(SessionFactory)
     await executor.run(system_config.load_snapshot)
@@ -99,7 +111,9 @@ def publish_configuration(
     composition: ConfigurationComposition,
     settings: Settings,
 ) -> None:
-    """发布 HostRuntime 使用的同一配置对象及兼容设置入口。"""
+    """
+    发布 HostRuntime 使用的同一配置对象及兼容设置入口。
+    """
     configure_system_config(composition.system_service)
     # 统一接管直接 async_set() 写入，避免绕过管理 API 的配置保存没有运行时事件。
     from app.startup.composition.system import _ConfigurationEventAdapter
@@ -116,14 +130,18 @@ def publish_configuration(
 
 
 def reset_configuration() -> None:
-    """撤销当前 lifespan 发布的全部配置服务与 runtime 端口。"""
+    """
+    撤销当前 lifespan 发布的全部配置服务与 runtime 端口。
+    """
     reset_runtime_setting_ports()
     reset_user_configuration()
     reset_configuration_services()
 
 
 def normalize_subscribe_rss_interval(value: object) -> int:
-    """把无效或过小的 RSS 间隔收敛为兼容的安全值。"""
+    """
+    把无效或过小的 RSS 间隔收敛为兼容的安全值。
+    """
     try:
         if not isinstance(value, (str, bytes, bytearray, int, float)):
             return 30
@@ -133,7 +151,9 @@ def normalize_subscribe_rss_interval(value: object) -> int:
 
 
 def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
-    """从可热更新的部署设置构建一次 API 请求配置快照。"""
+    """
+    从可热更新的部署设置构建一次 API 请求配置快照。
+    """
     return ApiRuntimeConfig(
         access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
         btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
@@ -145,6 +165,7 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
         search_source=settings.SEARCH_SOURCE,
         media_extensions=tuple(settings.RMT_MEDIAEXT),
         subtitle_extensions=tuple(settings.RMT_SUBEXT),
+        lyrics_extensions=tuple(settings.RMT_LYRICSEXT),
         audio_extensions=tuple(settings.RMT_AUDIOEXT),
         movie_rename_format=settings.RENAME_FORMAT(MediaType.MOVIE),
         television_rename_format=settings.RENAME_FORMAT(MediaType.TV),
@@ -163,7 +184,9 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
 
 
 def build_token_runtime_config(settings: Settings) -> TokenRuntimeConfig:
-    """从部署设置构建令牌编解码使用的安全配置快照。"""
+    """
+    从部署设置构建令牌编解码使用的安全配置快照。
+    """
     return TokenRuntimeConfig(
         secret_key=settings.SECRET_KEY,
         resource_secret_key=settings.RESOURCE_SECRET_KEY,
@@ -172,8 +195,21 @@ def build_token_runtime_config(settings: Settings) -> TokenRuntimeConfig:
     )
 
 
+def _cookiecloud_configured(settings: Settings) -> bool:
+    """
+    判断 CookieCloud 定时同步所需的来源和凭据是否完整。
+    """
+    return bool(
+        (settings.COOKIECLOUD_KEY or "").strip()
+        and (settings.COOKIECLOUD_PASSWORD or "").strip()
+        and (settings.COOKIECLOUD_HOST or settings.COOKIECLOUD_ENABLE_LOCAL)
+    )
+
+
 def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
-    """从可热更新的部署设置构建一次 Scheduler 配置快照。"""
+    """
+    从可热更新的部署设置构建一次 Scheduler 配置快照。
+    """
     return SchedulerRuntimeConfig(
         dev=settings.DEV,
         timezone=settings.TZ,
@@ -181,6 +217,7 @@ def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig
         db_backup_enable=settings.DB_BACKUP_ENABLE,
         db_backup_cron=settings.DB_BACKUP_CRON,
         cookiecloud_interval=settings.COOKIECLOUD_INTERVAL,
+        cookiecloud_configured=_cookiecloud_configured(settings),
         mediaserver_sync_interval=settings.MEDIASERVER_SYNC_INTERVAL,
         subscribe_search=settings.SUBSCRIBE_SEARCH,
         subscribe_search_interval=settings.SUBSCRIBE_SEARCH_INTERVAL,
@@ -202,18 +239,22 @@ def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig
 
 
 def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
-    """从部署设置构建 Chain 在本次实例生命周期使用的配置快照。"""
+    """
+    从部署设置构建 Chain 在本次实例生命周期使用的配置快照。
+    """
     return ChainRuntimeConfig(
         media_extensions=tuple(
             settings.RMT_MEDIAEXT
             + settings.DOWNLOAD_TMPEXT
             + settings.RMT_SUBEXT
+            + settings.RMT_LYRICSEXT
             + settings.RMT_AUDIOEXT
         ),
         api_port=settings.PORT,
         api_token=settings.API_TOKEN,
         video_extensions=tuple(settings.RMT_MEDIAEXT),
         subtitle_extensions=tuple(settings.RMT_SUBEXT),
+        lyrics_extensions=tuple(settings.RMT_LYRICSEXT),
         audio_extensions=tuple(settings.RMT_AUDIOEXT),
         lyrics_batch_timeout=settings.LYRICS_BATCH_TIMEOUT,
         temporary_path=settings.TEMP_PATH,
@@ -238,7 +279,12 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         data_cleanup_outbox_completed_days=settings.DATA_CLEANUP_OUTBOX_COMPLETED_DAYS,
         data_cleanup_outbox_dead_days=settings.DATA_CLEANUP_OUTBOX_DEAD_DAYS,
         download_subtitle=settings.DOWNLOAD_SUBTITLE,
+        scrap_season_image_to_root=settings.SCRAP_SEASON_IMAGE_TO_ROOT,
+        scrap_image_alias=settings.SCRAP_IMAGE_ALIAS,
+        scrap_4k_background=settings.SCRAP_4K_BACKGROUND,
         music_metadata_to_simplified=settings.MUSIC_METADATA_TO_SIMPLIFIED,
+        music_lyrics_to_simplified=settings.MUSIC_LYRICS_TO_SIMPLIFIED,
+        music_cue_enable=settings.MUSIC_CUE_ENABLE,
         music_release_region_priority=tuple(
             item.strip().upper() for item in settings.MUSIC_RELEASE_REGION_PRIORITY.split(",") if item.strip()
         ),
@@ -263,6 +309,9 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         transfer_failure_notification_aggregation=(
             settings.TRANSFER_FAILURE_NOTIFICATION_AGGREGATION
         ),
+        transfer_success_notification_aggregation=(
+            settings.TRANSFER_SUCCESS_NOTIFICATION_AGGREGATION
+        ),
         transfer_task_timeout=settings.TRANSFER_TASK_TIMEOUT,
         scrape_follow_tmdb=settings.SCRAP_FOLLOW_TMDB,
         metadata_cache_ttl=settings.CONF.meta,
@@ -279,6 +328,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         proxy_server=settings.PROXY_SERVER,
         proxy_host=settings.PROXY_HOST,
         github_headers=settings.GITHUB_HEADERS,
+        github_proxy=settings.GITHUB_PROXY,
         cookiecloud_blacklist=settings.COOKIECLOUD_BLACKLIST,
         subscribe_mode=settings.SUBSCRIBE_MODE,
         no_cache_site_key=settings.NO_CACHE_SITE_KEY,
@@ -295,6 +345,9 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         wallpaper_image_url=settings.WALLPAPER_IMAGE_URL,
         customize_wallpaper_api_url=settings.CUSTOMIZE_WALLPAPER_API_URL,
         security_image_suffixes=tuple(settings.SECURITY_IMAGE_SUFFIXES),
+        image_proxy_allowed_private_ranges=tuple(
+            settings.IMAGE_PROXY_ALLOWED_PRIVATE_RANGES
+        ),
         cache_path=settings.CACHE_PATH,
         global_image_cache_days=settings.GLOBAL_IMAGE_CACHE_DAYS,
     )

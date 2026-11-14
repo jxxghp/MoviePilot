@@ -1,4 +1,6 @@
-"""插件 Python 依赖清单的选择和解析。"""
+"""
+插件 Python 依赖清单的选择和解析。
+"""
 
 from __future__ import annotations
 
@@ -23,19 +25,28 @@ DEPENDENCY_MANIFEST_FILENAMES = frozenset(
 
 
 class PluginDependencyManifestError(ValueError):
-    """表示生效的现代依赖清单无法安全消费。"""
+    """
+    表示生效的现代依赖清单无法安全消费。
+    """
 
 
 @dataclass(frozen=True)
 class PluginDependencyManifest:
-    """保存插件当前生效的依赖清单及其已解析依赖。"""
+    """
+    插件当前选中的依赖清单与解析结果。
+
+    :param path: 已生效的 pyproject.toml 或 requirements.txt 文件路径
+    :param dependencies: 按清单顺序解析的依赖条目，不在此处解析安装版本或执行安装
+    """
 
     path: Path
     dependencies: tuple[Requirement, ...]
 
 
 def select_dependency_manifest(plugin_dir: Path) -> Path | None:
-    """按现代清单优先级返回插件当前生效的依赖文件。"""
+    """
+    按现代清单优先级返回插件当前生效的依赖文件。
+    """
     pyproject_file = plugin_dir / PYPROJECT_FILENAME
     if pyproject_file.is_file():
         return pyproject_file
@@ -46,7 +57,9 @@ def select_dependency_manifest(plugin_dir: Path) -> Path | None:
 
 
 def dependency_manifest_status(event_path: Path) -> bool | None:
-    """判断文件事件是否改变生效清单，非清单文件返回 None。"""
+    """
+    判断文件事件是否改变生效清单，非清单文件返回 None。
+    """
     if event_path.name not in DEPENDENCY_MANIFEST_FILENAMES:
         return None
     active_manifest = select_dependency_manifest(event_path.parent)
@@ -62,7 +75,9 @@ def dependency_manifest_status(event_path: Path) -> bool | None:
 def load_dependency_manifest(
     plugin_dir: Path,
 ) -> PluginDependencyManifest | None:
-    """读取插件当前生效的依赖清单，现代清单无效时拒绝回退。"""
+    """
+    读取插件当前生效的依赖清单，现代清单无效时拒绝回退。
+    """
     manifest_path = select_dependency_manifest(plugin_dir)
     if manifest_path is None:
         return None
@@ -70,7 +85,9 @@ def load_dependency_manifest(
 
 
 def load_dependency_file(path: Path) -> PluginDependencyManifest:
-    """读取指定依赖文件，pyproject 严格校验，其余文件保持旧格式兼容。"""
+    """
+    读取指定依赖文件，pyproject 严格校验，其余文件保持旧格式兼容。
+    """
     if path.name == PYPROJECT_FILENAME:
         dependencies = _load_pyproject_dependencies(path)
     else:
@@ -84,7 +101,9 @@ def load_dependency_file(path: Path) -> PluginDependencyManifest:
 def dependency_manifest_declares_installation(
     manifest: PluginDependencyManifest,
 ) -> bool:
-    """判断清单是否声明了可能改变共享 Python 环境的安装内容。"""
+    """
+    判断清单是否声明了可能改变共享 Python 环境的安装内容。
+    """
     if manifest.dependencies:
         return True
     if manifest.path.name == PYPROJECT_FILENAME:
@@ -104,7 +123,9 @@ def dependency_manifest_declares_installation(
 
 
 def _load_pyproject_dependencies(path: Path) -> tuple[Requirement, ...]:
-    """严格读取 PEP 621 ``project.dependencies``。"""
+    """
+    严格读取 PEP 621 ``project.dependencies``。
+    """
     try:
         with path.open("rb") as file:
             document = tomllib.load(file)
@@ -165,7 +186,9 @@ def _load_pyproject_dependencies(path: Path) -> tuple[Requirement, ...]:
 
 
 def _load_requirements_dependencies(path: Path) -> tuple[Requirement, ...]:
-    """按旧行为逐行读取 requirements，忽略无法解析的兼容内容。"""
+    """
+    按旧行为逐行读取 requirements，忽略无法解析的兼容内容。
+    """
     dependencies: list[Requirement] = []
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()

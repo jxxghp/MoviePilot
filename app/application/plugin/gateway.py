@@ -1,9 +1,11 @@
-"""统一插件安装 Gateway。"""
+"""
+统一插件安装安装网关。
+"""
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Protocol
 
@@ -27,8 +29,11 @@ from app.application.plugin.source import (
     list_effective_online_candidates,
     select_plugin_candidate,
 )
+from app.domain.plugin import PLUGIN_SYSTEM_VERSION_FIELD
+from app.schemas.exception import PluginMutationRejectedError
 
 InventoryProvider = Callable[[bool], Awaitable[CandidateInventory]]
+MarketRefresh = Callable[[Sequence[str]], Awaitable[None]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
 CandidateCompatibility = Callable[[Candidate], tuple[bool, str]]
 SourcePluginIdResolver = Callable[[str], str]
@@ -36,7 +41,16 @@ SourcePluginIdResolver = Callable[[str], str]
 
 @dataclass(frozen=True, slots=True)
 class PluginSourceInspection:
-    """前端与 Agent 选择来源所需的只读候选和当前身份快照。"""
+    """
+    前端与 Agent 选择来源所需的只读候选和当前身份快照。
+
+    :param plugin_id: 物理插件标识，不使用分身实例标识
+    :param inventory_complete: 所需市场与代际是否均已得到可靠读取结果
+    :param identity: 当前已持久化的来源身份；首次安装前可为 None
+    :param selection: 按来源信任策略生成的候选选择结果
+    :param online_candidates: 当前可供用户选择的在线候选
+    :param local_candidate: 当前有效本地候选；没有可用候选时为 None
+    """
 
     plugin_id: str
     inventory_complete: bool
@@ -47,7 +61,9 @@ class PluginSourceInspection:
 
 
 class PluginInstallExecutor(Protocol):
-    """统一 Gateway 调用的可恢复安装执行端口。"""
+    """
+    统一安装网关调用的可恢复安装执行端口。
+    """
 
     async def execute(
         self,
@@ -57,11 +73,21 @@ class PluginInstallExecutor(Protocol):
         force: bool,
         local_sync: bool = False,
     ) -> PluginInstallResult:
-        """执行已通过来源准入的插件载荷事务。"""
+        """
+        执行已通过来源准入的插件载荷事务。
+
+        :param admission: 已确认的唯一载荷候选与目标来源身份决策
+        :param release_version: 指定的发布版本；None 使用候选默认版本
+        :param force: 是否跳过已安装版本相同等短路检查
+        :param local_sync: 是否只把本地载荷同步到运行目录，默认 False
+        :return: 安装结果、数据库和运行态提交状态，以及失败补偿详情
+        """
 
 
 class PluginInstallGateway:
-    """让全部插件载荷写入共享同一来源策略和事务执行器。"""
+    """
+    让全部插件载荷写入共享同一来源策略和事务执行器。
+    """
 
     def __init__(
         self,
@@ -72,14 +98,20 @@ class PluginInstallGateway:
         executor: PluginInstallExecutor,
         clock: Callable[[], datetime],
         source_plugin_id: SourcePluginIdResolver,
+        market_refresh: MarketRefresh | None = None,
     ) -> None:
-        """保存候选事实、身份读取、兼容校验、事务执行、时间和源身份归一端口。"""
+        """
+        保存候选事实、身份读取、兼容校验、事务执行、时间和源身份归一端口。
+
+        :param market_refresh: 只重读指定市场索引的端口；未注入时沿用缓存索引
+        """
         self.__source_plugin_id = source_plugin_id
         self.__inventory = inventory
         self.__identity = identity
         self.__candidate_compatibility = candidate_compatibility
         self.__executor = executor
         self.__clock = clock
+        self.__market_refresh = market_refresh
 
     async def install(
         self,
@@ -95,7 +127,8 @@ class PluginInstallGateway:
         startup_token: PluginStartupLease | None = None,
         local_sync: bool = False,
     ) -> PluginInstallResult:
-        """读取冻结库存并执行一次不能绕过来源身份的插件写入。
+        """
+        读取冻结库存并执行一次不能绕过来源身份的插件写入。
 
         先把分身归一到源插件，理由与来源勘察相同：安装包只登记在源插件名下，拿
         分身自身 ID 去查候选必然落空。界面上分身卡片的「版本历史」与「关于」两条
@@ -103,6 +136,10 @@ class PluginInstallGateway:
 
         归一必须早于生命周期占位：``hold`` 按 ID 互斥，用分身 ID 占位不会把同源
         分身的并发安装串起来，它们会同时改写同一份源插件载荷。
+
+        ``force`` 且没有点名 Release 版本时，先把该插件出现过的市场索引重读一次：
+        Release tag 由索引里的 version 拼出，沿用缓存索引会把同一个旧版本重装一遍
+        还提示更新成功。重读只覆盖这些仓库，其余市场仍走缓存。
         """
         plugin_id = self.__source_plugin_id(plugin_id)
         try:
@@ -111,6 +148,17 @@ class PluginInstallGateway:
             inventory = await self.__inventory(False)
             async with plugin_lifecycle.hold(plugin_id, startup_token):
                 identity = await self.__identity(plugin_id)
+                markets = _plugin_market_urls(inventory, plugin_id)
+                if (
+                    force
+                    and release_version is None
+                    and markets
+                    and self.__market_refresh is not None
+                ):
+                    await self.__market_refresh(markets)
+                    # 重读一次完整库存：只有限定仓库的缓存被替换，其余仍是缓存命中，
+                    # 且准入必须按配置市场集合判断库存是否完整。
+                    inventory = await self.__inventory(False)
                 admission = admit_plugin_install(
                     inventory,
                     request=PluginInstallAdmissionRequest(
@@ -125,7 +173,7 @@ class PluginInstallGateway:
                     now=self.__clock(),
                 )
                 compatible, message = self.__candidate_compatibility(
-                    admission.candidate
+                    self._compatibility_candidate(admission.candidate, release_version)
                 )
                 if not compatible:
                     raise PluginSourceAdmissionError(
@@ -141,12 +189,30 @@ class PluginInstallGateway:
                         PluginLocalCandidate,
                     ),
                 )
+        except PluginMutationRejectedError as error:
+            return PluginInstallResult(success=False, message=str(error), failure_stage="admission")
         except (TypeError, ValueError, PluginSourceAdmissionError) as error:
             return PluginInstallResult(
                 success=False,
                 message=str(error),
                 failure_stage="source_admission",
             )
+
+    @staticmethod
+    def _compatibility_candidate(candidate: Candidate, release_version: str | None) -> Candidate:
+        """
+        历史远端Release的宿主范围交给实际版本选择，保留市场的来源和运行时要求。
+
+        :param candidate: 已通过来源与代际准入的冻结候选
+        :param release_version: 请求安装的Release版本
+        :return: 仅兼容校验使用的候选视图，不修改事务使用的原候选
+        """
+        if (not release_version or release_version == candidate.plugin_version
+                or isinstance(candidate, PluginLocalCandidate) or not isinstance(candidate.dto, Mapping)):
+            return candidate
+        metadata = dict(candidate.dto)
+        metadata.pop(PLUGIN_SYSTEM_VERSION_FIELD, None)
+        return replace(candidate, dto=metadata)
 
     async def inspect_source(
         self,
@@ -155,7 +221,8 @@ class PluginInstallGateway:
         package_version: str | None = None,
         force: bool = False,
     ) -> PluginSourceInspection:
-        """读取与真实安装相同的库存和身份，返回脱敏来源选择快照。
+        """
+        读取与真实安装相同的库存和身份，返回脱敏来源选择快照。
 
         先把分身归一到源插件：分身只是共享同一份源码的运行实例，安装包与来源身份
         都只登记在源插件名下，拿分身自身 ID（源插件 ID 加后缀）去查库存必然落空，
@@ -193,26 +260,53 @@ _plugin_install_gateway: PluginInstallGateway | None = None
 
 
 def configure_plugin_install_service(gateway: PluginInstallGateway) -> None:
-    """由启动组合根发布当前 lifespan 的唯一插件安装 Gateway。"""
+    """
+    由启动组合根发布当前 lifespan 的唯一插件安装安装网关。
+    """
     global _plugin_install_gateway
     _plugin_install_gateway = gateway
 
 
 def get_plugin_install_service() -> PluginInstallGateway:
-    """返回已装配 Gateway；启动未完成时拒绝任何载荷写入。"""
+    """
+    返回已装配安装网关；启动未完成时拒绝任何载荷写入。
+    """
     if _plugin_install_gateway is None:
         raise RuntimeError("插件安装服务尚未完成初始化")
     return _plugin_install_gateway
 
 
 def reset_plugin_install_service() -> None:
-    """清除当前 lifespan 的 Gateway，供停机和隔离测试使用。"""
+    """
+    清除当前 lifespan 的安装网关，供停机和隔离测试使用。
+    """
     global _plugin_install_gateway
     _plugin_install_gateway = None
 
 
+def _plugin_market_urls(inventory: CandidateInventory, plugin_id: str) -> tuple[str, ...]:
+    """
+    收集索引里出现该插件的市场，供强制更新只重读这些仓库。
+
+    :param inventory: 本轮已冻结的候选库存
+    :param plugin_id: 已归一的物理插件标识
+    :return: 去重且保持配置顺序的市场标识；该插件不在任何市场索引里时为空
+    """
+    normalized = plugin_id.lower()
+    return tuple(dict.fromkeys(
+        read.market
+        for read in inventory.market_reads
+        if any(
+            candidate.normalized_plugin_id == normalized
+            for candidate in read.candidates
+        )
+    ))
+
+
 def _generation_order(package_version: str | None) -> tuple[str, ...]:
-    """把兼容入口的首选代际转换为来源选择优先序。"""
+    """
+    把兼容入口的首选代际转换为来源选择优先序。
+    """
     normalized = (package_version or "v3").strip().lower()
     if normalized in {"", "v1"}:
         return ("v1",)

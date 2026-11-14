@@ -1,4 +1,6 @@
-"""Agent 写工具持久回执的 SQLite 迁移与模型一致性测试。"""
+"""
+Agent 写工具持久回执的 SQLite 迁移与模型一致性测试。
+"""
 
 import importlib
 
@@ -14,14 +16,18 @@ MIGRATION = "database.versions.b2d4f6a8c1e3_3_0_33"
 
 
 def _bind_migration(monkeypatch, connection):
-    """将迁移指令绑定到测试独占数据库。"""
+    """
+    将迁移指令绑定到测试独占数据库。
+    """
     migration = importlib.import_module(MIGRATION)
     monkeypatch.setattr(migration, "op", Operations(MigrationContext.configure(connection)))
     return migration
 
 
 def test_invocation_migration_upgrade_and_downgrade_are_replay_safe(monkeypatch):
-    """已有 SQLite 能重复升级和降级，原有业务表保持不变。"""
+    """
+    已有 SQLite 能重复升级和降级，原有业务表保持不变。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(sa.text("CREATE TABLE existing_data (id INTEGER PRIMARY KEY)"))
@@ -52,7 +58,9 @@ def test_invocation_migration_upgrade_and_downgrade_are_replay_safe(monkeypatch)
 
 
 def test_invocation_migration_accepts_current_model_tables(monkeypatch):
-    """全新数据库 create_all 后运行 Alembic 不应重复创建表或索引。"""
+    """
+    全新数据库 create_all 后运行 Alembic 不应重复创建表或索引。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         AgentInvocation.__table__.create(connection)
@@ -72,7 +80,9 @@ def test_invocation_migration_accepts_current_model_tables(monkeypatch):
 
 
 def test_invocation_migration_uses_postgresql_identity():
-    """PostgreSQL 独立迁移保留宿主主键 Identity 约定。"""
+    """
+    PostgreSQL 独立迁移保留宿主主键 Identity 约定。
+    """
     migration = importlib.import_module(MIGRATION)
     table = sa.Table("agentinvocation", sa.MetaData(), migration._id_column("postgresql"))
     assert table.c.id.identity.start == 1

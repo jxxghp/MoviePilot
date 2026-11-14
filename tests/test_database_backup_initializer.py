@@ -1,3 +1,7 @@
+"""
+验证启动组合根按实际数据库引擎装配备份服务和动态策略。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -7,6 +11,9 @@ from app.startup.composition import database as startup_database
 
 
 def test_builder_uses_cached_engine_as_database_fact_source(monkeypatch) -> None:
+    """
+    服务装配以现有引擎的数据库类型为准，不使用不一致的配置值。
+    """
     engine = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     backend = Mock(db_type="sqlite", suffix=".db")
     sqlite_backend = Mock(return_value=backend)
@@ -20,6 +27,9 @@ def test_builder_uses_cached_engine_as_database_fact_source(monkeypatch) -> None
 
 
 def test_backup_policy_reads_current_path_and_retention(tmp_path: Path, monkeypatch) -> None:
+    """
+    备份策略读取当前目录、保留天数和数量上限。
+    """
     monkeypatch.setattr(startup_database.settings, "DB_BACKUP_PATH", str(tmp_path))
     monkeypatch.setattr(startup_database.settings, "DB_BACKUP_RETENTION_DAYS", 7)
     monkeypatch.setattr(startup_database.settings, "DB_BACKUP_MAX_COUNT", 5)
@@ -32,6 +42,9 @@ def test_backup_policy_reads_current_path_and_retention(tmp_path: Path, monkeypa
 
 
 def test_configure_registers_one_database_governance(monkeypatch) -> None:
+    """
+    启动配置注册构造出的数据库治理实例。
+    """
     governance = Mock()
     monkeypatch.setattr(startup_database, "build_database_governance", lambda: governance)
 

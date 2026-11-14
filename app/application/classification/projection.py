@@ -1,4 +1,6 @@
-"""新旧分类策略的只读兼容投影。"""
+"""
+新旧分类策略的只读兼容投影。
+"""
 
 from __future__ import annotations
 
@@ -32,20 +34,27 @@ from app.schemas.category import (
 
 _TMDB_GENRE_IDS: Final[dict[str, str]] = {value: key for key, value in TMDB_GENRE_KEYS.items()}
 
+# 受控 TMDB 扩展事实可以从策略或字段声明中发现。
 LegacyPolicyOrFields: TypeAlias = ClassificationPolicy | Iterable[ClassificationFieldDefinition]
-"""受控 TMDB 扩展事实可以从策略或字段声明中发现。"""
 
 
 @dataclass(frozen=True, slots=True)
 class LegacyCategoryProjectionResult:
-    """承载新版策略到旧 CategoryConfig 的兼容投影和损失诊断。"""
+    """
+    承载新版策略到旧 CategoryConfig 的兼容投影和损失诊断。
+
+    :param config: 投影为旧格式的分类配置，仅包含可表达的规则
+    :param diagnostics: 不能无损投影的结构化说明；空元组表示投影完整
+    """
 
     config: CategoryConfig
     diagnostics: tuple[LegacyClassificationDiagnostic, ...]
 
     @property
     def exact(self) -> bool:
-        """返回投影是否未发现无法由旧配置表达的策略结构。"""
+        """
+        返回投影是否未发现无法由旧配置表达的策略结构。
+        """
         return not self.diagnostics
 
 
@@ -106,14 +115,18 @@ def project_policy_to_legacy_category_projection(
 def project_policy_to_legacy_category_config(
     policy: ClassificationPolicy,
 ) -> CategoryConfig:
-    """把新版策略按旧 API 契约直接投影为 CategoryConfig。"""
+    """
+    把新版策略按旧 API 契约直接投影为 CategoryConfig。
+    """
     return project_policy_to_legacy_category_projection(policy).config
 
 
 def project_classification_policy_to_legacy_config(
     policy: ClassificationPolicy,
 ) -> CategoryConfig:
-    """兼容调用指定的新版策略到旧 CategoryConfig 投影入口。"""
+    """
+    兼容调用指定的新版策略到旧 CategoryConfig 投影入口。
+    """
     return project_policy_to_legacy_category_config(policy)
 
 
@@ -145,7 +158,9 @@ def resolve_legacy_tmdb_category(
     media_source: str,
     tmdb_info: object,
 ) -> str:
-    """策略不可用时按旧 CategoryHelper 语义解析 TMDB 目录分类。"""
+    """
+    策略不可用时按旧 CategoryHelper 语义解析 TMDB 目录分类。
+    """
     if media_source != _TMDB_SOURCE or not isinstance(tmdb_info, Mapping):
         return ""
     if media_type == "电影":
@@ -158,7 +173,9 @@ def resolve_legacy_tmdb_category(
 
 
 def _category_rules(policy: ClassificationPolicy) -> dict[str, ClassificationRule]:
-    """按迁移分类目标 ID 索引主分类规则，保持首条规则优先。"""
+    """
+    按迁移分类目标 ID 索引主分类规则，保持首条规则优先。
+    """
     result: dict[str, ClassificationRule] = {}
     for rule in policy.rules:
         category_id = rule.target.category_id or _archived_category_id(rule)
@@ -168,7 +185,9 @@ def _category_rules(policy: ClassificationPolicy) -> dict[str, ClassificationRul
 
 
 def _archived_category_id(rule: ClassificationRule) -> Optional[str]:
-    """从 disabled 归档标签规则中恢复原目标分类 ID。"""
+    """
+    从 disabled 归档标签规则中恢复原目标分类 ID。
+    """
     if rule.enabled or rule.kind != "label":
         return None
     for raw_label in rule.target.labels:
@@ -179,7 +198,9 @@ def _archived_category_id(rule: ClassificationRule) -> Optional[str]:
 
 
 def _is_disabled_placeholder_rule(rule: ClassificationRule) -> bool:
-    """识别迁移器为后续空兜底或非法规则保留的禁用占位规则。"""
+    """
+    识别迁移器为后续空兜底或非法规则保留的禁用占位规则。
+    """
     condition = rule.when
     return (
         not rule.enabled
@@ -191,7 +212,9 @@ def _is_disabled_placeholder_rule(rule: ClassificationRule) -> bool:
 
 
 def _project_fallback_metadata(rule: ClassificationRule) -> dict[str, None]:
-    """从禁用兜底元数据规则恢复显式全空字段映射。"""
+    """
+    从禁用兜底元数据规则恢复显式全空字段映射。
+    """
     fields: dict[str, None] = {}
     for condition in _condition_leaves(rule.when):
         if condition.field.startswith(_EXTENSION_PREFIX) and condition.operator == "not_exists":
@@ -203,7 +226,9 @@ def _project_rule(
     rule: ClassificationRule,
     policy: ClassificationPolicy,
 ) -> tuple[dict[str, str], list[LegacyClassificationDiagnostic]]:
-    """把迁移器条件树恢复为旧字段字符串，并标记无法精确表达的节点。"""
+    """
+    把迁移器条件树恢复为旧字段字符串，并标记无法精确表达的节点。
+    """
     diagnostics: list[LegacyClassificationDiagnostic] = []
     tokens_by_field: dict[str, list[str]] = {}
     for condition in _condition_leaves(rule.when):
@@ -233,7 +258,9 @@ def _project_rule(
 
 
 def _condition_leaves(node: ClassificationConditionNode) -> list[ClassificationCondition]:
-    """按策略顺序展开条件树叶子，供旧兼容投影使用。"""
+    """
+    按策略顺序展开条件树叶子，供旧兼容投影使用。
+    """
     if isinstance(node, ClassificationCondition):
         return [node]
     if node.all is not None:
@@ -255,7 +282,9 @@ def _project_condition(
     *,
     media_type: Optional[str],
 ) -> tuple[Optional[str], list[str], bool]:
-    """把一个迁移器叶子恢复为旧字段、值集合和排除标志。"""
+    """
+    把一个迁移器叶子恢复为旧字段、值集合和排除标志。
+    """
     if condition.operator not in {
         "contains_any",
         "contains_none",
@@ -371,7 +400,9 @@ def _project_condition(
 
 
 def _original_alias_value(value: str, aliases: Mapping[str, str]) -> str:
-    """优先恢复迁移条件中保留的原始大小写值。"""
+    """
+    优先恢复迁移条件中保留的原始大小写值。
+    """
     for alias, canonical in aliases.items():
         if canonical == value.upper():
             return alias
@@ -379,7 +410,9 @@ def _original_alias_value(value: str, aliases: Mapping[str, str]) -> str:
 
 
 def _original_standard_value(value: str, aliases: Mapping[str, str]) -> str:
-    """恢复标准字段迁移前的低位写法，不把生成的标题大小写别名写回旧配置。"""
+    """
+    恢复标准字段迁移前的低位写法，不把生成的标题大小写别名写回旧配置。
+    """
     for alias, canonical in aliases.items():
         if canonical == value and alias == alias.casefold() and alias != value:
             return alias
@@ -391,7 +424,9 @@ def _projection_warning(
     message: str,
     path: Sequence[LegacyDiagnosticPathPart],
 ) -> LegacyClassificationDiagnostic:
-    """构造一条兼容投影警告。"""
+    """
+    构造一条兼容投影警告。
+    """
     return LegacyClassificationDiagnostic(
         severity="warning",
         code=code,
@@ -404,7 +439,9 @@ def _resolve_legacy_category_mapping(
     categories: Mapping[str, Optional[CategoryRule]],
     tmdb_info: Mapping[str, object],
 ) -> str:
-    """复现旧分类的顺序、假值、范围和排除条件语义。"""
+    """
+    复现旧分类的顺序、假值、范围和排除条件语义。
+    """
     if not tmdb_info or not categories:
         return ""
     for name, rule in categories.items():
@@ -436,7 +473,9 @@ def _resolve_legacy_category_mapping(
 
 
 def _legacy_actual_values(field_name: str, value: object) -> list[str]:
-    """按旧实现把 TMDB 标量、列表和制作国家转换为大写字符串。"""
+    """
+    按旧实现把 TMDB 标量、列表和制作国家转换为大写字符串。
+    """
     if field_name == "production_countries" and isinstance(value, list):
         return [str(item.get("iso_3166_1")).upper() for item in value if isinstance(item, Mapping)]
     if isinstance(value, list):
@@ -445,7 +484,9 @@ def _legacy_actual_values(field_name: str, value: object) -> list[str]:
 
 
 def _legacy_expected_values(value: str) -> tuple[list[str], list[str]]:
-    """按旧实现展开逗号项、数字范围及排除项。"""
+    """
+    按旧实现展开逗号项、数字范围及排除项。
+    """
     expanded: list[str] = []
     for token in (item for item in value.split(",") if item):
         if "-" not in token:
@@ -470,7 +511,9 @@ def _legacy_expected_values(value: str) -> tuple[list[str], list[str]]:
 def _controlled_tmdb_fields(
     policy_or_field_defs: LegacyPolicyOrFields,
 ) -> tuple[str, ...]:
-    """从策略条件或动态字段声明中提取安全且去重的 TMDB 一级字段。"""
+    """
+    从策略条件或动态字段声明中提取安全且去重的 TMDB 一级字段。
+    """
     field_ids: list[str] = []
     if isinstance(policy_or_field_defs, ClassificationPolicy):
         for rule in policy_or_field_defs.rules:
@@ -494,7 +537,9 @@ def _project_legacy_tmdb_field(
     field_name: str,
     tmdb_info: Mapping[str, object],
 ) -> Optional[list[ClassificationFactScalar]]:
-    """把一个受控 TMDB 字段投影为旧算法实际比较的大写字符串列表。"""
+    """
+    把一个受控 TMDB 字段投影为旧算法实际比较的大写字符串列表。
+    """
     if field_name == "release_year":
         info_value = tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
         if not info_value:
@@ -514,6 +559,8 @@ def _project_legacy_tmdb_field(
 
 
 def _append_unique(values: list[str], value: str) -> None:
-    """按首次出现顺序追加非重复字符串。"""
+    """
+    按首次出现顺序追加非重复字符串。
+    """
     if value not in values:
         values.append(value)

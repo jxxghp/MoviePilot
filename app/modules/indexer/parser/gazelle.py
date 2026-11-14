@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 Gazelle 站点的用户资料、流量和做种信息。
+"""
+
 import re
 from typing import Optional
 
@@ -8,11 +12,13 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class GazelleSiteUserInfo(SiteParserBase):
-    """Gazelle 站点用户数据解析器。"""
+    """
+    Gazelle 站点用户数据解析器。
+    """
 
     schema = SiteSchema.Gazelle
 
@@ -35,7 +41,10 @@ class GazelleSiteUserInfo(SiteParserBase):
 
         return super()._parse_logged_in(html_text)
 
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
+        """
+        解析站点用户身份和页面提供的基础统计。
+        """
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
@@ -82,14 +91,17 @@ class GazelleSiteUserInfo(SiteParserBase):
             if html is not None:
                 del html
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户额外信息，加入时间，等级
-        :param html_text:
-        :return:
+        解析用户额外信息，加入时间，等级。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         html = etree.HTML(html_text)
         try:
@@ -116,7 +128,7 @@ class GazelleSiteUserInfo(SiteParserBase):
                     self.join_at = time_tools.normalize_datetime(join_at_text[0].strip())
 
             # 兼容部分 Gazelle 站点(如 JPopsuki)以文本形式展示上传/下载:
-            # <li>Uploaded: 77.44 GB</li> / <li>Downloaded: 8.51 GB</li>
+            # 例如列表项分别以 Uploaded 和 Downloaded 标签展示上传量与下载量。
             if not self.upload:
                 upload_text = html.xpath(
                     '//li[starts-with(normalize-space(text()), "Uploaded:")]')
@@ -141,8 +153,9 @@ class GazelleSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        做种相关信息
-        :param html_text:
+        做种相关信息。
+
+        :param html_text: 当前页面或 API 响应文本
         :param multi_page: 是否多页数据
         :return: 下页地址
         """
@@ -220,11 +233,20 @@ class GazelleSiteUserInfo(SiteParserBase):
 
         return next_page
 
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
+        """
+        收集未读消息链接，返回仍需读取的下一页。
+        """
         return None
 
-    def _parse_message_content(self, html_text):
+    def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        解析消息标题、日期和正文；无独立消息页时返回空结果。
+        """
         return None, None, None

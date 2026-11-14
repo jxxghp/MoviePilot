@@ -1,24 +1,38 @@
-"""种子获取与单任务提交 owner。"""
+"""
+种子获取、提交前校验与单个下载任务提交。
+"""
 
 import base64
+import hashlib
 import json
 import re
+from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Tuple, Union, cast
-from urllib.parse import urlencode, urljoin, urlparse
+from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
+from urllib.parse import urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.application.directory import validate_download_save_path
-from app.application.download.admission import SubscriptionDownloadGovernance
-from app.application.torrent.download import TorrentHelper
+from app.application.directory import (
+    specified_download_save_path,
+    validate_download_save_path,
+)
+from app.application.download.admission import SubscriptionDownloadGovernance, subscription_download_label
+from app.application.site.protocol import is_expiring_download_url, torrent_resource_identity
+
+# 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.site.throttle import defer_site_request, site_request_config, wait_for_site_request
+from app.application.torrent.download import TorrentHelper, torrent_rate_limit_error
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
+    DownloadResponsePort,
     _close_download_response,
     _download_ports_snapshot,
 )
 from app.chain.media import MediaChain
 from app.domain import episode as episode_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -26,14 +40,19 @@ from app.domain.context import (
     TorrentInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.foundation.url import UrlUtils, url_origin_for_log
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
+from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
 from app.schemas.event import ResourceDownloadEventData
+from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
+from app.schemas.media import resolve_media_identity
 from app.schemas.message import Message
 from app.schemas.types import (
     ChainEventType,
+    MediaType,
     MessageType,
     NotificationChannel,
 )
@@ -41,7 +60,20 @@ from app.schemas.types import (
 
 @dataclass(frozen=True, slots=True)
 class _PreparedDownload:
-    """下载器调用前已经验证并规范化的本地提交事实。"""
+    """
+    下载器调用前已经验证并规范化的本地提交事实。
+
+    :param torrent: 已补齐来源凭据并规范化地址的种子信息
+    :param media: 已识别的影视或音乐目标信息
+    :param meta: 下载资源自身的标题解析元数据
+    :param torrent_content: 可交给下载器的磁力链接、下载地址或种子字节内容
+    :param folder_name: 种子内容对应的顶层目录名称
+    :param file_list: 种子中待处理文件的相对路径列表
+    :param download_dir: 最终下载保存 URI 的 Path 表示，保留既有下载器调用格式
+    :param download_uri: 按目录配置解析出的最终下载保存地址
+    :param download_episodes: 本次下载的集数范围文本，非剧集或无需限制时为 None
+    :param site_downloader: 站点配置指定的下载器名称，未指定时为 None
+    """
 
     torrent: TorrentInfo
     media: Union[MediaInfo, MusicInfo]
@@ -56,45 +88,88 @@ class _PreparedDownload:
 
 
 class _DownloadResourceOwner(_DownloadOwnerBase):
-    """种子获取、间接地址解析与资源下载事件 owner。"""
+    """
+    种子获取、间接地址解析与资源下载事件处理。
+    """
 
     @staticmethod
-    def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
+    def _credential_origin(url: Optional[str]) -> Optional[tuple[str, str, int]]:
         """
-        将两段式下载结果约束到索引器配置的可信 API 地址。
+        仅返回无内嵌账号的 HTTP 来源，避免按宽泛域名向其他地址补发凭据。
+        """
+        try:
+            parts = urlparse(url or "")
+            if (parts.scheme not in ("http", "https") or not parts.hostname
+                    or parts.username is not None or parts.password is not None):
+                return None
+            port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
+            return parts.scheme, parts.hostname, port
+        except ValueError:
+            return None
 
-        :param url: 换票接口返回的临时下载地址
-        :param base_url: 索引器配置的可信 API Base URL
-        :return: 使用可信 API 来源的临时下载地址
+    def _with_site_credentials(self, torrent: TorrentInfo) -> TorrentInfo:
         """
-        if not url or not base_url:
-            return url
-        base_parts = urlparse(base_url)
-        if not base_parts.scheme or not base_parts.netloc:
-            return url
-        url_parts = urlparse(url)
-        if not url_parts.netloc:
-            return urljoin(f"{base_url.rstrip('/')}/", url)
-        return url_parts._replace(
-            scheme=base_parts.scheme,
-            netloc=base_parts.netloc,
-        ).geturl()
+        为同来源的直接下载补齐 Cookie 和缺失 UA，不改写调用方对象或换票协议。
+        """
+        if torrent.site_cookie:
+            return torrent
+        origin = self._credential_origin(torrent.enclosure)
+        if origin is None:
+            return torrent
+        try:
+            if torrent.site is not None:
+                site = self.site_repository.get(torrent.site)
+            else:
+                matches = [
+                    item for item in self.site_repository.list()
+                    if self._credential_origin(item.url) == origin
+                ]
+                site = matches[0] if len(matches) == 1 else None
+        except Exception as err:
+            # 查询异常可能包含数据库连接信息，只记录类型并保留既有下载行为。
+            logger.warning(f"读取种子下载站点凭据失败：{type(err).__name__}")
+            return torrent
+        if not site or not site.cookie or self._credential_origin(site.url) != origin:
+            return torrent
+        enriched = copy(torrent)
+        enriched.site_cookie = site.cookie
+        if not torrent.site_ua and site.ua:
+            enriched.site_ua = site.ua
+        return enriched
 
     def _resolve_indirect_download_url(
             self,
             url: str,
             ua: Optional[str] = None,
             cookie: Optional[str] = None,
-    ) -> Optional[str]:
-        """解析索引器编码的换票请求，并返回可信来源的临时下载地址。"""
+            site_id: Optional[int] = None,
+    ) -> str:
+        """
+        解析索引器编码的换票请求，并返回可信来源的临时下载地址。
+
+        :param url: 索引器编码的换票地址与请求参数
+        :param ua: 本次换票使用的用户代理
+        :param cookie: 换票协议允许时附带的站点 Cookie
+        :param site_id: 原始资源的站点 ID，用于共享流控额度
+        :return: 临时下载地址；失败原因通过异常交回种子准备流程
+        :raises RateLimitExceededException: 站点限流，保留原始提示供通知和冷却记录使用
+        :raises ValueError: 配方、换票响应或下载地址无效，错误使用“换票失败”分类
+        """
         match = re.search(r"\[(.*)](.*)", url)
         if not match:
-            return None
+            raise ValueError("换票失败：请求编码无效")
         encoded_params, request_url = match.groups()
         if not encoded_params:
             return request_url
-        request_text = base64.b64decode(encoded_params.encode("utf-8")).decode("utf-8")
-        request_params = cast(Dict[str, Any], json.loads(request_text))
+        try:
+            request_text = base64.b64decode(encoded_params.encode("utf-8")).decode("utf-8")
+            request_params = json.loads(request_text)
+        except (ValueError, UnicodeError) as err:
+            # 编码内容包含认证信息，不能把原始配方放进错误消息。
+            raise ValueError("换票失败：无法解析请求编码") from err
+        if not isinstance(request_params, dict):
+            raise ValueError("换票失败：请求参数格式无效")
+        original_cookie = cookie
         if not request_params.get("cookie"):
             cookie = None
         headers_value = request_params.get("header")
@@ -115,6 +190,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             if request_params.get("proxy")
             else None
         )
+        site = site_request_config(request_url, site_id)
+        wait_for_site_request(site)
         if request_params.get("method") == "get":
             response = http.get(
                 request_url,
@@ -125,6 +202,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 params=params,
             )
         else:
+            post_options = {key: request_params[name] for name, key in
+                            (("json", "json_body"), ("allow_redirects", "allow_redirects")) if name in request_params}
             response = http.post(
                 request_url,
                 ua=ua,
@@ -132,91 +211,155 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 headers=headers,
                 proxies=proxies,
                 params=params,
+                **post_options,
             )
-        if not response:
-            return None
         try:
-            if not request_params.get("result"):
-                return response.text
-            data: Any = response.json()
-            success_key = request_params.get("success")
-            if success_key and not data.get(success_key):
-                return None
-            for key in str(request_params.get("result")).split("."):
-                if not isinstance(data, dict):
-                    return None
-                data = data.get(key)
-                if not data:
-                    return None
-            result_path = request_params.get("result_path")
-            result_query_param = request_params.get("result_query_param")
-            if result_path and result_query_param:
-                if not isinstance(result_query_param, str):
-                    return None
-                result_url = urljoin(
-                    f"{str(request_params.get('result_base_url')).rstrip('/')}/",
-                    str(result_path).lstrip("/"),
-                )
-                return f"{result_url}?{urlencode({result_query_param: data})}"
-            if not isinstance(data, str):
-                return None
-            base_url = request_params.get("result_base_url")
-            normalized_url = self._normalize_indirect_download_url(
-                url=data,
-                base_url=base_url if isinstance(base_url, str) else None,
-            )
-            logger.info("已获取到站点临时下载地址")
-            return normalized_url
+            return self._indirect_download_response(response, request_params, site, original_cookie)
         finally:
-            _close_download_response(response)
+            if response is not None:
+                _close_download_response(response)
+
+    def _indirect_download_response(self, response: Optional[DownloadResponsePort], request_params: Dict[str, Any],
+                                    site: dict[str, object], cookie: Optional[str] = None) -> str:
+        """
+        在响应关闭前统一交给 Module 解释新旧配方；限流由共享冷却负责。
+
+        :param response: 尚未关闭的原始换票响应，None 表示连接失败
+        :param request_params: 索引器编码的换票协议及结果字段
+        :param site: 原始站点的不含凭据流控配置
+        :param cookie: 换票协议筛选前的 Cookie，仅用于错误脱敏和是否发送的诊断
+        :return: 适配器解释并通过格式校验的下载地址
+        :raises ValueError: 适配器拒绝响应、能力不可用或没有有效地址，保留脱敏后的响应摘要
+        :raises RateLimitExceededException: 任一协议返回明确限流
+        """
+        try:
+            payload = response.json() if response is not None else None
+        except ValueError:
+            payload = None
+        try:
+            url = self.run_module(
+                "parse_torrent_download_response", request_params=request_params,
+                status_code=response.status_code if response is not None else None,
+                payload=payload, response_text=response.text if response is not None else None, raise_exception=True,
+            )
+            if request_params.get("protocol") and (not isinstance(url, str) or not url):
+                raise ValueError("站点换票响应解析器不可用")
+        except ValueError as err:
+            if torrent_rules.rate_limit_cooldown(str(err)) is not None:
+                defer_site_request(site, str(err))
+                raise RateLimitExceededException(str(err)) from err
+            raise ValueError(self._indirect_download_failure_reason(
+                response, payload, request_params, cookie, str(err),
+            )) from err
+        if error := torrent_rate_limit_error(response):
+            defer_site_request(site, error)
+            raise RateLimitExceededException(error)
+        normalized_url = UrlUtils.normalize_http_url(url)
+        if isinstance(url, str) and url.startswith("magnet:"):
+            return url
+        if normalized_url is None:
+            raise ValueError(self._indirect_download_failure_reason(
+                response, payload, request_params, cookie, "接口未返回有效下载地址",
+            ))
+        return normalized_url
+
+    @staticmethod
+    def _redact_indirect_download_error(text: str, request_params: Dict[str, Any], cookie: Optional[str]) -> str:
+        """
+        移除换票错误中的凭据回显及完整签名地址，再限制通知和日志长度。
+
+        :param text: 适配器原因或响应的有限错误字段，不接受整份业务载荷
+        :param request_params: 当前配方，请求头中的认证值仅用于脱敏
+        :param cookie: 调用方 Cookie，协议禁止发送时同样不能出现在诊断中
+        :return: 不含已知凭据和 URL 路径、查询串的单行错误摘要
+        """
+        headers = request_params.get("header")
+        secrets = list(headers.values()) if isinstance(headers, dict) else []
+        if cookie:
+            secrets.extend([cookie, *(part.partition("=")[2].strip() for part in cookie.split(";"))])
+        for secret in secrets:
+            if isinstance(secret, str) and secret:
+                text = text.replace(secret, "[已隐藏]")
+                text = text.replace(secret.removeprefix("Bearer "), "[已隐藏]")
+        text = re.sub(r"https?://[^\s<>\"'，；（）]+", lambda match: url_origin_for_log(match.group()), text)
+        text = re.sub(r"(?i)\bBearer\s+[^\s,;]+", "Bearer [已隐藏]", text)
+        text = re.sub(
+            r"(?i)\b(token|passkey|api[-_]?key|cookie|password|secret|sign)\s*[:=]\s*[^\s,;]+",
+            r"\1=[已隐藏]", text,
+        )
+        return " ".join(text.split())[:500]
+
+    @classmethod
+    def _indirect_download_failure_reason(
+            cls, response: Optional[DownloadResponsePort], payload: object,
+            request_params: Dict[str, Any], cookie: Optional[str], reason: str,
+    ) -> str:
+        """
+        为旧配方的空结果及适配器拒绝补齐换票阶段和 HTTP 诊断，不解释专站业务码。
+
+        只摘取错误字段，不回显 data、完整页面或下载票据；明确限流在调用方优先处理。
+
+        :param response: 尚未关闭的换票响应；None 表示连接失败或超时
+        :param payload: 索引模块使用的 JSON 载荷，非 JSON 时为 None
+        :param request_params: 当前请求配方，用于凭据脱敏
+        :param cookie: 协议筛选前的 Cookie，用于脱敏及发送状态判断
+        :param reason: 适配器的拒绝原因或通用的地址缺失说明
+        :return: 可传到日志、通知和瞬时冷却台账的失败说明
+        """
+        headers = request_params.get("header")
+        header_cookie = isinstance(headers, dict) and any(str(key).lower() == "cookie" and value
+                                                         for key, value in headers.items())
+        cookie_sent = bool((cookie and request_params.get("cookie")) or header_cookie)
+        details = ["未收到响应（连接失败或超时）"] if response is None else [f"HTTP {response.status_code}"]
+        if response is not None:
+            fields = [f"{key}={payload[key]}" for key in ("code", "message", "msg", "error")
+                      if isinstance(payload, dict) and isinstance(payload.get(key), (str, int))]
+            summary = "；".join(fields) or ("空响应" if not response.content else "响应未包含有效下载地址")
+            details.append(f"响应摘要：{summary}")
+        details.append(f"携带 Cookie：{'是' if cookie_sent else '否'}")
+        error = cls._redact_indirect_download_error(f"{reason}（{'；'.join(details)}）", request_params, cookie)
+        return f"换票失败：{error}"
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: Optional[NotificationChannel] = None,
                          source: Optional[str] = None,
-                         userid: Union[str, int, None] = None
+                         userid: Union[str, int, None] = None,
+                         on_failure: Optional[Callable[[str], None]] = None,
                          ) -> Tuple[Optional[Union[str, bytes]], str, list[str]]:
         """
         下载种子文件，如果是磁力链，会返回磁力链接本身
+        换票种子按站点资源和原始换票凭据复用本地内容，命中后不再请求临时链接。
+
+        :param on_failure: 将本次具体失败原因交还准备流程，保持返回元组与并发调用隔离
         :return: 种子内容，种子目录名，种子文件清单
         """
-        # 获取下载链接
-        if not torrent.enclosure:
+        enclosure = torrent.enclosure
+        if not enclosure:
             return None, "", []
-        if torrent.enclosure.startswith("magnet:"):
-            return torrent.enclosure, "", []
-        # Cookie
-        site_cookie: Optional[str] = torrent.site_cookie
-        indirect_download = torrent.enclosure.startswith("[")
-        if indirect_download:
-            # 需要解码获取下载地址
-            torrent_url = self._resolve_indirect_download_url(
-                url=torrent.enclosure,
-                ua=torrent.site_ua,
-                cookie=site_cookie,
-            )
-            # 涉及解析地址的不使用Cookie下载种子，否则MT会出错
-            site_cookie = None
-        else:
-            torrent_url = torrent.enclosure
-        if not torrent_url:
-            logger.error(f"{torrent.title} 无法获取下载地址！")
+        if enclosure.startswith("magnet:"):
+            return enclosure, "", []
+        helper: TorrentHelper = cast(Any, TorrentHelper)()
+        if helper.is_invalid(enclosure):
+            if on_failure:
+                on_failure("种子已加入下载失败黑名单（24小时）")
+            logger.info(f"{torrent.title} 命中下载失败黑名单，跳过下载")
             return None, "", []
-        # 下载种子文件
-        _, content, download_folder, files, error_msg = cast(
-            Any, TorrentHelper
-        )().download_torrent(
-            url=torrent_url,
-            cookie=site_cookie,
-            ua=torrent.site_ua or self.runtime_config.user_agent,
-            proxy=torrent.site_proxy,
-            cache_invalid=not indirect_download)
+        torrent = self._with_site_credentials(torrent)
+        result = self._get_torrent_content(torrent)
+        if result is None:
+            reason = "换票失败：未获取到下载地址" if enclosure.startswith("[") else "无法获取下载地址"
+            result = None, "", [], reason
+        content, download_folder, files, error_msg = result
 
         if isinstance(content, str):
-            # 磁力链
             return content, "", []
 
         if not content:
-            logger.error(f"下载种子文件失败：{torrent.title}")
+            if on_failure:
+                on_failure(error_msg or "下载种子内容为空")
+            if not enclosure.startswith("[") and error_msg and "种子数据有误" in error_msg:
+                helper.add_invalid(enclosure)
+            logger.error(f"下载种子文件失败：{torrent.title}，{error_msg}")
             self.post_message(Message(
                 channel=channel,
                 source=source if channel else None,
@@ -226,8 +369,131 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 userid=userid))
             return None, "", []
 
-        # 返回 种子文件路径，种子目录名，种子文件清单
         return content, download_folder or "", files or []
+
+    @staticmethod
+    def _indirect_torrent_cache_key(torrent: TorrentInfo) -> Optional[str]:
+        """
+        以资源身份和换票凭据隔离缓存，临时链接不参与键，凭据不写入文件名。
+        """
+        identity = torrent_resource_identity(torrent)
+        if not torrent.enclosure or not torrent.enclosure.startswith("[") or identity is None:
+            return None
+        scope = json.dumps((identity, torrent.enclosure, torrent.site_cookie))
+        return f"resource-{hashlib.sha256(scope.encode('utf-8')).hexdigest()}.torrent"
+
+    def _get_torrent_content(self, torrent: TorrentInfo) -> Optional[Tuple[
+        Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str],
+    ]]:
+        """
+        先读取已验证的换票种子内容；缓存损坏时重新换票，失败与磁力链不缓存。
+
+        :param torrent: 含原始资源地址和站点认证上下文的候选
+        :return: 内容、目录、文件列表及失败原因；换票失败不作为资源损坏处理
+        """
+        if not torrent.enclosure:
+            return None
+        cache_key = self._indirect_torrent_cache_key(torrent)
+        cache = FileCache(local_only=True) if cache_key else None
+        if cache is not None and cache_key is not None:
+            cached = cache.get(cache_key, region="torrents")
+            if isinstance(cached, bytes) and cached:
+                helper: TorrentHelper = cast(Any, TorrentHelper)()
+                cached_folder, cached_files = helper.get_fileinfo_from_torrent_content(cached)
+                if cached_files:
+                    return cached, cached_folder, cached_files, ""
+                cache.delete(cache_key, region="torrents")
+        site_cookie: Optional[str] = torrent.site_cookie
+        indirect_download = torrent.enclosure.startswith("[")
+        if indirect_download:
+            try:
+                torrent_url = self._resolve_indirect_download_url(
+                    url=torrent.enclosure,
+                    ua=torrent.site_ua,
+                    cookie=site_cookie,
+                    site_id=torrent.site,
+                )
+            except RateLimitExceededException as err:
+                return None, "", [], str(err)
+            except ValueError as err:
+                reason = str(err)
+                return None, "", [], reason if reason.startswith("换票失败：") else f"换票失败：{reason}"
+            # 涉及解析地址的不使用Cookie下载种子，否则MT会出错
+            site_cookie = None
+        else:
+            torrent_url = torrent.enclosure
+        if not torrent_url:
+            reason = "换票失败：未获取到下载地址" if indirect_download else "无法获取下载地址"
+            return None, "", [], reason
+        _, content, download_folder, files, error_msg = self._download_torrent_content(
+            torrent, torrent_url, site_cookie, indirect_download
+        )
+        if indirect_download and not content and torrent_rules.rate_limit_cooldown(error_msg) is None:
+            # 临时票据的错误页或失效不证明原种子损坏，下一次调用仍应重新换票。
+            reason = "返回内容不是有效种子，请重新换票" if "种子数据有误" in (error_msg or "") else (error_msg or "")
+            error_msg = f"临时下载地址失效：{reason or '未下载到种子数据'}"
+
+        if cache is not None and cache_key is not None and isinstance(content, bytes) and files:
+            cache.set(cache_key, content, region="torrents")
+        return content, download_folder, files, error_msg
+
+    def _download_torrent_content(
+            self,
+            torrent: TorrentInfo,
+            url: str,
+            cookie: Optional[str],
+            indirect_download: bool,
+    ) -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str]]:
+        """
+        短时签名失效时刷新同一资源并重试一次，最终失败再交由调用方冷却。
+        """
+        helper: TorrentHelper = cast(Any, TorrentHelper)()
+        for attempt in range(2):
+            expiring = is_expiring_download_url(url)
+            result = helper.download_torrent(
+                url=url,
+                cookie=cookie,
+                ua=torrent.site_ua or self.runtime_config.user_agent,
+                proxy=torrent.site_proxy,
+                cache_invalid=not (indirect_download or expiring),
+                site_id=torrent.site,
+            )
+            if result[1] or attempt or indirect_download or not expiring:
+                return result
+            if not re.fullmatch(r"下载种子出错，状态码：(401|403|404|410)", result[4] or ""):
+                return result
+            if not self._refresh_signed_torrent(torrent):
+                return result
+            if not torrent.enclosure:
+                return result
+            url, cookie = torrent.enclosure, torrent.site_cookie
+        return result
+
+    def _refresh_signed_torrent(self, torrent: TorrentInfo) -> bool:
+        """
+        复用站点索引器查找同站同 ID 的新地址，不允许用同标题的其他资源替换。
+        """
+        identity = torrent_resource_identity(torrent)
+        if not torrent.site or not torrent.title or identity is None:
+            return False
+        try:
+            site = next((item for item in SitesHelper().get_indexers() if item.get("id") == torrent.site), None)
+            if not site:
+                return False
+            for candidate in self.search_site_torrents(site=site, keyword=torrent.title):
+                if (torrent_resource_identity(candidate) != identity
+                        or not candidate.enclosure
+                        or candidate.enclosure == torrent.enclosure
+                        or not candidate.enclosure.startswith(("http://", "https://"))):
+                    continue
+                for name in ("enclosure", "page_url", "site_cookie", "site_ua", "site_proxy"):
+                    setattr(torrent, name, getattr(candidate, name))
+                logger.info(f"{torrent.title} 已刷新临时下载链接，重试下载")
+                return True
+        except Exception as err:
+            # 索引器异常可能携带签名 URL，不把异常正文写入日志或通知。
+            logger.warning(f"{torrent.title} 刷新临时下载链接失败：{type(err).__name__}")
+        return False
 
     @staticmethod
     def _apply_resource_download_event(
@@ -240,12 +506,16 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             userid: Union[str, int, None],
             username: Optional[str],
     ) -> tuple[Optional[str], Optional[str]]:
-        """应用资源下载事件覆盖，并校验事件返回的下载目录。"""
+        """
+        应用资源下载事件覆盖，并校验事件返回的下载目录。
+        """
+        # 空白保存目录表示使用默认下载目录，事件订阅方也只会看到 None。
+        save_path = specified_download_save_path(save_path)
         meta = context.meta_info
         media = context.media_info
         event_data = ResourceDownloadEventData(
             context=context,
-            episodes=episodes or (meta.episode_list if meta else []),
+            episodes=set(episodes or (meta.episode_list if meta else [])),
             channel=channel,
             origin=source,
             downloader=downloader,
@@ -267,7 +537,9 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 )
                 return save_path, "下载被事件取消"
             if event_data.options and "save_path" in event_data.options:
-                save_path = cast(Optional[str], event_data.options.get("save_path"))
+                save_path = specified_download_save_path(
+                    cast(Optional[str], event_data.options.get("save_path"))
+                )
         if save_path is None:
             return None, None
         try:
@@ -278,13 +550,17 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
 
 
 class DownloadSubmissionOwner(_DownloadResourceOwner):
-    """单任务下载准备、提交与结算 owner。"""
+    """
+    单任务下载准备、提交与结算 owner。
+    """
 
     @staticmethod
     def _subscription_download_cancelled(
         governance: Optional[SubscriptionDownloadGovernance],
     ) -> bool:
-        """在下载器副作用前读取订阅执行上下文的停止信号。"""
+        """
+        在下载器副作用前读取订阅执行上下文的停止信号。
+        """
         return bool(governance and governance.cancelled and governance.cancelled())
 
     def download_single(self, context: Context,
@@ -341,7 +617,9 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         custom_words: Optional[str] = None,
         governance: Optional[SubscriptionDownloadGovernance] = None,
     ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
-        """准备下载事实，提交下载器并按订阅治理合同结算结果。"""
+        """
+        准备下载事实，提交下载器并按订阅治理合同结算结果。
+        """
         prepared, error_msg = self._prepare_download_single(
             context=context,
             torrent_file=torrent_file,
@@ -355,7 +633,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             username=username,
         )
         if prepared is None:
+            if governance:
+                governance.report(context, "rejected", "资源准备失败或未满足下载提交条件")
             return (None, error_msg) if return_detail else None
+        if self._has_completed_music_download(prepared, source):
+            reason = "音乐资源的全部音频已成功整理，跳过重复提交"
+            logger.info(f"{prepared.torrent.title} {reason}")
+            if governance:
+                governance.report(context, "rejected", reason)
+            return (None, reason) if return_detail else None
         download_hash, error_msg = self._submit_prepared_download(
             prepared=prepared,
             context=context,
@@ -369,7 +655,72 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             custom_words=custom_words,
             governance=governance,
         )
+        if governance:
+            governance.report(context, "submitted" if download_hash else "failed",
+                              None if download_hash else "下载器未接受该资源，未提交成功")
         return (download_hash, error_msg) if return_detail else download_hash
+
+    def _has_completed_music_download(self, prepared: _PreparedDownload, source: Optional[str]) -> bool:
+        """
+        按真实 hash 核验整包音频是否已成功整理交付；失败或部分整理可重试。
+
+        交付事实来自整理历史本身：单曲被移出媒体库不再触发整包重投，仅当全部整理
+        目标都已消失（专辑删除或整体迁移）时才视为交付失效。
+        """
+        if prepared.media.type != MediaType.MUSIC or not self._is_subscribe_source(source):
+            return False
+        download_hash = cast(Any, TorrentHelper)().get_torrent_hash(prepared.torrent_content)
+        if not download_hash:
+            return False
+        history = self.download_history_repository.get_by_hash(download_hash)
+        if not history or resolve_media_identity(media=history) != resolve_media_identity(media=prepared.media):
+            return False
+        files = self.download_history_repository.get_files_by_hash(download_hash)
+        extensions = get_chain_runtime_config_snapshot().audio_extensions
+        audio_files = [FileURI.from_uri(item.fullpath) for item in files
+                       if item.fullpath and Path(item.fullpath).suffix.lower() in extensions]
+        audio_paths = {(item.storage, item.path) for item in audio_files}
+        if not audio_paths:
+            return False
+        delivered = self._music_delivered_audio_keys(download_hash, history.downloader)
+        if not delivered:
+            return False
+        retained = sum(1 for alive in delivered.values() if alive)
+        if not retained:
+            logger.info(f"{prepared.torrent.title} 媒体库已无该批整理目标，视为交付失效并允许重新提交")
+            return False
+        if not audio_paths.issubset(delivered):
+            return False
+        if retained < len(delivered):
+            # 下载器对同一 hash 只会复用任务，重投整包补不回被删单曲，只会重复记录历史。
+            logger.info(
+                f"{prepared.torrent.title} 媒体库缺失 {len(delivered) - retained} 首已整理曲目，沿用历史交付不重投整包"
+            )
+        return True
+
+    def _music_delivered_audio_keys(
+            self,
+            download_hash: str,
+            expected_downloader: Optional[str],
+    ) -> Dict[Tuple[str, str], bool]:
+        """
+        按整理历史汇总该种子音频的交付事实，并标记每条目标当前是否仍在媒体库。
+
+        :param download_hash: 种子真实 hash
+        :param expected_downloader: 下载历史记录的下载器，用于排除跨下载器的历史记录
+        :return: 下载源路径标识到“整理目标是否仍存在”的映射
+        """
+        delivered: Dict[Tuple[str, str], bool] = {}
+        for item in self.transfer_history_repository.list_by_hash(download_hash):
+            if not (item.status and item.dest
+                    and item.type == MediaType.MUSIC.value
+                    and item.downloader == expected_downloader
+                    and item.dest_storage == "local"):
+                continue
+            # 同一曲目可能有多条整理记录，任一目标仍在媒体库即视为已交付。
+            key = (item.src_storage or "local", str(item.src or ""))
+            delivered[key] = delivered.get(key, False) or Path(item.dest).is_file()
+        return delivered
 
     def _prepare_download_single(
         self,
@@ -385,7 +736,9 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         userid: Union[str, int, None],
         username: Optional[str],
     ) -> tuple[Optional[_PreparedDownload], Optional[str]]:
-        """补全媒体、读取种子并解析出可信下载目录。"""
+        """
+        补全媒体、读取种子并解析出可信下载目录。
+        """
         torrent, media, meta = context.torrent_info, context.media_info, context.meta_info
         if torrent is None or media is None or meta is None:
             return None, "下载上下文缺少媒体、元数据或种子信息"
@@ -407,9 +760,19 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             context.selected_episodes = sorted(set(meta.episode_list))
         else:
             context.selected_episodes = []
+        download_error = "下载种子内容为空"
+
+        def remember_failure(error_msg: str) -> None:
+            """
+            保留真实失败原因，使无效种子和限流分别使用正确的资源冷却。
+            """
+            nonlocal download_error
+            download_error = error_msg
+
         if not torrent_file and not torrent_content:
             torrent_content, _, _ = self.download_torrent(
-                torrent, channel=channel, source=source, userid=userid
+                torrent, channel=channel, source=source, userid=userid,
+                on_failure=remember_failure,
             )
         elif torrent_file:
             torrent_content = (
@@ -423,12 +786,12 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         if not torrent_content:
             self._record_download_failure(
                 context=context,
-                error_msg="下载种子内容为空",
+                error_msg=download_error,
                 downloader=downloader or site_downloader,
                 source=source,
                 episodes=episodes,
             )
-            return None, "下载种子内容为空"
+            return None, download_error
         folder_name, file_list = cast(Any, TorrentHelper)().get_fileinfo_from_torrent_content(
             torrent_content
         )
@@ -440,7 +803,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         if not download_dir or not storage:
             if error_msg == "未找到下载目录":
                 self.messagehelper.put(
-                    f"{media.type.value} {media.title_year} 未找到下载目录！",
+                    f"{(media.type.value if media.type else "")} {media.title_year} 未找到下载目录！",
                     title="下载失败",
                     role="system",
                     level="error",
@@ -475,19 +838,33 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         custom_words: Optional[str],
         governance: Optional[SubscriptionDownloadGovernance],
     ) -> tuple[Optional[str], Optional[str]]:
-        """在可取消边界后调用下载器，并分派成功或拒绝结算。"""
+        """
+        在可取消边界后调用下载器，并分派成功或拒绝结算。
+        """
         if self._subscription_download_cancelled(governance):
             return None, "订阅下载在提交前已取消"
+        # 非订阅入口清除复用上下文上的旧标记；订阅来源在插件处理与选集之后冻结。
+        context.subscription_download = None
+        if governance and governance.prepare_submission:
+            governance.prepare_submission(context)
+        submission_label = subscription_download_label(context.subscription_download)
+        if submission_label:
+            logger.info(f"开始下载【{submission_label}】{prepared.torrent.title} ...")
         if governance and governance.mark_started:
             governance.mark_started()
+        category = prepared.media.category
+        # 音乐尚无目录分类时仍提供稳定的下载器分类，不回写媒体的目录或元数据分类。
+        if not category and prepared.media.type == MediaType.MUSIC:
+            category = MediaType.MUSIC.value
         result = self.download(
             content=prepared.torrent_content,
             cookie=prepared.torrent.site_cookie,
             episodes=cast(Set[int], episodes),
             download_dir=prepared.download_dir,
-            category=prepared.media.category,
+            category=category,
             label=label,
             downloader=downloader or prepared.site_downloader,
+            custom_words=custom_words,
         )
         actual_downloader, download_hash, layout, error_msg = (
             result if result else (None, None, None, "未找到下载器")
@@ -505,6 +882,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 actual_downloader=actual_downloader,
                 download_hash=download_hash,
                 layout=layout,
+                already_exists=error_msg == DOWNLOAD_TASK_ALREADY_EXISTS,
             )
         else:
             self._record_rejected_download(
@@ -534,8 +912,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         download_hash: str,
         layout: Optional[str],
+        already_exists: bool = False,
     ) -> None:
-        """按普通下载合同结算下载器明确返回的成功结果。"""
+        """
+        按普通下载合同结算下载器明确返回的成功结果。
+
+        :param already_exists: 下载器中已存在同一任务时为 True，结算时复用现有任务而不重复通知
+        """
+        if already_exists:
+            logger.info(f"{prepared.torrent.title} 下载器中已存在同一任务，沿用现有下载进度")
         # 下载器中已存在相同 Hash 时下载器会沿用原保存目录，须以实际目录记录
         download_dir = self._resolve_actual_download_dir(
             downloader=actual_downloader,
@@ -561,6 +946,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             username=username,
             torrent_content=prepared.torrent_content,
             custom_words=custom_words,
+            already_exists=already_exists,
         )
 
     def _resolve_actual_download_dir(
@@ -620,7 +1006,9 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         error_msg: str,
     ) -> None:
-        """按普通失败合同记录下载器明确拒绝并通知原调用渠道。"""
+        """
+        按普通失败合同记录下载器明确拒绝并通知原调用渠道。
+        """
         logger.error(
             f"{prepared.media.title_year} 添加下载任务失败："
             f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"
@@ -644,6 +1032,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     f"错误信息：{error_msg}"
                 ),
                 image=prepared.media.get_message_image(),
+                poster=prepared.media.get_poster_image() or None,
                 userid=userid,
             )
         )

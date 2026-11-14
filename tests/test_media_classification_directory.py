@@ -1,4 +1,6 @@
-"""稳定分类引用与下载、媒体库目录路由测试。"""
+"""
+稳定分类引用与下载、媒体库目录路由测试。
+"""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -35,14 +37,20 @@ from app.schemas.types import MediaType, SystemConfigKey
 
 
 class _PolicyProvider:
-    """为目录引用测试提供可替换的活动策略。"""
+    """
+    为目录引用测试提供可替换的活动策略。
+    """
 
     def __init__(self, policy: ClassificationPolicy | None) -> None:
-        """保存当前活动策略。"""
+        """
+        保存当前活动策略。
+        """
         self.policy = policy
 
     def active_policy(self) -> ClassificationPolicy | None:
-        """返回当前测试策略。"""
+        """
+        返回当前测试策略。
+        """
         return self.policy
 
 
@@ -50,7 +58,9 @@ def _policy(
     *categories: ClassificationCategory,
     revision: int = 7,
 ) -> ClassificationPolicy:
-    """构造只用于引用解析、不进入发布校验的活动策略。"""
+    """
+    构造只用于引用解析、不进入发布校验的活动策略。
+    """
     return ClassificationPolicy(
         revision=revision,
         categories=list(categories),
@@ -64,7 +74,9 @@ def _category(
     *,
     enabled: bool = True,
 ) -> ClassificationCategory:
-    """构造稳定分类定义。"""
+    """
+    构造稳定分类定义。
+    """
     return ClassificationCategory(
         id=category_id,
         media_type=media_type,
@@ -80,7 +92,9 @@ def _media(
     category_id: str | None = "tv.anime.jp",
     category_path: list[str] | None = None,
 ) -> MediaInfo:
-    """构造带生效分类快照的媒体对象。"""
+    """
+    构造带生效分类快照的媒体对象。
+    """
     path = category_path or ["旧动漫", "日番"]
     return MediaInfo(
         media_source="themoviedb",
@@ -99,7 +113,9 @@ def _media(
 
 @pytest.fixture
 def directory_resolver() -> ClassificationCategoryResolver:
-    """装配并在用例后清理目录分类解析器。"""
+    """
+    装配并在用例后清理目录分类解析器。
+    """
     resolver = ClassificationCategoryResolver(
         _PolicyProvider(
             _policy(
@@ -132,13 +148,17 @@ def directory_resolver() -> ClassificationCategoryResolver:
 def test_category_path_validator_rejects_unsafe_segments(
     segments: list[str],
 ) -> None:
-    """任何来源的分类快照都不能绕过策略路径安全约束。"""
+    """
+    任何来源的分类快照都不能绕过策略路径安全约束。
+    """
     with pytest.raises(ValueError):
         validate_classification_category_path(segments)
 
 
 def test_category_path_appends_each_valid_segment_below_root() -> None:
-    """多级分类必须逐段追加且始终保留目标根目录。"""
+    """
+    多级分类必须逐段追加且始终保留目标根目录。
+    """
     root = Path("/library")
 
     assert append_classification_category_path(
@@ -152,16 +172,22 @@ def test_category_path_appends_each_valid_segment_below_root() -> None:
     [Path("/escape/file.mkv"), Path("/library/../escape/file.mkv")],
 )
 def test_final_target_cannot_escape_selected_root(target: Path) -> None:
-    """模板或插件返回绝对路径和上级目录时必须在规划阶段拒绝。"""
+    """
+    模板或插件返回绝对路径和上级目录时必须在规划阶段拒绝。
+    """
     with pytest.raises(ValueError):
         ensure_path_within_root(Path("/library"), target)
 
 
 def test_rename_event_cannot_replace_target_with_path_outside_root() -> None:
-    """插件改写后的绝对目标必须再次经过冻结根目录包含性校验。"""
+    """
+    插件改写后的绝对目标必须再次经过冻结根目录包含性校验。
+    """
 
     def update_path(event_type, event_data):
-        """模拟重命名插件把结果替换为根目录外的绝对路径。"""
+        """
+        模拟重命名插件把结果替换为根目录外的绝对路径。
+        """
         if event_type.value == "transfer.rename":
             event_data.updated = True
             event_data.updated_str = "/escape/file.mkv"
@@ -181,7 +207,9 @@ def test_rename_event_cannot_replace_target_with_path_outside_root() -> None:
 def test_stable_id_uses_current_policy_path_after_rename(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:
-    """媒体和目录的旧路径快照不应阻断稳定 ID 在改名后的匹配。"""
+    """
+    媒体和目录的旧路径快照不应阻断稳定 ID 在改名后的匹配。
+    """
     helper = DirectoryHelper(directory_resolver)
     directory = TransferDirectoryConf(
         media_type="tv",
@@ -200,7 +228,9 @@ def test_stable_id_uses_current_policy_path_after_rename(
 def test_directory_write_refreshes_id_snapshot_and_media_type(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:
-    """新目录写入应保留稳定 ID，并使用当前路径和规范媒体类型覆盖旧快照。"""
+    """
+    新目录写入应保留稳定 ID，并使用当前路径和规范媒体类型覆盖旧快照。
+    """
     normalized = normalize_directory_configurations(
         [
             {
@@ -244,20 +274,26 @@ def test_directory_write_rejects_invalid_category_reference(
     configuration: dict[str, object],
     message: str,
 ) -> None:
-    """新目录写入不得持久化失效 ID、不安全路径或未知媒体类型。"""
+    """
+    新目录写入不得持久化失效 ID、不安全路径或未知媒体类型。
+    """
     with pytest.raises(ValueError, match=message):
         normalize_directory_configurations([configuration])
 
 
 def test_directory_normalizer_leaves_other_system_config_unchanged() -> None:
-    """共享配置规范化边界不能改变目录之外的系统配置。"""
+    """
+    共享配置规范化边界不能改变目录之外的系统配置。
+    """
     value = [{"name": "qb"}]
 
     assert normalize_directory_system_config_value(SystemConfigKey.Downloaders, value) is value
 
 
 def test_invalid_stable_id_is_excluded_from_automatic_directory_selection() -> None:
-    """已删除分类 ID 不得在自动选择时静默按旧路径抢占目录。"""
+    """
+    已删除分类 ID 不得在自动选择时静默按旧路径抢占目录。
+    """
     resolver = ClassificationCategoryResolver(_PolicyProvider(_policy()))
     helper = DirectoryHelper(resolver)
     stale = TransferDirectoryConf(
@@ -283,7 +319,9 @@ def test_directory_selection_prefers_id_then_path_then_typed_and_global(
     directory_resolver: ClassificationCategoryResolver,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """配置顺序不能让通用目录盖过更精确的分类目录。"""
+    """
+    配置顺序不能让通用目录盖过更精确的分类目录。
+    """
     directories = [
         TransferDirectoryConf(name="全局", library_path="/global"),
         TransferDirectoryConf(
@@ -319,7 +357,9 @@ def test_directory_priority_applies_only_within_same_match_rank(
     directory_resolver: ClassificationCategoryResolver,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """分类精确度相同时才按数字优先级选择目录。"""
+    """
+    分类精确度相同时才按数字优先级选择目录。
+    """
     low_priority = TransferDirectoryConf(
         name="低优先级",
         priority=20,
@@ -348,10 +388,86 @@ def test_directory_priority_applies_only_within_same_match_rank(
     assert selected is high_priority
 
 
+@pytest.mark.parametrize("save_path", [None, "", "  "])
+@pytest.mark.parametrize("fixed_category", [False, True])
+def test_default_download_respects_priority_before_match_specificity(
+    directory_resolver: ClassificationCategoryResolver,
+    monkeypatch: pytest.MonkeyPatch,
+    save_path: str | None,
+    fixed_category: bool,
+) -> None:
+    """
+    未指定保存路径时，类型或固定分类更精确的目录不得盖过配置优先级。
+    """
+    general = TransferDirectoryConf(
+        name="全部", priority=0, download_path="/downloads/all",
+    )
+    specific = TransferDirectoryConf(
+        name="电视剧", priority=1, media_type="tv", download_path="/downloads/tv",
+        media_category_id="tv.anime.jp" if fixed_category else None,
+    )
+    monkeypatch.setattr(
+        DirectoryHelper, "get_dirs", staticmethod(lambda: [specific, general]),
+    )
+
+    result = DownloadSubtitleOwner._resolve_media_download_dir(_media(), save_path)
+
+    assert result == ("local", Path("/downloads/all"), "")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"download_path": None, "library_path": "/library"},
+        {"media_type": "movie"},
+        {"media_category_id": "tv.deleted"},
+        {"media_category": "其他"},
+    ],
+)
+def test_default_download_skips_unavailable_or_mismatched_directories(
+    directory_resolver: ClassificationCategoryResolver,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    """
+    高优先级目录缺少下载路径、类型分类不符或分类失效时，继续选择可用目录。
+    """
+    invalid = TransferDirectoryConf.model_validate({
+        "priority": 0, "download_path": "/downloads/invalid", **overrides,
+    })
+    fallback = TransferDirectoryConf(priority=1, download_path="/downloads/fallback")
+    monkeypatch.setattr(
+        DirectoryHelper, "get_dirs", staticmethod(lambda: [invalid, fallback]),
+    )
+    assert DirectoryHelper(directory_resolver).get_download_dir(_media()) is fallback
+
+    monkeypatch.setattr(DirectoryHelper, "get_dirs", staticmethod(lambda: [invalid]))
+    assert DownloadSubtitleOwner._resolve_media_download_dir(_media()) == (
+        None, None, "未找到下载目录",
+    )
+
+
+def test_default_download_preserves_configuration_order_for_equal_priority(
+    directory_resolver: ClassificationCategoryResolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    未设置和显式零优先级相同时，按配置顺序选择而非分类精确度。
+    """
+    first = TransferDirectoryConf(download_path="/downloads/first")
+    second = TransferDirectoryConf(priority=0, media_type="tv", download_path="/downloads/second")
+    monkeypatch.setattr(
+        DirectoryHelper, "get_dirs", staticmethod(lambda: [first, second]),
+    )
+    assert DirectoryHelper(directory_resolver).get_download_dir(_media()) is first
+
+
 def test_directory_media_type_aliases_match_consistently(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:
-    """中文媒体类型和 movie/tv/music 读侧别名应使用相同匹配语义。"""
+    """
+    中文媒体类型和 movie/tv/music 读侧别名应使用相同匹配语义。
+    """
     helper = DirectoryHelper(directory_resolver)
     media = _media(media_type=MediaType.TV)
 
@@ -363,7 +479,9 @@ def test_directory_media_type_aliases_match_consistently(
 def test_library_path_uses_current_multilevel_path_without_duplicate_type_root(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:
-    """音乐旧快照含类型首段时，开启类型目录也只能生成一个音乐根。"""
+    """
+    音乐旧快照含类型首段时，开启类型目录也只能生成一个音乐根。
+    """
     media = MusicInfo(
         media_source="musicbrainz",
         media_id="release-1",
@@ -392,7 +510,9 @@ def test_library_path_uses_current_multilevel_path_without_duplicate_type_root(
 def test_download_path_uses_safe_multilevel_automatic_category(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:
-    """下载动态分类目录应使用当前策略路径并逐段追加。"""
+    """
+    下载动态分类目录应使用当前策略路径并逐段追加。
+    """
     directory = TransferDirectoryConf(
         download_path="/downloads",
         download_type_folder=True,
@@ -411,7 +531,9 @@ def test_download_path_uses_safe_multilevel_automatic_category(
 def test_artist_collection_download_uses_dedicated_source_category(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:
-    """大合集作为一个种子只追加一层源目录分类，不伪装为单张 Album。"""
+    """
+    大合集作为一个种子只追加一层源目录分类，不伪装为单张 Album。
+    """
     directory = TransferDirectoryConf(
         download_path="/downloads/Musics",
         media_type="音乐",
@@ -438,7 +560,9 @@ def test_artist_collection_download_uses_dedicated_source_category(
 def test_fixed_download_category_does_not_append_duplicate_folder(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:
-    """固定分类下载根继续代表分类本身，不重复追加策略路径。"""
+    """
+    固定分类下载根继续代表分类本身，不重复追加策略路径。
+    """
     directory = TransferDirectoryConf(
         download_path="/downloads/anime",
         media_type="tv",
@@ -460,7 +584,9 @@ def test_shared_download_roots_follow_policy_path_and_type_root_deduplication(
     directory_resolver: ClassificationCategoryResolver,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """历史回查边界必须与音乐真实下载目录的多级路径完全一致。"""
+    """
+    历史回查边界必须与音乐真实下载目录的多级路径完全一致。
+    """
     directory = TransferDirectoryConf(
         download_path="/downloads",
         download_type_folder=True,

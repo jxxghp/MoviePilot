@@ -1,3 +1,7 @@
+"""
+验证Plex 剧集编号与季集范围的提取。
+"""
+
 from types import SimpleNamespace
 from typing import Optional
 from unittest.mock import Mock
@@ -24,7 +28,9 @@ def test_plex_tv_episodes_skips_missing_numbers(
     season: Optional[int],
     expected: dict[int, list[int]],
 ) -> None:
-    """缺失季集号不能进入同步结果，合法的零值和季过滤应保持不变。"""
+    """
+    缺失季集号不能进入同步结果，合法的零值和季过滤应保持不变。
+    """
     plex = Plex.__new__(Plex)
     plex._plex = Mock()
     show = Mock()

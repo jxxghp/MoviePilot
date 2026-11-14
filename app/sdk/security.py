@@ -1,4 +1,6 @@
-"""插件可用的稳定安全能力门面与旧 ``app.core.security`` 目标。"""
+"""
+插件可用的稳定安全能力门面与旧 ``app.core.security`` 目标。
+"""
 
 from app.adapters.web.security.access import (
     anthropic_api_key_header,
@@ -29,9 +31,9 @@ from app.application.security.token import (
     encrypt_message,
     get_password_hash,
     hash_sha256,
-    nexusphp_encrypt,
     verify_password,
 )
+from app.application.site.protocol import nexusphp_encrypt
 
 __all__ = [
     "ALGORITHM",

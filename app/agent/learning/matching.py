@@ -1,12 +1,9 @@
-# Copyright (c) 2025 Nous Research. See the accompanying MIT license.
-"""Fuzzy find-and-replace for LLM-generated edits.
+# 版权所有 (c) 2025 Nous Research；授权条款见随附的 MIT 许可证。
+"""
+对模型生成的文本修改执行分级模糊查找与替换。
 
-An ordered chain of increasingly permissive strategies (``STRATEGIES``) lets
-whitespace, indentation, escaping and Unicode drift in tool-call arguments
-still land on the intended region::
-
-    new_content, match_count, strategy, error = fuzzy_find_and_replace(
-        content, old_string, new_string, replace_all=False)
+STRATEGIES 按从严格到宽松的顺序匹配，容忍工具参数中的空白、缩进、
+转义和 Unicode 字形差异，同时将替换位置映射回原始文本。
 """
 
 import bisect
@@ -22,12 +19,17 @@ IDENTICAL_STRINGS_ERROR = (
     "replacement text in new_string.")
 
 UNICODE_MAP = {
-    "\u201c": '"', "\u201d": '"',  # smart double quotes
-    "\u2018": "'", "\u2019": "'",  # smart single quotes
-    "\u2014": "--", "\u2013": "-",  # em/en dashes
-    "\u2026": "...", "\u00a0": " ",  # ellipsis and non-breaking space
-    "\u2212": "-",  # typographic minus (math/scientific docs)
-    # Space-separator family (Zs): otherwise such files fall to the similarity fallback.
+    # 排版双引号
+    "\u201c": '"', "\u201d": '"',
+    # 排版单引号
+    "\u2018": "'", "\u2019": "'",
+    # 长短破折号
+    "\u2014": "--", "\u2013": "-",
+    # 省略号与不换行空格
+    "\u2026": "...", "\u00a0": " ",
+    # 数学排版负号
+    "\u2212": "-",
+    # Unicode 空格分隔符，避免仅因字形不同而进入相似度回退
     "\u2000": " ", "\u2001": " ", "\u2002": " ", "\u2003": " ",
     "\u2004": " ", "\u2005": " ", "\u2006": " ", "\u2007": " ",
     "\u2008": " ", "\u2009": " ", "\u200a": " ", "\u202f": " ",
@@ -35,17 +37,20 @@ UNICODE_MAP = {
 
 
 def _unicode_normalize(text: str) -> str:
-    """Map typographic Unicode variants to ASCII equivalents."""
+    """
+    将排版用 Unicode 变体映射为对应的 ASCII 字符。
+    """
     for char, repl in UNICODE_MAP.items():
         text = text.replace(char, repl)
     return text
 
 
-# ── Position helpers ─────────────────────────────────────────────────────
 
 def _calculate_line_positions(content_lines: list[str], start_line: int,
                               end_line: int, content_length: int) -> Span:
-    """Character span covering ``content_lines[start_line:end_line]`` (end exclusive)."""
+    """
+    计算指定行切片覆盖的字符范围，结束位置不包含在范围内。
+    """
     start_pos = sum(len(line) + 1 for line in content_lines[:start_line])
     end_pos = sum(len(line) + 1 for line in content_lines[:end_line]) - 1
     return start_pos, min(content_length, end_pos)
@@ -53,7 +58,9 @@ def _calculate_line_positions(content_lines: list[str], start_line: int,
 
 def _window_spans(content: str, content_lines: list[str], n: int,
                   accept: Callable[[int], bool]) -> list[Span]:
-    """Spans of every ``n``-line window starting at ``i`` for which ``accept(i)``."""
+    """
+    返回通过 accept 判定的各个连续 n 行窗口在原始文本中的字符范围。
+    """
     return [
         _calculate_line_positions(content_lines, i, i + n, len(content))
         for i in range(len(content_lines) - n + 1) if accept(i)]
@@ -61,7 +68,9 @@ def _window_spans(content: str, content_lines: list[str], n: int,
 
 def _match_transformed_lines(content: str, pattern: str,
                              transform: Callable[[list[str]], list[str]]) -> list[Span]:
-    """Match ``pattern`` against ``content`` after applying ``transform`` to each line block."""
+    """
+    对每个行块应用指定变换后，比较待查片段与文件内容。
+    """
     content_lines = content.split('\n')
     pattern_norm = transform(pattern.split('\n'))
     n = len(pattern_norm)
@@ -70,7 +79,9 @@ def _match_transformed_lines(content: str, pattern: str,
 
 
 def _strip_boundary(lines: list[str]) -> list[str]:
-    """Strip whitespace on the first and last lines only."""
+    """
+    仅移除首行和末行的边界空白，保留中间行。
+    """
     lines = list(lines)
     lines[0] = lines[0].strip()
     if len(lines) > 1:
@@ -79,9 +90,11 @@ def _strip_boundary(lines: list[str]) -> list[str]:
 
 
 def _build_orig_to_norm_map(original: str) -> list[int]:
-    """Map each original index to its index in ``_unicode_normalize(original)``
-    (replacements can expand one char into several). Length ``len(original)+1``;
-    the last entry is a sentinel one past the final character."""
+    """
+    将原始字符位置映射到 Unicode 规范化后的字符位置。
+
+    单个字符可能展开成多个字符；返回表长度为原文长度加 1，末项表示文本结束位置。
+    """
     result: list[int] = []
     norm_pos = 0
     for char in original:
@@ -93,7 +106,9 @@ def _build_orig_to_norm_map(original: str) -> list[int]:
 
 
 def _invert_norm_map(orig_to_norm: list[int]) -> dict[int, int]:
-    """norm_pos -> first original position mapping to it."""
+    """
+    查找映射到指定规范化位置的最早原始字符位置。
+    """
     inverted: dict[int, int] = {}
     for orig_pos, norm_pos in enumerate(orig_to_norm[:-1]):
         inverted.setdefault(norm_pos, orig_pos)
@@ -101,7 +116,9 @@ def _invert_norm_map(orig_to_norm: list[int]) -> dict[int, int]:
 
 
 def _norm_end_to_orig(orig_to_norm: list[int], orig_start: int, norm_end: int) -> int:
-    """Walk from ``orig_start`` until the mapped position reaches ``norm_end``."""
+    """
+    从原始起点向后查找，直到映射位置到达规范化结束位置。
+    """
     orig_len = len(orig_to_norm) - 1
     orig_end = orig_start
     while orig_end < orig_len and orig_to_norm[orig_end] < norm_end:
@@ -110,7 +127,9 @@ def _norm_end_to_orig(orig_to_norm: list[int], orig_start: int, norm_end: int) -
 
 
 def _map_positions_norm_to_orig(orig_to_norm: list[int], norm_matches: list[Span]) -> list[Span]:
-    """Convert spans in the normalised string to original-string spans."""
+    """
+    将规范化文本中的匹配范围转换为原始文本范围。
+    """
     norm_to_orig_start = _invert_norm_map(orig_to_norm)
     results: list[Span] = []
     for norm_start, norm_end in norm_matches:
@@ -122,8 +141,11 @@ def _map_positions_norm_to_orig(orig_to_norm: list[int], norm_matches: list[Span
 
 def _map_normalized_positions(original: str, normalized: str,
                               normalized_matches: list[Span]) -> list[Span]:
-    """Best-effort span mapping for ``[ \\t]+`` -> ``' '`` whitespace collapsing."""
-    orig_to_norm = []  # orig_to_norm[i] = position in normalized
+    """
+    为连续空格或制表符折叠后的匹配结果尽力恢复原始字符范围。
+    """
+    # 记录每个原始字符位置在规范化文本中的对应位置。
+    orig_to_norm = []
     orig_idx = norm_idx = 0
     while orig_idx < len(original) and norm_idx < len(normalized):
         if original[orig_idx] == normalized[norm_idx]:
@@ -131,14 +153,13 @@ def _map_normalized_positions(original: str, normalized: str,
             orig_idx += 1
             norm_idx += 1
         elif original[orig_idx] in ' \t' and normalized[norm_idx] == ' ':
-            # Collapsed run: advance norm_idx only once the run is consumed.
+            # 整段空白消费完毕后才推进规范化位置，保持折叠前后的映射一致。
             orig_to_norm.append(norm_idx)
             orig_idx += 1
             if orig_idx < len(original) and original[orig_idx] not in ' \t':
                 norm_idx += 1
         else:
-            # Extra whitespace in original, or a mismatch normalization should
-            # never produce — either way, pin to the current norm_idx.
+            # 原文多余空白或不应出现的规范化差异都映射到当前规范化位置。
             orig_to_norm.append(norm_idx)
             orig_idx += 1
     orig_to_norm.extend([len(normalized)] * (len(original) - orig_idx))
@@ -159,9 +180,7 @@ def _map_normalized_positions(original: str, normalized: str,
             orig_end = norm_to_orig_end[norm_end - 1] + 1
         else:
             orig_end = orig_start + (norm_end - norm_start)
-        # Absorb trailing collapsed whitespace only when the normalized match
-        # itself ended in a space; otherwise the first whitespace after the
-        # match is a word boundary that must survive.
+        # 仅当规范化匹配以空格结尾时吸收末尾折叠空白；否则保留匹配后作为单词边界的首个空白。
         if norm_end < len(normalized) and normalized[norm_end - 1] == ' ':
             while orig_end < len(original) and original[orig_end] in ' \t':
                 orig_end += 1
@@ -169,25 +188,32 @@ def _map_normalized_positions(original: str, normalized: str,
     return original_matches
 
 
-# ── Strategies ───────────────────────────────────────────────────────────
-# Each takes ``(content, pattern)`` and returns ``(start, end)`` spans in the
-# ORIGINAL content.
+# 每种策略接受原文和待查片段，返回原始文本中的起止字符范围。
 
 def _strategy_exact(content: str, pattern: str) -> list[Span]:
-    """Strategy 1: exact, non-overlapping occurrences (str.replace semantics —
-    overlapping spans would corrupt the file under replace_all)."""
+    """
+    使用不重叠的精确匹配，保持 str.replace 的替换语义。
+
+    重叠范围会破坏 replace_all 的文本位置，因此不予返回。
+    """
     return [m.span() for m in re.finditer(re.escape(pattern), content)]
 
 
 def _strategy_line_trimmed(content: str, pattern: str) -> list[Span]:
-    """Strategy 2: strip each line before comparing."""
+    """
+    去除每行首尾空白后比较。
+    """
     return _match_transformed_lines(content, pattern, lambda ls: [line.strip() for line in ls])
 
 
 def _strategy_whitespace_normalized(content: str, pattern: str) -> list[Span]:
-    """Strategy 3: collapse runs of spaces/tabs to a single space."""
+    """
+    把连续空格或制表符折叠为单个空格后比较。
+    """
     def normalize(s: str) -> str:
-        """Collapse horizontal whitespace without changing line boundaries."""
+        """
+        折叠水平方向空白，同时保留行边界。
+        """
         return re.sub(r'[ \t]+', ' ', s)
 
     content_normalized = normalize(content)
@@ -198,12 +224,16 @@ def _strategy_whitespace_normalized(content: str, pattern: str) -> list[Span]:
 
 
 def _strategy_indentation_flexible(content: str, pattern: str) -> list[Span]:
-    """Strategy 4: ignore leading indentation entirely."""
+    """
+    忽略各行开头的缩进后比较。
+    """
     return _match_transformed_lines(content, pattern, lambda ls: [line.lstrip() for line in ls])
 
 
 def _strategy_escape_normalized(content: str, pattern: str) -> list[Span]:
-    """Strategy 5: treat literal ``\\n``/``\\t``/``\\r`` in the pattern as control chars."""
+    """
+    把待查片段中的字面换行、制表和回车转义序列解释为控制字符后比较。
+    """
     pattern_unescaped = pattern.replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '\r')
     if pattern_unescaped == pattern:
         return []
@@ -211,12 +241,16 @@ def _strategy_escape_normalized(content: str, pattern: str) -> list[Span]:
 
 
 def _strategy_trimmed_boundary(content: str, pattern: str) -> list[Span]:
-    """Strategy 6: strip whitespace on the first and last lines only."""
+    """
+    仅去除首尾行的边界空白后比较。
+    """
     return _match_transformed_lines(content, pattern, _strip_boundary)
 
 
 def _strategy_unicode_normalized(content: str, pattern: str) -> list[Span]:
-    """Strategy 7: exact/line-trimmed match after Unicode->ASCII normalisation of both sides."""
+    """
+    两侧字符均规范化为 ASCII 后，尝试精确匹配及逐行去空白匹配。
+    """
     norm_pattern = _unicode_normalize(pattern)
     norm_content = _unicode_normalize(content)
     if norm_content == content and norm_pattern == pattern:
@@ -229,7 +263,9 @@ def _strategy_unicode_normalized(content: str, pattern: str) -> list[Span]:
 
 
 def _strategy_block_anchor(content: str, pattern: str) -> list[Span]:
-    """Strategy 8: anchor on first+last lines, similarity-score the middle."""
+    """
+    以首尾行作为锚点，按中间行的相似度选择匹配块。
+    """
     pattern_lines = _unicode_normalize(pattern).split('\n')
     if len(pattern_lines) < 2:
         return []
@@ -237,19 +273,20 @@ def _strategy_block_anchor(content: str, pattern: str) -> list[Span]:
     last_line = pattern_lines[-1].strip()
     n = len(pattern_lines)
 
-    # Match on normalized lines; compute offsets from the ORIGINAL lines so
-    # multi-char expansions (em-dash -> '--') don't shift positions.
+    # 在规范化行上匹配，但从原始行计算偏移，避免单字符展开造成位置偏移。
     norm_content_lines = _unicode_normalize(content).split('\n')
     potential_matches = {
         i for i in range(len(norm_content_lines) - n + 1)
         if norm_content_lines[i].strip() == first_line
         and norm_content_lines[i + n - 1].strip() == last_line}
-    # Looser thresholds (0.10/0.30) matched unrelated blocks; these are the safe floor.
+    # 更宽松的阈值曾匹配到无关文本块，因此保留当前相似度下限。
     threshold = 0.50 if len(potential_matches) == 1 else 0.70
     pattern_middle = '\n'.join(pattern_lines[1:-1])
 
     def similar(i: int) -> bool:
-        """Apply the upstream anchored middle-block similarity threshold."""
+        """
+        按锚点之间的正文相似度阈值判断匹配。
+        """
         if i not in potential_matches:
             return False
         if n <= 2:
@@ -261,8 +298,11 @@ def _strategy_block_anchor(content: str, pattern: str) -> list[Span]:
 
 
 def _strategy_context_aware(content: str, pattern: str) -> list[Span]:
-    """Strategy 9 (last resort): anchored per-line similarity, every non-blank line >= 0.80.
-    The anchor pre-filter bounds the scan; the all-lines rule stops coincidental matches."""
+    """
+    最后尝试有锚点的逐行相似匹配，要求每个非空行的相似度至少为 0.80。
+
+    首尾锚点先缩小扫描范围，再逐行检查以减少偶然匹配。
+    """
     pattern_lines = pattern.split('\n')
     content_lines = content.split('\n')
     n = len(pattern_lines)
@@ -272,11 +312,15 @@ def _strategy_context_aware(content: str, pattern: str) -> list[Span]:
     last_pat = pattern_lines[-1].strip()
 
     def _sim(a: str, b: str) -> float:
-        """Score stripped lines, preserving exact matches."""
+        """
+        比较去除首尾空白后的行，精确相同的行保持满分。
+        """
         return 1.0 if a == b else SequenceMatcher(None, a, b).ratio()
 
     def accept(i: int) -> bool:
-        """Require both anchors and every non-blank line to match."""
+        """
+        要求首尾锚点及所有非空行均通过匹配检查。
+        """
         block_lines = content_lines[i:i + n]
         if _sim(first_pat, block_lines[0].strip()) < 0.80:
             return False
@@ -289,7 +333,7 @@ def _strategy_context_aware(content: str, pattern: str) -> list[Span]:
     return _window_spans(content, content_lines, n, accept)
 
 
-# Ordered chain: precise strategies first, similarity-based last.
+# 优先精确匹配，最后才尝试基于相似度的策略。
 STRATEGIES: list[tuple[str, Callable[[str, str], list[Span]]]] = [
     ("exact", _strategy_exact),
     ("line_trimmed", _strategy_line_trimmed),
@@ -301,28 +345,36 @@ STRATEGIES: list[tuple[str, Callable[[str, str], list[Span]]]] = [
     ("block_anchor", _strategy_block_anchor),
     ("context_aware", _strategy_context_aware)]
 
-# Matches from these only *approximately* resemble old_string — fine for one
-# unique replacement, never safe under replace_all.
+# 这些策略仅近似匹配旧片段，可用于唯一位置的替换，不能用于批量替换。
 SIMILARITY_STRATEGIES = frozenset({"block_anchor", "context_aware"})
 
 
-# ── Orchestrator ─────────────────────────────────────────────────────────
 
 def is_already_applied(content: str, old_string: str, new_string: str) -> bool:
-    """True when the edit is already present (re-sent edit -> success-shaped no-op).
-    Conservative: new_string non-trivial (>= 8 chars) and present EXACTLY; old_string gone."""
+    """
+    保守判断修改是否已经应用，避免重复提交同一次替换。
+
+    :param content: 当前文件文本
+    :param old_string: 原本需要替换的旧片段
+    :param new_string: 期望写入的新片段
+    :return: 新片段至少 8 个字符且已精确存在、旧片段已不存在时为 True
+    """
     if not new_string or len(new_string.strip()) < 8 or new_string not in content:
         return False
     return old_string == new_string or old_string not in content
 
 
 def _matched_regions(content: str, matches: list[Span]) -> str:
-    """Collect only the regions selected by the matching strategy."""
+    """
+    仅收集当前匹配策略选中的原始文本区域。
+    """
     return "".join(content[start:end] for start, end in matches)
 
 
 def _format_match_locations(content: str, matches: list[Span], cap: int = 5) -> str:
-    """Render up to ``cap`` match positions as 'L<line>: <snippet>' rows."""
+    """
+    将最多 cap 个匹配位置渲染为带行号的短片段。
+    """
     rows = []
     for start, _end in matches[:cap]:
         line_no = content.count("\n", 0, start) + 1
@@ -342,23 +394,24 @@ def _format_match_locations(content: str, matches: list[Span], cap: int = 5) -> 
 
 def fuzzy_find_and_replace(content: str, old_string: str, new_string: str,
                            replace_all: bool = False) -> tuple[str, int, Optional[str], Optional[str]]:
-    """Find and replace via the strategy chain.
+    """
+    依次尝试匹配策略并替换选中的文本区域。
 
-    Returns ``(new_content, match_count, strategy_name, error)``; on failure
-    ``(content, 0, None, error)``.
+    :param content: 待修改的原始文件文本
+    :param old_string: 用于定位的非空旧片段，不接受纯空白
+    :param new_string: 替换内容，空字符串表示删除
+    :param replace_all: 是否替换全部匹配；近似相似策略不允许批量替换
+    :return: 新文本、匹配数量、策略名称及错误说明；失败时保留原文并返回零匹配
     """
     if not old_string:
-        # Actionable recovery text: a terse "cannot be empty" leaves the model
-        # re-sending the identical call until the loop detector kills the run
-        # (upstream report: cline/cline#13970 — Kimi K3 looped on old_text: null).
+        # 给出可执行的恢复建议，避免模型在空旧片段错误后不断重复同一调用；参见 cline/cline#13970。
         return content, 0, None, (
             "old_string is empty — nothing to match. Set old_string to the exact "
             "existing text the replacement should replace (read the file first if "
             "unsure). To create a new file or fully rewrite one, use write_file "
             "instead. Do not re-send this call unchanged.")
     if not old_string.strip():
-        # Whitespace-only anchors match trivially and mass-replace or
-        # ambiguity-error; never meaningful.
+        # 纯空白锚点容易命中大量区域或产生歧义，不能可靠定位编辑目标。
         return content, 0, None, (
             "old_string is only whitespace — provide non-blank text to match. Set it "
             "to the exact existing text the replacement should replace (read the file "
@@ -384,8 +437,7 @@ def fuzzy_find_and_replace(content: str, old_string: str, new_string: str,
                 f"matches. Provide the precise text (whitespace included) so an "
                 f"exact/line-trimmed match can be made.")
 
-        # Non-exact matches came through some normalization, so new_string may
-        # carry serialization drift the file doesn't have.
+        # 非精确匹配经过规范化，新片段可能携带原文件没有的序列化转义偏差。
         if strategy_name != "exact":
             drift_err = _detect_escape_drift(content, matches, old_string, new_string)
             if drift_err:
@@ -402,22 +454,17 @@ def fuzzy_find_and_replace(content: str, old_string: str, new_string: str,
     return content, 0, None, "Could not find a match for old_string in the file"
 
 
-# ── Escape-drift guards ──────────────────────────────────────────────────
 
 def _detect_newline_literal_drift(content: str, matches: list[Span],
                                   old_string: str, new_string: str) -> Optional[str]:
-    """Error string when a literal two-character ``\\n`` in the arguments stands in
-    for a real line break in the file (arguments JSON-escaped one extra time), else None.
+    """
+    检测工具参数被额外 JSON 转义，导致字面换行序列代替文件中的真实换行。
 
-    Fires when some matched region contains a real newline and old_string holds MORE
-    literal ``\\n`` than that region. old_string is copied from the file, so a genuine
-    edit has equal counts even when the code legitimately contains ``"\\n"``; only the
-    surplus is drift. Regions are compared one by one because joining them would
-    multiply the file-side count under replace_all. new_string must carry a literal
-    ``\\n`` too: that is what gets written in place of a line break, since
-    _maybe_unescape_new_string deliberately never rewrites ``\\n``. ``\\r`` needs no
-    guard here -- that helper converts it whenever the region has a real CR. Drift in
-    new_string alone is indistinguishable from an edit that adds a ``\\n`` literal.
+    逐个匹配区域比较字面转义数量，避免 replace_all 把多个区域计数叠加。
+    只有旧片段比对应文件区域多出字面换行序列，且新片段也包含该序列时才报告错误。
+    只在新片段中出现的转义无法与有意新增字面文本区分；回车由后续解码逻辑处理。
+
+    :return: 可确认转义漂移时的错误说明，否则为 None
     """
     if "\\n" not in new_string:
         return None
@@ -439,9 +486,11 @@ def _detect_newline_literal_drift(content: str, matches: list[Span],
 
 def _detect_escape_drift(content: str, matches: list[Span],
                          old_string: str, new_string: str) -> Optional[str]:
-    """Error string when new_string carries tool-call escape artifacts, else None:
-    ``\\'``/``\\"`` in both strings but not the matched region, doubled backslash
-    runs, or a literal ``\\n`` standing in for a real line break."""
+    """
+    检查新片段是否携带额外引号转义、加倍反斜杠或代替真实换行的字面序列。
+
+    :return: 发现工具参数转义漂移时的错误说明，否则为 None
+    """
     has_quote_suspects = "\\'" in new_string or '\\"' in new_string
     if not has_quote_suspects and "\\" not in old_string:
         return None
@@ -466,15 +515,19 @@ def _detect_escape_drift(content: str, matches: list[Span],
 
 
 def _backslash_runs(s: str) -> list[int]:
-    """Lengths of maximal backslash runs in ``s``, in order."""
+    """
+    按出现顺序返回各段连续反斜杠的长度。
+    """
     return [len(run) for run in re.findall(r"\\+", s)]
 
 
 def _detect_backslash_doubling(matched_regions: str, old_string: str,
                                new_string: str) -> Optional[str]:
-    """Detect old_string whose every backslash run is exactly 2x the file's (arguments
-    JSON-escaped one extra time). Requires the same run count, a non-trivial signal
-    (a run >= 2 or 2+ runs), and new_string not already matching the file's counts."""
+    """
+    检测旧片段中每段反斜杠是否均为文件对应长度的两倍。
+
+    要求连续段数量一致，至少有足够明确的加倍信号，且新片段尚未符合文件中的长度。
+    """
     old_runs = _backslash_runs(old_string)
     file_runs = _backslash_runs(matched_regions)
     if (not old_runs or not file_runs or len(old_runs) != len(file_runs)
@@ -494,9 +547,11 @@ def _detect_backslash_doubling(matched_regions: str, old_string: str,
 
 
 def _maybe_unescape_new_string(new_string: str, content: str, matches: list[Span]) -> str:
-    """Convert literal ``\\t``/``\\r`` in new_string to control chars, per sequence, only
-    when the matched region already contains the real control char (so ``sep = "\\t"`` files
-    are left alone). ``\\n`` is excluded: rewriting it would mangle source escape literals."""
+    """
+    仅在匹配区域已包含真实控制字符时，将新片段中的对应制表或回车序列还原。
+
+    不处理字面换行序列，以免破坏源码中有意保留的转义文本。
+    """
     if "\\t" not in new_string and "\\r" not in new_string:
         return new_string
     matched_regions = _matched_regions(content, matches)
@@ -506,22 +561,27 @@ def _maybe_unescape_new_string(new_string: str, content: str, matches: list[Span
     return new_string
 
 
-# ── Replacement shaping ──────────────────────────────────────────────────
 
 def _leading_whitespace(line: str) -> str:
-    """Return the indentation that replacement shaping must preserve."""
+    """
+    取得替换时需要保留的行首缩进。
+    """
     return line[:len(line) - len(line.lstrip(" \t"))]
 
 
 def _first_meaningful_line(text: str) -> Optional[str]:
-    """Select the first non-blank indentation anchor."""
+    """
+    选择第一个非空行作为缩进基准。
+    """
     return next((line for line in text.split("\n") if line.strip()), None)
 
 
 def _reindent_replacement(file_region: str, old_string: str, new_string: str) -> str:
-    """Re-anchor ``new_string``'s indentation onto the file's actual base indent after a
-    non-exact match: swap the LLM base prefix (first non-blank old_string line) for the
-    file's, preserving relative nesting; shallower lines anchor to the file base."""
+    """
+    非精确匹配后，将新片段的基础缩进对齐到文件中的实际缩进。
+
+    保留相对嵌套层级；浅于旧片段基准的行也对齐到文件基准。
+    """
     if not new_string:
         return new_string
     old_first = _first_meaningful_line(old_string)
@@ -546,19 +606,21 @@ def _reindent_replacement(file_region: str, old_string: str, new_string: str) ->
 
 def _preserve_unicode_in_replacement(content: str, matches: list[Span],
                                      old_string: str, new_string: str) -> str:
-    """Apply only the old->new edits onto the file's original (Unicode) text, so a
-    unicode_normalized match doesn't flatten the file's em-dashes/smart quotes."""
+    """
+    仅把旧片段到新片段的真实编辑应用到文件，保留原文未修改的 Unicode 排版字符。
+    """
     file_region = _matched_regions(content, matches)
     norm_old = _unicode_normalize(old_string)
     if norm_old != _unicode_normalize(file_region):
-        return new_string  # strategy shouldn't have fired; fall back
+        # 规范化结果未能匹配时回退，避免错误应用该策略。
+        return new_string
 
     file_orig_to_norm = _build_orig_to_norm_map(file_region)
 
     result_parts: list[str] = []
     for tag, i1, i2, j1, j2 in SequenceMatcher(None, norm_old, new_string).get_opcodes():
         if tag == "equal":
-            # The original char owning norm index i1, even one inside a multi-char expansion (em-dash -> '--').
+            # 定位规范化位置对应的原始字符，包括处在单字符展开序列内部的位置。
             orig_start = bisect.bisect_right(file_orig_to_norm, i1) - 1
             orig_end = _norm_end_to_orig(file_orig_to_norm, orig_start, i2)
             result_parts.append(file_region[orig_start:orig_end])
@@ -569,8 +631,9 @@ def _preserve_unicode_in_replacement(content: str, matches: list[Span],
 
 def _apply_replacements(content: str, matches: list[Span],
                         new_string: str, old_string: Optional[str] = None) -> str:
-    """Splice ``new_string`` over each span (end-to-start so offsets stay valid);
-    ``old_string`` non-None (non-exact match) re-indents it per region."""
+    """
+    从后向前应用替换以保持偏移有效，非精确匹配时按每个区域重排缩进。
+    """
     result = content
     for start, end in sorted(matches, key=lambda x: x[0], reverse=True):
         adjusted = new_string
@@ -580,17 +643,20 @@ def _apply_replacements(content: str, matches: list[Span],
     return result
 
 
-# ── "Did you mean?" diagnostics ──────────────────────────────────────────
 
 def _visualize_whitespace(line: str) -> str:
-    """Render the leading whitespace run visibly (→ = tab, · = space)."""
+    """
+    可视化行首空白：箭头表示制表符，中点表示空格。
+    """
     stripped = line.lstrip(" \t")
     prefix = line[:len(line) - len(stripped)]
     return prefix.replace("\t", "→").replace(" ", "·") + stripped
 
 
 def find_closest_lines(old_string: str, content: str, context_lines: int = 2, max_results: int = 3) -> str:
-    """Numbered snippets of the lines most similar to old_string's anchor line, or ''."""
+    """
+    查找最接近旧片段锚点行的文件行，返回带行号的片段；没有候选时返回空字符串。
+    """
     if not old_string or not content:
         return ""
     old_lines = old_string.splitlines()
@@ -620,8 +686,7 @@ def find_closest_lines(old_string: str, content: str, context_lines: int = 2, ma
             f"{start + j + 1:4d}| {content_lines[start + j]}" for j in range(end - start)))
     result = "\n---\n".join(parts)
 
-    # Whitespace-shaped miss: best line equals the anchor once stripped. Show
-    # both with visible leading whitespace so the model copies the file's.
+    # 去除空白后已相同的候选行需可视化缩进，使模型能按文件实际缩进修正输入。
     best_line = content_lines[top[0][1]]
     if best_line.strip() == anchor and best_line != old_lines[0]:
         result += (
@@ -634,8 +699,11 @@ def find_closest_lines(old_string: str, content: str, context_lines: int = 2, ma
 
 def format_no_match_hint(error: Optional[str], match_count: int,
                          old_string: str, content: str) -> str:
-    """'\\n\\nDid you mean...' snippet for plain no-match errors only, else '' (ambiguous /
-    escape-drift / identical errors also have ``match_count == 0`` but a hint would mislead)."""
+    """
+    仅为普通未匹配错误提供相似行提示。
+
+    歧义、转义漂移和内容相同等错误虽然也返回零匹配，但相似行提示会误导重试，因此不追加。
+    """
     if match_count != 0 or not error or not error.startswith("Could not find"):
         return ""
     hint = find_closest_lines(old_string, content)

@@ -1,3 +1,7 @@
+"""
+按精确清单注册历史导入路由，延迟加载规范实现并保留插件兼容入口。
+"""
+
 import ast
 import importlib
 import importlib.abc
@@ -7,7 +11,7 @@ import sys
 import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from app.runtime.compat.diagnostics import record_legacy_import
 from app.runtime.compat.manifest import (
@@ -20,12 +24,13 @@ from app.runtime.compat.manifest import (
     SymbolAlias,
 )
 
-
 _resolution_state = threading.local()
 
 
 class LegacyAliasLoader(importlib.abc.Loader):
-    """将旧模块键绑定到已按 canonical 名称加载的同一模块对象。"""
+    """
+    将旧模块键绑定到已按 canonical 名称加载的同一模块对象。
+    """
 
     _METADATA_NAMES = (
         "__name__",
@@ -38,13 +43,21 @@ class LegacyAliasLoader(importlib.abc.Loader):
     )
 
     def __init__(self, legacy_name: str, alias: ModuleAlias):
-        """保存当前旧路径规则，不在构造阶段导入目标模块。"""
+        """
+        保存当前旧路径规则，不在构造阶段导入目标模块。
+        """
         self.legacy_name = legacy_name
         self.alias = alias
         self._metadata: Dict[str, object] = {}
 
-    def create_module(self, spec):
-        """惰性导入 canonical 模块并复用其对象，禁止以旧名称二次执行源码。"""
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType:
+        """
+        惰性导入 canonical 模块并复用其对象，禁止以旧名称二次执行源码。
+
+        :param spec: 旧路径的导入规格；目标由兼容清单确定
+        :return: canonical 路径下的同一模块对象
+        :raises ImportError: 目标导入失败或检测到兼容导入循环
+        """
         stack = list(getattr(_resolution_state, "stack", ()))
         if self.legacy_name in stack:
             chain = " -> ".join([*stack, self.legacy_name])
@@ -70,7 +83,9 @@ class LegacyAliasLoader(importlib.abc.Loader):
         return module
 
     def exec_module(self, module: ModuleType) -> None:
-        """恢复 canonical 元数据并记录旧路径命中，不重复执行目标模块。"""
+        """
+        恢复 canonical 元数据并记录旧路径命中，不重复执行目标模块。
+        """
         target_module = sys.modules.get(self.alias.target)
         if module is not target_module:
             raise ImportError(
@@ -82,22 +97,39 @@ class LegacyAliasLoader(importlib.abc.Loader):
 
 
 class VirtualLegacyPackageLoader(importlib.abc.Loader):
-    """创建无文件系统搜索路径的旧父包，只允许 manifest 白名单成员。"""
+    """
+    创建无文件系统搜索路径的旧父包，只允许 manifest 白名单成员。
+    """
 
     def __init__(self, package_name: str):
-        """保存待创建的旧父包名称。"""
+        """
+        保存待创建的旧父包名称。
+        """
         self.package_name = package_name
 
-    def create_module(self, spec):
-        """使用默认模块创建流程。"""
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> None:
+        """
+        使用默认模块创建流程。
+
+        :param spec: 虚拟包的导入规格
+        :return: None，交由导入系统创建模块对象
+        """
         return None
 
     def exec_module(self, module: ModuleType) -> None:
-        """为合成包安装精确符号解析器和稳定的空搜索路径。"""
+        """
+        为合成包安装精确符号解析器和稳定的空搜索路径。
+        """
         exports = PACKAGE_EXPORTS.get(self.package_name, {})
 
-        def resolve_export(name: str):
-            """按 manifest 惰性解析旧包级公开符号。"""
+        def resolve_export(name: str) -> object:
+            """
+            按 manifest 惰性解析旧包级公开符号。
+
+            :param name: 旧包中请求的符号名
+            :return: 清单指定模块中的原始符号
+            :raises AttributeError: 符号未在清单中登记
+            """
             symbol = exports.get(name)
             if not symbol:
                 raise AttributeError(
@@ -107,14 +139,18 @@ class VirtualLegacyPackageLoader(importlib.abc.Loader):
             setattr(module, name, value)
             return value
 
-        def list_exports():
-            """返回合成包已声明的公开符号。"""
+        def list_exports() -> list[str]:
+            """
+            返回合成包已声明的公开符号。
+
+            :return: 已加载名称与清单符号的有序并集
+            """
             return sorted(set(module.__dict__) | set(exports))
 
-        module.__path__ = []
-        module.__all__ = sorted(exports)
-        module.__getattr__ = resolve_export
-        module.__dir__ = list_exports
+        module.__dict__["__path__"] = []
+        module.__dict__["__all__"] = sorted(exports)
+        module.__dict__["__getattr__"] = resolve_export
+        module.__dict__["__dir__"] = list_exports
         if self.package_name in PACKAGE_ALIASES:
             record_legacy_import(self.package_name)
 
@@ -123,7 +159,8 @@ def detect_shadowed_exports(
     module: ModuleType,
     exports: Dict[str, SymbolAlias],
 ) -> List[Tuple[str, str]]:
-    """返回物理模块用第二份实现遮蔽的兼容符号及其 canonical 路径。
+    """
+    返回物理模块用第二份实现遮蔽的兼容符号及其 canonical 路径。
 
     模块级 ``__getattr__`` 只在属性查找失败时触发，物理模块自带同名定义时兼容叠加
     完全不会被调用。重新导入同一个 canonical 对象是无害的，只有身份不同才是遮蔽。
@@ -146,12 +183,16 @@ PLUGINS_PACKAGE = "app.plugins"
 PLUGINS_PACKAGE_ROOT_BACKUP_SUFFIX = ".legacy-bak"
 # 必须与 app/plugins/__init__.py 完全一致，tests/test_legacy_import_compat.py 校验同步
 PLUGINS_PACKAGE_ROOT_SOURCE = (
-    '"""插件安装命名空间；契约基类由 app.sdk.plugin 拥有，旧包根符号由 Compat 惰性解析。"""\n'
+    '"""\n'
+    '插件安装命名空间；契约基类由 app.sdk.plugin 拥有，旧包根符号由 Compat 惰性解析。\n'
+    '"""\n'
 )
 
 
 def _top_level_bindings(source: str) -> Set[str]:
-    """返回模块顶层由类、函数或赋值绑定的名称，导入绑定不计入。"""
+    """
+    返回模块顶层由类、函数或赋值绑定的名称，导入绑定不计入。
+    """
     names: Set[str] = set()
     for node in ast.parse(source).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -166,7 +207,8 @@ def _top_level_bindings(source: str) -> Set[str]:
 
 
 def detect_plugins_package_root_shadowing(init_file: Path) -> List[str]:
-    """返回插件安装包根源码里自带第二份实现的兼容符号名。
+    """
+    返回插件安装包根源码里自带第二份实现的兼容符号名。
 
     只统计顶层类、函数和赋值：重新导入同一个 canonical 对象无害，判定口径与
     :func:`detect_shadowed_exports` 一致。源码缺失、不可读或语法错误时返回空列表，
@@ -183,7 +225,8 @@ def detect_plugins_package_root_shadowing(init_file: Path) -> List[str]:
 
 
 def restore_plugins_package_root(init_file: Path) -> Path:
-    """备份自带实现的插件安装包根，并写回只含说明的命名空间入口。
+    """
+    备份自带实现的插件安装包根，并写回只含说明的命名空间入口。
 
     包根属于后端源码提供的兼容入口，旧版本的同名实现随插件运行目录迁移进来后会遮蔽
     兼容符号；改写后本进程尚未导入的插件即可正常解析旧符号。运行目录只读时抛出
@@ -202,27 +245,43 @@ def restore_plugins_package_root(init_file: Path) -> Path:
 
 
 class LegacySymbolOverlayLoader(importlib.abc.Loader):
-    """在标准物理模块执行后叠加旧符号的惰性解析，不修改 canonical 源码。"""
+    """
+    在标准物理模块执行后叠加旧符号的惰性解析，不修改 canonical 源码。
+    """
 
     _STATE_KEY = "__legacy_symbol_overlay_state__"
 
     def __init__(self, module_name: str, original_loader: importlib.abc.Loader):
-        """保存物理模块名称和 PathFinder 已选择的原始 Loader。"""
+        """
+        保存物理模块名称和 PathFinder 已选择的原始 Loader。
+        """
         self.module_name = module_name
         self.original_loader = original_loader
 
-    def __getattr__(self, name: str):
-        """把资源读取等非核心 Loader 能力转交给原始 Loader。"""
+    def __getattr__(self, name: str) -> object:
+        """
+        把资源读取等非核心 Loader 能力转交给原始 Loader。
+
+        :param name: 待访问的 Loader 属性
+        :return: 原始 Loader 对应的属性
+        """
         return getattr(self.original_loader, name)
 
-    def create_module(self, spec):
-        """沿用原始 Loader 的模块创建逻辑。"""
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> Optional[ModuleType]:
+        """
+        沿用原始 Loader 的模块创建逻辑。
+
+        :param spec: 物理模块的导入规格
+        :return: 原始 Loader 创建的模块；未自定义创建流程时返回 None
+        """
         creator = getattr(self.original_loader, "create_module", None)
         return creator(spec) if creator else None
 
     @classmethod
     def _restore_previous_overlay(cls, module: ModuleType) -> None:
-        """reload 前恢复物理模块原有的动态属性和 __all__ 状态。"""
+        """
+        reload 前恢复物理模块原有的动态属性和 __all__ 状态。
+        """
         state = module.__dict__.pop(cls._STATE_KEY, None)
         if not state:
             return
@@ -238,7 +297,9 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
             module.__dict__.pop("__all__", None)
 
     def exec_module(self, module: ModuleType) -> None:
-        """执行真实模块后安装只对已登记旧符号生效的 __getattr__。"""
+        """
+        执行真实模块后安装只对已登记旧符号生效的 __getattr__。
+        """
         self._restore_previous_overlay(module)
         executor = getattr(self.original_loader, "exec_module", None)
         if not executor:
@@ -263,8 +324,14 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
         had_all = "__all__" in module.__dict__
         previous_all = module.__dict__.get("__all__")
 
-        def resolve_export(name: str):
-            """惰性解析物理模块中已经迁走的旧符号。"""
+        def resolve_export(name: str) -> object:
+            """
+            惰性解析物理模块中已经迁走的旧符号。
+
+            :param name: 物理模块上请求的符号名
+            :return: 清单指定的原始符号，或物理模块原有动态属性
+            :raises AttributeError: 两处均未提供该名称
+            """
             symbol = exports.get(name)
             if symbol:
                 record_legacy_import(f"{self.module_name}.{name}")
@@ -276,15 +343,19 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
                 f"module {self.module_name!r} has no attribute {name!r}"
             )
 
-        def list_exports():
-            """返回物理模块原有名称与兼容符号的并集。"""
+        def list_exports() -> list[str]:
+            """
+            返回物理模块原有名称与兼容符号的并集。
+
+            :return: 当前可见名称的有序列表
+            """
             names = set(module.__dict__) | set(exports)
             if previous_dir:
                 names.update(previous_dir())
             return sorted(names)
 
-        module.__getattr__ = resolve_export
-        module.__dir__ = list_exports
+        module.__dict__["__getattr__"] = resolve_export
+        module.__dict__["__dir__"] = list_exports
         # 兼容符号不并入 __all__：避免 `from <module> import *` 在包初始化期
         # 急切解析旧符号、反向拉起应用层模块形成循环导入；显式导入与属性
         # 访问仍由上方 __getattr__ 惰性解析兜底
@@ -292,7 +363,7 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
             name for name in module.__dict__ if not name.startswith("_")
         }
         declared_exports = set(previous_all or ()) if had_all else public_names
-        module.__all__ = sorted(declared_exports)
+        module.__dict__["__all__"] = sorted(declared_exports)
         module.__dict__[self._STATE_KEY] = {
             "__getattr__": previous_getattr,
             "__dir__": previous_dir,
@@ -302,18 +373,29 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
 
 
 class BlockedLegacyModuleLoader(importlib.abc.Loader):
-    """阻止合成旧包从其他 Finder 泄漏未登记的新内部模块。"""
+    """
+    阻止合成旧包从其他 Finder 泄漏未登记的新内部模块。
+    """
 
     def __init__(self, module_name: str):
-        """保存应拒绝的旧模块路径。"""
+        """
+        保存应拒绝的旧模块路径。
+        """
         self.module_name = module_name
 
-    def create_module(self, spec):
-        """使用默认模块创建流程，错误在执行阶段给出。"""
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> None:
+        """
+        使用默认模块创建流程，错误在执行阶段给出。
+
+        :param spec: 被阻止的旧模块导入规格
+        :return: None，交由导入系统创建模块对象
+        """
         return None
 
     def exec_module(self, module: ModuleType) -> None:
-        """对未登记旧路径抛出标准 ModuleNotFoundError。"""
+        """
+        对未登记旧路径抛出标准 ModuleNotFoundError。
+        """
         raise ModuleNotFoundError(
             f"旧模块路径 {self.module_name} 未在兼容映射中登记",
             name=self.module_name,
@@ -321,11 +403,17 @@ class BlockedLegacyModuleLoader(importlib.abc.Loader):
 
 
 class LegacyImportFinder(importlib.abc.MetaPathFinder):
-    """仅解析 manifest 声明的旧模块和合成父包。"""
+    """
+    仅解析 manifest 声明的旧模块和合成父包。
+    """
 
     @staticmethod
-    def _virtual_package_names():
-        """计算显式虚拟根及其已登记模块所需的中间父包。"""
+    def _virtual_package_names() -> set[str]:
+        """
+        计算显式虚拟根及其已登记模块所需的中间父包。
+
+        :return: 兼容清单允许的虚拟包完整名称
+        """
         package_names = set(VIRTUAL_PACKAGES)
         for legacy_name in [*MODULE_ALIASES, *PACKAGE_ALIASES, *PACKAGE_EXPORTS]:
             parts = legacy_name.split(".")
@@ -338,8 +426,20 @@ class LegacyImportFinder(importlib.abc.MetaPathFinder):
                     package_names.add(candidate)
         return package_names
 
-    def find_spec(self, fullname: str, path=None, target=None):
-        """为精确旧模块返回 alias spec，并封锁虚拟包中的未知后代。"""
+    def find_spec(
+        self,
+        fullname: str,
+        path: Optional[Sequence[str]] = None,
+        target: Optional[ModuleType] = None,
+    ) -> Optional[importlib.machinery.ModuleSpec]:
+        """
+        为精确旧模块返回 alias spec，并封锁虚拟包中的未知后代。
+
+        :param fullname: 导入系统请求的完整模块名
+        :param path: 父包搜索路径；顶层导入时为 None
+        :param target: reload 时的既有模块；普通导入时为 None
+        :return: 已登记路径的导入规格；非兼容路径返回 None
+        """
         alias = MODULE_ALIASES.get(fullname)
         if alias:
             loader = LegacyAliasLoader(fullname, alias)
@@ -357,8 +457,8 @@ class LegacyImportFinder(importlib.abc.MetaPathFinder):
 
         virtual_packages = self._virtual_package_names()
         if fullname in virtual_packages:
-            loader = VirtualLegacyPackageLoader(fullname)
-            spec = importlib.util.spec_from_loader(fullname, loader, is_package=True)
+            virtual_loader = VirtualLegacyPackageLoader(fullname)
+            spec = importlib.util.spec_from_loader(fullname, virtual_loader, is_package=True)
             if spec:
                 spec.submodule_search_locations = []
             return spec
@@ -373,7 +473,9 @@ class LegacyImportFinder(importlib.abc.MetaPathFinder):
 
 
 def install_legacy_import_hook() -> LegacyImportFinder:
-    """幂等安装旧导入 Finder，并确保它位于标准 PathFinder 之前。"""
+    """
+    幂等安装旧导入 Finder，并确保它位于标准 PathFinder 之前。
+    """
     for finder in sys.meta_path:
         if isinstance(finder, LegacyImportFinder):
             return finder
@@ -391,7 +493,9 @@ def install_legacy_import_hook() -> LegacyImportFinder:
 
 
 def uninstall_legacy_import_hook() -> None:
-    """移除全部旧导入 Finder，仅供隔离测试恢复进程状态。"""
+    """
+    移除全部旧导入 Finder，仅供隔离测试恢复进程状态。
+    """
     sys.meta_path[:] = [
         finder for finder in sys.meta_path if not isinstance(finder, LegacyImportFinder)
     ]

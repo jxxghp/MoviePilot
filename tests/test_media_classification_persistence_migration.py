@@ -1,4 +1,6 @@
-"""分类持久化字段 Alembic 迁移测试。"""
+"""
+分类持久化字段 Alembic 迁移测试。
+"""
 
 import importlib
 from types import SimpleNamespace
@@ -61,24 +63,36 @@ _LEGACY_PATH_FIELDS = {
 
 
 class _MigrationModule(Protocol):
-    """声明测试使用的分类字段迁移接口。"""
+    """
+    声明测试使用的分类字段迁移接口。
+
+    :ivar revision: 待验证迁移的版本标识
+    :ivar down_revision: 该迁移依赖的上一版本标识
+    :ivar op: 绑定测试数据库连接的 Alembic 操作入口
+    """
 
     revision: str
     down_revision: str
     op: Any
 
     def upgrade(self) -> None:
-        """执行升级迁移。"""
+        """
+        执行升级迁移。
+        """
 
     def downgrade(self) -> None:
-        """执行降级迁移。"""
+        """
+        执行降级迁移。
+        """
 
 
 def _bind_migration(
     monkeypatch: pytest.MonkeyPatch,
     connection: Connection,
 ) -> _MigrationModule:
-    """把分类字段迁移绑定到隔离 SQLite 连接。"""
+    """
+    把分类字段迁移绑定到隔离 SQLite 连接。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
     monkeypatch.setattr(
         migration,
@@ -89,7 +103,9 @@ def _bind_migration(
 
 
 def _create_legacy_tables(connection: Connection) -> None:
-    """创建仅含兼容路径字段和旧记录的四张历史版本表。"""
+    """
+    创建仅含兼容路径字段和旧记录的四张历史版本表。
+    """
     metadata = sa.MetaData()
     for table_name, path_field in _LEGACY_PATH_FIELDS.items():
         table = sa.Table(
@@ -103,12 +119,16 @@ def _create_legacy_tables(connection: Connection) -> None:
 
 
 def _columns(connection: Connection, table_name: str) -> dict[str, dict[str, Any]]:
-    """按字段名返回指定表的反射结构。"""
+    """
+    按字段名返回指定表的反射结构。
+    """
     return {str(column["name"]): column for column in sa.inspect(connection).get_columns(table_name)}
 
 
 def _legacy_row(connection: Connection, table_name: str) -> dict[str, Any]:
-    """返回迁移前写入的单条兼容路径记录。"""
+    """
+    返回迁移前写入的单条兼容路径记录。
+    """
     table = sa.Table(table_name, sa.MetaData(), autoload_with=connection)
     return dict(connection.execute(sa.select(table)).mappings().one())
 
@@ -116,7 +136,9 @@ def _legacy_row(connection: Connection, table_name: str) -> dict[str, Any]:
 def test_classification_persistence_migration_round_trip_is_replay_safe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """迁移应可重复升降级，并始终保留旧路径且不伪造分类事实。"""
+    """
+    迁移应可重复升降级，并始终保留旧路径且不伪造分类事实。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_tables(connection)
@@ -150,7 +172,9 @@ def test_classification_persistence_migration_round_trip_is_replay_safe(
 
 
 def test_classification_persistence_models_match_nullable_schema() -> None:
-    """ORM 应声明活动稳定引用和三类历史的完整可空分类快照。"""
+    """
+    ORM 应声明活动稳定引用和三类历史的完整可空分类快照。
+    """
     models = {
         "subscribe": Subscribe,
         "subscribehistory": SubscribeHistory,
@@ -165,7 +189,9 @@ def test_classification_persistence_models_match_nullable_schema() -> None:
 
 
 def test_classification_persistence_application_contracts_are_complete() -> None:
-    """活动订阅只接收稳定引用，历史与写 DTO 保留完整分类事实。"""
+    """
+    活动订阅只接收稳定引用，历史与写 DTO 保留完整分类事实。
+    """
     active_patch = SubscriptionPatch(
         {
             "media_category_id": "movie.drama",
@@ -223,7 +249,9 @@ def test_classification_persistence_application_contracts_are_complete() -> None
 
 
 def test_classification_persistence_adapters_project_all_fields() -> None:
-    """四个 ORM 投影边界应原样复制稳定引用和历史分类事实。"""
+    """
+    四个 ORM 投影边界应原样复制稳定引用和历史分类事实。
+    """
     classification_values = {
         "media_category_id": "movie.drama",
         "classification_rule_id": "rule.drama",
@@ -274,7 +302,9 @@ def test_classification_persistence_adapters_project_all_fields() -> None:
 
 
 def test_classification_persistence_public_schemas_are_complete() -> None:
-    """REST、分享和插件查询模型应公开各自需要的分类字段。"""
+    """
+    REST、分享和插件查询模型应公开各自需要的分类字段。
+    """
     history_schemas = (
         SubscribeSchema,
         DownloadHistorySchema,
@@ -294,7 +324,9 @@ def test_classification_persistence_public_schemas_are_complete() -> None:
 
 
 def test_classification_persistence_migration_revision_chain() -> None:
-    """迁移版本应接在系统配置唯一性 3.0.26 revision 之后。"""
+    """
+    迁移版本应接在系统配置唯一性 3.0.26 revision 之后。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
 
     assert migration.revision == "c9a4d7e2f1b6"

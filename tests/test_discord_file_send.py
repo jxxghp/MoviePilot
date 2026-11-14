@@ -1,3 +1,7 @@
+"""
+验证 Discord 文件发送通过线程池检查本地文件。
+"""
+
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -6,7 +10,9 @@ from app.modules.discord.discord import Discord
 
 
 def test_send_file_checks_local_file_in_threadpool(monkeypatch):
-    """Discord 文件发送应把本地文件检查移出 Discord 事件循环。"""
+    """
+    Discord 文件发送应把本地文件检查移出 Discord 事件循环。
+    """
     discord_client = Discord.__new__(Discord)
     channel = AsyncMock()
     discord_client._resolve_channel = AsyncMock(return_value=channel)

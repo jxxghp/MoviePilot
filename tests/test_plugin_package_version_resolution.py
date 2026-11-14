@@ -1,4 +1,6 @@
-"""插件市场同步与异步包代际解析的统一合同测试。"""
+"""
+插件市场同步与异步包代际解析的统一合同测试。
+"""
 
 from types import SimpleNamespace
 
@@ -22,7 +24,9 @@ def test_package_version_candidates_have_one_canonical_order(
     requested_version: str | None,
     expected: tuple[str, ...],
 ) -> None:
-    """显式版本、向后兼容版本和基础索引必须由一个有序事实源产生。"""
+    """
+    显式版本、向后兼容版本和基础索引必须由一个有序事实源产生。
+    """
     runtime_settings = SimpleNamespace(VERSION_FLAG=configured_version)
     monkeypatch.setattr(
         client_module,
@@ -37,7 +41,9 @@ def test_package_version_candidates_have_one_canonical_order(
 async def test_sync_and_async_package_resolution_visit_same_candidates(
     monkeypatch,
 ) -> None:
-    """同步与异步安装必须按相同顺序停止在首个兼容插件索引。"""
+    """
+    同步与异步安装必须按相同顺序停止在首个兼容插件索引。
+    """
     runtime_settings = SimpleNamespace(VERSION_FLAG="v3")
     monkeypatch.setattr(
         client_module,
@@ -54,7 +60,9 @@ async def test_sync_and_async_package_resolution_visit_same_candidates(
     async_candidates: list[str | None] = []
 
     def get_plugins(_repo_url: str, package_version: str | None = None) -> dict:
-        """记录同步入口访问顺序并返回固定索引。"""
+        """
+        记录同步入口访问顺序并返回固定索引。
+        """
         sync_candidates.append(package_version)
         return indexes[package_version]
 
@@ -62,7 +70,9 @@ async def test_sync_and_async_package_resolution_visit_same_candidates(
         _repo_url: str,
         package_version: str | None = None,
     ) -> dict:
-        """记录异步入口访问顺序并返回同一份固定索引。"""
+        """
+        记录异步入口访问顺序并返回同一份固定索引。
+        """
         async_candidates.append(package_version)
         return indexes[package_version]
 

@@ -1,3 +1,7 @@
+"""
+MusicBrainz 识别结果缓存、短期负缓存及文件持久化。
+"""
+
 import hashlib
 import json
 import pickle
@@ -5,13 +9,13 @@ import traceback
 from math import ceil
 from threading import RLock
 from time import time
-from typing import Optional
+from typing import Optional, cast
 
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.domain.music import music_isrc_codes
 from app.foundation.singleton import WeakSingleton
-from app.runtime.cache import FileCache, TTLCache
+from app.runtime.cache import CacheBackend, FileCache, TTLCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MUSIC_ENTITY_RECORDING
@@ -25,20 +29,16 @@ PERSISTENCE_KEY = "musicbrainz"
 
 class MusicBrainzCache(metaclass=WeakSingleton):
     """
-    MusicBrainz识别缓存数据
-    {
-        "source": '',
-        "media_id": '',
-        "title": '',
-        "artists": [],
-        "album": '',
-        "year": '',
-        "music_type": ''
-    }
+    保存音乐识别结果，并按实体范围与完整识别证据隔离缓存。
+
+    Redis 由缓存后端持久化；其他后端只将有远端身份的结果写入文件。
+    短期负缓存不落盘，重启后可以重新识别。
     """
 
-    def __init__(self):
-        """初始化音乐识别缓存并恢复未过期的持久化数据。"""
+    def __init__(self) -> None:
+        """
+        初始化音乐识别缓存并恢复未过期的持久化数据。
+        """
         self.maxsize = get_runtime_setting('CONF').musicbrainz
         self.ttl = get_runtime_setting('CONF').meta
         self.region = f"__musicbrainz_cache_v{PERSISTENCE_VERSION}__"
@@ -47,13 +47,18 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         self._dirty = False
         self._file_cache = None
         if not self._cache.is_redis():
-            self._file_cache = FileCache(base=get_runtime_setting('CACHE_PATH'), ttl=self.ttl)
-            self._restore()
+            file_cache = FileCache(base=get_runtime_setting('CACHE_PATH'), ttl=self.ttl)
+            self._file_cache = file_cache
+            self._restore(file_cache)
 
-    def _restore(self) -> None:
-        """从统一文件缓存恢复仍在有效期内的音乐识别数据。"""
+    def _restore(self, file_cache: CacheBackend) -> None:
+        """
+        从统一文件缓存恢复仍在有效期内的音乐识别数据。
+
+        :param file_cache: 初始化时创建的文件缓存实例
+        """
         try:
-            content = self._file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
+            content = file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
             if not content:
                 return
             payload = pickle.loads(content)
@@ -83,17 +88,19 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         except Exception as err:
             logger.error(f"加载音乐识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
-    def _set(self, key: str, value: dict) -> None:
-        """无身份结果仅短暂缓存，不能让一次无匹配覆盖普通媒体缓存的整个有效期。"""
+    def _set(self, key: str, value: dict[str, object]) -> None:
+        """
+        无身份结果仅短暂缓存，不能让一次无匹配覆盖普通媒体缓存的整个有效期。
+        """
         ttl = self.ttl if value.get("media_id") else min(self.ttl, 300)
         self._cache.set(key, value, ttl=ttl)
         if not self._cache.is_redis():
             self._expires_at[key] = time() + ttl
             self._dirty = True
 
-    def clear(self):
+    def clear(self) -> None:
         """
-        清空所有音乐识别缓存
+        清空识别结果与过期记录，并立即同步清空文件缓存。
         """
         with lock:
             self._cache.clear()
@@ -101,9 +108,11 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             self._dirty = True
             self.save(force=True)
 
-    def list_items(self) -> list[dict]:
+    def list_items(self) -> list[dict[str, object]]:
         """
-        返回可供管理界面展示的音乐识别缓存列表。
+        生成管理界面可展示的音乐识别缓存列表。
+
+        :return: 按缓存键排序的摘要列表，包含标题、艺术家、实体类型与封面
         """
         with lock:
             cache_items = []
@@ -120,11 +129,13 @@ class MusicBrainzCache(metaclass=WeakSingleton):
                     "music_type": value.get("music_type") or MUSIC_ENTITY_RECORDING,
                     "cover_url": value.get("cover_url") or "",
                 })
-            return sorted(cache_items, key=lambda item: item["key"])
+            return sorted(cache_items, key=lambda item: cast(str, item["key"]))
 
     @staticmethod
     def __get_key(meta: MetaMusic, music_type: Optional[str] = None) -> str:
-        """按来源身份或完整识别证据及请求实体编码键，避免版本串用和分隔符碰撞。"""
+        """
+        按来源身份或完整识别证据及请求实体编码键，避免版本串用和分隔符碰撞。
+        """
         source = str(meta.media_source) if meta.media_source else None
         identity: list[object]
         if source and meta.media_id:
@@ -140,10 +151,11 @@ class MusicBrainzCache(metaclass=WeakSingleton):
 
     def get(self, meta: MetaMusic, music_type: Optional[str] = None) -> Optional[MusicInfo]:
         """
-        根据元数据获取缓存的音乐识别结果
-        @param meta: 音乐元数据
-        @param music_type: 本次请求的实体范围，未指定时与显式单曲、专辑请求隔离
-        @return: 缓存命中的音乐信息，未命中返回 None
+        按音乐线索及实体范围读取已缓存的识别结果。
+
+        :param meta: 用于构造缓存身份的音乐线索
+        :param music_type: 本次实体范围；省略时与显式单曲或专辑请求隔离
+        :return: 缓存中的音乐模型；未命中、已过期或解析失败时返回 None
         """
         key = self.__get_key(meta, music_type)
         with lock:
@@ -158,14 +170,15 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             logger.error(f"解析音乐识别缓存失败：{str(err)}")
             return None
 
-    def delete(self, key: str) -> dict:
+    def delete(self, key: str) -> dict[str, object]:
         """
-        删除缓存信息
-        @param key: 缓存key
-        @return: 被删除的缓存内容
+        删除单条识别缓存，并立即同步文件缓存。
+
+        :param key: 缓存列表返回的完整键
+        :return: 被删除的原始数据；键不存在时为空映射
         """
         with lock:
-            cache_data = self._cache.get(key)
+            cache_data: dict[str, object] = self._cache.get(key)
             if cache_data:
                 self._cache.delete(key)
                 self._expires_at.pop(key, None)
@@ -176,8 +189,14 @@ class MusicBrainzCache(metaclass=WeakSingleton):
 
     def update(self, meta: MetaMusic, info: Optional[MusicInfo], music_type: Optional[str] = None) -> None:
         """
-        新增或更新缓存条目，无远端身份的兜底结果也写入内存负缓存，
-        避免批量识别时反复请求 MusicBrainz 触发限流
+        按识别证据新增或替换缓存，缩短无远端身份结果的有效期。
+
+        不保留完整原始响应，仅保留核验身份需要的 ISRC。
+        无远端身份结果最多缓存 300 秒；文件持久化由后续 save 完成。
+
+        :param meta: 用于构造缓存身份的音乐线索，空值不写入
+        :param info: 识别结果，空值或只有服务故障、预算耗尽诊断时不写入
+        :param music_type: 需要隔离的实体范围，省略表示未限定实体
         """
         if not meta or not info:
             return
@@ -195,7 +214,11 @@ class MusicBrainzCache(metaclass=WeakSingleton):
 
     def save(self, force: bool = False) -> None:
         """
-        使用统一文件缓存保存未过期的音乐识别数据。
+        把仍有效且有远端身份的结果保存到统一文件缓存。
+
+        Redis 或未配置文件缓存时不操作。文件保存失败只记录日志，保留待保存状态。
+
+        :param force: 是否强制保存，False 时无变化会跳过写入
         """
         if self._cache.is_redis():
             return
@@ -246,8 +269,10 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             except Exception as err:
                 logger.error(f"保存音乐识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
-    def __del__(self):
-        """实例释放前保存非 Redis 缓存。"""
+    def __del__(self) -> None:
+        """
+        实例释放前保存非 Redis 缓存。
+        """
         try:
             self.save()
         except Exception:

@@ -1,4 +1,6 @@
-"""验证 TransferChain 步骤 runner 与文件执行器的崩溃恢复边界。"""
+"""
+验证 TransferChain 步骤 runner 与文件执行器的崩溃恢复边界。
+"""
 
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -12,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionState,
+    TransferManualReviewDecision,
     TransferOperationObservation,
     TransferOperationObservationState,
     TransferStepIntent,
@@ -24,6 +27,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
 )
 from app.chain.transfer import execution as transfer_chain_module
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
@@ -33,13 +37,16 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
+from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.types import MediaType
 from app.schemas.workflow import FileItem
 
 
 def _runner_plan_checkpoint() -> TransferPlanCheckpoint:
-    """构造 runner fixture 使用的完整冻结计划。"""
+    """
+    构造 runner fixture 使用的完整冻结计划。
+    """
     planning_input = TransferPlanningInput(
         source_fileitem={
             "storage": "local",
@@ -67,7 +74,9 @@ def _runner_plan_checkpoint() -> TransferPlanCheckpoint:
 
 @pytest.fixture
 def execution_repository():
-    """构造带有效 pending 租约的独立执行仓储。"""
+    """
+    构造带有效 pending 租约的独立执行仓储。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(
         engine,
@@ -117,7 +126,9 @@ def execution_repository():
 
 
 def _runner(repository):
-    """构造绑定固定任务、租约与计划身份的 durable runner。"""
+    """
+    构造绑定固定任务、租约与计划身份的 durable runner。
+    """
     return transfer_chain_module._DurableTransferStepRunner(
         task_id="task-runner",
         lease_token="lease",
@@ -127,14 +138,18 @@ def _runner(repository):
 
 
 def _runner_plan_fingerprint() -> str:
-    """返回 runner fixture 中完整冻结计划的 canonical 指纹。"""
+    """
+    返回 runner fixture 中完整冻结计划的 canonical 指纹。
+    """
     return build_transfer_checkpoint_fingerprint(
         _runner_plan_checkpoint().to_payload()
     )
 
 
 def _runner_step_payload() -> dict:
-    """返回由 runner 冻结计划唯一叶操作导出的目标落地参数。"""
+    """
+    返回由 runner 冻结计划唯一叶操作导出的目标落地参数。
+    """
     checkpoint = _runner_plan_checkpoint()
     item = checkpoint.items[0]
     return {
@@ -148,7 +163,9 @@ def _runner_step_payload() -> dict:
 def test_runner_replay_returns_persisted_result_without_repeating_side_effect(
         execution_repository,
 ):
-    """成功步骤重放只能回读结果，不能再次调用外部执行函数。"""
+    """
+    成功步骤重放只能回读结果，不能再次调用外部执行函数。
+    """
     calls = []
     first = _runner(execution_repository).run(
         phase="transfer",
@@ -173,7 +190,9 @@ def test_runner_replay_returns_persisted_result_without_repeating_side_effect(
 def test_runner_routes_unknown_orphaned_attempt_to_manual_review(
         execution_repository,
 ):
-    """遗留 STARTED 无法严格判断时必须隔离，不能再次执行副作用。"""
+    """
+    遗留 STARTED 无法严格判断时必须隔离，不能再次执行副作用。
+    """
     command = TransferExecutionCommand(execution_repository)
     prepared = command.prepare(
         task_id="task-runner",
@@ -215,11 +234,15 @@ def test_runner_routes_unknown_orphaned_attempt_to_manual_review(
 def test_runner_observes_applied_after_execute_error_and_completes_step(
         execution_repository,
 ) -> None:
-    """execute 抛错后若外部事实已生效，必须以观察证据完成而非重放。"""
+    """
+    execute 抛错后若外部事实已生效，必须以观察证据完成而非重放。
+    """
     evidence = TransferStepResult(payload={"target": "/target.mkv"})
 
     def execute() -> TransferStepResult:
-        """模拟副作用成功后调用方在返回前崩溃。"""
+        """
+        模拟副作用成功后调用方在返回前崩溃。
+        """
         raise OSError("connection reset after apply")
 
     result = _runner(execution_repository).run(
@@ -244,11 +267,15 @@ def test_runner_observes_applied_after_execute_error_and_completes_step(
 def test_runner_defers_after_execute_error_observed_not_applied(
         execution_repository,
 ) -> None:
-    """execute 抛错且确认未生效时只能进入持久退避，不得误判成功。"""
+    """
+    execute 抛错且确认未生效时只能进入持久退避，不得误判成功。
+    """
     evidence = TransferStepResult(payload={"target_exists": False})
 
     def execute() -> TransferStepResult:
-        """模拟外部操作在应用前失败。"""
+        """
+        模拟外部操作在应用前失败。
+        """
         raise OSError("write rejected")
 
     with pytest.raises(transfer_chain_module._TransferRetryDeferred):
@@ -281,11 +308,15 @@ def test_runner_freezes_uncertain_execute_error_for_manual_review(
         execution_repository,
         observation_state,
 ) -> None:
-    """execute 异常后的未知或冲突结果必须冻结，禁止自动重放。"""
+    """
+    execute 异常后的未知或冲突结果必须冻结，禁止自动重放。
+    """
     evidence = TransferStepResult(payload={"receipt": "ambiguous"})
 
     def execute() -> TransferStepResult:
-        """模拟外部结果未知的执行异常。"""
+        """
+        模拟外部结果未知的执行异常。
+        """
         raise TimeoutError("provider timeout")
 
     with pytest.raises(
@@ -313,13 +344,19 @@ def test_runner_freezes_uncertain_execute_error_for_manual_review(
 def test_runner_freezes_when_observer_errors_after_execute_error(
         execution_repository,
 ) -> None:
-    """execute 与 observer 同时失败时必须保留双重证据并进入人工复核。"""
+    """
+    execute 与 observer 同时失败时必须保留双重证据并进入人工复核。
+    """
     def execute() -> TransferStepResult:
-        """模拟调用结果未知的执行超时。"""
+        """
+        模拟调用结果未知的执行超时。
+        """
         raise TimeoutError("execute timeout")
 
     def observe() -> TransferOperationObservation:
-        """模拟外部状态查询端点同时不可用。"""
+        """
+        模拟外部状态查询端点同时不可用。
+        """
         raise ConnectionError("observer unavailable")
 
     with pytest.raises(
@@ -345,20 +382,29 @@ def test_runner_freezes_when_observer_errors_after_execute_error(
 
 
 class _ImmediateStepRunner:
-    """记录 TransHandler 拆分顺序并立即执行步骤的测试 runner。"""
+    """
+    记录 TransHandler 拆分顺序并立即执行步骤的测试 runner。
+    """
 
     def __init__(self) -> None:
-        """初始化步骤记录。"""
+        """
+        初始化步骤记录。
+        """
         self.steps = []
 
     def run(self, *, phase, kind, payload, execute, observe):
-        """记录稳定意图并直接执行，不触发恢复探测。"""
+        """
+        记录稳定意图并直接执行，不触发恢复探测。
+        """
         self.steps.append((phase, kind, payload))
         return execute()
 
 
-def test_cross_storage_move_materializes_before_independent_source_delete(tmp_path):
-    """跨存储 move 必须先复制目标，再用独立步骤删除源。"""
+@pytest.mark.parametrize("frozen_time,live_time", [(1.0, 1.0), (1.0, 5.0), (None, 5.0), (1.0, None)])
+def test_cross_storage_move_materializes_before_independent_source_delete(tmp_path, frozen_time, live_time):
+    """
+    跨存储 move 先复制再独立删除源，云端时间戳变化或缺失不阻止清理，本地源版本保持稳定。
+    """
     source_path = tmp_path / "source.mkv"
     source_path.write_bytes(b"movie")
     source_item = FileItem(
@@ -367,6 +413,7 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
         name=source_path.name,
         type="file",
         size=source_path.stat().st_size,
+        modify_time=1.0,
         extension="mkv",
     )
     target_item = FileItem(
@@ -375,11 +422,15 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
         name="source.mkv",
         type="file",
         size=source_item.size,
+        modify_time=frozen_time,
         extension="mkv",
     )
     source_oper = Mock()
     source_oper.delete.return_value = True
+    live_source = source_item.model_copy()
+    source_oper.get_item_strict.return_value = live_source
     target_oper = Mock()
+    target_oper.get_item_strict.return_value = target_item.model_copy(update={"modify_time": live_time})
     target_oper.get_folder.return_value = FileItem(
         storage="remote", path="/library", name="library", type="dir"
     )
@@ -404,11 +455,123 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
     ]
     assert runner.steps[0][2]["transfer_type"] == "copy"
     target_oper.upload.assert_called_once()
-    source_oper.delete.assert_called_once_with(source_item)
+    source_oper.delete.assert_called_once_with(live_source)
+
+
+@pytest.mark.parametrize("change", [
+    None, "target_size", "target_id", "target_missing", "source_size",
+    "receipt_id_missing", "receipt_size_missing", "source_size_missing", "other_storage",
+    "target_id_missing", "target_type", "target_query",
+])
+def test_legacy_u115_receipt_resumes_after_manual_review_without_uploading_again(
+        tmp_path, execution_repository, change,
+):
+    """
+    真实旧账本经人工确认后只恢复源删除；身份不足、文件变化或其它存储仍隔离。
+    """
+    source_path = tmp_path / "source.mkv"
+    source_path.write_bytes(b"movie" * 251)
+    local = object.__new__(LocalStorage)
+    source = local.get_item_strict(source_path).model_dump(mode="json")
+    if change == "source_size_missing":
+        source["size"] = None
+    storage = "remote" if change == "other_storage" else "u115"
+    target = FileItem(
+        storage=storage, path="/library/source.mkv", type="file",
+        name="source.mkv", size=1255, fileid="200",
+    )
+    receipt = target.model_copy(update={
+        "size": None if change == "receipt_size_missing" else 1254,
+        "fileid": None if change == "receipt_id_missing" else "200",
+    })
+    planning_input = TransferPlanningInput(source_fileitem=source)
+    checkpoint = replace(
+        _runner_plan_checkpoint(), planning_input=planning_input,
+        target_storage=storage, final_target_path=target.path, resolved_transfer_type="move",
+        items=(TransferPlanItem(
+            sequence=0, source_fileitem=source, target_storage=storage, target_path=target.path,
+        ),),
+    )
+    with execution_repository._session_factory() as session:
+        pending = session.query(TransferPending).one()
+        pending.src_path = source["path"]
+        pending.planning_input = planning_input.to_payload()
+        pending.input_fingerprint = planning_input.fingerprint
+        pending.checkpoint_payload = checkpoint.to_payload()
+        session.commit()
+    runner = transfer_chain_module._DurableTransferStepRunner(
+        task_id="task-runner", lease_token="lease",
+        checkpoint_fingerprint=checkpoint.fingerprint, repository=execution_repository,
+    )
+    original_result = TransferStepResult(payload={"item": receipt.model_dump(mode="json")})
+    runner.run(
+        phase="transfer", kind="materialize_target",
+        payload={"source": source, "target_storage": storage,
+                 "target_path": target.path, "transfer_type": "copy"},
+        execute=lambda: original_result,
+        observe=lambda: pytest.fail("成功上传回执不应重新探测"),
+    )
+    command = TransferExecutionCommand(execution_repository)
+    prepared = command.prepare(
+        task_id="task-runner", lease_token="lease",
+        intent=TransferStepIntent.create(
+            task_id="task-runner", checkpoint_fingerprint=checkpoint.fingerprint,
+            ordinal=1, phase="transfer", kind="delete_move_source",
+            payload={"source": source, "target_storage": storage, "target_path": target.path},
+        ),
+    )
+    started = command.begin(task_id="task-runner", lease_token="lease", operation_id=prepared.operation_id)
+    command.manual_review(
+        task_id="task-runner", lease_token="lease", step=started,
+        error="旧版秒传大小凭据冲突", evidence=TransferStepResult(payload={"identity_error": "size 已变化"}),
+    )
+    resolved = command.resolve_manual_review(
+        task_id="task-runner", operation_id=started.operation_id,
+        decision=TransferManualReviewDecision.NOT_APPLIED, actor="admin", reason="确认源文件仍存在",
+    )
+    assert resolved.state is TransferExecutionState.RETRY_WAIT
+    claimed = TransactionalTransferAdmissionRepository(execution_repository._session_factory).claim_task(
+        task_id="task-runner", owner_id="recovery", lease_seconds=120,
+    )
+    runner = transfer_chain_module._DurableTransferStepRunner(
+        task_id="task-runner", lease_token=claimed.lease_token,
+        checkpoint_fingerprint=checkpoint.fingerprint, repository=execution_repository,
+    )
+    if change == "source_size":
+        source_path.write_bytes(b"changed source")
+    live_target = target.model_copy(update={
+        "size": 999 if change == "target_size" else target.size,
+        "fileid": None if change == "target_id_missing" else "201" if change == "target_id" else target.fileid,
+        "type": "dir" if change == "target_type" else target.type,
+    })
+    remote = Mock()
+    remote.get_item_strict.return_value = None if change == "target_missing" else live_target
+    if change == "target_query":
+        remote.get_item_strict.side_effect = TimeoutError("115 unavailable")
+    arguments = dict(
+        step_runner=runner, source_fileitem=source, target_storage=storage,
+        source_oper=local, target_oper=remote, target_file=Path(target.path), transfer_type="move",
+    )
+    if change:
+        with pytest.raises(transfer_chain_module._TransferManualReviewRequired):
+            TransHandler._TransHandler__execute_transfer_with_steps(**arguments)
+        assert source_path.exists()
+        assert execution_repository.get_snapshot(task_id="task-runner").state is TransferExecutionState.MANUAL_REVIEW
+    else:
+        result, error = TransHandler._TransHandler__execute_transfer_with_steps(**arguments)
+        assert not error
+        assert result == target
+        assert not source_path.exists()
+    snapshot = execution_repository.get_snapshot(task_id="task-runner")
+    assert snapshot.steps[0].result == original_result
+    remote.upload.assert_not_called()
+    remote.delete.assert_not_called()
 
 
 def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_path):
-    """网盘到本地的下载开始前必须先创建缺失的目标目录。"""
+    """
+    网盘到本地的下载开始前必须先创建缺失的目标目录。
+    """
     target_file = tmp_path / "library" / "Season 1" / "episode.mkv"
     source_item = FileItem(
         storage="alist",
@@ -420,9 +583,12 @@ def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_p
     )
 
     def download(*, fileitem, path):
-        """模拟只接受已存在本地目录的网盘下载适配器。"""
+        """
+        模拟只接受已存在本地目录的网盘下载适配器。
+        """
         assert fileitem is source_item
-        assert path == target_file.parent
+        assert path.parent == target_file.parent
+        assert path.name.startswith(".mp-download-")
         assert path.is_dir()
         temporary_file = path / fileitem.name
         temporary_file.write_bytes(b"movie")
@@ -443,10 +609,8 @@ def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_p
     assert error == ""
     assert result is not None
     assert target_file.read_bytes() == b"movie"
-    source_oper.download.assert_called_once_with(
-        fileitem=source_item,
-        path=target_file.parent,
-    )
+    source_oper.download.assert_called_once()
+    assert not source_oper.download.call_args.kwargs["path"].exists()
     source_oper.delete.assert_called_once_with(source_item)
 
 
@@ -455,15 +619,17 @@ def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_p
 def test_frozen_disc_plan_executes_and_replays_with_real_step_ledger(
         execution_repository, monkeypatch, sparse, directory,
 ):
-    """原盘及旧快照必须通过真实意图校验，重启后不再复制或重复删除源。"""
+    """
+    原盘及旧快照必须通过真实意图校验，重启后不再复制或重复删除源。
+    """
     source = FileItem(
         storage="local", path="/disc" if directory else "/disc.iso",
         name="disc" if directory else "disc.iso", type="dir" if directory else "file",
-        size=100,
+        size=100, modify_time=1.0,
     ).model_dump(mode="json", exclude_unset=sparse)
     leaf = (
         FileItem(storage="local", path="/disc/BDMV/STREAM/00001.m2ts",
-                 name="00001.m2ts", type="file", size=200).model_dump(
+                 name="00001.m2ts", type="file", size=200, modify_time=1.0).model_dump(
                      mode="json", exclude_unset=sparse,
         )
         if directory else dict(source)
@@ -487,23 +653,33 @@ def test_frozen_disc_plan_executes_and_replays_with_real_step_ledger(
         session.commit()
 
     def intercept(**kwargs):
-        """模拟插件修正运行期大小，冻结计划和步骤身份不应随之变化。"""
+        """
+        模拟插件修正运行期大小，冻结计划和步骤身份不应随之变化。
+        """
         kwargs["fileitem"].size = 999
         return True, ""
 
+    materialized_items = {}
+
     def materialize(**kwargs):
-        """模拟存储适配器更新临时链接，源删除步骤仍须沿用冻结输入。"""
+        """
+        模拟存储适配器更新临时链接，源删除步骤仍须沿用冻结输入。
+        """
         assert kwargs["fileitem"].size == leaf["size"]
         kwargs["fileitem"].url = "https://temporary.invalid/refreshed"
-        return FileItem(storage="remote", path=kwargs["target_file"].as_posix()), ""
+        target_item = FileItem(storage="remote", path=kwargs["target_file"].as_posix(),
+                               type="file", size=leaf["size"], modify_time=1.0)
+        materialized_items[target_item.path] = target_item
+        return target_item, ""
 
     handler = TransHandler()
     monkeypatch.setattr(handler, "_TransHandler__intercept_transfer", intercept)
     transfer = Mock(side_effect=materialize)
     monkeypatch.setattr(TransHandler, "_TransHandler__transfer_command", transfer)
     source_oper = Mock()
+    source_oper.get_item_strict.return_value = FileItem(**leaf)
     target_oper = Mock()
-    target_oper.get_item_strict.return_value = None
+    target_oper.get_item_strict.side_effect = lambda path: materialized_items.get(path.as_posix())
     target_oper.get_folder.return_value = FileItem(storage="remote", path="/library", type="dir")
 
     for _ in range(2):

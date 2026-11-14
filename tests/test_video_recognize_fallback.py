@@ -1,4 +1,6 @@
-"""影视自动识别主数据源路由回归测试。"""
+"""
+影视自动识别主数据源路由回归测试。
+"""
 
 import asyncio
 from typing import Optional
@@ -11,7 +13,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _video_meta() -> MetaBase:
-    """构造未指定数据源的电影元数据。"""
+    """
+    构造未指定数据源的电影元数据。
+    """
     meta = MetaBase("流浪地球 2019")
     meta.name = "流浪地球"
     meta.year = "2019"
@@ -22,7 +26,9 @@ def _video_meta() -> MetaBase:
 def _module_kwargs(
     meta: MetaBase, media_source: Optional[MediaSource] = None
 ) -> dict:
-    """构造原生识别路由使用的模块参数。"""
+    """
+    构造原生识别路由使用的模块参数。
+    """
     return {
         "meta": meta,
         "mtype": MediaType.MOVIE,
@@ -34,12 +40,16 @@ def _module_kwargs(
 
 
 def test_video_auto_recognize_only_uses_tmdb(monkeypatch) -> None:
-    """未指定影视来源时必须固定委托 TMDB，失败后也不切换其它来源。"""
+    """
+    未指定影视来源时必须固定委托 TMDB，失败后也不切换其它来源。
+    """
     chain = object.__new__(MediaChain)
     calls = []
 
     def generic_recognize(_self, module_kwargs, cache):
-        """记录父类模块分发参数并模拟 TMDB 未命中。"""
+        """
+        记录父类模块分发参数并模拟 TMDB 未命中。
+        """
         calls.append((module_kwargs, cache))
         return None
 
@@ -60,7 +70,9 @@ def test_video_auto_recognize_only_uses_tmdb(monkeypatch) -> None:
 
 
 def test_async_video_auto_recognize_only_uses_tmdb(monkeypatch) -> None:
-    """异步未指定影视来源时也只委托 TMDB 原生识别入口。"""
+    """
+    异步未指定影视来源时也只委托 TMDB 原生识别入口。
+    """
     chain = object.__new__(MediaChain)
     expected = MediaInfo(
         media_source=MediaSource.TMDB,
@@ -73,7 +85,9 @@ def test_async_video_auto_recognize_only_uses_tmdb(monkeypatch) -> None:
     calls = []
 
     async def generic_recognize(_self, module_kwargs, cache):
-        """记录异步父类模块分发参数并返回 TMDB 结果。"""
+        """
+        记录异步父类模块分发参数并返回 TMDB 结果。
+        """
         calls.append((module_kwargs, cache))
         return expected
 
@@ -94,7 +108,9 @@ def test_async_video_auto_recognize_only_uses_tmdb(monkeypatch) -> None:
 
 
 def test_video_explicit_source_is_preserved(monkeypatch) -> None:
-    """手工指定影视来源时必须保持严格单源分发。"""
+    """
+    手工指定影视来源时必须保持严格单源分发。
+    """
     chain = object.__new__(MediaChain)
     expected = MediaInfo(
         media_source=MediaSource.Douban,
@@ -107,7 +123,9 @@ def test_video_explicit_source_is_preserved(monkeypatch) -> None:
     calls = []
 
     def generic_recognize(_self, module_kwargs, cache):
-        """记录显式来源并返回预设结果。"""
+        """
+        记录显式来源并返回预设结果。
+        """
         calls.append((module_kwargs, cache))
         return expected
 

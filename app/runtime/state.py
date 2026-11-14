@@ -1,3 +1,7 @@
+"""
+系统、工作流和整理任务的停止状态兼容门面。
+"""
+
 import json
 import os
 import signal
@@ -17,7 +21,7 @@ from app.runtime.settings import get_runtime_setting
 
 class SystemHelper(ConfigReloadMixin):
     """
-    系统工具类，提供系统相关的操作和判断
+    系统工具类，提供系统相关的操作和判断。
     """
     CONFIG_WATCH = {
         "DEBUG",
@@ -35,7 +39,7 @@ class SystemHelper(ConfigReloadMixin):
     __local_restart_log_file = (
         get_runtime_setting('LOG_PATH') / "moviepilot.restart.stdout.log"
     )
-    __one_shot_dev_update_flag_file = (
+    __one_shot_dev_update_flag_file: Path = (
         get_runtime_setting('TEMP_PATH') / "moviepilot.pending_dev_update"
     )
     __prepared_update_manifest = (
@@ -46,17 +50,23 @@ class SystemHelper(ConfigReloadMixin):
     __supervisor_socket = Path("/run/moviepilot/supervisor.sock")
     __supervisor_update_worker = "moviepilot-update-worker"
 
-    def on_config_changed(self):
-        """配置变化后重新应用日志设置。"""
+    def on_config_changed(self) -> None:
+        """
+        配置变化后重新应用日志设置。
+        """
         logger.update_loggers()
 
-    def get_reload_name(self):
-        """返回配置重载日志使用的组件名称。"""
+    def get_reload_name(self) -> str:
+        """
+        返回配置重载日志使用的组件名称。
+        """
         return "日志设置"
 
     @staticmethod
     def can_restart() -> bool:
-        """判断当前部署是否具备宿主无关的进程重启能力。"""
+        """
+        判断当前部署是否具备宿主无关的进程重启能力。
+        """
         return (
             (
                 is_docker()
@@ -69,8 +79,10 @@ class SystemHelper(ConfigReloadMixin):
         )
 
     @staticmethod
-    def _load_runtime_file(path: Path) -> Optional[dict]:
-        """安全读取本地进程运行状态文件。"""
+    def _load_runtime_file(path: Path) -> Optional[dict[str, object]]:
+        """
+        安全读取本地进程运行状态文件。
+        """
         if not path.exists():
             return None
         try:
@@ -81,19 +93,21 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def _is_local_cli_managed() -> bool:
-        """判断当前进程是否由本地 CLI 运行状态文件管理。"""
+        """
+        判断当前进程是否由本地 CLI 运行状态文件管理。
+        """
         runtime = SystemHelper._load_runtime_file(SystemHelper.__local_backend_runtime_file)
         if not runtime:
             return False
 
         pid = runtime.get("pid")
         create_time = runtime.get("create_time")
-        if not pid:
+        if not pid or not isinstance(pid, (str, int, float)):
             return False
 
         try:
             pid = int(pid)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return False
 
         if pid != os.getpid():
@@ -101,16 +115,21 @@ class SystemHelper(ConfigReloadMixin):
 
         if create_time is None:
             return True
+        if not isinstance(create_time, (str, int, float)):
+            return False
 
         try:
             current_process = psutil.Process(os.getpid())
-            return abs(current_process.create_time() - float(create_time)) <= 2
+            started_at: float = current_process.create_time()
+            return abs(started_at - float(create_time)) <= 2
         except (psutil.Error, TypeError, ValueError):
             return False
 
     @staticmethod
     def queue_one_shot_dev_update() -> Tuple[bool, str]:
-        """写入一次性 Dev 更新标记，供本次重启的启动流程消费。"""
+        """
+        写入一次性 Dev 更新标记，供本次重启的启动流程消费。
+        """
         try:
             SystemHelper.__one_shot_dev_update_flag_file.parent.mkdir(
                 parents=True, exist_ok=True
@@ -125,7 +144,9 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def consume_one_shot_dev_update() -> bool:
-        """读取并删除一次性 Dev 更新标记，确保普通重启不会重复更新。"""
+        """
+        读取并删除一次性 Dev 更新标记，确保普通重启不会重复更新。
+        """
         path = SystemHelper.__one_shot_dev_update_flag_file
         if not path.exists():
             return False
@@ -139,7 +160,9 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def clear_one_shot_dev_update() -> None:
-        """重启失败时撤销尚未消费的一次性 Dev 更新。"""
+        """
+        重启失败时撤销尚未消费的一次性 Dev 更新。
+        """
         try:
             SystemHelper.__one_shot_dev_update_flag_file.unlink(missing_ok=True)
         except OSError as err:
@@ -147,7 +170,9 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def _spawn_local_restart_helper() -> None:
-        """启动脱离当前进程的本地 CLI 重启助手。"""
+        """
+        启动脱离当前进程的本地 CLI 重启助手。
+        """
         apply_update = (
             SystemHelper.__prepared_update_manifest.is_file()
             or SystemHelper.__one_shot_dev_update_flag_file.is_file()
@@ -174,7 +199,7 @@ class SystemHelper(ConfigReloadMixin):
                 "close_fds": True,
                 "env": env,
             }
-            if os.name == "nt":
+            if sys.platform == "win32":
                 kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
             else:
                 kwargs["start_new_session"] = True
@@ -183,22 +208,31 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def _schedule_supervisor_restart() -> None:
-        """延迟只重启 Nginx 和后端，避免按需更新 worker 被普通重启拉起。"""
+        """
+        延迟只重启 Nginx 和后端，避免按需更新 worker 被普通重启拉起。
+        """
         SystemHelper._schedule_supervisor_command(
             "restart", ("moviepilot-nginx", "moviepilot-backend")
         )
 
     @staticmethod
     def _schedule_supervisor_shutdown() -> None:
-        """延迟关闭 supervisor，让容器入口重新执行更新和启动准备流程。"""
+        """
+        延迟关闭 supervisor，让容器入口重新执行更新和启动准备流程。
+        """
         SystemHelper._schedule_supervisor_command("shutdown")
 
     @staticmethod
     def _schedule_supervisor_command(
         action: str, target: Optional[str | tuple[str, ...]] = None
     ) -> None:
-        """延迟调用本地 supervisor 控制命令，确保重启接口有机会完成响应。"""
+        """
+        延迟调用本地 supervisor 控制命令，确保重启接口有机会完成响应。
+        """
         def run_command() -> None:
+            """
+            执行已选定的 supervisor 操作并记录启动失败。
+            """
             command = [
                 str(SystemHelper.__supervisorctl),
                 "-c",
@@ -229,10 +263,12 @@ class SystemHelper(ConfigReloadMixin):
     @staticmethod
     def _windows_restart() -> tuple[bool, str]:
         """
-        执行Windows重启操作
+        执行Windows重启操作。
         """
         def cmd(command: list[str]) -> Tuple[bool, str]:
-            """通过 Windows 命令解释器执行重启命令。"""
+            """
+            通过 Windows 命令解释器执行重启命令。
+            """
             try:
                 subprocess.run(command, shell=True)
                 return True, ""
@@ -249,7 +285,9 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def restart() -> Tuple[bool, str]:
-        """执行当前部署支持的受管重启流程。"""
+        """
+        执行当前部署支持的受管重启流程。
+        """
         if not is_frozen() and is_windows():
             success, message = SystemHelper._windows_restart()
             return success, message
@@ -286,7 +324,9 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def upgrade_dev() -> Tuple[bool, str]:
-        """保留原 Dev 模式：重启后跟踪当前 v3 开发分支。"""
+        """
+        保留原 Dev 模式：重启后跟踪当前 v3 开发分支。
+        """
         queued, message = SystemHelper.queue_one_shot_dev_update()
         if not queued:
             return False, message
@@ -296,9 +336,9 @@ class SystemHelper(ConfigReloadMixin):
             return False, message
         return True, "已安排 Dev 更新并重启"
 
-    def set_system_modified(self):
+    def set_system_modified(self) -> None:
         """
-        设置系统已修改标志
+        设置系统已修改标志。
         """
         try:
             if is_docker():
@@ -308,7 +348,8 @@ class SystemHelper(ConfigReloadMixin):
 
     def is_system_reset(self) -> bool:
         """
-        检查系统是否已被重置
+        检查系统是否已被重置。
+
         :return: 如果系统已重置，返回 True；否则返回 False
         """
         if is_docker():

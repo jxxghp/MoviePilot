@@ -24,12 +24,16 @@ from app.runtime.config import settings
 
 
 def _reset_failed_retries(src_path, storage=None):
-    """清空失败重试计数，隔离用例之间共享的模块级计数缓存。"""
+    """
+    清空失败重试计数，隔离用例之间共享的模块级计数缓存。
+    """
     clear_transfer_failures(src_path, storage)
 
 
 def _failed_history(history_id: int, src_path: str, storage: str):
-    """构造一条持续失败的整理记录替身，模拟同一源路径屡次整理失败后落库的状态。"""
+    """
+    构造一条持续失败的整理记录替身，模拟同一源路径屡次整理失败后落库的状态。
+    """
     return SimpleNamespace(id=history_id, status=False, src_fileitem=None,
                            src=src_path, src_storage=storage)
 
@@ -69,7 +73,9 @@ def test_transient_failures_self_heal_within_retry_budget(monkeypatch):
 
 
 def test_clearing_transfer_history_restores_full_retry_budget(monkeypatch):
-    """删除整理记录清零：耗尽重试预算后调用 clear_transfer_failures，应重新获得放行资格。"""
+    """
+    删除整理记录清零：耗尽重试预算后调用 clear_transfer_failures，应重新获得放行资格。
+    """
     monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 2)
     src_path = "/downloads/retry-budget-cleared-by-delete.mkv"
     storage = "local"

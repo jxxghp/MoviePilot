@@ -1,4 +1,6 @@
-"""远端插件同步与异步安装模式共享策略测试。"""
+"""
+远端插件同步与异步安装模式共享策略测试。
+"""
 
 import pytest
 
@@ -52,7 +54,9 @@ def test_remote_plugin_install_plan_preserves_mode_contract(
     fallback: bool,
     error: str,
 ) -> None:
-    """唯一计划器必须保留文件列表、当前 Release、指定 Release 与拒绝结果。"""
+    """
+    唯一计划器必须保留文件列表、当前 Release、指定 Release 与拒绝结果。
+    """
     plan, message = build_plugin_release_install_plan(
         plugin_id="DemoPlugin",
         metadata=meta,
@@ -67,7 +71,9 @@ def test_remote_plugin_install_plan_preserves_mode_contract(
 
 
 def test_current_release_keeps_system_version_admission() -> None:
-    """指定当前索引版本仍须通过系统版本限制，旧 Release 则沿用历史兼容语义。"""
+    """
+    指定当前索引版本仍须通过系统版本限制，旧 Release 则沿用历史兼容语义。
+    """
     plan, message = build_plugin_release_install_plan(
         plugin_id="DemoPlugin",
         metadata={

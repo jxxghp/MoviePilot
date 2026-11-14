@@ -1,8 +1,9 @@
-"""3.0.23 增加订阅下载交付目标范围。
+"""
+3.0.23 增加订阅下载交付目标范围。
 
-Revision ID: a7d9e2c4f6b1
-Revises: f3c8a1d6b2e9
-Create Date: 2026-09-01
+版本标识： a7d9e2c4f6b1
+前置版本： f3c8a1d6b2e9
+创建时间： 2026-09-01
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -20,7 +21,9 @@ _TABLE = "subscriptiondownloadsubmission"
 
 
 def _column_names() -> set[str]:
-    """返回当前订阅下载提交列名集合。"""
+    """
+    返回当前订阅下载提交列名集合。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE not in set(inspector.get_table_names()):
         return set()
@@ -28,7 +31,9 @@ def _column_names() -> set[str]:
 
 
 def upgrade() -> None:
-    """为存量提交增加兼容交付范围，新键会写入实际下载目标。"""
+    """
+    为存量提交增加兼容交付范围，新键会写入实际下载目标。
+    """
     columns = _column_names()
     if columns and "delivery_scope" not in columns:
         op.add_column(
@@ -43,6 +48,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除交付范围字段，保留原提交账本与唯一键。"""
+    """
+    移除交付范围字段，保留原提交账本与唯一键。
+    """
     if "delivery_scope" in _column_names():
         op.drop_column(_TABLE, "delivery_scope")

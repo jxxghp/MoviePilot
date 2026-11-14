@@ -1,4 +1,6 @@
-"""人工音乐候选从 HTTP 参数到共用搜索、结果序列化的集成回归。"""
+"""
+人工音乐候选从 HTTP 参数到共用搜索、结果序列化的集成回归。
+"""
 
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -17,7 +19,9 @@ from app.schemas.types import MediaSource, MediaType
 @pytest.mark.anyio
 @pytest.mark.parametrize("include_candidates", [False, True])
 async def test_music_manual_candidate_opt_in_survives_http_and_serialization(include_candidates):
-    """默认精确搜索不会放行未核验署名，显式人工候选请求保留资源但不绑定目标。"""
+    """
+    默认精确搜索不会放行未核验署名，显式人工候选请求保留资源但不绑定目标。
+    """
     media_id = "695f5ac8-cfd5-4e7b-96a0-22830c931bb0"
     target = MusicInfo(media_source=MediaSource.MusicBrainz, media_id=media_id, title="晴天", artists=["周杰伦"])
     chain = SearchChain()

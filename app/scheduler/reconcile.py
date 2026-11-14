@@ -1,4 +1,6 @@
-"""Agent、插件和工作流动态任务对账。"""
+"""
+Agent、插件和工作流动态任务对账。
+"""
 
 import threading
 import traceback
@@ -31,23 +33,31 @@ from app.schemas.types import MessageType, SystemConfigKey
 
 
 class SchedulerReconcileOwner(_SchedulerOwnerBase):
-    """Agent、插件和工作流动态任务对账。"""
+    """
+    Agent、插件和工作流动态任务对账。
+    """
 
     def configure_agent_tasks(self, repository: AgentTaskRepository) -> None:
-        """在调度器启动前绑定唯一自主任务仓储。"""
+        """
+        在调度器启动前绑定唯一自主任务仓储。
+        """
         if self._lifecycle_state not in {"new", "stopped"}:
             raise RuntimeError("Scheduler 已运行，不能替换 AgentTask 仓储")
         self._agent_tasks = repository
 
     def _agent_task_repository(self) -> AgentTaskRepository:
-        """返回显式注入仓储；缺少组合根装配时稳定失败。"""
+        """
+        返回显式注入仓储；缺少组合根装配时稳定失败。
+        """
         if self._agent_tasks is None:
             raise RuntimeError("Scheduler 的 AgentTask 仓储尚未注入")
         return self._agent_tasks
 
     @staticmethod
     def _get_agent_task_job_id(task_id: int) -> str:
-        """生成 Agent 自主定时任务的调度器 Job ID。"""
+        """
+        生成 Agent 自主定时任务的调度器 Job ID。
+        """
         return f"{AGENT_TASK_JOB_PREFIX}-{task_id}"
 
     def start_agent_task(self, task_id: int) -> bool:
@@ -153,6 +163,7 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
                 trigger=trigger,
                 id=job_id,
                 name=task.name,
+                executor="agent",
                 kwargs={"job_id": job_id, "task_id": task_id},
                 coalesce=True,
                 max_instances=1,
@@ -183,7 +194,9 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
         generation: int,
         run_id: str,
     ) -> bool:
-        """移除本次执行或其运行中重载产生的 AgentTask 调度注册。"""
+        """
+        移除本次执行或其运行中重载产生的 AgentTask 调度注册。
+        """
         job_id = self._get_agent_task_job_id(task_id)
         with self._lock:
             job = self._jobs.get(job_id)
@@ -372,6 +385,8 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
             return
         # 移除该工作流的全部服务
         self.remove_workflow_job(workflow)
+        if getattr(workflow, "state", None) == "P":
+            return
         # 添加工作流服务
         with self._lock:
             try:
@@ -387,7 +402,7 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
                 self._jobs[job_id] = job
                 self._scheduler.add_job(
                     self.start,
-                    trigger=CronTrigger.from_crontab(workflow.timer),
+                    trigger=CronTrigger.from_crontab(workflow.timer, timezone=self._scheduler.timezone),
                     id=job_id,
                     name=workflow.name,
                     kwargs={"job_id": job_id, "workflow_id": workflow.id},

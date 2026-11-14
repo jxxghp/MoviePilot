@@ -1,3 +1,7 @@
+"""
+验证 Agent 后台任务输出在前台会话和通知渠道中的处理方式。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -31,75 +35,111 @@ pytestmark = pytest.mark.anyio
 
 
 class _FakeGraphState:
-    """保存测试所需的消息快照，避免访问真实持久化。"""
+    """
+    保存测试所需的消息快照，避免访问真实持久化。
+    """
     def __init__(self, messages):
-        """保存该测试图的预设消息或故障。"""
+        """
+        保存该测试图的预设消息或故障。
+        """
         self.values = {"messages": messages}
 
 
 class _FakeAgent:
-    """提供可控的非流式图结果，不调用真实模型。"""
+    """
+    提供可控的非流式图结果，不调用真实模型。
+    """
     def __init__(self, messages):
-        """保存该测试图的预设消息或故障。"""
+        """
+        保存该测试图的预设消息或故障。
+        """
         self._messages = messages
 
     async def ainvoke(self, _payload, config=None):
-        """返回预设结果或抛出故障，不执行外部调用。"""
+        """
+        返回预设结果或抛出故障，不执行外部调用。
+        """
         return None
 
     def get_state(self, _config):
-        """提供宿主结束处理所需的可恢复快照。"""
+        """
+        提供宿主结束处理所需的可恢复快照。
+        """
         return _FakeGraphState(self._messages)
 
 
 class _FakeFailingAgent:
-    """在调用边界注入故障，验证宿主错误回执。"""
+    """
+    在调用边界注入故障，验证宿主错误回执。
+    """
     def __init__(self, error):
-        """保存该测试图的预设消息或故障。"""
+        """
+        保存该测试图的预设消息或故障。
+        """
         self._error = error
 
     async def ainvoke(self, _payload, config=None):
-        """返回预设结果或抛出故障，不执行外部调用。"""
+        """
+        返回预设结果或抛出故障，不执行外部调用。
+        """
         raise self._error
 
     def get_state(self, _config):
-        """提供宿主结束处理所需的可恢复快照。"""
+        """
+        提供宿主结束处理所需的可恢复快照。
+        """
         return _FakeGraphState([])
 
 
 class _FakeStreamingFailingAgent(_FakeFailingAgent):
-    """在流式迭代边界注入同一故障。"""
+    """
+    在流式迭代边界注入同一故障。
+    """
     async def astream(self, _messages, **_kwargs):
-        """维持异步流接口，按测试预设结束或失败。"""
+        """
+        维持异步流接口，按测试预设结束或失败。
+        """
         if _kwargs.get("__keep_async_generator__"):
             yield None
         raise self._error
 
 
 class _FakeStreamingAgent(_FakeAgent):
-    """不产生额外 token，供测试读取最终图状态。"""
+    """
+    不产生额外 token，供测试读取最终图状态。
+    """
     async def astream(self, _messages, **_kwargs):
-        """维持异步流接口，按测试预设结束或失败。"""
+        """
+        维持异步流接口，按测试预设结束或失败。
+        """
         if _kwargs.get("__keep_async_generator__"):
             yield None
 
 
 class StreamChunkTimeoutError(RuntimeError):
-    """模拟 langchain_openai 的流式分块超时异常。"""
+    """
+    模拟 langchain_openai 的流式分块超时异常。
+    """
 
 
 def _fake_skills_middleware(tool=None):
-    """构造带 tools 属性的 SkillsMiddleware 测试替身。"""
+    """
+    构造带 tools 属性的 SkillsMiddleware 测试替身。
+    """
     return SimpleNamespace(name="skills", tools=[] if tool is None else [tool])
 
 
 def _fake_memory_middleware(tool=None):
-    """构造带 tools 属性的统一 MemoryMiddleware 测试替身。"""
+    """
+    构造带 tools 属性的统一 MemoryMiddleware 测试替身。
+    """
     return SimpleNamespace(name="memory", tools=[] if tool is None else [tool])
 
 
 def _capture_tool_selector(captured, **kwargs):
-    """保留真实发现工具与筛选合同，只替换无需执行的测试模型实例。"""
+    """
+    保留真实发现工具与筛选合同，只替换无需执行的测试模型实例。
+    """
     selector_options = {**kwargs, "model": None}
     selector = ToolSelectorMiddleware(**selector_options)
     selector.model = kwargs["model"]
@@ -113,7 +153,9 @@ def _capture_tool_selector(captured, **kwargs):
 
 
 def _assert_internal_tool_registration(created, captured):
-    """核实内部计划、续读和发现工具的目录身份、常驻筛选及外层顺序。"""
+    """
+    核实内部计划、续读和发现工具的目录身份、常驻筛选及外层顺序。
+    """
     middlewares = created["middleware"]
     plan = next(item for item in middlewares if isinstance(item, PlanMiddleware))
     output = next(item for item in middlewares if isinstance(item, ToolOutputMiddleware))
@@ -138,10 +180,14 @@ def _assert_internal_tool_registration(created, captured):
 
 
 class TestAgentBackgroundOutput:
-    """验证后台任务的回复策略、流式结束行为和工具装配。"""
+    """
+    验证后台任务的回复策略、流式结束行为和工具装配。
+    """
 
     async def test_non_streaming_image_unsupported_error_sends_friendly_notice(self):
-        """非流式图片能力错误只向用户交付友好说明。"""
+        """
+        非流式图片能力错误只向用户交付友好说明。
+        """
         agent = MoviePilotAgent(session_id="image-test", user_id="user-1")
         agent.channel = "Telegram"
         agent.source = "telegram-test"
@@ -176,7 +222,9 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == UNSUPPORTED_IMAGE_INPUT_MESSAGE
 
     async def test_streaming_image_unsupported_error_sends_friendly_notice(self):
-        """流式图片能力错误沿用同一用户可见说明。"""
+        """
+        流式图片能力错误沿用同一用户可见说明。
+        """
         agent = MoviePilotAgent(session_id="image-test", user_id="user-1")
         agent.channel = "Telegram"
         agent.source = "telegram-test"
@@ -213,7 +261,9 @@ class TestAgentBackgroundOutput:
         )
 
     async def test_streaming_model_chunk_timeout_sends_friendly_notice(self):
-        """流式模型分块超时时应只把主错误信息发给用户。"""
+        """
+        流式模型分块超时时应只把主错误信息发给用户。
+        """
         agent = MoviePilotAgent(session_id="timeout-test", user_id="user-1")
         agent.channel = "Telegram"
         agent.source = "telegram-test"
@@ -246,7 +296,9 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == expected
 
     async def test_streaming_success_stops_streaming_once(self):
-        """流式正常完成时不应在 finally 中重复停止流式输出。"""
+        """
+        流式正常完成时不应在 finally 中重复停止流式输出。
+        """
         agent = MoviePilotAgent(session_id="stream-ok", user_id="user-1")
         agent.channel = "Telegram"
         agent.source = "telegram-test"
@@ -269,7 +321,9 @@ class TestAgentBackgroundOutput:
         agent.stream_handler.stop_streaming.assert_awaited_once()
 
     async def test_tool_sent_reply_persists_raw_agent_messages(self):
-        """工具已发送用户回复时仍应保存可恢复的 Agent 原始消息。"""
+        """
+        工具已发送用户回复时仍应保存可恢复的 Agent 原始消息。
+        """
         agent = MoviePilotAgent(session_id="tool-reply", user_id="user-1")
         agent.channel = "Telegram"
         agent.source = "telegram-test"
@@ -298,7 +352,9 @@ class TestAgentBackgroundOutput:
         assert kwargs["messages"][0].content == "消息已发送"
 
     async def test_process_does_not_mutate_cached_agent_messages(self):
-        """处理新消息时不应直接修改记忆缓存中的历史消息列表。"""
+        """
+        处理新消息时不应直接修改记忆缓存中的历史消息列表。
+        """
         agent = MoviePilotAgent(
             session_id="cached-memory",
             user_id="user-1",
@@ -309,7 +365,9 @@ class TestAgentBackgroundOutput:
         captured = {}
 
         async def _execute_agent(messages):
-            """记录模拟图实际收到的当前用户输入。"""
+            """
+            记录模拟图实际收到的当前用户输入。
+            """
             captured["messages"] = messages
             return "消息已发送", {}
 
@@ -332,7 +390,9 @@ class TestAgentBackgroundOutput:
         assert len(captured["messages"]) == 2
 
     async def test_background_non_streaming_sends_when_reply_mode_dispatch(self):
-        """显式派发模式允许后台任务发送最终回复。"""
+        """
+        显式派发模式允许后台任务发送最终回复。
+        """
         agent = MoviePilotAgent(session_id="bg-test", user_id="system")
         agent.channel = None
         agent.source = None
@@ -362,7 +422,9 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == "后台结果"
 
     async def test_background_non_streaming_captures_without_sending_when_capture_only(self):
-        """显式捕获模式保留最终结果，但不发送消息或保存渠道历史。"""
+        """
+        显式捕获模式保留最终结果，但不发送消息或保存渠道历史。
+        """
         agent = MoviePilotAgent(session_id="bg-test", user_id="system")
         agent.channel = None
         agent.source = None
@@ -386,7 +448,9 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == "后台结果"
 
     async def test_heartbeat_check_jobs_captures_final_reply_and_keeps_message_tools(self):
-        """心跳捕获最终回复但保留任务实际需要的消息工具。"""
+        """
+        心跳捕获最终回复但保留任务实际需要的消息工具。
+        """
         manager = AgentManager()
 
         with (
@@ -410,7 +474,9 @@ class TestAgentBackgroundOutput:
         assert kwargs["allow_message_tools"] is True
 
     async def test_heartbeat_check_jobs_skips_when_no_active_jobs(self):
-        """没有启用任务时不调用模型执行心跳。"""
+        """
+        没有启用任务时不调用模型执行心跳。
+        """
         manager = AgentManager()
 
         with (
@@ -422,7 +488,9 @@ class TestAgentBackgroundOutput:
         process_message.assert_not_awaited()
 
     async def test_agent_manager_preserves_voice_input_flag(self):
-        """会话队列执行时应把语音输入标记继续传给 Agent。"""
+        """
+        会话队列执行时应把语音输入标记继续传给 Agent。
+        """
         manager = AgentManager()
         agent = MoviePilotAgent(session_id="session-1", user_id="user-1")
         manager.active_agents["session-1"] = agent
@@ -444,7 +512,9 @@ class TestAgentBackgroundOutput:
         )
 
     async def test_create_agent_disables_activity_recording_for_heartbeat_session(self):
-        """心跳任务保留统一记忆能力，但不启用渠道活动记录。"""
+        """
+        心跳任务保留统一记忆能力，但不启用渠道活动记录。
+        """
         agent = MoviePilotAgent(
             session_id=f"{HEARTBEAT_SESSION_PREFIX}test__",
             user_id="system",
@@ -494,7 +564,9 @@ class TestAgentBackgroundOutput:
         ]
 
     async def test_create_agent_registers_skill_tool_from_middleware(self):
-        """SkillsMiddleware 暴露的 read_skill 应进入 Agent 工具和筛选候选。"""
+        """
+        SkillsMiddleware 暴露的 read_skill 应进入 Agent 工具和筛选候选。
+        """
         captured = {}
         skill_tool = SimpleNamespace(name=SKILL_TOOL_NAME)
         agent = MoviePilotAgent(session_id="normal-session", user_id="system")
@@ -502,7 +574,9 @@ class TestAgentBackgroundOutput:
         agent._initialize_subagent_tools = lambda: []
 
         def _tool_selector(**kwargs):
-            """记录技能能力进入真实筛选目录后的参数。"""
+            """
+            记录技能能力进入真实筛选目录后的参数。
+            """
             return _capture_tool_selector(captured, **kwargs)
 
         with (
@@ -545,7 +619,9 @@ class TestAgentBackgroundOutput:
         _assert_internal_tool_registration(created, captured)
 
     async def test_create_agent_disables_activity_recording_without_message_context(self):
-        """无渠道信息的后台捕获任务不应启用活动记录。"""
+        """
+        无渠道信息的后台捕获任务不应启用活动记录。
+        """
         agent = MoviePilotAgent(
             session_id="background-capture-session",
             user_id="system",
@@ -605,7 +681,9 @@ class TestAgentBackgroundOutput:
         ]
 
     def test_message_tool_is_not_always_included_by_tool_selector(self):
-        """消息发送工具不应绕过工具筛选。"""
+        """
+        消息发送工具不应绕过工具筛选。
+        """
         send_message_tool = SimpleNamespace(name="send_message")
 
         always_include = MoviePilotToolFactory.get_tool_selector_always_include_names(
@@ -615,7 +693,9 @@ class TestAgentBackgroundOutput:
         assert "send_message" not in always_include
 
     def test_memory_tool_is_always_included_by_tool_selector(self):
-        """记忆检索工具应作为常驻候选，但不由全局工具工厂重复注册。"""
+        """
+        记忆检索工具应作为常驻候选，但不由全局工具工厂重复注册。
+        """
         memory_tool = SimpleNamespace(name=SEARCH_MEMORY_TOOL_NAME)
 
         always_include = MoviePilotToolFactory.get_tool_selector_always_include_names(
@@ -625,7 +705,9 @@ class TestAgentBackgroundOutput:
         assert SEARCH_MEMORY_TOOL_NAME in always_include
 
     async def test_create_agent_registers_memory_tool_from_middleware(self):
-        """MemoryMiddleware 暴露的工具应进入 Agent 工具和筛选候选。"""
+        """
+        MemoryMiddleware 暴露的工具应进入 Agent 工具和筛选候选。
+        """
         captured = {}
         memory_tool = SimpleNamespace(name=SEARCH_MEMORY_TOOL_NAME)
         agent = MoviePilotAgent(
@@ -638,7 +720,9 @@ class TestAgentBackgroundOutput:
         agent._initialize_subagent_tools = lambda: []
 
         def _tool_selector(**kwargs):
-            """记录活动日志能力进入真实筛选目录后的参数。"""
+            """
+            记录活动日志能力进入真实筛选目录后的参数。
+            """
             return _capture_tool_selector(captured, **kwargs)
 
         with (
@@ -684,14 +768,18 @@ class TestAgentBackgroundOutput:
         _assert_internal_tool_registration(created, captured)
 
     async def test_create_agent_always_includes_subagent_tools(self):
-        """工具筛选开启时应保留同步和异步子代理入口。"""
+        """
+        工具筛选开启时应保留同步和异步子代理入口。
+        """
         captured = {}
         agent = MoviePilotAgent(session_id="normal-session", user_id="system")
         agent._initialize_tools = lambda: []
         agent._initialize_subagent_tools = lambda: []
 
         def _tool_selector(**kwargs):
-            """记录子代理能力进入真实筛选目录后的参数。"""
+            """
+            记录子代理能力进入真实筛选目录后的参数。
+            """
             return _capture_tool_selector(captured, **kwargs)
 
         with (
@@ -742,7 +830,9 @@ class TestAgentBackgroundOutput:
         _assert_internal_tool_registration(created, captured)
 
     async def test_create_agent_uses_one_memory_middleware_for_normal_session(self):
-        """普通渠道会话用同一个中间件提供记忆检索和活动记录。"""
+        """
+        普通渠道会话用同一个中间件提供记忆检索和活动记录。
+        """
         agent = MoviePilotAgent(
             session_id="normal-session",
             user_id="system",
@@ -803,12 +893,16 @@ class TestAgentBackgroundOutput:
         ]
 
     async def test_run_background_prompt_forces_disable_message_tools_when_capture_only(self):
-        """仅捕获的后台入口强制移除主动消息发送能力。"""
+        """
+        仅捕获的后台入口强制移除主动消息发送能力。
+        """
         captured = {}
         manager = AgentManager()
 
         async def fake_process(task):
-            """捕获后台参数而不触发真实 Agent 推理。"""
+            """
+            捕获后台参数而不触发真实 Agent 推理。
+            """
             captured["message"] = task.message
             captured["reply_mode"] = task.reply_mode
             captured["allow_message_tools"] = task.allow_message_tools

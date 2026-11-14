@@ -1,8 +1,15 @@
+"""
+文件整理历史与任务关联的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 import time
+from collections.abc import Sequence
 from typing import Any, List, Optional, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -30,15 +37,46 @@ class TransferHistoryOper(DbOper):
     转移历史管理
     """
 
+    def stage_insert_if_source_absent(self, values: dict[str, Any]) -> tuple[TransferHistory, bool]:
+        """
+        由源地址唯一约束原子仲裁插入，永不替换已有行且不提交调用方事务。
+
+        :param values: 已由用例投影的完整历史列值
+        :return: 插入或冲突保留的历史行，以及是否新建
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("登记整理历史需要调用方提供同步 Session")
+        dialect = self._db.get_bind().dialect.name
+        if dialect == "sqlite":
+            insert = sqlite_insert
+        elif dialect == "postgresql":
+            insert = postgresql_insert
+        else:
+            raise RuntimeError("当前数据库不支持原子整理历史登记")
+        statement = insert(TransferHistory).values(**values).on_conflict_do_nothing(
+            index_elements=["src", "src_storage"],
+        ).returning(TransferHistory.id)
+        inserted_id = self._db.execute(statement).scalar_one_or_none()
+        record = self._db.execute(
+            select(TransferHistory).where(
+                TransferHistory.src == values["src"],
+                TransferHistory.src_storage == values["src_storage"],
+            )
+        ).scalar_one()
+        return record, inserted_id is not None
+
     def get(self, historyid: int) -> Optional[TransferHistory]:
         """
         获取转移历史
+
         :param historyid: 转移历史id
         """
         return self.get_by_id(historyid)
 
     def get_by_id(self, record_id: int) -> Optional[TransferHistory]:
-        """按稳定记录 ID 读取单条整理历史。"""
+        """
+        按稳定记录 ID 读取单条整理历史。
+        """
         return cast(
             Optional[TransferHistory],
             self._execute_sync_query(
@@ -53,9 +91,13 @@ class TransferHistoryOper(DbOper):
         filters: TransferHistoryFilter,
         page: QueryPageRequest,
     ) -> tuple[list[TransferHistory], int]:
-        """按稳定筛选和分页合同读取整理历史记录及总数。"""
+        """
+        按稳定筛选和分页合同读取整理历史记录及总数。
+        """
         def execute(session: Session) -> tuple[list[TransferHistory], int]:
-            """在同一会话中构造并执行整理历史 count/page 查询。"""
+            """
+            在同一会话中构造并执行整理历史 count/page 查询。
+            """
             conditions = media_identity_conditions(TransferHistory, filters)
             ids = enum_values(filters.ids)
             media_types = enum_values(filters.media_types)
@@ -155,6 +197,7 @@ class TransferHistoryOper(DbOper):
         count: int = 30,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> List[TransferHistory]:
         """
         异步按标题分页查询转移记录。
@@ -167,6 +210,7 @@ class TransferHistoryOper(DbOper):
                 count=count,
                 status=status,
                 wildcard=wildcard,
+                origin=origin,
             )
         )
 
@@ -175,22 +219,23 @@ class TransferHistoryOper(DbOper):
         page: int = 1,
         count: int = 30,
         status: Optional[bool] = None,
+        origin: Optional[str] = None,
     ) -> List[TransferHistory]:
         """
         异步分页查询转移记录。
         """
         return await self._execute_async_query(
             lambda session: TransferHistory.async_list_by_page(
-                session, page=page, count=count, status=status
+                session, page=page, count=count, status=status, origin=origin
             )
         )
 
-    async def async_count(self, status: Optional[bool] = None) -> Optional[int]:
+    async def async_count(self, status: Optional[bool] = None, origin: Optional[str] = None) -> Optional[int]:
         """
         异步统计转移记录数量。
         """
         return await self._execute_async_query(
-            lambda session: TransferHistory.async_count(session, status=status)
+            lambda session: TransferHistory.async_count(session, status=status, origin=origin)
         )
 
     async def async_count_by_title(
@@ -198,6 +243,7 @@ class TransferHistoryOper(DbOper):
         title: str,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> Optional[int]:
         """
         异步按标题统计转移记录数量。
@@ -208,12 +254,14 @@ class TransferHistoryOper(DbOper):
                 title=title,
                 status=status,
                 wildcard=wildcard,
+                origin=origin,
             )
         )
 
     def get_by_title(self, title: str) -> List[TransferHistory]:
         """
         按标题查询转移记录
+
         :param title: 数据key
         """
         return self._execute_sync_query(
@@ -225,6 +273,7 @@ class TransferHistoryOper(DbOper):
     ) -> Optional[TransferHistory]:
         """
         按源查询转移记录
+
         :param src: 数据key
         :param storage: 存储类型
         :return: 命中的整理记录，未命中时返回 None
@@ -238,7 +287,9 @@ class TransferHistoryOper(DbOper):
             *,
             task_id: str,
     ) -> Optional[TransferHistory]:
-        """按稳定整理任务标识读取终态历史。"""
+        """
+        按稳定整理任务标识读取终态历史。
+        """
         return self._execute_sync_query(
             lambda session: TransferHistory.get_by_transfer_task_id(
                 session,
@@ -251,7 +302,9 @@ class TransferHistoryOper(DbOper):
             *,
             task_id: str,
     ) -> Optional[TransferHistory]:
-        """异步按稳定整理任务标识读取终态历史。"""
+        """
+        异步按稳定整理任务标识读取终态历史。
+        """
         return await self._execute_async_query(
             lambda session: TransferHistory.async_get_by_transfer_task_id(
                 session,
@@ -264,6 +317,7 @@ class TransferHistoryOper(DbOper):
     ) -> Optional[TransferHistory]:
         """
         按源查询成功的转移记录，源路径原样精确匹配
+
         :param src: 数据key
         :param storage: 存储类型
         :return: 命中的成功整理记录，未命中时返回 None
@@ -279,6 +333,7 @@ class TransferHistoryOper(DbOper):
     ) -> Optional[TransferHistory]:
         """
         按转移路径查询转移记录
+
         :param dest: 数据key
         :param storage: 存储类型
         """
@@ -335,13 +390,14 @@ class TransferHistoryOper(DbOper):
     def list_by_hash(self, download_hash: str) -> List[TransferHistory]:
         """
         按种子hash查询转移记录
+
         :param download_hash: 种子hash
         """
         return self._execute_sync_query(
             lambda session: TransferHistory.list_by_hash(session, download_hash)
         )
 
-    def add(self, **kwargs):
+    def add(self, **kwargs: Any) -> None:
         """
         新增转移历史
         """
@@ -358,14 +414,18 @@ class TransferHistoryOper(DbOper):
             lambda session: TransferHistory.statistic(session, days)
         )
 
-    async def async_statistic(self, days: int = 7) -> List[Any]:
-        """异步统计最近若干天的整理历史数量。"""
+    async def async_statistic(self, days: int = 7) -> Sequence[Any]:
+        """
+        异步统计最近若干天的整理历史数量。
+        """
         return await self._execute_async_query(
             lambda session: TransferHistory.async_statistic(session, days)
         )
 
     def monthly_media_statistics(self) -> tuple[int, int, int, int]:
-        """统计本月成功整理的电影、剧集、单集和音乐数量。"""
+        """
+        统计本月成功整理的电影、剧集、单集和音乐数量。
+        """
         return self._execute_sync_query(
             TransferHistory.monthly_media_statistics
         )
@@ -373,9 +433,12 @@ class TransferHistoryOper(DbOper):
     def get_by(self, title: Optional[str] = None, year: Optional[str] = None, mtype: Optional[str] = None,
                season: Optional[str] = None, episode: Optional[str] = None,
                media_source: Optional[MediaSource] = None, media_id: Optional[str] = None,
-               dest: Optional[str] = None) -> List[TransferHistory]:
+               dest: Optional[str] = None, *, match_all_versions: bool = False) -> List[TransferHistory]:
         """
-        按类型、标题、年份、季集查询转移记录
+        按类型、标题、年份、季集查询转移记录。
+
+        电影或未指定类型且目标路径为空时默认返回空；显式传入
+        match_all_versions=True 才允许全量匹配，不能用于路径未知的删除事件。
         """
         return self._execute_sync_query(
             lambda session: TransferHistory.list_by(
@@ -388,6 +451,7 @@ class TransferHistoryOper(DbOper):
                 episode=episode,
                 media_source=media_source,
                 media_id=media_id,
+                match_all_versions=match_all_versions,
             )
         )
 
@@ -395,7 +459,9 @@ class TransferHistoryOper(DbOper):
             self, media_source: MediaSource, media_id: str,
             mtype: Optional[str] = None,
     ) -> Optional[TransferHistory]:
-        """按规范媒体身份和类型查询整理记录。"""
+        """
+        按规范媒体身份和类型查询整理记录。
+        """
         return self._execute_sync_query(
             lambda session: TransferHistory.get_by_media_identity(
                 db=session,
@@ -405,7 +471,7 @@ class TransferHistoryOper(DbOper):
             )
         )
 
-    def delete(self, historyid):
+    def delete(self, historyid: int) -> None:
         """
         删除旧转移记录，失败任务历史由状态机独占。
         """
@@ -419,7 +485,11 @@ class TransferHistoryOper(DbOper):
         )
 
     def stage_delete(self, historyid: int) -> None:
-        """暂存整理记录删除，事务由调用方统一提交。"""
+        """
+        暂存整理记录删除，事务由调用方统一提交。
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("整理历史事务删除需要调用方提供同步 Session")
         self._db.execute(
             sqlalchemy_delete(TransferHistory).where(
                 TransferHistory.id == historyid,
@@ -428,7 +498,9 @@ class TransferHistoryOper(DbOper):
         )
 
     async def async_stage_delete(self, historyid: int) -> None:
-        """在调用方异步事务内暂存旧整理记录删除。"""
+        """
+        在调用方异步事务内暂存旧整理记录删除。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("整理历史异步删除需要调用方提供异步 Session")
         await self._db.execute(
@@ -439,19 +511,25 @@ class TransferHistoryOper(DbOper):
         )
 
     def stage_truncate(self) -> None:
-        """暂存旧整理记录删除，只保留当前失败任务历史。"""
+        """
+        暂存旧整理记录删除，只保留当前失败任务历史。
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("整理历史事务清理需要调用方提供同步 Session")
         self._db.execute(
             sqlalchemy_delete(TransferHistory).where(
                 TransferHistory.transfer_task_id.is_(None)
             )
         )
 
-    async def async_delete(self, historyid):
+    async def async_delete(self, historyid: int) -> None:
         """
         异步删除旧转移记录，失败任务历史由状态机独占。
         """
         async def stage(session: AsyncSession) -> None:
-            """在异步事务内只删除没有任务回执的历史。"""
+            """
+            在异步事务内只删除没有任务回执的历史。
+            """
             await session.execute(
                 sqlalchemy_delete(TransferHistory).where(
                     TransferHistory.id == historyid,
@@ -461,7 +539,7 @@ class TransferHistoryOper(DbOper):
 
         await self._execute_async_write(stage)
 
-    def truncate(self):
+    def truncate(self) -> None:
         """
         清空旧转移记录，只保留当前失败任务历史。
         """
@@ -473,8 +551,10 @@ class TransferHistoryOper(DbOper):
             )
         )
 
-    def stage_replace_by_src(self, **kwargs) -> TransferHistory:
-        """在调用方事务内按源路径替换整理历史并返回已分配 ID 的新记录。"""
+    def stage_replace_by_src(self, **kwargs: Any) -> TransferHistory:
+        """
+        在调用方事务内按源路径替换整理历史并返回已分配 ID 的新记录。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("整理历史事务写入需要调用方提供同步 Session")
         kwargs["src_storage"] = kwargs.get("src_storage") or "local"
@@ -489,7 +569,9 @@ class TransferHistoryOper(DbOper):
             retain_task_mapping: bool,
             payload: dict[str, Any],
     ) -> TransferHistory:
-        """在调用方事务内按任务标识幂等暂存终态历史。"""
+        """
+        在调用方事务内按任务标识幂等暂存终态历史。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("整理历史任务结算需要调用方提供同步 Session")
         payload = dict(payload)
@@ -511,7 +593,9 @@ class TransferHistoryOper(DbOper):
             src: str,
             storage: Optional[str] = None,
     ) -> Optional[TransferHistory]:
-        """复用已有成功历史且清除失败任务映射，不改写业务字段。"""
+        """
+        复用已有成功历史且清除失败任务映射，不改写业务字段。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("整理历史任务回执绑定需要调用方提供同步 Session")
         history = TransferHistory.get_success_by_src(self._db, src, storage)
@@ -529,7 +613,9 @@ class TransferHistoryOper(DbOper):
             task_id: str,
             settlement_revision: int,
     ) -> int:
-        """在调用方事务内解除指定失败历史与 durable 任务的精确映射。"""
+        """
+        在调用方事务内解除指定失败历史与 durable 任务的精确映射。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("整理失败回执解绑需要调用方提供同步 Session")
         return TransferHistory.detach_failed_transfer_task(
@@ -539,7 +625,7 @@ class TransferHistoryOper(DbOper):
             settlement_revision=settlement_revision,
         )
 
-    def update_download_hash(self, historyid, download_hash):
+    def update_download_hash(self, historyid: int, download_hash: str) -> None:
         """
         补充转移记录download_hash
         """
@@ -556,7 +642,9 @@ class TransferHistoryOper(DbOper):
         historyid: int,
         download_hash: str,
     ) -> None:
-        """在调用方事务内暂存整理历史下载任务 Hash 更新。"""
+        """
+        在调用方事务内暂存整理历史下载任务 Hash 更新。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("整理历史同步更新需要调用方提供同步 Session")
         TransferHistory.update_download_hash(
@@ -570,7 +658,9 @@ class TransferHistoryOper(DbOper):
             historyid: int,
             values: dict[str, Optional[str]],
     ) -> None:
-        """在调用方事务内暂存媒体入库后的下载器清理结果。"""
+        """
+        在调用方事务内暂存媒体入库后的下载器清理结果。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("整理历史同步更新需要调用方提供同步 Session")
         TransferHistory.update_cleanup_status(
@@ -582,6 +672,7 @@ class TransferHistoryOper(DbOper):
     def list_by_date(self, date: str) -> List[TransferHistory]:
         """
         查询某时间之后的转移历史
+
         :param date: 日期
         """
         return self._execute_sync_query(

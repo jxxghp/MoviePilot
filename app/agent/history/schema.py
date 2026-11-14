@@ -1,4 +1,6 @@
-"""独立 state.db 模式与 FTS5 投影，采用 external-content 布局。"""
+"""
+独立 state.db 模式与 FTS5 投影，采用 external-content 布局。
+"""
 
 import sqlite3
 import sys
@@ -41,7 +43,9 @@ INDEXES = {"messages_fts": "unicode61", "messages_fts_trigram": "trigram", "mess
 
 
 def load_cjk(connection: sqlite3.Connection, extension: Path) -> bool:
-    """优先使用运行环境自带扩展，兼容旧配置目录；每次加载后立即关闭权限。"""
+    """
+    优先使用运行环境自带扩展，兼容旧配置目录；每次加载后立即关闭权限。
+    """
     if not hasattr(connection, "enable_load_extension"):
         return False
     for candidate in (BUNDLED_CJK_EXTENSION, extension):
@@ -59,7 +63,9 @@ def load_cjk(connection: sqlite3.Connection, extension: Path) -> bool:
 
 
 def index_sql(table: str) -> str:
-    """视图、触发器与重建共享同一投影，避免裁剪边界漂移损坏 FTS。"""
+    """
+    视图、触发器与重建共享同一投影，避免裁剪边界漂移损坏 FTS。
+    """
     tokenizer = INDEXES[table]
     base = table == "messages_fts"
     columns = "content,tool_name,tool_calls" if base else "content,tool_name"
@@ -87,7 +93,9 @@ def index_sql(table: str) -> str:
 
 
 def ensure_schema(connection: sqlite3.Connection, *, cjk: bool) -> tuple[str, ...]:
-    """新库建表，已有原文的新索引分批回填；不在请求内执行全库 rebuild。"""
+    """
+    新库建表，已有原文的新索引分批回填；不在请求内执行全库 rebuild。
+    """
     version = connection.execute("PRAGMA user_version").fetchone()[0]
     if version > SCHEMA_VERSION:
         raise RuntimeError("Agent 消息库版本高于当前程序，拒绝降级写入")
@@ -117,7 +125,9 @@ def ensure_schema(connection: sqlite3.Connection, *, cjk: bool) -> tuple[str, ..
 
 
 def detach_index(connection: sqlite3.Connection, table: str) -> None:
-    """不可用派生索引先拆写触发器，保护原文；不得把缺口索引当作完整召回。"""
+    """
+    不可用派生索引先拆写触发器，保护原文；不得把缺口索引当作完整召回。
+    """
     if table not in INDEXES:
         raise ValueError("未知历史索引")
     for suffix in ("insert", "delete"):
@@ -127,7 +137,9 @@ def detach_index(connection: sqlite3.Connection, table: str) -> None:
 
 
 def begin_rebuild(connection: sqlite3.Connection, table: str) -> None:
-    """原子重建派生空表并设置高水位；新写即时索引，旧行按进度处理删除。"""
+    """
+    原子重建派生空表并设置高水位；新写即时索引，旧行按进度处理删除。
+    """
     if table not in INDEXES:
         raise ValueError("未知历史索引")
     script = f"""
@@ -150,7 +162,9 @@ def begin_rebuild(connection: sqlite3.Connection, table: str) -> None:
 
 
 def advance_index(connection: sqlite3.Connection, table: str, *, batch_size: int = 500) -> None:
-    """一个短写事务回填有限原始行，与新写/删除共享精确的已索引谓词。"""
+    """
+    一个短写事务回填有限原始行，与新写/删除共享精确的已索引谓词。
+    """
     status = connection.execute("SELECT value FROM state_meta WHERE key=?", (table,)).fetchone()
     if not status or status[0] != 'building':
         return

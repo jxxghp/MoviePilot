@@ -1,4 +1,6 @@
-"""给原生客户端提供有调用上限的模型连接，凭据和业务答案留在控制器。"""
+"""
+给原生客户端提供有调用上限的模型连接，凭据和业务答案留在控制器。
+"""
 
 import asyncio
 import copy
@@ -46,7 +48,9 @@ FIXTURE_TOOLS = frozenset({"moviepilot_api", "read_skill", "read_tool_result"})
 
 
 def _allowed_mcp_tool(normalized: str, extra_native_tools: frozenset[str]) -> bool:
-    """只放行评测夹具或当前浏览器场景明确授予的原生 MCP 工具。"""
+    """
+    只放行评测夹具或当前浏览器场景明确授予的原生 MCP 工具。
+    """
     if normalized == "mcp__evaluation" or normalized.startswith("mcp__evaluation__"):
         return normalized == "mcp__evaluation" or normalized.removeprefix("mcp__evaluation__") in FIXTURE_TOOLS
     if normalized == "mcp__node_repl":
@@ -55,7 +59,9 @@ def _allowed_mcp_tool(normalized: str, extra_native_tools: frozenset[str]) -> bo
 
 
 def allowed_tool(name: str, extra_native_tools: frozenset[str] = frozenset()) -> bool:
-    """只允许原生控制、本地固定 MCP，以及当前场景明确授予的能力。"""
+    """
+    只允许原生控制、本地固定 MCP，以及当前场景明确授予的能力。
+    """
     normalized = name.removeprefix("functions.").replace(".", "__")
     return (normalized in NATIVE_CONTROL_TOOLS
             or normalized in extra_native_tools
@@ -68,7 +74,9 @@ def allowed_tool(name: str, extra_native_tools: frozenset[str] = frozenset()) ->
 def project_tools(
     tools: Any, prefix: str = "", extra_native_tools: frozenset[str] = frozenset(),
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
-    """保留允许工具的原始 schema；外部 MCP 配置污染必须中止，不能静默投影成合格评测。"""
+    """
+    保留允许工具的原始 schema；外部 MCP 配置污染必须中止，不能静默投影成合格评测。
+    """
     if not isinstance(tools, list) or prefix.count(".") > 8:
         raise ValueError("工具目录结构无效")
     projected, retained, removed = [], [], []
@@ -120,11 +128,15 @@ def project_tools(
 def _project_catalogs(
     payload: dict[str, Any], extra_native_tools: frozenset[str] = frozenset(),
 ) -> tuple[list[str], list[str], list[dict[str, Any]]]:
-    """同时约束传统顶层目录和原生 additional_tools 输入目录，保持各自 wire 位置。"""
+    """
+    同时约束传统顶层目录和原生 additional_tools 输入目录，保持各自 wire 位置。
+    """
     retained, removed, catalogs = [], [], []
 
     def project(value: dict[str, Any], location: str) -> None:
-        """替换已存在的目录并记录位置，不能凭空创建第二份工具定义。"""
+        """
+        替换已存在的目录并记录位置，不能凭空创建第二份工具定义。
+        """
         projected, kept, dropped = project_tools(value["tools"], extra_native_tools=extra_native_tools)
         value["tools"] = projected
         retained.extend(kept)
@@ -132,7 +144,9 @@ def _project_catalogs(
         catalogs.append({"location": location, "retained_tools": kept, "removed_tools": dropped})
 
     def visit(value: Any, location: str) -> None:
-        """递归检查输入及子代理历史，未知额外目录封装必须拒绝。"""
+        """
+        递归检查输入及子代理历史，未知额外目录封装必须拒绝。
+        """
         if isinstance(value, dict):
             kind = value.get("type")
             if isinstance(kind, str) and kind.startswith("additional_tools"):
@@ -158,14 +172,18 @@ def _project_catalogs(
 
 
 def project_host_instructions(payload: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """只去除原生独立 AGENTS 用户说明块，保留系统提示及同消息内的业务文本。"""
+    """
+    只去除原生独立 AGENTS 用户说明块，保留系统提示及同消息内的业务文本。
+    """
     removed: list[dict[str, Any]] = []
     envelope = re.compile(r"\A# AGENTS\.md instructions(?: for [^\r\n]+)?\n\n<INSTRUCTIONS>\n[\s\S]*\n</INSTRUCTIONS>\Z")
     marker = "# AGENTS.md instructions"
     omitted = object()
 
     def visit(value: Any, *, top_level: bool = False) -> Any:
-        """递归处理子代理历史，未知封装不能靠关键词删除后继续发送。"""
+        """
+        递归处理子代理历史，未知封装不能靠关键词删除后继续发送。
+        """
         if isinstance(value, dict):
             result = {}
             removed_content = False
@@ -203,7 +221,9 @@ def project_host_instructions(payload: dict[str, Any]) -> tuple[dict[str, Any], 
 
 
 def _input_metadata(payload: Any) -> list[dict[str, Any]]:
-    """仅审计主输入文本块的角色、类型和指纹，不保存宿主偏好或用户任务正文。"""
+    """
+    仅审计主输入文本块的角色、类型和指纹，不保存宿主偏好或用户任务正文。
+    """
     if not isinstance(payload, dict):
         return []
     result = []
@@ -224,7 +244,9 @@ def _input_metadata(payload: Any) -> list[dict[str, Any]]:
 
 
 def _strings(payload: Any) -> Iterator[str]:
-    """遍历解析后的字段和值，转义后的凭据也不能从响应或审计元数据泄露。"""
+    """
+    遍历解析后的字段和值，转义后的凭据也不能从响应或审计元数据泄露。
+    """
     if isinstance(payload, str):
         yield payload
     elif isinstance(payload, dict):
@@ -237,7 +259,9 @@ def _strings(payload: Any) -> Iterator[str]:
 
 
 def _validate_search_call(payload: dict[str, Any], *, partial: bool = False) -> None:
-    """只接受原生客户端的查询参数，服务端搜索或自选来源不能进入受控运行。"""
+    """
+    只接受原生客户端的查询参数，服务端搜索或自选来源不能进入受控运行。
+    """
     if payload.get("execution") != "client" or not isinstance(payload.get("call_id"), str) or not payload["call_id"]:
         raise ValueError("原生工具搜索调用边界无效")
     arguments = payload.get("arguments")
@@ -255,7 +279,9 @@ def _validate_search_call(payload: dict[str, Any], *, partial: bool = False) -> 
 def _validate_search_output(
     payload: dict[str, Any], *, extra_native_tools: frozenset[str] = frozenset(),
 ) -> None:
-    """延迟发现返回的定义只能属于三个评测工具，不能借搜索结果再引入原生危险工具。"""
+    """
+    延迟发现返回的定义只能属于三个评测工具，不能借搜索结果再引入原生危险工具。
+    """
     if (payload.get("execution") != "client" or payload.get("status") != "completed"
             or not isinstance(payload.get("call_id"), str) or not payload["call_id"]):
         raise ValueError("原生工具搜索结果边界无效")
@@ -268,7 +294,9 @@ def _validate_search_output(
 def _reject_unsafe_calls(
     payload: Any, *, partial: bool = False, extra_native_tools: frozenset[str] = frozenset(),
 ) -> None:
-    """校验实际调用；猜出被隐藏的函数名或内置调用类型也不能交给原生执行器。"""
+    """
+    校验实际调用；猜出被隐藏的函数名或内置调用类型也不能交给原生执行器。
+    """
     if isinstance(payload, dict):
         kind = payload.get("type")
         if kind == "tool_search_call":
@@ -294,24 +322,34 @@ def _reject_unsafe_calls(
 
 
 class _LocalServer(uvicorn.Server):
-    """回环服务的取消由评测控制器统一管理，不占用宿主进程的信号处理器。"""
+    """
+    回环服务的取消由评测控制器统一管理，不占用宿主进程的信号处理器。
+    """
 
     @contextmanager
     def capture_signals(self) -> Iterator[None]:
-        """控制器并行管理 MCP 和模型连接，服务不得互相覆盖全局信号处理。"""
+        """
+        控制器并行管理 MCP 和模型连接，服务不得互相覆盖全局信号处理。
+        """
         yield
 
 
 class _ModelStreamingResponse(StreamingResponse):
-    """客户端断开时显式等待生成器收尾，确保连接和审计结果不依赖垃圾回收。"""
+    """
+    客户端断开时显式等待生成器收尾，确保连接和审计结果不依赖垃圾回收。
+    """
 
     def __init__(self, body: AsyncGenerator[str, None]) -> None:
-        """保留本次响应独占的生成器，后续关闭不会影响其他模型请求。"""
+        """
+        保留本次响应独占的生成器，后续关闭不会影响其他模型请求。
+        """
         super().__init__(body, media_type="text/event-stream")
         self._body = body
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """流式发送被取消也要完成局部清理，之后才让控制器读取终态。"""
+        """
+        流式发送被取消也要完成局部清理，之后才让控制器读取终态。
+        """
         try:
             await super().__call__(scope, receive, send)
         finally:
@@ -320,12 +358,16 @@ class _ModelStreamingResponse(StreamingResponse):
 
 
 class EvaluationModelProxy:
-    """原生 Codex 使用本地随机令牌，真正供应商凭据只由此固定目标代理持有。"""
+    """
+    原生 Codex 使用本地随机令牌，真正供应商凭据只由此固定目标代理持有。
+    """
 
     def __init__(self, settings: ModelSettings, *, probe_only: bool = False,
                  transport: Optional[httpx.AsyncBaseTransport] = None,
                  extra_native_tools: frozenset[str] = frozenset()) -> None:
-        """创建独立计数和目录记录；probe_only 只记录目录，绝不真正出站。"""
+        """
+        创建独立计数和目录记录；probe_only 只记录目录，绝不真正出站。
+        """
         self.settings = settings
         self.probe_only = probe_only
         self._extra_native_tools = frozenset(extra_native_tools)
@@ -343,16 +385,22 @@ class EvaluationModelProxy:
         self.app = Starlette(routes=[Route("/v1/responses", self._respond, methods=["POST"])])
 
     async def __aenter__(self) -> "EvaluationModelProxy":
-        """显式启动本地 HTTP 服务，不访问真实模型。"""
+        """
+        显式启动本地 HTTP 服务，不访问真实模型。
+        """
         await self.start()
         return self
 
     async def __aexit__(self, *_args: Any) -> None:
-        """退出时回收服务和连接，不把运行任务交给解释器退出。"""
+        """
+        退出时回收服务和连接，不把运行任务交给解释器退出。
+        """
         await self.close()
 
     async def start(self) -> None:
-        """绑定随机回环端口；启动失败或取消也必须关闭连接、监听和子任务。"""
+        """
+        绑定随机回环端口；启动失败或取消也必须关闭连接、监听和子任务。
+        """
         if self._task is not None or self._closed:
             raise RuntimeError("模型代理已经启动或关闭")
         try:
@@ -372,7 +420,9 @@ class EvaluationModelProxy:
             raise
 
     async def close(self) -> None:
-        """有界等待退出，幂等回收；子任务异常也不能跳过后续资源关闭。"""
+        """
+        有界等待退出，幂等回收；子任务异常也不能跳过后续资源关闭。
+        """
         if self._server is not None:
             self._server.should_exit = True
         try:
@@ -398,11 +448,15 @@ class EvaluationModelProxy:
 
     @staticmethod
     def _error(message: str, status: int = 400) -> JSONResponse:
-        """只返回固定控制错误，不回显原始供应商响应、密钥或提示词。"""
+        """
+        只返回固定控制错误，不回显原始供应商响应、密钥或提示词。
+        """
         return JSONResponse({"error": {"message": message, "type": "evaluation_error"}}, status_code=status)
 
     def _validate_payload(self, payload: Any) -> tuple[dict[str, Any], dict[str, Any]]:
-        """请求边界同时约束模型、预算和目录，子模型不能静默替换对照条件。"""
+        """
+        请求边界同时约束模型、预算和目录，子模型不能静默替换对照条件。
+        """
         if not isinstance(payload, dict) or payload.get("model") != self.settings.model:
             raise ValueError("模型与评测配置不符")
         if self.settings.api_key in "".join(_strings(payload)):
@@ -438,7 +492,9 @@ class EvaluationModelProxy:
         return payload, record
 
     async def _respond(self, request: Request) -> Response:
-        """认证与原子预算判断先于真正出站，探测请求单独计数。"""
+        """
+        认证与原子预算判断先于真正出站，探测请求单独计数。
+        """
         if request.headers.get("authorization") != f"Bearer {self.bearer_token}":
             return self._error("Local evaluation authentication failed", 401)
         if self._closed:
@@ -493,7 +549,9 @@ class EvaluationModelProxy:
         return await self._response(upstream, record)
 
     async def _response(self, upstream: httpx.Response, record: dict[str, Any]) -> Response:
-        """非流式响应同样有大小和工具边界，错误正文始终留在代理内部。"""
+        """
+        非流式响应同样有大小和工具边界，错误正文始终留在代理内部。
+        """
         body = bytearray()
         try:
             async for chunk in upstream.aiter_bytes():
@@ -511,14 +569,18 @@ class EvaluationModelProxy:
             await upstream.aclose()
 
     def _validate_response(self, value: Any) -> None:
-        """在任何正文交给原生客户端之前拒绝凭据、非法调用与非对象响应。"""
+        """
+        在任何正文交给原生客户端之前拒绝凭据、非法调用与非对象响应。
+        """
         if not isinstance(value, dict) or self.settings.api_key in "".join(_strings(value)):
             raise ValueError("响应格式或凭据边界无效")
         _reject_unsafe_calls(value, extra_native_tools=self._extra_native_tools)
 
     @staticmethod
     def _capture(response: dict[str, Any], record: dict[str, Any]) -> None:
-        """只记录完整非负用量；响应声明完成与流后续失败分别保留。"""
+        """
+        只记录完整非负用量；响应声明完成与流后续失败分别保留。
+        """
         if not isinstance(response, dict):
             raise ValueError("响应完成对象无效")
         record["completed"] = response.get("status") == "completed"
@@ -530,7 +592,9 @@ class EvaluationModelProxy:
         record["response_model"] = model if isinstance(model, str) else None
 
     def _event(self, raw: bytes, record: dict[str, Any], tails: dict[str, str]) -> str:
-        """校验完整 SSE 帧以及跨帧文本片段，非法调用所在帧不向客户端发送。"""
+        """
+        校验完整 SSE 帧以及跨帧文本片段，非法调用所在帧不向客户端发送。
+        """
         text = raw.decode("utf-8")
         data = "\n".join(line[5:].removeprefix(" ") for line in text.splitlines() if line.startswith("data:"))
         if self.settings.api_key in text:
@@ -554,7 +618,9 @@ class EvaluationModelProxy:
         return text + "\n\n"
 
     async def _stream(self, upstream: httpx.Response, record: dict[str, Any]) -> AsyncGenerator[str, None]:
-        """完整事件校验后转发，终态交付后即关闭上游，不再等待客户端通常忽略的尾帧。"""
+        """
+        完整事件校验后转发，终态交付后即关闭上游，不再等待客户端通常忽略的尾帧。
+        """
         pending = bytearray()
         tails: dict[str, str] = {}
         received = 0
@@ -599,7 +665,9 @@ class EvaluationModelProxy:
 
     @staticmethod
     def _record_disconnect(record: dict[str, Any]) -> None:
-        """客户端收到终态后关闭属于正常完成，终态前断开则保留未完成事实。"""
+        """
+        客户端收到终态后关闭属于正常完成，终态前断开则保留未完成事实。
+        """
         if "terminal_event" in record:
             record["client_closed_after_terminal"] = True
         else:
@@ -607,7 +675,9 @@ class EvaluationModelProxy:
             record["completed"] = False
 
     def snapshot(self) -> dict[str, Any]:
-        """探测不计真实消耗；缺失用量保持未知，已知总量是可审计下界。"""
+        """
+        探测不计真实消耗；缺失用量保持未知，已知总量是可审计下界。
+        """
         records = copy.deepcopy(self.requests)
         forwarded = [record for record in records if record["forwarded"]]
         known = [record["usage"] for record in forwarded if isinstance(record["usage"], dict)]

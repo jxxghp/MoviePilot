@@ -1,4 +1,6 @@
-"""消息渠道媒体交互的订阅创建与重试提示。"""
+"""
+消息渠道媒体交互的订阅创建与重试提示。
+"""
 
 from __future__ import annotations
 
@@ -20,12 +22,20 @@ if TYPE_CHECKING:
 
 
 class MediaInteractionSubscribeHost(Protocol):
-    """声明订阅创建复用的用户名称查询与消息回复能力。"""
+    """
+    声明订阅创建复用的用户名称查询与消息回复能力。
+
+    :ivar user_repository: 按渠道绑定身份查询 MoviePilot 用户名的用户仓库
+    """
 
     user_repository: ChainUserRepository
 
     def post_message(self, message: Message) -> None:
-        """将媒体库重复提示发送回当前消息渠道。"""
+        """
+        将媒体库重复提示发送回当前消息渠道。
+
+        :param message: 带原始渠道、接收人和重复订阅提示的通知消息
+        """
         ...
 
 
@@ -38,7 +48,9 @@ def subscribe_media(
     userid: int | str,
     username: str,
 ) -> None:
-    """为已选影视或音乐目标创建普通订阅或音质洗版订阅。"""
+    """
+    为已选影视或音乐目标创建普通订阅或音质洗版订阅。
+    """
     best_version = request.action in {"ReSubscribe", "MusicReSubscribe"}
     if not best_version:
         exist_flag, _ = DownloadChain().get_no_exists_info(

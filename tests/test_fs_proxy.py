@@ -14,7 +14,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
+import psutil
 import pytest
 
 from app.adapters.system.fsproxy import FileSystemProxy, FileSystemTimeout
@@ -47,6 +50,87 @@ def test_stat_matches_direct_call(tmp_path, proxy):
     assert result["is_file"] is True
     assert result["is_dir"] is False
     assert result["mtime"] == pytest.approx(media.stat().st_mtime, abs=1)
+    assert (result["dev"], result["ino"]) == (media.stat().st_dev, media.stat().st_ino)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_realpath_resolves_parent_alias_for_missing_target(tmp_path, proxy, monkeypatch, enabled):
+    """
+    目标尚未创建时，代理仍要解析父目录别名以保护重合的整理路径。
+    """
+    real = tmp_path / "library"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    monkeypatch.setattr(FileSystemProxy, "_enabled", staticmethod(lambda: enabled))
+    assert proxy.realpath(alias / "new.mkv") == real.resolve() / "new.mkv"
+
+
+@pytest.mark.parametrize("fstype, expected", [
+    ("fuse", True), ("fuse.zfsv3", True), ("zfuse.zfsv3", True),
+    ("fuse.shfs", True), ("fuseblk", True), ("fuseblk.ntfs", True),
+    ("ext4", False), ("zfs", False), ("overlay", False), ("nfs", False), ("fusectl", False),
+])
+def test_is_fuse_path_uses_innermost_mount(tmp_path, proxy, monkeypatch, fstype, expected):
+    """
+    识别容器实际绑定挂载的类型，目录前缀相似的另一挂载不能覆盖当前路径。
+    """
+    root = tmp_path.resolve()
+    partitions = [
+        SimpleNamespace(mountpoint=str(root.parent), fstype="overlay"),
+        SimpleNamespace(mountpoint=str(root), fstype=fstype),
+        SimpleNamespace(mountpoint=str(root) + "-other", fstype="fuse.sshfs"),
+    ]
+    query = Mock(return_value=list(reversed(partitions)))
+    monkeypatch.setattr(psutil, "disk_partitions", query)
+
+    assert proxy.is_fuse_path(root / "Movie.mkv") is expected
+    query.assert_called_once_with(all=True)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_is_fuse_path_resolves_symlink_to_mount_with_spaces(tmp_path, proxy, monkeypatch, enabled):
+    """
+    含空格的挂载路径及目录别名按链接目标识别，代理关闭时沿用相同语义。
+    """
+    root = tmp_path.resolve()
+    mount = root / "fuse volume"
+    mount.mkdir()
+    alias = root / "alias"
+    alias.symlink_to(mount, target_is_directory=True)
+    partitions = [
+        SimpleNamespace(mountpoint=str(root), fstype="ext4"),
+        SimpleNamespace(mountpoint=str(mount), fstype="zfuse.zfsv3"),
+    ]
+    monkeypatch.setattr(psutil, "disk_partitions", lambda **_kwargs: partitions)
+    monkeypatch.setattr(FileSystemProxy, "_enabled", staticmethod(lambda: enabled))
+
+    assert proxy.is_fuse_path(alias / "Movie.mkv")
+
+
+def test_is_fuse_path_refreshes_mount_table_and_keeps_unknown_type(tmp_path, proxy, monkeypatch):
+    """
+    挂载类型改变立即生效，挂载表缺少匹配项时不能认定为 FUSE。
+    """
+    root = tmp_path.resolve()
+    partition = SimpleNamespace(mountpoint=str(root), fstype="zfuse.zfsv3")
+    query = Mock(side_effect=[[partition], [SimpleNamespace(mountpoint=str(root), fstype="ext4")], []])
+    monkeypatch.setattr(psutil, "disk_partitions", query)
+
+    assert proxy.is_fuse_path(root / "Movie.mkv")
+    assert not proxy.is_fuse_path(root / "Movie.mkv")
+    assert not proxy.is_fuse_path(root / "Movie.mkv")
+    assert query.call_count == 3
+
+
+def test_is_fuse_path_propagates_mount_query_failure(tmp_path, proxy, monkeypatch):
+    """
+    无法读取挂载表时保留查询错误，由整理层保留文件并进入未知态复核。
+    """
+    monkeypatch.setattr(psutil, "disk_partitions", Mock(side_effect=OSError("mount query failed")))
+
+    with pytest.raises(OSError, match="mount query failed"):
+        proxy.is_fuse_path(tmp_path)
 
 
 def test_stat_on_directory(tmp_path, proxy):
@@ -97,7 +181,9 @@ def test_listdir_missing_raises_file_not_found(tmp_path, proxy):
 
 
 def test_has_file_suffix_checks_nested_files_case_insensitively(tmp_path, proxy):
-    """子目录内的下载临时文件必须阻止原盘目录被视为完整。"""
+    """
+    子目录内的下载临时文件必须阻止原盘目录被视为完整。
+    """
     stream = tmp_path / "BDMV" / "STREAM"
     stream.mkdir(parents=True)
     (stream / "00001.m2ts.!qB").write_bytes(b"partial")
@@ -121,11 +207,32 @@ def test_rename_within_same_storage(tmp_path, proxy):
     assert not src.exists()
 
 
+def test_rename_symlink_uses_link_device_not_target_device(tmp_path, proxy):
+    """
+    软链接所在目录与链接目标跨存储时，重命名仍应按链接目录项所在设备放行。
+
+    这是同目录 rename 的真实语义：内核只移动软链接目录项，不会移动其目标文件。
+    """
+    target = Path("/dev/null")
+    if os.stat(tmp_path).st_dev == os.stat(target).st_dev:
+        pytest.skip("测试环境没有可用的跨设备路径")
+
+    src = tmp_path / "linked.mkv"
+    dst = tmp_path / "renamed.mkv"
+    src.symlink_to(target)
+
+    assert proxy.rename(src, dst) is True
+    assert dst.is_symlink()
+    assert Path(os.readlink(dst)) == target
+    assert not src.exists()
+
+
 # --------------------------------------------------------------------------- #
 # 核心价值：超时可放弃
 # --------------------------------------------------------------------------- #
 
-def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch):
+@pytest.mark.parametrize("operation", ["stat", "realpath", "is_fuse_path"])
+def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch, operation):
     """
     这是整个代理存在的意义：挂载不返回时，调用方必须在有限时间内拿到异常，
     而且冻住的进程要被真正杀掉——不能像线程那样永久悬挂。
@@ -141,7 +248,7 @@ def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch):
     try:
         started = time.monotonic()
         with pytest.raises(FileSystemTimeout) as excinfo:
-            proxy.stat(tmp_path / "whatever.mkv")
+            getattr(proxy, operation)(tmp_path / "whatever.mkv")
         elapsed = time.monotonic() - started
 
         assert elapsed < 10, "超时后没有及时放弃"
@@ -274,3 +381,29 @@ def test_worker_runs_standalone_without_app_on_path(tmp_path):
     response = json.loads(result.stdout.strip())
     assert response["ok"] is True
     assert response["result"]["size"] == 3
+
+
+def test_worker_reports_unknown_operations_and_keeps_reading(tmp_path):
+    """
+    操作名缺失、为空或未知时保留错误回执，随后仍能处理有效请求。
+    """
+    worker_path = Path("app/adapters/system/fsworker.py").resolve()
+    payloads = [{}, {"op": None}, {"op": ""}, {"op": "unknown"}, {"op": "ping"}]
+    result = subprocess.run(
+        [sys.executable, str(worker_path)],
+        input="".join(json.dumps(payload) + "\n" for payload in payloads),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+        cwd=tmp_path,
+    )
+    responses = [json.loads(line) for line in result.stdout.splitlines()]
+
+    assert responses == [
+        {"ok": False, "errno": 0, "error": "unknown op: None"},
+        {"ok": False, "errno": 0, "error": "unknown op: None"},
+        {"ok": False, "errno": 0, "error": "unknown op: "},
+        {"ok": False, "errno": 0, "error": "unknown op: unknown"},
+        {"ok": True, "result": True},
+    ]

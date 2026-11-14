@@ -1,8 +1,9 @@
-"""3.0.38 插件实例增加启用位，并把本体的装载判据搬到这一列上。
+"""
+3.0.38 插件实例增加启用位，并把本体的装载判据搬到这一列上。
 
-Revision ID: b7d1e4a9c206
-Revises: e0e68cbd5756
-Create Date: 2026-09-13
+版本标识： b7d1e4a9c206
+前置版本： e0e68cbd5756
+创建时间： 2026-09-13
 """
 
 import json
@@ -21,19 +22,25 @@ _INSTALLED_KEY = "UserInstalledPlugins"
 
 
 def _table_names(connection) -> set:
-    """读取当前数据库已有表名。"""
+    """
+    读取当前数据库已有表名。
+    """
     return set(sa.inspect(connection).get_table_names())
 
 
 def _column_names(connection) -> set:
-    """读取实例表已有列名；表不存在时为空集。"""
+    """
+    读取实例表已有列名；表不存在时为空集。
+    """
     if _TABLE not in _table_names(connection):
         return set()
     return {column["name"] for column in sa.inspect(connection).get_columns(_TABLE)}
 
 
 def _installed_plugin_ids(connection) -> list:
-    """读取安装清单里的插件 ID，载荷不是字符串数组时按空清单处理。"""
+    """
+    读取安装清单里的插件 ID，载荷不是字符串数组时按空清单处理。
+    """
     if "systemconfig" not in _table_names(connection):
         return []
     row = connection.execute(
@@ -54,7 +61,8 @@ def _installed_plugin_ids(connection) -> list:
 
 
 def upgrade() -> None:
-    """加上启用位，并把存量的分身与已安装插件本体一并登记为启用。
+    """
+    加上启用位，并把存量的分身与已安装插件本体一并登记为启用。
 
     存量行必须显式补成启用：这一列同时是本体的装载判据，列建出来默认为假而不回填，
     升级后全部插件都会变成「装着但永不加载」。分身按「行存在即在册」的旧语义一律置真；
@@ -76,8 +84,7 @@ def upgrade() -> None:
             ),
         )
 
-    # 布尔列写 Python 布尔而不是整数字面量：PostgreSQL 会拒绝 `= 1`，报
-    # column is of type boolean but expression is of type integer
+    # PostgreSQL 严格区分布尔与整数，使用 Python 布尔值避免写入时发生类型不匹配。
     connection.execute(
         sa.text(f"UPDATE {_TABLE} SET is_enabled = :enabled"),
         {"enabled": True},
@@ -105,6 +112,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """删除启用位；装载判据随之回落安装清单，停用状态无处表达因而丢弃。"""
+    """
+    删除启用位；装载判据随之回落安装清单，停用状态无处表达因而丢弃。
+    """
     if "is_enabled" in _column_names(op.get_bind()):
         op.drop_column(_TABLE, "is_enabled")

@@ -1,9 +1,9 @@
-"""3.0.1
-为下载历史保存音乐实体类型
+"""
+3.0.1 为下载历史保存音乐实体类型
 
-Revision ID: 6f9a1c2d3e4b
-Revises: 4dadad1d161a
-Create Date: 2026-08-12
+版本标识： 6f9a1c2d3e4b
+前置版本： 4dadad1d161a
+创建时间： 2026-08-12
 """
 
 import json
@@ -19,7 +19,9 @@ depends_on = None
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
-    """检查数据表是否已存在指定字段。"""
+    """
+    检查数据表是否已存在指定字段。
+    """
     inspector = sa.inspect(op.get_bind())
     if table_name not in inspector.get_table_names():
         return False
@@ -30,7 +32,9 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 
 def _parse_note(value: object) -> dict:
-    """将不同数据库驱动返回的 JSON 备注统一转换为字典。"""
+    """
+    将不同数据库驱动返回的 JSON 备注统一转换为字典。
+    """
     if isinstance(value, dict):
         return value
     if isinstance(value, str):
@@ -43,7 +47,9 @@ def _parse_note(value: object) -> dict:
 
 
 def _backfill_music_type() -> None:
-    """从版本化音乐备注回填旧下载记录的实体类型。"""
+    """
+    从版本化音乐备注回填旧下载记录的实体类型。
+    """
     download_history = sa.table(
         "downloadhistory",
         sa.column("id", sa.Integer()),
@@ -71,7 +77,9 @@ def _backfill_music_type() -> None:
 
 
 def upgrade() -> None:
-    """增加音乐实体字段，并从旧版下载备注幂等回填。"""
+    """
+    增加音乐实体字段，并从旧版下载备注幂等回填。
+    """
     if not _has_column("downloadhistory", "music_type"):
         op.add_column(
             "downloadhistory",
@@ -81,6 +89,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除下载历史音乐实体字段。"""
+    """
+    移除下载历史音乐实体字段。
+    """
     if _has_column("downloadhistory", "music_type"):
         op.drop_column("downloadhistory", "music_type")

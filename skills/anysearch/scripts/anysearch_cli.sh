@@ -30,6 +30,13 @@ _load_env
 
 API_KEY="${ANYSEARCH_API_KEY:-}"
 
+_require_option_value() {
+  if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+    echo "Error: $1 requires a value" >&2
+    exit 1
+  fi
+}
+
 # BEGIN GENERATED:CONSTANTS
 AVAILABLE_DOMAINS=("general" "resource" "social_media" "finance" "academic" "legal" "health" "business" "security" "ip" "code" "energy" "environment" "agriculture" "travel" "film" "gaming")
 # END GENERATED:CONSTANTS
@@ -65,6 +72,12 @@ _call_api() {
     exit 1
   fi
 
+  if printf '%s' "$response" | jq -e '.result.isError == true' >/dev/null 2>&1; then
+    error_msg=$(printf '%s' "$response" | jq -r '[.result.content[]? | select(.type == "text") | .text] | join("\n")')
+    echo "Tool Error: ${error_msg:-MCP tool failed}" >&2
+    exit 1
+  fi
+
   local text_block
   text_block=$(printf '%s' "$response" | jq -r '.result.content[0].text // empty' 2>/dev/null)
   if [[ -n "$text_block" ]]; then
@@ -82,6 +95,7 @@ _cmd_search() {
   local max_results=""
 
   while [[ $# -gt 0 ]]; do
+    [[ "$1" == -* ]] && _require_option_value "$@"
     case "$1" in
       --domain|-d)     domain="$2"; shift 2 ;;
       --sub_domain|-s) sub_domain="$2"; shift 2 ;;
@@ -126,6 +140,7 @@ _cmd_get_sub_domains() {
   local domains=""
 
   while [[ $# -gt 0 ]]; do
+    [[ "$1" == -* ]] && _require_option_value "$@"
     case "$1" in
       --domains)       domains="$2"; shift 2 ;;
       --domain)        domain="$2"; shift 2 ;;
@@ -158,6 +173,7 @@ _cmd_extract() {
   local url=""
 
   while [[ $# -gt 0 ]]; do
+    [[ "$1" == -* ]] && _require_option_value "$@"
     case "$1" in
       --url|-u)        url="$2"; shift 2 ;;
       --api_key)       API_KEY="$2"; shift 2 ;;
@@ -181,6 +197,7 @@ _cmd_batch_search() {
   local query_items=()
 
   while [[ $# -gt 0 ]]; do
+    [[ "$1" == -* ]] && _require_option_value "$@"
     case "$1" in
       --queries|-q)    queries="$2"; shift 2 ;;
       --query)         query_items+=("$2"); shift 2 ;;
@@ -250,7 +267,7 @@ _cmd_doc() {
   domains=$(jq -r '.available_domains | join(" ")' "$shared/constants.json")
   tpl="${tpl//\{\{LANG_NAME\}\}/Bash}"
   tpl="${tpl//\{\{LANG_CODEBLOCK\}\}/bash}"
-  tpl="${tpl//\{\{LANG_INVOKE\}\}\}/bash scripts/anysearch_cli.sh}"
+  tpl="${tpl//\{\{LANG_INVOKE\}\}/bash scripts/anysearch_cli.sh}"
   tpl="${tpl//\{\{DOMAINS_SPACE\}\}/$domains}"
   printf '%s\n' "$tpl"
 }

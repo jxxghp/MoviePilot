@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""从配置源码注释生成 Agent 系统设置来源目录。"""
+"""
+从配置源码注释生成 Agent 系统设置来源目录。
+"""
 
 from __future__ import annotations
 
@@ -14,7 +16,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# 直接执行生成脚本时需先把仓库根目录加入导入路径。
 from app.runtime.config import Settings  # noqa: E402
+
+# 直接执行生成脚本时需先把仓库根目录加入导入路径。
 from app.schemas.types import SystemConfigKey  # noqa: E402
 
 OUTPUT_PATH = (
@@ -56,6 +61,7 @@ SECTION_GROUPS = {
     "插件配置": "plugins",
     "技能配置": "skills",
     "Github & PIP": "dependencies",
+    "GitHub 与 Python 包索引配置": "dependencies",
     "飞书通知配置": "feishu",
     "性能配置": "performance",
     "安全配置": "security",
@@ -66,13 +72,17 @@ SECTION_GROUPS = {
 
 
 def _load_module(path: Path) -> tuple[ast.Module, list[str]]:
-    """解析一个 Python 模块并返回 AST 与原始行。"""
+    """
+    解析一个 Python 模块并返回 AST 与原始行。
+    """
     text = path.read_text(encoding="utf-8")
     return ast.parse(text), text.splitlines()
 
 
 def _find_class(module: ast.Module, class_name: str) -> ast.ClassDef:
-    """按名称查找一个顶层类定义。"""
+    """
+    按名称查找一个顶层类定义。
+    """
     for node in module.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
             return node
@@ -80,7 +90,9 @@ def _find_class(module: ast.Module, class_name: str) -> ast.ClassDef:
 
 
 def _assignment_name(node: ast.stmt) -> str | None:
-    """返回简单类字段赋值的字段名。"""
+    """
+    返回简单类字段赋值的字段名。
+    """
     if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
         return node.target.id
     if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
@@ -88,13 +100,23 @@ def _assignment_name(node: ast.stmt) -> str | None:
     return None
 
 
-def _preceding_comments(lines: list[str], line_number: int) -> list[str]:
-    """读取字段前连续注释，并排除章节分隔标题。"""
+def _preceding_comments(
+    lines: list[str],
+    line_number: int,
+    *,
+    exclude_sections: bool = False,
+) -> list[str]:
+    """
+    读取字段前连续注释，并排除章节分隔标题。
+    """
     index = line_number - 2
     comments: list[str] = []
     while index >= 0:
         stripped = lines[index].strip()
         if not stripped.startswith("#"):
+            break
+        candidate = stripped.lstrip("#").strip().strip("=").strip()
+        if exclude_sections and (SECTION_PATTERN.match(stripped) or candidate in SECTION_GROUPS):
             break
         if not SECTION_PATTERN.match(stripped):
             comments.append(stripped[1:].strip())
@@ -103,12 +125,19 @@ def _preceding_comments(lines: list[str], line_number: int) -> list[str]:
 
 
 def _sections(lines: list[str]) -> list[tuple[int, str]]:
-    """返回源码中出现的章节标题及其行号。"""
+    """
+    返回源码中出现的章节标题及其行号。
+    """
     results: list[tuple[int, str]] = []
     for line_number, line in enumerate(lines, start=1):
-        match = SECTION_PATTERN.match(line.strip())
+        stripped = line.strip()
+        match = SECTION_PATTERN.match(stripped)
         if match:
             results.append((line_number, match.group(1).strip()))
+        elif stripped.startswith("#"):
+            candidate = stripped.lstrip("#").strip().strip("=").strip()
+            if candidate in SECTION_GROUPS:
+                results.append((line_number, candidate))
     return results
 
 
@@ -117,7 +146,9 @@ def _section_before(
     *,
     line_number: int,
 ) -> str | None:
-    """返回指定源码行之前最近的章节标题。"""
+    """
+    返回指定源码行之前最近的章节标题。
+    """
     return next(
         (name for section_line, name in reversed(sections) if section_line < line_number),
         None,
@@ -130,7 +161,9 @@ def _extract_model_fields(
     *,
     default_group: str | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """提取 Pydantic 配置模型字段的说明、分类和源码位置。"""
+    """
+    提取 Pydantic 配置模型字段的说明、分类和源文件。
+    """
     module, lines = _load_module(path)
     class_node = _find_class(module, class_name)
     sections = _sections(lines)
@@ -139,20 +172,28 @@ def _extract_model_fields(
         field_name = _assignment_name(node)
         if not field_name or field_name == "model_config" or field_name in results:
             continue
-        description = " ".join(_preceding_comments(lines, node.lineno)).strip()
+        description = ""
+        val = getattr(node, "value", None)
+        if isinstance(val, ast.Call):
+            for kw in val.keywords:
+                if kw.arg == "description" and isinstance(kw.value, ast.Constant):
+                    description = str(kw.value.value).strip()
+        if not description:
+            description = " ".join(_preceding_comments(lines, node.lineno, exclude_sections=True)).strip()
         section = _section_before(sections, line_number=node.lineno)
         group = default_group or SECTION_GROUPS.get(section or "")
         results[field_name] = {
             "description": description,
             "group": group,
             "source_file": str(path.relative_to(PROJECT_ROOT)),
-            "source_line": node.lineno,
         }
     return results
 
 
 def _extract_systemconfig_fields(path: Path) -> dict[str, dict[str, Any]]:
-    """提取 SystemConfigKey 枚举值的业务说明和源码位置。"""
+    """
+    提取 SystemConfigKey 枚举值的业务说明和源文件。
+    """
     module, lines = _load_module(path)
     class_node = _find_class(module, "SystemConfigKey")
     results: dict[str, dict[str, Any]] = {}
@@ -163,15 +204,16 @@ def _extract_systemconfig_fields(path: Path) -> dict[str, dict[str, Any]]:
         value = ast.literal_eval(node.value)
         results[str(value)] = {
             "enum_name": field_name,
-            "description": " ".join(_preceding_comments(lines, node.lineno)).strip(),
+            "description": " ".join(_preceding_comments(lines, node.lineno, exclude_sections=False)).strip(),
             "source_file": str(path.relative_to(PROJECT_ROOT)),
-            "source_line": node.lineno,
         }
     return results
 
 
 def generate_catalog() -> dict[str, Any]:
-    """生成覆盖当前 Settings 与 SystemConfigKey 的稳定来源目录。"""
+    """
+    生成覆盖当前 Settings 与 SystemConfigKey 的稳定来源目录。
+    """
     runtime_fields = _extract_model_fields(
         PROJECT_ROOT / "app" / "runtime" / "config.py",
         "ConfigModel",
@@ -228,13 +270,19 @@ def generate_catalog() -> dict[str, Any]:
     }
 
 
+def render_catalog() -> str:
+    """
+    按稳定的键序和缩进序列化来源目录，生成与一致性测试共用同一输出格式。
+    """
+    return json.dumps(generate_catalog(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
 def main() -> int:
-    """写入格式稳定的系统设置来源目录。"""
+    """
+    写入格式稳定的系统设置来源目录。
+    """
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(
-        json.dumps(generate_catalog(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    OUTPUT_PATH.write_text(render_catalog(), encoding="utf-8")
     print(f"generated {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
     return 0
 

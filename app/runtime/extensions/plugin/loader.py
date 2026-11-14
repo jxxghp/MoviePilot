@@ -1,4 +1,6 @@
-"""插件源码发现、导入和模块缓存清理。"""
+"""
+插件源码发现、导入和模块缓存清理。
+"""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from typing import Any, Optional
 
 from app.domain.plugin import check_plugin_runtime_compatibility
 from app.foundation.environment import is_free_threaded_runtime
+from app.runtime.execution import plugin_package_lock
 from app.runtime.extensions.plugin.gil import (
     GilFallbackRecorder,
     attribute_gil_fallback,
@@ -21,7 +24,6 @@ from app.runtime.extensions.plugin.gil import (
 )
 from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
-
 
 PluginImportPreparer = Callable[..., None]
 PluginImportScanner = Callable[..., None]
@@ -31,14 +33,16 @@ PluginRuntimeDeclarationReader = Callable[[str], Mapping[str, bool]]
 
 
 def _undeclared_runtime(_: str) -> Mapping[str, bool]:
-    """默认声明读取端口：无声明即保持历史插件可加载。"""
+    """
+    默认声明读取端口：无声明即保持历史插件可加载。
+    """
     return {}
 
 
 PluginRuntimeStatusWriter = Callable[[str, PluginRuntimeStatus], None]
 
 
-# ---- 插件模块卸载后释放第三方类型缓存 ----
+# 插件模块卸载后释放第三方类型缓存
 # 插件重载或卸载只把模块移出 sys.modules；若旧插件类仍被进程级类型缓存引用，
 # 整份旧模块（函数、类、模块全局）会一直留在内存中，每重载一次多留一份。
 
@@ -47,7 +51,8 @@ _MAX_TYPE_DEPTH = 8
 
 
 def release_plugin_type_caches(module_prefix: str) -> None:
-    """释放缓存中引用指定插件模块前缀下类型的条目。
+    """
+    释放缓存中引用指定插件模块前缀下类型的条目。
 
     - Pydantic 泛型模型缓存：值是弱引用，但键以强引用保存参数化用到的类，而参数化
       结果又引用这些类，两者互相保活永不释放；顶层参数化还会在泛型基类模块留下全局
@@ -65,7 +70,9 @@ def release_plugin_type_caches(module_prefix: str) -> None:
 
 
 def _purge_pydantic_generic_cache(module_prefix: str) -> None:
-    """删除 Pydantic 泛型缓存中键引用了插件类型的条目，以及它们留下的模块全局引用。"""
+    """
+    删除 Pydantic 泛型缓存中键引用了插件类型的条目，以及它们留下的模块全局引用。
+    """
     try:
         from pydantic._internal._generics import _GENERIC_TYPES_CACHE
     except ImportError:
@@ -80,7 +87,8 @@ def _purge_pydantic_generic_cache(module_prefix: str) -> None:
 
 
 def _drop_pickle_reference(model: type) -> None:
-    """移除 Pydantic 为支持 pickle 写入泛型基类所在模块的全局引用。
+    """
+    移除 Pydantic 为支持 pickle 写入泛型基类所在模块的全局引用。
 
     在模块顶层参数化泛型模型（如 ``RootModel[list[Payload]]``）时，Pydantic 会把结果以
     ``RootModel[list[Payload]]``（重名时追加下划线）登记到泛型基类所在模块的全局命名空间，
@@ -96,7 +104,9 @@ def _drop_pickle_reference(model: type) -> None:
 
 
 def _references_module(value: Any, module_prefix: str, depth: int) -> bool:
-    """判断缓存键（类型、元组或参数化注解）是否引用了指定模块前缀下定义的类型。"""
+    """
+    判断缓存键（类型、元组或参数化注解）是否引用了指定模块前缀下定义的类型。
+    """
     if depth > _MAX_TYPE_DEPTH:
         return False
     if isinstance(value, type):
@@ -116,7 +126,9 @@ def _references_module(value: Any, module_prefix: str, depth: int) -> bool:
 
 
 class PluginLoader:
-    """只负责从运行目录发现插件类，并维护对应模块缓存。"""
+    """
+    只负责从运行目录发现插件类，并维护对应模块缓存。
+    """
 
     _instance_import_lock = threading.RLock()
 
@@ -131,7 +143,9 @@ class PluginLoader:
         runtime_declaration: PluginRuntimeDeclarationReader = _undeclared_runtime,
         gil_fallback_recorder: GilFallbackRecorder = ignore_gil_fallback,
     ) -> None:
-        """保存插件目录、导入前置能力、状态回写端口、声明读取端口、GIL 归因端口和日志端口。"""
+        """
+        保存插件目录、导入前置能力、状态回写端口、声明读取端口、GIL 归因端口和日志端口。
+        """
         self._plugins_root = plugins_root
         self._import_preparer = import_preparer
         self._import_scanner = import_scanner
@@ -146,7 +160,9 @@ class PluginLoader:
         installed_plugins: list[str],
         validator: PluginValidator,
     ) -> list[Any]:
-        """只导入指定插件或已安装插件，并返回通过契约检查的插件类。"""
+        """
+        只导入指定插件或已安装插件，并返回通过契约检查的插件类。
+        """
         if not self._plugins_root.exists():
             self._logger.warning(f"插件目录不存在：{self._plugins_root}")
             return []
@@ -166,8 +182,8 @@ class PluginLoader:
             self._logger.debug("没有需要加载的插件")
             return []
 
-        plugins = []
-        loaded_classes = set()
+        plugins: list[Any] = []
+        loaded_classes: set[str] = set()
         for plugin_dir in self._plugins_root.iterdir():
             if not plugin_dir.is_dir() or plugin_dir.name.startswith("_"):
                 continue
@@ -176,60 +192,95 @@ class PluginLoader:
                     f"跳过插件目录：{plugin_dir.name}（不在加载列表中）"
                 )
                 continue
-            if not (plugin_dir / "__init__.py").exists():
-                self._logger.debug(
-                    f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
-                )
-                continue
-            if not self._is_runtime_compatible(plugin_dir.name):
-                self._logger.warning(
-                    f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
-                )
-                self._mark_incompatible_runtime(
-                    installed_ids.get(plugin_dir.name, plugin_dir.name)
-                )
-                continue
-
-            try:
-                module_name = f"app.plugins.{plugin_dir.name}"
-                self._logger.debug(f"正在导入插件模块：{module_name}")
-                self._import_preparer(
-                    plugin_id=plugin_dir.name,
+            with plugin_package_lock(plugin_dir.name):
+                self._load_plugin_directory(
                     plugin_dir=plugin_dir,
-                )
-                self._import_scanner(
-                    plugin_id=plugin_dir.name,
-                    plugin_dir=plugin_dir,
-                )
-                # 插件模块顶层导入原生扩展最常见，GIL 回退多发生在这一步；
-                # 全量启动时逐个模块观察，才能把回退归因到具体插件
-                with attribute_gil_fallback(
-                    installed_ids.get(plugin_dir.name, plugin_dir.name),
-                    self._gil_fallback_recorder,
-                ):
-                    module = importlib.import_module(module_name)
-                for name, candidate in module.__dict__.items():
-                    if name.startswith("_") or not isinstance(candidate, type):
-                        continue
-                    if name in loaded_classes or not validator(candidate):
-                        continue
-                    loaded_classes.add(name)
-                    plugins.append(candidate)
-                    self._logger.debug(f"找到符合条件的插件类：{name}")
-                    break
-            except Exception as err:
-                self._logger.error(
-                    f"加载插件 {plugin_dir.name} 失败：{str(err)} - "
-                    f"{traceback.format_exc()}"
+                    plugin_id=installed_ids.get(
+                        plugin_dir.name,
+                        plugin_dir.name,
+                    ),
+                    validator=validator,
+                    loaded_classes=loaded_classes,
+                    plugins=plugins,
                 )
         return plugins
+
+    def _load_plugin_directory(
+        self,
+        *,
+        plugin_dir: Path,
+        plugin_id: str,
+        validator: PluginValidator,
+        loaded_classes: set[str],
+        plugins: list[Any],
+    ) -> None:
+        """
+        在持有包锁期间验证并导入一个完整的插件目录。
+        """
+        if not (plugin_dir / "__init__.py").exists():
+            self._logger.debug(
+                f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
+            )
+            return
+        if not self._is_runtime_compatible(plugin_dir.name):
+            self._logger.warning(
+                f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
+            )
+            self._mark_incompatible_runtime(plugin_id)
+            return
+
+        try:
+            module_name = f"app.plugins.{plugin_dir.name}"
+            self._logger.debug(f"正在导入插件模块：{module_name}")
+            self._import_preparer(
+                plugin_id=plugin_dir.name,
+                plugin_dir=plugin_dir,
+            )
+            self._import_scanner(
+                plugin_id=plugin_dir.name,
+                plugin_dir=plugin_dir,
+            )
+            # 插件模块顶层导入原生扩展最常见，GIL 回退多发生在这一步；
+            # 全量启动时逐个模块观察，才能把回退归因到具体插件
+            with attribute_gil_fallback(
+                plugin_id,
+                self._gil_fallback_recorder,
+            ):
+                module = importlib.import_module(module_name)
+            for name, candidate in module.__dict__.items():
+                if name.startswith("_") or not isinstance(candidate, type):
+                    continue
+                if name in loaded_classes or not validator(candidate):
+                    continue
+                loaded_classes.add(name)
+                plugins.append(candidate)
+                self._logger.debug(f"找到符合条件的插件类：{name}")
+                break
+        except Exception as error:
+            self._logger.error(
+                f"加载插件 {plugin_dir.name} 失败：{str(error)} - "
+                f"{traceback.format_exc()}"
+            )
 
     def load_instance(
         self,
         instance: PluginInstance,
         validator: PluginValidator,
     ) -> list[Any]:
-        """在实例专属模块命名空间中重新执行源插件代码并返回适配类。"""
+        """
+        在实例专属模块命名空间中重新执行源插件代码并返回适配类。
+        """
+        with plugin_package_lock(instance.source_plugin_id):
+            return self._load_instance_locked(instance, validator)
+
+    def _load_instance_locked(
+        self,
+        instance: PluginInstance,
+        validator: PluginValidator,
+    ) -> list[Any]:
+        """
+        在持有源插件包锁时从磁盘加载虚拟插件实例模块。
+        """
         source_dir = self._plugins_root / instance.source_plugin_id.lower()
         source_file = source_dir / "__init__.py"
         if not source_file.exists():
@@ -281,6 +332,7 @@ class PluginLoader:
                     f"从 {instance.source_plugin_id} 加载虚拟插件实例：{instance.instance_id}"
                 )
                 return [candidate]
+        # 第三方插件导入可能抛出任意异常，失败后必须清理本次导入并保留诊断。
         except Exception as error:  # noqa: BLE001
             self.clear_modules(instance.instance_id)
             self._logger.error(
@@ -290,16 +342,19 @@ class PluginLoader:
         return []
 
     def is_runtime_compatible(self, plugin_id: str) -> bool:
-        """按插件 ID 判断运行目录载荷是否兼容当前运行时。
+        """
+        按插件 ID 判断运行目录载荷是否兼容当前运行时。
 
         公开可调用：生命周期在装载结果为空时要区分"加载失败"和"运行时不兼容"，
         两者在卡片上是完全不同的提示。
+
         :param plugin_id: 物理插件 ID，大小写不敏感
         """
         return self._is_runtime_compatible(plugin_id)
 
     def _mark_incompatible_runtime(self, plugin_id: str) -> None:
-        """把运行时不兼容记成插件卡片可见的状态。
+        """
+        把运行时不兼容记成插件卡片可见的状态。
 
         按 ID 定向装载时生命周期的空结果分支也会落同一个状态；这里补的是全量装载
         （``plugin_id`` 为空）那条路径——它不逐个遍历目标，缺了这一笔，用户看到的
@@ -313,11 +368,13 @@ class PluginLoader:
         )
 
     def _is_runtime_compatible(self, plugin_id: str) -> bool:
-        """按安装时提交的声明快照执行运行时兼容门禁，缺失声明时保持兼容。
+        """
+        按安装时提交的声明快照执行运行时兼容门禁，缺失声明时保持兼容。
 
         判据来自 ``PluginIdentity.declared_metadata`` 里随载荷一起提交的 package
         运行时声明，而不是运行目录中的文件：插件目录里同名的 ``package.json`` 是
         模块联邦组件的 npm manifest，既不承载代际位，也不会被安装流程写入。
+
         :param plugin_id: 物理插件 ID，大小写不敏感
         """
         declaration = self._runtime_declaration(plugin_id.lower())
@@ -338,7 +395,9 @@ class PluginLoader:
         source_module_name: str,
         loader: Any,
     ) -> None:
-        """执行实例模块，并把旧式自身绝对导入迁移到实例命名空间。"""
+        """
+        执行实例模块，并把旧式自身绝对导入迁移到实例命名空间。
+        """
         source_prefix = f"{source_module_name}."
         parent_module = sys.modules.get("app.plugins")
         source_attribute = source_module_name.rsplit(".", 1)[-1]
@@ -399,11 +458,26 @@ class PluginLoader:
         source_name: str,
         instance_name: str,
     ) -> None:
-        """修正被旧绝对路径加载对象的模块身份，避免事件与诊断键冲突。"""
+        """
+        修正被旧绝对路径加载对象的模块身份，避免事件与诊断键冲突。
+
+        包名只按完整包名（点号边界）匹配源命名空间，并排除已处于实例命名空间的
+        包：旧式绝对导入兼容会把实例模块自身也临时登记到源插件名下，此时它的
+        ``__package__`` 已经是实例命名空间，裸前缀匹配会把残余后缀再拼接一次
+        （如 ``app.plugins.demo`` 分身变成 ``app.plugins.demowork2``），插件内的
+        延迟相对导入随之中断。
+        """
         if getattr(module, "__name__", None) == source_name:
             module.__name__ = instance_name
         package_name = getattr(module, "__package__", None)
-        if isinstance(package_name, str) and package_name.startswith(source_name):
+        if (
+            isinstance(package_name, str)
+            and (package_name == source_name or package_name.startswith(f"{source_name}."))
+            and not (
+                package_name == instance_name
+                or package_name.startswith(f"{instance_name}.")
+            )
+        ):
             module.__package__ = instance_name + package_name[len(source_name):]
         spec = getattr(module, "__spec__", None)
         if spec and getattr(spec, "name", None) == source_name:
@@ -426,7 +500,8 @@ class PluginLoader:
         source_name: str,
         instance_name: str,
     ) -> None:
-        """把类体内定义的函数一并改到实例模块名下。
+        """
+        把类体内定义的函数一并改到实例模块名下。
 
         事件处理器的注册键取自函数所在模块名，而类体内的函数是类的属性、不是模块
         的属性，只遍历模块顶层碰不到它们。漏改会让实例与源插件本体注册到同一个
@@ -443,7 +518,9 @@ class PluginLoader:
 
     @staticmethod
     def _adapt_instance_class(candidate: Any, instance: PluginInstance) -> None:
-        """只改运行身份与展示元数据，不改源码、限定名和联邦产物。"""
+        """
+        只改运行身份与展示元数据，不改源码、限定名和联邦产物。
+        """
         candidate.__name__ = instance.instance_id
         candidate.plugin_instance_id = instance.instance_id
         candidate.plugin_source_id = instance.source_plugin_id
@@ -457,7 +534,9 @@ class PluginLoader:
             candidate.plugin_icon = instance.plugin_icon
 
     def clear_modules(self, plugin_id: Optional[str] = None) -> list[str]:
-        """清除指定插件或全部插件的 Python 模块缓存。"""
+        """
+        清除指定插件或全部插件的 Python 模块缓存。
+        """
         prefix = (
             f"app.plugins.{plugin_id.lower()}"
             if plugin_id

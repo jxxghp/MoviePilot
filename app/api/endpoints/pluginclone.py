@@ -1,4 +1,5 @@
-"""插件分身的创建、恢复与可恢复清单接口。
+"""
+插件分身的创建、恢复与可恢复清单接口。
 
 这些路由并入 ``plugin`` 路由器，路径与单文件时期完全一致；单独成篇只是让分身创建与
 插件目录、市场、静态资源等关注点各自分开，与 ``pluginfolder``/``pluginloglevel``/
@@ -31,7 +32,7 @@ from app.schemas.response import Response as _SchemaResponse
 router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/clone/{plugin_id}/restorable",
     summary="列出可恢复的已停用分身",
     response_model=List[_SchemaPluginRestorableInstance],
@@ -42,7 +43,7 @@ def plugin_restorable_instances(
     _: ApiPrincipal = Depends(get_current_active_superuser),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
 ) -> Any:
     """
     列出该插件名下已停用、设置仍留存可被恢复的分身
@@ -65,7 +66,7 @@ def plugin_restorable_instances(
     return instances
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/clone/{plugin_id}",
     summary="创建插件分身",
     response_model=_SchemaResponse[_SchemaPluginCloneOutcome],
@@ -103,6 +104,7 @@ def clone_plugin(
                 register_plugin(message)
                 # 将分身插件添加到原插件所在的文件夹中
                 add_clone_to_plugin_folder(plugin_id, message)
+            # 插件注册失败需要统一清理并保留原异常，避免仅捕获部分异常留下半成品。
             except Exception as register_error:  # noqa: BLE001
                 logger.error(f"插件分身 {message} 已创建，注册宿主能力失败：{register_error}")
                 return _SchemaResponse(

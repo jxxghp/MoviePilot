@@ -1,4 +1,6 @@
-"""插件安装事务记录、SQLite CAS 和 membership 测试。"""
+"""
+插件安装事务记录、SQLite CAS 和 membership 测试。
+"""
 
 import copy
 import importlib
@@ -53,7 +55,9 @@ def _identity(
     revision: int = 1,
     version: str = "1.0.0",
 ) -> PluginIdentity:
-    """构造一份满足来源身份合同的测试身份。"""
+    """
+    构造一份满足来源身份合同的测试身份。
+    """
     return PluginIdentity(
         plugin_id=plugin_id,
         normalized_plugin_id=plugin_id.lower(),
@@ -79,7 +83,9 @@ def _identity(
 
 
 def _record(**overrides) -> PluginInstallationRecord:
-    """构造可跨进程恢复的安装事务记录。"""
+    """
+    构造可跨进程恢复的安装事务记录。
+    """
     values = {
         "transaction_id": "txn-demo-1",
         "plugin_id": "DemoPlugin",
@@ -98,7 +104,9 @@ def _record(**overrides) -> PluginInstallationRecord:
 
 
 def test_record_keeps_plugin_level_recovery_contract() -> None:
-    """事务只记录目标插件 membership、CAS revision 和备份存在性。"""
+    """
+    事务只记录目标插件 membership、CAS revision 和备份存在性。
+    """
     record = _record(
         phase="committed",
         membership_target=True,
@@ -130,41 +138,54 @@ def test_record_keeps_plugin_level_recovery_contract() -> None:
     ],
 )
 def test_record_rejects_invalid_recovery_invariants(overrides: dict) -> None:
-    """事务记录必须拒绝不能用于 CAS 或补偿恢复的状态。"""
+    """
+    事务记录必须拒绝不能用于 CAS 或补偿恢复的状态。
+    """
     with pytest.raises(PluginInstallationRecordError):
         _record(**overrides)
 
 
 def test_committed_record_requires_target_membership() -> None:
-    """COMMITTED 不能指向尚未登记的业务目标。"""
+    """
+    COMMITTED 不能指向尚未登记的业务目标。
+    """
     with pytest.raises(PluginInstallationRecordError):
         _record(phase=PluginInstallationPhase.COMMITTED)
 
 
 def test_record_schema_version_is_explicit() -> None:
-    """恢复读取必须拒绝未知 schema version。"""
+    """
+    恢复读取必须拒绝未知 schema version。
+    """
     with pytest.raises(PluginInstallationRecordError):
         _record(schema_version=2)
 
 
 def test_record_is_immutable() -> None:
-    """事务记录提交后不能被调用方原地修改。"""
+    """
+    事务记录提交后不能被调用方原地修改。
+    """
     record = _record()
     with pytest.raises(AttributeError):
+        # 主动修改冻结快照，验证运行时确实拒绝该写入。
         record.membership_before = False  # type: ignore[misc]
 
     assert replace(record, membership_before=False).membership_before is False
 
 
 class _AtomicSystemConfig:
-    """用测试 Session 模拟 SystemConfigOper 的配置锁和原子提交。"""
+    """
+    用测试 Session 模拟 SystemConfigOper 的配置锁和原子提交。
+    """
 
     def __init__(self, factory) -> None:
         self._factory = factory
         self._lock = threading.RLock()
 
     def update_atomically(self, key, mutation):
-        """在测试数据库事务中锁定配置并执行关联写入。"""
+        """
+        在测试数据库事务中锁定配置并执行关联写入。
+        """
         with self._lock:
             session = self._factory()
             try:
@@ -188,7 +209,9 @@ class _AtomicSystemConfig:
 
 @pytest.fixture
 def installation_store(tmp_path):
-    """创建带配置、身份和事务表的隔离 SQLite Store。"""
+    """
+    创建带配置、身份和事务表的隔离 SQLite Store。
+    """
     engine = sa.create_engine(
         f"sqlite:///{tmp_path / 'plugin-installation.db'}",
         connect_args={"check_same_thread": False, "timeout": 5},
@@ -213,7 +236,9 @@ def _store_record(
     membership_before: bool = False,
     identity_before_revision: int | None = None,
 ) -> PluginInstallationRecord:
-    """构造 Store 测试用的 PREPARED 记录。"""
+    """
+    构造 Store 测试用的 PREPARED 记录。
+    """
     return PluginInstallationRecord(
         transaction_id=transaction_id,
         plugin_id=plugin_id,
@@ -230,7 +255,9 @@ def _store_record(
 
 
 def _identity_model(identity: PluginIdentity) -> PluginIdentityModel:
-    """把应用身份转换为测试数据库模型。"""
+    """
+    把应用身份转换为测试数据库模型。
+    """
     return PluginIdentityModel(
         plugin_id=identity.plugin_id,
         normalized_plugin_id=identity.normalized_plugin_id,
@@ -260,7 +287,9 @@ def _identity_model(identity: PluginIdentity) -> PluginIdentityModel:
 
 
 def _set_config(factory, value: list[str]) -> None:
-    """直接准备测试用的安装清单。"""
+    """
+    直接准备测试用的安装清单。
+    """
     with factory() as session:
         config = session.execute(
             sa.select(SystemConfig).where(SystemConfig.key == "UserInstalledPlugins")
@@ -273,7 +302,9 @@ def _set_config(factory, value: list[str]) -> None:
 
 
 def _get_config(factory) -> list[str] | None:
-    """读取测试用的安装清单。"""
+    """
+    读取测试用的安装清单。
+    """
     with factory() as session:
         config = session.execute(
             sa.select(SystemConfig).where(SystemConfig.key == "UserInstalledPlugins")
@@ -282,7 +313,9 @@ def _get_config(factory) -> list[str] | None:
 
 
 def _upgrade_migration(connection, module_name: str) -> None:
-    """在当前隔离 schema 中按生产 Alembic 路径执行迁移。"""
+    """
+    在当前隔离 schema 中按生产 Alembic 路径执行迁移。
+    """
     migration = importlib.import_module(module_name)
     original_op = migration.op
     try:
@@ -297,7 +330,9 @@ def _set_identity_revision(
     revision: int,
     plugin_id: str = "DemoPlugin",
 ) -> None:
-    """模拟事务外的身份 revision 更新。"""
+    """
+    模拟事务外的身份 revision 更新。
+    """
     with factory() as session:
         identity = session.execute(
             sa.select(PluginIdentityModel).where(
@@ -309,7 +344,9 @@ def _set_identity_revision(
 
 
 def test_store_round_trips_plugin_level_journal(installation_store) -> None:
-    """SQLite 往返只保留插件级 membership、revision 和备份标记。"""
+    """
+    SQLite 往返只保留插件级 membership、revision 和备份标记。
+    """
     _, _, store = installation_store
     record = _store_record(transaction_id="install-roundtrip")
 
@@ -322,7 +359,9 @@ def test_store_round_trips_plugin_level_journal(installation_store) -> None:
 def test_store_lists_journal_by_case_insensitive_plugin_id(
     installation_store,
 ) -> None:
-    """按 plugin_id 列 journal 必须与创建时的同一物理插件判据一致。"""
+    """
+    按 plugin_id 列 journal 必须与创建时的同一物理插件判据一致。
+    """
     _, _, store = installation_store
     record = _store_record(transaction_id="install-case", plugin_id="DemoPlugin")
     store.create(record)
@@ -343,7 +382,9 @@ def test_store_blocks_new_journal_until_previous_phase_is_closed(
     installation_store,
     phase: PluginInstallationPhase,
 ) -> None:
-    """同一物理插件的未收尾 journal 不得被后续事务覆盖。"""
+    """
+    同一物理插件的未收尾 journal 不得被后续事务覆盖。
+    """
     _, _, store = installation_store
     existing = _store_record(transaction_id=f"install-{phase.value}")
     if phase is PluginInstallationPhase.COMMITTED:
@@ -372,7 +413,9 @@ def test_store_blocks_new_journal_until_previous_phase_is_closed(
 
 
 def test_store_commits_membership_identity_and_phase_atomically(installation_store) -> None:
-    """membership、身份和 journal phase 必须在一个配置原子事务中提交。"""
+    """
+    membership、身份和 journal phase 必须在一个配置原子事务中提交。
+    """
     _, factory, store = installation_store
     before = _identity()
     target = replace(
@@ -419,7 +462,9 @@ def test_store_commits_membership_identity_and_phase_atomically(installation_sto
 
 
 def test_store_preserves_other_plugin_membership(installation_store) -> None:
-    """目标插件提交不能用旧完整清单覆盖其他插件。"""
+    """
+    目标插件提交不能用旧完整清单覆盖其他插件。
+    """
     _, factory, store = installation_store
     _set_config(factory, ["OtherPlugin"])
     store.create(_store_record(transaction_id="install-narrow"))
@@ -442,7 +487,9 @@ def test_store_preserves_other_plugin_membership(installation_store) -> None:
 
 
 def test_store_rejects_target_identity_revision_jump(installation_store) -> None:
-    """最终写者必须拒绝跳号 revision，避免绕过后续来源 CAS。"""
+    """
+    最终写者必须拒绝跳号 revision，避免绕过后续来源 CAS。
+    """
     _, factory, store = installation_store
     before = _identity()
     with factory() as session:
@@ -472,7 +519,9 @@ def test_store_rejects_target_identity_revision_jump(installation_store) -> None
 
 
 def test_store_rejects_membership_and_identity_cas_drift(installation_store) -> None:
-    """同一插件 membership 或 identity revision 漂移时拒绝覆盖。"""
+    """
+    同一插件 membership 或 identity revision 漂移时拒绝覆盖。
+    """
     _, factory, store = installation_store
     before = _identity()
     with factory() as session:
@@ -512,7 +561,9 @@ def test_store_rejects_membership_and_identity_cas_drift(installation_store) -> 
 
 
 def _commit_or_conflict(store, transaction_id: str) -> str:
-    """把 phase CAS 竞争转换为可断言的测试结果。"""
+    """
+    把 phase CAS 竞争转换为可断言的测试结果。
+    """
     try:
         store.commit_target(
             transaction_id,
@@ -525,7 +576,9 @@ def _commit_or_conflict(store, transaction_id: str) -> str:
 
 
 def test_store_serializes_membership_commits_and_phase_cas(installation_store) -> None:
-    """SQLite 下不同插件并发提交应合并，重复提交同一事务只能失败。"""
+    """
+    SQLite 下不同插件并发提交应合并，重复提交同一事务只能失败。
+    """
     _, factory, store = installation_store
     first = _store_record(transaction_id="install-first")
     second = _store_record(transaction_id="install-second", plugin_id="OtherPlugin")
@@ -571,7 +624,9 @@ def test_store_serializes_membership_commits_and_phase_cas(installation_store) -
 
 
 def test_store_delete_is_idempotent_after_recovery(installation_store) -> None:
-    """恢复处理重复清理同一 journal 时不产生第二次副作用。"""
+    """
+    恢复处理重复清理同一 journal 时不产生第二次副作用。
+    """
     _, _, store = installation_store
     store.create(_store_record(transaction_id="install-delete"))
 
@@ -587,7 +642,9 @@ def test_store_delete_is_idempotent_after_recovery(installation_store) -> None:
 
 @pytest.fixture
 def postgresql_installation_stores():
-    """创建两个不共享进程锁的 PostgreSQL Store，验证数据库并发合同。"""
+    """
+    创建两个不共享进程锁的 PostgreSQL Store，验证数据库并发合同。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")
@@ -669,7 +726,9 @@ def postgresql_installation_stores():
 def test_postgresql_store_serializes_membership_phase_and_revision_cas(
     postgresql_installation_stores,
 ) -> None:
-    """PostgreSQL 行锁必须合并不同插件写入并拒绝 phase/revision 竞争。"""
+    """
+    PostgreSQL 行锁必须合并不同插件写入并拒绝 phase/revision 竞争。
+    """
     factory, first_store, second_store = postgresql_installation_stores
     first = _store_record(transaction_id="postgres-first")
     second = _store_record(

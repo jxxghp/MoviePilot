@@ -1,4 +1,6 @@
-"""真实容器、来源响应及 JSON 快照分别保留录音与发行身份和字段来源。"""
+"""
+真实容器、来源响应及 JSON 快照分别保留录音与发行身份和字段来源。
+"""
 
 import asyncio
 import json
@@ -23,6 +25,7 @@ from app.modules.musicbrainz import MusicBrainzModule
 from app.schemas.music import MusicInfo as MusicInfoSchema
 from app.schemas.music import MusicMeta as MusicMetaSchema
 from tests.test_audio_containers import _write_dsf, _write_wave
+from tests.test_music_album_match import _release_detail
 from tests.test_transfer_sync_extra_files import make_fileitem
 
 RECORDING = "11111111-1111-4111-8111-111111111111"
@@ -37,7 +40,9 @@ IDENTITIES = {
 
 
 def _tag_audio(path: Path) -> None:
-    """按容器的实际规范写入不同层级 ID，不调用产品标签写入实现。"""
+    """
+    按容器的实际规范写入不同层级 ID，不调用产品标签写入实现。
+    """
     if path.suffix == ".flac":
         audio = FLAC(path)
         audio.update({
@@ -74,7 +79,9 @@ def _tag_audio(path: Path) -> None:
 
 @pytest.mark.parametrize("extension", ["flac", "wav", "dsf", "m4a", "mp3"])
 def test_real_container_keeps_distinct_musicbrainz_entities(tmp_path, extension):
-    """实际文件中四种 MBID 和两种年份必须读入各自字段，不混用录音与发行曲目。"""
+    """
+    实际文件中四种 MBID 和两种年份必须读入各自字段，不混用录音与发行曲目。
+    """
     path = tmp_path / f"03.{extension}"
     if extension == "wav":
         _write_wave(path)
@@ -99,7 +106,9 @@ def test_real_container_keeps_distinct_musicbrainz_entities(tmp_path, extension)
 
 
 def test_release_only_tag_never_becomes_recording_identity(tmp_path):
-    """只有发行 ID 时保留补充身份，不能凭空创建 Recording 主身份。"""
+    """
+    只有发行 ID 时保留补充身份，不能凭空创建 Recording 主身份。
+    """
     path = tmp_path / "01.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
     audio = FLAC(path)
@@ -116,7 +125,9 @@ def test_release_only_tag_never_becomes_recording_identity(tmp_path):
 
 
 def test_audio_evidence_roundtrip_keeps_ids_and_independent_sources():
-    """领域、API、下载历史和旧缓存读写不会丢弃补充身份或共享可变来源字典。"""
+    """
+    领域、API、下载历史和旧缓存读写不会丢弃补充身份或共享可变来源字典。
+    """
     meta = MetaMusic(title="Song", artists=["Artist"], album="Record", media_source="musicbrainz",
                      media_id=RECORDING, original_year=2003, release_year=2020, total_discs=2,
                      field_sources={"title": "tag"}, **IDENTITIES)
@@ -138,7 +149,9 @@ def test_audio_evidence_roundtrip_keeps_ids_and_independent_sources():
 
 
 def test_legacy_meta_pickle_defaults_new_evidence_fields():
-    """旧版解析对象没有新字段时仍可还原、套用路径和序列化。"""
+    """
+    旧版解析对象没有新字段时仍可还原、套用路径和序列化。
+    """
     original = MetaMusic(title="Song", artists=["Artist"])
     state = dict(original.__dict__)
     for key in (*IDENTITIES, "original_year", "release_year", "field_sources"):
@@ -154,7 +167,9 @@ def test_legacy_meta_pickle_defaults_new_evidence_fields():
 
 
 def test_tag_title_equal_to_filename_is_not_reparsed(tmp_path):
-    """标题恰好等于文件名仍是实际标签，不能错误当作文件名兜底而清洗掉内容。"""
+    """
+    标题恰好等于文件名仍是实际标签，不能错误当作文件名兜底而清洗掉内容。
+    """
     path = tmp_path / "03 - Song.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
     audio = FLAC(path)
@@ -171,7 +186,9 @@ def test_tag_title_equal_to_filename_is_not_reparsed(tmp_path):
 
 
 def _release_payload() -> dict:
-    """构造同一录音在具体再版及第二碟中的 MusicBrainz 响应。"""
+    """
+    构造同一录音在具体再版及第二碟中的 MusicBrainz 响应。
+    """
     return {
         "id": RELEASE, "title": "Record", "date": "2020-06-01",
         "artist-credit": [{"artist": {"id": "artist", "name": "Artist"}}],
@@ -184,7 +201,9 @@ def _release_payload() -> dict:
 
 
 def test_selected_release_preserves_original_year_and_track_namespace():
-    """具体再版日期不能被录音首发日期覆盖，发行曲目 ID 必须独立保存。"""
+    """
+    具体再版日期不能被录音首发日期覆盖，发行曲目 ID 必须独立保存。
+    """
     album = MusicBrainzModule._release_to_album(_release_payload())
     track = album.tracks[0]
 
@@ -205,7 +224,9 @@ def test_selected_release_preserves_original_year_and_track_namespace():
 
 
 def test_release_without_group_does_not_forge_album_group_id():
-    """残缺响应缺少发行组时不能把发行 ID 填进发行组主身份。"""
+    """
+    残缺响应缺少发行组时不能把发行 ID 填进发行组主身份。
+    """
     payload = _release_payload()
     payload.pop("release-group")
 
@@ -218,7 +239,9 @@ def test_release_without_group_does_not_forge_album_group_id():
 
 
 def test_group_without_selected_release_has_no_release_year():
-    """发行组的首发年份不等于已经确认当前文件的发行年份。"""
+    """
+    发行组的首发年份不等于已经确认当前文件的发行年份。
+    """
     album = MusicBrainzModule._release_group_to_album({
         "id": GROUP, "title": "Record", "first-release-date": "2003-01-01",
     })
@@ -231,7 +254,9 @@ def test_group_without_selected_release_has_no_release_year():
 
 
 def test_album_meta_retains_entity_type_and_cannot_write_recording_tag():
-    """专辑上下文往返 MetaMusic 后仍是专辑，不能把组 ID 写进录音标签。"""
+    """
+    专辑上下文往返 MetaMusic 后仍是专辑，不能把组 ID 写进录音标签。
+    """
     album = MusicAlbumInfo(media_source="musicbrainz", media_id=GROUP, title="Record")
 
     meta = MetaMusic.from_music_info(album.to_music_info())
@@ -246,7 +271,9 @@ def test_album_meta_retains_entity_type_and_cannot_write_recording_tag():
 @pytest.mark.parametrize("source", [None, "musicbrainz"])
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_bound_album_meta_routes_as_album_with_or_without_source_override(source, asynchronous, monkeypatch):
-    """指定或继承数据源时，已绑定专辑身份都不能回到默认 Recording 查询。"""
+    """
+    指定或继承数据源时，已绑定专辑身份都不能回到默认 Recording 查询。
+    """
     meta = MetaMusic.from_music_info(MusicAlbumInfo(
         media_source="musicbrainz", media_id=GROUP, title="Record",
     ).to_music_info())
@@ -265,7 +292,9 @@ def test_bound_album_meta_routes_as_album_with_or_without_source_override(source
 
 
 def test_new_identity_fields_preserve_legacy_positional_constructors():
-    """补充事实只能新增关键字参数，插件既有位置参数不能被悄悄错位。"""
+    """
+    补充事实只能新增关键字参数，插件既有位置参数不能被悄悄错位。
+    """
     track = MusicInfo("musicbrainz", RECORDING, "recording", "Song", ["Artist"], [],
                       "Record", "Artist", GROUP, "Album", [], 2003)
     album = MusicAlbumInfo("musicbrainz", GROUP, "Record", ["Artist"])
@@ -275,8 +304,114 @@ def test_new_identity_fields_preserve_legacy_positional_constructors():
     assert album.artists == ["Artist"]
 
 
+def test_selected_release_overwrites_dirty_disc_structure(tmp_path):
+    """
+    手选发行版时线上碟数与曲序覆盖本地错标，单碟专辑不再多出 Disc 层。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=9, total_discs=2)
+    selected = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                         artists=["Artist"], album="Record",
+                         disc_number=1, track_number=1, total_tracks=10, total_discs=1,
+                         **IDENTITIES)
+
+    meta, info = TransferChain()._selected_music_task_context(
+        item, path, local, {str(path.resolve()): selected}, None,
+    )
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (1, 1, 10, 1)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (1, 1, 10, 1)
+    for key in ("disc_number", "track_number", "total_tracks", "total_discs"):
+        assert meta.field_sources[key] == "manual"
+
+
+def test_auto_match_keeps_local_disc_structure():
+    """
+    自动识别仍只在本地缺失时补位碟数与曲序，录音可能属于多个发行版。
+    """
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=9, total_discs=2)
+    recognized = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                           artists=["Artist"], album="Record",
+                           disc_number=1, track_number=1, total_tracks=10, total_discs=1,
+                           **IDENTITIES)
+
+    meta, info = TransferChain()._merge_music_track_context(local, recognized)
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (2, 5, 9, 2)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (2, 5, 9, 2)
+
+
+def test_selected_release_keeps_local_when_online_disc_fields_missing(tmp_path):
+    """
+    手选发行线上缺失碟数字段时只回填已有的曲序，本地值继续保留，不静默清零。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=9, total_discs=2)
+    selected = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                         artists=["Artist"], album="Record",
+                         track_number=1, total_tracks=10,
+                         **IDENTITIES)
+
+    meta, info = TransferChain()._selected_music_task_context(
+        item, path, local, {str(path.resolve()): selected}, None,
+    )
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (2, 1, 10, 2)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (2, 1, 10, 2)
+    assert meta.field_sources["track_number"] == "manual"
+    assert meta.field_sources.get("disc_number") != "manual"
+
+
+def test_selected_release_uses_per_medium_track_count(tmp_path):
+    """
+    多碟专辑的手选曲目曲数按所在碟计，本地按整专合计的曲数应被线上单碟曲数覆盖。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=18, total_discs=2)
+    selected = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                         artists=["Artist"], album="Record",
+                         disc_number=2, track_number=1, total_tracks=8, total_discs=2,
+                         **IDENTITIES)
+
+    meta, info = TransferChain()._selected_music_task_context(
+        item, path, local, {str(path.resolve()): selected}, None,
+    )
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (2, 1, 8, 2)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (2, 1, 8, 2)
+
+
+def test_selected_track_map_weak_title_dirty_position_misaligns(tmp_path, monkeypatch):
+    """
+    已知局限：弱曲名 + 无时长 + 错标曲序时，手选对位可能按位置误配另一曲。
+    该失败模式在 title/artists/album 覆盖上早已存在，本用例只锁定当前行为。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Track 1", track_number=2)
+    album = MusicBrainzModule._release_to_album(
+        _release_detail("release-weak", "Weak Album", "Artist", [("Alpha", 200), ("Beta", 200)])
+    )
+    monkeypatch.setattr(AudioMetadataHelper, "read_many", Mock(return_value=[local]))
+
+    selected, error = TransferChain()._selected_music_track_map([(item, True)], album)
+
+    assert error is None
+    assert list(selected) == [str(path.resolve())]
+    assert selected[str(path.resolve())].title == "Beta"
+
+
 def test_explicit_release_selection_replaces_stale_local_ids(tmp_path):
-    """手选发行不能留下另一个发行的标签 ID，实际音频参数仍来自当前文件。"""
+    """
+    手选发行不能留下另一个发行的标签 ID，实际音频参数仍来自当前文件。
+    """
     path = tmp_path / "03.flac"
     item = make_fileitem(str(path))
     local = MetaMusic(title="Old Song", album="Old Record", musicbrainz_release_id=GROUP,

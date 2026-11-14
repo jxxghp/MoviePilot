@@ -1,4 +1,5 @@
-"""``app.db`` 对外契约的边界。
+"""
+``app.db`` 对外契约的边界。
 
 ``__all__`` 是这个包唯一一份机器可读的对外承诺，而当前的写法**看起来像个疏漏**：
 ``SessionFactory`` / ``AsyncSessionFactory`` / ``ScopedSession`` 三个名字在
@@ -12,7 +13,6 @@
 所以这里同时钉两头：契约里没有它们，但包内的既有导入不能被这个决定误伤。
 """
 import app.db as db_package
-
 
 # 降级为内部实现细节的三个会话工厂
 INTERNAL_FACTORY_NAMES = ("SessionFactory", "AsyncSessionFactory", "ScopedSession")

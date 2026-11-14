@@ -1,4 +1,6 @@
-"""LLM Provider 运行时参数解析的唯一 owner。"""
+"""
+LLM Provider 运行时参数解析的唯一 owner。
+"""
 
 from __future__ import annotations
 
@@ -8,18 +10,26 @@ from app.runtime.log import logger
 
 
 class LLMProviderError(RuntimeError):
-    """通用 LLM provider 异常。"""
+    """
+    通用 LLM provider 异常。
+    """
 
 
 class LLMProviderAuthError(LLMProviderError):
-    """LLM provider 鉴权异常。"""
+    """
+    LLM provider 鉴权异常。
+    """
 
 
 class _ProviderRuntime:
-    """LLM Provider 运行时参数解析的唯一 owner。"""
+    """
+    LLM Provider 运行时参数解析的唯一 owner。
+    """
 
     def __getattr__(self, name: str) -> Any:
-        """将跨 owner 调用交给最终 Facade 的 MRO 解析。"""
+        """
+        将跨 owner 调用交给最终 Facade 的 MRO 解析。
+        """
         raise AttributeError(name)
 
     async def resolve_runtime(
@@ -89,10 +99,12 @@ class _ProviderRuntime:
 
         if normalized_provider_id == "chatgpt":
             auth = None
+            auth_error: Exception = LLMProviderAuthError("请提供 API Key 或完成 ChatGPT 授权")
             try:
                 auth = await self._resolve_chatgpt_oauth()
             except Exception as err:
-                logger.debug(f"解析 ChatGPT OAuth 鉴权失败，回退 API Key 模式: {err}")
+                auth_error = err
+                logger.debug(f"解析 ChatGPT OAuth 鉴权失败: {err}")
 
             if auth:
                 headers = {"originator": "moviepilot"}
@@ -128,7 +140,7 @@ class _ProviderRuntime:
                 )
                 return result
 
-            raise LLMProviderAuthError("请提供 API Key 或完成 ChatGPT 授权")
+            raise auth_error
 
         if normalized_provider_id == "github-copilot":
             auth = self.get_saved_auth("github-copilot")

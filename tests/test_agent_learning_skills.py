@@ -1,4 +1,6 @@
-"""个人学习技能的批次、写前读取和所有权语义回归。"""
+"""
+个人学习技能的批次、写前读取和所有权语义回归。
+"""
 
 import json
 
@@ -11,22 +13,30 @@ from app.agent.learning.skills import SkillLibrary, validate_document
 
 
 def document(name='workflow', body='检查输入，再执行，最后验证。'):
-    """生成最小但真实可加载的技能文档。"""
+    """
+    生成最小但真实可加载的技能文档。
+    """
     return f'---\nname: {name}\ndescription: 常规工作流程\n---\n{body}\n'
 
 
 def manage(library, *operations):
-    """经过真实工具参数模型执行技能批次。"""
+    """
+    经过真实工具参数模型执行技能批次。
+    """
     return library.manage(ManageSkillsInput(operations=list(operations)))
 
 
 def create(library, name='workflow'):
-    """初始化技能供所有权与失败回归使用。"""
+    """
+    初始化技能供所有权与失败回归使用。
+    """
     return manage(library, dict(action='create', name=name, content=document(name)))
 
 
 def test_batch_read_before_write_and_recovery(tmp_path):
-    """后台不能使用父对话读取痕迹，重复写冲突不会污染先前操作。"""
+    """
+    后台不能使用父对话读取痕迹，重复写冲突不会污染先前操作。
+    """
     library = SkillLibrary(tmp_path, background=True)
     create(library)
     path = tmp_path / 'workflow/SKILL.md'
@@ -45,12 +55,16 @@ def test_batch_read_before_write_and_recovery(tmp_path):
 
 
 def test_support_files_and_failed_batch_are_atomic(tmp_path, monkeypatch):
-    """写到一半的实际 I/O 故障回滚主文档、支持文件和所有权记录。"""
+    """
+    写到一半的实际 I/O 故障回滚主文档、支持文件和所有权记录。
+    """
     library = SkillLibrary(tmp_path, background=True)
     real_write = skills.write_text
 
     def fail_once(path, content):
-        """模拟最后的 sidecar 落盘失败，随后允许补偿写入。"""
+        """
+        模拟最后的 sidecar 落盘失败，随后允许补偿写入。
+        """
         if path.name == '.ownership.json':
             monkeypatch.setattr(skills, 'write_text', real_write)
             raise OSError('disk full')
@@ -68,7 +82,9 @@ def test_support_files_and_failed_batch_are_atomic(tmp_path, monkeypatch):
 
 
 def test_public_user_pinned_and_other_users_remain_protected(tmp_path):
-    """后台只能更新当前用户 agent 自建项，公共同名项不能被个人库覆盖。"""
+    """
+    后台只能更新当前用户 agent 自建项，公共同名项不能被个人库覆盖。
+    """
     public, alice, bob = (tmp_path / name for name in ('public', 'alice', 'bob'))
     create(SkillLibrary(public), 'shared')
     create(SkillLibrary(bob, background=True), 'bob-only')
@@ -90,7 +106,9 @@ def test_public_user_pinned_and_other_users_remain_protected(tmp_path):
 
 
 def test_manual_skill_foreground_edit_and_symlink_rejection(tmp_path):
-    """没有来源的手工技能允许前台维护，但不能跟随支持文件软链接。"""
+    """
+    没有来源的手工技能允许前台维护，但不能跟随支持文件软链接。
+    """
     root = tmp_path / 'personal'
     path = root / 'workflow/SKILL.md'
     path.parent.mkdir(parents=True)
@@ -106,7 +124,9 @@ def test_manual_skill_foreground_edit_and_symlink_rejection(tmp_path):
 
 
 def test_document_validation_and_field_shapes():
-    """不接受被解析器截断的描述或通过错误字段逃逸的权限声明。"""
+    """
+    不接受被解析器截断的描述或通过错误字段逃逸的权限声明。
+    """
     with pytest.raises(ValueError, match='预算'):
         validate_document('workflow', document().replace('常规工作流程', 'x' * 1025))
     with pytest.raises(ValueError, match='权限'):
@@ -116,7 +136,9 @@ def test_document_validation_and_field_shapes():
 
 
 def test_fuzzy_patch_preserves_unicode_and_refuses_ambiguity(tmp_path):
-    """排版差异匹配保留 Unicode；多义锚点仍拒绝写入。"""
+    """
+    排版差异匹配保留 Unicode；多义锚点仍拒绝写入。
+    """
     library = SkillLibrary(tmp_path)
     manage(library, dict(action='create', name='workflow', content=document(body='  使用“旧名称” — 校验\n重复\n重复')))
     manage(library, dict(action='patch', name='workflow', old_string='使用"旧名称" -- 校验', new_string='使用"新名称" -- 校验'))
@@ -126,7 +148,9 @@ def test_fuzzy_patch_preserves_unicode_and_refuses_ambiguity(tmp_path):
 
 
 def test_cancelled_commit_rolls_back_and_delete_cleanup_is_truthful(tmp_path, monkeypatch):
-    """取消不留下学习半成品，已完成删除的垃圾清理失败不能诱发重复执行。"""
+    """
+    取消不留下学习半成品，已完成删除的垃圾清理失败不能诱发重复执行。
+    """
     library = SkillLibrary(tmp_path, background=True)
     create(library)
     library.view('workflow')
@@ -134,7 +158,9 @@ def test_cancelled_commit_rolls_back_and_delete_cleanup_is_truthful(tmp_path, mo
     real_write = skills.write_text
 
     def cancel_after_write(path, content):
-        """在第一份文档落盘后注入前台取消。"""
+        """
+        在第一份文档落盘后注入前台取消。
+        """
         real_write(path, content)
         library.cancelled = lambda: True
 
@@ -146,7 +172,9 @@ def test_cancelled_commit_rolls_back_and_delete_cleanup_is_truthful(tmp_path, mo
     monkeypatch.setattr(skills, 'write_text', real_write)
 
     def fail_cleanup(_path):
-        """模拟隔离目录清理失败。"""
+        """
+        模拟隔离目录清理失败。
+        """
         raise OSError('busy')
 
     monkeypatch.setattr(skills.shutil, 'rmtree', fail_cleanup)
@@ -156,7 +184,9 @@ def test_cancelled_commit_rolls_back_and_delete_cleanup_is_truthful(tmp_path, mo
 
 
 def test_background_consolidation_archives_complete_package_and_restores(tmp_path):
-    """后台不能凭空裁剪技能，合并归档可恢复支持文件与来源且不能覆盖公共同名项。"""
+    """
+    后台不能凭空裁剪技能，合并归档可恢复支持文件与来源且不能覆盖公共同名项。
+    """
     root, public = tmp_path / 'personal', tmp_path / 'public'
     library = SkillLibrary(root, public_roots=(public,), background=True)
     create(library)
@@ -182,7 +212,9 @@ def test_background_consolidation_archives_complete_package_and_restores(tmp_pat
 
 
 def test_archive_failure_rolls_back_and_main_write_validates(tmp_path, monkeypatch):
-    """归档过程中取消恢复原包，主文档 write_file 仍检查完整前言和权限。"""
+    """
+    归档过程中取消恢复原包，主文档 write_file 仍检查完整前言和权限。
+    """
     library = SkillLibrary(tmp_path, background=True)
     create(library)
     create(library, 'umbrella')
@@ -192,7 +224,9 @@ def test_archive_failure_rolls_back_and_main_write_validates(tmp_path, monkeypat
     real_write = skills.write_text
 
     def cancel_after_archive_metadata(path, content):
-        """归档元数据写入后模拟前台取消，不破坏补偿写入。"""
+        """
+        归档元数据写入后模拟前台取消，不破坏补偿写入。
+        """
         real_write(path, content)
         library.cancelled = lambda: True
 

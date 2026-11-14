@@ -1,3 +1,7 @@
+"""
+验证媒体搜索的数据源下传、来源解析和旧格式兼容。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -25,7 +29,9 @@ from app.schemas.types import MediaSource, MediaType
 def test_media_search_endpoint_forwards_source(
     search_type: str, method_name: str, source: MediaSource
 ) -> None:
-    """媒体搜索接口应将合集和人物的数据源下传到处理链。"""
+    """
+    媒体搜索接口应将合集和人物的数据源下传到处理链。
+    """
     chain = Mock()
     search_method = AsyncMock(return_value=[])
     setattr(chain, method_name, search_method)
@@ -47,7 +53,9 @@ def test_media_search_endpoint_forwards_source(
 
 
 def test_media_search_endpoint_forwards_multi_source() -> None:
-    """媒体搜索接口应将逗号分隔来源解析为规范来源元组。"""
+    """
+    媒体搜索接口应将逗号分隔来源解析为规范来源元组。
+    """
     chain = Mock()
     chain.async_search = AsyncMock(return_value=(Mock(), []))
 
@@ -70,7 +78,9 @@ def test_media_search_endpoint_forwards_multi_source() -> None:
 
 @pytest.mark.anyio
 async def test_media_search_route_accepts_comma_separated_music_sources() -> None:
-    """真实路由在旧逗号格式兼容边界后应把每项转换为 MediaSource。"""
+    """
+    真实路由在旧逗号格式兼容边界后应把每项转换为 MediaSource。
+    """
     chain = Mock()
     chain.async_search_music = AsyncMock(return_value=[])
     app = FastAPI()
@@ -109,7 +119,9 @@ async def test_media_search_route_accepts_comma_separated_music_sources() -> Non
 
 @pytest.mark.anyio
 async def test_media_search_route_limits_untyped_music_search_to_recordings_and_albums() -> None:
-    """未指定音乐实体时，音乐搜索接口只应返回单曲和专辑候选。"""
+    """
+    未指定音乐实体时，音乐搜索接口只应返回单曲和专辑候选。
+    """
     chain = Mock()
     chain.async_search_music = AsyncMock(return_value=[])
     app = FastAPI()
@@ -137,7 +149,9 @@ async def test_media_search_route_limits_untyped_music_search_to_recordings_and_
 
 @pytest.mark.anyio
 async def test_person_search_keeps_musicbrainz_in_the_person_branch() -> None:
-    """演员/艺术家搜索选择 MusicBrainz 时不得被来源类型误分流到音乐列表。"""
+    """
+    演员/艺术家搜索选择 MusicBrainz 时不得被来源类型误分流到音乐列表。
+    """
     chain = Mock()
     chain.async_search_persons = AsyncMock(return_value=[])
     chain.async_search_music = AsyncMock(return_value=[])
@@ -165,7 +179,9 @@ async def test_person_search_keeps_musicbrainz_in_the_person_branch() -> None:
 
 @pytest.mark.anyio
 async def test_media_search_route_accepts_repeated_enum_sources() -> None:
-    """新客户端可用重复查询参数传入多个媒体来源枚举。"""
+    """
+    新客户端可用重复查询参数传入多个媒体来源枚举。
+    """
     chain = Mock()
     chain.async_search = AsyncMock(return_value=(Mock(), []))
     app = FastAPI()
@@ -195,7 +211,9 @@ async def test_media_search_route_accepts_repeated_enum_sources() -> None:
 
 @pytest.mark.anyio
 async def test_media_search_route_deduplicates_repeated_sources() -> None:
-    """重复来源参数应按首次出现顺序去重，避免同一模块重复搜索。"""
+    """
+    重复来源参数应按首次出现顺序去重，避免同一模块重复搜索。
+    """
     chain = Mock()
     chain.async_search = AsyncMock(return_value=(Mock(), []))
     app = FastAPI()
@@ -226,7 +244,9 @@ async def test_media_search_route_deduplicates_repeated_sources() -> None:
 
 @pytest.mark.anyio
 async def test_media_search_route_forwards_plugin_source() -> None:
-    """真实搜索路由应把插件扩展来源传入完整模块调度。"""
+    """
+    真实搜索路由应把插件扩展来源传入完整模块调度。
+    """
     chain = Mock()
     chain.async_search = AsyncMock(return_value=(Mock(), []))
     app = FastAPI()
@@ -260,7 +280,9 @@ async def test_media_search_route_forwards_plugin_source() -> None:
 def test_chain_forwards_source_to_modules(
     method_name: str, module_method_name: str
 ) -> None:
-    """处理链应将人物和合集的请求级数据源传递给媒体模块。"""
+    """
+    处理链应将人物和合集的请求级数据源传递给媒体模块。
+    """
     chain = Mock(spec=ChainBase)
     chain.async_run_module = AsyncMock(return_value=[])
 
@@ -281,7 +303,9 @@ def test_chain_forwards_source_to_modules(
 
 
 def test_tmdb_person_search_respects_explicit_source(monkeypatch) -> None:
-    """TMDB人物搜索应拒绝其他来源，并允许显式选择覆盖系统默认来源。"""
+    """
+    TMDB人物搜索应拒绝其他来源，并允许显式选择覆盖系统默认来源。
+    """
     monkeypatch.setattr("app.modules.themoviedb.settings.SEARCH_SOURCE", "douban")
     module = TheMovieDbModule()
     module.tmdb = Mock()
@@ -300,7 +324,9 @@ def test_tmdb_person_search_respects_explicit_source(monkeypatch) -> None:
 
 
 def test_douban_person_search_respects_explicit_source(monkeypatch) -> None:
-    """豆瓣人物搜索应拒绝其他来源，并允许显式选择覆盖系统默认来源。"""
+    """
+    豆瓣人物搜索应拒绝其他来源，并允许显式选择覆盖系统默认来源。
+    """
     monkeypatch.setattr(
         "app.modules.douban.settings.SEARCH_SOURCE", "themoviedb"
     )
@@ -321,7 +347,9 @@ def test_douban_person_search_respects_explicit_source(monkeypatch) -> None:
 
 
 def test_tmdb_collection_search_rejects_unsupported_source() -> None:
-    """TMDB合集搜索不应处理非TMDB来源请求。"""
+    """
+    TMDB合集搜索不应处理非TMDB来源请求。
+    """
     module = TheMovieDbModule()
     module.tmdb = Mock()
     module.tmdb.async_search_collections = AsyncMock(return_value=[])
@@ -335,7 +363,9 @@ def test_tmdb_collection_search_rejects_unsupported_source() -> None:
 
 
 def test_tmdb_collection_search_supports_multi_source_request() -> None:
-    """TMDB合集搜索应支持请求级多数据源枚举元组。"""
+    """
+    TMDB合集搜索应支持请求级多数据源枚举元组。
+    """
     module = TheMovieDbModule()
     module.tmdb = Mock()
     module.tmdb.async_search_collections = AsyncMock(return_value=[])
@@ -352,7 +382,9 @@ def test_tmdb_collection_search_supports_multi_source_request() -> None:
 
 
 def test_tmdb_media_search_supports_multi_source_request(monkeypatch) -> None:
-    """TMDB媒体搜索应支持请求级多数据源枚举元组。"""
+    """
+    TMDB媒体搜索应支持请求级多数据源枚举元组。
+    """
     monkeypatch.setattr("app.modules.themoviedb.settings.SEARCH_SOURCE", "douban")
     module = TheMovieDbModule()
     module.tmdb = Mock()
@@ -374,7 +406,9 @@ def test_tmdb_media_search_supports_multi_source_request(monkeypatch) -> None:
 
 
 def test_douban_media_search_supports_multi_source_request(monkeypatch) -> None:
-    """豆瓣媒体搜索应支持请求级多数据源枚举元组。"""
+    """
+    豆瓣媒体搜索应支持请求级多数据源枚举元组。
+    """
     monkeypatch.setattr("app.modules.douban.settings.SEARCH_SOURCE", "themoviedb")
     module = DoubanModule()
     module.doubanapi = Mock()
@@ -394,7 +428,9 @@ def test_douban_media_search_supports_multi_source_request(monkeypatch) -> None:
 
 
 def test_multi_source_request_keeps_missing_module_skipped(monkeypatch) -> None:
-    """请求级多数据源未包含的模块应跳过，避免无关模块参与搜索。"""
+    """
+    请求级多数据源未包含的模块应跳过，避免无关模块参与搜索。
+    """
     monkeypatch.setattr("app.modules.douban.settings.SEARCH_SOURCE", "themoviedb")
     module = DoubanModule()
     module.doubanapi = Mock()

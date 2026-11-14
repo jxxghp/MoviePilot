@@ -1,21 +1,22 @@
-"""2.2.4
-调整数据库索引，补充高频组合索引并移除冗余 id 索引
+"""
+2.2.4 调整数据库索引，补充高频组合索引并移除冗余 id 索引
 
-Revision ID: 93f8cb6a4d1e
-Revises: 58edfac72c32
-Create Date: 2026-05-09
+版本标识： 93f8cb6a4d1e
+前置版本： 58edfac72c32
+创建时间： 2026-05-09
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = "93f8cb6a4d1e"
 down_revision = "58edfac72c32"
 branch_labels = None
 depends_on = None
 
 
+# 主键已经提供查询能力，升级时可移除的重复单列 ID 索引。
 REDUNDANT_ID_INDEXES = {
     "downloadfiles": [("ix_downloadfiles_id", ["id"])],
     "downloadhistory": [("ix_downloadhistory_id", ["id"])],
@@ -37,6 +38,7 @@ REDUNDANT_ID_INDEXES = {
 }
 
 
+# 由本次组合索引替代的历史查询索引。
 DROP_INDEXES = {
     "plugindata": [
         ("ix_plugindata_plugin_id", ["plugin_id"]),
@@ -69,6 +71,7 @@ DROP_INDEXES = {
 }
 
 
+# 匹配高频查询条件和排序顺序的新组合索引。
 CREATE_INDEXES = {
     "plugindata": [
         ("ix_plugindata_plugin_id_key", ["plugin_id", "key"]),
@@ -111,6 +114,7 @@ CREATE_INDEXES = {
 }
 
 
+# 回退时恢复的旧查询索引，仍按实际存在字段检查。
 DOWNGRADE_RESTORE_INDEXES = {
     "plugindata": [
         ("ix_plugindata_plugin_id", ["plugin_id"]),
@@ -144,6 +148,9 @@ DOWNGRADE_RESTORE_INDEXES = {
 
 
 def _load_schema_state(inspector: sa.Inspector):
+    """
+    一次读取现有表、字段和索引定义，供本次索引迁移判断使用。
+    """
     tables = set(inspector.get_table_names())
     table_columns = {
         table_name: {
@@ -171,6 +178,9 @@ def _drop_index(
     tables: set[str],
     table_indexes: dict[str, dict[str, dict[str, object]]],
 ) -> None:
+    """
+    索引存在时删除，并同步更新迁移中的结构快照。
+    """
     if table_name not in tables:
         return
     if index_name not in table_indexes[table_name]:
@@ -187,6 +197,9 @@ def _drop_index_by_signature(
     expected_name: str | None = None,
     unique: bool = False,
 ) -> None:
+    """
+    优先删除指定名称的索引，否则按字段顺序和唯一性删除首个匹配索引。
+    """
     if table_name not in tables:
         return
 
@@ -207,6 +220,9 @@ def _has_index_signature(
     table_indexes: dict[str, dict[str, dict[str, object]]],
     unique: bool = False,
 ) -> bool:
+    """
+    按字段顺序和唯一性确认是否已存在等价索引。
+    """
     if table_name not in tables:
         return False
 
@@ -225,6 +241,9 @@ def _create_index(
     table_columns: dict[str, set[str]],
     table_indexes: dict[str, dict[str, dict[str, object]]],
 ) -> None:
+    """
+    仅在目标表和字段存在且没有等价索引时创建索引。
+    """
     if table_name not in tables:
         return
     if not set(columns).issubset(table_columns[table_name]):
@@ -241,7 +260,9 @@ def _create_index(
 
 
 def upgrade() -> None:
-    """以字段签名幂等替换 2.2.4 高频查询索引。"""
+    """
+    以字段签名幂等替换 2.2.4 高频查询索引。
+    """
     inspector = sa.inspect(op.get_bind())
     tables, table_columns, table_indexes = _load_schema_state(inspector)
 
@@ -280,7 +301,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除组合索引并恢复适用于当前表结构的旧索引。"""
+    """
+    移除组合索引并恢复适用于当前表结构的旧索引。
+    """
     inspector = sa.inspect(op.get_bind())
     tables, table_columns, table_indexes = _load_schema_state(inspector)
 

@@ -27,18 +27,24 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把整理历史表纳入用例级回收。"""
+    """
+    把整理历史表纳入用例级回收。
+    """
     db.watermark(TransferHistory)
 
 
 def _fileitem(path: str, storage: str = "local") -> schemas.FileItem:
-    """构造源文件项。"""
+    """
+    构造源文件项。
+    """
     return schemas.FileItem(storage=storage, path=path,
                             name=path.rsplit("/", 1)[-1], type="file")
 
 
 def _repository() -> TransactionalTransferHistoryRepository:
-    """构造类型化整理历史仓储。"""
+    """
+    构造类型化整理历史仓储。
+    """
     return TransactionalTransferHistoryRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -47,7 +53,9 @@ def _repository() -> TransactionalTransferHistoryRepository:
 
 def _transferinfo(dest: str = "/media/片名/Season 01/片名 - S01E02.mkv",
                   message: str = None, with_target: bool = True) -> schemas.TransferInfo:
-    """构造整理结果。"""
+    """
+    构造整理结果。
+    """
     target = _fileitem(dest) if with_target else None
     return schemas.TransferInfo(success=not message,
                                 fileitem=_fileitem("/downloads/片名.S01E02.2026.mkv"),
@@ -59,7 +67,9 @@ def _transferinfo(dest: str = "/media/片名/Season 01/片名 - S01E02.mkv",
 def _mediainfo(title: str = "识别标题", mtype: MediaType = MediaType.TV,
                year: str = "2026", category: str = "国产剧",
                media_id: str = "5566", episode_group: str = None) -> MediaInfo:
-    """构造识别结果。"""
+    """
+    构造识别结果。
+    """
     media = MediaInfo()
     media.type = mtype
     media.title = title
@@ -72,7 +82,6 @@ def _mediainfo(title: str = "识别标题", mtype: MediaType = MediaType.TV,
 
 
 # --------------------------------------------------------------------------- #
-# add_transfer_success
 # --------------------------------------------------------------------------- #
 
 def test_add_success_maps_every_field_onto_the_row(db):
@@ -108,7 +117,9 @@ def test_identified_transfer_history_persists_effective_classification(
     db,
     failed: bool,
 ) -> None:
-    """整理成功和已识别失败都必须保存最终分类的完整执行快照。"""
+    """
+    整理成功和已识别失败都必须保存最终分类的完整执行快照。
+    """
     oper = _repository()
     media = _mediainfo(category="不得作为真值")
     media.classification = ClassificationResult(
@@ -242,7 +253,6 @@ def test_add_success_falls_back_to_recognized_title(db):
 
 
 # --------------------------------------------------------------------------- #
-# add_transfer_fail
 # --------------------------------------------------------------------------- #
 
 def test_add_fail_records_the_transfer_error_message(db):

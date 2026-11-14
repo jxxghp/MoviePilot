@@ -32,17 +32,23 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _FakeResponse:
-    """测试用响应对象，模拟 requests/httpx 响应的最小接口。"""
+    """
+    测试用响应对象，模拟 requests/httpx 响应的最小接口。
+    """
 
     def __init__(self, payload, headers: dict = None):
-        """初始化响应内容。"""
+        """
+        初始化响应内容。
+        """
         self._payload = payload
         self.headers = headers or {}
         self.status_code = 200
         self.text = ""
 
     def json(self):
-        """返回预置JSON内容。"""
+        """
+        返回预置JSON内容。
+        """
         return self._payload
 
 
@@ -121,7 +127,9 @@ def test_async_request_retries_once_after_connection_failure(monkeypatch):
 
 
 def test_async_request_raises_connection_error_after_retry_exhausted(monkeypatch):
-    """异步请求重试一次后仍失败，应抛出 TMDbConnectionError，保持最终失败语义。"""
+    """
+    异步请求重试一次后仍失败，应抛出 TMDbConnectionError，保持最终失败语义。
+    """
     tmdb = TMDb()
 
     async def _fake_once(method, url, data, json):
@@ -238,7 +246,9 @@ def test_get_tv_detail_not_found_error_still_returns_none_even_with_flag():
 
 
 def test_async_get_info_propagates_connection_error_when_requested():
-    """异步版本的详情查询同样要支持连接失败的显式传播。"""
+    """
+    异步版本的详情查询同样要支持连接失败的显式传播。
+    """
     tmdb_api = TmdbApi()
     tmdb_api.movie.async_details = AsyncMock(
         side_effect=TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
@@ -251,7 +261,9 @@ def test_async_get_info_propagates_connection_error_when_requested():
 
 
 def test_async_get_info_swallows_connection_error_by_default():
-    """异步默认行为同样必须保持向后兼容。"""
+    """
+    异步默认行为同样必须保持向后兼容。
+    """
     tmdb_api = TmdbApi()
     tmdb_api.movie.async_details = AsyncMock(
         side_effect=TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
@@ -269,7 +281,9 @@ class _FakeTmdbApi:
     """
 
     def __init__(self, tv_outcome, movie_outcome):
-        """使用电视剧、电影两路各自的结果初始化。"""
+        """
+        使用电视剧、电影两路各自的结果初始化。
+        """
         self.tv_outcome = tv_outcome
         self.movie_outcome = movie_outcome
         self.calls = []
@@ -289,42 +303,60 @@ class _FakeTmdbApi:
         return None
 
     async def async_match_multi(self, name: str):
-        """异步版多类型匹配，语义同上。"""
+        """
+        异步版多类型匹配，语义同上。
+        """
         return None
 
     async def async_match_multi(self, name: str):
-        """异步版多类型匹配。"""
+        """
+        异步版多类型匹配。
+        """
         return self._multi_outcome()
 
     def get_info(self, mtype, tmdbid, raise_on_connection_error=False):
-        """同步查询：按mtype返回预置结果，忠实模拟 raise_on_connection_error 语义。"""
+        """
+        同步查询：按mtype返回预置结果，忠实模拟 raise_on_connection_error 语义。
+        """
         self.calls.append((mtype, raise_on_connection_error))
         outcome = self.tv_outcome if mtype == MediaType.TV else self.movie_outcome
         return self._resolve(outcome, raise_on_connection_error)
 
     async def async_get_info(self, mtype, tmdbid, raise_on_connection_error=False):
-        """异步查询：委托同步实现。"""
+        """
+        异步查询：委托同步实现。
+        """
         return self.get_info(mtype, tmdbid, raise_on_connection_error=raise_on_connection_error)
 
 
 class _CacheProbe:
-    """记录 update 调用参数，get 恒返回未命中，用于验证网络故障路径不会触碰缓存。"""
+    """
+    记录 update 调用参数，get 恒返回未命中，用于验证网络故障路径不会触碰缓存。
+    """
 
     def __init__(self):
-        """初始化调用记录列表。"""
+        """
+        初始化调用记录列表。
+        """
         self.update_calls = []
 
     def get(self, meta):
-        """始终返回缓存未命中。"""
+        """
+        始终返回缓存未命中。
+        """
         return {}
 
     def update(self, meta, info):
-        """记录写入尝试，供测试断言从未被调用或调用了哪些内容。"""
+        """
+        记录写入尝试，供测试断言从未被调用或调用了哪些内容。
+        """
         self.update_calls.append(info)
 
 
 def _build_module(tv_outcome, movie_outcome) -> TheMovieDbModule:
-    """构造绕开真实HTTP/缓存的 TheMovieDbModule 测试实例。"""
+    """
+    构造绕开真实HTTP/缓存的 TheMovieDbModule 测试实例。
+    """
     module = TheMovieDbModule()
     module.tmdb = _FakeTmdbApi(tv_outcome, movie_outcome)
     module.cache = _CacheProbe()
@@ -332,7 +364,9 @@ def _build_module(tv_outcome, movie_outcome) -> TheMovieDbModule:
 
 
 def _build_meta(tmdbid: int = 98865) -> MetaInfo:
-    """构造识别所需的最小元数据。"""
+    """
+    构造识别所需的最小元数据。
+    """
     meta = MetaInfo(title="测试标题")
     meta.tmdbid = tmdbid
     return meta
@@ -383,7 +417,9 @@ def test_get_info_by_tmdbid_prefers_positive_result_over_partial_connection_erro
 
 
 def test_async_get_info_by_tmdbid_raises_connection_error_when_both_types_fail_to_connect():
-    """异步版本同样要在两路都判定为连接失败时抛出 TMDbConnectionError。"""
+    """
+    异步版本同样要在两路都判定为连接失败时抛出 TMDbConnectionError。
+    """
     conn_err = TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
     module = _build_module(tv_outcome=conn_err, movie_outcome=conn_err)
 
@@ -448,7 +484,9 @@ def test_recognize_media_keeps_not_found_message_when_both_types_confirmed_absen
 def test_async_recognize_media_reports_network_error_message_and_skips_cache_on_connection_failure(
     monkeypatch,
 ):
-    """异步识别路径同样要区分网络故障文案，且不得写入缓存。"""
+    """
+    异步识别路径同样要区分网络故障文案，且不得写入缓存。
+    """
     conn_err = TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
     module = _build_module(tv_outcome=conn_err, movie_outcome=conn_err)
 

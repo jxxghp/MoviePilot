@@ -1,17 +1,22 @@
+"""
+验证通知消息队列、历史和事件流投递行为。
+"""
+
 import asyncio
 import json
 from unittest.mock import Mock
 
+from app.api.endpoints import message as message_endpoint
 from app.api.endpoints.message import clear_notification_message, get_notification_message
 from app.api.endpoints.system import get_message
+from app.application.messaging.message import _SSE_QUEUE_MAXSIZE, MessageHelper, MessageQueryService
 from app.chain.base import ChainBase
+from app.db.models.message import Message as MessageModel
+from app.db.oper.message import MessageOper
+from app.db.oper.systemconfig import SystemConfigOper
+from app.db.session import AsyncSessionFactory, SessionFactory
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.db.session import AsyncSessionFactory, SessionFactory
-from app.db.oper.message import MessageOper
-from app.db.models.message import Message as MessageModel
-from app.db.oper.systemconfig import SystemConfigOper
-from app.application.messaging.message import _SSE_QUEUE_MAXSIZE, MessageHelper, MessageQueryService
 from app.schemas.message import Message, MessageClearScope
 from app.schemas.types import MediaType, MessageType, SystemConfigKey
 
@@ -194,6 +199,9 @@ def test_sse_endpoint_flushes_backlog_in_one_tick() -> None:
 
     class _ConnectedRequest:
         async def is_disconnected(self) -> bool:
+            """
+            始终保持连接，确保测试可完整消费积压事件。
+            """
             return False
 
     async def _read_backlog() -> list[str]:
@@ -210,6 +218,20 @@ def test_sse_endpoint_flushes_backlog_in_one_tick() -> None:
     texts = [json.loads(frame.removeprefix("data: ").strip())["text"] for frame in frames]
     assert texts == [f"重连积压 {index}" for index in range(3)]
     assert helper.get() is None
+
+
+def test_incoming_verify_log_omits_token(monkeypatch) -> None:
+    """
+    回调验证日志只记录排查所需的参数，不输出 token。
+    """
+    logged: list[str] = []
+    monkeypatch.setattr(message_endpoint.logger, "info", lambda msg, *args, **kwargs: logged.append(str(msg)))
+
+    result = message_endpoint.incoming_verify(token="callback-token-value", source="vocechat")
+
+    assert result == {"status": "OK"}
+    assert logged
+    assert all("callback-token-value" not in line for line in logged)
 
 
 def test_agent_helper_message_does_not_enter_sse_queue() -> None:

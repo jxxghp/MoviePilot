@@ -1,12 +1,11 @@
-"""与传输框架无关的令牌、密码和对称加密能力。"""
+"""
+与传输框架无关的令牌、密码和对称加密能力。
+"""
 
 import base64
 import datetime
 import hashlib
-import hmac
 import importlib
-import json
-import os
 import traceback
 from datetime import timedelta
 from typing import Any, Optional, Union
@@ -27,7 +26,9 @@ ALGORITHM = "HS256"
 
 
 def _token_config() -> TokenRuntimeConfig:
-    """读取启动快照；未装配时保留旧插件的独立调用兼容。"""
+    """
+    读取启动快照；未装配时保留旧插件的独立调用兼容。
+    """
     try:
         return get_token_runtime_config()
     except RuntimeError:
@@ -43,11 +44,15 @@ def _token_config() -> TokenRuntimeConfig:
 
 
 class PasswordTooLongError(ValueError):
-    """密码的 UTF-8 字节长度超过 bcrypt 可安全处理的上限。"""
+    """
+    密码的 UTF-8 字节长度超过 bcrypt 可安全处理的上限。
+    """
 
 
 class TokenValidationError(ValueError):
-    """令牌缺失、签名无效或用途不符合调用方要求。"""
+    """
+    令牌缺失、签名无效或用途不符合调用方要求。
+    """
 
 
 def _encode_bcrypt_password(
@@ -55,7 +60,9 @@ def _encode_bcrypt_password(
     *,
     allow_legacy_truncation: bool = False,
 ) -> bytes:
-    """编码 bcrypt 密码；仅验证既有哈希时允许按历史语义截断。"""
+    """
+    编码 bcrypt 密码；仅验证既有哈希时允许按历史语义截断。
+    """
     password_bytes = password.encode("utf-8")
     if len(password_bytes) > BCRYPT_PASSWORD_MAX_BYTES:
         if allow_legacy_truncation:
@@ -73,8 +80,26 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None,
     level: Optional[int] = 1,
     purpose: Optional[str] = "authentication",
+    agent_channel: Optional[str] = None,
+    agent_channel_user: Optional[str] = None,
 ) -> str:
-    """创建带身份、权限等级和用途声明的 JWT 访问令牌。"""
+    """
+    创建带身份、权限等级和用途声明的 JWT 访问令牌。
+
+    宿主 Agent 代渠道用户调用内部 API 时，可把发起会话的渠道及渠道用户标识写入签名声明；
+    两项需同时提供且令牌用途为认证时才会写入，资源令牌不携带这组声明。
+
+    :param userid: 令牌主体的 MoviePilot 用户 ID
+    :param username: 令牌主体的用户名
+    :param super_user: 是否为超级用户
+    :param expires_delta: 自定义有效期；None 时按用途使用默认有效期
+    :param level: 权限级别
+    :param purpose: 令牌用途，authentication 或 resource
+    :param agent_channel: 宿主 Agent 会话所属的消息渠道
+    :param agent_channel_user: 发起该会话的用户在渠道内的原始标识
+    :return: 已签名的 JWT 字符串
+    :raises ValueError: 自定义有效期不是正数
+    """
     config = _token_config()
     if purpose == "resource":
         default_expire = timedelta(
@@ -102,14 +127,20 @@ def create_access_token(
         "level": level,
         "purpose": purpose,
     }
-    return jwt.encode(payload, secret_key, algorithm=ALGORITHM)
+    if purpose == "authentication" and agent_channel and agent_channel_user:
+        payload["agent_channel"] = agent_channel
+        payload["agent_channel_user"] = agent_channel_user
+    encoded: str = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
+    return encoded
 
 
 def decode_access_token(
     token: str | None,
     purpose: str = "authentication",
 ) -> TokenPayload:
-    """校验 JWT 签名和用途并返回框架无关的令牌载荷。"""
+    """
+    校验 JWT 签名和用途并返回框架无关的令牌载荷。
+    """
     config = _token_config()
     if not token:
         raise TokenValidationError(f"{purpose} token not found")
@@ -133,48 +164,64 @@ def decode_access_token(
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证既有 bcrypt 哈希，并保留超长历史密码的截断语义。"""
+    """
+    验证既有 bcrypt 哈希，并保留超长历史密码的截断语义。
+    """
     try:
-        return bcrypt.checkpw(
+        verified: bool = bcrypt.checkpw(
             _encode_bcrypt_password(
                 plain_password,
                 allow_legacy_truncation=True,
             ),
             hashed_password.encode("ascii"),
         )
+        return verified
     except (UnicodeEncodeError, ValueError):
         return False
 
 
 def get_password_hash(password: str) -> str:
-    """使用 ``$2b$`` 前缀和 cost 12 生成可持久化的 bcrypt 哈希。"""
-    return bcrypt.hashpw(
+    """
+    使用 ``$2b$`` 前缀和 cost 12 生成可持久化的 bcrypt 哈希。
+    """
+    hashed: bytes = bcrypt.hashpw(
         _encode_bcrypt_password(password),
         bcrypt.gensalt(rounds=BCRYPT_ROUNDS, prefix=b"2b"),
-    ).decode("ascii")
+    )
+    return hashed.decode("ascii")
 
 
 def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
-    """使用 Fernet 解密二进制数据，失败时记录诊断并返回空值。"""
+    """
+    使用 Fernet 解密二进制数据，失败时记录诊断并返回空值。
+    """
     try:
-        return Fernet(key).decrypt(data)
+        decrypted: bytes = Fernet(key).decrypt(data)
+        return decrypted
     except Exception as error:
         logger.error(f"解密失败：{str(error)} - {traceback.format_exc()}")
         return None
 
 
 def encrypt_message(message: str, key: bytes) -> str:
-    """使用 Fernet 加密文本并返回可传输字符串。"""
-    return Fernet(key).encrypt(message.encode()).decode()
+    """
+    使用 Fernet 加密文本并返回可传输字符串。
+    """
+    encrypted: str = Fernet(key).encrypt(message.encode()).decode()
+    return encrypted
 
 
 def hash_sha256(message: str) -> str:
-    """返回文本的 SHA-256 十六进制摘要。"""
+    """
+    返回文本的 SHA-256 十六进制摘要。
+    """
     return hashlib.sha256(message.encode()).hexdigest()
 
 
 def aes_decrypt(data: str, key: str) -> str:
-    """按历史 AES-256-CBC 合同解密 Base64 文本。"""
+    """
+    按历史 AES-256-CBC 合同解密 Base64 文本。
+    """
     if not data:
         return ""
     raw_data = base64.b64decode(data)
@@ -189,32 +236,13 @@ def aes_decrypt(data: str, key: str) -> str:
 
 
 def aes_encrypt(data: str, key: str) -> str:
-    """按历史 AES-256-CBC 合同加密文本并返回 Base64 字符串。"""
+    """
+    按历史 AES-256-CBC 合同加密文本并返回 Base64 字符串。
+    """
     if not data:
         return ""
     cipher = AES.new(key.encode("utf-8"), AES.MODE_CBC)
-    padding = AES.block_size - len(data) % AES.block_size
-    padded = data + chr(padding) * padding
-    result = cipher.encrypt(padded.encode("utf-8"))
-    return base64.b64encode(cipher.iv + result).decode("utf-8")
-
-
-def nexusphp_encrypt(data_str: str, key: bytes) -> str:
-    """生成 NexusPHP 兼容的 AES-CBC 加密载荷。"""
-    iv = os.urandom(16)
-    iv_base64 = base64.b64encode(iv)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    ciphertext = cipher.encrypt(pad(data_str.encode(), AES.block_size))
-    ciphertext_base64 = base64.b64encode(ciphertext)
-    mac = hmac.new(
-        key,
-        msg=iv_base64 + ciphertext_base64,
-        digestmod=hashlib.sha256,
-    ).hexdigest()
-    payload = json.dumps({
-        "iv": iv_base64.decode(),
-        "value": ciphertext_base64.decode(),
-        "mac": mac,
-        "tag": "",
-    })
-    return base64.b64encode(payload.encode()).decode()
+    # CBC 按字节分块；先编码再填充，保留 ASCII 密文并支持多字节文本。
+    encoded = data.encode("utf-8")
+    result = cipher.encrypt(pad(encoded, AES.block_size))
+    return base64.b64encode(bytes(cipher.iv) + result).decode("utf-8")

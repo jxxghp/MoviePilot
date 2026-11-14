@@ -1,3 +1,7 @@
+"""
+提供本地命令行的服务管理与安装入口。
+"""
+
 import hashlib
 import json
 import os
@@ -8,7 +12,7 @@ import sys
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, get_args, get_origin
+from typing import Any, Dict, Iterable, Literal, Optional, Union, get_args, get_origin
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -56,29 +60,46 @@ PREPARED_UPDATE_STATE = PREPARED_UPDATE_ROOT / "state.json"
 
 
 def _repo_root() -> Path:
-    return get_runtime_setting("ROOT_PATH")
+    """
+    返回后端仓库根目录。
+    """
+    root: Path = get_runtime_setting("ROOT_PATH")
+    return root
 
 
 def _read_json_file(path: Path) -> Optional[Dict[str, Any]]:
+    """
+    读取 JSON 状态文件，文件不存在或读取失败时返回空值。
+    """
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        return payload if isinstance(payload, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
 
 
 def _write_json_file(path: Path, payload: Dict[str, Any]) -> None:
+    """
+    创建父目录并写入格式化的 JSON 状态。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _clear_json_file(path: Path) -> None:
+    """
+    删除已有的 JSON 状态文件。
+    """
     if path.exists():
         path.unlink()
 
 
 def _get_process(runtime: Optional[Dict[str, Any]] = None) -> Optional[psutil.Process]:
+    """
+    根据记录的进程编号和创建时间确认受管进程身份。
+    """
     runtime = runtime or {}
     pid = runtime.get("pid")
     create_time = runtime.get("create_time")
@@ -102,6 +123,9 @@ def _get_process(runtime: Optional[Dict[str, Any]] = None) -> Optional[psutil.Pr
 
 
 def _client_host(host: Optional[str]) -> str:
+    """
+    把服务监听地址转换为本机客户端可访问的地址。
+    """
     host = (host or "").strip()
     if host in LOCAL_HOSTS:
         return "127.0.0.1"
@@ -109,14 +133,23 @@ def _client_host(host: Optional[str]) -> str:
 
 
 def _backend_runtime() -> Optional[Dict[str, Any]]:
+    """
+    读取受管后端的运行状态。
+    """
     return _read_json_file(BACKEND_RUNTIME_FILE)
 
 
 def _frontend_runtime() -> Optional[Dict[str, Any]]:
+    """
+    读取受管前端的运行状态。
+    """
     return _read_json_file(FRONTEND_RUNTIME_FILE)
 
 
 def _backend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
+    """
+    根据后端运行配置构造本地服务地址。
+    """
     runtime = runtime or _backend_runtime() or {}
     host = runtime.get("host") or get_runtime_setting("HOST")
     port = runtime.get("port") or get_runtime_setting("PORT")
@@ -124,6 +157,9 @@ def _backend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
 
 
 def _frontend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
+    """
+    根据前端运行配置构造本地服务地址。
+    """
     runtime = runtime or _frontend_runtime() or {}
     host = runtime.get("host") or get_runtime_setting("HOST")
     port = runtime.get("port") or get_runtime_setting("NGINX_PORT")
@@ -131,8 +167,12 @@ def _frontend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
 
 
 def _runtime_api_token(runtime: Optional[Dict[str, Any]] = None) -> str:
+    """
+    从运行记录或当前配置读取本地 API 凭据。
+    """
     runtime = runtime or _backend_runtime() or {}
-    return runtime.get("api_token") or get_runtime_setting("API_TOKEN")
+    api_token: str = runtime.get("api_token") or get_runtime_setting("API_TOKEN")
+    return api_token
 
 
 def _http_request(
@@ -145,6 +185,9 @@ def _http_request(
     timeout: float = 5.0,
     runtime: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    """
+    调用本地 HTTP 接口并整理响应或连接错误。
+    """
     url = f"{_backend_base_url(runtime)}{path}"
     if params:
         query = urlencode(params, doseq=True)
@@ -185,6 +228,9 @@ def _http_request(
 def _backend_health(
     runtime: Optional[Dict[str, Any]] = None, timeout: float = 2.0
 ) -> tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    探测后端健康状态并返回响应数据。
+    """
     try:
         response = _http_request(
             "GET",
@@ -207,6 +253,9 @@ def _backend_health(
 def _frontend_health(
     runtime: Optional[Dict[str, Any]] = None, timeout: float = 2.0
 ) -> tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    探测前端版本接口是否可用。
+    """
     runtime = runtime or _frontend_runtime() or {}
     url = f"{_frontend_base_url(runtime)}{FRONTEND_HEALTH_PATH}"
     request = Request(url=url, headers={"Accept": "text/plain"}, method="GET")
@@ -219,6 +268,9 @@ def _frontend_health(
 
 
 def _warn(message: str) -> None:
+    """
+    向终端输出黄色警告。
+    """
     click.secho(message, fg="yellow")
 
 
@@ -231,6 +283,9 @@ def _release_prefix(version: Optional[str]) -> str:
 
 
 def _git_current_branch() -> Optional[str]:
+    """
+    读取仓库当前分支，读取失败时返回空值。
+    """
     try:
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -243,13 +298,18 @@ def _git_current_branch() -> Optional[str]:
 
 
 def _requested_update_mode() -> str:
-    """仅消费用户明确发起的一次性 Dev 更新请求。"""
+    """
+    仅消费用户明确发起的一次性 Dev 更新请求。
+    """
     if SystemHelper.consume_one_shot_dev_update():
         return "dev"
     return "false"
 
 
 def _file_sha256(path: Path) -> str:
+    """
+    分块计算文件内容的 SHA256 摘要。
+    """
     digest = hashlib.sha256()
     with path.open("rb") as file_handle:
         for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
@@ -258,6 +318,9 @@ def _file_sha256(path: Path) -> str:
 
 
 def _mark_prepared_update_failed(message: str) -> None:
+    """
+    把预备更新状态标记为失败并保存原因。
+    """
     state = _read_json_file(PREPARED_UPDATE_STATE) or {}
     state.update(
         {
@@ -282,7 +345,9 @@ def _mark_prepared_update_failed(message: str) -> None:
 
 
 def _prepared_update_targets(manifest: Dict[str, Any]) -> set[str]:
-    """解析安装清单中的升级类型，并兼容旧版仅含主程序字段的清单。"""
+    """
+    解析安装清单中的升级类型，并兼容旧版仅含主程序字段的清单。
+    """
     targets = {
         str(target)
         for target in manifest.get("targets", [])
@@ -294,7 +359,9 @@ def _prepared_update_targets(manifest: Dict[str, Any]) -> set[str]:
 
 
 def _validate_prepared_resource_files(manifest: Dict[str, Any]) -> Path:
-    """校验完整资源包，并返回可供 local_setup 离线安装的目录。"""
+    """
+    校验完整资源包，并返回可供 local_setup 离线安装的目录。
+    """
     resource_files = manifest.get("resource_files")
     if not isinstance(resource_files, list) or not resource_files:
         raise RuntimeError("站点资源更新清单为空")
@@ -327,7 +394,9 @@ def _validate_prepared_resource_files(manifest: Dict[str, Any]) -> Path:
 
 
 def _consume_prepared_target(target: str) -> None:
-    """从持久化下载清单移除已应用目标，保留另一类待安装制品。"""
+    """
+    从持久化下载清单移除已应用目标，保留另一类待安装制品。
+    """
     prepared = _read_json_file(PREPARED_DOWNLOAD_MANIFEST)
     if not prepared:
         return
@@ -362,7 +431,9 @@ def _consume_prepared_target(target: str) -> None:
 
 
 def _local_update_env() -> dict[str, str]:
-    """构造本地更新子进程使用的包缓存、代理和认证环境。"""
+    """
+    构造本地更新子进程使用的包缓存、代理和认证环境。
+    """
     update_env = os.environ.copy()
     package_cache_root = Path(
         update_env.get("PACKAGE_CACHE_ROOT", "").strip() or get_runtime_setting("PACKAGE_CACHE_PATH")
@@ -381,7 +452,9 @@ def _local_update_env() -> dict[str, str]:
 
 
 def _apply_prepared_release_update() -> bool:
-    """本地 CLI 重启时按清单顺序离线安装主程序和完整资源包。"""
+    """
+    本地 CLI 重启时按清单顺序离线安装主程序和完整资源包。
+    """
     manifest = _read_json_file(PREPARED_UPDATE_MANIFEST)
     if not manifest:
         return False
@@ -479,7 +552,9 @@ def _apply_prepared_release_update() -> bool:
 
 
 def _resolve_dev_update_target(mode: str) -> Optional[str]:
-    """跟踪当前开发分支，并为 Release 检出的 detached HEAD 选择主版本分支。"""
+    """
+    跟踪当前开发分支，并为 Release 检出的 detached HEAD 选择主版本分支。
+    """
     if mode != "dev":
         return None
     backend_prefix = _release_prefix(get_app_version())
@@ -492,7 +567,9 @@ def _resolve_dev_update_target(mode: str) -> Optional[str]:
 
 
 def _apply_requested_update() -> None:
-    """应用用户已确认的安装包或一次性 Dev 更新，失败后恢复当前服务。"""
+    """
+    应用用户已确认的安装包或一次性 Dev 更新，失败后恢复当前服务。
+    """
     if _apply_prepared_release_update():
         return
 
@@ -557,9 +634,13 @@ def _ensure_frontend_not_running_alone(timeout: int) -> None:
         _stop_frontend_service(timeout=timeout, force=True)
 
 
-def _managed_backend_status() -> tuple[
-    str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]
+def _managed_backend_status() -> Union[
+    tuple[Literal["running", "starting"], Optional[Dict[str, Any]], psutil.Process, Optional[Dict[str, Any]]],
+    tuple[Literal["stopped", "running-unmanaged"], None, None, Optional[Dict[str, Any]]],
 ]:
+    """
+    汇总受管后端的进程身份和健康状态。
+    """
     runtime = _backend_runtime()
     process = _get_process(runtime)
     if process:
@@ -577,9 +658,13 @@ def _managed_backend_status() -> tuple[
     return "stopped", None, None, None
 
 
-def _managed_frontend_status() -> tuple[
-    str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]
+def _managed_frontend_status() -> Union[
+    tuple[Literal["running", "starting"], Optional[Dict[str, Any]], psutil.Process, Optional[Dict[str, Any]]],
+    tuple[Literal["stopped", "running-unmanaged"], None, None, Optional[Dict[str, Any]]],
 ]:
+    """
+    汇总受管前端的进程身份和健康状态。
+    """
     runtime = _frontend_runtime()
     process = _get_process(runtime)
     if process:
@@ -598,6 +683,9 @@ def _managed_frontend_status() -> tuple[
 
 
 def _mask_value(key: str, value: Any, show_secrets: bool = False) -> Any:
+    """
+    按敏感字段名称遮盖终端输出中的配置值。
+    """
     is_secret = key in MASKED_FIELDS or key.endswith(MASKED_SUFFIXES)
     if show_secrets or not is_secret:
         return value
@@ -607,12 +695,18 @@ def _mask_value(key: str, value: Any, show_secrets: bool = False) -> Any:
 
 
 def _format_value(value: Any) -> str:
+    """
+    把配置值转换为适合终端显示的文本。
+    """
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     return "" if value is None else str(value)
 
 
 def _field_default(field: Any) -> Any:
+    """
+    读取配置模型字段的默认值。
+    """
     default_factory = getattr(field, "default_factory", None)
     if default_factory is not None:
         try:
@@ -623,10 +717,14 @@ def _field_default(field: Any) -> Any:
 
 
 def _annotation_name(annotation: Any) -> str:
+    """
+    生成类型标注的可读名称。
+    """
     origin = get_origin(annotation)
     if origin is None:
         if hasattr(annotation, "__name__"):
-            return annotation.__name__
+            name: str = annotation.__name__
+            return name
         return str(annotation).replace("typing.", "")
 
     args = [arg for arg in get_args(annotation) if arg is not type(None)]
@@ -645,6 +743,9 @@ def _annotation_name(annotation: Any) -> str:
 
 
 def _tail_lines(path: Path, count: int) -> list[str]:
+    """
+    读取文件末尾指定数量的行。
+    """
     if not path.exists():
         raise click.ClickException(f"日志文件不存在：{path}")
     with path.open("r", encoding="utf-8", errors="replace") as handle:
@@ -652,6 +753,9 @@ def _tail_lines(path: Path, count: int) -> list[str]:
 
 
 def _follow_file(path: Path) -> None:
+    """
+    持续读取并输出日志文件新增内容。
+    """
     if not path.exists():
         raise click.ClickException(f"日志文件不存在：{path}")
 
@@ -666,10 +770,16 @@ def _follow_file(path: Path) -> None:
 
 
 def _print_json(value: Any) -> None:
+    """
+    向终端输出格式化的 JSON 数据。
+    """
     click.echo(json.dumps(value, ensure_ascii=False, indent=2))
 
 
 def _parse_tool_result(result: Any) -> Any:
+    """
+    解析工具返回的 JSON 文本，普通文本保持原样。
+    """
     if not isinstance(result, str):
         return result
     try:
@@ -679,13 +789,32 @@ def _parse_tool_result(result: Any) -> Any:
 
 
 def _tool_request_headers(runtime: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """
+    使用本地 API_TOKEN 认证工具请求，缺少配置时明确报错。
+    """
     api_token = _runtime_api_token(runtime)
     if not api_token:
         raise click.ClickException("本地配置中未找到 API_TOKEN，请先配置后再使用 tool/scheduler 命令")
     return {"X-API-KEY": api_token}
 
 
+def _tool_response_data(response: Dict[str, Any], error_message: str) -> Any:
+    """
+    校验工具 REST 响应并解包；错误只显示原因，避免倾倒大体积响应。
+    """
+    payload = response.get("json")
+    if not isinstance(payload, dict):
+        raise click.ClickException(f"{error_message}（HTTP {response['status']}，响应格式错误）")
+    if response["status"] not in {200, 201} or "success" not in payload:
+        message = payload.get("message") or payload.get("error") or payload.get("detail")
+        raise click.ClickException(message or f"{error_message}（HTTP {response['status']}）")
+    return _unwrap_api_data(payload)
+
+
 def _call_tool(tool_name: str, arguments: Dict[str, Any], runtime: Optional[Dict[str, Any]] = None) -> Any:
+    """
+    解包 REST 的 data.result，再解析工具自身的文本或业务响应。
+    """
     response = _http_request(
         "POST",
         "/api/v1/mcp/tools/call",
@@ -694,16 +823,16 @@ def _call_tool(tool_name: str, arguments: Dict[str, Any], runtime: Optional[Dict
         timeout=30.0,
         runtime=runtime,
     )
-    payload = response.get("json") or {}
-    if response["status"] not in {200, 201}:
-        message = payload.get("error") or payload.get("detail") or response["text"] or "调用工具失败"
-        raise click.ClickException(message)
-    if not payload.get("success"):
-        raise click.ClickException(payload.get("error") or "调用工具失败")
-    return _parse_tool_result(payload.get("result"))
+    data = _tool_response_data(response, "调用工具失败")
+    if not isinstance(data, dict) or not isinstance(data.get("result"), str):
+        raise click.ClickException("调用工具失败：响应缺少有效的 data.result")
+    return _parse_tool_result(data["result"])
 
 
 def _load_tool(tool_name: str, runtime: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    读取统一 REST 信封中的工具详情，并保留工具不存在的错误提示。
+    """
     response = _http_request(
         "GET",
         f"/api/v1/mcp/tools/{tool_name}",
@@ -713,12 +842,16 @@ def _load_tool(tool_name: str, runtime: Optional[Dict[str, Any]] = None) -> Dict
     )
     if response["status"] == 404:
         raise click.ClickException(f"工具不存在：{tool_name}")
-    if response["status"] != 200 or not isinstance(response.get("json"), dict):
-        raise click.ClickException(response["text"] or f"获取工具失败（HTTP {response['status']}）")
-    return response["json"]
+    data = _tool_response_data(response, "获取工具失败")
+    if not isinstance(data, dict):
+        raise click.ClickException("获取工具失败：响应 data 不是工具对象")
+    return data
 
 
 def _load_tools(runtime: Optional[Dict[str, Any]] = None) -> list[Dict[str, Any]]:
+    """
+    读取统一 REST 信封中的工具列表，空列表保持合法。
+    """
     response = _http_request(
         "GET",
         "/api/v1/mcp/tools",
@@ -726,12 +859,16 @@ def _load_tools(runtime: Optional[Dict[str, Any]] = None) -> list[Dict[str, Any]
         timeout=10.0,
         runtime=runtime,
     )
-    if response["status"] != 200 or not isinstance(response.get("json"), list):
-        raise click.ClickException(response["text"] or f"获取工具列表失败（HTTP {response['status']}）")
-    return response["json"]
+    data = _tool_response_data(response, "获取工具列表失败")
+    if not isinstance(data, list):
+        raise click.ClickException("获取工具列表失败：响应 data 不是工具列表")
+    return data
 
 
 def _normalize_type(schema: Optional[Dict[str, Any]]) -> str:
+    """
+    解析配置字段类型标注以便处理输入值。
+    """
     schema = schema or {}
     if schema.get("type"):
         return str(schema["type"])
@@ -742,6 +879,9 @@ def _normalize_type(schema: Optional[Dict[str, Any]]) -> str:
 
 
 def _format_tool_detail(tool: Dict[str, Any]) -> None:
+    """
+    展示工具定义及参数的必填标记，供 CLI 用户构造调用。
+    """
     click.echo(f"Command: {tool.get('name')}")
     click.echo(f"Description: {tool.get('description') or '(none)'}")
     click.echo("")
@@ -769,7 +909,9 @@ def _format_tool_detail(tool: Dict[str, Any]) -> None:
 
 
 def _parse_tool_argument_value(value: str) -> Any:
-    """解析工具参数中的结构化 JSON，同时保留普通字符串语义。"""
+    """
+    解析工具参数中的结构化 JSON，同时保留普通字符串语义。
+    """
     stripped = value.strip()
     if (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]")):
         try:
@@ -782,7 +924,9 @@ def _parse_tool_argument_value(value: str) -> Any:
 
 
 def _parse_key_value_pairs(items: Iterable[str]) -> Dict[str, Any]:
-    """解析 tool run 的 key=value 参数，并支持对象、数组和布尔 JSON。"""
+    """
+    解析 tool run 的 key=value 参数，并支持对象、数组和布尔 JSON。
+    """
     payload: Dict[str, Any] = {}
     for item in items:
         if "=" not in item:
@@ -796,7 +940,9 @@ def _parse_key_value_pairs(items: Iterable[str]) -> Dict[str, Any]:
 
 
 def _unwrap_api_data(result: Any) -> Any:
-    """从结构化 MoviePilot API 响应中提取 data。"""
+    """
+    从结构化 MoviePilot API 响应中提取 data。
+    """
     if not isinstance(result, dict) or "success" not in result:
         return result
     if not result.get("success"):
@@ -805,6 +951,9 @@ def _unwrap_api_data(result: Any) -> Any:
 
 
 def _ensure_local_api_token() -> bool:
+    """
+    确认本地服务管理所需的 API 凭据可用。
+    """
     if get_runtime_setting("API_TOKEN") and len(str(get_runtime_setting("API_TOKEN")).strip()) >= 16:
         return False
 
@@ -822,7 +971,10 @@ def _spawn_process(
     cwd: Path,
     log_file: Optional[Path],
     env: Optional[Dict[str, str]] = None,
-) -> subprocess.Popen:
+) -> subprocess.Popen[bytes]:
+    """
+    启动受管子进程并将输出写入指定日志。
+    """
     kwargs: Dict[str, Any] = {
         "cwd": str(cwd),
         "stdin": subprocess.DEVNULL,
@@ -837,14 +989,17 @@ def _spawn_process(
     else:
         kwargs["stdout"] = subprocess.DEVNULL
         kwargs["stderr"] = subprocess.DEVNULL
-    if os.name == "nt":
+    if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     else:
         kwargs["start_new_session"] = True
     return subprocess.Popen(command, **kwargs)
 
 
-def _spawn_backend_process(*, safe: bool = False) -> subprocess.Popen:
+def _spawn_backend_process(*, safe: bool = False) -> subprocess.Popen[bytes]:
+    """
+    构造后端启动命令并创建受管进程。
+    """
     backend_env = {
         **os.environ,
         "PYTHONUNBUFFERED": "1",
@@ -865,6 +1020,9 @@ def _spawn_backend_process(*, safe: bool = False) -> subprocess.Popen:
 
 
 def _frontend_node_binary() -> Path:
+    """
+    查找前端服务使用的 Node.js 可执行文件。
+    """
     candidates = [
         _repo_root() / ".runtime" / "node" / "bin" / "node",
         _repo_root() / ".runtime" / "node" / "node.exe",
@@ -881,13 +1039,19 @@ def _frontend_node_binary() -> Path:
 
 
 def _ensure_frontend_runtime() -> None:
+    """
+    检查前端服务所需的运行文件。
+    """
     if not FRONTEND_SERVICE_FILE.exists():
         raise click.ClickException("未找到前端发布包，请先执行 `moviepilot install frontend` 或 `moviepilot setup`")
     if not (FRONTEND_DIR / "node_modules" / "express").exists():
         raise click.ClickException("前端运行依赖未安装，请重新执行 `moviepilot install frontend` 或 `moviepilot setup`")
 
 
-def _spawn_frontend_process(backend_port: int) -> subprocess.Popen:
+def _spawn_frontend_process(backend_port: int) -> subprocess.Popen[bytes]:
+    """
+    构造前端启动命令并创建受管进程。
+    """
     _ensure_frontend_runtime()
     node_bin = _frontend_node_binary()
     return _spawn_process(
@@ -903,6 +1067,9 @@ def _spawn_frontend_process(backend_port: int) -> subprocess.Popen:
 
 
 def _wait_until_backend_ready(runtime: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+    """
+    在超时前等待后端进程提供健康响应。
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         process = _get_process(runtime)
@@ -923,6 +1090,9 @@ def _wait_until_backend_ready(runtime: Dict[str, Any], timeout: int) -> Dict[str
 
 
 def _wait_until_frontend_ready(runtime: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+    """
+    在超时前等待前端进程提供健康响应。
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         process = _get_process(runtime)
@@ -943,6 +1113,9 @@ def _wait_until_frontend_ready(runtime: Dict[str, Any], timeout: int) -> Dict[st
 
 
 def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
+    """
+    启动或复用本地后端服务并返回运行信息。
+    """
     state, runtime, process, health_payload = _managed_backend_status()
     if state in {"running", "starting"} and runtime and process:
         return {"status": state, "runtime": runtime, "process": process, "health": health_payload, "started": False}
@@ -953,10 +1126,10 @@ def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
 
     _ensure_local_api_token()
     _clear_json_file(BACKEND_RUNTIME_FILE)
-    process = _spawn_backend_process(safe=safe)
-    ps_process = psutil.Process(process.pid)
+    spawned_process = _spawn_backend_process(safe=safe)
+    ps_process = psutil.Process(spawned_process.pid)
     runtime = {
-        "pid": process.pid,
+        "pid": spawned_process.pid,
         "create_time": ps_process.create_time(),
         "host": get_runtime_setting("HOST"),
         "port": get_runtime_setting("PORT"),
@@ -972,6 +1145,9 @@ def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
 
 
 def _start_frontend_service(timeout: int, backend_port: int) -> Dict[str, Any]:
+    """
+    启动或复用本地前端服务并返回运行信息。
+    """
     state, runtime, process, health_payload = _managed_frontend_status()
     if state in {"running", "starting"} and runtime and process:
         return {"status": state, "runtime": runtime, "process": process, "health": health_payload, "started": False}
@@ -981,10 +1157,10 @@ def _start_frontend_service(timeout: int, backend_port: int) -> Dict[str, Any]:
         )
 
     _clear_json_file(FRONTEND_RUNTIME_FILE)
-    process = _spawn_frontend_process(backend_port=backend_port)
-    ps_process = psutil.Process(process.pid)
+    spawned_process = _spawn_frontend_process(backend_port=backend_port)
+    ps_process = psutil.Process(spawned_process.pid)
     runtime = {
-        "pid": process.pid,
+        "pid": spawned_process.pid,
         "create_time": ps_process.create_time(),
         "host": get_runtime_setting("HOST"),
         "port": get_runtime_setting("NGINX_PORT"),
@@ -999,6 +1175,9 @@ def _start_frontend_service(timeout: int, backend_port: int) -> Dict[str, Any]:
 
 
 def _terminate_process(runtime_file: Path, timeout: int, force: bool, component_name: str) -> Dict[str, Any]:
+    """
+    停止指定进程，并按参数决定是否强制结束。
+    """
     runtime = _read_json_file(runtime_file)
     process = _get_process(runtime)
     if not process:
@@ -1022,6 +1201,9 @@ def _terminate_process(runtime_file: Path, timeout: int, force: bool, component_
 
 
 def _stop_backend_service(timeout: int, force: bool) -> Dict[str, Any]:
+    """
+    停止受管后端并清理运行状态。
+    """
     runtime = _backend_runtime()
     process = _get_process(runtime)
     if not process:
@@ -1035,6 +1217,9 @@ def _stop_backend_service(timeout: int, force: bool) -> Dict[str, Any]:
 
 
 def _stop_frontend_service(timeout: int, force: bool) -> Dict[str, Any]:
+    """
+    停止受管前端并清理运行状态。
+    """
     runtime = _frontend_runtime()
     process = _get_process(runtime)
     if not process:
@@ -1048,16 +1233,23 @@ def _stop_frontend_service(timeout: int, force: bool) -> Dict[str, Any]:
 
 
 def _installed_frontend_version() -> Optional[str]:
+    """
+    读取当前安装的前端版本。
+    """
     return get_frontend_version(fallback_to_declared=False)
 
 
 @click.group(context_settings=CONTEXT_SETTINGS)
 def cli() -> None:
-    """MoviePilot 本地 CLI"""
+    """
+    MoviePilot 本地 CLI
+    """
 
 
 def _format_backup_artifact(artifact: BackupArtifact) -> str:
-    """将制品信息格式化为不含数据库凭据的单行 CLI 输出。"""
+    """
+    将制品信息格式化为不含数据库凭据的单行 CLI 输出。
+    """
     return "\t".join(
         (
             artifact.name,
@@ -1071,12 +1263,16 @@ def _format_backup_artifact(artifact: BackupArtifact) -> str:
 
 @cli.group(context_settings=CONTEXT_SETTINGS)
 def database() -> None:
-    """创建、列举、校验和离线还原本地数据库备份"""
+    """
+    创建、列举、校验和离线还原本地数据库备份
+    """
 
 
 @database.command("backup", context_settings=CONTEXT_SETTINGS)
 def database_backup() -> None:
-    """创建并验证一个在线数据库备份"""
+    """
+    创建并验证一个在线数据库备份
+    """
     try:
         artifact = build_database_governance().create_backup()
     except Exception as error:
@@ -1087,7 +1283,9 @@ def database_backup() -> None:
 
 @database.command("list", context_settings=CONTEXT_SETTINGS)
 def database_list() -> None:
-    """列出当前受管目录中的正式数据库备份文件"""
+    """
+    列出当前受管目录中的正式数据库备份文件
+    """
     try:
         artifacts = build_database_governance().list_backups()
     except Exception as error:
@@ -1103,7 +1301,9 @@ def database_list() -> None:
 @database.command("verify", context_settings=CONTEXT_SETTINGS)
 @click.argument("name")
 def database_verify(name: str) -> None:
-    """按文件名重新校验一个数据库备份"""
+    """
+    按文件名重新校验一个数据库备份
+    """
     try:
         result = build_database_governance().verify_backup(name)
     except Exception as error:
@@ -1122,7 +1322,9 @@ def database_verify(name: str) -> None:
     help="确认 MoviePilot 已停止，并允许覆盖当前数据库",
 )
 def database_restore(name: str, confirm: bool) -> None:
-    """在 MoviePilot 停止运行时还原一个数据库备份"""
+    """
+    在 MoviePilot 停止运行时还原一个数据库备份
+    """
     if not confirm:
         raise click.ClickException("离线还原必须使用 --confirm 明确确认")
     try:
@@ -1136,7 +1338,9 @@ def database_restore(name: str, confirm: bool) -> None:
 @click.option("--timeout", default=60, show_default=True, help="等待后端与前端就绪的秒数")
 @click.option("--safe", is_flag=True, help="安全模式启动，仅保留核心 API，跳过插件和后台任务")
 def start(timeout: int, safe: bool) -> None:
-    """后台启动本地 MoviePilot 前后端服务"""
+    """
+    后台启动本地 MoviePilot 前后端服务
+    """
     _ensure_frontend_not_running_alone(timeout=min(timeout, 15))
     backend_result = _start_backend_service(timeout=timeout, safe=safe)
     backend_runtime = backend_result["runtime"]
@@ -1181,7 +1385,9 @@ def start(timeout: int, safe: bool) -> None:
 @click.option("--timeout", default=30, show_default=True, help="等待服务退出的秒数")
 @click.option("--force", is_flag=True, help="超时后强制结束进程")
 def stop(timeout: int, force: bool) -> None:
-    """停止本地 MoviePilot 前后端服务"""
+    """
+    停止本地 MoviePilot 前后端服务
+    """
     frontend_result = _stop_frontend_service(timeout=timeout, force=force)
     backend_result = _stop_backend_service(timeout=timeout, force=force)
 
@@ -1198,9 +1404,11 @@ def stop(timeout: int, force: bool) -> None:
 @click.option("--start-timeout", default=60, show_default=True, help="重启后等待服务就绪的秒数")
 @click.option("--stop-timeout", default=30, show_default=True, help="停止服务时等待退出的秒数")
 @click.option("--force", is_flag=True, help="停止超时后强制结束进程")
-@click.option("--apply-update", is_flag=True, hidden=True)  # type: ignore[misc]
+@click.option("--apply-update", is_flag=True, hidden=True)
 def restart(start_timeout: int, stop_timeout: int, force: bool, apply_update: bool = False) -> None:
-    """重启本地 MoviePilot 前后端服务"""
+    """
+    重启本地 MoviePilot 前后端服务
+    """
     _stop_frontend_service(timeout=stop_timeout, force=force)
     _stop_backend_service(timeout=stop_timeout, force=force)
     if apply_update:
@@ -1214,9 +1422,11 @@ def restart(start_timeout: int, stop_timeout: int, force: bool, apply_update: bo
     click.echo(f"Frontend URL: {_frontend_base_url(frontend_result['runtime'])}")
 
 
-@cli.command("apply-prepared-update", hidden=True, context_settings=CONTEXT_SETTINGS)  # type: ignore[misc]
+@cli.command("apply-prepared-update", hidden=True, context_settings=CONTEXT_SETTINGS)
 def apply_prepared_update() -> None:
-    """由 Docker root 更新 worker 应用已确认的下载制品。"""
+    """
+    由 Docker root 更新 worker 应用已确认的下载制品。
+    """
     from app.adapters.system.update import system_update_manager
     from app.foundation.environment import is_docker
 
@@ -1230,9 +1440,13 @@ def apply_prepared_update() -> None:
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 def status() -> None:
-    """查看本地 MoviePilot 前后端服务状态"""
-    backend_state, backend_runtime, backend_process, backend_health = _managed_backend_status()
-    frontend_state, frontend_runtime, frontend_process, frontend_health = _managed_frontend_status()
+    """
+    查看本地 MoviePilot 前后端服务状态
+    """
+    backend_status = _managed_backend_status()
+    backend_state, backend_runtime, _, backend_health = backend_status
+    frontend_status = _managed_frontend_status()
+    frontend_state, frontend_runtime, _, frontend_health = frontend_status
 
     if backend_state == "stopped" and frontend_state == "stopped":
         click.echo("MoviePilot 未运行")
@@ -1242,9 +1456,9 @@ def status() -> None:
         return
 
     click.echo("Backend:")
-    if backend_state == "stopped":
+    if backend_status[0] == "stopped":
         click.echo("  stopped")
-    elif backend_state == "running-unmanaged":
+    elif backend_status[0] == "running-unmanaged":
         data = (backend_health or {}).get("data") or {}
         click.echo("  running (unmanaged)")
         click.echo(f"  URL: {_backend_base_url()}")
@@ -1252,19 +1466,19 @@ def status() -> None:
     else:
         data = (backend_health or {}).get("data") or {}
         click.echo(f"  {'running' if backend_state == 'running' else 'starting'}")
-        click.echo(f"  PID: {backend_process.pid}")
+        click.echo(f"  PID: {backend_status[2].pid}")
         click.echo(f"  URL: {_backend_base_url(backend_runtime)}")
         click.echo(f"  Version: {data.get('BACKEND_VERSION', get_app_version())}")
         click.echo(f"  App Log: {BACKEND_APP_LOG_FILE}")
         click.echo(f"  Stdout Log: {BACKEND_STDIO_LOG_FILE}")
 
     click.echo("Frontend:")
-    if frontend_state == "stopped":
+    if frontend_status[0] == "stopped":
         click.echo("  stopped")
         installed_frontend = _installed_frontend_version()
         if installed_frontend:
             click.echo(f"  Installed Version: {installed_frontend}")
-    elif frontend_state == "running-unmanaged":
+    elif frontend_status[0] == "running-unmanaged":
         frontend_version = (
             ((frontend_health or {}).get("version") if isinstance(frontend_health, dict) else None)
             or _installed_frontend_version()
@@ -1280,7 +1494,7 @@ def status() -> None:
             or "unknown"
         )
         click.echo(f"  {'running' if frontend_state == 'running' else 'starting'}")
-        click.echo(f"  PID: {frontend_process.pid}")
+        click.echo(f"  PID: {frontend_status[2].pid}")
         click.echo(f"  URL: {_frontend_base_url(frontend_runtime)}")
         click.echo(f"  Version: {frontend_version}")
         click.echo(f"  Stdout Log: {FRONTEND_STDIO_LOG_FILE}")
@@ -1292,7 +1506,9 @@ def status() -> None:
 @click.option("--stdio", is_flag=True, help="查看后端启动标准输出日志而不是应用日志")
 @click.option("--frontend", "frontend_log", is_flag=True, help="查看前端标准输出日志")
 def logs(lines: int, follow: bool, stdio: bool, frontend_log: bool) -> None:
-    """查看本地日志"""
+    """
+    查看本地日志
+    """
     if stdio and frontend_log:
         raise click.ClickException("`--stdio` 与 `--frontend` 不能同时使用")
 
@@ -1314,7 +1530,9 @@ def logs(lines: int, follow: bool, stdio: bool, frontend_log: bool) -> None:
 @click.option("--fix", is_flag=True, help="执行白名单安全修复")
 @click.option("--deep", is_flag=True, help="执行可能较慢的深度检查")
 def doctor(json_output: bool, fix: bool, deep: bool) -> None:
-    """离线诊断本地 MoviePilot 运行环境，插件日志告警不影响整体状态"""
+    """
+    离线诊断本地 MoviePilot 运行环境，插件日志告警不影响整体状态
+    """
     from app.doctor import run_doctor  # pylint: disable=no-name-in-module
     from app.doctor.formatters import format_json_report, format_text_report
 
@@ -1328,12 +1546,16 @@ def doctor(json_output: bool, fix: bool, deep: bool) -> None:
 
 @cli.group(context_settings=CONTEXT_SETTINGS)
 def config() -> None:
-    """查看或修改本地配置"""
+    """
+    查看或修改本地配置
+    """
 
 
 @config.command("path", context_settings=CONTEXT_SETTINGS)
 def config_path() -> None:
-    """显示配置路径"""
+    """
+    显示配置路径
+    """
     config_path = get_runtime_setting("CONFIG_PATH")
     click.echo(f"Config Dir: {config_path}")
     click.echo(f"Env File: {config_path / 'app.env'}")
@@ -1343,7 +1565,9 @@ def config_path() -> None:
 @config.command("list", context_settings=CONTEXT_SETTINGS)
 @click.option("--show-secrets", is_flag=True, help="显示敏感配置原文")
 def config_list(show_secrets: bool) -> None:
-    """列出当前配置"""
+    """
+    列出当前配置
+    """
     values = {key: get_runtime_setting(key) for key in Settings.model_fields}
     for key in sorted(values):
         click.echo(f"{key}={_format_value(_mask_value(key, values[key], show_secrets))}")
@@ -1352,7 +1576,9 @@ def config_list(show_secrets: bool) -> None:
 @config.command("get", context_settings=CONTEXT_SETTINGS)
 @click.argument("key")
 def config_get(key: str) -> None:
-    """读取单个配置项"""
+    """
+    读取单个配置项
+    """
     setting_fields = Settings.model_fields.keys()
     if key not in setting_fields and not has_runtime_setting(key):
         raise click.ClickException(f"配置项不存在：{key}")
@@ -1363,7 +1589,9 @@ def config_get(key: str) -> None:
 @click.argument("key")
 @click.argument("value")
 def config_set(key: str, value: str) -> None:
-    """写入单个配置项"""
+    """
+    写入单个配置项
+    """
     result, message = update_runtime_setting(key, value)
     if result is False:
         raise click.ClickException(message or f"配置项更新失败：{key}")
@@ -1390,7 +1618,9 @@ def config_set(key: str, value: str) -> None:
 @click.option("--show-current", is_flag=True, help="同时显示当前值")
 @click.option("--show-secrets", is_flag=True, help="显示敏感配置原文")
 def config_keys(pattern: Optional[str], show_current: bool, show_secrets: bool) -> None:
-    """列出所有可配置项及类型"""
+    """
+    列出所有可配置项及类型
+    """
     rows = []
     for key, field in Settings.model_fields.items():
         if pattern and pattern.lower() not in key.lower():
@@ -1422,7 +1652,9 @@ def config_keys(pattern: Optional[str], show_current: bool, show_secrets: bool) 
 @click.argument("key")
 @click.option("--show-secrets", is_flag=True, help="显示敏感配置原文")
 def config_describe(key: str, show_secrets: bool) -> None:
-    """显示单个配置项的类型、默认值和当前值"""
+    """
+    显示单个配置项的类型、默认值和当前值
+    """
     field = Settings.model_fields.get(key)
     if not field:
         raise click.ClickException(f"配置项不存在：{key}")
@@ -1438,12 +1670,16 @@ def config_describe(key: str, show_secrets: bool) -> None:
 
 @cli.group(context_settings=CONTEXT_SETTINGS)
 def tool() -> None:
-    """通过本地后端服务调用 MoviePilot 工具"""
+    """
+    通过本地后端服务调用 MoviePilot 工具
+    """
 
 
 @tool.command("list", context_settings=CONTEXT_SETTINGS)
 def tool_list() -> None:
-    """列出所有可用工具"""
+    """
+    列出所有可用工具
+    """
     tools = _load_tools(runtime=_backend_runtime())
     for item in sorted(tools, key=lambda entry: entry.get("name", "")):
         click.echo(item.get("name"))
@@ -1452,7 +1688,9 @@ def tool_list() -> None:
 @tool.command("show", context_settings=CONTEXT_SETTINGS)
 @click.argument("tool_name")
 def tool_show(tool_name: str) -> None:
-    """显示工具详情和参数"""
+    """
+    显示工具详情和参数
+    """
     tool_info = _load_tool(tool_name, runtime=_backend_runtime())
     _format_tool_detail(tool_info)
 
@@ -1461,10 +1699,14 @@ def tool_show(tool_name: str) -> None:
 @click.argument("tool_name")
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def tool_run(tool_name: str, args: tuple[str, ...]) -> None:
-    """运行指定工具"""
+    """
+    运行指定工具
+    """
     arguments = _parse_key_value_pairs(args)
     result = _call_tool(tool_name, arguments, runtime=_backend_runtime())
-    if isinstance(result, (dict, list)):
+    if result is None or result == "":
+        click.echo("工具执行成功（无返回内容）")
+    elif isinstance(result, (dict, list)):
         _print_json(result)
     else:
         click.echo(result)
@@ -1472,12 +1714,16 @@ def tool_run(tool_name: str, args: tuple[str, ...]) -> None:
 
 @cli.group(context_settings=CONTEXT_SETTINGS)
 def scheduler() -> None:
-    """查看或执行本地调度任务"""
+    """
+    查看或执行本地调度任务
+    """
 
 
 @scheduler.command("list", context_settings=CONTEXT_SETTINGS)
 def scheduler_list() -> None:
-    """通过统一 API 网关列出调度任务。"""
+    """
+    通过统一 API 网关列出调度任务。
+    """
     result = _unwrap_api_data(
         _call_tool(
             "moviepilot_api",
@@ -1495,7 +1741,9 @@ def scheduler_list() -> None:
 @scheduler.command("run", context_settings=CONTEXT_SETTINGS)
 @click.argument("job_id")
 def scheduler_run(job_id: str) -> None:
-    """通过统一 API 网关立即执行某个调度任务。"""
+    """
+    通过统一 API 网关立即执行某个调度任务。
+    """
     result = _unwrap_api_data(
         _call_tool(
             "moviepilot_api",
@@ -1506,7 +1754,9 @@ def scheduler_run(job_id: str) -> None:
             runtime=_backend_runtime(),
         )
     )
-    if isinstance(result, (dict, list)):
+    if result is None or result == "":
+        click.echo("调度任务调用成功（无返回内容）")
+    elif isinstance(result, (dict, list)):
         _print_json(result)
     else:
         click.echo(result)
@@ -1514,7 +1764,9 @@ def scheduler_run(job_id: str) -> None:
 
 @cli.command(context_settings=CONTEXT_SETTINGS)
 def version() -> None:
-    """显示版本信息"""
+    """
+    显示版本信息
+    """
     click.echo(f"MoviePilot CLI: {get_app_version()}")
 
     healthy_backend, payload = _backend_health(runtime=_backend_runtime())
@@ -1534,6 +1786,9 @@ def version() -> None:
 
 
 def main() -> None:
+    """
+    进入 MoviePilot 命令行入口。
+    """
     cli(prog_name="moviepilot")
 
 

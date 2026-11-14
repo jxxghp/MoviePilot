@@ -1,4 +1,6 @@
-"""下载任务应用服务测试。"""
+"""
+下载任务应用服务测试。
+"""
 
 from app.application.download.tasks import DownloadTaskService
 from app.application.history import DownloadHistorySnapshot
@@ -7,7 +9,9 @@ from app.schemas.types import MediaSource
 
 
 def test_download_task_service_enriches_history_and_controls_task():
-    """下载任务查询应附加历史媒体信息，控制方法只转发规范参数。"""
+    """
+    下载任务查询应附加历史媒体信息，控制方法只转发规范参数。
+    """
     torrent = DownloaderTorrent(hash="hash")
     history = DownloadHistorySnapshot(
         id=1,
@@ -44,7 +48,9 @@ def test_download_task_service_enriches_history_and_controls_task():
 
 
 def test_download_task_service_rejects_unknown_operation():
-    """未知操作保持旧的 False 返回语义。"""
+    """
+    未知操作保持旧的 False 返回语义。
+    """
     service = DownloadTaskService(
         list_torrents=lambda **_kwargs: [],
         get_history_by_hashes=lambda _hashes: {},

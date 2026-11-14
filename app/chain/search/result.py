@@ -1,11 +1,14 @@
-"""资源过滤、匹配、投影与去重 owner。"""
+"""
+搜索资源的过滤、身份匹配、上下文投影与去重。
+"""
 
 import copy
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from app.application.configuration import get_configured_system_config
+from app.application.subscription.activity import current_activity_run
 from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase
@@ -14,11 +17,12 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.music import MusicMatch, match_music_resource
+from app.domain.search import SearchResourceEvidence, search_resource_id
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.media import resolve_media_identity
-from app.schemas.types import MediaSource, ProgressKey, SystemConfigKey
+from app.schemas.types import MediaSource, MediaType, ProgressKey, SystemConfigKey
 
 SiteKey = Tuple[Optional[int], Optional[str]]
 DisambiguationCache = Dict[Tuple[str, str, str], Optional[MediaInfo]]
@@ -26,7 +30,14 @@ DisambiguationCache = Dict[Tuple[str, str, str], Optional[MediaInfo]]
 
 @dataclass(frozen=True, slots=True)
 class MatchedTorrent:
-    """保存资源解析证据和身份匹配结果，不从目标媒体反向生成元数据。"""
+    """
+    保存资源解析证据和身份匹配结果，不从目标媒体反向生成元数据。
+
+    :param torrent: 站点或插件返回的原始种子信息
+    :param meta: 仅从该资源标题和副标题解析出的媒体元数据
+    :param source: 确认匹配采用的证据来源，如标题或媒体身份
+    :param music_match: 音乐候选的匹配状态、理由与证据，非音乐匹配时为 None
+    """
 
     torrent: TorrentInfo
     meta: MetaBase
@@ -35,7 +46,9 @@ class MatchedTorrent:
 
 
 def _site_torrents(torrents: List[TorrentInfo]) -> Dict[SiteKey, List[TorrentInfo]]:
-    """按站点归集资源，并保留站点及资源的首次出现顺序。"""
+    """
+    按站点归集资源，并保留站点及资源的首次出现顺序。
+    """
     grouped: Dict[SiteKey, List[TorrentInfo]] = {}
     for torrent in torrents:
         grouped.setdefault((torrent.site, torrent.site_name), []).append(torrent)
@@ -50,14 +63,30 @@ def _filter_site_torrents(
     filter_params: Dict[str, str],
     diagnostics: Counter[str],
 ) -> List[TorrentInfo]:
-    """按一个站点执行附加参数和优先级规则过滤。"""
+    """
+    按一个站点执行附加参数和优先级规则过滤。
+    """
+    activity = current_activity_run()
+    if activity:
+        for torrent in torrents:
+            activity.resource(torrent, "related")
     filtered = torrents
     if filter_params:
         helper = cast(Callable[[], TorrentHelper], TorrentHelper)()
         filtered = [torrent for torrent in filtered if helper.filter_torrent(torrent, filter_params)]
-        diagnostics["filter_params"] += len(torrents) - len(filtered)
+        if activity:
+            accepted = {id(torrent) for torrent in filtered}
+            for torrent in torrents:
+                if id(torrent) not in accepted:
+                    activity.resource(torrent, "rejected", helper.filter_torrent_reason(torrent, filter_params)
+                                      if hasattr(helper, "filter_torrent_reason") else "不符合订阅筛选条件")
+        rejected = len(torrents) - len(filtered)
+        diagnostics["filter_params"] += rejected
+        if rejected:
+            logger.scoped_info(f"附加参数过滤排除 {rejected} 个资源（质量、分辨率等订阅要求）")
     if rule_groups and filtered:
         count = len(filtered)
+        before_rules = list(filtered)
         filtered = (
             owner.filter_torrents(
                 rule_groups=rule_groups,
@@ -66,7 +95,15 @@ def _filter_site_torrents(
             )
             or []
         )
-        diagnostics["filter_rules"] += count - len(filtered)
+        if activity:
+            accepted = {id(torrent) for torrent in filtered}
+            for torrent in before_rules:
+                if id(torrent) not in accepted:
+                    activity.resource(torrent, "rejected", "不符合优先级过滤规则")
+        rejected = count - len(filtered)
+        diagnostics["filter_rules"] += rejected
+        if rejected:
+            logger.scoped_info(f"优先级过滤规则排除 {rejected} 个资源")
     return filtered
 
 
@@ -79,7 +116,9 @@ def _filter_torrents(
     progress: ProgressHelper,
     diagnostics: Counter[str],
 ) -> List[TorrentInfo]:
-    """逐站点过滤资源，避免在调用方工作线程内再创建线程池。"""
+    """
+    逐站点过滤资源，避免在调用方工作线程内再创建线程池。
+    """
     if not filter_params and not rule_groups:
         return torrents
 
@@ -106,9 +145,11 @@ def _filter_torrents(
 
 
 def _torrent_meta(torrent: TorrentInfo, custom_words: List[str], mediainfo: MediaInfo | MusicInfo) -> MetaBase:
-    """解析一条资源的元数据，并记录识别词改写结果。"""
+    """
+    解析一条资源的元数据，并记录识别词改写结果。
+    """
     meta = MetaInfo(
-        title=torrent.title,
+        title=torrent.title or "",
         subtitle=torrent.description,
         custom_words=custom_words,
         mtype=mediainfo.type,
@@ -119,8 +160,10 @@ def _torrent_meta(torrent: TorrentInfo, custom_words: List[str], mediainfo: Medi
 
 
 def _disambiguation_key(meta: MetaBase) -> Tuple[str, str, str]:
-    """构造同名候选识别缓存键。"""
-    return meta.cn_name or "", meta.en_name or "", meta.year or ""
+    """
+    构造同名候选识别缓存键。
+    """
+    return meta.cn_name or "", meta.en_name or "", str(meta.year or "")
 
 
 def _same_work_matched(
@@ -129,21 +172,27 @@ def _same_work_matched(
     mediainfo: MediaInfo,
     cache: DisambiguationCache,
 ) -> bool:
-    """确认无年份别名候选与目标媒体属于同一作品。"""
+    """
+    无年份资源只靠别名对上订阅时，按名字再识别一次；只有明确属于另一部作品才跳过。
+
+    识别不到不算反证：宁可偶尔下错同名作品，也不能让资源一直下不下来。
+    """
     key = _disambiguation_key(torrent_meta)
     if key not in cache:
         cache[key] = MediaChain().recognize_by_meta(torrent_meta, obtain_images=False)
     candidate = cache[key]
     if not candidate:
-        logger.info(f"{torrent.site_name} - {torrent.title} 仅通过无年份别名命中且候选媒体身份无法确认，已跳过")
-        return False
+        logger.debug(f"{torrent.site_name} - {torrent.title} 资源名没有年份，按名字也识别不到作品，按订阅的作品处理")
+        return True
     matched, evidence = TorrentHelper.match_same_work_evidence(
         target_mediainfo=mediainfo,
         candidate_mediainfo=candidate,
         torrent_meta=torrent_meta,
     )
-    if not matched:
-        logger.info(f"{torrent.site_name} - {torrent.title} 无年份同名候选未通过消歧：{evidence}")
+    if matched:
+        logger.debug(f"{torrent.site_name} - {torrent.title} 资源名没有年份，{evidence}，按订阅的作品处理")
+    else:
+        logger.info(f"跳过 {torrent.title}（{torrent.site_name}）：资源名没有年份，{evidence}")
     return matched
 
 
@@ -152,8 +201,13 @@ def _match_source(
     torrent_meta: MetaBase,
     mediainfo: MediaInfo,
     cache: DisambiguationCache,
+    season_episodes: Optional[Dict[int, List[int]]] = None,
 ) -> Optional[str]:
-    """返回资源命中的身份依据，未匹配时返回 None。"""
+    """
+    返回资源命中的身份依据，未匹配时返回 None。
+
+    :param season_episodes: 本次明确请求的季集号，仅用于兼容不同于默认季内集号的范围
+    """
     torrent_source, torrent_media_id = resolve_media_identity(media=torrent)
     if torrent_source == MediaSource.IMDb and mediainfo.imdb_id and torrent_media_id == str(mediainfo.imdb_id):
         logger.info(f"{mediainfo.title} 通过IMDBID匹配到资源：{torrent.site_name} - {torrent.title}")
@@ -163,6 +217,7 @@ def _match_source(
         mediainfo=mediainfo,
         torrent_meta=torrent_meta,
         torrent=torrent,
+        season_episodes=season_episodes,
     ):
         return None
     if TorrentHelper.requires_identity_disambiguation(
@@ -187,8 +242,10 @@ def _match_torrents(
     include_candidates: bool,
     diagnostics: Counter[str],
 ) -> List[MatchedTorrent]:
-    """按输入顺序匹配资源，并复用同名候选的识别结果。"""
-    logger.info(f"开始匹配结果 类型：{mediainfo.type.value}，标题：{mediainfo.title}，别名：{mediainfo.names}")
+    """
+    按输入顺序匹配资源，并复用同名候选的识别结果。
+    """
+    logger.info(f"开始匹配结果 类型：{(mediainfo.type or MediaType.UNKNOWN).value}，标题：{mediainfo.title}，别名：{mediainfo.names}")
     progress.update(value=51, text=f"开始匹配，总 {len(torrents)} 个资源 ...")
     matches: List[MatchedTorrent] = []
     cache: DisambiguationCache = {}
@@ -227,6 +284,7 @@ def _match_torrents(
             torrent_meta=meta,
             mediainfo=mediainfo,
             cache=cache,
+            season_episodes=season_episodes,
         )
         if source:
             diagnostics["matched"] += 1
@@ -239,14 +297,18 @@ def _match_torrents(
 
 
 def _context_media(mediainfo: MediaInfo | MusicInfo) -> MediaInfo | MusicInfo:
-    """复制并裁剪上下文媒体信息，避免修改调用方持有的目标对象。"""
+    """
+    复制并裁剪上下文媒体信息，避免修改调用方持有的目标对象。
+    """
     context_media = copy.copy(mediainfo)
     context_media.clear()
     return context_media
 
 
 def _build_contexts(matches: List[MatchedTorrent], mediainfo: MediaInfo | MusicInfo) -> List[Context]:
-    """将匹配结果投影为搜索上下文。"""
+    """
+    将匹配结果投影为搜索上下文。
+    """
     context_media = _context_media(mediainfo)
     return [
         Context(
@@ -264,8 +326,129 @@ def _build_contexts(matches: List[MatchedTorrent], mediainfo: MediaInfo | MusicI
     ]
 
 
+def _resource_targets(meta: MetaBase, targets: set[str], media_type: object) -> set[str]:
+    """
+    资源集范围只与本轮缺集相交，整季资源覆盖该季的已知必要目标。
+    """
+    if media_type == MediaType.MOVIE:
+        return targets & {"movie"}
+    matched = set()
+    seasons = set(meta.season_list)
+    episodes = set(meta.episode_list)
+    for target in targets:
+        season, episode = target.split(":", 1)
+        if int(season) in seasons and (episode == "season" or not episodes or int(episode) in episodes):
+            matched.add(target)
+    return matched
+
+
+def _resource_latest(meta: MetaBase, media_type: object) -> list[list[Any]]:
+    """
+    资源覆盖的各季最大集号；整季包没有集号，不参与站点已收录范围判断。
+    """
+    if media_type == MediaType.MOVIE or not meta.episode_list:
+        return []
+    return [[str(season), max(meta.episode_list)] for season in meta.season_list]
+
+
+def stored_meta(record: dict[str, Any]) -> MetaBase:
+    """
+    从识别缓存恢复元数据而不重跑识别词解析；JSON 中的类型须还原为枚举。
+    """
+    meta = object.__new__(MetaBase)
+    meta.__dict__.update(record["meta"])
+    if isinstance(meta.type, str):
+        meta.type = MediaType(meta.type)
+    return meta
+
+
 class SearchResultOwner(_SearchOwnerBase):
-    """负责搜索资源的过滤、匹配、上下文投影与去重。"""
+    """
+    负责搜索资源的过滤、匹配、上下文投影与去重。
+    """
+
+    @staticmethod
+    def _resource_identity(torrent: TorrentInfo) -> str:
+        """
+        与原搜索结果去重一致的资源键。
+        """
+        return search_resource_id(torrent)
+
+    @staticmethod
+    def _identify_page(
+        *, torrents: List[TorrentInfo], mediainfo: MediaInfo, targets: set[str],
+        custom_words: List[str], cache: dict[str, Any], disambiguation: DisambiguationCache,
+    ) -> tuple[list[SearchResourceEvidence], dict[str, Context]]:
+        """
+        过滤前识别新增资源；识别未知不会成为缺席证据或永久负缓存。
+
+        :param targets: 本轮已绑定目标媒体的缺集键，显式集号同时用于匹配累计编号资源
+        """
+        evidence = []
+        contexts = {}
+        season_episodes: Dict[int, List[int]] = {}
+        if mediainfo.type == MediaType.TV:
+            for target in targets:
+                season, episode = target.split(":", 1)
+                if episode != "season":
+                    season_episodes.setdefault(int(season), []).append(int(episode))
+        for torrent in torrents:
+            # 去重键含标题和描述，内容变化即为新资源；识别规则变化由检查点合同触发重搜。
+            key = SearchResultOwner._resource_identity(torrent)
+            record = cache.get(key)
+            if record is None or record["targets"] is None:
+                meta = _torrent_meta(torrent=torrent, custom_words=custom_words, mediainfo=mediainfo)
+                source = _match_source(
+                    torrent, meta, mediainfo, disambiguation, season_episodes=season_episodes,
+                ) if torrent.title else None
+                unknown = not torrent.title or (_disambiguation_key(meta) in disambiguation
+                                               and disambiguation[_disambiguation_key(meta)] is None)
+                matched_targets = _resource_targets(meta, targets, mediainfo.type) if source else set()
+                record = {"targets": None if unknown else sorted(matched_targets),
+                          "source": source, "meta": vars(meta).copy(),
+                          "latest": _resource_latest(meta, mediainfo.type) if source and not unknown else []}
+                cache[key] = record
+            matches = None if record["targets"] is None else frozenset(record["targets"])
+            latest = tuple((str(season), int(episode)) for season, episode in record.get("latest") or [])
+            evidence.append(SearchResourceEvidence(key, matches, latest))
+            if record["source"]:
+                meta = stored_meta(record)
+                meta.type = mediainfo.type or MediaType.UNKNOWN
+                contexts[key] = _build_contexts([MatchedTorrent(torrent, meta, record["source"])], mediainfo)[0]
+        # 临时识别失败下一页允许重试；成功消歧在本轮复用。
+        for ambiguity_key in [entry for entry, value in disambiguation.items() if value is None]:
+            del disambiguation[ambiguity_key]
+        return evidence, contexts
+
+    def _filter_identified_contexts(
+        self, contexts: List[Context], mediainfo: MediaInfo, rule_groups: List[str],
+        filter_params: Dict[str, str], candidate_filter: Optional[Callable[[List[Context]], List[Context]]],
+        season_episodes: Optional[Dict[int, List[int]]] = None,
+    ) -> List[Context]:
+        """
+        就绪目标才应用下载规则，复用已识别上下文而不再次识别整个候选池。
+        """
+        if season_episodes:
+            contexts = [
+                context
+                for context in contexts
+                if context.torrent_info is not None
+                and context.meta_info is not None
+                and TorrentHelper.match_season_episodes(
+                    torrent=context.torrent_info,
+                    meta=context.meta_info,
+                    season_episodes=season_episodes,
+                )
+            ]
+        valid_contexts = [context for context in contexts if context.torrent_info is not None]
+        filtered = _filter_torrents(owner=self, torrents=[context.torrent_info for context in valid_contexts if context.torrent_info is not None],
+                                    mediainfo=mediainfo, rule_groups=rule_groups, filter_params=filter_params,
+                                    progress=ProgressHelper(ProgressKey.Search), diagnostics=Counter())
+        accepted = {id(torrent) for torrent in filtered}
+        result = [context for context in valid_contexts if context.torrent_info is not None and id(context.torrent_info) in accepted]
+        if candidate_filter:
+            result = candidate_filter(result)
+        return TorrentHelper.sort_torrents(result)
 
     def _parse_result(
         self,
@@ -280,7 +463,9 @@ class SearchResultOwner(_SearchOwnerBase):
         diagnostics: Optional[Counter[str]] = None,
         candidate_filter: Optional[Callable[[List[Context]], List[Context]]] = None,
     ) -> List[Context]:
-        """过滤并匹配搜索结果，不修改调用方持有的媒体信息和资源容器。"""
+        """
+        过滤并匹配搜索结果，不修改调用方持有的媒体信息和资源容器。
+        """
         if not torrents:
             logger.warning(f"{keyword or mediainfo.title} 未搜索到资源")
             return []
@@ -332,7 +517,10 @@ class SearchResultOwner(_SearchOwnerBase):
             progress.update(value=99, text=f"正在对 {len(contexts)} 个资源进行排序，请稍候...")
             contexts = TorrentHelper.sort_torrents(contexts)
             contexts.sort(key=lambda context: not context.media_info_is_target)
+            before_deduplication = len(contexts)
             contexts = self._remove_duplicate(contexts)
+            if duplicates := before_deduplication - len(contexts):
+                counts["duplicate"] += duplicates
             logger.info(f"搜索完成，共 {len(contexts)} 个资源")
             progress.update(value=100, text=f"搜索完成，共 {len(contexts)} 个资源")
             return contexts
@@ -341,10 +529,12 @@ class SearchResultOwner(_SearchOwnerBase):
 
     @staticmethod
     def _remove_duplicate(_torrents: List[Context]) -> List[Context]:
-        """按站点、标题和描述去重，并保留既有顺序语义。"""
+        """
+        按站点、标题和描述去重，并保留既有顺序语义。
+        """
         return list(
             {
-                f"{item.torrent_info.site_name}_{item.torrent_info.title}_{item.torrent_info.description}": item
+                f"{item.torrent_info.site_name if item.torrent_info else ''}_{item.torrent_info.title if item.torrent_info else ''}_{item.torrent_info.description if item.torrent_info else ''}": item
                 for item in _torrents
             }.values()
         )

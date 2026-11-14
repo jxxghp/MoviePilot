@@ -1,3 +1,7 @@
+"""
+管理内置、本地及市场技能的发现、安装与来源记录。
+"""
+
 import io
 import json
 import re
@@ -6,7 +10,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode, urljoin, urlparse
 
 from app.adapters.network.http import RequestUtils
@@ -37,7 +41,26 @@ _OFFICIAL_SKILL_REPOS = {
 
 @dataclass
 class SkillInfo:
-    """描述本地或市场中的一个 Skill。"""
+    """
+    描述本地或市场中的一个 Skill。
+
+    :param id: 本地注册或市场记录使用的技能标识
+    :param name: 供用户识别的技能名称
+    :param description: 技能用途与适用场景说明
+    :param version: 技能版本号；未知时为 0
+    :param path: 已安装技能的本地路径；尚未安装时可为空
+    :param source_type: 技能来源类别，默认 local 表示本地来源
+    :param source_label: 供用户显示的来源名称
+    :param repo_url: 来源代码仓库地址；非仓库来源可为 None
+    :param repo_name: 来源仓库名称；非仓库来源可为 None
+    :param skill_path: 技能在来源仓库中的相对目录；不适用时为 None
+    :param registry_url: 技能注册服务地址；无注册服务时为 None
+    :param registry_name: 技能注册服务名称；无注册服务时为 None
+    :param registry_slug: 技能在注册服务中的定位标识；不适用时为 None
+    :param download_url: 可用的技能下载地址；尚未提供时为 None
+    :param installed: 技能是否已安装到当前实例
+    :param removable: 是否允许通过管理界面移除此技能
+    """
 
     id: str
     name: str
@@ -59,7 +82,14 @@ class SkillInfo:
 
 @dataclass
 class SkillMarketSource:
-    """描述一个 Skill 市场来源及其可移除状态。"""
+    """
+    描述一个 Skill 市场来源及其可移除状态。
+
+    :param source: 技能市场或代码仓库的来源地址
+    :param label: 用于展示的来源名称
+    :param builtin: 是否属于宿主内置来源，默认 True
+    :param removable: 是否允许从市场来源列表移除，默认 False
+    """
 
     source: str
     label: str
@@ -77,14 +107,14 @@ class SkillHelper(metaclass=WeakSingleton):
         """
         返回用户技能目录，所有市场安装的技能都落在这里。
         """
-        return get_runtime_setting('CONFIG_PATH') / "agent" / "skills"
+        return Path(get_runtime_setting('CONFIG_PATH')) / "agent" / "skills"
 
     @staticmethod
     def get_bundled_skills_dir() -> Path:
         """
         返回仓库内置技能目录。
         """
-        return get_runtime_setting('ROOT_PATH') / "skills"
+        return Path(get_runtime_setting('ROOT_PATH')) / "skills"
 
     @staticmethod
     def get_market_sources() -> List[str]:
@@ -126,7 +156,7 @@ class SkillHelper(metaclass=WeakSingleton):
 
         registry = SkillHelper._parse_market_registry(normalized)
         if registry:
-            return registry["registry_url"].rstrip("/")
+            return str(registry["registry_url"]).rstrip("/")
 
         repo = SkillHelper._parse_market_repo(normalized)
         if repo:
@@ -136,7 +166,7 @@ class SkillHelper(metaclass=WeakSingleton):
                     f"{repo['repo_url']}/tree/"
                     f"{repo['branch']}/{repo['root_path'].strip('/')}"
                 ).rstrip("/")
-            return repo["repo_url"].rstrip("/")
+            return str(repo["repo_url"]).rstrip("/")
 
         return normalized.rstrip("/")
 
@@ -280,7 +310,7 @@ class SkillHelper(metaclass=WeakSingleton):
         return f"https://github.com/{repo_url.strip('/')}"
 
     @staticmethod
-    def _parse_market_repo(repo_url: str) -> Optional[dict]:
+    def _parse_market_repo(repo_url: str) -> Optional[dict[str, Any]]:
         """
         解析市场仓库地址，提取仓库、分支和技能根目录信息。
         """
@@ -315,7 +345,7 @@ class SkillHelper(metaclass=WeakSingleton):
         }
 
     @staticmethod
-    def _parse_market_registry(source_url: str) -> Optional[dict]:
+    def _parse_market_registry(source_url: str) -> Optional[dict[str, Any]]:
         """
         解析注册表市场地址，目前支持 ClawHub。
         """
@@ -341,7 +371,7 @@ class SkillHelper(metaclass=WeakSingleton):
         }
 
     @staticmethod
-    def _read_source_meta(skill_dir: Path) -> dict:
+    def _read_source_meta(skill_dir: Path) -> dict[str, Any]:
         """
         读取技能来源元数据，用于区分本地、市场和内置技能。
         """
@@ -356,7 +386,7 @@ class SkillHelper(metaclass=WeakSingleton):
             return {}
 
     @staticmethod
-    def _write_source_meta(skill_dir: Path, payload: dict) -> None:
+    def _write_source_meta(skill_dir: Path, payload: dict[str, Any]) -> None:
         """
         写入技能来源元数据，便于后续展示来源和追踪安装来源。
         """
@@ -593,7 +623,7 @@ class SkillHelper(metaclass=WeakSingleton):
             logger.error("解析技能市场压缩包失败：%s", e)
             return []
 
-    def _list_market_registry_skills(self, registry: dict) -> List[SkillInfo]:
+    def _list_market_registry_skills(self, registry: dict[str, Any]) -> List[SkillInfo]:
         """
         从注册表拉取技能列表。
 
@@ -639,7 +669,7 @@ class SkillHelper(metaclass=WeakSingleton):
         if not skill.repo_url or not skill.skill_path:
             return False, "技能来源信息不完整，无法安装"
 
-        repo = self._parse_market_repo(skill.repo_url)
+        repo = self._parse_market_repo(skill.path) if "/tree/" in skill.path else self._parse_market_repo(skill.repo_url)
         if not repo:
             return False, "技能市场地址无效"
 
@@ -764,7 +794,7 @@ class SkillHelper(metaclass=WeakSingleton):
             return False, f"删除技能失败：{e}"
 
     @staticmethod
-    def _load_json_response(response) -> dict:
+    def _load_json_response(response: Any) -> dict[str, Any]:
         """
         读取 HTTP 响应中的 JSON 数据，异常时回退为空对象。
         """
@@ -776,7 +806,7 @@ class SkillHelper(metaclass=WeakSingleton):
             return {}
 
     @staticmethod
-    def _extract_registry_items(payload: dict) -> List[dict]:
+    def _extract_registry_items(payload: dict[str, Any]) -> List[dict[str, Any]]:
         """
         从不同响应结构中提取技能列表。
         """
@@ -798,7 +828,7 @@ class SkillHelper(metaclass=WeakSingleton):
                     return [item for item in items if isinstance(item, dict)]
         return []
 
-    def _list_clawhub_registry_skills(self, registry: dict) -> List[SkillInfo]:
+    def _list_clawhub_registry_skills(self, registry: dict[str, Any]) -> List[SkillInfo]:
         """
         按 ClawHub 官方前端的调用方式，通过 Convex query 获取公开技能列表。
         """
@@ -850,12 +880,13 @@ class SkillHelper(metaclass=WeakSingleton):
         return list(results.values())
 
     def _build_registry_skill(
-        self, item: dict, registry: dict
+        self, item: dict[str, Any], registry: dict[str, Any]
     ) -> Optional[SkillInfo]:
         """
         将注册表返回的条目转换为统一的 SkillInfo。
         """
-        skill_data = item.get("skill") if isinstance(item.get("skill"), dict) else item
+        raw_skill_data = item.get("skill")
+        skill_data: dict[str, Any] = raw_skill_data if isinstance(raw_skill_data, dict) else item
         slug = (
             skill_data.get("slug")
             or item.get("slug")
@@ -909,7 +940,7 @@ class SkillHelper(metaclass=WeakSingleton):
         )
 
     @staticmethod
-    def _extract_registry_owner_handle(item: dict) -> Optional[str]:
+    def _extract_registry_owner_handle(item: dict[str, Any]) -> Optional[str]:
         """
         尽量从注册表条目中提取作者/拥有者 handle。
         """
@@ -940,18 +971,21 @@ class SkillHelper(metaclass=WeakSingleton):
         """
         下载注册表技能包 ZIP。
         """
+        registry_url = skill.registry_url
+        if not registry_url:
+            return None
         download_url = skill.download_url or self._build_registry_download_url(
-            f"{skill.registry_url.rstrip('/')}/api/v1",
+            f"{registry_url.rstrip('/')}/api/v1",
             skill.registry_slug or skill.id,
         )
         response = self._request_registry(url=download_url)
         if response is None or response.status_code != 200:
             logger.warning("下载注册表技能失败：%s", download_url)
             return None
-        return response.content
+        return response.content if isinstance(response.content, bytes) else None
 
     @cached(maxsize=4, ttl=_MARKET_CACHE_TTL, skip_empty=True)
-    def _discover_clawhub_runtime_env(self, registry_url: str) -> Optional[dict]:
+    def _discover_clawhub_runtime_env(self, registry_url: str) -> Optional[dict[str, Any]]:
         """
         从 ClawHub 首页的 runtime env 脚本中提取当前生效的 Convex 部署地址。
         """
@@ -980,7 +1014,7 @@ class SkillHelper(metaclass=WeakSingleton):
         }
 
     @staticmethod
-    def _read_response_text(response) -> str:
+    def _read_response_text(response: Any) -> str:
         """
         尽量稳定地把 requests 响应或测试桩响应转换成文本。
         """
@@ -1056,12 +1090,11 @@ class SkillHelper(metaclass=WeakSingleton):
             wrote = True
         return wrote
 
-    def _download_repo_archive(self, repo: dict) -> Optional[bytes]:
+    def _download_repo_archive(self, repo: dict[str, Any]) -> Optional[bytes]:
         """
         下载市场仓库压缩包，并在缺省分支之间做回退尝试。
         """
-        branches = [repo.get("branch")] if repo.get("branch") else []
-        branches.extend([branch for branch in _DEFAULT_BRANCHES if branch not in branches])
+        branches = [repo["branch"]] if repo.get("branch") else list(_DEFAULT_BRANCHES)
         for branch in branches:
             archive_url = (
                 f"https://codeload.github.com/{repo['owner']}/{repo['repo']}/zip/refs/heads/{branch}"
@@ -1073,7 +1106,7 @@ class SkillHelper(metaclass=WeakSingleton):
             )
             if response is not None and response.status_code == 200:
                 repo["branch"] = branch
-                return response.content
+                return response.content if isinstance(response.content, bytes) else None
         logger.warning("下载技能市场仓库失败：%s", repo["repo_url"])
         return None
 
@@ -1081,9 +1114,9 @@ class SkillHelper(metaclass=WeakSingleton):
     def _request_convex_query(
         deployment_url: str,
         path: str,
-        args: dict,
+        args: dict[str, Any],
         timeout: int = 30,
-    ):
+    ) -> Any:
         """
         以官方前端相同的请求格式调用 Convex query 接口。
         """
@@ -1122,9 +1155,9 @@ class SkillHelper(metaclass=WeakSingleton):
     @staticmethod
     def _request_registry(
         url: str,
-        params: Optional[dict] = None,
+        params: Optional[dict[str, Any]] = None,
         timeout: int = 30,
-    ):
+    ) -> Any:
         """
         请求注册表 API，兼容代理和直连场景。
         """
@@ -1152,7 +1185,7 @@ class SkillHelper(metaclass=WeakSingleton):
         repo_name: str,
         is_api: bool = False,
         timeout: int = 30,
-    ):
+    ) -> Any:
         """
         按代理优先级顺序请求 GitHub 资源，兼容代理和直连场景。
         """

@@ -1,4 +1,6 @@
-"""验证计划经过真实工具执行、上下文压缩和历史恢复后的行为。"""
+"""
+验证计划经过真实工具执行、上下文压缩和历史恢复后的行为。
+"""
 
 import asyncio
 import json
@@ -32,26 +34,34 @@ from app.agent.tools.catalog import ToolCatalogSnapshot
 
 
 class _RecordingModel(FakeMessagesListChatModel):
-    """在离线图运行中捕获工具 schema 和送往模型的真实消息。"""
+    """
+    在离线图运行中捕获工具 schema 和送往模型的真实消息。
+    """
 
     seen: list[list[BaseMessage]] = Field(default_factory=list)
     tool_names: list[str] = Field(default_factory=list)
     tool_history: list[list[str]] = Field(default_factory=list)
 
     def bind_tools(self, tools, **_kwargs):
-        """记录工具绑定并复用确定性响应模型。"""
+        """
+        记录工具绑定并复用确定性响应模型。
+        """
         self.tool_names = [tool.name for tool in tools]
         self.tool_history.append(list(self.tool_names))
         return self
 
     def _generate(self, messages, *args, **kwargs):
-        """保留每次模型调用收到的请求内容。"""
+        """
+        保留每次模型调用收到的请求内容。
+        """
         self.seen.append(list(messages))
         return super()._generate(messages, *args, **kwargs)
 
 
 def _plan(objective="修复整理失败并验证结果"):
-    """构造包含未完成工作和具体上下文的合法计划。"""
+    """
+    构造包含未完成工作和具体上下文的合法计划。
+    """
     return {
         "objective": objective,
         "steps": [
@@ -64,26 +74,34 @@ def _plan(objective="修复整理失败并验证结果"):
 
 
 def _update_message(plan=None, call_id="plan-1"):
-    """生成符合真实工具调用协议的计划更新请求。"""
+    """
+    生成符合真实工具调用协议的计划更新请求。
+    """
     return AIMessage(content="", tool_calls=[{
         "name": "update_plan", "args": plan or _plan(), "id": call_id,
     }])
 
 
 def _graph(model, *middlewares):
-    """构造带独立会话 checkpoint 的最小计划运行图。"""
+    """
+    构造带独立会话 checkpoint 的最小计划运行图。
+    """
     return create_agent(
         model=model, middleware=[PlanMiddleware(), *middlewares], checkpointer=InMemorySaver(),
     )
 
 
 def _config(thread="plan-session"):
-    """为每个独立会话提供固定的图配置。"""
+    """
+    为每个独立会话提供固定的图配置。
+    """
     return {"configurable": {"thread_id": thread}}
 
 
 def test_plan_tool_updates_model_context_and_final_snapshot():
-    """工具更新须真实写入图状态，并在下一模型调用中呈现未完成步骤。"""
+    """
+    工具更新须真实写入图状态，并在下一模型调用中呈现未完成步骤。
+    """
     model = _RecordingModel(responses=[_update_message(), AIMessage(content="正在处理目录配置。")])
     graph = _graph(model)
 
@@ -99,7 +117,9 @@ def test_plan_tool_updates_model_context_and_final_snapshot():
 
 
 def test_plan_survives_real_compaction_and_message_history_rebuild():
-    """真实压缩删除旧工具回执后，计划仍进模型请求并能从序列化历史恢复。"""
+    """
+    真实压缩删除旧工具回执后，计划仍进模型请求并能从序列化历史恢复。
+    """
     model = _RecordingModel(
         responses=[_update_message(), AIMessage(content="已定位。"), AIMessage(content="继续修复。")],
         profile={"max_input_tokens": 8192},
@@ -113,7 +133,9 @@ def test_plan_survives_real_compaction_and_message_history_rebuild():
     graph = _graph(model, compactor)
 
     async def _run():
-        """先建立计划，再在后续轮次制造真实上下文压缩。"""
+        """
+        先建立计划，再在后续轮次制造真实上下文压缩。
+        """
         await graph.ainvoke({"messages": [HumanMessage(content="修复整理失败")]}, _config())
         history = [
             message for _ in range(12)
@@ -135,7 +157,9 @@ def test_plan_survives_real_compaction_and_message_history_rebuild():
 
 
 def test_plan_status_question_preserves_objective_and_new_task_replaces_it():
-    """同一会话的状态追问保留计划，明确新任务能通过工具替换旧计划。"""
+    """
+    同一会话的状态追问保留计划，明确新任务能通过工具替换旧计划。
+    """
     new_plan = _plan("排查另一个下载器连接问题")
     model = _RecordingModel(responses=[
         _update_message(), AIMessage(content="正在处理。"), AIMessage(content="尚在修复配置。"),
@@ -144,7 +168,9 @@ def test_plan_status_question_preserves_objective_and_new_task_replaces_it():
     graph = _graph(model)
 
     async def _run():
-        """在同一缓存图执行建计划、追问和替换三个轮次。"""
+        """
+        在同一缓存图执行建计划、追问和替换三个轮次。
+        """
         await graph.ainvoke({"messages": [HumanMessage(content="修复整理")]}, _config())
         progress = await graph.ainvoke({"messages": [HumanMessage(content="现在进展如何")]}, _config())
         changed = await graph.ainvoke({"messages": [HumanMessage(content="现在排查另一个下载器")]}, _config())
@@ -163,7 +189,9 @@ def test_plan_status_question_preserves_objective_and_new_task_replaces_it():
     {"objective": "检查", "steps": [{"step": str(index), "status": "pending"} for index in range(13)]},
 ])
 def test_invalid_plan_update_keeps_existing_plan(invalid):
-    """非法输入必须成为可恢复工具错误，不覆盖已保存的真实任务上下文。"""
+    """
+    非法输入必须成为可恢复工具错误，不覆盖已保存的真实任务上下文。
+    """
     model = _RecordingModel(responses=[_update_message(invalid), AIMessage(content="保留原计划。")])
     graph = _graph(model)
     history = attach_plan_snapshot([AIMessage(content="旧进度")], _plan())
@@ -175,7 +203,9 @@ def test_invalid_plan_update_keeps_existing_plan(invalid):
 
 
 def test_parallel_plan_updates_are_rejected_without_state_conflict():
-    """同次响应的两个计划更新均拒绝，真实 ToolNode 不得出现并发写冲突。"""
+    """
+    同次响应的两个计划更新均拒绝，真实 ToolNode 不得出现并发写冲突。
+    """
     double_update = AIMessage(content="", tool_calls=[
         {"name": "update_plan", "args": _plan("替换一"), "id": "one"},
         {"name": "update_plan", "args": _plan("替换二"), "id": "two"},
@@ -192,12 +222,16 @@ def test_parallel_plan_updates_are_rejected_without_state_conflict():
 
 
 def test_plan_isolated_between_threads_and_simple_question_needs_no_plan():
-    """共享图不能泄露另一会话的计划，简单问题直接回答即可。"""
+    """
+    共享图不能泄露另一会话的计划，简单问题直接回答即可。
+    """
     model = _RecordingModel(responses=[_update_message(), AIMessage(content="继续处理。"), AIMessage(content="你好。")])
     graph = _graph(model)
 
     async def _run():
-        """在共享图使用不同会话 ID 调用。"""
+        """
+        在共享图使用不同会话 ID 调用。
+        """
         await graph.ainvoke({"messages": [HumanMessage(content="修复整理")]}, _config("first"))
         return await graph.ainvoke({"messages": [HumanMessage(content="你好")]}, _config("second"))
 
@@ -208,7 +242,9 @@ def test_plan_isolated_between_threads_and_simple_question_needs_no_plan():
 
 
 def test_snapshot_sanitizes_secrets_and_preserves_message_objects():
-    """中断保存只修改副本，凭据不能留在计划恢复点中。"""
+    """
+    中断保存只修改副本，凭据不能留在计划恢复点中。
+    """
     plan = _plan()
     plan["explanation"] = "api_key=sk-testcredential123456789"
     original = AIMessage(content="任务已中断", id="interrupted")
@@ -222,7 +258,9 @@ def test_snapshot_sanitizes_secrets_and_preserves_message_objects():
 
 
 def test_old_or_invalid_snapshots_cannot_override_current_plan():
-    """图中有效计划优先于旧历史，用户消息及无效最新快照不得恢复旧目标。"""
+    """
+    图中有效计划优先于旧历史，用户消息及无效最新快照不得恢复旧目标。
+    """
     middleware = PlanMiddleware()
     history = attach_plan_snapshot([AIMessage(content="旧进度")], _plan("旧目标"))
     state = {"messages": history, "task_plan": _plan("当前目标")}
@@ -234,11 +272,15 @@ def test_old_or_invalid_snapshots_cannot_override_current_plan():
 
 
 def test_plan_discovery_and_host_policy_complete_one_task():
-    """真实图在宿主策略内完成建计划、发现遗漏工具、查询和有证据完成的闭环。"""
+    """
+    真实图在宿主策略内完成建计划、发现遗漏工具、查询和有证据完成的闭环。
+    """
     inspected_records = []
 
     def inspect_record(record_id: int) -> str:
-        """记录实际执行次数，返回可供计划引用的检查证据。"""
+        """
+        记录实际执行次数，返回可供计划引用的检查证据。
+        """
         inspected_records.append(record_id)
         return f"记录 {record_id} 整理完成，目标文件存在"
 

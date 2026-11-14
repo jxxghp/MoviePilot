@@ -4,15 +4,18 @@
 """
 
 import copy
+import re
 import threading
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
+from typing import Literal as TypingLiteral
 
 from pyparsing import (
     Combine,
     Forward,
     Literal,
+    ParseBaseException,
     ParseResults,
     Word,
     alphanums,
@@ -22,6 +25,7 @@ from pyparsing import (
     opAssoc,
 )
 
+from app.application.classification.reference import classification_category_resolver_snapshot
 from app.application.configuration import (
     SystemConfigStagingPort,
     get_configured_system_config,
@@ -34,9 +38,11 @@ from app.application.subscription.contract import (
 )
 from app.domain.context import MediaInfo
 from app.schemas.common import JsonData
-from app.schemas.rule import CustomRule
-from app.schemas.system import FilterRuleGroup
+from app.schemas.rule import CustomRule, FilterRuleGroup
 from app.schemas.types import SystemConfigKey
+
+if TYPE_CHECKING:
+    from app.schemas.search import SearchDiagnosticRuleGroup, SearchDiagnosticWarning
 
 _RULE_GROUP_LIST_CONFIG_KEYS = (
     SystemConfigKey.SearchFilterRuleGroups,
@@ -51,10 +57,17 @@ _RULE_GROUP_DEFAULT_CONFIG_KEYS = (
 
 
 class FilterRuleParser(Protocol):
-    """描述可选的过滤规则加速解析能力。"""
+    """
+    描述可选的过滤规则加速解析能力。
+    """
 
     def parse_filter_rule(self, expression: str) -> Optional[list[Any]]:
-        """返回加速解析结构；不可用时返回 None。"""
+        """
+        返回加速解析结构；不可用时返回 None。
+
+        :param expression: 由规则标识、逻辑运算和优先级组成的过滤表达式
+        :return: 解析后的规则结构，原生能力不可用时为 None，由调用方回退到 Python 解析
+        """
         ...
 
 
@@ -62,28 +75,68 @@ _filter_rule_parser: Optional[FilterRuleParser] = None
 
 
 def configure_filter_rule_parser(parser: Optional[FilterRuleParser]) -> None:
-    """由启动组合根注入或清除可选规则解析加速器。"""
+    """
+    由启动组合根注入或清除可选规则解析加速器。
+    """
     global _filter_rule_parser
     _filter_rule_parser = parser
 
 
 class AsyncRuleGroupUnitOfWork(Protocol):
-    """异步规则组修改事务的最小提交与回滚端口。"""
+    """
+    异步规则组修改事务的最小提交与回滚端口。
+    """
 
     async def commit(self) -> None:
-        """提交规则定义及全部引用更新。"""
+        """
+        提交规则定义及全部引用更新。
+        """
 
     async def rollback(self) -> None:
-        """回滚规则定义及全部引用更新。"""
+        """
+        回滚规则定义及全部引用更新。
+        """
 
 
 class RuleGroupMutationConflictError(RuntimeError):
-    """规则定义已被并发修改，拒绝用过期快照覆盖新值。"""
+    """
+    规则定义已被并发修改，拒绝用过期快照覆盖新值。
+    """
+
+
+class RuleStringValidationError(ValueError):
+    """
+    不包含解析器输入摘要的规则配置定位信息。
+
+    :ivar code: 区分无效 ID、悬空引用和表达式语法错误的稳定代码
+    :ivar rule_ids: 完整的相关 ID，保留旧 ID 中的空白，语法错误时为空
+    """
+
+    def __init__(self, code: str, rule_ids: Iterable[str] = ()) -> None:
+        """
+        构造可写入日志的中文说明，完整 ID 不依赖解析器截断的异常文本。
+        """
+        self.code = code
+        self.rule_ids = tuple(dict.fromkeys(rule_ids))
+        labels = ", ".join(repr(rule_id) for rule_id in self.rule_ids)
+        messages = {
+            "rule_id_invalid": f"引用了无效的规则 ID：{labels}；ID 仅支持英文字母和数字，且至少包含一个字母",
+            "rule_id_missing": f"引用了不存在的规则 ID：{labels}",
+            "rule_syntax_invalid": "规则表达式语法错误，请检查运算符、括号和优先级层级",
+        }
+        super().__init__(messages[code])
 
 
 @dataclass(frozen=True, slots=True)
 class RuleGroupSubscriptionChange:
-    """一条已提交的订阅规则组引用变更。"""
+    """
+    一条已提交的订阅规则组引用变更。
+
+    :param subscribe_id: 受本次规则组变更影响的订阅主键
+    :param name: 订阅展示名称
+    :param season: 订阅季号，非剧集订阅可为 None
+    :param filter_groups: 引用更新后订阅实际使用的规则组名称
+    """
 
     subscribe_id: int
     name: str
@@ -91,7 +144,9 @@ class RuleGroupSubscriptionChange:
     filter_groups: tuple[str, ...]
 
     def to_dict(self) -> dict[str, JsonData]:
-        """返回 Agent 响应可直接序列化的兼容字典。"""
+        """
+        返回 Agent 响应可直接序列化的兼容字典。
+        """
         return {
             "subscribe_id": self.subscribe_id,
             "name": self.name,
@@ -102,13 +157,20 @@ class RuleGroupSubscriptionChange:
 
 @dataclass(frozen=True, slots=True)
 class RuleGroupMutation:
-    """规则定义和全部引用在同一事务提交后的稳定结果。"""
+    """
+    规则定义和全部引用在同一事务提交后的稳定结果。
+
+    :param configurations: 本次事务提交后的规则定义与相关系统配置值
+    :param subscriptions: 本次事务中已更新规则组引用的订阅记录
+    """
 
     configurations: Mapping[SystemConfigKey, JsonData]
     subscriptions: tuple[RuleGroupSubscriptionChange, ...]
 
     def to_dict(self) -> dict[str, JsonData]:
-        """返回现有 Agent 工具使用的引用更新响应结构。"""
+        """
+        返回现有 Agent 工具使用的引用更新响应结构。
+        """
         return {
             "global_settings": {
                 key.value: copy.deepcopy(value)
@@ -125,7 +187,9 @@ def _map_rule_group_names(
     current_name: Optional[str],
     valid_names: set[str],
 ) -> list[str]:
-    """按删除或改名意图映射引用，并按最终定义清理悬空名称。"""
+    """
+    按删除或改名意图映射引用，并按最终定义清理悬空名称。
+    """
     result: list[str] = []
     for raw_name in values if isinstance(values, list) else []:
         name = str(raw_name)
@@ -144,7 +208,9 @@ def _rewrite_default_config(
     current_name: Optional[str],
     valid_names: set[str],
 ) -> dict[str, JsonData]:
-    """复制默认订阅配置并只重写其中的规则组引用。"""
+    """
+    复制默认订阅配置并只重写其中的规则组引用。
+    """
     original = copy.deepcopy(value) if isinstance(value, dict) else {}
     original_groups = original.get("filter_groups")
     updated_groups = _map_rule_group_names(
@@ -160,7 +226,9 @@ def _subscription_change(
     subscription: SubscriptionSnapshot,
     filter_groups: list[str],
 ) -> RuleGroupSubscriptionChange:
-    """把事务内订阅快照投影为提交结果。"""
+    """
+    把事务内订阅快照投影为提交结果。
+    """
     return RuleGroupSubscriptionChange(
         subscribe_id=subscription.id,
         name=subscription.name,
@@ -170,7 +238,9 @@ def _subscription_change(
 
 
 class SyncRuleGroupMutationService:
-    """在一个同步 UoW 内原子提交规则定义、配置引用和订阅引用。"""
+    """
+    在一个同步 UoW 内原子提交规则定义、配置引用和订阅引用。
+    """
 
     def __init__(
         self,
@@ -179,7 +249,9 @@ class SyncRuleGroupMutationService:
         unit_of_work: SyncUnitOfWork,
         publish: Callable[[Mapping[SystemConfigKey, JsonData]], None],
     ) -> None:
-        """注入共享 Session 的端口、UoW 和必填提交后快照发布器。"""
+        """
+        注入共享 Session 的端口、UoW 和必填提交后快照发布器。
+        """
         self._configuration = configuration
         self._subscriptions = subscriptions
         self._unit_of_work = unit_of_work
@@ -195,7 +267,9 @@ class SyncRuleGroupMutationService:
         previous_name: Optional[str] = None,
         current_name: Optional[str] = None,
     ) -> RuleGroupMutation:
-        """原子保存规则组及可选自定义规则，并重写全部规则组引用。"""
+        """
+        原子保存规则组及可选自定义规则，并重写全部规则组引用。
+        """
         if (custom_rules is None) != (expected_custom_rules is None):
             raise ValueError("自定义规则写入必须同时提供当前快照和目标值")
         try:
@@ -223,7 +297,9 @@ class SyncRuleGroupMutationService:
         previous_name: Optional[str],
         current_name: Optional[str],
     ) -> RuleGroupMutation:
-        """在同步 Session 中锁定事实源并暂存全部变化。"""
+        """
+        在同步 Session 中锁定事实源并暂存全部变化。
+        """
         changes: dict[SystemConfigKey, JsonData] = {}
         definitions = copy.deepcopy(rule_groups)
         valid_names = {
@@ -240,10 +316,11 @@ class SyncRuleGroupMutationService:
         ):
             raise RuleGroupMutationConflictError("规则组已被其他请求修改，请重新读取后再试")
         if original_definitions != definitions:
+            definition_payload = list[JsonData](definitions)
             self._configuration.stage_set(
-                SystemConfigKey.UserFilterRuleGroups, definitions
+                SystemConfigKey.UserFilterRuleGroups, definition_payload
             )
-            changes[SystemConfigKey.UserFilterRuleGroups] = definitions
+            changes[SystemConfigKey.UserFilterRuleGroups] = definition_payload
 
         if custom_rules is not None:
             assert expected_custom_rules is not None
@@ -259,11 +336,12 @@ class SyncRuleGroupMutationService:
                     "自定义规则已被其他请求修改，请重新读取后再试"
                 )
             if original_custom_rules != custom_definitions:
+                custom_payload = list[JsonData](custom_definitions)
                 self._configuration.stage_set(
                     SystemConfigKey.CustomFilterRules,
-                    custom_definitions,
+                    custom_payload,
                 )
-                changes[SystemConfigKey.CustomFilterRules] = custom_definitions
+                changes[SystemConfigKey.CustomFilterRules] = custom_payload
 
         for key in _RULE_GROUP_LIST_CONFIG_KEYS:
             original = self._configuration.get_for_update(key)
@@ -271,8 +349,9 @@ class SyncRuleGroupMutationService:
                 original, previous_name, current_name, valid_names
             )
             if list_updated != (original or []):
-                self._configuration.stage_set(key, list_updated)
-                changes[key] = list_updated
+                list_payload = list[JsonData](list_updated)
+                self._configuration.stage_set(key, list_payload)
+                changes[key] = list_payload
 
         for key in _RULE_GROUP_DEFAULT_CONFIG_KEYS:
             original = self._configuration.get_for_update(key)
@@ -293,14 +372,16 @@ class SyncRuleGroupMutationService:
                 continue
             self._subscriptions.stage_update(
                 subscription.id,
-                SubscriptionPatch({"filter_groups": updated}),
+                SubscriptionPatch({"filter_groups": list[JsonData](updated)}),
             )
             subscription_changes.append(_subscription_change(subscription, updated))
         return RuleGroupMutation(changes, tuple(subscription_changes))
 
 
 class AsyncRuleGroupMutationService:
-    """在一个异步 UoW 内原子提交规则定义、配置引用和订阅引用。"""
+    """
+    在一个异步 UoW 内原子提交规则定义、配置引用和订阅引用。
+    """
 
     def __init__(
         self,
@@ -309,7 +390,9 @@ class AsyncRuleGroupMutationService:
         unit_of_work: AsyncRuleGroupUnitOfWork,
         publish: Callable[[Mapping[SystemConfigKey, JsonData]], Awaitable[None]],
     ) -> None:
-        """注入共享 AsyncSession 的端口、UoW 和必填提交后快照发布器。"""
+        """
+        注入共享 AsyncSession 的端口、UoW 和必填提交后快照发布器。
+        """
         self._configuration = configuration
         self._subscriptions = subscriptions
         self._unit_of_work = unit_of_work
@@ -325,7 +408,9 @@ class AsyncRuleGroupMutationService:
         previous_name: Optional[str] = None,
         current_name: Optional[str] = None,
     ) -> RuleGroupMutation:
-        """异步原子保存规则组及可选自定义规则，并重写全部引用。"""
+        """
+        异步原子保存规则组及可选自定义规则，并重写全部引用。
+        """
         if (custom_rules is None) != (expected_custom_rules is None):
             raise ValueError("自定义规则写入必须同时提供当前快照和目标值")
         try:
@@ -353,7 +438,9 @@ class AsyncRuleGroupMutationService:
         previous_name: Optional[str],
         current_name: Optional[str],
     ) -> RuleGroupMutation:
-        """在 AsyncSession 中锁定事实源并暂存全部变化。"""
+        """
+        在 AsyncSession 中锁定事实源并暂存全部变化。
+        """
         changes: dict[SystemConfigKey, JsonData] = {}
         definitions = copy.deepcopy(rule_groups)
         valid_names = {
@@ -370,10 +457,11 @@ class AsyncRuleGroupMutationService:
         ):
             raise RuleGroupMutationConflictError("规则组已被其他请求修改，请重新读取后再试")
         if original_definitions != definitions:
+            definition_payload = list[JsonData](definitions)
             await self._configuration.async_stage_set(
-                SystemConfigKey.UserFilterRuleGroups, definitions
+                SystemConfigKey.UserFilterRuleGroups, definition_payload
             )
-            changes[SystemConfigKey.UserFilterRuleGroups] = definitions
+            changes[SystemConfigKey.UserFilterRuleGroups] = definition_payload
 
         if custom_rules is not None:
             assert expected_custom_rules is not None
@@ -391,11 +479,12 @@ class AsyncRuleGroupMutationService:
                     "自定义规则已被其他请求修改，请重新读取后再试"
                 )
             if original_custom_rules != custom_definitions:
+                custom_payload = list[JsonData](custom_definitions)
                 await self._configuration.async_stage_set(
                     SystemConfigKey.CustomFilterRules,
-                    custom_definitions,
+                    custom_payload,
                 )
-                changes[SystemConfigKey.CustomFilterRules] = custom_definitions
+                changes[SystemConfigKey.CustomFilterRules] = custom_payload
 
         for key in _RULE_GROUP_LIST_CONFIG_KEYS:
             original = await self._configuration.async_get_for_update(key)
@@ -403,8 +492,9 @@ class AsyncRuleGroupMutationService:
                 original, previous_name, current_name, valid_names
             )
             if list_updated != (original or []):
-                await self._configuration.async_stage_set(key, list_updated)
-                changes[key] = list_updated
+                list_payload = list[JsonData](list_updated)
+                await self._configuration.async_stage_set(key, list_payload)
+                changes[key] = list_payload
 
         for key in _RULE_GROUP_DEFAULT_CONFIG_KEYS:
             original = await self._configuration.async_get_for_update(key)
@@ -426,18 +516,22 @@ class AsyncRuleGroupMutationService:
                 continue
             await self._subscriptions.async_stage_update(
                 subscription.id,
-                SubscriptionPatch({"filter_groups": updated}),
+                SubscriptionPatch({"filter_groups": list[JsonData](updated)}),
             )
             subscription_changes.append(_subscription_change(subscription, updated))
         return RuleGroupMutation(changes, tuple(subscription_changes))
 
 
 class RuleHelper:
-    """读取用户过滤规则配置，并按媒体上下文选择适用规则组。"""
+    """
+    读取用户过滤规则配置，并按媒体上下文选择适用规则组。
+    """
 
     @staticmethod
     def get_rule_groups() -> List[FilterRuleGroup]:
-        """返回用户配置的全部过滤规则组。"""
+        """
+        返回用户配置的全部过滤规则组。
+        """
         rule_groups: List[dict[str, Any]] = get_configured_system_config().get(
             SystemConfigKey.UserFilterRuleGroups
         )
@@ -446,7 +540,9 @@ class RuleHelper:
         return [FilterRuleGroup(**group) for group in rule_groups]
 
     def get_rule_group(self, group_name: str) -> Optional[FilterRuleGroup]:
-        """按名称返回过滤规则组。"""
+        """
+        按名称返回过滤规则组。
+        """
         return next(
             (group for group in self.get_rule_groups() if group.name == group_name),
             None,
@@ -457,26 +553,93 @@ class RuleHelper:
         media: Optional[MediaInfo] = None,
         group_names: Optional[list[str]] = None,
     ) -> List[FilterRuleGroup]:
-        """按媒体类型、分类和候选名称筛选适用规则组。"""
+        """
+        按媒体类型、生效分类和候选名称筛选适用规则组。
+
+        规则组的分类名称通过活动分类策略关联媒体，兼容已有目录路径条件。
+
+        :param media: 已识别并应用最终分类的媒体；未提供时仅匹配无类型限制的规则组
+        :param group_names: 限定规则组名称；为空时检查全部配置规则组
+        :return: 保持配置顺序的适用规则组，分类不跨主媒体类型匹配
+        """
         rule_groups = self.get_rule_groups()
         if group_names:
             rule_groups = [
                 group for group in rule_groups if group.name in group_names
             ]
+        category_resolver = classification_category_resolver_snapshot()
         return [
             group
             for group in rule_groups
             if not group.media_type
             or (
                 media
+                and media.type
                 and group.media_type == media.type.value
-                and (not group.category or group.category == media.category)
+                and (not group.category or category_resolver.matches_media_category(media, group.category))
             )
         ]
 
+    def explain_rule_groups(
+        self, *, media: Optional[MediaInfo], group_names: list[str],
+    ) -> list["SearchDiagnosticRuleGroup"]:
+        """
+        用现有规则选择策略说明所选规则的适用范围，不执行资源过滤。
+
+        :param media: 实际交给过滤器的媒体上下文；标题搜索传 None
+        :param group_names: 本次选择的规则组名称；空列表不诊断其它规则
+        :return: 按选择顺序返回适用、作用范围不符或配置已删除的说明
+        """
+        if not group_names:
+            return []
+        # 搜索诊断在首次调用时加载，规则服务导入不扩大启动模块集合。
+        from app.schemas.search import SearchDiagnosticRuleGroup
+
+        configured = {group.name: group for group in self.get_rule_groups()}
+        effective = {group.name for group in self.get_rule_group_by_media(media=media, group_names=group_names)}
+        result = []
+        for name in dict.fromkeys(group_names):
+            group = configured.get(name)
+            reason: Optional[TypingLiteral["rule_group_not_applicable", "rule_group_missing"]] = None
+            if group is None:
+                reason = "rule_group_missing"
+            elif name not in effective:
+                reason = "rule_group_not_applicable"
+            result.append(SearchDiagnosticRuleGroup(
+                name=name, status="skipped" if reason else "effective", reason=reason,
+                media_type=group.media_type if group else None,
+                categories=[group.category] if group and group.category else [],
+            ))
+        return result
+
+    def diagnose_rule_groups(
+        self, *, media: Optional[MediaInfo], group_names: list[str],
+    ) -> list["SearchDiagnosticWarning"]:
+        """
+        检查本次所选且适用的规则组配置，不将配置告警推测为资源拒绝。
+
+        :param media: 本次过滤使用的媒体上下文，标题搜索传 None
+        :param group_names: 本次选择的规则组名称；空列表不检查其它组
+        :return: 完整 ID 与规则组定位组成的安全告警，不含原始解析异常
+        """
+        if not group_names:
+            return []
+        from app.schemas.search import SearchDiagnosticWarning
+
+        available_ids = [*BUILTIN_RULE_SET, *(rule.id for rule in self.get_custom_rules() if rule.id is not None)]
+        warnings = []
+        for group in self.get_rule_group_by_media(media=media, group_names=group_names):
+            issue = describe_rule_string_error(group.rule_string or "", available_ids)
+            if issue is not None:
+                warnings.append(SearchDiagnosticWarning(code=issue.code, rule_group=group.name,
+                                                        rule_ids=list(issue.rule_ids)))
+        return warnings
+
     @staticmethod
     def get_custom_rules() -> List[CustomRule]:
-        """返回用户配置的全部自定义过滤规则。"""
+        """
+        返回用户配置的全部自定义过滤规则。
+        """
         rules: List[dict[str, Any]] = get_configured_system_config().get(
             SystemConfigKey.CustomFilterRules
         )
@@ -485,7 +648,9 @@ class RuleHelper:
         return [CustomRule(**rule) for rule in rules]
 
     def get_custom_rule(self, rule_id: str) -> Optional[CustomRule]:
-        """按 ID 返回一条自定义过滤规则。"""
+        """
+        按 ID 返回一条自定义过滤规则。
+        """
         return next(
             (rule for rule in self.get_custom_rules() if rule.id == rule_id),
             None,
@@ -497,7 +662,9 @@ def replace_group_name_in_list(
     old_name: str,
     new_name: str,
 ) -> list[str]:
-    """更新配置里的规则组名引用，并顺手去重。"""
+    """
+    更新配置里的规则组名引用，并顺手去重。
+    """
     result = []
     for value in values or []:
         mapped = new_name if value == old_name else value
@@ -517,17 +684,17 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
             r"(?i)(\b[XH]\.?264\b|\b[XH]\.?265\b|\bWEB-?DL\b|\bWEB-?RIP\b|\bHDTV(?:RIP)?\b|\bREMUX\b|\bBDRip\b|\bBRRip\b|\bHDRip\b|\bENCODE\b|\b(?<!WEB-|HDTV)RIP\b)"
         ],
     },
-    # 4K
+    # 4K 超高清分辨率
     "4K": {
         "include": [r"4k|2160p|x2160"],
         "exclude": [],
     },
-    # 1080P
+    # 1080P 全高清分辨率
     "1080P": {
         "include": [r"1080[pi]|x1080"],
         "exclude": [],
     },
-    # 720P
+    # 720P 高清分辨率
     "720P": {
         "include": [r"720[pi]|x720"],
         "exclude": [],
@@ -555,22 +722,22 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
         "include": [r"特效"],
         "exclude": [],
     },
-    # BluRay
+    # 蓝光来源
     "BLURAY": {
         "include": [r"Blu-?Ray"],
         "exclude": [],
     },
-    # UHD
+    # 超高清蓝光来源
     "UHD": {
         "include": [r"UHD|UltraHD"],
         "exclude": [],
     },
-    # H265
+    # H.265 视频编码
     "H265": {
         "include": [r"[Hx].?265|HEVC"],
         "exclude": [],
     },
-    # H264
+    # H.264 视频编码
     "H264": {
         "include": [r"[Hx].?264|AVC"],
         "exclude": [],
@@ -585,12 +752,12 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
         "include": [r"Dolby[\s.+]+Atmos|Atmos|杜比全景[声聲]"],
         "exclude": [],
     },
-    # HDR
+    # 高动态范围图像
     "HDR": {
         "include": [r"[\s.]+HDR[\s.]+|HDR10|HDR10\+|HDRVivid"],
         "exclude": [],
     },
-    # SDR
+    # 标准动态范围图像
     "SDR": {
         "include": [r"[\s.]+SDR[\s.]+"],
         "exclude": [],
@@ -600,7 +767,7 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
         "include": [r"REMUX"],
         "exclude": [],
     },
-    # WEB-DL
+    # 流媒体下载来源
     "WEBDL": {
         "include": [r"WEB-?DL|WEB-?RIP"],
         "exclude": [],
@@ -622,12 +789,12 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
         "include": [r"粤语配音|粤语"],
         "exclude": [],
     },
-    # 60FPS
+    # 每秒 60 帧视频
     "60FPS": {
         "include": [r"60fps|60帧"],
         "exclude": [],
     },
-    # 3D
+    # 立体视频
     "3D": {
         "include": [r"3D"],
         "exclude": [],
@@ -657,6 +824,9 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
 
 
 class RuleParser:
+    """
+    按线程隔离解析器状态，解析用户规则表达式。
+    """
 
     _lock = threading.Lock()
     _thread_local = threading.local()
@@ -695,11 +865,9 @@ class RuleParser:
         """
         解析给定的表达式。
 
-        参数:
-        expression -- 要解析的表达式
-
-        返回:
-        解析结果
+        :param expression: 待解析的完整规则表达式
+        :return: 逻辑表达式解析结果
+        :raises ParseException: 包含不合法语法或无法消费的尾部内容
         """
         if _filter_rule_parser is not None:
             try:
@@ -708,7 +876,7 @@ class RuleParser:
                 accelerated = None
             if accelerated is not None:
                 return _RustParseResults(accelerated)
-        return self.expr.parse_string(expression)
+        return self.expr.parse_string(expression, parse_all=True)
 
 
 class _RustParseResults(list[Any]):
@@ -722,6 +890,7 @@ class _RustParseResults(list[Any]):
         """
         return list(self)
 
+    # 保留 pyparsing 的历史驼峰方法名，兼容既有调用方。
     def asList(self) -> list[Any]:  # noqa: N802
         """
         返回兼容 pyparsing.ParseResults.asList 的列表结构。
@@ -729,8 +898,49 @@ class _RustParseResults(list[Any]):
         return self.as_list()
 
 
+def describe_rule_string_error(
+    rule_string: str, available_rule_ids: Iterable[str],
+) -> Optional[RuleStringValidationError]:
+    """
+    按完整操作数诊断规则表达式，避免将含空格的旧 ID 拆成多个错误片段。
+
+    本检查只诊断配置；运行时仍按实际需要延迟解析层级，不能因未执行的坏层级
+    改变高优先级命中或后续规则组的短路语义。
+
+    :param rule_string: 需要检查的完整规则表达式
+    :param available_rule_ids: 当前内置和自定义 ID，旧 ID 保留原始空白
+    :return: 首类配置错误；全部语法和引用有效时返回 None
+    """
+    available = set(available_rule_ids)
+    aliases: dict[str, list[str]] = {}
+    for rule_id in sorted(available):
+        aliases.setdefault(rule_id.strip(), []).append(rule_id)
+    operands = [span.strip() for span in re.findall(r"[^!&|()>]+", rule_string) if span.strip()]
+    invalid_ids = []
+    missing_ids = []
+    for operand in operands:
+        originals = [operand] if operand in available else aliases.get(operand, [operand])
+        invalid = [rule_id for rule_id in originals if not re.fullmatch(r"[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*", rule_id)]
+        if invalid:
+            invalid_ids.extend(invalid)
+        elif operand not in available:
+            missing_ids.append(operand)
+    if invalid_ids:
+        return RuleStringValidationError("rule_id_invalid", invalid_ids)
+    if missing_ids:
+        return RuleStringValidationError("rule_id_missing", missing_ids)
+    parser = RuleParser()
+    for level in rule_string.split(">"):
+        if not level.strip():
+            return RuleStringValidationError("rule_syntax_invalid")
+        try:
+            parser.parse(level.strip())
+        except ParseBaseException:
+            return RuleStringValidationError("rule_syntax_invalid")
+    return None
+
+
 if __name__ == '__main__':
-    # 测试代码
     expression_str = """
      SPECSUB & CNVOI & 4K & !BLU & !REMUX & !WEBDL & 60FPS & !DOLBY & !SDR & !3D > CNSUB & CNVOI & 4K & !BLU & !REMUX & !WEBDL & 60FPS & !DOLBY & !SDR & !3D > SPECSUB & 4K & !BLU & !REMUX & !WEBDL & 60FPS & !DOLBY & !SDR & !3D > CNSUB & 4K & !BLU & !REMUX & !WEBDL & 60FPS & !DOLBY & !SDR & !3D > SPECSUB & CNVOI & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & HDR & !3D > CNSUB & CNVOI & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & HDR & !3D > SPECSUB & CNVOI & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & !3D > CNSUB & CNVOI & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & !3D > SPECSUB & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & HDR & !3D > CNSUB & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & HDR & !3D > SPECSUB & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & !3D > CNSUB & 4K & !BLU & !REMUX & !WEBDL & !DOLBY & !3D > SPECSUB & CNVOI & 4K & WEBDL & 60FPS & !DOLBY & !SDR & !3D > CNSUB & CNVOI & 4K & WEBDL & 60FPS & !DOLBY & !SDR & !3D > SPECSUB & 4K & WEBDL & 60FPS & !DOLBY & !SDR & !3D > CNSUB & 4K & WEBDL & 60FPS & !DOLBY & !SDR & !3D > SPECSUB & CNVOI & 4K & WEBDL & !DOLBY & HDR & !3D > CNSUB & CNVOI & 4K & WEBDL & !DOLBY & HDR & !3D > SPECSUB & CNVOI & 4K & WEBDL & !DOLBY & !3D > CNSUB & CNVOI & 4K & WEBDL & !DOLBY & !3D > SPECSUB & 4K & WEBDL & !DOLBY & HDR & !3D > CNSUB & 4K & WEBDL & !DOLBY & HDR & !3D > SPECSUB & 4K & WEBDL & !DOLBY & !3D > CNSUB & 4K & WEBDL & !DOLBY & !3D > SPECSUB & CNVOI & 4K & !BLU & !WEBDL & !DOLBY & HDR & !3D > CNSUB & CNVOI & 4K & !BLU & !WEBDL & !DOLBY & HDR & !3D > SPECSUB & CNVOI & 4K & !BLU & !WEBDL & !DOLBY & !3D > CNSUB & CNVOI & 4K & !BLU & !WEBDL & !DOLBY & !3D > SPECSUB & 4K & !BLU & !WEBDL & !DOLBY & HDR & !3D > CNSUB & 4K & !BLU & !WEBDL & !DOLBY & HDR & !3D > SPECSUB & 4K & !BLU & !WEBDL & !DOLBY & !SDR & !3D > CNSUB & 4K & !BLU & !WEBDL & !DOLBY & !SDR & !3D > 4K & !BLU & !REMUX & !DOLBY & HDR & !3D > 4K & !BLURAY & !REMUX & !DOLBY & !3D > SPECSUB & 1080P & !BLU & !REMUX & !WEBDL & !DOLBY & HDR & !3D > CNSUB & 1080P & !BLU & !REMUX & !WEBDL & !DOLBY & HDR & !3D > SPECSUB & 1080P & !BLU & !REMUX & !WEBDL & !DOLBY & !3D > CNSUB & 1080P & !BLU & !REMUX & !WEBDL & !DOLBY & !3D > SPECSUB & 1080P & !BLU & !WEBDL & !DOLBY & HDR & !3D > CNSUB & 1080P & !BLU & !WEBDL & !DOLBY & HDR & !3D > SPECSUB & 1080P & !BLU & !WEBDL & !DOLBY & !3D > CNSUB & 1080P & !BLU & !WEBDL & !DOLBY & !3D > SPECSUB & 1080P & WEBDL & !DOLBY & HDR & !3D > CNSUB & 1080P & WEBDL & !DOLBY & HDR & !3D > SPECSUB & 1080P & WEBDL & !DOLBY & !3D > CNSUB & 1080P & WEBDL & !DOLBY & !3D > 1080P & !BLU & !REMUX & !DOLBY & HDR & !3D > 1080P & !BLU & !REMUX & !DOLBY & !3D
     """

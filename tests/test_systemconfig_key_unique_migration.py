@@ -1,4 +1,6 @@
-"""系统配置键唯一性 Alembic 迁移测试。"""
+"""
+系统配置键唯一性 Alembic 迁移测试。
+"""
 
 import importlib
 from typing import Any, Protocol, cast
@@ -19,24 +21,36 @@ _LEGACY_INDEX = "ix_systemconfig_key"
 
 
 class _MigrationModule(Protocol):
-    """声明测试所需的迁移模块接口。"""
+    """
+    声明测试所需的迁移模块接口。
+
+    :ivar revision: 待验证迁移的版本标识
+    :ivar down_revision: 该迁移依赖的上一版本标识
+    :ivar op: 绑定测试数据库连接的 Alembic 操作入口
+    """
 
     revision: str
     down_revision: str
     op: Any
 
     def upgrade(self) -> None:
-        """执行升级迁移。"""
+        """
+        执行升级迁移。
+        """
 
     def downgrade(self) -> None:
-        """执行降级迁移。"""
+        """
+        执行降级迁移。
+        """
 
 
 def _bind_migration(
     monkeypatch: pytest.MonkeyPatch,
     connection: Connection,
 ) -> _MigrationModule:
-    """把目标迁移绑定到隔离数据库连接。"""
+    """
+    把目标迁移绑定到隔离数据库连接。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
     monkeypatch.setattr(
         migration,
@@ -47,7 +61,9 @@ def _bind_migration(
 
 
 def _create_legacy_table(connection: Connection) -> sa.Table:
-    """创建带重复键、空键和普通索引的旧版系统配置表。"""
+    """
+    创建带重复键、空键和普通索引的旧版系统配置表。
+    """
     metadata = sa.MetaData()
     table = sa.Table(
         _TABLE,
@@ -73,7 +89,9 @@ def _create_legacy_table(connection: Connection) -> sa.Table:
 
 
 def _load_table(connection: Connection) -> sa.Table:
-    """反射当前系统配置表结构。"""
+    """
+    反射当前系统配置表结构。
+    """
     return sa.Table(
         _TABLE,
         sa.MetaData(),
@@ -82,7 +100,9 @@ def _load_table(connection: Connection) -> sa.Table:
 
 
 def _rows(connection: Connection) -> list[dict[str, Any]]:
-    """按 ID 返回当前系统配置数据。"""
+    """
+    按 ID 返回当前系统配置数据。
+    """
     table = _load_table(connection)
     return [
         dict(row)
@@ -93,7 +113,9 @@ def _rows(connection: Connection) -> list[dict[str, Any]]:
 
 
 def _index_definitions(connection: Connection) -> dict[str, dict[str, Any]]:
-    """按名称返回当前系统配置索引定义。"""
+    """
+    按名称返回当前系统配置索引定义。
+    """
     return {
         str(index["name"]): index
         for index in sa.inspect(connection).get_indexes(_TABLE)
@@ -102,7 +124,9 @@ def _index_definitions(connection: Connection) -> dict[str, dict[str, Any]]:
 
 
 def _key_nullable(connection: Connection) -> bool:
-    """返回当前系统配置键列的可空状态。"""
+    """
+    返回当前系统配置键列的可空状态。
+    """
     column = next(
         item
         for item in sa.inspect(connection).get_columns(_TABLE)
@@ -114,7 +138,9 @@ def _key_nullable(connection: Connection) -> bool:
 def test_systemconfig_key_migration_upgrade_downgrade_reupgrade(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """迁移应保留最新重复项、清理空键并支持完整往返。"""
+    """
+    迁移应保留最新重复项、清理空键并支持完整往返。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_table(connection)
@@ -179,7 +205,9 @@ def test_systemconfig_key_migration_upgrade_downgrade_reupgrade(
 
 
 def test_systemconfig_model_matches_unique_key_schema() -> None:
-    """ORM 模型应声明非空键和命名唯一索引。"""
+    """
+    ORM 模型应声明非空键和命名唯一索引。
+    """
     key_column = SystemConfig.__table__.c.key
     indexes = {index.name: index for index in SystemConfig.__table__.indexes}
 
@@ -192,7 +220,9 @@ def test_systemconfig_model_matches_unique_key_schema() -> None:
 
 
 def test_systemconfig_key_migration_revision_chain() -> None:
-    """迁移版本号应接在订阅治理 3.0.25 revision 之后。"""
+    """
+    迁移版本号应接在订阅治理 3.0.25 revision 之后。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
 
     assert migration.revision == "b6e1f8a3c9d2"

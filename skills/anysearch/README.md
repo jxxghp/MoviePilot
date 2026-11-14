@@ -38,6 +38,10 @@ unzip anysearch-skill.zip
 
 ## API Key Configuration
 
+Missing option values and MCP tool errors exit with a nonzero status and write
+the error to stderr. A successful HTTP response can still contain a tool error;
+check the CLI exit status before using its output.
+
 An API key is **optional but strongly recommended**. Without a key, you can still use all search features via anonymous access, but with **lower rate limits and quota**.
 
 ### How to configure

@@ -23,6 +23,7 @@ Models are SQLAlchemy declarative classes. Each model maps to one database table
 | `PluginInstance` | Per-instance plugin descriptor and configuration, one row per instance |
 | `PassKey` | Passkey authentication records |
 | `Workflow` | Workflow definitions |
+| `WidgetRegistration` | 每账号每安装的小组件只读凭据摘要与到期时间，不保存原文 |
 
 ---
 
@@ -35,10 +36,10 @@ Models are SQLAlchemy declarative classes. Each model maps to one database table
 **Generating a migration:**
 
 ```bash
-# Auto-generate from model diff
+# 根据模型与数据库的差异生成迁移脚本
 alembic revision --autogenerate -m "describe the change"
 
-# Create a blank migration for manual SQL
+# 创建空迁移脚本，以便填写需要手工控制的 SQL
 alembic revision -m "describe the change"
 ```
 
@@ -98,6 +99,12 @@ adapters; it does not retain reusable repository implementations.
 验证唯一成功步骤确为原检查点的 `planning/reject`，删除该内部拒绝步骤和旧 pending，再创建新准入；
 旧失败历史只解除旧任务映射，记录与独立结算回执不删除，避免留下无法维护的悬空任务关联。
 任何外部操作步骤或版本/租约冲突都禁止走这条重规划路径。
+
+AI 识别修正由执行仓储在单一短事务中校验失败历史归属、结算版本、租约和剩余预算。
+仅包含一个成功 `planning/reject` 内部步骤的电影/电视剧拒绝可以退回 `accepted`；
+原计划和步骤先归档到新输入的 `options.ai_replan_evidence`，同一任务、历史绑定和独立结算回执保留，
+重试次数及世代递增，源、目标和整理方式不变。任何文件操作、复核状态或不确定证据均拒绝替换。
+失败结算提交后的自动 AI 唤醒只处理新回执，不依赖心跳或已有自动任务；重放回执不重复唤醒。
 
 ### Transaction ownership ratchet
 
@@ -252,9 +259,10 @@ with `--write-host`; never refresh it to accept newly introduced debt.
 ```python
 with SessionFactory() as session:
     oper = SubscribeOper(session)
-    subscribe = oper.get(sid=1)       # Query in caller-owned Session
-    subscribes = oper.list()          # List in caller-owned Session
-    oper.stage_add(Subscribe(...))    # Stage only; caller-owned UoW commits
+    # 查询复用调用方的会话，新增操作只暂存，由调用方的工作单元提交
+    subscribe = oper.get(sid=1)
+    subscribes = oper.list()
+    oper.stage_add(Subscribe(...))
 ```
 
 The following no-Session form is legacy plugin ABI only and must not be copied
@@ -262,11 +270,11 @@ into host code:
 
 ```python
 oper = SubscribeOper()
-subscribe = oper.get(sid=1)           # Get by primary key or filter
-subscribes = oper.list()              # List all
-oper.add(Subscribe(...))              # Insert
-oper.update(sid=1, name="New Name")   # Update by key
-oper.delete(sid=1)                    # Delete by key
+subscribe = oper.get(sid=1)
+subscribes = oper.list()
+oper.add(Subscribe(...))
+oper.update(sid=1, name="New Name")
+oper.delete(sid=1)
 ```
 
 ---
@@ -366,10 +374,8 @@ from app.schemas.types import SystemConfigKey
 
 configuration = get_configured_system_config()
 
-# Read
 rss_urls = configuration.get(SystemConfigKey.RssUrls)
 
-# Write
 configuration.set(SystemConfigKey.RssUrls, ["https://example.com/rss"])
 ```
 
@@ -421,7 +427,7 @@ JSON values are copied so callers cannot mutate shared cache state.
 
 **Location:** `ConfigModel` and `Settings` in `app/runtime/config.py`
 
-These values are read from environment variables (or `.moviepilot.env`) at startup and are immutable at runtime. They are not stored in the database.
+These values are loaded at startup from process environment variables, `<CONFIG_DIR>/app.env`, secret files, and field defaults, in that order. Explicit constructor arguments take precedence. They are not stored in the database. Web/CLI updates write `app.env` only for locally managed fields; environment and secret-managed fields reject persistence. See [Secrets deployment](../secrets.md) for directory selection, formats, rotation, and migration.
 
 **Access:**
 
@@ -449,6 +455,12 @@ cache = FileCache(cache_name="tmdb", ttl=3600)
 
 @fresh(cache=cache, key_func=lambda tmdb_id: f"movie_{tmdb_id}")
 def get_movie_detail(tmdb_id: int) -> dict:
+    """
+    查询电影详情，并由装饰器复用一小时内的文件缓存。
+
+    :param tmdb_id: 电影在 TMDB 中的原生标识，同时用于区分缓存项
+    :return: 缓存命中时返回已缓存的详情，否则返回客户端查询结果
+    """
     return self._tmdb_client.get_movie(tmdb_id)
 ```
 

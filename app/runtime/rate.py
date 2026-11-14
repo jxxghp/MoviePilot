@@ -1,16 +1,103 @@
+"""
+同步与异步调用的限流策略、退避计时和装饰器。
+"""
+
 import functools
 import inspect
 import threading
 import time
 from collections import deque
-from typing import Any, Tuple, List, Callable, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, List, Optional, Tuple
 
 from app.runtime.log import logger
-from app.schemas.exception import RateLimitExceededException
-from app.schemas.exception import LimitException
+from app.schemas.exception import LimitException, RateLimitExceededException
 
 
-# 抽象基类
+@dataclass
+class _RequestSchedule:
+    """
+    单个请求来源的实际开始时间和远端冷却事实。
+
+    :param last_started: 上次获准请求的单调时钟时间；None 表示尚未请求
+    :param starts: 当前计数窗口内的实际请求时间
+    :param retry_at: 远端冷却到期的单调时钟时间
+    :param reason: 远端明确返回的冷却原因
+    """
+
+    last_started: Optional[float] = None
+    starts: deque[float] = field(default_factory=deque)
+    retry_at: float = 0.0
+    reason: str = ""
+
+
+class RequestRateLimiter:
+    """
+    按来源原子检查请求间隔、滑动窗口和远端冷却，不持锁等待或执行 I/O。
+
+    等待者必须重新申请许可，避免线程迟醒或异步取消后按过期预约连续发出请求。
+    """
+
+    def __init__(self) -> None:
+        """
+        创建进程内共享的来源状态和短临界区锁。
+        """
+        self._lock = threading.Lock()
+        self._schedules: dict[str, _RequestSchedule] = {}
+
+    def acquire(self, key: str, *, interval: float, window: float, count: int) -> tuple[float, str]:
+        """
+        检查并记录一次实际请求；受限时不消耗请求额度。
+
+        :param key: 调用方提供的稳定来源标识
+        :param interval: 相邻请求的最小间隔秒数，0 表示关闭
+        :param window: 滑动计数窗口秒数，0 表示关闭
+        :param count: 窗口内最大请求数量，0 表示关闭
+        :return: 剩余等待秒数及远端冷却原因；本地排队的原因为空
+        """
+        with self._lock:
+            now = time.monotonic()
+            state = self._schedules.setdefault(key, _RequestSchedule())
+            if state.retry_at > now:
+                return state.retry_at - now, state.reason
+            ready_at = now if state.last_started is None else max(now, state.last_started + interval)
+            while state.starts and state.starts[0] <= now - window:
+                state.starts.popleft()
+            if window > 0 and count > 0 and len(state.starts) >= count:
+                ready_at = max(ready_at, state.starts[-count] + window)
+            if ready_at > now:
+                return ready_at - now, ""
+            state.last_started = now
+            if window > 0 and count > 0:
+                state.starts.append(now)
+            return 0.0, ""
+
+    def defer(self, key: str, seconds: float, reason: str) -> None:
+        """
+        延长一个来源的远端冷却，较短的新提示不能提前解除旧冷却。
+
+        :param key: 需要停止请求的来源标识
+        :param seconds: 从当前时刻起的冷却秒数
+        :param reason: 向后续调用方传递的原始限流说明
+        """
+        with self._lock:
+            state = self._schedules.setdefault(key, _RequestSchedule())
+            retry_at = time.monotonic() + seconds
+            if retry_at > state.retry_at:
+                state.retry_at, state.reason = retry_at, reason
+
+    def cooldown(self, key: str) -> float:
+        """
+        查询远端冷却的剩余秒数，不改变到期时间。
+
+        :param key: 来源的稳定标识
+        :return: 剩余秒数，未冷却或已经到期时为 0
+        """
+        with self._lock:
+            state = self._schedules.get(key)
+            return max(0.0, state.retry_at - time.monotonic()) if state else 0.0
+
+
 class BaseRateLimiter:
     """
     限流器基类，定义了限流器的通用接口，用于子类实现不同的限流策略
@@ -19,7 +106,8 @@ class BaseRateLimiter:
 
     def __init__(self, source: str = "", enable_logging: bool = True):
         """
-        初始化 BaseRateLimiter 实例
+        初始化 BaseRateLimiter 实例。
+
         :param source: 业务来源或上下文信息，默认为空字符串
         :param enable_logging: 是否启用日志记录，默认为 True
         """
@@ -30,46 +118,49 @@ class BaseRateLimiter:
     @property
     def reset_on_success(self) -> bool:
         """
-        是否在成功调用后自动重置限流器状态，默认为 False
+        是否在成功调用后自动重置限流器状态，默认为 False。
         """
         return False
 
     def can_call(self) -> Tuple[bool, str]:
         """
-        检查是否可以进行调用
+        检查是否可以进行调用。
+
         :return: 如果允许调用，返回 True 和空消息，否则返回 False 和限流消息
         """
         raise NotImplementedError
 
-    def reset(self):
+    def reset(self) -> None:
         """
-        重置限流状态
+        重置限流状态。
         """
         raise NotImplementedError
 
-    def trigger_limit(self):
+    def trigger_limit(self) -> None:
         """
-        触发限流
+        触发限流。
         """
         pass
 
-    def record_call(self):
+    def record_call(self) -> None:
         """
-        记录一次调用
+        记录一次调用。
         """
         pass
 
     def format_log(self, message: str) -> str:
         """
-        格式化日志消息
+        格式化日志消息。
+
         :param message: 日志内容
         :return: 格式化后的日志消息
         """
         return f"[{self.source}] {message}" if self.source else message
 
-    def log(self, level: str, message: str):
+    def log(self, level: str, message: str) -> None:
         """
-        根据日志级别记录日志
+        根据日志级别记录日志。
+
         :param level: 日志级别
         :param message: 日志内容
         """
@@ -79,20 +170,19 @@ class BaseRateLimiter:
                 log_method = logger.info
             log_method(self.format_log(message))
 
-    def log_info(self, message: str):
+    def log_info(self, message: str) -> None:
         """
-        记录信息日志
+        记录信息日志。
         """
         self.log("info", message)
 
-    def log_warning(self, message: str):
+    def log_warning(self, message: str) -> None:
         """
-        记录警告日志
+        记录警告日志。
         """
         self.log("warning", message)
 
 
-# 指数退避限流器
 class ExponentialBackoffRateLimiter(BaseRateLimiter):
     """
     基于指数退避的限流器，用于处理单次调用频率的控制
@@ -108,7 +198,8 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
         enable_logging: bool = True,
     ):
         """
-        初始化 ExponentialBackoffRateLimiter 实例
+        初始化 ExponentialBackoffRateLimiter 实例。
+
         :param base_wait: 基础等待时间（秒），默认值为 60 秒（1 分钟）
         :param max_wait: 最大等待时间（秒），默认值为 600 秒（10 分钟）
         :param backoff_factor: 等待时间的递增倍数，默认值为 2.0，表示指数退避
@@ -126,13 +217,14 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
     @property
     def reset_on_success(self) -> bool:
         """
-        指数退避限流器在调用成功后应重置等待时间
+        指数退避限流器在调用成功后应重置等待时间。
         """
         return True
 
     def can_call(self) -> Tuple[bool, str]:
         """
-        检查是否可以进行调用，如果当前时间超过下一次允许调用的时间，则允许调用
+        检查是否可以进行调用，如果当前时间超过下一次允许调用的时间，则允许调用。
+
         :return: 如果允许调用，返回 True 和空消息，否则返回 False 和限流消息
         """
         current_time = time.time()
@@ -144,7 +236,7 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
             self.log_info(message)
             return False, self.format_log(message)
 
-    def reset(self):
+    def reset(self) -> None:
         """
         重置等待时间
         当调用成功时调用此方法，重置当前等待时间为基础等待时间
@@ -155,7 +247,7 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
             self.next_allowed_time = 0.0
             self.current_wait = self.base_wait
 
-    def trigger_limit(self):
+    def trigger_limit(self) -> None:
         """
         触发限流
         当触发限流异常时调用此方法，增加下一次允许调用的时间并更新当前等待时间
@@ -170,7 +262,6 @@ class ExponentialBackoffRateLimiter(BaseRateLimiter):
             self.log_warning(f"触发限流，将在 {wait_time:.2f} 秒后允许继续调用")
 
 
-# 时间窗口限流器
 class WindowRateLimiter(BaseRateLimiter):
     """
     基于时间窗口的限流器，用于限制在特定时间窗口内的调用次数
@@ -185,7 +276,8 @@ class WindowRateLimiter(BaseRateLimiter):
         enable_logging: bool = True,
     ):
         """
-        初始化 WindowRateLimiter 实例
+        初始化 WindowRateLimiter 实例。
+
         :param max_calls: 在时间窗口内允许的最大调用次数
         :param window_seconds: 时间窗口的持续时间（秒）
         :param source: 业务来源或上下文信息，默认值为 ""
@@ -194,11 +286,12 @@ class WindowRateLimiter(BaseRateLimiter):
         super().__init__(source, enable_logging)
         self.max_calls = max_calls
         self.window_seconds = window_seconds
-        self.call_times = deque()
+        self.call_times: deque[float] = deque()
 
     def can_call(self) -> Tuple[bool, str]:
         """
         检查是否可以进行调用，如果在时间窗口内的调用次数少于最大允许次数，则允许调用。
+
         :return: 如果允许调用，返回 True 和空消息，否则返回 False 和限流消息
         """
         current_time = time.time()
@@ -218,7 +311,7 @@ class WindowRateLimiter(BaseRateLimiter):
                 self.log_info(message)
                 return False, self.format_log(message)
 
-    def reset(self):
+    def reset(self) -> None:
         """
         重置时间窗口内的调用记录
         当调用成功时调用此方法，清空时间窗口内的调用记录
@@ -226,16 +319,15 @@ class WindowRateLimiter(BaseRateLimiter):
         with self.lock:
             self.call_times.clear()
 
-    def record_call(self):
+    def record_call(self) -> None:
         """
-        记录当前时间戳，用于限流检查
+        记录当前时间戳，用于限流检查。
         """
         current_time = time.time()
         with self.lock:
             self.call_times.append(current_time)
 
 
-# 组合限流器
 class CompositeRateLimiter(BaseRateLimiter):
     """
     组合限流器，可以组合多个限流策略
@@ -249,7 +341,8 @@ class CompositeRateLimiter(BaseRateLimiter):
         enable_logging: bool = True,
     ):
         """
-        初始化 CompositeRateLimiter 实例
+        初始化 CompositeRateLimiter 实例。
+
         :param limiters: 要组合的限流器列表
         :param source: 业务来源或上下文信息，默认值为 ""
         :param enable_logging: 是否启用日志记录，默认为 True
@@ -260,6 +353,7 @@ class CompositeRateLimiter(BaseRateLimiter):
     def can_call(self) -> Tuple[bool, str]:
         """
         检查是否可以进行调用，当组合的任意限流器触发限流时，阻止调用。
+
         :return: 如果所有限流器都允许调用，返回 True 和空消息，否则返回 False 和限流信息。
         """
         for limiter in self.limiters:
@@ -268,25 +362,24 @@ class CompositeRateLimiter(BaseRateLimiter):
                 return False, message
         return True, ""
 
-    def reset(self):
+    def reset(self) -> None:
         """
-        重置所有组合的限流器状态
+        重置所有组合的限流器状态。
         """
         for limiter in self.limiters:
             limiter.reset()
 
-    def record_call(self):
+    def record_call(self) -> None:
         """
-        记录所有组合的限流器的调用时间
+        记录所有组合的限流器的调用时间。
         """
         for limiter in self.limiters:
             limiter.record_call()
 
 
-# 通用装饰器：自定义限流器实例
 def rate_limit_handler(
     limiter: BaseRateLimiter, raise_on_limit: bool = False
-) -> Callable:
+) -> Callable[..., Any]:
     """
     通用装饰器，允许用户传递自定义的限流器实例，用于处理限流逻辑
     该装饰器可灵活支持任意继承自 BaseRateLimiter 的限流器
@@ -296,22 +389,24 @@ def rate_limit_handler(
     :return: 装饰器函数
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        """
+        为目标函数选择同步或异步限流包装器。
+        """
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Optional[Any]:
+        def wrapper(*args: Any, **kwargs: Any) -> Optional[Any]:
             # 检查是否传入了 "raise_exception" 参数，优先使用该参数，否则使用默认的 raise_on_limit 值
+            """
+            检查限流状态后执行同步调用，按配置跳过或传播限流异常。
+            """
             raise_exception = kwargs.get("raise_exception", raise_on_limit)
 
-            # 检查是否可以进行调用，调用 limiter.can_call() 方法
             can_call, message = limiter.can_call()
             if not can_call:
-                # 如果调用受限，并且 raise_exception 为 True，则抛出限流异常
                 if raise_exception:
                     raise RateLimitExceededException(message)
-                # 如果不抛出异常，则返回 None 表示跳过调用
                 return None
 
-            # 如果调用允许，执行目标函数，并记录一次调用
             try:
                 result = func(*args, **kwargs)
                 limiter.record_call()
@@ -322,26 +417,24 @@ def rate_limit_handler(
                 # 如果目标函数触发了限流相关的异常，执行限流器的触发逻辑（如递增等待时间）
                 limiter.trigger_limit()
                 logger.error(limiter.format_log(f"触发限流：{str(e)}"))
-                # 如果 raise_exception 为 True，则抛出异常，否则返回 None
                 if raise_exception:
                     raise e
                 return None
 
         @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs) -> Optional[Any]:
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Optional[Any]:
             # 检查是否传入了 "raise_exception" 参数，优先使用该参数，否则使用默认的 raise_on_limit 值
+            """
+            检查限流状态后等待异步调用，按配置跳过或传播限流异常。
+            """
             raise_exception = kwargs.get("raise_exception", raise_on_limit)
 
-            # 检查是否可以进行调用，调用 limiter.can_call() 方法
             can_call, message = limiter.can_call()
             if not can_call:
-                # 如果调用受限，并且 raise_exception 为 True，则抛出限流异常
                 if raise_exception:
                     raise RateLimitExceededException(message)
-                # 如果不抛出异常，则返回 None 表示跳过调用
                 return None
 
-            # 如果调用允许，执行目标函数，并记录一次调用
             try:
                 result = await func(*args, **kwargs)
                 limiter.record_call()
@@ -352,12 +445,10 @@ def rate_limit_handler(
                 # 如果目标函数触发了限流相关的异常，执行限流器的触发逻辑（如递增等待时间）
                 limiter.trigger_limit()
                 logger.error(limiter.format_log(f"触发限流：{str(e)}"))
-                # 如果 raise_exception 为 True，则抛出异常，否则返回 None
                 if raise_exception:
                     raise e
                 return None
 
-        # 根据函数类型返回相应的包装器
         if inspect.iscoroutinefunction(func):
             return async_wrapper
         else:
@@ -366,7 +457,6 @@ def rate_limit_handler(
     return decorator
 
 
-# 装饰器：指数退避限流
 def rate_limit_exponential(
     base_wait: float = 60.0,
     max_wait: float = 600.0,
@@ -374,7 +464,7 @@ def rate_limit_exponential(
     raise_on_limit: bool = False,
     source: str = "",
     enable_logging: bool = True,
-) -> Callable:
+) -> Callable[..., Any]:
     """
     装饰器，用于应用指数退避限流策略
     通过逐渐增加调用等待时间控制调用频率。每次触发限流时，等待时间会成倍增加，直到达到最大等待时间
@@ -387,22 +477,19 @@ def rate_limit_exponential(
     :param enable_logging: 是否启用日志记录，默认为 True
     :return: 装饰器函数
     """
-    # 实例化 ExponentialBackoffRateLimiter，并传入相关参数
     limiter = ExponentialBackoffRateLimiter(
         base_wait, max_wait, backoff_factor, source, enable_logging
     )
-    # 使用通用装饰器逻辑包装该限流器
     return rate_limit_handler(limiter, raise_on_limit)
 
 
-# 装饰器：时间窗口限流
 def rate_limit_window(
     max_calls: int,
     window_seconds: float,
     raise_on_limit: bool = False,
     source: str = "",
     enable_logging: bool = True,
-) -> Callable:
+) -> Callable[..., Any]:
     """
     装饰器，用于应用时间窗口限流策略
     在固定的时间窗口内限制调用次数，当调用次数超过最大值时，触发限流，直到时间窗口结束
@@ -414,19 +501,19 @@ def rate_limit_window(
     :param enable_logging: 是否启用日志记录，默认为 True
     :return: 装饰器函数
     """
-    # 实例化 WindowRateLimiter，并传入相关参数
     limiter = WindowRateLimiter(max_calls, window_seconds, source, enable_logging)
-    # 使用通用装饰器逻辑包装该限流器
     return rate_limit_handler(limiter, raise_on_limit)
 
 
 class QpsRateLimiter:
     """
-    速率控制器，精确控制 QPS
+    速率控制器，精确控制 QPS。
     """
 
     def __init__(self, qps: float | int):
-        """按目标 QPS 初始化下一次许可时间。"""
+        """
+        按目标 QPS 初始化下一次许可时间。
+        """
         if qps <= 0:
             qps = float("inf")
         self.interval = 1.0 / qps
@@ -435,9 +522,9 @@ class QpsRateLimiter:
 
     def acquire(self) -> None:
         """
-        获取调用许可，阻塞直到满足速率限制
+        获取调用许可，阻塞直到满足速率限制。
         """
-        sleep_duration = 0
+        sleep_duration: float = 0.0
         with self.lock:
             now = time.monotonic()
             sleep_duration = self.next_call_time - now
@@ -448,22 +535,24 @@ class QpsRateLimiter:
 
 class RateStats:
     """
-    请求速率统计：记录时间戳，计算 QPS / QPM / QPH
+    请求速率统计：记录时间戳，计算 QPS / QPM / QPH。
     """
 
     def __init__(self, window_seconds: float = 7200, source: str = ""):
         """
+        创建固定时间窗口的事件合并器。
+
         :param window_seconds: 统计窗口（秒），默认 2 小时，用于计算 QPH
         :param source: 日志来源标识
         """
         self._window = window_seconds
         self._source = source
         self._lock = threading.Lock()
-        self._timestamps: deque = deque()
+        self._timestamps: deque[float] = deque()
 
     def record(self) -> None:
         """
-        记录一次请求
+        记录一次请求。
         """
         t = time.time()
         with self._lock:
@@ -472,32 +561,34 @@ class RateStats:
                 self._timestamps.popleft()
 
     def _count_since(self, seconds: float) -> int:
-        """统计指定秒数窗口内记录的请求数。"""
+        """
+        统计指定秒数窗口内记录的请求数。
+        """
         t = time.time()
         with self._lock:
             return sum(1 for ts in self._timestamps if t - ts <= seconds)
 
     def get_qps(self) -> float:
         """
-        最近 1 秒内请求数
+        最近 1 秒内请求数。
         """
         return self._count_since(1.0)
 
     def get_qpm(self) -> float:
         """
-        最近 1 分钟内请求数
+        最近 1 分钟内请求数。
         """
         return self._count_since(60.0)
 
     def get_qph(self) -> float:
         """
-        最近 1 小时内请求数
+        最近 1 小时内请求数。
         """
         return self._count_since(3600.0)
 
     def log_stats(self, level: str = "info") -> None:
         """
-        输出当前 QPS/QPM/QPH
+        输出当前 QPS/QPM/QPH。
         """
         qps, qpm, qph = self.get_qps(), self.get_qpm(), self.get_qph()
         msg = f"QPS={qps} QPM={qpm} QPH={qph}"

@@ -1,4 +1,6 @@
-"""真实模型评测的独立进程边界，业务调用仍只进入内存假世界。"""
+"""
+真实模型评测的独立进程边界，业务调用仍只进入内存假世界。
+"""
 
 import asyncio
 import inspect
@@ -18,7 +20,9 @@ from scripts.evaluation.models import ModelSettings, ModelUsageTracker
 
 
 def _build_model(settings: ModelSettings, tracker: ModelUsageTracker) -> tuple[Any, str]:
-    """按显式 provider 选择评测模型，并让官方 Gemini 走原生工具协议。"""
+    """
+    按显式 provider 选择评测模型，并让官方 Gemini 走原生工具协议。
+    """
     from urllib.parse import urlsplit
 
     if settings.auth_mode == "codex_oauth":
@@ -105,7 +109,9 @@ def _build_model(settings: ModelSettings, tracker: ModelUsageTracker) -> tuple[A
 
 
 async def _close_model_clients(model: Any) -> list[str]:
-    """关闭不同 LangChain provider 暴露的客户端，保留清理失败类型。"""
+    """
+    关闭不同 LangChain provider 暴露的客户端，保留清理失败类型。
+    """
     cleanup_errors: list[str] = []
     for attribute in ("root_async_client", "root_client"):
         try:
@@ -125,7 +131,9 @@ async def _close_model_clients(model: Any) -> list[str]:
 
 
 def _worker_environment() -> dict[str, str]:
-    """只传递解释器所需平台环境；业务设置、代理和其他服务凭据不进入评测。"""
+    """
+    只传递解释器所需平台环境；业务设置、代理和其他服务凭据不进入评测。
+    """
     allowed = {"PATH", "SYSTEMROOT", "WINDIR", "LANG", "TMPDIR", "TMP", "TEMP"}
     environment = {name: value for name, value in os.environ.items() if name in allowed or name.startswith("LC_")}
     environment.update(PYTHONNOUSERSITE="1", PYTHONUTF8="1")
@@ -133,7 +141,9 @@ def _worker_environment() -> dict[str, str]:
 
 
 def _validate_report(report: Any, credential: str, *additional_credentials: str | None) -> dict[str, Any]:
-    """对解码后的键和值检查凭据，JSON 转义不能绕过输出边界。"""
+    """
+    对解码后的键和值检查凭据，JSON 转义不能绕过输出边界。
+    """
     credentials = tuple(value for value in (credential, *additional_credentials) if isinstance(value, str) and value)
     if not isinstance(report, dict):
         raise RuntimeError("隔离模型评测报告未通过输出校验")
@@ -151,7 +161,9 @@ def _validate_report(report: Any, credential: str, *additional_credentials: str 
 
 
 def run_live(scenario_id: str, settings: ModelSettings) -> dict[str, Any]:
-    """经标准输入传递连接凭据，独立进程避免复用调用方已经加载的真实配置。"""
+    """
+    经标准输入传递连接凭据，独立进程避免复用调用方已经加载的真实配置。
+    """
     payload = json.dumps({"scenario_id": scenario_id, "settings": asdict(settings)})
     try:
         completed = subprocess.run(
@@ -172,7 +184,9 @@ def run_live(scenario_id: str, settings: ModelSettings) -> dict[str, Any]:
 
 
 def _parse_final(text: str) -> Any:
-    """接受普通 JSON 或唯一 JSON 围栏，允许模型在围栏外补充说明。"""
+    """
+    接受普通 JSON 或唯一 JSON 围栏，允许模型在围栏外补充说明。
+    """
     value = text.strip()
     fenced = re.findall(r"```(?P<language>[A-Za-z0-9_-]*)\s*\n(?P<body>.*?)```", value, re.DOTALL)
     if fenced:
@@ -186,7 +200,9 @@ def _parse_final(text: str) -> Any:
 
 
 def _trace_metrics(messages: list[dict[str, Any]]) -> dict[str, Any]:
-    """补充业务账本之外的工具调用；压缩后仅统计保留的父图消息，不冒充全部子图历史。"""
+    """
+    补充业务账本之外的工具调用；压缩后仅统计保留的父图消息，不冒充全部子图历史。
+    """
     requests = sum(len(message["data"].get("tool_calls", [])) for message in messages if message["type"] == "ai")
     results = [message["data"] for message in messages if message["type"] == "tool"]
     return {"scope": "retained_parent_graph", "requested": requests, "results": len(results),
@@ -194,7 +210,9 @@ def _trace_metrics(messages: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, Any]:
-    """创建临时宿主环境，直到此处才导入业务运行时和建立真实模型连接。"""
+    """
+    创建临时宿主环境，直到此处才导入业务运行时和建立真实模型连接。
+    """
     if "app.runtime.config" in sys.modules:
         raise RuntimeError("真实评测 worker 必须在业务导入前隔离配置")
     with tempfile.TemporaryDirectory(prefix="moviepilot-model-evaluation-") as config_dir:
@@ -258,7 +276,9 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
 
 
 def main() -> int:
-    """worker 只从私有 stdin 接收配置，stdout 只输出无凭据评测报告。"""
+    """
+    worker 只从私有 stdin 接收配置，stdout 只输出无凭据评测报告。
+    """
     if sys.argv[1:] != ["--worker"]:
         raise SystemExit("请通过 python -m scripts.evaluation --live 启动")
     payload = json.loads(sys.stdin.read(256 * 1024))

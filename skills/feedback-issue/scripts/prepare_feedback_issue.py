@@ -1,4 +1,6 @@
-"""校验并生成 feedback-issue 提交前的预览与 payload 文件。"""
+"""
+校验并生成 feedback-issue 提交前的预览与提交数据文件。
+"""
 
 from __future__ import annotations
 
@@ -41,7 +43,9 @@ REQUIRED_DRAFT_FIELDS = (
 
 
 def normalize_draft(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """规范化草稿字段并返回缺失字段列表。"""
+    """
+    规范化草稿字段并返回缺失字段列表。
+    """
     draft = {key: str(raw.get(key) or "").strip() for key in REQUIRED_DRAFT_FIELDS}
     missing = [key for key, value in draft.items() if not value]
     draft["title"] = truncate(draft["title"], MAX_TITLE_CHARS, marker="...")
@@ -50,7 +54,9 @@ def normalize_draft(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
 
 
 def validate_draft(draft: dict[str, Any], logs: str) -> Optional[str]:
-    """校验草稿枚举和内容质量，返回错误信息或 None。"""
+    """
+    校验草稿枚举和内容质量，返回错误信息或 None。
+    """
     for value, allowed, field_name in (
         (draft["environment"], ALLOWED_ENVIRONMENTS, "environment"),
         (draft["issue_type"], ALLOWED_ISSUE_TYPES, "issue_type"),
@@ -71,7 +77,9 @@ def validate_draft(draft: dict[str, Any], logs: str) -> Optional[str]:
 
 
 def build_preview_text(draft: dict[str, Any], logs: str, diagnostics: dict[str, Any]) -> str:
-    """构造给用户确认的 Markdown 预览文本。"""
+    """
+    构造给用户确认的 Markdown 预览文本。
+    """
     preview_logs = sanitize_logs(logs, MAX_PREVIEW_LOGS_CHARS) or "会话中未捕获到相关后端日志。"
     doctor_summary = format_doctor_summary(diagnostics.get("doctor"))
     log_selection_summary = format_log_selection(diagnostics.get("log_selection"))
@@ -99,7 +107,9 @@ def build_preview_text(draft: dict[str, Any], logs: str, diagnostics: dict[str, 
 
 
 def prepare_issue(draft_file: str | Path) -> dict[str, Any]:
-    """读取草稿 JSON，校验后写出 payload 与 preview 文件。"""
+    """
+    读取草稿 JSON，校验后写出提交数据与预览文件。
+    """
     raw = read_json_file(draft_file)
     draft, missing = normalize_draft(raw)
     if missing:
@@ -182,14 +192,18 @@ def prepare_issue(draft_file: str | Path) -> dict[str, Any]:
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行参数。"""
+    """
+    解析命令行参数。
+    """
     parser = argparse.ArgumentParser(description="生成 MoviePilot 反馈 Issue 预览")
     parser.add_argument("--draft-file", required=True, help="包含 Issue 草稿字段的 JSON 文件")
     return parser.parse_args()
 
 
 def main() -> int:
-    """脚本入口：校验草稿并输出 JSON 结果。"""
+    """
+    脚本入口：校验草稿并输出 JSON 结果。
+    """
     args = parse_args()
     result = prepare_issue(args.draft_file)
     print(result_payload(**result))

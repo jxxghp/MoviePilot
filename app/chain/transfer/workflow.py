@@ -1,9 +1,11 @@
-"""整理请求候选构建与任务工作流编排。"""
+"""
+整理请求候选构建与任务工作流编排。
+"""
 
 import re
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Tuple, Union, cast
 
 from app.application.audio import capture_audio_metadata
 from app.application.classification.reference import (
@@ -22,6 +24,7 @@ from app.application.transfer.workflow import (
     TransferAdmission,
     TransferAdmissionConflictError,
     TransferTask,
+    job_lock,
 )
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -33,7 +36,7 @@ from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import OperationInterrupted, StorageQueryError
-from app.schemas.file import FileURI
+from app.schemas.file import FileItem, FileURI
 from app.schemas.media import resolve_media_identity
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import DownloaderTorrent, EpisodeFormat, TransferInfo
@@ -43,7 +46,6 @@ from app.schemas.types import (
     ProgressKey,
     SystemConfigKey,
 )
-from app.schemas.workflow import FileItem
 
 from .request import (
     _should_discard_batch_music_identity,
@@ -65,7 +67,9 @@ def _normalize_transfer_identity(
     Optional[str],
     Optional[str],
 ]:
-    """规范整理请求的媒体身份，并在显式身份缺失时短路。"""
+    """
+    规范整理请求的媒体身份，并在显式身份缺失时短路。
+    """
     explicit_identity = media_source is not None or media_id is not None
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
@@ -98,14 +102,17 @@ def _normalize_transfer_identity(
 
 
 class TransferWorkflowOwner(_TransferOwnerBase):
-    """协调请求级候选构建并委托规划、执行与结算 owner。"""
+    """
+    协调请求级候选构建并委托规划、执行与结算组件。
+    """
 
     @staticmethod
     def _build_transfer_fileitem(
             torrent: DownloaderTorrent,
             download_dirs: List[TransferDirectoryConf],
     ) -> Optional[FileItem]:
-        """按任务映射后的存储和目录准入，再从实际存储读取源文件。
+        """
+        按任务映射后的存储和目录准入，再从实际存储读取源文件。
 
         远程 URI 仅用于路径解析，不能执行本地 exists/stat。连接或权限异常
         与确认不存在分别记录，保留任务供下一次下载器监控重试。
@@ -191,7 +198,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             return None
 
         def _apply_predicate(file_item: FileItem, is_bluray_dir: bool) -> List[Tuple[FileItem, bool]]:
-            """仅保留满足调用方筛选条件的普通文件或蓝光目录。"""
+            """
+            仅保留满足调用方筛选条件的普通文件或蓝光目录。
+            """
             if predicate is None or predicate(file_item, is_bluray_dir):
                 return [(file_item, is_bluray_dir)]
             return []
@@ -204,13 +213,16 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             # 确保从历史记录重新整理时 能获得最新的源文件大小、修改日期等
             fileitem = latest_fileitem
 
+        if not fileitem.path or not fileitem.storage:
+            logger.warning("整理源文件缺少路径或存储类型")
+            return []
+
         # 是否蓝光原盘子目录或文件
         if __is_bluray_sub(fileitem.path):
             if bluray_dir := __get_bluray_dir(fileitem.storage, Path(fileitem.path)):
                 # 返回该文件所在的原盘根目录
                 return _apply_predicate(bluray_dir, True)
 
-        # 单文件
         if fileitem.type == "file":
             return _apply_predicate(fileitem, False)
 
@@ -316,7 +328,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         min_filesize: int,
         epformat: Optional[EpisodeFormat],
         season: Optional[int],
-        continue_callback: Optional[Callable],
+        continue_callback: Optional[Callable[[], bool]],
         selected_fileitems: Optional[list[FileItem]] = None,
     ) -> Tuple[List[Tuple[FileItem, bool]], bool]:
         """
@@ -327,7 +339,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         """
         format_handler = (
             FormatParser(
-                eformat=epformat.format,
+                eformat=epformat.format or "",
                 details=epformat.detail,
                 part=epformat.part,
                 offset=epformat.offset,
@@ -340,22 +352,26 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         matched_template = False
 
         def keep_candidate(item: FileItem, _is_bluray_dir: bool) -> bool:
-            """候选遍历阶段只响应取消请求，不提前应用业务过滤。"""
+            """
+            候选遍历阶段只响应取消请求，不提前应用业务过滤。
+            """
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
             return True
 
         def is_allowed(item: FileItem, is_bluray_dir: bool) -> bool:
-            """判断候选文件是否符合格式、后缀、大小和屏蔽词约束。"""
+            """
+            判断候选文件是否符合格式、后缀、大小和屏蔽词约束。
+            """
             nonlocal matched_template
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
             if has_template and format_handler:
-                if not format_handler.match(item.name):
+                if not format_handler.match(item.name or ""):
                     return False
                 matched_template = True
             if batch_mtype == MediaType.MUSIC:
-                if self._is_music_lyrics_file(item):
+                if self._is_music_lyrics_file(item) or self._is_music_cover_file(item):
                     return not self._is_blocked_by_exclude_words(item.path, exclude_words)
                 if not self._is_media_file(item, batch_mtype) and not (
                     item.type == "file" and music_package_error(item.path or "")
@@ -363,12 +379,18 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
                     return False
-            elif not is_bluray_dir and not self._is_subtitle_file(item) and not self._is_audio_file(item):
+            elif (
+                    not is_bluray_dir
+                    and not self._is_subtitle_file(item)
+                    and not self._is_audio_file(item)
+                    and not self._is_media_cover_file(item)
+                    and not (batch_mtype is None and self._is_music_cover_file(item))
+            ):
                 if not self._is_media_file(item, batch_mtype):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
                     return False
-            if any(marker in item.path for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")):
+            if any(marker in (item.path or "") for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")):
                 logger.debug(f"{item.path} 是回收站或隐藏的文件")
                 return False
             return not self._is_blocked_by_exclude_words(item.path, exclude_words)
@@ -389,20 +411,20 @@ class TransferWorkflowOwner(_TransferOwnerBase):
     def do_transfer(
         self,
         fileitem: FileItem,
-        meta: MetaBase = None,
+        meta: Optional[MetaBase] = None,
         mediainfo: Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]] = None,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-        target_directory: TransferDirectoryConf = None,
+        target_directory: Optional[TransferDirectoryConf] = None,
         target_storage: Optional[str] = None,
-        target_path: Path = None,
+        target_path: Optional[Path] = None,
         transfer_type: Optional[str] = None,
         scrape: Optional[bool] = None,
         library_type_folder: Optional[bool] = None,
         library_category_folder: Optional[bool] = None,
         season: Optional[int] = None,
-        epformat: EpisodeFormat = None,
+        epformat: Optional[EpisodeFormat] = None,
         min_filesize: Optional[int] = 0,
         downloader: Optional[str] = None,
         download_hash: Optional[str] = None,
@@ -412,11 +434,11 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         preview: Optional[bool] = False,
         sync_extra_files: Optional[bool] = False,
         cleanup_dest_fileitem: Optional[FileItem] = None,
-        continue_callback: Callable = None,
+        continue_callback: Optional[Callable[[], bool]] = None,
         reorganize: Optional[bool] = False,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
-    ) -> Tuple[bool, Union[str, dict]]:
+    ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         兼容公开整理入口，委托给内部批次执行阶段。
 
@@ -454,28 +476,30 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             music_release_scripts=music_release_scripts,
         )
 
-    def _execute_transfer(self, *args: Any, **kwargs: Any) -> Tuple[bool, Union[str, dict]]:
-        """兼容旧内部钩子，统一委托请求工作流 owner。"""
+    def _execute_transfer(self, *args: Any, **kwargs: Any) -> Tuple[bool, Union[str, dict[str, Any]]]:
+        """
+        兼容旧内部钩子，统一委托请求工作流组件。
+        """
         return self._run_transfer_workflow(*args, **kwargs)
 
     @capture_audio_metadata()
     def _run_transfer_workflow(
         self,
         fileitem: FileItem,
-        meta: MetaBase = None,
+        meta: Optional[MetaBase] = None,
         mediainfo: Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]] = None,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-        target_directory: TransferDirectoryConf = None,
+        target_directory: Optional[TransferDirectoryConf] = None,
         target_storage: Optional[str] = None,
-        target_path: Path = None,
+        target_path: Optional[Path] = None,
         transfer_type: Optional[str] = None,
         scrape: Optional[bool] = None,
         library_type_folder: Optional[bool] = None,
         library_category_folder: Optional[bool] = None,
         season: Optional[int] = None,
-        epformat: EpisodeFormat = None,
+        epformat: Optional[EpisodeFormat] = None,
         min_filesize: Optional[int] = 0,
         downloader: Optional[str] = None,
         download_hash: Optional[str] = None,
@@ -485,7 +509,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         preview: Optional[bool] = False,
         sync_extra_files: Optional[bool] = False,
         cleanup_dest_fileitem: Optional[FileItem] = None,
-        continue_callback: Callable = None,
+        continue_callback: Optional[Callable[[], bool]] = None,
         reorganize: Optional[bool] = False,
         recovery_admission: Optional[TransferAdmission] = None,
         music_release_regions: Optional[list[str]] = None,
@@ -493,9 +517,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         selected_fileitems: Optional[list[FileItem]] = None,
         report_results: bool = False,
         skip_success: bool = False,
-    ) -> Tuple[bool, Union[str, dict]]:
+        music_track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
+        music_target_path: Optional[Path] = None,
+    ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         执行一个复杂目录的整理操作
+
         :param fileitem: 文件项
         :param meta: 元数据
         :param mediainfo: 媒体信息
@@ -519,15 +546,17 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param manual: 是否手动整理
         :param preview: 是否仅预览
         :param reorganize: 是否清理已有成功记录后重新整理
-        :param sync_extra_files: 是否在整理主视频文件时同步整理同媒体附加文件
+        :param sync_extra_files: 是否同步整理同媒体附加文件；自动音乐封面另受本地封面开关控制
         :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         :param continue_callback: 继续处理回调
-        :param recovery_admission: 内部恢复调用绑定的既有 durable 记录
+        :param recovery_admission: 内部恢复调用绑定的既有 持久化 记录
         :param music_release_regions: 本次音乐整理的发行地区优先级
         :param music_release_scripts: 本次音乐整理的文字字形优先级
         :param selected_fileitems: 前端显式选中的文件，按同一批次规划
         :param report_results: 返回实际阶段回执，后台接收不表示入库完成
         :param skip_success: 在预览、历史清理及任务准入前跳过成功记录
+        :param music_track_match: 手选专辑的曲目对齐方式，默认严格校验
+        :param music_target_path: 本次音乐最终目录，冻结后用于预览及恢复执行
         返回：成功标识，错误信息
         """
         selected_music_album: Optional[MusicAlbumInfo]
@@ -555,11 +584,10 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if preview:
             # 预览模式始终同步执行，避免进入异步队列
             background = False
-        # 自定义格式
         has_episode_format_template = bool(epformat and epformat.format)
         formaterHandler = (
             FormatParser(
-                eformat=epformat.format,
+                eformat=epformat.format or "",
                 details=epformat.detail,
                 part=epformat.part,
                 offset=epformat.offset,
@@ -568,7 +596,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             else None
         )
 
-        # 汇总错误信息
         err_msgs: List[str] = []
         transfer_exclude_words = get_configured_system_config().get(SystemConfigKey.TransferExcludeWords)
 
@@ -586,6 +613,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             sync_extra_files=bool(sync_extra_files),
             fileitem=fileitem,
             manual=bool(manual),
+            sync_music_covers=not manual and selected_fileitems is None,
         )
 
         try:
@@ -610,12 +638,16 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
         file_items = self._filter_manual_transfer_history(file_items, bool(manual and skip_success), submission.record_history_skip)
+        file_items = self._filter_automatic_pending_transfers(
+            file_items, not (manual or preview or recovery_admission), submission.record,
+        )
         if not file_items:
             return submission.result(True, [], preview=bool(preview), preview_items=[])
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
 
         selected_music_track_map, selected_music_error = self._selected_music_track_map(
-            file_items, selected_music_album
+            file_items, selected_music_album,
+            **({"track_match": music_track_match} if music_track_match != "strict" else {}),
         )
         if selected_music_error:
             return False, selected_music_error
@@ -653,6 +685,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 downloader=downloader,
                 download_hash=download_hash,
                 transfer_batch_id=transfer_batch_id,
+                notification_debounce=fileitem.type == "file" and not manual,
                 manual=bool(manual),
                 background=bool(background),
                 preview=bool(preview),
@@ -665,6 +698,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 music_release_scripts=music_release_scripts,
                 selected_music_track_map=selected_music_track_map,
                 submission=submission,
+                music_target_path=music_target_path,
             )
         except OperationInterrupted:
             return submission.result(False, [f"{fileitem.name} 已取消"], preview=False, preview_items=[])
@@ -687,10 +721,41 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
         return submission.result(all_success, err_msgs, preview=bool(preview), preview_items=preview_items)
 
+    def _filter_automatic_pending_transfers(
+            self,
+            fileitems: List[Tuple[FileItem, bool]],
+            enabled: bool,
+            record_skipped: Callable[[FileItem, Literal["skipped"], str], None],
+    ) -> List[Tuple[FileItem, bool]]:
+        """
+        自动发现跳过已有持久任务的源文件，同批未准入成员继续规划。
+
+        :param fileitems: 本轮已收集的精确文件项
+        :param enabled: 自动新任务时启用；手动、预览及明确恢复保留原入口
+        :param record_skipped: 记录本次发现跳过，不声称原任务已经完成
+        :return: 尚无持久任务的候选；不重写原任务或建立新恢复流程
+        """
+        if not enabled:
+            return fileitems
+        candidates = []
+        for fileitem, bluray_dir in fileitems:
+            task_id = self.transfer_admission_repository.get_task_id_by_identity(
+                storage=fileitem.storage or "local", src_path=fileitem.path,
+            )
+            if task_id:
+                message = "源文件已有持久整理任务，由原任务继续处理"
+                record_skipped(fileitem, "skipped", message)
+                logger.debug(f"{fileitem.path} {message}：{task_id}")
+            else:
+                candidates.append((fileitem, bluray_dir))
+        return candidates
+
     def _enqueue_transfer_candidate(
         self, task: TransferTask, errors: list[str], submission: _TransferSubmissionCollector,
     ) -> Optional[bool]:
-        """在唯一队列入口捕获准入失败，给同批其余文件保留执行机会和错误回执。"""
+        """
+        在唯一队列入口捕获准入失败，给同批其余文件保留执行机会和错误回执。
+        """
         try:
             return bool(self.put_to_queue(task=task))
         except Exception as error:
@@ -720,6 +785,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         downloader: Optional[str],
         download_hash: Optional[str],
         transfer_batch_id: str,
+        notification_debounce: bool,
         manual: bool,
         background: bool,
         preview: bool,
@@ -732,8 +798,11 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         music_release_scripts: Optional[list[str]],
         selected_music_track_map: dict[str, MusicInfo],
         submission: _TransferSubmissionCollector,
+        music_target_path: Optional[Path] = None,
     ) -> Tuple[List[TransferTask], bool, List[str], int, set[Tuple[str, str]]]:
-        """从冻结候选构建任务，并集中执行历史去重与 durable 绑定。"""
+        """
+        从冻结候选构建任务，并集中执行历史去重与 持久化 绑定。
+        """
         all_success = True
         transfer_tasks: List[TransferTask] = []
         err_msgs: List[str] = []
@@ -745,13 +814,21 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             and sum(self._is_audio_file(item) for item, _ in file_items) > 1
         )
         music_batch_context = self._prepare_music_batch_context(file_items, batch_mtype)
+        # 监控逐文件调用没有完整批次边界，完成后仍需静默窗口等待同组后续文件。
+        with job_lock:
+            self._scrape_batches[transfer_batch_id] = {
+                "pending": set(), "targets": {}, "closed": False,
+                "notification_debounce": notification_debounce,
+            }
         try:
-            for file_item, bluray_dir in file_items:
+            for file_item, bluray_dir in self._music_transfer_items(
+                    file_items, music_batch_context, batch_mtype
+            ):
                 if runtime_stop_state.is_system_stopped:
                     raise OperationInterrupted()
                 if continue_callback and not continue_callback():
                     raise OperationInterrupted()
-                file_path = Path(file_item.path)
+                file_path = Path(cast(str, file_item.path))
                 package_error = music_package_error(file_path.name) if batch_mtype == MediaType.MUSIC else None
                 if package_error:
                     message = f"{file_path.name}：{package_error}"
@@ -790,7 +867,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                         all_success = False
                                         logger.error(message)
                                         err_msgs.append(message)
-                                    # 普通失败重试仍由唯一 durable 调度器继续原计划。
+                                    # 普通失败重试仍由唯一 持久任务调度器继续原计划。
                                     continue
                             state, message = self._delete_manual_transfer_history(
                                 history=transferd,
@@ -866,7 +943,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     err_msgs.append(f"{file_path.name} 无法识别有效信息")
                     continue
 
-                # 获取下载Hash
                 if download_history and (not downloader or not download_hash):
                     _downloader = download_history.downloader
                     _download_hash = download_history.download_hash
@@ -915,7 +991,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 cleanup_intent = cleanup_dest_fileitem if not preview and not cleanup_intent_assigned else None
                 transfer_task.bind_planning_input(
                     self._build_music_planning_input(transfer_task, music_batch_context, cleanup_intent,
-                                                    music_release_regions, music_release_scripts)
+                                                    music_release_regions, music_release_scripts,
+                                                    music_target_path=music_target_path)
                 )
                 if (
                     recovery_admission
@@ -944,7 +1021,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     else:
                         logger.debug(f"{file_path.name} 已在整理队列中，跳过")
                 else:
-                    # 加入列表
                     queued = self._TransferChain__put_to_jobview(transfer_task)
                     if queued:
                         self._register_scrape_batch_task(transfer_task)
@@ -973,15 +1049,45 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             skipped_torrents,
         )
 
+    def _music_transfer_items(
+            self,
+            items: List[Tuple[FileItem, bool]],
+            context: Any,
+            batch_mtype: Optional[MediaType],
+    ) -> Generator[Tuple[FileItem, bool], None, None]:
+        """
+        音乐批次随主音轨逐项解析再放行封面，影视批次直接保留标准媒体封面。
+
+        :param batch_mtype: 当前批次媒体类型，用于隔离音乐封面归属校验。
+        """
+        has_video_batch = any(
+            item.type == "file" and self._is_media_file(item, None)
+            for item, _ in items
+        )
+        is_music_batch = batch_mtype == MediaType.MUSIC or (
+            batch_mtype is None and not has_video_batch
+        )
+        for item, bluray in items:
+            if is_music_batch and self._is_music_cover_file(item):
+                related = context.related_main_keys.get(self._get_file_key(item))
+                if related not in context.resolved_contexts:
+                    logger.info(f"{item.name} 没有唯一且已识别的同目录音乐归属，跳过封面整理")
+                    continue
+            yield item, bluray
+
     def _cancel_unexecuted_tasks(self, tasks: list[TransferTask]) -> None:
-        """撤销本次同步请求尚未执行的内存占位，让用户之后可以重新提交这些文件。"""
+        """
+        撤销本次同步请求尚未执行的内存占位，让用户之后可以重新提交这些文件。
+        """
         for task in tasks:
             self.jobview.fail_unfinished_task(task)
             self.jobview.try_remove_job(task)
             self._finish_scrape_batch_task(task)
 
     def _submission_execution_state(self, task: TransferTask, enabled: bool) -> Optional[str]:
-        """失败后读取既有持久投影，避免把等待恢复或人工复核误报为可重新提交。"""
+        """
+        失败后读取既有持久投影，避免把等待恢复或人工复核误报为可重新提交。
+        """
         if not enabled or task.terminal_settled or not task.admission_task_id:
             return None
         try:
@@ -1001,27 +1107,26 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         err_msgs: List[str],
         submission: _TransferSubmissionCollector,
     ) -> Tuple[bool, List[str], List[dict[str, Any]]]:
-        """同步消费已规划任务；后台任务只由 queue owner 消费。"""
+        """
+        同步消费已规划任务；后台任务只由 队列组件 消费。
+        """
         preview_items: List[dict[str, Any]] = []
 
         def _preview_callback(task: TransferTask, transferinfo: TransferInfo) -> Tuple[bool, str]:
-            """收集预览结果，保持任务执行顺序。"""
+            """
+            收集预览结果，保持任务执行顺序。
+            """
             preview_items.append(build_transfer_preview_item(task, transferinfo))
-            return transferinfo.success, transferinfo.message
+            return transferinfo.success, transferinfo.message or ""
 
         if transfer_tasks:
-            # 总数量
             total_num = len(transfer_tasks)
-            # 已处理数量
             processed_num = 0
-            # 失败数量
             fail_num = 0
-            # 已完成文件
-            finished_files = []
+            finished_files: list[str] = []
 
             progress = None
             if not preview:
-                # 启动进度
                 progress = ProgressHelper(ProgressKey.FileTransfer)
                 progress.start()
                 __process_msg = f"开始整理，共 {total_num} 个文件 ..."
@@ -1034,8 +1139,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         all_success = False
                         err_msgs.append("整理已取消，剩余文件未执行")
                         break
-                    if not preview:
-                        # 更新进度
+                    if progress is not None:
                         __process_msg = (
                             f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
                         )
@@ -1044,7 +1148,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             value=(processed_num + fail_num) / total_num * 100,
                             text=__process_msg,
                             data={
-                                "current": Path(transfer_task.fileitem.path).as_posix(),
+                                "current": Path(transfer_task.fileitem.path or "").as_posix(),
                                 "finished": finished_files,
                             },
                         )
@@ -1055,7 +1159,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         callback_task: TransferTask,
                         transferinfo: TransferInfo,
                     ) -> Tuple[bool, str]:
-                        """同步路径也由默认回调原子提交历史、事件与 durable 终态。"""
+                        """
+                        同步路径也由默认回调原子提交历史、事件与 持久化 终态。
+                        """
                         nonlocal terminal_settlement
                         submission.capture(callback_task, transferinfo)
                         callback = _preview_callback if preview else self._TransferChain__default_callback
@@ -1119,12 +1225,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             self.jobview.finish_task(transfer_task)
                             self.jobview.try_remove_job(transfer_task)
                         processed_num += 1
-                    finished_files.append(Path(transfer_task.fileitem.path).as_posix())
+                    finished_files.append(Path(transfer_task.fileitem.path or "").as_posix())
             finally:
                 transfer_tasks.clear()
                 del transfer_tasks
 
-            if not preview:
+            if progress is not None:
                 __end_msg = f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"
                 logger.info(__end_msg)
                 progress.update(value=100, text=__end_msg, data={})

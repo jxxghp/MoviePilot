@@ -1,3 +1,9 @@
+"""
+Agent 定时任务的独立运行记录的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import Index, Integer, String, Text, delete, select, update
@@ -8,7 +14,9 @@ from app.db.models.agenttask import AgentTask
 
 
 class AgentTaskRun(Base):
-    """Agent 自主定时任务的一次真实执行记录。"""
+    """
+    Agent 自主定时任务的一次真实执行记录。
+    """
 
     id = get_id_column()
     # 对外稳定的运行身份；内部自增主键不进入 Agent 合同
@@ -24,6 +32,10 @@ class AgentTaskRun(Base):
     run_at: Mapped[Optional[str]] = mapped_column(String)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
     username: Mapped[Optional[str]] = mapped_column(String)
+    # 认领时冻结的真实执行账号主键，与渠道会话归属分开保存
+    execution_user_id: Mapped[Optional[int]] = mapped_column(Integer)
+    # 账号不可变身份随本次认领冻结，不能通过修改任务影响运行中的主体
+    execution_user_identity: Mapped[Optional[str]] = mapped_column(String(32))
     session_id: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[Optional[str]] = mapped_column(String)
     message_source: Mapped[Optional[str]] = mapped_column(String)
@@ -49,7 +61,9 @@ class AgentTaskRun(Base):
             trigger_source: str,
             started_at: str,
     ) -> Optional[str]:
-        """原子认领可执行任务并创建对应的运行记录。"""
+        """
+        原子认领可执行任务并创建对应的运行记录。
+        """
         if trigger_source not in {"scheduled", "manual"}:
             raise ValueError(f"不支持的 Agent 任务触发来源：{trigger_source}")
         # 认领和快照读取必须是同一条语句，配置更新与执行开始才能共享同一行级顺序。
@@ -75,6 +89,8 @@ class AgentTaskRun(Base):
                 AgentTask.run_at,
                 AgentTask.user_id,
                 AgentTask.username,
+                AgentTask.execution_user_id,
+                AgentTask.execution_user_identity,
                 AgentTask.session_id,
                 AgentTask.channel,
                 AgentTask.source,
@@ -95,6 +111,8 @@ class AgentTaskRun(Base):
             run_at=claimed["run_at"],
             user_id=claimed["user_id"],
             username=claimed["username"],
+            execution_user_id=claimed["execution_user_id"],
+            execution_user_identity=claimed["execution_user_identity"],
             session_id=claimed["session_id"],
             channel=claimed["channel"],
             message_source=claimed["source"],
@@ -115,7 +133,9 @@ class AgentTaskRun(Base):
             finished_at: str,
             disable_date_task: bool = False,
     ) -> bool:
-        """原子收口精确运行，并仅在仍为最新运行时更新任务投影。"""
+        """
+        原子收口精确运行，并仅在仍为最新运行时更新任务投影。
+        """
         run = db.execute(
             select(cls).where(cls.run_id == run_id)
         ).scalars().first()
@@ -179,7 +199,9 @@ class AgentTaskRun(Base):
             result: str,
             finished_at: str,
     ) -> bool:
-        """原子标记冷启动时遗留的最新运行及任务投影为结果未知。"""
+        """
+        原子标记冷启动时遗留的最新运行及任务投影为结果未知。
+        """
         task = db.execute(
             select(AgentTask).where(
                 AgentTask.id == task_id,
@@ -229,7 +251,9 @@ class AgentTaskRun(Base):
             task_id: int,
             user_id: Optional[str] = None,
     ) -> bool:
-        """原子删除非运行中任务及其执行历史。"""
+        """
+        原子删除非运行中任务及其执行历史。
+        """
         statement = delete(AgentTask).where(
             AgentTask.id == task_id,
             AgentTask.last_status != "running",
@@ -254,10 +278,13 @@ class AgentTaskRun(Base):
             db: Session,
             run_id: str,
     ) -> Optional["AgentTaskRun"]:
-        """按公开运行 ID 查询一次执行。"""
-        return db.execute(
+        """
+        按公开运行 ID 查询一次执行。
+        """
+        run: Optional[AgentTaskRun] = db.execute(
             select(cls).where(cls.run_id == run_id)
         ).scalars().first()
+        return run
 
     @classmethod
     def list_for_task(
@@ -267,7 +294,9 @@ class AgentTaskRun(Base):
             user_id: Optional[str] = None,
             limit: int = 10,
     ) -> List["AgentTaskRun"]:
-        """按父任务 owner 校验后返回最近的有界运行历史。"""
+        """
+        按父任务 owner 校验后返回最近的有界运行历史。
+        """
         statement = select(cls).join(AgentTask, AgentTask.id == cls.task_id).where(
             cls.task_id == task_id,
         )

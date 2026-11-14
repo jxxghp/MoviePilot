@@ -1,3 +1,7 @@
+"""
+通过注入浏览器、HTTP 和识别端口完成站点登录与 Cookie 获取。
+"""
+
 import time
 from typing import Any, Callable, Optional, Protocol, Tuple
 from urllib.parse import urljoin, urlparse
@@ -11,26 +15,77 @@ from app.runtime.log import logger
 CookieResult = Tuple[Optional[str], Optional[str], str]
 
 
+class CookiePageContentPort(Protocol):
+    """
+    声明登录页源码读取和加载等待所需的页面能力。
+    """
+
+    def wait_for_load_state(self, state: str, *, timeout: int) -> None:
+        """
+        等待页面进入指定加载状态。
+
+        :param state: 目标加载状态
+        :param timeout: 最长等待时间，单位为毫秒
+        """
+        ...
+
+    def content(self) -> str:
+        """
+        读取当前页面源码，导航期间的异常由实现方抛出。
+
+        :return: 页面 HTML 源码
+        """
+        ...
+
+
 class CookieBrowserPort(Protocol):
-    """声明站点登录用例所需的受控浏览器执行能力。"""
+    """
+    声明站点登录用例所需的受控浏览器执行能力。
+    """
 
     def action(self, *, url: str, callback: Callable[[Any], CookieResult],
                proxies: Optional[dict[str, Any]], timeout: Optional[int]) -> CookieResult:
-        """在受控页面会话内执行登录回调并返回兼容三元组。"""
+        """
+        在受控页面会话内执行登录回调并返回兼容三元组。
+
+        页面及浏览器资源的获取与释放由实现方负责，回调不得把页面留给会话外使用。
+
+        :param url: 站点登录页面地址
+        :param callback: 在已创建页面会话内执行的登录回调，返回 Cookie 结果三元组
+        :param proxies: 浏览器代理配置；None 表示不指定代理
+        :param timeout: 浏览器操作超时，单位为秒；None 使用实现默认值
+        :return: 回调产生的 Cookie、User-Agent、错误说明三元组；浏览器未完成回调时沿用底层 None 回退
+        """
 
 
 class CaptchaHttpPort(Protocol):
-    """声明验证码图片下载能力。"""
+    """
+    声明验证码图片下载能力。
+    """
 
     def fetch(self, *, url: str, cookie: str, ua: str) -> Optional[bytes]:
-        """下载验证码图片字节。"""
+        """
+        下载验证码图片字节。
+
+        :param url: 验证码图片的绝对地址
+        :param cookie: 当前站点会话的 Cookie 请求头文本
+        :param ua: 当前浏览器会话使用的 User-Agent
+        :return: 下载的原始图片字节；未取得有效响应时返回 None
+        """
 
 
 class CaptchaOcrPort(Protocol):
-    """声明验证码图片识别能力。"""
+    """
+    声明验证码图片识别能力。
+    """
 
     def recognize(self, image_data: bytes) -> str:
-        """识别原始验证码图片字节，避免在应用层重复 Base64 编码。"""
+        """
+        识别原始验证码图片字节，避免在应用层重复 Base64 编码。
+
+        :param image_data: 未做 Base64 编码的验证码图片字节
+        :return: 识别出的验证码文本；未取得识别结果时返回空字符串
+        """
 
 
 _cookie_browser_port: Optional[CookieBrowserPort] = None
@@ -40,7 +95,9 @@ _captcha_ocr_port: Optional[CaptchaOcrPort] = None
 
 def configure_cookie_ports(*, browser: CookieBrowserPort, http: CaptchaHttpPort,
                            ocr: CaptchaOcrPort) -> None:
-    """由组合根装配站点登录与验证码端口。"""
+    """
+    由组合根装配站点登录与验证码端口。
+    """
     global _cookie_browser_port, _captcha_http_port, _captcha_ocr_port
     _cookie_browser_port = browser
     _captcha_http_port = http
@@ -48,7 +105,9 @@ def configure_cookie_ports(*, browser: CookieBrowserPort, http: CaptchaHttpPort,
 
 
 def reset_cookie_ports() -> None:
-    """清除站点登录端口，避免跨生命周期保留 Adapter。"""
+    """
+    清除站点登录端口，避免跨生命周期保留 Adapter。
+    """
     global _cookie_browser_port, _captcha_http_port, _captcha_ocr_port
     _cookie_browser_port = None
     _captcha_http_port = None
@@ -56,14 +115,18 @@ def reset_cookie_ports() -> None:
 
 
 def _require_cookie_ports() -> Tuple[CookieBrowserPort, CaptchaHttpPort, CaptchaOcrPort]:
-    """返回已装配端口，缺失时明确拒绝隐式构造 Adapter。"""
+    """
+    返回已装配端口，缺失时明确拒绝隐式构造 Adapter。
+    """
     if _cookie_browser_port is None or _captcha_http_port is None or _captcha_ocr_port is None:
         raise RuntimeError("站点登录端口尚未由启动组合根装配")
     return _cookie_browser_port, _captcha_http_port, _captcha_ocr_port
 
 
 class CookieLoginFormMixin:
-    """提供跨站点登录表单、验证码和页面错误识别的共享能力。"""
+    """
+    提供跨站点登录表单、验证码和页面错误识别的共享能力。
+    """
 
     # 站点登录界面元素XPATH
     _SITE_LOGIN_XPATH = {
@@ -170,7 +233,9 @@ class CookieLoginFormMixin:
 
     @classmethod
     def _first_xpath(cls, html: etree._Element, key: str) -> Optional[str]:
-        """返回页面上第一个命中的字段 XPath。"""
+        """
+        返回页面上第一个命中的字段 XPath。
+        """
         for xpath in cls._SITE_LOGIN_XPATH.get(key, []):
             if html.xpath(xpath):
                 return xpath
@@ -181,7 +246,9 @@ class CookieLoginFormMixin:
         cls,
         html: etree._Element,
     ) -> tuple[Optional[str], Optional[str]]:
-        """按常见命名、表单结构和输入类型推断用户名与密码字段。"""
+        """
+        按常见命名、表单结构和输入类型推断用户名与密码字段。
+        """
         username_xpath = cls._first_xpath(html, "username")
         password_xpath = cls._first_xpath(html, "password")
         form_xpath = "//form[.//input[translate(@type,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\")=\"password\"]][1]"
@@ -190,7 +257,9 @@ class CookieLoginFormMixin:
             login_form = form_nodes[0]
 
             def belongs_to_login_form(xpath: Optional[str]) -> bool:
-                """判断全局候选是否属于含密码字段的登录表单。"""
+                """
+                判断全局候选是否属于含密码字段的登录表单。
+                """
                 if not xpath:
                     return False
                 nodes = html.xpath(xpath)
@@ -256,7 +325,9 @@ class CookieLoginFormMixin:
         cls,
         html: etree._Element,
     ) -> tuple[Optional[str], Optional[str]]:
-        """查找验证码输入字段及图片地址，兼容常见命名和站点自定义 class。"""
+        """
+        查找验证码输入字段及图片地址，兼容常见命名和站点自定义 class。
+        """
         captcha_xpath = cls._first_xpath(html, "captcha")
         if not captcha_xpath:
             return None, None
@@ -268,7 +339,9 @@ class CookieLoginFormMixin:
 
     @classmethod
     def _page_issue(cls, html_text: str, page_url: str) -> Optional[str]:
-        """把站点不可用和人机挑战归类为 Agent 可采取行动的提示。"""
+        """
+        把站点不可用和人机挑战归类为 Agent 可采取行动的提示。
+        """
         text = " ".join((html_text or "").split())
         lowered = text.lower()
         url_lowered = (page_url or "").lower()
@@ -302,7 +375,9 @@ class CookieLoginFormMixin:
 
     @classmethod
     def _error_message(cls, html_text: str) -> str:
-        """提取登录页可见错误，并去除重复或过长的 HTML 文本。"""
+        """
+        提取登录页可见错误，并去除重复或过长的 HTML 文本。
+        """
         html = etree.HTML(html_text or "")
         if html is None:
             return ""
@@ -316,7 +391,9 @@ class CookieLoginFormMixin:
 
     @staticmethod
     def _page_user_agent(page: Any) -> str:
-        """读取当前页面 User-Agent，浏览器实现不支持时返回空字符串。"""
+        """
+        读取当前页面 User-Agent，浏览器实现不支持时返回空字符串。
+        """
         try:
             return str(page.evaluate("() => window.navigator.userAgent") or "")
         except Exception:
@@ -324,7 +401,9 @@ class CookieLoginFormMixin:
 
     @staticmethod
     def _click_with_fallback(page: Any, selector: str, timeout: int = 5000) -> None:
-        """依次尝试普通、强制、元素和 XPath JavaScript 点击。"""
+        """
+        依次尝试普通、强制、元素和 XPath JavaScript 点击。
+        """
         first_error: Optional[Exception] = None
         try:
             page.click(selector)
@@ -365,7 +444,9 @@ class CookieLoginFormMixin:
 
     @classmethod
     def _refresh_captcha(cls, page: Any, html: etree._Element) -> bool:
-        """点击验证码图片或调用页面 reload，尽量获取下一张验证码。"""
+        """
+        点击验证码图片或调用页面 reload，尽量获取下一张验证码。
+        """
         for image_xpath in cls._SITE_LOGIN_XPATH.get("captcha_img", []):
             if not html.xpath(image_xpath):
                 continue
@@ -386,15 +467,19 @@ class CookieLoginFormMixin:
 
 
 class CookieHelper(CookieLoginFormMixin):
-    """处理站点登录表单、验证码和 Cookie 获取流程。"""
+    """
+    处理站点登录表单、验证码和 Cookie 获取流程。
+    """
 
     _MAX_CAPTCHA_ATTEMPTS = 3
 
     @staticmethod
-    def get_page_content(page: Any, retries: int = 3, interval: float = 1.0) -> Optional[str]:
+    def get_page_content(page: CookiePageContentPort, retries: int = 3,
+                         interval: float = 1.0) -> Optional[str]:
         """
         获取页面源码，页面跳转中（如登录前后的重定向）会导致 page.content() 抛出
-        "Unable to retrieve content because the page is navigating" 异常，等待加载完成后重试
+        "Unable to retrieve content because the page is navigating" 异常，等待加载完成后重试。
+
         :param page: 浏览器页面
         :param retries: 最大重试次数
         :param interval: 重试间隔（秒）
@@ -421,8 +506,13 @@ class CookieHelper(CookieLoginFormMixin):
         return None
 
     @staticmethod
-    def parse_cookies(cookies: list) -> str:
-        """将浏览器 Cookie 列表转成请求头字符串，并忽略不完整条目。"""
+    def parse_cookies(cookies: list[object]) -> str:
+        """
+        将浏览器 Cookie 列表转成请求头字符串，并忽略不完整条目。
+
+        :param cookies: 浏览器返回的 Cookie 条目；非字典或缺少名称、值的条目会跳过
+        :return: 用分号分隔的 Cookie 请求头；没有有效条目时返回空字符串
+        """
         if not cookies:
             return ""
         values: list[str] = []
@@ -437,7 +527,9 @@ class CookieHelper(CookieLoginFormMixin):
 
     @staticmethod
     def _find_login_page_url(html: etree._Element, current_url: str) -> Optional[str]:
-        """从首页查找同源登录入口，避免把账号密码提交到跨域页面。"""
+        """
+        从首页查找同源登录入口，避免把账号密码提交到跨域页面。
+        """
         login_hrefs = html.xpath(
             "//a["
             "contains(translate(@href, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')"
@@ -458,9 +550,19 @@ class CookieHelper(CookieLoginFormMixin):
                            username: str,
                            password: str,
                            two_step_code: Optional[str] = None,
-                           proxies: Optional[dict] = None,
-                           timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
-        """获取站点 Cookie、User-Agent 和兼容错误消息。"""
+                           proxies: Optional[dict[str, object]] = None,
+                           timeout: Optional[int] = None) -> Tuple[Optional[str], Optional[str], str]:
+        """
+        获取站点 Cookie、User-Agent 和兼容错误消息。
+
+        :param url: 站点登录地址
+        :param username: 登录用户名
+        :param password: 登录密码
+        :param two_step_code: 可选的二步验证码或密钥
+        :param proxies: 浏览器代理配置；None 表示不指定代理
+        :param timeout: 浏览器超时时间，单位为秒；None 使用实现默认值
+        :return: Cookie、User-Agent 和错误说明；失败时保留原有空值与错误文本
+        """
         return self._get_site_cookie_ua_impl(
             url=url,
             username=username,
@@ -475,21 +577,24 @@ class CookieHelper(CookieLoginFormMixin):
                                  username: str,
                                  password: str,
                                  two_step_code: Optional[str] = None,
-                                 proxies: Optional[dict] = None,
-                                 timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
+                                 proxies: Optional[dict[str, object]] = None,
+                                 timeout: Optional[int] = None) -> Tuple[Optional[str], Optional[str], str]:
         """
-        获取站点cookie和ua
+        获取站点cookie和ua。
+
         :param url: 站点地址
         :param username: 用户名
         :param password: 密码
         :param two_step_code: 二步验证码或密钥
         :param proxies: 代理
         :param timeout: 超时时间
-        :return: cookie、ua、message
+        :return: Cookie、User-Agent 与错误说明组成的三元组
         """
 
         def __page_handler(page: Any) -> CookieResult:
-            """在受控浏览器页面内完成登录并返回当前会话凭据。"""
+            """
+            在受控浏览器页面内完成登录并返回当前会话凭据。
+            """
             html_text = self.get_page_content(page)
             if not html_text:
                 return None, None, "获取源码失败"
@@ -662,7 +767,7 @@ class CookieHelper(CookieLoginFormMixin):
     @staticmethod
     def __get_captcha_text(cookie: str, ua: str, code_url: str) -> str:
         """
-        识别验证码图片的内容
+        识别验证码图片的内容。
         """
         if not code_url:
             return ""
@@ -674,7 +779,9 @@ class CookieHelper(CookieLoginFormMixin):
 
     @staticmethod
     def __get_captcha_url(siteurl: str, imageurl: str) -> str:
-        """按页面地址解析验证码图片地址，兼容绝对、根相对和路径相对 URL。"""
+        """
+        按页面地址解析验证码图片地址，兼容绝对、根相对和路径相对 URL。
+        """
         if not siteurl or not imageurl:
             return ""
         return urljoin(siteurl, imageurl)

@@ -1,11 +1,17 @@
+"""
+构建 ASGI 应用并装配接口与启动生命周期。
+"""
+
 import json
-from typing import Any, Awaitable, Callable
+from collections.abc import Mapping
+from typing import Any, Awaitable, Callable, cast
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
+from starlette.types import ExceptionHandler
 
 from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.correlation import CorrelationIdMiddleware
@@ -13,6 +19,7 @@ from app.adapters.web.docs import install_api_docs_routes
 from app.adapters.web.health import install_health_routes
 from app.adapters.web.metrics import HttpMetricsMiddleware
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
+from app.adapters.web.priority import ExecutionPriorityMiddleware
 from app.adapters.web.security.access import (
     configure_token_codec,
     verify_apikey,
@@ -46,7 +53,9 @@ from app.startup.lifecycle import lifespan
 
 
 def _get_http_exception_message(detail: Any) -> str:
-    """将 HTTPException 的 detail 转换为统一消息文本。"""
+    """
+    将 HTTPException 的 detail 转换为统一消息文本。
+    """
     if isinstance(detail, str) and detail:
         return detail
     if detail is None:
@@ -58,7 +67,9 @@ def _get_http_exception_message(detail: Any) -> str:
 
 
 def _localize_exception_message(request: Request, message: str) -> str:
-    """直接按异常所属请求的语言翻译消息，避免中间件上下文已被恢复。"""
+    """
+    直接按异常所属请求的语言翻译消息，避免中间件上下文已被恢复。
+    """
     return LocaleHelper.translate_text(
         message,
         locale=LocaleHelper.get_locale_from_request(request),
@@ -66,13 +77,17 @@ def _localize_exception_message(request: Request, message: str) -> str:
 
 
 def _is_mcp_jsonrpc_request(request: Request) -> bool:
-    """判断请求是否指向保持原生响应的 MCP JSON-RPC 根端点。"""
+    """
+    判断请求是否指向保持原生响应的 MCP JSON-RPC 根端点。
+    """
     request_path = getattr(getattr(request, "url", None), "path", "")
     return request_path.rstrip("/") == f"{get_runtime_setting('API_V1_STR')}/mcp"
 
 
 def _get_native_ai_protocol(request: Request) -> str | None:
-    """识别需要保持原生错误体的 OpenAI 或 Anthropic 兼容请求。"""
+    """
+    识别需要保持原生错误体的 OpenAI 或 Anthropic 兼容请求。
+    """
     request_path = getattr(getattr(request, "url", None), "path", "")
     if request_path.startswith(f"{get_runtime_setting('API_V1_STR')}/openai/v1/"):
         return "openai"
@@ -85,9 +100,11 @@ def _native_ai_error_response(
         protocol: str,
         status_code: int,
         message: str,
-        headers: dict[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
-    """按 OpenAI 或 Anthropic 兼容协议构造原生错误响应。"""
+    """
+    按 OpenAI 或 Anthropic 兼容协议构造原生错误响应。
+    """
     if protocol == "openai":
         error_type = (
             "authentication_error"
@@ -128,9 +145,11 @@ def _mcp_jsonrpc_error_response(
         status_code: int,
         code: int,
         message: str,
-        headers: dict[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
-    """构造带 HTTP 状态码的 MCP JSON-RPC 原生错误响应。"""
+    """
+    构造带 HTTP 状态码的 MCP JSON-RPC 原生错误响应。
+    """
     return JSONResponse(
         status_code=status_code,
         content=McpJsonRpcError(
@@ -146,7 +165,9 @@ def _protocol_validation_error_response(
         request: Request,
         exc: RequestValidationError,
 ) -> JSONResponse | None:
-    """为 OpenAI 与 Anthropic 兼容端点生成协议原生的参数错误响应。"""
+    """
+    为 OpenAI 与 Anthropic 兼容端点生成协议原生的参数错误响应。
+    """
     errors = exc.errors()
     first_error = errors[0] if errors else {}
     location = ".".join(
@@ -242,7 +263,9 @@ async def persistence_unavailable_handler(
         request: Request,
         _exc: PersistenceUnavailableError,
 ) -> JSONResponse:
-    """将持久化能力暂不可用映射为可重试的 503 响应。"""
+    """
+    将持久化能力暂不可用映射为可重试的 503 响应。
+    """
     return await localized_http_exception_handler(
         request,
         HTTPException(
@@ -328,6 +351,20 @@ async def localized_unhandled_exception_handler(
     )
 
 
+def resolve_cors_policy(allowed_hosts: Any) -> tuple[list[str], bool]:
+    """
+    把 ALLOWED_HOSTS 解析为 CORS 的允许来源与凭据开关。
+
+    通配来源不得与 allow_credentials 并用：Starlette 在两者同时成立时会把任意
+    请求 Origin 原样回显并声明允许携带凭据，等于对所有站点开放带 Cookie 的跨域
+    访问。只有显式列出来源时才允许携带凭据。
+    """
+    origins = [str(item).strip() for item in (allowed_hosts or ["*"]) if str(item).strip()]
+    if not origins or "*" in origins:
+        return ["*"], False
+    return origins, True
+
+
 def create_app() -> FastAPI:
     """
     创建并配置 FastAPI 应用实例。
@@ -345,14 +382,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
-    _app.add_exception_handler(HTTPException, localized_http_exception_handler)
+    _app.add_exception_handler(HTTPException, cast(ExceptionHandler, localized_http_exception_handler))
     _app.add_exception_handler(
         PersistenceUnavailableError,
-        persistence_unavailable_handler,
+        cast(ExceptionHandler, persistence_unavailable_handler),
     )
     _app.add_exception_handler(
         RequestValidationError,
-        localized_validation_exception_handler,
+        cast(ExceptionHandler, localized_validation_exception_handler),
     )
     _app.add_exception_handler(Exception, localized_unhandled_exception_handler)
     # 主程序静态路由统一使用 ResponseAPIRoute；动态插件注册时会显式覆盖为原生 APIRoute。
@@ -365,15 +402,17 @@ def create_app() -> FastAPI:
         enabled=lambda: bool(get_runtime_setting("API_DOCS_ENABLE")),
     )
 
-    # 配置 CORS 中间件
+    # 配置 CORS 中间件；通配来源时不允许携带凭据
+    allow_origins, allow_credentials = resolve_cors_policy(get_runtime_setting('ALLOWED_HOSTS'))
     _app.add_middleware(
         CORSMiddleware,  # noqa
-        allow_origins=get_runtime_setting('ALLOWED_HOSTS'),
-        allow_credentials=True,
+        allow_origins=allow_origins,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
     _app.add_middleware(CorrelationIdMiddleware)
+    _app.add_middleware(ExecutionPriorityMiddleware)
     _app.add_middleware(HttpMetricsMiddleware)
 
     @_app.middleware("http")

@@ -1,4 +1,6 @@
-"""PluginManager 类型化 Runtime 与职责边界门禁。"""
+"""
+PluginManager 类型化 Runtime 与职责边界门禁。
+"""
 
 import ast
 from pathlib import Path
@@ -11,12 +13,16 @@ RUNTIME_PATH = PROJECT_ROOT / "app" / "runtime" / "extensions" / "plugin" / "run
 
 
 def _parse(path: Path) -> ast.Module:
-    """解析治理门禁消费的 Python 模块。"""
+    """
+    解析治理门禁消费的 Python 模块。
+    """
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
 def _manager_class() -> ast.ClassDef:
-    """返回 canonical PluginManager 类节点。"""
+    """
+    返回 canonical PluginManager 类节点。
+    """
     return next(
         node
         for node in _parse(MANAGER_PATH).body
@@ -25,7 +31,9 @@ def _manager_class() -> ast.ClassDef:
 
 
 def test_plugin_manager_only_consumes_injected_runtime_factory() -> None:
-    """Manager 构造器只能消费注入工厂，不得构造 Runtime 或任一职责 owner。"""
+    """
+    Manager 构造器只能消费注入工厂，不得构造 Runtime 或任一职责 owner。
+    """
     manager = _manager_class()
     initializer = next(
         node
@@ -65,7 +73,9 @@ def test_plugin_manager_only_consumes_injected_runtime_factory() -> None:
 
 
 def test_plugin_runtime_dependency_graph_lives_in_startup_composition() -> None:
-    """Runtime Environment 与 builder 只能由启动组合根连接。"""
+    """
+    Runtime Environment 与 builder 只能由启动组合根连接。
+    """
     startup_path = PROJECT_ROOT / "app" / "startup" / "initializers" / "plugins.py"
     manager_imports = {
         node.name
@@ -89,7 +99,9 @@ def test_plugin_runtime_dependency_graph_lives_in_startup_composition() -> None:
 
 
 def test_startup_injects_runtime_factory_before_manager_materialization() -> None:
-    """所有启动入口必须先发布 Runtime 工厂，再物化 PluginManager。"""
+    """
+    所有启动入口必须先发布 Runtime 工厂，再物化 PluginManager。
+    """
     startup_path = PROJECT_ROOT / "app" / "startup" / "initializers" / "plugins.py"
     functions = {
         node.name: node
@@ -116,7 +128,9 @@ def test_startup_injects_runtime_factory_before_manager_materialization() -> Non
 
 
 def test_plugin_runtime_services_publish_application_runtime(monkeypatch) -> None:
-    """模块对象图构造前必须先发布 Runtime 工厂和 Application provider。"""
+    """
+    模块对象图构造前必须先发布 Runtime 工厂和 Application provider。
+    """
     order: list[str] = []
     monkeypatch.setattr(
         plugins_initializer,
@@ -140,7 +154,9 @@ def test_plugin_runtime_services_publish_application_runtime(monkeypatch) -> Non
 
 
 def test_plugin_manager_does_not_reach_raw_system_adapters() -> None:
-    """兼容门面不得穿透市场、包或依赖适配器的原始属性。"""
+    """
+    兼容门面不得穿透市场、包或依赖适配器的原始属性。
+    """
     tree = _parse(MANAGER_PATH)
     imported_modules = {
         node.module
@@ -159,7 +175,9 @@ def test_plugin_manager_does_not_reach_raw_system_adapters() -> None:
 
 
 def test_plugin_runtime_is_the_only_owner_aggregate() -> None:
-    """类型化 Runtime 必须集中列出唯一 owner，且包根不提供重复导出。"""
+    """
+    类型化 Runtime 必须集中列出唯一 owner，且包根不提供重复导出。
+    """
     tree = _parse(RUNTIME_PATH)
     runtime = next(
         node
@@ -188,7 +206,9 @@ def test_plugin_runtime_is_the_only_owner_aggregate() -> None:
 
 
 def test_dependency_classification_lives_in_dependency_owner() -> None:
-    """虚拟实例分类和状态写入不得回流 PluginManager。"""
+    """
+    虚拟实例分类和状态写入不得回流 PluginManager。
+    """
     manager = _manager_class()
     methods = {
         node.name: node

@@ -1,4 +1,6 @@
-"""读取明确配置的模型连接，并为真实评测统计所有模型调用。"""
+"""
+读取明确配置的模型连接，并为真实评测统计所有模型调用。
+"""
 
 import json
 import os
@@ -19,7 +21,21 @@ _CODEX_OAUTH_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
 @dataclass(frozen=True)
 class ModelSettings:
-    """评测连接只在控制进程使用，凭据不进入 repr 或公开报告。"""
+    """
+    评测连接只在控制进程使用，凭据不进入 repr 或公开报告。
+
+    :param model: 显式选择的模型名称
+    :param base_url: 模型服务地址，不允许内嵌凭据、查询参数或片段
+    :param api_key: 控制进程使用的评测凭据，不进入公开报告
+    :param reasoning_effort: 推理预算等级，默认 high
+    :param max_model_calls: 单次评测最多允许的模型调用次数
+    :param max_output_tokens: 单次模型调用的最大输出令牌数
+    :param timeout_seconds: 单次评测的超时秒数
+    :param context_window: 评测使用的上下文窗口令牌数
+    :param wire_api: 模型请求协议，默认 responses
+    :param auth_mode: 凭据来源模式，默认显式提供
+    :param account_id: 可选的账户标识，不进入公开报告
+    """
 
     model: str
     base_url: str = field(repr=False)
@@ -34,7 +50,9 @@ class ModelSettings:
     account_id: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        """配置文件和 worker 输入共享校验，不能绕过限额或夹带 URL 凭据。"""
+        """
+        配置文件和 worker 输入共享校验，不能绕过限额或夹带 URL 凭据。
+        """
         if not isinstance(self.base_url, str):
             raise ValueError("模型 endpoint 无效")
         endpoint = urlsplit(self.base_url)
@@ -67,7 +85,9 @@ class ModelSettings:
                 raise ValueError("评测预算超出允许范围")
 
     def public_metadata(self) -> dict[str, Any]:
-        """公开模型与评测预算，省略凭据、完整连接路径和用户配置文件。"""
+        """
+        公开模型与评测预算，省略凭据、完整连接路径和用户配置文件。
+        """
         return {
             "requested_model": self.model, "provider_host": urlsplit(self.base_url).hostname,
             "wire_api": self.wire_api,
@@ -83,7 +103,9 @@ def load_codex_model_settings(
     max_model_calls: int = 12, max_output_tokens: int = 8192, timeout_seconds: int = 180,
     probe_only: bool = False, use_codex_auth: bool = False,
 ) -> ModelSettings:
-    """读取选中 provider；真实运行只接受显式凭据或用户明确选择的 Codex OAuth。"""
+    """
+    读取选中 provider；真实运行只接受显式凭据或用户明确选择的 Codex OAuth。
+    """
     config = tomllib.loads(path.read_text(encoding="utf-8"))
     provider = config.get("model_providers", {}).get(config.get("model_provider"), {})
     wire_api = provider.get("wire_api")
@@ -124,25 +146,33 @@ def load_codex_model_settings(
 
 
 class ModelCallLimitError(RuntimeError):
-    """在下一次真实请求之前拒绝超出评测预算的模型调用。"""
+    """
+    在下一次真实请求之前拒绝超出评测预算的模型调用。
+    """
 
 
 # strict mypy 的 follow_imports=skip 不展开第三方回调基类。
 class ModelUsageTracker(BaseCallbackHandler):  # type: ignore[misc]
-    """合计主模型、筛选、摘要与子代理的请求，不把缺失 usage 当成零消耗。"""
+    """
+    合计主模型、筛选、摘要与子代理的请求，不把缺失 usage 当成零消耗。
+    """
 
     raise_error = True
     run_inline = True
 
     def __init__(self, limit: int) -> None:
-        """建立单次评测共享的并发安全计数器。"""
+        """
+        建立单次评测共享的并发安全计数器。
+        """
         self.limit = limit
         self._lock = threading.Lock()
         self._runs: dict[str, dict[str, Any]] = {}
         self.blocked_calls = 0
 
     def on_chat_model_start(self, serialized: dict[str, Any], messages: list[Any], **kwargs: Any) -> None:
-        """原子执行预算判断，既不记录提示词，也不允许并行调用越过上限。"""
+        """
+        原子执行预算判断，既不记录提示词，也不允许并行调用越过上限。
+        """
         run_id = str(kwargs["run_id"])
         with self._lock:
             if run_id in self._runs:
@@ -153,7 +183,9 @@ class ModelUsageTracker(BaseCallbackHandler):  # type: ignore[misc]
             self._runs[run_id] = {"started": time.monotonic(), "completed": False, "usage": None, "model": None}
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
-        """只提取用量与模型标识，不把原始响应或凭据带入统计。"""
+        """
+        只提取用量与模型标识，不把原始响应或凭据带入统计。
+        """
         generation = next((item for group in getattr(response, "generations", []) for item in group), None)
         message = getattr(generation, "message", None)
         usage = getattr(message, "usage_metadata", None)
@@ -171,7 +203,9 @@ class ModelUsageTracker(BaseCallbackHandler):  # type: ignore[misc]
                 record.update(completed=True, usage=usage, model=metadata.get("model_name") or metadata.get("model"))
 
     def on_llm_error(self, error: BaseException, **kwargs: Any) -> None:
-        """错误请求保留为用量未知，不保存可能包含私有响应的异常文本。"""
+        """
+        错误请求保留为用量未知，不保存可能包含私有响应的异常文本。
+        """
         with self._lock:
             record = self._runs.get(str(kwargs["run_id"]))
             if record is not None:
@@ -180,7 +214,9 @@ class ModelUsageTracker(BaseCallbackHandler):  # type: ignore[misc]
                 record["http_status"] = status if isinstance(status, int) else None
 
     def snapshot(self) -> dict[str, Any]:
-        """返回可审计的已知消耗及覆盖度；部分失败时数字仅为已知下界。"""
+        """
+        返回可审计的已知消耗及覆盖度；部分失败时数字仅为已知下界。
+        """
         with self._lock:
             records = list(self._runs.values())
             known = [record["usage"] for record in records if isinstance(record["usage"], dict)]

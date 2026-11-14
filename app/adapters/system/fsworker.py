@@ -20,27 +20,153 @@
 import json
 import os
 import shutil
+import stat
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Callable, Required, TypedDict
 
 
-def _stat(payload, _emit):
+class _Request(TypedDict, total=False):
     """
-    读取路径的基本属性。
+    父进程发送的文件系统操作请求，除 op 外的键由具体操作决定是否必需。
+
+    :ivar op: 必需的操作名，例如 stat、copy 或 rename
+    :ivar path: 路径查询、删除或递归扫描的目标路径，这些操作必须提供
+    :ivar src: copy 或 rename 操作必须提供的源路径
+    :ivar dst: copy 或 rename 操作必须提供的目标路径
+    :ivar chunk_size: 可选的复制块大小，单位为字节；缺失或为 0 时使用 1 MiB
+    :ivar progress_interval: 可选的复制进度发送间隔，单位为秒；缺失或为 0 时使用 1 秒
+    :ivar max_check: 可选的递归扫描文件数阈值；缺失或为 0 时使用 10000，超过后停止扫描
+    :ivar extensions: 后缀查询必须提供的扩展名列表，按忽略大小写的规则匹配
+    """
+
+    op: Required[str]
+    path: str
+    src: str
+    dst: str
+    chunk_size: int
+    progress_interval: float
+    max_check: int
+    extensions: list[str]
+
+
+class _StatResult(TypedDict):
+    """
+    路径属性与删除前用于核对文件身份的信息，所有键均存在。
+
+    :ivar size: 文件大小，单位为字节
+    :ivar mtime: 文件修改时间的 Unix 秒级时间戳
+    :ivar mtime_ns: 文件修改时间的 Unix 纳秒级时间戳
+    :ivar ctime_ns: 文件状态变化时间的 Unix 纳秒级时间戳
+    :ivar dev: 文件所属设备号，与 ino 一起用于核对身份
+    :ivar ino: 文件系统索引节点号
+    :ivar is_dir: 查询时目标是否为目录
+    :ivar is_file: 查询时目标是否为普通文件
+    """
+
+    size: int
+    mtime: float
+    mtime_ns: int
+    ctime_ns: int
+    dev: int
+    ino: int
+    is_dir: bool
+    is_file: bool
+
+
+class _EntryStatResult(_StatResult):
+    """
+    非跟随查询在普通属性上补充最终目录项的符号链接事实。
+
+    :ivar is_symlink: 最终目录项是否为符号链接，包括悬空链接
+    """
+
+    is_symlink: bool
+
+
+class _CopyProgress(TypedDict):
+    """
+    复制期间的进度心跳或结束时的结果，所有键均存在。
+
+    :ivar copied: 已复制的字节数
+    :ivar total: 复制开始时读取的源文件总字节数
+    """
+
+    copied: int
+    total: int
+
+
+class _EntryCounts(TypedDict):
+    """
+    递归扫描实际观察到的文件和目录数量，所有键均存在。
+
+    :ivar file_count: 已发现的文件数，达到扫描停止条件时可能不是完整目录总数
+    :ivar dir_count: 已发现的子目录数，不包含扫描根目录
+    """
+
+    file_count: int
+    dir_count: int
+
+
+_Result = bool | str | list[str] | _StatResult | _CopyProgress | _EntryCounts
+
+
+class _Response(TypedDict, total=False):
+    """
+    逐行发送的复制进度、成功结果或失败信息。
+
+    :ivar ok: 必需的成功标志；进度心跳也为 True
+    :ivar progress: 复制期间才存在的字节进度，不表示操作已经结束
+    :ivar result: 成功结束时返回的操作结果，形状由请求操作决定
+    :ivar errno: 失败时携带的系统错误号；未知操作、无错误号或其他异常使用 0
+    :ivar error: 失败时携带的可读异常说明
+    """
+
+    ok: Required[bool]
+    progress: _CopyProgress
+    result: _Result
+    errno: int
+    error: str
+
+
+_Emit = Callable[[_Response], None]
+
+
+def _stat(payload: _Request, _emit: _Emit) -> _StatResult:
+    """
+    读取路径属性及设备、inode 身份，供删除前确认仍是同一个文件。
     """
     path = payload["path"]
     info = os.stat(path)
     return {
         "size": info.st_size,
         "mtime": info.st_mtime,
+        "mtime_ns": info.st_mtime_ns,
+        "ctime_ns": info.st_ctime_ns,
+        "dev": info.st_dev,
+        "ino": info.st_ino,
         "is_dir": os.path.isdir(path),
         "is_file": os.path.isfile(path),
     }
 
 
-def _exists(payload, _emit):
+def _lstat(payload: _Request, _emit: _Emit) -> _EntryStatResult:
+    """
+    只查询最终目录项，不跟随符号链接，所有类型均来自同一次 lstat。
+    """
+    info = os.lstat(payload["path"])
+    return {
+        "size": info.st_size, "mtime": info.st_mtime,
+        "mtime_ns": info.st_mtime_ns, "ctime_ns": info.st_ctime_ns,
+        "dev": info.st_dev, "ino": info.st_ino,
+        "is_dir": stat.S_ISDIR(info.st_mode),
+        "is_file": stat.S_ISREG(info.st_mode),
+        "is_symlink": stat.S_ISLNK(info.st_mode),
+    }
+
+
+def _exists(payload: _Request, _emit: _Emit) -> bool:
     """
     判断路径是否存在。
 
@@ -51,14 +177,21 @@ def _exists(payload, _emit):
     return True
 
 
-def _listdir(payload, _emit):
+def _realpath(payload: _Request, _emit: _Emit) -> str:
+    """
+    解析已有父目录的符号链接，目标末段可尚不存在；异常交由代理保守处理。
+    """
+    return str(Path(payload["path"]).resolve())
+
+
+def _listdir(payload: _Request, _emit: _Emit) -> list[str]:
     """
     列出目录下的条目名。
     """
     return sorted(os.listdir(payload["path"]))
 
 
-def _copy(payload, emit):
+def _copy(payload: _Request, emit: _Emit) -> _CopyProgress:
     """
     分块复制文件内容并周期上报进度。
 
@@ -96,7 +229,7 @@ def _copy(payload, emit):
     return {"copied": copied, "total": total}
 
 
-def _count_entries(payload, _emit):
+def _count_entries(payload: _Request, _emit: _Emit) -> _EntryCounts:
     """
     统计目录下的文件与子目录数量，超过上限即提前结束。
 
@@ -116,12 +249,16 @@ def _count_entries(payload, _emit):
     return {"file_count": file_count, "dir_count": dir_count}
 
 
-def _has_file_suffix(payload: Dict[str, Any], _emit: Callable[..., None]) -> bool:
-    """遍历目录树；读取失败必须抛出，避免将未完成的扫描视为安全。"""
+def _has_file_suffix(payload: _Request, _emit: _Emit) -> bool:
+    """
+    遍历目录树；读取失败必须抛出，避免将未完成的扫描视为安全。
+    """
     suffixes = {ext.casefold() for ext in payload["extensions"]}
 
     def raise_walk_error(error: OSError) -> None:
-        """向调用方传递目录扫描错误。"""
+        """
+        向调用方传递目录扫描错误。
+        """
         raise error
 
     for _, _, files in os.walk(payload["path"], onerror=raise_walk_error):
@@ -130,7 +267,7 @@ def _has_file_suffix(payload: Dict[str, Any], _emit: Callable[..., None]) -> boo
     return False
 
 
-def _rename(payload, _emit):
+def _rename(payload: _Request, _emit: _Emit) -> bool:
     """
     同一存储内重命名/移动。
 
@@ -139,13 +276,14 @@ def _rename(payload, _emit):
     跨存储的复制+删除不走这里，它需要单独的可恢复语义。
     """
     src, dst = payload["src"], payload["dst"]
-    if os.stat(src).st_dev != os.stat(os.path.dirname(dst) or ".").st_dev:
+    # rename 操作处理的是软链接目录项本身，不能把目标文件所在设备误当成源设备。
+    if os.lstat(src).st_dev != os.stat(os.path.dirname(dst) or ".").st_dev:
         raise OSError(18, "Cross-device rename is not handled by the proxy")
     os.rename(src, dst)
     return True
 
 
-def _unlink(payload, _emit):
+def _unlink(payload: _Request, _emit: _Emit) -> bool:
     """
     删除单个文件。unlink 是原子操作，强杀后要么删掉了要么没删，没有中间状态。
     """
@@ -153,7 +291,7 @@ def _unlink(payload, _emit):
     return True
 
 
-def _rmtree(payload, _emit):
+def _rmtree(payload: _Request, _emit: _Emit) -> bool:
     """
     递归删除目录。
 
@@ -165,8 +303,10 @@ def _rmtree(payload, _emit):
     return True
 
 
-_HANDLERS = {
+_HANDLERS: dict[str, Callable[[_Request, _Emit], _Result]] = {
     "stat": _stat,
+    "lstat": _lstat,
+    "realpath": _realpath,
     "exists": _exists,
     "listdir": _listdir,
     "copy": _copy,
@@ -179,7 +319,7 @@ _HANDLERS = {
 }
 
 
-def _write(message):
+def _write(message: _Response) -> None:
     """
     输出一行响应。
     """
@@ -187,20 +327,21 @@ def _write(message):
     sys.stdout.flush()
 
 
-def main():
+def main() -> None:
     """
     请求循环：每读一行处理一个请求，直到 stdin 关闭。
 
     一个请求可能对应多行响应：长耗时操作先流式发若干 progress 行，最后发一行
     终态（result 或 error）。父进程据此区分「还在推进」和「已经挂死」。
     """
+    response: _Response
     for line in sys.stdin:
         line = line.strip()
         if not line:
             continue
         try:
-            payload = json.loads(line)
-            handler = _HANDLERS.get(payload.get("op"))
+            payload: _Request = json.loads(line)
+            handler = _HANDLERS.get(payload.get("op", ""))
             if handler is None:
                 response = {"ok": False, "errno": 0,
                             "error": f"unknown op: {payload.get('op')}"}
@@ -209,7 +350,8 @@ def main():
         except OSError as err:
             response = {"ok": False, "errno": err.errno or 0,
                         "error": err.strerror or str(err)}
-        except Exception as err:  # noqa: BLE001 - worker 不能因任何异常退出
+        # worker 不能因任何异常退出
+        except Exception as err:  # noqa: BLE001
             response = {"ok": False, "errno": 0, "error": str(err)}
         _write(response)
 

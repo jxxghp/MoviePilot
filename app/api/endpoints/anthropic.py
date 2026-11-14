@@ -1,9 +1,13 @@
+"""
+提供 Anthropic Messages 兼容接口，将请求交给宿主 Agent 执行。
+"""
+
 import asyncio
 import uuid
-from typing import AsyncIterator, List, Optional
+from typing import TYPE_CHECKING, AsyncIterator, List, Optional, Union
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.adapters.web.security.access import (
     anthropic_api_key_header,
@@ -35,7 +39,11 @@ from app.schemas.openai import AnthropicMessagesRequest as _SchemaAnthropicMessa
 from app.schemas.openai import AnthropicMessagesResponse as _SchemaAnthropicMessagesResponse
 from app.schemas.openai import AnthropicTextBlock as _SchemaAnthropicTextBlock
 
-ANTHROPIC_ERROR_RESPONSES = {
+if TYPE_CHECKING:
+    from app.agent.manager import AgentManager
+
+
+ANTHROPIC_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": _SchemaAnthropicErrorResponse, "description": "请求格式错误"},
     401: {"model": _SchemaAnthropicErrorResponse, "description": "认证失败"},
     422: {"model": _SchemaAnthropicErrorResponse, "description": "请求参数校验失败"},
@@ -53,6 +61,9 @@ def _anthropic_error_response(
     status_code: int,
     error_type: str = "invalid_request_error",
 ) -> JSONResponse:
+    """
+    构造 Anthropic 协议格式的错误响应。
+    """
     return JSONResponse(
         status_code=status_code,
         content=_SchemaAnthropicErrorResponse(
@@ -88,7 +99,9 @@ async def _check_auth(api_key: Optional[str]) -> Optional[JSONResponse]:
 
 
 def _manager_execution_error(error: BaseException) -> JSONResponse:
-    """把 AgentManager 稳定错误映射为 Anthropic 兼容错误响应。"""
+    """
+    把 AgentManager 稳定错误映射为 Anthropic 兼容错误响应。
+    """
     if _is_manager_unavailable(error):
         return _anthropic_error_response(
             "MoviePilot AI agent is unavailable.",
@@ -105,18 +118,24 @@ def _manager_execution_error(error: BaseException) -> JSONResponse:
 
 
 async def _stream_anthropic_response(
-    manager,
+    manager: "AgentManager",
     session_id: str,
     user_id: str,
     prompt: str,
     images: List[str],
     task_registry: TaskRegistry | None = None,
 ) -> AsyncIterator[str]:
-    event_queue: asyncio.Queue = asyncio.Queue()
+    """
+    把受管 Agent 事件转换为 Anthropic 流式响应。
+    """
+    event_queue: asyncio.Queue[Union[str, dict[str, str], None]] = asyncio.Queue()
 
     message_id = f"msg_{uuid.uuid4().hex}"
 
-    async def _run_agent():
+    async def _run_agent() -> None:
+        """
+        运行受管 Agent 并把完成或异常结果送入响应队列。
+        """
         try:
             await _run_managed_agent(
                 manager=manager,
@@ -218,7 +237,7 @@ async def _stream_anthropic_response(
 
 @router.post(
     "/messages",
-    summary="Anthropic compatible messages",
+    summary="Anthropic 兼容消息生成",
     response_model=_SchemaAnthropicMessagesResponse,
     responses={
         200: {
@@ -234,7 +253,10 @@ async def messages(
     x_api_key: Optional[str] = Security(anthropic_api_key_header),
     anthropic_version: Optional[str] = Header(default=None, alias="anthropic-version"),
     task_registry: TaskRegistry = Depends(get_background_task_registry_compat),
-):
+) -> Union[JSONResponse, StreamingResponse, _SchemaAnthropicMessagesResponse]:
+    """
+    校验请求并处理 Anthropic Messages 兼容接口。
+    """
     auth_error = await _check_auth(x_api_key)
     if auth_error:
         return auth_error
@@ -273,7 +295,7 @@ async def messages(
             ),
         )
 
-    collected_messages = []
+    collected_messages: List[str] = []
     try:
         result, collected_messages = await _run_managed_agent(
             manager=manager,

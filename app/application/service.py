@@ -1,9 +1,11 @@
-"""下载器、媒体服务器和通知服务的应用层目录端口。"""
+"""
+下载器、媒体服务器和通知服务的应用层目录端口。
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
 from app.schemas.system import ServiceInfo
 from app.schemas.types import ModuleType, SystemConfigKey
@@ -17,12 +19,16 @@ def _unconfigured_configs(
     _config_key: SystemConfigKey,
     _conf_type: Type[Any],
 ) -> list[Any]:
-    """拒绝在启动组合根装配前隐式读取服务配置。"""
+    """
+    拒绝在启动组合根装配前隐式读取服务配置。
+    """
     raise RuntimeError("服务配置目录尚未由启动组合根配置")
 
 
 def _unconfigured_modules(_module_type: ModuleType) -> list[Any]:
-    """拒绝在启动组合根装配前隐式抓取模块管理器。"""
+    """
+    拒绝在启动组合根装配前隐式抓取模块管理器。
+    """
     raise RuntimeError("运行模块目录尚未由启动组合根配置")
 
 
@@ -35,14 +41,18 @@ def configure_service_directory(
     configs: ServiceConfigLoader,
     modules: RunningModuleLoader,
 ) -> None:
-    """由启动组合根注入服务配置和运行模块枚举端口。"""
+    """
+    由启动组合根注入服务配置和运行模块枚举端口。
+    """
     global _config_loader, _module_loader
     _config_loader = configs
     _module_loader = modules
 
 
 def reset_service_directory() -> None:
-    """恢复未装配服务目录，禁止跨 lifespan 复用旧模块对象。"""
+    """
+    恢复未装配服务目录，禁止跨 lifespan 复用旧模块对象。
+    """
     global _config_loader, _module_loader
     _config_loader = _unconfigured_configs
     _module_loader = _unconfigured_modules
@@ -52,26 +62,70 @@ def get_service_configs(
     config_key: SystemConfigKey,
     conf_type: Type[TConf],
 ) -> list[TConf]:
-    """通过组合根登记的读取器返回已校验服务配置。"""
+    """
+    通过组合根登记的读取器返回已校验服务配置。
+    """
     return _config_loader(config_key, conf_type)
 
 
-class ServiceBaseHelper(Generic[TConf]):
-    """通过应用端口查询服务配置和对应运行实例。"""
+class _ServiceConfig(Protocol):
+    """
+    服务目录读取的配置字段；具体配置模型保留各自附加字段。
+    """
+
+    @property
+    def name(self) -> Optional[str]:
+        """
+        返回配置的服务名称。
+
+        :return: 已配置服务实例的名称，用于区分同类型的多个实例
+        """
+        ...
+
+    @property
+    def type(self) -> Optional[str]:
+        """
+        返回配置的服务类型。
+
+        :return: 选择对应模块实现的服务类型标识
+        """
+        ...
+
+    @property
+    def enabled(self) -> Optional[bool]:
+        """
+        返回服务是否启用，兼容历史空值。
+
+        :return: 该服务配置是否允许实例化和参与业务调用
+        """
+        ...
+
+
+TServiceConf = TypeVar("TServiceConf", bound=_ServiceConfig)
+
+
+class ServiceBaseHelper(Generic[TServiceConf]):
+    """
+    通过应用端口查询服务配置和对应运行实例。
+    """
 
     def __init__(
         self,
         config_key: SystemConfigKey,
-        conf_type: Type[TConf],
+        conf_type: Type[TServiceConf],
         module_type: ModuleType,
     ) -> None:
-        """绑定配置类型和模块能力类型，不抓取具体 Runtime 管理器。"""
+        """
+        绑定配置类型和模块能力类型，不抓取具体 Runtime 管理器。
+        """
         self.config_key = config_key
         self.conf_type = conf_type
         self.module_type = module_type
 
-    def get_configs(self, include_disabled: bool = False) -> Dict[str, TConf]:
-        """返回按名称索引的有效服务配置。"""
+    def get_configs(self, include_disabled: bool = False) -> Dict[str, TServiceConf]:
+        """
+        返回按名称索引的有效服务配置。
+        """
         configs = get_service_configs(self.config_key, self.conf_type)
         return {
             config.name: config
@@ -81,12 +135,16 @@ class ServiceBaseHelper(Generic[TConf]):
             and (config.enabled or include_disabled)
         }
 
-    def get_config(self, name: str) -> Optional[TConf]:
-        """按名称返回单个启用服务配置。"""
+    def get_config(self, name: str) -> Optional[TServiceConf]:
+        """
+        按名称返回单个启用服务配置。
+        """
         return self.get_configs().get(name) if name else None
 
     def iterate_module_instances(self) -> Iterator[ServiceInfo]:
-        """迭代当前类型所有运行模块实例及其配置投影。"""
+        """
+        迭代当前类型所有运行模块实例及其配置投影。
+        """
         configs = self.get_configs()
         for module in _module_loader(self.module_type):
             if not module:
@@ -110,8 +168,10 @@ class ServiceBaseHelper(Generic[TConf]):
         self,
         type_filter: Optional[str] = None,
         name_filters: Optional[List[str]] = None,
-    ) -> Dict[str, ServiceInfo]:
-        """按服务类型和名称集合过滤运行实例。"""
+    ) -> Dict[Optional[str], ServiceInfo]:
+        """
+        按服务类型和名称集合过滤运行实例。
+        """
         names = set(name_filters) if name_filters else None
         return {
             service.name: service
@@ -123,10 +183,12 @@ class ServiceBaseHelper(Generic[TConf]):
 
     def get_service(
         self,
-        name: str,
+        name: Optional[str],
         type_filter: Optional[str] = None,
     ) -> Optional[ServiceInfo]:
-        """按名称和可选类型返回单个运行服务。"""
+        """
+        按名称和可选类型返回单个运行服务。
+        """
         if not name:
             return None
         for service in self.iterate_module_instances():

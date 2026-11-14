@@ -1,3 +1,7 @@
+"""
+验证订阅搜索命令的接纳与执行参数。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -15,28 +19,38 @@ from app.runtime.tasks import TaskRegistry
 
 
 class _Repository:
-    """提供手工订阅搜索测试需要的归属和列表数据。"""
+    """
+    提供手工订阅搜索测试需要的归属和列表数据。
+    """
 
     def __init__(self, candidate=None, subscribe_ids=None):
-        """保存预设单条候选和批量编号。"""
+        """
+        保存预设单条候选和批量编号。
+        """
         self.candidate = candidate
         self.subscribe_ids = subscribe_ids or []
         self.list_calls = []
         self.type_calls = []
 
     async def get_candidate(self, _subscribe_id):
-        """返回预设订阅候选。"""
+        """
+        返回预设订阅候选。
+        """
         return self.candidate
 
     async def list_search_ids(self, username, state, mtype=None):
-        """记录访问范围并返回预设编号。"""
+        """
+        记录访问范围并返回预设编号。
+        """
         self.list_calls.append((username, state))
         self.type_calls.append(mtype)
         return self.subscribe_ids
 
 
 def _candidate(username):
-    """构造只包含归属信息的订阅候选。"""
+    """
+    构造只包含归属信息的订阅候选。
+    """
     return SubscribeDeletionCandidate(
         subscribe_id=7,
         username=username,
@@ -45,9 +59,13 @@ def _candidate(username):
 
 
 def _submitter(calls):
-    """构造记录目标并返回稳定安排结果的异步提交器。"""
+    """
+    构造记录目标并返回稳定安排结果的异步提交器。
+    """
     async def submit(subscribe_ids, single):
-        """记录一次轻量入队请求。"""
+        """
+        记录一次轻量入队请求。
+        """
         calls.append((subscribe_ids, single))
         return SubscriptionSearchSubmission(
             batch_ids=("batch-1",),
@@ -62,7 +80,9 @@ def _submitter(calls):
 
 @pytest.mark.asyncio
 async def test_superuser_search_all_queues_every_active_subscription():
-    """管理员搜索全部订阅时读取全局活动订阅并一次提交。"""
+    """
+    管理员搜索全部订阅时读取全局活动订阅并一次提交。
+    """
     submitted = []
     repository = _Repository(subscribe_ids=[2, 5])
     command = SearchSubscriptionsCommand(
@@ -82,7 +102,9 @@ async def test_superuser_search_all_queues_every_active_subscription():
 
 @pytest.mark.asyncio
 async def test_regular_user_search_all_schedules_only_owned_subscriptions():
-    """普通用户搜索全部时把归属订阅合并为一次后台批次。"""
+    """
+    普通用户搜索全部时把归属订阅合并为一次后台批次。
+    """
     submitted = []
     repository = _Repository(subscribe_ids=[2, 5])
     command = SearchSubscriptionsCommand(
@@ -101,7 +123,9 @@ async def test_regular_user_search_all_schedules_only_owned_subscriptions():
 
 @pytest.mark.asyncio
 async def test_search_all_forwards_media_type_to_target_repository():
-    """按媒体类型搜索时把范围交给订阅读取端口裁剪。"""
+    """
+    按媒体类型搜索时把范围交给订阅读取端口裁剪。
+    """
     submitted = []
     repository = _Repository(subscribe_ids=[2, 5])
     command = SearchSubscriptionsCommand(
@@ -122,7 +146,9 @@ async def test_search_all_forwards_media_type_to_target_repository():
 
 @pytest.mark.asyncio
 async def test_regular_user_search_all_with_no_targets_does_not_schedule():
-    """普通用户没有可搜索订阅时不创建空后台任务。"""
+    """
+    普通用户没有可搜索订阅时不创建空后台任务。
+    """
     submitted = []
     command = SearchSubscriptionsCommand(
         repository=_Repository(),
@@ -141,7 +167,9 @@ async def test_regular_user_search_all_with_no_targets_does_not_schedule():
 
 @pytest.mark.asyncio
 async def test_targeted_search_rejects_missing_or_other_users_subscription():
-    """单条搜索不得泄漏订阅是否属于其他普通用户。"""
+    """
+    单条搜索不得泄漏订阅是否属于其他普通用户。
+    """
     submitted = []
     command = SearchSubscriptionsCommand(
         repository=_Repository(candidate=_candidate("bob")),
@@ -157,7 +185,9 @@ async def test_targeted_search_rejects_missing_or_other_users_subscription():
 
 @pytest.mark.asyncio
 async def test_targeted_search_schedules_accessible_subscription():
-    """归属用户搜索单条订阅时提交历史兼容参数。"""
+    """
+    归属用户搜索单条订阅时提交历史兼容参数。
+    """
     submitted = []
     command = SearchSubscriptionsCommand(
         repository=_Repository(candidate=_candidate("alice")),
@@ -175,7 +205,9 @@ async def test_targeted_search_schedules_accessible_subscription():
 
 
 def test_submitted_search_wakes_short_cycle_queue(monkeypatch):
-    """手工搜索入队后立即唤醒短周期恢复任务。"""
+    """
+    手工搜索入队后立即唤醒短周期恢复任务。
+    """
     calls = []
     monkeypatch.setattr(
         subscription_dependencies,
@@ -195,12 +227,16 @@ def test_submitted_search_wakes_short_cycle_queue(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_search_dependency_persists_before_waking_background_worker():
-    """请求适配器先等待持久入队完成，再登记后台恢复任务。"""
+    """
+    请求适配器先等待持久入队完成，再登记后台恢复任务。
+    """
     registry = TaskRegistry()
     calls = []
 
     def create_sync(function, *args, owner, **kwargs):
-        """同步执行测试函数，并返回已经完成的 Future。"""
+        """
+        同步执行测试函数，并返回已经完成的 Future。
+        """
         calls.append((function, args, owner, kwargs))
         future = asyncio.get_running_loop().create_future()
         result = function(*args, **kwargs) if owner.endswith("enqueue") else None

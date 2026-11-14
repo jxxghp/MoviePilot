@@ -1,4 +1,6 @@
-"""插件包文件安装和快照恢复适配器。"""
+"""
+插件包文件安装和快照恢复适配器。
+"""
 
 from __future__ import annotations
 
@@ -14,8 +16,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Optional, Protocol, Sequence, cast
+from urllib.parse import quote
 
-import aiofiles  # type: ignore[import-untyped]
+import aiofiles
 import aioshutil
 from anyio import Path as AsyncPath
 
@@ -37,6 +40,9 @@ from app.runtime.dependencies.native import (
     detect_changed_native_dependencies,
 )
 from app.runtime.execution import (
+    plugin_package_lock,
+)
+from app.runtime.execution import (
     run_in_threadpool_to_completion as _await_thread_operation,
 )
 from app.runtime.log import logger
@@ -45,7 +51,8 @@ from app.runtime.version import get_app_version
 
 
 class PluginContentSwapError(OSError):
-    """插件内容换入失败，并随异常携带运行目录的实际恢复结论。
+    """
+    插件内容换入失败，并随异常携带运行目录的实际恢复结论。
 
     上层能观察到的只有运行目录还在不在，而被删到一半的运行目录同样"存在"；
     只凭存在与否判断就会把残骸当成完好的旧插件，进而把本次的临时备份当作多余
@@ -54,7 +61,8 @@ class PluginContentSwapError(OSError):
     """
 
     def __init__(self, cause: BaseException, *, runtime_intact: bool) -> None:
-        """按原始失败构造换入异常，并记录运行目录的恢复结论。
+        """
+        按原始失败构造换入异常，并记录运行目录的恢复结论。
 
         :param cause: 触发换入失败的原始异常，消息原样透传给上层展示
         :param runtime_intact: 运行目录是否仍是换入前那一份（未触碰或已回滚到位）
@@ -64,19 +72,41 @@ class PluginContentSwapError(OSError):
 
 
 class PluginPackageSourcePort(Protocol):
-    """声明包 owner 读取市场元数据和远端制品所需的外部端口。"""
+    """
+    插件包安装器读取本地来源、市场元数据和远端制品的接口。
+    """
 
     def is_local_repo_url(self, repo_url: Optional[str]) -> bool:
-        """判断来源是否为本地仓库。"""
+        """
+        判断来源是否为本地仓库。
+
+        :param repo_url: 待检查的来源标识，允许为空
+        :return: 符合本地仓库标识格式时返回 True，否则返回 False
+        """
 
     def parse_local_repo_url(self, repo_url: str) -> Optional[str]:
-        """解析本地来源中的插件标识。"""
+        """
+        解析本地来源中的插件标识。
+
+        :param repo_url: 本地仓库来源标识
+        :return: 其中的插件 ID；来源不符合约定时返回 None
+        """
 
     def parse_local_repo_path(self, repo_url: str) -> Optional[Path]:
-        """解析本地来源中的仓库目录。"""
+        """
+        解析本地来源中的仓库目录。
+
+        :param repo_url: 可能附带仓库路径的本地来源标识
+        :return: 解析后的仓库路径；未指定或无法解析时返回 None
+        """
 
     def parse_local_repo_package_version(self, repo_url: str) -> Optional[str]:
-        """解析本地来源中的包代际。"""
+        """
+        解析本地来源中的包代际。
+
+        :param repo_url: 本地仓库来源标识
+        :return: 显式指定的包代际；未指定时返回 None
+        """
 
     def make_local_repo_url(
         self,
@@ -84,7 +114,14 @@ class PluginPackageSourcePort(Protocol):
         repo_path: Optional[Path] = None,
         package_version: Optional[str] = None,
     ) -> str:
-        """生成本地仓库来源标识。"""
+        """
+        生成本地仓库来源标识。
+
+        :param plugin_id: 插件标识
+        :param repo_path: 显式本地仓库目录；None 时不写入路径参数
+        :param package_version: 插件包代际；None 时不写入代际参数
+        :return: 可供后续解析的本地仓库来源标识
+        """
 
     def get_local_plugin_candidate(
         self,
@@ -94,50 +131,112 @@ class PluginPackageSourcePort(Protocol):
         strict_compat: bool = True,
         strict_system_version: bool = True,
     ) -> Optional[dict[str, Any]]:
-        """读取一个本地插件候选。"""
+        """
+        读取一个本地插件候选。
+
+        :param pid: 要查找的插件 ID
+        :param package_version: 限定的包代际；None 时按已配置代际顺序查找
+        :param repo_path: 限定的本地仓库；None 时扫描配置中的本地仓库
+        :param strict_compat: 是否跳过与当前包代际不兼容的候选
+        :param strict_system_version: 是否把宿主版本不匹配投影为不可安装候选
+        :return: 含路径和兼容标志的候选信息；未找到时返回 None，返回候选仍需检查兼容标志
+        """
 
     def check_plugin_system_version(
         self, plugin_info: dict[str, Any]
     ) -> tuple[bool, str]:
-        """校验插件声明的宿主版本约束。"""
+        """
+        校验插件声明的宿主版本约束。
+
+        :param plugin_info: 含插件宿主版本要求的元数据
+        :return: 是否允许当前宿主安装及不兼容原因
+        """
 
     def check_plugin_install_compatibility(
         self, plugin_info: dict[str, Any]
     ) -> tuple[bool, str]:
-        """校验插件与当前运行时和宿主版本是否都允许安装。"""
+        """
+        校验插件与当前运行时和宿主版本是否都允许安装。
+
+        :param plugin_info: 含运行时和宿主版本要求的插件元数据
+        :return: 是否满足安装兼容要求及失败说明；先检查运行时，再检查宿主版本
+        """
 
     def get_plugin_package_version(
         self, plugin_id: str, repo_url: str, package_version: Optional[str]
     ) -> Optional[str]:
-        """选择适用于当前宿主的远端索引代际。"""
+        """
+        选择适用于当前宿主的远端索引代际。
+
+        :param plugin_id: 要在索引中查找的插件 ID
+        :param repo_url: 远端插件仓库地址
+        :param package_version: 首选索引代际；None 使用宿主当前代际并依次尝试兼容代际
+        :return: 可用代际；空字符串表示旧版 package.json，None 表示没有可安装候选
+        """
 
     async def async_get_plugin_package_version(
         self, plugin_id: str, repo_url: str, package_version: Optional[str]
     ) -> Optional[str]:
-        """异步选择适用于当前宿主的远端索引代际。"""
+        """
+        异步选择适用于当前宿主的远端索引代际。
+
+        :param plugin_id: 要在索引中查找的插件 ID
+        :param repo_url: 远端插件仓库地址
+        :param package_version: 首选索引代际；None 使用宿主当前代际并依次尝试兼容代际
+        :return: 可用代际；空字符串表示旧版 package.json，None 表示没有可安装候选
+        """
 
     def get_plugins(
         self, repo_url: str, package_version: Optional[str] = None
     ) -> Optional[dict[str, dict[str, Any]]]:
-        """读取远端插件索引。"""
+        """
+        读取远端插件索引。
+
+        :param repo_url: 远端插件仓库地址
+        :param package_version: 要读取的索引代际；None 表示旧版 package.json
+        :return: 插件 ID 到元数据的映射；索引不存在时为空字典，请求或解析失败时为 None
+        """
 
     async def async_get_plugins(
         self, repo_url: str, package_version: Optional[str] = None
     ) -> Optional[dict[str, dict[str, Any]]]:
-        """异步读取远端插件索引。"""
+        """
+        异步读取远端插件索引。
+
+        :param repo_url: 远端插件仓库地址
+        :param package_version: 要读取的索引代际；None 表示旧版 package.json
+        :return: 插件 ID 到元数据的映射；索引不存在时为空字典，请求或解析失败时为 None
+        """
 
     def get_plugin_release_versions(
         self, plugin_id: str, repo_url: str
     ) -> list[dict[str, Any]]:
-        """读取插件可安装 Release。"""
+        """
+        读取插件可安装 Release。
+
+        :param plugin_id: 用于筛选发布标签和资产名的插件 ID
+        :param repo_url: GitHub 插件仓库地址
+        :return: 符合标签和 ZIP 资产命名约定的发布列表；没有可用结果时为空列表
+        """
 
     async def async_get_plugin_release_versions(
         self, plugin_id: str, repo_url: str
     ) -> list[dict[str, Any]]:
-        """异步读取插件可安装 Release。"""
+        """
+        异步读取插件可安装 Release。
+
+        :param plugin_id: 用于筛选发布标签和资产名的插件 ID
+        :param repo_url: GitHub 插件仓库地址
+        :return: 符合标签和 ZIP 资产命名约定的发布列表；没有可用结果时为空列表
+        """
 
     def get_repo_info(self, repo_url: str) -> tuple[Optional[str], Optional[str]]:
-        """解析 GitHub 仓库所有者和仓库名。"""
+        """
+        解析 GitHub 仓库所有者和仓库名。
+
+        :param repo_url: GitHub 仓库地址
+        :return: 所有者与仓库名二元组；空值或结构不足时两项均为 None
+        """
 
     def request(
         self,
@@ -146,8 +245,18 @@ class PluginPackageSourcePort(Protocol):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
-        """同步读取 GitHub 元数据或制品。"""
+        """
+        同步读取 GitHub 元数据或制品。
+
+        :param url: GitHub 元数据或制品地址
+        :param headers: 附加请求头；None 使用请求适配器默认值
+        :param timeout: 每次请求超时，单位为秒，默认 60；None 沿用传输实现约定
+        :param is_api: 是否为 API 请求；True 且未提供公开资产地址时跳过镜像
+        :param mirror_url: 可选的公开 Release 资产地址，镜像匿名下载失败后回退原始地址
+        :return: 已读取内容的响应；所有传输策略均失败时返回 None
+        """
 
     async def async_request(
         self,
@@ -156,13 +265,35 @@ class PluginPackageSourcePort(Protocol):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
-        """异步读取 GitHub 元数据或制品。"""
+        """
+        异步读取 GitHub 元数据或制品。
+
+        :param url: GitHub 元数据或制品地址
+        :param headers: 附加请求头；None 使用请求适配器默认值
+        :param timeout: 每次请求超时，单位为秒，默认 60；None 沿用传输实现约定
+        :param is_api: 是否为 API 请求；True 且未提供公开资产地址时跳过镜像
+        :param mirror_url: 可选的公开 Release 资产地址，镜像匿名下载失败后回退原始地址
+        :return: 已读取内容的响应；所有传输策略均失败时返回 None
+        """
 
 
 @dataclass(slots=True)
 class PluginPackageCheckpoint:
-    """记录运行目录快照及待提升的容器恢复备份。"""
+    """
+    记录插件运行目录的快照和待提升的容器恢复备份。
+
+    :param plugin_id: 需要恢复的插件标识
+    :param plugin_dir: 安装前后的插件运行目录
+    :param persistent_backup_dir: 用于容器重建恢复的持久备份目录
+    :param backup_staging_dir: 等待提交的新备份暂存目录；未创建时为 None
+    :param backup_previous_dir: 提升新备份时保留的旧备份目录；未创建时为 None
+    :param transaction_dir: 本次安装事务的检查点目录，保存运行文件快照与补偿标记
+    :param plugin_existed: 创建检查点时运行目录是否存在
+    :param persistent_backup_existed: 创建检查点时持久备份是否存在
+    :param native_dependencies: 安装前已载入原生依赖的快照，供安装后检测变动；未采集时为 None
+    """
 
     plugin_id: str
     plugin_dir: Path
@@ -176,18 +307,29 @@ class PluginPackageCheckpoint:
 
     @property
     def existed(self) -> bool:
-        """保留旧调用方读取运行目录存在状态的兼容属性。"""
+        """
+        保留旧调用方读取运行目录存在状态的兼容属性。
+        """
         return self.plugin_existed
 
     @property
     def rollback_marker(self) -> Path:
-        """返回文件补偿完成标记，供 PREPARED 重放保持幂等。"""
+        """
+        返回文件补偿完成标记，供 PREPARED 重放保持幂等。
+        """
         return self.transaction_dir / ".rollback-complete"
 
 
 @dataclass(frozen=True, slots=True)
 class _RemotePluginInstallSelection:
-    """冻结远端插件完成准入后的安装方式和索引事实。"""
+    """
+    冻结远端插件通过准入检查后的来源和安装方式。
+
+    :param user_repo: 已确认的远端仓库地址
+    :param package_version: 已选定的插件索引代际
+    :param release_tag: 要安装的发布标签；None 表示不使用发布包
+    :param fallback_to_filelist: 发布包不可用时是否允许回退到索引文件清单
+    """
 
     user_repo: str
     package_version: str
@@ -196,7 +338,9 @@ class _RemotePluginInstallSelection:
 
 
 class PluginPackageManager:
-    """隔离插件包安装、本地同步、分身改写和文件补偿能力。"""
+    """
+    隔离插件包安装、本地同步、分身改写和文件补偿能力。
+    """
 
     _COPY_IGNORE = ("__pycache__", "*.pyc", ".DS_Store", "node_modules")
 
@@ -207,25 +351,33 @@ class PluginPackageManager:
         health: Optional[PluginRuntimeHealth] = None,
         plugin_root: Optional[Path] = None,
     ) -> None:
-        """保存外部来源端口和依赖健康 owner。"""
+        """
+        保存外部来源端口和依赖健康 owner。
+        """
         self._source = source
         self._health = health or PluginRuntimeHealth()
         self._plugin_root = plugin_root.resolve() if plugin_root else None
 
     def _require_source(self) -> PluginPackageSourcePort:
-        """返回已装配来源端口，未完成组合时拒绝执行包写入。"""
+        """
+        返回已装配来源端口，未完成组合时拒绝执行包写入。
+        """
         if self._source is None:
             raise RuntimeError("插件包来源客户端尚未完成装配")
         return self._source
 
     def _plugins_root(self) -> Path:
-        """返回组合根注入目录；旧直接构造调用按当前运行配置解析。"""
+        """
+        返回组合根注入目录；旧直接构造调用按当前运行配置解析。
+        """
         return self._plugin_root or (
             Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins"
         ).resolve()
 
     def __plugin_dir(self, plugin_id: str) -> Path:
-        """解析插件运行目录并拒绝越出宿主插件根目录的标识。"""
+        """
+        解析插件运行目录并拒绝越出宿主插件根目录的标识。
+        """
         plugins_root = self._plugins_root()
         plugin_dir = (plugins_root / plugin_id.lower()).resolve()
         if plugin_dir == plugins_root or not plugin_dir.is_relative_to(plugins_root):
@@ -237,7 +389,9 @@ class PluginPackageManager:
         plugin_id: str,
         transaction_id: Optional[str] = None,
     ) -> PluginPackageCheckpoint:
-        """在包变更前保存运行目录；持久事务使用配置目录承载恢复材料。"""
+        """
+        在包变更前保存运行目录；持久事务使用配置目录承载恢复材料。
+        """
         plugin_dir = self.__plugin_dir(plugin_id)
         durable = transaction_id is not None
         persistent_backup_dir = (
@@ -295,7 +449,9 @@ class PluginPackageManager:
         plugin_existed: bool,
         persistent_backup_existed: bool,
     ) -> PluginPackageCheckpoint:
-        """按受控根目录和事务 ID 重建崩溃回放所需的文件引用。"""
+        """
+        按受控根目录和事务 ID 重建崩溃回放所需的文件引用。
+        """
         plugin_dir = self.__plugin_dir(plugin_id)
         persistent_backup_dir = (
             Path(get_runtime_setting('CONFIG_PATH'))
@@ -333,7 +489,9 @@ class PluginPackageManager:
         plugin_id: str,
         transaction_id: Optional[str] = None,
     ) -> PluginPackageCheckpoint:
-        """在线程池中创建插件包文件快照。"""
+        """
+        在线程池中创建插件包文件快照。
+        """
         return cast(
             PluginPackageCheckpoint,
             await _await_thread_operation(
@@ -345,7 +503,9 @@ class PluginPackageManager:
 
     @staticmethod
     def commit(checkpoint: PluginPackageCheckpoint) -> None:
-        """清理已完成事务的运行目录快照和残余替换材料。"""
+        """
+        清理已完成事务的运行目录快照和残余替换材料。
+        """
         if checkpoint.backup_staging_dir and checkpoint.backup_staging_dir.exists():
             raise RuntimeError("持久备份尚未提升，不能清理插件安装事务")
         if checkpoint.backup_previous_dir and checkpoint.backup_previous_dir.exists():
@@ -354,19 +514,24 @@ class PluginPackageManager:
             shutil.rmtree(checkpoint.transaction_dir, ignore_errors=False)
 
     async def async_commit(self, checkpoint: PluginPackageCheckpoint) -> None:
-        """在线程池中清理已提交的插件包快照。"""
+        """
+        在线程池中清理已提交的插件包快照。
+        """
         await _await_thread_operation(self.commit, checkpoint)
 
     @staticmethod
     def native_dependency_changes(
         checkpoint: PluginPackageCheckpoint,
     ) -> tuple[NativeDependencyChange, ...]:
-        """返回安装中被替换、但当前进程仍持有旧代码的原生发行包。"""
+        """
+        返回安装中被替换、但当前进程仍持有旧代码的原生发行包。
+        """
         if checkpoint.native_dependencies is None:
             return ()
         try:
             return detect_changed_native_dependencies(checkpoint.native_dependencies)
-        except Exception as error:  # noqa: BLE001 - 诊断失败不能改写安装结果
+        # 诊断失败不能改写安装结果
+        except Exception as error:  # noqa: BLE001
             logger.warning("检测插件原生依赖变更失败：%s", error)
             return ()
 
@@ -374,7 +539,9 @@ class PluginPackageManager:
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> tuple[NativeDependencyChange, ...]:
-        """在线程池中比较原生发行包，避免文件枚举阻塞事件循环。"""
+        """
+        在线程池中比较原生发行包，避免文件枚举阻塞事件循环。
+        """
         return cast(
             tuple[NativeDependencyChange, ...],
             await _await_thread_operation(
@@ -385,13 +552,17 @@ class PluginPackageManager:
 
     @staticmethod
     def rollback(checkpoint: PluginPackageCheckpoint) -> None:
-        """兼容旧调用方，恢复运行目录和持久备份后清理恢复材料。"""
+        """
+        兼容旧调用方，恢复运行目录和持久备份后清理恢复材料。
+        """
         PluginPackageManager.restore(checkpoint)
         PluginPackageManager.cleanup(checkpoint)
 
     @staticmethod
     def restore(checkpoint: PluginPackageCheckpoint) -> None:
-        """恢复运行目录和提交前持久备份，并保留快照直到 journal 删除。"""
+        """
+        恢复运行目录和提交前持久备份，并保留快照直到 journal 删除。
+        """
         if checkpoint.rollback_marker.is_file():
             return
         PluginPackageManager.__restore_tree(
@@ -408,27 +579,37 @@ class PluginPackageManager:
 
     @staticmethod
     def cleanup(checkpoint: PluginPackageCheckpoint) -> None:
-        """在 journal 已删除后清理恢复材料；重复调用保持幂等。"""
+        """
+        在 journal 已删除后清理恢复材料；重复调用保持幂等。
+        """
         if checkpoint.transaction_dir.exists():
             shutil.rmtree(checkpoint.transaction_dir, ignore_errors=False)
 
     async def async_rollback(self, checkpoint: PluginPackageCheckpoint) -> None:
-        """在线程池中恢复插件包文件快照。"""
+        """
+        在线程池中恢复插件包文件快照。
+        """
         await _await_thread_operation(self.rollback, checkpoint)
 
     async def async_restore(self, checkpoint: PluginPackageCheckpoint) -> None:
-        """在线程池恢复插件状态，并保留 journal 仍需引用的材料。"""
+        """
+        在线程池恢复插件状态，并保留 journal 仍需引用的材料。
+        """
         await _await_thread_operation(self.restore, checkpoint)
 
     async def async_cleanup(self, checkpoint: PluginPackageCheckpoint) -> None:
-        """在线程池清理已失去 journal 所有权的恢复材料。"""
+        """
+        在线程池清理已失去 journal 所有权的恢复材料。
+        """
         await _await_thread_operation(self.cleanup, checkpoint)
 
     @staticmethod
     def __rollback_persistent_backup(
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """把已激活但尚未提交的持久备份恢复到事务前状态。"""
+        """
+        把已激活但尚未提交的持久备份恢复到事务前状态。
+        """
         previous = checkpoint.backup_previous_dir
         staging = checkpoint.backup_staging_dir
         if previous is None or staging is None:
@@ -471,7 +652,28 @@ class PluginPackageManager:
         existed: bool,
         label: str,
     ) -> None:
-        """用同级 staging 替换目录，并兼容 overlayfs 的跨设备替换。"""
+        """
+        用同级 staging 替换目录，并兼容 overlayfs 的跨设备替换。
+        """
+        with plugin_package_lock(target.name):
+            PluginPackageManager.__restore_tree_locked(
+                target=target,
+                snapshot=snapshot,
+                existed=existed,
+                label=label,
+            )
+
+    @staticmethod
+    def __restore_tree_locked(
+        *,
+        target: Path,
+        snapshot: Path,
+        existed: bool,
+        label: str,
+    ) -> None:
+        """
+        在持有插件包锁时用同级 staging 替换目录。
+        """
         if existed and not snapshot.is_dir():
             raise FileNotFoundError(f"{label}补偿快照不存在：{snapshot}")
 
@@ -522,7 +724,9 @@ class PluginPackageManager:
 
     @staticmethod
     def __remove_snapshot_path(path: Path) -> None:
-        """删除待替换的当前路径，保留快照材料供失败回滚。"""
+        """
+        删除待替换的当前路径，保留快照材料供失败回滚。
+        """
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
         elif path.exists() or path.is_symlink():
@@ -530,7 +734,9 @@ class PluginPackageManager:
 
     @classmethod
     def stage_persistent_backup(cls, checkpoint: PluginPackageCheckpoint) -> None:
-        """把新载荷复制到持久配置目录的独立 staging，不覆盖现有备份。"""
+        """
+        把新载荷复制到持久配置目录的独立 staging，不覆盖现有备份。
+        """
         staging = checkpoint.backup_staging_dir
         if staging is None:
             return
@@ -551,12 +757,16 @@ class PluginPackageManager:
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """在线程池准备新载荷的容器恢复备份。"""
+        """
+        在线程池准备新载荷的容器恢复备份。
+        """
         await _await_thread_operation(self.stage_persistent_backup, checkpoint)
 
     @staticmethod
     def activate_persistent_backup(checkpoint: PluginPackageCheckpoint) -> None:
-        """在数据库提交前激活新备份，并保留上一份备份供失败补偿。"""
+        """
+        在数据库提交前激活新备份，并保留上一份备份供失败补偿。
+        """
         staging = checkpoint.backup_staging_dir
         previous = checkpoint.backup_previous_dir
         if staging is None or previous is None:
@@ -578,12 +788,16 @@ class PluginPackageManager:
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """在线程池激活新持久备份，同时保留失败补偿材料。"""
+        """
+        在线程池激活新持久备份，同时保留失败补偿材料。
+        """
         await _await_thread_operation(self.activate_persistent_backup, checkpoint)
 
     @staticmethod
     def finalize_persistent_backup(checkpoint: PluginPackageCheckpoint) -> None:
-        """数据库提交后清理上一份持久备份；重复调用保持幂等。"""
+        """
+        数据库提交后清理上一份持久备份；重复调用保持幂等。
+        """
         staging = checkpoint.backup_staging_dir
         previous = checkpoint.backup_previous_dir
         if staging is None or previous is None:
@@ -601,11 +815,15 @@ class PluginPackageManager:
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """在线程池清理数据库提交后的旧持久备份。"""
+        """
+        在线程池清理数据库提交后的旧持久备份。
+        """
         await _await_thread_operation(self.finalize_persistent_backup, checkpoint)
 
     def payload_receipt(self, plugin_id: str) -> str:
-        """按稳定相对路径和文件内容计算已安装载荷收据。"""
+        """
+        按稳定相对路径和文件内容计算已安装载荷收据。
+        """
         plugin_dir = self.__plugin_dir(plugin_id)
         if not plugin_dir.is_dir():
             raise FileNotFoundError(f"插件 {plugin_id} 运行目录不存在")
@@ -616,7 +834,9 @@ class PluginPackageManager:
         cls,
         checkpoint: PluginPackageCheckpoint,
     ) -> str:
-        """计算已提升持久备份的内容收据，供崩溃回放确认终态。"""
+        """
+        计算已提升持久备份的内容收据，供崩溃回放确认终态。
+        """
         if not checkpoint.persistent_backup_dir.is_dir():
             raise FileNotFoundError(
                 f"插件 {checkpoint.plugin_id} 持久备份不存在"
@@ -625,7 +845,9 @@ class PluginPackageManager:
 
     @classmethod
     def __tree_receipt(cls, root: Path) -> str:
-        """对插件目录使用稳定路径和文件内容生成审计收据。"""
+        """
+        对插件目录使用稳定路径和文件内容生成审计收据。
+        """
 
         digest = hashlib.sha256()
         for path in sorted(
@@ -653,7 +875,9 @@ class PluginPackageManager:
         return f"sha256:{digest.hexdigest()}"
 
     async def async_payload_receipt(self, plugin_id: str) -> str:
-        """在线程池计算插件载荷收据。"""
+        """
+        在线程池计算插件载荷收据。
+        """
         return cast(
             str,
             await _await_thread_operation(self.payload_receipt, plugin_id),
@@ -663,7 +887,9 @@ class PluginPackageManager:
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> str:
-        """读取数据库已提交载荷在当前部署模式下的恢复事实。"""
+        """
+        读取数据库已提交载荷在当前部署模式下的恢复事实。
+        """
         if checkpoint.backup_staging_dir is not None:
             return cast(
                 str,
@@ -676,7 +902,9 @@ class PluginPackageManager:
 
     @classmethod
     def __ignored_receipt_path(cls, path: Path, root: Path) -> bool:
-        """排除不会进入运行载荷和持久备份的派生文件。"""
+        """
+        排除不会进入运行载荷和持久备份的派生文件。
+        """
         relative_parts = path.relative_to(root).parts
         return any(
             part in {"__pycache__", "node_modules", ".DS_Store"}
@@ -685,19 +913,27 @@ class PluginPackageManager:
         )
 
     def is_local_repo_url(self, repo_url: Optional[str]) -> bool:
-        """委托外部来源客户端判断本地仓库标识。"""
+        """
+        委托外部来源客户端判断本地仓库标识。
+        """
         return self._require_source().is_local_repo_url(repo_url)
 
     def parse_local_repo_url(self, repo_url: str) -> Optional[str]:
-        """委托外部来源客户端解析本地插件标识。"""
+        """
+        委托外部来源客户端解析本地插件标识。
+        """
         return self._require_source().parse_local_repo_url(repo_url)
 
     def parse_local_repo_path(self, repo_url: str) -> Optional[Path]:
-        """委托外部来源客户端解析本地仓库路径。"""
+        """
+        委托外部来源客户端解析本地仓库路径。
+        """
         return self._require_source().parse_local_repo_path(repo_url)
 
     def parse_local_repo_package_version(self, repo_url: str) -> Optional[str]:
-        """委托外部来源客户端解析本地包代际。"""
+        """
+        委托外部来源客户端解析本地包代际。
+        """
         return self._require_source().parse_local_repo_package_version(repo_url)
 
     def make_local_repo_url(
@@ -706,7 +942,9 @@ class PluginPackageManager:
         repo_path: Optional[Path] = None,
         package_version: Optional[str] = None,
     ) -> str:
-        """委托外部来源客户端生成本地来源标识。"""
+        """
+        委托外部来源客户端生成本地来源标识。
+        """
         return self._require_source().make_local_repo_url(
             plugin_id, repo_path, package_version
         )
@@ -719,7 +957,9 @@ class PluginPackageManager:
         strict_compat: bool = True,
         strict_system_version: bool = True,
     ) -> Optional[dict[str, Any]]:
-        """委托外部来源客户端读取本地插件候选。"""
+        """
+        委托外部来源客户端读取本地插件候选。
+        """
         return self._require_source().get_local_plugin_candidate(
             pid=pid,
             package_version=package_version,
@@ -731,19 +971,25 @@ class PluginPackageManager:
     def check_plugin_system_version(
         self, plugin_info: dict[str, Any]
     ) -> tuple[bool, str]:
-        """委托外部来源客户端校验宿主版本约束。"""
+        """
+        委托外部来源客户端校验宿主版本约束。
+        """
         return self._require_source().check_plugin_system_version(plugin_info)
 
     def check_plugin_install_compatibility(
         self, plugin_info: dict[str, Any]
     ) -> tuple[bool, str]:
-        """委托外部来源客户端校验运行时与宿主版本约束。"""
+        """
+        委托外部来源客户端校验运行时与宿主版本约束。
+        """
         return self._require_source().check_plugin_install_compatibility(plugin_info)
 
     def get_plugin_package_version(
         self, plugin_id: str, repo_url: str, package_version: Optional[str]
     ) -> Optional[str]:
-        """委托外部来源客户端选择远端索引代际。"""
+        """
+        委托外部来源客户端选择远端索引代际。
+        """
         return self._require_source().get_plugin_package_version(
             plugin_id, repo_url, package_version
         )
@@ -751,7 +997,9 @@ class PluginPackageManager:
     async def async_get_plugin_package_version(
         self, plugin_id: str, repo_url: str, package_version: Optional[str]
     ) -> Optional[str]:
-        """异步委托外部来源客户端选择远端索引代际。"""
+        """
+        异步委托外部来源客户端选择远端索引代际。
+        """
         return await self._require_source().async_get_plugin_package_version(
             plugin_id, repo_url, package_version
         )
@@ -759,13 +1007,17 @@ class PluginPackageManager:
     def get_plugins(
         self, repo_url: str, package_version: Optional[str] = None
     ) -> Optional[dict[str, dict[str, Any]]]:
-        """委托外部来源客户端读取远端插件索引。"""
+        """
+        委托外部来源客户端读取远端插件索引。
+        """
         return self._require_source().get_plugins(repo_url, package_version)
 
     async def async_get_plugins(
         self, repo_url: str, package_version: Optional[str] = None
     ) -> Optional[dict[str, dict[str, Any]]]:
-        """异步委托外部来源客户端读取远端插件索引。"""
+        """
+        异步委托外部来源客户端读取远端插件索引。
+        """
         return await self._require_source().async_get_plugins(
             repo_url, package_version
         )
@@ -773,7 +1025,9 @@ class PluginPackageManager:
     def get_plugin_release_versions(
         self, plugin_id: str, repo_url: str
     ) -> list[dict[str, Any]]:
-        """委托外部来源客户端读取可安装 Release。"""
+        """
+        委托外部来源客户端读取可安装 Release。
+        """
         return self._require_source().get_plugin_release_versions(
             plugin_id, repo_url
         )
@@ -781,13 +1035,17 @@ class PluginPackageManager:
     async def async_get_plugin_release_versions(
         self, plugin_id: str, repo_url: str
     ) -> list[dict[str, Any]]:
-        """异步委托外部来源客户端读取可安装 Release。"""
+        """
+        异步委托外部来源客户端读取可安装 Release。
+        """
         return await self._require_source().async_get_plugin_release_versions(
             plugin_id, repo_url
         )
 
     def get_repo_info(self, repo_url: str) -> tuple[Optional[str], Optional[str]]:
-        """委托外部来源客户端解析 GitHub 仓库信息。"""
+        """
+        委托外部来源客户端解析 GitHub 仓库信息。
+        """
         return self._require_source().get_repo_info(repo_url)
 
     def __request_with_fallback(
@@ -796,10 +1054,15 @@ class PluginPackageManager:
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
-        """通过外部来源客户端同步读取远端内容。"""
+        """
+        通过外部来源客户端同步读取远端内容。
+
+        :param mirror_url: 可选的公开 Release 资产地址，由来源客户端隔离镜像凭据
+        """
         return self._require_source().request(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
     async def __async_request_with_fallback(
@@ -808,10 +1071,15 @@ class PluginPackageManager:
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
-        """通过外部来源客户端异步读取远端内容。"""
+        """
+        通过外部来源客户端异步读取远端内容。
+
+        :param mirror_url: 可选的公开 Release 资产地址，由来源客户端隔离镜像凭据
+        """
         return await self._require_source().async_request(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
     @staticmethod
@@ -822,10 +1090,18 @@ class PluginPackageManager:
         release_version: Optional[str] = None,
         release_items: Sequence[dict[str, Any]] = (),
     ) -> tuple[Optional[PluginReleaseInstallPlan], str]:
-        """使用纯领域规则选择 Release 或文件列表安装计划。"""
+        """
+        使用纯领域规则选择 Release 或文件列表安装计划。
+
+        文件列表偏好只影响默认安装，显式选择的 Release 仍按指定版本安装。
+        """
         return build_plugin_release_install_plan(
             plugin_id=pid,
-            metadata=meta,
+            metadata=(
+                meta
+                if release_version or not meta.get("release") or get_runtime_setting('PLUGIN_INSTALL_FROM_RELEASE')
+                else {**meta, "release": False}
+            ),
             release_version=release_version,
             release_items=release_items,
             current_version=get_app_version(),
@@ -836,7 +1112,9 @@ class PluginPackageManager:
         pid: str,
         repo_url: str,
     ) -> tuple[Optional[str], Optional[tuple[bool, str]]]:
-        """统一校验远端安装前置条件并返回规范仓库标识。"""
+        """
+        统一校验远端安装前置条件并返回规范仓库标识。
+        """
         if SystemUtils.is_frozen():
             return None, (False, "可执行文件模式下，只能安装本地插件")
         if not pid or not repo_url:
@@ -851,7 +1129,9 @@ class PluginPackageManager:
         pid: str,
         package_version: Optional[str],
     ) -> Optional[tuple[bool, str]]:
-        """统一记录索引代际选择，并映射找不到兼容插件的失败结果。"""
+        """
+        统一记录索引代际选择，并映射找不到兼容插件的失败结果。
+        """
         if package_version is None:
             message = f"{pid} 没有找到适用于当前版本的插件"
             logger.debug(message)
@@ -875,7 +1155,9 @@ class PluginPackageManager:
         release_version: Optional[str],
         release_items: Sequence[dict[str, Any]],
     ) -> tuple[Optional[_RemotePluginInstallSelection], str]:
-        """把元数据和 Release 列表统一映射为可执行的远端安装选择。"""
+        """
+        把元数据和 Release 列表统一映射为可执行的远端安装选择。
+        """
         plan, message = cls._build_remote_plugin_install_plan(
             pid=pid,
             meta=meta,
@@ -899,7 +1181,9 @@ class PluginPackageManager:
         dependency_files: Path | Sequence[Path],
         find_links_dirs: Optional[list[Path]] = None,
     ) -> tuple[bool, str]:
-        """把插件依赖清单交给运行环境健康 owner 安装。"""
+        """
+        把插件依赖清单交给运行环境健康 owner 安装。
+        """
         return self._health.install_packages_with_fallback(
             dependency_files, find_links_dirs
         )
@@ -909,7 +1193,9 @@ class PluginPackageManager:
         dependency_files: Path | Sequence[Path],
         find_links_dirs: Optional[list[Path]] = None,
     ) -> tuple[bool, str]:
-        """异步把插件依赖清单交给运行环境健康 owner 安装。"""
+        """
+        异步把插件依赖清单交给运行环境健康 owner 安装。
+        """
         return await self._health.async_install_packages_with_fallback(
             dependency_files, find_links_dirs
         )
@@ -923,7 +1209,9 @@ class PluginPackageManager:
         force_install: bool = False,
         checkpoint: PluginPackageCheckpoint | None = None,
     ) -> tuple[bool, str]:
-        """同步安装插件包；已有事务快照时禁止兼容层再创建第二份备份。"""
+        """
+        同步安装插件包；已有事务快照时禁止兼容层再创建第二份备份。
+        """
         return self.install_raw(
             pid=plugin_id,
             repo_url=repo_url,
@@ -946,7 +1234,9 @@ class PluginPackageManager:
         force_install: bool = False,
         checkpoint: PluginPackageCheckpoint | None = None,
     ) -> tuple[bool, str]:
-        """异步安装插件包；已有事务快照时禁止兼容层再创建第二份备份。"""
+        """
+        异步安装插件包；已有事务快照时禁止兼容层再创建第二份备份。
+        """
         return await self.async_install_raw(
             pid=plugin_id,
             repo_url=repo_url,
@@ -964,19 +1254,24 @@ class PluginPackageManager:
     def __capture_native_dependencies(
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """仅在插件依赖即将安装时记录当前进程的原生载荷。"""
+        """
+        仅在插件依赖即将安装时记录当前进程的原生载荷。
+        """
         if checkpoint.native_dependencies is not None:
             return
         try:
             checkpoint.native_dependencies = capture_loaded_native_dependencies()
-        except Exception as error:  # noqa: BLE001 - 诊断失败不能阻断插件安装
+        # 诊断失败不能阻断插件安装
+        except Exception as error:  # noqa: BLE001
             logger.warning("记录插件原生依赖安装前状态失败：%s", error)
 
     def install_raw(self, pid: str, repo_url: str, package_version: Optional[str] = None,
                     release_version: Optional[str] = None, force_install: bool = False,
                     before_dependency_install: Optional[Callable[[], None]] = None) \
             -> tuple[bool, str]:
-        """执行已通过来源准入的同步包安装，不负责身份或运行态提交。"""
+        """
+        执行已通过来源准入的同步包安装，不负责身份或运行态提交。
+        """
         if self.is_local_repo_url(repo_url):
             return self.__install_local_package(
                 pid=pid,
@@ -1023,6 +1318,9 @@ class PluginPackageManager:
         release_tag = selection.release_tag
         if release_tag and not selection.fallback_to_filelist:
             def prepare_selected_release(staging_dir: Path) -> tuple[bool, str]:
+                """
+                将已选定的发布资产安装到暂存目录，不修改运行目录。
+                """
                 return self.__install_from_release(
                     pid,
                     selection.user_repo,
@@ -1041,6 +1339,9 @@ class PluginPackageManager:
         if release_tag:
             # 当前索引 Release 失败时回退文件列表，避免发布产物短暂滞后阻断安装。
             def prepare_release(staging_dir: Path) -> tuple[bool, str]:
+                """
+                先安装发布资产，失败时清理本次暂存内容并回退到索引文件清单。
+                """
                 ok, msg = self.__install_from_release(
                     pid,
                     selection.user_repo,
@@ -1070,6 +1371,9 @@ class PluginPackageManager:
         # 未声明 release 打包的插件继续使用文件列表方式安装。
 
         def prepare_filelist(staging_dir: Path) -> tuple[bool, str]:
+            """
+            将当前索引对应的源码文件准备到暂存目录。
+            """
             return self.__prepare_content_via_filelist_sync(
                 pid,
                 selection.user_repo,
@@ -1092,7 +1396,9 @@ class PluginPackageManager:
         force_install: bool = False,
         before_dependency_install: Optional[Callable[[], None]] = None,
     ) -> tuple[bool, str]:
-        """提供给兼容 Facade 的本地载荷安装入口。"""
+        """
+        提供给兼容 Facade 的本地载荷安装入口。
+        """
         return self.__install_local_package(
             pid=plugin_id,
             repo_url=repo_url,
@@ -1101,15 +1407,21 @@ class PluginPackageManager:
         )
 
     def backup_plugin(self, plugin_id: str) -> Optional[str]:
-        """提供给兼容 Facade 的临时备份入口。"""
+        """
+        提供给兼容 Facade 的临时备份入口。
+        """
         return self.__backup_plugin(plugin_id)
 
     def restore_plugin(self, plugin_id: str, backup_dir: str) -> None:
-        """提供给兼容 Facade 的临时备份恢复入口。"""
+        """
+        提供给兼容 Facade 的临时备份恢复入口。
+        """
         self.__restore_plugin(plugin_id, backup_dir)
 
     def remove_plugin(self, plugin_id: str) -> bool:
-        """删除受控插件目录，返回删除前是否存在。"""
+        """
+        删除受控插件目录，返回删除前是否存在。
+        """
         plugin_dir = self.__plugin_dir(plugin_id)
         if not plugin_dir.exists():
             return False
@@ -1119,7 +1431,9 @@ class PluginPackageManager:
     def install_from_release(
         self, plugin_id: str, user_repo: str, release_tag: str
     ) -> tuple[bool, str]:
-        """提供给兼容 Facade 的 Release 制品安装入口。"""
+        """
+        提供给兼容 Facade 的 Release 制品安装入口。
+        """
         return self.__install_from_release(plugin_id, user_repo, release_tag)
 
     def __install_local_package(
@@ -1205,6 +1519,7 @@ class PluginPackageManager:
             tuple[Optional[list[dict[str, Any]]], Optional[str]]:
         """
         获取插件的文件列表
+
         :param pid: 插件 ID
         :param user_repo: GitHub 仓库的 user/repo 路径
         :return: (文件列表, 错误信息)
@@ -1244,7 +1559,9 @@ class PluginPackageManager:
         package_version: Optional[str],
         dest_root: Path,
     ) -> Path:
-        """把市场文件路径限定到给定落盘根目录之内，拒绝绝对路径和目录穿越。"""
+        """
+        把市场文件路径限定到给定落盘根目录之内，拒绝绝对路径和目录穿越。
+        """
         if not isinstance(remote_path, str) or not remote_path or "\\" in remote_path:
             raise ValueError("插件文件路径无效")
         pure_path = PurePosixPath(remote_path)
@@ -1270,6 +1587,7 @@ class PluginPackageManager:
                          dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         下载插件文件
+
         :param pid: 插件 ID
         :param file_list: 要下载的文件列表，包含文件的元数据（包括下载链接）
         :param user_repo: GitHub 仓库的 user/repo 路径
@@ -1339,6 +1657,7 @@ class PluginPackageManager:
     ) -> tuple[bool, bool, str]:
         """
         安装插件依赖。
+
         :param pid: 插件 ID
         :return: (是否存在依赖，安装是否成功, 错误信息)
         """
@@ -1355,7 +1674,8 @@ class PluginPackageManager:
             ):
                 try:
                     before_dependency_install()
-                except Exception as error:  # noqa: BLE001 - 观察失败不能阻断安装
+                # 观察失败不能阻断安装
+                except Exception as error:  # noqa: BLE001
                     logger.warning(f"{pid} 依赖安装前状态记录失败：{error}")
             logger.info(f"{pid} 存在依赖，开始尝试安装依赖")
             success, error_message = self.install_packages_with_fallback(manifest.path)
@@ -1366,6 +1686,7 @@ class PluginPackageManager:
     def __backup_plugin(self, pid: str) -> Optional[str]:
         """
         备份旧插件目录
+
         :param pid: 插件 ID
         :return: 备份目录路径
         """
@@ -1386,6 +1707,7 @@ class PluginPackageManager:
     def __restore_plugin(self, pid: str, backup_dir: str) -> None:
         """
         还原旧插件目录
+
         :param pid: 插件 ID
         :param backup_dir: 备份目录路径
         """
@@ -1403,6 +1725,7 @@ class PluginPackageManager:
     def __remove_old_plugin(self, pid: str) -> None:
         """
         删除旧插件
+
         :param pid: 插件 ID
         """
         plugin_dir = self._plugins_root() / pid.lower()
@@ -1458,7 +1781,9 @@ class PluginPackageManager:
 
     def __get_plugin_meta(self, pid: str, repo_url: str,
                           package_version: Optional[str]) -> dict[str, Any]:
-        """读取远端插件元数据，并把异常收敛为空映射。"""
+        """
+        读取远端插件元数据，并把异常收敛为空映射。
+        """
         try:
             plugins = (
                 self.get_plugins(repo_url) if not package_version
@@ -1471,7 +1796,9 @@ class PluginPackageManager:
             return {}
 
     def __new_install_staging_dir(self, pid: str) -> Path:
-        """分配一个全新的安装暂存目录，让新内容在触碰运行目录前先完整就位。"""
+        """
+        分配一个全新的安装暂存目录，让新内容在触碰运行目录前先完整就位。
+        """
         return (
             Path(get_runtime_setting('TEMP_PATH'))
             / "plugin_install_staging"
@@ -1480,7 +1807,8 @@ class PluginPackageManager:
 
     @staticmethod
     def __swap_staged_plugin_content(staging_dir: Path, final_dir: Path) -> None:
-        """把已就位的暂存内容换入插件运行目录，失败时运行目录保持换入前的内容。
+        """
+        把已就位的暂存内容换入插件运行目录，失败时运行目录保持换入前的内容。
 
         手法与运行目录补偿替换一致（见 __restore_tree）：先把旧目录改名挪到同级
         隐藏位置留作回滚材料，再把暂存目录改名落位，确认落位后才删除旧目录。同一
@@ -1488,11 +1816,11 @@ class PluginPackageManager:
         要么是新内容，唯一的中间态是"运行目录短暂缺失、旧内容完整躺在 previous
         目录里"，仍可人工恢复，不会出现任何一份内容被删到无处可取的时点。
 
-        两个改名都可能因跨文件系统失败：overlayfs 会拒绝把镜像层的插件目录直接改
-        名到可写层，暂存目录又常落在独立的临时分区。两处都退化为复制，代价是复制
-        期间可能中途失败留下半份目录，因此复制失败一律先删掉半成品再把旧目录换
-        回；换回本身也失败时只记录旧目录的保留位置，原始失败原样挂在异常链上不被
-        吞掉，避免出现"看起来只是安装失败"实则运行目录已空的假象。
+        暂存目录常落在独立的临时分区，不能直接改名到运行目录。此时先把新内容完整
+        复制到运行目录同级的隐藏暂存目录，再用一次原子改名发布；插件加载器不会看见
+        逐文件复制中的半成品。改名旧目录也可能被 overlayfs 拒绝，退化为复制旧内容
+        留档后再清理运行目录。复制失败时先删掉半成品再把旧目录换回；换回本身也失败
+        时只记录旧目录的保留位置，原始失败原样挂在异常链上不被吞掉。
 
         旧目录退化为复制后还得逐个删掉原目录，这一步同样可能删到一半才失败。删除
         一旦开始运行目录就不再完整，因此把"可回滚"状态提前到删除之前置位：只要运
@@ -1503,12 +1831,34 @@ class PluginPackageManager:
         :param final_dir: 插件运行目录，可能已存在旧内容
         :raise PluginContentSwapError: 换入失败，异常携带运行目录的实际恢复结论
         """
+        with plugin_package_lock(final_dir.name):
+            PluginPackageManager.__swap_staged_plugin_content_locked(
+                staging_dir=staging_dir,
+                final_dir=final_dir,
+            )
+
+    @staticmethod
+    def __swap_staged_plugin_content_locked(
+        *,
+        staging_dir: Path,
+        final_dir: Path,
+    ) -> None:
+        """
+        在持有插件包锁时发布暂存内容并保留失败回滚能力。
+        """
         final_dir.parent.mkdir(parents=True, exist_ok=True)
         previous = final_dir.parent / f".{final_dir.name}.previous-{uuid.uuid4().hex}"
+        publish_staging: Optional[Path] = None
         previous_available = False
         runtime_dirty = False
         published = False
         try:
+            publish_source, publish_staging = (
+                PluginPackageManager.__prepare_publish_source(
+                    staging_dir=staging_dir,
+                    final_dir=final_dir,
+                )
+            )
             if final_dir.exists():
                 try:
                     final_dir.replace(previous)
@@ -1525,14 +1875,22 @@ class PluginPackageManager:
             # 旧内容已挪开或本来就不存在，此后才允许重建运行目录
             runtime_dirty = True
             try:
-                staging_dir.replace(final_dir)
+                publish_source.replace(final_dir)
             except OSError as error:
                 if error.errno != errno.EXDEV:
                     raise
+                if publish_source != staging_dir:
+                    raise
                 logger.debug(
-                    f"插件安装内容跨文件系统无法改名换入，退化为复制：{staging_dir}"
+                    f"插件安装内容跨文件系统无法改名换入，先复制到运行目录同级暂存："
+                    f"{staging_dir}"
                 )
-                shutil.copytree(staging_dir, final_dir, symlinks=True)
+                publish_staging = (
+                    final_dir.parent
+                    / f".{final_dir.name}.staging-{uuid.uuid4().hex}"
+                )
+                shutil.copytree(staging_dir, publish_staging, symlinks=True)
+                publish_staging.replace(final_dir)
             published = True
         except Exception as error:
             # 运行目录从未被触碰时无需回滚，它本身就还是换入前那一份
@@ -1553,20 +1911,46 @@ class PluginPackageManager:
                 error, runtime_intact=runtime_intact
             ) from error
         finally:
+            if publish_staging and publish_staging.exists():
+                shutil.rmtree(publish_staging, ignore_errors=True)
             if previous.exists() and (published or not previous_available):
                 shutil.rmtree(previous, ignore_errors=True)
+
+    @staticmethod
+    def __prepare_publish_source(
+        *,
+        staging_dir: Path,
+        final_dir: Path,
+    ) -> tuple[Path, Optional[Path]]:
+        """
+        将跨文件系统的安装载荷复制到运行目录同级，供后续原子改名发布。
+        """
+        if (
+            not staging_dir.exists()
+            or staging_dir.stat().st_dev == final_dir.parent.stat().st_dev
+        ):
+            return staging_dir, None
+
+        publish_staging = (
+            final_dir.parent / f".{final_dir.name}.staging-{uuid.uuid4().hex}"
+        )
+        shutil.copytree(staging_dir, publish_staging, symlinks=True)
+        return publish_staging, publish_staging
 
     async def __async_swap_staged_plugin_content(
         self, staging_dir: Path, final_dir: Path
     ) -> None:
-        """在线程中执行换入，避免目录改名与复制阻塞事件循环，语义与同步换入一致。"""
+        """
+        在线程中执行换入，避免目录改名与复制阻塞事件循环，语义与同步换入一致。
+        """
         await _await_thread_operation(
             self.__swap_staged_plugin_content, staging_dir, final_dir
         )
 
     @staticmethod
     def __swap_left_runtime_intact(error: OSError) -> bool:
-        """判断换入失败后运行目录是否确定仍是换入前那一份。
+        """
+        判断换入失败后运行目录是否确定仍是换入前那一份。
 
         只认换入方随异常带出的回滚结论：运行目录存在与否区分不了"完整旧内容"和
         "删到一半的残骸"。拿不到结论的异常按最坏情况处理，宁可多走一次备份兜底。
@@ -1579,7 +1963,8 @@ class PluginPackageManager:
     def __recover_after_swap_failure(
         self, pid: str, error: OSError, backup_dir: Optional[str]
     ) -> None:
-        """换入失败后按实际回滚结论处置本次临时备份。
+        """
+        换入失败后按实际回滚结论处置本次临时备份。
 
         :param pid: 插件 ID
         :param error: 换入阶段抛出的异常
@@ -1601,7 +1986,8 @@ class PluginPackageManager:
     async def __async_recover_after_swap_failure(
         self, pid: str, error: OSError, backup_dir: Optional[str]
     ) -> None:
-        """异步流程的备份处置，判据与同步一致；备份清理由统一 finally 负责。
+        """
+        异步流程的备份处置，判据与同步一致；备份清理由统一 finally 负责。
 
         :param pid: 插件 ID
         :param error: 换入阶段抛出的异常
@@ -1772,15 +2158,22 @@ class PluginPackageManager:
         通过 GitHub Release 资产文件安装插件。
         规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
         将其全部解压到 dest_root，未指定时直接解压到插件运行目录。
+
+        :param pid: 插件标识
+        :param user_repo: GitHub 仓库所有者及仓库名
+        :param release_tag: 要安装的发布标签，同时用于确定规范资产名
+        :param dest_root: 本次安装的暂存目录；None 使用插件运行目录
+        :return: 安装是否成功及失败原因；镜像不可用时保留 API 下载
         """
         # 拼接资产文件名
         asset_name = f"{release_tag.lower()}.zip"
+        timeout = get_runtime_setting('PLUGIN_RELEASE_TIMEOUT')
 
         release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
         rel_res = self.__request_with_fallback(
             release_api,
             headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
-            timeout=30,
+            timeout=timeout,
             is_api=True,
         )
         if rel_res is None:
@@ -1808,7 +2201,13 @@ class PluginPackageManager:
         # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
         headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
         headers["Accept"] = "application/octet-stream"
-        res = self.__request_with_fallback(download_url, headers=headers, is_api=True)
+        mirror_url = (
+            f"https://github.com/{user_repo}/releases/download/"
+            f"{quote(release_tag, safe='')}/{quote(asset_name, safe='')}"
+        )
+        res = self.__request_with_fallback(
+            download_url, headers=headers, timeout=timeout, is_api=True, mirror_url=mirror_url,
+        )
         if res is None or res.status_code != 200:
             return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 
@@ -1842,6 +2241,7 @@ class PluginPackageManager:
             tuple[Optional[list[dict[str, Any]]], Optional[str]]:
         """
         异步获取插件的文件列表
+
         :param pid: 插件 ID
         :param user_repo: GitHub 仓库的 user/repo 路径
         :return: (文件列表, 错误信息)
@@ -1879,6 +2279,7 @@ class PluginPackageManager:
                                      dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         异步下载插件文件
+
         :param pid: 插件 ID
         :param file_list: 要下载的文件列表，包含文件的元数据（包括下载链接）
         :param user_repo: GitHub 仓库的 user/repo 路径
@@ -1945,6 +2346,7 @@ class PluginPackageManager:
     async def __async_backup_plugin(self, pid: str) -> Optional[str]:
         """
         异步备份旧插件目录
+
         :param pid: 插件 ID
         :return: 备份目录路径
         """
@@ -1968,6 +2370,7 @@ class PluginPackageManager:
     async def __async_restore_plugin(self, pid: str, backup_dir: str) -> None:
         """
         异步还原旧插件目录
+
         :param pid: 插件 ID
         :param backup_dir: 备份目录路径
         """
@@ -1986,6 +2389,7 @@ class PluginPackageManager:
     async def __async_remove_old_plugin(self, pid: str) -> None:
         """
         异步删除旧插件
+
         :param pid: 插件 ID
         """
         plugin_dir = AsyncPath(self._plugins_root()) / pid.lower()
@@ -1995,6 +2399,7 @@ class PluginPackageManager:
     async def _async_copytree(self, src: AsyncPath, dst: AsyncPath) -> None:
         """
         异步递归复制目录
+
         :param src: 源目录
         :param dst: 目标目录
         """
@@ -2020,6 +2425,7 @@ class PluginPackageManager:
     ) -> tuple[bool, bool, str]:
         """
         异步安装插件依赖。
+
         :param pid: 插件 ID
         :return: (是否存在依赖，安装是否成功, 错误信息)
         """
@@ -2036,7 +2442,8 @@ class PluginPackageManager:
             ):
                 try:
                     await _await_thread_operation(before_dependency_install)
-                except Exception as error:  # noqa: BLE001 - 观察失败不能阻断安装
+                # 观察失败不能阻断安装
+                except Exception as error:  # noqa: BLE001
                     logger.warning(f"{pid} 依赖安装前状态记录失败：{error}")
             logger.info(f"{pid} 存在依赖，开始尝试安装依赖")
             success, error_message = await self.async_install_packages_with_fallback(
@@ -2055,7 +2462,9 @@ class PluginPackageManager:
             force_install: bool = False,
             before_dependency_install: Optional[Callable[[], None]] = None,
     ) -> tuple[bool, str]:
-        """执行已通过来源准入的异步包安装，不负责身份或运行态提交。"""
+        """
+        执行已通过来源准入的异步包安装，不负责身份或运行态提交。
+        """
         if self.is_local_repo_url(repo_url):
             return cast(
                 tuple[bool, str],
@@ -2106,6 +2515,9 @@ class PluginPackageManager:
         release_tag = selection.release_tag
         if release_tag and not selection.fallback_to_filelist:
             async def prepare_selected_release(staging_dir: Path) -> tuple[bool, str]:
+                """
+                将已选定的发布资产安装到暂存目录，不修改运行目录。
+                """
                 return await self.__async_install_from_release(
                     pid,
                     selection.user_repo,
@@ -2124,6 +2536,9 @@ class PluginPackageManager:
         if release_tag:
             # 当前索引 Release 失败时回退文件列表，保持同步与异步安装一致。
             async def prepare_release(staging_dir: Path) -> tuple[bool, str]:
+                """
+                先安装发布资产，失败时清理本次暂存内容并回退到索引文件清单。
+                """
                 ok, msg = await self.__async_install_from_release(
                     pid,
                     selection.user_repo,
@@ -2153,6 +2568,9 @@ class PluginPackageManager:
         # 未声明 release 打包的插件继续使用文件列表方式安装。
 
         async def prepare_filelist(staging_dir: Path) -> tuple[bool, str]:
+            """
+            将当前索引对应的源码文件异步准备到暂存目录。
+            """
             return await self.__prepare_content_via_filelist_async(
                 pid,
                 selection.user_repo,
@@ -2175,7 +2593,9 @@ class PluginPackageManager:
         force_install: bool = False,
         before_dependency_install: Optional[Callable[[], None]] = None,
     ) -> tuple[bool, str]:
-        """提供给兼容 Facade 的异步本地载荷安装入口。"""
+        """
+        提供给兼容 Facade 的异步本地载荷安装入口。
+        """
         return await self.async_install_raw(
             pid=plugin_id,
             repo_url=repo_url or self.make_local_repo_url(plugin_id),
@@ -2184,30 +2604,40 @@ class PluginPackageManager:
         )
 
     async def async_backup_plugin(self, plugin_id: str) -> Optional[str]:
-        """提供给兼容 Facade 的异步临时备份入口。"""
+        """
+        提供给兼容 Facade 的异步临时备份入口。
+        """
         return await self.__async_backup_plugin(plugin_id)
 
     async def async_restore_plugin(
         self, plugin_id: str, backup_dir: str
     ) -> None:
-        """提供给兼容 Facade 的异步临时备份恢复入口。"""
+        """
+        提供给兼容 Facade 的异步临时备份恢复入口。
+        """
         await self.__async_restore_plugin(plugin_id, backup_dir)
 
     async def async_remove_plugin(self, plugin_id: str) -> None:
-        """提供给兼容 Facade 的异步旧载荷清理入口。"""
+        """
+        提供给兼容 Facade 的异步旧载荷清理入口。
+        """
         await self.__async_remove_old_plugin(plugin_id)
 
     async def async_install_from_release(
         self, plugin_id: str, user_repo: str, release_tag: str
     ) -> tuple[bool, str]:
-        """提供给兼容 Facade 的异步 Release 制品安装入口。"""
+        """
+        提供给兼容 Facade 的异步 Release 制品安装入口。
+        """
         return await self.__async_install_from_release(
             plugin_id, user_repo, release_tag
         )
 
     async def __async_get_plugin_meta(self, pid: str, repo_url: str,
                                       package_version: Optional[str]) -> dict[str, Any]:
-        """异步读取远端插件元数据，并把异常收敛为空映射。"""
+        """
+        异步读取远端插件元数据，并把异常收敛为空映射。
+        """
         try:
             plugins = (
                 await self.async_get_plugins(repo_url) if not package_version
@@ -2288,6 +2718,7 @@ class PluginPackageManager:
                                             dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         同步准备插件内容，通过文件列表获取插件文件和依赖
+
         :param dest_root: 文件落盘的根目录，未指定时直接写入插件运行目录
         """
         runtime_pid = pid.lower()
@@ -2308,6 +2739,7 @@ class PluginPackageManager:
                                                    dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         异步准备插件内容，通过文件列表获取插件文件和依赖
+
         :param dest_root: 文件落盘的根目录，未指定时直接写入插件运行目录
         """
         runtime_pid = pid.lower()
@@ -2337,15 +2769,22 @@ class PluginPackageManager:
         通过 GitHub Release 资产文件安装插件（异步）。
         规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
         将其全部解压到 dest_root，未指定时直接解压到插件运行目录。
+
+        :param pid: 插件标识
+        :param user_repo: GitHub 仓库所有者及仓库名
+        :param release_tag: 要安装的发布标签，同时用于确定规范资产名
+        :param dest_root: 本次安装的暂存目录；None 使用插件运行目录
+        :return: 安装是否成功及失败原因；镜像不可用时保留 API 下载
         """
         # 拼接资产文件名
         asset_name = f"{release_tag.lower()}.zip"
+        timeout = get_runtime_setting('PLUGIN_RELEASE_TIMEOUT')
 
         release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
         rel_res = await self.__async_request_with_fallback(
             release_api,
             headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
-            timeout=30,
+            timeout=timeout,
             is_api=True,
         )
         if rel_res is None:
@@ -2373,9 +2812,13 @@ class PluginPackageManager:
         # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
         headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
         headers["Accept"] = "application/octet-stream"
-        res = await self.__async_request_with_fallback(download_url,
-                                                       headers=headers,
-                                                       is_api=True)
+        mirror_url = (
+            f"https://github.com/{user_repo}/releases/download/"
+            f"{quote(release_tag, safe='')}/{quote(asset_name, safe='')}"
+        )
+        res = await self.__async_request_with_fallback(
+            download_url, headers=headers, timeout=timeout, is_api=True, mirror_url=mirror_url,
+        )
         if res is None or res.status_code != 200:
             return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 
@@ -2413,12 +2856,16 @@ class PluginPackageManager:
 
     @staticmethod
     def __read_release_zip_member(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
-        """在线程池读取并解压单个 Release 文件，避免阻塞事件循环。"""
+        """
+        在线程池读取并解压单个 Release 文件，避免阻塞事件循环。
+        """
         with zf.open(info, "r") as source:
             return source.read()
 
     def sync_local(self, plugin_id: str, source_dir: Path) -> bool:
-        """用本地仓库内容原子替换运行副本，失败时恢复原目录。"""
+        """
+        用本地仓库内容原子替换运行副本，失败时恢复原目录。
+        """
         source_dir = source_dir.resolve()
         plugin_dir = self.__plugin_dir(plugin_id)
         if source_dir == plugin_dir:

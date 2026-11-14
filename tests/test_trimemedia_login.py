@@ -17,6 +17,9 @@ class _FakeResponse:
         self._payload = payload
 
     def json(self):
+        """
+        返回预设登录响应数据，隔离真实 HTTP 响应解析。
+        """
         return self._payload
 
 

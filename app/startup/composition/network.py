@@ -1,9 +1,13 @@
-"""网络应用端口的宿主组合根。"""
+"""
+网络应用端口的宿主组合根。
+"""
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
+from urllib.parse import urljoin, urlsplit
 
 from app.adapters.network.doh import DohHelper
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
@@ -56,11 +60,14 @@ from app.chain.system import (
     configure_system_ports,
     reset_system_ports,
 )
+from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 
 
 class _NetworkTestTransportAdapter:
-    """把通用异步 HTTP 与 WebSocket Adapter 收窄为网络探测端口。"""
+    """
+    把通用异步 HTTP 与 WebSocket Adapter 收窄为网络探测端口。
+    """
 
     async def get(
         self,
@@ -70,7 +77,9 @@ class _NetworkTestTransportAdapter:
         headers: Optional[Mapping[str, str]] = None,
         user_agent: Optional[str] = None,
     ) -> Optional[NetworkTestResponse]:
-        """使用固定超时、证书校验和手动重定向策略请求目标。"""
+        """
+        使用固定超时、证书校验和手动重定向策略请求目标。
+        """
         response = await AsyncRequestUtils(
             proxies=proxy,
             headers=dict(headers) if headers else None,
@@ -91,7 +100,9 @@ class _NetworkTestTransportAdapter:
         user_agent: Optional[str] = None,
         json_body: Optional[Mapping[str, Any]] = None,
     ) -> Optional[NetworkTestResponse]:
-        """按请求规则发送 HTTP 请求并保持证书校验与重定向关闭。"""
+        """
+        按请求规则发送 HTTP 请求并保持证书校验与重定向关闭。
+        """
         if method.upper() == "GET":
             return await self.get(
                 url,
@@ -129,10 +140,14 @@ class _NetworkTestTransportAdapter:
         user_agent: Optional[str] = None,
         timeout: float = 10,
     ) -> bool:
-        """执行一次不跟随重定向的 WSS 握手，并在线路建立后关闭连接。"""
+        """
+        执行一次不跟随重定向的 WSS 握手，并在线路建立后关闭连接。
+        """
 
         def connect() -> bool:
-            """同步建立 WebSocket 握手，供 asyncio.to_thread 调用。"""
+            """
+            同步建立 WebSocket 握手，供 asyncio.to_thread 调用。
+            """
             import websocket
 
             connection = None
@@ -161,19 +176,83 @@ class _NetworkTestTransportAdapter:
 
 
 def _read_network_test_setting(key: str, default: Any = None) -> Any:
-    """延迟读取已由组合根发布的部署设置，避免装配阶段提前取值。"""
+    """
+    延迟读取已由组合根发布的部署设置，避免装配阶段提前取值。
+    """
     return get_runtime_settings().get(key, default)
 
 
 def _list_enabled_network_module_ids() -> tuple[str, ...]:
-    """按模块运行时的当前配置投影网络相关的已启用宿主模块。"""
+    """
+    按模块运行时的当前配置投影网络相关的已启用宿主模块。
+    """
     from app.application.module import get_module_manager
 
     return tuple(spec.id for spec in get_module_manager().list_enabled_specs())
 
 
+@dataclass(frozen=True, slots=True)
+class _ImageResponseAdapter:
+    """
+    保留图片响应能力，并暴露没有合并的 Set-Cookie 头供标准 CookieJar 使用。
+
+    :param response: 实际网络响应，在适配器关闭时释放
+    :param set_cookie_headers: 服务端原始 Set-Cookie 响应头，保留重复项
+    """
+
+    response: Any
+    set_cookie_headers: tuple[str, ...]
+
+    @property
+    def status_code(self) -> int:
+        """
+        返回底层响应状态码。
+        """
+        return int(self.response.status_code)
+
+    @property
+    def content(self) -> bytes:
+        """
+        返回底层响应的完整内容。
+        """
+        return cast(bytes, self.response.content)
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """
+        返回通用响应头，重复 Cookie 头由独立字段保留。
+        """
+        return cast(Mapping[str, str], self.response.headers)
+
+    def json(self) -> Any:
+        """
+        保持壁纸 JSON 查询使用的原始解析能力。
+        """
+        return self.response.json()
+
+
 class _ImageTransportAdapter:
-    """把通用 HTTP Adapter 收窄为图片应用服务的 GET 端口。"""
+    """
+    把通用 HTTP Adapter 收窄为图片应用服务的 GET 端口。
+    """
+
+    @staticmethod
+    def _adapt_response(response: Any) -> Optional[ImageResponsePort]:
+        """
+        从 requests/httpx 的原始头中提取多个 Set-Cookie，不按逗号拆分到期时间。
+        """
+        if response is None:
+            return None
+        raw_headers = getattr(getattr(response, "raw", None), "headers", None)
+        get_values = getattr(raw_headers, "getlist", None)
+        if not callable(get_values):
+            get_values = getattr(response.headers, "get_list", None)
+        if callable(get_values):
+            values = tuple(get_values("Set-Cookie"))
+        else:
+            value = response.headers.get("Set-Cookie") or response.headers.get("set-cookie")
+            values = (value,) if value else ()
+        return _ImageResponseAdapter(response, values)
 
     def get(
         self,
@@ -181,9 +260,17 @@ class _ImageTransportAdapter:
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """同步创建短生命周期请求对象并返回响应。"""
-        response = RequestUtils(**dict(options)).get_res(url=url)
-        return cast(Optional[ImageResponsePort], response)
+        """
+        同步创建短生命周期请求对象并返回响应。
+        """
+        request_options = dict(options)
+        allow_redirects = request_options.pop("allow_redirects", True)
+        cookie_header = request_options.pop("cookie_header", None)
+        request = RequestUtils(**request_options)
+        if cookie_header:
+            request.update_headers({"Cookie": cookie_header})
+        response = request.get_res(url=url, allow_redirects=allow_redirects)
+        return self._adapt_response(response)
 
     async def async_get(
         self,
@@ -191,23 +278,37 @@ class _ImageTransportAdapter:
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """异步创建短生命周期请求对象并返回响应。"""
-        response = await AsyncRequestUtils(**dict(options)).get_res(url=url)
-        return cast(Optional[ImageResponsePort], response)
+        """
+        异步创建短生命周期请求对象并返回响应。
+        """
+        request_options = dict(options)
+        allow_redirects = request_options.pop("allow_redirects", True)
+        cookie_header = request_options.pop("cookie_header", None)
+        request = AsyncRequestUtils(**request_options)
+        if cookie_header:
+            request.update_headers({"Cookie": cookie_header})
+        response = await request.get_res(url=url, allow_redirects=allow_redirects)
+        return self._adapt_response(response)
 
 
 class _InternalAddressAdapter:
-    """把通用地址判断收窄为图片代理决策端口。"""
+    """
+    把通用地址判断收窄为图片代理决策端口。
+    """
 
     @staticmethod
     def is_internal(url: str) -> bool:
-        """委托通用 IP 工具判断 URL 是否指向内部地址。"""
+        """
+        委托通用 IP 工具判断 URL 是否指向内部地址。
+        """
         probe = cast(Callable[[str], bool], IpUtils.is_internal)
         return bool(probe(url))
 
 
 class _MessageIngressAdapter:
-    """通过通用 HTTP Adapter 投递本地消息并负责释放响应。"""
+    """
+    通过通用 HTTP Adapter 投递本地消息并负责释放响应。
+    """
 
     def post(
         self,
@@ -217,9 +318,11 @@ class _MessageIngressAdapter:
         headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
-        """同步投递消息，关闭响应后返回状态码。"""
+        """
+        同步投递消息，关闭响应后返回状态码。
+        """
         response = RequestUtils(
-            timeout=timeout,  # type: ignore[arg-type]
+            timeout=timeout,
             headers=dict(headers),
         ).post_res(
             url,
@@ -243,9 +346,11 @@ class _MessageIngressAdapter:
         headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
-        """异步投递消息，关闭响应后返回状态码。"""
+        """
+        异步投递消息，关闭响应后返回状态码。
+        """
         response = await AsyncRequestUtils(
-            timeout=timeout,  # type: ignore[arg-type]
+            timeout=timeout,
             headers=dict(headers),
         ).post_res(
             url,
@@ -263,7 +368,9 @@ class _MessageIngressAdapter:
 
 
 class _DownloadHttpAdapter:
-    """把 RequestUtils 收窄为下载链同步 HTTP 端口。"""
+    """
+    把 RequestUtils 收窄为下载链同步 HTTP 端口。
+    """
 
     @staticmethod
     def _request(
@@ -274,11 +381,18 @@ class _DownloadHttpAdapter:
         proxies: Optional[dict[str, str]],
         timeout: Optional[int],
     ) -> RequestUtils:
-        """按下载链传入的代理、认证与超时参数构造一次请求。"""
+        """
+        按下载链传入的代理、认证与超时参数构造一次请求。
+
+        自定义头部不能让 RequestUtils 忽略独立传入的 UA；显式 User-Agent 头仍优先。
+        """
+        request_headers = dict(headers) if headers is not None else None
+        if request_headers is not None and ua and not any(key.lower() == "user-agent" for key in request_headers):
+            request_headers["User-Agent"] = ua
         options: dict[str, Any] = {
             "cookies": cookies,
             "ua": ua,
-            "headers": headers,
+            "headers": request_headers,
             "proxies": proxies,
             "timeout": timeout,
         }
@@ -296,13 +410,60 @@ class _DownloadHttpAdapter:
         params: Optional[dict[str, Any]] = None,
         raise_exception: bool = False,
     ) -> Optional[DownloadResponsePort]:
-        """发送下载链 GET 请求并原样保留响应三态。"""
-        request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
-        kwargs: dict[str, Any] = {"raise_exception": raise_exception}
-        if params is not None:
-            kwargs["params"] = params
-        response = request.get_res(url, **kwargs)
-        return cast(Optional[DownloadResponsePort], response)
+        """
+        发送下载链 GET 请求并原样保留响应三态。
+        """
+        try:
+            return self._get_redirects(url, cookies=cookies, ua=ua, headers=headers, proxies=proxies,
+                                       timeout=timeout, params=params, raise_exception=raise_exception)
+        except ValueError:
+            if raise_exception:
+                raise
+            return None
+
+    def _get_redirects(
+        self, url: str, *, cookies: Optional[Union[str, dict[str, str]]], ua: Optional[str],
+        headers: Optional[dict[str, str]], proxies: Optional[dict[str, str]], timeout: Optional[int],
+        params: Optional[dict[str, Any]], raise_exception: bool,
+    ) -> Optional[DownloadResponsePort]:
+        """
+        跟随有界GET跳转；跨来源后不恢复Cookie、Authorization或Referer。
+
+        :param url: 当前下载地址
+        :param cookies: 仅供原始来源使用的Cookie
+        :param ua: 请求用户代理
+        :param headers: 原始来源额外请求头
+        :param proxies: 本次请求代理
+        :param timeout: 请求超时
+        :param params: 仅首跳附加的查询参数
+        :param raise_exception: 是否保留底层传输异常
+        :return: 最终响应或无响应
+        :raises ValueError: 跳转非法、重复或超过上限
+        """
+        seen, request_headers = set(), dict(headers or {})
+        for _hop in range(9):
+            if url in seen:
+                raise ValueError("下载重定向出现环路")
+            seen.add(url)
+            request = self._request(cookies=cookies, ua=ua, headers=request_headers, proxies=proxies, timeout=timeout)
+            kwargs: dict[str, Any] = {"raise_exception": raise_exception, "allow_redirects": False}
+            if params is not None:
+                kwargs["params"] = params
+            response = cast(Optional[DownloadResponsePort], request.get_res(url, **kwargs))
+            if response is None or response.status_code not in (301, 302, 303, 307, 308):
+                return response
+            location = response.headers.get("Location") or response.headers.get("location")
+            response.close()
+            destination = urljoin(url, location or "")
+            target = urlsplit(destination)
+            if not location or UrlUtils.normalize_http_url(destination) is None or target.username or target.password:
+                raise ValueError("下载重定向目标无效")
+            if not UrlUtils.same_origin(url, destination):
+                cookies = None
+                request_headers = {key: value for key, value in request_headers.items()
+                                   if key.lower() not in ("cookie", "authorization", "proxy-authorization", "referer")}
+            url, params = destination, None
+        raise ValueError("下载重定向次数超过上限")
 
     def post(
         self,
@@ -314,18 +475,28 @@ class _DownloadHttpAdapter:
         proxies: Optional[dict[str, str]] = None,
         timeout: Optional[int] = None,
         params: Optional[dict[str, Any]] = None,
+        json_body: Optional[dict[str, Any]] = None,
+        allow_redirects: bool = True,
     ) -> Optional[DownloadResponsePort]:
-        """发送下载链 POST 请求并原样保留响应三态。"""
+        """
+        发送下载链 POST，区分 URL 查询和 JSON 正文，并保留响应三态。
+        """
         request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
         kwargs: dict[str, Any] = {}
         if params is not None:
             kwargs["params"] = params
+        if json_body is not None:
+            kwargs["json"] = json_body
+        if not allow_redirects:
+            kwargs["allow_redirects"] = False
         response = request.post_res(url, **kwargs)
         return cast(Optional[DownloadResponsePort], response)
 
 
 class _DownloadArchiveAdapter:
-    """把 SystemUtils 收窄为下载链字幕归档端口。"""
+    """
+    把 SystemUtils 收窄为下载链字幕归档端口。
+    """
 
     def unpack(
         self,
@@ -334,25 +505,35 @@ class _DownloadArchiveAdapter:
         *,
         archive_format: Optional[str],
     ) -> None:
-        """使用宿主统一归档实现解压字幕文件。"""
+        """
+        使用宿主统一归档实现解压字幕文件。
+        """
         SystemUtils.unpack_archive(archive_file, extract_dir, archive_format=archive_format)
 
     def list_files(self, directory: Path, extensions: tuple[str, ...]) -> list[Path]:
-        """使用宿主统一文件扫描实现列出字幕文件。"""
+        """
+        使用宿主统一文件扫描实现列出字幕文件。
+        """
         return SystemUtils.list_files(directory, list(extensions))
 
 
 class _MessageHttpAdapter:
-    """把 RequestUtils 收窄为消息附件同步 GET 端口。"""
+    """
+    把 RequestUtils 收窄为消息附件同步 GET 端口。
+    """
 
     def get(self, url: str, *, timeout: int) -> Optional[MessageResponsePort]:
-        """按消息链固定超时读取附件响应。"""
+        """
+        按消息链固定超时读取附件响应。
+        """
         response = RequestUtils(timeout=timeout).get_res(url)
         return cast(Optional[MessageResponsePort], response)
 
 
 class _ScrapingHttpAdapter:
-    """把 RequestUtils 收窄为刮削链普通与流式 GET 端口。"""
+    """
+    把 RequestUtils 收窄为刮削链普通与流式 GET 端口。
+    """
 
     def get(
         self,
@@ -362,7 +543,9 @@ class _ScrapingHttpAdapter:
         ua: str,
         timeout: int,
     ) -> Optional[ScrapingResponsePort]:
-        """读取需要完整载荷的音乐封面响应。"""
+        """
+        读取需要完整载荷的音乐封面响应。
+        """
         options: dict[str, Any] = {
             "proxies": proxies,
             "ua": ua,
@@ -379,7 +562,9 @@ class _ScrapingHttpAdapter:
         proxies: Optional[dict[str, str]],
         ua: str,
     ) -> ScrapingStreamResponsePort:
-        """打开由刮削链上下文关闭的流式图片响应。"""
+        """
+        打开由刮削链上下文关闭的流式图片响应。
+        """
         options: dict[str, Any] = {
             "proxies": proxies,
             "ua": ua,
@@ -390,7 +575,9 @@ class _ScrapingHttpAdapter:
 
 
 class _SystemHttpAdapter:
-    """把 RequestUtils 收窄为系统链发布版本 GET 端口。"""
+    """
+    把 RequestUtils 收窄为系统链发布版本 GET 端口。
+    """
 
     def get(
         self,
@@ -399,22 +586,30 @@ class _SystemHttpAdapter:
         proxies: Optional[dict[str, str]],
         headers: Mapping[str, str],
     ) -> Optional[SystemResponsePort]:
-        """按系统配置的代理与 GitHub 请求头读取发布列表。"""
+        """
+        按系统配置的代理与 GitHub 请求头读取发布列表。
+        """
         options: dict[str, Any] = {"proxies": proxies, "headers": dict(headers)}
         response = RequestUtils(**options).get_res(url)
         return cast(Optional[SystemResponsePort], response)
 
 
 class _SystemEnvironmentAdapter:
-    """把 SystemUtils 收窄为系统链容器环境判断端口。"""
+    """
+    把 SystemUtils 收窄为系统链容器环境判断端口。
+    """
 
     def is_docker(self) -> bool:
-        """返回宿主统一环境探针的 Docker 判断。"""
+        """
+        返回宿主统一环境探针的 Docker 判断。
+        """
         return bool(SystemUtils.is_docker())
 
 
 def configure_application_network_ports() -> None:
-    """装配网络探测、图片读取、内部地址判断和消息回环传输端口。"""
+    """
+    装配网络探测、图片读取、内部地址判断和消息回环传输端口。
+    """
     network_test_transport: NetworkTestTransport = _NetworkTestTransportAdapter()
     image_transport: ImageTransport = _ImageTransportAdapter()
     internal_address: InternalAddressPort = _InternalAddressAdapter()
@@ -435,14 +630,18 @@ def configure_application_network_ports() -> None:
 
 
 def reset_application_network_ports() -> None:
-    """按发布逆序撤销消息回环、图片与网络探测应用端口。"""
+    """
+    按发布逆序撤销消息回环、图片与网络探测应用端口。
+    """
     reset_message_ingress_port()
     reset_image_ports()
     reset_network_test_service()
 
 
 def configure_chain_network_composition() -> None:
-    """原子装配四个 Chain 的同步网络与系统技术端口。"""
+    """
+    原子装配四个 Chain 的同步网络与系统技术端口。
+    """
     reset_chain_network_composition()
     try:
         configure_download_ports(
@@ -461,7 +660,9 @@ def configure_chain_network_composition() -> None:
 
 
 def reset_chain_network_composition() -> None:
-    """清除四个 Chain 的技术端口，支持重复 lifespan 与失败回滚。"""
+    """
+    清除四个 Chain 的技术端口，支持重复 lifespan 与失败回滚。
+    """
     reset_system_ports()
     reset_scraping_http_port()
     reset_message_http_port()
@@ -469,17 +670,23 @@ def reset_chain_network_composition() -> None:
 
 
 def configure_doh_composition() -> None:
-    """由组合根物化进程唯一的 DoH 技术 Adapter。"""
+    """
+    由组合根物化进程唯一的 DoH 技术 Adapter。
+    """
     DohHelper()
 
 
 def get_existing_doh_composition() -> object | None:
-    """返回已由组合根物化的 DoH Adapter，不触发资源创建。"""
+    """
+    返回已由组合根物化的 DoH Adapter，不触发资源创建。
+    """
     return cast(Optional[DohHelper], DohHelper.get_existing_instance())
 
 
 def stop_doh_composition() -> bool:
-    """关闭已存在的 DoH Adapter，停机阶段不得反向物化实例。"""
+    """
+    关闭已存在的 DoH Adapter，停机阶段不得反向物化实例。
+    """
     helper = DohHelper.get_existing_instance()
     if helper is None:
         return True

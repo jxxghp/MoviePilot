@@ -1,5 +1,5 @@
 """
-PassKey WebAuthn 辅助工具类
+PassKey WebAuthn 辅助工具类。
 """
 import base64
 import binascii
@@ -22,7 +22,13 @@ PasskeyChallengePurpose = Literal["authentication", "registration"]
 
 @dataclass(frozen=True)
 class PasskeyChallenge:
-    """服务端保存的一次性 Passkey challenge 及其认证边界。"""
+    """
+    服务端保存的一次性 Passkey 挑战值 及其认证边界。
+
+    :param challenge: WebAuthn 服务端随机挑战值
+    :param purpose: 用途：authentication 用于登录，registration 用于注册
+    :param user_id: 挑战绑定的用户主键；无预绑定用户的登录挑战为 None
+    """
 
     challenge: str
     purpose: PasskeyChallengePurpose
@@ -30,23 +36,39 @@ class PasskeyChallenge:
 
 
 class PasskeyChallengeCache(Protocol):
-    """PassKey 一次性 challenge 使用的严格原子缓存端口。"""
+    """
+    PassKey 一次性挑战值 使用的严格原子缓存端口。
+    """
 
     def store(self, key: str, value: Any) -> None:
-        """持久化 challenge，失败时抛出后端异常。"""
+        """
+        持久化挑战值，失败时抛出后端异常。
+
+        :param key: 不携带认证事实的随机事务令牌
+        :param value: 挑战值、用途和用户绑定组成的一次性认证状态
+        """
 
     def consume(self, key: str) -> Any:
-        """原子领取 challenge，不存在时返回 None。"""
+        """
+        原子领取挑战值，不存在时返回 None。
+
+        :param key: 签发挑战时分配的随机事务令牌
+        :return: 已原子删除的挑战值；不存在或过期时返回 None
+        """
 
 
 class PasskeyChallengeStore:
-    """使用当前缓存后端签发并原子消费短时 Passkey challenge。"""
+    """
+    使用当前缓存后端签发并原子消费短时 Passkey 挑战值。
+    """
 
     _cache: Optional[PasskeyChallengeCache] = None
 
     @classmethod
     def _get_cache(cls) -> PasskeyChallengeCache:
-        """返回已装配缓存，缺失时拒绝签发认证状态。"""
+        """
+        返回已装配缓存，缺失时拒绝签发认证状态。
+        """
         if cls._cache is None:
             raise RuntimeError("PassKey challenge 缓存尚未配置")
         return cls._cache
@@ -59,7 +81,9 @@ class PasskeyChallengeStore:
         purpose: PasskeyChallengePurpose,
         user_id: Optional[int],
     ) -> str:
-        """保存 challenge 并返回不携带认证事实的随机事务 token。"""
+        """
+        保存挑战值 并返回不携带认证事实的随机事务令牌。
+        """
         transaction_token = secrets.token_urlsafe(32)
         cls._get_cache().store(
             transaction_token,
@@ -78,7 +102,9 @@ class PasskeyChallengeStore:
         transaction_token: str,
         purpose: PasskeyChallengePurpose,
     ) -> Optional[PasskeyChallenge]:
-        """原子领取 challenge；任何完成尝试都会使事务失效。"""
+        """
+        原子领取挑战值；任何完成尝试都会使事务失效。
+        """
         if not transaction_token:
             return None
 
@@ -92,27 +118,33 @@ class PasskeyChallengeStore:
 
 
 def configure_passkey_challenge_cache(cache: PasskeyChallengeCache) -> None:
-    """由启动组合根注入 PassKey challenge 的原子缓存。"""
+    """
+    由启动组合根注入 PassKey 挑战值 的原子缓存。
+    """
     PasskeyChallengeStore._cache = cache
 
 
 class PassKeyRegistrationVerificationError(Exception):
-    """Passkey 注册响应未通过 WebAuthn 安全校验。"""
+    """
+    Passkey 注册响应未通过 WebAuthn 安全校验。
+    """
 
 
 class PassKeyRegistrationOriginMismatchError(PassKeyRegistrationVerificationError):
-    """浏览器来源与系统配置的 Passkey 注册来源不一致。"""
+    """
+    浏览器来源与系统配置的 Passkey 注册来源不一致。
+    """
 
 
 class PassKeyHelper:
     """
-    PassKey WebAuthn 辅助类
+    PassKey WebAuthn 辅助类。
     """
 
     @staticmethod
     def get_rp_id() -> str:
         """
-        获取 Relying Party ID
+        获取 WebAuthn 依赖方标识。
         """
         config = get_api_runtime_config_snapshot()
         if config.app_domain:
@@ -124,9 +156,7 @@ class PassKeyHelper:
             host = parsed.hostname
             if host:
                 return host
-            # 从 APP_DOMAIN 中提取域名
             host = config.app_domain.replace('https://', '').replace('http://', '')
-            # 移除端口号
             if ':' in host:
                 host = host.split(':')[0]
             return host
@@ -136,28 +166,26 @@ class PassKeyHelper:
     @staticmethod
     def get_rp_name() -> str:
         """
-        获取 Relying Party 名称
+        获取 Relying Party 名称。
         """
         return "MoviePilot"
 
     @staticmethod
     def get_origin() -> str:
         """
-        获取源地址
+        获取源地址。
         """
         config = get_api_runtime_config_snapshot()
         if config.app_domain:
             return config.app_domain.rstrip('/')
-        # 如果未配置APP_DOMAIN，使用默认的localhost地址
         return f'http://localhost:{config.nginx_port}'
 
     @staticmethod
     def standardize_credential_id(credential_id: str) -> str:
         """
-        标准化凭证ID（Base64 URL Safe）
+        标准化凭证ID（URL 安全的 Base64）。
         """
         try:
-            # Base64解码并重新编码以标准化格式
             decoded = base64.urlsafe_b64decode(credential_id + '==')
             return base64.urlsafe_b64encode(decoded).decode('utf-8').rstrip('=')
         except (binascii.Error, TypeError, ValueError) as e:
@@ -167,19 +195,19 @@ class PassKeyHelper:
     @staticmethod
     def _base64_encode_urlsafe(data: bytes) -> str:
         """
-        Base64 URL Safe 编码（不带填充）
+        URL 安全的 Base64 编码（不带填充）。
 
         :param data: 要编码的字节数据
-        :return: Base64 URL Safe 编码的字符串
+        :return: URL 安全的 Base64 编码的字符串
         """
         return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
 
     @staticmethod
     def _base64_decode_urlsafe(data: str) -> bytes:
         """
-        Base64 URL Safe 解码（自动添加填充）
+        URL 安全的 Base64 解码（自动添加填充）。
 
-        :param data: Base64 URL Safe 编码的字符串
+        :param data: URL 安全的 Base64 编码的字符串
         :return: 解码后的字节数据
         """
         return base64.urlsafe_b64decode(data + '==')
@@ -187,7 +215,7 @@ class PassKeyHelper:
     @staticmethod
     def _parse_credential_list(credentials: List[Dict[str, Any]]) -> List[PublicKeyCredentialDescriptor]:
         """
-        解析凭证列表为 PublicKeyCredentialDescriptor 列表
+        解析凭证列表为 PublicKeyCredentialDescriptor 列表。
 
         :param credentials: 凭证字典列表
         :return: PublicKeyCredentialDescriptor 列表
@@ -212,10 +240,10 @@ class PassKeyHelper:
     @staticmethod
     def _get_user_verification_requirement(user_verification: Optional[str] = None) -> UserVerificationRequirement:
         """
-        获取用户验证要求
+        获取用户验证要求。
 
         :param user_verification: 指定的用户验证要求，如果不指定则从配置中读取
-        :return: UserVerificationRequirement
+        :return: WebAuthn 用户验证要求，未指定时按配置选择必须验证或优先验证
         """
         from webauthn.helpers.structs import UserVerificationRequirement
         if user_verification:
@@ -229,11 +257,11 @@ class PassKeyHelper:
         expected_rp_id: Optional[str] = None
     ) -> Tuple[str, str]:
         """
-        获取验证参数（origin 和 rp_id）
+        获取验证参数（origin 和 rp_id）。
 
         :param expected_origin: 期望的源地址
         :param expected_rp_id: 期望的RP ID
-        :return: (origin, rp_id)
+        :return: 预期浏览器来源与依赖方标识组成的元组，缺失项从部署配置补齐
         """
         origin = expected_origin or PassKeyHelper.get_origin()
         rp_id = expected_rp_id or PassKeyHelper.get_rp_id()
@@ -247,29 +275,25 @@ class PassKeyHelper:
         existing_credentials: Optional[List[Dict[str, Any]]] = None
     ) -> Tuple[str, str]:
         """
-        生成注册选项
+        生成注册选项。
 
         :param user_id: 用户ID
         :param username: 用户名
         :param display_name: 显示名称
         :param existing_credentials: 已存在的凭证列表
-        :return: (options_json, challenge)
+        :return: 发给浏览器的选项 JSON 与服务端保存的挑战值组成的元组
         """
         from webauthn import generate_registration_options, options_to_json
         from webauthn.helpers.cose import COSEAlgorithmIdentifier
         from webauthn.helpers.structs import AuthenticatorSelectionCriteria, ResidentKeyRequirement
         try:
-            # 用户信息
             user_id_bytes = str(user_id).encode('utf-8')
 
-            # 排除已有的凭证
             exclude_credentials = PassKeyHelper._parse_credential_list(existing_credentials) \
                 if existing_credentials else None
 
-            # 用户验证要求
             uv_requirement = PassKeyHelper._get_user_verification_requirement()
 
-            # 生成注册选项
             options = generate_registration_options(
                 rp_id=PassKeyHelper.get_rp_id(),
                 rp_name=PassKeyHelper.get_rp_name(),
@@ -288,10 +312,8 @@ class PassKeyHelper:
                 ]
             )
 
-            # 转换为JSON
             options_json = options_to_json(options)
 
-            # 提取challenge（用于后续验证）
             challenge = PassKeyHelper._base64_encode_urlsafe(options.challenge)
 
             return options_json, challenge
@@ -308,27 +330,23 @@ class PassKeyHelper:
         expected_rp_id: Optional[str] = None
     ) -> Tuple[str, str, int, Optional[str]]:
         """
-        验证注册响应
+        验证注册响应。
 
         :param credential: 客户端返回的凭证
         :param expected_challenge: 期望的challenge
         :param expected_origin: 期望的源地址
         :param expected_rp_id: 期望的RP ID
-        :return: (credential_id, public_key, sign_count, aaguid)
+        :return: 凭证标识、公钥、初始签名计数与认证器型号标识组成的元组
         """
         from webauthn import verify_registration_response
         from webauthn.helpers import parse_registration_credential_json
         from webauthn.helpers.exceptions import InvalidRegistrationResponse
         try:
-            # 准备验证参数
             origin, rp_id = PassKeyHelper._get_verification_params(expected_origin, expected_rp_id)
-            # 解码challenge
             challenge_bytes = PassKeyHelper._base64_decode_urlsafe(expected_challenge)
 
-            # 构建RegistrationCredential对象
             registration_credential = parse_registration_credential_json(json.dumps(credential))
 
-            # 验证注册响应
             verification = verify_registration_response(
                 credential=registration_credential,
                 expected_challenge=challenge_bytes,
@@ -337,7 +355,6 @@ class PassKeyHelper:
                 require_user_verification=get_api_runtime_config_snapshot().passkey_require_uv
             )
 
-            # 提取信息
             credential_id = PassKeyHelper._base64_encode_urlsafe(verification.credential_id)
             public_key = PassKeyHelper._base64_encode_urlsafe(verification.credential_public_key)
             sign_count = verification.sign_count
@@ -367,32 +384,27 @@ class PassKeyHelper:
         user_verification: Optional[str] = None
     ) -> Tuple[str, str]:
         """
-        生成认证选项
+        生成认证选项。
 
         :param existing_credentials: 已存在的凭证列表（用于限制可用凭证）
         :param user_verification: 用户验证要求，如果不指定则从配置中读取
-        :return: (options_json, challenge)
+        :return: 发给浏览器的选项 JSON 与服务端保存的挑战值组成的元组
         """
         from webauthn import generate_authentication_options, options_to_json
         try:
-            # 允许的凭证
             allow_credentials = PassKeyHelper._parse_credential_list(existing_credentials) \
                 if existing_credentials else None
 
-            # 用户验证要求
             uv_requirement = PassKeyHelper._get_user_verification_requirement(user_verification)
 
-            # 生成认证选项
             options = generate_authentication_options(
                 rp_id=PassKeyHelper.get_rp_id(),
                 allow_credentials=allow_credentials,
                 user_verification=uv_requirement
             )
 
-            # 转换为JSON
             options_json = options_to_json(options)
 
-            # 提取challenge
             challenge = PassKeyHelper._base64_encode_urlsafe(options.challenge)
 
             return options_json, challenge
@@ -411,7 +423,7 @@ class PassKeyHelper:
         expected_rp_id: Optional[str] = None
     ) -> Tuple[bool, int]:
         """
-        验证认证响应
+        验证认证响应。
 
         :param credential: 客户端返回的凭证
         :param expected_challenge: 期望的challenge
@@ -424,16 +436,12 @@ class PassKeyHelper:
         from webauthn import verify_authentication_response
         from webauthn.helpers import parse_authentication_credential_json
         try:
-            # 准备验证参数
             origin, rp_id = PassKeyHelper._get_verification_params(expected_origin, expected_rp_id)
-            # 解码
             challenge_bytes = PassKeyHelper._base64_decode_urlsafe(expected_challenge)
             public_key_bytes = PassKeyHelper._base64_decode_urlsafe(credential_public_key)
 
-            # 构建AuthenticationCredential对象
             authentication_credential = parse_authentication_credential_json(json.dumps(credential))
 
-            # 验证认证响应
             verification = verify_authentication_response(
                 credential=authentication_credential,
                 expected_challenge=challenge_bytes,
@@ -452,10 +460,16 @@ class PassKeyHelper:
 
 
 class PasskeyRepository(Protocol):
-    """PassKey 用例需要的最小同步数据端口。"""
+    """
+    PassKey 用例需要的最小同步数据端口。
+    """
 
     def list(self) -> list[Any]:
-        """列出全部启用凭证。"""
+        """
+        列出全部启用凭证。
+
+        :return: 全部启用凭证；没有凭证时返回空列表
+        """
 
     def list_by_user_id(
         self,
@@ -463,16 +477,38 @@ class PasskeyRepository(Protocol):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[Any]:
-        """按可选窗口列出指定用户凭证。"""
+        """
+        按可选窗口列出指定用户凭证。
+
+        :param user_id: 目标用户的数据库主键
+        :param page: 页码，从 1 开始；与 count 均省略时不分页
+        :param count: 每页记录数量；与 page 均省略时不分页
+        :return: 该用户窗口内的启用凭证；没有凭证时返回空列表
+        """
 
     def count_by_user_id(self, user_id: int) -> int:
-        """返回指定用户启用凭证总数。"""
+        """
+        返回指定用户启用凭证总数。
+
+        :param user_id: 目标用户的数据库主键
+        :return: 该用户的启用凭证数量
+        """
 
     def get_by_credential_id(self, credential_id: str) -> Optional[Any]:
-        """按凭证 ID 查找凭证。"""
+        """
+        按凭证 ID 查找凭证。
+
+        :param credential_id: WebAuthn 凭证标识
+        :return: 对应凭证；不存在或未启用时返回 None
+        """
 
     def create(self, payload: dict[str, Any]) -> Any:
-        """创建凭证。"""
+        """
+        创建凭证。
+
+        :param payload: 凭证所属用户、凭证标识、公钥和签名计数等持久化字段
+        :return: 创建后的凭证记录
+        """
 
     def compare_and_update_sign_count(
         self,
@@ -480,21 +516,40 @@ class PasskeyRepository(Protocol):
         expected_sign_count: int,
         sign_count: int,
     ) -> bool:
-        """仅在签名计数未被并发修改时记录本次认证。"""
+        """
+        仅在签名计数未被并发修改时记录本次认证。
+
+        :param passkey_id: 本地 Passkey 记录主键
+        :param expected_sign_count: 认证前读取的签名计数，用于检测并发更新
+        :param sign_count: 本次认证返回的新签名计数
+        :return: 期望计数仍匹配且更新成功时返回 True；并发冲突或记录不存在时返回 False
+        """
 
     def delete_by_id(self, passkey_id: int, user_id: int) -> bool:
-        """删除用户凭证。"""
+        """
+        删除用户凭证。
+
+        :param passkey_id: 本地 Passkey 记录主键
+        :param user_id: 目标用户的数据库主键
+        :return: 成功删除属于该用户的凭证时返回 True，否则返回 False
+        """
 
 
 class PasskeyService:
-    """编排 PassKey 凭证生命周期。"""
+    """
+    编排 PassKey 凭证生命周期。
+    """
 
     def __init__(self, repository: PasskeyRepository) -> None:
-        """注入 PassKey 数据端口。"""
+        """
+        注入 PassKey 数据端口。
+        """
         self._repository = repository
 
     def list(self) -> list[Any]:
-        """列出全部启用凭证。"""
+        """
+        列出全部启用凭证。
+        """
         return self._repository.list()
 
     def list_by_user_id(
@@ -503,21 +558,29 @@ class PasskeyService:
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[Any]:
-        """按可选数据库窗口列出指定用户凭证。"""
+        """
+        按可选数据库窗口列出指定用户凭证。
+        """
         if page is None and count is None:
             return self._repository.list_by_user_id(user_id)
         return self._repository.list_by_user_id(user_id, page=page, count=count)
 
     def count_by_user_id(self, user_id: int) -> int:
-        """返回指定用户启用凭证精确总数。"""
+        """
+        返回指定用户启用凭证精确总数。
+        """
         return self._repository.count_by_user_id(user_id)
 
     def get_by_credential_id(self, credential_id: str) -> Optional[Any]:
-        """按凭证 ID 查找凭证。"""
+        """
+        按凭证 ID 查找凭证。
+        """
         return self._repository.get_by_credential_id(credential_id)
 
     def create(self, payload: dict[str, Any]) -> Any:
-        """创建凭证。"""
+        """
+        创建凭证。
+        """
         return self._repository.create(payload)
 
     def compare_and_update_sign_count(
@@ -526,7 +589,9 @@ class PasskeyService:
         expected_sign_count: int,
         sign_count: int,
     ) -> bool:
-        """以验证时观察到的旧计数提交本次认证。"""
+        """
+        以验证时观察到的旧计数提交本次认证。
+        """
         return self._repository.compare_and_update_sign_count(
             passkey_id=passkey_id,
             expected_sign_count=expected_sign_count,
@@ -534,7 +599,9 @@ class PasskeyService:
         )
 
     def delete_by_id(self, passkey_id: int, user_id: int) -> bool:
-        """删除用户凭证。"""
+        """
+        删除用户凭证。
+        """
         return self._repository.delete_by_id(passkey_id, user_id)
 
 
@@ -542,24 +609,32 @@ _configured_passkey_service: Optional[PasskeyService] = None
 
 
 def configure_passkey_service(service: PasskeyService) -> None:
-    """由启动组合根登记 PassKey 应用服务。"""
+    """
+    由启动组合根登记 PassKey 应用服务。
+    """
     global _configured_passkey_service
     _configured_passkey_service = service
 
 
 def reset_passkey_challenge_cache() -> None:
-    """清除当前 lifespan 的 PassKey challenge 缓存。"""
+    """
+    清除当前应用生命周期 的 PassKey 挑战值 缓存。
+    """
     PasskeyChallengeStore._cache = None
 
 
 def reset_passkey_service() -> None:
-    """清除当前 lifespan 的 PassKey 应用服务。"""
+    """
+    清除当前应用生命周期 的 PassKey 应用服务。
+    """
     global _configured_passkey_service
     _configured_passkey_service = None
 
 
 def get_configured_passkey_service() -> PasskeyService:
-    """返回启动阶段登记的 PassKey 应用服务。"""
+    """
+    返回启动阶段登记的 PassKey 应用服务。
+    """
     if _configured_passkey_service is None:
         raise RuntimeError("PassKey 服务尚未配置")
     return _configured_passkey_service

@@ -1,17 +1,21 @@
-"""Transfer/Download History Oper 的显式会话复用验证。"""
+"""
+Transfer/Download History Oper 的显式会话复用验证。
+"""
 
 import asyncio
 
 from app.db import base as db_base
+from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.transferhistory import TransferHistoryOper
-from app.db.models.downloadhistory import DownloadHistory
 from app.db.session import async_session_scope
 
 
 def test_oper_reuses_explicit_sync_session(db, monkeypatch):
-    """显式同步会话绑定到 Oper 后，查询不能再创建兼容会话。"""
+    """
+    显式同步会话绑定到 Oper 后，查询不能再创建兼容会话。
+    """
     row = db.add(TransferHistory(src="/compat/transfer.mkv", src_storage="local"))
     monkeypatch.setattr(
         db_base,
@@ -26,7 +30,9 @@ def test_oper_reuses_explicit_sync_session(db, monkeypatch):
 
 
 def test_oper_reuses_explicit_async_session(db, monkeypatch):
-    """显式异步会话绑定到 Oper 后，异步查询不能再创建兼容作用域。"""
+    """
+    显式异步会话绑定到 Oper 后，异步查询不能再创建兼容作用域。
+    """
     db.add(
         DownloadHistory(
             path="/compat/async-download",

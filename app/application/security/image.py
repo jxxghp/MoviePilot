@@ -1,4 +1,6 @@
-"""图片域名归一化与站点白名单快照，不缓存 DNS 安全判定。"""
+"""
+图片域名归一化与站点白名单快照，不缓存 DNS 安全判定。
+"""
 
 import asyncio
 import threading
@@ -11,7 +13,9 @@ from app.application.site.query import SiteQueryService
 
 
 def normalize_image_domain(address: Optional[str]) -> Optional[str]:
-    """提取 HTTP(S) 主机及端口，保留协议以兼容 URL 白名单解析。"""
+    """
+    提取 HTTP(S) 主机及端口，保留协议以兼容 URL 白名单解析。
+    """
     address = (address or "").strip()
     if not address:
         return None
@@ -25,10 +29,14 @@ def normalize_image_domain(address: Optional[str]) -> Optional[str]:
 
 
 class SiteImageDomainCache:
-    """缓存站点图片域名，同 loop 合并查询，写入失效后禁止旧查询回填。"""
+    """
+    缓存站点图片域名，同一事件循环 合并查询，写入失效后禁止旧查询回填。
+    """
 
     def __init__(self, ttl: float = 60) -> None:
-        """设置短期兜底有效期；锁只保护内存，不跨 await 持有线程锁。"""
+        """
+        设置短期兜底有效期；锁只保护内存，不跨 await 持有线程锁。
+        """
         self._ttl = ttl
         self._lock = threading.Lock()
         self._inflight: WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakValueDictionary()
@@ -38,7 +46,9 @@ class SiteImageDomainCache:
         self._expires = 0.0
 
     def invalidate(self) -> None:
-        """提交后立即撤销旧域名；递增代际防止在途查询恢复已删除的授权。"""
+        """
+        提交后立即撤销旧域名；递增代际防止在途查询恢复已删除的授权。
+        """
         with self._lock:
             self._generation += 1
             self._expires = 0.0
@@ -46,7 +56,9 @@ class SiteImageDomainCache:
             self._domains = frozenset()
 
     async def get(self, source: SiteQueryService) -> frozenset[str]:
-        """返回不可变快照，命中时不查库；配置服务更换后自动重建。"""
+        """
+        返回不可变快照，命中时不查库；配置服务更换后自动重建。
+        """
         loop = asyncio.get_running_loop()
         with self._lock:
             if self._source is source and monotonic() < self._expires:
@@ -59,7 +71,9 @@ class SiteImageDomainCache:
             return await self._refresh(source)
 
     async def _refresh(self, source: SiteQueryService) -> frozenset[str]:
-        """锁内复查并加载，失效与查询交错时丢弃旧结果后重新读取。"""
+        """
+        锁内复查并加载，失效与查询交错时丢弃旧结果后重新读取。
+        """
         while True:
             with self._lock:
                 if self._source is source and monotonic() < self._expires:

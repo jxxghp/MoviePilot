@@ -1,6 +1,6 @@
 ---
 name: organize-files
-version: 5
+version: 6
 description: >-
   Use this skill when the user asks MoviePilot to identify and organize a local
   or downloaded video/music file, season folder, recording, album directory, or
@@ -40,8 +40,9 @@ recognition, transfer, and history tools are not available.
 7. Call `transfer.file` once per verified unit. For an album, transfer the album
    directory once only after its supported audio-file count is consistent with
    the selected album detail.
-8. If requested, call `media.scrape` after a successful transfer. Report actual
-   tag, cover, and lyrics counts; never assume all lyrics were found.
+8. If requested, call `media.scrape` after a successful transfer. Report its
+   actual message, including any preserved album track fields and lyrics counts;
+   never assume all tracks were overwritten or all lyrics were found.
 
 ## Structured Calls
 
@@ -64,3 +65,11 @@ recognition, transfer, and history tools are not available.
 Stop and report instead of transferring when the source is missing, directory
 configuration is absent, identity remains ambiguous, an album appears mixed or
 incomplete, or the requested target would overwrite unrelated media.
+
+## 整理恢复与历史上下文
+
+保留 `storage.list` 返回的完整文件项，包括可选的 `modify_time_ns` 和
+`change_time_ns`；不要自行生成本地版本凭据。恢复发现源或目标版本变化时，
+应报告人工复核状态并保留现场，不通过重新提交整个批次绕过核验。
+复用历史整理电视剧时保留 `episode_group`；不同剧集组分批处理。
+目录整理的 `overwrite_skipped` 同样表示未导入，不能报告为成功。

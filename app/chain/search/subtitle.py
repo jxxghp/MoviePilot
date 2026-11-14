@@ -1,4 +1,6 @@
-"""字幕搜索、匹配与结果投影 owner。"""
+"""
+字幕搜索、匹配与结果投影 owner。
+"""
 
 import asyncio
 import random
@@ -22,7 +24,9 @@ from app.schemas.types import (
 
 
 class SearchSubtitleOwner(_SearchOwnerBase):
-    """字幕搜索、匹配与结果投影 owner。"""
+    """
+    字幕搜索、匹配与结果投影 owner。
+    """
 
     async def async_search_subtitles_by_title(
         self,
@@ -366,7 +370,7 @@ class SearchSubtitleOwner(_SearchOwnerBase):
         """
         mediainfo = self._copy_media_input(mediainfo)
         if not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
+            meta = MetaInfo(title=mediainfo.title or "")
             mediainfo.title = meta.name
             mediainfo.season = cast(int, meta.begin_season)
         logger.info(f"开始精确搜索字幕，关键词：{mediainfo.title} ...")
@@ -407,6 +411,7 @@ class SearchSubtitleOwner(_SearchOwnerBase):
         )
 
         subtitles: List[SubtitleInfo] = []
+        matches: List[SubtitleInfo] = []
         search_count = 0
         for search_word in keywords:
             if search_count > 0:
@@ -420,22 +425,16 @@ class SearchSubtitleOwner(_SearchOwnerBase):
                 or []
             )
             search_count += 1
-            if not self.runtime_config.search_multiple_name and subtitles:
-                logger.info(f"共搜索到 {len(subtitles)} 个字幕，停止搜索")
+            matches = await run_in_threadpool(
+                self._parse_subtitle_result, subtitles=subtitles, mediainfo=mediainfo,
+                keyword=mediainfo.title, season_episodes=season_episodes,
+                episode=episode, custom_words=custom_words,
+            )
+            if not self.runtime_config.search_multiple_name and matches:
+                logger.info(f"共匹配到 {len(matches)} 个字幕，停止别名搜索")
                 break
 
-        return cast(
-            List[SubtitleInfo],
-            await run_in_threadpool(
-                self._parse_subtitle_result,
-                subtitles=subtitles,
-                mediainfo=mediainfo,
-                keyword=mediainfo.title,
-                season_episodes=season_episodes,
-                episode=episode,
-                custom_words=custom_words,
-            ),
-        )
+        return matches
 
     async def _async_search_subtitles_for_media_stream(
         self,
@@ -452,7 +451,7 @@ class SearchSubtitleOwner(_SearchOwnerBase):
         """
         mediainfo = self._copy_media_input(mediainfo)
         if not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
+            meta = MetaInfo(title=mediainfo.title or "")
             mediainfo.title = meta.name
             mediainfo.season = cast(int, meta.begin_season)
         logger.info(f"开始渐进式精确搜索字幕，关键词：{mediainfo.title} ...")
@@ -494,6 +493,7 @@ class SearchSubtitleOwner(_SearchOwnerBase):
         )
 
         subtitles: List[SubtitleInfo] = []
+        matches: List[SubtitleInfo] = []
         search_count = 0
         for search_word in keywords:
             if search_count > 0:
@@ -512,8 +512,13 @@ class SearchSubtitleOwner(_SearchOwnerBase):
                 }
 
             search_count += 1
-            if not self.runtime_config.search_multiple_name and subtitles:
-                logger.info(f"共搜索到 {len(subtitles)} 个字幕，停止搜索")
+            matches = await run_in_threadpool(
+                self._parse_subtitle_result, subtitles=subtitles, mediainfo=mediainfo,
+                keyword=mediainfo.title, season_episodes=season_episodes,
+                episode=episode, custom_words=custom_words,
+            )
+            if not self.runtime_config.search_multiple_name and matches:
+                logger.info(f"共匹配到 {len(matches)} 个字幕，停止别名搜索")
                 break
 
         yield {
@@ -523,15 +528,7 @@ class SearchSubtitleOwner(_SearchOwnerBase):
             "text": f"正在识别匹配 {len(subtitles)} 个候选字幕 ...",
         }
 
-        match_subtitles = await run_in_threadpool(
-            self._parse_subtitle_result,
-            subtitles=subtitles,
-            mediainfo=mediainfo,
-            keyword=mediainfo.title,
-            season_episodes=season_episodes,
-            episode=episode,
-            custom_words=custom_words,
-        )
+        match_subtitles = matches
         final_items = [subtitle.to_dict() for subtitle in match_subtitles]
         yield {
             "type": "replace",

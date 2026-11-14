@@ -1,10 +1,16 @@
+"""
+验证并发构造时的单例身份与初始化次数。
+"""
+
 import threading
 
 from app.foundation.singleton import Singleton, SingletonClass
 
 
 def _construct_concurrently(singleton_type, count: int = 16):
-    """让多个线程同时越过起跑线，放大首次构造竞态。"""
+    """
+    让多个线程同时越过起跑线，放大首次构造竞态。
+    """
     barrier = threading.Barrier(count)
     instances = []
 
@@ -22,7 +28,9 @@ def _construct_concurrently(singleton_type, count: int = 16):
 
 
 def test_parameterized_singleton_first_construction_is_single_flight():
-    """同一参数的并发首次构造只能发布一个完整实例。"""
+    """
+    同一参数的并发首次构造只能发布一个完整实例。
+    """
     class _ParameterizedSingleton(metaclass=Singleton):
         pass
 
@@ -32,7 +40,9 @@ def test_parameterized_singleton_first_construction_is_single_flight():
 
 
 def test_class_singleton_first_construction_is_single_flight():
-    """按类单例的并发首次构造只能发布一个完整实例。"""
+    """
+    按类单例的并发首次构造只能发布一个完整实例。
+    """
     class _ClassSingleton(metaclass=SingletonClass):
         pass
 

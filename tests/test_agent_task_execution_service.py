@@ -1,4 +1,6 @@
-"""AgentTask 执行服务的取消、终态和调度清理合同。"""
+"""
+AgentTask 执行服务的取消、终态和调度清理合同。
+"""
 
 import asyncio
 import threading
@@ -20,7 +22,9 @@ from app.schemas.exception import (
 
 
 def _add_task(prefix: str, *, trigger_type: str = "cron"):
-    """创建一条与其他用例隔离的可执行任务。"""
+    """
+    创建一条与其他用例隔离的可执行任务。
+    """
     user_id = f"{prefix}-{uuid4().hex}"
     return AgentTaskOper().add(
         name=f"{prefix} 检查",
@@ -41,7 +45,9 @@ def _build_service(
     worker: AsyncDatabaseExecutor,
     repository: Callable[[object], object] | None = None,
 ) -> AgentTaskExecutionService:
-    """按生产事务和 worker 边界构造独立服务。"""
+    """
+    按生产事务和 worker 边界构造独立服务。
+    """
     transaction = TransactionalWriteRunner(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -57,7 +63,9 @@ async def _wait_for_worker(
     worker: DatabaseWorker,
     predicate: Callable[[], bool],
 ) -> None:
-    """等待 worker 进入目标状态，超时由测试框架明确失败。"""
+    """
+    等待 worker 进入目标状态，超时由测试框架明确失败。
+    """
     for _ in range(200):
         if predicate():
             return
@@ -67,7 +75,9 @@ async def _wait_for_worker(
 
 @pytest.mark.anyio
 async def test_cancelled_queued_claim_does_not_create_run() -> None:
-    """认领尚未开始时取消，应撤销排队工作且不得产生运行记录。"""
+    """
+    认领尚未开始时取消，应撤销排队工作且不得产生运行记录。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     occupied = threading.Event()
@@ -97,16 +107,26 @@ async def test_cancelled_queued_claim_does_not_create_run() -> None:
 
 @pytest.mark.anyio
 async def test_cancelled_overloaded_claim_does_not_start_compensation() -> None:
-    """认领尚未获得 admission 时取消，不得启动不存在运行的补偿收口。"""
+    """
+    认领尚未获得 admission 时取消，不得启动不存在运行的补偿收口。
+    """
 
     class OverloadedExecutor:
-        """在认领取得 worker admission 前稳定制造取消窗口。"""
+        """
+        在认领取得 worker admission 前稳定制造取消窗口。
+        """
 
         def __init__(self) -> None:
+            """
+            初始化容量拒绝次数和首轮认领信号。
+            """
             self.calls = 0
             self.first_call = asyncio.Event()
 
         async def run(self, _operation):
+            """
+            拒绝认领，并在意外启动补偿时暴露错误。
+            """
             self.calls += 1
             self.first_call.set()
             if self.calls > 1:
@@ -132,22 +152,35 @@ async def test_cancelled_overloaded_claim_does_not_start_compensation() -> None:
 
 @pytest.mark.anyio
 async def test_cancelled_started_claim_is_compensated_before_return() -> None:
-    """认领事务已开始时取消，返回前必须把已提交运行收口为失败。"""
+    """
+    认领事务已开始时取消，返回前必须把已提交运行收口为失败。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     started = threading.Event()
     release = threading.Event()
 
     class BlockingRepository:
-        """在认领已写入但事务尚未提交的位置制造取消窗口。"""
+        """
+        在认领已写入但事务尚未提交的位置制造取消窗口。
+        """
 
         def __init__(self, session: object) -> None:
+            """
+            包装真实仓储以控制认领事务的取消窗口。
+            """
             self._repository = AgentTaskOper(session)
 
         def __getattr__(self, name: str):
+            """
+            把其余操作交给真实仓储执行。
+            """
             return getattr(self._repository, name)
 
         def begin_run(self, *args, **kwargs):
+            """
+            在认领完成但事务未提交时等待取消信号。
+            """
             run = self._repository.begin_run(*args, **kwargs)
             started.set()
             release.wait()
@@ -174,7 +207,9 @@ async def test_cancelled_started_claim_is_compensated_before_return() -> None:
 
 @pytest.mark.anyio
 async def test_claim_retries_transient_worker_overload() -> None:
-    """一次性任务不得因触发瞬间容量已满而永久丢失。"""
+    """
+    一次性任务不得因触发瞬间容量已满而永久丢失。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     task = _add_task("claim-overload", trigger_type="date")
@@ -203,22 +238,35 @@ async def test_claim_retries_transient_worker_overload() -> None:
 
 @pytest.mark.anyio
 async def test_repeated_finalize_cancellation_waits_for_single_terminal_write() -> None:
-    """重复取消不得打断已开始的终态事务或重复累计执行次数。"""
+    """
+    重复取消不得打断已开始的终态事务或重复累计执行次数。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     started = threading.Event()
     release = threading.Event()
 
     class BlockingRepository:
-        """在运行终态已写入但事务尚未提交的位置制造重复取消窗口。"""
+        """
+        在运行终态已写入但事务尚未提交的位置制造重复取消窗口。
+        """
 
         def __init__(self, session: object) -> None:
+            """
+            包装真实仓储以控制终态事务的取消窗口。
+            """
             self._repository = AgentTaskOper(session)
 
         def __getattr__(self, name: str):
+            """
+            把其余操作交给真实仓储执行。
+            """
             return getattr(self._repository, name)
 
         def finish_run_outcome(self, *args, **kwargs):
+            """
+            在终态写入但事务未提交时等待取消信号。
+            """
             outcome = self._repository.finish_run_outcome(*args, **kwargs)
             started.set()
             release.wait()
@@ -253,7 +301,9 @@ async def test_repeated_finalize_cancellation_waits_for_single_terminal_write() 
 
 @pytest.mark.anyio
 async def test_cancelled_queued_finalize_waits_for_terminal_write() -> None:
-    """终态事务仍在队列时取消，返回前也必须完成唯一一次收口。"""
+    """
+    终态事务仍在队列时取消，返回前也必须完成唯一一次收口。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     task = _add_task("queued-finish-cancel")
@@ -290,7 +340,9 @@ async def test_cancelled_queued_finalize_waits_for_terminal_write() -> None:
 
 @pytest.mark.anyio
 async def test_finalize_retries_transient_worker_overload() -> None:
-    """容量暂满时保留终态 owner，取得 admission 后再提交结果。"""
+    """
+    容量暂满时保留终态 owner，取得 admission 后再提交结果。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=1)
     await worker.start()
     task = _add_task("finish-overload")
@@ -324,7 +376,9 @@ async def test_finalize_retries_transient_worker_overload() -> None:
 
 @pytest.mark.anyio
 async def test_closed_worker_does_not_finalize_or_remove_schedule() -> None:
-    """持久化不可用时不得伪造终态或清理运行时调度。"""
+    """
+    持久化不可用时不得伪造终态或清理运行时调度。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=2)
     await worker.start()
     task = _add_task("closed-finalize", trigger_type="date")

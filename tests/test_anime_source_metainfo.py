@@ -1,3 +1,7 @@
+"""
+验证动画来源标识在名称、路径和自定义识别词中的传递。
+"""
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,7 +24,9 @@ def test_find_metainfo_supports_anime_source_ids(
     source: str,
     media_id: str,
 ) -> None:
-    """显式动画来源标签应提取统一来源ID并从标题中移除。"""
+    """
+    显式动画来源标签应提取统一来源ID并从标题中移除。
+    """
     parsed_title, metainfo = find_metainfo(title)
 
     assert metainfo["media_source"] == source
@@ -30,7 +36,9 @@ def test_find_metainfo_supports_anime_source_ids(
 
 
 def test_metainfo_custom_words_support_anilist_id() -> None:
-    """自定义识别词替换结果中的AniList ID应进入统一元数据字段。"""
+    """
+    自定义识别词替换结果中的AniList ID应进入统一元数据字段。
+    """
     meta = MetaInfo(
         "Sousou no Frieren 01",
         custom_words=[
@@ -45,7 +53,9 @@ def test_metainfo_custom_words_support_anilist_id() -> None:
 
 
 def test_metainfo_path_inherits_bangumi_id_from_parent() -> None:
-    """文件路径识别应从父目录继承Bangumi来源ID。"""
+    """
+    文件路径识别应从父目录继承Bangumi来源ID。
+    """
     meta = MetaInfoPath(
         Path("/anime/葬送的芙莉莲 [bangumi=400602]/Frieren.S01E01.mkv")
     )
@@ -57,7 +67,9 @@ def test_metainfo_path_inherits_bangumi_id_from_parent() -> None:
 
 
 def test_parenthesized_tmdb_id_uses_python_fallback_for_old_rust() -> None:
-    """旧 Rust 扩展不识别圆括号 TMDB 标签时应回退到 Python 解析。"""
+    """
+    旧 Rust 扩展不识别圆括号 TMDB 标签时应回退到 Python 解析。
+    """
     with patch(
         "app.adapters.system.rust.parse_metainfo_path",
         side_effect=AssertionError("旧 Rust 扩展不应处理圆括号 TMDB 标签"),
@@ -69,7 +81,9 @@ def test_parenthesized_tmdb_id_uses_python_fallback_for_old_rust() -> None:
 
 
 def test_extended_ids_fall_back_when_installed_rust_is_old() -> None:
-    """当前Rust扩展缺少新字段时应直接使用Python解析器。"""
+    """
+    当前Rust扩展缺少新字段时应直接使用Python解析器。
+    """
     with patch(
         "app.adapters.system.rust.supports_extended_media_ids",
         return_value=False,
@@ -92,7 +106,9 @@ def test_extended_ids_fall_back_when_installed_rust_is_old() -> None:
     ],
 )
 def test_python_metainfo_rejects_zero_identity_and_removes_tag(title: str) -> None:
-    """Python 标签解析器应移除零值标签，但不得生成媒体身份。"""
+    """
+    Python 标签解析器应移除零值标签，但不得生成媒体身份。
+    """
     with patch("app.adapters.system.rust.find_metainfo", return_value=None):
         parsed_title, metainfo = find_metainfo(title)
 
@@ -102,7 +118,9 @@ def test_python_metainfo_rejects_zero_identity_and_removes_tag(title: str) -> No
 
 
 def test_metainfo_normalizes_zero_identity_from_old_rust_extension() -> None:
-    """旧 Rust 扩展返回零值身份时，主程序边界仍应将统一对清空。"""
+    """
+    旧 Rust 扩展返回零值身份时，主程序边界仍应将统一对清空。
+    """
     rust_result = {
         "title": "Movie",
         "metainfo": {

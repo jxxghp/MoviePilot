@@ -1,4 +1,6 @@
-"""应用层服务配置目录测试。"""
+"""
+应用层服务配置目录测试。
+"""
 
 from app.application import service
 from app.application.mediaserver import get_mediaserver_configs
@@ -15,7 +17,9 @@ from app.schemas.types import MessageType, SystemConfigKey
 
 
 def test_named_service_config_helpers_preserve_enabled_policy(monkeypatch) -> None:
-    """命名应用函数应复用同一配置目录，并显式控制禁用项可见性。"""
+    """
+    命名应用函数应复用同一配置目录，并显式控制禁用项可见性。
+    """
     configs = {
         SystemConfigKey.MediaServers: [
             MediaServerConf(name="enabled-media", type="plex", enabled=True),

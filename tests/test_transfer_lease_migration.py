@@ -1,4 +1,6 @@
-"""整理恢复租约字段的 Alembic 可逆迁移测试。"""
+"""
+整理恢复租约字段的 Alembic 可逆迁移测试。
+"""
 
 import importlib
 
@@ -37,7 +39,9 @@ TRANSFER_EXECUTION_COLUMNS = {
 
 
 def _bind_migration(monkeypatch, connection):
-    """把 3.0.15 迁移绑定到隔离数据库连接。"""
+    """
+    把 3.0.15 迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION)
     monkeypatch.setattr(
         migration,
@@ -48,7 +52,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _create_planning_table(connection) -> None:
-    """创建 3.0.14 时代包含完整规划检查点的登记表。"""
+    """
+    创建 3.0.14 时代包含完整规划检查点的登记表。
+    """
     metadata = sa.MetaData()
     table = sa.Table(
         "transferpending",
@@ -110,7 +116,9 @@ def _create_planning_table(connection) -> None:
 
 
 def test_transfer_lease_upgrade_downgrade_reupgrade(monkeypatch) -> None:
-    """SQLite 应支持租约字段重复升级、降级和再次升级。"""
+    """
+    SQLite 应支持租约字段重复升级、降级和再次升级。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_planning_table(connection)
@@ -186,7 +194,9 @@ def test_transfer_lease_upgrade_downgrade_reupgrade(monkeypatch) -> None:
 
 
 def test_replayed_upgrade_repairs_named_lease_index(monkeypatch) -> None:
-    """同名但列和唯一性错误的租约索引必须精确重建。"""
+    """
+    同名但列和唯一性错误的租约索引必须精确重建。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_planning_table(connection)
@@ -215,7 +225,9 @@ def test_replayed_upgrade_repairs_named_lease_index(monkeypatch) -> None:
 def test_partial_transfer_lease_upgrade_preserves_existing_owner(
         monkeypatch,
 ) -> None:
-    """迁移中断后重跑应补齐字段且不得覆盖已经写入的租约拥有者。"""
+    """
+    迁移中断后重跑应补齐字段且不得覆盖已经写入的租约拥有者。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_planning_table(connection)

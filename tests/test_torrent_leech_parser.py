@@ -1,8 +1,11 @@
+"""
+验证TorrentLeech 站点种子信息解析。
+"""
+
 # -*- coding: utf-8 -*-
+from app.foundation.size import parse_size
 from app.modules.indexer import parser as parser_module
 from app.modules.indexer.parser.torrent_leech import TorrentLeechSiteUserInfo
-from app.foundation.size import parse_size
-
 
 PROFILE_VIEW_HTML = """
 <table class="table table-bordered profileViewTable">
@@ -61,7 +64,9 @@ def test_torrent_leech_refresh_prefers_topbar_user_and_parses_profile_once(monke
     requested_urls = []
 
     def fake_get_page_content(url: str, **_) -> str:
-        """返回离线页面并记录解析器请求地址"""
+        """
+        返回离线页面并记录解析器请求地址
+        """
         requested_urls.append(url)
         if url == "https://www.torrentleech.me/":
             return """
@@ -82,7 +87,9 @@ def test_torrent_leech_refresh_prefers_topbar_user_and_parses_profile_once(monke
         return ""
 
     def fake_parse_logged_in(_: str) -> bool:
-        """将离线首页视为已登录页面"""
+        """
+        将离线首页视为已登录页面
+        """
         return True
 
     monkeypatch.setattr(parser_module.settings, "SITE_MESSAGE", False)

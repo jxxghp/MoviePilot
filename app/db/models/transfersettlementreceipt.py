@@ -1,4 +1,6 @@
-"""整理任务终态结算回执模型。"""
+"""
+整理任务终态结算回执模型。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ from app.db.base import Base, get_id_column
 
 
 class TransferSettlementReceipt(Base):
-    """按任务保存独立于最新历史投影的 durable 终态证据。"""
+    """
+    按任务保存独立于最新历史投影的 durable 终态证据。
+    """
 
     id = get_id_column()
     task_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -52,7 +56,9 @@ class TransferSettlementReceipt(Base):
             *,
             task_id: str,
     ) -> Optional["TransferSettlementReceipt"]:
-        """按稳定任务标识读取最新已提交结算回执。"""
+        """
+        按稳定任务标识读取最新已提交结算回执。
+        """
         if not task_id:
             return None
         return cast(
@@ -74,7 +80,9 @@ class TransferSettlementReceipt(Base):
             lease_token: str,
             outcome: str,
     ) -> Optional["TransferSettlementReceipt"]:
-        """按原始执行身份读取不可变结算回执。"""
+        """
+        按原始执行身份读取不可变结算回执。
+        """
         if not all((task_id, execution_fingerprint, lease_token, outcome)):
             return None
         return cast(
@@ -107,7 +115,9 @@ class TransferSettlementReceipt(Base):
             error: Optional[str],
             settled_at: str,
     ) -> "TransferSettlementReceipt":
-        """按连续修订追加任务回执，旧修订证据永不覆盖。"""
+        """
+        按连续修订追加任务回执，旧修订证据永不覆盖。
+        """
         if not all((task_id, history_id, settlement_revision, outcome,
                     execution_fingerprint, lease_token, settled_at)):
             raise ValueError("整理结算回执缺少稳定身份或结果证据")

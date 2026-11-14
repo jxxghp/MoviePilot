@@ -1,4 +1,9 @@
+"""
+验证插件配置命令的输入校验与保存行为。
+"""
+
 from contextlib import nullcontext
+from typing import Optional
 
 from app.application.plugin.config import PluginConfigCommand, PluginPurgeScope
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
@@ -11,9 +16,16 @@ def _command(
     mutation=None,
     directory_existed: bool = True,
     is_clone: bool = False,
+    purge_invalid_empty_host=None,
+    existing_config: Optional[dict[str, object]] = None,
 ) -> PluginConfigCommand:
-    """构造记录端口调用顺序的插件配置用例。"""
+    """
+    构造记录端口调用顺序的插件配置用例。
+    """
     return PluginConfigCommand(
+        read_config=lambda plugin_id: (
+            calls.append(("read", plugin_id)) or (existing_config or {})
+        ),
         save_config=lambda plugin_id, config, force: (
             calls.append(("save", plugin_id, config, force)) or save_result
         ),
@@ -42,11 +54,14 @@ def _command(
             calls.append(("purge_row", plugin_id)) or True
         ),
         is_clone=lambda _plugin_id: is_clone,
+        purge_invalid_empty_host=purge_invalid_empty_host,
     )
 
 
 def test_update_stops_before_runtime_side_effects_when_save_fails() -> None:
-    """配置持久化失败时不得初始化插件或刷新宿主注册。"""
+    """
+    配置持久化失败时不得初始化插件或刷新宿主注册。
+    """
     calls: list[tuple] = []
 
     result = _command(calls, save_result=False).update("DemoPlugin", {"enabled": True})
@@ -57,7 +72,9 @@ def test_update_stops_before_runtime_side_effects_when_save_fails() -> None:
 
 
 def test_update_refreshes_runtime_only_after_config_is_saved() -> None:
-    """配置保存成功后按初始化、注册刷新顺序生效。"""
+    """
+    配置保存成功后按初始化、注册刷新顺序生效。
+    """
     calls: list[tuple] = []
 
     result = _command(calls).update("DemoPlugin", {"enabled": True})
@@ -70,8 +87,40 @@ def test_update_refreshes_runtime_only_after_config_is_saved() -> None:
     ]
 
 
+def test_empty_update_cannot_erase_existing_plugin_configuration() -> None:
+    """
+    已有配置时空替换必须在保存、初始化和刷新注册前失败。
+    """
+    calls: list[tuple] = []
+    stored = {"enabled": True, "keywords": ["one", "two"]}
+    result = _command(calls, existing_config=stored).update("DemoPlugin", {})
+
+    assert result.success is False
+    assert "空" in result.message
+    assert stored == {"enabled": True, "keywords": ["one", "two"]}
+    assert calls == [("read", "DemoPlugin")]
+
+
+def test_empty_update_remains_compatible_with_unconfigured_plugins() -> None:
+    """
+    没有配置项的插件仍可保存空表单，不会因保护已有数据而失去兼容性。
+    """
+    calls: list[tuple] = []
+    result = _command(calls).update("DemoPlugin", {})
+
+    assert result.success is True
+    assert calls == [
+        ("read", "DemoPlugin"),
+        ("save", "DemoPlugin", {}, False),
+        ("initialize", "DemoPlugin", {}),
+        ("registrations", "DemoPlugin"),
+    ]
+
+
 def test_reset_preserves_compensation_cleanup_and_reload_order() -> None:
-    """重置必须先让插件补偿，再停止、清理并重建运行态和注册。"""
+    """
+    重置必须先让插件补偿，再停止、清理并重建运行态和注册。
+    """
     calls: list[tuple] = []
 
     result = _command(calls).reset("DemoPlugin")
@@ -88,7 +137,9 @@ def test_reset_preserves_compensation_cleanup_and_reload_order() -> None:
 
 
 def test_sealed_config_command_rejects_before_first_side_effect() -> None:
-    """配置事务在 admission 封口后返回失败，且不得先发布 reset 事件。"""
+    """
+    配置事务在 admission 封口后返回失败，且不得先发布 reset 事件。
+    """
     calls: list[tuple] = []
     admission = PluginMutationAdmission()
     admission.seal()
@@ -107,7 +158,9 @@ def test_sealed_config_command_rejects_before_first_side_effect() -> None:
 
 
 def test_purge_refuses_an_empty_scope() -> None:
-    """一项都没勾选时直接拒绝，不做「那就全清吧」这种猜测。"""
+    """
+    一项都没勾选时直接拒绝，不做「那就全清吧」这种猜测。
+    """
     calls: list[tuple] = []
 
     result = _command(calls).purge("DemoPluginWork", PluginPurgeScope())
@@ -118,7 +171,9 @@ def test_purge_refuses_an_empty_scope() -> None:
 
 
 def test_purge_only_touches_the_selected_scopes() -> None:
-    """逐项执行且互不代劳：没勾的范围一个字节都不能动。"""
+    """
+    逐项执行且互不代劳：没勾的范围一个字节都不能动。
+    """
     calls: list[tuple] = []
 
     result = _command(calls).purge(
@@ -135,7 +190,9 @@ def test_purge_only_touches_the_selected_scopes() -> None:
 
 
 def test_purge_destroys_the_database_before_removing_its_directory() -> None:
-    """库文件就落在该目录下，不先销毁句柄直接删目录会留下被占用的文件。"""
+    """
+    库文件就落在该目录下，不先销毁句柄直接删目录会留下被占用的文件。
+    """
     calls: list[tuple] = []
 
     result = _command(calls).purge(
@@ -154,7 +211,9 @@ def test_purge_destroys_the_database_before_removing_its_directory() -> None:
 
 
 def test_purge_removes_the_row_for_a_clone_but_keeps_it_for_a_host() -> None:
-    """分身的存在由那一行表达，清理即消失；本体的行要留着，它还说着「应当装载」。"""
+    """
+    分身的存在由那一行表达，清理即消失；本体的行要留着，它还说着「应当装载」。
+    """
     clone_calls: list[tuple] = []
     clone = _command(clone_calls, is_clone=True).purge(
         "DemoPluginWork", PluginPurgeScope(config=True)
@@ -172,7 +231,9 @@ def test_purge_removes_the_row_for_a_clone_but_keeps_it_for_a_host() -> None:
 
 
 def test_purge_reports_a_missing_directory_as_not_purged() -> None:
-    """目录本就不存在时不谎报清理过它。"""
+    """
+    目录本就不存在时不谎报清理过它。
+    """
     calls: list[tuple] = []
 
     result = _command(calls, directory_existed=False).purge(
@@ -184,7 +245,9 @@ def test_purge_reports_a_missing_directory_as_not_purged() -> None:
 
 
 def test_purge_stops_the_instance_before_deleting_anything() -> None:
-    """删除必须晚于停止：仍在跑的实例会一边被删一边把数据写回来。"""
+    """
+    删除必须晚于停止：仍在跑的实例会一边被删一边把数据写回来。
+    """
     calls: list[tuple] = []
 
     _command(calls).purge(
@@ -196,7 +259,9 @@ def test_purge_stops_the_instance_before_deleting_anything() -> None:
 
 
 def test_sealed_purge_is_rejected_before_any_deletion() -> None:
-    """停机封口期间拒绝清理，且一步删除都不做。"""
+    """
+    停机封口期间拒绝清理，且一步删除都不做。
+    """
     calls: list[tuple] = []
     admission = PluginMutationAdmission()
     admission.seal()
@@ -207,4 +272,60 @@ def test_sealed_purge_is_rejected_before_any_deletion() -> None:
 
     assert result.success is False
     assert "停机阶段" in result.message
+    assert calls == []
+
+
+def test_invalid_empty_host_purge_only_calls_database_port() -> None:
+    """
+    非法残留只走专用端口，不停止实例或进入常规配置与文件删除路径。
+    """
+    calls: list[tuple] = []
+    command = _command(
+        calls,
+        purge_invalid_empty_host=lambda instance_id: calls.append(("empty_host", instance_id)) or True,
+    )
+    result = command.purge("Emby角色中文化", PluginPurgeScope(config=True))
+    assert result.success and result.instance_removed
+    assert result.purged == ("config",)
+    assert calls == [("empty_host", "Emby角色中文化")]
+
+
+def test_invalid_host_purge_preserves_rows_with_settings() -> None:
+    """
+    专用端口拒绝非空记录时返回失败，不继续清配置或删除文件。
+    """
+    calls: list[tuple] = []
+    result = _command(calls, purge_invalid_empty_host=lambda _pid: False).purge(
+        "Emby角色中文化", PluginPurgeScope(config=True),
+    )
+    assert not result.success and not result.instance_removed
+    assert result.purged == ()
+    assert calls == []
+
+
+def test_invalid_host_purge_rejects_other_scopes_and_shutdown() -> None:
+    """
+    其它删除范围与停机封口都不得进入残留清理端口。
+    """
+    calls: list[tuple] = []
+    def purge(instance_id: str) -> bool:
+        """
+        记录不应到达的残留清理调用。
+        """
+        calls.append(("empty_host", instance_id))
+        return True
+    command = _command(calls, purge_invalid_empty_host=purge)
+    for scope in (
+        PluginPurgeScope(plugin_data=True),
+        PluginPurgeScope(config=True, plugin_data=True),
+        PluginPurgeScope(config=True, own_database=True),
+        PluginPurgeScope(config=True, data_directory=True),
+    ):
+        assert not command.purge("Emby角色中文化", scope).success
+    admission = PluginMutationAdmission()
+    admission.seal()
+    result = _command(calls, mutation=admission.hold, purge_invalid_empty_host=purge).purge(
+        "Emby角色中文化", PluginPurgeScope(config=True),
+    )
+    assert not result.success and "停机阶段" in result.message
     assert calls == []

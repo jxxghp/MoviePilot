@@ -1,8 +1,13 @@
+"""
+站点列表、连通检查与文本指令的渠道交互。
+"""
+
 import re
 from typing import Callable, Optional, Tuple, Union
 
 from app.application.messaging.interaction import (
     MessageGateway,
+    PendingSlashInteraction,
     SlashInteractionManager,
     build_navigation_buttons,
     format_markdown_table,
@@ -16,7 +21,7 @@ from app.application.site.contract import (
     SiteRepository,
     SiteSnapshot,
 )
-from app.domain import site as site_rules
+from app.application.site.protocol import site_domain
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel
@@ -37,7 +42,7 @@ class SiteInteractionHandler:
             messenger: MessageGateway,
             cookie_updater: Callable[..., Tuple[bool, str]],
             repository: SiteRepository,
-    ):
+    ) -> None:
         """
         注入消息投递接口和站点 Cookie 更新动作。
         """
@@ -48,10 +53,10 @@ class SiteInteractionHandler:
     def remote_list(
             self,
             arg_str: str = "",
-            channel: NotificationChannel = None,
-            userid: Union[str, int] = None,
+            channel: Optional[NotificationChannel] = None,
+            userid: Optional[Union[str, int]] = None,
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         /sites 统一入口。
         """
@@ -165,20 +170,22 @@ class SiteInteractionHandler:
 
     def handle_text_interaction(
             self,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Optional[Union[str, int]],
             username: str,
             text: str,
     ) -> bool:
-        """处理 /sites 文本交互并保持消息链公开 ABI。"""
+        """
+        处理 /sites 文本交互并保持消息链公开 ABI。
+        """
         return self._handle_text_interaction(channel, source, userid, username, text)
 
     def _handle_text_interaction(
             self,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Optional[Union[str, int]],
             username: str,
             text: str,
     ) -> bool:
@@ -404,10 +411,10 @@ class SiteInteractionHandler:
 
     def _render_site_interaction(
             self,
-            request,
-            channel: NotificationChannel,
+            request: PendingSlashInteraction,
+            channel: Optional[NotificationChannel],
             source: Optional[str],
-            userid: Union[str, int],
+            userid: Optional[Union[str, int]],
             username: Optional[str],
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
@@ -492,7 +499,7 @@ class SiteInteractionHandler:
                     "启用" if site.is_active else "禁用",
                     "已配置" if site.cookie else "未配置",
                     "是" if site.render else "否",
-                    site.domain or site_rules.extract_domain(site.url or ""),
+                    site.domain or site_domain(site.url or ""),
                 ]
                 for site in site_list
             ]
@@ -507,7 +514,7 @@ class SiteInteractionHandler:
                 f"{site.id}. {site.name} | 状态：{'启用' if site.is_active else '禁用'}"
                 f" | Cookie：{'已配置' if site.cookie else '未配置'}"
                 f" | 渲染：{'是' if site.render else '否'}"
-                f" | 域名：{site.domain or site_rules.extract_domain(site.url or '')}"
+                f" | 域名：{site.domain or site_domain(site.url or '')}"
             )
         return "\n".join(lines)
 

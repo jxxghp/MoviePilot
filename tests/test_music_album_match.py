@@ -1,3 +1,7 @@
+"""
+验证音乐专辑发行版本按曲目数、时长和地区偏好匹配。
+"""
+
 import asyncio
 import os
 import threading
@@ -14,7 +18,9 @@ from app.modules.musicbrainz import MusicBrainzModule, _MusicReleasePreference
 
 
 def _release_detail(release_id: str, title: str, artist: str, tracks: list[tuple[str, int]]):
-    """构造 MusicBrainz Release 详情响应，tracks 为 (曲名, 时长秒) 列表。"""
+    """
+    构造 MusicBrainz Release 详情响应，tracks 为 (曲名, 时长秒) 列表。
+    """
     return {
         "id": release_id,
         "title": title,
@@ -43,7 +49,9 @@ ALBUM_TRACKS = [("我的地盘", 215), ("七里香", 299), ("借口", 265)]
 
 
 def _local_tracks():
-    """构造无标签整专目录读取得到的本地曲目元数据。"""
+    """
+    构造无标签整专目录读取得到的本地曲目元数据。
+    """
     return [
         MetaMusic(title=name, track_number=index + 1, duration=length, audio_format="WAV")
         for index, (name, length) in enumerate(ALBUM_TRACKS)
@@ -51,7 +59,9 @@ def _local_tracks():
 
 
 def test_match_music_album_selects_release_by_count_and_duration(monkeypatch):
-    """曲目数和时长一致的发行版本应被选中并返回曲目表。"""
+    """
+    曲目数和时长一致的发行版本应被选中并返回曲目表。
+    """
     module = MusicBrainzModule()
     detail = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
     detail_request_params = None
@@ -86,7 +96,9 @@ def test_match_music_album_selects_release_by_count_and_duration(monkeypatch):
 
 
 def test_match_music_album_rejects_mismatched_trackset(monkeypatch):
-    """曲目数和时长都对不上的候选应被拒绝，避免写错标签。"""
+    """
+    曲目数和时长都对不上的候选应被拒绝，避免写错标签。
+    """
     module = MusicBrainzModule()
     # 候选只有 1 首歌且时长差异巨大
     detail = _release_detail("release-1", "七里香", "周杰伦", [("七里香", 60)])
@@ -109,7 +121,9 @@ def test_match_music_album_rejects_mismatched_trackset(monkeypatch):
 
 
 def test_release_match_prefers_mainland_simplified_when_structure_is_equal():
-    """曲目结构等价时应按请求优先选择大陆简体发行版。"""
+    """
+    曲目结构等价时应按请求优先选择大陆简体发行版。
+    """
     traditional = _release_detail("release-tw", "七里香", "周杰伦", ALBUM_TRACKS)
     traditional.update({"country": "TW", "text-representation": {"script": "Hant"}})
     simplified = _release_detail("release-cn", "七里香", "周杰伦", ALBUM_TRACKS)
@@ -129,7 +143,9 @@ def test_release_match_prefers_mainland_simplified_when_structure_is_equal():
 
 
 def test_release_match_keeps_structural_accuracy_above_region_preference():
-    """地区偏好最多只做近似候选排序，不能压过更准确的曲目结构。"""
+    """
+    地区偏好最多只做近似候选排序，不能压过更准确的曲目结构。
+    """
     accurate = _release_detail("release-tw", "七里香", "周杰伦", ALBUM_TRACKS)
     accurate.update({"country": "TW", "text-representation": {"script": "Hant"}})
     inaccurate_tracks = [(name, length + 45) for name, length in ALBUM_TRACKS]
@@ -148,7 +164,9 @@ def test_release_match_keeps_structural_accuracy_above_region_preference():
 
 
 def test_select_track_release_uses_manual_preference_before_date():
-    """Release Group 的代表曲目版本应复用同一套请求级偏好。"""
+    """
+    Release Group 的代表曲目版本应复用同一套请求级偏好。
+    """
     selected = MusicBrainzModule._select_track_release(
         [
             {
@@ -175,7 +193,9 @@ def test_select_track_release_uses_manual_preference_before_date():
 
 
 def test_release_queries_fallback_to_track_titles():
-    """目录名没有专辑线索时应使用代表性曲名反查发行版本。"""
+    """
+    目录名没有专辑线索时应使用代表性曲名反查发行版本。
+    """
     queries = MusicBrainzModule._release_queries(
         MetaMusic(title="Various"),
         [MetaMusic(title="晴天"), MetaMusic(title="七里香"), MetaMusic(title="03")],
@@ -188,7 +208,9 @@ def test_release_queries_fallback_to_track_titles():
 
 @pytest.fixture()
 def media_chain():
-    """构造媒体链并清理目录匹配缓存。"""
+    """
+    构造媒体链并清理目录匹配缓存。
+    """
     chain = MediaChain()
     MediaChain._album_dir_cache.clear()
     yield chain
@@ -196,7 +218,9 @@ def media_chain():
 
 
 def test_recognize_album_directory_maps_files(tmp_path, media_chain, monkeypatch):
-    """目录级匹配应把每个音频文件对位到专辑曲目并缓存结果。"""
+    """
+    目录级匹配应把每个音频文件对位到专辑曲目并缓存结果。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
     files = []
@@ -245,7 +269,9 @@ def test_recognize_album_directory_maps_files(tmp_path, media_chain, monkeypatch
 
 
 def test_directory_audio_files_only_includes_disc_subdirectories(tmp_path):
-    """专辑根目录只应合并 CD/Disc 子目录，不得把附加版本当成额外碟。"""
+    """
+    专辑根目录只应合并 CD/Disc 子目录，不得把附加版本当成额外碟。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     disc_dir = album_dir / "CD2"
     alternate_dir = album_dir / "附加原版"
@@ -263,7 +289,9 @@ def test_directory_audio_files_only_includes_disc_subdirectories(tmp_path):
 
 
 def test_align_album_tracks_prefers_exact_titles_over_conflicting_positions():
-    """本地曲序与发行版本冲突时，精确曲名必须优先，避免整张专辑错位。"""
+    """
+    本地曲序与发行版本冲突时，精确曲名必须优先，避免整张专辑错位。
+    """
     files = [
         Path("费玉清-真的好想你.flac"),
         Path("费玉清-冬之夜.flac"),
@@ -318,7 +346,9 @@ def test_async_recognize_album_directory_calls_async_module(
         media_chain,
         monkeypatch,
 ):
-    """异步目录识别应直接调用模块异步接口，并兼容单个专辑返回值。"""
+    """
+    异步目录识别应直接调用模块异步接口，并兼容单个专辑返回值。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
     files = []
@@ -375,7 +405,9 @@ def test_async_recognize_album_directory_checks_path_in_threadpool(
         media_chain,
         monkeypatch,
 ):
-    """异步专辑识别应把目录元数据检查移出事件循环。"""
+    """
+    异步专辑识别应把目录元数据检查移出事件循环。
+    """
     check_directory = AsyncMock(return_value=([], ()))
     monkeypatch.setattr("app.chain.media.album.run_in_threadpool", check_directory)
 
@@ -393,18 +425,24 @@ def test_async_album_fallback_propagates_cancellation_during_path_check(
         media_chain,
         monkeypatch,
 ):
-    """异步专辑兜底不得吞掉文件检查被取消的信号。"""
+    """
+    异步专辑兜底不得吞掉文件检查被取消的信号。
+    """
     started = asyncio.Event()
 
     async def wait_for_check(*_args, **_kwargs):
-        """模拟慢文件系统检查，直到调用方取消。"""
+        """
+        模拟慢文件系统检查，直到调用方取消。
+        """
         started.set()
         await asyncio.Event().wait()
 
     monkeypatch.setattr("app.chain.media.path.run_in_threadpool", wait_for_check)
 
     async def exercise_cancellation():
-        """在同一事件循环中取消正在等待文件检查的调用。"""
+        """
+        在同一事件循环中取消正在等待文件检查的调用。
+        """
         task = asyncio.create_task(
             media_chain._async_music_album_dir_fallback(tmp_path / "track.flac")
         )
@@ -417,7 +455,9 @@ def test_async_album_fallback_propagates_cancellation_during_path_check(
 
 
 def test_recognize_album_directory_skips_single_file(tmp_path, media_chain, monkeypatch):
-    """没有专辑证据的普通单文件目录不发起整专查询，整轨 CUE 另按逻辑曲数判断。"""
+    """
+    没有专辑证据的普通单文件目录不发起整专查询，整轨 CUE 另按逻辑曲数判断。
+    """
     album_dir = tmp_path / "单曲"
     album_dir.mkdir()
     (album_dir / "晴天.wav").write_bytes(b"RIFF")
@@ -434,7 +474,9 @@ def test_recognize_album_directory_invalidates_cache_after_same_count_rename(
         media_chain,
         monkeypatch,
 ):
-    """目录内文件数量不变但文件名变化时，专辑曲目映射缓存必须失效。"""
+    """
+    目录内文件数量不变但文件名变化时，专辑曲目映射缓存必须失效。
+    """
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     first = album_dir / "01 - First.wav"
@@ -444,7 +486,9 @@ def test_recognize_album_directory_invalidates_cache_after_same_count_rename(
     calls = []
 
     def fake_match(_dir_path, files, *_options):
-        """记录目录匹配输入，返回空映射以专注验证缓存签名。"""
+        """
+        记录目录匹配输入，返回空映射以专注验证缓存签名。
+        """
         calls.append([file.name for file in files])
         return {}
 
@@ -465,7 +509,9 @@ def test_recognize_album_directory_invalidates_cache_after_content_change(
         media_chain,
         monkeypatch,
 ):
-    """同名文件内容变化时应通过大小和纳秒时间戳使目录缓存失效。"""
+    """
+    同名文件内容变化时应通过大小和纳秒时间戳使目录缓存失效。
+    """
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     files = [album_dir / "01.wav", album_dir / "02.wav"]
@@ -474,7 +520,9 @@ def test_recognize_album_directory_invalidates_cache_after_content_change(
     calls = 0
 
     def fake_match(_directory, _files, *_options):
-        """记录缓存未命中的目录识别次数。"""
+        """
+        记录缓存未命中的目录识别次数。
+        """
         nonlocal calls
         calls += 1
         return {}
@@ -490,7 +538,9 @@ def test_recognize_album_directory_invalidates_cache_after_content_change(
 
 
 def test_album_directory_cache_returns_isolated_results(tmp_path, media_chain, monkeypatch):
-    """调用方修改识别结果不得污染后续目录缓存命中。"""
+    """
+    调用方修改识别结果不得污染后续目录缓存命中。
+    """
     album_dir = tmp_path / "Album"
     album_dir.mkdir()
     files = [album_dir / "01.wav", album_dir / "02.wav"]
@@ -513,7 +563,9 @@ def test_album_directory_cache_returns_isolated_results(tmp_path, media_chain, m
 def test_album_directory_cache_keeps_symbolic_link_directory_aliases_distinct(
     tmp_path, media_chain, monkeypatch
 ):
-    """不同符号链接目录名提供不同专辑线索时不得共享同步缓存结果。"""
+    """
+    不同符号链接目录名提供不同专辑线索时不得共享同步缓存结果。
+    """
     physical = tmp_path / "physical"
     physical.mkdir()
     for name in ("01.wav", "02.wav"):
@@ -525,7 +577,9 @@ def test_album_directory_cache_keeps_symbolic_link_directory_aliases_distinct(
     calls = []
 
     def fake_match(directory, files, *_options):
-        """用目录别名生成结果，暴露错误共享物理路径缓存的行为。"""
+        """
+        用目录别名生成结果，暴露错误共享物理路径缓存的行为。
+        """
         calls.append(directory.name)
         return {
             str(files[0].resolve()): MusicInfo(
@@ -549,7 +603,9 @@ def test_album_directory_cache_keeps_symbolic_link_directory_aliases_distinct(
 async def test_async_album_directory_cache_keeps_symbolic_link_aliases_distinct(
     tmp_path, media_chain, monkeypatch
 ):
-    """异步目录识别同样必须按符号链接别名隔离专辑缓存。"""
+    """
+    异步目录识别同样必须按符号链接别名隔离专辑缓存。
+    """
     physical = tmp_path / "physical"
     physical.mkdir()
     for name in ("01.wav", "02.wav"):
@@ -561,7 +617,9 @@ async def test_async_album_directory_cache_keeps_symbolic_link_aliases_distinct(
     calls = []
 
     async def fake_match(directory, files, *_options):
-        """用目录别名生成异步结果，验证两个别名分别执行。"""
+        """
+        用目录别名生成异步结果，验证两个别名分别执行。
+        """
         calls.append(directory.name)
         return {
             str(files[0].resolve()): MusicInfo(
@@ -582,7 +640,9 @@ async def test_async_album_directory_cache_keeps_symbolic_link_aliases_distinct(
 
 
 def test_album_directory_cache_evicts_only_least_recently_used_entry():
-    """缓存满额时只淘汰最久未使用目录，避免全量缓存断崖。"""
+    """
+    缓存满额时只淘汰最久未使用目录，避免全量缓存断崖。
+    """
     cache = AlbumDirectoryCache(capacity=2)
     signature = (("01.wav", 4, 1),)
     cache.put("first", signature, {})
@@ -597,7 +657,9 @@ def test_album_directory_cache_evicts_only_least_recently_used_entry():
 
 
 def test_album_directory_cache_singleflights_concurrent_sync_resolvers():
-    """同一目录的并发同步未命中只允许首个解析器执行。"""
+    """
+    同一目录的并发同步未命中只允许首个解析器执行。
+    """
     cache = AlbumDirectoryCache(capacity=2)
     signature = (("01.wav", 4, 1),)
     started = threading.Event()
@@ -605,7 +667,9 @@ def test_album_directory_cache_singleflights_concurrent_sync_resolvers():
     calls = 0
 
     def resolver():
-        """阻塞首个解析器，让第二个调用进入单飞等待。"""
+        """
+        阻塞首个解析器，让第二个调用进入单飞等待。
+        """
         nonlocal calls
         calls += 1
         started.set()
@@ -628,7 +692,9 @@ def test_album_directory_cache_singleflights_concurrent_sync_resolvers():
 
 @pytest.mark.asyncio
 async def test_album_directory_cache_isolates_shared_flight_from_follower_cancellation():
-    """取消一个异步等待者不得取消 leader 或其他等待者共享的解析凭据。"""
+    """
+    取消一个异步等待者不得取消 leader 或其他等待者共享的解析凭据。
+    """
     cache = AlbumDirectoryCache(capacity=2)
     signature = (("01.wav", 4, 1),)
     started = asyncio.Event()
@@ -636,7 +702,9 @@ async def test_album_directory_cache_isolates_shared_flight_from_follower_cancel
     calls = 0
 
     async def resolver():
-        """保持 leader 运行，直到两个 follower 都进入共享等待。"""
+        """
+        保持 leader 运行，直到两个 follower 都进入共享等待。
+        """
         nonlocal calls
         calls += 1
         started.set()
@@ -665,7 +733,9 @@ async def test_album_directory_cache_isolates_shared_flight_from_follower_cancel
 
 
 def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, monkeypatch):
-    """单曲识别无远端身份时应用目录级匹配结果兜底。"""
+    """
+    单曲识别无远端身份时应用目录级匹配结果兜底。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
     file = album_dir / "01.我的地盘.wav"
@@ -698,7 +768,9 @@ def test_recognize_music_by_path_falls_back_to_album_match(tmp_path, monkeypatch
 
 
 def test_async_music_album_fallback_calls_async_directory_match(tmp_path, monkeypatch):
-    """异步路径回退应等待目录异步识别，不得调用同步目录识别。"""
+    """
+    异步路径回退应等待目录异步识别，不得调用同步目录识别。
+    """
     album_dir = tmp_path / "七里香"
     album_dir.mkdir()
     file = album_dir / "01.我的地盘.wav"

@@ -1,3 +1,7 @@
+"""
+验证启动迁移的执行顺序、失败回滚与历史数据兼容。
+"""
+
 import copy
 import importlib
 import importlib.util
@@ -50,7 +54,9 @@ _CLASSIFICATION_CONFIG_KEYS = (
 
 @pytest.fixture
 def isolated_classification_config(db):
-    """隔离离线配置用例使用的策略和目录键，并恢复共享测试库快照。"""
+    """
+    隔离离线配置用例使用的策略和目录键，并恢复共享测试库快照。
+    """
     db.watermark(SystemConfig)
     snapshots = [
         (row.id, row.key, copy.deepcopy(row.value))
@@ -83,7 +89,9 @@ def isolated_classification_config(db):
 
 
 def _load_local_setup_module():
-    """加载隔离的本地安装脚本实例，避免测试间共享模块状态。"""
+    """
+    加载隔离的本地安装脚本实例，避免测试间共享模块状态。
+    """
     module_name = f"moviepilot_local_setup_migration_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, LOCAL_SETUP_PATH)
     assert spec and spec.loader
@@ -93,7 +101,9 @@ def _load_local_setup_module():
 
 
 def test_update_db_preserves_migration_error_and_traceback(monkeypatch) -> None:
-    """迁移失败日志应保留堆栈，同时向调用方传播原始异常。"""
+    """
+    迁移失败日志应保留堆栈，同时向调用方传播原始异常。
+    """
     migration_error = RuntimeError("migration failed")
     logged_errors: list[str] = []
 
@@ -113,7 +123,9 @@ def test_update_db_preserves_migration_error_and_traceback(monkeypatch) -> None:
 
 
 def test_prepare_database_creates_backup_before_schema_changes(monkeypatch) -> None:
-    """既有数据库待迁移时，恢复点必须早于所有结构写入。"""
+    """
+    既有数据库待迁移时，恢复点必须早于所有结构写入。
+    """
     calls: list[str] = []
     logged_messages: list[str] = []
     governance = Mock()
@@ -156,7 +168,9 @@ def test_prepare_database_creates_backup_before_schema_changes(monkeypatch) -> N
 def test_prepare_database_keeps_create_all_first_for_unversioned_database(
         monkeypatch,
 ) -> None:
-    """未标记旧库仍需先补齐基础表，再从 Alembic base 执行数据迁移。"""
+    """
+    未标记旧库仍需先补齐基础表，再从 Alembic base 执行数据迁移。
+    """
     calls: list[str] = []
     monkeypatch.setattr(db_init, "get_engine", lambda: object())
     monkeypatch.setattr(db_init, "_build_alembic_config", lambda _engine: object())
@@ -194,7 +208,9 @@ def test_prepare_database_skips_backup_outside_enabled_pending_migration(
         backup_enabled: bool,
         upgrade_enabled: bool,
 ) -> None:
-    """全新库、已到 head 或关闭保护时不创建自动恢复点。"""
+    """
+    全新库、已到 head 或关闭保护时不创建自动恢复点。
+    """
     governance = Mock()
     monkeypatch.setattr(db_init, "get_engine", lambda: object())
     monkeypatch.setattr(db_init, "_build_alembic_config", lambda _engine: object())
@@ -221,7 +237,9 @@ def test_prepare_database_skips_backup_outside_enabled_pending_migration(
 def test_prepare_database_stops_before_schema_changes_when_backup_fails(
         monkeypatch,
 ) -> None:
-    """迁移保护失败时不得继续执行 create_all 或 Alembic。"""
+    """
+    迁移保护失败时不得继续执行 create_all 或 Alembic。
+    """
     backup_error = RuntimeError("backup failed")
     init_calls: list[None] = []
     governance = Mock()
@@ -253,7 +271,9 @@ def test_prepare_database_stops_before_schema_changes_when_backup_fails(
 
 
 def test_alembic_config_uses_active_engine_url_without_hiding_password() -> None:
-    """Alembic 必须连接活动引擎目标，内部配置不得把密码替换为星号。"""
+    """
+    Alembic 必须连接活动引擎目标，内部配置不得把密码替换为星号。
+    """
     engine = SimpleNamespace(
         url=make_url("postgresql://moviepilot:secret@database/moviepilot")
     )
@@ -268,7 +288,9 @@ def test_alembic_config_uses_active_engine_url_without_hiding_password() -> None
 def test_migration_state_distinguishes_fresh_legacy_and_current_sqlite(
         tmp_path: Path,
 ) -> None:
-    """SQLite 空库不备份，已有业务表且无 revision 时识别为待迁移。"""
+    """
+    SQLite 空库不备份，已有业务表且无 revision 时识别为待迁移。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
     config = db_init._build_alembic_config(engine)
     target_heads = tuple(db_init.ScriptDirectory.from_config(config).get_heads())
@@ -299,7 +321,9 @@ def test_migration_state_distinguishes_fresh_legacy_and_current_sqlite(
 def test_migration_state_rejects_unknown_revision_before_schema_writes(
         tmp_path: Path,
 ) -> None:
-    """未知或更高版本 revision 不得被误判为可执行升级。"""
+    """
+    未知或更高版本 revision 不得被误判为可执行升级。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'future.db'}")
     config = db_init._build_alembic_config(engine)
     with engine.begin() as connection:
@@ -321,7 +345,9 @@ def test_migration_state_rejects_unknown_revision_before_schema_writes(
 
 
 def test_migration_lineage_rejects_multiple_heads() -> None:
-    """当前迁移执行器仅接受仓库和数据库均保持单一 head。"""
+    """
+    当前迁移执行器仅接受仓库和数据库均保持单一 head。
+    """
     script = Mock()
 
     with pytest.raises(RuntimeError, match="迁移脚本必须只有一个 head"):
@@ -336,7 +362,9 @@ def test_migration_lineage_rejects_multiple_heads() -> None:
 
 
 def test_migration_lineage_rejects_known_divergent_revision() -> None:
-    """可识别但不在目标祖先链上的 revision 不得继续自动迁移。"""
+    """
+    可识别但不在目标祖先链上的 revision 不得继续自动迁移。
+    """
     script = Mock()
     script.walk_revisions.return_value = (
         SimpleNamespace(revision="head"),
@@ -353,7 +381,9 @@ def test_migration_lineage_rejects_known_divergent_revision() -> None:
 
 
 def test_migration_lineage_wraps_unknown_revision() -> None:
-    """Alembic 未知 revision 错误应转换为可操作的启动错误。"""
+    """
+    Alembic 未知 revision 错误应转换为可操作的启动错误。
+    """
     script = Mock()
     script.get_revision.side_effect = CommandError("unknown")
 
@@ -366,7 +396,9 @@ def test_migration_lineage_wraps_unknown_revision() -> None:
 
 
 def test_verify_database_revision_requires_current_head(monkeypatch) -> None:
-    """readiness 的数据库校验必须拒绝升级后仍未到 head 的状态。"""
+    """
+    readiness 的数据库校验必须拒绝升级后仍未到 head 的状态。
+    """
     engine = object()
     config = object()
     monkeypatch.setattr(db_init, "get_engine", lambda: engine)
@@ -382,7 +414,9 @@ def test_verify_database_revision_requires_current_head(monkeypatch) -> None:
 
 
 def test_verify_database_revision_accepts_current_head(monkeypatch) -> None:
-    """活动 revision 与唯一目标 head 一致时允许发布数据库就绪。"""
+    """
+    活动 revision 与唯一目标 head 一致时允许发布数据库就绪。
+    """
     engine = object()
     config = object()
     monkeypatch.setattr(db_init, "get_engine", lambda: engine)
@@ -399,7 +433,9 @@ def test_verify_database_revision_accepts_current_head(monkeypatch) -> None:
 def test_lifecycle_database_component_marks_ready_after_head_check(
     monkeypatch,
 ) -> None:
-    """数据库组件必须按迁移、head 校验、发布状态的顺序执行。"""
+    """
+    数据库组件必须按迁移、head 校验、发布状态的顺序执行。
+    """
     app = FastAPI()
     calls: list[str] = []
     monkeypatch.setattr(
@@ -423,7 +459,9 @@ def test_prepare_database_creates_real_sqlite_restore_point_before_upgrade(
         tmp_path: Path,
         monkeypatch,
 ) -> None:
-    """迁移前备份保留旧版本，活动 SQLite 升级到目标版本。"""
+    """
+    迁移前备份保留旧版本，活动 SQLite 升级到目标版本。
+    """
     script_root = tmp_path / "database"
     versions = script_root / "versions"
     versions.mkdir(parents=True)
@@ -527,7 +565,9 @@ def downgrade():
 def test_migration_config_write_rolls_back_with_alembic_transaction(
         monkeypatch,
 ) -> None:
-    """配置 DML 不得脱离 Alembic 事务提前提交。"""
+    """
+    配置 DML 不得脱离 Alembic 事务提前提交。
+    """
     migration = importlib.import_module(
         "database.versions.e8b1c4d7a2f9_2_2_18"
     )
@@ -601,6 +641,9 @@ def test_migration_config_write_rolls_back_with_alembic_transaction(
                 _context,
                 _executemany,
         ) -> None:
+            """
+            在配置更新语句执行后注入异常，验证迁移事务可以完整回滚。
+            """
             nonlocal config_write_seen
             if statement.lstrip().upper().startswith("UPDATE SYSTEMCONFIG"):
                 config_write_seen = True
@@ -632,7 +675,9 @@ def test_migration_config_write_rolls_back_with_alembic_transaction(
 
 
 def test_initial_migration_does_not_seed_user_and_initializes_storages(monkeypatch) -> None:
-    """2.0.0 初始化只准备存储，管理员由首次访问页面创建。"""
+    """
+    2.0.0 初始化只准备存储，管理员由首次访问页面创建。
+    """
     migration = importlib.import_module(
         "database.versions.294b007932ef_2_0_0"
     )
@@ -680,7 +725,9 @@ def test_initial_migration_does_not_seed_user_and_initializes_storages(monkeypat
 def test_userconfig_cleanup_migration_uses_alembic_transaction(
         monkeypatch,
 ) -> None:
-    """2.0.3 用户配置清理必须随当前 Alembic 事务一起回滚。"""
+    """
+    2.0.3 用户配置清理必须随当前 Alembic 事务一起回滚。
+    """
     migration = importlib.import_module(
         "database.versions.e2dbe1421fa4_2_0_3"
     )
@@ -740,7 +787,9 @@ def test_userconfig_cleanup_migration_uses_alembic_transaction(
 def test_user_permission_migration_uses_alembic_transaction(
         monkeypatch,
 ) -> None:
-    """2.1.6 权限初始化必须保留原筛选语义并随迁移事务回滚。"""
+    """
+    2.1.6 权限初始化必须保留原筛选语义并随迁移事务回滚。
+    """
     migration = importlib.import_module(
         "database.versions.3df653756eec_2_1_6"
     )
@@ -803,7 +852,9 @@ def test_local_setup_returns_failure_when_database_migration_fails(
         monkeypatch,
         capsys,
 ) -> None:
-    """本地维护命令不得在迁移失败后继续访问业务表。"""
+    """
+    本地维护命令不得在迁移失败后继续访问业务表。
+    """
     module = _load_local_setup_module()
     migration_error = RuntimeError("migration failed")
 
@@ -824,7 +875,9 @@ def test_local_setup_apply_config_registers_offline_transaction_runner(
         tmp_path: Path,
         db,
 ) -> None:
-    """离线 apply-config 写入配置前必须装配同步事务执行器。"""
+    """
+    离线 apply-config 写入配置前必须装配同步事务执行器。
+    """
     db.watermark(SystemConfig)
     module = _load_local_setup_module()
     monkeypatch.setattr(db_init, "prepare_database", lambda **_kwargs: None)
@@ -854,7 +907,9 @@ def test_local_setup_apply_config_refreshes_stable_category_snapshot(
     db,
     isolated_classification_config,
 ) -> None:
-    """离线 apply-config 应按活动策略保存稳定 ID 和当前分类路径快照。"""
+    """
+    离线 apply-config 应按活动策略保存稳定 ID 和当前分类路径快照。
+    """
     db.watermark(SystemConfig)
     policy = build_default_classification_policy()
     policy.categories.append(
@@ -904,7 +959,9 @@ def test_local_setup_apply_config_rejects_invalid_stable_category_without_overwr
     db,
     isolated_classification_config,
 ) -> None:
-    """离线目录分类 ID 无效时不得覆盖已持久化的目录配置。"""
+    """
+    离线目录分类 ID 无效时不得覆盖已持久化的目录配置。
+    """
     db.watermark(SystemConfig)
     policy = build_default_classification_policy().model_copy(
         update={"revision": 1}

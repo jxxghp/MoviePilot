@@ -1,4 +1,6 @@
-"""用户应用服务的请求级事务边界测试。"""
+"""
+用户应用服务的请求级事务边界测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,7 +12,9 @@ from app.application.security.user import UserService, UserSnapshot, UserUpdateR
 
 
 def _configuration_publisher() -> MagicMock:
-    """构造可检查的提交后用户配置发布端口。"""
+    """
+    构造可检查的提交后用户配置发布端口。
+    """
     publisher = MagicMock()
     publisher.rename = AsyncMock()
     publisher.delete = AsyncMock()
@@ -19,7 +23,9 @@ def _configuration_publisher() -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_user_service_commits_staged_mutation() -> None:
-    """正式用户写用例必须在仓储暂存成功后提交请求 UoW。"""
+    """
+    正式用户写用例必须在仓储暂存成功后提交请求 UoW。
+    """
     repository = MagicMock()
     repository.async_create = AsyncMock(return_value={"id": 7})
     unit_of_work = MagicMock()
@@ -37,7 +43,9 @@ async def test_user_service_commits_staged_mutation() -> None:
 
 @pytest.mark.asyncio
 async def test_user_service_rolls_back_failed_mutation() -> None:
-    """用户仓储写入失败时不得提交部分事务。"""
+    """
+    用户仓储写入失败时不得提交部分事务。
+    """
     repository = MagicMock()
     repository.async_delete = AsyncMock(side_effect=RuntimeError("write failed"))
     unit_of_work = MagicMock()
@@ -56,7 +64,9 @@ async def test_user_service_rolls_back_failed_mutation() -> None:
 
 @pytest.mark.asyncio
 async def test_user_service_rolls_back_failed_commit() -> None:
-    """提交阶段失败时也必须显式回滚当前用户聚合事务。"""
+    """
+    提交阶段失败时也必须显式回滚当前用户聚合事务。
+    """
     repository = MagicMock()
     repository.async_update = AsyncMock(
         return_value=UserUpdateResult(
@@ -90,7 +100,9 @@ async def test_user_service_rolls_back_failed_commit() -> None:
 
 @pytest.mark.asyncio
 async def test_user_service_publishes_rename_only_after_commit() -> None:
-    """用户改名必须先提交聚合事务，再同步用户名配置快照。"""
+    """
+    用户改名必须先提交聚合事务，再同步用户名配置快照。
+    """
     calls: list[str] = []
     repository = MagicMock()
     repository.async_update = AsyncMock(
@@ -126,7 +138,9 @@ async def test_user_service_publishes_rename_only_after_commit() -> None:
 
 @pytest.mark.asyncio
 async def test_user_service_does_not_rollback_committed_publish_failure() -> None:
-    """提交后快照发布失败不得伪装成可回滚的用户事务。"""
+    """
+    提交后快照发布失败不得伪装成可回滚的用户事务。
+    """
     repository = MagicMock()
     repository.async_delete = AsyncMock(return_value="member")
     unit_of_work = MagicMock()
@@ -145,7 +159,9 @@ async def test_user_service_does_not_rollback_committed_publish_failure() -> Non
 
 @pytest.mark.asyncio
 async def test_user_service_verifies_password_from_auth_snapshot() -> None:
-    """密码校验应读取认证快照，而不是依赖公开用户资料。"""
+    """
+    密码校验应读取认证快照，而不是依赖公开用户资料。
+    """
     repository = MagicMock()
     repository.async_get_auth_by_id = AsyncMock(
         return_value=SimpleNamespace(

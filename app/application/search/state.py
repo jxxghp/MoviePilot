@@ -1,20 +1,29 @@
-"""搜索参数与结果缓存的应用服务。"""
+"""
+搜索参数与结果缓存的应用服务。
+"""
 
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional
 
 from app.schemas.media import parse_media_key, resolve_media_identity
 from app.schemas.types import MediaSource, MediaType
 
+if TYPE_CHECKING:
+    from app.schemas.search import SearchLastContextData
+
 
 def stringify_sites(sites: Optional[List[int]]) -> str:
-    """将站点 ID 列表转换为前端可复用的逗号分隔值。"""
+    """
+    将站点 ID 列表转换为前端可复用的逗号分隔值。
+    """
     return ",".join(str(site) for site in sites) if sites else ""
 
 
 def normalize_search_params(
     params: Optional[Dict[str, Any]],
 ) -> Optional[Dict[str, str]]:
-    """把搜索缓存归一为前端重新搜索使用的稳定字段。"""
+    """
+    把搜索缓存归一为前端重新搜索使用的稳定字段。
+    """
     if not isinstance(params, dict):
         return None
 
@@ -49,7 +58,9 @@ def normalize_search_params(
 
 
 class SearchStateService:
-    """通过注入的缓存端口保存和读取搜索状态。"""
+    """
+    通过注入的缓存端口保存和读取搜索状态。
+    """
 
     def __init__(
         self,
@@ -61,7 +72,9 @@ class SearchStateService:
         result_key: str,
         subtitle_result_key: str,
     ) -> None:
-        """保存缓存端口和兼容缓存键。"""
+        """
+        保存缓存端口和兼容缓存键。
+        """
         self._save_cache = save_cache
         self._load_cache = load_cache
         self._async_save_cache = async_save_cache
@@ -87,7 +100,9 @@ class SearchStateService:
         result_type: Optional[str] = "torrent",
         include_candidates: bool = False,
     ) -> Optional[Dict[str, str]]:
-        """把公开搜索参数构造成可持久化的兼容字典。"""
+        """
+        把公开搜索参数构造成可持久化的兼容字典。
+        """
         return normalize_search_params(
             {
                 "keyword": keyword,
@@ -107,45 +122,86 @@ class SearchStateService:
         )
 
     def save_params(self, **kwargs: Any) -> None:
-        """同步保存最后一次有效搜索参数。"""
+        """
+        同步保存最后一次有效搜索参数。
+        """
         params = self.build_params(**kwargs)
         if params:
             self._save_cache(params, self._params_key)
 
     async def async_save_params(self, **kwargs: Any) -> None:
-        """异步保存最后一次有效搜索参数。"""
+        """
+        异步保存最后一次有效搜索参数。
+        """
         params = self.build_params(**kwargs)
         if params:
             await self._async_save_cache(params, self._params_key)
 
     def load_params(self) -> Optional[Dict[str, str]]:
-        """同步读取并归一化最后一次搜索参数。"""
+        """
+        同步读取并归一化最后一次搜索参数。
+        """
         return normalize_search_params(self._load_cache(self._params_key))
 
     async def async_load_params(self) -> Optional[Dict[str, str]]:
-        """异步读取并归一化最后一次搜索参数。"""
+        """
+        异步读取并归一化最后一次搜索参数。
+        """
         return normalize_search_params(await self._async_load_cache(self._params_key))
 
+    async def async_save_context(self, user_id: int, context: "SearchLastContextData") -> None:
+        """
+        一次写入当前用户的完整参数、结果与诊断，避免并发请求交叉拼接。
+
+        :param user_id: 已由入口认证的用户主键
+        :param context: 仅在搜索正常完成后发布的完整快照
+        """
+        await self._async_save_cache(context.model_dump(mode="json"), f"{self._params_key}_context_{user_id}")
+
+    async def async_load_context(self, user_id: int) -> "SearchLastContextData":
+        """
+        只读取指定用户的完整快照，不回退到无法归属的全局散键。
+
+        :param user_id: 已由入口认证的用户主键
+        :return: 完整快照；首次搜索前返回空参数和结果且诊断为 None
+        """
+        from app.schemas.search import SearchLastContextData
+
+        value = await self._async_load_cache(f"{self._params_key}_context_{user_id}")
+        return SearchLastContextData.model_validate(value) if isinstance(value, dict) else SearchLastContextData()
+
     def load_results(self) -> Any:
-        """同步读取最后一次资源搜索结果。"""
+        """
+        同步读取最后一次资源搜索结果。
+        """
         return self._load_cache(self._result_key)
 
     async def async_load_results(self) -> Any:
-        """异步读取最后一次资源搜索结果。"""
+        """
+        异步读取最后一次资源搜索结果。
+        """
         return await self._async_load_cache(self._result_key)
 
     async def async_load_subtitle_results(self) -> Any:
-        """异步读取最后一次字幕搜索结果。"""
+        """
+        异步读取最后一次字幕搜索结果。
+        """
         return await self._async_load_cache(self._subtitle_result_key)
 
     def save_results(self, results: Any) -> None:
-        """同步保存最后一次资源搜索结果。"""
+        """
+        同步保存最后一次资源搜索结果。
+        """
         self._save_cache(results, self._result_key)
 
     async def async_save_results(self, results: Any) -> None:
-        """异步保存最后一次资源搜索结果。"""
+        """
+        异步保存最后一次资源搜索结果。
+        """
         await self._async_save_cache(results, self._result_key)
 
     async def async_save_subtitle_results(self, results: Any) -> None:
-        """异步保存最后一次字幕搜索结果。"""
+        """
+        异步保存最后一次字幕搜索结果。
+        """
         await self._async_save_cache(results, self._subtitle_result_key)

@@ -1,4 +1,6 @@
-"""存量插件来源身份的幂等启动迁移。"""
+"""
+存量插件来源身份的幂等启动迁移。
+"""
 
 from __future__ import annotations
 
@@ -26,10 +28,17 @@ VirtualInstancePredicate = Callable[[str], bool]
 
 
 class PluginIdentityMigrationPersistence(Protocol):
-    """存量来源迁移所需的最小异步持久化端口。"""
+    """
+    存量来源迁移所需的最小异步持久化端口。
+    """
 
     async def get_identity(self, plugin_id: str) -> PluginIdentity | None:
-        """读取一个物理插件的当前身份。"""
+        """
+        读取一个物理插件的当前身份。
+
+        :param plugin_id: 目标插件的物理标识
+        :return: 该物理插件的当前来源身份；尚未建立时为 None
+        """
 
     async def migrate_identity(
         self,
@@ -37,7 +46,13 @@ class PluginIdentityMigrationPersistence(Protocol):
         *,
         expected_revision: int | None,
     ) -> PluginIdentity:
-        """创建尚不存在的存量身份。"""
+        """
+        创建尚不存在的存量身份。
+
+        :param identity: 拟创建或替换的完整来源身份
+        :param expected_revision: 预期的当前身份版本；None 表示只允许首次创建
+        :return: 成功持久化的存量插件来源身份
+        """
 
     async def bind_online_identity(
         self,
@@ -45,12 +60,25 @@ class PluginIdentityMigrationPersistence(Protocol):
         *,
         expected_revision: int,
     ) -> PluginIdentity:
-        """把 legacy_unbound 身份绑定到已确认的在线来源。"""
+        """
+        把 legacy_unbound 身份绑定到已确认的在线来源。
+
+        :param identity: 拟创建或替换的完整来源身份
+        :param expected_revision: 当前已存在身份的预期版本，用于拒绝并发更新
+        :return: 已绑定到可信在线来源的新版本身份
+        """
 
 
 @dataclass(frozen=True, slots=True)
 class PluginIdentityMigrationResult:
-    """一次迁移批次创建、绑定和跳过的物理插件数量。"""
+    """
+    一次迁移批次创建、绑定和跳过的物理插件数量。
+
+    :param created: 本轮首次创建的来源身份数量
+    :param bound: 本轮成功绑定到在线来源的身份数量
+    :param unbound: 本轮新建但尚未绑定在线来源的身份数量
+    :param skipped: 本轮因无需处理、身份竞争或候选不足而跳过的数量
+    """
 
     created: int = 0
     bound: int = 0
@@ -59,7 +87,9 @@ class PluginIdentityMigrationResult:
 
 
 class PluginIdentityMigrationService:
-    """在任何自动更新前为已安装物理插件建立最小来源身份。"""
+    """
+    在任何自动更新前为已安装物理插件建立最小来源身份。
+    """
 
     def __init__(
         self,
@@ -70,7 +100,9 @@ class PluginIdentityMigrationService:
         is_virtual_instance: VirtualInstancePredicate,
         clock: Callable[[], datetime],
     ) -> None:
-        """保存库存、安装清单、虚拟实例判定和 CAS 端口。"""
+        """
+        保存库存、安装清单、虚拟实例判定和 CAS 端口。
+        """
         self.__persistence = persistence
         self.__inventory = inventory
         self.__installed_plugins = installed_plugins
@@ -78,7 +110,9 @@ class PluginIdentityMigrationService:
         self.__clock = clock
 
     async def migrate(self) -> PluginIdentityMigrationResult:
-        """幂等迁移全部存量身份；数据库异常会阻止后续自动更新。"""
+        """
+        幂等迁移全部存量身份；数据库异常会阻止后续自动更新。
+        """
         inventory = await self.__inventory(False)
         created = 0
         bound = 0
@@ -188,18 +222,24 @@ _IDENTITY_MIGRATION_SERVICE: list[PluginIdentityMigrationService] = []
 def configure_plugin_identity_migration(
     service: PluginIdentityMigrationService,
 ) -> None:
-    """由组合根登记当前 lifespan 的存量身份迁移服务。"""
+    """
+    由组合根登记当前 lifespan 的存量身份迁移服务。
+    """
     _IDENTITY_MIGRATION_SERVICE.clear()
     _IDENTITY_MIGRATION_SERVICE.append(service)
 
 
 def get_plugin_identity_migration() -> PluginIdentityMigrationService:
-    """返回已装配迁移服务；缺失时拒绝绕过来源迁移。"""
+    """
+    返回已装配迁移服务；缺失时拒绝绕过来源迁移。
+    """
     if not _IDENTITY_MIGRATION_SERVICE:
         raise RuntimeError("插件来源身份迁移服务尚未完成初始化")
     return _IDENTITY_MIGRATION_SERVICE[0]
 
 
 def reset_plugin_identity_migration() -> None:
-    """清除当前 lifespan 的迁移服务，供测试和停机复位。"""
+    """
+    清除当前 lifespan 的迁移服务，供测试和停机复位。
+    """
     _IDENTITY_MIGRATION_SERVICE.clear()

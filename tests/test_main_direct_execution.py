@@ -1,15 +1,20 @@
+"""
+验证直接执行主入口时标准库模块解析不被项目路径遮蔽。
+"""
+
 import os
 import subprocess
 import sys
 from pathlib import Path
-
 
 PROJECT_ROOT = Path(__file__).parents[1]
 MAIN_PATH = PROJECT_ROOT / "app" / "main.py"
 
 
 def test_main_script_does_not_shadow_stdlib_platform(tmp_path):
-    """PyCharm 脚本启动路径必须解析到标准库 platform。"""
+    """
+    PyCharm 脚本启动路径必须解析到标准库 platform。
+    """
     probe = "\n".join(
         (
             "import runpy",

@@ -1,4 +1,6 @@
-"""通过真实回环 HTTP 验证受控 MCP 握手、世界共享、结果分页和关闭，不访问外部服务。"""
+"""
+通过真实回环 HTTP 验证受控 MCP 握手、世界共享、结果分页和关闭，不访问外部服务。
+"""
 
 import ast
 import asyncio
@@ -20,12 +22,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _headers(server: EvaluationMcpServer) -> dict[str, str]:
-    """客户端局部传入随机认证值，不读取进程凭据或代理设置。"""
+    """
+    客户端局部传入随机认证值，不读取进程凭据或代理设置。
+    """
     return {"Authorization": f"Bearer {server.bearer_token}", "Accept": "application/json, text/event-stream"}
 
 
 async def _rpc(client: httpx.AsyncClient, method: str, params: Any = None, request_id: Any = 1) -> httpx.Response:
-    """通过实际 TCP 端点发送单条 JSON-RPC 请求。"""
+    """
+    通过实际 TCP 端点发送单条 JSON-RPC 请求。
+    """
     payload = {"jsonrpc": "2.0", "id": request_id, "method": method}
     if params is not None:
         payload["params"] = params
@@ -34,7 +40,9 @@ async def _rpc(client: httpx.AsyncClient, method: str, params: Any = None, reque
 
 @asynccontextmanager
 async def _client(server: EvaluationMcpServer, protocol: str = "2025-11-25") -> AsyncIterator[httpx.AsyncClient]:
-    """完成真实 initialize/initialized 握手后交付一个独立 MCP 客户端会话。"""
+    """
+    完成真实 initialize/initialized 握手后交付一个独立 MCP 客户端会话。
+    """
     async with httpx.AsyncClient(base_url=server.endpoint.removesuffix("/mcp"), headers=_headers(server), trust_env=False, timeout=5) as client:
         response = await _rpc(client, "initialize", {
             "protocolVersion": protocol, "capabilities": {}, "clientInfo": {"name": "offline-test", "version": "1"},
@@ -48,7 +56,9 @@ async def _client(server: EvaluationMcpServer, protocol: str = "2025-11-25") -> 
 
 
 async def _tool(client: httpx.AsyncClient, name: str, arguments: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """读取 MCP 标准文本工具结果，业务状态仍从其独立 JSON 协议判断。"""
+    """
+    读取 MCP 标准文本工具结果，业务状态仍从其独立 JSON 协议判断。
+    """
     response = await _rpc(client, "tools/call", {"name": name, "arguments": arguments})
     assert response.status_code == 200
     result = response.json()["result"]
@@ -58,7 +68,9 @@ async def _tool(client: httpx.AsyncClient, name: str, arguments: dict[str, Any])
 
 @pytest.mark.asyncio
 async def test_real_http_handshake_exposes_only_equivalent_public_tools() -> None:
-    """端点真实监听回环，公开目录没有场景名称、初态、账本或 oracle 入口。"""
+    """
+    端点真实监听回环，公开目录没有场景名称、初态、账本或 oracle 入口。
+    """
     world = EvaluationWorld("dedup_existing")
     async with EvaluationMcpServer(world) as server:
         assert server.endpoint.startswith("http://127.0.0.1:")
@@ -79,7 +91,9 @@ async def test_real_http_handshake_exposes_only_equivalent_public_tools() -> Non
 
 @pytest.mark.asyncio
 async def test_two_client_sessions_share_unknown_side_effect_and_duplicate_attempt() -> None:
-    """新 MCP 连接不重置世界，未知回执后的副作用能被另一会话读取确认。"""
+    """
+    新 MCP 连接不重置世界，未知回执后的副作用能被另一会话读取确认。
+    """
     world = EvaluationWorld("unknown_download")
     body = {"torrent_in": {"title": world.scenario.title, "enclosure": world.scenario.magnet},
             "media_source": world.scenario.media_source, "media_id": world.scenario.media_id}
@@ -99,7 +113,9 @@ async def test_two_client_sessions_share_unknown_side_effect_and_duplicate_attem
 
 @pytest.mark.asyncio
 async def test_skill_pagination_reconstructs_unmodified_repository_skill() -> None:
-    """首屏与后页实际 JSON 文本有界，所有分页拼接后仍是完整真实技能而非评测特制摘要。"""
+    """
+    首屏与后页实际 JSON 文本有界，所有分页拼接后仍是完整真实技能而非评测特制摘要。
+    """
     async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as server:
         async with _client(server) as client:
             first_result, first = await _tool(client, "read_skill", {"name": "moviepilot-api"})
@@ -137,7 +153,9 @@ async def test_skill_pagination_reconstructs_unmodified_repository_skill() -> No
 @pytest.mark.parametrize("filename, heading", [("api/config.md", "# Configuration APIs"),
                                                ("code-execution.md", "# Read-only Python aggregation")])
 async def test_skill_supporting_document_uses_read_skill_without_file_tool(filename: str, heading: str) -> None:
-    """评测服务应通过 read_skill 加载已列出的分类合同，而不是开放任意文件读取。"""
+    """
+    评测服务应通过 read_skill 加载已列出的分类合同，而不是开放任意文件读取。
+    """
     async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as server:
         async with _client(server) as client:
             result, payload = await _tool(
@@ -162,7 +180,9 @@ async def test_skill_supporting_document_uses_read_skill_without_file_tool(filen
 
 @pytest.mark.asyncio
 async def test_invalid_operation_input_returns_operation_contract() -> None:
-    """仿真工具报错时应把当前 operation 的正确输入合同交给模型。"""
+    """
+    仿真工具报错时应把当前 operation 的正确输入合同交给模型。
+    """
     async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as server:
         async with _client(server) as client:
             result, payload = await _tool(
@@ -180,7 +200,9 @@ async def test_invalid_operation_input_returns_operation_contract() -> None:
 
 @pytest.mark.asyncio
 async def test_world_call_limit_is_global_across_sessions_and_parallel_requests() -> None:
-    """并行连接也共享硬调用上限，超限不会继续读取或改变独立世界。"""
+    """
+    并行连接也共享硬调用上限，超限不会继续读取或改变独立世界。
+    """
     world = EvaluationWorld("dedup_existing")
     async with EvaluationMcpServer(world, max_world_calls=2) as server:
         async with _client(server) as first, _client(server) as second:
@@ -201,7 +223,9 @@ async def test_world_call_limit_is_global_across_sessions_and_parallel_requests(
     ({"MCP-Protocol-Version": "unknown"}, 400), ({"Accept": "application/json"}, 406),
 ])
 async def test_http_boundary_rejects_bad_auth_origin_host_protocol_and_accept(headers: dict[str, str], expected: int) -> None:
-    """认证与 HTTP 协议失败不能触及世界，也不能回显服务器秘密。"""
+    """
+    认证与 HTTP 协议失败不能触及世界，也不能回显服务器秘密。
+    """
     world = EvaluationWorld("dedup_existing")
     async with EvaluationMcpServer(world) as server:
         async with _client(server) as client:
@@ -218,7 +242,9 @@ async def test_http_boundary_rejects_bad_auth_origin_host_protocol_and_accept(he
                                      {"jsonrpc": "2.0", "id": 1, "method": "ping", "oracle": True},
                                      ])
 async def test_jsonrpc_shape_errors_are_fixed_and_do_not_execute(payload: Any) -> None:
-    """batch、错误 ID/参数类型及未知顶层字段均明确拒绝。"""
+    """
+    batch、错误 ID/参数类型及未知顶层字段均明确拒绝。
+    """
     world = EvaluationWorld("dedup_existing")
     async with EvaluationMcpServer(world) as server:
         async with _client(server) as client:
@@ -231,7 +257,9 @@ async def test_jsonrpc_shape_errors_are_fixed_and_do_not_execute(payload: Any) -
 @pytest.mark.asyncio
 @pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
 async def test_non_finite_json_numbers_are_rejected_before_world_execution(constant: str) -> None:
-    """非标准 JSON 数字不能被解析后进入业务状态或破坏响应序列化。"""
+    """
+    非标准 JSON 数字不能被解析后进入业务状态或破坏响应序列化。
+    """
     world = EvaluationWorld("dedup_existing")
     async with EvaluationMcpServer(world) as server:
         async with _client(server) as client:
@@ -246,7 +274,9 @@ async def test_non_finite_json_numbers_are_rejected_before_world_execution(const
 
 @pytest.mark.asyncio
 async def test_initialization_version_negotiation_and_session_requirements() -> None:
-    """协商支持版本，已建会话拒绝协议切换；初始化完成前不开放工具。"""
+    """
+    协商支持版本，已建会话拒绝协议切换；初始化完成前不开放工具。
+    """
     async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as server:
         async with httpx.AsyncClient(base_url=server.endpoint.removesuffix("/mcp"), headers=_headers(server), trust_env=False) as client:
             assert (await _rpc(client, "tools/list")).status_code == 400
@@ -264,7 +294,9 @@ async def test_initialization_version_negotiation_and_session_requirements() -> 
 
 @pytest.mark.asyncio
 async def test_unknown_tools_and_invalid_arguments_never_expose_control_state() -> None:
-    """只能执行三种公开工具，路径穿越、私有状态名称和错放字段都不能读取控制器状态。"""
+    """
+    只能执行三种公开工具，路径穿越、私有状态名称和错放字段都不能读取控制器状态。
+    """
     world = EvaluationWorld("dedup_existing")
     async with EvaluationMcpServer(world) as server:
         async with _client(server) as client:
@@ -285,7 +317,9 @@ async def test_unknown_tools_and_invalid_arguments_never_expose_control_state() 
 
 @pytest.mark.asyncio
 async def test_archive_expiry_and_cross_server_isolation(monkeypatch) -> None:
-    """归档跨同次运行的会话可用，但别的 server 或过期归档不能被猜 ID 读取。"""
+    """
+    归档跨同次运行的会话可用，但别的 server 或过期归档不能被猜 ID 读取。
+    """
     monkeypatch.setattr(server_module, "DIRECT_RESULT_MAX_CHARS", 1)
     async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as first_server, EvaluationMcpServer(EvaluationWorld("unknown_download")) as second_server:
         async with _client(first_server) as first, _client(first_server) as sibling, _client(second_server) as second:
@@ -303,11 +337,15 @@ async def test_archive_expiry_and_cross_server_isolation(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_internal_tool_exception_does_not_leak_environment_or_details(monkeypatch: pytest.MonkeyPatch) -> None:
-    """世界异常只能返回固定失败，不把进程秘密或异常正文传给模型。"""
+    """
+    世界异常只能返回固定失败，不把进程秘密或异常正文传给模型。
+    """
     world = EvaluationWorld("dedup_existing")
 
     def fail(**_arguments: Any) -> dict[str, Any]:
-        """模拟内部故障而不读取真实环境。"""
+        """
+        模拟内部故障而不读取真实环境。
+        """
         raise RuntimeError("private-oracle-and-token-value")
 
     monkeypatch.setattr(world, "execute", fail)
@@ -321,7 +359,9 @@ async def test_internal_tool_exception_does_not_leak_environment_or_details(monk
 
 @pytest.mark.asyncio
 async def test_close_stops_listener_and_cannot_be_triggered_by_client() -> None:
-    """HTTP 客户端无权结束整次评测，控制器关闭后真实监听端口不可连接。"""
+    """
+    HTTP 客户端无权结束整次评测，控制器关闭后真实监听端口不可连接。
+    """
     server = EvaluationMcpServer(EvaluationWorld("dedup_existing"))
     await server.start()
     endpoint = server.endpoint
@@ -340,13 +380,17 @@ async def test_close_stops_listener_and_cannot_be_triggered_by_client() -> None:
 
 @pytest.mark.parametrize("limit", [0, 33, True, -1])
 def test_invalid_world_call_budget_is_rejected(limit: Any) -> None:
-    """控制器也不能把单次原生评测放大到声明的 32 次世界调用以上。"""
+    """
+    控制器也不能把单次原生评测放大到声明的 32 次世界调用以上。
+    """
     with pytest.raises(ValueError):
         EvaluationMcpServer(EvaluationWorld("dedup_existing"), max_world_calls=limit)
 
 
 def test_server_imports_no_moviepilot_runtime_or_oracle() -> None:
-    """服务与世界都独立于 app 运行时，判定器不能通过服务依赖进入可见目录。"""
+    """
+    服务与世界都独立于 app 运行时，判定器不能通过服务依赖进入可见目录。
+    """
     tree = ast.parse((PROJECT_ROOT / "scripts/evaluation/server.py").read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):

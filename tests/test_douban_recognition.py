@@ -1,6 +1,9 @@
+"""
+验证豆瓣同步与异步识别不保留独立映射缓存。
+"""
+
 import asyncio
-from unittest.mock import Mock
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from app.domain.meta.metabase import MetaBase
 from app.modules.douban import DoubanModule
@@ -8,7 +11,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def test_douban_recognize_does_not_keep_dedicated_mapping_cache():
-    """豆瓣识别应每次执行匹配，不再保留专用标题映射缓存。"""
+    """
+    豆瓣识别应每次执行匹配，不再保留专用标题映射缓存。
+    """
     module = DoubanModule()
     meta = MetaBase("测试电影")
     meta.name = "测试电影"
@@ -42,7 +47,9 @@ def test_douban_recognize_does_not_keep_dedicated_mapping_cache():
 
 
 def test_async_douban_recognize_does_not_keep_dedicated_mapping_cache():
-    """异步豆瓣识别也应每次执行匹配，不使用专用标题映射缓存。"""
+    """
+    异步豆瓣识别也应每次执行匹配，不使用专用标题映射缓存。
+    """
     module = DoubanModule()
     meta = MetaBase("测试剧集")
     meta.name = "测试剧集"
@@ -57,7 +64,9 @@ def test_async_douban_recognize_does_not_keep_dedicated_mapping_cache():
     })
 
     async def recognize_twice():
-        """连续执行两次异步豆瓣识别。"""
+        """
+        连续执行两次异步豆瓣识别。
+        """
         first_result = await module._async_recognize_media_core(
             meta=meta,
             media_source=MediaSource.Douban,

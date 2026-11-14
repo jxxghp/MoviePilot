@@ -53,6 +53,7 @@ _OPER_MODULES = {
 def __getattr__(name: str) -> Any:
     """
     惰性解析 Oper 类，只导入被点名的那个子模块。
+
     :param name: 属性名
     :return: 对应的 Oper 类
     """
@@ -67,6 +68,7 @@ def __getattr__(name: str) -> Any:
 def __dir__() -> list[str]:
     """
     让 dir() 与自动补全看得见惰性名字。
+
     :return: 属性名列表
     """
     return sorted({*globals(), *_OPER_MODULES})

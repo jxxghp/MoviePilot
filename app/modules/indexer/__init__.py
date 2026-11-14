@@ -1,56 +1,246 @@
+"""
+组合站点搜索爬虫和用户资料解析器，提供索引模块的同步、异步搜索入口。
+"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Callable, List, Mapping, Optional, Tuple, Union, cast
-from urllib.parse import urljoin
+from typing import Any, Callable, List, Mapping, Optional, Protocol, Tuple, Union, cast
+from urllib.parse import urljoin, urlsplit
 
+import app.modules.indexer.download as download_protocol
+import app.modules.indexer.rss as rss_protocol
+from app.application.rss import RssLinkRecipe
 from app.application.site.health import get_configured_site_health_service
-from app.application.site.observation import report_site_search_outcome
+from app.application.site.observation import report_site_search_outcome, report_site_search_page
+from app.application.site.protocol import SiteConnectionResult
 from app.application.site.query import get_configured_site_query_service
+
+# 站点目录由外部资源在运行时提供，静态检查环境不包含其实体模块。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.site.throttle import async_wait_for_site_request, wait_for_site_request
 from app.domain import site as site_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
+from app.foundation.url import split_netloc
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.modules.indexer.spider import SiteSpider
+from app.modules.indexer.spider import JsonList, SiteSpider
+from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
+from app.modules.indexer.spider.hdarea import HDAreaSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
+from app.modules.indexer.spider.hdwing import HDWingPromotionMixin
+from app.modules.indexer.spider.milkie import MilkieSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
+from app.modules.indexer.spider.piggo import PiggoSpider
 from app.modules.indexer.spider.rousi import RousiSpider
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
+from app.modules.indexer.spider.ttg import TTGDownloadAdapter
 from app.modules.indexer.spider.yema import YemaSpider
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.exception import RateLimitExceededException
 from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
 
-SPIDER_PARSER_CLASSES = {
+
+class HDWingPageSpider(HDWingPromotionMixin, SiteSpider):
+    """
+    在通用页面解析前补全 HDWinG 促销状态。
+    """
+
+    def __init__(
+        self,
+        indexer: dict[str, Any],
+        keyword: Optional[str] = None,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> None:
+        """
+        为本次搜索构造页面爬虫并保存不含凭据的流控配置。
+
+        :param indexer: 站点索引配置与认证上下文
+        :param keyword: 搜索关键词，为空时使用浏览配置
+        :param mtype: 媒体类型
+        :param cat: 指定站点分类
+        :param page: 从零开始的页码
+        """
+        self._promotion_site = {
+            key: indexer.get(key)
+            for key in ("id", "domain", "limit_seconds", "limit_interval", "limit_count")
+        }
+        super().__init__(indexer=indexer, keyword=keyword, mtype=mtype, cat=cat, page=page)
+
+    def parse(self, html_text: str) -> JsonList:
+        """
+        补全促销标识后复用通用的 Rust 或 Python 选择器解析。
+
+        :param html_text: 已解码的列表页；空响应沿用通用爬虫的失败语义
+        :return: 当前页种子记录；页面不可用或解析失败时为空列表
+        """
+        if html_text:
+            html_text = self.inject_promotions(html_text)
+        return super().parse(html_text)
+
+
+class HDWingSpider:
+    """
+    将 HDWinG 的同步与异步搜索接入通用站点爬虫。
+    """
+
+    # 站点列表默认每页 100 条。
+    _size = 100
+
+    def __init__(self, indexer: dict[str, Any]) -> None:
+        """
+        保存站点配置；每次搜索使用独立的页面爬虫。
+
+        :param indexer: 站点索引配置与认证上下文
+        """
+        self._indexer = indexer
+        self._spider: Optional[HDWingPageSpider] = None
+
+    @property
+    def error_detail(self) -> Optional[str]:
+        """
+        返回最近一次页面爬虫记录的失败原因。
+
+        :return: 搜索尚未执行或没有失败原因时为 None
+        """
+        return self._spider.error_detail if self._spider else None
+
+    @classmethod
+    def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
+        """
+        返回站点列表页的默认容量。
+
+        :param keyword: 保留统一入口参数，搜索与浏览分页容量一致
+        :return: 每页种子数量
+        """
+        return cls._size
+
+    def search(
+        self,
+        keyword: Optional[str] = None,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, JsonList]:
+        """
+        同步搜索站点种子。
+
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 指定站点分类
+        :param page: 从零开始的页码
+        :return: 页面解析是否失败及种子记录
+        """
+        spider = HDWingPageSpider(self._indexer, keyword=keyword, mtype=mtype, cat=cat, page=page)
+        self._spider = spider
+        result = spider.get_torrents()
+        return spider.is_error, result
+
+    async def async_search(
+        self,
+        keyword: Optional[str] = None,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, JsonList]:
+        """
+        异步搜索站点种子；促销补全随页面解析在线程池中执行。
+
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 指定站点分类
+        :param page: 从零开始的页码
+        :return: 页面解析是否失败及种子记录
+        """
+        spider = HDWingPageSpider(self._indexer, keyword=keyword, mtype=mtype, cat=cat, page=page)
+        self._spider = spider
+        result = await spider.async_get_torrents()
+        return spider.is_error, result
+
+
+class _PagedSpider(Protocol):
+    """
+    专站爬虫的构造与分页容量查询合同。
+
+    具体搜索参数仍由各站点适配器独立声明。
+    """
+
+    def __init__(self, indexer: dict[str, object]) -> None:
+        """
+        根据站点配置构造专站爬虫。
+
+        :param indexer: 站点索引配置
+        :return: 无返回值
+        """
+
+    @classmethod
+    def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
+        """
+        返回当前关键字下可用的固定分页容量。
+
+        :param keyword: 搜索关键字，站点可按此决定分页能力
+        :return: 单页数量；不支持可靠分页时返回 None
+        """
+
+
+# 站点资源声明的解析器名称到宿主专站爬虫的精确映射。
+SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "TNodeSpider": TNodeSpider,
     "TorrentLeech": TorrentLeech,
     "mTorrent": MTorrentSpider,
     "Yema": YemaSpider,
     "Haidan": HaiDanSpider,
     "HDDolby": HddolbySpider,
+    "HDArea": HDAreaSpider,
+    "HDWing": HDWingSpider,
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
+    "Piggo": PiggoSpider,
+    "Milkie": MilkieSpider,
+    "FluxTorrent": FluxTorrentSpider,
 }
 
+# 旧资源的资料协议与搜索协议命名不同，别名只能在索引模块解释。
+_PROTOCOL_PARSER_ALIASES = {"MTorrent": "mTorrent", "TNode": "TNodeSpider"}
+_DOMAIN_CONNECTION_PARSERS = {
+    "zhuque.in": "TNodeSpider", "m-team.io": "mTorrent", "m-team.cc": "mTorrent",
+    "yemapt.org": "Yema", "hddolby.com": "HDDolby", "hdarea.club": "HDArea",
+    "rousi.pro": "RousiPro", "sunnypt.top": "SunnyPT", "piggo.me": "Piggo", "milkie.cc": "Milkie",
+}
+_DOMAIN_CONNECTION_SETTINGS = {"yemapt.org": {"legacy_cookie_test": True}}
+_CONNECTION_PROTOCOL_NAMES = frozenset(_DOMAIN_CONNECTION_PARSERS.values())
+_SPECIAL_SITE_DOMAINS = ("u2.dmhy.org", "pt.ecust.pp.ua", "pt.gtkpw.xyz", "pt.gtk.pw")
+_TORRENT_PATH_ADAPTERS = (MTorrentSpider, TTGDownloadAdapter)
+
+# 仅传递各专站搜索入口支持的参数，避免同步与异步调用契约分叉。
 _SPECIALIZED_SEARCH_ARGUMENTS = {
     "TNodeSpider": ("keyword", "page"),
     "TorrentLeech": ("keyword", "mtype", "page"),
-    "mTorrent": ("keyword", "mtype", "page"),
+    "mTorrent": ("keyword", "mtype", "cat", "page"),
     "SunnyPT": ("keyword", "mtype", "cat", "page"),
-    "Yema": ("keyword", "mtype", "page"),
+    "Piggo": ("keyword", "mtype", "cat", "page"),
+    "Yema": ("keyword", "mtype", "cat", "page"),
     "Haidan": ("keyword", "mtype"),
-    "HDDolby": ("keyword", "mtype", "page"),
+    "HDDolby": ("keyword", "mtype", "cat", "page"),
+    "HDArea": ("keyword", "mtype", "cat", "page"),
+    "HDWing": ("keyword", "mtype", "cat", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
+    "Milkie": ("keyword", "mtype", "page"),
+    "FluxTorrent": ("keyword", "page"),
 }
 
+# 专站字幕入口支持的参数顺序，其余站点使用通用页面解析。
 _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS = {
     "mTorrent": ("keyword", "page", "search_type"),
 }
@@ -68,7 +258,12 @@ _COMMON_SITE_USERDATA_FALLBACK_SCHEMAS = frozenset({
 
 @dataclass(frozen=True)
 class _IndexerSearchRequest:
-    """一次站点搜索的解析器选择与不可变调用参数"""
+    """
+    一次站点搜索的解析器选择与调用参数。
+
+    :param parser_class: 专站爬虫构造器；为 None 时使用配置驱动的通用爬虫
+    :param arguments: 已通过准入检查的搜索参数，由请求构建流程封装为只读映射
+    """
 
     parser_class: Optional[Callable[[dict[str, Any]], Any]]
     arguments: Mapping[str, Any]
@@ -76,23 +271,32 @@ class _IndexerSearchRequest:
 
 @dataclass(frozen=True)
 class _IndexerSearchOutcome:
-    """一次站点搜索完成后的错误状态、原始结果与耗时"""
+    """
+    一次站点搜索完成后的结果与失败信息。
+
+    :param error_flag: 爬虫或请求是否判定本次搜索失败
+    :param result: 原始种子或字幕记录列表，未获得结果时为空
+    :param seconds: 搜索耗时的整数秒部分，用于统计和日志
+    :param error: 执行时捕获的异常；没有异常时为 None
+    :param failure_detail: 爬虫提供的状态码或页面摘要；默认 None，仅用于展示，不参与冷却分类
+    """
 
     error_flag: bool
     result: List[dict[str, Any]]
     seconds: int
     error: Optional[Exception] = None
-    # 爬虫判定失败时给出的原因（状态码、页面标题等），只用于展示，不参与冷却分类
     failure_detail: Optional[str] = None
 
 
 def _classify_search_failure(error: Optional[Exception]) -> str:
-    """把索引器异常归一为站点预算可执行的冷却类别。"""
+    """
+    把索引器异常归一为站点预算可执行的冷却类别。
+    """
     if error is None:
         return "error"
     status_code = getattr(error, "status_code", None)
     text = f"{type(error).__name__}: {error}".lower()
-    if status_code == 429 or "429" in text or "rate limit" in text:
+    if isinstance(error, RateLimitExceededException) or status_code == 429 or "429" in text or "rate limit" in text:
         return "rate_limited"
     if status_code == 403 or "403" in text or "forbidden" in text:
         return "forbidden"
@@ -104,7 +308,9 @@ def _classify_search_failure(error: Optional[Exception]) -> str:
 
 
 def _search_failure_message(outcome: _IndexerSearchOutcome) -> Optional[str]:
-    """返回供站点预算持久化和任务聚合展示的失败原因。"""
+    """
+    返回供站点预算持久化和任务聚合展示的失败原因。
+    """
     if outcome.error is not None:
         return str(outcome.error)
     if outcome.error_flag and outcome.failure_detail:
@@ -116,14 +322,15 @@ def _search_failure_message(outcome: _IndexerSearchOutcome) -> Optional[str]:
 
 class IndexerModule(_ModuleBase):
     """
-    索引模块
+    提供站点种子、字幕搜索及用户数据刷新，按站点类型选择对应解析器。
     """
 
-    _site_schemas = []
+    _site_schemas: list[type[SiteParserBase]] = []
 
     def init_module(self) -> None:
-        """加载站点用户数据解析器"""
-        # 加载模块
+        """
+        加载站点用户数据解析器。
+        """
         self._site_schemas = ModuleHelper.load(
             'app.modules.indexer.parser',
             filter_func=lambda _, obj: hasattr(obj, 'schema') and getattr(obj, 'schema') is not None)
@@ -131,73 +338,89 @@ class IndexerModule(_ModuleBase):
 
     @staticmethod
     def get_name() -> str:
-        """获取模块名称"""
+        """
+        获取模块名称。
+        """
         return "站点索引"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Indexer
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return OtherModulesType.Indexer
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 0
 
-    def stop(self):
-        """停止索引模块"""
+    def stop(self) -> None:
+        """
+        索引模块没有独立后台资源，此入口不执行额外停止操作。
+        """
         pass
 
     def test(self) -> Tuple[bool, str]:
         """
-        测试模块连接性
+        检查是否存在已配置并通过用户认证的索引站点，不发起网络探测。
+
+        :return: 是否可用及失败原因；可用时原因为空字符串
         """
         sites = SitesHelper().get_indexers()
         if not sites:
             return False, "未配置站点或未通过用户认证"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """索引模块无需独立开关配置"""
-        pass
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
+        """
+        索引模块无需独立开关配置。
+
+        :return: 无需初始化设置，返回 None
+        """
+        return None
 
     def site_subtitle_links(self, context: Context) -> Optional[List[str]]:
         """
-        解析采用API访问的站点的字幕下载链接，非API站点返回None交由页面解析模块处理
+        解析采用API访问的站点的字幕下载链接，非API站点返回None交由页面解析模块处理。
+
         :param context: 上下文，包括识别信息、媒体信息、种子信息
         :return: 字幕下载链接列表，不适用时返回None
         """
         torrent = context.torrent_info
+        if torrent is None:
+            return None
         if torrent.site is None:
             return None
         site = get_configured_site_query_service().get_sync(torrent.site)
         if not site:
             return None
+        if not site.domain:
+            return None
         indexer = SitesHelper().get_indexer(site.domain)
         if not indexer:
             return None
-        if indexer.get("parser") == "mTorrent":
-            return MTorrentSpider(indexer).get_subtitle_links(
-                torrent.page_url
-            )
-        # TODO 其它采用API访问的站点
-        return None
+        parser_name = str(indexer.get("parser") or "")
+        parser_class = SPIDER_PARSER_CLASSES.get(_PROTOCOL_PARSER_ALIASES.get(parser_name, parser_name))
+        if parser_class is None or not callable(getattr(parser_class, "get_subtitle_links", None)) or not torrent.page_url:
+            return None
+        current_site = {**indexer, **site.model_dump(), "domain": site.url}
+        get_links = getattr(parser_class(current_site), "get_subtitle_links")
+        return cast(List[str], get_links(torrent.page_url))
 
     @staticmethod
-    def __search_check(site: dict, search_word: Optional[str] = None) -> bool:
+    def __search_check(site: dict[str, Any], search_word: Optional[str] = None) -> bool:
         """
-        检查是否可以执行搜索
+        检查是否可以执行搜索。
         """
         # 可能为关键字或ttxxxx
         if search_word \
@@ -208,9 +431,10 @@ class IndexerModule(_ModuleBase):
             return False
 
         # 站点流控
-        state, msg = SitesHelper().check(site_rules.extract_domain(site.get("domain")))
+        state, msg = SitesHelper().check(IndexerModule.get_site_domain(site.get("domain")))
         if state:
             logger.warn(msg)
+            report_site_search_outcome(attempted=False, outcome="deferred", error=msg)
             return False
 
         return True
@@ -218,7 +442,8 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def __clear_search_text(text: Optional[str]) -> Optional[str]:
         """
-        清理搜索文本
+        清理搜索文本。
+
         :param text: 需要清理的文本
         :return: 清理后的文本
         """
@@ -228,11 +453,11 @@ class IndexerModule(_ModuleBase):
         return text_tools.remove_punctuation(text, replacement=" ", allow_space=True)
 
     @staticmethod
-    def __indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
+    def __indexer_statistic(site: dict[str, Any], error_flag: bool = False, seconds: int = 0) -> None:
         """
-        索引器统计
+        索引器统计。
         """
-        domain = site_rules.extract_domain(site.get("domain"))
+        domain = IndexerModule.get_site_domain(site.get("domain"))
         if error_flag:
             get_configured_site_health_service().fail(domain)
         else:
@@ -242,11 +467,11 @@ class IndexerModule(_ModuleBase):
             )
 
     @staticmethod
-    async def __async_indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
+    async def __async_indexer_statistic(site: dict[str, Any], error_flag: bool = False, seconds: int = 0) -> None:
         """
-        异步索引器统计
+        异步索引器统计。
         """
-        domain = site_rules.extract_domain(site.get("domain"))
+        domain = IndexerModule.get_site_domain(site.get("domain"))
         if error_flag:
             await get_configured_site_health_service().async_fail(domain)
         else:
@@ -256,16 +481,33 @@ class IndexerModule(_ModuleBase):
             )
 
     @staticmethod
-    def __parse_result(site: dict, result_array: list, seconds: int) -> TorrentInfo:
+    def __site_user_agent(site: dict[str, Any]) -> Optional[str]:
         """
-        解析搜索结果为 TorrentInfo 对象
+        使用适配器声明的 User-Agent 规则构造下载上下文。
+
+        :param site: 包含搜索协议和当前用户配置的站点上下文
+        :return: 专站规则处理后的 User-Agent，普通站点保留当前配置值
         """
+        parser_class = SPIDER_PARSER_CLASSES.get(str(site.get("parser") or ""))
+        get_user_agent = getattr(parser_class, "get_user_agent", None)
+        if callable(get_user_agent):
+            return cast(str, get_user_agent(site.get("ua")))
+        return cast(Optional[str], site.get("ua"))
+
+    @staticmethod
+    def __parse_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[TorrentInfo]:
+        """
+        解析搜索结果为 TorrentInfo 对象。
+
+        :return: 站点搜索结果列表；没有匹配资源时为空列表
+        """
+        report_site_search_page(raw_count=len(result_array or []))
         if not result_array or len(result_array) == 0:
             logger.warn(f"{site.get('name')} 未搜索到数据，耗时 {seconds} 秒")
             return []
         logger.info(
             f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
-        torrents = []
+        torrents: List[TorrentInfo] = []
         for result in result_array:
             result = dict(result)
             legacy_imdb_id = result.pop("imdbid", None)
@@ -278,16 +520,16 @@ class IndexerModule(_ModuleBase):
                 site=site.get("id"),
                 site_name=site.get("name"),
                 site_cookie=site.get("cookie"),
-                site_ua=site.get("ua"),
-                site_proxy=site.get("proxy"),
-                site_order=site.get("pri"),
+                site_ua=IndexerModule.__site_user_agent(site),
+                site_proxy=bool(site.get("proxy")),
+                site_order=int(site.get("pri") or 0),
                 site_downloader=site.get("downloader"),
                 **result,
             ))
         return torrents
 
     @staticmethod
-    def __parse_subtitle_result(site: dict, result_array: list, seconds: int) -> List[SubtitleInfo]:
+    def __parse_subtitle_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[SubtitleInfo]:
         """
         解析字幕搜索结果为 SubtitleInfo 对象。
         """
@@ -300,15 +542,19 @@ class IndexerModule(_ModuleBase):
                              site_name=site.get("name"),
                              site_cookie=site.get("cookie"),
                              site_ua=site.get("ua"),
-                             site_proxy=site.get("proxy"),
-                             site_order=site.get("pri"),
+                             site_proxy=bool(site.get("proxy")),
+                             site_order=int(site.get("pri") or 0),
                              **result) for result in result_array if
                 result.get("language") and result.get("enclosure") and result.get("title") and result.get("size")]
 
     @staticmethod
-    def get_search_page_size(site: dict, keyword: Optional[str] = None) -> Optional[int]:
+    def get_search_page_size(site: dict[str, Any], keyword: Optional[str] = None) -> Optional[int]:
         """
-        获取站点搜索单页容量；None 表示当前搜索入口不支持可靠翻页。
+        获取站点搜索入口的单页容量。
+
+        :param site: 站点索引配置，包含解析器类型和可选单页数量
+        :param keyword: 当前搜索关键词，供专站爬虫判断能否分页
+        :return: 单页记录数；专站入口没有可靠分页能力时返回 None
         """
         site = site or {}
         site_parser = site.get("parser")
@@ -321,6 +567,244 @@ class IndexerModule(_ModuleBase):
         return page_size if page_size > 0 else SiteSpider.default_result_num()
 
     @staticmethod
+    def restore_search_torrent(site: dict[str, Any], record: dict[str, Any], allow_missing: bool = False) -> Optional[TorrentInfo]:
+        """
+        用当前站点凭据恢复候选下载信息。
+
+        声明下载配方能力的适配器可按稳定种子 ID 重建地址；其他临时票据需重新查询。
+
+        :param site: 当前站点配置及有效凭据
+        :param record: 检查点保存的种子记录
+        :param allow_missing: 是否允许返回仍缺少下载地址的候选，默认不允许
+        :return: 已刷新凭据的候选；缺少下载地址且不允许保留时返回 None
+        """
+        torrent = TorrentInfo()
+        torrent.from_dict(record)
+        identity = IndexerModule.torrent_resource_identity(torrent)
+        parser_class = SPIDER_PARSER_CLASSES.get(str(site.get("parser") or ""))
+        if parser_class is not None and identity and identity[1].startswith("id=") \
+                and callable(getattr(parser_class, "get_download_url", None)):
+            get_download_url = getattr(parser_class(site), "get_download_url")
+            torrent.enclosure = get_download_url(identity[1][3:])
+        if not torrent.enclosure and not allow_missing:
+            return None
+        torrent.site_cookie = site.get("cookie") or ""
+        torrent.site_ua = IndexerModule.__site_user_agent(site) or ""
+        torrent.site_proxy = bool(site.get("proxy"))
+        torrent.site_downloader = site.get("downloader") or ""
+        return torrent
+
+    @staticmethod
+    def test_site(site: dict[str, Any]) -> SiteConnectionResult:
+        """
+        域名绑定优先于资源协议，由适配器拥有完整的认证和连接检测。
+
+        :param site: 已合并当前用户配置的站点资源及认证上下文
+        :return: 明确的能力回执；不支持与真实失败分离，缺少 Module 不能被网页检测掩盖
+        """
+        domain = IndexerModule.get_site_domain(site.get("domain") or site.get("url"))
+        domain_parser = _DOMAIN_CONNECTION_PARSERS.get(domain)
+        parser_names = (domain_parser,) if domain_parser else (site.get("schema"), site.get("parser"))
+        for value in parser_names:
+            parser_name = str(value or "")
+            parser_name = _PROTOCOL_PARSER_ALIASES.get(parser_name, parser_name)
+            parser_class = SPIDER_PARSER_CLASSES.get(parser_name)
+            if parser_class is not None and callable(getattr(parser_class, "test_connection", None)):
+                current_site = {**site, **_DOMAIN_CONNECTION_SETTINGS.get(domain, {})}
+                test_connection = getattr(parser_class(current_site), "test_connection")
+                success, message = cast(Tuple[bool, str], test_connection())
+                return SiteConnectionResult(supported=True, success=success, message=message)
+            if parser_name in _CONNECTION_PROTOCOL_NAMES:
+                return SiteConnectionResult(supported=True, message="站点适配器未提供连接检测能力")
+        return SiteConnectionResult(supported=False)
+
+    @staticmethod
+    def parse_torrent_download_response(request_params: dict[str, Any], status_code: Optional[int], payload: object,
+                                        response_text: Optional[str] = None) -> Optional[str]:
+        """
+        将标注协议的换票响应交给已注册适配器解析，通用下载链不解释专站业务码。
+
+        :param request_params: 索引器编码的换票配方，protocol 选择响应解析适配器
+        :param status_code: 原始 HTTP 状态，None 表示连接失败
+        :param payload: 已解析的 JSON，格式无效时为 None
+        :param response_text: 不声明结果字段的旧配方使用响应正文
+        :return: 适配器校验后的临时下载地址；旧配方缺少结果时为 None
+        :raises ValueError: 解析器不可用或适配器拒绝该响应，不能回退使用错误载荷中的地址
+        """
+        protocol = str(request_params.get("protocol") or "")
+        if not protocol:
+            return download_protocol.parse_download_response(request_params, status_code, payload, response_text)
+        parser_class = SPIDER_PARSER_CLASSES.get(_PROTOCOL_PARSER_ALIASES.get(protocol, protocol))
+        parse_response = getattr(parser_class, "parse_download_response", None)
+        if not callable(parse_response):
+            raise ValueError("站点换票响应解析器不可用")
+        url = parse_response(status_code=status_code, payload=payload, request_params=request_params)
+        if not isinstance(url, str) or not url:
+            raise ValueError("站点换票响应解析器不可用")
+        return url
+
+    @staticmethod
+    def get_site_domain(url: Optional[str]) -> str:
+        """
+        解释站点多级域名例外，其余地址沿用通用领域解析规则。
+
+        :param url: 站点地址或 Cookie Domain；空值返回空字符串
+        :return: 站点目录及持久化使用的匹配域名
+        """
+        if not url:
+            return ""
+        _scheme, netloc = split_netloc(url)
+        hostname = (urlsplit(f"//{netloc.lstrip('.')}").hostname or "").lower()
+        for domain in _SPECIAL_SITE_DOMAINS:
+            if hostname == domain or hostname.endswith(f".{domain}"):
+                return domain
+        return site_rules.extract_domain(url)
+
+    @staticmethod
+    def torrent_resource_identity(torrent: TorrentInfo) -> Optional[tuple[str, str]]:
+        """
+        通用字段优先；适配器补充旧详情页和签名路径的稳定种子身份。
+
+        :param torrent: 搜索、RSS 或旧缓存中的候选，不修改输入
+        :return: 站点及稳定资源标识；不能明确定位时为 None
+        """
+        if torrent.site or torrent.site_name:
+            for name in ("torrent_id", "info_hash"):
+                value = getattr(torrent, name, None)
+                if isinstance(value, (str, int)) and value:
+                    return torrent_rules.resource_identity(torrent)
+        for url in (torrent.page_url, torrent.enclosure):
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                continue
+            try:
+                identity = torrent_rules.resource_identity(TorrentInfo(
+                    site=torrent.site, site_name=torrent.site_name, page_url=url,
+                ))
+                if identity is not None:
+                    return identity
+                for adapter in _TORRENT_PATH_ADAPTERS:
+                    resource_id = adapter.torrent_id_from_url(url)
+                    if resource_id:
+                        return str(torrent.site or torrent.site_name or urlsplit(url).netloc), f"id={resource_id}"
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def is_expiring_download_url(url: Optional[str]) -> bool:
+        """
+        通用查询签名与适配器声明的路径票据共同约束重试。
+
+        :param url: 原始或重定向后的下载地址
+        :return: 是否属于已支持的短时签名协议
+        """
+        if torrent_rules.is_expiring_download_url(url):
+            return True
+        if not url or not url.startswith(("http://", "https://")):
+            return False
+        try:
+            return any(check(url) for adapter in _TORRENT_PATH_ADAPTERS
+                       if callable(check := getattr(adapter, "is_expiring_download_url", None)))
+        except ValueError:
+            return False
+
+    @staticmethod
+    def get_site_rss_recipe(url: str) -> RssLinkRecipe:
+        """
+        分发 RSS 生成规则，不在公共用例保留站点配置表。
+
+        :param url: 站点根地址
+        :return: 站点协议生成的独立获取配方
+        """
+        return rss_protocol.get_rss_recipe(url)
+
+    @staticmethod
+    def is_site_rss_expired(text: str) -> bool:
+        """
+        分发站点 RSS 过期响应解释。
+
+        :param text: RSS 响应正文
+        :return: 是否需要重新获取订阅地址
+        """
+        return rss_protocol.is_rss_expired(text)
+
+    @staticmethod
+    def is_torrent_download_confirmation(content: bytes) -> bool:
+        """
+        分发首次下载确认协议识别，合法种子必须由调用方先解析。
+
+        :param content: 未成功解析为种子的响应原始字节
+        :return: 是否为已支持的下载确认响应
+        """
+        return download_protocol.is_download_confirmation(content)
+
+    @staticmethod
+    def parse_torrent_download_confirmation(text: str, url: str) -> Optional[tuple[str, dict[str, Any]]]:
+        """
+        分发首次下载确认控件解释，不能向其他来源或端点提交。
+
+        :param text: 下载确认页 HTML
+        :param url: 确认页的最终请求地址
+        :return: 安全的提交地址和表单字段；缺少合法表单时为 None
+        """
+        return download_protocol.parse_download_confirmation(text, url)
+
+    @staticmethod
+    def has_site_subtitle_api(site: dict[str, Any]) -> bool:
+        """
+        按已注册适配器能力选择字幕协议，普通模块不判断站点名称。
+
+        :param site: 站点资源声明
+        :return: 是否提供独立字幕接口
+        """
+        parser_name = str(site.get("parser") or "")
+        parser_class = SPIDER_PARSER_CLASSES.get(_PROTOCOL_PARSER_ALIASES.get(parser_name, parser_name))
+        return callable(getattr(parser_class, "get_subtitle_links", None))
+
+    @staticmethod
+    def encrypt_site_payload(data_str: str, key: bytes) -> str:
+        """
+        分发插件兼容的站点协议加密载荷生成。
+
+        :param data_str: 待加密的协议文本
+        :param key: 协议约定的密钥字节
+        :return: 保留既有包装的密文
+        """
+        return download_protocol.encrypt_site_payload(data_str, key)
+
+    @staticmethod
+    def __wait_for_search_request(site: dict[str, Any], request: _IndexerSearchRequest) -> bool:
+        """
+        普通爬虫在模块入口申请共享额度，多请求适配器自行在实际 HTTP 请求前申请。
+
+        :return: 已获准执行或由适配器管理额度时为 True；远端冷却时发布未请求事实并返回 False
+        """
+        if getattr(request.parser_class, "manages_request_throttle", False):
+            return True
+        try:
+            wait_for_site_request(site)
+        except RateLimitExceededException as err:
+            report_site_search_outcome(attempted=False, outcome="deferred", error=str(err))
+            return False
+        return True
+
+    @staticmethod
+    async def __async_wait_for_search_request(site: dict[str, Any], request: _IndexerSearchRequest) -> bool:
+        """
+        异步等待普通爬虫的共享额度，取消等待不会占用请求，其他站点可继续执行。
+
+        :return: 已获准执行或由适配器管理额度时为 True；远端冷却时发布未请求事实并返回 False
+        """
+        if getattr(request.parser_class, "manages_request_throttle", False):
+            return True
+        try:
+            await async_wait_for_site_request(site)
+        except RateLimitExceededException as err:
+            report_site_search_outcome(attempted=False, outcome="deferred", error=str(err))
+            return False
+        return True
+
+    @staticmethod
     def __create_search_request(
         site: dict[str, Any],
         keyword: Optional[str],
@@ -329,7 +813,9 @@ class IndexerModule(_ModuleBase):
         page: Optional[int] = 0,
         search_type: str = "torrents",
     ) -> Optional[_IndexerSearchRequest]:
-        """校验搜索条件并生成同步、异步共用的解析器调用请求"""
+        """
+        校验搜索条件并生成同步、异步共用的解析器调用请求。
+        """
         if search_type == "subtitles" and not site.get("subtitles"):
             return None
         if not IndexerModule.__search_check(site, keyword):
@@ -395,7 +881,9 @@ class IndexerModule(_ModuleBase):
         site: dict[str, Any],
         request: _IndexerSearchRequest,
     ) -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
-        """通过同步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因"""
+        """
+        通过同步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因。
+        """
         if request.parser_class:
             spider = request.parser_class(site)
             error_flag, result = cast(
@@ -410,7 +898,9 @@ class IndexerModule(_ModuleBase):
         site: dict[str, Any],
         request: _IndexerSearchRequest,
     ) -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
-        """通过异步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因"""
+        """
+        通过异步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因。
+        """
         if request.parser_class:
             spider = request.parser_class(site)
             error_flag, result = cast(
@@ -428,9 +918,13 @@ class IndexerModule(_ModuleBase):
         error: Optional[Exception] = None,
         failure_detail: Optional[str] = None,
     ) -> _IndexerSearchOutcome:
-        """把同步、异步 I/O 结果整理为共用的搜索完成状态"""
+        """
+        把同步、异步 I/O 结果整理为共用的搜索完成状态。
+
+        捕获的异常同样代表失败，不能把空结果计为一次成功搜索。
+        """
         return _IndexerSearchOutcome(
-            error_flag=error_flag,
+            error_flag=error_flag or error is not None,
             result=result,
             seconds=(datetime.now() - start_time).seconds,
             failure_detail=failure_detail,
@@ -439,30 +933,30 @@ class IndexerModule(_ModuleBase):
 
     @staticmethod
     def __log_search_error(site: dict[str, Any], search_type: str, error: Exception) -> None:
-        """按搜索类型记录同步、异步共用的操作失败信息"""
+        """
+        按搜索类型记录同步、异步共用的操作失败信息。
+        """
         resource_name = "字幕" if search_type == "subtitles" else ""
         logger.error(f"{site.get('name')} {resource_name}搜索出错：{str(error)}")
 
-    def search_torrents(self, site: dict,
-                        keyword: str = None,
-                        mtype: MediaType = None,
+    def search_torrents(self, site: dict[str, Any],
+                        keyword: Optional[str] = None,
+                        mtype: Optional[MediaType] = None,
                         cat: Optional[str] = None,
                         page: Optional[int] = 0) -> List[TorrentInfo]:
         """
-        搜索一个站点
-        :param site:  站点
-        :param keyword:  搜索关键词
-        :param mtype:  媒体类型
-        :param cat:  分类
-        :param page:  页码
+        搜索一个站点。
+
+        :param site: 站点
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 分类
+        :param page: 页码
         :return: 资源列表
         """
 
-        # 索引结果
-        result = []
-        # 开始计时
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
-        # 错误标志
         error_flag = False
 
         request = self.__create_search_request(
@@ -475,8 +969,9 @@ class IndexerModule(_ModuleBase):
         if not request:
             report_site_search_outcome(attempted=False, outcome="skipped")
             return []
+        if not self.__wait_for_search_request(site, request):
+            return []
 
-        # 开始搜索
         error: Optional[Exception] = None
         failure_detail: Optional[str] = None
         try:
@@ -487,7 +982,6 @@ class IndexerModule(_ModuleBase):
 
         outcome = self.__create_search_outcome(start_time, error_flag, result, error, failure_detail)
 
-        # 统计索引情况
         self.__indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
@@ -503,25 +997,25 @@ class IndexerModule(_ModuleBase):
             error=_search_failure_message(outcome),
         )
 
-        # 返回结果
         return self.__parse_result(
             site=site,
             result_array=outcome.result,
             seconds=outcome.seconds,
         )
 
-    def search_subtitles(self, site: dict,
-                         keyword: str = None,
+    def search_subtitles(self, site: dict[str, Any],
+                         keyword: Optional[str] = None,
                          page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
         搜索一个站点的字幕资源。
+
         :param site: 站点
         :param keyword: 搜索关键词
         :param page: 页码
         :return: 字幕列表
         """
 
-        result = []
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
         error_flag = False
         error: Optional[Exception] = None
@@ -534,6 +1028,8 @@ class IndexerModule(_ModuleBase):
             search_type="subtitles",
         )
         if not request:
+            return []
+        if not self.__wait_for_search_request(site, request):
             return []
 
         try:
@@ -569,26 +1065,24 @@ class IndexerModule(_ModuleBase):
             seconds=outcome.seconds,
         )
 
-    async def async_search_torrents(self, site: dict,
-                                    keyword: str = None,
-                                    mtype: MediaType = None,
+    async def async_search_torrents(self, site: dict[str, Any],
+                                    keyword: Optional[str] = None,
+                                    mtype: Optional[MediaType] = None,
                                     cat: Optional[str] = None,
                                     page: Optional[int] = 0) -> List[TorrentInfo]:
         """
-        异步搜索一个站点
-        :param site:  站点
-        :param keyword:  搜索关键词
-        :param mtype:  媒体类型
-        :param cat:  分类
-        :param page:  页码
+        异步搜索一个站点。
+
+        :param site: 站点
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 分类
+        :param page: 页码
         :return: 资源列表
         """
 
-        # 索引结果
-        result = []
-        # 开始计时
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
-        # 错误标志
         error_flag = False
 
         request = self.__create_search_request(
@@ -601,8 +1095,9 @@ class IndexerModule(_ModuleBase):
         if not request:
             report_site_search_outcome(attempted=False, outcome="skipped")
             return []
+        if not await self.__async_wait_for_search_request(site, request):
+            return []
 
-        # 开始搜索
         error: Optional[Exception] = None
         failure_detail: Optional[str] = None
         try:
@@ -613,7 +1108,6 @@ class IndexerModule(_ModuleBase):
 
         outcome = self.__create_search_outcome(start_time, error_flag, result, error, failure_detail)
 
-        # 统计索引情况
         await self.__async_indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
@@ -629,25 +1123,25 @@ class IndexerModule(_ModuleBase):
             error=_search_failure_message(outcome),
         )
 
-        # 返回结果
         return self.__parse_result(
             site=site,
             result_array=outcome.result,
             seconds=outcome.seconds,
         )
 
-    async def async_search_subtitles(self, site: dict,
-                                     keyword: str = None,
+    async def async_search_subtitles(self, site: dict[str, Any],
+                                     keyword: Optional[str] = None,
                                      page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
         异步搜索一个站点的字幕资源。
+
         :param site: 站点
         :param keyword: 搜索关键词
         :param page: 页码
         :return: 字幕列表
         """
 
-        result = []
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
         error_flag = False
         error: Optional[Exception] = None
@@ -660,6 +1154,8 @@ class IndexerModule(_ModuleBase):
             search_type="subtitles",
         )
         if not request:
+            return []
+        if not await self.__async_wait_for_search_request(site, request):
             return []
 
         try:
@@ -696,20 +1192,20 @@ class IndexerModule(_ModuleBase):
         )
 
     @staticmethod
-    def __spider_search(indexer: dict,
+    def __spider_search(indexer: dict[str, Any],
                         search_word: Optional[str] = None,
-                        mtype: MediaType = None,
+                        mtype: Optional[MediaType] = None,
                         cat: Optional[str] = None,
                         page: Optional[int] = 0,
-                        search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
+                        search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
         """
-        根据关键字搜索单个站点
-        :param: indexer: 站点配置
-        :param: search_word: 关键字
-        :param: cat: 分类
-        :param: page: 页码
-        :param: mtype: 媒体类型
-        :param: timeout: 超时时间
+        根据关键字搜索单个站点。
+
+        :param indexer: 站点配置
+        :param search_word: 关键字
+        :param cat: 分类
+        :param page: 页码
+        :param mtype: 媒体类型
         :return: 是否发生错误, 种子列表, 失败原因
         """
         _spider = SiteSpider(indexer=indexer,
@@ -726,20 +1222,20 @@ class IndexerModule(_ModuleBase):
             del _spider
 
     @staticmethod
-    async def __async_spider_search(indexer: dict,
+    async def __async_spider_search(indexer: dict[str, Any],
                                     search_word: Optional[str] = None,
-                                    mtype: MediaType = None,
+                                    mtype: Optional[MediaType] = None,
                                     cat: Optional[str] = None,
                                     page: Optional[int] = 0,
-                                    search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
+                                    search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
         """
-        异步根据关键字搜索单个站点
-        :param: indexer: 站点配置
-        :param: search_word: 关键字
-        :param: cat: 分类
-        :param: page: 页码
-        :param: mtype: 媒体类型
-        :param: timeout: 超时时间
+        异步根据关键字搜索单个站点。
+
+        :param indexer: 站点配置
+        :param search_word: 关键字
+        :param cat: 分类
+        :param page: 页码
+        :param mtype: 媒体类型
         :return: 是否发生错误, 种子列表, 失败原因
         """
         _spider = SiteSpider(indexer=indexer,
@@ -755,58 +1251,62 @@ class IndexerModule(_ModuleBase):
         finally:
             del _spider
 
-    def refresh_torrents(self, site: dict,
+    def refresh_torrents(self, site: dict[str, Any],
                          keyword: Optional[str] = None,
                          cat: Optional[str] = None,
                          page: Optional[int] = 0,
                          mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
-        获取站点最新一页的种子，多个站点需要多线程处理
-        :param site:  站点
-        :param keyword:  关键字
-        :param cat:  分类
-        :param page:  页码
+        获取站点最新一页的种子，多个站点需要多线程处理。
+
+        :param site: 站点
+        :param keyword: 关键字
+        :param cat: 分类
+        :param page: 页码
         :param mtype: 媒体类型
-        :reutrn: 种子资源列表
+        :return: 种子资源列表
         """
         return self.search_torrents(
             site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
         )
 
-    async def async_refresh_torrents(self, site: dict,
+    async def async_refresh_torrents(self, site: dict[str, Any],
                                      keyword: Optional[str] = None,
                                      cat: Optional[str] = None,
                                      page: Optional[int] = 0,
                                      mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
-        异步获取站点最新一页的种子，多个站点需要多线程处理
-        :param site:  站点
-        :param keyword:  关键字
-        :param cat:  分类
-        :param page:  页码
+        异步获取站点最新一页的种子，多个站点需要多线程处理。
+
+        :param site: 站点
+        :param keyword: 关键字
+        :param cat: 分类
+        :param page: 页码
         :param mtype: 媒体类型
-        :reutrn: 种子资源列表
+        :return: 种子资源列表
         """
         return await self.async_search_torrents(
             site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
         )
 
-    def refresh_userdata(self, site: dict) -> Optional[SiteUserData]:
+    def refresh_userdata(self, site: dict[str, Any]) -> Optional[SiteUserData]:
         """
-        刷新站点的用户数据
-        :param site:  站点
+        刷新站点的用户数据。
+
+        :param site: 站点
         :return: 用户数据
         """
 
         def __get_site_obj(schema_value: Optional[str] = None) -> Optional[SiteParserBase]:
             """
-            获取站点解析器
+            获取站点解析器。
+
             :param schema_value: 指定 schema, 默认取站点声明的 schema
             """
             schema_value = schema_value or site.get("schema")
             for site_schema in self._site_schemas:
                 if site_schema.schema and site_schema.schema.value == schema_value:
-                    site_url = site.get("url")
+                    site_url = cast(str, site.get("url"))
                     userdata_path = str(site.get("userdata_path") or "").strip()
                     if userdata_path and site_url:
                         if userdata_path.startswith(("http://", "https://")):
@@ -834,14 +1334,13 @@ class IndexerModule(_ModuleBase):
                 logger.warn(f"站点  {site.get('name')} 未找到站点解析器，schema：{site.get('schema')}")
             return None
 
-        # 获取用户数据
         try:
             logger.info(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析数据...")
             site_obj.parse()
             logger.debug(f"站点 {site.get('name')} 数据解析完成")
             # 站点声明的 schema 解析失败(userid 为空)时, 自动尝试其他解析器,
             # 兼容资源文件 schema 标注错误/变种站点的场景
-            if not site_obj.userid and not site.get("public"):
+            if not site_obj.userid and not site.get("public") and getattr(site_obj, "allow_schema_fallback", True):
                 tried = {site.get("schema")}
                 for site_schema in self._site_schemas:
                     if (
@@ -867,25 +1366,27 @@ class IndexerModule(_ModuleBase):
                         break
             if not site_obj.userid and not site.get("public"):
                 site_obj.err_msg = site_obj.err_msg or "未获取到站点用户信息，请检查 Cookie 是否有效"
-            return SiteUserData(
-                domain=site_rules.extract_domain(site.get("url")),
-                userid=site_obj.userid,
-                username=site_obj.username,
-                user_level=site_obj.user_level,
-                join_at=site_obj.join_at,
-                upload=site_obj.upload,
-                download=site_obj.download,
-                ratio=site_obj.ratio,
-                bonus=site_obj.bonus,
-                seeding=site_obj.seeding,
-                seeding_size=site_obj.seeding_size,
-                seeding_info=site_obj.seeding_info.copy() if site_obj.seeding_info else [],
-                leeching=site_obj.leeching,
-                leeching_size=site_obj.leeching_size,
-                message_unread=site_obj.message_unread,
-                message_unread_contents=site_obj.message_unread_contents.copy() if site_obj.message_unread_contents else [],
-                updated_day=datetime.now().strftime('%Y-%m-%d'),
-                err_msg=site_obj.err_msg
-            )
+            # 解析器保留站点原值，由模型统一执行既有字段校验与列表投影。
+            return SiteUserData.model_validate({
+                "domain": IndexerModule.get_site_domain(site.get("url")),
+                "userid": site_obj.userid,
+                "username": site_obj.username,
+                "user_level": site_obj.user_level,
+                "join_at": site_obj.join_at,
+                "upload": site_obj.upload,
+                "download": site_obj.download,
+                "ratio": site_obj.ratio,
+                "bonus": site_obj.bonus,
+                "seeding": site_obj.seeding,
+                "seeding_size": site_obj.seeding_size,
+                "seeding_info": site_obj.seeding_info.copy() if site_obj.seeding_info else [],
+                "leeching": site_obj.leeching,
+                "leeching_size": site_obj.leeching_size,
+                "message_unread": site_obj.message_unread,
+                "message_unread_contents": site_obj.message_unread_contents.copy()
+                if site_obj.message_unread_contents else [],
+                "updated_day": datetime.now().strftime('%Y-%m-%d'),
+                "err_msg": site_obj.err_msg,
+            })
         finally:
             site_obj.clear()

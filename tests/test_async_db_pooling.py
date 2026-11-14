@@ -20,8 +20,8 @@ import pytest
 
 # 池化实现位于 app.db.session；app.db 只做 re-export，私有符号不在其上
 import app.db.session as db_module
-from app.runtime.config import global_vars, settings
 from app.db.engine import _async_pool_kwargs, get_global_async_engine
+from app.runtime.config import global_vars, settings
 
 # 用 getter 而不是旧名字 AsyncEngine：后者只为仓库外插件保留，模块级导入它会在 pytest
 # 的**收集期**就把全局异步引擎建出来——用例还一个没跑，引擎已经在了。getter 是同一个
@@ -163,7 +163,8 @@ def test_fallback_slot_times_out_when_exhausted(monkeypatch):
     monkeypatch.setattr(db_module, "_fallback_slots", threading.BoundedSemaphore(1))
 
     async def run():
-        db_module._fallback_slots.acquire()  # 占满唯一名额
+        # 占满唯一名额
+        db_module._fallback_slots.acquire()
         with patch("app.db.session.record_metric") as record_metric:
             with pytest.raises(TimeoutError):
                 await db_module._acquire_fallback_slot()

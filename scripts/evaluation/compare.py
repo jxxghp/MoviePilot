@@ -1,4 +1,6 @@
-"""校验 MoviePilot 与原生 Codex 的同条件评测报告并生成成对摘要。"""
+"""
+校验 MoviePilot 与原生 Codex 的同条件评测报告并生成成对摘要。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +20,9 @@ _EVIDENCE_KINDS = {
 
 
 def _read_report(path: Path) -> dict[str, Any]:
-    """读取有限大小的 JSON 报告，拒绝目录、超限或非对象正文。"""
+    """
+    读取有限大小的 JSON 报告，拒绝目录、超限或非对象正文。
+    """
     if not path.is_file():
         raise ValueError(f"评测报告不存在：{path}")
     if path.stat().st_size > MAX_REPORT_BYTES:
@@ -33,7 +37,9 @@ def _read_report(path: Path) -> dict[str, Any]:
 
 
 def _conditions(report: dict[str, Any]) -> dict[str, Any]:
-    """提取必须一致的模型条件，不把令牌或完整工具正文带入比较结果。"""
+    """
+    提取必须一致的模型条件，不把令牌或完整工具正文带入比较结果。
+    """
     model = report.get("model")
     if not isinstance(model, dict):
         raise ValueError("评测报告缺少模型条件")
@@ -41,7 +47,9 @@ def _conditions(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def _metric(report: dict[str, Any], key: str) -> Any:
-    """读取报告中的公开轨迹指标，未知用量保持 None 而不是补零。"""
+    """
+    读取报告中的公开轨迹指标，未知用量保持 None 而不是补零。
+    """
     if key == "total_tokens":
         tokens = report.get("tokens")
         return tokens.get("total_tokens") if isinstance(tokens, dict) else None
@@ -49,7 +57,9 @@ def _metric(report: dict[str, Any], key: str) -> Any:
 
 
 def _side(report: dict[str, Any], role: str) -> dict[str, Any]:
-    """生成不含最终正文、工具参数和凭据的单侧摘要。"""
+    """
+    生成不含最终正文、工具参数和凭据的单侧摘要。
+    """
     return {
         "role": role,
         "passed": report.get("passed"),
@@ -68,7 +78,9 @@ def _side(report: dict[str, Any], role: str) -> dict[str, Any]:
 
 
 def _delta(moviepilot: dict[str, Any], codex: dict[str, Any], *, usage_comparable: bool = True) -> dict[str, Any]:
-    """计算两个方向的数值差；任一侧未知时保留 unknown。"""
+    """
+    计算两个方向的数值差；任一侧未知时保留 unknown。
+    """
     result: dict[str, Any] = {}
     for key in ("model_calls", "completed_model_calls", "failed_tool_calls", "tool_calls",
                 "duplicate_attempts", "side_effects", "elapsed_seconds", "total_tokens"):
@@ -81,7 +93,9 @@ def _delta(moviepilot: dict[str, Any], codex: dict[str, Any], *, usage_comparabl
 
 
 def _has_cancel_action(report: dict[str, Any]) -> bool:
-    """确认取消场景确实发出了子代理取消动作，而不是凭场景名放宽用量门禁。"""
+    """
+    确认取消场景确实发出了子代理取消动作，而不是凭场景名放宽用量门禁。
+    """
     trace = report.get("agent_trace") if report.get("evidence_kind") == "moviepilot_live_model" else report.get("native_events")
     if not isinstance(trace, list):
         return False
@@ -110,7 +124,9 @@ def _has_cancel_action(report: dict[str, Any]) -> bool:
 
 
 def _intentional_cancel_usage(report: dict[str, Any]) -> bool:
-    """确认取消场景的执行质量，并约束未完整用量只能来自一个取消请求。"""
+    """
+    确认取消场景的执行质量，并约束未完整用量只能来自一个取消请求。
+    """
     if report.get("scenario_id") != "subagent_cancel_recovery":
         return False
     calls = report.get("model_calls")
@@ -134,7 +150,9 @@ def _intentional_cancel_usage(report: dict[str, Any]) -> bool:
 
 
 def compare_reports(moviepilot: dict[str, Any], codex: dict[str, Any]) -> dict[str, Any]:
-    """仅在同场景、同源码和同模型预算成立时生成 Codex 成对比较摘要。"""
+    """
+    仅在同场景、同源码和同模型预算成立时生成 Codex 成对比较摘要。
+    """
     roles = {}
     for report in (moviepilot, codex):
         evidence_kind = report.get("evidence_kind")
@@ -187,5 +205,7 @@ def compare_reports(moviepilot: dict[str, Any], codex: dict[str, Any]) -> dict[s
 
 
 def compare_report_files(moviepilot_path: Path, codex_path: Path) -> dict[str, Any]:
-    """从两个路径读取报告并执行严格成对校验。"""
+    """
+    从两个路径读取报告并执行严格成对校验。
+    """
     return compare_reports(_read_report(moviepilot_path), _read_report(codex_path))

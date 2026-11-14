@@ -1,4 +1,6 @@
-"""认证组合根的部署兼容修复测试。"""
+"""
+认证组合根的部署兼容修复测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -11,7 +13,9 @@ from app.startup.composition import security as security_composition
 def test_backfill_superuser_setting_from_existing_database_admin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """V2 数据库已有管理员而配置缺失时，应持久化稳定管理员用户名。"""
+    """
+    V2 数据库已有管理员而配置缺失时，应持久化稳定管理员用户名。
+    """
     updates: list[tuple[str, str]] = []
     users = SimpleNamespace(
         get_active_superuser=Mock(
@@ -25,7 +29,9 @@ def test_backfill_superuser_setting_from_existing_database_admin(
     )
 
     def update_setting(key: str, value: str) -> tuple[bool, str]:
-        """记录启动兼容修复写入。"""
+        """
+        记录启动兼容修复写入。
+        """
         updates.append((key, value))
         return True, ""
 
@@ -44,7 +50,9 @@ def test_backfill_superuser_setting_from_existing_database_admin(
 def test_backfill_superuser_setting_preserves_explicit_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """显式 SUPERUSER 必须保持原值，不得被数据库顺序覆盖。"""
+    """
+    显式 SUPERUSER 必须保持原值，不得被数据库顺序覆盖。
+    """
     users = SimpleNamespace(get_active_superuser=Mock())
     update = Mock()
     monkeypatch.setattr(

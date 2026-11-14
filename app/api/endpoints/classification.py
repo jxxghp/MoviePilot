@@ -1,10 +1,12 @@
-"""多媒体分类策略、字段目录、预览、影响和版本管理 API。"""
+"""
+多媒体分类策略、字段目录、预览、影响和版本管理 API。
+"""
 
 from __future__ import annotations
 
 from enum import Enum
 from functools import partial
-from typing import cast
+from typing import Any, cast
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -59,7 +61,7 @@ from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
 
-_STRUCTURED_WRITE_RESPONSES = {
+_STRUCTURED_WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
     status.HTTP_409_CONFLICT: {
         "model": Response[ClassificationRevisionConflict],
         "description": "分类策略 revision 冲突",
@@ -75,7 +77,9 @@ def _get_analysis_service(
     db: object = Depends(get_async_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> ClassificationAnalysisService:
-    """组装分类分析服务及其只读近期历史样本端口。"""
+    """
+    组装分类分析服务及其只读近期历史样本端口。
+    """
     return ClassificationAnalysisService(
         runtime.classification.service,
         execution=runtime.classification_execution,
@@ -99,7 +103,9 @@ async def _resolve_history_facts(
     active: ClassificationPolicy,
     candidate: ClassificationPolicy,
 ) -> tuple[ClassificationFacts, ClassificationFacts] | None:
-    """只读取一次历史媒体详情，再按两套策略分别补充缺失信息。"""
+    """
+    只读取一次历史媒体详情，再按两套策略分别补充缺失信息。
+    """
     media_source = _enum_text(getattr(history, "media_source", None))
     media_id = str(getattr(history, "media_id", None) or "").strip()
     media_type = _history_media_type(getattr(history, "type", None))
@@ -123,7 +129,9 @@ async def _resolve_history_facts(
 
 
 def _history_media_type(value: object) -> MediaType | None:
-    """兼容历史记录中的中文和英文媒体类型。"""
+    """
+    兼容历史记录中的中文和英文媒体类型。
+    """
     normalized = _enum_text(value).casefold()
     aliases = {
         "电影": MediaType.MOVIE,
@@ -138,14 +146,18 @@ def _history_media_type(value: object) -> MediaType | None:
 
 
 def _enum_text(value: object) -> str:
-    """把枚举或普通值转换为去除首尾空白的文本。"""
+    """
+    把枚举或普通值转换为去除首尾空白的文本。
+    """
     if isinstance(value, Enum):
         value = value.value
     return str(value or "").strip()
 
 
 def _require_active_policy(runtime: ClassificationRuntime) -> ClassificationPolicy:
-    """读取活动策略；启动迁移失败时映射为可诊断的 503。"""
+    """
+    读取活动策略；启动迁移失败时映射为可诊断的 503。
+    """
     try:
         return runtime.require_policy()
     except ClassificationPolicyNotInitializedError as error:
@@ -158,7 +170,9 @@ def _require_active_policy(runtime: ClassificationRuntime) -> ClassificationPoli
 
 
 def _conflict_response(error: ClassificationPolicyConflictError) -> JSONResponse:
-    """生成前端可直接读取 expected/current revision 的 409 响应。"""
+    """
+    生成前端可直接读取 expected/current revision 的 409 响应。
+    """
     detail = ClassificationRevisionConflict(
         expected_revision=error.expected_revision,
         current_revision=error.current_revision,
@@ -180,11 +194,10 @@ def _conflict_response(error: ClassificationPolicyConflictError) -> JSONResponse
 def _validation_response(
     error: ClassificationPolicyValidationError,
 ) -> JSONResponse:
-    """生成保留完整字段路径和问题代码的 422 策略校验响应。"""
-    result = cast(
-        ClassificationValidationResult,
-        error.result.model_copy(deep=True),
-    )
+    """
+    生成保留完整字段路径和问题代码的 422 策略校验响应。
+    """
+    result = error.result.model_copy(deep=True)
     payload = Response[ClassificationValidationResult](
         success=False,
         message="分类策略校验失败",
@@ -196,7 +209,7 @@ def _validation_response(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/policy",
     summary="读取当前媒体分类策略",
     response_model=ClassificationPolicy,
@@ -209,7 +222,9 @@ async def get_policy(
         description="读取内置分类策略模板时传入 default；省略则读取活动策略",
     ),
 ) -> ClassificationPolicy:
-    """返回活动策略，或返回不写入运行时的内置默认策略草稿。"""
+    """
+    返回活动策略，或返回不写入运行时的内置默认策略草稿。
+    """
     if template == "default":
         return build_default_classification_policy()
     if template is not None:
@@ -220,7 +235,7 @@ async def get_policy(
     return _require_active_policy(runtime)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/policy",
     summary="校验并发布媒体分类策略",
     response_model=ClassificationPolicy,
@@ -231,7 +246,9 @@ async def publish_policy(
     _: object = Depends(get_current_active_superuser_async),
     runtime: ClassificationRuntime = Depends(get_classification_runtime),
 ) -> ClassificationPolicy | JSONResponse:
-    """以 CAS revision 发布完整策略，冲突和领域错误返回结构化数据。"""
+    """
+    以 CAS revision 发布完整策略，冲突和领域错误返回结构化数据。
+    """
     try:
         return await runtime.publish_policy(
             request.policy,
@@ -248,7 +265,7 @@ async def publish_policy(
         ) from error
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/fields",
     summary="读取媒体分类字段能力目录",
     response_model=ClassificationFieldCatalog,
@@ -257,11 +274,13 @@ async def get_fields(
     _: object = Depends(get_current_active_user_async),
     runtime: ClassificationRuntime = Depends(get_classification_runtime),
 ) -> ClassificationFieldCatalog:
-    """返回标准字段、动态扩展字段和服务端结构限制。"""
+    """
+    返回标准字段、动态扩展字段和服务端结构限制。
+    """
     return ClassificationAnalysisService(runtime.service).fields()
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/validate",
     summary="校验媒体分类策略草稿",
     response_model=ClassificationValidationResult,
@@ -271,11 +290,13 @@ async def validate_policy(
     _: object = Depends(get_current_active_superuser_async),
     runtime: ClassificationRuntime = Depends(get_classification_runtime),
 ) -> ClassificationValidationResult:
-    """执行与发布相同的结构和语义校验，但不修改 revision 或历史。"""
+    """
+    执行与发布相同的结构和语义校验，但不修改 revision 或历史。
+    """
     return ClassificationAnalysisService(runtime.service).validate(request.policy)
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/preview",
     summary="预览媒体分类策略命中过程",
     response_model=ClassificationEvaluation,
@@ -291,7 +312,9 @@ async def preview_policy(
     _: object = Depends(get_current_active_user_async),
     host_runtime: HostRuntime = Depends(get_host_runtime),
 ) -> ClassificationEvaluation | JSONResponse:
-    """对选择的媒体信息或兼容事实执行策略，并返回完整匹配说明。"""
+    """
+    对选择的媒体信息或兼容事实执行策略，并返回完整匹配说明。
+    """
     runtime = host_runtime.classification
     if request.policy is None:
         _require_active_policy(runtime)
@@ -304,7 +327,7 @@ async def preview_policy(
         return _validation_response(error)
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/impact",
     summary="分析分类策略对近期样本的估算影响",
     response_model=ClassificationImpactAnalysis,
@@ -315,7 +338,9 @@ async def analyze_impact(
     _: object = Depends(get_current_active_superuser_async),
     service: ClassificationAnalysisService = Depends(_get_analysis_service),
 ) -> ClassificationImpactAnalysis | JSONResponse:
-    """读取近期历史对应的完整媒体详情后比较策略，不修改媒体或历史数据。"""
+    """
+    读取近期历史对应的完整媒体详情后比较策略，不修改媒体或历史数据。
+    """
     try:
         return await service.impact(
             request.policy,
@@ -335,7 +360,7 @@ async def analyze_impact(
         ) from error
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/history",
     summary="读取媒体分类策略历史",
     response_model=ClassificationPolicyHistory,
@@ -344,7 +369,9 @@ async def get_history(
     _: object = Depends(get_current_active_superuser_async),
     runtime: ClassificationRuntime = Depends(get_classification_runtime),
 ) -> ClassificationPolicyHistory:
-    """返回当前 revision 以及有界、按新到旧排列的历史完整快照。"""
+    """
+    返回当前 revision 以及有界、按新到旧排列的历史完整快照。
+    """
     active = _require_active_policy(runtime)
     return ClassificationPolicyHistory(
         active_revision=active.revision,
@@ -352,7 +379,7 @@ async def get_history(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/rollback/{revision}",
     summary="把历史媒体分类策略发布为新版本",
     response_model=ClassificationPolicyRollbackResult,
@@ -364,7 +391,9 @@ async def rollback_policy(
     _: object = Depends(get_current_active_superuser_async),
     runtime: ClassificationRuntime = Depends(get_classification_runtime),
 ) -> ClassificationPolicyRollbackResult | JSONResponse:
-    """选择历史内容并发布新的单调 revision，不覆写历史版本。"""
+    """
+    选择历史内容并发布新的单调 revision，不覆写历史版本。
+    """
     _require_active_policy(runtime)
     try:
         policy = await runtime.service.async_rollback(

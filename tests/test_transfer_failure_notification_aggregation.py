@@ -1,3 +1,7 @@
+"""
+验证整理失败通知的聚合、去重和投递。
+"""
+
 from collections.abc import Callable
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -21,42 +25,60 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _Timer:
-    """记录静默窗口是否因新失败到达而取消。"""
+    """
+    记录静默窗口是否因新失败到达而取消。
+    """
 
     def __init__(self, callback, args):
-        """保存定时回调与参数。"""
+        """
+        保存定时回调与参数。
+        """
         self.callback = callback
         self.args = args
         self.cancelled = False
 
     def cancel(self):
-        """标记当前定时器已取消。"""
+        """
+        标记当前定时器已取消。
+        """
         self.cancelled = True
 
 
 class _Loop:
-    """同步执行线程安全入队，并保留延迟回调供测试触发。"""
+    """
+    同步执行线程安全入队，并保留延迟回调供测试触发。
+    """
 
     def __init__(self):
-        """初始化定时器清单。"""
+        """
+        初始化定时器清单。
+        """
         self.timers = []
 
     def call_soon_threadsafe(self, callback, *args):
-        """同步执行本应投递到事件循环的回调。"""
+        """
+        同步执行本应投递到事件循环的回调。
+        """
         callback(*args)
 
     @staticmethod
     def is_running() -> bool:
-        """模拟可接收任务的运行中事件循环。"""
+        """
+        模拟可接收任务的运行中事件循环。
+        """
         return True
 
     @staticmethod
     def is_closed() -> bool:
-        """模拟尚未关闭的事件循环。"""
+        """
+        模拟尚未关闭的事件循环。
+        """
         return False
 
     def call_later(self, _delay, callback, *args):
-        """保存延迟回调并返回可取消句柄。"""
+        """
+        保存延迟回调并返回可取消句柄。
+        """
         timer = _Timer(callback, args)
         self.timers.append(timer)
         return timer
@@ -64,7 +86,9 @@ class _Loop:
 
 @pytest.fixture
 def replace_main_loop() -> Callable[[object], None]:
-    """临时替换主循环登记，并在用例结束后恢复原值。"""
+    """
+    临时替换主循环登记，并在用例结束后恢复原值。
+    """
     original = main_loop_registry.current
     try:
         yield main_loop_registry.replace_compat
@@ -73,29 +97,41 @@ def replace_main_loop() -> Callable[[object], None]:
 
     @staticmethod
     def is_running() -> bool:
-        """该替身代表由生命周期持有的运行中循环。"""
+        """
+        该替身代表由生命周期持有的运行中循环。
+        """
         return True
 
     @staticmethod
     def is_closed() -> bool:
-        """该替身在用例期间保持可用。"""
+        """
+        该替身在用例期间保持可用。
+        """
         return False
 
 
 class _DeferredLoop(_Loop):
-    """延迟执行线程安全回调，用于覆盖关闭与入环之间的竞态。"""
+    """
+    延迟执行线程安全回调，用于覆盖关闭与入环之间的竞态。
+    """
 
     def __init__(self):
-        """初始化延迟回调和定时器清单。"""
+        """
+        初始化延迟回调和定时器清单。
+        """
         super().__init__()
         self.soon_callbacks = []
 
     def call_soon_threadsafe(self, callback, *args):
-        """保存线程安全回调，直到测试显式执行。"""
+        """
+        保存线程安全回调，直到测试显式执行。
+        """
         self.soon_callbacks.append((callback, args))
 
     def run_soon_callbacks(self):
-        """执行并清空已保存的线程安全回调。"""
+        """
+        执行并清空已保存的线程安全回调。
+        """
         callbacks = list(self.soon_callbacks)
         self.soon_callbacks.clear()
         for callback, args in callbacks:
@@ -103,7 +139,9 @@ class _DeferredLoop(_Loop):
 
 
 def _task(*, episode: int, download_hash: str = "hash-1") -> TransferTask:
-    """构造同一媒体不同剧集的整理任务。"""
+    """
+    构造同一媒体不同剧集的整理任务。
+    """
     return TransferTask(
         fileitem=FileItem(
             storage="local",
@@ -126,7 +164,9 @@ def _task(*, episode: int, download_hash: str = "hash-1") -> TransferTask:
 
 
 def test_failure_group_key_prefers_media_identity_and_season():
-    """同一媒体同一季应跨文件共享分组键。"""
+    """
+    同一媒体同一季应跨文件共享分组键。
+    """
     first = build_transfer_failure_group_key(_task(episode=1, download_hash="hash-a"))
     second = build_transfer_failure_group_key(_task(episode=2, download_hash="hash-b"))
 
@@ -135,14 +175,18 @@ def test_failure_group_key_prefers_media_identity_and_season():
 
 
 def test_failure_notification_aggregation_defaults_on():
-    """整理失败通知聚合默认开启。"""
+    """
+    整理失败通知聚合默认开启。
+    """
     field = ConfigModel.model_fields["TRANSFER_FAILURE_NOTIFICATION_AGGREGATION"]
 
     assert field.default is True
 
 
 def test_aggregator_debounces_same_group_and_flushes_once():
-    """同组失败应重置定时器并一次性回调全部快照。"""
+    """
+    同组失败应重置定时器并一次性回调全部快照。
+    """
     loop = _Loop()
     aggregator = TransferFailureNotificationAggregator()
     callback = Mock()
@@ -166,7 +210,9 @@ def test_aggregator_debounces_same_group_and_flushes_once():
 
 
 def test_aggregator_old_timer_cannot_flush_before_renewal_is_armed():
-    """新通知已接收时，旧 timer 不得抢在事件循环重置静默窗前发送。"""
+    """
+    新通知已接收时，旧 timer 不得抢在事件循环重置静默窗前发送。
+    """
     loop = _DeferredLoop()
     aggregator = TransferFailureNotificationAggregator()
     callback = Mock()
@@ -203,7 +249,9 @@ def test_aggregator_old_timer_cannot_flush_before_renewal_is_armed():
 
 
 def test_aggregator_close_flushes_accepted_notification_before_timer_is_armed():
-    """关闭应发送已接收但尚未进入事件循环的通知，且延迟回调不能重新建 timer。"""
+    """
+    关闭应发送已接收但尚未进入事件循环的通知，且延迟回调不能重新建 timer。
+    """
     loop = _DeferredLoop()
     aggregator = TransferFailureNotificationAggregator()
     callback = Mock()
@@ -226,7 +274,9 @@ def test_aggregator_close_flushes_accepted_notification_before_timer_is_armed():
 
 
 def test_aggregator_close_cancels_timer_and_rejects_new_notification():
-    """关闭应取消已建 timer，并让调用方明确感知后续投递被拒绝。"""
+    """
+    关闭应取消已建 timer，并让调用方明确感知后续投递被拒绝。
+    """
     loop = _Loop()
     aggregator = TransferFailureNotificationAggregator()
     callback = Mock()
@@ -254,7 +304,9 @@ def test_aggregator_close_cancels_timer_and_rejects_new_notification():
 
 
 def test_aggregator_close_observes_flush_callback_error():
-    """关闭阶段同步刷新失败时应记录异常而不是让通知静默丢失。"""
+    """
+    关闭阶段同步刷新失败时应记录异常而不是让通知静默丢失。
+    """
     loop = _DeferredLoop()
     aggregator = TransferFailureNotificationAggregator()
     callback = Mock(side_effect=RuntimeError("send failed"))
@@ -276,7 +328,9 @@ def test_aggregator_close_observes_flush_callback_error():
 
 
 def test_aggregated_message_contains_count_reason_stats_and_batch_entry():
-    """聚合消息应给出失败数、原因统计、历史 ID 和批量处理入口。"""
+    """
+    聚合消息应给出失败数、原因统计、历史 ID 和批量处理入口。
+    """
     chain = object.__new__(TransferChain)
     chain.runtime_config = SimpleNamespace(history_url="#/history")
     sent = []
@@ -302,7 +356,9 @@ def test_aggregated_message_contains_count_reason_stats_and_batch_entry():
 
 
 def test_enabled_queue_uses_shared_group_key(replace_main_loop):
-    """开启聚合后公开通知入口应投递到聚合器而不是立即发送。"""
+    """
+    开启聚合后公开通知入口应投递到聚合器而不是立即发送。
+    """
     chain = object.__new__(TransferChain)
     chain.runtime_config = SimpleNamespace(
         transfer_failure_notification_aggregation=True,

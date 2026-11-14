@@ -1,4 +1,6 @@
-"""MoviePilot Uvicorn factory、reload 与生产服务器入口测试。"""
+"""
+MoviePilot Uvicorn factory、reload 与生产服务器入口测试。
+"""
 
 import threading
 from pathlib import Path
@@ -16,7 +18,9 @@ PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def test_create_app_does_not_start_plugin_manager_or_threads(monkeypatch):
-    """ASGI factory 只构建应用结构，不得在创建阶段物化插件运行时。"""
+    """
+    ASGI factory 只构建应用结构，不得在创建阶段物化插件运行时。
+    """
     plugin_manager = MagicMock(side_effect=AssertionError("plugin runtime started"))
     monkeypatch.setattr(factory, "get_plugin_manager", plugin_manager)
     threads_before = threading.active_count()
@@ -29,7 +33,9 @@ def test_create_app_does_not_start_plugin_manager_or_threads(monkeypatch):
 
 
 def test_production_entry_uses_custom_single_process_server(monkeypatch):
-    """生产单 worker 保留发布协作停止标志的自定义 Server。"""
+    """
+    生产单 worker 保留发布协作停止标志的自定义 Server。
+    """
     server = MagicMock()
     monkeypatch.setattr(main.settings, "DEV", False)
     monkeypatch.setattr(main.settings, "API_WORKERS", 1)
@@ -45,7 +51,9 @@ def test_production_entry_uses_custom_single_process_server(monkeypatch):
 
 
 def test_development_reload_uses_import_string_factory(monkeypatch):
-    """开发 reload 必须让 Uvicorn 重新导入 factory，而不是序列化 app 实例。"""
+    """
+    开发 reload 必须让 Uvicorn 重新导入 factory，而不是序列化 app 实例。
+    """
     monkeypatch.setattr(main.settings, "DEV", True)
     monkeypatch.setattr(main.settings, "API_WORKERS", 1)
     uvicorn_run = MagicMock()
@@ -71,7 +79,9 @@ def test_development_reload_uses_import_string_factory(monkeypatch):
 
 
 def test_development_reload_ignores_plugin_runtime_state(monkeypatch):
-    """插件载荷与恢复快照由热加载管理，仅宿主源码变更触发进程重载。"""
+    """
+    插件载荷与恢复快照由热加载管理，仅宿主源码变更触发进程重载。
+    """
     root_path = main.settings.ROOT_PATH
     plugin_path = root_path / "app" / "plugins"
     config_path = main.settings.CONFIG_PATH
@@ -103,7 +113,9 @@ def test_development_reload_ignores_plugin_runtime_state(monkeypatch):
 
 
 def test_safe_mode_multi_worker_uses_import_string_factory(monkeypatch):
-    """安全模式多 worker 由 Uvicorn supervisor 创建独立 ASGI factory 实例。"""
+    """
+    安全模式多 worker 由 Uvicorn supervisor 创建独立 ASGI factory 实例。
+    """
     monkeypatch.setattr(main.settings, "DEV", False)
     monkeypatch.setattr(main.settings, "MOVIEPILOT_SAFE_MODE", True)
     monkeypatch.setattr(main.settings, "API_WORKERS", 2)
@@ -118,7 +130,9 @@ def test_safe_mode_multi_worker_uses_import_string_factory(monkeypatch):
 
 
 def test_reload_and_multiple_workers_are_rejected_together(monkeypatch):
-    """Uvicorn 不支持的 reload + workers 组合必须给出明确错误。"""
+    """
+    Uvicorn 不支持的 reload + workers 组合必须给出明确错误。
+    """
     monkeypatch.setattr(main.settings, "DEV", True)
     monkeypatch.setattr(main.settings, "MOVIEPILOT_SAFE_MODE", True)
     monkeypatch.setattr(main.settings, "API_WORKERS", 2)
@@ -132,7 +146,9 @@ def test_reload_and_multiple_workers_are_rejected_together(monkeypatch):
 
 
 def test_request_shutdown_is_safe_before_server_creation(monkeypatch):
-    """数据库准备或 reload supervisor 阶段收到退出请求时不依赖 Server 已创建。"""
+    """
+    数据库准备或 reload supervisor 阶段收到退出请求时不依赖 Server 已创建。
+    """
     stop_system = MagicMock()
     monkeypatch.setattr(main.runtime_stop_state, "stop_system", stop_system)
     monkeypatch.setattr(main, "Server", None)
@@ -145,7 +161,9 @@ def test_request_shutdown_is_safe_before_server_creation(monkeypatch):
 def test_production_server_preserves_shutdown_requested_before_creation(
     monkeypatch,
 ):
-    """数据库准备期间收到的停止请求必须传递给随后创建的生产 Server。"""
+    """
+    数据库准备期间收到的停止请求必须传递给随后创建的生产 Server。
+    """
     monkeypatch.setattr(type(main.runtime_stop_state), "is_system_stopped", True)
 
     server = main.create_server()
@@ -154,7 +172,9 @@ def test_production_server_preserves_shutdown_requested_before_creation(
 
 
 def test_local_launcher_keeps_module_entrypoint():
-    """本地开发脚本继续通过 app.main 进入统一启动准备流程。"""
+    """
+    本地开发脚本继续通过 app.main 进入统一启动准备流程。
+    """
     script = (PROJECT_ROOT / "scripts" / "start-local.sh").read_text(
         encoding="utf-8"
     )
@@ -163,7 +183,9 @@ def test_local_launcher_keeps_module_entrypoint():
 
 
 def test_supported_asgi_entries_share_database_lifecycle() -> None:
-    """主程序、factory 与 TestClient 应通过同一 lifespan 准备数据库。"""
+    """
+    主程序、factory 与 TestClient 应通过同一 lifespan 准备数据库。
+    """
     created = factory.create_app()
 
     assert factory.app.router.lifespan_context is lifecycle.lifespan

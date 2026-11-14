@@ -1,4 +1,6 @@
-"""下载失败冷却切片显式 UoW 的回归测试。"""
+"""
+下载失败冷却切片显式 UoW 的回归测试。
+"""
 
 from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
@@ -19,14 +21,18 @@ from app.db.session import SessionFactory
 
 
 def _session_factory(session: MagicMock) -> MagicMock:
-    """返回支持 context manager 的固定会话工厂。"""
+    """
+    返回支持 context manager 的固定会话工厂。
+    """
     session.__enter__.return_value = session
     session.__exit__.return_value = False
     return MagicMock(return_value=session)
 
 
 def _failure_write() -> DownloadFailureWrite:
-    """构造事务测试共用的最小下载失败写入 DTO。"""
+    """
+    构造事务测试共用的最小下载失败写入 DTO。
+    """
     return DownloadFailureWrite(
         fingerprint="fp",
         failed_at="now",
@@ -37,7 +43,9 @@ def _failure_write() -> DownloadFailureWrite:
 
 @pytest.fixture
 def real_session_factory(tmp_path):
-    """创建隔离的下载失败冷却数据库与会话工厂。"""
+    """
+    创建隔离的下载失败冷却数据库与会话工厂。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'download-failure.db'}")
     factory = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -46,7 +54,9 @@ def real_session_factory(tmp_path):
 
 
 def test_real_session_round_trip_returns_detached_snapshot(real_session_factory) -> None:
-    """真实写入提交后，查询结果在 Session 关闭后仍是可读冻结快照。"""
+    """
+    真实写入提交后，查询结果在 Session 关闭后仍是可读冻结快照。
+    """
     repository = TransactionalDownloadFailureRepository(real_session_factory)
 
     assert repository.record_failure(_failure_write()) is None
@@ -64,7 +74,9 @@ def test_real_session_round_trip_returns_detached_snapshot(real_session_factory)
 
 
 def test_active_failures_are_projected_to_detached_frozen_snapshots() -> None:
-    """只读适配器必须在会话关闭前投影，不得返回 ORM 记录。"""
+    """
+    只读适配器必须在会话关闭前投影，不得返回 ORM 记录。
+    """
     session = MagicMock()
     record = SimpleNamespace(
         fingerprint="fp",
@@ -94,7 +106,9 @@ def test_active_failures_are_projected_to_detached_frozen_snapshots() -> None:
 
 
 def test_sqlite_snapshot_survives_repository_session_close(db) -> None:
-    """真实 SQLite 查询关闭适配器 Session 后仍可完整读取快照。"""
+    """
+    真实 SQLite 查询关闭适配器 Session 后仍可完整读取快照。
+    """
     db.watermark(DownloadFailure)
     repository = TransactionalDownloadFailureRepository(SessionFactory)
     repository.record_failure(DownloadFailureWrite(
@@ -117,7 +131,9 @@ def test_sqlite_snapshot_survives_repository_session_close(db) -> None:
 
 
 def test_record_failure_commits_explicit_unit_of_work() -> None:
-    """写入成功后只由适配器显式提交一次事务。"""
+    """
+    写入成功后只由适配器显式提交一次事务。
+    """
     session = MagicMock()
     oper = MagicMock()
     repository = TransactionalDownloadFailureRepository(_session_factory(session))
@@ -138,7 +154,9 @@ def test_record_failure_commits_explicit_unit_of_work() -> None:
 
 
 def test_record_failure_rolls_back_explicit_unit_of_work() -> None:
-    """写入异常时回滚并保留原始异常。"""
+    """
+    写入异常时回滚并保留原始异常。
+    """
     session = MagicMock()
     oper = MagicMock()
     oper.record_failure.side_effect = ValueError("duplicate")
@@ -155,7 +173,9 @@ def test_record_failure_rolls_back_explicit_unit_of_work() -> None:
 
 
 def test_record_failure_rolls_back_commit_failure() -> None:
-    """提交失败时也必须回滚并传播提交异常。"""
+    """
+    提交失败时也必须回滚并传播提交异常。
+    """
     session = MagicMock()
     session.commit.side_effect = RuntimeError("commit failed")
     repository = TransactionalDownloadFailureRepository(_session_factory(session))

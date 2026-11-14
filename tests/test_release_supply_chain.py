@@ -1,4 +1,6 @@
-"""正式镜像发布的供应链门禁合同。"""
+"""
+正式镜像发布的供应链门禁合同。
+"""
 
 import os
 import shutil
@@ -36,13 +38,17 @@ ALLOWED_ACTION_REFS = {
 
 
 def _load_workflow(path: Path = RELEASE_WORKFLOW) -> dict:
-    """以 YAML 1.2 解析镜像发布工作流。"""
+    """
+    以 YAML 1.2 解析镜像发布工作流。
+    """
     yaml = YAML(typ="safe")
     return yaml.load(path.read_text(encoding="utf-8"))
 
 
 def _steps_by_name(workflow: dict) -> dict[str, dict]:
-    """按名称索引发布步骤，顺序仍由原列表校验。"""
+    """
+    按名称索引发布步骤，顺序仍由原列表校验。
+    """
     return {
         step["name"]: step
         for step in workflow["jobs"]["Docker-build"]["steps"]
@@ -51,7 +57,9 @@ def _steps_by_name(workflow: dict) -> dict[str, dict]:
 
 
 def _write_fake_gh(tmp_path: Path) -> Path:
-    """创建可控制响应和退出状态的 gh 测试替身。"""
+    """
+    创建可控制响应和退出状态的 gh 测试替身。
+    """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
@@ -77,7 +85,9 @@ def _run_release_script(
     exit_code: int = 0,
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """在隔离的 gh 替身环境中执行发布 workflow 脚本。"""
+    """
+    在隔离的 gh 替身环境中执行发布 workflow 脚本。
+    """
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("release workflow contract requires Bash")
@@ -96,7 +106,6 @@ def _run_release_script(
             "GITHUB_REPOSITORY": "jxxghp/MoviePilot",
             "GITHUB_ENV": str(tmp_path / "github.env"),
             "GITHUB_OUTPUT": str(tmp_path / "github.output"),
-            "CHANGELOG": "generated changelog",
         }
     )
     env.update(extra_env or {})
@@ -110,27 +119,40 @@ def _run_release_script(
     )
 
 
-def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> None:
-    """使用官方基础镜像及所需运行依赖，不追加系统包扫描补丁。"""
+def test_base_image_uses_refreshable_tag_and_upgrades_only_in_refresh_layer() -> None:
+    """
+    使用官方基础镜像及所需运行依赖，不追加针对扫描结果的逐包补丁；
+    系统包只在 final 末尾由刷新键控制的系统安全更新层统一升级。
+    """
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     assert 'ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"' in dockerfile
     assert "FROM python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie AS base" in dockerfile
     assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in dockerfile
     assert "apt-get upgrade" not in dockerfile
+    assert dockerfile.count("upgrade;") == 1
+    assert "dist-upgrade" not in dockerfile
+    refresh_layer = dockerfile.split('ARG MOVIEPILOT_SYSTEM_REFRESH_ID=""', maxsplit=1)[1]
+    assert "upgrade;" in refresh_layer
+    assert "apt-get install" not in refresh_layer
     assert "pip uninstall" not in dockerfile
     assert "break-system-packages" not in dockerfile
-    browser_install = dockerfile.split("RUN playwright install-deps chromium", maxsplit=1)[1]
+    browser_install = dockerfile.split("python -m playwright install-deps chromium", maxsplit=1)[1]
+    browser_install = browser_install.split("\nFROM ", maxsplit=1)[0]
     assert "apt-get install" not in browser_install
 
 
 def test_rclone_image_uses_official_stable_channel() -> None:
-    """rclone 使用官方稳定镜像，不固定用于应对扫描的临时 Beta。"""
+    """
+    rclone 使用官方稳定镜像，不固定用于应对扫描的临时 Beta。
+    """
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     assert "FROM rclone/rclone:latest AS rclone" in dockerfile
 
 
 def test_release_audits_locked_runtime_dependencies_before_building() -> None:
-    """正式版和 Beta 构建前必须分别审计两套锁定运行依赖。"""
+    """
+    正式版和 Beta 构建前必须分别审计两套锁定运行依赖。
+    """
     for workflow_path in (RELEASE_WORKFLOW, BETA_WORKFLOW):
         workflow = _load_workflow(workflow_path)
         steps = workflow["jobs"]["Docker-build"]["steps"]
@@ -146,10 +168,14 @@ def test_release_audits_locked_runtime_dependencies_before_building() -> None:
         assert "pip-audit==" not in audit
         for option in ("--require-hashes", "--no-deps", "--disable-pip", "--strict"):
             assert option in audit
+        # 两个运行时组都要再经 OSV 补查，PyPI 服务单独使用会漏报部分公告。
+        assert audit.count("--vulnerability-service osv") == 2
 
 
 def test_direct_url_audit_requirement_uses_version_from_matching_lock_source(tmp_path: Path) -> None:
-    """URL 依赖的漏洞审计版本必须来自同名且同来源的锁文件条目。"""
+    """
+    URL 依赖的漏洞审计版本必须来自同名且同来源的锁文件条目。
+    """
     lock_file = tmp_path / "uv.lock"
     lock_file.write_text(
         """
@@ -173,8 +199,30 @@ source = { url = "https://example.com/brotli.tar.gz" }
     assert "@ https://example.com/brotli.tar.gz" not in normalized
 
 
+def test_patched_free_threaded_brotli_uses_security_version_for_audit(tmp_path: Path) -> None:
+    """
+    无 GIL Brotli 源码保留 1.2.0 元数据时，审计应按已包含修复的 1.2.1 匹配公告。
+    """
+    source = (
+        "https://github.com/google/brotli/archive/"
+        "0ed4268a4401abcb4472096340477cf4af7d1a2b.tar.gz"
+    )
+    lock_file = tmp_path / "uv.lock"
+    lock_file.write_text(
+        f'version = 1\n\n[[package]]\nname = "brotli"\nversion = "1.2.0"\n'
+        f'source = {{ url = "{source}" }}\n',
+        encoding="utf-8",
+    )
+
+    normalized = normalize_requirements(f"brotli @ {source}\n", lock_file)
+
+    assert normalized == "brotli==1.2.1\n"
+
+
 def test_direct_url_audit_requirement_rejects_unlocked_source(tmp_path: Path) -> None:
-    """不能把未匹配锁文件来源的 URL 依赖伪装为已审计版本。"""
+    """
+    不能把未匹配锁文件来源的 URL 依赖伪装为已审计版本。
+    """
     lock_file = tmp_path / "uv.lock"
     lock_file.write_text("version = 1\npackage = []\n", encoding="utf-8")
 
@@ -184,7 +232,9 @@ def test_direct_url_audit_requirement_rejects_unlocked_source(tmp_path: Path) ->
 
 @pytest.mark.parametrize("path", (RELEASE_WORKFLOW, BETA_WORKFLOW))
 def test_release_builds_publish_both_architectures_directly(path: Path) -> None:
-    """正式版和 Beta 直接构建发布双架构产物，删除扫描专用候选流程。"""
+    """
+    正式版和 Beta 直接构建发布双架构产物，删除扫描专用候选流程。
+    """
     workflow = _load_workflow(path)
     steps = workflow["jobs"]["Docker-build"]["steps"]
     builds = [step for step in steps if step.get("uses") == "docker/build-push-action@v7"]
@@ -199,7 +249,9 @@ def test_release_builds_publish_both_architectures_directly(path: Path) -> None:
 
 
 def test_workflows_follow_maintained_action_channels() -> None:
-    """官方工具使用批准的稳定引用，不引入未知来源或手工 commit SHA。"""
+    """
+    官方工具使用批准的稳定引用，不引入未知来源或手工 commit SHA。
+    """
     for workflow_path in sorted(WORKFLOW_ROOT.glob("*.yml")):
         workflow = _load_workflow(workflow_path)
         for job_name, job in workflow.get("jobs", {}).items():
@@ -214,7 +266,9 @@ def test_workflows_follow_maintained_action_channels() -> None:
 
 
 def test_all_workflows_are_valid_yaml() -> None:
-    """所有 GitHub Actions 工作流都必须能被 YAML 1.2 解析。"""
+    """
+    所有 GitHub Actions 工作流都必须能被 YAML 1.2 解析。
+    """
     for workflow_path in sorted(WORKFLOW_ROOT.glob("*.yml")):
         workflow = _load_workflow(workflow_path)
         assert isinstance(workflow, dict), workflow_path
@@ -222,7 +276,9 @@ def test_all_workflows_are_valid_yaml() -> None:
 
 
 def test_codex_event_intake_replaces_legacy_pr_agent_trigger() -> None:
-    """旧 PR-Agent 仅保留手工入口，Issue/PR 自动分析统一交给 Codex 事件桥。"""
+    """
+    旧 PR-Agent 仅保留手工入口，Issue/PR 自动分析统一交给 Codex 事件桥。
+    """
     legacy_workflow = _load_workflow(PR_AGENT_WORKFLOW)
     assert set(legacy_workflow["on"]) == {"workflow_dispatch"}
 
@@ -239,7 +295,9 @@ def test_codex_event_intake_replaces_legacy_pr_agent_trigger() -> None:
 
 
 def test_release_uses_github_cli_for_tag_and_release_lifecycle() -> None:
-    """正式发布复用 GitHub CLI，并只把明确不存在识别为新 Release。"""
+    """
+    正式发布复用 GitHub CLI，并只把明确不存在识别为新 Release。
+    """
     workflow = _load_workflow()
     indexed = _steps_by_name(workflow)
     serialized = RELEASE_WORKFLOW.read_text(encoding="utf-8")
@@ -270,7 +328,8 @@ def test_release_uses_github_cli_for_tag_and_release_lifecycle() -> None:
     ("response", "exit_code", "expected_exists", "expected_body"),
     [
         ("HTTP/2.0 200 OK\nHeader: value\n\nmanual body\n", 0, "true", "manual body"),
-        ("HTTP/2.0 404 Not Found\n\n", 1, "false", "generated changelog"),
+        ("HTTP/2.0 200 OK\n\nmanual\nEOF\nMORE=value\n", 0, "true", "manual\nEOF\nMORE=value"),
+        ("HTTP/2.0 404 Not Found\n\n", 1, "false", ""),
     ],
 )
 def test_release_query_preserves_existing_body_or_handles_explicit_404(
@@ -280,7 +339,9 @@ def test_release_query_preserves_existing_body_or_handles_explicit_404(
     expected_exists: str,
     expected_body: str,
 ) -> None:
-    """已有 Release 保留正文，只有明确 404 才使用自动变更记录。"""
+    """
+    已有 Release 保留正文，只有明确 404 才将正文初始化为空。
+    """
     script = _steps_by_name(_load_workflow())["Get existing release body"]["run"]
     script = script.replace("v${{ env.app_version }}", "v3.0.0")
 
@@ -291,10 +352,15 @@ def test_release_query_preserves_existing_body_or_handles_explicit_404(
     environment = (tmp_path / "github.env").read_text(encoding="utf-8")
     assert f"exists={expected_exists}" in output
     assert expected_body in environment
+    delimiter = environment.splitlines()[0].split("<<")[1]
+    assert delimiter.startswith("RELEASE_NOTES_")
+    assert environment.splitlines()[-1] == delimiter
 
 
 def test_release_query_fails_closed_on_non_404_error(tmp_path: Path) -> None:
-    """网络或服务端错误不得伪装成 Release 不存在。"""
+    """
+    网络或服务端错误不得伪装成 Release 不存在。
+    """
     script = _steps_by_name(_load_workflow())["Get existing release body"]["run"]
     script = script.replace("v${{ env.app_version }}", "v3.0.0")
 
@@ -320,7 +386,9 @@ def test_release_publish_selects_edit_or_create(
     release_exists: str,
     expected_command: str,
 ) -> None:
-    """发布阶段按查询结果原位更新或创建 Release。"""
+    """
+    发布阶段按查询结果原位更新或创建 Release。
+    """
     script = _steps_by_name(_load_workflow())["Publish Release"]["run"]
     script = script.replace("v${{ env.app_version }}", "v3.0.0")
 
@@ -339,7 +407,9 @@ def test_release_publish_selects_edit_or_create(
 
 
 def test_dependency_compat_checks_minimum_uv_version() -> None:
-    """依赖兼容 job 必须断言 uv 满足最低版本，而不是只打印版本。"""
+    """
+    依赖兼容 job 必须断言 uv 满足最低版本，而不是只打印版本。
+    """
     workflow = _load_workflow(ROOT / ".github" / "workflows" / "dependency-compat.yml")
     steps = workflow["jobs"]["docker-dependencies"]["steps"]
     verify = next(step for step in steps if step.get("name") == "Verify minimum uv version")
@@ -351,7 +421,9 @@ def test_dependency_compat_checks_minimum_uv_version() -> None:
 
 
 def test_publish_refreshes_base_and_preserves_build_cache() -> None:
-    """直接发布时拉取基础镜像，同时读写双架构构建缓存。"""
+    """
+    直接发布时拉取基础镜像，同时读写双架构构建缓存。
+    """
     workflow = _load_workflow()
     publish = _steps_by_name(workflow)["Publish multi-architecture image"]["with"]
     assert workflow["on"]["workflow_dispatch"] is None
@@ -360,8 +432,56 @@ def test_publish_refreshes_base_and_preserves_build_cache() -> None:
     assert "scope=moviepilot-v3-standard-docker," in publish["cache-to"]
 
 
+def test_release_gate_only_publishes_changed_versions(tmp_path: Path) -> None:
+    """
+    自动发布只接受版本值变化，手动重建保留入口。
+    """
+    workflow = _load_workflow()
+    gate = workflow["jobs"]["release-gate"]
+    build = workflow["jobs"]["Docker-build"]
+    assert build["needs"] == "release-gate"
+    assert build["if"] == "needs.release-gate.outputs.publish == 'true'"
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    version_file = repo / "version.py"
+    version_file.write_text(
+        "APP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.6'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "version.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+         "commit", "-qm", "base"],
+        check=True,
+    )
+    before_sha = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+    command = next(step for step in gate["steps"] if step.get("id") == "detect")["run"]
+    output_file = tmp_path / "output"
+
+    def detect(event_name: str, content: str) -> str:
+        version_file.write_text(content, encoding="utf-8")
+        output_file.write_text("", encoding="utf-8")
+        subprocess.run(
+            ["bash", "-e", "-c", command], cwd=repo, check=True,
+            env={**os.environ, "EVENT_NAME": event_name, "BEFORE_SHA": before_sha,
+                 "GITHUB_OUTPUT": str(output_file)},
+        )
+        return output_file.read_text(encoding="utf-8").strip()
+
+    assert detect("push", "\"\"\"说明文字\"\"\"\nAPP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.6'\n") == "publish=false"
+    assert detect("push", "APP_VERSION = 'v3.1.7'\nFRONTEND_VERSION = 'v3.1.6'\n") == "publish=true"
+    assert detect("push", "APP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.7'\n") == "publish=true"
+    assert detect("workflow_dispatch", "APP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.6'\n") == "publish=true"
+
+
 def test_release_publishes_free_threaded_image_with_separate_metadata_and_cache() -> None:
-    """free-threaded 发布必须使用 v3t 命名、参数和独立缓存。"""
+    """
+    free-threaded 发布必须使用 v3t 命名、参数和独立缓存。
+    """
     workflow = _load_workflow()
     indexed = _steps_by_name(workflow)
 
@@ -375,7 +495,9 @@ def test_release_publishes_free_threaded_image_with_separate_metadata_and_cache(
 
 
 def test_release_publishes_version_and_latest_tags_for_both_image_variants() -> None:
-    """正式版元数据同时发布版本号与 latest，两个变体直接复用各自发布结果。"""
+    """
+    正式版元数据同时发布版本号与 latest，两个变体直接复用各自发布结果。
+    """
     workflow = _load_workflow()
     steps = workflow["jobs"]["Docker-build"]["steps"]
     names = [step.get("name") for step in steps]
@@ -399,7 +521,9 @@ def test_release_publishes_version_and_latest_tags_for_both_image_variants() -> 
 
 
 def test_beta_applies_the_same_variant_publish_contract() -> None:
-    """Beta 保持两个变体的发布参数、标签和缓存隔离。"""
+    """
+    Beta 保持两个变体的发布参数、标签和缓存隔离。
+    """
     workflow = _load_workflow(BETA_WORKFLOW)
     steps = workflow["jobs"]["Docker-build"]["steps"]
     names = [step.get("name") for step in steps]

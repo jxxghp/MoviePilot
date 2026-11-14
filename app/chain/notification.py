@@ -1,3 +1,7 @@
+"""
+按通知渠道名将管理动作及参数转发给对应模块。
+"""
+
 from typing import Any, Dict
 
 from app.chain.base import ChainBase

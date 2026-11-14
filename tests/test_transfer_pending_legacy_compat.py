@@ -1,4 +1,6 @@
-"""旧待整理 Oper 的精确插件兼容与租约 fencing 测试。"""
+"""
+旧待整理 Oper 的精确插件兼容与租约 fencing 测试。
+"""
 
 import importlib
 import inspect
@@ -19,7 +21,9 @@ from app.runtime.compat.manifest import MODULE_ALIASES
 
 @pytest.fixture
 def legacy_session_factory(tmp_path, monkeypatch):
-    """为无 Session 兼容 Oper 提供独占事务，并在提交后保留返回快照。"""
+    """
+    为无 Session 兼容 Oper 提供独占事务，并在提交后保留返回快照。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'legacy-transferpending.db'}")
     TransferPending.__table__.create(engine)
     TransferExecutionStep.__table__.create(engine)
@@ -27,7 +31,9 @@ def legacy_session_factory(tmp_path, monkeypatch):
     factory = sessionmaker(bind=engine)
 
     def run_transaction(operation: Callable[[Session], Any]) -> Any:
-        """按生产组合根语义执行一次同步兼容事务。"""
+        """
+        按生产组合根语义执行一次同步兼容事务。
+        """
         with factory() as session:
             session.expire_on_commit = False
             try:
@@ -44,7 +50,9 @@ def legacy_session_factory(tmp_path, monkeypatch):
 
 
 def test_legacy_import_targets_private_sdk_facade() -> None:
-    """旧模块路径只能解析到私有 SDK 门面，不能回退到 canonical Oper。"""
+    """
+    旧模块路径只能解析到私有 SDK 门面，不能回退到 canonical Oper。
+    """
     alias = MODULE_ALIASES["app.db.transferpending_oper"]
     legacy = importlib.import_module("app.db.transferpending_oper")
 
@@ -67,7 +75,9 @@ def test_legacy_import_targets_private_sdk_facade() -> None:
 
 
 def test_legacy_oper_preserves_exact_public_method_abi() -> None:
-    """兼容门面只公开历史八方法，且位置参数与关键字参数边界保持不变。"""
+    """
+    兼容门面只公开历史八方法，且位置参数与关键字参数边界保持不变。
+    """
     legacy = importlib.import_module("app.db.transferpending_oper")
     oper_type = legacy.TransferPendingOper
     public_methods = {
@@ -118,7 +128,9 @@ def test_legacy_oper_preserves_exact_public_method_abi() -> None:
 def test_legacy_no_session_queries_preserve_historical_shapes(
         legacy_session_factory,
 ) -> None:
-    """旧插件无需 Session 即可登记和查询，返回形态与原 ABI 一致。"""
+    """
+    旧插件无需 Session 即可登记和查询，返回形态与原 ABI 一致。
+    """
     legacy = importlib.import_module("app.db.transferpending_oper")
     oper = legacy.TransferPendingOper()
 
@@ -155,7 +167,9 @@ def test_legacy_no_session_queries_preserve_historical_shapes(
 def test_legacy_register_allows_new_task_for_previously_settled_source(
         legacy_session_factory,
 ) -> None:
-    """旧插件登记入口允许同源文件形成新的合法任务世代。"""
+    """
+    旧插件登记入口允许同源文件形成新的合法任务世代。
+    """
     with legacy_session_factory() as session:
         session.add(TransferHistory(
             transfer_task_id="settled-task",
@@ -180,7 +194,9 @@ def test_legacy_register_allows_new_task_for_previously_settled_source(
 def test_legacy_mutations_never_delete_claimed_rows(
         legacy_session_factory,
 ) -> None:
-    """旧 discard/clear 只处理新鲜行，有效或过期 token 均受保护。"""
+    """
+    旧 discard/clear 只处理新鲜行，有效或过期 token 均受保护。
+    """
     legacy = importlib.import_module("app.db.transferpending_oper")
     oper = legacy.TransferPendingOper()
     active = oper.register("local", "/downloads/active.mkv")
@@ -242,7 +258,9 @@ def test_legacy_mutations_never_delete_claimed_rows(
 def test_legacy_mutations_protect_every_execution_and_terminal_state(
         legacy_session_factory,
 ) -> None:
-    """无租约的运行、等待、结算、失败和人工判定任务仍归状态机所有。"""
+    """
+    无租约的运行、等待、结算、失败和人工判定任务仍归状态机所有。
+    """
     legacy = importlib.import_module("app.db.transferpending_oper")
     oper = legacy.TransferPendingOper()
     protected = {
@@ -301,7 +319,9 @@ def test_legacy_mutations_protect_every_execution_and_terminal_state(
 def test_legacy_mutations_protect_execution_evidence_even_if_not_started(
         legacy_session_factory,
 ) -> None:
-    """状态字段异常回退时，claim、步骤、重试和结算证据仍阻止旧接口删除。"""
+    """
+    状态字段异常回退时，claim、步骤、重试和结算证据仍阻止旧接口删除。
+    """
     legacy = importlib.import_module("app.db.transferpending_oper")
     oper = legacy.TransferPendingOper()
     evidence_rows = {
@@ -400,7 +420,9 @@ def test_legacy_mutations_protect_execution_evidence_even_if_not_started(
 def test_legacy_register_returns_existing_terminal_or_manual_review_task(
         legacy_session_factory,
 ) -> None:
-    """重复登记不得绕过失败或人工判定任务创建平行执行身份。"""
+    """
+    重复登记不得绕过失败或人工判定任务创建平行执行身份。
+    """
     legacy = importlib.import_module("app.db.transferpending_oper")
     oper = legacy.TransferPendingOper()
     failed = oper.register("local", "/downloads/retry-failed.mkv")

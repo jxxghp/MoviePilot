@@ -1,17 +1,21 @@
+"""
+通过 M-Team 接口搜索种子并转换为通用索引结果。
+"""
+
 import base64
 import json
 import re
-from typing import Any, Tuple, List, Optional
+from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
-from app.runtime.log import logger
-from app.schemas.types import MediaType
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
+from app.application.site.observation import report_site_search_page
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class MTorrentSpider:
@@ -21,7 +25,7 @@ class MTorrentSpider:
     _indexerid = None
     _domain = None
     _url = None
-    _name = ""
+    _name: Optional[str] = ""
     _proxy = None
     _cookie = None
     _ua = None
@@ -43,9 +47,9 @@ class MTorrentSpider:
     # 音乐分类：434 为无损音乐，406 为演唱分区
     _music_category = ['434', '406']
 
-    # API KEY
+    # 站点 API 访问密钥。
     _apikey = None
-    # JWT Token
+    # 站点 JWT 身份令牌。
     _token = None
     # 最近一次字幕搜索失败原因
     error_detail: Optional[str] = None
@@ -66,11 +70,16 @@ class MTorrentSpider:
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
         获取搜索接口单页容量。
+
+        :param keyword: 保留统一入口参数，不影响本站的分页容量
+        :return: 本站搜索接口的固定单页记录数
         """
         return cls._size
 
     def __init__(self, indexer: dict[str, Any]):
-        """使用站点配置初始化 M-Team API 请求上下文。"""
+        """
+        使用站点配置初始化 M-Team API 请求上下文。
+        """
         self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
@@ -112,11 +121,20 @@ class MTorrentSpider:
         registered_domain = site_rules.extract_domain(domain_url)
         return f"api.{registered_domain}" if registered_domain else host
 
-    def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict[str, Any]:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
+                     cat: Optional[str] = None) -> dict[str, object]:
         """
-        获取请求参数
+        构造请求参数，显式站点分类优先于媒体类型预置分类。
+
+        :param keyword: 搜索关键词，IMDb 标识会转换为完整链接
+        :param mtype: 未指定站点分类时使用的媒体类型
+        :param page: 从 0 开始的页码，提交到站点时转换为从 1 开始
+        :param cat: 逗号分隔的站点分类 ID，未指定时沿用媒体类型筛选
+        :return: M-Team 搜索请求体
         """
-        if not mtype:
+        if cat:
+            categories = [category.strip() for category in cat.split(",")]
+        elif not mtype:
             categories = []
         elif mtype == MediaType.TV:
             categories = self._tv_category
@@ -137,9 +155,9 @@ class MTorrentSpider:
 
     def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
-        解析搜索结果
+        解析搜索结果。
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         if not results:
             return torrents
 
@@ -199,9 +217,20 @@ class MTorrentSpider:
         return torrents
 
     def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
-        """统一判定搜索响应状态并投影 M-Team 种子结果。"""
+        """
+        统一判定搜索响应状态并投影 M-Team 种子结果。
+        """
         if res and res.status_code == 200:
-            results = res.json().get('data', {}).get("data") or []
+            payload = res.json()
+            if str(payload.get("code")) != "0" or not isinstance(payload.get("data"), dict):
+                logger.warning(f"{self._name} 搜索失败，站点返回业务错误")
+                return True, []
+            data = payload["data"]
+            results = data.get("data") or []
+            # 分页事实只供逐页搜索判断末页，空结果仍按末页处理。
+            page_number, total_pages = data.get("pageNumber"), data.get("totalPages")
+            has_more = page_number < total_pages if isinstance(page_number, int) and isinstance(total_pages, int) else None
+            report_site_search_page(raw_count=len(results), has_more=has_more)
             return False, self.__parse_result(results)
         if res is not None:
             logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
@@ -209,21 +238,25 @@ class MTorrentSpider:
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
-               search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
+    def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
+               search_type: Optional[str] = None, cat: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         搜索种子或字幕。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :param search_type: 资源类型；subtitles 表示字幕，其余值搜索种子
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型，仅对种子搜索生效
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if search_type == "subtitles":
             return self.search_subtitles(keyword=keyword, page=page)
-        # 检查ApiKey
         if not self._apikey:
             return True, []
 
-        # 获取请求参数
-        params = self.__get_params(keyword, mtype, page)
+        params = self.__get_params(keyword, mtype, page, cat)
 
-        # 发送请求
         res = RequestUtils(
             headers={
                 "Content-Type": "application/json",
@@ -236,21 +269,25 @@ class MTorrentSpider:
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
-                           search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
+    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
+                           search_type: Optional[str] = None, cat: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索种子或字幕。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :param search_type: 资源类型；subtitles 表示字幕，其余值搜索种子
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型，仅对种子搜索生效
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if search_type == "subtitles":
             return await self.async_search_subtitles(keyword=keyword, page=page)
-        # 检查ApiKey
         if not self._apikey:
             return True, []
 
-        # 获取请求参数
-        params = self.__get_params(keyword, mtype, page)
+        params = self.__get_params(keyword, mtype, page, cat)
 
-        # 发送请求
         res = await AsyncRequestUtils(
             headers={
                 "Content-Type": "application/json",
@@ -264,7 +301,9 @@ class MTorrentSpider:
         return self.__process_response(res)
 
     def __get_subtitle_params(self, keyword: str, page: Optional[int] = 0) -> dict[str, Any]:
-        """构造 M-Team 字幕搜索请求体。"""
+        """
+        构造 M-Team 字幕搜索请求体。
+        """
         return {
             "keyword": keyword,
             "pageNumber": int(page or 0) + 1,
@@ -273,7 +312,9 @@ class MTorrentSpider:
 
     @staticmethod
     def __get_subtitle_rows(payload: Any) -> List[dict[str, Any]]:
-        """兼容 M-Team 字幕接口分页数据的不同包装层级。"""
+        """
+        兼容 M-Team 字幕接口分页数据的不同包装层级。
+        """
         if not isinstance(payload, dict):
             return []
         data = payload.get("data")
@@ -288,7 +329,9 @@ class MTorrentSpider:
 
     @staticmethod
     def __get_int(value: Any, default: int = 0) -> int:
-        """把接口中的数字字段安全转换为整数。"""
+        """
+        把接口中的数字字段安全转换为整数。
+        """
         try:
             return default if value is None else int(value)
         except (TypeError, ValueError):
@@ -296,7 +339,9 @@ class MTorrentSpider:
 
     @staticmethod
     def __parse_size(value: Any) -> int:
-        """把字幕接口返回的字节数或带单位容量转换为字节数。"""
+        """
+        把字幕接口返回的字节数或带单位容量转换为字节数。
+        """
         if value is None or value == "":
             return 0
         normalized = str(value).replace(",", "").replace(" ", "").upper()
@@ -360,7 +405,9 @@ class MTorrentSpider:
         return subtitles
 
     def __process_subtitle_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
-        """判定字幕搜索响应并转换为 MoviePilot 字幕字段。"""
+        """
+        判定字幕搜索响应并转换为 MoviePilot 字幕字段。
+        """
         self.error_detail = None
         if res is None:
             self.error_detail = f"无法连接 {self._api_domain or self._domain}"
@@ -383,7 +430,13 @@ class MTorrentSpider:
         return False, self.__parse_subtitle_rows(self.__get_subtitle_rows(payload))
 
     def search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
-        """通过 M-Team 字幕 API 搜索字幕。"""
+        """
+        通过 M-Team 字幕 API 搜索字幕。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
+        """
         if not self._apikey:
             self.error_detail = "未配置 API Key"
             return True, []
@@ -400,7 +453,9 @@ class MTorrentSpider:
         return self.__process_subtitle_response(res)
 
     async def __async_subtitle_genlink(self, subtitle_id: str) -> Optional[str]:
-        """异步获取字幕下载链接。"""
+        """
+        异步获取字幕下载链接。
+        """
         url = self._subtitle_genlink_url % self._api_domain
         res = await AsyncRequestUtils(
             headers={
@@ -419,7 +474,9 @@ class MTorrentSpider:
         return None
 
     async def __async_parse_subtitle_rows(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
-        """异步解析 M-Team 字幕结果并生成下载地址。"""
+        """
+        异步解析 M-Team 字幕结果并生成下载地址。
+        """
         subtitles = []
         for result in results:
             subtitle_id = result.get("id")
@@ -455,7 +512,13 @@ class MTorrentSpider:
         return subtitles
 
     async def async_search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
-        """异步通过 M-Team 字幕 API 搜索字幕。"""
+        """
+        异步通过 M-Team 字幕 API 搜索字幕。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
+        """
         if not self._apikey:
             self.error_detail = "未配置 API Key"
             return True, []
@@ -487,9 +550,9 @@ class MTorrentSpider:
         return False, await self.__async_parse_subtitle_rows(self.__get_subtitle_rows(payload))
 
     @staticmethod
-    def __find_imdbid(imdb: str) -> str:
+    def __find_imdbid(imdb: Optional[str]) -> str:
         """
-        从imdb链接中提取imdbid
+        从 IMDb 链接中提取标识；输入为空时返回空字符串。
         """
         if imdb:
             m = re.search(r"tt\d+", imdb)
@@ -500,7 +563,7 @@ class MTorrentSpider:
     @staticmethod
     def __get_downloadvolumefactor(discount: str) -> float:
         """
-        获取下载系数
+        获取下载系数。
         """
         discount_dict = {
             "FREE": 0,
@@ -516,7 +579,7 @@ class MTorrentSpider:
     @staticmethod
     def __get_uploadvolumefactor(discount: str) -> float:
         """
-        获取上传系数
+        获取上传系数。
         """
         uploadvolumefactor_dict = {
             "_2X": 2.0,
@@ -527,9 +590,12 @@ class MTorrentSpider:
             return uploadvolumefactor_dict.get(discount, 1)
         return 1
 
-    def __get_download_url(self, torrent_id: str) -> str:
+    def __get_download_url(self, torrent_id: object) -> str:
         """
-        获取下载链接，返回base64编码的json字符串及URL
+        获取下载链接，返回 base64 编码的 JSON 字符串及 URL。
+
+        :param torrent_id: 按站点响应原样写入下载配方的种子 ID
+        :return: 当前认证参数和下载地址组成的配方字符串
         """
         url = self._downloadurl % self._api_domain
         params = {
@@ -546,18 +612,56 @@ class MTorrentSpider:
             'proxy': True if self._proxy else False,
             'result': 'data'
         }
-        # base64编码
         base64_str = base64.b64encode(json.dumps(params).encode('utf-8')).decode('utf-8')
         return f"[{base64_str}]{url}"
 
+    def get_download_url(self, torrent_id: str) -> str:
+        """
+        根据站内 ID 与当前凭据重建下载配方，不重新搜索种子。
+
+        :param torrent_id: M-Team 分配的种子 ID
+        :return: 携带当前认证信息的下载配方，仅供当前请求使用，不应持久化 API Key
+        """
+        return self.__get_download_url(torrent_id)
+
+    @staticmethod
+    def torrent_id_from_url(url: str) -> Optional[str]:
+        """
+        从既有详情页地址提取稳定种子 ID，换票参数不参与身份。
+
+        :param url: 搜索结果或旧缓存中的详情页地址
+        :return: /detail/{id} 中的种子 ID；其他路径为 None
+        """
+        match = re.fullmatch(r"/detail/(\d+)/?", urlparse(url).path)
+        return match[1] if match else None
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        用搜索同源的用户资料接口验证 API Key，不依赖首页或浏览器登录标记。
+
+        :return: 认证是否有效及接口失败原因
+        """
+        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        with RequestUtils(headers={
+            "User-Agent": user_agent, "Accept": "application/json, text/plain, */*", "x-api-key": self._apikey,
+        }, ua=user_agent, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="POST", url=f"https://{self._api_domain}/api/member/profile", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            payload = response.json() or {}
+            if isinstance(payload, dict) and str(payload.get("code")) == "0" and payload.get("data"):
+                return True, "连接成功"
+            return False, payload.get("message", "鉴权已过期或无效") if isinstance(payload, dict) else "鉴权已过期或无效"
+
     def get_subtitle_links(self, page_url: str) -> List[str]:
         """
-        获取指定页面的字幕下载链接
+        获取指定页面的字幕下载链接。
 
         :param page_url: 种子详情页网址
-        :type page_url: str
         :return: 字幕下载链接
-        :rtype: List[str]
         """
         if not page_url:
             return []
@@ -569,12 +673,10 @@ class MTorrentSpider:
 
     def get_subtitle_links_by_id(self, torrent_id: str) -> List[str]:
         """
-        获取指定种子的字幕下载链接
+        获取指定种子的字幕下载链接。
 
         :param torrent_id: 种子ID
-        :type torrent_id: str
         :return: 字幕下载链接
-        :rtype: List[str]
         """
         results = []
         try:
@@ -587,15 +689,12 @@ class MTorrentSpider:
 
     def __subtitle_ids(self, torrent_id: str) -> Optional[List[str]]:
         """
-        获取指定种子的字幕列表
+        获取指定种子的字幕列表。
 
         :param torrent_id: 种子ID
-        :type torrent_id: str
         :return: 字幕ID
-        :rtype: List[str] | None
         """
         url = self._subtitle_list_url % self._api_domain
-        # 发送请求
         res = RequestUtils(
             headers={
                 "Accept": "application/json, text/plain, */*",
@@ -623,15 +722,12 @@ class MTorrentSpider:
 
     def __subtitle_genlink(self, subtitle_id: str) -> Optional[str]:
         """
-        获取字幕下载链接
+        获取字幕下载链接。
 
         :param subtitle_id: 字幕ID
-        :type subtitle_id: str
         :return: 下载链接
-        :rtype: str | None
         """
         url = self._subtitle_genlink_url % self._api_domain
-        # 发送请求
         res = RequestUtils(
             headers={
                 "Accept": "application/json, text/plain, */*",

@@ -1,3 +1,7 @@
+"""
+验证命令行更新的分支跟踪、单次覆盖和自动检查策略。
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,16 +20,22 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "app" / "cli.py"
 
 
 class _DummySystemHelper:
-    """隔离一次性更新请求的系统状态。"""
+    """
+    隔离一次性更新请求的系统状态。
+    """
 
     @staticmethod
     def consume_one_shot_dev_update():
-        """默认没有用户确认的更新请求。"""
+        """
+        默认没有用户确认的更新请求。
+        """
         return False
 
 
 def load_cli_module():
-    """隔离加载 CLI，使用真实布尔配置形状验证启动更新决策。"""
+    """
+    隔离加载 CLI，使用真实布尔配置形状验证启动更新决策。
+    """
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
         settings = SimpleNamespace(
@@ -95,7 +105,9 @@ def load_cli_module():
 
 
 def test_resolve_dev_update_target_keeps_dev_branch_tracking():
-    """确认的 DEV 更新继续跟踪当前开发分支。"""
+    """
+    确认的 DEV 更新继续跟踪当前开发分支。
+    """
     module = load_cli_module()
     with patch.object(module, "_git_current_branch", return_value="v3"):
         assert module._resolve_dev_update_target("dev") == "latest"
@@ -103,7 +115,9 @@ def test_resolve_dev_update_target_keeps_dev_branch_tracking():
 
 
 def test_one_shot_dev_update_overrides_disabled_default():
-    """一次性手动更新不受两个自动开关关闭的影响。"""
+    """
+    一次性手动更新不受两个自动开关关闭的影响。
+    """
     module = load_cli_module()
     module.settings.MOVIEPILOT_AUTO_UPDATE = False
 
@@ -116,7 +130,9 @@ def test_one_shot_dev_update_overrides_disabled_default():
 @pytest.mark.parametrize("auto_update", [True, False])
 @pytest.mark.parametrize("update_dev", [True, False])
 def test_dev_tracking_is_independent_of_automatic_checks(auto_update, update_dev):
-    """配置开关不能替代用户明确发起的更新请求。"""
+    """
+    配置开关不能替代用户明确发起的更新请求。
+    """
     module = load_cli_module()
     module.settings.MOVIEPILOT_AUTO_UPDATE = auto_update
     module.settings.MOVIEPILOT_UPDATE_DEV = update_dev
@@ -124,7 +140,9 @@ def test_dev_tracking_is_independent_of_automatic_checks(auto_update, update_dev
 
 
 def test_release_mode_does_not_update_during_start():
-    """没有一次性 DEV 请求时不执行在线更新。"""
+    """
+    没有一次性 DEV 请求时不执行在线更新。
+    """
     module = load_cli_module()
     with patch.object(module, "_requested_update_mode", return_value="release"), patch.object(
         module.subprocess, "run"
@@ -134,7 +152,9 @@ def test_release_mode_does_not_update_during_start():
 
 
 def test_prepared_release_uses_downloaded_package_before_dev_mode():
-    """确认的离线安装包优先于一次性 DEV 更新。"""
+    """
+    确认的离线安装包优先于一次性 DEV 更新。
+    """
     module = load_cli_module()
     module.PREPARED_UPDATE_ROOT.mkdir(parents=True)
     backend = module.PREPARED_UPDATE_ROOT / "backend.zip"
@@ -169,7 +189,9 @@ def test_prepared_release_uses_downloaded_package_before_dev_mode():
 
 
 def test_prepared_release_passes_package_env_and_overrides_proxy():
-    """离线更新子进程继承缓存目录和当前代理。"""
+    """
+    离线更新子进程继承缓存目录和当前代理。
+    """
     module = load_cli_module()
     module.settings.PROXY_HOST = "http://proxy.example:7890"
     module.settings.PIP_PROXY = "https://mirror.example/simple"
@@ -210,7 +232,9 @@ def test_prepared_release_passes_package_env_and_overrides_proxy():
 
 
 def test_apply_requested_update_does_not_pass_frontend_version_override():
-    """明确 DEV 模式由安装器解析最新前端 Release。"""
+    """
+    明确 DEV 模式由安装器解析最新前端 Release。
+    """
     module = load_cli_module()
     run_result = SimpleNamespace(returncode=0, stdout="ok")
 
@@ -234,7 +258,9 @@ def test_apply_requested_update_does_not_pass_frontend_version_override():
 
 
 def test_apply_requested_update_passes_package_env_and_overrides_proxy():
-    """DEV 更新使用配置中的包缓存和代理。"""
+    """
+    DEV 更新使用配置中的包缓存和代理。
+    """
     module = load_cli_module()
     module.settings.PROXY_HOST = "http://proxy.example:7890"
     module.settings.PIP_PROXY = "https://mirror.example/simple"
@@ -255,7 +281,9 @@ def test_apply_requested_update_passes_package_env_and_overrides_proxy():
 
 
 def test_apply_requested_update_derives_tool_cache_from_existing_root():
-    """已有包缓存根目录优先于配置默认值。"""
+    """
+    已有包缓存根目录优先于配置默认值。
+    """
     module = load_cli_module()
     run_result = SimpleNamespace(returncode=0, stdout="ok")
     package_cache_root = Path("/custom/package-cache-root")
@@ -277,7 +305,9 @@ def test_apply_requested_update_derives_tool_cache_from_existing_root():
 
 
 def _prepared_resource_files(module):
-    """构造带摘要的离线资源包清单。"""
+    """
+    构造带摘要的离线资源包清单。
+    """
     resource_dir = module.PREPARED_UPDATE_ROOT / "resources"
     resource_dir.mkdir(parents=True, exist_ok=True)
     resources = []
@@ -298,7 +328,9 @@ def _prepared_resource_files(module):
 
 
 def test_prepared_resource_update_uses_offline_resource_install_only():
-    """资源更新仅应用已校验的本地资源包。"""
+    """
+    资源更新仅应用已校验的本地资源包。
+    """
     module = load_cli_module()
     module.PREPARED_UPDATE_ROOT.mkdir(parents=True, exist_ok=True)
     module.PREPARED_UPDATE_MANIFEST.write_text(
@@ -320,7 +352,9 @@ def test_prepared_resource_update_uses_offline_resource_install_only():
 
 
 def test_prepared_application_and_resources_install_in_order():
-    """同时更新时先安装主程序再安装资源包。"""
+    """
+    同时更新时先安装主程序再安装资源包。
+    """
     module = load_cli_module()
     module.PREPARED_UPDATE_ROOT.mkdir(parents=True, exist_ok=True)
     backend = module.PREPARED_UPDATE_ROOT / "backend.zip"
@@ -359,7 +393,9 @@ def test_prepared_application_and_resources_install_in_order():
 @pytest.mark.parametrize("command", ["start", "restart"])
 @pytest.mark.parametrize("dev", [False, True])
 def test_service_start_never_applies_updates(command, dev):
-    """普通启动和重启均不能读取更新请求或执行安装，即使开启 DEV。"""
+    """
+    普通启动和重启均不能读取更新请求或执行安装，即使开启 DEV。
+    """
     from click.testing import CliRunner
 
     module = load_cli_module()
@@ -381,7 +417,9 @@ def test_service_start_never_applies_updates(command, dev):
 
 
 def test_confirmed_update_runs_between_stop_and_start():
-    """系统确认的升级通过显式内部入口执行，安装完成后再启动服务。"""
+    """
+    系统确认的升级通过显式内部入口执行，安装完成后再启动服务。
+    """
     from click.testing import CliRunner
 
     module = load_cli_module()
@@ -398,7 +436,9 @@ def test_confirmed_update_runs_between_stop_and_start():
 
 @pytest.mark.parametrize("pending", [None, "release", "dev"])
 def test_restart_helper_only_applies_confirmed_updates(monkeypatch, tmp_path, pending):
-    """内部重启助手只在明确的升级清单或一次性请求存在时传递更新选项。"""
+    """
+    内部重启助手只在明确的升级清单或一次性请求存在时传递更新选项。
+    """
     import subprocess
     import time
 

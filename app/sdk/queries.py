@@ -1,4 +1,6 @@
-"""插件可使用的订阅与历史只读查询门面。"""
+"""
+插件可使用的订阅与历史只读查询门面。
+"""
 
 from __future__ import annotations
 
@@ -25,99 +27,231 @@ from app.schemas.query import (
 
 
 class _DataQueryBackend(Protocol):
-    """SDK 转发所需的最小类型合同，不向插件公开应用服务实现。"""
+    """
+    SDK 转发所需的最小类型合同，不向插件公开应用服务实现。
+    """
 
     def list_subscriptions(
         self,
         filters: SubscriptionFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[SubscriptionSnapshot]: ...
+    ) -> QueryPage[SubscriptionSnapshot]:
+        """
+        同步分页读取订阅快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     async def async_list_subscriptions(
         self,
         filters: SubscriptionFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[SubscriptionSnapshot]: ...
+    ) -> QueryPage[SubscriptionSnapshot]:
+        """
+        异步分页读取订阅快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     def get_subscription(
         self,
         subscription_id: int,
-    ) -> SubscriptionSnapshot | None: ...
+    ) -> SubscriptionSnapshot | None:
+        """
+        同步按主键读取单条订阅快照。
+
+        :param subscription_id: 要查询的订阅记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
     async def async_get_subscription(
         self,
         subscription_id: int,
-    ) -> SubscriptionSnapshot | None: ...
+    ) -> SubscriptionSnapshot | None:
+        """
+        异步按主键读取单条订阅快照。
+
+        :param subscription_id: 要查询的订阅记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
     def list_subscription_history(
         self,
         filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[SubscriptionHistorySnapshot]: ...
+    ) -> QueryPage[SubscriptionHistorySnapshot]:
+        """
+        同步分页读取订阅完成历史快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     async def async_list_subscription_history(
         self,
         filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[SubscriptionHistorySnapshot]: ...
+    ) -> QueryPage[SubscriptionHistorySnapshot]:
+        """
+        异步分页读取订阅完成历史快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     def get_subscription_history(
         self,
         history_id: int,
-    ) -> SubscriptionHistorySnapshot | None: ...
+    ) -> SubscriptionHistorySnapshot | None:
+        """
+        同步按主键读取单条订阅完成历史快照。
+
+        :param history_id: 要查询的订阅完成历史记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
     async def async_get_subscription_history(
         self,
         history_id: int,
-    ) -> SubscriptionHistorySnapshot | None: ...
+    ) -> SubscriptionHistorySnapshot | None:
+        """
+        异步按主键读取单条订阅完成历史快照。
+
+        :param history_id: 要查询的订阅完成历史记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
     def list_download_history(
         self,
         filters: DownloadHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[DownloadHistorySnapshot]: ...
+    ) -> QueryPage[DownloadHistorySnapshot]:
+        """
+        同步分页读取下载历史快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     async def async_list_download_history(
         self,
         filters: DownloadHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[DownloadHistorySnapshot]: ...
+    ) -> QueryPage[DownloadHistorySnapshot]:
+        """
+        异步分页读取下载历史快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     def get_download_history(
         self,
         history_id: int,
-    ) -> DownloadHistorySnapshot | None: ...
+    ) -> DownloadHistorySnapshot | None:
+        """
+        同步按主键读取单条下载历史快照。
+
+        :param history_id: 要查询的下载历史记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
     async def async_get_download_history(
         self,
         history_id: int,
-    ) -> DownloadHistorySnapshot | None: ...
+    ) -> DownloadHistorySnapshot | None:
+        """
+        异步按主键读取单条下载历史快照。
+
+        :param history_id: 要查询的下载历史记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
     def list_transfer_history(
         self,
         filters: TransferHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[TransferHistorySnapshot]: ...
+    ) -> QueryPage[TransferHistorySnapshot]:
+        """
+        同步分页读取整理历史快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     async def async_list_transfer_history(
         self,
         filters: TransferHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
-    ) -> QueryPage[TransferHistorySnapshot]: ...
+    ) -> QueryPage[TransferHistorySnapshot]:
+        """
+        异步分页读取整理历史快照，不向插件暴露持久化对象。
+
+        :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+        :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+        :return: 包含当前页记录、匹配总数和分页参数的结果
+        :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+        """
+        ...
 
     def get_transfer_history(
         self,
         history_id: int,
-    ) -> TransferHistorySnapshot | None: ...
+    ) -> TransferHistorySnapshot | None:
+        """
+        同步按主键读取单条整理历史快照。
+
+        :param history_id: 要查询的整理历史记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
     async def async_get_transfer_history(
         self,
         history_id: int,
-    ) -> TransferHistorySnapshot | None: ...
+    ) -> TransferHistorySnapshot | None:
+        """
+        异步按主键读取单条整理历史快照。
+
+        :param history_id: 要查询的整理历史记录主键
+        :return: 对应的只读快照；记录不存在时返回 None
+        """
+        ...
 
 
 def _service() -> _DataQueryBackend:
-    """获取启动阶段登记的查询服务，避免把应用服务暴露为 SDK 合同。"""
+    """
+    获取启动阶段登记的查询服务，避免把应用服务暴露为 SDK 合同。
+    """
     from app.application.query import (
         get_configured_data_query_service,
     )
@@ -129,7 +263,14 @@ def list_subscriptions(
     filters: SubscriptionFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[SubscriptionSnapshot]:
-    """同步分页读取订阅 DTO。"""
+    """
+    同步分页读取订阅快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return _service().list_subscriptions(filters, page)
 
 
@@ -137,19 +278,36 @@ async def async_list_subscriptions(
     filters: SubscriptionFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[SubscriptionSnapshot]:
-    """异步分页读取订阅 DTO。"""
+    """
+    异步分页读取订阅快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return await _service().async_list_subscriptions(filters, page)
 
 
 def get_subscription(subscription_id: int) -> SubscriptionSnapshot | None:
-    """同步按 ID 读取订阅 DTO。"""
+    """
+    同步按主键读取单条订阅快照。
+
+    :param subscription_id: 要查询的订阅记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return _service().get_subscription(subscription_id)
 
 
 async def async_get_subscription(
     subscription_id: int,
 ) -> SubscriptionSnapshot | None:
-    """异步按 ID 读取订阅 DTO。"""
+    """
+    异步按主键读取单条订阅快照。
+
+    :param subscription_id: 要查询的订阅记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return await _service().async_get_subscription(subscription_id)
 
 
@@ -157,7 +315,14 @@ def list_subscription_history(
     filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[SubscriptionHistorySnapshot]:
-    """同步分页读取订阅完成历史 DTO。"""
+    """
+    同步分页读取订阅完成历史快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return _service().list_subscription_history(filters, page)
 
 
@@ -165,19 +330,36 @@ async def async_list_subscription_history(
     filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[SubscriptionHistorySnapshot]:
-    """异步分页读取订阅完成历史 DTO。"""
+    """
+    异步分页读取订阅完成历史快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return await _service().async_list_subscription_history(filters, page)
 
 
 def get_subscription_history(history_id: int) -> SubscriptionHistorySnapshot | None:
-    """同步按 ID 读取订阅完成历史 DTO。"""
+    """
+    同步按主键读取单条订阅完成历史快照。
+
+    :param history_id: 要查询的订阅完成历史记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return _service().get_subscription_history(history_id)
 
 
 async def async_get_subscription_history(
     history_id: int,
 ) -> SubscriptionHistorySnapshot | None:
-    """异步按 ID 读取订阅完成历史 DTO。"""
+    """
+    异步按主键读取单条订阅完成历史快照。
+
+    :param history_id: 要查询的订阅完成历史记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return await _service().async_get_subscription_history(history_id)
 
 
@@ -185,7 +367,14 @@ def list_download_history(
     filters: DownloadHistoryFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[DownloadHistorySnapshot]:
-    """同步分页读取下载历史 DTO。"""
+    """
+    同步分页读取下载历史快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return _service().list_download_history(filters, page)
 
 
@@ -193,19 +382,36 @@ async def async_list_download_history(
     filters: DownloadHistoryFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[DownloadHistorySnapshot]:
-    """异步分页读取下载历史 DTO。"""
+    """
+    异步分页读取下载历史快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return await _service().async_list_download_history(filters, page)
 
 
 def get_download_history(history_id: int) -> DownloadHistorySnapshot | None:
-    """同步按 ID 读取下载历史 DTO。"""
+    """
+    同步按主键读取单条下载历史快照。
+
+    :param history_id: 要查询的下载历史记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return _service().get_download_history(history_id)
 
 
 async def async_get_download_history(
     history_id: int,
 ) -> DownloadHistorySnapshot | None:
-    """异步按 ID 读取下载历史 DTO。"""
+    """
+    异步按主键读取单条下载历史快照。
+
+    :param history_id: 要查询的下载历史记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return await _service().async_get_download_history(history_id)
 
 
@@ -213,7 +419,14 @@ def list_transfer_history(
     filters: TransferHistoryFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[TransferHistorySnapshot]:
-    """同步分页读取整理历史 DTO。"""
+    """
+    同步分页读取整理历史快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return _service().list_transfer_history(filters, page)
 
 
@@ -221,19 +434,36 @@ async def async_list_transfer_history(
     filters: TransferHistoryFilter | dict[str, Any] | None = None,
     page: QueryPageRequest | dict[str, Any] | None = None,
 ) -> QueryPage[TransferHistorySnapshot]:
-    """异步分页读取整理历史 DTO。"""
+    """
+    异步分页读取整理历史快照，不向插件暴露持久化对象。
+
+    :param filters: 筛选模型或可转换为该模型的字典；None 使用该查询的默认筛选
+    :param page: 分页与排序模型或对应字典；None 使用默认分页配置
+    :return: 包含当前页记录、匹配总数和分页参数的结果
+    :raises ValidationError: 字典筛选条件或分页参数不符合对应模型约束
+    """
     return await _service().async_list_transfer_history(filters, page)
 
 
 def get_transfer_history(history_id: int) -> TransferHistorySnapshot | None:
-    """同步按 ID 读取整理历史 DTO。"""
+    """
+    同步按主键读取单条整理历史快照。
+
+    :param history_id: 要查询的整理历史记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return _service().get_transfer_history(history_id)
 
 
 async def async_get_transfer_history(
     history_id: int,
 ) -> TransferHistorySnapshot | None:
-    """异步按 ID 读取整理历史 DTO。"""
+    """
+    异步按主键读取单条整理历史快照。
+
+    :param history_id: 要查询的整理历史记录主键
+    :return: 对应的只读快照；记录不存在时返回 None
+    """
     return await _service().async_get_transfer_history(history_id)
 
 

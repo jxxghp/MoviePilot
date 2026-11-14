@@ -1,3 +1,7 @@
+"""
+验证只读诊断工具的注册、结果裁剪和 MCP 暴露契约。
+"""
+
 import asyncio
 import json
 from datetime import datetime
@@ -16,7 +20,9 @@ from app.doctor.models import (
 
 
 def _doctor_report() -> DoctorReport:
-    """构造一份稳定的 doctor 测试报告。"""
+    """
+    构造一份稳定的 doctor 测试报告。
+    """
     report = DoctorReport(
         generated_at=datetime(2026, 6, 12, 12, 0, 0),
         version="v2.test",
@@ -41,7 +47,9 @@ def _doctor_report() -> DoctorReport:
 
 
 def test_factory_registers_doctor_report_tool():
-    """工具工厂应注册 doctor 诊断报告工具。"""
+    """
+    工具工厂应注册 doctor 诊断报告工具。
+    """
     with patch(
         "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],
@@ -56,7 +64,9 @@ def test_factory_registers_doctor_report_tool():
 
 
 def test_query_doctor_report_returns_readonly_report():
-    """doctor 工具应以只读方式返回结构化诊断报告。"""
+    """
+    doctor 工具应以只读方式返回结构化诊断报告。
+    """
     tool = QueryDoctorReportTool(session_id="doctor-session", user_id="10001")
 
     with patch(
@@ -77,7 +87,9 @@ def test_query_doctor_report_returns_readonly_report():
 
 
 def test_query_doctor_report_compact_mode_omits_details():
-    """紧凑模式应保留诊断项概要并省略 detail 和 context。"""
+    """
+    紧凑模式应保留诊断项概要并省略 detail 和 context。
+    """
     tool = QueryDoctorReportTool(session_id="doctor-session", user_id="10001")
 
     with patch(
@@ -96,7 +108,9 @@ def test_query_doctor_report_compact_mode_omits_details():
 
 
 def test_mcp_tool_manager_exposes_doctor_report_tool():
-    """MCP 工具管理器应暴露 doctor 诊断报告工具。"""
+    """
+    MCP 工具管理器应暴露 doctor 诊断报告工具。
+    """
     tool = QueryDoctorReportTool(session_id="doctor-session", user_id="10001")
     catalog = ToolCatalogSnapshot.from_tools(
         [tool], plugin_revision=0, factory_revision="test"

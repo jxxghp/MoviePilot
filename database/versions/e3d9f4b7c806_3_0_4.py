@@ -1,13 +1,13 @@
-"""3.0.4
-新增待整理文件登记表
+"""
+3.0.4 新增待整理文件登记表
 
 整理队列是纯内存的 queue.Queue，进程重启会让队列里的任务连同「这些文件还没
 整理」这个事实一起蒸发，而已稳定落地的文件不会再产生任何监控事件，等于永久
 漏件。该表只登记「存储 + 源文件路径」这一最小事实，供启动时回放。
 
-Revision ID: e3d9f4b7c806
-Revises: 7f5c1d2e3a4b
-Create Date: 2026-08-10
+版本标识： e3d9f4b7c806
+前置版本： 7f5c1d2e3a4b
+创建时间： 2026-08-10
 """
 
 import sqlalchemy as sa
@@ -24,20 +24,26 @@ _EXPECTED_COLUMNS = {"id", "storage", "src_path", "created_at"}
 
 
 def _has_table(table_name: str) -> bool:
-    """检查数据表是否已存在。"""
+    """
+    检查数据表是否已存在。
+    """
     inspector = sa.inspect(op.get_bind())
     return table_name in inspector.get_table_names()
 
 
 def _table_row_count() -> int:
-    """返回待整理表行数，用于判断残缺结构能否无损重建。"""
+    """
+    返回待整理表行数，用于判断残缺结构能否无损重建。
+    """
     return op.get_bind().execute(
         sa.select(sa.func.count()).select_from(sa.table(_TABLE_NAME))
     ).scalar_one()
 
 
 def _create_table() -> None:
-    """创建 3.0.4 定义的完整待整理登记表。"""
+    """
+    创建 3.0.4 定义的完整待整理登记表。
+    """
     op.create_table(
         _TABLE_NAME,
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
@@ -48,7 +54,9 @@ def _create_table() -> None:
 
 
 def _is_current_schema_precreated() -> bool:
-    """识别首次启动时由当前 ORM 预先创建的待整理结构。"""
+    """
+    识别首次启动时由当前 ORM 预先创建的待整理结构。
+    """
     inspector = sa.inspect(op.get_bind())
     if "transferexecutionstep" not in inspector.get_table_names():
         return False
@@ -65,7 +73,9 @@ def _is_current_schema_precreated() -> bool:
 
 
 def _validate_or_recreate_table() -> None:
-    """校验中断升级留下的表结构，仅允许空残表自动重建。"""
+    """
+    校验中断升级留下的表结构，仅允许空残表自动重建。
+    """
     if _is_current_schema_precreated():
         return
     inspector = sa.inspect(op.get_bind())
@@ -108,7 +118,9 @@ def _validate_or_recreate_table() -> None:
 
 
 def _repair_storage_path_index() -> None:
-    """把源身份索引修复为指定列上的唯一索引。"""
+    """
+    把源身份索引修复为指定列上的唯一索引。
+    """
     indexes = {
         index["name"]: index
         for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME)

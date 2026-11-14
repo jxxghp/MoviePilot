@@ -1,24 +1,28 @@
 # -*- coding: utf-8 -*-
+"""
+解析 SunnyPT 站点的用户资料、流量和做种信息。
+"""
+
 import json
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from urllib.parse import urlencode, urljoin
 
-from app.runtime.log import logger
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.foundation import temporal as time_tools
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
+from app.runtime.log import logger
 
 
 class SunnyPTSiteUserInfo(SiteParserBase):
     """
-    SunnyPT MoviePilot API 用户数据解析器
+    SunnyPT MoviePilot API 用户数据解析器。
     """
 
     schema = SiteSchema.SunnyPT
     request_mode = "apikey"
 
-    def _parse_site_page(self, html_text: str) -> None:
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        配置 SunnyPT 用户数据接口地址和认证请求头
+        配置 SunnyPT 用户数据接口地址和认证请求头。
 
         :param html_text: API Key 模式下的空首页数据
         """
@@ -35,9 +39,11 @@ class SunnyPTSiteUserInfo(SiteParserBase):
             "X-API-Key": self.apikey,
         }
 
-    def _load_api_payload(self, html_text: str, operation: str) -> Optional[dict]:
+    def _load_api_payload(
+        self, html_text: SitePage, operation: str
+    ) -> Optional[dict[str, Any]]:
         """
-        解析并校验 SunnyPT 通用 JSON 响应
+        解析并校验 SunnyPT 通用 JSON 响应。
 
         :param html_text: API 响应文本
         :param operation: 错误信息中的操作名称
@@ -47,6 +53,8 @@ class SunnyPTSiteUserInfo(SiteParserBase):
             self.err_msg = f"{operation}失败，未收到 API 响应"
             return None
         try:
+            if isinstance(html_text, dict):
+                raise TypeError("the JSON object must be str, bytes or bytearray, not dict")
             payload = json.loads(html_text)
         except (TypeError, json.JSONDecodeError) as err:
             self.err_msg = f"{operation}失败，API 响应不是有效 JSON"
@@ -63,9 +71,9 @@ class SunnyPTSiteUserInfo(SiteParserBase):
         data = payload.get("data")
         return data if isinstance(data, dict) else None
 
-    def _parse_user_base_info(self, html_text: str) -> None:
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析 SunnyPT 用户资料、流量和做种统计
+        解析 SunnyPT 用户资料、流量和做种统计。
 
         :param html_text: profile 接口响应文本
         """
@@ -88,7 +96,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
 
     def _pase_unread_msgs(self) -> None:
         """
-        分页读取 SunnyPT 未读消息；解析阶段不标记已读，避免投递失败后丢失通知
+        分页读取 SunnyPT 未读消息；解析阶段不标记已读，避免投递失败后丢失通知。
         """
         page = 1
         while True:
@@ -105,9 +113,9 @@ class SunnyPTSiteUserInfo(SiteParserBase):
                 return
             page += 1
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
-        解析 SunnyPT 未读消息列表并直接保存消息正文
+        解析 SunnyPT 未读消息列表并直接保存消息正文。
 
         :param html_text: messages 接口响应文本
         :param msg_links: 兼容解析器基类签名的消息链接容器
@@ -133,14 +141,14 @@ class SunnyPTSiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        跳过独立流量页面，profile 接口已经返回完整统计
+        跳过独立流量页面，profile 接口已经返回完整统计。
 
         :param html_text: 未使用的页面文本
         """
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        跳过独立用户详情页面，profile 接口已经返回完整资料
+        跳过独立用户详情页面，profile 接口已经返回完整资料。
 
         :param html_text: 未使用的页面文本
         """
@@ -151,7 +159,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
         multi_page: bool = False,
     ) -> Optional[str]:
         """
-        跳过独立做种列表，profile 接口已经返回做种数量和体积
+        跳过独立做种列表，profile 接口已经返回做种数量和体积。
 
         :param html_text: 未使用的页面文本
         :param multi_page: 是否为后续分页
@@ -164,7 +172,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
         html_text: str,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        跳过消息详情请求，messages 接口已经返回完整正文
+        跳过消息详情请求，messages 接口已经返回完整正文。
 
         :param html_text: 未使用的页面文本
         :return: 三个空值

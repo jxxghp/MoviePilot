@@ -106,7 +106,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Check governed Python types
+      - name: Check exact typing compatibility exceptions
+        run: uv run --locked --no-sync python scripts/architecture/mypy_policy.py
+
+      - name: Check all host Python types
         run: uv run --locked --no-sync mypy --config-file mypy.ini
 
       - name: Check structural complexity ratchet

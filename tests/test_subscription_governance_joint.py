@@ -1,4 +1,6 @@
-"""日常 Match、手工/兜底队列和站点预算的联合治理测试。"""
+"""
+日常 Match、手工/兜底队列和站点预算的联合治理测试。
+"""
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -11,24 +13,32 @@ from app.runtime.stop import ProcessStopState
 
 
 class _Progress:
-    """收集 provider 进度而不依赖全局进度缓存。"""
+    """
+    收集 provider 进度而不依赖全局进度缓存。
+    """
 
     def __init__(self) -> None:
         self.values: list[float] = []
 
     def update(self, *, value: float, **_kwargs) -> None:
-        """记录一次进度值。"""
+        """
+        记录一次进度值。
+        """
         self.values.append(value)
 
 
 class _MixedBudgetRepository:
-    """模拟一个冷却站点和一个立即可用站点。"""
+    """
+    模拟一个冷却站点和一个立即可用站点。
+    """
 
     def __init__(self) -> None:
         self.finished_sites: list[int] = []
 
     def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
-        """站点 1 保持冷却，站点 2 返回独占租约。"""
+        """
+        站点 1 保持冷却，站点 2 返回独占租约。
+        """
         del owner, lease_seconds
         now = datetime.now(timezone.utc)
         if site_id == 1:
@@ -47,13 +57,17 @@ class _MixedBudgetRepository:
         )
 
     def finish_site(self, *, site_id: int, **_kwargs) -> bool:
-        """记录成功执行并释放的站点。"""
+        """
+        记录成功执行并释放的站点。
+        """
         self.finished_sites.append(site_id)
         return True
 
 
 def test_cooled_site_does_not_block_independent_site_or_mark_batch_failed():
-    """冷却站点延后后其它站点仍完成，调用方只收到可重新入队的事实。"""
+    """
+    冷却站点延后后其它站点仍完成，调用方只收到可重新入队的事实。
+    """
     repository = _MixedBudgetRepository()
     budget = SubscriptionSiteBudget(
         repository=repository,
@@ -67,7 +81,9 @@ def test_cooled_site_does_not_block_independent_site_or_mark_batch_failed():
     chain._should_continue_search_pages = lambda **_kwargs: False
 
     def search_site_torrents(*, site, **_kwargs):
-        """模拟可用站点返回一条结果并发布成功事实。"""
+        """
+        模拟可用站点返回一条结果并发布成功事实。
+        """
         report_site_search_outcome(attempted=True, outcome="success")
         return [site["id"]]
 
@@ -75,6 +91,7 @@ def test_cooled_site_does_not_block_independent_site_or_mark_batch_failed():
     results = []
     progress = _Progress()
 
+    # 直接验证站点结果收集边界，避免启动完整搜索流程。
     SearchProviderOwner._collect_sync_site_results(  # pylint: disable=protected-access
         chain,
         keyword="movie",

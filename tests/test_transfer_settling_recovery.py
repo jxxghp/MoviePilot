@@ -1,4 +1,6 @@
-"""验证 settling 终态在崩溃后只重放持久结算。"""
+"""
+验证 settling 终态在崩溃后只重放持久结算。
+"""
 
 import threading
 import time
@@ -28,8 +30,8 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferTask,
 )
-from app.chain.transfer import TransferChain
 from app.chain.transfer.execution import _DurableTransferStepRunner
+from app.chain.transfer.facade import TransferChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
@@ -42,7 +44,9 @@ from app.schemas.transfer import TransferInfo
 
 
 def _planning_input(path: str) -> TransferPlanningInput:
-    """构造保留源文件身份的最小持久规划输入。"""
+    """
+    构造保留源文件身份的最小持久规划输入。
+    """
     return TransferPlanningInput(
         source_fileitem={
             "storage": "local",
@@ -62,7 +66,9 @@ def _planning_input(path: str) -> TransferPlanningInput:
 def _plan_checkpoint(
         planning_input: TransferPlanningInput,
 ) -> TransferPlanCheckpoint:
-    """构造外部步骤已经结束后可直接结算的冻结计划。"""
+    """
+    构造外部步骤已经结束后可直接结算的冻结计划。
+    """
     return TransferPlanCheckpoint(
         planning_input=planning_input,
         target_storage="local",
@@ -76,7 +82,9 @@ def _plan_checkpoint(
 
 
 def _transfer_result(path: str, *, success: bool) -> TransferInfo:
-    """构造可完整写入 execution checkpoint 的整理结果。"""
+    """
+    构造可完整写入 execution checkpoint 的整理结果。
+    """
     fileitem = FileItem(
         storage="local",
         path=path,
@@ -112,7 +120,9 @@ def _execution_checkpoint(
         success: bool,
         include_transferinfo: bool = True,
 ) -> TransferExecutionCheckpoint:
-    """构造成功或确定失败的聚合执行检查点。"""
+    """
+    构造成功或确定失败的聚合执行检查点。
+    """
     payload = {
         "outcome": "succeeded" if success else "failed",
         "error": None if success else "整理失败",
@@ -134,7 +144,9 @@ def _add_settling_pending(
         path: str,
         lease_state: str,
 ) -> tuple[TransferPlanCheckpoint, TransferExecutionCheckpoint]:
-    """写入带完整计划和执行检查点的 settling 任务。"""
+    """
+    写入带完整计划和执行检查点的 settling 任务。
+    """
     planning_input = _planning_input(path)
     plan_checkpoint = _plan_checkpoint(planning_input)
     execution_checkpoint = _execution_checkpoint(path, success=True)
@@ -182,7 +194,9 @@ def _add_settling_pending(
 
 @pytest.fixture
 def admission_store(tmp_path):
-    """创建独立 SQLite admission 仓储及其 Session 工厂。"""
+    """
+    创建独立 SQLite admission 仓储及其 Session 工厂。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'settling-recovery.db'}")
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
@@ -198,7 +212,9 @@ def admission_store(tmp_path):
 def _snapshot(
         checkpoint: TransferExecutionCheckpoint,
 ) -> TransferExecutionSnapshot:
-    """构造 settling 状态的脱离 Session 执行投影。"""
+    """
+    构造 settling 状态的脱离 Session 执行投影。
+    """
     return TransferExecutionSnapshot(
         task_id="settling-task",
         state=TransferExecutionState.SETTLING,
@@ -214,7 +230,9 @@ def _snapshot(
 
 
 def _build_chain(admissions) -> TransferChain:
-    """构造只允许执行 settling 终态恢复的 TransferChain 骨架。"""
+    """
+    构造只允许执行 settling 终态恢复的 TransferChain 骨架。
+    """
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = admissions
     chain._transfer_executions = MagicMock()
@@ -245,7 +263,9 @@ def _recovered_task(
         admission: TransferAdmission,
         execution_checkpoint: TransferExecutionCheckpoint,
 ) -> TransferTask:
-    """把 claim 投影绑定为只待终态 writer 处理的恢复任务。"""
+    """
+    把 claim 投影绑定为只待终态 writer 处理的恢复任务。
+    """
     assert admission.planning_input is not None
     assert admission.checkpoint is not None
     assert admission.lease_owner is not None
@@ -287,7 +307,9 @@ def test_settling_task_can_be_claimed_by_only_one_owner(
         admission_store,
         lease_state,
 ) -> None:
-    """空租约和过期租约的 settling 任务都只能由一个 worker 取得。"""
+    """
+    空租约和过期租约的 settling 任务都只能由一个 worker 取得。
+    """
     repository, factory = admission_store
     _add_settling_pending(
         factory,
@@ -323,7 +345,9 @@ def test_settling_result_calls_only_task_aware_terminal_writer(
         success,
         include_transferinfo,
 ) -> None:
-    """成功和确定失败都只从检查点恢复结果并调用携带 task 的 writer。"""
+    """
+    成功和确定失败都只从检查点恢复结果并调用携带 task 的 writer。
+    """
     path = "/downloads/Movie.mkv"
     planning_input = _planning_input(path)
     plan_checkpoint = _plan_checkpoint(planning_input)
@@ -352,7 +376,9 @@ def test_settling_result_calls_only_task_aware_terminal_writer(
             callback_task: TransferTask,
             transferinfo: TransferInfo,
     ) -> tuple[bool, str]:
-        """记录 task-aware 终态 writer 收到的恢复事实。"""
+        """
+        记录 task-aware 终态 writer 收到的恢复事实。
+        """
         writer_calls.append((callback_task, transferinfo))
         return transferinfo.success, transferinfo.message or ""
 
@@ -373,7 +399,9 @@ def test_settling_result_calls_only_task_aware_terminal_writer(
 def test_replay_settling_uses_frozen_source_without_filesystem_probe(
         monkeypatch,
 ) -> None:
-    """move 后源文件已消失时，settling 回放仍应直接入队结算。"""
+    """
+    move 后源文件已消失时，settling 回放仍应直接入队结算。
+    """
     path = "/already-moved/Movie.mkv"
     planning_input = _planning_input(path)
     plan_checkpoint = _plan_checkpoint(planning_input)
@@ -399,7 +427,9 @@ def test_replay_settling_uses_frozen_source_without_filesystem_probe(
     chain.put_to_queue = MagicMock(return_value=True)
 
     def reject_stat(*_args, **_kwargs):
-        """任何源文件探测都表示 settling 恢复走回了旧执行路径。"""
+        """
+        任何源文件探测都表示 settling 恢复走回了旧执行路径。
+        """
         pytest.fail("settling 恢复不得探测已经移动的源文件")
 
     monkeypatch.setattr(Path, "stat", reject_stat)
@@ -417,7 +447,9 @@ def test_replay_settling_uses_frozen_source_without_filesystem_probe(
 def test_writer_failure_releases_and_reclaims_same_settling_checkpoint(
         admission_store,
 ) -> None:
-    """writer 临时失败后释放租约，再次恢复不得重新执行外部步骤。"""
+    """
+    writer 临时失败后释放租约，再次恢复不得重新执行外部步骤。
+    """
     repository, factory = admission_store
     _, execution_checkpoint = _add_settling_pending(
         factory,
@@ -437,7 +469,9 @@ def test_writer_failure_releases_and_reclaims_same_settling_checkpoint(
     )
 
     def unavailable_writer(*_args, **_kwargs):
-        """模拟历史与 pending 原子 writer 的暂时性数据库失败。"""
+        """
+        模拟历史与 pending 原子 writer 的暂时性数据库失败。
+        """
         raise RuntimeError("writer temporarily unavailable")
 
     with pytest.raises(RuntimeError, match="temporarily unavailable"):
@@ -467,7 +501,9 @@ def test_writer_failure_releases_and_reclaims_same_settling_checkpoint(
             callback_task: TransferTask,
             transferinfo: TransferInfo,
     ) -> tuple[bool, str]:
-        """模拟下一轮恢复时恢复正常的 task-aware writer。"""
+        """
+        模拟下一轮恢复时恢复正常的 task-aware writer。
+        """
         settled.append((callback_task, transferinfo))
         return transferinfo.success, transferinfo.message or ""
 
@@ -485,7 +521,9 @@ def test_writer_failure_releases_and_reclaims_same_settling_checkpoint(
 
 
 def test_bound_checkpoint_is_not_restored_outside_settling() -> None:
-    """旧终态检查点留在 retry_wait 时不得跳过步骤恢复直接再次结算。"""
+    """
+    旧终态检查点留在 retry_wait 时不得跳过步骤恢复直接再次结算。
+    """
     path = "/downloads/retry-state.mkv"
     planning_input = _planning_input(path)
     plan_checkpoint = _plan_checkpoint(planning_input)
@@ -525,7 +563,9 @@ def test_bound_checkpoint_is_not_restored_outside_settling() -> None:
 def test_failed_settlement_retry_replays_step_and_commits_new_receipt(
         admission_store,
 ) -> None:
-    """失败结算请求重试后应恢复 FAILED 步骤，并以新检查点完成下一版结算。"""
+    """
+    失败结算请求重试后应恢复 FAILED 步骤，并以新检查点完成下一版结算。
+    """
     admissions, factory = admission_store
     path = "/downloads/retry-success.mkv"
     planning_input = _planning_input(path)

@@ -1,4 +1,6 @@
-"""在独立消息库上按索引路由召回候选，禁止加载全库正文后筛选。"""
+"""
+在独立消息库上按索引路由召回候选，禁止加载全库正文后筛选。
+"""
 
 import sqlite3
 from typing import Any
@@ -22,7 +24,9 @@ VISIBLE = '(m.active=1 OR m.compacted=1)'
 
 
 def filters(query: RecallQuery) -> tuple[list[str], list[Any]]:
-    """所有召回路径共用来源、角色、时间和可见性条件，避免回退扩大范围。"""
+    """
+    所有召回路径共用来源、角色、时间和可见性条件，避免回退扩大范围。
+    """
     where = [VISIBLE, "s.source NOT IN ('kanban','subagent','tool')"]
     params: list[Any] = []
     if query.role_filter:
@@ -36,7 +40,9 @@ def filters(query: RecallQuery) -> tuple[list[str], list[Any]]:
 
 
 def match(connection: sqlite3.Connection, table: str, text: str, query: RecallQuery) -> list[dict[str, Any]]:
-    """默认 BM25 排序，仅回传命中片段及元数据；正文按最终命中再展开。"""
+    """
+    默认 BM25 排序，仅回传命中片段及元数据；正文按最终命中再展开。
+    """
     if table not in {'messages_fts', 'messages_fts_cjk', 'messages_fts_trigram'}:
         raise ValueError('未知 FTS5 索引')
     where, params = filters(query)
@@ -52,7 +58,9 @@ def match(connection: sqlite3.Connection, table: str, text: str, query: RecallQu
 
 
 def scan(connection: sqlite3.Connection, text: str, query: RecallQuery) -> list[dict[str, Any]]:
-    """显式工具全文、短 CJK 或失效索引回退；外层 SQLite VM deadline 限制实际耗时。"""
+    """
+    显式工具全文、短 CJK 或失效索引回退；外层 SQLite VM deadline 限制实际耗时。
+    """
     predicate, term_params, anchor = like_predicate(text)
     if not predicate or not anchor:
         return []
@@ -68,7 +76,9 @@ def scan(connection: sqlite3.Connection, text: str, query: RecallQuery) -> list[
 
 
 def candidates(connection: sqlite3.Connection, indexes: tuple[str, ...], query: RecallQuery) -> tuple[list[dict[str, Any]], str]:
-    """选择普通词、CJK、trigram 和 OR 放宽路由，显式报告所走路径。"""
+    """
+    选择普通词、CJK、trigram 和 OR 放宽路由，显式报告所走路径。
+    """
     text = normalize(query.query)
     if not text:
         return [], 'empty'

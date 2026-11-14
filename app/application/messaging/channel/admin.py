@@ -1,4 +1,6 @@
-"""消息渠道管理员主体解析与匹配契约。"""
+"""
+消息渠道管理员主体解析与匹配契约。
+"""
 
 from collections.abc import Callable, Iterable
 from typing import Any, Optional, Union
@@ -16,7 +18,9 @@ def register_channel_admin_resolver(
     channel: Union[NotificationChannel, str],
     resolver: ChannelAdminResolver,
 ) -> None:
-    """注册消息渠道的管理员主体 ID 解析器。"""
+    """
+    注册消息渠道的管理员主体 ID 解析器。
+    """
     channel_value = (
         channel.value if isinstance(channel, NotificationChannel) else str(channel)
     )
@@ -27,7 +31,9 @@ def resolve_config_principal_ids(
     config: Optional[dict[str, Any]],
     *config_keys: str,
 ) -> set[str]:
-    """从渠道自行声明的配置键中解析并清理主体 ID。"""
+    """
+    从渠道自行声明的配置键中解析并清理主体 ID。
+    """
     principal_ids: set[str] = set()
     for config_key in config_keys:
         principal_ids.update(
@@ -43,7 +49,9 @@ def matches_channel_admin(
     config: Optional[dict[str, Any]],
     *principal_ids: Optional[Union[str, int]],
 ) -> bool:
-    """判断任一稳定主体 ID 是否命中渠道登记的管理员集合。"""
+    """
+    判断任一稳定主体 ID 是否命中渠道登记的管理员集合。
+    """
     channel_value = (
         channel.value if isinstance(channel, NotificationChannel) else str(channel)
     )

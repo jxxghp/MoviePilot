@@ -1,4 +1,6 @@
-"""SiteChain 技术端口、资源所有权与装配原子性回归。"""
+"""
+SiteChain 技术端口、资源所有权与装配原子性回归。
+"""
 
 import ast
 import json
@@ -21,7 +23,9 @@ from app.startup.initializers import site as site_initializer
 
 
 class _FakeResponse:
-    """模拟站点链消费的最小 HTTP 响应。"""
+    """
+    模拟站点链消费的最小 HTTP 响应。
+    """
 
     def __init__(
         self,
@@ -32,7 +36,9 @@ class _FakeResponse:
         reason: str = "OK",
         payload: Optional[dict] = None,
     ) -> None:
-        """保存响应状态、正文与可选 JSON。"""
+        """
+        保存响应状态、正文与可选 JSON。
+        """
         self.status_code = status_code
         self.text = text
         self.content = content
@@ -40,26 +46,36 @@ class _FakeResponse:
         self._payload = payload or {}
 
     def __bool__(self) -> bool:
-        """模拟 requests.Response 的成功状态真假语义。"""
+        """
+        模拟 requests.Response 的成功状态真假语义。
+        """
         return self.status_code < 400
 
     def json(self) -> dict:
-        """返回预设 JSON 数据。"""
+        """
+        返回预设 JSON 数据。
+        """
         return self._payload
 
 
 class _FakeHttpPort:
-    """按队列回放响应并记录上下文退出。"""
+    """
+    按队列回放响应并记录上下文退出。
+    """
 
     def __init__(self, *responses: Optional[_FakeResponse]) -> None:
-        """保存将被依次消费的响应。"""
+        """
+        保存将被依次消费的响应。
+        """
         self.responses = list(responses)
         self.calls: list[dict] = []
         self.closed = 0
 
     @contextmanager
     def open(self, **kwargs) -> Iterator[Optional[_FakeResponse]]:
-        """回放一个响应并在调用方离开时记录关闭。"""
+        """
+        回放一个响应并在调用方离开时记录关闭。
+        """
         self.calls.append(kwargs)
         response = self.responses.pop(0)
         try:
@@ -69,50 +85,70 @@ class _FakeHttpPort:
 
 
 class _FakeBrowserPort:
-    """回放浏览器页面源码。"""
+    """
+    回放浏览器页面源码。
+    """
 
     def __init__(self, source: Optional[str] = None) -> None:
-        """保存渲染结果。"""
+        """
+        保存渲染结果。
+        """
         self.source = source
         self.calls: list[dict] = []
 
     def render(self, **kwargs) -> Optional[str]:
-        """记录调用并返回页面源码。"""
+        """
+        记录调用并返回页面源码。
+        """
         self.calls.append(kwargs)
         return self.source
 
 
 class _FakeChallengePort:
-    """回放页面挑战识别结果。"""
+    """
+    回放页面挑战识别结果。
+    """
 
     def __init__(self, detected: bool = False) -> None:
-        """保存识别结果。"""
+        """
+        保存识别结果。
+        """
         self.result = detected
         self.calls: list[str] = []
 
     def detected(self, html_text: str) -> bool:
-        """记录页面并返回识别结果。"""
+        """
+        记录页面并返回识别结果。
+        """
         self.calls.append(html_text)
         return self.result
 
 
 class _FakeCookieCloudPort:
-    """回放 CookieCloud 下载二元结果。"""
+    """
+    回放 CookieCloud 下载二元结果。
+    """
 
     def __init__(self, result=(None, "未配置")) -> None:
-        """保存下载结果。"""
+        """
+        保存下载结果。
+        """
         self.result = result
         self.calls = 0
 
     def download(self):
-        """记录调用并返回预设结果。"""
+        """
+        记录调用并返回预设结果。
+        """
         self.calls += 1
         return self.result
 
 
 @pytest.fixture(autouse=True)
 def clean_site_ports():
-    """隔离每个用例修改的站点链进程级端口。"""
+    """
+    隔离每个用例修改的站点链进程级端口。
+    """
     reset_site_ports()
     yield
     reset_site_ports()
@@ -125,7 +161,9 @@ def _configure(
     challenge: Optional[_FakeChallengePort] = None,
     cookiecloud: Optional[_FakeCookieCloudPort] = None,
 ) -> None:
-    """装配一组完全离线的站点链假端口。"""
+    """
+    装配一组完全离线的站点链假端口。
+    """
     configure_site_ports(
         http=http,
         browser=browser or _FakeBrowserPort(),
@@ -135,7 +173,9 @@ def _configure(
 
 
 def _chain() -> SiteChain:
-    """构造仅执行私有连通性逻辑的 SiteChain。"""
+    """
+    构造仅执行私有连通性逻辑的 SiteChain。
+    """
     chain = object.__new__(SiteChain)
     chain.runtime_config = SimpleNamespace(
         proxy=None,
@@ -147,7 +187,9 @@ def _chain() -> SiteChain:
 
 
 def _public_site(*, render: bool = False) -> SiteSnapshot:
-    """构造无需登录标志判断的站点快照。"""
+    """
+    构造无需登录标志判断的站点快照。
+    """
     return SiteSnapshot(
         id=1,
         name="Port Test",
@@ -159,7 +201,9 @@ def _public_site(*, render: bool = False) -> SiteSnapshot:
 
 
 def test_unconfigured_site_port_fails_without_implicit_adapter() -> None:
-    """未装配时真实访问应稳定失败，不能由 Chain 隐式回建 Adapter。"""
+    """
+    未装配时真实访问应稳定失败，不能由 Chain 隐式回建 Adapter。
+    """
     with pytest.raises(RuntimeError, match="站点链访问端口"):
         _chain()._SiteChain__test(_public_site())
 
@@ -175,7 +219,9 @@ def test_unconfigured_site_port_fails_without_implicit_adapter() -> None:
 def test_http_port_preserves_failure_tristate_and_closes_response(
     response: Optional[_FakeResponse], expected: tuple[bool, str]
 ) -> None:
-    """无响应、错误响应与成功响应保持原三态，且所有分支退出上下文。"""
+    """
+    无响应、错误响应与成功响应保持原三态，且所有分支退出上下文。
+    """
     http = _FakeHttpPort(response)
     _configure(http)
 
@@ -187,7 +233,9 @@ def test_http_port_preserves_failure_tristate_and_closes_response(
 
 
 def test_browser_and_challenge_ports_keep_render_failure_semantics() -> None:
-    """浏览器页面命中挑战时保留原 Cloudflare 失败提示。"""
+    """
+    浏览器页面命中挑战时保留原 Cloudflare 失败提示。
+    """
     browser = _FakeBrowserPort("<title>Just a moment...</title>")
     challenge = _FakeChallengePort(True)
     _configure(_FakeHttpPort(), browser=browser, challenge=challenge)
@@ -208,7 +256,9 @@ def test_browser_and_challenge_ports_keep_render_failure_semantics() -> None:
 
 
 def test_cookiecloud_failure_uses_fake_port_without_network() -> None:
-    """CookieCloud 下载失败应保持二元返回且只调用注入端口。"""
+    """
+    CookieCloud 下载失败应保持二元返回且只调用注入端口。
+    """
     cookiecloud = _FakeCookieCloudPort((None, "下载失败"))
     _configure(_FakeHttpPort(), cookiecloud=cookiecloud)
 
@@ -219,7 +269,9 @@ def test_cookiecloud_failure_uses_fake_port_without_network() -> None:
 
 
 def test_configure_reset_is_repeatable_and_preserves_chain_identity() -> None:
-    """重复装配与 reset 必须原子替换快照且不改变 SiteChain 类身份。"""
+    """
+    重复装配与 reset 必须原子替换快照且不改变 SiteChain 类身份。
+    """
     original_type = SiteChain
     first = _FakeHttpPort(_FakeResponse(200))
     second = _FakeHttpPort(_FakeResponse(200))
@@ -242,10 +294,14 @@ def test_configure_reset_is_repeatable_and_preserves_chain_identity() -> None:
 def test_initializer_rolls_back_all_ports_when_site_chain_publish_fails(
     monkeypatch,
 ) -> None:
-    """最后一组站点链端口发布失败时必须回滚此前三组端口。"""
+    """
+    最后一组站点链端口发布失败时必须回滚此前三组端口。
+    """
 
     def fail_site_configuration(**_kwargs) -> None:
-        """模拟站点链端口发布失败。"""
+        """
+        模拟站点链端口发布失败。
+        """
         raise RuntimeError("site publish failed")
 
     monkeypatch.setattr(
@@ -265,20 +321,31 @@ def test_initializer_rolls_back_all_ports_when_site_chain_publish_fails(
         site_module._site_ports_snapshot()
 
 
-def test_real_initializer_http_adapter_closes_response(monkeypatch) -> None:
-    """组合根 HTTP adapter 必须在调用方返回后关闭 RequestUtils 响应。"""
+@pytest.mark.parametrize("json_body", [None, {}])
+def test_real_initializer_http_adapter_closes_response(monkeypatch, json_body) -> None:
+    """
+    组合根 HTTP adapter 必须在调用方返回后关闭 RequestUtils 响应。
+    """
     response = _FakeResponse(200, text="ok")
     state = {"closed": False}
+    observed = {}
 
     class FakeRequest:
-        """提供可观测关闭的 RequestUtils 替身。"""
+        """
+        提供可观测关闭的 RequestUtils 替身。
+        """
 
         def __init__(self, **_kwargs) -> None:
-            """接受真实 adapter 传递的请求配置。"""
+            """
+            接受真实 adapter 传递的请求配置。
+            """
 
         @contextmanager
-        def response_manager(self, **_kwargs):
-            """退出上下文时记录响应已释放。"""
+        def response_manager(self, **kwargs):
+            """
+            退出上下文时记录响应已释放。
+            """
+            observed.update(kwargs)
             try:
                 yield response
             finally:
@@ -287,27 +354,39 @@ def test_real_initializer_http_adapter_closes_response(monkeypatch) -> None:
     monkeypatch.setattr(site_composition, "RequestUtils", FakeRequest)
     adapter = site_composition._SiteHttpAdapter()
 
-    with adapter.open(method="GET", url="https://close.test/") as opened:
+    with adapter.open(method="POST", url="https://close.test/", json_body=json_body) as opened:
         assert opened is response
         assert not state["closed"]
 
     assert state["closed"]
+    expected = {"method": "POST", "url": "https://close.test/"}
+    if json_body is not None:
+        expected["json"] = json_body
+    assert observed == expected
 
 
 def test_cookiecloud_adapter_closes_remote_response(monkeypatch) -> None:
-    """CookieCloud 远端下载完成或提前返回时也必须关闭 HTTP 响应。"""
+    """
+    CookieCloud 远端下载完成或提前返回时也必须关闭 HTTP 响应。
+    """
     state = {"closed": False}
     response = _FakeResponse(200, payload={"encrypted": "cipher"})
 
     class FakeRequest:
-        """提供可观测关闭的 CookieCloud HTTP 替身。"""
+        """
+        提供可观测关闭的 CookieCloud HTTP 替身。
+        """
 
         def __init__(self, **_kwargs) -> None:
-            """接受 CookieCloud 传递的内容类型。"""
+            """
+            接受 CookieCloud 传递的内容类型。
+            """
 
         @contextmanager
         def response_manager(self, **_kwargs):
-            """退出下载上下文时记录响应已关闭。"""
+            """
+            退出下载上下文时记录响应已关闭。
+            """
             try:
                 yield response
             finally:
@@ -320,6 +399,7 @@ def test_cookiecloud_adapter_closes_remote_response(monkeypatch) -> None:
     helper._key = "key"
     helper._password = "password"
     helper._enable_local = False
+    helper._domain_resolver = cookiecloud_module.site_rules.extract_domain
     monkeypatch.setattr(helper, "_CookieCloudHelper__sync_setting", lambda: None)
     monkeypatch.setattr(cookiecloud_module, "RequestUtils", FakeRequest)
     monkeypatch.setattr(
@@ -344,7 +424,9 @@ def test_cookiecloud_adapter_closes_remote_response(monkeypatch) -> None:
 
 
 def test_site_chain_has_no_concrete_adapter_imports() -> None:
-    """SiteChain 只能拥有 Port，不得重新静态依赖具体 Adapter。"""
+    """
+    SiteChain 只能拥有 Port，不得重新静态依赖具体 Adapter。
+    """
     path = Path(site_module.__file__)
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     violations = [
@@ -356,3 +438,227 @@ def test_site_chain_has_no_concrete_adapter_imports() -> None:
     ]
 
     assert violations == []
+
+
+def _redirect(location: Optional[str]) -> SimpleNamespace:
+    """
+    构造带可选目标地址的重定向响应。
+    """
+    return SimpleNamespace(status_code=302, headers={"Location": location} if location else {})
+
+
+def _scripted_request(monkeypatch, responses: list) -> list[dict]:
+    """
+    用按序回放的 RequestUtils 替身替换组合根传输，并记录每一跳的构造参数和请求参数。
+    """
+    hops: list[dict] = []
+    queue = list(responses)
+
+    class ScriptedRequest:
+        """
+        记录每一跳携带的 Cookie 与请求地址。
+        """
+
+        def __init__(self, **kwargs) -> None:
+            """
+            保存 adapter 传入的 Cookie 等构造参数。
+            """
+            self.options = kwargs
+
+        @contextmanager
+        def response_manager(self, **kwargs):
+            """
+            依次返回预设响应。
+            """
+            hops.append({**self.options, **kwargs})
+            item = queue.pop(0)
+            if isinstance(item, Exception):
+                # 模拟 requests 在打开响应时即抛出的异常，例如预解析畸形 Location
+                raise item
+            yield item
+
+    monkeypatch.setattr(site_composition, "RequestUtils", ScriptedRequest)
+    return hops
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize("source,destination", [
+    ("http://hdwing.org/", "https://hdwing.org/"),
+    ("http://hdwing.org:80/", "https://hdwing.org:443/index.php"),
+    ("http://HDWING.org/index.php", "https://hdwing.org/"),
+    ("http://hdwing.org/", "http://hdwing.org/index.php"),
+    ("https://hdwing.org/", "https://hdwing.org/index.php"),
+])
+def test_site_adapter_keeps_credentials_on_same_origin_or_https_upgrade(
+    monkeypatch, status: int, source: str, destination: str,
+) -> None:
+    """
+    同源跳转与同主机默认端口的 HTTPS 升级应保留 Cookie 和认证头。
+    """
+    final = _FakeResponse(200, text="ok")
+    hops = _scripted_request(monkeypatch, [
+        SimpleNamespace(status_code=status, headers={"Location": destination}), final,
+    ])
+    headers = {"Cookie": "sid=header", "Authorization": "Bearer test", "Referer": source}
+
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url=source, cookie="uid=1", headers=headers,
+    ) as response:
+        assert response is final
+
+    assert [hop["url"] for hop in hops] == [source, destination]
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
+    assert [hop["headers"] for hop in hops] == [headers, headers]
+    assert all(hop["allow_redirects"] is False for hop in hops)
+
+
+@pytest.mark.parametrize("source,destination", [
+    ("http://hdwing.org/", "https://other.test/"),
+    ("http://hdwing.org/", "https://www.hdwing.org/"),
+    ("http://hdwing.org:8080/", "https://hdwing.org/"),
+    ("http://hdwing.org/", "https://hdwing.org:8443/"),
+    ("http://hdwing.org:443/", "https://hdwing.org/"),
+    ("http://hdwing.org/", "https://hdwing.org:80/"),
+    ("https://hdwing.org/", "http://hdwing.org/"),
+    ("https://hdwing.org/", "https://hdwing.org:8443/"),
+])
+def test_site_adapter_strips_credentials_when_redirect_changes_trust(
+    monkeypatch, source: str, destination: str,
+) -> None:
+    """
+    跨主机、非默认端口升级与 HTTPS 降级仍应清除全部敏感请求头。
+    """
+    hops = _scripted_request(monkeypatch, [_redirect(destination), _FakeResponse(200)])
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url=source, cookie="uid=1",
+        headers={
+            "cOoKiE": "sid=header", "aUtHoRiZaTiOn": "Bearer test",
+            "Proxy-Authorization": "Basic test", "rEfErEr": source, "Accept": "text/html",
+        },
+    ) as response:
+        assert response.status_code == 200
+
+    assert [hop["cookies"] for hop in hops] == ["uid=1", ""]
+    assert hops[1]["headers"] == {"Accept": "text/html"}
+
+
+def test_site_adapter_does_not_restore_credentials_after_downgrade_then_upgrade(monkeypatch) -> None:
+    """
+    HTTPS 降级清除的凭据，在后续同主机升级回 HTTPS 时不能重新出现。
+    """
+    hops = _scripted_request(monkeypatch, [
+        _redirect("http://hdwing.org/next"),
+        _redirect("https://hdwing.org/final"),
+        _FakeResponse(200),
+    ])
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url="https://hdwing.org/", cookie="uid=1",
+        headers={"Authorization": "Bearer test"},
+    ) as response:
+        assert response.status_code == 200
+
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "", ""]
+    assert [hop["headers"] for hop in hops] == [{"Authorization": "Bearer test"}, {}, {}]
+
+
+def test_site_connection_keeps_cookie_when_hdwing_redirects_to_https(monkeypatch) -> None:
+    """
+    HDWing 的 HTTP 入口升级到 HTTPS 后，连接测试应携带原 Cookie 并识别已登录页面。
+    """
+    hops = _scripted_request(monkeypatch, [
+        _redirect("https://hdwing.org/"),
+        _FakeResponse(200, text='<html><body><a href="logout.php">退出</a></body></html>'),
+    ])
+    _configure(site_composition._SiteHttpAdapter())
+    site = SiteSnapshot(
+        id=1, name="瓷器", domain="hdwing.org", url="http://hdwing.org/", cookie="uid=1",
+    )
+
+    assert _chain()._SiteChain__test(site) == (True, "连接成功")
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
+
+
+@pytest.mark.parametrize("responses,reason", [
+    ([_redirect("/dl/1/auth?X-Amz-Signature=sig")] * 2, "站点请求重定向出现环路"),
+    ([_redirect(None)], "站点请求重定向缺少目标地址"),
+    ([_redirect("ftp://site.test/file")], "站点请求重定向目标无效"),
+    ([_redirect("https://user:pass@site.test/")], "站点请求重定向目标无效"),
+    ([_redirect("https://[bad/path")], "站点请求重定向目标无效"),
+    ([_redirect(f"/page{index}") for index in range(9)], "站点请求重定向次数超过上限"),
+    ([ValueError("Invalid IPv6 URL")], "站点请求地址或重定向目标无效"),
+    ([_redirect("/next"), ValueError("Invalid IPv6 URL")], "站点请求地址或重定向目标无效"),
+], ids=[
+    "loop", "missing-location", "invalid-scheme", "userinfo", "malformed", "too-many-hops",
+    "transport-rejects-location", "transport-rejects-next-hop",
+])
+def test_site_adapter_redirect_failures_yield_none(monkeypatch, responses, reason) -> None:
+    """
+    重定向失败按端口约定提供 None 并告警，不抛出异常打断 CookieCloud 同步等批量流程；
+    告警只含来源地址，路径与查询参数中的签名、passkey 等凭据都不写入日志。
+    """
+    hops = _scripted_request(monkeypatch, responses)
+    warnings = []
+    monkeypatch.setattr(site_composition.logger, "warning", warnings.append)
+
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url="https://site.test/index.php?passkey=secret", cookie="uid=1",
+    ) as response:
+        assert response is None
+
+    assert len(hops) == len(responses)
+    assert warnings == [f"{reason}：https://site.test"]
+
+
+def test_cookiecloud_sync_continues_after_redirect_loop(monkeypatch) -> None:
+    """
+    单个新站点的重定向环路只记为该站点添加失败，同步继续处理后续站点。
+    """
+    hops = _scripted_request(monkeypatch, [_redirect("/")])
+    monkeypatch.setattr(site_composition.logger, "warning", lambda _message: None)
+    _configure(site_composition._SiteHttpAdapter())
+    chain = _chain()
+    chain.runtime_config.cookiecloud_blacklist = ""
+
+    result = chain._sync_cookiecloud_domain(
+        domain="loop.test",
+        cookie="uid=1",
+        indexer={"name": "环路站点", "domain": "https://loop.test/"},
+        site_info=None,
+        repository=SimpleNamespace(),
+        rsshelper=SimpleNamespace(),
+    )
+
+    # 跳回同一地址在第二跳发出前即判定为环路
+    assert result == (0, 0, 1, False)
+    assert [hop["url"] for hop in hops] == ["https://loop.test/"]
+
+
+def test_site_adapter_does_not_swallow_caller_errors(monkeypatch) -> None:
+    """
+    调用方在响应上下文内抛出的异常必须原样传播，不能被当作重定向失败吞掉。
+    """
+    _scripted_request(monkeypatch, [_FakeResponse(200, text="ok")])
+    warnings = []
+    monkeypatch.setattr(site_composition.logger, "warning", warnings.append)
+
+    with pytest.raises(ValueError, match="调用方错误"):
+        with site_composition._SiteHttpAdapter().open(method="GET", url="https://site.test/") as response:
+            assert response is not None
+            raise ValueError("调用方错误")
+
+    assert warnings == []
+
+
+def test_favicon_failure_logs_only_site_origin(monkeypatch) -> None:
+    """
+    图标或页面读取失败的日志只记录来源地址，页面提供的图标 URL 中的令牌不能写入日志。
+    """
+    _configure(_FakeHttpPort(_FakeResponse(200, text='<link rel="icon" href="/icon.png?token=secret">'), None))
+    errors = []
+    monkeypatch.setattr(site_module.logger, "error", errors.append)
+
+    favicon_url, content = SiteChain._SiteChain__parse_favicon("https://site.test/?passkey=secret", "uid=1", "UA")
+
+    assert favicon_url == "https://site.test/icon.png?token=secret"
+    assert content is None
+    assert errors == ["获取站点图标失败：https://site.test"]

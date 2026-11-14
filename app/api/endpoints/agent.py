@@ -1,3 +1,7 @@
+"""
+提供 Agent 会话、消息和执行控制接口，按当前用户隔离会话访问。
+"""
+
 import json
 import mimetypes
 import uuid
@@ -16,6 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app.adapters.web.security.access import verify_resource_token, verify_token
 from app.agent.mcp import agent_mcp_manager
 from app.api.dependencies.agent import (
     get_agent_chat_persistence,
@@ -57,19 +62,24 @@ from app.schemas.agent import AgentWebCommandInfo as _SchemaAgentWebCommandInfo
 from app.schemas.message import AgentWebChatRequest as _SchemaAgentWebChatRequest
 from app.schemas.message import AgentWebChoiceRequest as _SchemaAgentWebChoiceRequest
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import NotificationChannel
 
 router = ResponseAPIRouter()
 
 
 def _ensure_superuser(user: ApiPrincipal) -> None:
-    """校验当前用户是否为超级管理员。"""
+    """
+    校验当前用户是否为超级管理员。
+    """
     if not getattr(user, "is_superuser", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
 def _parse_agent_channel_header(value: Optional[str]) -> Optional[NotificationChannel]:
-    """解析 Agent API 的 ASCII 渠道名，并兼容旧版本直接传递的枚举值。"""
+    """
+    解析 Agent API 的 ASCII 渠道名，并兼容旧版本直接传递的枚举值。
+    """
     if not value:
         return None
     try:
@@ -84,6 +94,33 @@ def _parse_agent_channel_header(value: Optional[str]) -> Optional[NotificationCh
                 return None
 
 
+def _command_user_id(
+    channel: Optional[NotificationChannel],
+    token_data: _SchemaTokenPayload,
+    current_user_id: object,
+) -> Optional[str]:
+    """
+    确定命令执行与回执所属的用户标识。
+
+    Web 与 WebAgent 以 MoviePilot 用户 ID 标识会话。无渠道时不携带收件人，避免插件将
+    内部主键发往其他渠道；通知路由可按已有管理员目标回退。Telegram 等通知渠道按渠道用户
+    执行会话操作并投递回执，该标识只取宿主签发令牌的签名声明，不信任请求头。
+
+    :param channel: 宿主透传的消息渠道；直接 API 调用为 None
+    :param token_data: 已验证签名的当前请求令牌载荷
+    :param current_user_id: 当前认证用户的 MoviePilot 用户 ID
+    :return: 命令事件使用的用户标识；无渠道时为 None
+    :raises ValueError: 通知渠道调用缺少与该渠道一致的签名渠道用户声明
+    """
+    if channel is None:
+        return None
+    if channel in (NotificationChannel.Web, NotificationChannel.WebAgent):
+        return str(current_user_id)
+    if token_data.agent_channel == channel.value and token_data.agent_channel_user:
+        return token_data.agent_channel_user
+    raise ValueError("无法确认命令发起人在该渠道的身份，请在对应渠道的 Agent 会话中执行命令")
+
+
 @router.get(
     "/mcp/servers",
     summary="查询 Agent MCP 服务器配置",
@@ -91,7 +128,7 @@ def _parse_agent_channel_header(value: Optional[str]) -> Optional[NotificationCh
 )
 async def list_agent_mcp_servers(
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     查询 Agent 外部 MCP 服务器配置。
     """
@@ -116,14 +153,14 @@ async def list_agent_mcp_servers(
 async def save_agent_mcp_servers(
     request: _SchemaAgentMcpServersSaveRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     保存 Agent 外部 MCP 服务器配置。
     """
     _ensure_superuser(current_user)
     success = await agent_mcp_manager.save_servers(request.servers)
     return _SchemaResponse(
-        success=success,
+        success=bool(success),
         message="保存MCP配置成功" if success else "保存MCP配置失败",
     )
 
@@ -136,7 +173,7 @@ async def save_agent_mcp_servers(
 async def test_agent_mcp_server(
     request: _SchemaAgentMcpServerTestRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     测试 Agent 外部 MCP 服务器连接并读取工具列表。
     """
@@ -196,14 +233,22 @@ def _build_web_agent_sse(
         }
     },
 )
-async def download_web_agent_file(file_id: str) -> FileResponse:
+async def download_web_agent_file(
+    file_id: str,
+    token_payload: _SchemaTokenPayload = Depends(verify_resource_token),
+) -> FileResponse:
     """
     下载 Web 智能助手本轮生成的临时附件。
 
     :param file_id: 附件随机标识
+    :param token_payload: 当前资源令牌中的登录用户身份
     :return: 附件文件响应
     """
-    file_info = web_agent_application.get_web_agent_registered_file(f"message/agent/file/{file_id}")
+    owner_id = str(token_payload.sub) if token_payload.sub is not None else ""
+    file_info = web_agent_application.get_web_agent_registered_file(
+        f"message/agent/file/{file_id}",
+        owner_id=owner_id,
+    )
     if not file_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="附件不存在或已过期")
 
@@ -228,7 +273,7 @@ async def upload_web_agent_file(
     session_id: Optional[str] = Form(None),
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     上传 Web 智能助手对话附件。
 
@@ -239,7 +284,13 @@ async def upload_web_agent_file(
     """
     mime_type = file.content_type or mimetypes.guess_type(file.filename or "")[0]
     safe_name = web_agent_application.sanitize_web_agent_upload_name(file.filename, mime_type)
-    upload_dir = await web_agent_application.get_web_agent_upload_dir(current_user, session_id, service)
+    try:
+        upload_dir = await web_agent_application.get_web_agent_upload_dir(current_user, session_id, service)
+    except PermissionError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="会话不存在或无权访问",
+        ) from err
     target_path = upload_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
     try:
         size = await web_agent_application.save_web_agent_upload(file, target_path)
@@ -253,6 +304,7 @@ async def upload_web_agent_file(
         file_name=safe_name,
         kind=web_agent_application.guess_web_agent_attachment_kind(mime_type),
         mime_type=mime_type,
+        owner_id=str(current_user.id),
     )
     if not attachment:
         target_path.unlink(missing_ok=True)
@@ -277,7 +329,7 @@ async def upload_web_agent_file(
 async def web_agent_callback(
     payload: _SchemaAgentWebChoiceRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     接收 Web 智能助手选择卡片回调。
 
@@ -298,9 +350,9 @@ async def web_agent_callback(
             ),
         )
 
-    result = web_agent_application.resolve_web_agent_choice_payload(
+    result = await web_agent_application.resolve_and_save_web_agent_choice(
         callback_data=payload.callback_data,
-        user_id=str(current_user.id),
+        current_user=current_user,
     )
     if not result:
         return _SchemaResponse(success=False, message="该选择已失效，请重新发起选择")
@@ -316,7 +368,7 @@ async def list_web_agent_commands(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-) -> _SchemaResponse:
+) -> _SchemaResponse[list[dict[str, object]]]:
     """
     获取当前 Web 智能助手可补全的斜杠命令。
 
@@ -332,7 +384,7 @@ async def list_web_agent_commands(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/commands/run",
     summary="执行 Agent 斜杠命令",
     response_model=_SchemaResponse[_SchemaAgentCommandRunData],
@@ -340,24 +392,36 @@ async def list_web_agent_commands(
 async def run_agent_command(
     payload: _SchemaAgentCommandRunRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
+    token_data: _SchemaTokenPayload = Depends(verify_token),
     agent_channel: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Channel"),
     agent_source: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Source"),
 ) -> _SchemaResponse[Any]:
-    """以当前认证用户和宿主透传渠道触发已注册命令。"""
+    """
+    以当前认证用户和宿主透传渠道触发已注册命令。
+
+    通知渠道的命令按令牌签名声明中的渠道用户执行和回执；没有渠道时不指定收件人。
+
+    :param payload: 包含命令及参数的请求正文
+    :param current_user: 已认证的当前用户，必须为超级管理员
+    :param token_data: 认证后验证过签名的令牌声明
+    :param agent_channel: 宿主透传的渠道名称，可为 URL 编码的枚举值
+    :param agent_source: 宿主透传的渠道实例名称，可为 URL 编码的文本
+    :return: 命令触发结果；命令无效或渠道身份不可验证时返回失败信息
+    """
     _ensure_superuser(current_user)
     channel = _parse_agent_channel_header(agent_channel)
     agent_source = unquote(agent_source) if agent_source else None
     try:
         data = web_agent_application.dispatch_command(
             payload.command,
-            user_id=str(current_user.id),
+            user_id=_command_user_id(channel, token_data, current_user.id),
             channel=channel,
             source=agent_source,
             publish_event=eventmanager.send_event,
         )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.get(
@@ -370,7 +434,7 @@ async def list_agent_chat_sessions(
     service: AgentChatService = Depends(get_agent_chat_service),
     page: int = 1,
     count: int = 30,
-) -> _SchemaResponse:
+) -> _SchemaResponse[list[_SchemaAgentChatSessionSummary]]:
     """
     获取当前用户可访问的 Agent 历史会话列表。
 
@@ -397,7 +461,7 @@ async def get_agent_chat_session(
     session_id: str,
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     获取一条 Agent 历史会话详情。
 
@@ -409,11 +473,14 @@ async def get_agent_chat_session(
     chat = await web_agent_application.get_accessible_agent_chat(service, session_id, current_user)
     server_session_id = session_id
     if not chat:
-        server_session_id = await web_agent_application.build_web_agent_session_id_async(
-            current_user,
-            session_id,
-            service,
-        )
+        try:
+            server_session_id = await web_agent_application.build_web_agent_session_id_async(
+                current_user,
+                session_id,
+                service,
+            )
+        except PermissionError:
+            return _SchemaResponse(success=False, message="会话不存在或无权访问")
         if server_session_id != session_id:
             chat = await web_agent_application.get_accessible_agent_chat(
                 service,
@@ -450,7 +517,7 @@ async def save_agent_chat_display(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
     persistence: AgentChatPersistenceService = Depends(get_agent_chat_persistence),
-) -> _SchemaResponse:
+) -> _SchemaResponse[_SchemaAgentChatSessionSummary]:
     """
     保存前端聚合后的 Agent 展示消息。
 
@@ -495,7 +562,7 @@ async def delete_agent_chat_session(
     session_id: str,
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     删除一条 Agent 历史会话。
 
@@ -520,7 +587,7 @@ async def stop_web_agent_session_task(
     session_id: str,
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, bool]]:
     """
     停止当前 Web 智能助手会话正在执行的任务。
 
@@ -529,11 +596,14 @@ async def stop_web_agent_session_task(
     :param service: Agent 会话应用服务
     :return: 停止结果
     """
-    server_session_id = await web_agent_application.build_web_agent_session_id_async(
-        current_user,
-        session_id,
-        service,
-    )
+    try:
+        server_session_id = await web_agent_application.build_web_agent_session_id_async(
+            current_user,
+            session_id,
+            service,
+        )
+    except PermissionError:
+        return _SchemaResponse(success=False, message="会话不存在或无权访问")
     chat = await web_agent_application.get_accessible_agent_chat(
         service,
         server_session_id,
@@ -560,14 +630,18 @@ async def _web_agent_stream_impl(
     service: Optional[AgentChatService] = None,
     persistence: Optional[AgentChatPersistenceService] = None,
 ) -> StreamingResponse:
-    """把 FastAPI 对话请求映射为 Application 事件流并完成 SSE framing。"""
+    """
+    把 FastAPI 对话请求映射为 Application 事件流并完成 SSE framing。
+    """
     if not isinstance(service, AgentChatService):
         service = get_configured_agent_chat_service()
     if not isinstance(persistence, AgentChatPersistenceService):
         persistence = get_configured_agent_chat_persistence()
 
     async def is_disconnected() -> bool:
-        """读取当前 HTTP 连接状态；直接函数调用时按未断线处理。"""
+        """
+        读取当前 HTTP 连接状态；直接函数调用时按未断线处理。
+        """
         callback = getattr(request, "is_disconnected", None)
         return bool(await callback()) if callable(callback) else False
 
@@ -593,7 +667,9 @@ async def _web_agent_stream_impl(
     locale = LocaleHelper.get_locale_from_request(request)
 
     async def sse_events() -> AsyncIterator[str]:
-        """把 Application 事件编码为浏览器可消费的 SSE 帧。"""
+        """
+        把 Application 事件编码为浏览器可消费的 SSE 帧。
+        """
         async for event in result.events:
             event_payload = dict(event)
             event_type = str(event_payload.pop("type", ""))
@@ -630,7 +706,9 @@ async def web_agent_stream(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     persistence: AgentChatPersistenceService = Depends(get_agent_chat_persistence),
 ) -> StreamingResponse:
-    """Web 智能助手流式对话的稳定公开路由入口。"""
+    """
+    Web 智能助手流式对话的稳定公开路由入口。
+    """
     return await _web_agent_stream_impl(
         payload,
         request,

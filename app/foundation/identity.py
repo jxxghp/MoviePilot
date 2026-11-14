@@ -1,3 +1,7 @@
+"""
+提供内部用户标识判断与用户记忆隔离键生成。
+"""
+
 import hashlib
 from typing import Optional, Union
 

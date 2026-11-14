@@ -1,4 +1,6 @@
-"""消息渠道回环进入宿主消息 API 的统一适配边界。"""
+"""
+消息渠道回环进入宿主消息 API 的统一适配边界。
+"""
 
 import threading
 from collections.abc import Callable, Mapping
@@ -14,7 +16,15 @@ BackgroundSubmitter = Callable[..., object]
 
 @dataclass(frozen=True, slots=True)
 class _MessageIngressRequest:
-    """冻结同步与异步本地消息回环共用的请求参数。"""
+    """
+    冻结同步与异步本地消息回环共用的请求参数。
+
+    :param url: 宿主本地消息接收端点的完整 URL
+    :param payload: 待回环投递的渠道消息数据
+    :param headers: 包含宿主回环凭据的请求头
+    :param source: 用于日志定位的渠道来源，无来源时使用占位值
+    :param timeout: 回环 HTTP 请求超时时间，单位为秒
+    """
 
     url: str
     payload: Mapping[str, Any]
@@ -24,7 +34,9 @@ class _MessageIngressRequest:
 
 
 class MessageIngressPort(Protocol):
-    """宿主本地消息入口所需的最小同步、异步传输端口。"""
+    """
+    宿主本地消息入口所需的最小同步、异步传输端口。
+    """
 
     def post(
         self,
@@ -34,7 +46,15 @@ class MessageIngressPort(Protocol):
         headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
-        """同步投递 payload，并返回 HTTP 状态码或 None。"""
+        """
+        同步投递 payload，并返回 HTTP 状态码或 None。
+
+        :param url: 宿主本地消息接收端点 URL
+        :param payload: 按 JSON 投递的渠道消息映射
+        :param headers: 包含回环认证凭据的请求头
+        :param timeout: 请求超时时间，单位为秒
+        :return: 收到的 HTTP 状态码；未获得响应时为 None
+        """
         ...
 
     async def async_post(
@@ -45,7 +65,15 @@ class MessageIngressPort(Protocol):
         headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
-        """异步投递 payload，并返回 HTTP 状态码或 None。"""
+        """
+        异步投递 payload，并返回 HTTP 状态码或 None。
+
+        :param url: 宿主本地消息接收端点 URL
+        :param payload: 按 JSON 投递的渠道消息映射
+        :param headers: 包含回环认证凭据的请求头
+        :param timeout: 请求超时时间，单位为秒
+        :return: 收到的 HTTP 状态码；未获得响应时为 None
+        """
         ...
 
 
@@ -56,7 +84,9 @@ _message_ingress_port: Optional[MessageIngressPort] = None
 def configure_message_ingress_port(
     port: MessageIngressPort,
 ) -> Optional[MessageIngressPort]:
-    """由启动组合根装配消息回环传输，并返回旧实现供隔离环境恢复。"""
+    """
+    由启动组合根装配消息回环传输，并返回旧实现供隔离环境恢复。
+    """
     global _message_ingress_port
     with _message_ingress_lock:
         previous = _message_ingress_port
@@ -65,14 +95,18 @@ def configure_message_ingress_port(
 
 
 def reset_message_ingress_port(port: Optional[MessageIngressPort] = None) -> None:
-    """恢复指定消息回环传输；省略参数时回到未装配状态。"""
+    """
+    恢复指定消息回环传输；省略参数时回到未装配状态。
+    """
     global _message_ingress_port
     with _message_ingress_lock:
         _message_ingress_port = port
 
 
 def _message_ingress_snapshot() -> MessageIngressPort:
-    """返回当前消息回环传输，未装配时稳定失败。"""
+    """
+    返回当前消息回环传输，未装配时稳定失败。
+    """
     with _message_ingress_lock:
         port = _message_ingress_port
     if port is None:
@@ -81,7 +115,9 @@ def _message_ingress_snapshot() -> MessageIngressPort:
 
 
 def build_message_ingress_url(source: str | None) -> str:
-    """构造仅含非敏感来源参数的本地消息入口 URL。"""
+    """
+    构造仅含非敏感来源参数的本地消息入口 URL。
+    """
     query: dict[str, str] = {}
     if source:
         query["source"] = source
@@ -90,7 +126,9 @@ def build_message_ingress_url(source: str | None) -> str:
 
 
 def build_message_ingress_headers() -> dict[str, str]:
-    """把本地回环凭据放入请求头，避免访问日志记录明文 Token。"""
+    """
+    把本地回环凭据放入请求头，避免访问日志记录明文 Token。
+    """
     return {"X-API-KEY": str(get_runtime_setting("API_TOKEN") or "")}
 
 
@@ -99,7 +137,9 @@ def _message_ingress_request(
     source: str | None,
     timeout: float,
 ) -> _MessageIngressRequest:
-    """统一构造 URL、payload 副本和日志使用的来源标识。"""
+    """
+    统一构造 URL、payload 副本和日志使用的来源标识。
+    """
     return _MessageIngressRequest(
         url=build_message_ingress_url(source),
         payload=dict(payload),
@@ -113,7 +153,9 @@ def _message_ingress_confirmed(
     request: _MessageIngressRequest,
     status_code: Optional[int],
 ) -> bool:
-    """统一判断本地入口是否确认接收，并输出稳定失败原因。"""
+    """
+    统一判断本地入口是否确认接收，并输出稳定失败原因。
+    """
     if status_code is None:
         logger.error(f"转发渠道消息到本地入口失败：source={request.source} - 无响应")
         return False
@@ -130,7 +172,9 @@ def _message_ingress_failed(
     source: str | None,
     error: Exception,
 ) -> bool:
-    """统一记录传输或组合根异常，并按关闭策略返回失败。"""
+    """
+    统一记录传输或组合根异常，并按关闭策略返回失败。
+    """
     logger.error(
         f"转发渠道消息到本地入口失败：source={source or '-'} - {error}"
     )
@@ -143,7 +187,9 @@ def forward_message_to_host(
     *,
     timeout: float = 15,
 ) -> bool:
-    """同步转发渠道 payload，统一判断本地入口是否确认接收。"""
+    """
+    同步转发渠道 payload，统一判断本地入口是否确认接收。
+    """
     try:
         request = _message_ingress_request(payload, source, timeout)
         status_code = _message_ingress_snapshot().post(
@@ -163,7 +209,9 @@ async def async_forward_message_to_host(
     *,
     timeout: float = 15,
 ) -> bool:
-    """异步转发渠道 payload，供自有事件循环的消息 SDK 复用同一确认语义。"""
+    """
+    异步转发渠道 payload，供自有事件循环的消息 SDK 复用同一确认语义。
+    """
     try:
         request = _message_ingress_request(payload, source, timeout)
         status_code = await _message_ingress_snapshot().async_post(
@@ -184,7 +232,9 @@ def submit_message_to_host(
     submit: BackgroundSubmitter,
     timeout: float = 15,
 ) -> bool:
-    """把同步回环转发提交给调用方注入的受管后台执行器。"""
+    """
+    把同步回环转发提交给调用方注入的受管后台执行器。
+    """
     try:
         submit(
             forward_message_to_host,

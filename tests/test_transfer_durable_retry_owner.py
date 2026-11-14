@@ -1,4 +1,6 @@
-"""验证历史重试入口只把 durable 任务交给持久恢复调度器。"""
+"""
+验证历史重试入口只把 durable 任务交给持久恢复调度器。
+"""
 
 from types import SimpleNamespace
 
@@ -17,11 +19,14 @@ from app.db.base import Base
 from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
+from app.schemas.file import FileItem
 from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
 
 class _RetryCommand:
-    """记录历史入口提交的类型化重试请求。"""
+    """
+    记录历史入口提交的类型化重试请求。
+    """
 
     calls: list[tuple[object, dict]] = []
     result = TransferRetryRequestResult(
@@ -32,17 +37,23 @@ class _RetryCommand:
     )
 
     def __init__(self, repository: object) -> None:
-        """保存测试仓储实例。"""
+        """
+        保存测试仓储实例。
+        """
         self._repository = repository
 
     def request_retry(self, **kwargs) -> TransferRetryRequestResult:
-        """记录请求并返回用例指定结果。"""
+        """
+        记录请求并返回用例指定结果。
+        """
         self.calls.append((self._repository, kwargs))
         return self.result
 
 
 class _DiscardCommand:
-    """记录显式重新整理提交的旧任务放弃请求。"""
+    """
+    记录显式重新整理提交的旧任务放弃请求。
+    """
 
     calls: list[tuple[object, dict]] = []
     result = TransferFailureDiscardResult(
@@ -52,17 +63,23 @@ class _DiscardCommand:
     )
 
     def __init__(self, repository: object) -> None:
-        """保存测试仓储实例。"""
+        """
+        保存测试仓储实例。
+        """
         self._repository = repository
 
     def discard_corrupt_by_history(self, **kwargs) -> TransferFailureDiscardResult:
-        """记录放弃请求并返回用例指定结果。"""
+        """
+        记录放弃请求并返回用例指定结果。
+        """
         self.calls.append((self._repository, kwargs))
         return self.result
 
 
 def _install_retry_port(monkeypatch) -> object:
-    """构造不会接触数据库的 execution 端口并安装命令替身。"""
+    """
+    构造不会接触数据库的 execution 端口并安装命令替身。
+    """
     repository = object()
     _RetryCommand.calls = []
     _RetryCommand.result = TransferRetryRequestResult(
@@ -79,7 +96,9 @@ def _install_retry_port(monkeypatch) -> object:
 
 
 def _install_discard_port(monkeypatch) -> object:
-    """构造不会接触数据库的 execution 端口并安装放弃命令替身。"""
+    """
+    构造不会接触数据库的 execution 端口并安装放弃命令替身。
+    """
     repository = object()
     _DiscardCommand.calls = []
     _DiscardCommand.result = TransferFailureDiscardResult(
@@ -95,7 +114,9 @@ def _install_discard_port(monkeypatch) -> object:
 
 
 def test_durable_history_redo_only_requests_persistent_retry(monkeypatch):
-    """durable 重做不得检查源文件、重新识别或重新准入执行。"""
+    """
+    durable 重做不得检查源文件、重新识别或重新准入执行。
+    """
     repository = _install_retry_port(monkeypatch)
     history = SimpleNamespace(
         id=81,
@@ -138,7 +159,9 @@ def test_durable_history_redo_only_requests_persistent_retry(monkeypatch):
 
 
 def test_explicit_history_redo_discards_failed_task_before_replanning(monkeypatch):
-    """显式 /redo 身份应先解除旧失败任务，再执行新的识别和整理。"""
+    """
+    显式 /redo 身份应先解除旧失败任务，再执行新的识别和整理。
+    """
     repository = _install_discard_port(monkeypatch)
     history = SimpleNamespace(
         id=86,
@@ -184,7 +207,9 @@ def test_explicit_history_redo_discards_failed_task_before_replanning(monkeypatc
     )
 
     def fake_do_transfer(**kwargs):
-        """记录显式身份重整是否重新进入整理准入。"""
+        """
+        记录显式身份重整是否重新进入整理准入。
+        """
         planned.append(kwargs)
         return True, ""
 
@@ -214,7 +239,9 @@ def test_explicit_history_redo_discards_failed_task_before_replanning(monkeypatc
 
 
 def test_durable_manual_cleanup_discards_task_and_removes_old_state(monkeypatch):
-    """显式重整命中 FAILED durable 历史时应放弃任务并清理旧状态。"""
+    """
+    显式重整命中 FAILED durable 历史时应放弃任务并清理旧状态。
+    """
     repository = _install_discard_port(monkeypatch)
     history = SimpleNamespace(
         id=82,
@@ -238,7 +265,7 @@ def test_durable_manual_cleanup_discards_task_and_removes_old_state(monkeypatch)
     monkeypatch.setattr(
         "app.chain.transfer.records.StorageChain",
         lambda: SimpleNamespace(
-            exists=lambda _fileitem: True,
+            get_file_item_strict=lambda **kwargs: FileItem(storage=kwargs["storage"], path=str(kwargs["path"])),
             delete_media_file=lambda fileitem: deleted.append(
                 ("target", fileitem.path)
             ) or True,
@@ -275,7 +302,9 @@ def test_durable_manual_cleanup_discards_task_and_removes_old_state(monkeypatch)
 
 
 def test_durable_manual_cleanup_rejection_preserves_history_and_files(monkeypatch):
-    """活动租约或状态并发变化被拒绝后不得删除目标、历史或失败计数。"""
+    """
+    活动租约或状态并发变化被拒绝后不得删除目标、历史或失败计数。
+    """
     repository = _install_discard_port(monkeypatch)
     _DiscardCommand.result = TransferFailureDiscardResult(
         discarded=False,
@@ -325,7 +354,9 @@ def test_durable_manual_cleanup_rejection_preserves_history_and_files(monkeypatc
 
 @pytest.fixture
 def history_recovery_store():
-    """构造可验证显式重整跨事务清理顺序的独立内存数据库。"""
+    """
+    构造可验证显式重整跨事务清理顺序的独立内存数据库。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[
         TransferPending.__table__, TransferHistory.__table__, TransferExecutionStep.__table__,
@@ -341,7 +372,9 @@ def history_recovery_store():
 def test_manual_replan_without_settlement_revision_obeys_current_lease(
         history_recovery_store, monkeypatch, execution_state, active_lease,
 ):
-    """缺结算版本的旧任务可明确重整，活动租约必须保留全部历史和文件。"""
+    """
+    缺结算版本的旧任务可明确重整，活动租约必须保留全部历史和文件。
+    """
     factory = history_recovery_store
     with factory() as session:
         history = TransferHistory(
@@ -373,7 +406,9 @@ def test_manual_replan_without_settlement_revision_obeys_current_lease(
     effects = []
 
     def remove_target(fileitem):
-        """文件清理之前必须已提交放弃，且旧历史仍保留到目标清理完成。"""
+        """
+        文件清理之前必须已提交放弃，且旧历史仍保留到目标清理完成。
+        """
         with factory() as session:
             assert session.scalar(select(TransferPending)) is None
             assert session.scalar(select(TransferExecutionStep)) is None
@@ -382,14 +417,16 @@ def test_manual_replan_without_settlement_revision_obeys_current_lease(
         return True
 
     def remove_history(history_id):
-        """提交历史删除，使断言覆盖完整重整清理链。"""
+        """
+        提交历史删除，使断言覆盖完整重整清理链。
+        """
         with factory() as session:
             session.delete(session.get(TransferHistory, history_id))
             session.commit()
         effects.append(("history", history_id))
 
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-        exists=lambda _fileitem: True, delete_media_file=remove_target,
+        get_file_item_strict=lambda **kwargs: FileItem(storage=kwargs["storage"], path=str(kwargs["path"])), delete_media_file=remove_target,
     ))
     monkeypatch.setattr("app.chain.transfer.records.clear_transfer_failures", lambda *args: effects.append(args))
     chain = object.__new__(TransferChain)
@@ -418,8 +455,10 @@ def test_manual_replan_without_settlement_revision_obeys_current_lease(
             assert session.get(TransferHistory, history.id) is None
 
 
-def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
-    """AI 按钮命中 durable 历史时也只能登记调度重试。"""
+def test_disabled_ai_button_does_not_request_scheduler(monkeypatch):
+    """
+    AI 未启用时，持久化历史的按钮不会静默执行普通重试。
+    """
     repository = _install_retry_port(monkeypatch)
     history = SimpleNamespace(id=83, transfer_task_id="transfer-task-83")
     monkeypatch.setattr(
@@ -455,12 +494,14 @@ def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
     )
 
     assert len(messages) == 1
-    assert messages[0].title == "已提交重新整理，后台将自动处理"
-    assert _RetryCommand.calls[0][1]["requested_by"] == "ai_retry_button"
+    assert "智能助手未启用" in messages[0].title
+    assert _RetryCommand.calls == []
 
 
 def test_durable_manual_review_rejection_does_not_fall_back_to_legacy(monkeypatch):
-    """人工复核任务被拒绝后不得回退到旧识别和重整流程。"""
+    """
+    人工复核任务被拒绝后不得回退到旧识别和重整流程。
+    """
     repository = _install_retry_port(monkeypatch)
     _RetryCommand.result = TransferRetryRequestResult(
         accepted=False,

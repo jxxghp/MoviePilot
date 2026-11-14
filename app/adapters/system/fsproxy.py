@@ -21,11 +21,14 @@ import json
 import os
 import selectors
 import shutil
+import stat
 import subprocess
 import sys
 import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, cast
+
+import psutil
 
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -63,27 +66,37 @@ class FileSystemProxy:
     def __init__(self, timeout: Optional[float] = None,
                  stall_timeout: Optional[float] = None):
         """
+
+        初始化文件系统代理状态，子进程在首次操作时按需启动。
+
         :param timeout: 单次快操作的超时秒数，None 表示实时跟随系统设置
         :param stall_timeout: 长耗时操作两次进度上报之间的最长间隔秒数，
                               None 表示实时跟随系统设置
         """
         self._timeout_override = timeout
         self._stall_timeout_override = stall_timeout
-        self._process: Optional[subprocess.Popen] = None
+        self._process: Optional[subprocess.Popen[bytes]] = None
         self._selector: Optional[selectors.BaseSelector] = None
         self._lock = threading.Lock()
 
-    # ------------------------------------------------------------------ #
-    # 对外操作
-    # ------------------------------------------------------------------ #
 
     def stat(self, path: Path) -> Dict[str, Any]:
         """
         读取路径属性。
+
         :param path: 目标路径
-        :return: {"size", "mtime", "is_dir", "is_file"}
+        :return: 大小、秒及纳秒修改时间、纳秒状态时间、设备和 inode、文件类型；dev/ino 标识当前文件身份
         """
-        return self._call("stat", path=str(path))
+        return cast(dict[str, Any], self._call("stat", path=str(path)))
+
+    def lstat(self, path: Path) -> Dict[str, Any]:
+        """
+        不跟随最终符号链接读取目录项，供外部整理登记核验。
+
+        :param path: 待核验的原始文件地址
+        :return: 文件身份、纳秒时间、类型和符号链接标志
+        """
+        return cast(dict[str, Any], self._call("lstat", path=str(path)))
 
     def exists(self, path: Path) -> bool:
         """
@@ -91,6 +104,7 @@ class FileSystemProxy:
 
         只有 FileNotFoundError 才算「不存在」；其余 OSError（含超时）原样抛出，
         避免像 Path.exists() 那样把挂载抖动误判成文件消失。
+
         :param path: 目标路径
         :return: 是否存在
         """
@@ -100,35 +114,66 @@ class FileSystemProxy:
         except FileNotFoundError:
             return False
 
+    def realpath(self, path: Path) -> Path:
+        """
+        在可超时的文件系统边界解析符号链接，并允许目标末段尚不存在。
+        """
+        return Path(self._call("realpath", path=str(path)))
+
+    def is_fuse_path(self, path: Path) -> bool:
+        """
+        按实际路径所属的最深挂载点识别 FUSE 文件系统。
+
+        符号链接解析沿用代理超时边界。挂载表包含容器绑定挂载和虚拟文件系统，
+        不缓存结果，避免重挂载后沿用旧类型。查询失败由调用方保留文件并复核。
+
+        :param path: 待核对的本地文件路径
+        :return: 所属挂载类型为 fuse、fuseblk 或极空间 zfuse（含子类型）时返回 True
+        :raises OSError: 路径解析超时或挂载表读取失败
+        """
+        resolved = self.realpath(path)
+        partition = max(
+            (entry for entry in psutil.disk_partitions(all=True)
+             if resolved.is_relative_to(Path(entry.mountpoint))),
+            key=lambda entry: len(Path(entry.mountpoint).parts),
+            default=None,
+        )
+        return partition is not None and partition.fstype.split(".", 1)[0] in {"fuse", "fuseblk", "zfuse"}
+
     def listdir(self, path: Path) -> List[str]:
         """
         列出目录条目名。
+
         :param path: 目标目录
         :return: 条目名列表
         """
-        return self._call("listdir", path=str(path))
+        return cast(list[str], self._call("listdir", path=str(path)))
 
     def count_entries(self, path: Path, max_check: int = 10000) -> Dict[str, int]:
         """
         统计目录规模。整棵树的遍历在子进程内一次完成，超时可整体放弃。
+
         :param path: 目标目录
         :param max_check: 文件数上限，超过即提前结束
-        :return: {"file_count", "dir_count"}
+        :return: 文件与目录数量字典，分别使用 file_count 和 dir_count 键
         """
-        return self._call("count_entries", path=str(path), max_check=max_check)
+        return cast(dict[str, int], self._call("count_entries", path=str(path), max_check=max_check))
 
     def has_file_suffix(self, path: Path, extensions: List[str]) -> bool:
-        """在可超时的代理中检查目录树是否包含指定后缀的文件。"""
+        """
+        在可超时的代理中检查目录树是否包含指定后缀的文件。
+        """
         return cast(bool, self._call("has_file_suffix", path=str(path), extensions=extensions))
 
     def rename(self, src: Path, dst: Path) -> bool:
         """
         同一存储内重命名/移动。跨存储会抛 OSError(EXDEV)，由调用方走原有路径。
+
         :param src: 源路径
         :param dst: 目标路径
         :return: 是否成功
         """
-        return self._call("rename", src=str(src), dst=str(dst))
+        return cast(bool, self._call("rename", src=str(src), dst=str(dst)))
 
     def copy(self, src: Path, dst: Path,
              progress_cb: Optional[Callable[[float], None]] = None,
@@ -144,6 +189,7 @@ class FileSystemProxy:
         取消检查放在父进程：worker 里读不到 global_vars 的传输取消标记，而父进程
         每收到一次进度就能检查一次，要取消直接杀掉 worker 即可，比在子进程里
         轮询标记更干净。
+
         :param src: 源文件
         :param dst: 目标文件（调用方应传临时名，完成后自行原子替换）
         :param progress_cb: 进度回调，入参为百分比
@@ -151,7 +197,7 @@ class FileSystemProxy:
         :param chunk_size: 分块大小
         :return: 成功时为 {"copied", "total"}，被取消或通信失败时为 False
         """
-        payload = {"src": str(src), "dst": str(dst)}
+        payload: dict[str, str | int] = {"src": str(src), "dst": str(dst)}
         if chunk_size:
             payload["chunk_size"] = chunk_size
         if not self._enabled():
@@ -171,15 +217,19 @@ class FileSystemProxy:
                         cancel_cb: Optional[Callable[[], bool]]) -> Any:
         """
         发起一次流式请求，逐行消费进度直到终态。
+
         :param payload: 请求参数
         :param progress_cb: 进度回调
         :param cancel_cb: 取消检查回调
         :return: 操作结果
         """
         self._ensure_worker()
+        process = self._process
+        if process is None or process.stdin is None:
+            raise BrokenPipeError("文件系统代理进程未启动")
         message = json.dumps({"op": "copy", **payload}) + "\n"
-        self._process.stdin.write(message.encode("utf-8"))
-        self._process.stdin.flush()
+        process.stdin.write(message.encode("utf-8"))
+        process.stdin.flush()
 
         while True:
             response = json.loads(self._read_line(timeout=self._stall_timeout).decode("utf-8"))
@@ -226,29 +276,28 @@ class FileSystemProxy:
     def unlink(self, path: Path) -> bool:
         """
         删除单个文件。unlink 是原子操作，强杀后没有中间状态。
+
         :param path: 目标文件
         :return: 是否成功
         """
-        return self._call("unlink", path=str(path))
+        return cast(bool, self._call("unlink", path=str(path)))
 
     def rmtree(self, path: Path) -> bool:
         """
         递归删除目录，容忍部分失败（可重复执行直到成功）。
+
         :param path: 目标目录
         :return: 是否成功
         """
-        return self._call("rmtree", path=str(path))
+        return cast(bool, self._call("rmtree", path=str(path)))
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭代理进程。
         """
         with self._lock:
             self._shutdown()
 
-    # ------------------------------------------------------------------ #
-    # 内部实现
-    # ------------------------------------------------------------------ #
 
     @property
     def _timeout(self) -> float:
@@ -281,22 +330,44 @@ class FileSystemProxy:
         return bool(get_runtime_setting("FS_PROXY_ENABLED", True))
 
     @staticmethod
+    def _direct_stat(op: str, path: str) -> Dict[str, Any]:
+        """
+        读取直连模式下的路径或目录项属性，保留既有 stat 跟随链接的语义。
+
+        :param op: stat 或 lstat
+        :param path: 目标路径
+        :return: 对应操作的固定属性集合
+        """
+        if op == "lstat":
+            info = os.lstat(path)
+            return {
+                "size": info.st_size, "mtime": info.st_mtime,
+                "mtime_ns": info.st_mtime_ns, "ctime_ns": info.st_ctime_ns,
+                "dev": info.st_dev, "ino": info.st_ino,
+                "is_dir": stat.S_ISDIR(info.st_mode),
+                "is_file": stat.S_ISREG(info.st_mode),
+                "is_symlink": stat.S_ISLNK(info.st_mode),
+            }
+        info = os.stat(path)
+        return {
+            "size": info.st_size, "mtime": info.st_mtime,
+            "dev": info.st_dev, "ino": info.st_ino,
+            "is_dir": os.path.isdir(path), "is_file": os.path.isfile(path),
+        }
+
+    @staticmethod
     def _direct(op: str, payload: Dict[str, Any]) -> Any:
         """
         不经代理直接执行操作，供代理关闭时使用。
+
         :param op: 操作名
         :param payload: 操作参数
         :return: 操作结果
         """
-        if op == "stat":
-            path = payload["path"]
-            info = os.stat(path)
-            return {
-                "size": info.st_size,
-                "mtime": info.st_mtime,
-                "is_dir": os.path.isdir(path),
-                "is_file": os.path.isfile(path),
-            }
+        if op in ("stat", "lstat"):
+            return FileSystemProxy._direct_stat(op, payload["path"])
+        if op == "realpath":
+            return str(Path(payload["path"]).resolve())
         if op == "exists":
             os.stat(payload["path"])
             return True
@@ -314,7 +385,9 @@ class FileSystemProxy:
             suffixes = {ext.casefold() for ext in payload["extensions"]}
 
             def raise_walk_error(error: OSError) -> None:
-                """目录读取失败时阻止调用方误把扫描结果当作完整。"""
+                """
+                目录读取失败时阻止调用方误把扫描结果当作完整。
+                """
                 raise error
 
             for _, _, files in os.walk(payload["path"], onerror=raise_walk_error):
@@ -332,9 +405,10 @@ class FileSystemProxy:
             return True
         raise ValueError(f"unknown op: {op}")
 
-    def _call(self, op: str, **payload) -> Any:
+    def _call(self, op: str, **payload: object) -> Any:
         """
         执行一次代理调用。
+
         :param op: 操作名
         :param payload: 操作参数
         :return: 操作结果
@@ -356,14 +430,18 @@ class FileSystemProxy:
     def _request(self, op: str, payload: Dict[str, Any]) -> Any:
         """
         发送请求并等待响应。
+
         :param op: 操作名
         :param payload: 操作参数
         :return: 操作结果
         """
         self._ensure_worker()
+        process = self._process
+        if process is None or process.stdin is None:
+            raise BrokenPipeError("文件系统代理进程未启动")
         message = json.dumps({"op": op, **payload}) + "\n"
-        self._process.stdin.write(message.encode("utf-8"))
-        self._process.stdin.flush()
+        process.stdin.write(message.encode("utf-8"))
+        process.stdin.flush()
 
         response = json.loads(self._read_line().decode("utf-8"))
         if response.get("ok"):
@@ -375,6 +453,7 @@ class FileSystemProxy:
     def _read_line(self, timeout: Optional[float] = None) -> bytes:
         """
         读取一行响应，超时即强杀代理。
+
         :param timeout: 本次读取的超时秒数，默认用单次操作超时
         :return: 响应行
         """
@@ -384,9 +463,13 @@ class FileSystemProxy:
         # 整理链每次 stat 都会直接失败。POSIX 继续用 selector，Windows 改走线程等待。
         if sys.platform == "win32":
             return self._read_line_windows(timeout)
-        if not self._selector.select(timeout=timeout):
+        selector = self._selector
+        process = self._process
+        if selector is None or process is None or process.stdout is None:
+            raise BrokenPipeError("文件系统代理进程未启动")
+        if not selector.select(timeout=timeout):
             self._raise_timeout(timeout)
-        line = self._process.stdout.readline()
+        line = process.stdout.readline()
         if not line:
             raise BrokenPipeError("文件系统代理进程已退出")
         return line
@@ -397,6 +480,7 @@ class FileSystemProxy:
 
         不能用 select()/WaitForSingleObject：匿名管道在 Windows 上不是
         可选择的套接字，也不是可靠的「有数据」同步对象。
+
         :param timeout: 本次读取的超时秒数
         :return: 响应行
         """
@@ -406,8 +490,12 @@ class FileSystemProxy:
         holder: List[Union[bytes, BaseException]] = []
 
         def _read() -> None:
+            """
+            读取代理响应并把线程内异常传回有界等待的调用方。
+            """
             try:
                 holder.append(stdout.readline())
+            # 代理故障必须转换为可重试状态或清理结果，不能阻断父进程的恢复流程。
             except Exception as err:  # noqa: BLE001
                 holder.append(err)
 
@@ -428,6 +516,7 @@ class FileSystemProxy:
     def _raise_timeout(self, timeout: float) -> None:
         """
         判定挂载无响应：杀掉代理并抛出可被整理链处理的超时。
+
         :param timeout: 已等待的秒数
         """
         logger.error(f"文件系统操作 {timeout} 秒无响应，判定挂载挂死，正在回收代理进程")
@@ -437,7 +526,7 @@ class FileSystemProxy:
             f"文件系统操作超过 {timeout} 秒无响应，挂载可能已无响应"
         )
 
-    def _ensure_worker(self):
+    def _ensure_worker(self) -> None:
         """
         确保代理进程可用，不可用时重新启动。
         """
@@ -453,16 +542,21 @@ class FileSystemProxy:
         if sys.platform == "win32":
             # NSSM 服务里再拉 python.exe 时避免弹出控制台窗口
             popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        self._process = subprocess.Popen(
+        process = subprocess.Popen(
             [sys.executable, str(_WORKER_PATH)],
             **popen_kwargs,
         )
+        self._process = process
+        if process.stdin is None or process.stdout is None:
+            self._shutdown()
+            raise BrokenPipeError("文件系统代理进程管道创建失败")
         if sys.platform != "win32":
-            self._selector = selectors.DefaultSelector()
-            self._selector.register(self._process.stdout, selectors.EVENT_READ)
-        logger.debug(f"文件系统代理进程已启动: pid={self._process.pid}")
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ)
+            self._selector = selector
+        logger.debug(f"文件系统代理进程已启动: pid={process.pid}")
 
-    def _shutdown(self):
+    def _shutdown(self) -> None:
         """
         回收代理进程。冻在挂载上的进程用 SIGKILL，且不无限等待它消失
         ——否则「可放弃的代理」又变回一次不可放弃的阻塞。
@@ -470,6 +564,7 @@ class FileSystemProxy:
         if self._selector is not None:
             try:
                 self._selector.close()
+            # 代理故障必须转换为可重试状态或清理结果，不能阻断父进程的恢复流程。
             except Exception:  # noqa: BLE001
                 pass
             self._selector = None
@@ -480,6 +575,7 @@ class FileSystemProxy:
             try:
                 if stream:
                     stream.close()
+            # 代理故障必须转换为可重试状态或清理结果，不能阻断父进程的恢复流程。
             except Exception:  # noqa: BLE001
                 pass
         if process.poll() is not None:
@@ -489,6 +585,7 @@ class FileSystemProxy:
             process.wait(timeout=_KILL_GRACE)
         except subprocess.TimeoutExpired:
             logger.warn(f"文件系统代理进程未能及时退出，交由系统回收: pid={process.pid}")
+        # 代理故障必须转换为可重试状态或清理结果，不能阻断父进程的恢复流程。
         except Exception as err:  # noqa: BLE001
             logger.debug(f"回收文件系统代理进程失败: {err}")
 

@@ -1,5 +1,8 @@
-"""Agent 数据上下文与类型化任务适配器测试。"""
+"""
+Agent 数据上下文与类型化任务适配器测试。
+"""
 
+import json
 from contextlib import asynccontextmanager
 from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
@@ -10,7 +13,10 @@ import pytest
 
 import app.agent.tools.factory as tool_factory_module
 import app.application.agent as agent_services
+from app.agent.manager import AgentManager
 from app.agent.memory import MemoryManager
+from app.agent.orchestrator import MoviePilotAgent
+from app.agent.session import AgentSessionOwner, _MessageTask
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -18,18 +24,23 @@ from app.application.agent import AgentDataContext
 from app.application.agenttask import AgentTaskRepository, AgentTaskSnapshot
 from app.application.filtering import FilterRuleService
 from app.db.adapters.agent import TransactionalAgentTaskRepository
-from app.db.session import SessionFactory
+from app.db.adapters.user import TransactionalUserRepository
+from app.db.models.user import User
+from app.db.session import SessionFactory, async_session_scope
 
-# pylint: disable=no-name-in-module  # Scheduler 由惰性稳定入口导出，Pylint 无法静态解析。
+# Scheduler 由惰性稳定入口导出，Pylint 无法静态解析。
+# pylint: disable=no-name-in-module
 from app.scheduler import Scheduler
 from app.schemas.rule import CustomRule
 from app.schemas.system import FilterRuleGroup
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import NotificationChannel, SystemConfigKey
 from app.startup.initializers import agent as agent_initializer
 
 
 def _context(tasks: AgentTaskRepository) -> AgentDataContext:
-    """构造仅用于验证依赖身份的 Agent 数据上下文。"""
+    """
+    构造仅用于验证依赖身份的 Agent 数据上下文。
+    """
     dependency = cast(object, SimpleNamespace())
     return AgentDataContext(
         chat=cast(object, dependency),
@@ -50,7 +61,9 @@ def _context(tasks: AgentTaskRepository) -> AgentDataContext:
 
 
 def test_agent_tool_receives_exact_data_context() -> None:
-    """内置工具只能消费构造时注入的同一上下文，不再查询全局注册表。"""
+    """
+    内置工具只能消费构造时注入的同一上下文，不再查询全局注册表。
+    """
     repository = TransactionalAgentTaskRepository(SessionFactory)
     context = _context(repository)
     tool = AgentTaskTool(session_id="session", user_id="user", data=context)
@@ -61,13 +74,17 @@ def test_agent_tool_receives_exact_data_context() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_rule_group_uses_injected_atomic_mutation_scope(monkeypatch) -> None:
-    """Agent 删除规则组必须一次提交定义和全部引用并在释放作用域后广播。"""
+    """
+    Agent 删除规则组必须一次提交定义和全部引用并在释放作用域后广播。
+    """
     mutation = MagicMock()
     mutation.apply = AsyncMock(return_value=SimpleNamespace(to_dict=lambda: {"subscribes": []}))
 
     @asynccontextmanager
     async def mutation_scope():
-        """提供可观测的异步规则组事务作用域。"""
+        """
+        提供可观测的异步规则组事务作用域。
+        """
         yield mutation
 
     context = replace(
@@ -96,13 +113,17 @@ async def test_delete_rule_group_uses_injected_atomic_mutation_scope(monkeypatch
 async def test_custom_rule_rename_commits_rule_and_group_definitions_together(
     monkeypatch,
 ) -> None:
-    """自定义规则改名必须用一个事务同时提交规则本体和规则组表达式。"""
+    """
+    自定义规则改名必须用一个事务同时提交规则本体和规则组表达式。
+    """
     mutation = MagicMock()
     mutation.apply = AsyncMock(return_value=SimpleNamespace())
 
     @asynccontextmanager
     async def mutation_scope():
-        """提供可观测的异步组合事务作用域。"""
+        """
+        提供可观测的异步组合事务作用域。
+        """
         yield mutation
 
     context = replace(
@@ -139,13 +160,17 @@ async def test_custom_rule_rename_commits_rule_and_group_definitions_together(
 async def test_custom_rule_reorder_preserves_latest_definitions_and_checks_expected_order(
     monkeypatch,
 ) -> None:
-    """自定义规则重排只能改变顺序，并拒绝过期顺序覆盖当前列表。"""
+    """
+    自定义规则重排只能改变顺序，并拒绝过期顺序覆盖当前列表。
+    """
     mutation = MagicMock()
     mutation.apply = AsyncMock(return_value=SimpleNamespace())
 
     @asynccontextmanager
     async def mutation_scope():
-        """提供可观测的异步组合事务作用域。"""
+        """
+        提供可观测的异步组合事务作用域。
+        """
         yield mutation
 
     rules = [
@@ -189,13 +214,17 @@ async def test_custom_rule_reorder_preserves_latest_definitions_and_checks_expec
 async def test_rule_group_reorder_uses_atomic_scope_and_rejects_changed_collection(
     monkeypatch,
 ) -> None:
-    """规则组重排必须走原子作用域，并拒绝缺项或新增项的列表。"""
+    """
+    规则组重排必须走原子作用域，并拒绝缺项或新增项的列表。
+    """
     mutation = MagicMock()
     mutation.apply = AsyncMock(return_value=SimpleNamespace())
 
     @asynccontextmanager
     async def mutation_scope():
-        """提供可观测的规则组异步事务作用域。"""
+        """
+        提供可观测的规则组异步事务作用域。
+        """
         yield mutation
 
     groups = [
@@ -229,7 +258,9 @@ async def test_rule_group_reorder_uses_atomic_scope_and_rejects_changed_collecti
 
 
 def test_agent_service_facade_resolves_registered_dependencies(monkeypatch) -> None:
-    """Agent 服务门面应稳定处理未装配状态并转发组合根注入能力。"""
+    """
+    Agent 服务门面应稳定处理未装配状态并转发组合根注入能力。
+    """
     provider_names = (
         "_agent_manager_provider",
         "_running_agent_manager_provider",
@@ -294,7 +325,9 @@ def test_agent_service_facade_resolves_registered_dependencies(monkeypatch) -> N
 
 
 def test_tool_factory_injects_context_only_into_builtin_tools(monkeypatch) -> None:
-    """工具工厂必须把上下文传给宿主工具，同时保持插件构造 ABI 不变。"""
+    """
+    工具工厂必须把上下文传给宿主工具，同时保持插件构造 ABI 不变。
+    """
     repository = TransactionalAgentTaskRepository(SessionFactory)
     context = _context(repository)
     monkeypatch.setattr(
@@ -314,8 +347,119 @@ def test_tool_factory_injects_context_only_into_builtin_tools(monkeypatch) -> No
     assert tools[0].data is context
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entrypoint", ["channel", "web", "openai"])
+async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
+    db, monkeypatch, entrypoint: str,
+) -> None:
+    """
+    渠道和协议工厂必须复用宿主上下文，支持同一会话创建及查询任务。
+    """
+    from app.agent.web import _get_web_agent_type
+    from app.api.endpoints.openai import _get_collecting_agent_type
+
+    repository = TransactionalAgentTaskRepository(SessionFactory)
+    sender = f"data-context-user-{entrypoint}"
+    account = db.add(User(
+        name=f"data-context-account-{entrypoint}", is_active=True, is_superuser=True,
+        settings={"telegram_userid": sender},
+    ))
+    chat = MagicMock()
+    chat.get_sync.return_value = None
+    users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
+    context = replace(_context(repository), chat=chat, users=users)
+    memory = MemoryManager()
+    owner = AgentSessionOwner(data=context, memory=memory)
+    factory = {
+        "channel": None,
+        "web": _get_web_agent_type,
+        "openai": _get_collecting_agent_type,
+    }[entrypoint]
+    agent_factory = factory() if factory is not None else None
+    channel = {
+        "channel": NotificationChannel.Telegram.value,
+        "web": NotificationChannel.WebAgent.value,
+        "openai": NotificationChannel.Web.value,
+    }[entrypoint]
+    monkeypatch.setattr(
+        "app.application.security.auth.build_superuser_token_payload",
+        lambda: SimpleNamespace(sub=account.id),
+    )
+    monkeypatch.setattr(
+        MoviePilotToolFactory,
+        "_get_builtin_tool_classes",
+        classmethod(lambda _cls, _channel=None: [AgentTaskTool]),
+    )
+    monkeypatch.setattr(tool_factory_module, "_get_plugin_agent_tools", lambda: [])
+    monkeypatch.setattr(
+        "app.agent.tools.impl.agent_task.get_runtime_setting",
+        lambda key: {"AI_AGENT_ENABLE": True, "TZ": "UTC"}[key],
+    )
+    register_job = MagicMock(return_value=None)
+    monkeypatch.setattr("app.application.scheduling.update_agent_task_job", register_job)
+    monkeypatch.setattr("app.application.scheduling.get_agent_task_next_run", lambda _id: None)
+
+    async def run_blocking(_tool, _kind, function, *args, **kwargs):
+        """
+        在测试临时库中执行同步仓储，避免创建全局阻塞执行器。
+        """
+        return function(*args, **kwargs)
+
+    async def process(agent, action: str, **_kwargs) -> str:
+        """
+        保留真实 Agent 与工具构造，只替换外部模型推理。
+        """
+        agent._tool_context = {"is_admin": True}
+        tool = agent._initialize_tools()[0]
+        if action == "create":
+            return await tool.run(
+                action="create", name="入口依赖回归", content="检查数据注入",
+                trigger_type="cron", trigger="0 8 * * *",
+            )
+        return await tool.run(action="list")
+
+    monkeypatch.setattr(AgentTaskTool, "run_blocking", run_blocking)
+    monkeypatch.setattr(MoviePilotAgent, "process", process)
+    task_kwargs = {
+        "session_id": f"data-context-{entrypoint}",
+        "user_id": str(account.id) if entrypoint == "web" else sender,
+        "username": account.name,
+        "source": entrypoint,
+        "channel": channel,
+        "agent_factory": agent_factory,
+    }
+    try:
+        created = json.loads(await owner._process_message_internal(
+            _MessageTask(message="create", **task_kwargs),
+        ))
+        agent = owner.active_agents[task_kwargs["session_id"]]
+        listed = json.loads(await owner._process_message_internal(
+            _MessageTask(message="list", **task_kwargs),
+        ))
+
+        assert owner.active_agents[task_kwargs["session_id"]] is agent
+        assert agent._data is context
+        assert agent._memory is memory
+        assert agent._initialize_subagent_tools()[0].data is context
+        assert listed["total"] == 1
+        assert listed["tasks"][0]["id"] == created["id"]
+        saved = repository.get(created["id"], user_id=task_kwargs["user_id"])
+        assert saved is not None
+        assert saved.user_id == task_kwargs["user_id"]
+        assert saved.execution_user_id == account.id
+        assert saved.execution_user_identity == account.notification_identity
+        assert saved.session_id == task_kwargs["session_id"]
+        assert saved.channel == channel
+        register_job.assert_called_once_with(created["id"])
+    finally:
+        for task in repository.list(user_id=task_kwargs["user_id"]):
+            repository.delete(task.id, user_id=task_kwargs["user_id"])
+
+
 def test_tool_manager_reassembly_invalidates_factory_catalog() -> None:
-    """重复装配数据上下文时必须丢弃持有旧仓储的工厂工具快照。"""
+    """
+    重复装配数据上下文时必须丢弃持有旧仓储的工厂工具快照。
+    """
     first = _context(TransactionalAgentTaskRepository(SessionFactory))
     second = _context(TransactionalAgentTaskRepository(SessionFactory))
     manager = MoviePilotToolsManager(data=first)
@@ -332,7 +476,9 @@ def test_tool_manager_reassembly_invalidates_factory_catalog() -> None:
 
 
 def test_memory_manager_reads_only_injected_chat_service() -> None:
-    """记忆恢复必须调用构造时注入的会话服务，不再查询数据 locator。"""
+    """
+    记忆恢复必须调用构造时注入的会话服务，不再查询数据 locator。
+    """
     chat = MagicMock()
     chat.get_sync.return_value = SimpleNamespace(agent_messages=[])
     manager = MemoryManager(chat=chat, persistence=MagicMock())
@@ -342,7 +488,9 @@ def test_memory_manager_reads_only_injected_chat_service() -> None:
 
 
 def test_scheduler_reads_injected_agent_task_repository() -> None:
-    """Scheduler 注册任务时必须读取显式注入的 AgentTask 仓储。"""
+    """
+    Scheduler 注册任务时必须读取显式注入的 AgentTask 仓储。
+    """
     repository = MagicMock()
     repository.list.return_value = [SimpleNamespace(id=9)]
     scheduler = object.__new__(Scheduler)
@@ -357,7 +505,9 @@ def test_scheduler_reads_injected_agent_task_repository() -> None:
 
 
 def test_agent_initializer_reassembly_replaces_cached_manager(monkeypatch) -> None:
-    """组合根重装配后不得复用持有旧数据上下文的 manager。"""
+    """
+    组合根重装配后不得复用持有旧数据上下文的 manager。
+    """
     first = _context(TransactionalAgentTaskRepository(SessionFactory))
     second = _context(TransactionalAgentTaskRepository(SessionFactory))
     monkeypatch.setattr(agent_initializer, "_agent_data_context", None)
@@ -378,20 +528,27 @@ def test_agent_initializer_reassembly_replaces_cached_manager(monkeypatch) -> No
 
 
 def test_agent_initializer_resolves_data_bound_manager_for_agent_task(monkeypatch) -> None:
-    """生产解析路径必须返回带数据上下文的 manager，供 agent_task 使用。"""
+    """
+    生产解析路径必须返回带数据上下文的 manager，供 agent_task 使用。
+    """
     context = _context(TransactionalAgentTaskRepository(SessionFactory))
     monkeypatch.setattr(agent_initializer, "agent_manager", None)
     monkeypatch.setattr(agent_initializer, "_agent_data_context", None)
     monkeypatch.setattr(agent_initializer, "_injected_agent_manager", None)
+    canonical = AgentManager(memory=MemoryManager())
+    monkeypatch.setattr(agent_initializer, "get_runtime_agent_manager", lambda: canonical)
 
     agent_initializer.configure_agent_data_context(context)
     manager = agent_initializer._get_agent_manager()
 
     assert manager._data is context
+    assert manager is canonical
 
 
 def test_transactional_agent_task_repository_projects_frozen_snapshots() -> None:
-    """任务写入提交后必须返回脱离 Session 的冻结快照。"""
+    """
+    任务写入提交后必须返回脱离 Session 的冻结快照。
+    """
     repository = TransactionalAgentTaskRepository(SessionFactory)
     task = repository.add(
         name="架构检查",
@@ -411,6 +568,7 @@ def test_transactional_agent_task_repository_projects_frozen_snapshots() -> None
     assert repository.get(task.id, user_id="user-1") == task
     assert repository.list(user_id="user-1") == [task]
     with pytest.raises(FrozenInstanceError):
+        # 只验证冻结快照禁止赋值，故意执行类型检查器拒绝的写入。
         task.name = "不可修改"  # type: ignore[misc]
 
     assert repository.update(

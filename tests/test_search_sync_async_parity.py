@@ -1,4 +1,6 @@
-"""搜索链同步、异步与流式入口的共享业务决策回归测试。"""
+"""
+搜索链同步、异步与流式入口的共享业务决策回归测试。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -17,7 +19,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _media() -> MediaInfo:
-    """构造具备稳定来源身份和别名的测试媒体。"""
+    """
+    构造具备稳定来源身份和别名的测试媒体。
+    """
     return MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="100",
@@ -30,17 +34,23 @@ def _media() -> MediaInfo:
 
 
 def _torrent(title: str) -> TorrentInfo:
-    """构造一条无需外部 provider 的测试资源。"""
+    """
+    构造一条无需外部 provider 的测试资源。
+    """
     return TorrentInfo(title=title, description="description")
 
 
 def _chain() -> SearchChain:
-    """绕过运行时组合根构造可局部注入的搜索链。"""
+    """
+    绕过运行时组合根构造可局部注入的搜索链。
+    """
     return object.__new__(SearchChain)
 
 
 def test_id_search_sync_async_share_request_and_missing_plan(monkeypatch):
-    """ID 搜索双入口应产生完全相同的识别、缓存和缺集参数。"""
+    """
+    ID 搜索双入口应产生完全相同的识别、缓存和缺集参数。
+    """
     chain = _chain()
     target = _media()
     sync_calls: list[dict[str, Any]] = []
@@ -50,34 +60,48 @@ def test_id_search_sync_async_share_request_and_missing_plan(monkeypatch):
     result = [SimpleNamespace(name="context")]
 
     class FakeMediaChain:
-        """记录同步与异步识别参数并返回同一媒体快照。"""
+        """
+        记录同步与异步识别参数并返回同一媒体快照。
+        """
 
         def recognize_media(self, **kwargs):
-            """返回同步识别结果。"""
+            """
+            返回同步识别结果。
+            """
             sync_calls.append(kwargs)
             return target
 
         async def async_recognize_media(self, **kwargs):
-            """返回异步识别结果。"""
+            """
+            返回异步识别结果。
+            """
             async_calls.append(kwargs)
             return target
 
     def process(**kwargs):
-        """记录同步处理计划。"""
+        """
+        记录同步处理计划。
+        """
         sync_calls.append(kwargs)
         return result
 
     async def async_process(**kwargs):
-        """记录异步处理计划。"""
+        """
+        记录异步处理计划。
+        """
         async_calls.append(kwargs)
         return result
 
     async def async_save_params(**kwargs):
-        """记录异步缓存参数。"""
+        """
+        记录异步缓存参数。
+        """
         saved_async.append(kwargs)
 
     async def async_save_results(_contexts):
-        """模拟异步结果缓存。"""
+        """
+        模拟异步结果缓存。
+        """
 
     monkeypatch.setattr(media_module, "MediaChain", FakeMediaChain)
     chain.cancel_ai_recommend = lambda: None
@@ -119,7 +143,9 @@ def test_id_search_sync_async_share_request_and_missing_plan(monkeypatch):
 
 
 def test_imdb_search_falls_back_to_media_title_without_imdb_id():
-    """IMDb 搜索缺少 IMDb ID 且没有调用方关键字时应请求媒体标题。"""
+    """
+    IMDb 搜索缺少 IMDb ID 且没有调用方关键字时应请求媒体标题。
+    """
     target = _media()
 
     assert SearchChain._torrent_keyword(None, target, "imdbid") == target.title
@@ -127,7 +153,9 @@ def test_imdb_search_falls_back_to_media_title_without_imdb_id():
 
 
 def test_media_process_sync_async_share_keyword_stop_decision(monkeypatch):
-    """双入口应按相同关键字顺序搜索，并在首个有效结果后同时停止。"""
+    """
+    双入口应按相同关键字顺序搜索，并在首个有效结果后同时停止。
+    """
     chain = _chain()
     target = _media()
     found = _torrent("测试电影 2026 1080p")
@@ -138,35 +166,49 @@ def test_media_process_sync_async_share_keyword_stop_decision(monkeypatch):
     parsed: list[list[TorrentInfo]] = []
 
     class FakeMediaChain:
-        """为同步与异步处理提供等价的附加信息结果。"""
+        """
+        为同步与异步处理提供等价的附加信息结果。
+        """
 
         def supplement_media_info(self, mediainfo):
-            """返回同步附加信息。"""
+            """
+            返回同步附加信息。
+            """
             return mediainfo
 
         async def async_supplement_media_info(self, mediainfo):
-            """返回异步附加信息。"""
+            """
+            返回异步附加信息。
+            """
             return mediainfo
 
     def search_all_sites(**kwargs):
-        """第二个关键字开始返回资源。"""
+        """
+        第二个关键字开始返回资源。
+        """
         keyword = kwargs["keyword"]
         sync_keywords.append(keyword)
         return [found] if keyword == "second" else []
 
     async def async_search_all_sites(**kwargs):
-        """第二个关键字开始异步返回资源。"""
+        """
+        第二个关键字开始异步返回资源。
+        """
         keyword = kwargs["keyword"]
         async_keywords.append(keyword)
         return [found] if keyword == "second" else []
 
     def parse_result(**kwargs):
-        """记录进入统一结果处理边界的资源顺序。"""
+        """
+        记录进入统一结果处理边界的资源顺序。
+        """
         parsed.append(list(kwargs["torrents"]))
         return kwargs["torrents"]
 
     async def fake_async_sleep(delay):
-        """记录异步关键字退避但不实际等待。"""
+        """
+        记录异步关键字退避但不实际等待。
+        """
         async_sleeps.append(delay)
 
     monkeypatch.setattr(media_module, "MediaChain", FakeMediaChain)
@@ -190,7 +232,9 @@ def test_media_process_sync_async_share_keyword_stop_decision(monkeypatch):
 
 
 def test_keyword_resolution_searches_all_names_when_enabled(monkeypatch):
-    """开启多名称搜索时同步、异步共用状态机须完整执行并稳定聚合结果。"""
+    """
+    开启多名称搜索时同步、异步共用状态机须完整执行并稳定聚合结果。
+    """
     chain = _chain()
     target = _media()
     first = _torrent("First Result")
@@ -200,21 +244,29 @@ def test_keyword_resolution_searches_all_names_when_enabled(monkeypatch):
     async_keywords = []
 
     def search(**kwargs):
-        """记录同步站点调用顺序。"""
+        """
+        记录同步站点调用顺序。
+        """
         sync_keywords.append(kwargs["keyword"])
         return results[kwargs["keyword"]]
 
     async def async_search(**kwargs):
-        """记录异步站点调用顺序。"""
+        """
+        记录异步站点调用顺序。
+        """
         async_keywords.append(kwargs["keyword"])
         return results[kwargs["keyword"]]
 
     async def supplement(mediainfo):
-        """异步补充步骤在样例中不改变媒体对象。"""
+        """
+        异步补充步骤在样例中不改变媒体对象。
+        """
         return mediainfo
 
     async def sleep(_delay):
-        """隔离关键词间隔，不执行实际等待。"""
+        """
+        隔离关键词间隔，不执行实际等待。
+        """
 
     provider = SimpleNamespace(supplement_media_info=lambda mediainfo: mediainfo,
                                async_supplement_media_info=supplement)
@@ -233,7 +285,9 @@ def test_keyword_resolution_searches_all_names_when_enabled(monkeypatch):
 
 
 def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch):
-    """流入口应复用双入口的关键字顺序、退避次数和首结果短路决策。"""
+    """
+    流入口应复用双入口的关键字顺序、退避次数和首结果短路决策。
+    """
     chain = _chain()
     target = _media()
     found = _torrent("测试电影 2026 1080p")
@@ -242,14 +296,20 @@ def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch
     parsed: list[list[TorrentInfo]] = []
 
     class FakeMediaChain:
-        """为流处理提供无需外部服务的附加信息结果。"""
+        """
+        为流处理提供无需外部服务的附加信息结果。
+        """
 
         async def async_supplement_media_info(self, mediainfo):
-            """返回异步附加信息。"""
+            """
+            返回异步附加信息。
+            """
             return mediainfo
 
     async def search_stream(**kwargs):
-        """第二个关键字输出资源，供共享状态机执行短路。"""
+        """
+        第二个关键字输出资源，供共享状态机执行短路。
+        """
         keyword = kwargs["keyword"]
         stream_keywords.append(keyword)
         yield {
@@ -258,16 +318,22 @@ def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch
         }
 
     async def fake_async_sleep(delay):
-        """记录流关键字退避但不实际等待。"""
+        """
+        记录流关键字退避但不实际等待。
+        """
         sleeps.append(delay)
 
     def parse_result(**kwargs):
-        """记录流最终过滤前的资源顺序并返回空上下文。"""
+        """
+        记录流最终过滤前的资源顺序并返回空上下文。
+        """
         parsed.append(list(kwargs["torrents"]))
         return []
 
     async def collect_events():
-        """完整消费媒体搜索流。"""
+        """
+        完整消费媒体搜索流。
+        """
         return [
             event
             async for event in chain.async_process_stream(mediainfo=target)
@@ -299,42 +365,60 @@ def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch
 
 
 def test_media_process_empty_keyword_plan_skips_all_provider_io(monkeypatch):
-    """空关键字计划应由共享状态机直接完成，且三入口均不触发 provider。"""
+    """
+    空关键字计划应由共享状态机直接完成，且三入口均不触发 provider。
+    """
     chain = _chain()
     target = _media()
     parsed: list[list[TorrentInfo]] = []
 
     class FakeMediaChain:
-        """为三入口提供稳定的媒体附加信息。"""
+        """
+        为三入口提供稳定的媒体附加信息。
+        """
 
         def supplement_media_info(self, mediainfo):
-            """返回同步附加信息。"""
+            """
+            返回同步附加信息。
+            """
             return mediainfo
 
         async def async_supplement_media_info(self, mediainfo):
-            """返回异步附加信息。"""
+            """
+            返回异步附加信息。
+            """
             return mediainfo
 
     def unexpected_provider(**_kwargs):
-        """标记空计划错误触发了同步 provider。"""
+        """
+        标记空计划错误触发了同步 provider。
+        """
         raise AssertionError("空关键字计划不应触发同步 provider")
 
     async def unexpected_async_provider(**_kwargs):
-        """标记空计划错误触发了异步 provider。"""
+        """
+        标记空计划错误触发了异步 provider。
+        """
         raise AssertionError("空关键字计划不应触发异步 provider")
 
     async def unexpected_stream_provider(**_kwargs):
-        """标记空计划错误触发了流式 provider。"""
+        """
+        标记空计划错误触发了流式 provider。
+        """
         yield {"items": []}
         raise AssertionError("空关键字计划不应触发流式 provider")
 
     def parse_result(**kwargs):
-        """记录三入口交付给结果解析边界的空资源。"""
+        """
+        记录三入口交付给结果解析边界的空资源。
+        """
         parsed.append(list(kwargs["torrents"]))
         return []
 
     async def collect_events():
-        """完整消费空关键字媒体搜索流。"""
+        """
+        完整消费空关键字媒体搜索流。
+        """
         return [
             event
             async for event in chain.async_process_stream(mediainfo=target)
@@ -365,28 +449,40 @@ def test_media_process_empty_keyword_plan_skips_all_provider_io(monkeypatch):
 def test_id_search_stream_failure_preserves_order_and_skips_result_cache(
     monkeypatch,
 ):
-    """识别失败时流入口应先保存请求状态，只输出错误且不保存空结果。"""
+    """
+    识别失败时流入口应先保存请求状态，只输出错误且不保存空结果。
+    """
     chain = _chain()
     order: list[str] = []
 
     class FakeMediaChain:
-        """模拟异步识别失败。"""
+        """
+        模拟异步识别失败。
+        """
 
         async def async_recognize_media(self, **_kwargs):
-            """记录识别顺序并返回失败。"""
+            """
+            记录识别顺序并返回失败。
+            """
             order.append("recognize")
             return None
 
     async def save_params(**_kwargs):
-        """记录请求状态保存顺序。"""
+        """
+        记录请求状态保存顺序。
+        """
         order.append("params")
 
     async def save_results(_contexts):
-        """若失败路径错误保存结果则留下可断言记录。"""
+        """
+        若失败路径错误保存结果则留下可断言记录。
+        """
         order.append("results")
 
     async def collect_events():
-        """完整消费识别失败的搜索流。"""
+        """
+        完整消费识别失败的搜索流。
+        """
         return [
             event
             async for event in chain.async_search_by_id_stream(
@@ -410,7 +506,9 @@ def test_id_search_stream_failure_preserves_order_and_skips_result_cache(
 
 
 def test_title_search_sync_async_share_plan_filter_and_projection():
-    """标题搜索双入口应共享 provider 参数、过滤决策和可替换元数据投影。"""
+    """
+    标题搜索双入口应共享 provider 参数、过滤决策和可替换元数据投影。
+    """
     chain = _chain()
     keep = _torrent("Movie 2026 1080p")
     drop = _torrent("Movie 2026 2160p")
@@ -419,23 +517,31 @@ def test_title_search_sync_async_share_plan_filter_and_projection():
     meta_calls: list[str] = []
 
     def search_all_sites(**kwargs):
-        """记录同步 provider 参数。"""
+        """
+        记录同步 provider 参数。
+        """
         provider_calls.append(kwargs)
         return [keep, drop]
 
     async def async_search_all_sites(**kwargs):
-        """记录异步 provider 参数。"""
+        """
+        记录异步 provider 参数。
+        """
         provider_calls.append(kwargs)
         return [keep, drop]
 
     def filter_torrents(torrents, rule_groups=None):
-        """记录共享过滤输入并保留首条资源。"""
+        """
+        记录共享过滤输入并保留首条资源。
+        """
         assert rule_groups == ["quality"]
         filter_calls.append(list(torrents))
         return [keep]
 
     def build_meta(torrent, _mtype):
-        """模拟插件或测试替换的稳定元数据构造点。"""
+        """
+        模拟插件或测试替换的稳定元数据构造点。
+        """
         meta_calls.append(torrent.title)
         return MetaInfo(title=f"mapped:{torrent.title}")
 
@@ -469,7 +575,9 @@ def test_title_search_sync_async_share_plan_filter_and_projection():
 
 
 def test_title_search_sync_async_share_empty_result_decisions(monkeypatch):
-    """标题双入口应共享无候选与过滤为空的警告，并跳过结果缓存。"""
+    """
+    标题双入口应共享无候选与过滤为空的警告，并跳过结果缓存。
+    """
     chain = _chain()
     candidate = _torrent("Movie 2026 1080p")
     provider_result: list[TorrentInfo] = []
@@ -478,24 +586,34 @@ def test_title_search_sync_async_share_empty_result_decisions(monkeypatch):
     saved_results: list[list[Any]] = []
 
     def search_all_sites(**_kwargs):
-        """返回当前场景的同步候选快照。"""
+        """
+        返回当前场景的同步候选快照。
+        """
         return list(provider_result)
 
     async def async_search_all_sites(**_kwargs):
-        """返回当前场景的异步候选快照。"""
+        """
+        返回当前场景的异步候选快照。
+        """
         return list(provider_result)
 
     def filter_torrents(torrents, rule_groups=None):
-        """记录过滤输入并模拟候选全部被规则排除。"""
+        """
+        记录过滤输入并模拟候选全部被规则排除。
+        """
         assert rule_groups == ["quality"]
         filter_calls.append(list(torrents))
         return []
 
     async def save_params(**_kwargs):
-        """模拟异步请求参数缓存。"""
+        """
+        模拟异步请求参数缓存。
+        """
 
     async def save_results(contexts):
-        """记录不应发生的异步结果缓存。"""
+        """
+        记录不应发生的异步结果缓存。
+        """
         saved_results.append(list(contexts))
 
     monkeypatch.setattr(title_module.logger, "warning", warnings.append)
@@ -536,20 +654,26 @@ def test_title_search_sync_async_share_empty_result_decisions(monkeypatch):
 
 
 def test_title_stream_preserves_provider_and_result_order():
-    """标题流应按 provider 批次顺序追加，并以相同顺序发布累计完成结果。"""
+    """
+    标题流应按 provider 批次顺序追加，并以相同顺序发布累计完成结果。
+    """
     chain = _chain()
     first = _torrent("Movie 2026 1080p")
     second = _torrent("Movie 2026 2160p")
     provider_params: list[dict[str, Any]] = []
 
     async def search_stream(**kwargs):
-        """按固定顺序输出两个 provider 批次。"""
+        """
+        按固定顺序输出两个 provider 批次。
+        """
         provider_params.append(kwargs)
         yield {"type": "append", "site_id": 1, "items": [first]}
         yield {"type": "append", "site_id": 2, "items": [second]}
 
     async def collect_events():
-        """完整消费标题搜索流。"""
+        """
+        完整消费标题搜索流。
+        """
         return [
             event
             async for event in chain.async_search_by_title_stream(
@@ -577,7 +701,9 @@ def test_title_stream_preserves_provider_and_result_order():
 
 
 def test_id_search_resolution_freezes_success_and_failure_effect_order():
-    """ID 搜索状态机应唯一决定成功保存顺序与识别失败短路。"""
+    """
+    ID 搜索状态机应唯一决定成功保存顺序与识别失败短路。
+    """
     recognition_params = {"media_source": MediaSource.TMDB, "media_id": "100"}
     cache_params = {**recognition_params, "sites": [1]}
     contexts = [SimpleNamespace(name="context")]
@@ -620,7 +746,9 @@ def test_id_search_resolution_freezes_success_and_failure_effect_order():
 
 
 def test_title_search_resolution_owns_filter_short_circuit_and_save_order():
-    """标题状态机应在过滤失败时短路，并仅保存成功投影。"""
+    """
+    标题状态机应在过滤失败时短路，并仅保存成功投影。
+    """
     search_params = {"keyword": "Movie", "sites": [1], "page": 0}
     cache_params = {"keyword": "Movie", "area": "title"}
     torrent = _torrent("Movie 2026")

@@ -1,8 +1,14 @@
+"""
+验证插件兼容导入清单与受控能力边界。
+"""
+
 import ast
 import importlib
 import json
 import re
 from pathlib import Path
+
+import pytest
 
 from app.runtime.compat.manifest import MODULE_ALIASES, PACKAGE_ALIASES
 
@@ -40,12 +46,16 @@ DELEGATED_PLUGIN_CATALOG_METHODS = {
 
 
 def _parse(path: Path) -> ast.Module:
-    """解析 UTF-8 Python 源码，兼容历史插件文件可能携带的 BOM。"""
+    """
+    解析 UTF-8 Python 源码，兼容历史插件文件可能携带的 BOM。
+    """
     return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
 
 
 def _module_imports(tree: ast.AST) -> set[str]:
-    """返回语法树中的绝对导入模块，不把导入符号误当成子模块。"""
+    """
+    返回语法树中的绝对导入模块，不把导入符号误当成子模块。
+    """
     imports: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -56,7 +66,9 @@ def _module_imports(tree: ast.AST) -> set[str]:
 
 
 def _public_names(tree: ast.AST) -> set[str]:
-    """返回模块定义或非私有导入到顶层的符号名。"""
+    """
+    返回模块定义或非私有导入到顶层的符号名。
+    """
     names: set[str] = set()
     for node in tree.body:
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -72,13 +84,17 @@ def _public_names(tree: ast.AST) -> set[str]:
 
 
 def _camel_to_snake(value: str) -> str:
-    """把合同类名转换为对应的稳定模块标识。"""
+    """
+    把合同类名转换为对应的稳定模块标识。
+    """
     first_pass = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", value)
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first_pass).lower()
 
 
 def _matches_filename_contract(path: Path, rule: dict[str, str]) -> bool:
-    """按真实发现合同判断多词文件是否属于有理由的语义命名。"""
+    """
+    按真实发现合同判断多词文件是否属于有理由的语义命名。
+    """
     relative = path.relative_to(PROJECT_ROOT).as_posix()
     root = rule["root"].rstrip("/")
     if not relative.startswith(f"{root}/"):
@@ -99,7 +115,13 @@ def _matches_filename_contract(path: Path, rule: dict[str, str]) -> bool:
                     continue
                 if not isinstance(statement.target, ast.Name) or statement.target.id != "name":
                     continue
-                if isinstance(statement.value, ast.Constant) and statement.value.value == expected_name:
+                value = statement.value
+                if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "Field":
+                    value = next(
+                        (keyword.value for keyword in value.keywords if keyword.arg == "default"),
+                        value.args[0] if value.args else None,
+                    )
+                if isinstance(value, ast.Constant) and value.value == expected_name:
                     return True
         return False
     if kind == "workflow_action_contract":
@@ -128,12 +150,16 @@ def _matches_filename_contract(path: Path, rule: dict[str, str]) -> bool:
 
 
 def _is_documentation_only_root(tree: ast.Module) -> bool:
-    """判断包根是否只保留包说明。"""
+    """
+    判断包根是否只保留包说明。
+    """
     return not tree.body or (ast.get_docstring(tree) is not None and len(tree.body) == 1)
 
 
 def _is_curated_lazy_facade(tree: ast.Module) -> bool:
-    """判断包根是否为显式白名单驱动且不含公开实现的懒门面。"""
+    """
+    判断包根是否为显式白名单驱动且不含公开实现的懒门面。
+    """
     assignments = {
         target.id: node.value
         for node in tree.body
@@ -156,7 +182,9 @@ def _is_curated_lazy_facade(tree: ast.Module) -> bool:
 
 
 def test_official_plugin_legacy_imports_are_exactly_routed_or_retired() -> None:
-    """官方插件旧导入必须有精确 Compat 路由，或保持一条已审查的可选退役路径。"""
+    """
+    官方插件旧导入必须有精确 Compat 路由，或保持一条已审查的可选退役路径。
+    """
     baseline = json.loads(OFFICIAL_PLUGIN_BASELINE.read_text(encoding="utf-8"))
     legacy_imports = {
         module
@@ -172,7 +200,9 @@ def test_official_plugin_legacy_imports_are_exactly_routed_or_retired() -> None:
 
 
 def test_plugin_manager_legacy_and_sdk_paths_share_canonical_identity() -> None:
-    """V2 旧路径与 V3 SDK 必须复用同一个 PluginManager 身份及已验证成员。"""
+    """
+    V2 旧路径与 V3 SDK 必须复用同一个 PluginManager 身份及已验证成员。
+    """
     canonical = importlib.import_module("app.runtime.extensions.plugin.manager")
     legacy = importlib.import_module("app.core.plugin")
     sdk = importlib.import_module("app.sdk.plugin.manager")
@@ -188,7 +218,9 @@ def test_plugin_manager_legacy_and_sdk_paths_share_canonical_identity() -> None:
 
 
 def test_plugin_namespace_root_only_documents_the_install_directory() -> None:
-    """插件安装命名空间包根只保留说明，契约基类由 SDK 拥有。"""
+    """
+    插件安装命名空间包根只保留说明，契约基类由 SDK 拥有。
+    """
     tree = _parse(APP_ROOT / "plugins" / "__init__.py")
 
     assert _is_documentation_only_root(tree)
@@ -196,7 +228,9 @@ def test_plugin_namespace_root_only_documents_the_install_directory() -> None:
 
 
 def test_plugin_contract_base_depends_on_canonical_modules_only() -> None:
-    """插件契约基类直接依赖 canonical 模块，宿主源码不消费幻影旧路径。"""
+    """
+    插件契约基类直接依赖 canonical 模块，宿主源码不消费幻影旧路径。
+    """
     tree = _parse(APP_ROOT / "sdk" / "plugin" / "base.py")
     legacy = {
         module
@@ -208,7 +242,9 @@ def test_plugin_contract_base_depends_on_canonical_modules_only() -> None:
 
 
 def test_plugin_helper_stays_on_exact_legacy_adapter_route() -> None:
-    """PluginHelper 只保留精确旧 Helper 路由，不进入推荐插件 SDK。"""
+    """
+    PluginHelper 只保留精确旧 Helper 路由，不进入推荐插件 SDK。
+    """
     canonical = importlib.import_module("app.adapters.external.market")
     legacy = importlib.import_module("app.helper.plugin")
     alias = MODULE_ALIASES["app.helper.plugin"]
@@ -220,7 +256,9 @@ def test_plugin_helper_stays_on_exact_legacy_adapter_route() -> None:
 
 
 def test_plugin_entry_and_application_do_not_reimport_concrete_legacy_owners() -> None:
-    """Plugin 入口与应用用例不得重新依赖 PluginHelper、ServerHelper 或具体 PluginManager。"""
+    """
+    Plugin 入口与应用用例不得重新依赖 PluginHelper、ServerHelper 或具体 PluginManager。
+    """
     forbidden_modules = {
         "app.adapters.external.market",
         "app.adapters.external.server",
@@ -249,7 +287,9 @@ def test_plugin_entry_and_application_do_not_reimport_concrete_legacy_owners() -
 
 
 def test_plugin_manager_catalog_compat_methods_remain_thin_delegates() -> None:
-    """PluginManager 的旧市场目录方法只能委托，不得重新吸收应用目录算法。"""
+    """
+    PluginManager 的旧市场目录方法只能委托，不得重新吸收应用目录算法。
+    """
     path = APP_ROOT / "runtime" / "extensions" / "plugin" / "manager.py"
     tree = _parse(path)
     manager = next(
@@ -285,7 +325,9 @@ def test_plugin_manager_catalog_compat_methods_remain_thin_delegates() -> None:
 
 
 def test_plugin_capability_package_roots_do_not_duplicate_exports() -> None:
-    """多文件插件能力包根只保留说明，不得复制子模块实现或宿主导出。"""
+    """
+    多文件插件能力包根只保留说明，不得复制子模块实现或宿主导出。
+    """
     violations: list[str] = []
     for package in PLUGIN_COMPONENT_PACKAGES:
         path = package / "__init__.py"
@@ -296,8 +338,37 @@ def test_plugin_capability_package_roots_do_not_duplicate_exports() -> None:
     assert violations == []
 
 
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        ('"tool_name"', True),
+        ('"other_name"', False),
+        ('Field("tool_name", description="工具名称")', True),
+        ('Field(default="tool_name", description="工具名称")', True),
+        ('Field(default="other_name", description="工具名称")', False),
+        ('Field(description="工具名称")', False),
+        ('unrelated("tool_name")', False),
+    ],
+)
+def test_agent_tool_filename_contract_reads_declared_default(tmp_path, monkeypatch, declaration, expected):
+    """
+    文件名契约读取常量或 Field 的默认值，不把描述或其他调用误当成工具名称。
+    """
+    monkeypatch.setattr(__name__ + ".PROJECT_ROOT", tmp_path)
+    path = tmp_path / "app" / "agent" / "tools" / "impl" / "tool_name.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(f"class Tool:\n    name: str = {declaration}\n", encoding="utf-8")
+
+    assert _matches_filename_contract(
+        path,
+        {"root": "app/agent/tools/impl", "kind": "agent_tool_contract"},
+    ) is expected
+
+
 def test_new_host_production_modules_use_single_word_filenames() -> None:
-    """宿主多词文件必须满足稳定发现合同或带有可审查的逐项理由。"""
+    """
+    宿主多词文件必须满足稳定发现合同或带有可审查的逐项理由。
+    """
     policy = json.loads(FILENAME_POLICY.read_text(encoding="utf-8"))
     assert policy["schema_version"] == 2
     assert policy["scope"] == {
@@ -335,7 +406,9 @@ def test_new_host_production_modules_use_single_word_filenames() -> None:
 
 
 def test_package_roots_are_documentation_facades_or_reasoned_owners() -> None:
-    """全局包根只能为空、说明、精确懒门面、模块入口或有理由的既有 owner。"""
+    """
+    全局包根只能为空、说明、精确懒门面、模块入口或有理由的既有 owner。
+    """
     policy = json.loads(FILENAME_POLICY.read_text(encoding="utf-8"))
     exceptions = {item["path"]: item for item in policy["package_root_exceptions"]}
     assert all(

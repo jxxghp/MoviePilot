@@ -1,4 +1,6 @@
-"""插件安装成功后的临时回滚备份生命周期测试。"""
+"""
+插件安装成功后的临时回滚备份生命周期测试。
+"""
 
 from pathlib import Path
 
@@ -14,7 +16,9 @@ async def test_successful_install_flows_remove_transient_backups(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    """同步与异步安装成功后都必须删除临时回滚副本。"""
+    """
+    同步与异步安装成功后都必须删除临时回滚副本。
+    """
     package = PluginPackageManager(
         source=PluginPackageSourceClient(PluginHelper())
     )
@@ -56,22 +60,32 @@ async def test_successful_install_flows_remove_transient_backups(
     )
 
     async def backup_plugin(_pid: str) -> str:
-        """返回异步路径的临时回滚副本。"""
+        """
+        返回异步路径的临时回滚副本。
+        """
         return str(async_backup)
 
     async def remove_plugin(_pid: str) -> None:
-        """隔离测试中的真实插件目录删除。"""
+        """
+        隔离测试中的真实插件目录删除。
+        """
 
     async def install_dependencies(_pid: str) -> tuple[bool, bool, str]:
-        """表示测试插件没有额外依赖。"""
+        """
+        表示测试插件没有额外依赖。
+        """
         return False, False, "不存在依赖"
 
     async def prepare_content(_staging_dir: Path) -> tuple[bool, str]:
-        """表示异步内容准备成功。"""
+        """
+        表示异步内容准备成功。
+        """
         return True, ""
 
     async def swap_content(_staging_dir: Path, _final_dir: Path) -> None:
-        """隔离测试中的真实运行目录换入。"""
+        """
+        隔离测试中的真实运行目录换入。
+        """
 
     monkeypatch.setattr(
         package,

@@ -1,4 +1,6 @@
-"""插件可用的缓存契约、适配器工厂和装饰器。"""
+"""
+插件可用的缓存契约、适配器工厂和装饰器。
+"""
 
 from app.adapters.cache.backends import (
     AsyncFileBackend,

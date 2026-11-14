@@ -1,6 +1,11 @@
+"""
+把宿主模块装配为能力运行时资源，按配置选择并管理模块实例。
+"""
+
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -43,7 +48,7 @@ NON_SWITCHABLE_HOST_MODULE_IDS = frozenset(
 _SETTING_SELECTOR = "setting_truthy"
 _SERVICE_SELECTOR = "system_config_item"
 _MODULE_ROOT = Path(__file__).resolve().parents[3] / "modules"
-_SERVICE_CONFIG_GETTERS = MappingProxyType({
+_SERVICE_CONFIG_GETTERS: Mapping[str, Callable[[], Iterable[Any]]] = MappingProxyType({
     SystemConfigKey.Downloaders.value: ServiceConfigHelper.get_downloader_configs,
     SystemConfigKey.MediaServers.value: ServiceConfigHelper.get_mediaserver_configs,
     SystemConfigKey.Notifications.value: ServiceConfigHelper.get_notification_configs,
@@ -64,21 +69,30 @@ _SUBTYPE_NAMES = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class HostModuleConfigSnapshot:
-    """一次 reconcile 使用的不可变配置视图，避免每个能力重复查询配置。"""
+    """
+    一次 reconcile 使用的不可变配置视图，避免每个能力重复查询配置。
+
+    :param settings: 本轮协调使用的部署配置视图
+    :param services: 按服务类型分组的配置化服务快照
+    """
 
     settings: Mapping[str, Any]
     services: Mapping[str, tuple[Any, ...]]
 
 
 def _validate_setting_selector(config: Mapping[str, Any]) -> None:
-    """限制 setting selector 只能读取已声明的应用设置。"""
+    """
+    限制 setting selector 只能读取已声明的应用设置。
+    """
     key = config["key"]
     if not isinstance(key, str) or not key or not has_runtime_setting(key):
         raise ValueError(f"未知应用设置：{key!r}")
 
 
 def _validate_service_selector(config: Mapping[str, Any]) -> None:
-    """限制服务 selector 使用经过 Schema 校验的三个宿主服务配置。"""
+    """
+    限制服务 selector 使用经过 Schema 校验的三个宿主服务配置。
+    """
     key = config["key"]
     if key not in _SERVICE_CONFIG_GETTERS:
         raise ValueError(f"不支持的服务配置：{key!r}")
@@ -109,7 +123,9 @@ HOST_MODULE_SELECTOR_SCHEMAS = MappingProxyType({
 
 
 def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
-    """校验一级模块包与 manifest 一一对应，并固定宿主声明合同。"""
+    """
+    校验一级模块包与 manifest 一一对应，并固定宿主声明合同。
+    """
     module_packages = {
         child.name
         for child in _MODULE_ROOT.iterdir()
@@ -151,7 +167,10 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
         if isinstance(priority, bool) or not isinstance(priority, int):
             raise ValueError(f"{spec.source}: metadata.priority 必须是整数")
         if spec.activation is ActivationPolicy.WHEN_CONFIGURED:
-            selector_key = str(spec.selector.config["key"])
+            selector = spec.selector
+            if selector is None:
+                raise ValueError(f"{spec.source}: WHEN_CONFIGURED 必须声明 selector")
+            selector_key = str(selector.config["key"])
             if selector_key not in spec.watch:
                 raise ValueError(
                     f"{spec.source}: activation.watch 必须包含 selector 配置键"
@@ -159,7 +178,9 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
 
 
 def build_host_module_registry() -> CapabilityRegistry:
-    """从现有物理模块包构建 import-free Host Module Registry。"""
+    """
+    扫描现有物理模块包的声明，构建无需导入实现的宿主模块注册表。
+    """
     registry = CapabilityRegistry.discover(
         (_MODULE_ROOT,),
         kinds={HOST_MODULE_KIND},
@@ -172,7 +193,9 @@ def build_host_module_registry() -> CapabilityRegistry:
 def capture_host_module_config(
     specs: tuple[CapabilitySpec, ...],
 ) -> HostModuleConfigSnapshot:
-    """对本轮涉及的设置和服务配置各读取一次并冻结容器。"""
+    """
+    对本轮涉及的设置和服务配置各读取一次并冻结容器。
+    """
     setting_keys: set[str] = set()
     service_keys: set[str] = set()
     if any(spec.activation is ActivationPolicy.BOOTSTRAP for spec in specs):
@@ -191,7 +214,7 @@ def capture_host_module_config(
         key: get_runtime_setting(key)
         for key in sorted(setting_keys)
     }
-    service_values = {
+    service_values: dict[str, tuple[Any, ...]] = {
         key: tuple(_SERVICE_CONFIG_GETTERS[key]())
         for key in sorted(service_keys)
     }
@@ -205,7 +228,9 @@ def should_run_host_module(
     spec: CapabilitySpec,
     snapshot: HostModuleConfigSnapshot,
 ) -> bool:
-    """依据有限 selector 语法判断能力是否应拥有运行资源。"""
+    """
+    依据有限 selector 语法判断能力是否应拥有运行资源。
+    """
     if spec.activation is ActivationPolicy.BOOTSTRAP:
         if spec.id in NON_SWITCHABLE_HOST_MODULE_IDS:
             return True
@@ -234,7 +259,8 @@ def should_expose_host_module_option(
     spec: CapabilitySpec,
     snapshot: HostModuleConfigSnapshot,
 ) -> bool:
-    """判断模块是否应作为前端服务类型选项暴露。
+    """
+    判断模块是否应作为前端服务类型选项暴露。
 
     服务模块在尚未创建任何实例时仍需展示，才能允许用户新增首个实例；
     已存在的服务配置全部关闭时则隐藏该类型，保持关闭模块后的选择器语义。
@@ -256,13 +282,17 @@ def should_expose_host_module_option(
 
 
 class HostModuleAdapter:
-    """把现有模块类接入 Capability Runtime，保持类路径与对象 identity 不变。"""
+    """
+    把现有模块类接入 Capability Runtime，保持类路径与对象 identity 不变。
+    """
 
     execution_mode = AdapterExecutionMode.SYNC
 
     @staticmethod
     def materialize(spec: CapabilitySpec) -> type:
-        """按 manifest entrypoint 导入并返回原始模块类。"""
+        """
+        按 manifest entrypoint 导入并返回原始模块类。
+        """
         module_name, symbol_name = spec.entrypoint.split(":", maxsplit=1)
         implementation = getattr(importlib.import_module(module_name), symbol_name)
         if not isinstance(implementation, type):
@@ -276,19 +306,25 @@ class HostModuleAdapter:
         generation: int,
         previous: Any = None,
     ) -> Any:
-        """首次创建实例；配置重载继续使用原实例以保留既有模块语义。"""
+        """
+        首次创建实例；配置重载继续使用原实例以保留既有模块语义。
+        """
         del spec, generation
         return previous if previous is not None else implementation()
 
     @staticmethod
     def start(spec: CapabilitySpec, candidate: Any, generation: int) -> None:
-        """初始化候选实例拥有的连接、线程或客户端资源。"""
+        """
+        初始化候选实例拥有的连接、线程或客户端资源。
+        """
         del spec, generation
         candidate.init_module()
 
     @staticmethod
     def stop(spec: CapabilitySpec, instance: Any, generation: int) -> None:
-        """停止实例拥有的资源；Runtime 会先撤销其运行态可见性。"""
+        """
+        停止实例拥有的资源；Runtime 会先撤销其运行态可见性。
+        """
         del generation
         if instance.stop() is False:
             raise RuntimeError(f"Host Module {spec.id} 资源未完成收口")
@@ -300,6 +336,8 @@ class HostModuleAdapter:
         generation: int,
         error: BaseException,
     ) -> None:
-        """启动失败后尽力回收候选实例已创建的部分资源。"""
+        """
+        启动失败后尽力回收候选实例已创建的部分资源。
+        """
         del spec, generation, error
         candidate.stop()

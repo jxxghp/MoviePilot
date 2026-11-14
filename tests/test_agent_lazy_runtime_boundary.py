@@ -1,4 +1,6 @@
-"""Agent 工具与 LLM 入口的延迟加载合同测试。"""
+"""
+Agent 工具与 LLM 入口的延迟加载合同测试。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ from types import SimpleNamespace
 
 
 def _run_isolated(script: str) -> dict:
-    """在全新解释器中执行导入探针，避免当前 pytest 模块缓存干扰。"""
+    """
+    在全新解释器中执行导入探针，避免当前 pytest 模块缓存干扰。
+    """
     completed = subprocess.run(
         [sys.executable, "-c", script],
         check=True,
@@ -22,7 +26,9 @@ def _run_isolated(script: str) -> dict:
 
 
 def test_mcp_router_import_keeps_agent_tool_runtime_cold() -> None:
-    """默认 API 路由加载不得提前物化工具目录或 Agent 编排。"""
+    """
+    默认 API 路由加载不得提前物化工具目录或 Agent 编排。
+    """
     result = _run_isolated(
         """
 import json
@@ -57,7 +63,9 @@ print(json.dumps({"loaded": loaded}))
 
 
 def test_agent_initializer_import_only_registers_lazy_providers() -> None:
-    """组合根导入只注册 provider，不得提前加载 Agent 重量实现。"""
+    """
+    组合根导入只注册 provider，不得提前加载 Agent 重量实现。
+    """
     result = _run_isolated(
         """
 import json
@@ -92,7 +100,9 @@ print(json.dumps({"loaded": loaded}))
 
 
 def test_manager_constructor_and_llm_facade_are_lightweight() -> None:
-    """构造全局 manager 与导入 LLM facade 都不加载真实目录或 provider。"""
+    """
+    构造全局 manager 与导入 LLM facade 都不加载真实目录或 provider。
+    """
     result = _run_isolated(
         """
 import json
@@ -134,7 +144,9 @@ print(json.dumps({
 
 
 def test_tool_catalog_materialization_does_not_load_streaming_callback() -> None:
-    """工具目录和 schema 首用不应加载仅在真实编排中需要的回调实现。"""
+    """
+    工具目录和 schema 首用不应加载仅在真实编排中需要的回调实现。
+    """
     result = _run_isolated(
         """
 import json
@@ -166,7 +178,9 @@ print(json.dumps({
 
 
 def test_legacy_streaming_handler_import_keeps_canonical_identity() -> None:
-    """历史显式与星号导入必须按需返回真实 callback 类。"""
+    """
+    历史显式与星号导入必须按需返回真实 callback 类。
+    """
     result = _run_isolated(
         """
 import json
@@ -195,7 +209,9 @@ print(json.dumps({
 
 
 def test_manager_first_catalog_use_is_single_flight(monkeypatch) -> None:
-    """并发首次查询只能在 manager 锁内建立一次会话工具快照。"""
+    """
+    并发首次查询只能在 manager 锁内建立一次会话工具快照。
+    """
     from app.agent import loader as runtime_loader
     from app.agent.tools.catalog import ToolCatalogSnapshot
     from app.agent.tools.manager import MoviePilotToolsManager
@@ -209,10 +225,15 @@ def test_manager_first_catalog_use_is_single_flight(monkeypatch) -> None:
     )
 
     class _Factory:
-        """记录目录构造次数的轻量工厂替身。"""
+        """
+        记录目录构造次数的轻量工厂替身。
+        """
 
         @classmethod
         def create_catalog(cls, **kwargs):
+            """
+            记录目录创建调用并返回预设工具快照，不加载真实插件。
+            """
             calls.append((kwargs["session_id"], kwargs["user_id"]))
             time.sleep(0.05)
             return ToolCatalogSnapshot.from_tools(
@@ -243,7 +264,9 @@ def test_manager_first_catalog_use_is_single_flight(monkeypatch) -> None:
 def test_explicit_tool_refresh_keeps_atomic_catalog_contract(
     monkeypatch,
 ) -> None:
-    """插件显式刷新入口应发布同一次构造的完整严格目录快照。"""
+    """
+    插件显式刷新入口应发布同一次构造的完整严格目录快照。
+    """
     from app.agent import loader as runtime_loader
     from app.agent.tools.catalog import ToolCatalogSnapshot
     from app.agent.tools.manager import MoviePilotToolsManager
@@ -257,10 +280,15 @@ def test_explicit_tool_refresh_keeps_atomic_catalog_contract(
     )
 
     class _Factory:
-        """提供固定 revision 快照的轻量工厂替身。"""
+        """
+        提供固定 revision 快照的轻量工厂替身。
+        """
 
         @classmethod
         def create_catalog(cls, **_kwargs):
+            """
+            记录目录创建调用并返回预设工具快照，不加载真实插件。
+            """
             calls.append(1)
             return fake_catalog
 
@@ -276,7 +304,9 @@ def test_explicit_tool_refresh_keeps_atomic_catalog_contract(
 
 
 def test_reply_mode_identity_and_display_message_contract() -> None:
-    """旧编排路径必须复用同一枚举，展示消息委托保持原有结构。"""
+    """
+    旧编排路径必须复用同一枚举，展示消息委托保持原有结构。
+    """
     from app.agent.contracts import ReplyMode, build_display_message
     from app.agent.orchestrator import MoviePilotAgent
     from app.agent.orchestrator import ReplyMode as LegacyReplyMode
@@ -305,7 +335,9 @@ def test_reply_mode_identity_and_display_message_contract() -> None:
 
 
 def test_llm_internal_owner_is_imported_directly_without_loading_other_owners() -> None:
-    """内部 capability 使用 owner 路径，包根不再重复导出其实现。"""
+    """
+    内部 capability 使用 owner 路径，包根不再重复导出其实现。
+    """
     result = _run_isolated(
         """
 import json

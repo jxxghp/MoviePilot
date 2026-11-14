@@ -1,20 +1,30 @@
 # -*- coding: utf-8 -*-
+"""
+解析憨憨站点的用户资料、流量和做种信息。
+"""
+
 import re
 
 from lxml import etree
 
-from app.modules.indexer.parser import SiteSchema
-from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
+from app.modules.indexer.parser import SiteSchema
+from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
 
 class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
+    """
+    解析 NexusHhanclub 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.NexusHhanclub
 
-    def _parse_user_traffic_info(self, html_text):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
+        """
+        解析站点的上传、下载及分享率信息。
+        """
         super()._parse_user_traffic_info(html_text)
 
         html_text = self._prepare_html_text(html_text)
@@ -40,11 +50,11 @@ class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
             if html is not None:
                 del html
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户额外信息，加入时间，等级
-        :param html_text:
-        :return:
+        解析用户额外信息，加入时间，等级。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         super()._parse_user_detail_info(html_text)
 
@@ -60,7 +70,10 @@ class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
             if html is not None:
                 del html
 
-    def _get_user_level(self, html):
+    def _get_user_level(self, html: etree._Element) -> None:
+        """
+        从用户等级标记中读取展示名称。
+        """
         super()._get_user_level(html)
         user_level_path = html.xpath('//b[contains(@class, "_Name")]/text()')
         if user_level_path:

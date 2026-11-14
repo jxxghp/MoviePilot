@@ -112,6 +112,46 @@ RUN apt-get update \
     /var/tmp/*
 
 
+# 从锁文件提取浏览器系统依赖所需的 Playwright 版本与哈希。
+# 本阶段随 uv.lock 每次变化重跑，但输出只含 Playwright 一行；BuildKit 按内容缓存后续 COPY，
+# 因此只有 Playwright 版本变化才会让浏览器依赖层失效，其他依赖变化不再迫使用户重新下载该层。
+FROM base AS prepare_playwright_requirement
+
+COPY uv.lock /tmp/uv.lock
+RUN python3 -c "import tomllib; \
+packages = [item for item in tomllib.load(open('/tmp/uv.lock', 'rb'))['package'] if item['name'] == 'playwright']; \
+assert len(packages) == 1, 'uv.lock 必须且只能锁定一个 Playwright 版本'; \
+package = packages[0]; \
+hashes = sorted({item['hash'] for item in package.get('wheels', [])}); \
+assert hashes, 'uv.lock 缺少 Playwright wheel 哈希'; \
+open('/playwright-requirement.txt', 'w').write('playwright==' + package['version'] + ' ' + ' '.join('--hash=' + item for item in hashes) + '\\n')" \
+    && cat /playwright-requirement.txt
+
+
+# 浏览器运行依赖：只依赖系统软件包层和锁定的 Playwright 版本，不依赖虚拟环境内容。
+# Playwright 只装进临时目录读取依赖清单并执行 apt 安装，随后删除，不进入最终镜像。
+# 禁止写字节码，避免临时 pip 进程把系统 Python 标准库的 .pyc 留在该层。
+FROM prepare_package AS prepare_browser_deps
+
+COPY --from=prepare_playwright_requirement /playwright-requirement.txt /tmp/playwright-requirement.txt
+RUN export PYTHONDONTWRITEBYTECODE=1 \
+    && python3 -m venv /tmp/playwright-cli \
+    && /tmp/playwright-cli/bin/pip install \
+    --disable-pip-version-check \
+    --no-cache-dir \
+    --no-deps \
+    --require-hashes \
+    --only-binary :all: \
+    -r /tmp/playwright-requirement.txt \
+    && /tmp/playwright-cli/bin/python -m playwright install-deps chromium \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf \
+    /tmp/* \
+    /var/lib/apt/lists/* \
+    /var/tmp/*
+
+
 # 准备 Python 环境的公共输入
 FROM base AS prepare_venv_common
 
@@ -147,7 +187,7 @@ RUN mkdir -p /opt/python \
         --no-install-project
 
 
-# free-threaded 原生依赖需要 Rust 和 C 构建工具链。
+# 自由线程版 Python 的原生依赖需要 Rust 和 C 构建工具链。
 FROM prepare_venv_common AS prepare_venv_free-threaded
 
 ARG MOVIEPILOT_PYTHON_VERSION
@@ -294,8 +334,8 @@ RUN mkdir -p \
     && chmod 755 /bundle/rootfs/entrypoint.sh /bundle/rootfs/usr/local/bin/moviepilot \
     && chmod 500 /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh
 
-# final 阶段: 安装运行时依赖和配置最终镜像
-FROM prepare_package AS final
+# final 阶段安装运行时依赖并配置最终镜像
+FROM prepare_browser_deps AS final
 
 # jemalloc 默认按 CPU 数×4 建 arena，空闲 arena 的脏页会长期计入 RSS。脏页按 5 秒衰减归还
 # （muzzy 直接归还，避免 MADV_FREE 页继续计入 RSS）；arena 限制为 8 个，带 GIL 的 Python 大块分配竞争很小。
@@ -309,19 +349,10 @@ ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 
-# python 环境
+# Python 运行环境
 COPY --from=prepare_venv --chmod=777 ${VENV_PATH} ${VENV_PATH}
 COPY --from=prepare_venv /opt/python /opt/python
 COPY --from=uv /uv /usr/local/bin/uv
-
-# 浏览器运行依赖
-RUN playwright install-deps chromium \
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf \
-    /tmp/* \
-    /var/lib/apt/lists/* \
-    /var/tmp/*
 
 # 准备容器控制面和运行目录
 COPY --link --from=prepare_control /bundle/rootfs/ /
@@ -335,6 +366,23 @@ RUN mkdir -p ${HOME} \
     && echo 'fs.inotify.max_user_instances=5242880' >> /etc/sysctl.conf \
     && echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen \
     && locale-gen zh_CN.UTF-8
+
+# 系统安全更新层：放在所有大层之后、--link 载荷层之前，刷新时只重建这一小层。
+# CI 传入 "<ISO 年-周>-<系统基线>" 作为刷新键，每周最多重建一次；docker/system-baseline
+# 变化时 COPY 内容变化，同样立即重建。未传键的本地构建按普通缓存规则复用。
+# 基线文件写入镜像，供应用内更新判断当前镜像是否满足目标版本的 MIN_SYSTEM_BASELINE。
+ARG MOVIEPILOT_SYSTEM_REFRESH_ID=""
+COPY docker/system-baseline /etc/moviepilot/system-baseline
+RUN set -eu; \
+    printf 'System refresh key: %s, baseline: %s\n' \
+        "${MOVIEPILOT_SYSTEM_REFRESH_ID:-unset}" "$(cat /etc/moviepilot/system-baseline)"; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
+        upgrade; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /var/tmp/*
 
 # 载荷按独立更新频率写入镜像，后端源码保持在最后一层。
 WORKDIR /app

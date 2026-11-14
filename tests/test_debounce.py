@@ -1,4 +1,6 @@
-"""同步与异步防抖生命周期测试。"""
+"""
+同步与异步防抖生命周期测试。
+"""
 
 import asyncio
 
@@ -9,13 +11,17 @@ from app.runtime.debounce import AsyncDebouncer
 
 @pytest.mark.asyncio
 async def test_async_debouncer_cancel_waits_for_replaced_task_cleanup() -> None:
-    """公开取消必须等待已被后续调用替换的任务完成取消清理。"""
+    """
+    公开取消必须等待已被后续调用替换的任务完成取消清理。
+    """
     first_started = asyncio.Event()
     first_cancelled = asyncio.Event()
     allow_first_cleanup = asyncio.Event()
 
     async def delayed_work(value: str) -> None:
-        """让首个调用在取消后停留，暴露 retired task 的终态时序。"""
+        """
+        让首个调用在取消后停留，暴露 retired task 的终态时序。
+        """
         if value != "first":
             await asyncio.Event().wait()
             return
@@ -45,10 +51,14 @@ async def test_async_debouncer_cancel_waits_for_replaced_task_cleanup() -> None:
 
 @pytest.mark.asyncio
 async def test_async_debouncer_cancel_is_idempotent_without_active_task() -> None:
-    """没有活动任务时重复取消应立即返回并保持冷却状态关闭。"""
+    """
+    没有活动任务时重复取消应立即返回并保持冷却状态关闭。
+    """
 
     async def no_op() -> None:
-        """提供不会被实际调度的异步函数。"""
+        """
+        提供不会被实际调度的异步函数。
+        """
 
     debouncer = AsyncDebouncer(no_op, interval=1, leading=True)
 

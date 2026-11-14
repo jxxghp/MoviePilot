@@ -1,4 +1,6 @@
-"""标准媒体对象到分类事实的纯投影测试。"""
+"""
+标准媒体对象到分类事实的纯投影测试。
+"""
 
 import pytest
 
@@ -8,7 +10,9 @@ from app.schemas.types import MediaType
 
 
 def test_video_facts_preserve_non_tmdb_identity_and_project_standard_fields() -> None:
-    """豆瓣身份不得因分类事实构造而切换到 TMDB。"""
+    """
+    豆瓣身份不得因分类事实构造而切换到 TMDB。
+    """
     media = MediaInfo(
         media_source="douban",
         media_id="1295644",
@@ -39,7 +43,9 @@ def test_video_facts_preserve_non_tmdb_identity_and_project_standard_fields() ->
 
 
 def test_music_facts_use_metadata_fields_without_promoting_library_category() -> None:
-    """音乐来源分类只形成事实，不能自动成为媒体库目录分类。"""
+    """
+    音乐来源分类只形成事实，不能自动成为媒体库目录分类。
+    """
     music = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -73,7 +79,9 @@ def test_music_facts_use_metadata_fields_without_promoting_library_category() ->
 
 
 def test_album_facts_include_album_specific_fields() -> None:
-    """专辑对象应完整投影副类型、标签和发行状态。"""
+    """
+    专辑对象应完整投影副类型、标签和发行状态。
+    """
     album = MusicAlbumInfo(
         media_source="theaudiodb",
         media_id="album-1",
@@ -97,7 +105,9 @@ def test_album_facts_include_album_specific_fields() -> None:
 
 
 def test_missing_optional_fields_remain_missing_instead_of_empty_lists() -> None:
-    """来源未提供的字段应保留为 None，避免排除型规则误命中。"""
+    """
+    来源未提供的字段应保留为 None，避免排除型规则误命中。
+    """
     media = MediaInfo(
         media_source="anilist",
         media_id="1",
@@ -115,7 +125,9 @@ def test_missing_optional_fields_remain_missing_instead_of_empty_lists() -> None
 
 
 def test_extension_facts_are_copied_without_changing_identity() -> None:
-    """受控扩展事实必须保持来源命名空间和主身份。"""
+    """
+    受控扩展事实必须保持来源命名空间和主身份。
+    """
     media = MediaInfo(
         media_source="plugin.example",
         media_id="native-1",
@@ -133,6 +145,7 @@ def test_extension_facts_are_copied_without_changing_identity() -> None:
     assert facts.extensions == {"plugin.example": {"region_group": "east-asia"}}
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("media_source", "media_id"),
     [(None, "1"), ("douban", None), ("", "1"), ("douban", "")],
@@ -141,7 +154,9 @@ def test_incomplete_identity_is_rejected(
     media_source: str | None,
     media_id: str | None,
 ) -> None:
-    """分类事实必须绑定完整稳定身份。"""
+    """
+    分类事实必须绑定完整稳定身份。
+    """
     media = MediaInfo(
         media_source=media_source,
         media_id=media_id,
@@ -154,7 +169,9 @@ def test_incomplete_identity_is_rejected(
 
 
 def test_local_music_facts_require_explicit_opt_in_and_keep_empty_identity() -> None:
-    """完整本地音乐可在离线整理中分类，但不伪造在线身份或改变默认校验。"""
+    """
+    完整本地音乐可在离线整理中分类，但不伪造在线身份或改变默认校验。
+    """
     media = MusicInfo(title="晴天", artists=["周杰伦"], album="叶惠美")
 
     with pytest.raises(ValueError, match="media_source"):
@@ -168,7 +185,9 @@ def test_local_music_facts_require_explicit_opt_in_and_keep_empty_identity() -> 
 
 
 def test_local_music_opt_in_does_not_accept_incomplete_or_video_evidence() -> None:
-    """离线许可不能让残缺音乐标签或缺身份影视进入已完成分类。"""
+    """
+    离线许可不能让残缺音乐标签或缺身份影视进入已完成分类。
+    """
     for media in (MusicInfo(title="Track 01"), MediaInfo(title="Example", type=MediaType.MOVIE)):
         with pytest.raises(ValueError, match="media_source"):
             build_classification_facts(media, allow_local_music=True)

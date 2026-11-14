@@ -1,3 +1,7 @@
+"""
+验证反射工具对占位方法、装饰器与源码缓存的判断。
+"""
+
 import functools
 import linecache
 
@@ -6,6 +10,9 @@ from app.foundation.reflection import ObjectUtils
 
 
 def test_check_method():
+    """
+    方法实现检测区分真实函数体与空实现、文档占位和未实现异常。
+    """
     def implemented_function():
         return "Hello"
 
@@ -13,7 +20,9 @@ def test_check_method():
         pass
 
     def docstring_function():
-        """This is a docstring."""
+        """
+        只有文档而没有实现的方法占位。
+        """
 
     def ellipsis_function():
         ...
@@ -42,10 +51,14 @@ def test_check_method():
 
 
 class _Module:
-    """模拟模块类：占位方法与已实现方法并存，并经装饰器包装。"""
+    """
+    模拟模块类：占位方法与已实现方法并存，并经装饰器包装。
+    """
 
     def placeholder(self):
-        """未实现"""
+        """
+        未实现
+        """
 
     @staticmethod
     def _wrap(func):
@@ -57,13 +70,22 @@ class _Module:
 
     @_wrap
     def decorated_placeholder(self):
+        """
+        保留无实现方法，用于验证装饰器展开后的判定。
+        """
         pass
 
     def implemented(self):
+        """
+        返回固定结果，作为有实现方法的对照。
+        """
         return 1
 
 
 def test_check_method_handles_bound_and_decorated_methods():
+    """
+    方法实现检测兼容绑定方法与装饰器包裹的方法占位。
+    """
     module = _Module()
 
     assert not ObjectUtils.check_method(module.placeholder)
@@ -72,6 +94,9 @@ def test_check_method_handles_bound_and_decorated_methods():
 
 
 def test_check_method_does_not_leave_source_in_linecache():
+    """
+    读取方法源码进行检测后，不在全局行缓存中残留该文件。
+    """
     linecache.clearcache()
 
     def pass_function():
@@ -82,6 +107,9 @@ def test_check_method_does_not_leave_source_in_linecache():
 
 
 def test_check_method_caches_result_per_code_object(monkeypatch):
+    """
+    共享同一代码对象的闭包复用检测结果，避免重复读取源码。
+    """
     calls = []
     original = reflection._read_function_source
     monkeypatch.setattr(

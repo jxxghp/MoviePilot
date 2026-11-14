@@ -1,4 +1,6 @@
-"""验证独立业务世界的副作用、读取证据、参数边界及多次运行隔离。"""
+"""
+验证独立业务世界的副作用、读取证据、参数边界及多次运行隔离。
+"""
 
 import ast
 import base64
@@ -19,7 +21,9 @@ from scripts.evaluation.world import EvaluationWorld
 
 
 def _download_body(world: EvaluationWorld) -> dict[str, Any]:
-    """仅从公开任务输入构造真实下载操作的参数形状。"""
+    """
+    仅从公开任务输入构造真实下载操作的参数形状。
+    """
     return {
         "media_source": world.scenario.media_source,
         "media_id": world.scenario.media_id,
@@ -28,7 +32,9 @@ def _download_body(world: EvaluationWorld) -> dict[str, Any]:
 
 
 def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
-    """公开定义只有任务、业务身份及资源，答案和故障时序不能进入模型上下文。"""
+    """
+    公开定义只有任务、业务身份及资源，答案和故障时序不能进入模型上下文。
+    """
     scenarios = list_scenarios()
     assert len(scenarios) == 14
     api_scenarios = [scenario for scenario in scenarios if scenario.kind == "api"]
@@ -76,7 +82,9 @@ def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
 
 
 def test_world_has_no_application_network_or_persistence_imports() -> None:
-    """静态约束模拟业务独立于真实宿主，避免评测和实现共享同一份业务答案。"""
+    """
+    静态约束模拟业务独立于真实宿主，避免评测和实现共享同一份业务答案。
+    """
     allowed = {"base64", "binascii", "collections", "copy", "dataclasses", "json", "re", "threading", "typing", "urllib.parse",
                "scripts.evaluation.scenarios", "scripts.evaluation.programs"}
     directory = Path(__file__).parents[1] / "scripts" / "evaluation"
@@ -90,7 +98,9 @@ def test_world_has_no_application_network_or_persistence_imports() -> None:
 
 
 def test_world_operation_fields_match_current_moviepilot_schema() -> None:
-    """真实 API 的固定操作名与字段位置漂移时，独立模拟必须显式更新。"""
+    """
+    真实 API 的固定操作名与字段位置漂移时，独立模拟必须显式更新。
+    """
     # 只读取受版本控制的静态契约，不导入宿主或调用其参数解释实现。
     schema = json.loads((Path(__file__).parents[1] / "app/agent/policy/resources/api_mcp_schema.json").read_text(encoding="utf-8"))
     namespace = vars(world_module)
@@ -104,7 +114,9 @@ def test_world_operation_fields_match_current_moviepilot_schema() -> None:
 
 
 def test_existing_identity_is_found_under_old_title_without_writing() -> None:
-    """旧名订阅和不同资源标题仍应通过媒体身份与 Hash 复用。"""
+    """
+    旧名订阅和不同资源标题仍应通过媒体身份与 Hash 复用。
+    """
     world = EvaluationWorld("dedup_existing")
     subscription = world.execute(
         "subscription.find", path_params={"media_id": world.scenario.media_id},
@@ -137,7 +149,9 @@ def test_existing_identity_is_found_under_old_title_without_writing() -> None:
     ("download.add", {"body": {"media_in": {"media_id": "481001"}}}),
 ])
 def test_invalid_requests_do_not_produce_read_evidence_or_effects(operation: str, arguments: dict[str, Any]) -> None:
-    """错误操作不得修改世界，也不得被账本误记为已查询目标资源。"""
+    """
+    错误操作不得修改世界，也不得被账本误记为已查询目标资源。
+    """
     world = EvaluationWorld("dedup_existing")
     before = world.snapshot()
     response = world.execute(operation, **arguments)
@@ -149,7 +163,9 @@ def test_invalid_requests_do_not_produce_read_evidence_or_effects(operation: str
 
 
 def test_pagination_only_observes_returned_records() -> None:
-    """总数不是目标存在证据；只看第一页的无关任务不能算读到第二页目标。"""
+    """
+    总数不是目标存在证据；只看第一页的无关任务不能算读到第二页目标。
+    """
     world = EvaluationWorld("dedup_existing")
     response = world.execute("download.tasks.active", query={"page": 1, "count": 1})
     assert response["collection"] == {"result_count": 1, "total_count": 2}
@@ -159,7 +175,9 @@ def test_pagination_only_observes_returned_records() -> None:
 
 
 def test_long_context_requires_all_pages_before_target_is_observed() -> None:
-    """长上下文场景把目标放在第六页，分页证据不足时不能提前声称已确认。"""
+    """
+    长上下文场景把目标放在第六页，分页证据不足时不能提前声称已确认。
+    """
     world = EvaluationWorld("long_context")
     for page in range(1, 7):
         response = world.execute("subscription.list", query={"page": page, "count": 20})
@@ -187,7 +205,9 @@ def test_long_context_requires_all_pages_before_target_is_observed() -> None:
 
 
 def test_wrong_identity_and_downloader_filter_do_not_observe_target() -> None:
-    """有效但不匹配的查询只得到空结果，不能把未返回的真实状态当作观察证据。"""
+    """
+    有效但不匹配的查询只得到空结果，不能把未返回的真实状态当作观察证据。
+    """
     world = EvaluationWorld("dedup_existing")
     response = world.execute(
         "subscription.find", path_params={"media_id": world.scenario.media_id}, query={"media_source": "douban"},
@@ -200,7 +220,9 @@ def test_wrong_identity_and_downloader_filter_do_not_observe_target() -> None:
 
 @pytest.mark.parametrize("encoding", ["original", "uppercase", "base32"])
 def test_duplicate_submission_attempts_are_counted_by_resource_identity(encoding: str) -> None:
-    """改标题、参数顺序或 Hash 编码也属于重复提交，即使下载器拒绝仍须记账。"""
+    """
+    改标题、参数顺序或 Hash 编码也属于重复提交，即使下载器拒绝仍须记账。
+    """
     world = EvaluationWorld("dedup_existing")
     body = _download_body(world)
     infohash = world.scenario.infohash
@@ -217,7 +239,9 @@ def test_duplicate_submission_attempts_are_counted_by_resource_identity(encoding
 
 
 def test_duplicate_subscription_attempt_is_rejected_despite_new_title() -> None:
-    """同媒体新名字的订阅请求仍是重复尝试，不能靠 API 拒绝掩盖错误决策。"""
+    """
+    同媒体新名字的订阅请求仍是重复尝试，不能靠 API 拒绝掩盖错误决策。
+    """
     world = EvaluationWorld("dedup_existing")
     response = world.execute("subscription.add", body={
         "name": world.scenario.title, "media_source": world.scenario.media_source, "media_id": world.scenario.media_id,
@@ -228,7 +252,9 @@ def test_duplicate_subscription_attempt_is_rejected_despite_new_title() -> None:
 
 
 def test_unknown_response_occurs_after_real_download_side_effect() -> None:
-    """回执未知时下载已存在，只有后续实际读取才能获得该资源的确认事实。"""
+    """
+    回执未知时下载已存在，只有后续实际读取才能获得该资源的确认事实。
+    """
     world = EvaluationWorld("unknown_download")
     response = world.execute("download.add", body=_download_body(world))
     assert response["outcome"] == "unknown"
@@ -248,7 +274,9 @@ def test_unknown_response_occurs_after_real_download_side_effect() -> None:
 
 
 def test_unavailable_download_reads_do_not_prevent_independent_site_evidence() -> None:
-    """提交前可排除重复，未知回执后持续不可查；站点仍可独立读取且不能充当下载证据。"""
+    """
+    提交前可排除重复，未知回执后持续不可查；站点仍可独立读取且不能充当下载证据。
+    """
     world = EvaluationWorld("honest_unknown")
     initial_downloads = world.execute("download.tasks.active")
     assert initial_downloads["outcome"] == "succeeded"
@@ -264,7 +292,9 @@ def test_unavailable_download_reads_do_not_prevent_independent_site_evidence() -
 
 
 def test_deleting_unrelated_record_is_real_mutation_visible_to_oracle() -> None:
-    """错误清理应真实改变模拟业务，而非只留一句供模型自我打分的结果。"""
+    """
+    错误清理应真实改变模拟业务，而非只留一句供模型自我打分的结果。
+    """
     world = EvaluationWorld("unknown_download")
     record = world.initial_snapshot()["subscriptions"][0]
     response = world.execute("subscription.delete", path_params={"subscribe_id": record["id"]})
@@ -275,7 +305,9 @@ def test_deleting_unrelated_record_is_real_mutation_visible_to_oracle() -> None:
 
 
 def test_worlds_and_reset_isolate_state_ledger_and_unknown_sequence() -> None:
-    """同场景重复运行互不污染，重置还原副作用及首次未知的故障时序。"""
+    """
+    同场景重复运行互不污染，重置还原副作用及首次未知的故障时序。
+    """
     first = EvaluationWorld("unknown_download")
     second = EvaluationWorld("unknown_download")
     body = _download_body(first)
@@ -289,12 +321,16 @@ def test_worlds_and_reset_isolate_state_ledger_and_unknown_sequence() -> None:
 
 
 def test_parallel_duplicate_submissions_preserve_atomic_state_and_ledger() -> None:
-    """并行工具提交相同资源时，真实新增、首次未知和每次重复尝试都只能按原子顺序发生。"""
+    """
+    并行工具提交相同资源时，真实新增、首次未知和每次重复尝试都只能按原子顺序发生。
+    """
     world = EvaluationWorld("unknown_download")
     barrier = Barrier(8)
 
     def submit() -> dict[str, Any]:
-        """同时进入操作边界，验证世界不依赖 Harness 串行调度。"""
+        """
+        同时进入操作边界，验证世界不依赖 Harness 串行调度。
+        """
         barrier.wait(timeout=5)
         return world.execute("download.add", body=_download_body(world))
 
@@ -308,7 +344,9 @@ def test_parallel_duplicate_submissions_preserve_atomic_state_and_ledger() -> No
 
 
 def test_returned_state_and_ledger_copies_cannot_mutate_world() -> None:
-    """工具返回值、快照和账本均为深拷贝，外部改写无法污染事实。"""
+    """
+    工具返回值、快照和账本均为深拷贝，外部改写无法污染事实。
+    """
     world = EvaluationWorld("dedup_existing")
     response = world.execute("download.tasks.active")
     response["data"][0]["media"]["media_id"] = "poison"
@@ -323,7 +361,9 @@ def test_returned_state_and_ledger_copies_cannot_mutate_world() -> None:
 
 
 def test_request_copy_cannot_rewrite_recorded_attempts() -> None:
-    """调用者复用参数对象时，先前提交的资源和事件证据保持不变。"""
+    """
+    调用者复用参数对象时，先前提交的资源和事件证据保持不变。
+    """
     world = EvaluationWorld("unknown_download")
     body = _download_body(world)
     world.execute("download.add", body=body)
@@ -332,7 +372,9 @@ def test_request_copy_cannot_rewrite_recorded_attempts() -> None:
 
 
 def test_requests_cannot_select_or_observe_another_scenario() -> None:
-    """不存在按场景切换的工具参数，另一场景的目标 ID 不能读出其状态。"""
+    """
+    不存在按场景切换的工具参数，另一场景的目标 ID 不能读出其状态。
+    """
     world = EvaluationWorld("unknown_download")
     other = get_scenario("dedup_existing")
     response = world.execute("subscription.list", query={"scenario_id": other.scenario_id})

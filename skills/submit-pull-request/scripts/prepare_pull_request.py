@@ -1,4 +1,6 @@
-"""校验 Git clone 的变更并生成需要用户确认的 PR 预览。"""
+"""
+校验 Git 克隆的变更并生成需要用户确认的 PR 预览。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+# 脚本先补充本地模块或项目根目录，再导入对应依赖。
 from pr_common import (  # noqa: E402
     GitHubApiError,
     GitHubClient,
@@ -36,7 +39,9 @@ from pr_common import (  # noqa: E402
 
 
 def _text_field(draft: dict[str, Any], name: str, *, required: bool = True, limit: int = 100_000) -> str:
-    """读取并限制草稿文本字段，避免把超大内容送入 GitHub API。"""
+    """
+    读取并限制草稿文本字段，避免把超大内容送入 GitHub API。
+    """
     value = draft.get(name, "")
     if not isinstance(value, str):
         raise PullRequestError("invalid_draft", f"草稿字段 {name} 必须是字符串。")
@@ -49,7 +54,9 @@ def _text_field(draft: dict[str, Any], name: str, *, required: bool = True, limi
 
 
 def _read_changes_metadata(changes_file: Path) -> dict[str, Any]:
-    """读取采集脚本生成的变更摘要元数据。"""
+    """
+    读取采集脚本生成的变更摘要元数据。
+    """
     data = read_json_file(changes_file, reason="invalid_changes")
     if not isinstance(data.get("fingerprint"), str) or not data.get("fingerprint"):
         raise PullRequestError("invalid_changes", "变更摘要缺少指纹。")
@@ -69,7 +76,9 @@ def _preview_text(
     draft: bool,
     existing_pull: list[dict[str, Any]],
 ) -> str:
-    """生成可直接展示给用户的完整 PR 预览。"""
+    """
+    生成可直接展示给用户的完整 PR 预览。
+    """
     lines = [
         "# MoviePilot Agent PR 预览",
         "",
@@ -113,7 +122,9 @@ def _preview_text(
 
 
 def prepare_pull_request(draft_file: str) -> dict[str, Any]:
-    """校验草稿和 Git 工作树，生成 payload 与完整预览文件。"""
+    """
+    校验草稿和 Git 工作树，生成提交数据与完整预览文件。
+    """
     draft_path = Path(draft_file).expanduser().resolve()
     draft = read_json_file(draft_path, reason="invalid_draft")
     try:
@@ -261,14 +272,18 @@ def prepare_pull_request(draft_file: str) -> dict[str, Any]:
 
 
 def _parse_args() -> argparse.Namespace:
-    """解析 PR 预览脚本命令行参数。"""
+    """
+    解析 PR 预览脚本命令行参数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--draft-file", required=True, help="Agent 写入 runtime_dir 的 PR 草稿 JSON")
     return parser.parse_args()
 
 
 def main() -> int:
-    """执行 PR 预览入口并输出机器可解析 JSON。"""
+    """
+    执行 PR 预览入口并输出机器可解析 JSON。
+    """
     try:
         arguments = _parse_args()
         result = prepare_pull_request(arguments.draft_file)

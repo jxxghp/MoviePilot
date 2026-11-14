@@ -1,3 +1,7 @@
+"""
+获取验证码图片并调用配置的 OCR 服务，兼容原始字节和 Base64 接口。
+"""
+
 import base64
 import binascii
 from typing import Optional
@@ -12,7 +16,9 @@ class OcrHelper:
     """
 
     def __init__(self, ocr_base_url: Optional[str] = None) -> None:
-        """初始化 OCR 服务地址，优先使用组合根设置快照。"""
+        """
+        初始化 OCR 服务地址，优先使用组合根设置快照。
+        """
         if ocr_base_url is None:
             ocr_base_url = get_runtime_setting('OCR_HOST')
         base_url = str(ocr_base_url).rstrip('/')
@@ -29,6 +35,7 @@ class OcrHelper:
     ) -> str:
         """
         获取验证码图片并识别内容，优先使用原始图片字节接口。
+
         :param image_url: 图片地址
         :param image_b64: 图片base64，跳过图片地址下载
         :param cookie: 下载图片使用的cookie
@@ -48,7 +55,7 @@ class OcrHelper:
                 except (ValueError, binascii.Error):
                     return ""
             else:
-                ret = RequestUtils(ua=ua,
+                ret = RequestUtils(ua=ua or "",
                                    cookies=cookie).get_res(image_url)
                 if ret is not None:
                     raw_image = ret.content or b""
@@ -73,7 +80,9 @@ class OcrHelper:
 
     @staticmethod
     def _normalize_image_base64(image_b64: Optional[str]) -> str:
-        """规范化外部传入的图片 base64 内容。"""
+        """
+        规范化外部传入的图片 base64 内容。
+        """
         if not image_b64:
             return ""
         clean_image_b64 = OcrHelper._extract_data_url_base64(image_b64) or image_b64
@@ -87,7 +96,9 @@ class OcrHelper:
 
     @staticmethod
     def _extract_data_url_base64(image_url: Optional[str]) -> str:
-        """从 data:image/...;base64,... 地址中提取纯 base64 内容。"""
+        """
+        从 data:image/...;base64,... 地址中提取纯 base64 内容。
+        """
         image_url = (image_url or "").strip()
         if not image_url.lower().startswith("data:image/"):
             return ""

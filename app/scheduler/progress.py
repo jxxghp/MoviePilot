@@ -1,4 +1,6 @@
-"""调度任务进度快照与终态收敛。"""
+"""
+调度任务进度快照与终态收敛。
+"""
 
 import time
 from datetime import datetime
@@ -16,7 +18,9 @@ SCHEDULER_PROGRESS_PREFIX = "scheduler"
 
 
 class SchedulerProgressOwner(_SchedulerOwnerBase):
-    """调度任务进度快照与终态收敛。"""
+    """
+    调度任务进度快照与终态收敛。
+    """
 
     def _finish_unsubmitted_job(
         self,
@@ -25,7 +29,9 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
         generation: int,
         error: Optional[str],
     ) -> None:
-        """收尾协程无法提交时同步释放任务状态和运行所有权。"""
+        """
+        收尾协程无法提交时同步释放任务状态和运行所有权。
+        """
         finished_at = self._format_time()
         metric_started_at = None
         with self._lock:
@@ -91,7 +97,11 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
         # 收尾可能发生在事件循环上（_run_coro_job），使用异步进度后端避免阻塞
         progress = AsyncProgressHelper(self._get_progress_key(job_id))
         try:
-            current_progress = await progress.get() or {}
+            current_progress_raw = await progress.get()
+            current_progress: dict[str, Any] = (
+                dict(current_progress_raw)
+                if isinstance(current_progress_raw, dict) else {}
+            )
             progress_value = 100 if success else current_progress.get("value", 0)
             await progress.end(
                 text=f"{job_name} {'执行完成' if success else '执行失败'}",
@@ -125,10 +135,14 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
             last_started_at = job.get("last_started_at") if job else None
             last_finished_at = job.get("last_finished_at") if job else None
             last_error = job.get("last_error") if job else None
-        detail = ProgressHelper(self._get_progress_key(job_id)).get() or {}
+        detail_raw = ProgressHelper(self._get_progress_key(job_id)).get()
+        detail: dict[str, Any] = (
+            dict(detail_raw) if isinstance(detail_raw, dict) else {}
+        )
         if not job and not detail:
             return None
-        data = dict(detail.get("data") or {})
+        detail_data = detail.get("data")
+        data: dict[str, Any] = dict(detail_data) if isinstance(detail_data, dict) else {}
         progress_generation = data.pop("_generation", None)
         if job and progress_generation is not None and progress_generation != job.get("_generation", 0):
             detail = {}
@@ -168,10 +182,14 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
             last_finished_at = job.get("last_finished_at") if job else None
             last_error = job.get("last_error") if job else None
         # 异步后端读取，避免在事件循环上阻塞
-        detail = await AsyncProgressHelper(self._get_progress_key(job_id)).get() or {}
+        detail_raw = await AsyncProgressHelper(self._get_progress_key(job_id)).get()
+        detail: dict[str, Any] = (
+            dict(detail_raw) if isinstance(detail_raw, dict) else {}
+        )
         if not job and not detail:
             return None
-        data = dict(detail.get("data") or {})
+        detail_data = detail.get("data")
+        data: dict[str, Any] = dict(detail_data) if isinstance(detail_data, dict) else {}
         progress_generation = data.pop("_generation", None)
         if job and progress_generation is not None and progress_generation != job.get("_generation", 0):
             detail = {}
@@ -223,6 +241,9 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
             key = self._get_progress_key(job_id)
 
             async def _update() -> None:
+                """
+                只更新仍属于当前任务代际的进度，避免旧回调覆盖重建后的任务。
+                """
                 with self._lock:
                     current_job = self._jobs.get(job_id)
                     if current_job is not job or current_job.get("_generation", 0) != generation:

@@ -1,4 +1,6 @@
-"""持久副作用 outbox 模型。"""
+"""
+持久副作用 outbox 模型。
+"""
 
 from typing import Any, Optional
 
@@ -9,7 +11,9 @@ from app.db.base import Base, get_id_column
 
 
 class OutboxMessage(Base):
-    """记录与业务事务原子提交、可认领重试的副作用意图。"""
+    """
+    记录与业务事务原子提交、可认领重试的副作用意图。
+    """
 
     id = get_id_column()
     event_key: Mapped[str] = mapped_column(String(255), nullable=False)

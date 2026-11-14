@@ -1,8 +1,9 @@
-"""3.0.28 为 durable transfer 检查点冻结最终分类快照。
+"""
+3.0.28 为 持久整理任务 检查点冻结最终分类快照。
 
-Revision ID: d8f2b6a4c1e7
-Revises: c9a4d7e2f1b6
-Create Date: 2026-09-03
+版本标识： d8f2b6a4c1e7
+前置版本： c9a4d7e2f1b6
+创建时间： 2026-09-03
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -22,8 +23,11 @@ depends_on = None
 
 _PENDING_TABLE = "transferpending"
 _STEP_TABLE = "transferexecutionstep"
+# 尚未冻结分类结果的第一版整理检查点。
 _LEGACY_CHECKPOINT_VERSION = 1
+# 显式冻结最终分类快照的第二版整理检查点。
 _CLASSIFIED_CHECKPOINT_VERSION = 2
+# 第二版检查点必须持久化的分类身份、目录与策略来源字段。
 _CLASSIFICATION_FIELDS = (
     "category_id",
     "library_category",
@@ -39,10 +43,15 @@ _REQUIRED_PENDING_COLUMNS = {
     "execution_state",
     "execution_payload",
 }
+# 分类路径最多包含四层，与当前分类路径安全契约保持一致。
 _MAX_CATEGORY_DEPTH = 4
+# 分类路径单段最多 64 个字符，避免迁移出无法使用的目录名。
 _MAX_CATEGORY_SEGMENT_LENGTH = 64
+# 完整分类相对路径最多 240 个字符，保留跨平台文件路径余量。
 _MAX_CATEGORY_PATH_LENGTH = 240
+# 分类目录段禁止使用的跨平台路径分隔符与文件名保留字符。
 _ILLEGAL_PATH_CHARACTERS = frozenset('<>:"/\\|?*')
+# Windows 保留设备名；即使当前数据库在其他系统上也不能生成此类目录。
 _WINDOWS_RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -54,12 +63,16 @@ _WINDOWS_RESERVED_NAMES = {
 
 
 def _table_names() -> set[str]:
-    """返回当前数据库中的数据表集合。"""
+    """
+    返回当前数据库中的数据表集合。
+    """
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def _column_names(table_name: str) -> set[str]:
-    """返回指定数据表的字段集合。"""
+    """
+    返回指定数据表的字段集合。
+    """
     return {
         str(column["name"])
         for column in sa.inspect(op.get_bind()).get_columns(table_name)
@@ -67,7 +80,9 @@ def _column_names(table_name: str) -> set[str]:
 
 
 def _validate_schema() -> None:
-    """拒绝在缺少 durable transfer 契约的残缺数据库上改写计划身份。"""
+    """
+    拒绝在缺少 持久整理任务 契约的残缺数据库上改写计划身份。
+    """
     tables = _table_names()
     if _PENDING_TABLE not in tables or _STEP_TABLE not in tables:
         raise RuntimeError("缺少 durable transfer 数据表，拒绝迁移分类检查点")
@@ -81,7 +96,9 @@ def _validate_schema() -> None:
 
 
 def _pending_relation() -> TableClause:
-    """构造迁移所需的最小待整理表关系。"""
+    """
+    构造迁移所需的最小待整理表关系。
+    """
     return sa.table(
         _PENDING_TABLE,
         sa.column("id", sa.Integer()),
@@ -94,7 +111,9 @@ def _pending_relation() -> TableClause:
 
 
 def _step_relation() -> TableClause:
-    """构造判断外部操作证据所需的最小步骤表关系。"""
+    """
+    构造判断外部操作证据所需的最小步骤表关系。
+    """
     return sa.table(
         _STEP_TABLE,
         sa.column("task_id", sa.String(64)),
@@ -102,7 +121,9 @@ def _step_relation() -> TableClause:
 
 
 def _step_task_ids() -> set[str]:
-    """返回至少持久化过一个执行步骤的任务身份集合。"""
+    """
+    返回至少持久化过一个执行步骤的任务身份集合。
+    """
     steps = _step_relation()
     return {
         str(task_id)
@@ -117,7 +138,9 @@ def _has_execution_evidence(
     row: Mapping[str, Any],
     step_task_ids: set[str],
 ) -> bool:
-    """判断检查点是否已有不能改变 operation identity 的执行证据。"""
+    """
+    判断检查点是否已有不能改变 操作身份 的执行证据。
+    """
     return (
         row["execution_state"] != "not_started"
         or row["execution_payload"] is not None
@@ -126,7 +149,9 @@ def _has_execution_evidence(
 
 
 def _optional_text(value: object) -> tuple[Optional[str], bool]:
-    """规范可空文本；类型异常时要求保留原 v1 检查点。"""
+    """
+    规范可空文本；类型异常时要求保留原 v1 检查点。
+    """
     if value is None:
         return None, True
     if not isinstance(value, str):
@@ -135,7 +160,9 @@ def _optional_text(value: object) -> tuple[Optional[str], bool]:
 
 
 def _optional_revision(value: object) -> tuple[Optional[int], bool]:
-    """规范可空策略版本，拒绝布尔值和不可解析文本。"""
+    """
+    规范可空策略版本，拒绝布尔值和不可解析文本。
+    """
     if value is None:
         return None, True
     if isinstance(value, bool) or not isinstance(value, (int, str)):
@@ -147,7 +174,9 @@ def _optional_revision(value: object) -> tuple[Optional[int], bool]:
 
 
 def _path_segment_is_illegal(segment: str) -> bool:
-    """判断路径段是否包含目录穿越或跨平台非法文件名。"""
+    """
+    判断路径段是否包含目录穿越或跨平台非法文件名。
+    """
     if segment in {".", ".."} or segment != segment.strip():
         return True
     if segment.endswith((".", " ")):
@@ -160,7 +189,9 @@ def _path_segment_is_illegal(segment: str) -> bool:
 
 
 def _optional_library_category(value: object) -> tuple[Optional[str], bool]:
-    """把旧字符串或路径段数组规范为安全 POSIX 相对路径。"""
+    """
+    把旧字符串或路径段数组规范为安全 POSIX 相对路径。
+    """
     if value is None:
         return None, True
     raw_segments: Sequence[object]
@@ -197,12 +228,16 @@ def _optional_library_category(value: object) -> tuple[Optional[str], bool]:
 
 
 def _empty_classification_snapshot() -> dict[str, object]:
-    """构造 v2 必须显式持久化的五字段空分类快照。"""
+    """
+    构造 v2 必须显式持久化的五字段空分类快照。
+    """
     return {field_name: None for field_name in _CLASSIFICATION_FIELDS}
 
 
 def _media_payload(checkpoint_payload: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
-    """按运行时优先级读取 checkpoint 自身冻结的媒体载荷。"""
+    """
+    按运行时优先级读取 检查点自身冻结的媒体载荷。
+    """
     resolved = checkpoint_payload.get("resolved_mediainfo")
     if isinstance(resolved, Mapping):
         return resolved
@@ -217,7 +252,9 @@ def _media_payload(checkpoint_payload: Mapping[str, Any]) -> Optional[Mapping[st
 def _classification_snapshot(
     checkpoint_payload: Mapping[str, Any],
 ) -> tuple[dict[str, object], bool]:
-    """只从持久媒体载荷投影最终分类，绝不读取当前策略或 metadata_category。"""
+    """
+    只从持久媒体载荷投影最终分类，绝不读取当前策略或 metadata_category。
+    """
     media_payload = _media_payload(checkpoint_payload)
     if media_payload is None:
         return _empty_classification_snapshot(), True
@@ -265,7 +302,9 @@ def _classification_snapshot(
 
 
 def _upgrade_payload(payload: object) -> Optional[dict[str, Any]]:
-    """把可安全解释的 v1 计划复制为带显式分类快照的 v2 计划。"""
+    """
+    把可安全解释的 v1 计划复制为带显式分类快照的 v2 计划。
+    """
     if not isinstance(payload, Mapping) or payload.get("schema_version") != 1:
         return None
     snapshot, valid = _classification_snapshot(payload)
@@ -278,7 +317,9 @@ def _upgrade_payload(payload: object) -> Optional[dict[str, Any]]:
 
 
 def _downgrade_payload(payload: object) -> dict[str, Any]:
-    """移除 v2 分类快照并恢复 v1 版本标记。"""
+    """
+    移除 v2 分类快照并恢复 v1 版本标记。
+    """
     if not isinstance(payload, Mapping) or payload.get("schema_version") != 2:
         raise RuntimeError("v2 整理检查点载荷无效，拒绝降级")
     downgraded = dict(payload)
@@ -288,7 +329,9 @@ def _downgrade_payload(payload: object) -> dict[str, Any]:
 
 
 def upgrade() -> None:
-    """无执行证据时把 v1 检查点幂等升级为分类快照 v2。"""
+    """
+    无执行证据时把 v1 检查点幂等升级为分类快照 v2。
+    """
     _validate_schema()
     pending = _pending_relation()
     step_task_ids = _step_task_ids()
@@ -320,7 +363,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """仅降级无执行证据的 v2；任何执行证据都会原子阻止降级。"""
+    """
+    仅降级无执行证据的 v2；任何执行证据都会原子阻止降级。
+    """
     _validate_schema()
     pending = _pending_relation()
     step_task_ids = _step_task_ids()

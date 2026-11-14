@@ -1,17 +1,22 @@
-import re
-from typing import Any, Tuple, List, Optional
+"""
+通过 TNode 接口搜索种子并转换为通用索引结果。
+"""
 
+import re
+from typing import Any, List, Optional, Tuple
+
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.foundation import temporal as time_tools
+from app.foundation.crypto import HashUtils
 from app.runtime.cache import cached
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
-from app.runtime.log import logger
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
-from app.foundation.singleton import SingletonClass
-from app.foundation import temporal as time_tools
 
-
-class TNodeSpider(metaclass=SingletonClass):
-    """TNode 页面令牌与种子搜索 API 适配器。"""
+class TNodeSpider:
+    """
+    TNode 页面令牌与种子搜索 API 适配器。
+    """
 
     _size = 100
     _timeout = 15
@@ -24,11 +29,16 @@ class TNodeSpider(metaclass=SingletonClass):
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
         获取搜索接口单页容量。
+
+        :param keyword: 保留统一入口参数，不影响本站的分页容量
+        :return: 本站搜索接口的固定单页记录数
         """
         return cls._size
 
-    def __init__(self, indexer: dict):
-        """使用站点配置初始化 TNode 请求上下文。"""
+    def __init__(self, indexer: dict[str, Any]):
+        """
+        使用站点配置初始化 TNode 请求上下文。
+        """
         if indexer:
             self._indexerid = indexer.get('id')
             self._domain = indexer.get('domain')
@@ -37,25 +47,78 @@ class TNodeSpider(metaclass=SingletonClass):
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
             self._cookie = indexer.get('cookie')
+            self._token_key = HashUtils.md5(repr((self._domain, self._cookie, indexer.get('ua'))))
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15
 
-    @cached(region="indexer_spider", maxsize=1, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        重新提取当前 Cookie 的 CSRF 令牌，再验证当前用户 API，不复用搜索令牌缓存。
+
+        :return: 当前会话是否有效及连接、令牌或认证失败原因
+        """
+        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        cookie = self._cookie or ""
+        with RequestUtils(ua=user_agent, cookies=cookie, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=str(self._domain), allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            match = re.search(r'<meta name="x-csrf-token" content="(.+?)">', response.text)
+        if not match:
+            return False, "无法获取Token"
+        with RequestUtils(headers={
+            "X-CSRF-TOKEN": match.group(1), "Content-Type": "application/json; charset=utf-8", "User-Agent": user_agent,
+        }, cookies=cookie, ua=user_agent, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=f"{str(self._domain).rstrip('/')}/api/user/getInfo", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            payload = response.json()
+            if isinstance(payload, dict) and payload.get("data"):
+                return True, "连接成功"
+            return False, "Cookie已失效"
+
     def __get_token(self) -> Optional[str]:
-        """同步请求站点首页并提取 CSRF 令牌。"""
+        """
+        以当前站点和凭据隔离的缓存键获取同步CSRF令牌。
+        """
+        return self.__cached_token(self._token_key)
+
+    async def __async_get_token(self) -> Optional[str]:
+        """
+        以当前站点和凭据隔离的缓存键获取异步CSRF令牌。
+        """
+        return await self.__async_cached_token(self._token_key)
+
+    @cached(region="indexer_spider", maxsize=64, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
+    def __cached_token(self, _identity: str) -> Optional[str]:
+        """
+        同步请求站点首页并提取 CSRF 令牌。
+
+        :param _identity: 站点和凭据摘要，用于隔离共享令牌缓存
+        """
         if not self._domain:
-            return
+            return None
         res = RequestUtils(ua=self._ua,
                            cookies=self._cookie,
                            proxies=self._proxy,
                            timeout=self._timeout).get_res(url=self._domain)
         return self.__parse_token_response(res)
 
-    @cached(region="indexer_spider", maxsize=1, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
-    async def __async_get_token(self) -> Optional[str]:
-        """异步请求站点首页并提取 CSRF 令牌。"""
+    @cached(region="indexer_spider", maxsize=64, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
+    async def __async_cached_token(self, _identity: str) -> Optional[str]:
+        """
+        异步请求站点首页并提取 CSRF 令牌。
+
+        :param _identity: 站点和凭据摘要，用于隔离共享令牌缓存
+        """
         if not self._domain:
-            return
+            return None
         res = await AsyncRequestUtils(ua=self._ua,
                                       cookies=self._cookie,
                                       proxies=self._proxy,
@@ -64,19 +127,21 @@ class TNodeSpider(metaclass=SingletonClass):
 
     @staticmethod
     def __parse_token_response(res: Any) -> Optional[str]:
-        """从同步或异步首页响应中提取有效 CSRF 令牌。"""
+        """
+        从同步或异步首页响应中提取有效 CSRF 令牌。
+        """
         if not res or res.status_code != 200:
             return None
         csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
         return csrf_token.group(1) if csrf_token else None
 
-    def __get_params(self, keyword: str = None, page: Optional[int] = 0) -> dict:
+    def __get_params(self, keyword: Optional[str] = None, page: Optional[int] = 0) -> dict[str, object]:
         """
-        获取搜索参数
+        获取搜索参数。
         """
         search_type = "imdbid" if (keyword and keyword.startswith('tt')) else "title"
         return {
-            "page": int(page) + 1,
+            "page": int(page or 0) + 1,
             "size": self._size,
             "type": search_type,
             "keyword": keyword or "",
@@ -91,11 +156,11 @@ class TNodeSpider(metaclass=SingletonClass):
             "group": []
         }
 
-    def __parse_result(self, results: List[dict]) -> List[dict]:
+    def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
-        解析搜索结果
+        解析搜索结果。
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         if not results:
             return torrents
 
@@ -119,7 +184,9 @@ class TNodeSpider(metaclass=SingletonClass):
         return torrents
 
     def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
-        """统一判定搜索响应状态并投影 TNode 种子结果。"""
+        """
+        统一判定搜索响应状态并投影 TNode 种子结果。
+        """
         if res and res.status_code == 200:
             results = res.json().get('data', {}).get("torrents") or []
             return False, self.__parse_result(results)
@@ -129,20 +196,23 @@ class TNodeSpider(metaclass=SingletonClass):
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(
+        self, keyword: str, page: Optional[int] = 0
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        搜索
+        同步搜索 TNode 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
-        # 获取token
         _token = self.__get_token()
         if not _token:
             logger.warn(f"{self._name} 未获取到token，无法搜索")
             return True, []
 
-        # 获取请求参数
         params = self.__get_params(keyword, page)
 
-        # 发送请求
         res = RequestUtils(
             headers={
                 'X-CSRF-TOKEN': _token,
@@ -155,20 +225,23 @@ class TNodeSpider(metaclass=SingletonClass):
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(
+        self, keyword: str, page: Optional[int] = 0
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        异步搜索
+        异步搜索 TNode 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
-        # 获取token
         _token = await self.__async_get_token()
         if not _token:
             logger.warn(f"{self._name} 未获取到token，无法搜索")
             return True, []
 
-        # 获取请求参数
         params = self.__get_params(keyword, page)
 
-        # 发送请求
         res = await AsyncRequestUtils(
             headers={
                 'x-csrf-token': _token,

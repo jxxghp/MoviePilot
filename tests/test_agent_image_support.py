@@ -1,3 +1,7 @@
+"""
+验证消息渠道的图片、音频和文件输入解析及 Agent 路由。
+"""
+
 import asyncio
 import base64
 import json
@@ -8,16 +12,23 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import quote
 
+# 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.agent import AgentChain, MoviePilotAgent  # pylint: disable=no-name-in-module
+
+# 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.agent.llm import LLMHelper  # pylint: disable=no-name-in-module
 from app.agent.tools.impl.send_local_file import SendLocalFileInput
 from app.agent.tools.impl.send_message import SendMessageInput, SendMessageTool
 from app.chain.message import MessageChain
 from app.modules.discord import DiscordModule
+
+# 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.modules.qqbot import QQBotModule  # pylint: disable=no-name-in-module
 from app.modules.qqbot.qqbot import QQBot
 from app.modules.slack import SlackModule
 from app.modules.synologychat import SynologyChatModule
+
+# 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.modules.telegram import TelegramModule  # pylint: disable=no-name-in-module
 from app.modules.telegram.botapi import TelegramBotApi
 from app.modules.telegram.telegram import Telegram
@@ -26,11 +37,16 @@ from app.modules.wechat import WechatModule
 from app.modules.wechat.wechatbot import WeChatBot
 from app.runtime.config import settings
 from app.runtime.loop import main_loop_registry
+
+# 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.schemas import IncomingMessage, Message  # pylint: disable=no-name-in-module
 from app.schemas.types import MessageType, NotificationChannel
 
 
 def test_telegram_extract_audio_refs_returns_prefixed_file_ids():
+    """
+    Telegram 音频引用带渠道前缀，便于后续选择下载器。
+    """
     audio_refs = TelegramModule._extract_audio_refs(
         {
             "voice": {"file_id": "voice-1"},
@@ -42,6 +58,9 @@ def test_telegram_extract_audio_refs_returns_prefixed_file_ids():
 
 
 def test_telegram_extract_images_returns_prefixed_file_ids():
+    """
+    Telegram 图片引用带渠道前缀，便于后续选择下载器。
+    """
     images = TelegramModule._extract_images(
         {
             "photo": [{"file_id": "small"}, {"file_id": "large"}],
@@ -60,6 +79,9 @@ def test_telegram_extract_images_returns_prefixed_file_ids():
 
 
 def test_telegram_message_parser_accepts_double_encoded_body():
+    """
+    Telegram 消息解析兼容被重复 JSON 编码的请求正文。
+    """
     module = TelegramModule()
     body = json.dumps(
         json.dumps(
@@ -91,6 +113,9 @@ def test_telegram_message_parser_accepts_double_encoded_body():
 
 
 def test_telegram_download_file_uses_configured_file_url():
+    """
+    Telegram 文件下载使用配置的文件服务地址。
+    """
     telegram = Telegram.__new__(Telegram)
     # 自建 Bot API 地址：下载地址跟随该地址，且不走全局代理。
     bot = TelegramBotApi("token-123", api_url="https://tg-proxy.example")
@@ -112,6 +137,9 @@ def test_telegram_download_file_uses_configured_file_url():
 
 
 def test_telegram_download_file_uses_default_file_url_with_proxy():
+    """
+    Telegram 默认文件服务地址保留代理配置。
+    """
     telegram = Telegram.__new__(Telegram)
     proxy = {"https": "http://127.0.0.1:7890"}
     # 官方 Bot API 地址：下载请求沿用客户端的代理配置。
@@ -134,6 +162,9 @@ def test_telegram_download_file_uses_default_file_url_with_proxy():
 
 
 def test_process_allows_image_only_message():
+    """
+    消息处理入口接受仅包含图片的消息。
+    """
     chain = MessageChain()
     message = IncomingMessage(
         channel=NotificationChannel.Telegram,
@@ -154,6 +185,9 @@ def test_process_allows_image_only_message():
 
 
 def test_process_allows_audio_only_message():
+    """
+    消息处理入口接受仅包含音频的消息。
+    """
     chain = MessageChain()
     message = IncomingMessage(
         channel=NotificationChannel.Telegram,
@@ -174,6 +208,9 @@ def test_process_allows_audio_only_message():
 
 
 def test_process_allows_file_only_message():
+    """
+    消息处理入口接受仅包含文件的消息。
+    """
     chain = MessageChain()
     message = IncomingMessage(
         channel=NotificationChannel.Telegram,
@@ -201,6 +238,9 @@ def test_process_allows_file_only_message():
 
 
 def test_image_message_routes_to_agent_even_when_global_agent_is_disabled():
+    """
+    全局 Agent 开关关闭时，图片消息仍进入指定 Agent 路由。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -230,6 +270,9 @@ def test_image_message_routes_to_agent_even_when_global_agent_is_disabled():
 
 
 def test_audio_message_routes_to_agent_without_forcing_voice_reply():
+    """
+    音频消息进入 Agent，但不强制使用语音回复。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -261,6 +304,9 @@ def test_audio_message_routes_to_agent_without_forcing_voice_reply():
 
 
 def test_file_message_routes_to_agent_even_when_global_agent_is_disabled():
+    """
+    全局 Agent 开关关闭时，文件消息仍进入指定 Agent 路由。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -297,6 +343,9 @@ def test_file_message_routes_to_agent_even_when_global_agent_is_disabled():
 
 
 def test_transcribe_audio_refs_supports_new_channel_refs():
+    """
+    音频转写支持新增渠道引用格式。
+    """
     chain = MessageChain()
     audio_refs = [
         "slack://file/" + quote("https://files.slack.com/test.mp3", safe=""),
@@ -350,6 +399,9 @@ def test_transcribe_audio_refs_supports_new_channel_refs():
 
 
 def test_agent_send_agent_message_keeps_default_text_reply():
+    """
+    发送 Agent 消息默认保持文本回复。
+    """
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="user-1",
@@ -372,6 +424,9 @@ def test_agent_send_agent_message_keeps_default_text_reply():
 
 
 def test_agent_process_wraps_request_as_structured_json():
+    """
+    Agent 处理入口将请求包装为结构化 JSON。
+    """
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="user-1",
@@ -410,7 +465,9 @@ def test_agent_process_wraps_request_as_structured_json():
 
 
 def test_agent_process_marks_voice_input_in_structured_json():
-    """语音输入应在结构化消息中标记为转写来源。"""
+    """
+    语音输入应在结构化消息中标记为转写来源。
+    """
     agent = MoviePilotAgent(
         session_id="session-1",
         user_id="user-1",
@@ -437,11 +494,17 @@ def test_agent_process_marks_voice_input_in_structured_json():
 
 
 def test_llm_supports_image_input_respects_explicit_override():
+    """
+    图片输入能力优先遵循显式覆盖配置。
+    """
     with patch.object(settings, "LLM_SUPPORT_IMAGE_INPUT", False):
         assert not LLMHelper.supports_image_input()
 
 
 def test_llm_supports_image_input_uses_boolean_setting():
+    """
+    图片输入能力读取布尔配置值。
+    """
     with patch.object(settings, "LLM_SUPPORT_IMAGE_INPUT", True):
         assert LLMHelper.supports_image_input()
 
@@ -450,6 +513,9 @@ def test_llm_supports_image_input_uses_boolean_setting():
 
 
 def test_handle_ai_message_routes_images_to_files_when_image_input_disabled():
+    """
+    模型不支持图片输入时，将图片按文件交给 Agent。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -504,7 +570,9 @@ def test_handle_ai_message_routes_images_to_files_when_image_input_disabled():
 
 
 def test_handle_ai_message_forwards_voice_input_to_agent_manager():
-    """AI消息入队时应保留语音输入标记。"""
+    """
+    AI消息入队时应保留语音输入标记。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -537,6 +605,9 @@ def test_handle_ai_message_forwards_voice_input_to_agent_manager():
 
 
 def test_slack_images_use_authenticated_data_url_download():
+    """
+    Slack 图片通过带认证的下载流程转换为数据 URL。
+    """
     chain = MessageChain()
 
     with patch.object(
@@ -559,6 +630,9 @@ def test_slack_images_use_authenticated_data_url_download():
 
 
 def test_slack_module_download_file_to_data_url():
+    """
+    Slack 模块将下载文件内容转换为数据 URL。
+    """
     module = SlackModule()
     client = Mock()
     client.download_file.return_value = (b"png-binary", "image/png")
@@ -575,6 +649,9 @@ def test_slack_module_download_file_to_data_url():
 
 
 def test_slack_extract_audio_refs_returns_private_file_refs():
+    """
+    Slack 音频解析保留私有文件引用。
+    """
     audio_refs = SlackModule._extract_audio_refs(
         {
             "files": [
@@ -595,6 +672,9 @@ def test_slack_extract_audio_refs_returns_private_file_refs():
 
 
 def test_send_message_input_accepts_image_only_payload():
+    """
+    消息发送参数允许只提供图片。
+    """
     payload = SendMessageInput(
         image_url="https://example.com/poster.png",
     )
@@ -603,7 +683,9 @@ def test_send_message_input_accepts_image_only_payload():
 
 
 def test_send_message_tool_uses_regular_notification_type():
-    """发送消息工具应按普通通知消息登记。"""
+    """
+    发送消息工具应按普通通知消息登记。
+    """
 
     async def _run():
         tool = SendMessageTool(session_id="session-1", user_id="10001")
@@ -638,7 +720,9 @@ def test_send_message_tool_uses_regular_notification_type():
 
 
 def test_send_message_tool_ignores_parse_mode_argument():
-    """发送消息工具不再支持由 Agent 指定 Telegram parse_mode。"""
+    """
+    发送消息工具不再支持由 Agent 指定 Telegram parse_mode。
+    """
 
     async def _run():
         tool = SendMessageTool(session_id="session-1", user_id="10001")
@@ -667,7 +751,9 @@ def test_send_message_tool_ignores_parse_mode_argument():
 
 
 def test_send_message_tool_marks_reply_sent_after_dispatch():
-    """发送消息工具成功发送后应终止本轮回复。"""
+    """
+    发送消息工具成功发送后应终止本轮回复。
+    """
 
     async def _run():
         tool = SendMessageTool(session_id="session-1", user_id="10001")
@@ -694,6 +780,9 @@ def test_send_message_tool_marks_reply_sent_after_dispatch():
 
 
 def test_send_local_file_input_accepts_file_payload():
+    """
+    本地文件发送参数接受文件载荷。
+    """
     payload = SendLocalFileInput(
         file_path="/tmp/report.txt",
         message="请下载查看",
@@ -703,6 +792,9 @@ def test_send_local_file_input_accepts_file_payload():
 
 
 def test_discord_extract_images_supports_attachment_content_type():
+    """
+    Discord 根据附件内容类型提取图片。
+    """
     images = DiscordModule._extract_images(
         {
             "attachments": [
@@ -719,6 +811,9 @@ def test_discord_extract_images_supports_attachment_content_type():
 
 
 def test_discord_extract_audio_refs_supports_attachment_content_type():
+    """
+    Discord 根据附件内容类型提取音频引用。
+    """
     audio_refs = DiscordModule._extract_audio_refs(
         {
             "attachments": [
@@ -738,6 +833,9 @@ def test_discord_extract_audio_refs_supports_attachment_content_type():
 
 
 def test_discord_extract_files_supports_non_media_attachment():
+    """
+    Discord 将非媒体附件保留为通用文件。
+    """
     files = DiscordModule._extract_files(
         {
             "attachments": [
@@ -756,6 +854,9 @@ def test_discord_extract_files_supports_non_media_attachment():
 
 
 def test_discord_send_direct_message_returns_chat_id():
+    """
+    Discord 私信发送返回会话 ID。
+    """
     module = DiscordModule()
     client = Mock()
     client.send_msg.return_value = (
@@ -782,6 +883,9 @@ def test_discord_send_direct_message_returns_chat_id():
 
 
 def test_download_images_routes_wechat_refs_to_module_downloader():
+    """
+    微信图片引用交给对应模块下载器处理。
+    """
     chain = MessageChain()
 
     with patch.object(
@@ -804,6 +908,9 @@ def test_download_images_routes_wechat_refs_to_module_downloader():
 
 
 def test_download_images_routes_feishu_refs_to_module_downloader():
+    """
+    飞书图片引用交给对应模块下载器处理。
+    """
     chain = MessageChain()
 
     with patch.object(
@@ -831,6 +938,9 @@ def test_download_images_routes_feishu_refs_to_module_downloader():
 
 
 def test_download_message_file_bytes_supports_feishu_refs():
+    """
+    消息文件下载支持飞书引用并返回原始字节。
+    """
     chain = MessageChain()
 
     with patch.object(chain, "run_module", return_value=b"feishu-file") as run_module:
@@ -849,6 +959,9 @@ def test_download_message_file_bytes_supports_feishu_refs():
 
 
 def test_wechat_message_parser_extracts_image_media_id():
+    """
+    企业微信消息解析提取图片的媒体标识。
+    """
     module = WechatModule()
     xml_message = b"""
     <xml>
@@ -890,6 +1003,9 @@ def test_wechat_message_parser_extracts_image_media_id():
 
 
 def test_wechat_message_parser_extracts_file_media_id():
+    """
+    企业微信消息解析提取文件的媒体标识。
+    """
     module = WechatModule()
     xml_message = b"""
     <xml>
@@ -931,6 +1047,9 @@ def test_wechat_message_parser_extracts_file_media_id():
 
 
 def test_wechat_bot_parser_accepts_image_only_payload():
+    """
+    企业微信机器人解析器接受纯图片载荷。
+    """
     module = WechatModule()
     body = json.dumps(
         {
@@ -966,6 +1085,9 @@ def test_wechat_bot_parser_accepts_image_only_payload():
 
 
 def test_wechat_bot_handles_image_only_callback():
+    """
+    企业微信机器人处理仅包含图片的回调。
+    """
     bot = WeChatBot.__new__(WeChatBot)
     bot._config_name = "wechat-bot-test"
     bot._admins = []
@@ -991,6 +1113,9 @@ def test_wechat_bot_handles_image_only_callback():
 
 
 def test_vocechat_message_parser_extracts_image_file_payload():
+    """
+    VoceChat 消息解析保留图片文件载荷。
+    """
     module = VoceChatModule()
     body = json.dumps(
         {
@@ -1025,6 +1150,9 @@ def test_vocechat_message_parser_extracts_image_file_payload():
 
 
 def test_vocechat_message_parser_extracts_audio_file_payload():
+    """
+    VoceChat 消息解析保留音频文件载荷。
+    """
     module = VoceChatModule()
     body = json.dumps(
         {
@@ -1058,6 +1186,9 @@ def test_vocechat_message_parser_extracts_audio_file_payload():
 
 
 def test_vocechat_message_parser_extracts_generic_file_payload():
+    """
+    VoceChat 消息解析保留通用文件载荷。
+    """
     module = VoceChatModule()
     body = json.dumps(
         {
@@ -1091,6 +1222,9 @@ def test_vocechat_message_parser_extracts_generic_file_payload():
 
 
 def test_vocechat_post_message_passes_image_and_correct_target():
+    """
+    VoceChat 发送消息时传递图片及正确的接收目标。
+    """
     module = VoceChatModule()
     client = Mock()
 
@@ -1121,6 +1255,9 @@ def test_vocechat_post_message_passes_image_and_correct_target():
 
 
 def test_slack_post_message_passes_local_file():
+    """
+    Slack 消息发送向客户端传递本地文件。
+    """
     module = SlackModule()
     client = Mock()
 
@@ -1151,6 +1288,9 @@ def test_slack_post_message_passes_local_file():
 
 
 def test_discord_post_message_passes_local_file():
+    """
+    Discord 消息发送向客户端传递本地文件。
+    """
     module = DiscordModule()
     client = Mock()
 
@@ -1187,6 +1327,9 @@ def test_discord_post_message_passes_local_file():
 
 
 def test_qq_message_parser_accepts_image_only_attachment():
+    """
+    QQ 消息解析支持纯图片附件。
+    """
     module = QQBotModule()
 
     with patch.object(
@@ -1216,6 +1359,9 @@ def test_qq_message_parser_accepts_image_only_attachment():
 
 
 def test_qq_markdown_image_size_preserves_poster_ratio():
+    """
+    QQ Markdown 图片尺寸保留海报宽高比。
+    """
     with patch.object(QQBot, "_get_image_size", return_value=(1000, 1500)):
         content, use_markdown = QQBot._format_message_markdown(
             title="poster",
@@ -1227,6 +1373,9 @@ def test_qq_markdown_image_size_preserves_poster_ratio():
 
 
 def test_qq_markdown_image_uses_poster_ratio_fallback():
+    """
+    QQ 无法取得图片尺寸时使用海报比例回退值。
+    """
     with patch.object(QQBot, "_get_image_size", return_value=None):
         content, use_markdown = QQBot._format_message_markdown(
             image="https://example.com/poster.jpg",
@@ -1237,6 +1386,9 @@ def test_qq_markdown_image_uses_poster_ratio_fallback():
 
 
 def test_qq_message_parser_accepts_audio_only_attachment():
+    """
+    QQ 消息解析支持纯音频附件。
+    """
     module = QQBotModule()
 
     with patch.object(
@@ -1266,6 +1418,9 @@ def test_qq_message_parser_accepts_audio_only_attachment():
 
 
 def test_synology_message_parser_accepts_image_only_form():
+    """
+    群晖 Chat 消息解析接受仅图片的表单。
+    """
     module = SynologyChatModule()
 
     with patch.object(
@@ -1294,6 +1449,9 @@ def test_synology_message_parser_accepts_image_only_form():
 
 
 def test_synology_message_parser_accepts_audio_only_form():
+    """
+    群晖 Chat 消息解析接受仅音频的表单。
+    """
     module = SynologyChatModule()
 
     with patch.object(
@@ -1329,6 +1487,9 @@ def test_synology_message_parser_accepts_audio_only_form():
 
 
 def test_synology_message_parser_accepts_generic_file_attachment():
+    """
+    群晖 Chat 消息解析保留通用文件附件。
+    """
     module = SynologyChatModule()
 
     with patch.object(
@@ -1365,6 +1526,9 @@ def test_synology_message_parser_accepts_generic_file_attachment():
 
 
 def test_prepare_agent_files_saves_local_file():
+    """
+    为 Agent 准备文件时，将消息文件保存到本地。
+    """
     chain = MessageChain()
     with tempfile.TemporaryDirectory() as tempdir:
         chain.runtime_config = replace(
@@ -1394,6 +1558,9 @@ def test_prepare_agent_files_saves_local_file():
 
 
 def test_telegram_post_message_passes_file_to_client():
+    """
+    Telegram 消息发送向客户端传递文件参数。
+    """
     module = TelegramModule()
     client = Mock()
 

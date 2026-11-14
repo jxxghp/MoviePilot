@@ -1,3 +1,7 @@
+"""
+验证各音乐来源链的固定来源、精确身份和跨来源拒绝。
+"""
+
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
@@ -14,7 +18,9 @@ from app.schemas.types import MediaSource
 
 
 def test_musicbrainz_chain_fixes_source_on_search(monkeypatch) -> None:
-    """MusicBrainz 来源链应固定请求来源并拒绝跨来源候选。"""
+    """
+    MusicBrainz 来源链应固定请求来源并拒绝跨来源候选。
+    """
     chain = MusicBrainzChain()
     run_module = Mock(return_value=[
         MusicInfo(media_source="musicbrainz", media_id="recording-1", title="One"),
@@ -29,7 +35,9 @@ def test_musicbrainz_chain_fixes_source_on_search(monkeypatch) -> None:
 
 
 def test_theaudiodb_chain_exposes_only_theaudiodb_results(monkeypatch) -> None:
-    """TheAudioDB 来源链应仅返回自身来源的标准音乐信息。"""
+    """
+    TheAudioDB 来源链应仅返回自身来源的标准音乐信息。
+    """
     chain = TheAudioDbChain()
     run_module = Mock(return_value=MusicInfo(
         media_source="theaudiodb",
@@ -45,7 +53,9 @@ def test_theaudiodb_chain_exposes_only_theaudiodb_results(monkeypatch) -> None:
 
 
 def test_musicbrainz_album_rejects_mismatched_identity(monkeypatch) -> None:
-    """显式专辑 ID 查询不应接受另一身份的详情结果。"""
+    """
+    显式专辑 ID 查询不应接受另一身份的详情结果。
+    """
     chain = MusicBrainzChain()
     monkeypatch.setattr(chain, "run_module", Mock(return_value=MusicAlbumInfo(
         media_source="musicbrainz",
@@ -57,7 +67,9 @@ def test_musicbrainz_album_rejects_mismatched_identity(monkeypatch) -> None:
 
 
 def test_douban_music_discover_fixes_source(monkeypatch) -> None:
-    """豆瓣音乐发现端口应固定 doubanmusic 而非影视 douban 来源。"""
+    """
+    豆瓣音乐发现端口应固定 doubanmusic 而非影视 douban 来源。
+    """
     chain = DoubanChain()
     run_module = Mock(return_value=[
         MusicInfo(media_source="doubanmusic", media_id="album-1", title="Album")
@@ -71,7 +83,9 @@ def test_douban_music_discover_fixes_source(monkeypatch) -> None:
 
 
 def test_listenbrainz_chain_translates_page_to_offset(monkeypatch) -> None:
-    """ListenBrainz 来源链应把页码转换为模块使用的偏移量。"""
+    """
+    ListenBrainz 来源链应把页码转换为模块使用的偏移量。
+    """
     chain = ListenBrainzChain()
     run_module = Mock(return_value=[
         MusicInfo(media_source="musicbrainz", media_id="recording-1", title="Track")
@@ -85,7 +99,9 @@ def test_listenbrainz_chain_translates_page_to_offset(monkeypatch) -> None:
 
 
 def test_acoustid_chain_normalizes_fingerprint_result(monkeypatch) -> None:
-    """AcoustID 来源链应把指纹结果规范化为 Recording ID 文本。"""
+    """
+    AcoustID 来源链应把指纹结果规范化为 Recording ID 文本。
+    """
     chain = AcoustIdChain()
     run_module = Mock(return_value="  recording-1  ")
     monkeypatch.setattr(chain, "run_module", run_module)
@@ -96,7 +112,9 @@ def test_acoustid_chain_normalizes_fingerprint_result(monkeypatch) -> None:
 
 
 def test_lyrics_chain_converts_dictionary_result(monkeypatch) -> None:
-    """通用歌词链应把来源返回的字典转换为标准歌词对象。"""
+    """
+    通用歌词链应把来源返回的字典转换为标准歌词对象。
+    """
     chain = LyricsChain()
     monkeypatch.setattr(chain, "run_module", Mock(return_value={
         "provider": "lrclib",
@@ -111,7 +129,9 @@ def test_lyrics_chain_converts_dictionary_result(monkeypatch) -> None:
 
 
 def test_async_source_ports_use_async_dispatch(monkeypatch) -> None:
-    """来源链异步端口应通过 async_run_module 分发模块能力。"""
+    """
+    来源链异步端口应通过 async_run_module 分发模块能力。
+    """
     chain = MusicBrainzChain()
     async_run_module = AsyncMock(return_value=MusicInfo(
         media_source="musicbrainz",

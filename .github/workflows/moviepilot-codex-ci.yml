@@ -1,4 +1,4 @@
-# CI failure intake. This job has no OpenAI or Telegram secret.
+# 接收 CI 失败事件；本任务不持有 OpenAI 或 Telegram 密钥。
 name: MoviePilot Codex CI intake
 
 on:

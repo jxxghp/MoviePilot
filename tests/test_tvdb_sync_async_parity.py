@@ -1,4 +1,6 @@
-"""TVDB 附加信息同步异步共享决策回归测试。"""
+"""
+TVDB 附加信息同步异步共享决策回归测试。
+"""
 
 import asyncio
 from typing import Any
@@ -10,7 +12,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _module() -> TheTvDbModule:
-    """绕过模块运行时构造可局部注入的 TVDB provider。"""
+    """
+    绕过模块运行时构造可局部注入的 TVDB provider。
+    """
     return object.__new__(TheTvDbModule)
 
 
@@ -18,7 +22,9 @@ def _media(
     media_source: MediaSource = MediaSource.Douban,
     media_id: str = "100",
 ) -> MediaInfo:
-    """构造用于 TVDB 别名匹配的电视剧媒体。"""
+    """
+    构造用于 TVDB 别名匹配的电视剧媒体。
+    """
     return MediaInfo(
         media_source=media_source,
         media_id=media_id,
@@ -32,7 +38,9 @@ def _media(
 def test_tvdb_sync_async_share_title_lookup_and_candidate_resolution(
     monkeypatch,
 ) -> None:
-    """标题查询双入口应只切换 I/O 外壳并复用同一候选解析。"""
+    """
+    标题查询双入口应只切换 I/O 外壳并复用同一候选解析。
+    """
     module = _module()
     calls: list[tuple[str, object]] = []
     threaded: list[str] = []
@@ -48,12 +56,16 @@ def test_tvdb_sync_async_share_title_lookup_and_candidate_resolution(
     ]
 
     def search_tvdb(title: str) -> list[dict[str, Any]]:
-        """记录阻塞标题查询并返回稳定候选。"""
+        """
+        记录阻塞标题查询并返回稳定候选。
+        """
         calls.append(("search_tvdb", title))
         return candidates
 
     async def run_blocking_call(function, *args, **kwargs):
-        """记录异步入口实际提交到线程池的函数边界。"""
+        """
+        记录异步入口实际提交到线程池的函数边界。
+        """
         threaded.append(function.__name__)
         return function(*args, **kwargs)
 
@@ -82,7 +94,9 @@ def test_tvdb_sync_async_share_title_lookup_and_candidate_resolution(
 
 
 def test_tvdb_sync_async_share_native_id_lookup(monkeypatch) -> None:
-    """TVDB 原生身份双入口应选择相同详情查询，线程池不包业务方法。"""
+    """
+    TVDB 原生身份双入口应选择相同详情查询，线程池不包业务方法。
+    """
     module = _module()
     calls: list[int] = []
     threaded: list[str] = []
@@ -94,12 +108,16 @@ def test_tvdb_sync_async_share_native_id_lookup(monkeypatch) -> None:
     }
 
     def tvdb_info(tvdb_id: int) -> dict[str, Any]:
-        """记录阻塞详情查询。"""
+        """
+        记录阻塞详情查询。
+        """
         calls.append(tvdb_id)
         return info
 
     async def run_blocking_call(function, *args, **kwargs):
-        """验证异步入口只提交详情 I/O。"""
+        """
+        验证异步入口只提交详情 I/O。
+        """
         threaded.append(function.__name__)
         return function(*args, **kwargs)
 
@@ -126,15 +144,21 @@ def test_tvdb_sync_async_share_native_id_lookup(monkeypatch) -> None:
 def test_tvdb_disabled_source_short_circuits_before_sync_and_async_io(
     monkeypatch,
 ) -> None:
-    """未启用 TVDB 时双入口都不得触发网络或线程池。"""
+    """
+    未启用 TVDB 时双入口都不得触发网络或线程池。
+    """
     module = _module()
 
     def unexpected_io(*_args, **_kwargs):
-        """标记禁用来源错误触发了同步 I/O。"""
+        """
+        标记禁用来源错误触发了同步 I/O。
+        """
         raise AssertionError("禁用 TVDB 时不应触发 I/O")
 
     async def unexpected_threadpool(*_args, **_kwargs):
-        """标记禁用来源错误触发了线程池。"""
+        """
+        标记禁用来源错误触发了线程池。
+        """
         raise AssertionError("禁用 TVDB 时不应触发线程池")
 
     module.search_tvdb = unexpected_io

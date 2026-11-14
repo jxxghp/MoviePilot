@@ -1,4 +1,6 @@
-"""音乐实站审计发现的名称匹配和刮削身份回归。"""
+"""
+音乐实站审计发现的名称匹配和刮削身份回归。
+"""
 
 import asyncio
 import json
@@ -28,7 +30,9 @@ from scripts import music_recognize_batch_test as batch
     ("我要闭上眼睛", "李佳薇", "(《仙剑四》影视剧片尾曲)"),
 ])
 def test_credited_recording_matches_without_marketing_annotation(title, artist, annotation):
-    """明确署名或影视用途注释不改变录音名称，检索与订阅匹配保持一致。"""
+    """
+    明确署名或影视用途注释不改变录音名称，检索与订阅匹配保持一致。
+    """
     resource = f"{artist} - {title} {annotation} (2024) - WEB-DL - 24bit ALAC-HHWEB"
     meta = MetaMusic.parse_resource(resource)
     artists = [artist, "李佳薇"] if "feat." in annotation else [artist]
@@ -40,7 +44,9 @@ def test_credited_recording_matches_without_marketing_annotation(title, artist, 
 
 @pytest.mark.parametrize("annotation", ["(Part Two)", "(Live)", "(Remix)", "(feature presentation)"])
 def test_music_annotation_cleanup_preserves_distinct_works(annotation):
-    """未知副标题和录音版本仍须拒绝，不能靠删除所有括号提升命中率。"""
+    """
+    未知副标题和录音版本仍须拒绝，不能靠删除所有括号提升命中率。
+    """
     candidate = MusicInfo(media_source="musicbrainz", media_id="recording", title="Song", artists=["Artist"])
     meta = MetaMusic.parse_resource(f"Artist - Song {annotation} FLAC")
 
@@ -49,7 +55,9 @@ def test_music_annotation_cleanup_preserves_distinct_works(annotation):
 
 
 def test_featured_recording_does_not_match_solo_candidate():
-    """客串署名缺少来源佐证时，去注释不能把合作录音误配成独唱。"""
+    """
+    客串署名缺少来源佐证时，去注释不能把合作录音误配成独唱。
+    """
     candidate = MusicInfo(media_source="musicbrainz", media_id="recording", title="Song", artists=["Artist"])
     meta = MetaMusic.parse_resource("Artist - Song (feat. Guest) FLAC")
 
@@ -59,7 +67,9 @@ def test_featured_recording_does_not_match_solo_candidate():
 
 @pytest.mark.parametrize("recording_id", [None, "f4f1b7b2-22b0-4ce0-9ac6-31c336c52812"])
 def test_album_scrape_never_writes_release_group_as_recording(recording_id):
-    """专辑合并一直验证到标签投影，避免 release-group ID 污染下一次单曲识别。"""
+    """
+    专辑合并一直验证到标签投影，避免 release-group ID 污染下一次单曲识别。
+    """
     local = MetaMusic(title="晴天", artists=["周杰伦"], track_number=3,
                       media_source=MediaSource.MusicBrainz if recording_id else None, media_id=recording_id)
     album = MusicInfo(media_source="musicbrainz", media_id="album-id", music_type="album",
@@ -76,7 +86,9 @@ def test_album_scrape_never_writes_release_group_as_recording(recording_id):
 
 @pytest.fixture(params=["python", "rust"])
 def music_parser(request, monkeypatch):
-    """使用真实两种引擎入口验证共享资源预处理，避免只修到 Python 回退。"""
+    """
+    使用真实两种引擎入口验证共享资源预处理，避免只修到 Python 回退。
+    """
     if request.param == "rust":
         if not rust.is_available():
             pytest.skip("moviepilot_rust 扩展未安装")
@@ -86,7 +98,9 @@ def music_parser(request, monkeypatch):
 
 
 def test_resource_release_catalog_does_not_pollute_album_name(music_parser):
-    """标准 CD 抓轨尾链只提供发行和音质信息，不应进入专辑名称。"""
+    """
+    标准 CD 抓轨尾链只提供发行和音质信息，不应进入专辑名称。
+    """
     title = ("周杰伦 - Jay  (2000) - CD - [WAV整轨+CUE] - 16bit - 44.1kHz - "
              "{TW - Alfa Music 74321838942} - CFQG@HDFans")
     meta = music_parser(title, mtype=MediaType.MUSIC)
@@ -97,7 +111,9 @@ def test_resource_release_catalog_does_not_pollute_album_name(music_parser):
 
 
 def test_vertical_separator_does_not_turn_record_label_into_artist(music_parser):
-    """站点竖线分隔的厂牌和编号不能被拼接为 artist-title 署名。"""
+    """
+    站点竖线分隔的厂牌和编号不能被拼接为 artist-title 署名。
+    """
     meta = music_parser(
         "Duo.Improbabile.Improbabile.Genesi.2016.DSF.FLAC",
         "From NativeDSD丨VDM Records - VDM038009丨DSD256",
@@ -108,7 +124,9 @@ def test_vertical_separator_does_not_turn_record_label_into_artist(music_parser)
 
 
 def test_batch_uses_subtitle_and_does_not_count_display_fallback():
-    """评测必须复用正式入口并区分本地展示对象和远端身份命中。"""
+    """
+    评测必须复用正式入口并区分本地展示对象和远端身份命中。
+    """
     module = Mock()
     module.recognize_media.return_value = MusicInfo(title="晴天")
 
@@ -121,7 +139,9 @@ def test_batch_uses_subtitle_and_does_not_count_display_fallback():
 
 
 def test_batch_reads_multiline_subtitles_and_legacy_rows(tmp_path, monkeypatch):
-    """TSV 正确还原带换行的副标题，同时支持旧版只有主标题的采样。"""
+    """
+    TSV 正确还原带换行的副标题，同时支持旧版只有主标题的采样。
+    """
     path = tmp_path / "titles.tsv"
     path.write_text('站点\t晴天\t"歌手：周杰伦\n专辑：叶惠美"\n旧站\t单曲\n旧标题\n', encoding="utf-8")
     monkeypatch.setattr(batch, "TITLES_FILE", path)
@@ -133,7 +153,9 @@ def test_batch_reads_multiline_subtitles_and_legacy_rows(tmp_path, monkeypatch):
 
 
 def test_batch_matches_registered_site_domain(tmp_path, monkeypatch):
-    """索引中的 pt 子域须按生产库注册域查找，不能把已有 Cookie 误报成缺失。"""
+    """
+    索引中的 pt 子域须按生产库注册域查找，不能把已有 Cookie 误报成缺失。
+    """
     path = tmp_path / "user.db"
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE site (domain TEXT, cookie TEXT, ua TEXT, proxy INTEGER)")
@@ -147,16 +169,22 @@ def test_batch_matches_registered_site_domain(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_real_recording_response_preserves_ambiguous_identity(asynchronous, monkeypatch):
-    """真实响应有两条同名同年但不同ISRC的录音，仅凭种子名称须待确认且不退到专辑。"""
+    """
+    真实响应有两条同名同年但不同ISRC的录音，仅凭种子名称须待确认且不退到专辑。
+    """
     fixture = json.loads((Path(__file__).parent / "fixtures/music_lifecycle_recording.json").read_text(encoding="utf-8"))
     module = MusicBrainzModule()
 
     def request(path, params=None):
-        """只接受已录制请求，意外新增出站路径直接使回归失败。"""
+        """
+        只接受已录制请求，意外新增出站路径直接使回归失败。
+        """
         return next(item["payload"] for item in fixture["requests"] if item["path"] == path and item["params"] == params)
 
     async def async_request(path, params=None):
-        """异步入口消费相同公共响应。"""
+        """
+        异步入口消费相同公共响应。
+        """
         return request(path, params)
 
     monkeypatch.setattr(module, "_request_json", request)
@@ -176,7 +204,9 @@ def test_real_recording_response_preserves_ambiguous_identity(asynchronous, monk
 
 @pytest.mark.parametrize("reverse", [False, True])
 def test_real_recording_response_uses_isrc_to_disambiguate(reverse):
-    """同一公共响应的两条录音可用本地明确ISRC消歧，不依赖返回顺序。"""
+    """
+    同一公共响应的两条录音可用本地明确ISRC消歧，不依赖返回顺序。
+    """
     fixture = json.loads((Path(__file__).parent / "fixtures/music_lifecycle_recording.json").read_text(encoding="utf-8"))
     recordings = next(item["payload"]["recordings"] for item in fixture["requests"] if item["payload"].get("recordings"))
     candidates = [MusicBrainzModule._recording_to_info(item) for item in recordings]
@@ -192,7 +222,9 @@ def test_real_recording_response_uses_isrc_to_disambiguate(reverse):
 
 
 def test_batch_postgresql_is_read_only_and_closes(monkeypatch, tmp_path):
-    """显式 PostgreSQL 配置必须从只读连接取凭据，且不依赖旧 SQLite 文件。"""
+    """
+    显式 PostgreSQL 配置必须从只读连接取凭据，且不依赖旧 SQLite 文件。
+    """
     from unittest.mock import MagicMock
 
     import psycopg2
@@ -215,7 +247,9 @@ def test_batch_postgresql_is_read_only_and_closes(monkeypatch, tmp_path):
 
 
 def test_batch_postgresql_closes_on_read_error(monkeypatch):
-    """采样查询失败也须释放生产连接，不保持悬挂的只读事务。"""
+    """
+    采样查询失败也须释放生产连接，不保持悬挂的只读事务。
+    """
     from unittest.mock import MagicMock
 
     import psycopg2

@@ -1,4 +1,6 @@
-"""async 阻塞调用 ratchet 与 debug 模式测试。"""
+"""
+async 阻塞调用 ratchet 与 debug 模式测试。
+"""
 
 import asyncio
 import textwrap
@@ -19,7 +21,9 @@ def _scan_source(
     *,
     oper_sources: dict[str, str] | None = None,
 ) -> dict[str, int]:
-    """构造最小仓库并通过公开扫描入口验证源码，而非测试内部 AST 细节。"""
+    """
+    构造最小仓库并通过公开扫描入口验证源码，而非测试内部 AST 细节。
+    """
     api_root = tmp_path / "app/api"
     api_root.mkdir(parents=True)
     (api_root / "sample.py").write_text(textwrap.dedent(source), encoding="utf-8")
@@ -31,33 +35,37 @@ def _scan_source(
 
 
 def test_async_blocking_scan_covers_runtime_entrypoints() -> None:
-    """扫描范围必须覆盖全部 canonical 宿主目录和顶层运行入口。"""
-    assert {
-        "app/adapters",
-        "app/api",
-        "app/agent",
-        "app/application",
-        "app/chain",
-        "app/db",
-        "app/doctor",
-        "app/domain",
-        "app/foundation",
-        "app/monitor",
-        "app/modules",
-        "app/runtime",
-        "app/schemas",
-        "app/startup",
-        "app/workflow",
-        "app/cli.py",
-        "app/command.py",
-        "app/factory.py",
-        "app/main.py",
-        "app/scheduler",
-    }.issubset({str(path) for path in SCAN_ROOTS})
+    """
+    扫描范围覆盖 app 全部源码，并由实现明确排除 plugins。
+    """
+    assert SCAN_ROOTS == ("app",)
+
+
+def test_async_blocking_scan_excludes_plugins(tmp_path: Path) -> None:
+    """
+    即使根目录递归扫描，也不得把官方插件纳入宿主门禁。
+    """
+    app_root = tmp_path / "app"
+    plugin_root = app_root / "plugins"
+    plugin_root.mkdir(parents=True)
+    source = """
+        from pathlib import Path
+
+        async def read_file():
+            return Path('payload').read_text()
+    """
+    (app_root / "sample.py").write_text(textwrap.dedent(source), encoding="utf-8")
+    (plugin_root / "sample.py").write_text(textwrap.dedent(source), encoding="utf-8")
+
+    debt = collect_async_blocking(tmp_path)
+
+    assert debt == {"app/sample.py:read_file:Path.read_text": 1}
 
 
 def test_async_blocking_ratchet_allows_removal_and_rejects_growth() -> None:
-    """存量减少合法，新增或增加直接阻塞调用必须失败。"""
+    """
+    存量减少合法，新增或增加直接阻塞调用必须失败。
+    """
     baseline = {
         "app/api/a.py:stream:Path.read_text": 2,
         "app/agent/a.py:run:time.sleep": 1,
@@ -170,12 +178,16 @@ def test_async_blocking_scan_resolves_imports_aliases_and_nested_async(
     source: str,
     expected: dict[str, int],
 ) -> None:
-    """别名、简单局部传播和嵌套 async 都必须进入真实扫描结果。"""
+    """
+    别名、简单局部传播和嵌套 async 都必须进入真实扫描结果。
+    """
     assert _scan_source(tmp_path, source) == expected
 
 
 def test_async_blocking_scan_uses_oper_source_method_kinds(tmp_path: Path) -> None:
-    """Oper 仅按源码中真实同步方法报告，不依赖方法名前缀猜测。"""
+    """
+    Oper 仅按源码中真实同步方法报告，不依赖方法名前缀猜测。
+    """
     source = """
         from app.db.oper import SiteOper
         from app.db.oper.site import SiteOper as SO
@@ -207,7 +219,9 @@ def test_async_blocking_scan_uses_oper_source_method_kinds(tmp_path: Path) -> No
 def test_async_blocking_scan_exempts_async_apis_and_memory_reads(
     tmp_path: Path,
 ) -> None:
-    """异步实现、受控 worker 与内存配置读取不得成为阻塞债务。"""
+    """
+    异步实现、受控 worker 与内存配置读取不得成为阻塞债务。
+    """
     source = """
         import asyncio
         import anyio
@@ -248,7 +262,9 @@ def test_async_blocking_scan_exempts_async_apis_and_memory_reads(
 def test_async_blocking_scan_checks_worker_arguments_evaluated_on_loop(
     tmp_path: Path,
 ) -> None:
-    """worker 调用前同步求值的普通参数仍在事件循环中执行。"""
+    """
+    worker 调用前同步求值的普通参数仍在事件循环中执行。
+    """
     source = """
         import asyncio
         from pathlib import Path
@@ -265,7 +281,9 @@ def test_async_blocking_scan_checks_worker_arguments_evaluated_on_loop(
 def test_async_blocking_scan_merges_branch_bindings_conservatively(
     tmp_path: Path,
 ) -> None:
-    """任一互斥分支可能产生同步对象时，合流调用仍属于阻塞风险。"""
+    """
+    任一互斥分支可能产生同步对象时，合流调用仍属于阻塞风险。
+    """
     source = """
         from anyio import Path as AsyncPath
         from pathlib import Path
@@ -284,7 +302,9 @@ def test_async_blocking_scan_merges_branch_bindings_conservatively(
 
 
 def test_nested_async_inherits_bindings_from_definition_scope(tmp_path: Path) -> None:
-    """嵌套 async 使用定义点已有的局部 import 和别名。"""
+    """
+    嵌套 async 使用定义点已有的局部 import 和别名。
+    """
     source = """
         async def outer():
             from pathlib import Path as LocalPath
@@ -304,7 +324,9 @@ def test_nested_async_inherits_bindings_from_definition_scope(tmp_path: Path) ->
 def test_definition_time_expressions_remain_in_async_execution_body(
     tmp_path: Path,
 ) -> None:
-    """延迟函数体不扫描，但默认值和 decorator 在定义时立即求值。"""
+    """
+    延迟函数体不扫描，但默认值和 decorator 在定义时立即求值。
+    """
     source = """
         import asyncio
         from pathlib import Path
@@ -332,7 +354,9 @@ def test_definition_time_expressions_remain_in_async_execution_body(
 def test_local_shadowing_does_not_reuse_import_or_builtin_bindings(
     tmp_path: Path,
 ) -> None:
-    """参数和 comprehension target 会遮蔽同名 builtin 或导入符号。"""
+    """
+    参数和 comprehension target 会遮蔽同名 builtin 或导入符号。
+    """
     source = """
         from pathlib import Path
 
@@ -346,5 +370,7 @@ def test_local_shadowing_does_not_reuse_import_or_builtin_bindings(
 
 @pytest.mark.asyncio
 async def test_asyncio_debug_is_enabled_for_async_tests() -> None:
-    """专项异步测试必须启用慢 callback 和阻塞诊断所需的 debug 模式。"""
+    """
+    专项异步测试必须启用慢 callback 和阻塞诊断所需的 debug 模式。
+    """
     assert asyncio.get_running_loop().get_debug() is True

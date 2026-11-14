@@ -1,4 +1,6 @@
-"""按已生成的 API 输入合同规范实际请求，使相同写入使用稳定参数身份。"""
+"""
+按已生成的 API 输入合同规范实际请求，使相同写入使用稳定参数身份。
+"""
 
 import json
 import re
@@ -9,7 +11,9 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.agent.policy.api import resolve_api_route
 
-_SCALAR_ADAPTERS = {
+_SCALAR_ADAPTERS: dict[
+    str, TypeAdapter[bool] | TypeAdapter[int] | TypeAdapter[float] | TypeAdapter[str]
+] = {
     "boolean": TypeAdapter(bool),
     "integer": TypeAdapter(int),
     "number": TypeAdapter(float),
@@ -20,7 +24,8 @@ _CONTRACT_DESCRIPTION_MAX_CHARS = 180
 
 
 def coerce_string_body(value: Any) -> Any:
-    """把模型联合类型 schema 下常见的 JSON 字符串请求体还原为原生值。
+    """
+    把模型联合类型 schema 下常见的 JSON 字符串请求体还原为原生值。
 
     部分模型在 body 声明为 anyOf（对象/数组/字面量）时会把整个请求体
     编码成 JSON 字符串；此处仅在解析成功且结果为对象或数组时替换，
@@ -38,17 +43,23 @@ def coerce_string_body(value: Any) -> Any:
 
 
 class ApiArgumentError(ValueError):
-    """只携带字段位置和合同说明，不回显模型提交的参数值。"""
+    """
+    只携带字段位置和合同说明，不回显模型提交的参数值。
+    """
 
     def __init__(self, message: str, *, path: str = "") -> None:
-        """保留独立字段路径，便于嵌套对象逐层补齐错误位置。"""
+        """
+        保留独立字段路径，便于嵌套对象逐层补齐错误位置。
+        """
         self.detail = message
         self.path = path
         super().__init__(f"{path}: {message}" if path else message)
 
 
 def _field_error(field: str, error: ValueError) -> ApiArgumentError:
-    """拼接由合同声明的字段路径，同时移除 Pydantic 错误中的原始输入。"""
+    """
+    拼接由合同声明的字段路径，同时移除 Pydantic 错误中的原始输入。
+    """
     if isinstance(error, ApiArgumentError):
         path = f"{field}.{error.path}" if error.path else field
         return ApiArgumentError(error.detail, path=path)
@@ -57,14 +68,18 @@ def _field_error(field: str, error: ValueError) -> ApiArgumentError:
 
 
 def _unknown_fields_message(fields: set[str]) -> str:
-    """仅展示有界参数标识符，避免把误作字段名的 URL 或凭据带回模型。"""
+    """
+    仅展示有界参数标识符，避免把误作字段名的 URL 或凭据带回模型。
+    """
     names = sorted(name for name in fields if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name))
     suffix = "；其余字段名已省略" if len(names) != len(fields) or len(names) > 8 else ""
     return f"API 参数包含合同未声明的字段：{', '.join(names[:8])}{suffix}"
 
 
 def _validate_argument_locations(arguments: dict[str, Any], schema: dict[str, Any]) -> None:
-    """在通用模型丢弃额外字段前拒绝平铺参数，并按精确合同提示合法位置。"""
+    """
+    在通用模型丢弃额外字段前拒绝平铺参数，并按精确合同提示合法位置。
+    """
     unknown = set(arguments) - {"operation_id", "path_params", "query", "body"}
     if not unknown:
         return
@@ -81,7 +96,9 @@ def _validate_argument_locations(arguments: dict[str, Any], schema: dict[str, An
 
 
 def _resolve_schema(schema: dict[str, Any], definitions: dict[str, Any]) -> dict[str, Any]:
-    """只展开缓存合同的本地引用，拒绝循环引用和任何远程 schema。"""
+    """
+    只展开缓存合同的本地引用，拒绝循环引用和任何远程 schema。
+    """
     seen = set()
     while "$ref" in schema:
         reference = schema["$ref"]
@@ -97,7 +114,9 @@ def _resolve_schema(schema: dict[str, Any], definitions: dict[str, Any]) -> dict
 
 
 def _contract_description(value: Any) -> str | None:
-    """为错误回执保留有界字段说明，避免把原始请求值带回模型。"""
+    """
+    为错误回执保留有界字段说明，避免把原始请求值带回模型。
+    """
     if not isinstance(value, str) or not value.strip():
         return None
     text = " ".join(value.split())
@@ -112,7 +131,9 @@ def _contract_node(
     *,
     depth: int = 0,
 ) -> dict[str, Any]:
-    """把单个 JSON Schema 节点压缩成可直接纠错的输入提示。"""
+    """
+    把单个 JSON Schema 节点压缩成可直接纠错的输入提示。
+    """
     try:
         resolved = _resolve_schema(schema, definitions)
     except ValueError:
@@ -130,7 +151,7 @@ def _contract_node(
         result["default"] = deepcopy(resolved["default"])
     if isinstance(resolved.get("type"), str):
         result["type"] = resolved["type"]
-    for key in ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength"):
+    for key in ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength", "minProperties"):
         if key in resolved:
             result[key] = resolved[key]
 
@@ -163,7 +184,9 @@ def _contract_node(
 
 
 def api_input_contract(operation_id: str, schema: dict[str, Any]) -> dict[str, Any]:
-    """返回一个 operation 的有界输入合同，供调用失败时指导模型纠正参数。"""
+    """
+    返回一个 operation 的有界输入合同，供调用失败时指导模型纠正参数。
+    """
     branch = next(
         (
             item
@@ -196,7 +219,9 @@ def api_input_contract(operation_id: str, schema: dict[str, Any]) -> dict[str, A
 
 
 def _value_type(value: Any) -> str:
-    """按 JSON 原始类型选择联合分支，布尔值不能误当成整数。"""
+    """
+    按 JSON 原始类型选择联合分支，布尔值不能误当成整数。
+    """
     return {
         type(None): "null", bool: "boolean", int: "integer", float: "number",
         str: "string", dict: "object", list: "array",
@@ -204,11 +229,18 @@ def _value_type(value: Any) -> str:
 
 
 def _normalize_union(value: Any, schema: dict[str, Any], definitions: dict[str, Any], depth: int) -> Any:
-    """优先选择原始类型匹配的联合，歧义时不猜测不同分支的默认值。"""
+    """
+    优先选择原始类型匹配的联合，歧义时不猜测不同分支的默认值。
+    """
     alternatives = [_resolve_schema(item, definitions) for item in schema.get("oneOf", schema.get("anyOf", []))]
     exact = [item for item in alternatives if item.get("type") == _value_type(value)]
     if len(exact) == 1:
         return _normalize_value(value, exact[0], definitions, depth + 1)
+    # 空字符串表示模型未提供该值；仅在没有精确类型分支且联合含 null 时归一为 None，
+    # 保留 anyOf[string, null] 等以空字符串为合法值的语义。
+    if not exact and isinstance(value, str) and not value.strip():
+        if any(item.get("type") == "null" for item in alternatives):
+            return None
     candidates = []
     for option in exact or alternatives:
         try:
@@ -224,7 +256,9 @@ def _normalize_union(value: Any, schema: dict[str, Any], definitions: dict[str, 
 
 
 def _normalize_object(value: dict[str, Any], schema: dict[str, Any], definitions: dict[str, Any], depth: int) -> dict[str, Any]:
-    """按模型字段补明确默认值；自由字典保留原内容，forbid 额外字段明确拒绝。"""
+    """
+    按模型字段补明确默认值；自由字典保留原内容，forbid 额外字段明确拒绝。
+    """
     properties = schema.get("properties")
     if not isinstance(properties, dict):
         return deepcopy(value)
@@ -249,7 +283,9 @@ def _normalize_object(value: dict[str, Any], schema: dict[str, Any], definitions
 
 
 def _normalize_value(value: Any, declaration: dict[str, Any], definitions: dict[str, Any], depth: int = 0) -> Any:
-    """递归规范有限深度的 JSON 值，类型转换与实际请求共用同一份参数。"""
+    """
+    递归规范有限深度的 JSON 值，类型转换与实际请求共用同一份参数。
+    """
     if depth > 32:
         raise ValueError("API 参数嵌套过深")
     schema = _resolve_schema(declaration, definitions)
@@ -262,7 +298,12 @@ def _normalize_value(value: Any, declaration: dict[str, Any], definitions: dict[
     if kind == "object":
         if not isinstance(value, dict):
             raise ValueError("API 参数必须是对象")
-        return _normalize_object(value, schema, definitions, depth)
+        normalized = _normalize_object(value, schema, definitions, depth)
+        # 约束最终写入对象，避免空配置绕过公开的 minProperties 合同。
+        minimum = schema.get("minProperties")
+        if isinstance(minimum, int) and len(normalized) < minimum:
+            raise ValueError(f"API 对象至少需要 {minimum} 个字段")
+        return normalized
     if kind == "array":
         if not isinstance(value, list):
             raise ValueError("API 参数必须是数组")
@@ -280,7 +321,9 @@ def _normalize_value(value: Any, declaration: dict[str, Any], definitions: dict[
 
 
 def canonical_api_arguments(arguments: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
-    """先采用执行器真实 GET 参数投影，再按唯一 operation 合同规范请求。"""
+    """
+    先采用执行器真实 GET 参数投影，再按唯一 operation 合同规范请求。
+    """
     operation_id = arguments.get("operation_id")
     branch = next((item for item in schema.get("oneOf", [])
                    if item.get("properties", {}).get("operation_id", {}).get("const") == operation_id), None)

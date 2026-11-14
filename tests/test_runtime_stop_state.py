@@ -1,4 +1,6 @@
-"""进程 owner 契约和 global_vars 兼容边界测试。"""
+"""
+进程 owner 契约和 global_vars 兼容边界测试。
+"""
 
 import ast
 import threading
@@ -9,7 +11,9 @@ from app.runtime.stop import ProcessStopState, runtime_stop_state
 
 
 def test_process_stop_state_separates_repeatable_workflow_and_one_shot_transfer() -> None:
-    """工作流停止可恢复，整理路径停止只消费一次。"""
+    """
+    工作流停止可恢复，整理路径停止只消费一次。
+    """
     state = ProcessStopState()
 
     state.stop_workflow(7)
@@ -23,7 +27,9 @@ def test_process_stop_state_separates_repeatable_workflow_and_one_shot_transfer(
 
 
 def test_system_stop_propagates_to_all_cancellation_scopes() -> None:
-    """系统停止后所有工作流和整理任务都必须立即观察到停止。"""
+    """
+    系统停止后所有工作流和整理任务都必须立即观察到停止。
+    """
     state = ProcessStopState()
 
     state.stop_system()
@@ -34,7 +40,9 @@ def test_system_stop_propagates_to_all_cancellation_scopes() -> None:
 
 
 def test_global_vars_stop_api_delegates_to_runtime_contract(monkeypatch) -> None:
-    """旧 global_vars ABI 必须与新的显式停止状态共享同一事实源。"""
+    """
+    旧 global_vars ABI 必须与新的显式停止状态共享同一事实源。
+    """
     event = threading.Event()
     monkeypatch.setattr(runtime_stop_state, "_system_event", event)
     legacy = GlobalVar()
@@ -46,7 +54,9 @@ def test_global_vars_stop_api_delegates_to_runtime_contract(monkeypatch) -> None
 
 
 def test_host_code_no_longer_reads_stop_state_from_global_vars() -> None:
-    """除兼容实现外，宿主不得重新从 global_vars 读取任何停止信号。"""
+    """
+    除兼容实现外，宿主不得重新从 global_vars 读取任何停止信号。
+    """
     root = Path(__file__).resolve().parents[1]
     forbidden = (
         "global_vars.is_system_stopped",
@@ -70,7 +80,9 @@ def test_host_code_no_longer_reads_stop_state_from_global_vars() -> None:
 
 
 def test_host_code_no_longer_imports_global_vars() -> None:
-    """除定义与 SDK 兼容出口外，canonical 宿主不得消费 GlobalVar 门面。"""
+    """
+    除定义与 SDK 兼容出口外，canonical 宿主不得消费 GlobalVar 门面。
+    """
     root = Path(__file__).resolve().parents[1]
     allowed = {
         root / "app/runtime/config.py",

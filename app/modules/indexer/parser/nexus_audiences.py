@@ -1,34 +1,47 @@
 # -*- coding: utf-8 -*-
+"""
+解析 Audiences 站点的用户资料、流量和做种信息。
+"""
+
 import json
 import re
+from typing import Optional
 from urllib.parse import urljoin
 
 from lxml import etree
 
-from app.runtime.log import logger
-from app.modules.indexer.parser import SiteSchema
-from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
+from app.adapters.network.http import RequestUtils
 from app.foundation import size as size_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
+from app.modules.indexer.parser import MessageContent, SiteSchema
+from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
+from app.runtime.log import logger
 
 
 class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
+    """
+    解析 NexusAudiences 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.NexusAudiences
     __UNKNOWN_UNREAD_COUNT = 99999
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, site_name: str, url: str, site_cookie: Optional[str], apikey: Optional[str],
+                 token: Optional[str], request_utils: Optional[RequestUtils] = None,
+                 ua: Optional[str] = None, emulate: bool = False,
+                 proxy: Optional[bool] = None, api_url: Optional[str] = None) -> None:
         """
         初始化 Audiences 未读私信列表地址，第一页不能携带 page 参数。
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(site_name, url, site_cookie, apikey, token, request_utils,
+                         ua, emulate, proxy, api_url)
         self._user_mail_unread_page = self.__build_unread_mailbox_page(box=1)
         self._sys_mail_unread_page = None
         self.__next_mail_page = 1
-        self.__seen_unread_message_links = set()
-        self.__message_list_previews = {}
+        self.__seen_unread_message_links: set[str] = set()
+        self.__message_list_previews: dict[str, MessageContent] = {}
 
-    def _parse_message_unread(self, html_text):
+    def _parse_message_unread(self, html_text: str) -> None:
         """
         解析 Audiences 新版顶部用户栏中的未读消息数。
         """
@@ -58,7 +71,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
 
         super()._parse_message_unread(html_text)
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list):
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
         解析 Audiences 未读消息链接。
         """
@@ -82,7 +95,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
 
         return next_page
 
-    def _parse_message_content(self, html_text):
+    def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """
         解析 Audiences 新版短消息详情页。
         """
@@ -106,12 +119,12 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
 
         return super()._parse_message_content(html_text)
 
-    def _pase_unread_msgs(self):
+    def _pase_unread_msgs(self) -> None:
         """
         解析 Audiences 未读消息，避免异常分页重复通知和空详情通知。
         """
         self.__reset_unread_message_parse_state()
-        unread_msg_links = []
+        unread_msg_links: list[str] = []
         if self.message_unread > 0 or self.message_read_force:
             next_page = self.__parse_unread_message_list_page(
                 link=self._user_mail_unread_page,
@@ -142,7 +155,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
                 continue
             self.message_unread_contents.append((head, date, content))
 
-    def __parse_unread_message_list_page(self, link: str, unread_msg_links: list):
+    def __parse_unread_message_list_page(self, link: Optional[str], unread_msg_links: list[str]) -> Optional[str]:
         """
         读取并解析一页 Audiences 未读消息列表。
         """
@@ -157,7 +170,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             unread_msg_links
         )
 
-    def __reset_unread_message_parse_state(self):
+    def __reset_unread_message_parse_state(self) -> None:
         """
         重置 Audiences 未读消息分页状态，避免复用解析器时沿用上次页码和去重集合。
         """
@@ -165,7 +178,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         self.__seen_unread_message_links.clear()
         self.__message_list_previews.clear()
 
-    def __filter_new_message_links(self, message_links: list) -> list:
+    def __filter_new_message_links(self, message_links: list[str]) -> list[str]:
         """
         过滤 Audiences 异常分页重复返回的消息详情链接。
         """
@@ -179,16 +192,17 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return new_message_links
 
     @staticmethod
-    def __parse_table_unread_message_links(html) -> list:
+    def __parse_table_unread_message_links(html: etree._Element) -> list[str]:
         """
         解析 Audiences 旧版表格消息列表中的未读消息链接。
         """
-        return html.xpath(
+        links: list[str] = html.xpath(
             '//tr[.//img[contains(concat(" ", normalize-space(@class), " "), " unreadpm ") '
             'or @alt="Unread" or @title="未读"]]/td/a[contains(@href, "viewmessage")]/@href'
         )
+        return links
 
-    def __parse_pm_item_unread_message_links(self, html) -> list:
+    def __parse_pm_item_unread_message_links(self, html: etree._Element) -> list[str]:
         """
         解析 Audiences 新版 pm-item 私信列表中的未读消息链接。
         """
@@ -215,7 +229,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             self.__cache_pm_item_preview(message_link, row)
         return message_links
 
-    def __cache_pm_item_preview(self, message_link: str, row):
+    def __cache_pm_item_preview(self, message_link: str, row: etree._Element) -> None:
         """
         缓存新版列表页预览，用于详情页结构变化时兜底生成站点消息。
         """
@@ -234,7 +248,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         self.__message_list_previews[urljoin(self._base_url, message_link)] = (head, date, content)
 
     @staticmethod
-    def __extract_pm_item_text(row, xpath: str):
+    def __extract_pm_item_text(row: etree._Element, xpath: str) -> Optional[str]:
         """
         提取新版私信列表节点文本并规整空白字符。
         """
@@ -246,7 +260,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return text or None
 
     @staticmethod
-    def __extract_first_text(html, xpath: str):
+    def __extract_first_text(html: etree._Element, xpath: str) -> Optional[str]:
         """
         提取第一个匹配节点的规整文本。
         """
@@ -256,7 +270,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return NexusAudiencesSiteUserInfo.__normalize_text(nodes[0].xpath("string(.)"))
 
     @staticmethod
-    def __extract_pm_view_meta(html, label: str):
+    def __extract_pm_view_meta(html: etree._Element, label: str) -> Optional[str]:
         """
         按标签提取 Audiences 新版短消息详情页中的元信息。
         """
@@ -271,7 +285,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return NexusAudiencesSiteUserInfo.__normalize_text(values[0].xpath("string(.)"))
 
     @staticmethod
-    def __normalize_text(text: str):
+    def __normalize_text(text: str) -> Optional[str]:
         """
         规整 Audiences 新版消息页文本空白字符。
         """
@@ -280,7 +294,9 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
         return text or None
 
-    def __fill_empty_message_content_from_list(self, msg_link: str, head, date, content):
+    def __fill_empty_message_content_from_list(
+        self, msg_link: str, head: Optional[str], date: Optional[str], content: Optional[str]
+    ) -> MessageContent:
         """
         使用列表页预览填补详情页解析不到的字段。
         """
@@ -290,7 +306,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         preview_head, preview_date, preview_content = preview
         return head or preview_head, date or preview_date, content or preview_content
 
-    def __should_fetch_next_unread_page(self, new_message_links: list) -> bool:
+    def __should_fetch_next_unread_page(self, new_message_links: list[str]) -> bool:
         """
         判断是否还需要继续请求 Audiences 下一页未读消息列表。
         """
@@ -308,7 +324,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             and len(self.__seen_unread_message_links) >= self.message_unread
 
     @staticmethod
-    def __is_empty_message_content(head, date, content) -> bool:
+    def __is_empty_message_content(head: object, date: object, content: object) -> bool:
         """
         判断消息详情是否完全为空，避免把解析失败页包装成 None 通知。
         """
@@ -321,7 +337,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         """
         return f"messages.php?action=viewmailbox&box={box}&unread=yes"
 
-    def __build_next_unread_mailbox_page(self, has_unread: bool) -> str:
+    def __build_next_unread_mailbox_page(self, has_unread: bool) -> Optional[str]:
         """
         当前页存在未读消息时按 Audiences 的 page 参数规则生成下一页地址。
         """
@@ -332,21 +348,21 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         self.__next_mail_page += 1
         return f"{self._user_mail_unread_page}&page={next_page}"
 
-    def _parse_user_traffic_info(self, html_text):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户流量信息
+        解析用户流量信息。
         """
         super()._parse_user_traffic_info(html_text)
         self.__parse_userbar_info(html_text)
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户额外信息
+        解析用户额外信息。
         """
         super()._parse_user_detail_info(html_text)
         self.__parse_userbar_info(html_text)
 
-    def __parse_userbar_info(self, html_text: str):
+    def __parse_userbar_info(self, html_text: str) -> None:
         """
         解析 Audiences 新版顶部用户栏，覆盖 NexusPHP 通用正则的误判。
         """
@@ -355,21 +371,31 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             if not DomUtils.has_child_elements(html):
                 return
 
-            for user_node in html.xpath('//*[@data-uploader-url or @data-uploader-stats]'):
+            userbars = html.xpath(
+                '//*[contains(concat(" ", normalize-space(@class), " "), " site-userbar ")]'
+            )
+            scope = userbars[0] if userbars else html
+            nodes = scope.xpath('.//*[@data-uploader-url or @data-uploader-stats]')
+            # 兼容只有单个用户卡的旧页面；多用户卡且无用户栏时不能猜测当前账号。
+            if not userbars:
+                nodes = [node for node in nodes if self.userid and
+                         re.search(rf"userdetails\.php\?id={re.escape(str(self.userid))}(?:&|$)",
+                                   node.get("data-uploader-url") or "")] or (nodes if len(nodes) == 1 else [])
+            for user_node in nodes:
                 self.__parse_user_identity(user_node)
                 self.__parse_uploader_stats(user_node.get("data-uploader-stats"))
 
             # data-uploader-stats 不包含分享率，需从 compact metric 的 class 中读取。
-            self.__parse_compact_metric(html, "ratio", "ratio")
-            self.__parse_compact_metric(html, "uploaded", "upload")
-            self.__parse_compact_metric(html, "downloaded", "download")
-            self.__parse_compact_metric(html, "bonus", "bonus")
-            self.__parse_compact_metric(html, "active", "active")
+            self.__parse_compact_metric(scope, "ratio", "ratio")
+            self.__parse_compact_metric(scope, "uploaded", "upload")
+            self.__parse_compact_metric(scope, "downloaded", "download")
+            self.__parse_compact_metric(scope, "bonus", "bonus")
+            self.__parse_compact_metric(scope, "active", "active")
         finally:
             if html is not None:
                 del html
 
-    def __parse_user_identity(self, user_node):
+    def __parse_user_identity(self, user_node: etree._Element) -> None:
         """
         从新版用户卡属性中提取用户 ID、用户名和等级。
         """
@@ -383,10 +409,13 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             self.username = username.strip()
 
         user_level = user_node.get("data-uploader-badge")
-        if user_level and user_level.strip():
-            self.user_level = user_level.strip()
+        if user_level:
+            # 站点组名仅用于展示，保留通用等级以与其他 NexusPHP 站点一致。
+            user_level = re.sub(r"^\([^)]*\)\s*", "", user_level.strip()).strip()
+            if user_level:
+                self.user_level = user_level
 
-    def __parse_uploader_stats(self, stats_text: str):
+    def __parse_uploader_stats(self, stats_text: str) -> None:
         """
         解析 data-uploader-stats 中的结构化流量数据。
         """
@@ -409,9 +438,9 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             value = str(item.get("value") or "").strip()
             self.__set_metric_value(label=label, tone=tone, value=value)
 
-    def __parse_compact_metric(self, html, metric: str, field: str):
+    def __parse_compact_metric(self, html: etree._Element, metric: str, field: str) -> None:
         """
-        按 compact metric 的 class 读取新版用户栏中的单项数据。
+        按 紧凑指标节点的 class 读取新版用户栏中的单项数据。
         """
         values = html.xpath(
             f'//*[contains(concat(" ", normalize-space(@class), " "), " site-userbar__compact-metric--{metric} ")]'
@@ -425,7 +454,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         if values:
             self.__set_metric_value(field=field, value=values[-1].strip())
 
-    def __set_metric_value(self, value: str, label: str = None, tone: str = None, field: str = None):
+    def __set_metric_value(self, value: str, label: Optional[str] = None, tone: Optional[str] = None, field: Optional[str] = None) -> None:
         """
         将 Audiences 用户栏指标写入通用用户数据字段。
         """
@@ -447,7 +476,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
                 self.seeding = text_tools.parse_int(active_match.group(1))
                 self.leeching = text_tools.parse_int(active_match.group(2))
 
-    def __parse_inbox_unread(self, message_link):
+    def __parse_inbox_unread(self, message_link: etree._Element) -> Optional[int]:
         """
         从 Audiences 收件箱入口提取未读数。
         """
@@ -471,7 +500,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return None
 
     @staticmethod
-    def __extract_inbox_unread_pair(text: str):
+    def __extract_inbox_unread_pair(text: Optional[str]) -> Optional[int]:
         """
         从 Audiences 总数/未读数格式中提取未读数，例如 1749/172。
         """
@@ -489,7 +518,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return None
 
     @staticmethod
-    def __extract_inbox_unread_badge(text: str):
+    def __extract_inbox_unread_badge(text: Optional[str]) -> Optional[int]:
         """
         从明确的未读角标中提取未读数，避免把普通收件箱总数误作未读。
         """
@@ -506,7 +535,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return None
 
     @staticmethod
-    def __has_inbox_unread_marker(message_link) -> bool:
+    def __has_inbox_unread_marker(message_link: etree._Element) -> bool:
         """
         判断收件箱入口是否只有未读状态但没有可靠数量。
         """
@@ -515,7 +544,10 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             return True
         return bool(message_link.xpath('.//*[contains(@class, "site-userbar__compact-tool-badge--unread")]'))
 
-    def _parse_seeding_pages(self):
+    def _parse_seeding_pages(self) -> None:
+        """
+        按站点页面规则读取做种列表并保留明确的汇总数据。
+        """
         if not self._torrent_seeding_page:
             return
         self._torrent_seeding_headers = {"Referer": urljoin(self._base_url, self._user_detail_page)}

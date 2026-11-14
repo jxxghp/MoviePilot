@@ -1,6 +1,10 @@
+"""
+通过 Rousi.pro PeerGo 接口搜索种子并转换为通用索引结果。
+"""
+
 import base64
 import json
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
@@ -21,7 +25,7 @@ class RousiSpider:
     _indexerid = None
     _domain = None
     _url = None
-    _name = ""
+    _name: Optional[str] = ""
     _proxy = None
     _use_proxy = False
     _cookie = None
@@ -44,10 +48,18 @@ class RousiSpider:
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
         获取搜索接口单页容量。
+
+        :param keyword: 保留统一入口参数，不影响本站的分页容量
+        :return: 本站搜索接口的固定单页记录数
         """
         return cls._size
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
+        """
+        使用站点配置初始化 PeerGo 搜索和下载接口。
+
+        :param indexer: 包含域名、API Key、代理和超时秒数的站点配置
+        """
         self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
@@ -64,9 +76,9 @@ class RousiSpider:
             self._apikey = indexer.get('apikey')
             self._timeout = indexer.get('timeout') or 15
 
-    def __get_params(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> dict:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> dict[str, Union[int, str]]:
         """
-        构建 API 请求参数
+        构建 API 请求参数。
 
         :param keyword: 搜索关键词
         :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
@@ -74,8 +86,8 @@ class RousiSpider:
         :param page: 页码（从 0 开始，API 需要从 1 开始）
         :return: 请求参数字典
         """
-        params = {
-            "page": int(page) + 1,
+        params: dict[str, Union[int, str]] = {
+            "page": int(page or 0) + 1,
             "page_size": self._size
         }
         if keyword:
@@ -84,7 +96,7 @@ class RousiSpider:
         # API 不支持多分类搜索,只使用单个 category 参数
         # 优先使用用户选择的分类,如果用户未选择则根据 mtype 推断
         if cat:
-            # 用户选择了特定分类,需要将分类 ID 映射回 API 的 category name
+            # 用户指定分类时，将分类 ID 映射为 API 接受的分类名称。
             category_names = self.__get_category_names_by_ids(cat)
             if category_names:
                 # 如果用户选择了多个分类,只取第一个
@@ -100,17 +112,17 @@ class RousiSpider:
 
         return params
 
-    def __get_category_names_by_ids(self, cat: str) -> Optional[list]:
+    def __get_category_names_by_ids(self, cat: str) -> Optional[list[str]]:
         """
-        根据用户选择的分类 ID 获取 API 的 category names
+        将用户选择的分类 ID 转为 API 接受的分类名称。
 
-        :param cat: 用户选择的分类 ID（逗号分隔的多个ID，如 "1,2,3"）
-        :return: API 的 category names 列表（如 ["movie", "tv", "documentary"]）
+        :param cat: 逗号分隔的分类 ID，例如 1,2,3
+        :return: 分类名称列表，例如 movie、tv、documentary；无输入时返回 None
         """
         if not cat:
             return None
 
-        # ID 到 category name 的映射
+        # 分类 ID 到 API 分类名称的映射。
         id_to_name = {
             '1': 'movie',
             '2': 'tv',
@@ -120,15 +132,17 @@ class RousiSpider:
             '6': 'variety'
         }
 
-        # 分割多个分类 ID 并映射为 category names
+        # 按逗号拆分分类 ID，并保留能映射到 API 名称的分类。
         cat_ids = [c.strip() for c in cat.split(',') if c.strip()]
-        category_names = [id_to_name.get(cat_id) for cat_id in cat_ids if cat_id in id_to_name]
+        category_names = [id_to_name[cat_id] for cat_id in cat_ids if cat_id in id_to_name]
 
         return category_names if category_names else None
 
-    def __process_response(self, res) -> Tuple[bool, List[dict]]:
+    def __process_response(
+        self, res: Any
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        处理 API 响应
+        处理 API 响应。
 
         :param res: 请求响应对象
         :return: (是否发生错误, 种子列表)
@@ -154,16 +168,16 @@ class RousiSpider:
             logger.warning(f"{self._name} 搜索失败，无法连接 {self._domain}")
             return True, []
 
-    def __parse_result(self, results: List[dict]) -> List[dict]:
+    def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
-        解析搜索结果
+        解析搜索结果。
 
         将 API 返回的种子数据转换为 MoviePilot 标准格式
 
         :param results: API 返回的种子列表
         :return: 标准化的种子信息列表
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         if not results:
             return torrents
 
@@ -205,7 +219,7 @@ class RousiSpider:
                     freedate = time_tools.normalize_datetime(promotion.get('until'))
 
             torrent_id = result.get('id')
-            torrent = {
+            torrent: dict[str, object] = {
                 'title': result.get('title'),
                 'description': result.get('subtitle'),
                 'enclosure': self.__get_download_url(torrent_id),
@@ -224,9 +238,15 @@ class RousiSpider:
             torrents.append(torrent)
         return torrents
 
-    def search(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(
+        self,
+        keyword: str,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        同步搜索种子
+        同步搜索种子。
 
         :param keyword: 搜索关键词
         :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
@@ -252,9 +272,15 @@ class RousiSpider:
 
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(
+        self,
+        keyword: str,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        异步搜索种子
+        异步搜索种子。
 
         :param keyword: 搜索关键词
         :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
@@ -280,9 +306,9 @@ class RousiSpider:
 
         return self.__process_response(res)
 
-    def __get_download_url(self, torrent_id: int) -> str:
+    def __get_download_url(self, torrent_id: object) -> str:
         """
-        构建种子下载链接
+        构建种子下载链接。
 
         MoviePilot 会携带个人 API Key 请求详情接口，再提取带 capability 的短时下载地址。
 
@@ -305,3 +331,31 @@ class RousiSpider:
         }
         base64_str = base64.b64encode(json.dumps(params).encode('utf-8')).decode('utf-8')
         return f"[{base64_str}]{url}"
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        用 PeerGo 个人 API Key 验证用户接口，不把网页成功当作 API 可用。
+
+        :return: 当前账号是否可用及认证或连接失败原因
+        """
+        if not self._apikey:
+            return False, "未配置个人 API Key"
+        with RequestUtils(headers={
+            "Content-Type": "application/json", "Accept": "application/json", "Authorization": f"Bearer {self._apikey}",
+        }, ua=self._ua or get_runtime_setting("USER_AGENT"), proxies=self._proxy or {},
+            timeout=self._timeout).response_manager(
+            method="GET", url=f"https://{self._domain}/api/v1/profile", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code == 200:
+                try:
+                    payload = response.json()
+                except (TypeError, ValueError):
+                    return False, "站点返回了无效的用户数据"
+                if isinstance(payload, dict) and payload.get("code") == 0:
+                    return True, "连接成功"
+                return False, "个人 API Key 已失效或权限不足"
+            if response.status_code in (401, 403):
+                return False, "个人 API Key 已失效或权限不足"
+            return False, f"错误：{response.status_code} {response.reason}"

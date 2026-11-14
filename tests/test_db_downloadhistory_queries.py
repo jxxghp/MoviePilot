@@ -5,7 +5,6 @@
 目录；查错一条就是整理到错误的剧里。下载文件记录则决定「删种时该删哪些文件」，
 条件写宽会误删别的任务的文件。
 """
-import asyncio
 import time as _time
 
 import pytest
@@ -19,7 +18,9 @@ TMDB = str(MediaSource.TMDB)
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把下载历史与下载文件表纳入用例级回收。"""
+    """
+    把下载历史与下载文件表纳入用例级回收。
+    """
     db.watermark(DownloadHistory, DownloadFiles)
 
 
@@ -28,7 +29,9 @@ def _history(title: str, download_hash: str = None, media_id: str = "7001",
              episodes: str = None, date: str = "2026-08-13 10:00:00",
              username: str = "alice", music_type: str = None,
              path: str = None) -> DownloadHistory:
-    """构造一条下载历史。"""
+    """
+    构造一条下载历史。
+    """
     return DownloadHistory(path=path or f"/downloads/{title}", type=mtype or MediaType.TV.value,
                            title=title, year=year, media_source=TMDB, media_id=media_id,
                            music_type=music_type, seasons=seasons, episodes=episodes,
@@ -37,7 +40,9 @@ def _history(title: str, download_hash: str = None, media_id: str = "7001",
 
 def _file(download_hash: str, fullpath: str, savepath: str = "/downloads",
           state: int = 1) -> DownloadFiles:
-    """构造一条下载文件记录。"""
+    """
+    构造一条下载文件记录。
+    """
     return DownloadFiles(downloader="qbittorrent", download_hash=download_hash,
                          fullpath=fullpath, savepath=savepath,
                          filepath=fullpath.rsplit("/", 1)[-1],
@@ -116,7 +121,9 @@ def test_list_by_page_is_newest_first_and_paged(db):
 
 
 def test_get_by_path_returns_latest_history_for_reused_directory(db):
-    """同目录周更下载应返回最新 hash，不依赖数据库碰巧返回的第一行。"""
+    """
+    同目录周更下载应返回最新 hash，不依赖数据库碰巧返回的第一行。
+    """
     older = _history("旧集", download_hash="old-hash", path="/downloads/reused")
     latest = _history("新集", download_hash="new-hash", path="/downloads/reused")
     db.add(older, latest)

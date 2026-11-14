@@ -1,4 +1,6 @@
-"""真实站点主副标题的离线音乐识别回归，不包含站点凭据或网络访问。"""
+"""
+真实站点主副标题的离线音乐识别回归，不包含站点凭据或网络访问。
+"""
 
 import json
 from pathlib import Path
@@ -20,14 +22,18 @@ SAMPLES = json.loads(
 @pytest.mark.parametrize("engine", ["python", "rust"])
 @pytest.mark.parametrize("sample", SAMPLES, ids=lambda sample: sample["id"])
 def test_real_music_titles_and_subtitles(sample, engine, monkeypatch):
-    """两条真实 MetaInfo 路径须提取相同的名称证据，不能用 Python 回退冒充 Rust。"""
+    """
+    两条真实 MetaInfo 路径须提取相同的名称证据，不能用 Python 回退冒充 Rust。
+    """
     if engine == "rust":
         if not rust.is_available():
             pytest.skip("moviepilot_rust 扩展未安装")
         monkeypatch.setattr(rust, "is_enabled", lambda: True)
 
         def reject_python_fallback(*_args, **_kwargs):
-            """Rust 样本解析一旦回退 Python 就显式失败。"""
+            """
+            Rust 样本解析一旦回退 Python 就显式失败。
+            """
             raise AssertionError("真实音乐样本不应从 Rust 回退 Python")
 
         monkeypatch.setattr(MetaMusic, "_prepare_name_context", reject_python_fallback)
@@ -48,7 +54,9 @@ def test_real_music_titles_and_subtitles(sample, engine, monkeypatch):
     ("Artist - Live At Montreux 1999 2022 FLAC", "Live At Montreux 1999 2022"),
 ])
 def test_release_cleanup_preserves_natural_titles(title, expected, engine, monkeypatch):
-    """发行类型和年份规则不能删除作品名中的自然单词或连续年份。"""
+    """
+    发行类型和年份规则不能删除作品名中的自然单词或连续年份。
+    """
     if engine == "rust" and not rust.is_available():
         pytest.skip("moviepilot_rust 扩展未安装")
     monkeypatch.setattr(rust, "is_enabled", lambda: True)
@@ -67,7 +75,9 @@ def test_release_cleanup_preserves_natural_titles(title, expected, engine, monke
     "歌手：周杰伦，专辑：叶惠美 | [2003] FLAC",
 ])
 def test_subtitle_labels_keep_album_and_year_boundaries(subtitle, engine, monkeypatch):
-    """明确字段可补全缺失信息，平台分隔与后续字段不能污染署名或专辑名。"""
+    """
+    明确字段可补全缺失信息，平台分隔与后续字段不能污染署名或专辑名。
+    """
     if engine == "rust" and not rust.is_available():
         pytest.skip("moviepilot_rust 扩展未安装")
     monkeypatch.setattr(rust, "is_enabled", lambda: True)
@@ -85,7 +95,9 @@ def test_subtitle_labels_keep_album_and_year_boundaries(subtitle, engine, monkey
     ("(feature presentation)", ["Artist"]),
 ])
 def test_featured_credits_require_explicit_marker(suffix, artists, engine, monkeypatch):
-    """仅提取明确的客串署名，保留原始曲名，去重且不误读普通注释。"""
+    """
+    仅提取明确的客串署名，保留原始曲名，去重且不误读普通注释。
+    """
     if engine == "rust" and not rust.is_available():
         pytest.skip("moviepilot_rust 扩展未安装")
     monkeypatch.setattr(rust, "is_enabled", lambda: True)
@@ -106,7 +118,9 @@ def test_featured_credits_require_explicit_marker(suffix, artists, engine, monke
     ("山歌廖哉 FLAC", "曲名：其他专辑", "山歌廖哉"),
 ])
 def test_pinyin_title_prefers_verified_native_subtitle(title, subtitle, expected, engine, monkeypatch):
-    """中文原文须与拼音逐字对应；同字数无关文案及正常外文名不能触发替换。"""
+    """
+    中文原文须与拼音逐字对应；同字数无关文案及正常外文名不能触发替换。
+    """
     if engine == "rust" and not rust.is_available():
         pytest.skip("moviepilot_rust 扩展未安装")
     monkeypatch.setattr(rust, "is_enabled", lambda: True)
@@ -119,9 +133,13 @@ def test_pinyin_title_prefers_verified_native_subtitle(title, subtitle, expected
 
 
 def test_pinyin_check_loads_only_syllable_table(monkeypatch):
-    """拼音校验只读音节候选表，不创建会常驻约 50MB 概率表的 DefaultHmmParams。"""
+    """
+    拼音校验只读音节候选表，不创建会常驻约 50MB 概率表的 DefaultHmmParams。
+    """
     def reject_hmm_params(*_args, **_kwargs):
-        """完整 HMM 参数一旦被创建就显式失败。"""
+        """
+        完整 HMM 参数一旦被创建就显式失败。
+        """
         raise AssertionError("拼音校验不应载入 HMM 概率表")
 
     monkeypatch.setattr(Pinyin2Hanzi, "DefaultHmmParams", reject_hmm_params)

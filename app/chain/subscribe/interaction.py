@@ -1,4 +1,6 @@
-"""订阅交互与删除入口编排"""
+"""
+订阅交互与删除入口编排
+"""
 
 from typing import Optional, Union, cast
 
@@ -14,10 +16,14 @@ from app.schemas.types import (
 
 
 class SubscribeInteractionOwner(_SubscribeOwnerBase):
-    """订阅交互与删除入口编排，作为 SubscribeChain 的单一职责实现 owner。"""
+    """
+    订阅交互与删除入口编排，作为 SubscribeChain 的单一职责组件。
+    """
 
     def _interaction_handler(self) -> "SubscribeInteractionHandler":
-        """构造 /subscribes 交互处理器，业务动作由本链提供。"""
+        """
+        构造 /subscribes 交互处理器，业务动作由本链提供。
+        """
         return SubscribeInteractionHandler(
             messenger=self,
             actions=self,
@@ -26,7 +32,9 @@ class SubscribeInteractionOwner(_SubscribeOwnerBase):
         )
 
     def _delete_subscription(self, subscribe_id: int) -> bool:
-        """通过统一同步命令删除订阅，保留消息入口原有的全局管理权限。"""
+        """
+        通过统一同步命令删除订阅，保留消息入口原有的全局管理权限。
+        """
         with self.sync_subscription_delete_scope() as command:
             return cast(
                 bool,
@@ -74,5 +82,4 @@ class SubscribeInteractionOwner(_SubscribeOwnerBase):
                     )
                 )
                 return
-        # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)

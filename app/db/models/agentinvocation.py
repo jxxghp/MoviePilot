@@ -1,4 +1,6 @@
-"""Agent 写工具调用的持久回执表。"""
+"""
+Agent 写工具调用的持久回执表。
+"""
 
 from sqlalchemy import CheckConstraint, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -7,7 +9,9 @@ from app.db.base import Base, get_id_column
 
 
 class AgentInvocation(Base):
-    """保存一次写调用的稳定身份与结果状态，不保存敏感参数或原始结果。"""
+    """
+    保存一次写调用的稳定身份与结果状态，不保存敏感参数或原始结果。
+    """
 
     id = get_id_column()
     principal_id: Mapped[str] = mapped_column(String(255), nullable=False)

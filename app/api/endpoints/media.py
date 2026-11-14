@@ -1,13 +1,24 @@
+"""
+提供媒体识别、详情、图片和季集信息查询接口。
+"""
+
 from pathlib import Path
 from typing import Annotated, Any, List, Optional, Union, cast
 from uuid import UUID
 
-from fastapi import Depends, Query
+from fastapi import Body, Depends, Query
 from pydantic import BeforeValidator
 
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.context import get_classification_runtime
-from app.api.dependencies.auth import get_current_active_user
+from app.api.dependencies.auth import (
+    get_current_active_manage_user,
+    get_current_active_user,
+    get_current_active_user_async,
+)
+from app.api.dependencies.history import get_mediaserver_query_service
+from app.api.dependencies.subscription import get_subscription_query_service
+from app.api.principal import ApiPrincipal
 from app.api.response import (
     CompatibleCountParam,
     CompatiblePageParam,
@@ -15,32 +26,104 @@ from app.api.response import (
 )
 from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import get_api_runtime_config_snapshot
+from app.application.mediaserver import MediaServerQueryService
 from app.application.module import get_module_manager
+from app.application.subscription.query import SubscriptionQueryService
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
-from app.domain.context import Context, MusicInfo
+from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.schemas.category import CategoryConfig as _SchemaCategoryConfig
 from app.schemas.category import MediaCategoryMap as _SchemaMediaCategoryMap
+from app.schemas.context import Context as _SchemaContext
 from app.schemas.context import MediaDetailResult as _SchemaMediaDetailResult
 from app.schemas.context import MediaEpisodeGroup as _SchemaMediaEpisodeGroup
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.context import MediaSearchResults as _SchemaMediaSearchResults
 from app.schemas.context import MediaSeason as _SchemaMediaSeason
 from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
-from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.file import FileItem as _SchemaFileItem
+from app.schemas.media import MediaStatusQuery, MediaStatusResult, normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicEntityType
-from app.schemas.workflow import Context as _SchemaContext
-from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
+
+
+@router.post("/status", summary="批量查询本地入库与订阅状态", response_model=list[MediaStatusResult])
+async def media_status(
+    items: Annotated[list[MediaStatusQuery], Body(min_length=1, max_length=50, description="按展示顺序提交的媒体，最多 50 项")],
+    library: MediaServerQueryService = Depends(get_mediaserver_query_service),
+    subscriptions: SubscriptionQueryService = Depends(get_subscription_query_service),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
+) -> list[MediaStatusResult]:
+    """
+    在单次请求内查询卡片状态，顺序复用请求级数据库会话，不访问外部媒体服务器。
+
+    :param items: 当前可见卡片的身份与匹配元数据，最多 50 项
+    :param library: 本地媒体库查询服务
+    :param subscriptions: 订阅查询服务
+    :param current_user: 当前用户，普通用户只能看到自己的订阅
+    :return: 与输入同序的入库标识、订阅状态及同来源各季模式，不返回完整订阅
+    """
+    return [await _query_media_status(item, library, subscriptions, current_user) for item in items]
+
+
+async def _query_media_status(
+    item: MediaStatusQuery,
+    library: MediaServerQueryService,
+    subscriptions: SubscriptionQueryService,
+    current_user: ApiPrincipal,
+) -> MediaStatusResult:
+    """
+    保持既有标题、年份、季号回退与 owner 限制，并投影单张卡片需要的轻量字段。
+
+    :param item: 单个媒体的稳定身份与回退元数据
+    :param library: 只访问本地数据库的媒体库查询服务
+    :param subscriptions: 订阅查询服务
+    :param current_user: 决定订阅 owner 范围的当前主体
+    :return: 单个媒体的轻量状态，不返回他人订阅或完整记录
+    """
+    metadata = MetaInfo(item.title) if item.title else None
+    title = metadata.name if metadata else None
+    season = item.season if item.season is not None else metadata.begin_season if metadata else None
+    item_id = None
+    if item.mtype != MediaType.MUSIC:
+        item_id = await library.find_item_id(
+            title=title, year=item.year, mtype=item.mtype.value if item.mtype else None,
+            media_source=item.media_source, media_id=item.media_id, season=season,
+        )
+    candidates = []
+    if item.media_source and item.media_id:
+        candidates = await subscriptions.list_by_media_identity(item.media_source, item.media_id, item.music_type)
+    accessible = [
+        record for record in candidates
+        if current_user.is_superuser or (bool(record.username) and record.username == current_user.name)
+    ]
+    matched = [record for record in accessible if season is None or record.season == season]
+    if not matched and title and item.mtype in (MediaType.MOVIE, MediaType.TV):
+        fallback = await subscriptions.list_by_video_metadata(
+            title=title, year=item.year, media_type=item.mtype, season=season,
+        )
+        matched = [
+            record for record in fallback
+            if current_user.is_superuser or (bool(record.username) and record.username == current_user.name)
+        ]
+    return MediaStatusResult(
+        item_id=item_id,
+        subscribed=bool(matched),
+        seasons={
+            record.season: "normal" if not record.best_version else "best_version_full" if record.best_version_full else "best_version"
+            for record in accessible
+            if record.type == MediaType.TV.value and record.season is not None
+        },
+    )
 
 
 _BUILTIN_MEDIA_SOURCES = (
@@ -81,7 +164,9 @@ _BUILTIN_MEDIA_SOURCE_MODULES = {
 
 
 def _enabled_builtin_media_sources() -> set[MediaSource]:
-    """按宿主模块启用状态返回可供前端选择的内置媒体来源。"""
+    """
+    按宿主模块启用状态返回可供前端选择的内置媒体来源。
+    """
     try:
         enabled_module_ids = {
             spec.id for spec in get_module_manager().list_enabled_specs()
@@ -97,7 +182,9 @@ def _enabled_builtin_media_sources() -> set[MediaSource]:
 
 
 def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
-    """合并内置与启用插件声明的媒体来源，并按来源标识去重。"""
+    """
+    合并内置与启用插件声明的媒体来源，并按来源标识去重。
+    """
     from app.application.plugin.runtime import get_plugin_manager
 
     enabled_builtin_sources = _enabled_builtin_media_sources()
@@ -120,7 +207,9 @@ def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
 
 
 def _split_media_source_query(value: object) -> tuple[str, ...]:
-    """展开重复或逗号分隔的来源参数，并在枚举校验前规范历史别名。"""
+    """
+    展开重复或逗号分隔的来源参数，并在枚举校验前规范历史别名。
+    """
     if value in (None, ""):
         return ()
     values = value if isinstance(value, (list, tuple)) else (value,)
@@ -138,14 +227,18 @@ MediaSourceQuery = Annotated[
 def _get_search_result_source(
     obj: Union[_SchemaMediaInfo, _SchemaMediaPerson, dict[str, Any]],
 ) -> Any:
-    """读取影视、人物或音乐搜索结果中的媒体来源标识。"""
+    """
+    读取影视、人物或音乐搜索结果中的媒体来源标识。
+    """
     if isinstance(obj, dict):
         return obj.get("media_source") or obj.get("source")
     return getattr(obj, "media_source", None) or getattr(obj, "source", None)
 
 
 def _serialize_search_result(obj: Any) -> dict[str, Any]:
-    """将域对象或 Pydantic 人物对象转换为统一搜索响应字典。"""
+    """
+    将域对象或 Pydantic 人物对象转换为统一搜索响应字典。
+    """
     if isinstance(obj, dict):
         return obj
     if hasattr(obj, "to_dict"):
@@ -159,7 +252,9 @@ def _is_valid_source_media_id(
     media_source: Optional[MediaSource],
     media_id: str,
 ) -> bool:
-    """按媒体数据源校验原生 ID，并兼容豆瓣音乐的曲目复合 ID。"""
+    """
+    按媒体数据源校验原生 ID，并兼容豆瓣音乐的曲目复合 ID。
+    """
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,
@@ -185,7 +280,9 @@ def _build_recognize_metainfo(
     subtitle: Optional[str] = None,
     custom_words: Optional[str] = None,
 ) -> MetaBase:
-    """构造标题识别元数据，并兼容第三方客户端传入媒体文件路径。"""
+    """
+    构造标题识别元数据，并兼容第三方客户端传入媒体文件路径。
+    """
     custom_word_list = custom_words.split("\n") if custom_words else None
     normalized_title = title.replace("\\", "/")
     title_path = Path(normalized_title)
@@ -207,7 +304,9 @@ def _build_media_seasons(
     mediainfo: Any,
     season: Optional[int] = None,
 ) -> List[_SchemaMediaSeason]:
-    """将任意数据源的统一媒体信息转换为季信息响应。"""
+    """
+    将任意数据源的统一媒体信息转换为季信息响应。
+    """
     seasons_info = []
     for item in mediainfo.season_info or []:
         season_number = item.get("season_number")
@@ -256,11 +355,12 @@ async def recognize(
 ) -> Any:
     """
     根据标题、副标题识别媒体信息
+
     :param title: 标题
     :param subtitle: 副标题
     :param custom_words: 临时识别词（每行一条规则），传入时仅在本次识别中生效，不会保存到系统配置
     :param media_source: 请求级识别数据源
-    :param _:
+    :param _: 已校验的访问令牌载荷
     """
     # 识别媒体信息，传入临时识别词时优先于系统配置的识别词生效
     metainfo = _build_recognize_metainfo(title, subtitle, custom_words)
@@ -271,9 +371,8 @@ async def recognize(
         metainfo,
         media_source=media_source,
     )
-    if mediainfo:
-        return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
-    return _SchemaContext()
+    # 未匹配到媒体时也返回解析元数据，便于识别测试查看识别词应用情况和解析结果
+    return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
 
 
 @router.get(
@@ -373,7 +472,7 @@ async def search(
         music_types = (music_type,) if music_type else (MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM)
         filtered_music_results = await media_chain.async_search_music(
             query=title,
-            limit=count,
+            limit=page * count,
             media_source=source_selection,
             music_types=music_types,
         )
@@ -384,7 +483,8 @@ async def search(
     elif type == "collection":
         collections = await media_chain.async_search_collections(name=title, media_source=source_selection)
         result = [collection.to_dict() for collection in collections] if collections else []
-    else:  # person
+    # 人物信息分支
+    else:
         persons = await media_chain.async_search_persons(name=title, media_source=source_selection)
         result = [_serialize_search_result(person) for person in persons or []]
 
@@ -408,7 +508,9 @@ async def search(
 def source(
     _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
 ) -> list[_SchemaMediaSourceInfo]:
-    """返回内置及启用插件注册的媒体数据源，供前端统一构造来源选项。"""
+    """
+    返回内置及启用插件注册的媒体数据源，供前端统一构造来源选项。
+    """
     return _registered_media_sources()
 
 
@@ -420,7 +522,6 @@ def _scrape_impl(
     type_name: Optional[MediaType] = None,
     music_type: Optional[str] = None,
     episode_group: Optional[str] = None,
-    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     刮削媒体信息，可按请求指定媒体数据源及其原生ID
@@ -432,7 +533,6 @@ def _scrape_impl(
     :param type_name: 媒体类型
     :param music_type: 音乐实体类型，支持 recording 和 album
     :param episode_group: TMDB 电视剧剧集组
-    :param _: Token校验
     """
     if not fileitem or not fileitem.path:
         return _SchemaResponse(success=False, message="刮削路径无效")
@@ -463,14 +563,15 @@ def _scrape_impl(
                     message="音乐实体类型无效，仅支持 recording 或 album",
                 )
             # 音乐与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
-            music_info = MediaChain().recognize_media(
+            recognized_music = MediaChain().recognize_media(
                 media_source=media_source or MediaSource.MusicBrainz,
                 media_id=normalized_media_id,
                 mtype=MediaType.MUSIC,
                 music_type=normalized_music_type,
             )
-            if not music_info:
+            if not isinstance(recognized_music, MusicInfo):
                 return _SchemaResponse(success=False, message="刮削失败，无法识别音乐信息")
+            music_info = recognized_music
         success, message = ScrapingChain().scrape_music_metadata(
             fileitem=fileitem,
             mediainfo=music_info,
@@ -480,6 +581,8 @@ def _scrape_impl(
         return _SchemaResponse(success=success, message=message)
 
     chain = MediaChain()
+    meta_info: Optional[MetaBase]
+    media_info: Optional[Union[MediaInfo, MusicInfo]]
     if normalized_media_id:
         meta_info = MetaInfoPath(Path(fileitem.path))
         media_info = chain.recognize_media(
@@ -489,7 +592,7 @@ def _scrape_impl(
             media_id=normalized_media_id,
             episode_group=episode_group,
         )
-        if media_info:
+        if media_info and media_source:
             media_info.scrape_source = media_source
             chain.obtain_images(mediainfo=media_info)
     else:
@@ -510,13 +613,13 @@ def _scrape_impl(
         if not Path(fileitem.path).exists():
             return _SchemaResponse(success=False, message="刮削路径不存在")
     # 手动刮削 (暂时使用同步版本，可以后续优化为异步)
-    ScrapingChain().scrape_metadata(
+    success, message = ScrapingChain().scrape_metadata(
         fileitem=fileitem,
         meta=meta_info,
         mediainfo=media_info,
         overwrite=True,
     )
-    return _SchemaResponse(success=True, message=f"{fileitem.path} 刮削完成")
+    return _SchemaResponse(success=success, message=message)
 
 
 @router.post("/scrape/{storage}", summary="刮削媒体信息", response_model=_SchemaResponse[None])
@@ -531,9 +634,14 @@ def scrape(
         Optional[str],
         Query(description="TMDB 剧集组编号，用于按指定季集顺序识别电视剧"),
     ] = None,
-    _: _SchemaTokenPayload = Depends(verify_token),
+    _: object = Depends(get_current_active_manage_user),
 ) -> Any:
-    """按请求级媒体身份、剧集组和音乐实体设置刮削单项媒体。"""
+    """
+    按请求级媒体身份、剧集组和音乐实体设置刮削单项媒体；会覆盖目标目录的图片和 NFO，与文件管理一样要求管理权限。
+
+    专辑曲目标题、艺人和曲序仅在音乐标签策略为覆盖且曲目可靠对位时更新；
+    未匹配或保留的情况通过响应消息说明。
+    """
     return _scrape_impl(
         fileitem,
         storage,
@@ -542,7 +650,6 @@ def scrape(
         type_name,
         music_type,
         episode_group,
-        _,
     )
 
 
@@ -554,7 +661,7 @@ def scrape(
 def get_category_config(
     _: object = Depends(get_current_active_user),
     classification: ClassificationRuntime = Depends(get_classification_runtime),
-):
+) -> Any:
     """
     获取分类策略配置
     """
@@ -589,9 +696,15 @@ async def group_seasons(
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    查询剧集组季信息（themoviedb）
+    查询 TMDB 剧集组季信息。
+
+    :param episode_group: 剧集组原生标识
+    :param _: 已验证的访问令牌
+    :param page: 兼容客户端的分页参数，此接口不据此分页
+    :param count: 兼容客户端的数量参数，此接口不据此截断
+    :return: 剧集组季信息；标识无效时返回空列表
     """
-    _, normalized_group_id = resolve_media_identity(
+    _resolved_source, normalized_group_id = resolve_media_identity(
         media_source=MediaSource.TMDB,
         media_id=episode_group,
     )
@@ -635,14 +748,24 @@ async def seasons(
     media_source: Optional[MediaSource] = None,
     media_id: Optional[str] = None,
     title: Optional[str] = None,
-    year: str = None,
-    season: int = None,
+    year: Optional[str] = None,
+    season: Optional[int] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    查询媒体季信息
+    按明确媒体身份或标题查询季信息。
+
+    :param media_source: 可选的媒体来源，需与媒体 ID 成对提供
+    :param media_id: 来源内的原生媒体标识
+    :param title: 未提供媒体身份时用于识别的标题
+    :param year: 标题识别使用的可选年份
+    :param season: 可选的目标季号
+    :param _: 已验证的访问令牌
+    :param page: 兼容客户端的分页参数，此接口不据此分页
+    :param count: 兼容客户端的数量参数，此接口不据此截断
+    :return: 匹配的季信息；未识别到媒体时返回空列表
     """
     if media_source is not None or media_id is not None:
         normalized_source, normalized_media_id = resolve_media_identity(
@@ -700,7 +823,7 @@ async def detail(
     """
     根据媒体来源和原生 ID 查询影视或音乐信息
     """
-    mtype = MediaType(type_name)
+    mtype = MediaType.from_agent(type_name) or MediaType(type_name)
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,

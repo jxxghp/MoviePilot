@@ -1,4 +1,6 @@
-"""真实标签经过整理批次、用户分类和目标命名后无需在线识别。"""
+"""
+真实标签经过整理批次、用户分类和目标命名后无需在线识别。
+"""
 
 import hashlib
 import shutil
@@ -15,7 +17,7 @@ from app.chain.media import MediaChain
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import music_tags_are_usable
 from app.modules.filemanager.transhandler import TransHandler
-from app.runtime.config import ConfigModel
+from app.runtime.config import ConfigModel, settings
 from app.schemas.category import CategoryConfig, ClassificationPolicy
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
@@ -25,7 +27,9 @@ from tests.test_transfer_sync_extra_files import bind_empty_history_repositories
 
 
 def _tagged_files(directory: Path) -> list[Path]:
-    """生成名字无意义且父目录年份错误的实际双碟 FLAC，身份由标签提供。"""
+    """
+    生成名字无意义且父目录年份错误的实际双碟 FLAC，身份由标签提供。
+    """
     directory.mkdir()
     files = []
     for disc, title in ((1, "晴天"), (2, "以父之名")):
@@ -33,8 +37,8 @@ def _tagged_files(directory: Path) -> list[Path]:
         shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
         audio = FLAC(path)
         audio.update({
-            "title": [title], "artist": ["周杰伦"], "album": ["叶惠美"],
-            "albumartist": ["周杰伦"], "date": ["2003"],
+            "title": [title], "artist": ["周杰倫"], "album": ["葉惠美"],
+            "albumartist": ["周杰倫"], "date": ["2003"],
             "tracknumber": ["1"], "tracktotal": ["1"],
             "discnumber": [str(disc)], "disctotal": ["2"],
         })
@@ -44,7 +48,9 @@ def _tagged_files(directory: Path) -> list[Path]:
 
 
 def _classification_service():
-    """提供自定义未分类去向和禁止调用的外部补充端口。"""
+    """
+    提供自定义未分类去向和禁止调用的外部补充端口。
+    """
     policy = ClassificationPolicy.model_validate({
         "schema_version": 2, "revision": 1, "enrichment_mode": "enrich_missing",
         "categories": [{"id": "music.local", "media_type": "音乐", "name": "收藏", "path": ["收藏"]}],
@@ -57,8 +63,12 @@ def _classification_service():
 
 
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])
-def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, monkeypatch, mtype):
-    """自动与显式音乐批次均以真实标签完成目标命名，双碟不碰撞且源内容不变。"""
+@pytest.mark.parametrize("simplified", [False, True])
+def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, monkeypatch, mtype, simplified):
+    """
+    真实标签离线整理遵守简体开关和自定义分类，双碟不碰撞且源内容不变。
+    """
+    monkeypatch.setattr(settings, "MUSIC_METADATA_TO_SIMPLIFIED", simplified)
     source = tmp_path / "2022-wrong-name"
     paths = _tagged_files(source)
     hashes = [hashlib.sha256(path.read_bytes()).digest() for path in paths]
@@ -83,7 +93,9 @@ def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, mo
     destinations = []
 
     def preview_plan(task, **_kwargs):
-        """执行真实模板渲染而不写库或复制文件，检查批次传入的最终音乐上下文。"""
+        """
+        执行真实模板渲染而不写库或复制文件，检查批次传入的最终音乐上下文。
+        """
         assert task.mediainfo.library_category == "收藏"
         assert task.mediainfo.media_id is None
         context = TemplateHelper().builder.build(
@@ -114,9 +126,10 @@ def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, mo
     assert all(not item.music.online_confirmed and item.source_storage == "local" for item in projected.items)
     assert [item.music.disc_number for item in projected.items] == [1, 2]
     assert [item.source_item.path for item in projected.items] == [str(path) for path in paths]
+    artist, album = ("周杰伦", "叶惠美") if simplified else ("周杰倫", "葉惠美")
     assert destinations == [
-        "收藏/周杰伦/叶惠美 (2003)/Disc 1/01 - 晴天.flac",
-        "收藏/周杰伦/叶惠美 (2003)/Disc 2/01 - 以父之名.flac",
+        f"收藏/{artist}/{album} (2003)/Disc 1/01 - 晴天.flac",
+        f"收藏/{artist}/{album} (2003)/Disc 2/01 - 以父之名.flac",
     ]
     assert [hashlib.sha256(path.read_bytes()).digest() for path in paths] == hashes
     for operation in online:
@@ -130,7 +143,9 @@ def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, mo
     ("title", "www.example.test"), ("album", None), ("artists", []), ("album", "Unknown Album"),
 ])
 def test_incomplete_or_placeholder_tags_require_more_evidence(field, value):
-    """路径可补字段不能使不完整或占位标签获得直接整理资格。"""
+    """
+    路径可补字段不能使不完整或占位标签获得直接整理资格。
+    """
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     setattr(meta, field, value)
 
@@ -138,7 +153,9 @@ def test_incomplete_or_placeholder_tags_require_more_evidence(field, value):
 
 
 def test_complete_tags_do_not_require_year_or_remote_id():
-    """真实名称足以本地整理，数字专辑名与未知年份不构成失败。"""
+    """
+    真实名称足以本地整理，数字专辑名与未知年份不构成失败。
+    """
     meta = MetaMusic(title="Welcome to New York", artists=["Taylor Swift"], album="1989")
 
     assert music_tags_are_usable(meta) is True

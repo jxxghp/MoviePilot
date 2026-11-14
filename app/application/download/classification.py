@@ -1,4 +1,6 @@
-"""已有下载任务的资源目录分类应用服务。"""
+"""
+已有下载任务的资源目录分类应用服务。
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,7 +25,14 @@ from app.schemas.types import MediaType
 
 @dataclass(frozen=True, slots=True)
 class DownloadSourceClassificationPlan:
-    """下载器资源目录重新分类的无副作用计划。"""
+    """
+    下载器资源目录重新分类的无副作用计划。
+
+    :param current_save_path: 下载器当前的资源保存目录
+    :param target_save_path: 按分类结果计算的目标保存目录
+    :param category: 拟应用的资源目录分类
+    :param changed: 目标目录与当前目录是否不同
+    """
 
     current_save_path: str
     target_save_path: str
@@ -32,7 +41,9 @@ class DownloadSourceClassificationPlan:
 
 
 def _history_media(history: DownloadHistorySnapshot) -> MediaInfo | MusicInfo:
-    """从下载历史恢复计算目录所需的媒体与冻结分类事实。"""
+    """
+    从下载历史恢复计算目录所需的媒体与冻结分类事实。
+    """
     try:
         media_type = MediaType(history.type)
     except ValueError as error:
@@ -90,7 +101,9 @@ def resolve_download_source_classification(
     media_category: Optional[str] = None,
     directory_helper: Optional[DirectoryHelper] = None,
 ) -> DownloadSourceClassificationPlan:
-    """按已配置下载根目录与历史分类快照计算任务目标位置。"""
+    """
+    按已配置下载根目录与历史分类快照计算任务目标位置。
+    """
     current_save_path = str(torrent.save_path or "").strip()
     if not current_save_path:
         raise ValueError("下载器未返回任务保存目录")
@@ -143,7 +156,9 @@ def resolve_download_source_classification(
 
 
 class DownloadSourceClassificationService:
-    """预览并通过下载器安全应用资源目录分类。"""
+    """
+    预览并通过下载器安全应用资源目录分类。
+    """
 
     def __init__(
         self,
@@ -156,7 +171,9 @@ class DownloadSourceClassificationService:
             DownloadSourceClassificationPlan,
         ] = resolve_download_source_classification,
     ) -> None:
-        """注入下载器、历史与路径规划端口。"""
+        """
+        注入下载器、历史与路径规划端口。
+        """
         self._list_torrents = list_torrents
         self._get_history_by_hash = get_history_by_hash
         self._update_torrent = update_torrent
@@ -170,7 +187,9 @@ class DownloadSourceClassificationService:
         execute: bool = False,
         media_category: Optional[str] = None,
     ) -> dict[str, Any]:
-        """生成分类计划，只有 execute 为真时才请求下载器移动。"""
+        """
+        生成分类计划，只有 execute 为真时才请求下载器移动。
+        """
         validate_torrent_hash(hash_value)
         torrents = self._list_torrents(
             hashs=[hash_value],

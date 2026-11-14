@@ -1,3 +1,7 @@
+"""
+验证影视元数据解析的历史词元状态与最终结果边界。
+"""
+
 import pytest
 
 from app.domain.meta.metavideo import MetaVideo
@@ -35,7 +39,9 @@ from app.domain.meta.metavideo import MetaVideo
     ],
 )
 def test_metavideo_preserves_cross_token_transitions(title, expected):
-    """拆分资源和编码词元应通过显式历史状态连续识别。"""
+    """
+    拆分资源和编码词元应通过显式历史状态连续识别。
+    """
     meta = MetaVideo(title)
 
     actual = {field: getattr(meta, field) for field in expected}
@@ -43,7 +49,9 @@ def test_metavideo_preserves_cross_token_transitions(title, expected):
 
 
 def test_metavideo_keeps_transient_token_state_out_of_result_model():
-    """解析结果只承载媒体元数据，不泄漏词元管线的临时控制状态。"""
+    """
+    解析结果只承载媒体元数据，不泄漏词元管线的临时控制状态。
+    """
     meta = MetaVideo("Show S01E01 2026 1080p WEB DL H 265 AAC 2 0")
 
     transient_fields = {

@@ -1,4 +1,6 @@
-"""TransferChain 同名包的职责、公开面与兼容身份门禁。"""
+"""
+TransferChain 同名包的职责、公开面与兼容身份门禁。
+"""
 
 import ast
 import importlib
@@ -11,7 +13,9 @@ TRANSFER_PACKAGE = CHAIN_ROOT / "transfer"
 
 
 def _class_methods(path: Path, class_name: str) -> set[str]:
-    """读取指定 owner 类直接定义的方法集合。"""
+    """
+    读取指定 owner 类直接定义的方法集合。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     class_node = next(
         node
@@ -26,7 +30,9 @@ def _class_methods(path: Path, class_name: str) -> set[str]:
 
 
 def test_transfer_package_retires_monolith_and_keeps_thin_facade() -> None:
-    """旧单体不得复活，Facade 只允许保留三个可替换 Chain 构造点。"""
+    """
+    旧单体不得复活，Facade 只允许保留三个可替换 Chain 构造点。
+    """
     assert not (CHAIN_ROOT / "transfer.py").exists()
     assert not (CHAIN_ROOT / "_transfer.py").exists()
     assert {
@@ -64,7 +70,9 @@ def test_transfer_package_retires_monolith_and_keeps_thin_facade() -> None:
 
 
 def test_transfer_package_root_exposes_only_stable_abi() -> None:
-    """包根只保留 Chain 类型与现有插件使用的任务锁兼容入口。"""
+    """
+    包根只保留 Chain 类型与现有插件使用的任务锁兼容入口。
+    """
     package = importlib.import_module("app.chain.transfer")
     queue_module = importlib.import_module("app.chain.transfer.queue")
 
@@ -87,7 +95,9 @@ def test_transfer_package_root_exposes_only_stable_abi() -> None:
 
 
 def test_transfer_chain_keeps_compatible_mro() -> None:
-    """拆分后 mixin 顺序与历史方法解析顺序必须保持稳定。"""
+    """
+    拆分后 mixin 顺序与历史方法解析顺序必须保持稳定。
+    """
     chain_type = importlib.import_module("app.chain.transfer").TransferChain
     owner_types = chain_type.__mro__[1:14]
     assert [base.__name__ for base in chain_type.__mro__[:15]] == [
@@ -119,7 +129,9 @@ def test_transfer_chain_keeps_compatible_mro() -> None:
 
 
 def test_transfer_workflows_have_one_method_owner() -> None:
-    """每个拆分职责的方法只能由一个 owner 定义，避免复制实现与 MRO 遮蔽。"""
+    """
+    每个拆分职责的方法只能由一个 owner 定义，避免复制实现与 MRO 遮蔽。
+    """
     owner_classes = {
         "execution.py": "TransferExecutionOwner",
         "history.py": "TransferHistoryOwner",
@@ -161,7 +173,9 @@ def test_transfer_workflows_have_one_method_owner() -> None:
 
 
 def test_transfer_cross_cutting_effects_have_single_owners() -> None:
-    """线程锁和终态事件必须分别只由队列、结算 owner 持有。"""
+    """
+    线程锁和终态事件必须分别只由队列、结算 owner 持有。
+    """
     lock_definitions: list[str] = []
     event_methods: list[str] = []
     for path in sorted(TRANSFER_PACKAGE.glob("*.py")):

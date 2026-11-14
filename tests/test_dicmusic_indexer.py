@@ -1,3 +1,7 @@
+"""
+验证 DicMusic 音乐搜索的完整标题与 Python、Rust 解析一致性。
+"""
+
 from typing import Any, NoReturn
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
@@ -35,7 +39,9 @@ DICMUSIC_HTML = """
 
 
 def _dicmusic_indexer() -> dict[str, Any]:
-    """构造与 DIC Music 资源配置一致的非分组 Gazelle 索引器。"""
+    """
+    构造与 DIC Music 资源配置一致的非分组 Gazelle 索引器。
+    """
     detail_selector = 'a[href*="torrents.php?id="][href*="torrentid="]'
     return {
         "id": "dicmusic",
@@ -92,7 +98,9 @@ def _dicmusic_indexer() -> dict[str, Any]:
 
 
 def test_dicmusic_browse_requests_ungrouped_torrent_rows() -> None:
-    """DIC Music 无关键词浏览也应显式关闭 Gazelle 结果分组。"""
+    """
+    DIC Music 无关键词浏览也应显式关闭 Gazelle 结果分组。
+    """
     spider = SiteSpider(_dicmusic_indexer(), page=2)
 
     browse_url = spider._SiteSpider__get_search_url()
@@ -108,7 +116,9 @@ def test_dicmusic_browse_requests_ungrouped_torrent_rows() -> None:
 
 
 def test_dicmusic_search_uses_complete_music_title_in_python_fallback() -> None:
-    """DIC Music Python 兜底解析应从非分组行保留完整音乐名。"""
+    """
+    DIC Music Python 兜底解析应从非分组行保留完整音乐名。
+    """
     with patch(
         "app.modules.indexer.spider.rust_accel.parse_indexer_torrents",
         return_value=None,
@@ -129,14 +139,18 @@ def test_dicmusic_search_uses_complete_music_title_in_python_fallback() -> None:
 def test_dicmusic_search_uses_complete_music_title_in_rust_parser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DIC Music Rust 解析应与 Python 解析共享完整音乐名。"""
+    """
+    DIC Music Rust 解析应与 Python 解析共享完整音乐名。
+    """
     if not rust_accel.is_available():
         pytest.skip("moviepilot_rust 扩展未安装")
 
     monkeypatch.setattr(rust_accel, "is_enabled", lambda: True)
 
     def fail_python_fallback(*_args: object, **_kwargs: object) -> NoReturn:
-        """Rust 解析异常回退时让测试显式失败。"""
+        """
+        Rust 解析异常回退时让测试显式失败。
+        """
         raise AssertionError("DIC Music Rust 解析不应回退 Python")
 
     monkeypatch.setattr(SiteSpider, "get_info", fail_python_fallback)

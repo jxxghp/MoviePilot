@@ -1,4 +1,6 @@
-"""整理任务领域对象的共享类型收窄与字典投影。"""
+"""
+整理任务领域对象的共享类型收窄与字典投影。
+"""
 
 from typing import Any, Optional, Protocol, cast
 
@@ -13,30 +15,29 @@ _MUSIC_FIELD_SOURCES = {"tag", "album_tags", "stream", "filename", "directory", 
 
 
 class _DictionarySerializable(Protocol):
-    """描述领域对象沿用的字典投影能力。"""
+    """
+    描述领域对象沿用的字典投影能力。
+    """
 
     def to_dict(self) -> dict[str, Any]:
-        """返回领域对象的字典投影。"""
+        """
+        返回领域对象的字典投影。
 
-
-class _TransferTaskMetaSource(Protocol):
-    """描述整理任务提供已解析领域元数据的最小形状。"""
-
-    meta: MetaBase | None
+        :return: 领域对象按其既有序列化契约生成的字段字典
+        """
 
 
 def domain_to_dict(value: object) -> dict[str, Any]:
-    """按领域对象既有 ``to_dict`` 合同生成字典投影。"""
+    """
+    按领域对象既有 ``to_dict`` 合同生成字典投影。
+    """
     return cast(_DictionarySerializable, value).to_dict()
 
 
-def transfer_task_meta(task: _TransferTaskMetaSource) -> MetaBase:
-    """声明进入作业与规划边界的整理任务已完成元数据解析。"""
-    return cast(MetaBase, task.meta)
-
-
 def _music_preview_status(meta: MetaMusic, info: Optional[MusicInfo], diagnostic: dict[str, Any], selected: bool) -> str:
-    """只把实际来源核验称为在线确认；标签中的ID和历史未知来源不能据此升级状态。"""
+    """
+    只把实际来源核验称为在线确认；标签中的ID和历史未知来源不能据此升级状态。
+    """
     if meta.organization_error:
         return "conflict"
     status = str(diagnostic.get("status") or "")
@@ -53,7 +54,9 @@ def _music_preview_status(meta: MetaMusic, info: Optional[MusicInfo], diagnostic
 
 
 def _music_preview_candidates(diagnostic: dict[str, Any]) -> list[dict[str, str]]:
-    """裁剪来源诊断，保留有界候选身份与标题，不透传原始响应或把评分当置信概率。"""
+    """
+    裁剪来源诊断，保留有界候选身份与标题，不透传原始响应或把评分当置信概率。
+    """
     candidates = diagnostic.get("candidates")
     if not isinstance(candidates, list):
         return []
@@ -63,7 +66,9 @@ def _music_preview_candidates(diagnostic: dict[str, Any]) -> list[dict[str, str]
 
 
 def music_transfer_preview(meta: Optional[MetaBase], media: object, context: dict[str, Any], *, selected: bool) -> Optional[dict[str, Any]]:
-    """投影音乐识别与扫描证据，不读取文件、不请求服务，也不改变整理的准入或执行结果。"""
+    """
+    投影音乐识别与扫描证据，不读取文件、不请求服务，也不改变整理的准入或执行结果。
+    """
     if not isinstance(meta, MetaMusic):
         return None
     info = media if isinstance(media, MusicInfo) else None

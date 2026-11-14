@@ -1,4 +1,6 @@
-"""统一媒体信息的外部来源投影合同。"""
+"""
+统一媒体信息的外部来源投影合同。
+"""
 
 from copy import deepcopy
 from dataclasses import fields
@@ -16,7 +18,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def test_tmdb_projection_is_complete_and_does_not_mutate_source(monkeypatch) -> None:
-    """TMDB 电视剧详情应完整投影，且保留调用方原始 episode_groups。"""
+    """
+    TMDB 电视剧详情应完整投影，且保留调用方原始 episode_groups。
+    """
     source = {
         "id": 100,
         "media_type": "tv",
@@ -78,7 +82,9 @@ def test_tmdb_projection_is_complete_and_does_not_mutate_source(monkeypatch) -> 
 
 
 def test_tmdb_empty_seasons_preserve_existing_season_projection() -> None:
-    """TMDB 空季列表应保持历史 skip 语义，不清空已有季集字段。"""
+    """
+    TMDB 空季列表应保持历史 skip 语义，不清空已有季集字段。
+    """
     season_info = [{"season_number": 1, "episode_count": 2}]
     media = MediaInfo(
         season_info=season_info,
@@ -98,7 +104,9 @@ def test_tmdb_empty_seasons_preserve_existing_season_projection() -> None:
 
 
 def test_douban_projection_is_complete_and_does_not_mutate_source() -> None:
-    """豆瓣详情应统一处理季、年份、海报、别名、时长和国家字段。"""
+    """
+    豆瓣详情应统一处理季、年份、海报、别名、时长和国家字段。
+    """
     source = {
         "id": "1292052",
         "title": "示例剧 第二季",
@@ -148,7 +156,9 @@ def test_douban_projection_is_complete_and_does_not_mutate_source() -> None:
     [("汉语普通话", "zh"), ("粤语", "cn"), ("英语", "en"), ("ja", "ja")],
 )
 def test_douban_projection_maps_language_names_to_codes(language: str, expected: str) -> None:
-    """豆瓣常见语言名称应转换为稳定的分类语言代码。"""
+    """
+    豆瓣常见语言名称应转换为稳定的分类语言代码。
+    """
     media = MediaInfo(
         douban_info={
             "id": "1292052",
@@ -162,7 +172,9 @@ def test_douban_projection_maps_language_names_to_codes(language: str, expected:
 
 
 def test_bangumi_projection_is_complete_and_does_not_mutate_source() -> None:
-    """Bangumi 详情应统一处理剧场版、别名、制作和演职员字段。"""
+    """
+    Bangumi 详情应统一处理剧场版、别名、制作和演职员字段。
+    """
     source = {
         "id": 300,
         "name": "Example Movie",
@@ -202,7 +214,9 @@ def test_bangumi_projection_is_complete_and_does_not_mutate_source() -> None:
 
 
 def test_anilist_projection_is_complete_and_does_not_mutate_source() -> None:
-    """AniList 详情应统一处理中文标题、模糊日期、季集和 AniDB 身份。"""
+    """
+    AniList 详情应统一处理中文标题、模糊日期、季集和 AniDB 身份。
+    """
     source = {
         "id": 400,
         "title": {
@@ -256,7 +270,9 @@ def test_anilist_projection_is_complete_and_does_not_mutate_source() -> None:
 
 
 def test_multiple_source_projection_keeps_constructor_order_and_identity() -> None:
-    """多来源详情同时存在时保持 TMDB 到 AniList 的历史应用顺序。"""
+    """
+    多来源详情同时存在时保持 TMDB 到 AniList 的历史应用顺序。
+    """
     media = MediaInfo(
         tmdb_info={"id": 1, "media_type": "movie", "title": "TMDB 标题"},
         douban_info={"id": "2", "title": "豆瓣标题", "type": "movie"},
@@ -286,7 +302,9 @@ def test_multiple_source_projection_keeps_constructor_order_and_identity() -> No
 def test_projection_accepts_read_only_mappings_without_mutating_current_snapshot(
     projector, source: dict
 ) -> None:
-    """四个 owner 都应接受只读 Mapping，并保持当前快照和来源输入不变。"""
+    """
+    四个 owner 都应接受只读 Mapping，并保持当前快照和来源输入不变。
+    """
     current = vars(MediaInfo())
     current_before = deepcopy(current)
     source_before = deepcopy(source)
@@ -299,7 +317,9 @@ def test_projection_accepts_read_only_mappings_without_mutating_current_snapshot
 
 
 def test_media_schema_is_transport_projection_not_duplicate_domain_logic() -> None:
-    """API DTO 只比领域数据字段多两个派生输出字段。"""
+    """
+    API DTO 只比领域数据字段多两个派生输出字段。
+    """
     domain_fields = {item.name for item in fields(MediaInfo)}
     schema_fields = set(MediaInfoSchema.model_fields)
 
@@ -319,7 +339,9 @@ def test_media_schema_is_transport_projection_not_duplicate_domain_logic() -> No
 def test_media_source_setter_abi_is_stable(
     method_name: str, expected_parameters: tuple[str, ...]
 ) -> None:
-    """四个历史 setter 继续由 canonical MediaInfo 以原参数名提供。"""
+    """
+    四个历史 setter 继续由 canonical MediaInfo 以原参数名提供。
+    """
     import inspect
 
     method = getattr(MediaInfo, method_name)

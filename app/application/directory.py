@@ -1,3 +1,7 @@
+"""
+下载与整理目录配置、路径解析及分类目录选择。
+"""
+
 import re
 from dataclasses import dataclass
 from functools import partial
@@ -36,8 +40,8 @@ from app.schemas.types import MediaType, StorageSchema, SystemConfigKey
 JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?}}", re.DOTALL)
 WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"^[A-Za-z]:")
+# 目录选择支持的完整影视或音乐媒体对象。
 DirectoryMedia = MediaInfo | MusicInfo
-"""目录选择支持的完整影视或音乐媒体对象。"""
 
 
 def build_media_download_path(
@@ -46,13 +50,15 @@ def build_media_download_path(
     media: DirectoryMedia,
     directory_helper: Optional["DirectoryHelper"] = None,
 ) -> Path:
-    """按下载目录开关和稳定分类快照构造保存路径。"""
+    """
+    按下载目录开关和稳定分类快照构造保存路径。
+    """
     download_path = root_path
     type_folder_enabled = bool(
         not directory.media_type and directory.download_type_folder
     )
     if type_folder_enabled:
-        download_path = download_path / media.type.value
+        download_path = download_path / (media.type or MediaType.UNKNOWN).value
 
     helper = directory_helper or DirectoryHelper()
     if helper.has_fixed_category(directory) or not directory.download_category_folder:
@@ -71,31 +77,53 @@ def build_media_download_path(
 
 
 class DiskTopology(Protocol):
-    """描述本地路径磁盘拓扑判断能力。"""
+    """
+    描述本地路径磁盘拓扑判断能力。
+    """
 
     def is_same_disk(self, src: Path, dest: Path) -> bool:
-        """返回两个真实本地路径是否位于同一磁盘。"""
+        """
+        返回两个真实本地路径是否位于同一磁盘。
+
+        :param src: 已解析为本机真实文件系统路径的源路径
+        :param dest: 已解析为本机真实文件系统路径的目标路径
+        :return: 两个路径属于同一磁盘时为 True
+        """
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class DirectoryConfigurationWriteResult:
-    """目录配置事务提交后的变更状态和规范化快照。"""
+    """
+    目录配置事务提交后的变更状态和规范化快照。
+
+    :param changed: True 表示已提交变更，False 表示失败，None 表示无需更新
+    :param normalized_value: 按当前分类策略规范化后的目录配置，None 表示未提供配置列表
+    """
 
     changed: bool | None
     normalized_value: list[dict[str, Any]] | None
 
 
 class DirectoryConfigurationMutationPort(Protocol):
-    """Application 写入目录配置所依赖的原子持久化端口。"""
+    """
+    Application 写入目录配置所依赖的原子持久化端口。
+    """
 
     def save(self, value: object) -> DirectoryConfigurationWriteResult:
-        """基于事务内活动策略规范化并保存目录配置。"""
+        """
+        基于事务内活动策略规范化并保存目录配置。
+
+        :param value: 待规范化的目录配置列表；校验与保存使用同一事务内的分类策略
+        :return: 事务提交后的变更状态及实际保存的规范化目录配置
+        """
         ...
 
 
 class DirectoryConfigurationMutationService:
-    """统一执行同步和异步目录配置保存命令。"""
+    """
+    统一执行同步和异步目录配置保存命令。
+    """
 
     def __init__(
         self,
@@ -103,26 +131,34 @@ class DirectoryConfigurationMutationService:
         *,
         async_executor: AsyncDatabaseExecutor | None = None,
     ) -> None:
-        """注入原子目录仓储和可选异步数据库执行端口。"""
+        """
+        注入原子目录仓储和可选异步数据库执行端口。
+        """
         self._repository = repository
         self._async_executor = async_executor
 
     def save(self, value: object) -> DirectoryConfigurationWriteResult:
-        """同步保存目录配置并返回数据库实际提交的规范化值。"""
+        """
+        同步保存目录配置并返回数据库实际提交的规范化值。
+        """
         return self._repository.save(value)
 
     async def async_save(
         self,
         value: object,
     ) -> DirectoryConfigurationWriteResult:
-        """在线程私有短事务中异步保存目录配置。"""
+        """
+        在线程私有短事务中异步保存目录配置。
+        """
         if self._async_executor is None:
             raise RuntimeError("目录配置异步数据库执行端口尚未配置")
         return await self._async_executor.run(partial(self._repository.save, value))
 
 
 class DirectoryAwareSystemConfigService(SystemConfigService):
-    """让所有在线 Directories 写入复用原子目录变更命令。"""
+    """
+    让所有在线 Directories 写入复用原子目录变更命令。
+    """
 
     def __init__(
         self,
@@ -134,7 +170,9 @@ class DirectoryAwareSystemConfigService(SystemConfigService):
         async_executor: AsyncDatabaseExecutor | None = None,
         value_normalizer: SystemConfigValueNormalizer | None = None,
     ) -> None:
-        """注入通用配置端口，并为目录键绑定专用原子写入命令。"""
+        """
+        注入通用配置端口，并为目录键绑定专用原子写入命令。
+        """
         super().__init__(
             repository=repository,
             reader=reader,
@@ -149,7 +187,9 @@ class DirectoryAwareSystemConfigService(SystemConfigService):
         key: Any,
         value: Any,
     ) -> SystemConfigWriteResult:
-        """目录键走原子命令，其他配置保持通用同步写入语义。"""
+        """
+        目录键走原子命令，其他配置保持通用同步写入语义。
+        """
         if _system_config_key(key) != SystemConfigKey.Directories.value:
             return super().set_with_normalized_value(key, value)
         result = self._directory_mutation.save(value)
@@ -163,7 +203,9 @@ class DirectoryAwareSystemConfigService(SystemConfigService):
         key: Any,
         value: Any,
     ) -> SystemConfigWriteResult:
-        """目录键走原子命令，其他配置保持通用异步写入语义。"""
+        """
+        目录键走原子命令，其他配置保持通用异步写入语义。
+        """
         if _system_config_key(key) != SystemConfigKey.Directories.value:
             return await super().async_set_with_normalized_value(key, value)
         result = await self._directory_mutation.async_save(value)
@@ -177,7 +219,9 @@ _disk_topology: Optional[DiskTopology] = None
 
 
 def configure_disk_topology(topology: Optional[DiskTopology]) -> None:
-    """由启动组合根注入或清除本地磁盘拓扑适配器。"""
+    """
+    由启动组合根注入或清除本地磁盘拓扑适配器。
+    """
     global _disk_topology
     _disk_topology = topology
 
@@ -185,24 +229,32 @@ def configure_disk_topology(topology: Optional[DiskTopology]) -> None:
 def configure_directory_classification_resolver(
     resolver: Optional[ClassificationCategoryResolver],
 ) -> Optional[ClassificationCategoryResolver]:
-    """装配目录选择使用的分类引用解析器，并返回旧值供测试恢复。"""
+    """
+    装配目录选择使用的分类引用解析器，并返回旧值供测试恢复。
+    """
     return configure_classification_category_resolver(resolver)
 
 
 def reset_directory_classification_resolver(
     resolver: Optional[ClassificationCategoryResolver] = None,
 ) -> None:
-    """恢复指定目录分类解析器；省略参数时清除启动组合状态。"""
+    """
+    恢复指定目录分类解析器；省略参数时清除启动组合状态。
+    """
     reset_classification_category_resolver(resolver)
 
 
 def _directory_classification_resolver_snapshot() -> ClassificationCategoryResolver:
-    """返回当前解析器；未装配时使用只支持兼容快照的空策略解析器。"""
+    """
+    返回当前解析器；未装配时使用只支持兼容快照的空策略解析器。
+    """
     return classification_category_resolver_snapshot()
 
 
 def _system_config_key(key: object) -> str:
-    """把枚举或字符串配置键统一为持久化字符串。"""
+    """
+    把枚举或字符串配置键统一为持久化字符串。
+    """
     return key.value if isinstance(key, SystemConfigKey) else str(key)
 
 
@@ -212,7 +264,9 @@ def normalize_directory_system_config_value(
     *,
     classification_resolver: ClassificationCategoryResolver | None = None,
 ) -> object:
-    """仅在目录配置写入时刷新稳定分类引用和兼容路径快照。"""
+    """
+    仅在目录配置写入时刷新稳定分类引用和兼容路径快照。
+    """
     normalized_key = _system_config_key(key)
     if normalized_key != SystemConfigKey.Directories.value:
         return value
@@ -227,7 +281,9 @@ def normalize_directory_configurations(
     *,
     classification_resolver: ClassificationCategoryResolver | None = None,
 ) -> list[dict[str, Any]] | None:
-    """校验目录配置，并把分类类型、稳定 ID 与当前路径快照规范化后返回。"""
+    """
+    校验目录配置，并把分类类型、稳定 ID 与当前路径快照规范化后返回。
+    """
     if value is None:
         return None
     if not isinstance(value, list):
@@ -287,7 +343,9 @@ def normalize_directory_configurations_for_policy(
     value: object,
     policy: ClassificationPolicy | None,
 ) -> list[dict[str, Any]] | None:
-    """仅使用调用方提供的事务内策略快照规范化目录配置。"""
+    """
+    仅使用调用方提供的事务内策略快照规范化目录配置。
+    """
     return normalize_directory_configurations(
         value,
         classification_resolver=ClassificationCategoryResolver(lambda: policy),
@@ -295,7 +353,9 @@ def normalize_directory_configurations_for_policy(
 
 
 def _is_same_local_disk(src: Path, dest: Path) -> bool:
-    """通过已注入端口判断真实本地路径；未装配时稳定拒绝。"""
+    """
+    通过已注入端口判断真实本地路径；未装配时稳定拒绝。
+    """
     if _disk_topology is None:
         raise RuntimeError("本地磁盘拓扑能力尚未由启动组合根配置")
     return _disk_topology.is_same_disk(src, dest)
@@ -310,7 +370,9 @@ class DirectoryHelper:
         self,
         classification_resolver: Optional[ClassificationCategoryResolver] = None,
     ) -> None:
-        """保存显式解析器，未提供时读取启动组合根装配的当前实例。"""
+        """
+        保存显式解析器，未提供时读取启动组合根装配的当前实例。
+        """
         self._classification_resolver = (
             classification_resolver or _directory_classification_resolver_snapshot()
         )
@@ -320,7 +382,7 @@ class DirectoryHelper:
         """
         获取所有下载目录
         """
-        dir_confs: List[dict] = get_configured_system_config().get(SystemConfigKey.Directories)
+        dir_confs: List[dict[str, Any]] = get_configured_system_config().get(SystemConfigKey.Directories)
         if not dir_confs:
             return []
         return [_SchemaTransferDirectoryConf(**d) for d in dir_confs]
@@ -329,7 +391,19 @@ class DirectoryHelper:
         """
         获取所有下载目录
         """
-        return sorted([d for d in self.get_dirs() if d.download_path], key=lambda x: x.priority)
+        return sorted([d for d in self.get_dirs() if d.download_path], key=lambda x: x.priority or 0)
+
+    def get_download_dir(self, media: Optional[DirectoryMedia]) -> Optional[_SchemaTransferDirectoryConf]:
+        """
+        按配置优先级返回首个媒体条件匹配且具有下载路径的目录。
+
+        类型和固定分类只用于过滤候选，不覆盖用户配置的优先级；同优先级保留配置顺序。
+
+        :param media: 待下载的影视或音乐媒体信息
+        :return: 首个可用下载目录，无匹配时返回 None
+        """
+        return next((directory for directory in self.get_download_dirs()
+                     if self.matches_media(directory, media)), None)
 
     def get_local_download_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
@@ -382,7 +456,9 @@ class DirectoryHelper:
             media: Optional[DirectoryMedia],
             task_path: str,
     ) -> Optional[_SchemaTransferDirectoryConf]:
-        """按下载器返回的任务保存路径匹配最深层配置根目录。"""
+        """
+        按下载器返回的任务保存路径匹配最深层配置根目录。
+        """
         value = str(task_path or "").strip()
         try:
             storage, raw_path = _split_file_uri(value)
@@ -416,7 +492,7 @@ class DirectoryHelper:
         """
         获取所有媒体库目录
         """
-        return sorted([d for d in self.get_dirs() if d.library_path], key=lambda x: x.priority)
+        return sorted([d for d in self.get_dirs() if d.library_path], key=lambda x: x.priority or 0)
 
     def get_local_library_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
@@ -424,9 +500,71 @@ class DirectoryHelper:
         """
         return [d for d in self.get_library_dirs() if d.library_storage == "local"]
 
+    def get_media_cleanup_root(self, fileitem: _SchemaFileURI) -> Optional[Path]:
+        """
+        返回同一存储中最深的配置或分类边界，媒体清理不得删除该目录及其祖先。
+        """
+        file_path = Path(fileitem.path or "")
+        roots: list[Path] = []
+        for directory in self.get_dirs():
+            for library, storage, path in (
+                (False, directory.storage, directory.download_path),
+                (True, directory.library_storage, directory.library_path),
+            ):
+                if not path or (storage or "local") != fileitem.storage:
+                    continue
+                if file_path.is_relative_to(path):
+                    roots.append(self._media_cleanup_root(file_path, Path(path), directory, library=library))
+        return max(roots, key=lambda root: len(root.parts), default=None)
+
+    def _media_cleanup_root(
+        self,
+        file_path: Path,
+        root: Path,
+        directory: _SchemaTransferDirectoryConf,
+        *,
+        library: bool,
+    ) -> Path:
+        """
+        按目录生成规则识别类型和分类边界；旧分类无法解析时保守保留第一层。
+        """
+        media_type = directory.media_type
+        type_folder = (
+            directory.library_type_folder if library
+            else not media_type and directory.download_type_folder
+        )
+        relative_parts = file_path.relative_to(root).parts
+        if type_folder and relative_parts and relative_parts[0] in {item.value for item in MediaType}:
+            media_type = relative_parts[0]
+            root = root / media_type
+
+        category_folder = directory.library_category_folder if library else directory.download_category_folder
+        fixed_category = self.has_fixed_category(directory)
+        if not category_folder or (fixed_category and not library):
+            return root
+        category_paths = (
+            (self.resolve_directory_category(directory).path,) if fixed_category
+            else self.classification_category_paths(media_type)
+        )
+        roots = [root]
+        for category_path in category_paths:
+            if not category_path:
+                continue
+            category_path = category_path_below_media_type(
+                category_path, media_type, type_folder_enabled=bool(type_folder),
+            )
+            category_root = root.joinpath(*category_path)
+            if file_path.is_relative_to(category_root):
+                roots.append(category_root)
+        if len(roots) > 1:
+            return max(roots, key=lambda path: len(path.parts))
+        # 分类策略可能已改名或删除，不能因此把原分类目录当成影片目录清理。
+        relative_parts = file_path.relative_to(root).parts
+        return root / relative_parts[0] if relative_parts else root
+
     def get_dir(self, media: Optional[DirectoryMedia], include_unsorted: Optional[bool] = False,
-                storage: Optional[str] = None, src_path: Path = None,
-                target_storage: Optional[str] = None, dest_path: Path = None
+                storage: Optional[str] = None, src_path: Optional[Path] = None,
+                target_storage: Optional[str] = None, dest_path: Optional[Path] = None
                 ) -> Optional[_SchemaTransferDirectoryConf]:
         """
         根据媒体信息获取下载目录、媒体库目录配置
@@ -440,25 +578,21 @@ class DirectoryHelper:
         dirs = self.get_dirs()
 
         # 如果存在源目录，并源目录为任一下载目录的子目录时，则进行源目录匹配，否则，允许源目录按同盘优先的逻辑匹配
-        matching_dirs = [d for d in dirs if src_path.is_relative_to(d.download_path)] if src_path else []
-        # 根据是否有匹配的源目录，决定要考虑的目录集合
+        matching_dirs = [
+            d for d in dirs
+            if src_path and d.download_path and src_path.is_relative_to(d.download_path)
+        ]
         dirs_to_consider = matching_dirs if matching_dirs else dirs
 
-        # 已匹配的目录
         matched_dirs: list[tuple[int, int, _SchemaTransferDirectoryConf]] = []
-        # 按照配置顺序查找
         for index, d in enumerate(dirs_to_consider):
-            # 没有启用整理的目录
             if not d.monitor_type and not include_unsorted:
                 continue
-            # 源存储类型不匹配
             if storage and d.storage != storage:
                 continue
-            # 目标存储类型不匹配
             if target_storage and d.library_storage != target_storage:
                 continue
-            # 有目标目录时，目标目录不匹配媒体库目录
-            if dest_path and dest_path != Path(d.library_path):
+            if dest_path and d.library_path and dest_path != Path(d.library_path):
                 continue
             rank = self.media_match_rank(d, media)
             if rank is not None:
@@ -480,8 +614,13 @@ class DirectoryHelper:
             if src_path:
                 # 同一匹配等级内优先源目录同盘，不能盖过更精确的分类引用。
                 for _, matched_dir in best_dirs:
+                    if not matched_dir.download_path:
+                        continue
                     matched_path = Path(matched_dir.download_path)
-                    if self._is_same_source((src_path, storage or "local"), (matched_path, matched_dir.library_storage)):
+                    if self._is_same_source(
+                        (src_path, storage or "local"),
+                        (matched_path, matched_dir.library_storage or "local"),
+                    ):
                         return matched_dir
             return best_dirs[0][1]
         return None
@@ -491,7 +630,9 @@ class DirectoryHelper:
         directory: _SchemaTransferDirectoryConf,
         media: Optional[DirectoryMedia],
     ) -> bool:
-        """按媒体类型和稳定分类引用判断目录是否适用。"""
+        """
+        按媒体类型和稳定分类引用判断目录是否适用。
+        """
         return self.media_match_rank(directory, media) is not None
 
     def media_match_rank(
@@ -501,7 +642,9 @@ class DirectoryHelper:
         *,
         allow_stale_reference: bool = False,
     ) -> Optional[int]:
-        """返回目录匹配等级；数值越小越精确，不匹配时返回空值。"""
+        """
+        返回目录匹配等级；数值越小越精确，不匹配时返回空值。
+        """
         if media is None or not getattr(media, "type", None):
             return 3
         media_type = classification_media_type(getattr(media, "type", None))
@@ -541,7 +684,9 @@ class DirectoryHelper:
         self,
         media: Optional[DirectoryMedia],
     ) -> ClassificationCategoryResolution:
-        """解析媒体当前生效的稳定分类引用和安全路径。"""
+        """
+        解析媒体当前生效的稳定分类引用和安全路径。
+        """
         resolution = self._classification_resolver.resolve_media(media)
         self._log_category_downgrade("媒体", resolution)
         return resolution
@@ -551,7 +696,9 @@ class DirectoryHelper:
         directory: _SchemaTransferDirectoryConf,
         media: Optional[DirectoryMedia] = None,
     ) -> ClassificationCategoryResolution:
-        """解析目录固定分类 ID，并在必要时显式降级到路径快照。"""
+        """
+        解析目录固定分类 ID，并在必要时显式降级到路径快照。
+        """
         resolution = self._classification_resolver.resolve(
             category_id=getattr(directory, "media_category_id", None),
             path_snapshot=getattr(directory, "media_category", None),
@@ -571,7 +718,9 @@ class DirectoryHelper:
         directory: _SchemaTransferDirectoryConf,
         media: Optional[DirectoryMedia],
     ) -> tuple[str, ...]:
-        """返回固定目录引用或媒体自动分类对应的安全相对路径。"""
+        """
+        返回固定目录引用或媒体自动分类对应的安全相对路径。
+        """
         if self.has_fixed_category(directory):
             return self.resolve_directory_category(directory, media).path
         return self.resolve_media_category(media).path
@@ -580,12 +729,16 @@ class DirectoryHelper:
         self,
         media_type: object = None,
     ) -> tuple[tuple[str, ...], ...]:
-        """返回当前活动策略中可用于边界识别的启用分类路径。"""
+        """
+        返回当前活动策略中可用于边界识别的启用分类路径。
+        """
         return self._classification_resolver.category_paths(media_type)
 
     @staticmethod
     def has_fixed_category(directory: _SchemaTransferDirectoryConf) -> bool:
-        """返回目录是否绑定了稳定 ID 或兼容路径分类。"""
+        """
+        返回目录是否绑定了稳定 ID 或兼容路径分类。
+        """
         return bool(
             getattr(directory, "media_category_id", None)
             or getattr(directory, "media_category", None)
@@ -596,7 +749,9 @@ class DirectoryHelper:
         owner: str,
         resolution: ClassificationCategoryResolution,
     ) -> None:
-        """把 ID 失效和不安全路径转为明确日志，不静默扩大目录匹配。"""
+        """
+        把 ID 失效和不安全路径转为明确日志，不静默扩大目录匹配。
+        """
         if resolution.downgraded and resolution.message:
             suffix = "" if resolution.usable else "；该分类引用不参与目录匹配"
             logger.warning(f"{owner}分类引用降级：{resolution.message}{suffix}")
@@ -614,7 +769,6 @@ class DirectoryHelper:
         tar_path, tar_storage = tar
         if "local" == tar_storage == src_storage:
             return _is_same_local_disk(src_path, tar_path)
-        # 网络存储，直接比较类型
         return src_storage == tar_storage
 
     @staticmethod
@@ -645,10 +799,8 @@ class DirectoryHelper:
             ):
                 media_root = media_root.parent
             return media_root
-        # 计算重命名中的文件夹层数
         rename_list = rename_format.split("/")
         rename_format_level = len(rename_list) - 1
-        # 反向查找标题参数所在层
         for level, name in enumerate(reversed(rename_list)):
             if level == 0:
                 # 跳过文件名的标题参数
@@ -672,7 +824,6 @@ class DirectoryHelper:
         if rename_format_level <= 0:
             # 所有媒体文件都存在一个目录内的特殊需求
             rename_format_level = 1
-        # 媒体根路径
         media_root = rename_path.parents[rename_format_level - 1]
         return media_root
 
@@ -766,20 +917,54 @@ def _normalize_download_root(dir_info: _SchemaTransferDirectoryConf) -> Optional
         return None
 
 
-def validate_download_save_path(save_path: str) -> str:
+def _has_storage_prefix(value: str) -> bool:
     """
-    校验用户传入的下载保存目录，/download/paths 暴露的下载目录配置是允许写入的公共合同。
+    判断输入是否带 <storage>: 前缀。
+    """
+    return any(value.startswith(f"{item.value}:") for item in StorageSchema)
 
-    :param save_path: 下载保存目录，支持本地 /path、远端 <storage>:/path 和旧版订阅中的无前缀远程路径
-    :return: 可直接传给下载接口的规范化保存目录
+
+def _looks_like_download_path(value: str) -> bool:
     """
-    value = str(save_path or "").strip()
-    has_storage_prefix = any(value.startswith(f"{item.value}:") for item in StorageSchema)
+    判断输入是否带路径特征；只有不带特征的字符串才按「目录别名不存在」报错。
+    """
+    if "/" in value or WINDOWS_DRIVE_PREFIX_PATTERN.match(value):
+        return True
+    return _has_storage_prefix(value)
+
+
+def _resolve_download_dir_alias(
+    value: str,
+    download_dirs: List[_SchemaTransferDirectoryConf],
+) -> Optional[str]:
+    """
+    按目录名称（别名）精确匹配下载目录，返回该目录根的 save_path。
+
+    调用方保证 value 已去空白且非空；重名目录沿用 get_download_dirs 的 priority 顺序取首个。
+    """
+    for dir_info in download_dirs:
+        if (dir_info.name or "").strip() != value:
+            continue
+        root = _normalize_download_root(dir_info)
+        if root:
+            storage, _, root_path = root
+            return _download_path_uri(storage, root_path)
+    return None
+
+
+def _validate_download_save_path_value(
+    value: str,
+    download_dirs: List[_SchemaTransferDirectoryConf],
+) -> str:
+    """
+    按路径规则校验已去空白的保存目录，不涉及别名。
+    """
+    has_storage_prefix = _has_storage_prefix(value)
     storage, raw_path = _split_file_uri(value)
     target_style, target_path = _normalize_download_path(raw_path, storage)
 
     download_roots = []
-    for dir_info in DirectoryHelper().get_download_dirs():
+    for dir_info in download_dirs:
         root = _normalize_download_root(dir_info)
         if root:
             download_roots.append(root)
@@ -803,3 +988,44 @@ def validate_download_save_path(save_path: str) -> str:
                 return _download_path_uri(root_storage, target_path)
 
     raise ValueError("保存路径不在允许的下载目录范围内")
+
+
+def specified_download_save_path(save_path: Optional[str]) -> Optional[str]:
+    """
+    返回调用方真正指定的下载保存目录，空白值视为未指定。
+
+    旧版订阅编辑界面会把清空的保存目录持久化为空字符串，它表示使用默认下载目录，
+    不能当作非法路径交给 validate_download_save_path 拒绝。
+
+    :param save_path: 订阅、事件或接口传入的保存目录
+    :return: 原样保留的非空保存目录；空值或纯空白返回 None
+    """
+    if save_path is None or not str(save_path).strip():
+        return None
+    return save_path
+
+
+def validate_download_save_path(save_path: str) -> str:
+    """
+    校验用户传入的下载保存目录，/download/paths 暴露的下载目录配置是允许写入的公共合同。
+
+    路径优先：先按路径规则校验；失败后再用目录名称（别名）精确匹配，命中返回该目录根路径，
+    结果与直接传入该目录根路径的校验结果一致。空值不参与别名匹配。
+
+    :param save_path: 下载保存目录，支持本地 /path、远端 <storage>:/path、旧版订阅中的无前缀远程路径，
+        以及已配置下载目录的名称（别名）
+    :return: 可直接传给下载接口的规范化保存目录
+    """
+    value = str(save_path or "").strip()
+    download_dirs = DirectoryHelper().get_download_dirs()
+    try:
+        return _validate_download_save_path_value(value, download_dirs)
+    except ValueError as path_error:
+        if not value:
+            raise
+        alias_uri = _resolve_download_dir_alias(value, download_dirs)
+        if alias_uri:
+            return alias_uri
+        if _looks_like_download_path(value):
+            raise
+        raise ValueError(f"未找到名为「{value}」的下载目录") from path_error

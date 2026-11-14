@@ -1,14 +1,17 @@
-"""WebAgent 主运行流和运行中补充消息的展示桥接。"""
+"""
+WebAgent 主运行流和运行中补充消息的展示桥接。
+"""
 
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional, cast
+from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Optional, cast
 
 from app.agent.steering import SteeringMessage
 from app.application import agent as agent_application
+from app.application.messaging.interaction.agent import agent_interaction_manager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.message import Message
@@ -17,7 +20,21 @@ from app.schemas.types import NotificationChannel, ReplyMode
 
 @dataclass(frozen=True, slots=True)
 class WebAgentStreamDependencies:
-    """注入 WebAgent 流所需的展示、事件和后台任务能力，避免模块相互导入。"""
+    """
+    注入 WebAgent 流所需的展示、事件和后台任务能力，避免模块相互导入。
+
+    :param event_publisher_factory: 创建当前事件流使用的发布器
+    :param bind_user_session: 接收用户标识和会话标识，维护用户的活动会话绑定
+    :param apply_display_event: 把一个流事件合并到可持久化的展示消息对象
+    :param build_display_message: 按角色、正文和附件创建展示消息
+    :param build_input_attachments: 把图片、音频和文件引用转换为展示附件
+    :param build_message_events_async: 把渠道消息异步转换为 WebAgent 展示事件列表
+    :param save_display_snapshot: 异步保存当前用户会话的展示消息快照
+    :param split_output: 把助手输出文本拆为按序展示的消息片段
+    :param create_background_task: 将协程交给宿主管理并返回后台任务
+    :param source: 本次会话使用的 WebAgent 来源标识
+    :param heartbeat_seconds: 事件流空闲时发送心跳的间隔，单位为秒
+    """
 
     event_publisher_factory: Callable[[], Any]
     bind_user_session: Callable[[str, str], None]
@@ -27,7 +44,9 @@ class WebAgentStreamDependencies:
     build_message_events_async: Callable[[Message], Awaitable[list[dict[str, Any]]]]
     save_display_snapshot: Callable[..., Awaitable[None]]
     split_output: Callable[[str], list[dict[str, Any]]]
-    create_background_task: Callable[[Awaitable[object]], asyncio.Task[object]]
+    create_background_task: Callable[
+        [Coroutine[Any, Any, object]], asyncio.Task[object]
+    ]
     source: str
     heartbeat_seconds: float
 
@@ -42,7 +61,9 @@ async def submit_web_agent_steering(
     files: list[dict[str, Any]],
     audio_refs: list[str],
 ) -> Optional[SteeringMessage]:
-    """把活动 WebAgent 的补充输入提交到会话 inbox；无活动运行时返回 None。"""
+    """
+    把活动 WebAgent 的补充输入提交到会话 inbox；无活动运行时返回 None。
+    """
     steering_files = [file for file in files if str(file.get("ref") or "") not in set(audio_refs)]
     steering_files.extend({"ref": audio_ref, "mime_type": "audio/*"} for audio_ref in audio_refs)
     submit = getattr(manager, "submit_steering_message", None)
@@ -65,10 +86,14 @@ def _build_steering_ack_stream(
     session_id: str,
     message: SteeringMessage,
 ) -> AsyncIterator[dict[str, Any]]:
-    """为运行中补充消息返回短 ACK 流，不创建第二个助手展示气泡。"""
+    """
+    为运行中补充消息返回短 ACK 流，不创建第二个助手展示气泡。
+    """
 
     async def event_generator() -> AsyncIterator[dict[str, Any]]:
-        """按统一 WebAgent SSE 协议报告已排队的消息 ID。"""
+        """
+        按统一 WebAgent SSE 协议报告已排队的消息 ID。
+        """
         yield {"type": "start", "session_id": session_id}
         yield {
             "type": "steering",
@@ -85,7 +110,9 @@ def _publish_web_agent_protected_output(
     event_publisher: Any,
     content: str,
 ) -> bool:
-    """发布不进入普通展示快照的敏感交互结果。"""
+    """
+    发布不进入普通展示快照的敏感交互结果。
+    """
     return bool(event_publisher.publish({"type": "interaction-protected", "content": content}))
 
 
@@ -93,7 +120,9 @@ def _attach_assistant_message_id(
     event: dict[str, Any],
     assistant_message_ref: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """为主流展示事件附加产生它的助手消息身份。"""
+    """
+    为主流展示事件附加产生它的助手消息身份。
+    """
     if event.get("assistant_message_id"):
         return event
     assistant_message_id = assistant_message_ref["message"].get("id")
@@ -110,10 +139,14 @@ def _build_web_agent_steering_callback(
     build_display_message: Callable[..., dict[str, Any]],
     build_input_attachments: Callable[..., list[dict[str, Any]]],
 ) -> Callable[[SteeringMessage, str], None]:
-    """构造运行中补充消息的应用回调，并同步展示快照与 SSE 时间线。"""
+    """
+    构造运行中补充消息的应用回调，并同步展示快照与 SSE 时间线。
+    """
 
     def steering_status_callback(message: SteeringMessage, status: str) -> None:
-        """把补充消息应用状态投影到当前助手流的真实边界。"""
+        """
+        把补充消息应用状态投影到当前助手流的真实边界。
+        """
         if status != "applied":
             return
         assistant_message = assistant_message_ref["message"]
@@ -164,10 +197,14 @@ def _build_web_agent_message_callback(
     build_message_events_async: Callable[[Message], Awaitable[list[dict[str, Any]]]],
     apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
 ) -> Callable[[Message], Awaitable[None]]:
-    """构造 Agent 主动消息的 Web 展示回调。"""
+    """
+    构造 Agent 主动消息的 Web 展示回调。
+    """
 
     async def message_callback(message: Message) -> None:
-        """接收 Agent 工具主动发送的 Web 通知。"""
+        """
+        接收 Agent 工具主动发送的 Web 通知。
+        """
         for item in await build_message_events_async(message):
             display_event = _attach_assistant_message_id(item, assistant_message_ref)
             apply_display_event(display_event, assistant_message_ref["message"])
@@ -183,10 +220,14 @@ def _build_web_agent_output_callback(
     split_output: Callable[[str], list[dict[str, Any]]],
     apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
 ) -> Callable[[str], None]:
-    """构造 Agent 文本增量的 Web 展示回调。"""
+    """
+    构造 Agent 文本增量的 Web 展示回调。
+    """
 
     def output_callback(delta: str) -> None:
-        """接收 Agent 文本增量并投影为展示事件。"""
+        """
+        接收 Agent 文本增量并投影为展示事件。
+        """
         for item in split_output(delta):
             display_event = _attach_assistant_message_id(item, assistant_message_ref)
             apply_display_event(display_event, assistant_message_ref["message"])
@@ -201,23 +242,60 @@ def _build_web_agent_tool_event_callback(
     event_publisher: Any,
     apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
 ) -> Callable[[dict[str, Any]], None]:
-    """构造结构化工具生命周期回调，确保快照与 SSE 使用同一事件顺序。"""
+    """
+    构造结构化工具生命周期回调，确保快照与 SSE 使用同一事件顺序。
+    """
+    tool_messages: dict[str, dict[str, Any]] = {}
 
     def tool_event_callback(event: dict[str, Any]) -> None:
-        """投影工具开始、完成和失败事件。"""
-        display_event = _attach_assistant_message_id(event, assistant_message_ref)
-        apply_display_event(display_event, assistant_message_ref["message"])
+        """
+        投影工具开始、完成和失败事件。
+        """
+        tool_id = str(event.get("tool_id") or event.get("tool_call_id") or "")
+        target = tool_messages.setdefault(tool_id, assistant_message_ref["message"]) if tool_id else assistant_message_ref["message"]
+        display_event = _attach_assistant_message_id(event, {"message": target})
+        if tool_id and target.get("id"):
+            display_event = {**display_event, "assistant_message_id": target["id"]}
+        apply_display_event(display_event, target)
         event_publisher.publish(display_event)
 
     return tool_event_callback
 
 
 def _build_web_agent_files(command: Any) -> list[dict[str, Any]]:
-    """把 WebAgent 命令中的普通文件和音频引用整理成 Agent 输入。"""
+    """
+    把 WebAgent 命令中的普通文件和音频引用整理成 Agent 输入。
+    """
     audio_refs = {str(audio_ref) for audio_ref in command.audio_refs}
     files = [file for file in command.files if str(file.get("ref") or "") not in audio_refs]
     files.extend({"ref": audio_ref, "mime_type": "audio/*"} for audio_ref in command.audio_refs)
     return files
+
+
+def _finish_web_agent_display_messages(
+    messages: list[dict[str, Any]],
+    apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
+) -> None:
+    """
+    主运行终止时收口本轮所有助手段，保留工具已报告的终态。
+    """
+    for message in messages:
+        if message.get("role") == "assistant":
+            apply_display_event({"type": "done"}, message)
+
+
+def _prepare_web_agent_run(command: Any, current_user: Any, session_id: str) -> tuple[Any, Any, bool]:
+    """
+    确认执行服务和 Agent 工厂就绪后，才领取本次选择。
+    """
+    manager = agent_application.get_running_agent_manager()
+    if manager is None:
+        raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
+    agent_factory = agent_application.get_web_agent_type()
+    choice_id = str((command.choice_selection or {}).get("choice_id") or "")
+    if choice_id and agent_interaction_manager.claim_web_choice(choice_id, str(current_user.id), session_id) is None:
+        raise RuntimeError("该选择已领取执行")
+    return manager, agent_factory, bool(choice_id)
 
 
 def _build_web_agent_event_generator(
@@ -242,15 +320,19 @@ def _build_web_agent_event_generator(
     protected_output_callback: Callable[[str], bool],
     steering_status_callback: Callable[[SteeringMessage, str], None],
 ) -> AsyncIterator[dict[str, Any]]:
-    """构造后台 Agent 任务并按断线与终态语义消费展示事件。"""
+    """
+    构造后台 Agent 任务并按断线与终态语义消费展示事件。
+    """
     files = _build_web_agent_files(command)
 
     async def run_agent() -> None:
-        """后台执行 Agent，并在完成后持久化展示快照。"""
+        """
+        后台执行 Agent，并在完成后持久化展示快照。
+        """
+        choice_id = str((command.choice_selection or {}).get("choice_id") or "")
+        choice_claimed = False
         try:
-            runtime_manager = agent_application.get_running_agent_manager()
-            if runtime_manager is None:
-                raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
+            runtime_manager, agent_factory, choice_claimed = _prepare_web_agent_run(command, current_user, session_id)
             await runtime_manager.process_message(
                 session_id=session_id,
                 user_id=str(current_user.id),
@@ -268,13 +350,16 @@ def _build_web_agent_event_generator(
                 protected_output_callback=(protected_output_callback if protected_transport_supported else None),
                 message_callback=message_callback,
                 steering_status_callback=steering_status_callback,
-                agent_factory=agent_application.get_web_agent_type(),
+                agent_factory=agent_factory,
                 wait_for_completion=True,
             )
         except asyncio.CancelledError:
             # 显式停止会话沿用正常终止语义；服务关闭由 manager 的稳定异常分支处理。
             pass
         except Exception as err:
+            if choice_claimed and getattr(err, "task_accepted", True) is False:
+                agent_interaction_manager.release_web_choice(choice_id, str(current_user.id), session_id)
+                choice_claimed = False
             logger.error(f"Web智能助手执行失败: {str(err)}")
             error_event = _attach_assistant_message_id({
                 "type": "error",
@@ -284,10 +369,10 @@ def _build_web_agent_event_generator(
             event_publisher.publish(error_event)
         finally:
             done_event = _attach_assistant_message_id({"type": "done"}, assistant_message_ref)
-            dependencies.apply_display_event(done_event, assistant_message_ref["message"])
+            _finish_web_agent_display_messages(display_messages, dependencies.apply_display_event)
             # 终态先进入事件队列，避免展示快照落库延迟前端结束动画。
             event_publisher.publish(done_event)
-            if not is_secret_confirmation_control:
+            if not is_secret_confirmation_control and (not choice_id or choice_claimed):
                 try:
                     await dependencies.save_display_snapshot(
                         session_id=session_id,
@@ -296,12 +381,15 @@ def _build_web_agent_event_generator(
                         client_session_id=command.session_id or session_id,
                         service=service,
                         persistence=persistence,
+                        append=True,
                     )
                 except Exception as err:
                     logger.error(f"保存WebAgent展示历史失败：{err}")
 
     async def event_generator() -> AsyncIterator[dict[str, Any]]:
-        """执行后台 Agent 并在客户端断线时保留运行任务。"""
+        """
+        执行后台 Agent 并在客户端断线时保留运行任务。
+        """
         task = dependencies.create_background_task(run_agent())
         disconnected = False
         terminal_sent = False
@@ -361,7 +449,9 @@ def build_agent_web_agent_stream(
     is_disconnected: Callable[[], Awaitable[bool]],
     dependencies: WebAgentStreamDependencies,
 ) -> AsyncIterator[dict[str, Any]]:
-    """构造标准 Agent 执行链路的 WebAgent 事件流。"""
+    """
+    构造标准 Agent 执行链路的 WebAgent 事件流。
+    """
     dependencies.bind_user_session(str(current_user.id), session_id)
     event_publisher = dependencies.event_publisher_factory()
     user_attachments = dependencies.build_input_attachments(
@@ -370,14 +460,15 @@ def build_agent_web_agent_stream(
         audio_refs=command.audio_refs,
     )
     display_messages = []
-    if command.echo_user and not is_secret_confirmation_control:
+    if (command.echo_user or command.choice_selection) and not is_secret_confirmation_control:
         user_display_message = dependencies.build_display_message(
             role="user",
-            content=display_prompt or prompt,
+            content=(display_prompt or prompt) if command.echo_user else "",
             attachments=user_attachments,
         )
         if command.choice_selection:
             user_display_message["choice_selection"] = command.choice_selection
+            user_display_message["id"] = f"choice-selection-{command.choice_selection['choice_id']}"
         display_messages.append(user_display_message)
     assistant_display_message = dependencies.build_display_message(
         role="assistant",

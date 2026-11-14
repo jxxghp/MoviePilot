@@ -1,4 +1,6 @@
-"""订阅集数偏移后的文件明细与目录监控关联回归。"""
+"""
+订阅集数偏移后的文件明细与目录监控关联回归。
+"""
 
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -17,7 +19,9 @@ from app.schemas.types import MediaType
 @pytest.mark.parametrize("offset", [0, 165])
 @pytest.mark.parametrize("durable", [False, True])
 def test_selected_episode_file_resolves_its_own_hash(db, offset, durable):
-    """映射后的文件须落库并精确关联 hash，即使同目录还有更新的下载历史。"""
+    """
+    映射后的文件须落库并精确关联 hash，即使同目录还有更新的下载历史。
+    """
     db.watermark(DownloadHistory, DownloadFiles)
     custom_words = (
         "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
@@ -69,3 +73,40 @@ def test_selected_episode_file_resolves_its_own_hash(db, offset, durable):
     )
     assert resolved.download_hash == "episode-10-hash"
     assert resolved.downloader == "qb"
+
+
+@pytest.mark.parametrize("durable", [False, True])
+@pytest.mark.parametrize("file_list", [
+    ["Show.S03E54.mp4"],
+    ["Show.S03E05E06.mp4", "Show.S03E07.mp4"],
+], ids=["unique-video", "cross-boundary-video"])
+def test_selected_video_file_is_recorded_for_selected_episode(durable, file_list):
+    """
+    唯一视频兜底或跨集视频命中非起始集时，成功结算仍须写入对应文件明细。
+    """
+    selected_file = file_list[0]
+    meta = MetaInfo("Show.S03E06.mp4")
+    media = MediaInfo(type=MediaType.TV, title="示例剧", tmdb_id=107371)
+    torrent = TorrentInfo(title="Show.S03E54")
+    context = Context(meta_info=meta, media_info=media, torrent_info=torrent)
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = MagicMock()
+    chain.durable_event_writer = MagicMock() if durable else None
+    chain._build_download_notification = MagicMock(return_value=None)
+    chain._submit_download_added_task = MagicMock()
+    chain.eventmanager = MagicMock()
+
+    chain._settle_download_success(
+        context=context, media=media, meta=meta, torrent=torrent,
+        folder_name="show", file_list=file_list,
+        download_dir=Path("/downloads"), layout="Original", downloader="qb",
+        download_hash="episode-6-hash", download_episodes="E06",
+        episodes={6}, channel=None, source="subscribe", userid=None,
+        username=None, torrent_content=b"torrent", custom_words=None,
+    )
+
+    if durable:
+        files = chain.durable_event_writer.download_added.call_args.kwargs["files"]
+    else:
+        files = chain.download_history_repository.add.call_args.args[1]
+    assert [file.filepath for file in files] == [selected_file]

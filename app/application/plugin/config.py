@@ -1,4 +1,6 @@
-"""插件配置保存、重置和运行态重建应用用例。"""
+"""
+插件配置保存、重置和运行态重建应用用例。
+"""
 
 from __future__ import annotations
 
@@ -12,7 +14,12 @@ from app.schemas.plugin import validate_plugin_id
 
 @dataclass(frozen=True, slots=True)
 class PluginConfigResult:
-    """描述插件配置写操作是否成功及提示信息。"""
+    """
+    描述插件配置写操作是否成功及提示信息。
+
+    :param success: 操作是否完成其预期目标
+    :param message: 操作结果或失败原因的说明，默认空字符串
+    """
 
     success: bool
     message: str = ""
@@ -20,10 +27,16 @@ class PluginConfigResult:
 
 @dataclass(frozen=True, slots=True)
 class PluginPurgeScope:
-    """彻底清理一个实例时用户选定的删除范围。
+    """
+    彻底清理一个实例时用户选定的删除范围。
 
     四项各自独立，由用户逐项勾选：清理动作不可逆，替用户把范围扩大到他没选的
     东西上，比让他多点一下要糟得多。
+
+    :param config: 是否清理插件配置
+    :param plugin_data: 是否清理宿主数据库中的插件键值数据
+    :param own_database: 是否清理插件自建数据库
+    :param data_directory: 是否清理插件专属数据目录
     """
 
     config: bool = False
@@ -33,7 +46,9 @@ class PluginPurgeScope:
 
     @property
     def is_empty(self) -> bool:
-        """是否一项都没选。"""
+        """
+        是否一项都没选。
+        """
         return not any(
             (self.config, self.plugin_data, self.own_database, self.data_directory)
         )
@@ -41,7 +56,14 @@ class PluginPurgeScope:
 
 @dataclass(frozen=True, slots=True)
 class PluginPurgeResult:
-    """描述彻底清理的执行结果与实际清掉的范围。"""
+    """
+    描述彻底清理的执行结果与实际清掉的范围。
+
+    :param success: 操作是否完成其预期目标
+    :param message: 操作结果或失败原因的说明，默认空字符串
+    :param purged: 本次实际完成清理的范围名称
+    :param instance_removed: 本次是否移除了插件分身实例
+    """
 
     success: bool
     message: str = ""
@@ -50,13 +72,16 @@ class PluginPurgeResult:
 
 
 class PluginConfigCommand:
-    """协调插件配置持久化、实例初始化和运行时注册刷新。"""
+    """
+    协调插件配置持久化、实例初始化和运行时注册刷新。
+    """
 
     def __init__(
         self,
         *,
-        save_config: Callable[[str, dict, bool], bool],
-        initialize: Callable[[str, dict], Any],
+        read_config: Callable[[str], dict[str, object]],
+        save_config: Callable[[str, dict[str, object], bool], bool],
+        initialize: Callable[[str, dict[str, object]], Any],
         stop: Callable[[str], Any],
         delete_config: Callable[[str, bool], bool],
         delete_data: Callable[[str, bool], bool],
@@ -69,8 +94,14 @@ class PluginConfigCommand:
         delete_data_directory: Callable[[str], bool],
         purge_instance: Callable[[str], bool],
         is_clone: Callable[[str], bool],
+        purge_invalid_empty_host: Callable[[str], bool] | None = None,
     ) -> None:
-        """保存插件管理 Facade 和运行时注册刷新端口。"""
+        """
+        保存插件管理 Facade 和运行时注册刷新端口。
+
+        :param read_config: 读取当前实例配置，用于在空覆盖前保护已有设置
+        """
+        self._read_config = read_config
         self._save_config = save_config
         self._initialize = initialize
         self._stop = stop
@@ -85,11 +116,23 @@ class PluginConfigCommand:
         self._delete_data_directory = delete_data_directory
         self._purge_instance = purge_instance
         self._is_clone = is_clone
+        self._purge_invalid_empty_host = purge_invalid_empty_host
 
-    def update(self, plugin_id: str, config: dict) -> PluginConfigResult:
-        """保存配置并按既有顺序重新初始化实例及运行时注册。"""
+    def update(self, plugin_id: str, config: dict[str, object]) -> PluginConfigResult:
+        """
+        保存配置并按既有顺序重新初始化实例及运行时注册。
+
+        已有配置不能被空表单清空；原本没有配置项的插件仍可保存空表单。
+        检查和写入处于同一个插件变更执行权内，沿用本进程的变更准入。
+
+        :param plugin_id: 待更新的插件实例标识
+        :param config: 调用方提交的完整配置对象
+        :return: 保存结果；拒绝空覆盖时不触发初始化或注册刷新
+        """
         try:
             with self._mutation(f"更新插件 {plugin_id} 配置"):
+                if not config and self._read_config(plugin_id):
+                    return PluginConfigResult(False, "不能用空对象覆盖已有插件配置，请提交完整配置")
                 if not self._save_config(plugin_id, config, False):
                     return PluginConfigResult(False, "插件配置保存失败")
                 self._initialize(plugin_id, config)
@@ -99,7 +142,8 @@ class PluginConfigCommand:
             return PluginConfigResult(False, str(error))
 
     def purge(self, instance_id: str, scope: PluginPurgeScope) -> PluginPurgeResult:
-        """按用户选定的范围彻底清理一个实例，逐项执行且互不代劳。
+        """
+        按用户选定的范围彻底清理一个实例，逐项执行且互不代劳。
 
         与停用的区别在于不可逆：停用只把启用位置假、配置与展示信息原样留着，这里才
         真正删除用户数据。因而范围完全由调用方给定，一项没选就直接拒绝，不做「那就
@@ -107,7 +151,9 @@ class PluginConfigCommand:
 
         实例 ID 先过格式校验再动任何存储：它会被拼进插件数据目录路径，放行一个带
         ``..`` 的 ID 会让后续的整目录删除落到插件数据根之外。校验在最前面，是为了让
-        非法 ID 在停止实例、删配置行之前就被拒绝，而不是删掉一半才发现。
+        非法 ID 在停止实例、删配置行之前就被拒绝，而不是删掉一半才发现。唯一例外是
+        只选 config 时，可通过数据库专用端口原子回收非法 ID 的空本体行；该路径不
+        停止实例、不清配置、不触碰文件或自有数据库，带任何设置的行均保留。
 
         分身在清理后连同实例行一并消失——分身的存在本身就由那一行表达；本体的行则
         保留，它还承载着这个插件的启用状态与展示覆盖，删掉等于把装着的插件静默停用，
@@ -131,7 +177,7 @@ class PluginConfigCommand:
         try:
             validate_plugin_id(instance_id)
         except ValueError as error:
-            return PluginPurgeResult(False, f"实例 ID 非法：{error}")
+            return self._purge_invalid_host(instance_id, scope, str(error))
         try:
             with self._mutation(f"彻底清理插件实例 {instance_id}"):
                 self._stop(instance_id)
@@ -161,8 +207,26 @@ class PluginConfigCommand:
         except ValueError as error:
             return PluginPurgeResult(False, f"清理插件实例 {instance_id} 失败：{error}")
 
+    def _purge_invalid_host(
+        self, instance_id: str, scope: PluginPurgeScope, validation_error: str,
+    ) -> PluginPurgeResult:
+        """
+        仅在用户只选配置且数据库确认是纯残留时回收非法实例行。
+        """
+        if scope != PluginPurgeScope(config=True) or self._purge_invalid_empty_host is None:
+            return PluginPurgeResult(False, f"实例 ID 非法：{validation_error}")
+        try:
+            with self._mutation(f"清理历史无效插件实例 {instance_id}"):
+                if not self._purge_invalid_empty_host(instance_id):
+                    return PluginPurgeResult(False, "历史无效实例不存在或不是可清理的空本体行")
+                return PluginPurgeResult(True, purged=("config",), instance_removed=True)
+        except PluginMutationRejectedError as error:
+            return PluginPurgeResult(False, str(error))
+
     def reset(self, plugin_id: str) -> PluginConfigResult:
-        """通知插件补偿后停止实例、删除配置数据并重建运行态。"""
+        """
+        通知插件补偿后停止实例、删除配置数据并重建运行态。
+        """
         try:
             with self._mutation(f"重置插件 {plugin_id} 配置和数据"):
                 self._publish_reset(plugin_id)

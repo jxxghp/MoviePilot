@@ -1,3 +1,7 @@
+"""
+验证媒体响应模型的兼容字段、音乐实体区分和结果投影。
+"""
+
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -8,6 +12,7 @@ from app import schemas
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.api.response import ResponseAPIRouter
+from app.application.mediaserver import MediaServerItemRef
 from app.domain.context import MediaInfo as CoreMediaInfo
 from app.domain.context import MusicArtistInfo as CoreMusicArtistInfo
 from app.domain.context import MusicInfo as CoreMusicInfo
@@ -16,7 +21,9 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.mark.asyncio
 async def test_media_search_response_preserves_core_collection_fields() -> None:
-    """媒体搜索响应模型应保留 Core MediaInfo 合集输出的全部兼容字段。"""
+    """
+    媒体搜索响应模型应保留 Core MediaInfo 合集输出的全部兼容字段。
+    """
     media = CoreMediaInfo(tmdb_info={
         "id": 42,
         "media_type": MediaType.COLLECTION,
@@ -37,7 +44,9 @@ async def test_media_search_response_preserves_core_collection_fields() -> None:
 
     @router.get("/media/search", response_model=schemas.MediaSearchResults)
     def search_media() -> list[dict]:
-        """返回代表性的 Core MediaInfo 合集序列化结果。"""
+        """
+        返回代表性的 Core MediaInfo 合集序列化结果。
+        """
         return [payload]
 
     app = FastAPI()
@@ -64,7 +73,9 @@ async def test_media_search_response_preserves_core_collection_fields() -> None:
 
 @pytest.mark.asyncio
 async def test_media_search_response_preserves_music_artist_result_shape() -> None:
-    """统一搜索响应应把 MusicBrainz 艺术家解析为艺术家模型而非普通音乐条目。"""
+    """
+    统一搜索响应应把 MusicBrainz 艺术家解析为艺术家模型而非普通音乐条目。
+    """
     artist = CoreMusicArtistInfo(
         media_source=MediaSource.MusicBrainz,
         media_id="artist-1",
@@ -75,7 +86,9 @@ async def test_media_search_response_preserves_music_artist_result_shape() -> No
 
     @router.get("/media/search", response_model=schemas.MediaSearchResults)
     def search_media() -> list[dict]:
-        """返回代表性的 MusicBrainz 艺术家搜索结果。"""
+        """
+        返回代表性的 MusicBrainz 艺术家搜索结果。
+        """
         return [artist.to_dict()]
 
     app = FastAPI()
@@ -95,7 +108,9 @@ async def test_media_search_response_preserves_music_artist_result_shape() -> No
 
 @pytest.mark.asyncio
 async def test_media_search_response_keeps_legacy_music_artist_shape() -> None:
-    """显式音乐艺术家选择的旧 MusicInfo 结果仍应保持音乐条目兼容字段。"""
+    """
+    显式音乐艺术家选择的旧 MusicInfo 结果仍应保持音乐条目兼容字段。
+    """
     music = CoreMusicInfo(
         media_source=MediaSource.MusicBrainz,
         media_id="artist-1",
@@ -106,7 +121,9 @@ async def test_media_search_response_keeps_legacy_music_artist_shape() -> None:
 
     @router.get("/media/search", response_model=schemas.MediaSearchResults)
     def search_media() -> list[dict]:
-        """返回显式音乐实体选择的旧艺术家结果。"""
+        """
+        返回显式音乐实体选择的旧艺术家结果。
+        """
         return [music.to_dict()]
 
     app = FastAPI()
@@ -126,12 +143,16 @@ async def test_media_search_response_keeps_legacy_music_artist_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_media_response_accepts_cross_source_credit_shapes() -> None:
-    """媒体响应应同时保留豆瓣姓名字符串和 TMDB 演职员对象。"""
+    """
+    媒体响应应同时保留豆瓣姓名字符串和 TMDB 演职员对象。
+    """
     router = ResponseAPIRouter()
 
     @router.get("/recommend", response_model=list[schemas.MediaInfo])
     def recommend_media() -> list[dict]:
-        """返回跨来源的演职员字段形态。"""
+        """
+        返回跨来源的演职员字段形态。
+        """
         return [
             {
                 "media_source": MediaSource.Douban,
@@ -162,7 +183,9 @@ async def test_media_response_accepts_cross_source_credit_shapes() -> None:
 
 @pytest.mark.asyncio
 async def test_douban_media_response_filters_unknown_season_years() -> None:
-    """豆瓣榜单的未知季年份不应导致整个媒体列表响应校验失败。"""
+    """
+    豆瓣榜单的未知季年份不应导致整个媒体列表响应校验失败。
+    """
     media = CoreMediaInfo(douban_info={
         "id": "1292052",
         "title": "示例电影",
@@ -173,7 +196,9 @@ async def test_douban_media_response_filters_unknown_season_years() -> None:
 
     @router.get("/discover/douban_movies", response_model=list[schemas.MediaInfo])
     def discover_douban_movies() -> list[dict]:
-        """返回包含未知季年份的豆瓣榜单条目。"""
+        """
+        返回包含未知季年份的豆瓣榜单条目。
+        """
         return [media.to_dict()]
 
     app = FastAPI()
@@ -190,7 +215,9 @@ async def test_douban_media_response_filters_unknown_season_years() -> None:
 
 @pytest.mark.asyncio
 async def test_media_detail_response_accepts_music_numeric_year(monkeypatch) -> None:
-    """通用详情接口应按音乐模型序列化 MusicBrainz 的整数年份。"""
+    """
+    通用详情接口应按音乐模型序列化 MusicBrainz 的整数年份。
+    """
     media_id = "b79e2ffd-7e44-4dbf-91f9-167c05d1fc91"
     music = CoreMusicInfo(
         media_source=MediaSource.MusicBrainz,
@@ -227,12 +254,16 @@ async def test_media_detail_response_accepts_music_numeric_year(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_media_response_accepts_legacy_source_key() -> None:
-    """媒体身份重构前缓存的旧格式条目（source + media_id）应被归一化并正常响应。"""
+    """
+    媒体身份重构前缓存的旧格式条目（source + media_id）应被归一化并正常响应。
+    """
     router = ResponseAPIRouter()
 
     @router.get("/recommend", response_model=list[schemas.MediaInfo])
     def recommend_media() -> list[dict]:
-        """返回媒体身份重构前缓存的旧格式推荐条目。"""
+        """
+        返回媒体身份重构前缓存的旧格式推荐条目。
+        """
         return [
             {
                 "source": "themoviedb",
@@ -260,13 +291,19 @@ async def test_media_response_accepts_legacy_source_key() -> None:
 
 @pytest.mark.asyncio
 async def test_media_exists_not_found_is_a_successful_query() -> None:
-    """媒体库未命中是查询结果，不应被统一客户端识别为接口失败。"""
+    """
+    媒体库未命中是查询结果，不应被统一客户端识别为接口失败。
+    """
 
     class EmptyMediaServerQueryService:
-        """返回未命中的媒体库查询桩。"""
+        """
+        返回未命中的媒体库查询桩。
+        """
 
-        async def find_item_id(self, **_kwargs):
-            """模拟媒体库中不存在目标媒体。"""
+        async def find_item(self, **_kwargs):
+            """
+            模拟媒体库中不存在目标媒体。
+            """
             return None
 
     response = await mediaserver_endpoint.exists_local(
@@ -286,9 +323,11 @@ async def test_media_exists_not_found_is_a_successful_query() -> None:
 
 @pytest.mark.asyncio
 async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> None:
-    """豆瓣标题带第 x 季时，应拆成基础标题和季号再查询媒体库。"""
+    """
+    豆瓣标题带第 x 季时，应拆成基础标题和季号再查询媒体库。
+    """
     service = Mock()
-    service.find_item_id = AsyncMock(return_value="tv-item-2")
+    service.find_item = AsyncMock(return_value=MediaServerItemRef(server="Emby", item_id="tv-item-2"))
 
     response = await mediaserver_endpoint.exists_local(
         title="跨来源剧集第二季",
@@ -302,8 +341,8 @@ async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> N
     )
 
     assert response.success is True
-    assert response.data == {"item": {"id": "tv-item-2"}}
-    service.find_item_id.assert_awaited_once_with(
+    assert response.data == {"item": {"id": "tv-item-2", "server": "Emby"}}
+    service.find_item.assert_awaited_once_with(
         title="跨来源剧集",
         year="2023",
         mtype="电视剧",
@@ -311,3 +350,35 @@ async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> N
         media_id="douban-tv-2",
         season=2,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("server", "expected_item"),
+    [
+        ("Emby 4K", {"id": "100", "server": "Emby 4K"}),
+        ("", {"id": "100"}),
+    ],
+)
+async def test_media_exists_response_carries_item_server(server, expected_item) -> None:
+    """
+    入库查询响应应带上条目所属服务器；旧缓存缺少服务器名称时省略该键，响应仍是字符串字典。
+    """
+    service = Mock()
+    service.find_item = AsyncMock(return_value=MediaServerItemRef(server=server, item_id="100"))
+    app = FastAPI()
+    app.dependency_overrides[mediaserver_endpoint.get_mediaserver_query_service] = lambda: service
+    app.dependency_overrides[mediaserver_endpoint.verify_token] = lambda: None
+    app.include_router(mediaserver_endpoint.router, prefix="/api/v1/mediaserver")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            "/api/v1/mediaserver/exists",
+            params={"media_source": MediaSource.TMDB.value, "media_id": "1399", "mtype": "电视剧"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {"item": expected_item}

@@ -1,3 +1,7 @@
+"""
+媒体服务器发现、统一媒体身份匹配与媒体库缓存同步。
+"""
+
 import json
 import re
 from collections.abc import Iterable, Mapping
@@ -9,6 +13,7 @@ from app.application.service import ServiceBaseHelper
 from app.domain.context import MusicInfo
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.system import MediaServerConf, ServiceInfo
@@ -19,10 +24,31 @@ from app.schemas.types import (
     SystemConfigKey,
 )
 
+# 查重只需要来源身份与年份；具体音乐匹配由模块补充专辑完整性证据。
+MEDIA_SERVER_EXISTENCE_QUERY = MediaServerQueryOptions(fields=frozenset({
+    MediaServerField.IDENTITY, MediaServerField.YEAR,
+}))
+
 
 @dataclass(frozen=True, slots=True)
 class MediaServerSyncItem:
-    """媒体库同步写端使用的脱离远端响应与数据库会话的冻结条目。"""
+    """
+    媒体库同步写端使用的脱离远端响应与数据库会话的冻结条目。
+
+    :param server: 媒体服务器配置名称，用于隔离不同服务器的本地缓存
+    :param library: 所属媒体库标识，未提供时为 None
+    :param item_id: 媒体服务器分配的条目标识
+    :param item_type: 服务器条目类型，未提供时为 None
+    :param title: 条目展示标题，未提供时为 None
+    :param original_title: 条目原语种标题，未提供时为 None
+    :param year: 条目发行年份，未提供时为 None
+    :param media_source: 统一媒体身份的数据来源，未识别时为 None
+    :param media_id: 对应来源的原生媒体标识，未识别时为 None
+    :param path: 媒体服务器报告的文件或目录路径，未提供时为 None
+    :param seasoninfo: 按季冻结的已入库集数，每项包含季号及集数元组
+    :param note_json: 条目附加信息的 JSON 文本，无附加信息时为 None
+    :param lst_mod_date: 本轮同步时间字符串，用于识别未被更新的陈旧缓存
+    """
 
     server: str
     library: Optional[str]
@@ -46,10 +72,16 @@ class MediaServerSyncItem:
         item_type: Optional[str],
         seasoninfo: Mapping[int, Optional[list[int]]],
         sync_time: str,
+        server: Optional[str] = None,
     ) -> "MediaServerSyncItem":
-        """冻结远端媒体条目和本轮剧集快照，供短事务持久化。"""
+        """
+        冻结远端媒体条目和本轮剧集快照，供短事务持久化。
+
+        :param server: 媒体服务器配置名称；模块条目只携带 emby/jellyfin 等类型名，
+            陈旧清理、排除清理与存在性检查均按配置名称隔离缓存，同步写入必须使用同一键。
+        """
         return cls(
-            server=str(item.server or ""),
+            server=str(server or item.server or ""),
             library=str(item.library) if item.library is not None else None,
             item_id=str(item.item_id or ""),
             item_type=item_type,
@@ -72,8 +104,25 @@ class MediaServerSyncItem:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class MediaServerItemRef:
+    """
+    本地媒体库缓存命中的条目及其所属服务器。
+
+    条目标识只在所属服务器内唯一，多台服务器之间可能重号，因此两者必须取自同一条缓存记录。
+
+    :param server: 媒体服务器配置名称；旧缓存缺少服务器名称时为空字符串
+    :param item_id: 该服务器分配的条目标识
+    """
+
+    server: str
+    item_id: str
+
+
 class MediaServerRepository(Protocol):
-    """Chain 查询与同步媒体服务器本地缓存所需的最小持久化端口。"""
+    """
+    Chain 查询与同步媒体服务器本地缓存所需的最小持久化端口。
+    """
 
     def get_item_id(
         self,
@@ -86,24 +135,53 @@ class MediaServerRepository(Protocol):
         media_id: Optional[str] = None,
         season: Optional[int] = None,
     ) -> Optional[str]:
-        """返回匹配条目的服务器 item_id，未命中时返回 None。"""
+        """
+        返回匹配条目的服务器 item_id，未命中时返回 None。
+
+        :param server: 媒体服务器配置名称，None 表示不限定服务器
+        :param title: 匹配的媒体标题，也用于来源身份未命中时的跨来源回退
+        :param year: 媒体发行年份，None 表示未提供年份条件
+        :param mtype: 媒体条目类型，None 表示不限定类型
+        :param media_source: 统一媒体身份的数据来源，需与 media_id 配合使用
+        :param media_id: 对应来源的原生媒体标识，缺少完整身份时按标题查询
+        :param season: 要求本地缓存包含的季号，None 表示不限定季
+        :return: 命中条目的服务器原生标识；不存在、来源匹配歧义或所需季不存在时为 None
+        """
         ...
 
     def upsert(self, item: MediaServerSyncItem) -> bool:
-        """在短事务中新增或更新一个冻结媒体条目。"""
+        """
+        在短事务中新增或更新一个冻结媒体条目。
+
+        :param item: 本轮同步得到的冻结媒体条目，服务器名称与条目标识共同定位记录
+        :return: 新增记录时为 True；更新既有记录或缺少服务器、条目标识时为 False
+        """
         ...
 
     def delete_stale(self, *, server: str, sync_time: str) -> int:
-        """删除指定服务器本轮同步未更新的本地条目。"""
+        """
+        删除指定服务器本轮同步未更新的本地条目。
+
+        :param server: 需要清理的媒体服务器配置名称
+        :param sync_time: 本轮成功写入条目统一使用的同步时间字符串
+        :return: 被删除的陈旧缓存记录数
+        """
         ...
 
     def delete_excluded_servers(self, servers: list[str]) -> int:
-        """删除已停用或已移除服务器的本地条目。"""
+        """
+        删除已停用或已移除服务器的本地条目。
+
+        :param servers: 仍启用的服务器配置名称；空列表表示清空全部服务器缓存
+        :return: 被删除的缓存记录数
+        """
         ...
 
 
 class AsyncMediaServerQueryRepository(Protocol):
-    """媒体服务器本地条目查询所需的异步持久化端口。"""
+    """
+    媒体服务器本地条目查询所需的异步持久化端口。
+    """
 
     async def async_get_item_id(
         self,
@@ -116,15 +194,54 @@ class AsyncMediaServerQueryRepository(Protocol):
         media_id: Optional[str] = None,
         season: Optional[int] = None,
     ) -> Optional[str]:
-        """按标题或统一媒体身份返回已同步条目的标量 ID。"""
+        """
+        按标题或统一媒体身份返回已同步条目的标量 ID。
+
+        :param server: 媒体服务器配置名称，None 表示不限定服务器
+        :param title: 匹配的媒体标题，也用于来源身份未命中时的跨来源回退
+        :param year: 媒体发行年份，None 表示未提供年份条件
+        :param mtype: 媒体条目类型，None 表示不限定类型
+        :param media_source: 统一媒体身份的数据来源，需与 media_id 配合使用
+        :param media_id: 对应来源的原生媒体标识，缺少完整身份时按标题查询
+        :param season: 要求本地缓存包含的季号，None 表示不限定季
+        :return: 命中条目的服务器原生标识；不存在、来源匹配歧义或所需季不存在时为 None
+        """
+        ...
+
+    async def async_get_item_ref(
+        self,
+        *,
+        title: Optional[str] = None,
+        year: Optional[Union[str, int]] = None,
+        mtype: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+    ) -> Optional[tuple[str, str]]:
+        """
+        按与 async_get_item_id 相同的匹配规则，返回命中记录的服务器名称与条目标识。
+
+        :param title: 匹配的媒体标题，也用于来源身份未命中时的跨来源回退
+        :param year: 媒体发行年份，None 表示未提供年份条件
+        :param mtype: 媒体条目类型，None 表示不限定类型
+        :param media_source: 统一媒体身份的数据来源，需与 media_id 配合使用
+        :param media_id: 对应来源的原生媒体标识，缺少完整身份时按标题查询
+        :param season: 要求本地缓存包含的季号，None 表示不限定季
+        :return: 同一条记录的（服务器配置名称, 条目标识），服务器名称缺失时为空字符串；
+            不存在、来源匹配歧义或所需季不存在时为 None
+        """
         ...
 
 
 class MediaServerQueryService:
-    """封装媒体服务器本地存在性标量查询。"""
+    """
+    封装媒体服务器本地存在性标量查询。
+    """
 
     def __init__(self, repository: AsyncMediaServerQueryRepository):
-        """使用显式媒体服务器查询端口初始化服务。"""
+        """
+        使用显式媒体服务器查询端口初始化服务。
+        """
         self._repository = repository
 
     async def find_item_id(
@@ -138,7 +255,9 @@ class MediaServerQueryService:
             media_id: Optional[str] = None,
             season: Optional[int] = None,
     ) -> Optional[str]:
-        """返回匹配条目的服务器 item_id，未命中时返回 None。"""
+        """
+        返回匹配条目的服务器 item_id，未命中时返回 None。
+        """
         if server is None:
             return await self._repository.async_get_item_id(
                 title=title,
@@ -158,9 +277,45 @@ class MediaServerQueryService:
             season=season,
         )
 
+    async def find_item(
+            self,
+            *,
+            title: Optional[str] = None,
+            year: Optional[Union[str, int]] = None,
+            mtype: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
+            season: Optional[int] = None,
+    ) -> Optional[MediaServerItemRef]:
+        """
+        返回匹配条目及其所属服务器，匹配规则与 find_item_id 不限定服务器时相同。
+
+        :param title: 匹配的媒体标题，也用于来源身份未命中时的跨来源回退
+        :param year: 媒体发行年份，None 表示未提供年份条件
+        :param mtype: 媒体条目类型，None 表示不限定类型
+        :param media_source: 统一媒体身份的数据来源，需与 media_id 配合使用
+        :param media_id: 对应来源的原生媒体标识，缺少完整身份时按标题查询
+        :param season: 要求本地缓存包含的季号，None 表示不限定季
+        :return: 取自同一条缓存记录的服务器名称与条目标识；未命中时为 None
+        """
+        found = await self._repository.async_get_item_ref(
+            title=title,
+            year=year,
+            mtype=mtype,
+            media_source=media_source,
+            media_id=media_id,
+            season=season,
+        )
+        if found is None:
+            return None
+        server, item_id = found
+        return MediaServerItemRef(server=server, item_id=item_id)
+
 
 class MediaServerIdentityHelper:
-    """将媒体服务器专有 ProviderIds 适配为统一媒体身份。"""
+    """
+    将媒体服务器专有 ProviderIds 适配为统一媒体身份。
+    """
 
     _provider_keys = (
         (MediaSource.TMDB, ("Tmdb", "TMDB", "tmdb", "tmdb_id")),
@@ -177,7 +332,9 @@ class MediaServerIdentityHelper:
         cls,
         provider_ids: Optional[Mapping[str, Any]],
     ) -> tuple[Optional[MediaSource], Optional[str]]:
-        """按固定优先级从外部 ProviderIds 选择一个规范媒体身份。"""
+        """
+        按固定优先级从外部 ProviderIds 选择一个规范媒体身份。
+        """
         if not isinstance(provider_ids, Mapping):
             return None, None
         for media_source, keys in cls._provider_keys:
@@ -194,7 +351,9 @@ class MediaServerIdentityHelper:
         right_source: Optional[MediaSource | str],
         right_id: Optional[str],
     ) -> bool:
-        """判断两组身份是否没有可证实的同来源 ID 冲突。"""
+        """
+        判断两组身份是否没有可证实的同来源 ID 冲突。
+        """
         left_source, left_id = resolve_media_identity(
             media_source=left_source,
             media_id=left_id,
@@ -216,31 +375,41 @@ class MediaServerIdentityHelper:
         media_source: Optional[MediaSource | str],
         media_id: Optional[str],
     ) -> bool:
-        """判断目标与媒体库条目是否无明确身份冲突。"""
+        """
+        判断目标与媒体库条目是否无明确身份冲突。
+        """
         item_source, item_id = resolve_media_identity(media=item)
         return cls.are_compatible(item_source, item_id, media_source, media_id)
 
 
 class MusicMediaServerHelper:
-    """统一音乐媒体库条目的字段转换、精确匹配和整专完整性判断。"""
+    """
+    统一音乐媒体库条目的字段转换、精确匹配和整专完整性判断。
+    """
 
     _name_pattern = re.compile(r"[\W_]+", re.UNICODE)
 
     @classmethod
-    def normalize_name(cls, value: Optional[str]) -> str:
-        """忽略大小写、空白和标点，生成用于音乐名称精确比较的稳定文本。"""
+    def normalize_name(cls, value: object) -> str:
+        """
+        将来源字段转成文本后忽略大小写、空白和标点，用于精确比较。
+        """
         return cls._name_pattern.sub("", str(value or "").casefold())
 
     @classmethod
-    def same_name(cls, left: Optional[str], right: Optional[str]) -> bool:
-        """判断两个非空音乐名称在规范化后是否完全一致。"""
+    def same_name(cls, left: object, right: object) -> bool:
+        """
+        判断两个非空音乐名称在规范化后是否完全一致。
+        """
         normalized_left = cls.normalize_name(left)
         normalized_right = cls.normalize_name(right)
         return bool(normalized_left) and normalized_left == normalized_right
 
     @staticmethod
     def _first_value(data: Mapping[str, Any], *keys: str) -> Any:
-        """按候选键顺序返回第一个非空字段，兼容不同媒体服务器命名。"""
+        """
+        按候选键顺序返回第一个非空字段，兼容不同媒体服务器命名。
+        """
         for key in keys:
             value = data.get(key)
             if value not in (None, "", []):
@@ -249,7 +418,9 @@ class MusicMediaServerHelper:
 
     @classmethod
     def _extract_names(cls, value: Any) -> list[str]:
-        """从字符串、对象列表或名称列表中提取非空名称。"""
+        """
+        从字符串、对象列表或名称列表中提取非空名称。
+        """
         if isinstance(value, str):
             return [value] if value.strip() else []
         if isinstance(value, Mapping):
@@ -269,7 +440,9 @@ class MusicMediaServerHelper:
 
     @classmethod
     def build_note(cls, item: Mapping[str, Any]) -> dict[str, Any]:
-        """把 Emby 系和 NAS 搜索结果中的音乐字段转换为统一备注结构。"""
+        """
+        把 Emby 系和 NAS 搜索结果中的音乐字段转换为统一备注结构。
+        """
         artists = cls._extract_names(
             cls._first_value(item, "Artists", "artists", "ArtistItems", "artist_items")
         )
@@ -320,7 +493,9 @@ class MusicMediaServerHelper:
 
     @staticmethod
     def search_params(mediainfo: MusicInfo) -> dict[str, Optional[str]]:
-        """按单曲或专辑实体构造媒体服务器音乐搜索参数。"""
+        """
+        按单曲或专辑实体构造媒体服务器音乐搜索参数。
+        """
         is_album = getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM
         artists = getattr(mediainfo, "artists", None) or []
         artist = (
@@ -342,11 +517,13 @@ class MusicMediaServerHelper:
         mediainfo: MusicInfo,
         item: _SchemaMediaServerItem,
     ) -> bool:
-        """校验媒体库条目是否精确对应单曲，或完整覆盖目标专辑。"""
+        """
+        校验媒体库条目是否精确对应单曲，或完整覆盖目标专辑。
+        """
         note = item.note if isinstance(item.note, Mapping) else {}
         is_album = getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM
         target_title = getattr(mediainfo, "title", None)
-        actual_title = item.title
+        actual_title: object = item.title
         if is_album:
             target_title = getattr(mediainfo, "album", None) or target_title
             actual_title = note.get("album") or actual_title
@@ -372,7 +549,10 @@ class MusicMediaServerHelper:
             return True
         try:
             expected_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)
-            actual_tracks = int(note.get("song_count") or 0)
+            song_count = note.get("song_count") or 0
+            if isinstance(song_count, (dict, list)):
+                return False
+            actual_tracks = int(song_count)
         except (TypeError, ValueError):
             return False
         return expected_tracks > 0 and actual_tracks >= expected_tracks
@@ -383,7 +563,9 @@ class MusicMediaServerHelper:
         mediainfo: MusicInfo,
         items: Optional[Iterable[_SchemaMediaServerItem]],
     ) -> Optional[_SchemaMediaServerItem]:
-        """返回首个满足单曲精确匹配或整专完整性要求的媒体库条目。"""
+        """
+        返回首个满足单曲精确匹配或整专完整性要求的媒体库条目。
+        """
         return next(
             (item for item in items or [] if item and cls.item_matches(mediainfo, item)),
             None,
@@ -396,26 +578,23 @@ def format_emby_family_item(
     server: str,
     include_server_id: bool = False,
 ) -> Optional[_SchemaMediaServerItem]:
-    """把 Emby 系服务条目转换为统一媒体服务器模型，并保留各服务既有字段差异。"""
+    """
+    把 Emby 系服务条目转换为统一媒体服务器模型，并保留各服务既有字段差异。
+    """
     try:
         user_data = item.get("UserData") or {}
         if not user_data:
             user_state = None
         else:
-            resume = (
-                user_data.get("PlaybackPositionTicks")
-                and user_data.get("PlaybackPositionTicks") > 0
-            )
+            playback_position_ticks = user_data.get("PlaybackPositionTicks")
+            resume = playback_position_ticks and playback_position_ticks > 0
             last_played_date = user_data.get("LastPlayedDate")
-            if last_played_date is not None and "." in last_played_date:
-                last_played_date = last_played_date.split(".")[0]
             user_state = _SchemaMediaServerItemUserState(
                 played=user_data.get("Played"),
                 resume=resume,
-                last_played_date=datetime.strptime(
-                    last_played_date,
-                    "%Y-%m-%dT%H:%M:%S",
-                ).strftime("%Y-%m-%d %H:%M:%S") if last_played_date else None,
+                last_played_date=datetime.fromisoformat(last_played_date).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ) if last_played_date else None,
                 play_count=user_data.get("PlayCount"),
                 percentage=user_data.get("PlayedPercentage"),
             )
@@ -439,17 +618,21 @@ def format_emby_family_item(
         }
         if include_server_id:
             fields["server_id"] = item.get("ServerId")
-        return _SchemaMediaServerItem(**fields)
+        return _SchemaMediaServerItem.model_validate(fields)
     except Exception as error:
         logger.error(error)
         return None
 
 
 class MediaServerHelper(ServiceBaseHelper[MediaServerConf]):
-    """管理媒体服务器配置，并按类型发现已启用的服务实例。"""
+    """
+    管理媒体服务器配置，并按类型发现已启用的服务实例。
+    """
 
     def __init__(self) -> None:
-        """绑定媒体服务器配置键、配置模型和模块类型。"""
+        """
+        绑定媒体服务器配置键、配置模型和模块类型。
+        """
         super().__init__(
             config_key=SystemConfigKey.MediaServers,
             conf_type=MediaServerConf,
@@ -462,7 +645,9 @@ class MediaServerHelper(ServiceBaseHelper[MediaServerConf]):
         service: Optional[ServiceInfo] = None,
         name: Optional[str] = None,
     ) -> bool:
-        """判断给定服务或服务名称是否属于指定媒体服务器类型。"""
+        """
+        判断给定服务或服务名称是否属于指定媒体服务器类型。
+        """
         service = service or self.get_service(name=name)
         return bool(service and service.type == service_type)
 
@@ -470,7 +655,9 @@ class MediaServerHelper(ServiceBaseHelper[MediaServerConf]):
 def get_mediaserver_configs(
     include_disabled: bool = False,
 ) -> list[MediaServerConf]:
-    """返回媒体服务器配置列表，并按调用方需要决定是否包含禁用项。"""
+    """
+    返回媒体服务器配置列表，并按调用方需要决定是否包含禁用项。
+    """
     return list(
         MediaServerHelper().get_configs(include_disabled=include_disabled).values()
     )

@@ -1,4 +1,6 @@
-"""图片域名快照的并发、失效和过期回归。"""
+"""
+图片域名快照的并发、失效和过期回归。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock
@@ -23,20 +25,26 @@ from app.schemas.site import Site
     ],
 )
 def test_normalize_image_domain(address: str | None, expected: str | None) -> None:
-    """只归一化有效图片主机，拒绝用户信息和非 HTTP 协议。"""
+    """
+    只归一化有效图片主机，拒绝用户信息和非 HTTP 协议。
+    """
     assert normalize_image_domain(address) == expected
 
 
 @pytest.mark.asyncio
 async def test_concurrent_image_requests_share_one_site_query() -> None:
-    """冷启动并发和后续命中均共享一次数据库查询，空结果也缓存。"""
+    """
+    冷启动并发和后续命中均共享一次数据库查询，空结果也缓存。
+    """
     cache = SiteImageDomainCache()
     source = AsyncMock()
     entered = asyncio.Event()
     release = asyncio.Event()
 
     async def load() -> list[Site]:
-        """挂起查询以模拟同一页面并发加载图片。"""
+        """
+        挂起查询以模拟同一页面并发加载图片。
+        """
         entered.set()
         await release.wait()
         return []
@@ -52,12 +60,16 @@ async def test_concurrent_image_requests_share_one_site_query() -> None:
 
 @pytest.mark.asyncio
 async def test_invalidated_inflight_query_cannot_restore_old_domain() -> None:
-    """删除或改址发生在查询途中时，旧结果不能重新写入安全白名单。"""
+    """
+    删除或改址发生在查询途中时，旧结果不能重新写入安全白名单。
+    """
     cache = SiteImageDomainCache()
     source = AsyncMock()
 
     async def load() -> list[Site]:
-        """第一次查询模拟读取旧快照后发生提交失效。"""
+        """
+        第一次查询模拟读取旧快照后发生提交失效。
+        """
         if source.list.await_count == 1:
             cache.invalidate()
             return [Site(url="https://old.example/")]
@@ -72,7 +84,9 @@ async def test_invalidated_inflight_query_cannot_restore_old_domain() -> None:
 
 @pytest.mark.asyncio
 async def test_expiry_and_source_replacement_refresh_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
-    """短期过期兜底及 lifespan 查询服务更换均重新加载站点。"""
+    """
+    短期过期兜底及 lifespan 查询服务更换均重新加载站点。
+    """
     clock = [100.0]
     monkeypatch.setattr(image_policy, "monotonic", lambda: clock[0])
     cache = SiteImageDomainCache(ttl=60)
@@ -93,7 +107,9 @@ async def test_expiry_and_source_replacement_refresh_snapshot(monkeypatch: pytes
 
 @pytest.mark.asyncio
 async def test_failed_query_is_retried() -> None:
-    """查询失败不缓存结果，恢复后重新获取配置。"""
+    """
+    查询失败不缓存结果，恢复后重新获取配置。
+    """
     cache = SiteImageDomainCache()
     source = AsyncMock()
     source.list.side_effect = [RuntimeError("unavailable"), []]

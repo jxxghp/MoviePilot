@@ -1,4 +1,5 @@
-"""媒体识别插件辅助测试（影视与音乐统一链路）。
+"""
+媒体识别插件辅助测试（影视与音乐统一链路）。
 
 覆盖 MediaChain 标题要素插件辅助识别（NameRecognize / MusicNameRecognize 链式事件）
 与 ChainBase 媒体识别插件补充（MediaRecognize / MusicMediaRecognize 链式事件）。
@@ -18,12 +19,16 @@ from app.schemas.types import ChainEventType, MediaSource, MediaType
 
 
 def _fallback_music(title: str = "晴天", **kwargs) -> MusicInfo:
-    """构造无远端身份的离线兜底音乐结果。"""
+    """
+    构造无远端身份的离线兜底音乐结果。
+    """
     return MusicInfo(title=title, **kwargs)
 
 
 def _remote_music() -> MusicInfo:
-    """构造带远端身份的标准音乐识别结果。"""
+    """
+    构造带远端身份的标准音乐识别结果。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -51,7 +56,9 @@ def test_recognize_source_selection_keeps_sync_async_parity(
     expected_kind,
     order,
 ):
-    """同步与异步入口必须共享来源顺序、采信规则和无身份回退结果。"""
+    """
+    同步与异步入口必须共享来源顺序、采信规则和无身份回退结果。
+    """
     chain = MediaChain()
     candidates = {
         "none": None,
@@ -69,29 +76,39 @@ def test_recognize_source_selection_keeps_sync_async_parity(
     sync_order = []
 
     def native_sync():
-        """记录同步原生 I/O 动作。"""
+        """
+        记录同步原生 I/O 动作。
+        """
         sync_order.append("native")
         return native
 
     def plugin_sync():
-        """记录同步插件 I/O 动作。"""
+        """
+        记录同步插件 I/O 动作。
+        """
         sync_order.append("plugin")
         return plugin
 
     async_order = []
 
     async def native_async():
-        """记录异步原生 I/O 动作。"""
+        """
+        记录异步原生 I/O 动作。
+        """
         async_order.append("native")
         return native
 
     async def plugin_async():
-        """记录异步插件 I/O 动作。"""
+        """
+        记录异步插件 I/O 动作。
+        """
         async_order.append("plugin")
         return plugin
 
     def has_remote_identity(result):
-        """仅采信包含远端来源的识别结果。"""
+        """
+        仅采信包含远端来源的识别结果。
+        """
         return bool(result and result.media_source)
 
     with patch(
@@ -122,7 +139,9 @@ def test_recognize_source_selection_keeps_sync_async_parity(
 
 
 def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
-    """原生识别无远端身份时应发送音乐名称识别事件，并按修正要素重新匹配。"""
+    """
+    原生识别无远端身份时应发送音乐名称识别事件，并按修正要素重新匹配。
+    """
     chain = MediaChain()
     meta = MetaMusic(
         title="周杰伦 晴天 FLAC 24bit 48kHz",
@@ -186,7 +205,9 @@ def test_music_recognize_help_sends_event_and_rematches(monkeypatch):
 
 
 def test_music_recognize_keeps_fallback_without_plugin(monkeypatch):
-    """无插件响应音乐名称识别事件时应保留原生兜底结果。"""
+    """
+    无插件响应音乐名称识别事件时应保留原生兜底结果。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="未知曲目")
     fallback = _fallback_music(title="未知曲目")
@@ -202,7 +223,9 @@ def test_music_recognize_keeps_fallback_without_plugin(monkeypatch):
 
 
 def test_music_recognize_help_same_elements_keeps_fallback(monkeypatch):
-    """辅助识别要素与原始一致时不应重新识别。"""
+    """
+    辅助识别要素与原始一致时不应重新识别。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     fallback = _fallback_music(title="晴天", artists=["周杰伦"])
@@ -225,7 +248,9 @@ def test_music_recognize_help_same_elements_keeps_fallback(monkeypatch):
 
 
 def test_music_recognize_help_keeps_fallback_when_rematch_fails(monkeypatch):
-    """辅助要素重新匹配仍无远端身份时应保留原生兜底结果。"""
+    """
+    辅助要素重新匹配仍无远端身份时应保留原生兜底结果。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天")
     fallback = _fallback_music(title="晴天")
@@ -246,7 +271,9 @@ def test_music_recognize_help_keeps_fallback_when_rematch_fails(monkeypatch):
 
 
 def test_async_music_recognize_help(monkeypatch):
-    """异步音乐识别同样应走插件辅助识别并重匹配。"""
+    """
+    异步音乐识别同样应走插件辅助识别并重匹配。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="周杰伦-晴天", track_number=3, duration=269)
     remote = _remote_music()
@@ -278,7 +305,9 @@ def test_async_music_recognize_help(monkeypatch):
 
 
 def test_plugin_first_keeps_fallback_when_help_unidentified(monkeypatch):
-    """插件优先模式下辅助识别未取得身份时，应回退原生识别并保留已有兜底结果。"""
+    """
+    插件优先模式下辅助识别未取得身份时，应回退原生识别并保留已有兜底结果。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天")
     fallback = _fallback_music(title="晴天")
@@ -300,7 +329,9 @@ def test_plugin_first_keeps_fallback_when_help_unidentified(monkeypatch):
 
 
 def test_chain_supplement_music_recognize_uses_plugin_result():
-    """音乐媒体识别事件应允许插件按已知要素返回标准音乐信息。"""
+    """
+    音乐媒体识别事件应允许插件按已知要素返回标准音乐信息。
+    """
     chain = ChainBase()
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     plugin_data = {
@@ -338,7 +369,9 @@ def test_chain_supplement_music_recognize_uses_plugin_result():
 
 
 def test_chain_supplement_music_rejects_cross_entity_plugin_result():
-    """媒体识别插件返回的音乐实体与请求不一致时应保留原结果。"""
+    """
+    媒体识别插件返回的音乐实体与请求不一致时应保留原结果。
+    """
     chain = ChainBase()
     fallback = _fallback_music(title="叶惠美")
     event = Event(ChainEventType.MusicMediaRecognize, {
@@ -365,7 +398,9 @@ def test_chain_supplement_music_rejects_cross_entity_plugin_result():
 
 
 def test_chain_supplement_video_recognize_uses_plugin_result():
-    """影视媒体识别事件应与音乐对称，允许插件按已知要素返回标准媒体信息。"""
+    """
+    影视媒体识别事件应与音乐对称，允许插件按已知要素返回标准媒体信息。
+    """
     chain = ChainBase()
     meta = MetaBase("The.Matrix.1999.1080p.BluRay")
     meta.type = MediaType.MOVIE
@@ -397,7 +432,9 @@ def test_chain_supplement_video_recognize_uses_plugin_result():
 
 
 def test_chain_supplement_media_recognize_requires_identity():
-    """插件返回缺少数据源或远端身份的结果不采信，影视音乐统一。"""
+    """
+    插件返回缺少数据源或远端身份的结果不采信，影视音乐统一。
+    """
     chain = ChainBase()
     # 音乐缺媒体ID
     meta = MetaMusic(title="晴天")
@@ -432,7 +469,9 @@ def test_chain_supplement_media_recognize_requires_identity():
 
 
 def test_chain_supplement_media_recognize_skips_identified_result():
-    """已有远端身份的结果不应触发插件补充事件。"""
+    """
+    已有远端身份的结果不应触发插件补充事件。
+    """
     chain = ChainBase()
     meta = MetaMusic(title="晴天")
     remote = _remote_music()
@@ -450,7 +489,9 @@ def test_chain_supplement_media_recognize_skips_identified_result():
 
 
 def test_chain_recognize_media_music_plugin_supplement():
-    """统一识别入口应在原生音乐识别无身份时采信插件补充结果并统一上报。"""
+    """
+    统一识别入口应在原生音乐识别无身份时采信插件补充结果并统一上报。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     fallback = _fallback_music(title="晴天")
@@ -475,7 +516,9 @@ def test_chain_recognize_media_music_plugin_supplement():
 
 
 def test_chain_async_supplement_media_recognize():
-    """异步媒体识别补充应与同步行为一致（音乐）。"""
+    """
+    异步媒体识别补充应与同步行为一致（音乐）。
+    """
     chain = ChainBase()
     meta = MetaMusic(title="晴天")
     event = Event(ChainEventType.MusicMediaRecognize, {
@@ -503,7 +546,9 @@ def test_chain_async_supplement_media_recognize():
 
 
 def test_chain_supplement_accepts_plugin_media_source():
-    """插件返回的规范扩展来源应进入统一识别链。"""
+    """
+    插件返回的规范扩展来源应进入统一识别链。
+    """
     chain = ChainBase()
     event = Event(
         ChainEventType.MusicMediaRecognize,

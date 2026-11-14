@@ -18,7 +18,9 @@ from app.db.uow import run_async_transaction
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把用于验证基类行为的两张表纳入用例级回收。"""
+    """
+    把用于验证基类行为的两张表纳入用例级回收。
+    """
     db.watermark(SystemConfig, UserConfig)
 
 
@@ -72,7 +74,9 @@ def test_update_writes_payload_fields(db):
     db.session.commit()
 
     async def update_in_owned_transaction(session) -> None:
-        """在同一异步事务中读取并更新目标行。"""
+        """
+        在同一异步事务中读取并更新目标行。
+        """
         async_row = await SystemConfig.async_get(session, row.id)
         assert async_row is not None
         await async_row.async_update(session, payload={"value": {"n": 10}})

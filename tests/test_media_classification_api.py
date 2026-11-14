@@ -1,4 +1,6 @@
-"""新版媒体分类 API、预览和有界影响分析验收测试。"""
+"""
+新版媒体分类 API、预览和有界影响分析验收测试。
+"""
 
 from __future__ import annotations
 
@@ -56,14 +58,20 @@ NOW = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
 
 
 class _MemoryPolicyStore:
-    """以隔离快照模拟分类策略 CAS 存储。"""
+    """
+    以隔离快照模拟分类策略 CAS 存储。
+    """
 
     def __init__(self) -> None:
-        """初始化空状态。"""
+        """
+        初始化空状态。
+        """
         self.state: ClassificationPolicyState | None = None
 
     def load(self) -> ClassificationPolicyState | None:
-        """返回持久化状态副本。"""
+        """
+        返回持久化状态副本。
+        """
         return self.state.model_copy(deep=True) if self.state else None
 
     def compare_and_set(
@@ -72,7 +80,9 @@ class _MemoryPolicyStore:
         expected_revision: int,
         state: ClassificationPolicyState,
     ) -> None:
-        """仅在当前 revision 等于期望值时替换状态。"""
+        """
+        仅在当前 revision 等于期望值时替换状态。
+        """
         current_revision = self.state.active.revision if self.state else 0
         if current_revision != expected_revision:
             raise ClassificationPolicyConflictError(
@@ -83,18 +93,26 @@ class _MemoryPolicyStore:
 
 
 class _InlineExecutor:
-    """在测试协程中直接执行同步短操作。"""
+    """
+    在测试协程中直接执行同步短操作。
+    """
 
     async def run(self, operation: Callable[[], T]) -> T:
-        """执行并返回操作结果。"""
+        """
+        执行并返回操作结果。
+        """
         return operation()
 
 
 class _DownloadHistory:
-    """提供固定下载历史列表的异步只读端口。"""
+    """
+    提供固定下载历史列表的异步只读端口。
+    """
 
     def __init__(self, records: list[DownloadHistorySnapshot]) -> None:
-        """保存测试记录。"""
+        """
+        保存测试记录。
+        """
         self.records = records
 
     async def async_list_by_page(
@@ -102,16 +120,22 @@ class _DownloadHistory:
         page: int = 1,
         count: int = 30,
     ) -> list[DownloadHistorySnapshot]:
-        """返回请求窗口内的固定记录。"""
+        """
+        返回请求窗口内的固定记录。
+        """
         assert page == 1
         return self.records[:count]
 
 
 class _TransferHistory:
-    """提供固定整理历史列表的异步只读端口。"""
+    """
+    提供固定整理历史列表的异步只读端口。
+    """
 
     def __init__(self, records: list[TransferHistorySnapshot]) -> None:
-        """保存测试记录。"""
+        """
+        保存测试记录。
+        """
         self.records = records
 
     async def async_list_by_page(
@@ -120,14 +144,18 @@ class _TransferHistory:
         count: int = 30,
         status: bool | None = None,
     ) -> list[TransferHistorySnapshot]:
-        """只接受成功历史过滤并返回固定记录。"""
+        """
+        只接受成功历史过滤并返回固定记录。
+        """
         assert page == 1
         assert status is True
         return self.records[:count]
 
 
 def _service() -> ClassificationPolicyConfigurationService:
-    """构造带固定时钟和异步执行器的已初始化策略服务。"""
+    """
+    构造带固定时钟和异步执行器的已初始化策略服务。
+    """
     service = ClassificationPolicyConfigurationService(
         _MemoryPolicyStore(),
         clock=lambda: NOW,
@@ -145,7 +173,9 @@ def _facts(
     title: str = "示例",
     year: int | None = 2024,
 ) -> ClassificationFacts:
-    """构造预览和影响分析使用的最小标准事实。"""
+    """
+    构造预览和影响分析使用的最小标准事实。
+    """
     music = (
         ClassificationMusicFacts(entity_type="album")
         if media_type == "音乐"
@@ -168,7 +198,9 @@ def _facts(
 
 
 def _candidate_policy() -> ClassificationPolicy:
-    """构造把 2024 年电影从兜底分类迁移到新分类的合法草稿。"""
+    """
+    构造把 2024 年电影从兜底分类迁移到新分类的合法草稿。
+    """
     policy = build_default_classification_policy()
     policy.categories.append(
         ClassificationCategory(
@@ -196,21 +228,29 @@ def _candidate_policy() -> ClassificationPolicy:
 
 
 def _response_payload(response: JSONResponse) -> dict[str, object]:
-    """解析端点返回的结构化 JSON 错误响应。"""
+    """
+    解析端点返回的结构化 JSON 错误响应。
+    """
     return cast(dict[str, object], json.loads(response.body))
 
 
 class _CountryEnrichment:
-    """模拟按当前规则需要补充国别的来源，禁止预览退回同步网络路径。"""
+    """
+    模拟按当前规则需要补充国别的来源，禁止预览退回同步网络路径。
+    """
 
     def enrich(self, *_args: object) -> ClassificationFacts:
-        """同步调用表示异步预览错误地阻塞了请求处理。"""
+        """
+        同步调用表示异步预览错误地阻塞了请求处理。
+        """
         raise AssertionError("预览必须调用异步事实补充")
 
     async def async_enrich(
         self, policy: ClassificationPolicy, facts: ClassificationFacts, _media: object,
     ) -> ClassificationFacts:
-        """仅在候选策略确实需要国别且启用补充时返回缺失字段。"""
+        """
+        仅在候选策略确实需要国别且启用补充时返回缺失字段。
+        """
         result = facts.model_copy(deep=True)
         if policy.enrichment_mode == "enrich_missing" and any(
             isinstance(rule.when, ClassificationCondition) and rule.when.field == "media.countries"
@@ -220,12 +260,16 @@ class _CountryEnrichment:
         return result
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize("change", ["mode", "condition"])  # type: ignore[misc]
 async def test_impact_and_preview_prepare_candidate_facts_independently(
     monkeypatch: pytest.MonkeyPatch, change: str,
 ) -> None:
-    """补充模式或所需字段变化都必须纳入影响分析，并与异步预览保持一致。"""
+    """
+    补充模式或所需字段变化都必须纳入影响分析，并与异步预览保持一致。
+    """
     policy = build_default_classification_policy()
     policy.categories.append(ClassificationCategory(
         id="movie.cn", name="中国出品", media_type="电影", path=["中国出品"],
@@ -278,7 +322,9 @@ async def test_impact_and_preview_prepare_candidate_facts_independently(
 
 
 def test_field_catalog_exposes_typed_options_and_server_limits() -> None:
-    """字段 API 数据足以驱动前端控件，无需硬编码值类型和结构限制。"""
+    """
+    字段 API 数据足以驱动前端控件，无需硬编码值类型和结构限制。
+    """
     catalog = ClassificationAnalysisService(_service()).fields()
     media_type = next(field for field in catalog.fields if field.id == "media.type")
 
@@ -296,7 +342,9 @@ def test_field_catalog_exposes_typed_options_and_server_limits() -> None:
 
 
 def test_field_catalog_exposes_retired_fields_outside_new_rule_options() -> None:
-    """字段 API 应保留旧规则解析信息，但不得把它混入新条件选项。"""
+    """
+    字段 API 应保留旧规则解析信息，但不得把它混入新条件选项。
+    """
     retired = ClassificationFieldDefinition(
         id="extensions.themoviedb.genre_ids",
         label="风格（旧规则）",
@@ -323,7 +371,9 @@ def test_field_catalog_exposes_retired_fields_outside_new_rule_options() -> None
 
 
 def test_preview_media_payload_preserves_dotted_plugin_source_facts() -> None:
-    """扩展来源 ID 含点号时，预览仍按完整命名空间读取事实。"""
+    """
+    扩展来源 ID 含点号时，预览仍按完整命名空间读取事实。
+    """
     field = ClassificationFieldDefinition(
         id="extensions.plugin.example.region",
         label="区域",
@@ -349,7 +399,9 @@ def test_preview_media_payload_preserves_dotted_plugin_source_facts() -> None:
 
 
 def test_preview_returns_condition_path_and_structured_missing_fact_warning() -> None:
-    """预览 trace 能定位规则条件，缺失字段提示保留代码、字段和来源。"""
+    """
+    预览 trace 能定位规则条件，缺失字段提示保留代码、字段和来源。
+    """
     service = _service()
     policy = build_default_classification_policy()
     policy.rules.append(
@@ -388,7 +440,9 @@ def test_preview_returns_condition_path_and_structured_missing_fact_warning() ->
 
 
 def test_preview_selected_media_uses_complete_movie_and_music_details() -> None:
-    """选择搜索结果后应直接使用影视和音乐的完整标准字段进行预览。"""
+    """
+    选择搜索结果后应直接使用影视和音乐的完整标准字段进行预览。
+    """
     analysis = ClassificationAnalysisService(_service())
 
     movie = analysis.preview(
@@ -455,9 +509,12 @@ def test_preview_selected_media_uses_complete_movie_and_music_details() -> None:
     assert music.facts.music.artists == ["示例乐队"]
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_recent_history_samples_are_bounded_deduplicated_and_honest() -> None:
-    """近期历史样本按身份去重，脏记录跳过，并明确只包含基础事实。"""
+    """
+    近期历史样本按身份去重，脏记录跳过，并明确只包含基础事实。
+    """
     provider = RecentHistoryClassificationSampleProvider(
         download_history=cast(
             object,
@@ -522,9 +579,12 @@ async def test_recent_history_samples_are_bounded_deduplicated_and_honest() -> N
     assert "仅稳定保存" in batch.warnings[0]
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_explicit_impact_samples_are_deduplicated_by_primary_identity() -> None:
-    """显式影响样本重复提交时不得放大分类变化统计。"""
+    """
+    显式影响样本重复提交时不得放大分类变化统计。
+    """
     service = _service()
     analysis = ClassificationAnalysisService(service)
     sample = _facts(media_source="douban", media_id="same")
@@ -544,9 +604,12 @@ async def test_explicit_impact_samples_are_deduplicated_by_primary_identity() ->
     assert any("重复" in warning for warning in result.warnings)
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_impact_analysis_resolves_complete_history_details_and_reports_gaps() -> None:
-    """影响分析应以历史身份重新读取完整字段，并单独统计无法读取的记录。"""
+    """
+    影响分析应以历史身份重新读取完整字段，并单独统计无法读取的记录。
+    """
     service = _service()
     policy = build_default_classification_policy()
     policy.categories.append(
@@ -611,7 +674,9 @@ async def test_impact_analysis_resolves_complete_history_details_and_reports_gap
     async def resolve_history(
         history: object, _active: ClassificationPolicy, _candidate: ClassificationPolicy,
     ) -> tuple[ClassificationFacts, ClassificationFacts] | None:
-        """返回测试中的完整媒体事实，模拟详情接口缺失一条记录。"""
+        """
+        返回测试中的完整媒体事实，模拟详情接口缺失一条记录。
+        """
         media_id = str(getattr(history, "media_id", ""))
         resolved_ids.append(media_id)
         facts = complete_facts.get(media_id)
@@ -642,9 +707,12 @@ async def test_impact_analysis_resolves_complete_history_details_and_reports_gap
     assert any("无法获取完整媒体信息" in warning for warning in result.warnings)
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_impact_analysis_checks_revision_and_preserves_statistics() -> None:
-    """影响分析以活动 revision 为基线，并保持总量、分组和变化示例一致。"""
+    """
+    影响分析以活动 revision 为基线，并保持总量、分组和变化示例一致。
+    """
     service = _service()
     analysis = ClassificationAnalysisService(service)
     samples = [
@@ -689,9 +757,12 @@ async def test_impact_analysis_checks_revision_and_preserves_statistics() -> Non
         )
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_new_api_returns_structured_conflict_and_validation_data() -> None:
-    """发布冲突和领域校验失败使用真实状态码并把结构化详情放入 data。"""
+    """
+    发布冲突和领域校验失败使用真实状态码并把结构化详情放入 data。
+    """
     service = _service()
     runtime = ClassificationRuntime(service)
     conflict = await classification_endpoint.publish_policy(
@@ -728,9 +799,12 @@ async def test_new_api_returns_structured_conflict_and_validation_data() -> None
     assert runtime.require_policy().revision == 1
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_new_api_history_and_rollback_publish_monotonic_revision() -> None:
-    """历史不含活动版本，回滚历史内容时生成新的单调 revision。"""
+    """
+    历史不含活动版本，回滚历史内容时生成新的单调 revision。
+    """
     service = _service()
     runtime = ClassificationRuntime(service)
     published = await runtime.publish_policy(
@@ -757,7 +831,9 @@ async def test_new_api_history_and_rollback_publish_monotonic_revision() -> None
 
 
 def test_classification_router_uses_documented_media_prefix() -> None:
-    """新版分类端点独立注册在设计文档约定的 media/classification 前缀。"""
+    """
+    新版分类端点独立注册在设计文档约定的 media/classification 前缀。
+    """
     spec = next(
         item
         for item in API_V1_ROUTER_SPECS
@@ -777,9 +853,13 @@ def test_classification_router_uses_documented_media_prefix() -> None:
 
 
 def test_classification_routes_bind_documented_permissions() -> None:
-    """三个只读接口使用普通登录用户，其余管理接口要求超级管理员。"""
+    """
+    三个只读接口使用普通登录用户，其余管理接口要求超级管理员。
+    """
     def dependency_names(path: str, method: str) -> set[str]:
-        """返回一个分类路由直接声明的依赖函数名。"""
+        """
+        返回一个分类路由直接声明的依赖函数名。
+        """
         route = next(
             item
             for item in classification_endpoint.router.routes
@@ -804,7 +884,9 @@ def test_classification_routes_bind_documented_permissions() -> None:
 
 
 def test_fastapi_envelope_and_conflict_payload_are_frontend_compatible() -> None:
-    """真实路由成功响应只包装一次，409 详情位于标准 envelope.data。"""
+    """
+    真实路由成功响应只包装一次，409 详情位于标准 envelope.data。
+    """
     service = _service()
     runtime = ClassificationRuntime(service)
     app = FastAPI()
@@ -814,11 +896,15 @@ def test_fastapi_envelope_and_conflict_payload_are_frontend_compatible() -> None
     )
 
     async def current_user() -> object:
-        """返回普通登录用户测试替身。"""
+        """
+        返回普通登录用户测试替身。
+        """
         return object()
 
     async def superuser() -> object:
-        """返回超级管理员测试替身。"""
+        """
+        返回超级管理员测试替身。
+        """
         return object()
 
     app.dependency_overrides[get_current_active_user_async] = current_user

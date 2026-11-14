@@ -1,4 +1,6 @@
-"""音乐识别调用的结果观察和有界请求预算，不改变来源模块的公开返回合同。"""
+"""
+音乐识别调用的结果观察和有界请求预算，不改变来源模块的公开返回合同。
+"""
 
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -13,7 +15,20 @@ RETRYABLE_MUSIC_RECOGNITION_STATES = frozenset({"service_error", "budget_exhaust
 
 @dataclass(slots=True)
 class MusicRecognitionObservation:
-    """保存一次识别的诊断与预算，嵌套来源调用共用同一请求限额。"""
+    """
+    保存一次识别的诊断与预算，嵌套来源调用共用同一请求限额。
+
+    :param deadline: 本轮识别截止的单调时钟时间，单位为秒
+    :param request_limit: 允许发出的请求总数，默认 8 次
+    :param requests: 本轮已消耗的请求数，初始为 0
+    :param status: 识别状态，默认 not_found；歧义、冲突、服务错误和预算耗尽会阻止弱回退
+    :param message: 识别结果或失败原因的可读说明
+    :param candidates: 向用户展示的音乐候选诊断列表
+    :param fingerprint_candidates: 尚未确认为作品身份的音频指纹候选证据
+    :param sources: 各来源调用完成后的诊断摘要
+    :param parent: 共享预算的上层识别观察；None 表示顶层调用
+    :param lock: 保护本层及祖先请求计数和诊断状态的可重入锁
+    """
 
     deadline: float
     request_limit: int = 8
@@ -28,11 +43,15 @@ class MusicRecognitionObservation:
 
     @property
     def failed(self) -> bool:
-        """瞬时故障或预算耗尽不能被解释为目录中没有相应作品。"""
+        """
+        瞬时故障或预算耗尽不能被解释为目录中没有相应作品。
+        """
         return self.status in RETRYABLE_MUSIC_RECOGNITION_STATES
 
     def to_dict(self) -> dict[str, Any]:
-        """输出用户可解释的结果，不包含内部时钟或同步对象。"""
+        """
+        输出用户可解释的结果，不包含内部时钟或同步对象。
+        """
         result = {"status": self.status, "message": self.message,
                   "requests": self.requests, "candidates": [dict(item) for item in self.candidates]}
         if self.sources:
@@ -47,7 +66,9 @@ _current_observation: ContextVar[Optional[MusicRecognitionObservation]] = Contex
 
 @contextmanager
 def capture_music_recognition(*, seconds: float = 45, request_limit: int = 8) -> Iterator[MusicRecognitionObservation]:
-    """隔离同步/异步识别上下文；嵌套入口复用预算，退出时总是恢复上层状态。"""
+    """
+    隔离同步/异步识别上下文；嵌套入口复用预算，退出时总是恢复上层状态。
+    """
     existing = _current_observation.get()
     observation = existing or MusicRecognitionObservation(deadline=monotonic() + max(seconds, 0), request_limit=max(request_limit, 0))
     token = _current_observation.set(observation) if existing is None else None
@@ -63,7 +84,9 @@ def capture_music_recognition(*, seconds: float = 45, request_limit: int = 8) ->
 
 @contextmanager
 def capture_music_source(source: str) -> Iterator[MusicRecognitionObservation]:
-    """每个来源独立记录失败，全部祖先预算在同一锁下计数，不能通过换来源重置总额度。"""
+    """
+    每个来源独立记录失败，全部祖先预算在同一锁下计数，不能通过换来源重置总额度。
+    """
     parent = _current_observation.get()
     observation = MusicRecognitionObservation(
         deadline=min(parent.deadline, monotonic() + 45) if parent else monotonic() + 45,
@@ -86,7 +109,9 @@ def capture_music_source(source: str) -> Iterator[MusicRecognitionObservation]:
 
 
 def _result_diagnostic(info: Any) -> dict[str, Any]:
-    """只读取音乐结果的诊断，避免改变影视识别的插件及共享回退行为。"""
+    """
+    只读取音乐结果的诊断，避免改变影视识别的插件及共享回退行为。
+    """
     if not hasattr(info, "music_type"):
         return {}
     raw = getattr(info, "raw_data", None)
@@ -95,17 +120,23 @@ def _result_diagnostic(info: Any) -> dict[str, Any]:
 
 
 def music_recognition_needs_confirmation(info: Any) -> bool:
-    """明确的歧义或冲突需要用户确认，不能由下一层弱搜索或共享结果覆盖。"""
+    """
+    明确的歧义或冲突需要用户确认，不能由下一层弱搜索或共享结果覆盖。
+    """
     return _result_diagnostic(info).get("status") in {"ambiguous", "conflict"}
 
 
 def music_recognition_is_blocked(info: Any) -> bool:
-    """来源及插件回退均未解决的诊断，必须保留给整理准入和持久重试处理。"""
+    """
+    来源及插件回退均未解决的诊断，必须保留给整理准入和持久重试处理。
+    """
     return _result_diagnostic(info).get("status") in BLOCKING_MUSIC_RECOGNITION_STATES
 
 
 def _observation_ancestors(observation: MusicRecognitionObservation) -> list[MusicRecognitionObservation]:
-    """收集当前来源及外层操作预算；父引用只在创建子范围时建立。"""
+    """
+    收集当前来源及外层操作预算；父引用只在创建子范围时建立。
+    """
     scopes = []
     current: Optional[MusicRecognitionObservation] = observation
     while current is not None:
@@ -115,7 +146,9 @@ def _observation_ancestors(observation: MusicRecognitionObservation) -> list[Mus
 
 
 def report_music_recognition(status: str, message: str = "", candidates: Optional[list[dict[str, Any]]] = None) -> None:
-    """来源在不改返回值的前提下报告诊断；已有服务故障不能被空结果掩盖。"""
+    """
+    来源在不改返回值的前提下报告诊断；已有服务故障不能被空结果掩盖。
+    """
     observation = _current_observation.get()
     if observation is None:
         return
@@ -133,19 +166,25 @@ def report_music_recognition(status: str, message: str = "", candidates: Optiona
 
 
 def music_recognition_failed() -> bool:
-    """检查当前来源及祖先故障，子范围或缓存命中不能绕过已失败的外层操作。"""
+    """
+    检查当前来源及祖先故障，子范围或缓存命中不能绕过已失败的外层操作。
+    """
     observation = _current_observation.get()
     return bool(observation and any(scope.failed for scope in _observation_ancestors(observation)))
 
 
 def music_recognition_diagnostics() -> dict[str, Any]:
-    """读取隔离的诊断副本，供无身份返回值携带失败原因而不是伪造成功。"""
+    """
+    读取隔离的诊断副本，供无身份返回值携带失败原因而不是伪造成功。
+    """
     observation = _current_observation.get()
     return observation.to_dict() if observation is not None else {}
 
 
 def report_music_fingerprints(candidates: list[dict[str, Any]]) -> None:
-    """保留指纹原始候选证据，不把指纹关联提前宣布为已确认录音。"""
+    """
+    保留指纹原始候选证据，不把指纹关联提前宣布为已确认录音。
+    """
     observation = _current_observation.get()
     if observation is not None:
         with observation.lock:
@@ -153,7 +192,9 @@ def report_music_fingerprints(candidates: list[dict[str, Any]]) -> None:
 
 
 def music_wait_allowed(delay: float) -> bool:
-    """限流和重试等待也计入总预算，不为无法执行的请求继续占用未来时隙。"""
+    """
+    限流和重试等待也计入总预算，不为无法执行的请求继续占用未来时隙。
+    """
     observation = _current_observation.get()
     if observation is None or monotonic() + max(delay, 0) < observation.deadline:
         return True
@@ -162,7 +203,9 @@ def music_wait_allowed(delay: float) -> bool:
 
 
 def music_request_timeout(*, claim: bool = True, maximum: float = 20) -> Optional[float]:
-    """为一次真实HTTP尝试占用额度并返回剩余超时；缓存命中无需调用此函数。"""
+    """
+    为一次真实HTTP尝试占用额度并返回剩余超时；缓存命中无需调用此函数。
+    """
     observation = _current_observation.get()
     if observation is None:
         return maximum

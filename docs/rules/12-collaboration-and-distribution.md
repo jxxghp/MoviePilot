@@ -2,7 +2,7 @@
 
 ## Commit Conventions
 
-This project uses **Conventional Commits**. The release workflow parses commit messages to categorize changelog entries. This is not stylistic — it is functional.
+This project uses **Conventional Commits**. Release notes preserve commit subjects without categorization or rewriting.
 
 ### Format
 
@@ -41,7 +41,7 @@ ci: improve docker build cache
 
 ### Rules
 
-- Local commits follow the active workflow, an approved plan, or current user authorization. Existing scoped authorization does not require a second confirmation, including when the confirmed project context defines a requested PR as tracking through merge. Push, PR, merge, and release each need coverage by that authorization; a PR request does not by itself authorize a release. Maintainer arrangements and local anchors follow `AGENTS.md`.
+- Local commits follow the active workflow, an approved plan, or current user authorization. Existing scoped authorization does not require a second confirmation. Push, PR, merge, and release each need coverage by that authorization, and a PR request does not by itself authorize a release. Maintainer arrangements and local anchors follow `AGENTS.md`.
 - Keep the subject line under 72 characters.
 - Use the imperative mood in the subject line ("add", "fix", "remove", not "added", "fixed", "removed").
 - If a commit introduces a breaking change, append `!` after the type and include `BREAKING CHANGE:` in the footer.
@@ -71,6 +71,22 @@ ci: improve docker build cache
 - The primary Docker image bundles the backend (Python app), frontend static files (from `public/`), and resource data.
 - Docker build and release are managed by CI. Do not manually trigger or alter the Docker release flow unless the task explicitly requires it.
 - If a Dockerfile change is needed, update `Dockerfile` and verify the build locally before submitting.
+- The image ends with a small system security update layer. CI rebuilds it at most once per ISO week; changing the ISO date in `docker/system-baseline` rebuilds it immediately and stamps the new date into `/etc/moviepilot/system-baseline`.
+- `MIN_SYSTEM_BASELINE` in `version.py` is the oldest image baseline that may install this release through the in-app or Dev updater. Raise it only for severe system-level vulnerabilities, and set it to the same date as `docker/system-baseline` in that release. Older Docker images then refuse the update and ask the user to pull the new image.
+
+---
+
+## Release Notes
+
+正式后端 Release 固定包含三个章节：`## 本次更新内容`、`## 完整变更记录`、`## 版本对比`。
+首个章节留空，由维护者在 GitHub Release 中手工填写；同版本重建保留该章节内容，仅刷新后两个自动章节。
+旧版手工正文迁入首个章节，旧版自动分类记录由新格式替换。
+
+工作流通过 `scripts/release_notes.py` 收集上一同大版本正式标签到固定来源 SHA 的所有分页提交，
+保留原始标题、提交链接与真实 GitHub `@作者`，不分类、翻译或按标题合并。
+仅过滤 Merge 和构建生成的插件市场发布快照提交。未关联 GitHub 账号时展示 Git 作者名，不伪造账号。
+兼容历史 `v3.x.y-N` 数字修订标签；本版本、较高版本和命名预发布标签不会成为比较起点；首次发布无起点时版本对比章节留空。
+前端 Release 仅生成相同规则的 changelog 列表，不包含摘要、其它章节或 Compare 链接。
 
 ---
 
@@ -117,8 +133,10 @@ When updating a dependency:
 The `moviepilot` CLI is the local-mode entrypoint. Its update path is:
 
 ```bash
-moviepilot update all     # updates backend + frontend + resources
-moviepilot update backend # git pull + reinstall deps
+# 同时更新后端、前端和资源
+moviepilot update all
+# 拉取后端代码并重新安装依赖
+moviepilot update backend
 moviepilot update frontend
 ```
 

@@ -1,4 +1,6 @@
-"""阶段 4 六个重点 Chain 的纵向切片数量守卫。"""
+"""
+阶段 4 六个重点 Chain 的纵向切片数量守卫。
+"""
 
 import inspect
 
@@ -71,7 +73,9 @@ def test_key_chain_keeps_three_application_service_slices(
     chain_type: type,
     method_tokens: dict[str, str],
 ) -> None:
-    """每个重点 Chain 至少三个公开方法必须继续委托窄应用服务。"""
+    """
+    每个重点 Chain 至少三个公开方法必须继续委托窄应用服务。
+    """
     assert len(method_tokens) >= 3
     missing = []
     for method_name, service_token in method_tokens.items():

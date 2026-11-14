@@ -1,4 +1,6 @@
-"""Chain 同步网络窄端口与响应资源所有权测试。"""
+"""
+Chain 同步网络窄端口与响应资源所有权测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -15,7 +17,9 @@ from app.startup.initializers import network as network_initializer
 
 @pytest.fixture(autouse=True)
 def isolate_chain_network_ports():
-    """每个用例从未装配状态开始，并恢复全局测试运行时。"""
+    """
+    每个用例从未装配状态开始，并恢复全局测试运行时。
+    """
     download_http, download_archive = download_ports._download_ports_snapshot()
     message_http = message_module._message_http_snapshot()
     scraping_http = scraping_module._scraping_http_snapshot()
@@ -35,40 +39,56 @@ def isolate_chain_network_ports():
 
 
 class _FakeResponse:
-    """记录同步响应是否在成功和异常路径被关闭。"""
+    """
+    记录同步响应是否在成功和异常路径被关闭。
+    """
 
     def __init__(self, payload=None, *, content: bytes = b"payload") -> None:
-        """保存测试载荷并初始化关闭计数。"""
+        """
+        保存测试载荷并初始化关闭计数。
+        """
         self.payload = payload
         self.content = content
         self.headers = {"Content-Type": "application/octet-stream"}
         self.closed = 0
 
     def json(self):
-        """返回预设 JSON 载荷或抛出预设异常。"""
+        """
+        返回预设 JSON 载荷或抛出预设异常。
+        """
         if isinstance(self.payload, Exception):
             raise self.payload
         return self.payload
 
     def close(self) -> None:
-        """记录一次响应释放。"""
+        """
+        记录一次响应释放。
+        """
         self.closed += 1
 
 
 class _FakeHttp:
-    """为各 Chain 返回同一个可观测同步响应。"""
+    """
+    为各 Chain 返回同一个可观测同步响应。
+    """
 
     def __init__(self, response: _FakeResponse) -> None:
-        """保存后续 GET 返回的响应。"""
+        """
+        保存后续 GET 返回的响应。
+        """
         self.response = response
 
     def get(self, _url: str, **_kwargs):
-        """返回预设响应。"""
+        """
+        返回预设响应。
+        """
         return self.response
 
 
 def test_reset_makes_all_chain_ports_fail_explicitly() -> None:
-    """未装配时四个 Chain 都应明确失败，不得隐式构造 Adapter。"""
+    """
+    未装配时四个 Chain 都应明确失败，不得隐式构造 Adapter。
+    """
     with pytest.raises(RuntimeError, match="下载链技术端口"):
         download_ports._download_ports_snapshot()
     with pytest.raises(RuntimeError, match="消息附件 HTTP 端口"):
@@ -80,7 +100,9 @@ def test_reset_makes_all_chain_ports_fail_explicitly() -> None:
 
 
 def test_initializer_supports_repeated_init_and_reset() -> None:
-    """重复启动应替换完整端口快照，重复关闭应保持幂等。"""
+    """
+    重复启动应替换完整端口快照，重复关闭应保持幂等。
+    """
     network_initializer.init_chain_network_ports()
     first = (
         download_ports._download_ports_snapshot(),
@@ -104,7 +126,9 @@ def test_initializer_supports_repeated_init_and_reset() -> None:
 
 
 def test_initializer_rolls_back_partial_configuration(monkeypatch) -> None:
-    """任一端口装配异常后不得留下可用的半套运行时。"""
+    """
+    任一端口装配异常后不得留下可用的半套运行时。
+    """
     monkeypatch.setattr(
         network_composition,
         "configure_scraping_http_port",
@@ -121,7 +145,9 @@ def test_initializer_rolls_back_partial_configuration(monkeypatch) -> None:
 
 
 def test_message_http_response_is_closed_after_copy() -> None:
-    """消息附件读取应复制字节与响应头后立即释放连接。"""
+    """
+    消息附件读取应复制字节与响应头后立即释放连接。
+    """
     response = _FakeResponse(content=b"audio")
     message_module.configure_message_http_port(_FakeHttp(response))
 
@@ -133,7 +159,9 @@ def test_message_http_response_is_closed_after_copy() -> None:
 
 
 def test_system_release_response_is_closed_on_json_error(monkeypatch) -> None:
-    """发布列表解析异常也必须释放响应，并维持 None 失败返回。"""
+    """
+    发布列表解析异常也必须释放响应，并维持 None 失败返回。
+    """
     response = _FakeResponse(ValueError("invalid json"))
     environment = SimpleNamespace(is_docker=lambda: False)
     system_module.configure_system_ports(http=_FakeHttp(response), environment=environment)
@@ -150,7 +178,9 @@ def test_system_release_response_is_closed_on_json_error(monkeypatch) -> None:
 
 
 class SystemChainProbe:
-    """只暴露系统 Chain 的私有发布查询，避免构造完整 Chain 运行时。"""
+    """
+    只暴露系统 Chain 的私有发布查询，避免构造完整 Chain 运行时。
+    """
 
     get_server_release_version = staticmethod(
         system_module.SystemChain._SystemChain__get_server_release_version

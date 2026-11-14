@@ -1,4 +1,6 @@
-"""订阅修改 UoW 与 durable outbox 边界测试。"""
+"""
+订阅修改 UoW 与 durable outbox 边界测试。
+"""
 
 from dataclasses import replace
 
@@ -13,53 +15,75 @@ from app.application.subscription.mutation import (
 
 
 class _Repository:
-    """记录订阅读取和事务内暂存顺序。"""
+    """
+    记录订阅读取和事务内暂存顺序。
+    """
 
     def __init__(self, subscribe: SubscriptionSnapshot, calls: list) -> None:
-        """保存订阅对象与共享调用序列。"""
+        """
+        保存订阅对象与共享调用序列。
+        """
         self.subscribe = subscribe
         self.calls = calls
 
     async def async_get(self, subscribe_id: int):
-        """返回指定订阅。"""
+        """
+        返回指定订阅。
+        """
         self.calls.append(("get", subscribe_id))
         return self.subscribe
 
     async def async_stage_update(self, subscribe_id: int, payload: SubscriptionPatch) -> SubscriptionSnapshot:
-        """模拟调用方事务内的更新暂存。"""
+        """
+        模拟调用方事务内的更新暂存。
+        """
         self.calls.append(("stage_update", subscribe_id, payload))
         self.subscribe = replace(self.subscribe, **payload.to_payload())
         return self.subscribe
 
     def get(self, subscribe_id: int):
-        """提供协议要求的同步读取。"""
+        """
+        提供协议要求的同步读取。
+        """
         return self.subscribe if subscribe_id == self.subscribe.id else None
 
     def stage_update(self, subscribe_id: int, payload: SubscriptionPatch) -> SubscriptionSnapshot:
-        """模拟同步调用方事务内的更新暂存。"""
+        """
+        模拟同步调用方事务内的更新暂存。
+        """
         self.calls.append(("stage_update", subscribe_id, payload))
         self.subscribe = replace(self.subscribe, **payload.to_payload())
         return self.subscribe
 
 
 class _UnitOfWork:
-    """记录订阅修改事务提交和回滚。"""
+    """
+    记录订阅修改事务提交和回滚。
+    """
 
     def __init__(self, calls: list) -> None:
-        """保存共享调用序列。"""
+        """
+        保存共享调用序列。
+        """
         self.calls = calls
 
     async def commit(self) -> None:
-        """记录提交。"""
+        """
+        记录提交。
+        """
         self.calls.append(("commit",))
 
     async def rollback(self) -> None:
-        """记录回滚。"""
+        """
+        记录回滚。
+        """
         self.calls.append(("rollback",))
 
 
 class _Outbox:
-    """记录修改事件 intent 暂存和完成。"""
+    """
+    记录修改事件 intent 暂存和完成。
+    """
 
     def __init__(
         self,
@@ -67,19 +91,25 @@ class _Outbox:
         stage_error: Exception | None = None,
         claim: bool = True,
     ) -> None:
-        """保存共享调用序列与可选暂存异常。"""
+        """
+        保存共享调用序列与可选暂存异常。
+        """
         self.calls = calls
         self.stage_error = stage_error
         self.claim = claim
 
     async def stage(self, intent, _now) -> None:
-        """记录 intent 并按需失败。"""
+        """
+        记录 intent 并按需失败。
+        """
         self.calls.append(("outbox_stage", intent))
         if self.stage_error:
             raise self.stage_error
 
     async def claim_by_event_key(self, event_key, _now, _lease_until):
-        """记录并返回当前测试拥有的派发 lease。"""
+        """
+        记录并返回当前测试拥有的派发 lease。
+        """
         self.calls.append(("outbox_claim", event_key))
         if not self.claim:
             return None
@@ -93,18 +123,24 @@ class _Outbox:
         )
 
     async def complete(self, message_id, attempt, _completed_at):
-        """记录带 attempt fencing 的完成结算。"""
+        """
+        记录带 attempt fencing 的完成结算。
+        """
         self.calls.append(("outbox_complete", message_id, attempt))
         return True
 
     async def retry(self, message_id, attempt, **_kwargs):
-        """记录带 attempt fencing 的失败释放。"""
+        """
+        记录带 attempt fencing 的失败释放。
+        """
         self.calls.append(("outbox_retry", message_id, attempt))
         return True
 
 
 def _service(calls: list, *, event_error: Exception | None = None, outbox=None):
-    """构造拥有请求级 UoW 和 outbox 的订阅修改服务。"""
+    """
+    构造拥有请求级 UoW 和 outbox 的订阅修改服务。
+    """
     subscribe = SubscriptionSnapshot(
         id=7,
         username="alice",
@@ -112,7 +148,9 @@ def _service(calls: list, *, event_error: Exception | None = None, outbox=None):
     )
 
     async def publish(payload: dict) -> None:
-        """记录公开事件并按需失败。"""
+        """
+        记录公开事件并按需失败。
+        """
         calls.append(("event", payload))
         if event_error:
             raise event_error
@@ -129,7 +167,9 @@ def _service(calls: list, *, event_error: Exception | None = None, outbox=None):
 
 @pytest.mark.asyncio
 async def test_modified_event_is_staged_with_update_and_completed_after_publish():
-    """订阅修改与 intent 同事务提交，事件成功后才标记完成。"""
+    """
+    订阅修改与 intent 同事务提交，事件成功后才标记完成。
+    """
     calls = []
     service = _service(calls)
 
@@ -163,7 +203,9 @@ async def test_modified_event_is_staged_with_update_and_completed_after_publish(
 
 @pytest.mark.asyncio
 async def test_modified_outbox_stage_failure_rolls_back_update():
-    """修改事件 intent 无法暂存时业务更新不得提交。"""
+    """
+    修改事件 intent 无法暂存时业务更新不得提交。
+    """
     calls = []
     service = _service(
         calls,
@@ -187,7 +229,9 @@ async def test_modified_outbox_stage_failure_rolls_back_update():
 
 @pytest.mark.asyncio
 async def test_modified_event_failure_keeps_committed_intent_pending():
-    """提交后的事件失败向调用方传播，且不得错误收口待恢复 intent。"""
+    """
+    提交后的事件失败向调用方传播，且不得错误收口待恢复 intent。
+    """
     calls = []
     service = _service(calls, event_error=RuntimeError("event failed"))
 
@@ -211,7 +255,9 @@ async def test_modified_event_failure_keeps_committed_intent_pending():
 
 @pytest.mark.asyncio
 async def test_unclaimed_committed_intent_stays_pending_without_second_publish():
-    """即时派发未取得 lease 时只返回 pending，调用方不得绕过 outbox 再发布。"""
+    """
+    即时派发未取得 lease 时只返回 pending，调用方不得绕过 outbox 再发布。
+    """
     calls = []
     service = _service(calls, outbox=_Outbox(calls, claim=False))
 

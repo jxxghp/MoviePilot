@@ -1,12 +1,16 @@
+"""
+验证种子过滤规则解析与候选筛选。
+"""
+
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.domain.context import MediaInfo, TorrentInfo
-from app.application.torrent.download import TorrentHelper
-from app.modules.filter import FilterModule
-from app.application.rules import BUILTIN_RULE_SET
 from app.adapters.system import rust as rust_accel
+from app.application.rules import BUILTIN_RULE_SET
+from app.application.torrent.download import TorrentHelper
+from app.domain.context import MediaInfo, TorrentInfo
+from app.modules.filter import FilterModule
 
 
 class _RuleHelper:
@@ -20,6 +24,7 @@ class _RuleHelper:
         """
         self._groups = groups
 
+    # 保留被替换接口的参数签名，当前替身只返回预设规则。
     def get_rule_group_by_media(self, media=None, group_names=None):  # noqa: ARG002
         """
         按名称返回测试规则组。
@@ -110,7 +115,9 @@ def test_builtin_cnsub_rule_ignores_trailing_file_size_unit():
 
 
 def test_builtin_music_rules_assign_format_and_bitrate_priority():
-    """内置音乐规则应允许格式和码率共同参与订阅洗版优先级。"""
+    """
+    内置音乐规则应允许格式和码率共同参与订阅洗版优先级。
+    """
     module = _build_filter_module(
         rule_string="FLAC > BITRATE320",
         rule_set=BUILTIN_RULE_SET,
@@ -148,6 +155,20 @@ def test_filter_torrents_keeps_lazy_priority_level_parsing():
 
     assert [torrent] == filtered
     assert torrent.pri_order == 100
+
+
+def test_unknown_rule_operator_has_no_match():
+    """
+    未识别的布尔运算符不应被当成命中的过滤规则。
+    """
+    module = _build_filter_module("KEEP", {"KEEP": {"include": "Movie"}})
+    torrent = TorrentInfo(title="Movie", description="")
+
+    result = module._FilterModule__match_group(
+        torrent, ["KEEP", "xor", "KEEP"], None
+    )
+
+    assert result is None
 
 
 def test_filter_torrents_keeps_sequential_rule_group_semantics():

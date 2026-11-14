@@ -1,4 +1,6 @@
-"""让原生 Codex CLI 操作同一假世界，模型循环与独立评分器不共用状态。"""
+"""
+让原生 Codex CLI 操作同一假世界，模型循环与独立评分器不共用状态。
+"""
 
 import asyncio
 import copy
@@ -34,12 +36,16 @@ NATIVE_STEERING_MESSAGE_ID = "moviepilot-evaluation-steering"
 
 
 def _native_steering_message_id(index: int, count: int) -> str:
-    """为原生多条 steering 事件生成稳定且可审计的消息标识。"""
+    """
+    为原生多条 steering 事件生成稳定且可审计的消息标识。
+    """
     return NATIVE_STEERING_MESSAGE_ID if count == 1 else f"{NATIVE_STEERING_MESSAGE_ID}-{index + 1}"
 
 
 def _browser_runtime_configuration(executable: str, instruction_dir: Path) -> dict[str, Any] | None:
-    """发现本机已安装的浏览器插件运行时，缺少任一受信文件就保持原生边界关闭。"""
+    """
+    发现本机已安装的浏览器插件运行时，缺少任一受信文件就保持原生边界关闭。
+    """
     codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     plugin_root = Path(os.environ.get(
         "MOVIEPILOT_EVAL_BROWSER_PLUGIN_ROOT",
@@ -91,9 +97,8 @@ def _browser_runtime_configuration(executable: str, instruction_dir: Path) -> di
         "BROWSER_USE_BROWSER_CLIENT_BUILD": browser_service_path.parent.parent.name,
         "CODEX_CLI_PATH": executable,
     }
-    # The installed skill intentionally uses the portable ``<plugin root>`` token.
-    # A standalone CLI run has no desktop plugin context to expand it, so create
-    # a private copy with the same instructions and the verified absolute root.
+    # 安装后的 Skill 使用可移植的 <plugin root> 标记；独立命令行没有桌面插件上下文，
+    # 因此复制一份相同指令，并用已验证的绝对路径展开该标记。
     skill = plugin_root / "skills" / "control-in-app-browser" / "SKILL.md"
     expanded_skill = instruction_dir / "browser-control-skill.md"
     expanded_skill.write_text(skill.read_text(encoding="utf-8").replace("<plugin root>", str(plugin_root)), encoding="utf-8")
@@ -111,14 +116,20 @@ def _browser_runtime_configuration(executable: str, instruction_dir: Path) -> di
 
 @contextmanager
 def _native_browser_fixture() -> Any:
-    """启动只绑定回环地址的动态测试页，并记录真实浏览器的点击回调。"""
+    """
+    启动只绑定回环地址的动态测试页，并记录真实浏览器的点击回调。
+    """
     state = {"clicked": False}
 
     class _Handler(BaseHTTPRequestHandler):
-        """提供最小页面和点击回调，不记录请求正文或客户端环境。"""
+        """
+        提供最小页面和点击回调，不记录请求正文或客户端环境。
+        """
 
         def do_GET(self) -> None:  # noqa: N802 - 标准库处理器方法名
-            """返回测试页面或确认按钮回调，其他路径返回 404。"""
+            """
+            返回测试页面或确认按钮回调，其他路径返回 404。
+            """
             if self.path == "/fixture":
                 body = (
                     "<!doctype html><html><head><meta charset='utf-8'><title>MoviePilot Browser Fixture</title></head>"
@@ -147,7 +158,9 @@ def _native_browser_fixture() -> Any:
             self.send_error(404)
 
         def log_message(self, _format: str, *_args: Any) -> None:
-            """禁止标准库把本地测试请求写入 stderr。"""
+            """
+            禁止标准库把本地测试请求写入 stderr。
+            """
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = Thread(target=server.serve_forever, name="moviepilot-native-browser", daemon=True)
@@ -161,7 +174,9 @@ def _native_browser_fixture() -> Any:
 
 
 def _catalog(payload: Any, model: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    """仅修改实际二进制自带模型的工具模式，原生提示词及其他模型字段逐字保留。"""
+    """
+    仅修改实际二进制自带模型的工具模式，原生提示词及其他模型字段逐字保留。
+    """
     if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
         raise ValueError("原生模型目录结构无效")
     matches = [row for row in payload["models"] if isinstance(row, dict) and row.get("slug") == model]
@@ -172,7 +187,9 @@ def _catalog(payload: Any, model: str) -> tuple[dict[str, Any], dict[str, Any]]:
     projected["tool_mode"] = "direct"
 
     def digest(value: Any) -> str:
-        """对相同序列化规则取指纹，便于复验单字段投影。"""
+        """
+        对相同序列化规则取指纹，便于复验单字段投影。
+        """
         return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
     metadata = {"source": "codex_debug_models_bundled", "model": model,
@@ -184,14 +201,18 @@ def _catalog(payload: Any, model: str) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _toml(value: Any) -> str:
-    """按 TOML 表达配置值，直接传 argv，不经过 shell 或其变量展开。"""
+    """
+    按 TOML 表达配置值，直接传 argv，不经过 shell 或其变量展开。
+    """
     if isinstance(value, dict):
         return "{ " + ", ".join(f"{json.dumps(key)} = {_toml(item)}" for key, item in value.items()) + " }"
     return json.dumps(value, ensure_ascii=False)
 
 
 def _redact(value: Any, tokens: tuple[str, ...]) -> Any:
-    """在全部事件和最终 JSON 解码后移除局部令牌，Unicode 转义不能绕过。"""
+    """
+    在全部事件和最终 JSON 解码后移除局部令牌，Unicode 转义不能绕过。
+    """
     if isinstance(value, str):
         for token in tokens:
             value = value.replace(token, "[local evaluation token]")
@@ -206,7 +227,9 @@ def _redact(value: Any, tokens: tuple[str, ...]) -> Any:
 def _configuration(settings: ModelSettings, proxy: EvaluationModelProxy, server: EvaluationMcpServer,
                    control_dir: Path, *, scenario_id: str = "",
                    browser_runtime: dict[str, Any] | None = None) -> dict[str, Any]:
-    """显式隔离原生客户端的外部能力，仍保留其默认提示词、计划及子代理循环。"""
+    """
+    显式隔离原生客户端的外部能力，仍保留其默认提示词、计划及子代理循环。
+    """
     disabled = [
         "apps", "browser_use", "browser_use_external", "browser_use_full_cdp_access", "computer_use",
         "in_app_browser", "in_app_chat", "image_generation", "view_image", "hooks", "memories", "plugins",
@@ -269,15 +292,16 @@ def _configuration(settings: ModelSettings, proxy: EvaluationModelProxy, server:
                 "marketplaces.openai-bundled": browser_runtime["marketplace"],
                 "plugins.browser@openai-bundled": browser_runtime["plugins"]["browser@openai-bundled"],
                 "plugins.chrome@openai-bundled": browser_runtime["plugins"]["chrome@openai-bundled"],
-                # Standalone exec does not inherit the desktop's selected-plugin context;
-                # feed the installed Browser skill through the native instructions hook.
+                # 独立执行不继承桌面端已选插件上下文，需通过原生指令入口加载浏览器 Skill。
                 "model_instructions_file": browser_runtime["skill"],
             })
     return configuration
 
 
 async def _read_output(stream: asyncio.StreamReader, result: bytearray) -> None:
-    """持续排空子进程管道，输出超限时让控制器终止整组进程。"""
+    """
+    持续排空子进程管道，输出超限时让控制器终止整组进程。
+    """
     while chunk := await stream.read(65536):
         remaining = MAX_PROCESS_OUTPUT_BYTES - len(result)
         result.extend(chunk[:remaining])
@@ -286,7 +310,9 @@ async def _read_output(stream: asyncio.StreamReader, result: bytearray) -> None:
 
 
 async def _stop_process(process: asyncio.subprocess.Process) -> None:
-    """父任务取消或超时时回收原生客户端及继承进程组，不遗留后台评测。"""
+    """
+    父任务取消或超时时回收原生客户端及继承进程组，不遗留后台评测。
+    """
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
@@ -299,7 +325,9 @@ async def _stop_process(process: asyncio.subprocess.Process) -> None:
 
 async def _execute(command: list[str], prompt: str, environment: dict[str, str],
                    work_dir: Path, timeout: int) -> dict[str, Any]:
-    """只向原生 stdin 发送公开任务，结构化事件和退出状态由控制器采集。"""
+    """
+    只向原生 stdin 发送公开任务，结构化事件和退出状态由控制器采集。
+    """
     process = await asyncio.create_subprocess_exec(
         *command, cwd=work_dir, env=environment, stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=os.name == "posix",
@@ -333,7 +361,9 @@ async def _execute(command: list[str], prompt: str, environment: dict[str, str],
 
 
 def _normalize_app_server_item(item: Any) -> dict[str, Any]:
-    """把 app-server 的 camelCase item 转成评测器共用的安全事件字段。"""
+    """
+    把 app-server 的 camelCase item 转成评测器共用的安全事件字段。
+    """
     if not isinstance(item, dict):
         return {"type": "unknown"}
     item_type = item.get("type")
@@ -397,7 +427,9 @@ def _normalize_app_server_item(item: Any) -> dict[str, Any]:
 
 
 def _normalize_app_server_notification(method: str, params: Any) -> dict[str, Any] | None:
-    """保留终端、消息和轮次终态，把其他 app-server 通知降为可审计摘要。"""
+    """
+    保留终端、消息和轮次终态，把其他 app-server 通知降为可审计摘要。
+    """
     payload = params if isinstance(params, dict) else {}
     if method == "turn/started":
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
@@ -439,7 +471,9 @@ def _normalize_app_server_notification(method: str, params: Any) -> dict[str, An
 
 
 def _append_thread_history_events(events: list[dict[str, Any]], thread: Any) -> None:
-    """把 thread/read 返回的子代理历史转换为带 scope 的完成事件。"""
+    """
+    把 thread/read 返回的子代理历史转换为带 scope 的完成事件。
+    """
     if not isinstance(thread, dict):
         return
     thread_id = thread.get("id")
@@ -475,7 +509,9 @@ async def _execute_app_server(
     *, model: str, reasoning_effort: str, steering_message: str = "",
     steering_plan: tuple[tuple[int, str], ...] = (),
 ) -> dict[str, Any]:
-    """通过 Codex app-server 的 JSON-RPC 驱动终端和多条中途补充消息。"""
+    """
+    通过 Codex app-server 的 JSON-RPC 驱动终端和多条中途补充消息。
+    """
     process = await asyncio.create_subprocess_exec(
         *command, cwd=work_dir, env=environment, stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=os.name == "posix",
@@ -504,7 +540,9 @@ async def _execute_app_server(
     child_thread_read_requested: set[str] = set()
 
     async def send_request(method: str, params: dict[str, Any]) -> int:
-        """发送带序号的 JSON-RPC 请求，并记录响应所属方法。"""
+        """
+        发送带序号的 JSON-RPC 请求，并记录响应所属方法。
+        """
         nonlocal next_request_id
         request_id = next_request_id
         next_request_id += 1
@@ -516,12 +554,16 @@ async def _execute_app_server(
         return request_id
 
     async def send_notification(method: str) -> None:
-        """发送不等待响应的 JSON-RPC 通知。"""
+        """
+        发送不等待响应的 JSON-RPC 通知。
+        """
         process.stdin.write((json.dumps({"jsonrpc": "2.0", "method": method}) + "\n").encode())
         await process.stdin.drain()
 
     async def send_server_error(request_id: Any) -> None:
-        """拒绝意外的原生服务端请求，避免评测控制器代替用户授权。"""
+        """
+        拒绝意外的原生服务端请求，避免评测控制器代替用户授权。
+        """
         process.stdin.write(
             (json.dumps({
                 "jsonrpc": "2.0", "id": request_id,
@@ -531,7 +573,9 @@ async def _execute_app_server(
         await process.stdin.drain()
 
     async def send_child_thread_reads_if_ready() -> None:
-        """在父轮次结束后读取已完成子代理历史，补齐可能遗漏的终端 item。"""
+        """
+        在父轮次结束后读取已完成子代理历史，补齐可能遗漏的终端 item。
+        """
         if not turn_completed:
             return
         for child_id in sorted(child_thread_ids - child_thread_read_requested):
@@ -540,7 +584,9 @@ async def _execute_app_server(
             child_thread_read_requested.add(child_id)
 
     async def send_next_steering_if_ready() -> None:
-        """在达到计划回执边界后逐条发送 steering，并保留请求身份。"""
+        """
+        在达到计划回执边界后逐条发送 steering，并保留请求身份。
+        """
         nonlocal failure, steering_index, steering_request_pending
         if steering_request_pending or steering_index >= len(schedule):
             return
@@ -571,7 +617,9 @@ async def _execute_app_server(
         steering_request_pending = True
 
     async def handle_response(payload: dict[str, Any]) -> None:
-        """按 initialize、thread/start、turn/start 的顺序推进原生轮次。"""
+        """
+        按 initialize、thread/start、turn/start 的顺序推进原生轮次。
+        """
         nonlocal thread_id, failure, steering_request_pending
         request_id = payload.get("id")
         method = pending.pop(request_id, None) if type(request_id) is int else None
@@ -714,7 +762,9 @@ async def _execute_app_server(
 
 
 def _events(text: str) -> tuple[list[dict[str, Any]], str, bool]:
-    """保留 JSONL 原生事件；只有完成事件之后的有效最终报告才由 oracle 判断。"""
+    """
+    保留 JSONL 原生事件；只有完成事件之后的有效最终报告才由 oracle 判断。
+    """
     events, final_text, completed, malformed = [], "", False, False
     for line in text.splitlines():
         try:
@@ -739,7 +789,9 @@ def _events(text: str) -> tuple[list[dict[str, Any]], str, bool]:
 
 
 def _record_native_command_events(world: EvaluationWorld, events: list[dict[str, Any]]) -> None:
-    """把 CLI 的已完成命令事件映射为同一场景账本，避免只看模型文字。"""
+    """
+    把 CLI 的已完成命令事件映射为同一场景账本，避免只看模型文字。
+    """
     seen: set[str] = set()
     streamed_output: dict[str, str] = {}
     streamed_input: set[str] = set()
@@ -805,7 +857,9 @@ def _record_native_command_events(world: EvaluationWorld, events: list[dict[str,
 
 
 def _probe_ready(usage: dict[str, Any], server_stats: dict[str, Any]) -> bool:
-    """探针必须到达实际业务工具目录且没有真实模型或业务调用，仅有计划工具不算就绪。"""
+    """
+    探针必须到达实际业务工具目录且没有真实模型或业务调用，仅有计划工具不算就绪。
+    """
     retained = {name for record in usage.get("model_requests", []) for name in record.get("retained_tools", [])}
     fixture = {f"mcp__evaluation.{name}" for name in ("moviepilot_api", "read_skill", "read_tool_result")}
     return bool(usage.get("probe_requests") == 1 and not usage.get("model_calls")
@@ -814,7 +868,9 @@ def _probe_ready(usage: dict[str, Any], server_stats: dict[str, Any]) -> bool:
 
 
 async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str, *, probe_only: bool) -> dict[str, Any]:
-    """每次运行创建新目录、新模型预算和新世界，源码与 oracle 从不进入模型工作目录。"""
+    """
+    每次运行创建新目录、新模型预算和新世界，源码与 oracle 从不进入模型工作目录。
+    """
     from scripts.evaluation.__main__ import _provenance
 
     world = EvaluationWorld(scenario_id)
@@ -891,8 +947,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
             server_stats = server.stats
             skill_sha256 = server.skill_sha256
         if fixture is not None and fixture[1].get("clicked"):
-            # The native browser plugin bypasses the evaluation MCP server; the
-            # loopback callback is the independent proof that the button click ran.
+            # 原生浏览器插件绕过评测 MCP 服务；回环回调独立证明按钮点击已执行。
             world.record_browser("native_browser", {
                 "success": True, "execution_outcome": "succeeded", "rendered": "BROWSER_OK",
             })
@@ -948,7 +1003,9 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
 
 
 def run_codex(scenario_id: str, settings: ModelSettings, *, executable: str = "codex", probe_only: bool = False) -> dict[str, Any]:
-    """仅运行已核对的原生版本，探针不会向真实供应商发送请求。"""
+    """
+    仅运行已核对的原生版本，探针不会向真实供应商发送请求。
+    """
     if settings.wire_api != "responses":
         raise RuntimeError("原生 Codex 对照目前要求 Responses provider；当前配置是 Chat Completions")
     binary = shutil.which(executable)

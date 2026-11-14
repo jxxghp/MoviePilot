@@ -1,4 +1,6 @@
-"""Agent 系统设置的静态合同、Schema 和专用操作边界。"""
+"""
+Agent 系统设置的静态合同、Schema 和专用操作边界。
+"""
 
 from __future__ import annotations
 
@@ -48,14 +50,25 @@ SettingApplyMode = Literal[
 
 
 class NotificationDeliveryPeriod(TypedDict):
-    """通知发送允许时间段。"""
+    """
+    通知发送允许时间段。
+
+    :ivar start: 允许发送通知的起始时间，使用 HH:MM 格式
+    :ivar end: 允许发送通知的结束时间，使用 HH:MM 格式
+    """
 
     start: str
     end: str
 
 
 class NotificationClearState(TypedDict, total=False):
-    """各通知范围最后一次清理前的毫秒时间戳。"""
+    """
+    各通知范围最后一次清理前的毫秒时间戳。
+
+    :ivar all: 清理所有通知时使用的截止毫秒时间戳；键缺失表示没有记录
+    :ivar system: 清理系统通知时使用的截止毫秒时间戳；键缺失表示没有记录
+    :ivar media: 清理媒体通知时使用的截止毫秒时间戳；键缺失表示没有记录
+    """
 
     all: int
     system: int
@@ -63,7 +76,24 @@ class NotificationClearState(TypedDict, total=False):
 
 
 class SubscribeDefaultParams(TypedDict, total=False):
-    """订阅搜索流程使用的全局默认过滤参数。"""
+    """
+    订阅搜索流程使用的全局默认过滤参数。
+
+    :ivar include: 默认必须匹配的资源包含表达式
+    :ivar exclude: 默认排除的资源表达式
+    :ivar quality: 默认视频质量筛选
+    :ivar resolution: 默认视频分辨率筛选
+    :ivar effect: 默认视频特效筛选
+    :ivar audio_quality: 默认音频质量筛选
+    :ivar audio_format: 默认音频编码格式筛选
+    :ivar min_bitrate: 最低音频码率，单位为比特每秒
+    :ivar min_bit_depth: 最低音频位深，单位为位
+    :ivar min_sample_rate: 最低音频采样率，单位为赫兹
+    :ivar tv_size: 电视剧资源大小范围配置
+    :ivar movie_size: 电影资源大小范围配置
+    :ivar min_seeders: 要求的最少做种人数
+    :ivar min_seeders_time: 应用最少做种人数条件的种子发布时间门槛
+    """
 
     include: str
     exclude: str
@@ -86,7 +116,29 @@ ScrapingPolicyValue = bool | Literal["skip", "missingOnly", "always", "upgrade"]
 
 @dataclass(frozen=True, slots=True)
 class SettingSpec:
-    """描述一个可被 Agent 发现、读取或受控更新的设置项。"""
+    """
+    描述一个可被 Agent 发现、读取或受控更新的设置项。
+
+    :param key: 公开设置键，用于发现、读取和更新
+    :param source: 配置来源，settings 为运行配置，systemconfig 为数据库配置
+    :param group: 设置在发现接口中的功能分组
+    :param label: 设置项的中文展示名称
+    :param description: 设置用途、限制和更新注意事项
+    :param value_annotation: 用于生成 Schema 和校验输入的原始类型注解
+    :param declared_type: 用于展示的类型名称，无法识别时为 unknown
+    :param update_operations: 允许执行的通用更新操作集合
+    :param generic_write_allowed: 是否允许通过通用设置入口写入
+    :param preferred_operation_ids: 应优先使用的专用操作标识
+    :param dependencies: 使用该设置前需要满足的依赖设置键
+    :param conflicts: 与该设置不宜同时生效的设置键
+    :param apply_mode: 生效方式，区分立即生效、重启、专用操作和内部状态
+    :param default_match_field: 列表项更新和删除默认使用的匹配字段；None 表示无默认字段
+    :param unit: 数值含义的单位；不适用时为 None
+    :param examples: 向调用方展示的合法输入示例
+    :param sensitive: 是否包含需要脱敏展示的敏感值
+    :param systemconfig_key: 数据库配置对应的枚举键；运行配置时为 None
+    :param source_file: 声明该设置的源文件路径，便于追溯
+    """
 
     key: str
     source: Literal["settings", "systemconfig"]
@@ -107,12 +159,26 @@ class SettingSpec:
     sensitive: bool = False
     systemconfig_key: Optional[SystemConfigKey] = None
     source_file: str = ""
-    source_line: int = 0
 
 
 @dataclass(frozen=True, slots=True)
 class _SystemConfigContract:
-    """定义一个 SystemConfigKey 的值结构和修改边界。"""
+    """
+    定义一个 SystemConfigKey 的值结构和修改边界。
+
+    :param group: 设置在发现接口中的功能分组
+    :param value_annotation: 用于生成 Schema 和校验输入的原始类型注解
+    :param update_operations: 允许执行的通用更新操作集合
+    :param generic_write_allowed: 是否允许通过通用设置入口写入
+    :param preferred_operation_ids: 应优先使用的专用操作标识
+    :param dependencies: 使用该设置前需要满足的依赖设置键
+    :param conflicts: 与该设置不宜同时生效的设置键
+    :param apply_mode: 生效方式，区分立即生效、重启、专用操作和内部状态
+    :param default_match_field: 列表项更新和删除默认使用的匹配字段；None 表示无默认字段
+    :param unit: 数值含义的单位；不适用时为 None
+    :param examples: 向调用方展示的合法输入示例
+    :param sensitive: 是否包含需要脱敏展示的敏感值
+    """
 
     group: str
     value_annotation: Any = field(repr=False, compare=False)
@@ -143,7 +209,9 @@ def _contract(
     examples: tuple[Any, ...] = (),
     sensitive: bool = False,
 ) -> _SystemConfigContract:
-    """以紧凑参数构造一个数据库设置合同。"""
+    """
+    以紧凑参数构造一个数据库设置合同。
+    """
     return _SystemConfigContract(
         group=group,
         value_annotation=value_annotation,
@@ -166,7 +234,9 @@ def _managed_contract(
     *preferred: str,
     sensitive: bool = False,
 ) -> _SystemConfigContract:
-    """构造必须经专用 operation 修改的数据库设置合同。"""
+    """
+    构造必须经专用 operation 修改的数据库设置合同。
+    """
     return _contract(
         group,
         value_annotation,
@@ -183,7 +253,9 @@ def _internal_contract(
     *,
     sensitive: bool = False,
 ) -> _SystemConfigContract:
-    """构造只允许业务 owner 维护的内部状态合同。"""
+    """
+    构造只允许业务 owner 维护的内部状态合同。
+    """
     return _contract(
         group,
         value_annotation,
@@ -224,6 +296,9 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
         operations=_LIST_OBJECT_OPERATIONS,
         match_field="name",
         sensitive=True,
+    ),
+    SystemConfigKey.AppPushCredentials: _internal_contract(
+        "notifications", Optional[dict[str, JsonData]], sensitive=True
     ),
     SystemConfigKey.NotificationSwitchs: _contract(
         "notification_switches",
@@ -315,6 +390,10 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
         Optional[list[str]],
         operations=_LIST_SCALAR_OPERATIONS,
         dependencies=(SystemConfigKey.UserFilterRuleGroups.value,),
+    ),
+    SystemConfigKey.SubscribeSearchStrategy: _contract(
+        "subscribe_defaults", Optional[Literal["smart", "full", "single_page"]],
+        examples=("smart", "full", "single_page"),
     ),
     SystemConfigKey.SubscribeDefaultParams: _contract(
         "subscribe_defaults",
@@ -454,24 +533,30 @@ _IMMEDIATE_SETTINGS_IN_RESTART_GROUPS = frozenset({"API_DOCS_ENABLE"})
 
 
 def _load_source_catalog() -> dict[str, Any]:
-    """读取由源码注释生成的设置来源目录。"""
+    """
+    读取由源码注释生成的设置来源目录。
+    """
     catalog_path = Path(__file__).with_name("resources") / "system_settings_catalog.json"
     return cast(dict[str, Any], json.loads(catalog_path.read_text(encoding="utf-8")))
 
 
 def _format_declared_type(annotation: Any) -> str:
-    """把字段注解转换为稳定且便于 Agent 阅读的类型文本。"""
+    """
+    把字段注解转换为稳定且便于 Agent 阅读的类型文本。
+    """
     rendered = str(annotation).replace("typing.", "")
     return rendered.replace("<class '", "").replace("'>", "")
 
 
 def _runtime_dependencies(key: str) -> tuple[str, ...]:
-    """返回可由键名前缀可靠推导的运行时依赖项。"""
+    """
+    返回可由键名前缀可靠推导的运行时依赖项。
+    """
     if key.startswith("AUDIO_INPUT_"):
         return ("AI_AGENT_ENABLE", "LLM_SUPPORT_AUDIO_INPUT")
     if key.startswith("AUDIO_OUTPUT_"):
         return ("AI_AGENT_ENABLE", "LLM_SUPPORT_AUDIO_OUTPUT")
-    if key.startswith("LLM_") or key.startswith("AI_AGENT_"):
+    if key.startswith(("LLM_", "AI_AGENT_", "AGENT_")):
         return () if key == "AI_AGENT_ENABLE" else ("AI_AGENT_ENABLE",)
     if key.startswith("DB_POSTGRESQL_") or key.startswith("DB_SQLITE_"):
         return ("DB_TYPE",)
@@ -487,7 +572,9 @@ def _runtime_dependencies(key: str) -> tuple[str, ...]:
 
 
 def _runtime_unit(key: str) -> Optional[str]:
-    """按稳定字段后缀推导运行时数值的单位提示。"""
+    """
+    按稳定字段后缀推导运行时数值的单位提示。
+    """
     suffix_units = (
         ("_MINUTES", "minutes"),
         ("_SECONDS", "seconds"),
@@ -508,7 +595,9 @@ def _runtime_unit(key: str) -> Optional[str]:
 
 
 def _runtime_examples(model_field: Any, *, sensitive: bool) -> tuple[Any, ...]:
-    """从无敏感默认值生成一个可序列化的示例集合。"""
+    """
+    从无敏感默认值生成一个可序列化的示例集合。
+    """
     if sensitive or model_field.default is PydanticUndefined or model_field.default is None:
         return ()
     try:
@@ -519,7 +608,9 @@ def _runtime_examples(model_field: Any, *, sensitive: bool) -> tuple[Any, ...]:
 
 
 def build_setting_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec]]:
-    """从 Pydantic 字段、来源目录和数据库合同构建完整设置索引。"""
+    """
+    从 Pydantic 字段、来源目录和数据库合同构建完整设置索引。
+    """
     catalog = _load_source_catalog()
     runtime_catalog = catalog.get("settings", {})
     system_catalog = catalog.get("systemconfig", {})
@@ -555,7 +646,6 @@ def build_setting_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec
             ),
             sensitive=is_secret_setting_key(key),
             source_file=str(metadata.get("source_file") or ""),
-            source_line=int(metadata.get("source_line") or 0),
         )
 
     system_specs: dict[str, SettingSpec] = {}
@@ -593,13 +683,14 @@ def build_setting_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec
             sensitive=contract.sensitive,
             systemconfig_key=item,
             source_file=str(source_metadata.get("source_file") or ""),
-            source_line=int(source_metadata.get("source_line") or 0),
         )
     return core_specs, system_specs
 
 
 def build_value_schema(spec: SettingSpec) -> dict[str, Any]:
-    """生成一个设置完整且自包含的 JSON Schema。"""
+    """
+    生成一个设置完整且自包含的 JSON Schema。
+    """
     if spec.source == "settings":
         properties = _runtime_settings_schema().get("properties", {})
         raw_schema = properties.get(spec.key)
@@ -623,13 +714,19 @@ def build_value_schema(spec: SettingSpec) -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def _runtime_settings_schema() -> dict[str, Any]:
-    """缓存 Settings 生成的完整 JSON Schema，避免逐项重复建模。"""
-    return cast(dict[str, Any], Settings.model_json_schema())
+    """
+    缓存 Settings 生成的完整 JSON Schema，避免逐项重复建模。
+    """
+    return Settings.model_json_schema()
 
 
-def validate_setting_value(spec: SettingSpec, value: Any) -> None:
-    """按合同类型验证数据库设置的完整候选值。"""
-    TypeAdapter(spec.value_annotation).validate_python(value)
+def validate_setting_value(spec: SettingSpec, value: Any) -> Any:
+    """
+    按合同类型验证数据库设置的完整候选值，并返回规范化后的值。
+
+    :return: 类型转换后的候选值，调用方应将其序列化后持久化
+    """
+    return TypeAdapter(spec.value_annotation).validate_python(value)
 
 
 CORE_SETTING_SPECS, SYSTEMCONFIG_SETTING_SPECS = build_setting_specs()

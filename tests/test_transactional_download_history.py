@@ -1,4 +1,6 @@
-"""下载历史类型化适配器的投影与事务测试。"""
+"""
+下载历史类型化适配器的投影与事务测试。
+"""
 
 import asyncio
 
@@ -14,14 +16,24 @@ from app.db.adapters.history.download import (
     SessionDownloadHistoryRepository,
     TransactionalDownloadHistoryRepository,
 )
-from app.db.models.downloadhistory import DownloadHistory
+from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.session import SessionFactory, async_session_scope
 from app.db.uow import SqlAlchemyUnitOfWork
 from app.schemas.types import MediaSource, MediaType
 
 
+@pytest.fixture(autouse=True)
+def _track(db) -> None:
+    """
+    回收仓储通过独立事务写入的历史与文件，避免污染后续用例。
+    """
+    db.watermark(DownloadHistory, DownloadFiles)
+
+
 def _repository() -> TransactionalDownloadHistoryRepository:
-    """构造绑定测试数据库短 Session 的下载历史仓储。"""
+    """
+    构造绑定测试数据库短 Session 的下载历史仓储。
+    """
     return TransactionalDownloadHistoryRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -32,7 +44,9 @@ def _history_write(
     *,
     download_hash: str = "typed-history-hash",
 ) -> DownloadHistoryWrite:
-    """构造覆盖 Chain 消费字段的类型化下载历史写入。"""
+    """
+    构造覆盖 Chain 消费字段的类型化下载历史写入。
+    """
     return DownloadHistoryWrite(
         path="/downloads/Typed.Show.S01",
         type=MediaType.TV.value,
@@ -72,7 +86,9 @@ def _file_write(
     *,
     download_hash: str = "typed-history-hash",
 ) -> DownloadFileWrite:
-    """构造与类型化历史关联的下载文件写入。"""
+    """
+    构造与类型化历史关联的下载文件写入。
+    """
     return DownloadFileWrite(
         downloader="qb",
         download_hash=download_hash,
@@ -84,7 +100,9 @@ def _file_write(
 
 
 def test_transactional_repository_projects_detached_snapshots(db) -> None:
-    """所有同步查询都应在 Session 内投影，且 JSON 不与后续查询共享。"""
+    """
+    所有同步查询都应在 Session 内投影，且 JSON 不与后续查询共享。
+    """
     repository = _repository()
     history_id = repository.add(_history_write(), (_file_write(),))
 
@@ -143,12 +161,16 @@ def test_transactional_repository_rolls_back_history_and_files_on_commit_failure
     db,
     monkeypatch,
 ) -> None:
-    """历史与文件提交失败时必须整体回滚，不得留下半写入记录。"""
+    """
+    历史与文件提交失败时必须整体回滚，不得留下半写入记录。
+    """
     repository = _repository()
     download_hash = "typed-rollback-hash"
 
     def fail_commit(_unit_of_work) -> None:
-        """模拟数据库提交失败。"""
+        """
+        模拟数据库提交失败。
+        """
         raise RuntimeError("commit failed")
 
     monkeypatch.setattr(SqlAlchemyUnitOfWork, "commit", fail_commit)
@@ -164,13 +186,17 @@ def test_transactional_repository_rolls_back_history_and_files_on_commit_failure
 
 
 def test_transactional_repository_async_query_and_delete(db) -> None:
-    """异步分页返回脱离 Session 的快照，删除由独立事务提交。"""
+    """
+    异步分页返回脱离 Session 的快照，删除由独立事务提交。
+    """
     repository = _repository()
     baseline_count = asyncio.run(repository.async_count())
     history_id = repository.add(_history_write(download_hash="typed-async-hash"))
 
     async def exercise() -> list[DownloadHistorySnapshot]:
-        """在同一事件循环中执行异步分页和删除。"""
+        """
+        在同一事件循环中执行异步分页和删除。
+        """
         records = await repository.async_list_by_page(count=10)
         assert await repository.async_count() == baseline_count + 1
         await repository.async_delete(history_id)
@@ -184,7 +210,9 @@ def test_transactional_repository_async_query_and_delete(db) -> None:
 
 
 def test_session_repository_obeys_caller_transaction(db) -> None:
-    """请求级 adapter 只暂存变更，提交与回滚由调用方 UoW 决定。"""
+    """
+    请求级 adapter 只暂存变更，提交与回滚由调用方 UoW 决定。
+    """
     history = db.add(
         DownloadHistory(
             path="/downloads/request-history",
@@ -208,13 +236,17 @@ def test_session_repository_obeys_caller_transaction(db) -> None:
 
 
 def test_session_repository_counts_history_in_caller_async_session(db) -> None:
-    """请求级 adapter 在调用方 AsyncSession 内统计总数，与分页读取口径一致。"""
+    """
+    请求级 adapter 在调用方 AsyncSession 内统计总数，与分页读取口径一致。
+    """
     repository = _repository()
     baseline_count = asyncio.run(repository.async_count())
     history_id = repository.add(_history_write(download_hash="request-async-count-hash"))
 
     async def exercise() -> tuple[int, list[DownloadHistorySnapshot]]:
-        """在同一请求 AsyncSession 内先统计总数再分页读取。"""
+        """
+        在同一请求 AsyncSession 内先统计总数再分页读取。
+        """
         async with async_session_scope() as session:
             session_repository = SessionDownloadHistoryRepository(session)
             total = await session_repository.async_count()

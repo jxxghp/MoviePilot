@@ -1,4 +1,5 @@
-"""兼容层回传 Anthropic 分块格式思考内容的契约测试。
+"""
+兼容层回传 Anthropic 分块格式思考内容的契约测试。
 
 网关把思考内容放在 assistant 响应 `content[].thinking` 分块中，并要求
 后续请求原样回传；LangChain 在还原请求时会整体过滤这类分块，这里固定
@@ -20,17 +21,24 @@ _THINKING_BLOCK = {"type": "thinking", "thinking": "先查媒体库", "signature
 
 
 class _FakeGatewayInput:
-    """复刻 LangChain 输入对象的 to_messages 契约。"""
+    """
+    复刻 LangChain 输入对象的 to_messages 契约。
+    """
 
     def __init__(self, messages):
         self._messages = messages
 
     def to_messages(self):
+        """
+        返回保存的消息序列，不改变其中的文本或思考内容块。
+        """
         return self._messages
 
 
 class _FakeGatewayChatModel:
-    """以真实的 langchain-openai 转换函数还原请求，复现分块被过滤的行为。"""
+    """
+    以真实的 langchain-openai 转换函数还原请求，复现分块被过滤的行为。
+    """
 
     def __init__(self, model_name: str = "deepseek-v4-flash"):
         self.model_name = model_name
@@ -46,10 +54,14 @@ class _FakeGatewayChatModel:
 
 
 def _build_patched_model_cls(**patch_kwargs):
-    """为每个用例构造独立补丁的模型子类，避免补丁标记跨用例残留。"""
+    """
+    为每个用例构造独立补丁的模型子类，避免补丁标记跨用例残留。
+    """
 
     class _PatchedGatewayChatModel(_FakeGatewayChatModel):
-        """承载本次用例补丁配置的独立模型类。"""
+        """
+        承载本次用例补丁配置的独立模型类。
+        """
 
     llm_module._patch_interleaved_reasoning_request_support(
         _PatchedGatewayChatModel,
@@ -60,7 +72,9 @@ def _build_patched_model_cls(**patch_kwargs):
 
 
 def _gateway_assistant_message(content):
-    """按网关的 OpenAI 兼容响应构造带工具调用的 assistant 消息。"""
+    """
+    按网关的 OpenAI 兼容响应构造带工具调用的 assistant 消息。
+    """
     return _convert_dict_to_message(
         {
             "role": "assistant",
@@ -77,7 +91,9 @@ def _gateway_assistant_message(content):
 
 
 def _build_tool_call_messages(content):
-    """构造工具调用续轮历史，正文分块由网关响应形状决定。"""
+    """
+    构造工具调用续轮历史，正文分块由网关响应形状决定。
+    """
     return [
         HumanMessage(content="查一下媒体库"),
         _gateway_assistant_message(content),
@@ -86,7 +102,9 @@ def _build_tool_call_messages(content):
 
 
 def test_replays_thinking_blocks_before_text():
-    """非流式响应中的思考分块必须原样回到续轮请求最前。"""
+    """
+    非流式响应中的思考分块必须原样回到续轮请求最前。
+    """
     llm = _build_patched_model_cls()()
 
     payload = llm._get_request_payload(
@@ -104,7 +122,9 @@ def test_replays_thinking_blocks_before_text():
 
 
 def test_replays_streamed_thinking_blocks_as_blocks():
-    """流式聚合出的思考分块和裸字符串正文都要还原成分块数组。"""
+    """
+    流式聚合出的思考分块和裸字符串正文都要还原成分块数组。
+    """
     llm = _build_patched_model_cls()()
     streamed = _convert_delta_to_message_chunk(
         {"role": "assistant", "content": [_THINKING_BLOCK]},
@@ -132,7 +152,9 @@ def test_replays_streamed_thinking_blocks_as_blocks():
     ["thinking", "redacted_thinking", "reasoning", "reasoning_content"],
 )
 def test_replays_provider_thinking_block_aliases(block_type):
-    """供应商思考协议的分块别名都要按原样回传，不丢字段也不改写类型。"""
+    """
+    供应商思考协议的分块别名都要按原样回传，不丢字段也不改写类型。
+    """
     llm = _build_patched_model_cls()()
     block = {"type": block_type, "data": "opaque-payload"}
 
@@ -142,7 +164,9 @@ def test_replays_provider_thinking_block_aliases(block_type):
 
 
 def test_keeps_payload_untouched_without_thinking_blocks():
-    """历史里没有思考分块时不能凭空注入分块数组。"""
+    """
+    历史里没有思考分块时不能凭空注入分块数组。
+    """
     llm = _build_patched_model_cls()()
 
     payload = llm._get_request_payload(_build_tool_call_messages("我需要先查询一下"))
@@ -152,7 +176,9 @@ def test_keeps_payload_untouched_without_thinking_blocks():
 
 
 def test_deepseek_normalization_keeps_thinking_blocks_and_reasoning_content():
-    """DeepSeek 消息扁平化不能覆盖回传的思考分块，两种协议可同时存在。"""
+    """
+    DeepSeek 消息扁平化不能覆盖回传的思考分块，两种协议可同时存在。
+    """
     llm = _build_patched_model_cls(
         thinking_filter=llm_module._is_deepseek_thinking_enabled,
         normalize_deepseek_messages=True,

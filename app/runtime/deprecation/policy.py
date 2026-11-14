@@ -1,4 +1,5 @@
-"""废弃阶段的运行期行为。
+"""
+废弃阶段的运行期行为。
 
 调用点只需回答两个问题：这条废弃路径现在还该不该生效（``is_active``），以及走到这里
 时要不要留痕或拦截（``enforce``）。阶段的推进只改 ``notices.NOTICES`` 里的 ``stage``，
@@ -7,12 +8,15 @@
 import functools
 import inspect
 import threading
-from typing import Any, Callable, FrozenSet, Optional, Set, Tuple
+from typing import Callable, FrozenSet, Optional, ParamSpec, Set, Tuple, TypeVar, cast
 
 from app.runtime.deprecation import notices
 from app.runtime.deprecation.notices import DeprecationNotice, DeprecationStage
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+
+_Params = ParamSpec("_Params")
+_Result = TypeVar("_Result")
 
 # 已告警过的 (标识, 触发来源)，保证每个来源只留一次痕迹
 _warned: Set[Tuple[str, Optional[str]]] = set()
@@ -20,12 +24,14 @@ _warned_lock = threading.Lock()
 
 
 class DeprecatedFeatureError(RuntimeError):
-    """触达了已停用或已移除的废弃能力。"""
+    """
+    触达了已停用或已移除的废弃能力。
+    """
 
 
 def find_notice(key: str) -> Optional[DeprecationNotice]:
     """
-    查找废弃登记
+    查找废弃登记。
 
     :param key: 废弃标识
     :return: 对应登记，未登记时为 None
@@ -35,7 +41,7 @@ def find_notice(key: str) -> Optional[DeprecationNotice]:
 
 def get_notice(key: str) -> DeprecationNotice:
     """
-    取出废弃登记
+    取出废弃登记。
 
     :param key: 废弃标识
     :return: 对应登记
@@ -49,7 +55,7 @@ def get_notice(key: str) -> DeprecationNotice:
 
 def all_notices() -> Tuple[DeprecationNotice, ...]:
     """
-    列出全部废弃登记
+    列出全部废弃登记。
 
     :return: 按标识升序排列的登记
     """
@@ -58,7 +64,7 @@ def all_notices() -> Tuple[DeprecationNotice, ...]:
 
 def _enabled_keys() -> FrozenSet[str]:
     """
-    读取被显式恢复的废弃标识集合
+    读取被显式恢复的废弃标识集合。
 
     :return: 标识集合
     """
@@ -68,7 +74,7 @@ def _enabled_keys() -> FrozenSet[str]:
 
 def _notice_active(notice: DeprecationNotice) -> bool:
     """
-    判断一条登记当前是否仍应生效
+    判断一条登记当前是否仍应生效。
 
     :param notice: 废弃登记
     :return: 生效为 True
@@ -82,7 +88,7 @@ def _notice_active(notice: DeprecationNotice) -> bool:
 
 def is_active(key: str) -> bool:
     """
-    判断废弃路径当前是否仍应生效
+    判断废弃路径当前是否仍应生效。
 
     登记与预警阶段照常生效；停用阶段默认不生效，仅当标识出现在 DEPRECATION_ENABLED 中
     才恢复；移除阶段无论如何都不生效。
@@ -96,7 +102,7 @@ def is_active(key: str) -> bool:
 
 def warn(key: str, *, context: Optional[str] = None) -> None:
     """
-    就废弃路径留下一次告警
+    就废弃路径留下一次告警。
 
     仅登记阶段不打扰用户；其余阶段下同一 (标识, 触发来源) 在单个进程内只告警一次，
     避免热路径刷屏。
@@ -118,7 +124,7 @@ def warn(key: str, *, context: Optional[str] = None) -> None:
 
 def guard(key: str, *, context: Optional[str] = None) -> None:
     """
-    拦截已停用或已移除的废弃能力
+    拦截已停用或已移除的废弃能力。
 
     :param key: 废弃标识
     :param context: 触发来源
@@ -132,7 +138,7 @@ def guard(key: str, *, context: Optional[str] = None) -> None:
 
 def enforce(key: str, *, context: Optional[str] = None) -> None:
     """
-    对一次废弃路径的触达执行当前阶段的处置
+    对一次废弃路径的触达执行当前阶段的处置。
 
     未登记的标识视为尚未纳入废弃流程，直接放行；已登记的先拦截再留痕。
 
@@ -148,7 +154,7 @@ def enforce(key: str, *, context: Optional[str] = None) -> None:
 
 def enforce_facade(facade: str, operation: str) -> None:
     """
-    对一次旧 Facade 命中执行当前阶段的处置
+    对一次旧 Facade 命中执行当前阶段的处置。
 
     先按 ``facade.operation`` 精确匹配，再退回整个 Facade 的登记，两者都没有登记则放行，
     因此未纳入废弃流程的 Facade 不受任何影响。
@@ -167,9 +173,9 @@ def enforce_facade(facade: str, operation: str) -> None:
             return
 
 
-def deprecated(key: str) -> Callable:
+def deprecated(key: str) -> Callable[[Callable[_Params, _Result]], Callable[_Params, _Result]]:
     """
-    把废弃语义施加到一个可调用对象上
+    把废弃语义施加到一个可调用对象上。
 
     停用与移除阶段直接抛错，其余阶段留痕后照常执行。
 
@@ -177,20 +183,30 @@ def deprecated(key: str) -> Callable:
     :return: 装饰器
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[_Params, _Result]) -> Callable[_Params, _Result]:
+        """
+        包装原函数，并保留参数及返回类型合同。
+        """
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            async def async_wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> object:
+                """
+                在协程执行时检查废弃阶段并保留异步调用形状。
+                """
                 context = getattr(func, "__qualname__", None)
                 guard(key, context=context)
                 warn(key, context=context)
                 return await func(*args, **kwargs)
 
-            return async_wrapper
+            # 已确认原函数返回协程；包装器保留同一 await 结果与调用参数。
+            return cast(Callable[_Params, _Result], async_wrapper)
 
         @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
+        def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
+            """
+            在原函数执行前应用废弃策略，随后透传结果或异常。
+            """
             context = getattr(func, "__qualname__", None)
             guard(key, context=context)
             warn(key, context=context)
@@ -202,6 +218,8 @@ def deprecated(key: str) -> Callable:
 
 
 def reset_warned() -> None:
-    """清空告警去重记录。"""
+    """
+    清空告警去重记录。
+    """
     with _warned_lock:
         _warned.clear()

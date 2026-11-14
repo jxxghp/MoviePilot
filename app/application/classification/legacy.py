@@ -1,4 +1,6 @@
-"""旧版 TMDB 分类配置兼容入口。"""
+"""
+旧版 TMDB 分类配置兼容入口。
+"""
 
 from app.application.classification.migration import (
     LegacyClassificationDiagnostic,

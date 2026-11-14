@@ -1,4 +1,6 @@
-"""种子缓存相关的应用用例。"""
+"""
+种子缓存相关的应用用例。
+"""
 
 from typing import Any, Optional
 
@@ -7,14 +9,19 @@ from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils
+from app.runtime.cache import async_cache_mutation
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicTargetEntityType
 
 
 class TorrentCacheRecognitionService:
-    """执行种子缓存条目的媒体重新识别用例。"""
+    """
+    执行种子缓存条目的媒体重新识别用例。
+    """
 
-    def __init__(self, torrents_chain: Any, media_chain: Any):
-        """初始化缓存和媒体识别依赖。"""
+    def __init__(self, torrents_chain: Any, media_chain: Any) -> None:
+        """
+        初始化缓存和媒体识别依赖。
+        """
         self.torrents_chain = torrents_chain
         self.media_chain = media_chain
 
@@ -25,8 +32,9 @@ class TorrentCacheRecognitionService:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         music_type: Optional[MusicTargetEntityType] = None,
-    ) -> tuple[bool, str, Optional[dict]]:
-        """重新识别缓存条目并持久化影视、音乐分离后的缓存。
+    ) -> tuple[bool, str, Optional[dict[str, object]]]:
+        """
+        重新识别缓存条目并持久化影视、音乐分离后的缓存。
 
         返回值保持端点原有的成功标识、用户消息和响应数据三元组，便于旧插件
         继续消费原始 HTTP 响应结构。
@@ -106,12 +114,24 @@ class TorrentCacheRecognitionService:
             )
         else:
             mediainfo.clear()
-        target_context.media_info = mediainfo
-
-        video_cache, music_cache = self.torrents_chain.split_cache_contexts(cache_data)
-        video_file, music_file = self.torrents_chain.cache_files()
-        await self.torrents_chain.async_save_cache(video_cache, video_file)
-        await self.torrents_chain.async_save_cache(music_cache, music_file)
+        async with async_cache_mutation("torrent-snapshots"):
+            # 远端识别期间不占写锁；提交时重读当前快照，仅修改本次目标。
+            latest = await self.torrents_chain.async_get_torrents()
+            current = next((context for context in latest.get(domain, [])
+                            if HashUtils.md5(f"{context.torrent_info.title}{context.torrent_info.description}")
+                            == torrent_hash), None)
+            if current is None:
+                return False, "种子缓存已刷新，目标条目不存在", None
+            current.media_info = mediainfo
+            video_cache, music_cache = self.torrents_chain.split_cache_contexts(latest)
+            video_file, music_file = self.torrents_chain.cache_files()
+            # 同一个资源不会跨分类移动；只写其所属缓存，避免无关文件失败或部分提交。
+            is_music_cache = current.torrent_info.category in (MediaType.MUSIC, MediaType.MUSIC.value)
+            cache, filename = (music_cache, music_file) if is_music_cache else (video_cache, video_file)
+            try:
+                await self.torrents_chain.async_save_cache(cache, filename, strict=True)
+            except Exception:
+                return False, "种子缓存保存失败，请稍后重试", None
         return True, "重新识别完成", {
             "media_name": mediainfo.title if mediainfo else "",
             "media_year": mediainfo.year if mediainfo else "",

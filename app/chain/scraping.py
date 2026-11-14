@@ -1,5 +1,10 @@
+"""
+影视和音乐元数据、图片与歌词的刮削编排。
+"""
+
 import os
 import re
+import shutil
 import threading
 import time
 from collections.abc import Iterator, Mapping
@@ -8,9 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
-from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union
+from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union, cast
+from urllib.parse import urlsplit
 
-from app.application.audio import AudioMetadataHelper
+from app.application.audio import AudioMetadataHelper, music_cue_enabled
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
@@ -19,6 +25,7 @@ from app.chain.base import ChainBase
 from app.chain.lyrics import LyricsChain
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
+from app.domain.artwork import normalize_artwork
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,
@@ -28,11 +35,19 @@ from app.domain.context import (
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.domain.music import (
+    align_music_tracks,
+    music_album_has_consistent_tracks,
+    music_cover_priority,
+    music_isrc_conflicts,
+)
 from app.foundation.singleton import Singleton
+from app.foundation.text import convert
 from app.runtime.cache import cached
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
+from app.runtime.settings import get_runtime_setting
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
@@ -49,37 +64,66 @@ from app.schemas.types import (
 
 
 class ScrapingResponsePort(Protocol):
-    """刮削链读取封面所需的最小同步 HTTP 响应契约。"""
+    """
+    刮削链读取封面所需的最小同步 HTTP 响应契约。
+
+    :ivar status_code: 封面下载的 HTTP 响应状态码
+    :ivar content: 完整封面图片字节
+    :ivar headers: 图片类型和格式判断所需的响应头
+    """
 
     status_code: int
     content: bytes
     headers: Mapping[str, str]
 
     def close(self) -> None:
-        """释放响应与连接资源。"""
+        """
+        释放响应与连接资源。
+        """
         ...
 
 
 class ScrapingStreamResponsePort(Protocol):
-    """刮削链流式保存图片所需的最小响应契约。"""
+    """
+    刮削链流式保存图片所需的最小响应契约。
+
+    :ivar status_code: 流式图片下载的 HTTP 响应状态码
+    """
 
     status_code: int
 
     def __enter__(self) -> Self:
-        """进入响应所有权上下文。"""
+        """
+        进入响应所有权上下文。
+
+        :return: 当前流式响应对象，由上下文管理器持有其资源
+        """
         ...
 
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
-        """退出上下文并释放响应资源。"""
+        """
+        退出上下文并释放响应资源。
+
+        :param exc_type: 上下文中抛出的异常类型，正常退出时为 None
+        :param exc_value: 上下文中抛出的异常实例，正常退出时为 None
+        :param traceback: 异常调用栈，正常退出时为 None
+        """
         ...
 
     def iter_content(self, *, chunk_size: int) -> Iterator[bytes]:
-        """按固定块大小迭代响应字节。"""
+        """
+        按固定块大小迭代响应字节。
+
+        :param chunk_size: 每次迭代期望读取的字节块大小
+        :return: 逐块提供响应字节的迭代器，可能包含需要调用方忽略的空块
+        """
         ...
 
 
 class ScrapingHttpPort(Protocol):
-    """刮削链下载普通封面与流式图片所需的同步 HTTP 端口。"""
+    """
+    刮削链下载普通封面与流式图片所需的同步 HTTP 端口。
+    """
 
     def get(
         self,
@@ -89,7 +133,15 @@ class ScrapingHttpPort(Protocol):
         ua: str,
         timeout: int,
     ) -> Optional[ScrapingResponsePort]:
-        """读取小型封面响应。"""
+        """
+        读取小型封面响应。
+
+        :param url: 小型封面图片的完整下载地址
+        :param proxies: 协议到代理地址的映射，None 表示未指定代理
+        :param ua: 图片下载请求使用的 User-Agent
+        :param timeout: 请求超时秒数
+        :return: 完整封面响应，未取得响应时为 None；调用方负责关闭
+        """
         ...
 
     def stream(
@@ -99,7 +151,14 @@ class ScrapingHttpPort(Protocol):
         proxies: Optional[dict[str, str]],
         ua: str,
     ) -> ScrapingStreamResponsePort:
-        """打开由上下文负责释放的流式图片响应。"""
+        """
+        打开由上下文负责释放的流式图片响应。
+
+        :param url: 需要流式保存的图片完整地址
+        :param proxies: 协议到代理地址的映射，None 表示未指定代理
+        :param ua: 图片下载请求使用的 User-Agent
+        :return: 支持上下文管理的流式响应，调用方须在上下文内消费并在退出时释放
+        """
         ...
 
 
@@ -108,7 +167,9 @@ _scraping_http_port: Optional[ScrapingHttpPort] = None
 
 
 def configure_scraping_http_port(http: ScrapingHttpPort) -> Optional[ScrapingHttpPort]:
-    """由启动组合根装配刮削 HTTP 端口，并返回旧实现。"""
+    """
+    由启动组合根装配刮削 HTTP 端口，并返回旧实现。
+    """
     global _scraping_http_port
     with _scraping_http_lock:
         previous = _scraping_http_port
@@ -117,14 +178,18 @@ def configure_scraping_http_port(http: ScrapingHttpPort) -> Optional[ScrapingHtt
 
 
 def reset_scraping_http_port(http: Optional[ScrapingHttpPort] = None) -> None:
-    """恢复指定刮削 HTTP 端口；省略参数时回到未装配状态。"""
+    """
+    恢复指定刮削 HTTP 端口；省略参数时回到未装配状态。
+    """
     global _scraping_http_port
     with _scraping_http_lock:
         _scraping_http_port = http
 
 
 def _scraping_http_snapshot() -> ScrapingHttpPort:
-    """读取刮削 HTTP 端口快照，未装配时稳定失败。"""
+    """
+    读取刮削 HTTP 端口快照，未装配时稳定失败。
+    """
     with _scraping_http_lock:
         http = _scraping_http_port
     if http is None:
@@ -140,14 +205,24 @@ os.umask(current_umask)
 
 @dataclass
 class _MusicScrapeFileResult:
-    """记录单个音轨的标签刮削结果和歌词处理状态。"""
+    """
+    记录单个音轨的标签刮削结果和歌词处理状态。
+
+    :param metadata_success: 当前文件标签刮削是否成功，未发生标签写入错误时默认 True
+    :param lyrics_status: 歌词处理状态：disabled 表示未启用，saved 为新增，upgraded 为升级，existing 为已存在，
+        protected 为防降级保留，missing 为未匹配，budget_exceeded 为预算耗尽，failed 为失败
+    :param album_track_matched: 专辑标签写入时是否采用可靠匹配的曲目；未写入标签或写入失败时为 None
+    """
 
     metadata_success: bool = True
     lyrics_status: str = "disabled"
+    album_track_matched: Optional[bool] = None
 
 
 class ScrapingOption:
-    """刮削选项"""
+    """
+    刮削选项
+    """
 
     type: ScrapingTarget = ScrapingTarget.TV
     metadata: ScrapingMetadata = ScrapingMetadata.NFO
@@ -159,6 +234,14 @@ class ScrapingOption:
             metadata: Union[str, ScrapingMetadata],
             value: Union[ScrapingPolicy, bool, str],
     ):
+        """
+        将目标、元数据种类和策略规范为枚举，兼容旧布尔配置。
+
+        :param type: 待刮削的媒体目标类型或其枚举值文本
+        :param metadata: 需要生成的元数据种类或其枚举值文本
+        :param value: 刮削策略；旧布尔值 True 表示仅补缺，False 表示跳过
+        :raises ValueError: 字符串无法转换为对应枚举值
+        """
         if isinstance(type, ScrapingTarget):
             self.type = type
         elif isinstance(type, str):
@@ -181,47 +264,63 @@ class ScrapingOption:
 
     @property
     def is_skip(self) -> bool:
-        """是否跳过"""
+        """
+        是否跳过
+        """
         return self.policy == ScrapingPolicy.SKIP
 
     @property
     def is_overwrite(self) -> bool:
-        """是否覆盖模式"""
+        """
+        是否覆盖模式
+        """
         return self.policy == ScrapingPolicy.OVERWRITE
 
     @property
     def is_upgrade(self) -> bool:
-        """是否只在歌词等产物质量更高时替换。"""
+        """
+        是否只在歌词等产物质量更高时替换。
+        """
         return self.policy == ScrapingPolicy.UPGRADE
 
 
 class ScrapingConfig:
-    """媒体刮削配置"""
+    """
+    媒体刮削配置
+    """
 
-    def __init__(self, config_dict: dict[str, str] = None):
+    def __init__(
+            self,
+            config_dict: Optional[dict[str, Union[ScrapingPolicy, bool, str]]] = None,
+    ) -> None:
         """
         初始化配置对象
+
         :param config_dict: 用户配置字典（扁平化格式），为 None 时使用默认配置
         """
         self._policies: dict[tuple[str, str], ScrapingOption] = {}
-        # 合并用户配置和默认配置
         if config_dict is None:
             config_dict = {}
 
-        # 以默认配置为基础，用用户配置覆盖
         _config = self.get_default_config()
         for key, value in config_dict.items():
             _config[key] = value
 
         for key, value in _config.items():
             if "_" in key:
-                items = key.split("_", 1)
-                self._policies[tuple(items)] = ScrapingOption(*items, value)
+                item, metadata = key.split("_", 1)
+                self._policies[(item, metadata)] = ScrapingOption(item, metadata, value)
 
     def option(
             self, item: Union[str, ScrapingTarget], metadata: Union[str, ScrapingMetadata]
     ) -> ScrapingOption:
+        """
+        返回指定目标和元数据种类的刮削策略，未配置时跳过。
 
+        :param item: 媒体目标枚举或小写配置键
+        :param metadata: 元数据种类枚举或小写配置键
+        :return: 对应刮削选项，未配置项使用跳过策略
+        """
         if isinstance(item, ScrapingTarget):
             item = item.name.lower()
         if isinstance(metadata, ScrapingMetadata):
@@ -236,14 +335,16 @@ class ScrapingConfig:
         """
         从系统配置加载
 
-        :return: MediaScrapingConfig 实例
+        :return: 合并系统配置与默认策略后的刮削配置实例
         """
         user_config = get_configured_system_config().get(SystemConfigKey.ScrapingSwitchs) or {}
         return cls(user_config)
 
     @staticmethod
-    def get_default_config() -> dict[str, str]:
-        """获取默认配置字典"""
+    def get_default_config() -> dict[str, Union[ScrapingPolicy, bool, str]]:
+        """
+        获取默认配置字典
+        """
         config_items = [
             f"{mt}_{md}"
             for mt, mds in [
@@ -258,13 +359,17 @@ class ScrapingConfig:
             ]
             for md in mds
         ]
-        defaults = {item: ScrapingPolicy.MISSINGONLY for item in config_items}
+        defaults: dict[str, Union[ScrapingPolicy, bool, str]] = {
+            item: ScrapingPolicy.MISSINGONLY for item in config_items
+        }
         defaults["music_lyrics"] = ScrapingPolicy.UPGRADE
         return defaults
 
 
 class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
-    """统一处理影视和音乐元数据刮削，不承担媒体识别职责。"""
+    """
+    统一处理影视和音乐元数据刮削，不承担媒体识别职责。
+    """
 
     CONFIG_WATCH = {SystemConfigKey.ScrapingSwitchs.value}
 
@@ -273,11 +378,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         "backdrop": ScrapingMetadata.BACKDROP,
         "fanart": ScrapingMetadata.BACKDROP,
         "background": ScrapingMetadata.BACKDROP,
+        "show4kbackground": ScrapingMetadata.BACKDROP,
+        "movie4kbackground": ScrapingMetadata.BACKDROP,
         "logo": ScrapingMetadata.LOGO,
+        "clearlogo": ScrapingMetadata.LOGO,
         "disc": ScrapingMetadata.DISC,
         "cdart": ScrapingMetadata.DISC,
         "banner": ScrapingMetadata.BANNER,
         "thumb": ScrapingMetadata.THUMB,
+        "episode-thumb": ScrapingMetadata.THUMB,
         "landscape": ScrapingMetadata.LANDSCAPE,
         "clearart": ScrapingMetadata.CLEARART,
     }
@@ -289,23 +398,41 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         "landscape": ["thumb"],
     }
 
-    MUSIC_LYRICS_EXTENSIONS = (".lyricsfile.yaml", ".lrc", ".txt")
+    MUSIC_LEGACY_LYRICS_EXTENSIONS = (".lyricsfile.yaml", ".txt")
+    # 与音频元数据读取器对同目录 CUE 的数量上限保持一致
+    MUSIC_MAX_CUE_FILES = 32
+    IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
     _music_track_prefix_pattern = re.compile(
         r"^\s*(?:(?:cd|disc)\s*\d+\s*[-_. ]+)?(?:\d+\s*[-_. ]+)+",
         flags=re.IGNORECASE,
     )
 
-    def __init__(self):
-        """初始化存储访问和当前刮削策略。"""
+    def __init__(self) -> None:
+        """
+        初始化存储访问和当前刮削策略。
+        """
         super().__init__()
         self.storagechain = StorageChain()
         self.scraping_policies = ScrapingConfig.from_system_config()
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> None:
+        """
+        重新读取刮削策略，供后续任务采用最新配置。
+        """
         self.scraping_policies = ScrapingConfig.from_system_config()
 
+    def _music_lyrics_extensions(self) -> tuple[str, ...]:
+        """
+        返回音乐旁挂歌词使用的配置后缀，并保留历史兼容格式。
+
+        :return: 去重后的歌词文件后缀集合
+        """
+        runtime_config = get_chain_runtime_config_snapshot()
+        configured = getattr(runtime_config, "lyrics_extensions", ())
+        return tuple(dict.fromkeys((*configured, *self.MUSIC_LEGACY_LYRICS_EXTENSIONS)))
+
     @staticmethod
-    def _cleanup_temp_file(path: Optional[Path]):
+    def _cleanup_temp_file(path: Optional[Path]) -> None:
         """
         清理临时刮削文件
 
@@ -330,7 +457,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param scraping_option: 刮削选项对象
         :param file_exists: 文件是否已存在
         :param global_overwrite: 全局覆盖标志
-        :return bool: 是否应该刮削
+        :return: 是否应该刮削
         """
         if scraping_option.is_skip:
             logger.info(
@@ -339,10 +466,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return False
 
         if not file_exists:
-            # 文件不存在
             return True
 
-        # 文件存在的情况
         if scraping_option.is_overwrite or global_overwrite:
             logger.info(
                 f"{scraping_option.type.value} {scraping_option.metadata.value} 文件存在，"
@@ -357,13 +482,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _save_file(
             self, fileitem: _SchemaFileItem, path: Path, content: Union[bytes, str]
-    ):
+    ) -> None:
         """
         保存或上传文件
 
         :param fileitem: 关联的媒体文件项
         :param path: 元数据文件路径
         :param content: 文件内容
+        :raises OSError: 存储拒绝上传或本地临时文件写入失败
         """
         if not fileitem or not content or not path:
             return
@@ -372,7 +498,6 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             # delete_on_close 是 Python 3.12 才支持的参数，使用 delete=False 后手动清理以兼容低版本。
             with NamedTemporaryFile(delete=False, suffix=path.suffix) as tmp_file:
                 tmp_file_path = Path(tmp_file.name)
-                # 写入内容
                 if isinstance(content, bytes):
                     tmp_file.write(content)
                 else:
@@ -382,7 +507,6 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             # 刮削文件只需要读写权限
             tmp_file_path.chmod(0o666 & ~current_umask)
 
-            # 上传文件
             item = self.storagechain.upload_file(
                 fileitem=fileitem, path=tmp_file_path, new_name=path.name
             )
@@ -390,59 +514,341 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 logger.info(f"已保存文件：{item.path}")
             else:
                 logger.warn(f"文件保存失败：{path}")
+                raise OSError(f"文件保存失败：{path}")
         finally:
             self._cleanup_temp_file(tmp_file_path)
 
     def _download_and_save_image(
-            self, fileitem: _SchemaFileItem, path: Path, url: str
-    ):
+            self,
+            fileitem: _SchemaFileItem,
+            path: Path,
+            url: str,
+            reuse_targets: Optional[List[Tuple[_SchemaFileItem, Path]]] = None,
+    ) -> None:
         """
-        流式下载图片并保存到文件
+        下载一次图片并写入一个或多个目标文件。
 
-        :param fileitem: 关联的媒体文件项
-        :param path: 图片文件路径
-        :param url: 图片下载URL
+        首个目标上传成功后，后续目标优先尝试同存储硬链接；不支持或链接失败时，
+        从同一份下载临时文件复制后上传，避免重复请求远端地址。
+
+        :param fileitem: 首个图片目标所在的目录项
+        :param path: 首个图片目标路径
+        :param url: 图片下载 URL
+        :param reuse_targets: 复用本次下载的其它目录项和路径
         """
         if not fileitem or not url or not path:
             return
+
+        targets = [(fileitem, path)] + list(reuse_targets or [])
+        downloaded_path: Optional[Path] = None
         try:
             logger.info(f"正在下载图片：{url} ...")
-            http = _scraping_http_snapshot()
-            response = http.stream(
-                url,
-                proxies=self.runtime_config.proxy,
-                ua=self.runtime_config.normal_user_agent,
-            )
-            with response as r:
-                if r and r.status_code == 200:
-                    tmp_file_path = None
-                    try:
-                        # delete_on_close 是 Python 3.12 才支持的参数，使用 delete=False 后手动清理以兼容低版本。
-                        with NamedTemporaryFile(delete=False, suffix=path.suffix) as tmp_file:
-                            tmp_file_path = Path(tmp_file.name)
-                            # 流式写入文件
-                            for chunk in r.iter_content(chunk_size=8192):
-                                if chunk:
-                                    tmp_file.write(chunk)
-                            tmp_file.flush()
+            downloaded = self._download_image_to_temp(url=url, suffix=path.suffix)
+            if not downloaded:
+                return
+            downloaded_path, image_suffix = downloaded
 
-                        # 刮削的图片只需要读写权限
-                        tmp_file_path.chmod(0o666 & ~current_umask)
+            source_item: Optional[_SchemaFileItem] = None
+            saved_targets: set[tuple[Optional[str], str]] = set()
+            for target_item, target_path in targets:
+                if not target_item or not target_path:
+                    continue
+                target_path = target_path.with_suffix(image_suffix)
+                target_key = (target_item.storage, str(target_path))
+                if target_key in saved_targets:
+                    continue
+                saved_targets.add(target_key)
 
-                        # 上传文件
-                        item = self.storagechain.upload_file(
-                            fileitem=fileitem, path=tmp_file_path, new_name=path.name
-                        )
-                        if item:
-                            logger.info(f"已保存图片：{item.path}")
-                        else:
-                            logger.warn(f"图片保存失败：{path}")
-                    finally:
-                        self._cleanup_temp_file(tmp_file_path)
+                if self._reuse_image_file(source_item, target_item, target_path):
+                    continue
+
+                item = self._upload_downloaded_image(
+                    fileitem=target_item,
+                    path=target_path,
+                    downloaded_path=downloaded_path,
+                )
+                if item and source_item is None:
+                    source_item = item
+                if item:
+                    logger.info(f"已保存图片：{item.path}")
                 else:
-                    logger.info(f"{url} 图片下载失败")
+                    logger.warn(f"图片保存失败：{target_path}")
         except Exception as err:
             logger.error(f"{url} 图片下载失败：{str(err)}！")
+        finally:
+            self._cleanup_temp_file(downloaded_path)
+
+    def _reuse_image_file(
+            self,
+            source_item: Optional[_SchemaFileItem],
+            target_item: _SchemaFileItem,
+            target_path: Path,
+    ) -> bool:
+        """
+        在同一存储中尝试复用已保存图片；失败交由调用方从本地副本上传。
+
+        :param source_item: 本次下载已写入的图片文件项；尚未保存时为 None
+        :param target_item: 后续图片目标所在的目录项
+        :param target_path: 后续图片完整保存路径
+        :return: 已通过硬链接保存目标图片时返回 True
+        """
+        if not source_item or source_item.storage != target_item.storage:
+            return False
+        try:
+            if self.storagechain.link_file(source_item, target_path):
+                logger.info(f"已通过硬链接保存图片：{target_path}")
+                return True
+        except Exception as err:
+            logger.debug(f"图片硬链接不可用，改用下载副本上传：{target_path} - {err}")
+        return False
+
+    def _download_image_to_temp(self, url: str, suffix: str) -> Optional[Tuple[Path, str]]:
+        """
+        将远程图片流式下载到本地临时文件。
+
+        :param url: 图片下载 URL
+        :param suffix: 临时文件后缀，用于保留图片格式提示
+        :return: 下载完成的临时文件及按实际图片内容确定的后缀；请求失败时返回 None
+        """
+        http = _scraping_http_snapshot()
+        response = http.stream(
+            url,
+            proxies=self.runtime_config.proxy,
+            ua=self.runtime_config.normal_user_agent,
+        )
+        with response as result:
+            if not result or result.status_code != 200:
+                logger.info(f"{url} 图片下载失败")
+                return None
+
+            tmp_file_path: Optional[Path] = None
+            try:
+                # delete_on_close 是 Python 3.12 才支持的参数，使用 delete=False 后手动清理以兼容低版本。
+                with NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                    tmp_file_path = Path(tmp_file.name)
+                    for chunk in result.iter_content(chunk_size=8192):
+                        if chunk:
+                            tmp_file.write(chunk)
+                    tmp_file.flush()
+
+                original_content = tmp_file_path.read_bytes()
+                image_content, image_suffix = normalize_artwork(original_content)
+                if image_content != original_content:
+                    tmp_file_path.write_bytes(image_content)
+                # 刮削的图片只需要读写权限
+                tmp_file_path.chmod(0o666 & ~current_umask)
+                return tmp_file_path, image_suffix
+            except Exception:
+                self._cleanup_temp_file(tmp_file_path)
+                raise
+
+    def _upload_downloaded_image(
+            self,
+            fileitem: _SchemaFileItem,
+            path: Path,
+            downloaded_path: Path,
+    ) -> Optional[_SchemaFileItem]:
+        """
+        从已下载的主临时文件复制一份并上传到目标路径。
+
+        :param fileitem: 目标目录项
+        :param path: 目标图片路径
+        :param downloaded_path: 本次请求产生的主临时文件
+        :return: 上传后的文件项；上传失败时返回 None
+        """
+        upload_path: Optional[Path] = None
+        try:
+            # 每次上传使用独立副本，因为存储适配器成功后会删除本地源文件。
+            with NamedTemporaryFile(delete=False, suffix=path.suffix) as upload_file:
+                upload_path = Path(upload_file.name)
+            shutil.copyfile(downloaded_path, upload_path)
+            upload_path.chmod(0o666 & ~current_umask)
+            return self.storagechain.upload_file(
+                fileitem=fileitem,
+                path=upload_path,
+                new_name=path.name,
+            )
+        except Exception as err:
+            logger.warn(f"图片上传失败：{path} - {err}")
+            return None
+        finally:
+            self._cleanup_temp_file(upload_path)
+
+    @classmethod
+    def _normalize_image_suffix(cls, value: Optional[str]) -> str:
+        """
+        将图片地址或文件名的扩展名归一为受支持的小写后缀。
+
+        :param value: 图片 URL 或来源文件名
+        :return: ``.jpg``、``.png`` 或 ``.webp`` 等归一后的后缀
+        """
+        suffix = Path(urlsplit(value or "").path).suffix.lower()
+        if suffix == ".jpeg":
+            return ".jpg"
+        if suffix in cls.IMAGE_EXTENSIONS:
+            return suffix
+        return ".jpg"
+
+    @classmethod
+    def _normalize_image_filename(cls, filename: Optional[str]) -> Optional[str]:
+        """
+        归一图片文件名大小写与扩展名，避免同类型文件因 URL 写法不同重复落盘。
+
+        :param filename: 刮削源提供的图片文件名
+        :return: 归一后的文件名；输入为空时返回 None
+        """
+        if not filename:
+            return None
+        path = Path(urlsplit(filename).path)
+        stem = path.stem.lower()
+        canonical_names = {
+            "show4kbackground": "background",
+            "movie4kbackground": "background",
+            "clearlogo": "logo",
+        }
+        stem = canonical_names.get(stem, stem)
+        return f"{stem}{cls._normalize_image_suffix(filename)}"
+
+    @classmethod
+    def _get_image_metadata_type(
+            cls,
+            image_name: str,
+            item_type: ScrapingTarget,
+            current_fileitem: Optional[_SchemaFileItem] = None,
+    ) -> Tuple[Optional[ScrapingMetadata], bool]:
+        """
+        按去扩展名后的图片名精确解析元数据类型。
+
+        季图片保留 ``seasonNN-`` 和 ``season-specials-`` 前缀；单集媒体文件同名
+        图片及 ``*-thumb`` 是既有来源约定，仍按缩略图处理。返回值第二项标记
+        Fanart 的 4K 背景来源，供独立开关过滤。
+
+        :param image_name: 刮削源图片文件名
+        :param item_type: 当前刮削目标层级
+        :param current_fileitem: 当前媒体文件，用于识别单集同名图片
+        :return: 元数据类型与是否为 4K 背景的标记
+        """
+        stem = Path(image_name).stem.lower()
+        lookup_stem = stem
+
+        season_match = re.match(r"^season(?:\d+|-specials)-(.+)$", stem)
+        if season_match:
+            lookup_stem = season_match.group(1)
+
+        is_4k_background = lookup_stem in {"show4kbackground", "movie4kbackground"}
+
+        if lookup_stem == "episode-thumb" and item_type != ScrapingTarget.EPISODE:
+            return None, is_4k_background
+        metadata_type = cls.IMAGE_METADATA_MAP.get(lookup_stem)
+        if metadata_type:
+            return metadata_type, is_4k_background
+
+        if item_type == ScrapingTarget.EPISODE:
+            media_stem = Path(current_fileitem.path).stem.lower() if current_fileitem and current_fileitem.path else ""
+            if media_stem and stem in {media_stem, f"{media_stem}-thumb"}:
+                return ScrapingMetadata.THUMB, is_4k_background
+
+        return None, is_4k_background
+
+    @staticmethod
+    def _matches_image_season(
+            image_name: str,
+            item_type: ScrapingTarget,
+            season_number: Optional[int],
+    ) -> bool:
+        """
+        限定季前缀图片只用于对应季目录，整剧根目录刮削不消费季图片。
+
+        :param image_name: 来源图片文件名
+        :param item_type: 当前刮削层级
+        :param season_number: 当前季号；None 表示不按季号过滤
+        :return: 图片符合当前刮削上下文时返回 True
+        """
+        stem = Path(image_name).stem.lower()
+        match = re.match(r"^season(\d+|-specials)-", stem)
+        if not match:
+            return True
+        if item_type == ScrapingTarget.TV:
+            logger.info(f"当前为电视剧根目录刮削，跳过季图片：{image_name}")
+            return False
+        if item_type != ScrapingTarget.SEASON or season_number is None:
+            return True
+        image_season = 0 if match.group(1) == "-specials" else int(match.group(1))
+        if image_season != season_number:
+            logger.info(f"当前刮削季为：{season_number}，跳过非本季图片：{image_name}")
+            return False
+        return True
+
+    @classmethod
+    def _image_type_stems(
+            cls,
+            image_path: Path,
+            metadata_type: ScrapingMetadata,
+    ) -> set[str]:
+        """
+        返回同一图片类型可接受的文件名主体。
+
+        :param image_path: 当前目标图片路径
+        :param metadata_type: 当前图片元数据类型
+        :return: 用于大小写不敏感存在性判断的文件名主体集合
+        """
+        stem = image_path.stem.lower()
+        aliases = {
+            key
+            for key, value in cls.IMAGE_METADATA_MAP.items()
+            if value == metadata_type and not key.startswith("season")
+        }
+        if metadata_type in {ScrapingMetadata.THUMB, ScrapingMetadata.LANDSCAPE}:
+            aliases.update({"thumb", "landscape"})
+        if stem in aliases:
+            return aliases
+        return {stem}
+
+    def _image_exists_for_type(
+            self,
+            fileitem: _SchemaFileItem,
+            image_path: Path,
+            metadata_type: ScrapingMetadata,
+            directory_cache: dict[tuple[str, str], set[str]],
+    ) -> bool:
+        """
+        按图片类型和受支持扩展名判断目标目录是否已有图片。
+
+        精确查询优先，未命中时只列举一次目标目录，并忽略文件名及扩展名大小写。
+
+        :param fileitem: 目标目录项
+        :param image_path: 期望图片路径
+        :param metadata_type: 当前图片元数据类型
+        :param directory_cache: 本次刮削的目录文件名缓存
+        :return: 已存在同类型图片时返回 True
+        """
+        if not fileitem.storage or not fileitem.path:
+            return False
+        existing_item = self.storagechain.get_file_item(storage=fileitem.storage, path=image_path)
+        if existing_item and existing_item.type == "file":
+            return True
+
+        cache_key = (fileitem.storage, str(fileitem.path))
+        names = directory_cache.get(cache_key)
+        if names is None:
+            names = set()
+            children = self.storagechain.list_files(fileitem, recursion=False)
+            if isinstance(children, list):
+                names = {
+                    child.name.lower()
+                    for child in children
+                    if child.type == "file" and child.name
+                }
+            directory_cache[cache_key] = names
+
+        stems = self._image_type_stems(image_path=image_path, metadata_type=metadata_type)
+        return any(
+            Path(name).stem in stems
+            and (
+                ".jpg" if Path(name).suffix.lower() == ".jpeg" else Path(name).suffix.lower()
+            ) in self.IMAGE_EXTENSIONS
+            for name in names
+        )
 
     def _get_target_fileitem_and_path(
             self,
@@ -456,10 +862,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         根据当前上下文、刮削项类型和元数据类型生成目标 FileItem 和 Path
         处理 NFO 和图片文件的命名约定及存储位置
         """
-        # 默认保存的目录是当前文件项的目录
         target_dir_item = current_fileitem
-        target_dir_path = Path(current_fileitem.path)
-        final_filename = filename_hint  # 如果提供了 filename_hint，优先使用
+        target_dir_path = Path(cast(str, current_fileitem.path))
+        normalized_hint = self._normalize_image_filename(filename_hint)
+        final_filename = filename_hint if metadata_type == ScrapingMetadata.NFO else normalized_hint
 
         # 针对 NFO 文件的特殊命名和存储逻辑
         if metadata_type == ScrapingMetadata.NFO:
@@ -467,24 +873,23 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if current_fileitem.type == "file":
                     # 电影文件NFO: 放在电影文件同级目录，名称与电影文件主体一致，后缀.nfo
                     final_filename = f"{target_dir_path.stem}.nfo"
-                    target_dir_item = (
+                    parent_item = (
                         parent_fileitem
                         or self.storagechain.get_parent_item(current_fileitem)
                     )
-                    if not target_dir_item:
+                    if not parent_item or not parent_item.path:
                         logger.error(
                             f"无法获取文件 {current_fileitem.path} 的父目录项。"
                         )
                         return (
                             current_fileitem,
                             None,
-                        )  # 返回一个表示失败的FileItem和None
-                    target_dir_path = Path(target_dir_item.path)
-                else:  # current_fileitem.type == "dir"
+                        )
+                    target_dir_item = parent_item
+                    target_dir_path = Path(parent_item.path)
+                else:
                     # 电影目录NFO (例如蓝光原盘): 放在电影目录内，名称与目录名主体一致，后缀.nfo
                     final_filename = f"{target_dir_path.name}.nfo"
-                    # target_dir_item 保持为 current_fileitem
-                    # target_dir_path 保持为 Path(current_fileitem.path)
             elif item_type == ScrapingTarget.TV:
                 # 电视剧根目录NFO: 放在剧集根目录内，命名为 tvshow.nfo
                 final_filename = "tvshow.nfo"
@@ -494,13 +899,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             elif item_type == ScrapingTarget.EPISODE:
                 # 电视剧集文件NFO: 放在集文件同级目录，名称与集文件主体一致，后缀.nfo
                 final_filename = f"{target_dir_path.stem}.nfo"
-                target_dir_item = parent_fileitem or self.storagechain.get_parent_item(
+                parent_item = parent_fileitem or self.storagechain.get_parent_item(
                     current_fileitem
                 )
-                if not target_dir_item:
+                if not parent_item or not parent_item.path:
                     logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
-                    return current_fileitem, None  # 返回一个表示失败的FileItem和None
-                target_dir_path = Path(target_dir_item.path)
+                    return current_fileitem, None
+                target_dir_item = parent_item
+                target_dir_path = Path(parent_item.path)
         # 图片通常是放在当前目录 (current_fileitem) 下
         # Jellyfin/Kodi 等在季目录内使用通用图片名，而不是 season01-poster.jpg
         elif item_type == ScrapingTarget.SEASON:
@@ -512,39 +918,39 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 ScrapingMetadata.LANDSCAPE: "landscape",
             }
             if season_image_name := season_image_name_map.get(metadata_type):
-                hint_ext = Path(filename_hint).suffix if filename_hint else ".jpg"
+                hint_ext = self._normalize_image_suffix(filename_hint)
                 final_filename = f"{season_image_name}{hint_ext}"
         elif item_type == ScrapingTarget.MOVIE and current_fileitem.type == "file":
             # 电影文件的图片应与视频文件同级保存，避免把图片路径拼到文件名下面。
-            target_dir_item = parent_fileitem or self.storagechain.get_parent_item(
+            parent_item = parent_fileitem or self.storagechain.get_parent_item(
                 current_fileitem
             )
-            if not target_dir_item:
+            if not parent_item or not parent_item.path:
                 logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
                 return current_fileitem, None
-            target_dir_path = Path(target_dir_item.path)
+            target_dir_item = parent_item
+            target_dir_path = Path(parent_item.path)
         # 如果是 EPISODE 类型的图片（如thumb），通常也是放在文件同级目录，文件名与视频文件一致
         elif (
                 metadata_type in [ScrapingMetadata.THUMB]
                 and item_type == ScrapingTarget.EPISODE
         ):
-            hint_ext = Path(filename_hint).suffix if filename_hint else ".jpg"
+            hint_ext = self._normalize_image_suffix(filename_hint)
             final_filename = f"{target_dir_path.stem}{hint_ext}"
-            target_dir_item = parent_fileitem or self.storagechain.get_parent_item(
+            parent_item = parent_fileitem or self.storagechain.get_parent_item(
                 current_fileitem
             )
-            if not target_dir_item:
+            if not parent_item or not parent_item.path:
                 logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
-                return current_fileitem, None  # 返回一个表示失败的FileItem和None
-            target_dir_path = Path(target_dir_item.path)
+                return current_fileitem, None
+            target_dir_item = parent_item
+            target_dir_path = Path(parent_item.path)
         # TODO: 考虑其他图片类型是否也需要保存到父目录
 
-        # 确保最终有文件名
         if not final_filename:
             logger.error(
                 f"无法为 {item_type.value} - {metadata_type.value} 确定文件名。filename_hint: {filename_hint}"
             )
-            # 返回一个表示失败的FileItem和None
             return current_fileitem, None
 
         target_full_path = target_dir_path / final_filename
@@ -560,7 +966,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     ) -> List[Tuple[_SchemaFileItem, Path]]:
         """
         根据刮削上下文生成一个或多个保存目标。
-        季图片需要同时兼容根目录 seasonxx-poster 和季目录 poster 两种命名。
+
+        季目录始终使用通用图片名；开启根目录写入时额外保存 season 前缀图片。
+        是否补缺或覆盖仍由调用方对每个目标独立判断。
+
+        :param current_fileitem: 当前刮削的目录或文件
+        :param item_type: 刮削目标类型
+        :param metadata_type: 元数据类型
+        :param filename_hint: 刮削源返回的文件名，季图片可带 season 前缀
+        :param parent_fileitem: 已知父目录，未提供时按需查询存储
+        :return: 按保存顺序排列的目录项和目标路径
         """
         target_item, target_path = self._get_target_fileitem_and_path(
             current_fileitem=current_fileitem,
@@ -572,7 +987,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         targets = [(target_item, target_path)] if target_path else []
 
         if (
-                item_type != ScrapingTarget.SEASON
+                not self.runtime_config.scrap_season_image_to_root
+                or item_type != ScrapingTarget.SEASON
+                or not current_fileitem.path
                 or not filename_hint
                 or not filename_hint.lower().startswith("season")
                 or metadata_type not in {
@@ -592,7 +1009,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.warn(f"无法获取季目录 {current_fileitem.path} 的父目录项，跳过根目录季图片")
             return targets
 
-        season_root_path = Path(current_fileitem.path).with_name(filename_hint)
+        season_root_path = Path(current_fileitem.path).with_name(
+            self._normalize_image_filename(filename_hint) or filename_hint
+        )
         root_target = (season_parent_item, season_root_path)
         if root_target not in targets:
             targets.insert(0, root_target)
@@ -608,6 +1027,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         例如 backdrop.jpg 同时保存为 fanart.jpg，thumb.jpg 同时保存为 landscape.jpg。
         """
         expanded = list(targets)
+        if not self.runtime_config.scrap_image_alias:
+            return expanded
         for base_item, image_path in list(targets):
             if not image_path:
                 continue
@@ -646,13 +1067,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param season: 季号
         :param episode: 集号
         """
-        return self.run_module(
+        return cast(Optional[str], self.run_module(
             "metadata_nfo",
             meta=meta,
             mediainfo=mediainfo,
             season=season,
             episode=episode,
-        )
+        ))
 
     def metadata_img(
             self,
@@ -675,7 +1096,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
             if isinstance(plugin_images, dict):
                 return plugin_images or None
-        merged = {}
+        merged: dict[str, str] = {}
         for module in sorted(
             self.modulemanager.get_running_modules("metadata_img"),
             key=lambda x: x.get_priority(),
@@ -692,21 +1113,21 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return merged or None
 
     @eventmanager.register(EventType.MetadataScrape)
-    def scrape_metadata_event(self, event: Event):
-        """监控手动刮削事件"""
+    def scrape_metadata_event(self, event: Event) -> None:
+        """
+        监控手动刮削事件
+        """
         if not event:
             return
-        event_data = event.event_data or {}
-        # 读取事件载荷
-        fileitem: _SchemaFileItem = event_data.get("fileitem")
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
+        fileitem = event_data.get("fileitem")
         file_list: List[str] = list(dict.fromkeys(event_data.get("file_list") or []))
-        meta: MetaBase = event_data.get("meta")
-        mediainfo: MediaInfo = event_data.get("mediainfo")
+        meta: Optional[MetaBase] = event_data.get("meta")
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = event_data.get("mediainfo")
         overwrite = event_data.get("overwrite", False)
-        if not fileitem:
+        if not isinstance(fileitem, _SchemaFileItem) or not fileitem.path or not fileitem.storage:
             return
 
-        # 刮削锁
         with scraping_lock:
             # 音乐刮削与影视共用 MediaChain 入口，按 ScrapingConfig 的音乐项写入标签与封面
             if getattr(mediainfo, "type", None) == MediaType.MUSIC:
@@ -717,11 +1138,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         file_list=file_list,
                     )
                     scrape_kwargs["media_by_path"] = {
-                        Path(context.get("path")).as_posix(): context.get("mediainfo")
+                        Path(context_path).as_posix(): context.get("mediainfo")
                         for context in event_data.get("file_contexts") or []
                         if (
                             isinstance(context, dict)
-                            and context.get("path")
+                            and isinstance(context_path := context.get("path"), str)
+                            and context_path
                             and isinstance(context.get("mediainfo"), MusicInfo)
                         )
                     }
@@ -734,13 +1156,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if message:
                     logger.info(f"音乐刮削：{message}")
                 return
-            # 检查文件项是否存在
             if not self.storagechain.get_item(fileitem):
                 logger.warn(f"文件项不存在：{fileitem.path}")
                 return
-            # 检查是否为目录
             if fileitem.type == "file":
-                # 单个文件刮削
                 self.scrape_metadata(
                     fileitem=fileitem,
                     mediainfo=mediainfo,
@@ -813,7 +1232,6 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             else:
                                 logger.warn(f"无法获取目录项：{sub_dir}")
 
-                        # 3. 刮削每个文件
                         logger.info(f"开始刮削 {len(file_list)} 个文件")
                         for sub_file_path in sorted(file_list):
                             sub_file_item = self.storagechain.get_file_item(
@@ -829,7 +1247,6 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             else:
                                 logger.warn(f"无法获取文件项：{sub_file_path}")
                 else:
-                    # 执行全量刮削
                     logger.info(f"开始刮削目录 {fileitem.path} ...")
                     self.scrape_metadata(
                         fileitem=fileitem,
@@ -849,21 +1266,18 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             overwrite: bool = False,
             season_number: Optional[int] = None,
             episode_number: Optional[int] = None,
-    ):
+    ) -> None:
         """
         NFO 刮削
         """
-        # 获取刮削选项
         nfo_option = self.scraping_policies.option(item_type, ScrapingMetadata.NFO)
 
-        # 检查刮削开关
         if nfo_option.is_skip:
             logger.info(
                 f"{item_type.value} {ScrapingMetadata.NFO.value} 刮削策略 {nfo_option.policy.value}"
             )
             return
 
-        # 获取目标 FileItem (`base_item`) 和 Path (`nfo_path`)
         base_item, nfo_path = self._get_target_fileitem_and_path(
             current_fileitem=current_fileitem,
             item_type=item_type,
@@ -871,17 +1285,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             parent_fileitem=parent_fileitem,
         )
 
-        if not nfo_path:  # _get_target_fileitem_and_path 内部错误处理返回None
+        if not nfo_path or not base_item.storage:
             return
 
-        # 文件存在检查
         file_exists = self.storagechain.get_file_item(
             storage=base_item.storage, path=nfo_path
         )
 
-        # 刮削决策
         if self._should_scrape(nfo_option, bool(file_exists), overwrite):
-            # 生成 NFO 内容
             nfo_content = self.metadata_nfo(
                 meta=meta,
                 mediainfo=mediainfo,
@@ -902,11 +1313,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             overwrite: bool = False,
             season_number: Optional[int] = None,
             episode_number: Optional[int] = None,
-    ):
+    ) -> None:
         """
         图片刮削
         """
-        # 获取图片 URL
         if item_type == ScrapingTarget.EPISODE:
             image_dict = self.metadata_img(
                 mediainfo=mediainfo, season=season_number, episode=episode_number
@@ -920,87 +1330,89 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.info(f"未获取到 {item_type.value} 的图片信息，跳过图片刮削。")
             return
 
-        # 遍历图片 image_name 和 image_url
+        pending_targets: dict[str, list[Tuple[_SchemaFileItem, Path]]] = {}
+        directory_cache: dict[tuple[str, str], set[str]] = {}
+        seen_targets: set[tuple[str, str, str]] = set()
+
         for image_name, image_url in image_dict.items():
-            metadata_type = None
-            # 对每个 image_name 查找匹配的 ScrapingMetadata
-            for keyword, meta_type in self.IMAGE_METADATA_MAP.items():
-                if keyword in image_name.lower():
-                    metadata_type = meta_type
-                    break
-
-            if metadata_type:
-                # 获取对应的 ScrapingOption
-                option = self.scraping_policies.option(item_type, metadata_type)
-
-                if option.is_skip:
-                    logger.info(
-                        f"{item_type.value} {option.metadata.value} 刮削策略 {option.policy.value}"
-                    )
-                    continue
-
-                # 判断是否匹配当前刮削的季号
-                if item_type == ScrapingTarget.TV and image_name.lower().startswith(
-                        "season"
-                ):
-                    logger.info(f"当前为电视剧根目录刮削，跳过季图片：{image_name}")
-                    continue
-                if (
-                        item_type == ScrapingTarget.SEASON
-                        and season_number is not None
-                        and image_name.lower().startswith("season")
-                ):
-                    # 检查是否只下载当前刮削季的图片
-                    image_season_str = (
-                        "00" if "specials" in image_name.lower() else image_name[6:8]
-                    )
-
-                    if image_season_str is not None and image_season_str != str(
-                            season_number
-                    ).rjust(2, "0"):
-                        logger.info(
-                            f"当前刮削季为：{season_number}，跳过非本季图片：{image_name}"
-                        )
-                        continue
-
-                # 获取目标 FileItem 和 Path，季图片会同时写根目录和季目录。
-                image_targets = self._get_target_fileitems_and_paths(
-                    current_fileitem=current_fileitem,
-                    item_type=item_type,
-                    metadata_type=metadata_type,
-                    filename_hint=image_name,
-                    parent_fileitem=parent_fileitem,
-                )
-
-                # 扩展别名目标（如 backdrop→fanart, thumb→landscape）
-                image_targets = self._expand_with_aliases(image_targets, item_type)
-
-                for base_item, image_path in image_targets:
-                    if not image_path:
-                        continue
-
-                    # 文件存在检查
-                    file_exists = self.storagechain.get_file_item(
-                        storage=base_item.storage, path=image_path
-                    )
-
-                    # 刮削决策
-                    if self._should_scrape(option, bool(file_exists), overwrite):
-                        self._download_and_save_image(
-                            fileitem=base_item, path=image_path, url=image_url
-                        )
-            else:
+            metadata_type, is_4k_background = self._get_image_metadata_type(
+                image_name=image_name,
+                item_type=item_type,
+                current_fileitem=current_fileitem,
+            )
+            if not metadata_type:
                 logger.debug(
                     f"未找到图片类型 {image_name} 对应的 ScrapingMetadata，跳过。"
+                )
+                continue
+            if is_4k_background and not self.runtime_config.scrap_4k_background:
+                logger.info(f"已关闭 4K 背景图刮削，跳过：{image_name}")
+                continue
+
+            option = self.scraping_policies.option(item_type, metadata_type)
+            if option.is_skip:
+                logger.info(
+                    f"{item_type.value} {option.metadata.value} 刮削策略 {option.policy.value}"
+                )
+                continue
+
+            if not self._matches_image_season(image_name, item_type, season_number):
+                continue
+
+            # 按配置生成季图片的根目录和季目录目标，再逐个应用刮削策略。
+            image_targets = self._get_target_fileitems_and_paths(
+                current_fileitem=current_fileitem,
+                item_type=item_type,
+                metadata_type=metadata_type,
+                filename_hint=image_name,
+                parent_fileitem=parent_fileitem,
+            )
+
+            # 扩展别名目标（如 backdrop→fanart, thumb→landscape）。
+            image_targets = self._expand_with_aliases(image_targets, item_type)
+
+            for base_item, image_path in image_targets:
+                if not image_path or not base_item.storage:
+                    continue
+                target_key = (base_item.storage, str(image_path.parent), image_path.stem.lower())
+                if target_key in seen_targets:
+                    continue
+                seen_targets.add(target_key)
+
+                file_exists = self._image_exists_for_type(
+                    fileitem=base_item,
+                    image_path=image_path,
+                    metadata_type=metadata_type,
+                    directory_cache=directory_cache,
+                )
+                if self._should_scrape(option, file_exists, overwrite):
+                    pending_targets.setdefault(str(image_url), []).append(
+                        (base_item, image_path)
+                    )
+
+        for image_url, targets in pending_targets.items():
+            first_item, first_path = targets[0]
+            if len(targets) == 1:
+                self._download_and_save_image(
+                    fileitem=first_item,
+                    path=first_path,
+                    url=image_url,
+                )
+            else:
+                self._download_and_save_image(
+                    fileitem=first_item,
+                    path=first_path,
+                    url=image_url,
+                    reuse_targets=targets[1:],
                 )
 
     def scrape_metadata(
             self,
             fileitem: _SchemaFileItem,
-            meta: MetaBase = None,
-            mediainfo: Union[MediaInfo, MusicInfo] = None,
+            meta: Optional[MetaBase] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             init_folder: bool = True,
-            parent: _SchemaFileItem = None,
+            parent: Optional[_SchemaFileItem] = None,
             overwrite: bool = False,
             recursive: bool = True,
             audio_files: Optional[list[_SchemaFileItem]] = None,
@@ -1013,16 +1425,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param init_folder: 是否刮削根目录
-        :param parent: 上级目录
+        :param parent: 上级目录；未提供时由刮削目标自行确定
         :param overwrite: 是否覆盖已有文件
         :param recursive: 是否递归处理目录内文件
         :param audio_files: 音乐批次已确认成功的音频文件清单
         :param media_by_path: 音乐批次每个音频文件对应的标准身份
         """
-        if not fileitem:
-            return False, "未提供刮削文件"
+        if not fileitem or not fileitem.path or not fileitem.storage:
+            return False, "未提供有效的刮削文件路径和存储类型"
 
-        # 当前文件路径
         filepath = Path(fileitem.path)
         is_music = (
             getattr(mediainfo, "type", None) == MediaType.MUSIC
@@ -1035,7 +1446,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if is_music:
             music_info = (
                 mediainfo
-                if getattr(mediainfo, "type", None) == MediaType.MUSIC
+                if isinstance(mediainfo, MusicInfo)
                 else None
             )
             music_kwargs: dict[str, Any] = {}
@@ -1055,41 +1466,27 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         ):
             return False, "刮削路径不是支持的媒体文件"
 
-        # 准备元数据和媒体信息
         if not meta:
             meta = MetaInfoPath(filepath)
         if not mediainfo:
             mediainfo = MediaChain().recognize_by_meta(meta)
-        if not mediainfo:
+        if not isinstance(mediainfo, MediaInfo):
             logger.warn(f"{filepath} 无法识别文件媒体信息！")
             return False, "未识别到媒体信息"
 
         logger.info(f"开始刮削：{filepath} ...")
 
-        # 根据媒体类型分发处理逻辑
-        if mediainfo.type == MediaType.MOVIE:
-            self._handle_movie_scraping(
-                fileitem=fileitem,
-                meta=meta,
-                mediainfo=mediainfo,
-                init_folder=init_folder,
-                parent=parent,
-                overwrite=overwrite,
-                recursive=recursive,
-            )
-        elif mediainfo.type == MediaType.TV:
-            self._handle_tv_scraping(
-                fileitem=fileitem,
-                meta=meta,
-                mediainfo=mediainfo,
-                init_folder=init_folder,
-                parent=parent,
-                overwrite=overwrite,
-                recursive=recursive,
-            )
-        else:
+        handlers = {MediaType.MOVIE: self._handle_movie_scraping, MediaType.TV: self._handle_tv_scraping}
+        handler = handlers.get(mediainfo.type) if mediainfo.type is not None else None
+        if handler is None:
             logger.warn(f"{filepath} 媒体类型不支持刮削：{mediainfo.type}")
             return False, "媒体类型不支持刮削"
+        try:
+            handler(fileitem=fileitem, meta=meta, mediainfo=mediainfo, init_folder=init_folder,
+                    parent=parent, overwrite=overwrite, recursive=recursive)
+        except OSError as error:
+            logger.warning(f"{filepath} 刮削失败：{error}")
+            return False, str(error)
 
         logger.info(f"{filepath.name} 刮削完成")
         return True, f"{filepath.name} 刮削完成"
@@ -1103,12 +1500,21 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             audio_files: Optional[list[_SchemaFileItem]] = None,
             media_by_path: Optional[dict[str, MusicInfo]] = None,
     ) -> tuple[bool, str]:
-        """为音频文件或目录写入音乐标签和封面，应用系统刮削策略，复用现有存储下载上传能力。
+        """
+        为音频文件或目录写入音乐标签和封面，应用系统刮削策略，复用现有存储下载上传能力。
 
         音乐识别由 MediaChain 提供，标签、封面和歌词写入仅由当前刮削链编排。
 
-        :param audio_files: 已确认属于本批次的音频文件；为空时按 fileitem 展开
+        音乐标签设为覆盖时，只有可靠对位的专辑曲目才可替换本地曲目字段；
+        手动覆盖允许以唯一曲序纠正曲名，自动刮削继续使用严格证据。
+
+        :param fileitem: 待刮削的音频文件或目录
+        :param mediainfo: 用户或识别流程指定的音乐身份
+        :param overwrite: 是否按手动覆盖语义处理已有产物
+        :param media_source: 未指定身份时用于识别音频的来源
+        :param audio_files: 已确认属于本批次的音频文件；为 None 时按 fileitem 展开
         :param media_by_path: 每个音频文件对应的音乐身份，避免批次内不同单曲互相覆盖
+        :return: 刮削是否成功及标签、歌词的处理说明
         """
         files = self._normalize_music_audio_fileitems(
             audio_files if audio_files is not None else self._music_audio_fileitems(fileitem)
@@ -1121,7 +1527,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if isinstance(info, MusicInfo)
         }
         file_media = [
-            normalized_media_by_path.get(Path(item.path).as_posix(), mediainfo)
+            normalized_media_by_path.get(Path(item.path or "").as_posix(), mediainfo)
             for item in files
         ]
         distinct_recordings = {
@@ -1146,9 +1552,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 deadline=time.monotonic() + max(self.runtime_config.lyrics_batch_timeout, 0)
             )
         cover_cache: dict[str, tuple[Optional[bytes], str]] = {}
-        album_cache: dict[tuple[str, str], Optional[MusicAlbumInfo]] = {}
+        album_cache: dict[tuple[MediaSource, str, Optional[str]], Optional[MusicAlbumInfo]] = {}
+        album_tracks = self._plan_music_album_tracks(
+            files, file_media, album_cache, allow_title_override=overwrite,
+        ) if nfo_option.is_overwrite and not nfo_option.is_skip else {}
 
         failures: list[str] = []
+        track_counts = {True: 0, False: 0}
         lyrics_counts = {
             "saved": 0,
             "existing": 0,
@@ -1170,20 +1580,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if cover_url not in cover_cache:
                     cover_cache[cover_url] = self._download_music_cover(cover_url)
                 item_cover = cover_cache[cover_url]
-            album_info = None
-            if (
-                    item_media
-                    and item_media.music_type == MUSIC_ENTITY_ALBUM
-                    and item_media.media_source
-                    and item_media.media_id
-            ):
-                album_key = (item_media.media_source, item_media.media_id)
-                if album_key not in album_cache:
-                    album_cache[album_key] = MediaChain().get_music_album(
-                        media_source=item_media.media_source,
-                        media_id=item_media.media_id,
-                    )
-                album_info = album_cache[album_key]
+            album_info = self._music_scrape_album(item_media, album_cache)
             result = self._scrape_music_file(
                 audio_item,
                 item_media,
@@ -1197,6 +1594,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 lyrics_chain=lyrics_chain,
                 album_info=album_info,
                 media_source=media_source,
+                album_track=album_tracks.get(self._music_file_key(audio_item)),
             )
             if not result.metadata_success:
                 failures.append(
@@ -1206,8 +1604,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 lyrics_counts[result.lyrics_status] += 1
             if result.lyrics_status == "failed":
                 failures.append(f"{audio_item.name or audio_item.path} 歌词保存失败")
+            if result.album_track_matched is not None:
+                track_counts[result.album_track_matched] += 1
 
         message = f"已刮削 {len(files)} 个音频文件"
+        track_summary = self._music_album_track_summary(track_counts, nfo_option.is_overwrite)
+        if track_summary:
+            message += f"，{track_summary}"
+            logger.info(f"音乐专辑刮削：{track_summary}")
         if not lyrics_option.is_skip:
             message += (
                 f"，歌词新增 {lyrics_counts['saved']} 首"
@@ -1225,8 +1629,213 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return True, message
 
     @staticmethod
-    def _music_scrape_identity(info: MusicInfo) -> tuple:
-        """构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。"""
+    def _music_album_track_summary(counts: dict[bool, int], overwrite: bool) -> str:
+        """
+        说明已对位和保留的曲目，避免把专辑字段更新误认为曲目标签已覆盖。
+        """
+        matched, preserved = counts[True], counts[False]
+        if not matched and not preserved:
+            return ""
+        if not overwrite:
+            return f"{preserved} 个文件保留已有曲名、艺人和曲序；音乐标签设为覆盖可尝试更新"
+        if preserved:
+            return f"曲目匹配 {matched} 个，{preserved} 个文件未可靠匹配，保留已有曲名、艺人和曲序"
+        return f"曲目匹配 {matched} 个"
+
+    @staticmethod
+    def _music_album_key(info: Optional[MusicInfo]) -> Optional[tuple[MediaSource, str, Optional[str]]]:
+        """
+        区分专辑来源、发行组和明确选择的 MusicBrainz 发行版本。
+        """
+        if not info or info.music_type != MUSIC_ENTITY_ALBUM or not info.media_source or not info.media_id:
+            return None
+        release_id = (
+            info.musicbrainz_release_id.lower()
+            if info.media_source == MediaSource.MusicBrainz and info.musicbrainz_release_id
+            else None
+        )
+        return info.media_source, info.media_id, release_id
+
+    def _music_scrape_album(
+            self,
+            info: Optional[MusicInfo],
+            cache: dict[tuple[MediaSource, str, Optional[str]], Optional[MusicAlbumInfo]],
+    ) -> Optional[MusicAlbumInfo]:
+        """
+        获取并复用专辑曲目；显式发行版本不能被默认代表版本替换。
+        """
+        key = self._music_album_key(info)
+        if key is None:
+            return None
+        if key not in cache:
+            source, media_id, release_id = key
+            kwargs: dict[str, Any] = {"media_source": source, "media_id": media_id}
+            if release_id:
+                kwargs["musicbrainz_release_id"] = release_id
+            cache[key] = MediaChain().get_music_album(**kwargs)
+        return cache[key]
+
+    @staticmethod
+    def _music_file_key(item: _SchemaFileItem) -> tuple[str, str]:
+        """
+        用存储和规范路径区分批次内的音频文件。
+        """
+        return item.storage or "local", Path(item.path or "").as_posix()
+
+    @staticmethod
+    def _remote_music_copy_matches(item: _SchemaFileItem, path: Path, directory: Path) -> bool:
+        """
+        远端音轨必须以原文件名下载到指定目录，CUE 才能按原引用定位它。
+        """
+        return bool(
+            item.path and path.name == Path(item.path).name and path.parent.resolve() == directory.resolve()
+        )
+
+    def _read_music_track_evidence(self, item: _SchemaFileItem) -> Optional[MetaMusic]:
+        """
+        只读取得对位证据；远端副本逐个释放，避免把整张专辑常驻临时目录。
+        """
+        if item.storage == "local":
+            path = self.storagechain.download_file(item)
+            return AudioMetadataHelper.read(path) if path else None
+        with TemporaryDirectory(prefix="moviepilot-music-align-") as directory:
+            path = self.storagechain.download_file(item, path=Path(directory))
+            if not path or not self._remote_music_copy_matches(item, path, Path(directory)):
+                return None
+            if not self._stage_remote_music_cues(item, Path(directory)):
+                return None
+            return AudioMetadataHelper.read(path)
+
+    def _stage_remote_music_cues(self, item: _SchemaFileItem, directory: Path) -> bool:
+        """
+        将远端同目录 CUE 带到临时副本旁；目录或索引不可读取时不猜测曲目。
+        """
+        if not music_cue_enabled():
+            return True
+        parent = self.storagechain.get_parent_item(item)
+        if not parent:
+            return False
+        siblings = self.storagechain.list_files(parent, recursion=False)
+        if siblings is None or not any(
+            sibling.type == "file" and self._music_file_key(sibling) == self._music_file_key(item)
+            for sibling in siblings
+        ):
+            # 普通目录列表可能把失败当成空列表；至少要能确认当前音轨在返回结果中。
+            return False
+        cues = [
+            sibling for sibling in siblings
+            if sibling.type == "file"
+            and (name := Path(sibling.path or sibling.name or "")).suffix.casefold() == ".cue"
+            and not name.name.startswith(".")
+        ]
+        if len(cues) > self.MUSIC_MAX_CUE_FILES:
+            return False
+        for sibling in cues:
+            cue = self.storagechain.download_file(sibling, path=directory)
+            if (
+                    not cue or cue.name != Path(sibling.path or "").name
+                    or cue.suffix.casefold() != ".cue" or cue.parent.resolve() != directory.resolve()
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _music_track_evidence_unchanged(expected: MetaMusic, current: MetaMusic) -> bool:
+        """
+        写入前复核对位所用的标签和 CUE 证据，避免使用过期匹配覆盖新内容。
+        """
+        fields = (
+            "title", "artists", "track_number", "disc_number", "duration", "version", "isrc",
+            "media_source", "media_id", "music_type", "musicbrainz_release_id",
+            "musicbrainz_release_group_id", "musicbrainz_release_track_id",
+            "composers", "conductors", "orchestras", "performers",
+            "music_layout", "cue_tracks", "organization_error",
+        )
+        return all(getattr(expected, key) == getattr(current, key) for key in fields) and all(
+            expected.field_sources.get(key) == current.field_sources.get(key)
+            for key in ("title", "artists")
+        )
+
+    @staticmethod
+    def _music_track_identity_conflicts(local: MetaMusic, track: MusicInfo) -> bool:
+        """
+        手动纠正曲名也不能忽略明确不同的录音、发行身份或 ISRC。
+        """
+        local_id, track_id = local.media_id, track.media_id
+        if local.media_source == track.media_source == MediaSource.MusicBrainz:
+            local_id = local_id.lower() if local_id else None
+            track_id = track_id.lower() if track_id else None
+        return bool(
+            music_isrc_conflicts(track, local)
+            or (
+                local_id and track_id and local.media_source == track.media_source and local_id != track_id
+            )
+            or any(
+                getattr(local, key) and getattr(track, key)
+                and getattr(local, key).lower() != getattr(track, key).lower()
+                for key in ("musicbrainz_release_id", "musicbrainz_release_group_id", "musicbrainz_release_track_id")
+            )
+        )
+
+    def _plan_music_album_tracks(
+            self,
+            files: list[_SchemaFileItem],
+            file_media: list[Optional[MusicInfo]],
+            cache: dict[tuple[MediaSource, str, Optional[str]], Optional[MusicAlbumInfo]],
+            *,
+            allow_title_override: bool,
+    ) -> dict[tuple[str, str], tuple[MetaMusic, MusicInfo]]:
+        """
+        为每张专辑按整批双向唯一证据对位，拒绝整轨 CUE 和身份冲突。
+
+        手动覆盖或已锁定具体发行版本时，允许用唯一曲序纠正旧曲名；仅拿到
+        发行组代表版本时仍要求曲名或艺人证据，避免不同版本的曲序差异误配。
+        远端音频在对位与实际写入时分别下载，写入前重新核对证据；
+        不依赖文件排序或把尚未匹配的剩余文件强行分配给曲目。
+        """
+        groups: dict[tuple[MediaSource, str, Optional[str]], list[_SchemaFileItem]] = {}
+        infos: dict[tuple[MediaSource, str, Optional[str]], MusicInfo] = {}
+        for item, info in zip(files, file_media):
+            key = self._music_album_key(info)
+            if key is not None and info is not None:
+                groups.setdefault(key, []).append(item)
+                infos[key] = info
+
+        planned: dict[tuple[str, str], tuple[MetaMusic, MusicInfo]] = {}
+        for key, items in groups.items():
+            album = self._music_scrape_album(infos[key], cache)
+            if not album or not album.tracks or not music_album_has_consistent_tracks(album):
+                continue
+            if album.media_source != key[0] or album.media_id != key[1] or (key[2] and album.musicbrainz_release_id != key[2]):
+                continue
+            tracks = [track for track in album.tracks if track.music_type == MUSIC_ENTITY_RECORDING]
+            evidence = [(item, self._read_music_track_evidence(item)) for item in items]
+            eligible = [
+                (item, meta) for item, meta in evidence
+                if meta is not None and meta.music_layout != "image_cue" and not meta.organization_error
+            ]
+            if len(eligible) != len(items):
+                # 不完整的本地证据无法证明整批文件与线上曲目之间的双向唯一性。
+                continue
+            aligned = align_music_tracks(
+                [meta for _, meta in eligible],
+                tracks,
+                allow_title_override=allow_title_override or bool(key[2]),
+            )
+            for index, remote in aligned.items():
+                item, meta = eligible[index]
+                track = tracks[remote]
+                if not self._music_track_identity_conflicts(meta, track):
+                    planned[self._music_file_key(item)] = meta, deepcopy(track)
+        return planned
+
+    @staticmethod
+    def _music_scrape_identity(
+            info: MusicInfo,
+    ) -> tuple[Optional[MediaSource], Optional[str], str, Optional[str], Optional[int], Optional[int]]:
+        """
+        构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。
+        """
         return (
             info.media_source,
             info.media_id,
@@ -1240,43 +1849,61 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     @cached(
         maxsize=64,
         ttl_provider=lambda: get_chain_runtime_config_snapshot().metadata_cache_ttl,
-        skip_none=True, local_only=True,  # 封面为图片二进制，固定用进程内有界缓存，Redis 不支持 maxsize
+        # 封面为图片二进制，固定用进程内有界缓存，Redis 不支持 maxsize
+        skip_none=True, local_only=True,
     )
     def _request_music_cover(url: str) -> Optional[tuple[Optional[bytes], str]]:
-        """下载并缓存音乐封面；仅稳定 404 与成功响应进入有界缓存。"""
-        response = _scraping_http_snapshot().get(
-            url,
-            proxies=get_chain_runtime_config_snapshot().proxy,
-            ua=get_chain_runtime_config_snapshot().normal_user_agent,
-            timeout=20,
-        )
-        if response is None:
-            return None
-        try:
-            if response.status_code == 404:
-                return None, "image/jpeg"
-            if response.status_code != 200:
-                logger.warning(f"音乐封面下载失败：{response.status_code} {url}")
+        """
+        下载并缓存音乐封面；仅稳定 404 与成功响应进入有界缓存。
+
+        front-500 缩略图 404 时回退请求 /front 原图：Cover Art Archive
+        元数据报告有封面时缩略图派生文件仍可能缺失，而原图可用。
+        """
+        candidates = [url]
+        if url.endswith("/front-500"):
+            candidates.append(f"{url[: -len('/front-500')]}/front")
+        for candidate in candidates:
+            response = _scraping_http_snapshot().get(
+                candidate,
+                proxies=get_chain_runtime_config_snapshot().proxy,
+                ua=get_chain_runtime_config_snapshot().normal_user_agent,
+                timeout=20,
+            )
+            if response is None:
                 return None
-            mime = (response.headers.get("Content-Type") or "image/jpeg").split(";", 1)[0]
-            return response.content, mime
-        finally:
-            response.close()
+            try:
+                if response.status_code == 404:
+                    logger.info(f"音乐封面下载 404：{candidate}")
+                    continue
+                if response.status_code != 200:
+                    logger.warning(f"音乐封面下载失败：{response.status_code} {candidate}")
+                    return None
+                mime = (response.headers.get("Content-Type") or "image/jpeg").split(";", 1)[0]
+                return response.content, mime
+            finally:
+                response.close()
+        return None, "image/jpeg"
 
     @staticmethod
     def _download_music_cover(url: Optional[str]) -> tuple[Optional[bytes], str]:
-        """通过有界缓存下载音乐封面，并统一返回图片内容与 MIME 类型。"""
+        """
+        通过有界缓存下载音乐封面，并统一返回图片内容与 MIME 类型。
+        """
         if not url:
             return None, "image/jpeg"
         return ScrapingChain._request_music_cover(url) or (None, "image/jpeg")
 
     @staticmethod
     def _is_music_audio_file(path: str) -> bool:
-        """判断路径是否指向系统支持的音频文件。"""
+        """
+        判断路径是否指向系统支持的音频文件。
+        """
         return Path(path).suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
 
     def _music_audio_fileitems(self, fileitem: _SchemaFileItem) -> list[_SchemaFileItem]:
-        """展开待刮削目录并过滤系统支持的音频文件。"""
+        """
+        展开待刮削目录并过滤系统支持的音频文件。
+        """
         if fileitem.type != "dir":
             return [fileitem] if self._is_music_audio_file(fileitem.path or "") else []
         return [
@@ -1290,13 +1917,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             cls,
             fileitems: Iterable[_SchemaFileItem],
     ) -> list[_SchemaFileItem]:
-        """过滤并按存储路径去重已选音频文件，保持调用方给出的顺序。"""
+        """
+        过滤并按存储路径去重已选音频文件，保持调用方给出的顺序。
+        """
         normalized: list[_SchemaFileItem] = []
         seen: set[tuple[str, str]] = set()
         for item in fileitems or []:
             if (
                     not item
                     or item.type != "file"
+                    or not item.path
                     or not cls._is_music_audio_file(item.path or "")
             ):
                 continue
@@ -1312,7 +1942,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             root: _SchemaFileItem,
             file_list: Iterable[str],
     ) -> list[_SchemaFileItem]:
-        """把刮削事件中的成功路径恢复为文件项，并限制在事件媒体根目录内。"""
+        """
+        把刮削事件中的成功路径恢复为文件项，并限制在事件媒体根目录内。
+        """
+        if not root.path or not root.storage:
+            return []
         root_path = Path(root.path)
         selected: list[_SchemaFileItem] = []
         for raw_path in file_list or []:
@@ -1350,8 +1984,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             lyrics_chain: Optional[LyricsChain] = None,
             album_info: Optional[MusicAlbumInfo] = None,
             media_source: Optional[MediaSource] = None,
+            album_track: Optional[tuple[MetaMusic, MusicInfo]] = None,
     ) -> _MusicScrapeFileResult:
-        """下载单个音轨并执行标签、封面和歌词刮削，远端产物写回原目录。"""
+        """
+        下载单个音轨并执行标签、封面和歌词刮削，远端产物写回原目录。
+        """
         storage = self.storagechain
         download_failure = _MusicScrapeFileResult(
             metadata_success=not (write_tags or with_cover),
@@ -1379,12 +2016,18 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 lyrics_chain=lyrics_chain,
                 album_info=album_info,
                 media_source=media_source,
+                album_track=album_track,
             )
 
         with TemporaryDirectory(prefix="moviepilot-music-scrape-") as temp_dir:
             local_path = storage.download_file(fileitem, path=Path(temp_dir))
             if not local_path:
                 return download_failure
+            if album_track and (
+                    not self._remote_music_copy_matches(fileitem, local_path, Path(temp_dir))
+                    or not self._stage_remote_music_cues(fileitem, Path(temp_dir))
+            ):
+                album_track = None
             return self._apply_music_file_scrape(
                 fileitem=fileitem,
                 local_path=local_path,
@@ -1399,6 +2042,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 lyrics_chain=lyrics_chain,
                 album_info=album_info,
                 media_source=media_source,
+                album_track=album_track,
             )
 
     def _apply_music_file_scrape(
@@ -1416,9 +2060,31 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             lyrics_chain: Optional[LyricsChain],
             album_info: Optional[MusicAlbumInfo],
             media_source: Optional[MediaSource],
+            album_track: Optional[tuple[MetaMusic, MusicInfo]] = None,
     ) -> _MusicScrapeFileResult:
-        """在本地音轨副本上执行刮削，并将变更后的音频和歌词写回目标存储。"""
-        scrape_info = self._resolve_music_scrape_info(local_path, mediainfo, media_source=media_source)
+        """
+        在本地音轨副本上执行刮削，并将变更后的音频和歌词写回目标存储。
+        """
+        album_track_matched = None
+        scrape_info: Optional[Union[MetaMusic, MusicInfo]]
+        if write_tags and mediainfo and mediainfo.music_type == MUSIC_ENTITY_ALBUM:
+            local_meta = AudioMetadataHelper.read(local_path)
+            track = (
+                album_track[1]
+                if album_track and self._music_track_evidence_unchanged(album_track[0], local_meta)
+                else None
+            )
+            album_track_matched = track is not None
+            self._preserve_music_image_tags(local_path, local_meta)
+            scrape_info = self._merge_music_album_metadata(local_meta, mediainfo, track)
+        else:
+            scrape_info = self._resolve_music_scrape_info(local_path, mediainfo, media_source=media_source)
+        if with_cover:
+            if cover is None:
+                cover_url = getattr(mediainfo, "cover_url", None) or getattr(scrape_info, "cover_url", None)
+                cover = self._download_music_cover(cover_url)
+            if not cover[0]:
+                cover = self._load_local_music_cover(fileitem)
         metadata_requested = write_tags or with_cover
         metadata_success = True
         if metadata_requested:
@@ -1458,17 +2124,60 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return _MusicScrapeFileResult(
             metadata_success=metadata_success,
             lyrics_status=lyrics_status,
+            album_track_matched=album_track_matched if metadata_success else None,
         )
 
     @staticmethod
-    def _merge_music_album_metadata(local_meta: MetaMusic, album: MusicInfo) -> MetaMusic:
-        """把专辑级字段合并到单个音轨标签，同时保留该文件自己的标题、艺术家和曲序。"""
+    def _preserve_music_image_tags(path: Path, meta: MetaMusic) -> None:
+        """
+        整轨 CUE 的识别结果使用专辑标题，但已有音频标签仍须按保留策略留存。
+
+        :param path: 已下载的音频路径
+        :param meta: 可原地调整的 CUE 合并元数据
+        """
+        if meta.music_layout != "image_cue":
+            return
+        tags = AudioMetadataHelper.read_tags(path)
+        if not tags:
+            return
+        meta.title = tags.title or meta.title
+        meta.artists = list(tags.artists or meta.artists)
+        meta.track_number = tags.track_number
+
+    @staticmethod
+    def _merge_music_album_metadata(
+            local_meta: MetaMusic,
+            album: MusicInfo,
+            track: Optional[MusicInfo] = None,
+    ) -> MetaMusic:
+        """
+        把专辑级字段合并到音轨；仅在曲目已可靠对位时采用非空的线上曲目字段。
+
+        单碟专辑除外：线上碟数已确认为 1 时碟号必为 1，本地错标的碟号不能
+        再与 total_discs=1 配成 "2/1" 写进标签。音轨身份仍使用本地录音 ID，
+        不能用专辑 ID 补位。
+
+        :param local_meta: 当前音频读取的标签与路径证据
+        :param album: 需要合并的专辑信息
+        :param track: 已可靠对位的专辑曲目；为 None 时保留本地曲目字段
+        :return: 不修改输入对象的合并结果
+        """
         merged = deepcopy(local_meta)
         merged.artists = list(local_meta.artists or album.artists)
         merged.album = album.album or album.title or local_meta.album
         merged.album_artist = album.album_artist or album.artist or local_meta.album_artist
         merged.year = album.year or local_meta.year
         merged.total_tracks = album.total_tracks or local_meta.total_tracks
+        merged.total_discs = album.total_discs or local_meta.total_discs
+        if album.total_discs == 1:
+            merged.disc_number = 1
+        if track:
+            merged.title = track.title or merged.title
+            merged.artists = list(track.artists or merged.artists)
+            merged.track_number = track.track_number or merged.track_number
+            merged.total_tracks = track.total_tracks or merged.total_tracks
+            if album.total_discs != 1:
+                merged.disc_number = track.disc_number or merged.disc_number
         # MetaMusic 的身份代表音轨；保留已有单曲 ID，不能用专辑 ID 补位，
         # 否则会误写 musicbrainz_trackid，使下次拿 release-group 查询 recording。
         return merged
@@ -1479,7 +2188,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             local_meta: MetaMusic,
             album_info: Optional[MusicAlbumInfo],
     ) -> Optional[MusicInfo]:
-        """按碟号、曲序、标题、艺术家和时长为本地文件匹配专辑中的单个音轨。"""
+        """
+        按碟号、曲序、标题、艺术家和时长为本地文件匹配专辑中的单个音轨。
+        """
         if not album_info or not album_info.tracks:
             return None
         local_title = cls._normalize_music_track_title(local_meta.title)
@@ -1529,7 +2240,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @classmethod
     def _normalize_music_track_title(cls, value: Optional[str]) -> str:
-        """规范化音轨标题并移除常见文件名前置碟号和曲序。"""
+        """
+        规范化音轨标题并移除常见文件名前置碟号和曲序。
+        """
         title = cls._music_track_prefix_pattern.sub("", str(value or "").strip())
         return re.sub(r"[^\w]+", "", title.casefold(), flags=re.UNICODE)
 
@@ -1540,7 +2253,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo: Optional[MusicInfo],
             media_source: Optional[MediaSource] = None,
     ) -> Optional[MetaMusic | MusicInfo]:
-        """在文件已下载到本地后解析刮削信息，专辑场景只覆盖专辑级标签。"""
+        """
+        在文件已下载到本地后解析刮削信息，专辑场景只覆盖专辑级标签。
+        """
         if mediainfo and mediainfo.music_type == MUSIC_ENTITY_ALBUM:
             return cls._merge_music_album_metadata(
                 AudioMetadataHelper.read(local_path),
@@ -1569,7 +2284,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             scrape_info: Optional[MetaMusic | MusicInfo] = None,
             media_source: Optional[MediaSource] = None,
     ) -> bool:
-        """解析单个本地音轨并按独立策略写入标签和封面。"""
+        """
+        解析单个本地音轨并按独立策略写入标签和封面。
+        """
         scrape_info = scrape_info or self._resolve_music_scrape_info(
             local_path,
             mediainfo,
@@ -1595,6 +2312,46 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             cover_overwrite=cover_overwrite,
         )
 
+    def _load_local_music_cover(self, fileitem: _SchemaFileItem) -> tuple[Optional[bytes], str]:
+        """
+        全局开关开启且在线封面不可用时经存储端口读取本地图片，跳过坏图。
+        """
+        if not get_runtime_setting("MUSIC_LOCAL_COVER_ENABLE"):
+            return None, "image/jpeg"
+
+        from PIL import Image
+
+        parent = self.storagechain.get_parent_item(fileitem)
+        if not parent:
+            return None, "image/jpeg"
+        if MetaMusic.parse_disc_dir(Path(str(parent.path)).name) is not None:
+            # 整理把碟片目录内的封面放到专辑根，刮削仍从该发行范围内取图。
+            parent = self.storagechain.get_parent_item(parent) or parent
+        patterns = get_runtime_setting("MUSIC_COVER_FILE_PATTERNS")
+        candidates = []
+        for item in self.storagechain.list_files(parent, recursion=False) or []:
+            priority = music_cover_priority(str(item.path or item.name or ""), patterns)
+            if item.type == "file" and priority is not None:
+                candidates.append((priority, str(item.path).casefold(), item))
+        for _priority, _name, item in sorted(candidates, key=lambda value: value[:2]):
+            try:
+                with TemporaryDirectory(prefix="moviepilot-music-cover-") as directory:
+                    path = self.storagechain.download_file(item, path=Path(directory))
+                    if not path:
+                        continue
+                    with Image.open(path) as picture:
+                        mime = Image.MIME.get(picture.format)
+                        picture.verify()
+                    if mime not in {"image/jpeg", "image/png", "image/webp"}:
+                        continue
+                    data = Path(path).read_bytes()
+                logger.info(f"音乐在线封面不可用，使用同目录封面：{item.path}")
+                return data, mime
+            except (OSError, ValueError) as error:
+                logger.warning(f"读取音乐本地封面失败：{item.path} - {error}")
+        logger.info(f"音乐在线及同目录封面均不可用：{fileitem.path}")
+        return None, "image/jpeg"
+
     def _scrape_music_lyrics(
             self,
             fileitem: _SchemaFileItem,
@@ -1605,7 +2362,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             lyrics_chain: Optional[LyricsChain],
             album_info: Optional[MusicAlbumInfo],
     ) -> str:
-        """按歌词策略查询单个音轨并保存同名旁挂歌词文件。"""
+        """
+        按歌词策略查询单个音轨并保存同名旁挂歌词文件。
+        """
         if not lyrics_option or lyrics_option.is_skip or not lyrics_chain:
             return "disabled"
         existing = self._find_music_lyrics_sidecar(fileitem)
@@ -1648,9 +2407,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self,
             fileitem: _SchemaFileItem,
     ) -> Optional[_SchemaFileItem]:
-        """查找音轨旁已存在的同步或纯文本歌词文件。"""
+        """
+        查找音轨旁已存在的同步或纯文本歌词文件。
+        """
+        if not fileitem.path or not fileitem.storage:
+            return None
         audio_path = Path(fileitem.path)
-        for extension in self.MUSIC_LYRICS_EXTENSIONS:
+        for extension in self._music_lyrics_extensions():
             target_path = self._music_lyrics_path(audio_path, extension)
             item = self.storagechain.get_file_item(
                 storage=fileitem.storage,
@@ -1662,21 +2425,27 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @classmethod
     def _music_lyrics_path(cls, audio_path: Path, extension: str) -> Path:
-        """构造普通歌词和双扩展名 Lyricsfile 的同名旁挂路径。"""
+        """
+        构造普通歌词和双扩展名 Lyricsfile 的同名旁挂路径。
+        """
         return audio_path.with_suffix(extension)
 
-    @staticmethod
-    def _music_lyrics_sidecar_quality(fileitem: Optional[_SchemaFileItem]) -> int:
-        """按旁挂扩展名估算质量，用于写入前执行防降级保护。"""
+    def _music_lyrics_sidecar_quality(self, fileitem: Optional[_SchemaFileItem]) -> int:
+        """
+        按旁挂扩展名估算质量，用于写入前执行防降级保护。
+
+        :param fileitem: 已存在的歌词旁挂文件
+        :return: 歌词格式质量等级
+        """
         if not fileitem:
             return 0
         path = str(fileitem.path or "").casefold()
         if path.endswith(".lyricsfile.yaml"):
             return 4
-        if path.endswith(".lrc"):
-            return 3
         if path.endswith(".txt"):
             return 1
+        if any(path.endswith(extension) for extension in self._music_lyrics_extensions()):
+            return 3
         return 0
 
     def _write_music_lyrics_sidecar(
@@ -1686,11 +2455,17 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             lyrics: MusicLyrics,
             overwrite: bool,
     ) -> bool:
-        """原子写入本地歌词或上传远端歌词，并在覆盖时清理旧格式旁挂文件。"""
+        """
+        按独立字形设置写入本地或远端歌词，保留来源内容并遵守覆盖策略。
+        """
+        if not fileitem.path:
+            return False
         extension = lyrics.extension
         content = lyrics.content
         if not extension or not content:
             return False
+        if self.runtime_config.music_lyrics_to_simplified:
+            content = self._simplify_music_lyrics_content(content)
         target_path = Path(fileitem.path).with_suffix(extension)
         target_name = target_path.name
         temp_path: Optional[Path] = None
@@ -1729,14 +2504,34 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 self._cleanup_temp_file(temp_path)
 
     @staticmethod
+    def _simplify_music_lyrics_content(content: str) -> str:
+        """
+        只转换歌词正文，原样保留 LRC 方括号标签和逐字时间轴。
+        """
+        parts = re.split(r"(\[(?:\d+:|[A-Za-z][\w-]*:)[^\]\r\n]*\]|<\d+:\d{2}(?:[.:]\d+)?>)", content)
+        return "".join(
+            part if index % 2 else convert(part, "zh-hans")
+            for index, part in enumerate(parts)
+        )
+
+    @staticmethod
     def _write_music_text_sidecar(target: Path, content: str) -> None:
-        """同目录原子替换歌词目录项，避免覆盖已有硬/软链接时改写PT源旁挂文件。"""
+        """
+        同目录原子替换歌词目录项，避免覆盖已有硬/软链接时改写PT源旁挂文件。
+
+        新建和覆盖文件均遵循刮削文件的 UMASK 规则，不沿用临时文件的私有权限。
+
+        :param target: 媒体库中需要新建或替换的歌词路径
+        :param content: 使用 UTF-8 保存的歌词正文
+        :raises OSError: 创建、设置权限或替换失败，原歌词保持不变并清理临时文件
+        """
         temporary: Optional[Path] = None
         try:
             with NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent,
                                     prefix=f".{target.name[:40]}.", delete=False) as stream:
                 temporary = Path(stream.name)
                 stream.write(f"{content.rstrip()}\n")
+            temporary.chmod(0o666 & ~current_umask)
             temporary.replace(target)
         finally:
             if temporary is not None:
@@ -1748,7 +2543,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             local_path: Path,
             content: str,
     ) -> bool:
-        """保留来源返回的标准 Lyricsfile，同时由主写入流程生成播放器兼容歌词。"""
+        """
+        保留来源返回的标准 Lyricsfile，同时由主写入流程生成播放器兼容歌词。
+        """
+        if not fileitem.path:
+            return False
         target_path = self._music_lyrics_path(Path(fileitem.path), ".lyricsfile.yaml")
         try:
             if fileitem.storage == "local":
@@ -1772,9 +2571,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             fileitem: _SchemaFileItem,
             keep_extension: str,
     ) -> None:
-        """覆盖歌词格式后删除同音轨的旧扩展名文件，避免播放器优先读取过期内容。"""
+        """
+        覆盖歌词格式后删除同音轨的旧扩展名文件，避免播放器优先读取过期内容。
+        """
+        if not fileitem.path or not fileitem.storage:
+            return
         audio_path = Path(fileitem.path)
-        for extension in self.MUSIC_LYRICS_EXTENSIONS:
+        for extension in self._music_lyrics_extensions():
             if extension in (keep_extension, ".lyricsfile.yaml"):
                 continue
             target_path = self._music_lyrics_path(audio_path, extension)
@@ -1791,10 +2594,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电影刮削
         """
@@ -1835,27 +2638,27 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             init_folder: bool,
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电影目录刮削
         """
         files = self.storagechain.list_files(fileitem=fileitem) or []
         is_bluray_folder = self.storagechain.contains_bluray_subdirectories(files)
 
-        # 递归处理文件（非蓝光原盘）
         if recursive and not is_bluray_folder:
             for file in files:
-                if file.type == "dir":
+                if file.type == "dir" or not file.path or Path(file.path).suffix.lower() not in self.runtime_config.video_extensions:
                     continue
-                self.scrape_metadata(
+                success, message = self.scrape_metadata(
                     fileitem=file,
                     mediainfo=mediainfo,
                     init_folder=False,
                     parent=fileitem,
                     overwrite=overwrite,
                 )
+                if not success:
+                    raise OSError(message)
 
-        # 初始化目录元数据
         if init_folder:
             if is_bluray_folder:
                 # 蓝光原盘目录：仅处理 NFO
@@ -1880,13 +2683,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电视剧刮削
         """
+        if not fileitem.path:
+            return
         filepath = Path(fileitem.path)
 
         if fileitem.type == "file":
@@ -1916,13 +2721,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             fileitem: _SchemaFileItem,
             filepath: Path,
             mediainfo: MediaInfo,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
-    ):
+    ) -> None:
         """
         处理电视剧集文件刮削
         """
-        # 重新识别季集信息
         file_meta = MetaInfoPath(filepath)
         if not file_meta.begin_episode:
             logger.warn(f"{filepath.name} 无法识别文件集数！")
@@ -1942,7 +2746,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.warn(f"{filepath.name} 无法识别文件媒体信息！")
             return
 
-        # 处理 NFO
+        file_mediainfo.scrape_source = mediainfo.scrape_source
+
         self._scrape_nfo_generic(
             current_fileitem=fileitem,
             meta=file_meta,
@@ -1954,7 +2759,6 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             episode_number=file_meta.begin_episode,
         )
 
-        # 处理图片
         self._scrape_images_generic(
             current_fileitem=fileitem,
             mediainfo=file_mediainfo,
@@ -1972,33 +2776,35 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电视剧目录刮削
         """
-        # 递归处理子目录和文件
         if recursive:
             files = self.storagechain.list_files(fileitem=fileitem) or []
             for file in files:
+                if file.type == "file" and (not file.path or Path(file.path).suffix.lower() not in self.runtime_config.video_extensions):
+                    continue
                 if (
                         file.type == "dir"
                         and file.name not in self.runtime_config.season_zero_names
-                        and MetaInfo(file.name).begin_season is None
+                        and MetaInfo(file.name or "").begin_season is None
                 ):
                     # 电视剧不处理非季子目录
                     continue
-                self.scrape_metadata(
+                success, message = self.scrape_metadata(
                     fileitem=file,
                     mediainfo=mediainfo,
                     parent=fileitem if file.type == "file" else None,
                     init_folder=True if file.type == "dir" else False,
                     overwrite=overwrite,
                 )
+                if not success:
+                    raise OSError(message)
 
-        # 初始化目录元数据
         if init_folder:
             self._initialize_tv_directory_metadata(
                 fileitem=fileitem,
@@ -2015,13 +2821,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             filepath: Path,
             meta: MetaBase,
             mediainfo: MediaInfo,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
-    ):
+    ) -> None:
         """
         初始化电视剧目录元数据（识别季号并刮削）
         """
-        # 识别文件夹名称
         season_meta = MetaInfo(filepath.name)
 
         # 特殊季目录处理（Specials/SPs）
@@ -2034,7 +2839,6 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 # 季号由辅助词指定，按剧集根目录处理 (issue https://github.com/jxxghp/MoviePilot/issues/5373)
                 season_meta.begin_season = None
 
-        # 根据季号判断目录类型并刮削
         if season_meta.begin_season is not None:
             # 季目录：处理季 NFO 和图片
             self._scrape_nfo_generic(

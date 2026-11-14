@@ -1,4 +1,6 @@
-"""豆瓣详情到统一媒体字段的纯投影规则。"""
+"""
+豆瓣详情到统一媒体字段的纯投影规则。
+"""
 
 from __future__ import annotations
 
@@ -65,7 +67,9 @@ _DOUBAN_LANGUAGE_CODES: dict[str, str] = {
 
 
 def _media_type(info: Mapping[str, Any]) -> MediaType | None:
-    """从豆瓣多种详情形态解析标准媒体类型。"""
+    """
+    从豆瓣多种详情形态解析标准媒体类型。
+    """
     source_type = info.get("media_type")
     if isinstance(source_type, MediaType):
         return source_type
@@ -82,7 +86,9 @@ def _media_type(info: Mapping[str, Any]) -> MediaType | None:
 
 
 def _poster(info: Mapping[str, Any]) -> Any:
-    """按豆瓣多版本响应优先级选择海报。"""
+    """
+    按豆瓣多版本响应优先级选择海报。
+    """
     pic = info.get("pic")
     if isinstance(pic, Mapping) and pic.get("large"):
         return pic.get("large")
@@ -104,7 +110,9 @@ def _poster(info: Mapping[str, Any]) -> Any:
 
 
 def _overview(info: Mapping[str, Any]) -> str:
-    """按豆瓣详情和榜单响应形态生成简介。"""
+    """
+    按豆瓣详情和榜单响应形态生成简介。
+    """
     overview = info.get("intro") or info.get("card_subtitle") or ""
     if overview:
         return str(overview)
@@ -116,12 +124,16 @@ def _overview(info: Mapping[str, Any]) -> str:
 
 
 def _aliases(info: Mapping[str, Any]) -> list[str]:
-    """清理豆瓣别名中的地区译名标记。"""
+    """
+    清理豆瓣别名中的地区译名标记。
+    """
     return [re.sub(r"\([港台豆友译名]+\)", "", str(alias)) for alias in info.get("aka") or []]
 
 
 def _original_language(info: Mapping[str, Any]) -> str | None:
-    """将豆瓣返回的首个语言名称转换为分类规则使用的代码。"""
+    """
+    将豆瓣返回的首个语言名称转换为分类规则使用的代码。
+    """
     languages = info.get("languages")
     if isinstance(languages, str):
         language_values: list[Any] = [languages]
@@ -146,7 +158,9 @@ def project(
     current: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """将只读豆瓣详情投影为统一媒体字段，不修改输入。"""
+    """
+    将只读豆瓣详情投影为统一媒体字段，不修改输入。
+    """
     if not info:
         return {}
     builder = ProjectionBuilder(current)

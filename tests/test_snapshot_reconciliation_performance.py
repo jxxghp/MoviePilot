@@ -1,3 +1,7 @@
+"""
+验证快照对账在大规模输入下的查询与执行开销。
+"""
+
 from pathlib import Path
 from unittest.mock import MagicMock
 

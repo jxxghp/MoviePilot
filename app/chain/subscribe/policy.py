@@ -1,10 +1,14 @@
-"""订阅优先级、剧集范围与来源编码策略"""
+"""
+订阅优先级、剧集范围与来源编码策略
+"""
 
 import json
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.subscription import priority as _priority
+from app.application.subscription.activity import current_activity_run
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
 )
@@ -14,6 +18,9 @@ from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.domain.context import (
     Context,
 )
+from app.domain.context import (
+    TorrentInfo as _TorrentInfo,
+)
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
@@ -22,14 +29,45 @@ from app.schemas.types import (
 )
 
 
+def _prepare_batch_missing(no_exists: Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]], mediakey: Union[int, str], targets: set[str]) -> Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]:
+    """
+    仅部分缺集就绪时展开以便拆包；全部就绪或整季洗版保留原整季包优先行为。
+    """
+    scoped = deepcopy(no_exists)
+    seasons = scoped.get(mediakey, {})
+    for season, missing in seasons.items():
+        if missing.episodes or missing.require_complete_coverage or not missing.total_episode or f"{season}:season" in targets:
+            continue
+        episodes = list(range(max(1, missing.start_episode or 1), missing.total_episode + 1))
+        if any(f"{season}:{episode}" not in targets for episode in episodes):
+            seasons[season] = missing.model_copy(update={"episodes": episodes})
+    return scoped
+
+
+def _ready_episodes(no_exists: Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]], mediakey: Union[int, str],
+                    eligible_targets: Optional[set[str]]) -> Optional[set[int]]:
+    """
+    仅部分缺集就绪时限制本批下载集数；本批已覆盖全部剩余缺集时不限制，完全沿用原下载行为。
+    """
+    if eligible_targets is None or eligible_targets == {"movie"} or any(target.endswith(":season") for target in eligible_targets):
+        return None
+    allowed = {int(target.split(":")[1]) for target in eligible_targets}
+    missing = {episode for info in (no_exists.get(mediakey) or {}).values() for episode in info.episodes or []}
+    return None if missing <= allowed else allowed
+
+
 class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
-    """订阅优先级、剧集范围与来源编码策略 owner。"""
+    """
+    订阅优先级、剧集范围与来源编码策略组件。
+    """
 
     @staticmethod
     def _SubscribeChain__normalize_episode_priority(
         episode_priority: Optional[dict[str, int]],
     ) -> Dict[str, int]:
-        """归一化按集洗版优先级状态。"""
+        """
+        归一化按集洗版优先级状态。
+        """
         result: Dict[str, int] = _priority.normalize_episode_priority(episode_priority)
         return result
 
@@ -37,13 +75,17 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
     def _SubscribeChain__get_episode_priority(
         cls, subscribe: SubscriptionSnapshot, total_episode: Optional[int] = None
     ) -> Dict[str, int]:
-        """获取订阅按集洗版优先级状态。"""
+        """
+        获取订阅按集洗版优先级状态。
+        """
         result: Dict[str, int] = _priority.get_episode_priority(subscribe, total_episode=total_episode)
         return result
 
     @classmethod
     def get_episode_priority(cls, subscribe: SubscriptionSnapshot) -> Dict[str, int]:
-        """对外暴露按集洗版优先级状态。"""
+        """
+        对外暴露按集洗版优先级状态。
+        """
         result: Dict[str, int] = _priority.get_episode_priority(subscribe)
         return result
 
@@ -51,7 +93,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
     def _SubscribeChain__get_best_version_target_episodes(
         cls, subscribe: SubscriptionSnapshot, total_episode: Optional[int] = None
     ) -> List[int]:
-        """获取洗版订阅目标剧集范围。"""
+        """
+        获取洗版订阅目标剧集范围。
+        """
         result: List[int] = _priority.get_best_version_target_episodes(subscribe, total_episode=total_episode)
         return result
 
@@ -59,7 +103,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
     def _SubscribeChain__get_downloaded_best_version_episodes(
         cls, subscribe: SubscriptionSnapshot, total_episode: Optional[int] = None
     ) -> List[int]:
-        """获取洗版订阅目标范围内已下载到任意版本的剧集。"""
+        """
+        获取洗版订阅目标范围内已下载到任意版本的剧集。
+        """
         result: List[int] = _priority.get_downloaded_best_version_episodes(
             subscribe,
             total_episode=total_episode,
@@ -73,7 +119,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
         episode_priority: Optional[dict[str, int]] = None,
         total_episode: Optional[int] = None,
     ) -> List[int]:
-        """使用指定按集优先级状态获取当前仍需继续洗版的剧集。"""
+        """
+        使用指定按集优先级状态获取当前仍需继续洗版的剧集。
+        """
         result: List[int] = _priority.get_pending_best_version_episodes_with_priority(
             subscribe,
             episode_priority=episode_priority,
@@ -85,7 +133,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
     def _get_pending_best_version_episodes(
         cls, subscribe: SubscriptionSnapshot, total_episode: Optional[int] = None
     ) -> List[int]:
-        """获取当前仍需继续洗版的剧集。"""
+        """
+        获取当前仍需继续洗版的剧集。
+        """
         result: List[int] = _priority.get_pending_best_version_episodes(
             subscribe,
             total_episode=total_episode,
@@ -98,7 +148,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
         subscribe: SubscriptionSnapshot,
         no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
     ) -> int:
-        """计算订阅范围内尚未下载到任何版本的集数。"""
+        """
+        计算订阅范围内尚未下载到任何版本的集数。
+        """
         result: int = _priority.compute_lack_episode(subscribe, no_exists=no_exists)
         return result
 
@@ -108,7 +160,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
         subscribe: SubscriptionSnapshot,
         episode_priority: Optional[dict[str, int]] = None,
     ) -> int:
-        """获取洗版订阅当前优先级状态。"""
+        """
+        获取洗版订阅当前优先级状态。
+        """
         result: int = _priority.get_best_version_current_priority(
             subscribe,
             episode_priority=episode_priority,
@@ -121,7 +175,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
         subscribe: SubscriptionSnapshot,
         total_episode: int,
     ) -> Dict[str, Any]:
-        """准备洗版电视剧总集数扩展后需要写库的字段。"""
+        """
+        准备洗版电视剧总集数扩展后需要写库的字段。
+        """
         result: Dict[str, Any] = _priority.prepare_best_version_total_expansion_fields(subscribe, total_episode)
         return result
 
@@ -132,7 +188,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
         total_episode: int,
         old_total_episode: int,
     ) -> Dict[str, Any]:
-        """准备洗版电视剧总集数变化后需要写库的字段。"""
+        """
+        准备洗版电视剧总集数变化后需要写库的字段。
+        """
         result: Dict[str, Any] = _priority.prepare_best_version_total_change_fields(
             subscribe,
             total_episode,
@@ -147,7 +205,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
         total_episode: int,
         old_total_episode: int,
     ) -> Dict[str, Any]:
-        """准备已有订阅总集数持久化字段，并同步内存对象上的总集数快照。"""
+        """
+        准备已有订阅总集数持久化字段，并同步内存对象上的总集数快照。
+        """
         result: Dict[str, Any] = _priority.prepare_total_episode_change_fields(
             subscribe,
             total_episode,
@@ -157,13 +217,17 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
 
     @classmethod
     def _SubscribeChain__is_best_version_complete(cls, subscribe: SubscriptionSnapshot) -> bool:
-        """判断洗版订阅是否已完成。"""
+        """
+        判断洗版订阅是否已完成。
+        """
         result: bool = _priority.is_best_version_complete(subscribe)
         return result
 
     @classmethod
     def is_best_version_complete(cls, subscribe: SubscriptionSnapshot) -> bool:
-        """对外暴露洗版完成判断。"""
+        """
+        对外暴露洗版完成判断。
+        """
         result: bool = _priority.is_best_version_complete(subscribe)
         return result
 
@@ -173,7 +237,9 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
         subscribe: SubscriptionSnapshot,
         episode_priority: Optional[dict[str, int]] = None,
     ) -> bool:
-        """使用指定按集优先级状态判断洗版是否已完成。"""
+        """
+        使用指定按集优先级状态判断洗版是否已完成。
+        """
         result: bool = _priority.is_best_version_complete_with_priority(
             subscribe,
             episode_priority=episode_priority,
@@ -182,17 +248,23 @@ class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
 
 
 class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
-    """订阅提交前复核与下载治理策略 owner。"""
+    """
+    订阅提交前复核与下载治理策略组件。
+    """
 
     @staticmethod
     def _SubscribeChain__get_downloaded_episodes(downloads: Optional[List[Context]]) -> List[int]:
-        """获取本次下载实际涉及的剧集。"""
+        """
+        获取本次下载实际涉及的剧集。
+        """
         result: List[int] = _priority.get_downloaded_episodes(downloads)
         return result
 
     @classmethod
     def _SubscribeChain__get_best_version_completed_episodes(cls, subscribe: SubscriptionSnapshot) -> List[int]:
-        """获取已完成洗版的剧集。"""
+        """
+        获取已完成洗版的剧集。
+        """
         result: List[int] = _priority.get_best_version_completed_episodes(subscribe)
         return result
 
@@ -203,7 +275,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         context: Context,
         priority: int,
     ) -> List[int]:
-        """获取当前资源中仍值得继续洗版的剧集。"""
+        """
+        获取当前资源中仍值得继续洗版的剧集。
+        """
         result: List[int] = _priority.get_best_version_interested_episodes(
             subscribe,
             context,
@@ -218,19 +292,25 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         context: Context,
         priority: int,
     ) -> bool:
-        """校验电视剧洗版候选，并为分集模式设置允许下载的剧集范围。"""
+        """
+        校验电视剧洗版候选，并为分集模式设置允许下载的剧集范围。
+        """
         result: bool = _priority.prepare_best_version_tv_candidate(subscribe, context, priority)
         return result
 
     @classmethod
     def _SubscribeChain__is_full_best_version_enabled(cls, subscribe: SubscriptionSnapshot) -> bool:
-        """判断当前订阅是否启用了电视剧全集洗版。"""
+        """
+        判断当前订阅是否启用了电视剧全集洗版。
+        """
         result: bool = _priority.is_full_best_version_enabled(subscribe)
         return result
 
     @classmethod
     def _SubscribeChain__is_full_season_resource(cls, meta: MetaBase, subscribe: SubscriptionSnapshot) -> bool:
-        """判断候选资源是否覆盖订阅目标全集范围。"""
+        """
+        判断候选资源是否覆盖订阅目标全集范围。
+        """
         result: bool = _priority.is_full_season_resource(meta, subscribe)
         return result
 
@@ -238,7 +318,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
     def _SubscribeChain__is_full_season_best_version_resource(
         cls, meta: MetaBase, subscribe: SubscriptionSnapshot
     ) -> bool:
-        """判断候选资源是否符合全集洗版资源约束。"""
+        """
+        判断候选资源是否符合全集洗版资源约束。
+        """
         result: bool = _priority.is_full_season_best_version_resource(meta, subscribe)
         return result
 
@@ -248,7 +330,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         subscribe: SubscriptionSnapshot,
         priority: int,
     ) -> bool:
-        """判断分集洗版是否应优先下载整包。"""
+        """
+        判断分集洗版或首次下载的整包候选是否通过按集优先级门槛。
+        """
         result: bool = _priority.should_prefer_full_pack_for_episode_best_version(subscribe, priority)
         return result
 
@@ -257,10 +341,13 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         cls,
         subscribe: SubscriptionSnapshot,
         mediakey: Union[int, str],
+        no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
     ) -> Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
-        """构造分集洗版优先全集时使用的整季缺失范围。"""
+        """
+        构造分集洗版或普通电视剧首次下载优先全集时使用的完整目标范围。
+        """
         result: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = (
-            _priority.build_full_pack_first_no_exists(subscribe, mediakey)
+            _priority.build_full_pack_first_no_exists(subscribe, mediakey, no_exists)
         )
         return result
 
@@ -269,7 +356,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         loader: Callable[[int], Optional[SubscriptionSnapshot]],
         subscription_id: int,
     ) -> Optional[SubscriptionSnapshot]:
-        """通过显式可调用边界读取提交前的最新订阅快照。"""
+        """
+        通过显式可调用边界读取提交前的最新订阅快照。
+        """
         return loader(subscription_id)
 
     def _SubscribeChain__download_best_version_with_full_pack_first(
@@ -283,10 +372,15 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         downloader: Optional[str] = None,
         source: Optional[str] = None,
         execution_context: Optional[SubscriptionExecutionContext] = None,
+        eligible_targets: Optional[set[str]] = None,
     ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
         """
-        TV 分集洗版先尝试覆盖目标范围的全集资源，失败后回退到按集下载。
+        TV 分集洗版及尚无已有剧集的普通订阅先尝试完整包，失败后回退到按集下载。
         """
+        contexts = [context for context in contexts if context.torrent_info is not None]
+        if not contexts:
+            return [], no_exists
+        activity = current_activity_run()
         governance: Optional[SubscriptionDownloadGovernance] = None
         repository = getattr(self, "subscription_repository", None)
         get_current = getattr(repository, "get", None)
@@ -302,7 +396,11 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             if current is None:
                 logger.info(f"订阅 {subscribe.id} 已删除，放弃本轮下载提交")
                 return [], no_exists
-            if current.state == "S":
+            # 只有显式补搜可为暂停订阅提交下载，自动搜索不能借入队时的状态绕过暂停。
+            if current.state == "S" and not (
+                execution_context and execution_context.lease.operation == "search"
+                and execution_context.allow_paused_search
+            ):
                 logger.info(f"订阅 {current.name} 已暂停，放弃本轮下载提交")
                 return [], no_exists
             if self._SubscribeChain__candidate_contract_changed(subscribe, current):
@@ -328,18 +426,25 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             save_path = current.save_path
             downloader = current.downloader
             source = self.get_subscribe_source_keyword(current)
-            governance = SubscriptionDownloadGovernance(
-                cancelled=execution_context.should_stop if execution_context else None,
-                mark_started=execution_context.mark_download_started if execution_context else None,
-            )
+        governance = SubscriptionDownloadGovernance(
+            cancelled=execution_context.should_stop if execution_context else None,
+            mark_started=execution_context.mark_download_started if execution_context else None,
+            decision_observer=activity.resource if activity else None,
+            prepare_submission=lambda context: _priority.annotate_subscription_download(subscribe, context),
+        )
+        if eligible_targets is not None:
+            no_exists = _prepare_batch_missing(no_exists, mediakey, eligible_targets)
+        allowed_episodes = _ready_episodes(no_exists, mediakey, eligible_targets)
         full_pack_no_exists = self._SubscribeChain__build_full_pack_first_no_exists(
-            subscribe=subscribe, mediakey=mediakey
+            subscribe=subscribe, mediakey=mediakey, no_exists=no_exists
         )
         full_season_contexts = (
             [
                 context
                 for context in contexts
-                if context.media_info.type == MediaType.TV
+                if context.media_info is not None
+                and context.media_info.type == MediaType.TV
+                and context.meta_info is not None
                 and self._SubscribeChain__is_full_season_resource(meta=context.meta_info, subscribe=subscribe)
             ]
             if full_pack_no_exists
@@ -350,7 +455,8 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         episode_priority_gate = self._SubscribeChain__get_episode_priority(subscribe)
         full_pack_contexts = []
         for context in full_season_contexts:
-            candidate_priority = context.torrent_info.pri_order
+            # 入口已排除缺少种子信息的候选，沿用同一批上下文的资源优先级。
+            candidate_priority = cast(_TorrentInfo, context.torrent_info).pri_order
             accepted = self._SubscribeChain__should_prefer_full_pack_for_episode_best_version(
                 subscribe=subscribe,
                 priority=candidate_priority,
@@ -364,10 +470,10 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
                 full_pack_contexts.append(context)
 
         if full_season_contexts and not full_pack_contexts:
-            logger.info(f"{subscribe.name} 全集候选优先级未高于全部目标集，回退到分集洗版")
+            logger.info(f"{subscribe.name} 全集候选优先级未高于全部目标集，回退到按集下载")
 
         if full_pack_contexts:
-            logger.info(f"{subscribe.name} 分集洗版优先尝试全集资源，共匹配到 {len(full_pack_contexts)} 个候选")
+            logger.info(f"{subscribe.name} 优先尝试全集资源，共匹配到 {len(full_pack_contexts)} 个候选")
             downloads, lefts = DownloadChain().batch_download(
                 contexts=full_pack_contexts,
                 no_exists=full_pack_no_exists,
@@ -377,10 +483,11 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
                 source=source,
                 custom_words=subscribe.custom_words,
                 governance=governance,
+                allowed_episodes=allowed_episodes,
             )
             if downloads:
                 return downloads, lefts
-            logger.info(f"{subscribe.name} 未下载到全集资源，回退到分集洗版")
+            logger.info(f"{subscribe.name} 未下载到全集资源，回退到按集下载")
 
         result: Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = (
             DownloadChain().batch_download(
@@ -392,6 +499,7 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
                 source=source,
                 custom_words=subscribe.custom_words,
                 governance=governance,
+                allowed_episodes=allowed_episodes,
             )
         )
         return result
@@ -401,7 +509,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         prepared: SubscriptionSnapshot,
         current: SubscriptionSnapshot,
     ) -> bool:
-        """检测会让准备阶段候选失效的订阅身份和筛选字段变化。"""
+        """
+        检测会让准备阶段候选失效的订阅身份和筛选字段变化。
+        """
         fields = (
             "type",
             "media_source",
@@ -431,7 +541,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         subscribe: SubscriptionSnapshot,
         contexts: List[Context],
     ) -> List[Context]:
-        """按当前洗版模式和优先级重新过滤准备阶段候选。"""
+        """
+        按当前洗版模式和优先级重新过滤准备阶段候选。
+        """
         if not subscribe.best_version:
             return contexts
         accepted: List[Context] = []
@@ -478,11 +590,12 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
     def get_states_for_search(state: str) -> str:
         """
         根据给定的状态返回实际需要搜索的状态列表，支持多个状态用逗号分隔
+
         :param state: 订阅状态
-            N: New（新建，未处理）
-            R: Resolved（订阅中）
-            P: Pending（待定，信息待进一步更新，允许搜索，不允许完成）
-            S: Suspended（暂停，订阅不参与任何动作，暂时停止处理）
+            N：新建，尚未处理
+            R：订阅中
+            P：待定，信息待更新，允许搜索但不允许完成
+            S：暂停自动调度，显式补搜可继续执行
         :return: 需要查询的状态列表（多个状态用逗号分隔）
         """
         # 如果状态是 R 或 P，则视为一起搜索，返回 R,P 作为查询条件
@@ -496,7 +609,7 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         构造用于订阅来源的关键字字符串
 
         :param subscribe: 订阅快照
-        :return str: 格式化的订阅来源关键字字符串，格式为 "Subscribe|{...}"
+        :return: 格式化的订阅来源关键字字符串，格式为 "Subscribe|{...}"
         """
         source_keyword = {
             "id": subscribe.id,
@@ -517,15 +630,13 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         解析订阅来源关键字字符串
 
         :param source_keyword_str: 订阅来源关键字字符串，格式为 "Subscribe|{...}"
-        :return Dict: 如果解析失败则返回None
+        :return: 解析后的订阅来源数据，前缀不匹配或解析失败时为 None
         """
         if not source_keyword_str or not source_keyword_str.startswith("Subscribe|"):
             return None
 
         try:
-            # 分割字符串获取JSON部分
             json_part = source_keyword_str.split("|", 1)[1]
-            # 解析JSON字符串
             source_keyword = json.loads(json_part)
             return cast(dict[str, Any], source_keyword)
         except (IndexError, json.JSONDecodeError, TypeError) as e:

@@ -27,7 +27,9 @@ TMDB = str(MediaSource.TMDB)
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把本文件涉及的表纳入用例级回收。"""
+    """
+    把本文件涉及的表纳入用例级回收。
+    """
     db.watermark(TransferHistory, Subscribe, SubscribeHistory, Message, DownloadFailure)
 
 
@@ -37,7 +39,9 @@ def _track(db):
 
 
 def _transfer_kwargs(title: str, src: str, **extra) -> dict:
-    """构造整理历史的写入参数。"""
+    """
+    构造整理历史的写入参数。
+    """
     payload = dict(
         src=src,
         src_storage="local",
@@ -163,14 +167,16 @@ def test_transferhistory_oper_truncate_empties_the_table(db):
 
 
 # --------------------------------------------------------------------------- #
-# SubscribeOper / SubscribeHistoryOper
+# 订阅与订阅历史的持久化操作
 # --------------------------------------------------------------------------- #
 
 
 def _subscribe(
     name: str, media_id: str = "2001", state: str = "N", username: str = "op-alice", mtype: str = None
 ) -> Subscribe:
-    """构造一条订阅记录。"""
+    """
+    构造一条订阅记录。
+    """
     return Subscribe(
         name=name,
         type=mtype or MediaType.TV.value,

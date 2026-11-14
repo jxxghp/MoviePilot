@@ -1,4 +1,6 @@
-"""整理终态结算、历史事件与失败通知。"""
+"""
+整理终态结算、历史事件与失败通知。
+"""
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
@@ -64,7 +66,9 @@ from app.schemas.types import (
 def _discard_corrupt_transfer_task(
     repository: TransferExecutionRepository, task: TransferTask, error: object,
 ) -> None:
-    """清理失败时继续结束内存作业，持久层保留的证据仍可用于后续恢复。"""
+    """
+    清理失败时继续结束内存作业，持久层保留的证据仍可用于后续恢复。
+    """
     if not task.preview:
         try:
             TransferRecoveryCommand(repository).discard_conflict(
@@ -74,13 +78,34 @@ def _discard_corrupt_transfer_task(
             logger.error(f"清理损坏整理任务 durable 证据失败：{task.admission_task_id} - {cleanup_error}")
 
 
+def _normalize_legacy_fileitem_timestamps(current: object, frozen: object) -> None:
+    """
+    比对旧快照时移除模型恢复新增的空时间字段，保留实际记录的时间证据。
+
+    :param current: 本次结果新建的 JSON 比对副本
+    :param frozen: 原始持久文件项快照，只读且不更新其指纹
+    """
+    if not isinstance(current, dict) or not isinstance(frozen, dict):
+        return
+    for key in ("modify_time_ns", "change_time_ns"):
+        if key not in frozen and current.get(key) is None:
+            current.pop(key, None)
+    children = current.get("children")
+    frozen_children = frozen.get("children")
+    if isinstance(children, list) and isinstance(frozen_children, list):
+        for child, frozen_child in zip(children, frozen_children):
+            _normalize_legacy_fileitem_timestamps(child, frozen_child)
+
+
 def _build_transfer_result_settlement(
         task: TransferTask,
         transferinfo: TransferInfo,
         *,
         overwrite_declined: bool = False,
 ) -> Optional[TransferResultSettlement]:
-    """由执行结果与已核实的覆盖裁决构造受 lease fencing 保护的终态命令。"""
+    """
+    由执行结果与已核实的覆盖裁决构造受 lease fencing 保护的终态命令。
+    """
     checkpoint = task.execution_checkpoint
     if checkpoint is None:
         if task.preview:
@@ -104,6 +129,10 @@ def _build_transfer_result_settlement(
         for key in ("failure_stage", "recovery_action", "cleanup_status", "cleanup_error"):
             if normalized_frozen_transferinfo.get(key) is None:
                 normalized_frozen_transferinfo.pop(key, None)
+        for field in ("fileitem", "target_diritem", "target_item"):
+            _normalize_legacy_fileitem_timestamps(
+                current_transferinfo.get(field), normalized_frozen_transferinfo.get(field),
+            )
     if (
             isinstance(normalized_frozen_transferinfo, dict)
             and normalized_frozen_transferinfo != current_transferinfo
@@ -131,7 +160,9 @@ def _record_downloader_cleanup_failure(
         fallback_history_id: Optional[int],
         cleanup_error: str,
 ) -> None:
-    """把同一下载任务下所有成功入库记录标记为清理失败，单条写入失败不阻断其余记录。"""
+    """
+    把同一下载任务下所有成功入库记录标记为清理失败，单条写入失败不阻断其余记录。
+    """
     try:
         history_ids = {
             item.id
@@ -163,11 +194,15 @@ def _record_downloader_cleanup_failure(
 
 
 class TransferSettlementOwner(_TransferOwnerBase):
-    """唯一持有整理终态结算、历史事件和失败通知。"""
+    """
+    唯一持有整理终态结算、历史事件和失败通知。
+    """
 
     @staticmethod
     def _TransferChain__transfer_plan_fingerprint(checkpoint: TransferPlanCheckpoint) -> str:
-        """由完整冻结计划生成执行步骤使用的稳定 SHA-256 身份。"""
+        """
+        由完整冻结计划生成执行步骤使用的稳定 SHA-256 身份。
+        """
         return checkpoint.fingerprint
 
     @staticmethod
@@ -176,7 +211,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
         transferinfo: TransferInfo,
         history_id: int | None = None,
     ) -> dict[str, Any]:
-        """构造保持插件旧对象字段不变的整理结果事件 payload。"""
+        """
+        构造保持插件旧对象字段不变的整理结果事件 payload。
+        """
         return {
             "fileitem": task.fileitem,
             "meta": task.meta,
@@ -193,7 +230,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
         *,
         success: bool,
     ) -> Optional[tuple[str, EventType]]:
-        """返回当前整理结果应持久化的 topic 与兼容事件类型。"""
+        """
+        返回当前整理结果应持久化的 topic 与兼容事件类型。
+        """
         if success:
             if self._is_primary_media_file(task.fileitem, task.mediainfo):
                 return TRANSFER_COMPLETED_TOPIC, EventType.TransferComplete
@@ -220,7 +259,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
             task: TransferTask,
             transferinfo: TransferInfo,
     ) -> None:
-        """无公开事件地原子提交旧同步调用的历史回执与任务终态。"""
+        """
+        无公开事件地原子提交旧同步调用的历史回执与任务终态。
+        """
         transferhis = self.transfer_history_repository
         overwrite_declined = self._is_overwrite_declined(
             task,
@@ -241,7 +282,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
         def stage_history(
                 staging: TransferHistoryStagingPort,
         ) -> Optional[TransferHistorySnapshot]:
-            """按兼容结果暂存成功、失败或覆盖跳过的唯一历史投影。"""
+            """
+            按兼容结果暂存成功、失败或覆盖跳过的唯一历史投影。
+            """
             if not task.fileitem or not task.fileitem.path:
                 raise ValueError("整理终态缺少源文件路径")
             if overwrite_declined:
@@ -272,7 +315,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
             )
 
         def write_result() -> Any:
-            """以相同 task_id 和执行指纹提交或回读同一终态。"""
+            """
+            以相同 task_id 和执行指纹提交或回读同一终态。
+            """
             return writer.transfer_result(
                 topic=None,
                 stage_history=stage_history,
@@ -313,7 +358,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 Union[TransferHistorySnapshot, TransferSettlementResult]
             ],
     ) -> Optional[int]:
-        """统一读取旧历史投影和 task-aware 结算结果的历史标识。"""
+        """
+        统一读取旧历史投影和 task-aware 结算结果的历史标识。
+        """
         if isinstance(history, TransferSettlementResult):
             return history.history_id
         return getattr(history, "id", None) if history is not None else None
@@ -325,7 +372,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
         event_type: EventType,
         payload: dict[str, Any],
     ) -> None:
-        """显式分派整理结果，使运行契约可追踪每种事件的生产者。"""
+        """
+        显式分派整理结果，使运行契约可追踪每种事件的生产者。
+        """
         if event_type is EventType.TransferComplete:
             self.eventmanager.send_event(EventType.TransferComplete, payload)
         elif event_type is EventType.TransferFailed:
@@ -345,41 +394,42 @@ class TransferSettlementOwner(_TransferOwnerBase):
             self, task: TransferTask, transferinfo: TransferInfo, /
     ) -> Tuple[bool, str]:
         """
-        整理完成后处理
+        原子结算整理结果；成功但无目标项的静默跳过不发布完成事件。
         """
-        # 状态
         ret_status = True
-        # 错误信息
         ret_message = ""
+        meta = cast(MetaBase, task.meta)
+        mediainfo = cast(Union[MediaInfo, MusicInfo], task.mediainfo)
+        transfer_mode = transferinfo.transfer_type or ""
 
-        def __notify():
+        def __notify() -> None:
             """
             完成时发送消息、移除任务等
             """
-            # 更新文件数量
             transferinfo.file_count = (
-                self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
+                self.jobview.count(task.mediainfo, meta.begin_season) or 1
             )
-            # 更新文件大小
             transferinfo.total_size = (
-                self.jobview.size(task.mediainfo, task.meta.begin_season)
+                self.jobview.size(task.mediainfo, meta.begin_season)
                 or task.fileitem.size
             )
             # 发送通知，实时手动整理时不发
-            if transferinfo.need_notify and (task.background or not task.manual):
+            if (
+                    transferinfo.need_notify and (task.background or not task.manual)
+                    and not self.runtime_config.transfer_success_notification_aggregation
+            ):
                 se_str = None
-                if task.mediainfo.type == MediaType.TV:
+                if mediainfo.type == MediaType.TV:
                     season_episodes = self.jobview.season_episodes(
-                        task.mediainfo, task.meta.begin_season
+                        mediainfo, meta.begin_season
                     )
                     if season_episodes:
-                        se_str = f"{task.meta.season} {episode_rules.format_ranges(season_episodes)}"
+                        se_str = f"{meta.season} {episode_rules.format_ranges(season_episodes)}"
                     else:
-                        se_str = f"{task.meta.season}"
-                # 发送入库成功消息
+                        se_str = f"{meta.season}"
                 self.send_transfer_message(
-                    meta=task.meta,
-                    mediainfo=task.mediainfo,
+                    meta=meta,
+                    mediainfo=mediainfo,
                     transferinfo=transferinfo,
                     season_episode=se_str,
                     episodes_info=task.episodes_info,
@@ -390,6 +440,8 @@ class TransferSettlementOwner(_TransferOwnerBase):
         target_dir_path = self._TransferChain__get_transfer_target_dir_path(transferinfo)
         job_id = self.jobview.get_job_id(task)
         overwrite_declined = False
+        automatic_takeover_history: Optional[TransferSettlementResult] = None
+        failure_count = 0
         if not transferinfo.success:
             overwrite_declined = self._is_overwrite_declined(
                 task, transferinfo, transferhis
@@ -405,7 +457,6 @@ class TransferSettlementOwner(_TransferOwnerBase):
         if durable_writer is None:
             raise RuntimeError("非预览整理终态缺少 durable 原子写入端口")
 
-        # 转移失败
         if not transferinfo.success:
             # 查重闸放行同路径新版本后由 overwrite_mode 判定不覆盖，是一次正常裁决而非故障：
             # 媒体库里原有版本仍然在位，写失败记录会按同源 replace 替换原成功记录，此后该路径
@@ -452,10 +503,10 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     topic=topic,
                     stage_history=lambda writer: add_transfer_fail(
                         fileitem=task.fileitem,
-                        mode=transferinfo.transfer_type if transferinfo else "",
+                        mode=transfer_mode,
                         downloader=task.downloader,
                         download_hash=task.download_hash,
-                        meta=task.meta,
+                        meta=meta,
                         mediainfo=task.mediainfo,
                         transferinfo=transferinfo,
                         retry_count=failure_count,
@@ -475,6 +526,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 if not isinstance(history, TransferSettlementResult):
                     raise RuntimeError("整理失败 durable 终态没有返回结算结果")
                 task.mark_terminal_settled()
+                automatic_takeover_history = history
 
                 # 失败计数不是终态真相，只能在原子历史与 pending 结算成功后更新。
                 record_transfer_failure(
@@ -494,17 +546,18 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 )
                 ret_message = transferinfo.message or ""
 
-            # 设置任务失败
             self.jobview.fail_task(task)
 
-            # 返回失败
             ret_status = False
 
         else:
-            # 转移成功
             logger.info(f"{task.fileitem.name} 入库成功：{target_dir_path or ''}")
-
-            durable_event = self._durable_transfer_event(task, success=True)
+            # 静默跳过沿用成功终态，但没有目标文件可供完成事件的消费者处理。
+            durable_event = (
+                self._durable_transfer_event(task, success=True)
+                if transferinfo.target_item is not None
+                else None
+            )
             topic = durable_event[0] if durable_event else None
             event_type = durable_event[1] if durable_event else None
             event_payload = self._transfer_result_payload(task, transferinfo)
@@ -512,11 +565,11 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 topic=topic,
                 stage_history=lambda writer: add_transfer_success(
                     fileitem=task.fileitem,
-                    mode=transferinfo.transfer_type if transferinfo else "",
+                    mode=transfer_mode,
                     downloader=task.downloader,
                     download_hash=task.download_hash,
-                    meta=task.meta,
-                    mediainfo=task.mediainfo,
+                    meta=meta,
+                    mediainfo=mediainfo,
                     transferinfo=transferinfo,
                     transfer_history_oper=writer,
                 ),
@@ -534,13 +587,12 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 raise RuntimeError("整理成功 durable 终态没有返回结算结果")
             task.mark_terminal_settled()
 
-            # 失败预算同样只能在 durable 成功终态提交后重置。
+            # 失败预算同样只能在 持久成功终态提交后重置。
             clear_transfer_failures(
                 task.fileitem.path if task.fileitem else None,
                 task.fileitem.storage if task.fileitem else None,
             )
 
-            # task登记转移成功文件清单
             target_files = transferinfo.file_list_new
             if target_files:
                 with job_lock:
@@ -549,15 +601,13 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     else:
                         self._success_target_files[job_id] = list(target_files)
 
-            # 设置任务成功
             self.jobview.finish_task(task)
 
-            # 登记批次级刮削目标
             self._record_scrape_target(task, transferinfo)
+            self.notify_successful_transfer(task, transferinfo)
 
-        # 全部整理完成且有成功的任务时，发送消息和事件
-        if self.jobview.is_finished(task):
-            # 更新文件清单
+        # 成功汇总需要季集元数据；缺少元数据的规划拒绝只走失败反馈。
+        if task.meta is not None and self.jobview.is_finished(task):
             with job_lock:
                 transferinfo.file_list_new = list(dict.fromkeys(
                     self._success_target_files.pop(job_id, [])
@@ -571,23 +621,62 @@ class TransferSettlementOwner(_TransferOwnerBase):
         # 只要该种子的所有任务都已整理完成，则设置种子状态为已整理
         self._TransferChain__mark_torrent_completed_if_done(task.download_hash, task.downloader)
 
-        # 只有移动模式的全部任务成功后，才允许清理下载器和源目录。
-        if transferinfo.transfer_type == "move" and self.jobview.is_success(task):
+        # 种子按自身任务判定完成，避免同媒体的其它种子失败阻塞清理。
+        if transferinfo.transfer_type == "move" and self._can_cleanup_transfer(task):
             self._cleanup_successful_transfer(task, transferhis, history)
 
+        self._schedule_automatic_ai_takeover(
+            task=task, transferinfo=transferinfo, history=automatic_takeover_history,
+            retry_count=failure_count,
+        )
+
         return ret_status, ret_message
+
+    def _schedule_automatic_ai_takeover(
+            self, *, task: TransferTask, transferinfo: TransferInfo,
+            history: Optional[TransferSettlementResult], retry_count: int,
+    ) -> None:
+        """
+        只为本次新提交的安全失败回执提交 AI 分析，避免重复结算重复唤醒。
+
+        :param task: 产生失败回执的整理任务
+        :param transferinfo: 本次整理结果与失败阶段
+        :param history: 新结算回执；非 AI 场景为 None
+        :param retry_count: 当前失败周期已消耗的次数
+        """
+        if history is None or history.already_settled:
+            return
+        try:
+            self._maybe_take_over_failed_transfer(
+                history_id=history.history_id, task_id=task.admission_task_id,
+                error=transferinfo.message or "", failure_stage=transferinfo.failure_stage,
+                retry_count=retry_count, username=task.username,
+            )
+        except Exception as error:
+            logger.error("整理失败后的智能助手接管提交失败：%s", error, exc_info=True)
+
+    def _can_cleanup_transfer(self, task: TransferTask) -> bool:
+        """
+        下载任务按种子判定成功；无种子整理沿用整个媒体作业的完成边界。
+
+        :param task: 已完成结算的当前整理任务
+        :return: 该种子或无种子作业是否全部成功
+        """
+        if task.download_hash:
+            return cast(bool, self.jobview.is_torrent_success(task.download_hash))
+        return cast(bool, self.jobview.is_success(task))
 
     def _cleanup_successful_transfer(
             self, task: TransferTask, transferhis: TransferHistoryRepository,
             history: TransferSettlementResult,
     ) -> None:
-        """成功移动结算后清理下载器和空目录，清理失败仅更新反馈状态。"""
-        # 所有成功的业务
+        """
+        成功移动结算后清理下载器和空目录，清理失败仅更新反馈状态。
+        """
         tasks = self.jobview.success_tasks(
-            task.mediainfo, task.meta.begin_season
+            task.mediainfo, cast(MetaBase, task.meta).begin_season
         )
         system_config_oper = get_configured_system_config()
-        # 获取整理屏蔽词
         transfer_exclude_words = system_config_oper.get(
             SystemConfigKey.TransferExcludeWords
         )
@@ -605,7 +694,6 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     if self._can_delete_torrent(
                             t.download_hash, t.downloader, transfer_exclude_words
                     ):
-                        # 移除种子及文件
                         if self.remove_torrents(
                                 t.download_hash, downloader=t.downloader
                         ):
@@ -649,7 +737,6 @@ class TransferSettlementOwner(_TransferOwnerBase):
                         mounted_filesystem_cache,
                     )
             ):
-                # 删除剩余空目录
                 StorageChain().delete_media_file(t.fileitem, delete_self=False)
 
     def queue_failed_transfer_notification(
@@ -662,7 +749,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
             retry_count: Optional[int] = None,
             auto_paused: bool = False,
     ) -> None:
-        """按配置逐条发送或按媒体聚合整理失败通知，供第三方整理补丁复用。"""
+        """
+        按配置逐条发送或按媒体聚合整理失败通知，供第三方整理补丁复用。
+        """
         notification = build_failure_notification(
             task, transferinfo, history_id, manual_identity=manual_identity,
             retry_count=retry_count, auto_paused=auto_paused,
@@ -685,7 +774,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
             self,
             notifications: List[TransferFailureNotification],
     ) -> None:
-        """渲染失败分组，并按单条或批量上下文选择交互按钮后发送。"""
+        """
+        渲染失败分组，并按单条或批量上下文选择交互按钮后发送。
+        """
         if not notifications:
             return
         first = notifications[0]
@@ -705,7 +796,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
             download_hash: Optional[str],
             downloader: Optional[str],
             history_exists: bool = True,
-    ):
+    ) -> None:
         """
         当同一种子的任务都已结束且种子已完成下载时，回写下载器已整理标签。
         """
@@ -733,9 +824,12 @@ class TransferSettlementOwner(_TransferOwnerBase):
     def _TransferChain__is_torrent_download_completed(
             self, download_hash: str, downloader: Optional[str]
     ) -> bool:
-        """确认种子下载完成；查询失败或缺失时记录原因，不把未知状态当作完成。"""
+        """
+        确认种子下载完成；查询失败或缺失时记录原因，不把未知状态当作完成。
+        """
         try:
-            torrents = self.list_torrents(hashs=download_hash, downloader=downloader)
+            # Hash 已唯一定位任务；工作流自定义标签或调整 TORRENT_TAG 后的任务也要能回写。
+            torrents = self.list_torrents(hashs=download_hash, downloader=downloader, include_all_tags=True)
             if not torrents:
                 logger.warning(
                     f"下载器 {downloader} 中未查询到种子 {download_hash}，无法回写已整理标签，请检查种子是否已移除或历史关联是否正确"
@@ -753,7 +847,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
             terminal: bool = True,
             terminal_settlement: Optional[bool] = None,
     ) -> bool:
-        """结束内存执行，只接受原子终态回执并保留未结算任务供恢复。"""
+        """
+        结束内存执行，只接受原子终态回执并保留未结算任务供恢复。
+        """
         marker = getattr(self.jobview, "finish_execution", None)
         if marker:
             marker(task)
@@ -775,8 +871,12 @@ class TransferSettlementOwner(_TransferOwnerBase):
         self._TransferChain__release_task_claim(task)
         return True
 
-    def _TransferChain__fail_transfer_task(self, task: TransferTask, error: object = "整理任务处理失败"):
-        """清理作业视图，并在执行冲突时原子删除 durable 恢复证据。"""
+    def _TransferChain__fail_transfer_task(
+            self, task: TransferTask, error: object = "整理任务处理失败"
+    ) -> None:
+        """
+        清理作业视图，并在执行冲突时原子删除 持久化 恢复证据。
+        """
         _discard_corrupt_transfer_task(self.transfer_execution_repository, task, error)
         self.jobview.fail_unfinished_task(task)
         self.jobview.try_remove_job(task)

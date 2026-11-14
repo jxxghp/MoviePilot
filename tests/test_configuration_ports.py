@@ -1,4 +1,6 @@
-"""配置快照与窄读写端口测试。"""
+"""
+配置快照与窄读写端口测试。
+"""
 
 import asyncio
 from dataclasses import FrozenInstanceError
@@ -24,22 +26,32 @@ from app.schemas.types import SystemConfigKey
 
 
 class _InlineDatabaseExecutor:
-    """同步执行测试操作，并保留异步应用端口的调用形态。"""
+    """
+    同步执行测试操作，并保留异步应用端口的调用形态。
+    """
 
     async def run(self, operation):
-        """执行并返回操作结果。"""
+        """
+        执行并返回操作结果。
+        """
         return operation()
 
 
 class _MutableSettings:
-    """记录管理设置服务的读取和更新操作。"""
+    """
+    记录管理设置服务的读取和更新操作。
+    """
 
     def __init__(self) -> None:
-        """初始化一组可变测试设置。"""
+        """
+        初始化一组可变测试设置。
+        """
         self.VALUE = "before"
 
     def model_dump(self, *, include=None, exclude=None):
-        """按白名单返回设置字典。"""
+        """
+        按白名单返回设置字典。
+        """
         values = {"VALUE": self.VALUE, "SECRET": "hidden"}
         if include is not None:
             values = {key: value for key, value in values.items() if key in include}
@@ -48,19 +60,25 @@ class _MutableSettings:
         return values
 
     def update_settings(self, env):
-        """批量更新并返回逐项结果。"""
+        """
+        批量更新并返回逐项结果。
+        """
         for key, value in env.items():
             setattr(self, key, value)
         return {key: (True, "") for key in env}
 
     def update_setting(self, key, value):
-        """更新单个设置。"""
+        """
+        更新单个设置。
+        """
         setattr(self, key, value)
         return True, ""
 
 
 def test_runtime_settings_service_hides_mutable_settings_implementation() -> None:
-    """管理 API 通过窄服务读取和修改设置，不依赖全局 Settings 类型。"""
+    """
+    管理 API 通过窄服务读取和修改设置，不依赖全局 Settings 类型。
+    """
     settings = _MutableSettings()
     service = RuntimeSettingsService(settings)
 
@@ -73,14 +91,18 @@ def test_runtime_settings_service_hides_mutable_settings_implementation() -> Non
 
 
 def test_runtime_settings_service_is_the_only_mutable_settings_port() -> None:
-    """可变部署设置只通过应用服务暴露，不再提供宿主级兼容代理。"""
+    """
+    可变部署设置只通过应用服务暴露，不再提供宿主级兼容代理。
+    """
     service = RuntimeSettingsService(_MutableSettings())
 
     assert service.snapshot(include={"VALUE"}) == {"VALUE": "before"}
 
 
 def test_system_config_service_supports_separate_reader_and_writer() -> None:
-    """应用服务可以分别注入只读与写入适配器。"""
+    """
+    应用服务可以分别注入只读与写入适配器。
+    """
     reader = MagicMock()
     reader.get.return_value = "old"
     writer = MagicMock()
@@ -110,7 +132,9 @@ def test_system_config_service_supports_separate_reader_and_writer() -> None:
 
 
 def test_system_config_service_forwards_atomic_increment() -> None:
-    """共享识别命中计数应通过应用服务转发到持久化原子递增端口。"""
+    """
+    共享识别命中计数应通过应用服务转发到持久化原子递增端口。
+    """
     reader = MagicMock()
     writer = MagicMock()
     writer.increment.return_value = 3
@@ -122,13 +146,17 @@ def test_system_config_service_forwards_atomic_increment() -> None:
 
 
 def test_system_config_service_runs_atomic_mutation_through_database_executor() -> None:
-    """条件写入应在持久化原子回调内读取旧值并规范化最终值。"""
+    """
+    条件写入应在持久化原子回调内读取旧值并规范化最终值。
+    """
     reader = MagicMock()
     writer = MagicMock()
     committed_values = []
 
     def update_atomically(key, mutation):
-        """模拟仓储在写锁内向应用 mutation 提供当前值。"""
+        """
+        模拟仓储在写锁内向应用 mutation 提供当前值。
+        """
         result, value = mutation(object(), ["old"])
         committed_values.append((key, value))
         return result
@@ -153,7 +181,9 @@ def test_system_config_service_runs_atomic_mutation_through_database_executor() 
 
 
 def test_system_config_service_normalizes_sync_and_async_writes() -> None:
-    """同步和异步配置写入必须共用组合根注入的值规范化边界。"""
+    """
+    同步和异步配置写入必须共用组合根注入的值规范化边界。
+    """
     reader = MagicMock()
     writer = MagicMock()
     writer.set.return_value = True
@@ -175,7 +205,9 @@ def test_system_config_service_normalizes_sync_and_async_writes() -> None:
 
 
 def test_system_config_service_async_write_waits_for_runtime_reload() -> None:
-    """直接异步写入系统配置时也必须等待统一运行时重载端口。"""
+    """
+    直接异步写入系统配置时也必须等待统一运行时重载端口。
+    """
     reader = MagicMock()
     writer = MagicMock()
     writer.set.return_value = True
@@ -196,7 +228,9 @@ def test_system_config_service_async_write_waits_for_runtime_reload() -> None:
 
 
 def test_user_configuration_service_supports_sync_and_async_writes() -> None:
-    """用户配置服务的同步与异步入口执行同一仓储方法。"""
+    """
+    用户配置服务的同步与异步入口执行同一仓储方法。
+    """
     repository = MagicMock()
     repository.set.return_value = True
     service = UserConfigurationService(
@@ -213,7 +247,9 @@ def test_user_configuration_service_supports_sync_and_async_writes() -> None:
 
 
 def test_transfer_retry_provider_returns_frozen_snapshot_per_call() -> None:
-    """配置工厂在每次用例入口创建新快照，旧快照不受 reload 后状态影响。"""
+    """
+    配置工厂在每次用例入口创建新快照，旧快照不受 reload 后状态影响。
+    """
     state = {"value": 2}
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(max_failed_retries=state["value"])
@@ -228,7 +264,9 @@ def test_transfer_retry_provider_returns_frozen_snapshot_per_call() -> None:
 
 
 def test_api_runtime_provider_returns_frozen_snapshot_per_request() -> None:
-    """API 每次请求读取新配置，但已取得的快照保持不变。"""
+    """
+    API 每次请求读取新配置，但已取得的快照保持不变。
+    """
     state = {"enabled": False}
     configure_runtime_configuration(
         RuntimeConfiguration(
@@ -254,7 +292,9 @@ def test_api_runtime_provider_returns_frozen_snapshot_per_request() -> None:
 
 
 def test_chain_runtime_config_is_an_instance_scoped_frozen_snapshot() -> None:
-    """Chain 配置应随实例固定，避免同一业务调用中途读取到 reload 后的新值。"""
+    """
+    Chain 配置应随实例固定，避免同一业务调用中途读取到 reload 后的新值。
+    """
     snapshot = ChainRuntimeConfig(
         media_extensions=(".mkv",),
         superuser="root",
@@ -266,4 +306,5 @@ def test_chain_runtime_config_is_an_instance_scoped_frozen_snapshot() -> None:
     assert snapshot.media_recognize_share is True
     assert snapshot.resource_url == "https://example.test/#/resource"
     with pytest.raises(FrozenInstanceError):
+        # 故意给冻结配置快照赋值，验证运行时不可变约束。
         snapshot.superuser = "changed"  # type: ignore[misc]

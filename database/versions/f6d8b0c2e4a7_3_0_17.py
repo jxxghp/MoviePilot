@@ -1,8 +1,9 @@
-"""3.0.17 收口整理规划状态与执行恢复证据。
+"""
+3.0.17 收口整理规划状态与执行恢复证据。
 
-Revision ID: f6d8b0c2e4a7
-Revises: e5c7a9b1d3f6
-Create Date: 2026-08-27
+版本标识： f6d8b0c2e4a7
+前置版本： e5c7a9b1d3f6
+创建时间： 2026-08-27
 """
 
 import hashlib
@@ -31,17 +32,23 @@ _ALLOWED_EXECUTION_STATES = {
 }
 _REVIEW_DIAGNOSTIC = "升级检测到不完整执行状态，需人工确认后再处理"
 _REVIEW_STEP_KIND = "legacy_execution_review"
+# 从有符号 32 位整数上限向下寻找人工复核序号，避免覆盖已有正常步骤。
 _REVIEW_STEP_ORDINAL = 2_147_483_647
+# 历史记录同时缺少创建和更新时间时使用的固定时间，保证重复迁移结果稳定。
 _FALLBACK_TIME = "1970-01-01 00:00:00"
 
 
 def _table_names() -> set[str]:
-    """返回当前数据库的表名集合。"""
+    """
+    返回当前数据库的表名集合。
+    """
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def _canonical_json(payload: dict[str, Any]) -> str:
-    """生成与运行时一致的稳定 JSON 表达。"""
+    """
+    生成与运行时一致的稳定 JSON 表达。
+    """
     return json.dumps(
         payload,
         ensure_ascii=True,
@@ -52,17 +59,23 @@ def _canonical_json(payload: dict[str, Any]) -> str:
 
 
 def _fingerprint(payload: dict[str, Any]) -> str:
-    """计算版本化 JSON 的 SHA-256 指纹。"""
+    """
+    计算版本化 JSON 的 SHA-256 指纹。
+    """
     return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
 
 def _is_nonempty_string(value: object) -> bool:
-    """判断值是否为非空文本。"""
+    """
+    判断值是否为非空文本。
+    """
     return isinstance(value, str) and bool(value)
 
 
 def _is_source_fileitem(value: object) -> bool:
-    """判断 JSON 对象是否包含可恢复的源文件身份。"""
+    """
+    判断 JSON 对象是否包含可恢复的源文件身份。
+    """
     return (
         isinstance(value, dict)
         and _is_nonempty_string(value.get("storage"))
@@ -71,12 +84,16 @@ def _is_source_fileitem(value: object) -> bool:
 
 
 def _is_optional_mapping(value: object) -> bool:
-    """判断值是否为 JSON 对象或空值。"""
+    """
+    判断值是否为 JSON 对象或空值。
+    """
     return value is None or isinstance(value, dict)
 
 
 def _is_optional_string(value: object) -> bool:
-    """判断值是否为字符串或空值。"""
+    """
+    判断值是否为字符串或空值。
+    """
     return value is None or isinstance(value, str)
 
 
@@ -85,7 +102,9 @@ def _is_planning_input(
         *,
         expected_fingerprint: object,
 ) -> bool:
-    """按第一版运行时契约校验规划输入及其持久指纹。"""
+    """
+    按第一版运行时契约校验规划输入及其持久指纹。
+    """
     if not isinstance(value, dict) or value.get("schema_version") != 1:
         return False
     if not _is_source_fileitem(value.get("source_fileitem")):
@@ -132,7 +151,9 @@ def _is_planning_input(
 
 
 def _is_provider_reference(value: object) -> bool:
-    """判断旧 provider 引用是否包含稳定身份与固定方法。"""
+    """
+    判断旧能力提供方 引用是否包含稳定身份与固定方法。
+    """
     return (
         isinstance(value, dict)
         and _is_nonempty_string(value.get("plugin_id"))
@@ -142,7 +163,9 @@ def _is_provider_reference(value: object) -> bool:
 
 
 def _is_provider_invocation(value: object) -> bool:
-    """按第一版旧 ABI 契约校验 provider 调用快照。"""
+    """
+    按第一版旧 ABI 契约校验 能力提供方调用快照。
+    """
     if not isinstance(value, dict) or value.get("schema_version") != 1:
         return False
     if not _is_source_fileitem(value.get("fileitem")):
@@ -176,7 +199,9 @@ def _is_provider_invocation(value: object) -> bool:
 
 
 def _is_plan_item(value: object, *, sequence: int) -> bool:
-    """判断计划叶子项是否具有连续序号和完整源目标身份。"""
+    """
+    判断计划叶子项是否具有连续序号和完整源目标身份。
+    """
     return (
         isinstance(value, dict)
         and value.get("sequence") == sequence
@@ -193,7 +218,9 @@ def _classify_checkpoint(
         checkpoint_payload: object,
         input_fingerprint: object,
 ) -> str | None:
-    """把完整计划检查点分类为宿主计划或 provider 待执行态。"""
+    """
+    把完整计划检查点分类为宿主计划或 能力提供方待执行态。
+    """
     if (
             checkpoint_version != 1
             or not isinstance(checkpoint_payload, dict)
@@ -306,7 +333,9 @@ def _classify_checkpoint(
 
 
 def _normalize_legacy_planning_states() -> None:
-    """把旧 planning manual_review 恢复为运行时可领取的稳定状态。"""
+    """
+    把旧规划阶段的 manual_review 状态 恢复为运行时可领取的稳定状态。
+    """
     pending = sa.table(
         _PENDING_TABLE,
         sa.column("id", sa.Integer()),
@@ -351,7 +380,9 @@ def _normalize_legacy_planning_states() -> None:
 
 
 def _is_execution_checkpoint(row: dict[str, Any]) -> bool:
-    """校验执行检查点三元组的完整性、版本和内容指纹。"""
+    """
+    校验执行检查点三元组的完整性、版本和内容指纹。
+    """
     values = (
         row["execution_version"],
         row["execution_payload"],
@@ -401,7 +432,9 @@ def _is_execution_checkpoint(row: dict[str, Any]) -> bool:
 
 
 def _has_failed_receipt(row: dict[str, Any]) -> bool:
-    """判断失败 pending 是否具有匹配历史与 append-only 回执。"""
+    """
+    判断失败 pending 是否具有匹配历史与 仅追加 回执。
+    """
     if (
             _RECEIPT_TABLE not in _table_names()
             or _HISTORY_TABLE not in _table_names()
@@ -439,7 +472,9 @@ def _has_failed_receipt(row: dict[str, Any]) -> bool:
 
 
 def _checkpoint_steps_complete(row: dict[str, Any]) -> bool:
-    """判断执行检查点引用的每个外部操作是否已有确定结果。"""
+    """
+    判断执行检查点引用的每个外部操作是否已有确定结果。
+    """
     payload = row["execution_payload"]
     if not isinstance(payload, dict):
         return False
@@ -465,7 +500,9 @@ def _checkpoint_steps_complete(row: dict[str, Any]) -> bool:
 
 
 def _has_manual_review_step(task_id: str) -> bool:
-    """判断人工复核态是否具有运行时可发现的对应步骤证据。"""
+    """
+    判断人工复核态是否具有运行时可发现的对应步骤证据。
+    """
     steps = sa.table(
         _STEP_TABLE,
         sa.column("task_id", sa.String(64)),
@@ -480,7 +517,9 @@ def _has_manual_review_step(task_id: str) -> bool:
 
 
 def _execution_issue(row: dict[str, Any]) -> str | None:
-    """返回阻止执行状态安全恢复的持久不变量缺口。"""
+    """
+    返回阻止执行状态安全恢复的持久不变量缺口。
+    """
     state = row["execution_state"]
     if state not in _ALLOWED_EXECUTION_STATES:
         return f"未知执行状态: {state}"
@@ -531,14 +570,18 @@ def _execution_issue(row: dict[str, Any]) -> str | None:
 
 
 def _review_operation_id(task_id: str) -> str:
-    """生成 3.0.17 数据修复步骤的确定性身份。"""
+    """
+    生成 3.0.17 数据修复步骤的确定性身份。
+    """
     return hashlib.sha256(
         f"moviepilot:3.0.17:execution-review:{task_id}".encode("utf-8")
     ).hexdigest()
 
 
 def _append_review_error(last_error: object, issue: str) -> str:
-    """保留原始错误并追加可识别的迁移诊断。"""
+    """
+    保留原始错误并追加可识别的迁移诊断。
+    """
     diagnostic = f"{_REVIEW_DIAGNOSTIC}（{issue}）"
     if not _is_nonempty_string(last_error):
         return diagnostic
@@ -548,7 +591,9 @@ def _append_review_error(last_error: object, issue: str) -> str:
 
 
 def _next_review_ordinal(task_id: str) -> int:
-    """选择不会覆盖既有步骤证据的高位人工复核序号。"""
+    """
+    选择不会覆盖既有步骤证据的高位人工复核序号。
+    """
     steps = sa.table(
         _STEP_TABLE,
         sa.column("task_id", sa.String(64)),
@@ -564,7 +609,9 @@ def _next_review_ordinal(task_id: str) -> int:
 
 
 def _insert_review_step(row: dict[str, Any], *, issue: str) -> None:
-    """把非法执行组合冻结为可人工判定的 synthetic 审计步骤。"""
+    """
+    把非法执行组合冻结为可人工判定的 迁移生成的 审计步骤。
+    """
     operation_id = _review_operation_id(row["task_id"])
     steps = sa.table(
         _STEP_TABLE,
@@ -632,7 +679,9 @@ def _insert_review_step(row: dict[str, Any], *, issue: str) -> None:
 
 
 def _reconcile_execution_states() -> None:
-    """隔离非法执行组合，并统一清除人工复核态残留租约。"""
+    """
+    隔离非法执行组合，并统一清除人工复核态残留租约。
+    """
     pending = sa.table(
         _PENDING_TABLE,
         sa.column("id", sa.Integer()),
@@ -689,7 +738,9 @@ def _reconcile_execution_states() -> None:
 
 
 def upgrade() -> None:
-    """归一旧人工态并隔离无法安全自动恢复的执行组合。"""
+    """
+    归一旧人工态并隔离无法安全自动恢复的执行组合。
+    """
     tables = _table_names()
     if _PENDING_TABLE not in tables:
         return
@@ -700,4 +751,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """保留更安全的状态归一和人工证据，结构由 3.0.16 负责降级。"""
+    """
+    保留更安全的状态归一和人工证据，结构由 3.0.16 负责降级。
+    """

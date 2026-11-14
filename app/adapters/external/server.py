@@ -1,9 +1,30 @@
+"""
+封装 MoviePilot 中心服务请求、响应解析，以及供旧调用方使用的上报和分享入口。
+"""
+
 import asyncio
 import json
 import platform
 from collections.abc import Coroutine
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from urllib.parse import parse_qs, quote, urlparse, urlsplit
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    ParamSpec,
+    Protocol,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
+from urllib.parse import parse_qs, quote, urlparse, urlsplit, urlunsplit
+
+from httpx2 import Response as AsyncResponse
+from requests import Response
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.adapters.system.host import SystemUtils
@@ -25,26 +46,118 @@ from app.schemas.types import (
     media_type_to_agent,
 )
 
+if TYPE_CHECKING:
+    from app.application.server.report import ServerReportService
+    from app.application.server.share import ServerSharingService
+    from app.application.workflow import WorkflowSnapshot
+
+
 # 中心服务适配器只通过 runtime 读取端口消费组合根的最新配置。
 
 
-_server_report_service: Any = None
-_server_sharing_service: Any = None
+_LookupParams = ParamSpec("_LookupParams")
+_LookupResult = TypeVar("_LookupResult")
+
+
+class _CacheControl(Protocol):
+    """
+    缓存装饰器为包装函数提供的失效接口。
+    """
+
+    def cache_clear(self) -> None:
+        """
+        清空此包装函数对应的缓存区域；不发起服务端请求。
+        """
+        ...
+
+
+def _cached_server_result(
+        *, region: Optional[str] = None, maxsize: int = 1024,
+        ttl: Optional[int] = None, skip_empty: bool = False,
+) -> Callable[[Callable[_LookupParams, _LookupResult]], Callable[_LookupParams, _LookupResult]]:
+    """
+    保留统计和分享查询的参数、结果类型，沿用底层缓存策略。
+
+    :param region: 原有缓存区域名称；未指定时按被包装函数生成
+    :param maxsize: 缓存条目上限
+    :param ttl: 条目有效秒数；未指定时沿用底层默认值
+    :param skip_empty: 是否跳过空结果
+    :return: 不改变调用签名的缓存装饰器
+    """
+    def decorator(function: Callable[_LookupParams, _LookupResult]) -> Callable[_LookupParams, _LookupResult]:
+        """
+        恢复底层包装器保持不变的原始调用签名。
+        """
+        return cached(region=region, maxsize=maxsize, ttl=ttl, skip_empty=skip_empty)(function)
+    return decorator
+
+
+def _clear_server_cache(function: Callable[..., object]) -> None:
+    """
+    清空由缓存装饰器附加的区域，不改变原有失效顺序。
+    """
+    cast(_CacheControl, function).cache_clear()
+
+
+def _response_mapping(response: Response | AsyncResponse) -> dict[str, Any]:
+    """
+    在外部 JSON 边界确认对象形状，保留协议允许的任意字段内容。
+
+    :param response: 已取得的同步或异步 HTTP 响应
+    :return: 原始 JSON 对象，不复制或丢弃字段
+    :raises ValueError: JSON 解析失败或顶层不是对象
+    """
+    payload: object = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("中心服务响应不是 JSON 对象")
+    return payload
+
+
+def _cached_server_lookup(
+    maxsize: int,
+) -> Callable[
+    [Callable[_LookupParams, Awaitable[Dict[str, Any]]]],
+    Callable[_LookupParams, Awaitable[Dict[str, Any]]],
+]:
+    """
+    为中心服务开关与权限查询提供保留签名的短时进程内缓存。
+
+    成功结果缓存 60 秒，使服务端开关与名单变更在一分钟内生效；不可达或非 200 得到的
+    空结果只缓存 15 秒，故障恢复后尽快重新判定。结果随本实例身份变化，不共享到 Redis。
+    """
+
+    def decorator(
+        function: Callable[_LookupParams, Awaitable[Dict[str, Any]]],
+    ) -> Callable[_LookupParams, Awaitable[Dict[str, Any]]]:
+        """
+        包装单个查询函数，缓存层本身未标注类型，这里显式恢复原签名。
+        """
+        return cached(maxsize=maxsize, ttl=60, empty_ttl=15, local_only=True)(function)
+
+    return decorator
+
+
+_server_report_service: ServerReportService | None = None
+_server_sharing_service: ServerSharingService | None = None
 
 
 def configure_server_application_services(
         *,
-        report_service: Any,
-        sharing_service: Any,
+        report_service: ServerReportService,
+        sharing_service: ServerSharingService,
 ) -> None:
-    """由启动组合根注入分享和存量上报应用服务。"""
+    """
+    由启动组合根注入分享和存量上报应用服务。
+    """
     global _server_report_service, _server_sharing_service
     _server_report_service = report_service
     _server_sharing_service = sharing_service
 
 
 def reset_server_application_services() -> None:
-    """清除当前 lifespan 的中心服务上报与分享用例。"""
+    """
+    清除当前应用生命周期的中心服务上报与分享用例。
+    """
     global _server_report_service, _server_sharing_service
     _server_report_service = None
     _server_sharing_service = None
@@ -77,20 +190,80 @@ class MoviePilotServerHelper:
     _WORKFLOW_FORK_PATH = "/workflow/fork"
     _RECOGNIZE_SHARE_PATH = "/recognize/share"
     _USER_PERMISSIONS_PATH = "/user/permissions"
+    _USER_FEATURES_PATH = "/user/features"
     _LOCAL_REPO_PREFIX = "local://"
     _user_uid: Optional[str] = None
     _github_user: Optional[str] = None
 
+    @staticmethod
+    def normalize_relay_url(server: str) -> str:
+        """
+        校验中转地址并统一持久凭据的作用域，不允许凭据、查询参数或片段。
+
+        :param server: 管理员配置的 HTTPS 服务根地址，回环调试允许 HTTP
+        :return: 规范化且去除尾部斜线的地址
+        :raises ValueError: 地址不能安全接收实例凭据
+        """
+        target = urlsplit(server)
+        local = target.hostname in {"localhost", "127.0.0.1", "::1"}
+        if (target.scheme != "https" and not (local and target.scheme == "http")) or not target.hostname or target.username or target.password or target.query or target.fragment:
+            raise ValueError("中转地址必须使用 HTTPS，本机回环调试除外")
+        return urlunsplit((target.scheme, target.netloc.lower(), target.path.rstrip("/"), "", ""))
+
+    @staticmethod
+    def relay_push(server: str, key: str, method: str, path: str, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        向显式配置的私有 Server 转发通知，发送密钥只放请求头且不跟随重定向。
+
+        :param server: 管理员配置的 HTTPS 中转地址；本机联调允许回环 HTTP
+        :param key: 该实例专用的中转发送密钥
+        :param method: 内部限定的 GET、POST 或 DELETE 方法
+        :param path: 内部限定的 push 接口路径
+        :param data: 已绑定当前用户的注册或消息数据
+        :return: Server 返回的对象；失败抛出不含凭据或原始响应的 ValueError
+        """
+        server = MoviePilotServerHelper.normalize_relay_url(server)
+        allowed = {("GET", "devices"), ("POST", "devices"), ("DELETE", "devices"),
+                   ("POST", "pairings"), ("POST", "messages"), ("POST", "instances"),
+                   ("PUT", "instances/credentials"), ("DELETE", "instances")}
+        if (method, path) not in allowed:
+            raise ValueError("不支持的通知接口")
+        if len(key) < 32:
+            raise ValueError("请配置至少 32 位的中转发送密钥")
+        # 首次登记或恢复轮换之后还要执行原操作，两段请求均需落在 App 的65秒截止时间内。
+        response = RequestUtils(timeout=20, headers={"Authorization": f"Bearer {key}"}).request(
+            method, f"{server.rstrip('/')}/push/{path}", allow_redirects=False, verify=True,
+            params=data if method == "GET" else None,
+            json=data if method != "GET" else None,
+        )
+        if response is None or response.status_code != 200:
+            code = response.status_code if response is not None else 0
+            if code == 403 and path == "instances":
+                raise ValueError("消息中心尚未开放自动接入，请联系中心运营者")
+            if code == 401:
+                raise ValueError("通知接入凭据无效或已停用，请联系中心运营者")
+            if code == 429:
+                raise ValueError("消息中心请求过于频繁，请稍后重试")
+            raise ValueError(f"私有通知服务请求失败（{code}）")
+        try:
+            return _response_mapping(response)
+        except ValueError as error:
+            raise ValueError("私有通知服务响应无效") from error
+
     @classmethod
-    def _report_service(cls) -> Any:
-        """返回启动组合根注入的存量上报应用服务。"""
+    def _report_service(cls) -> ServerReportService:
+        """
+        返回启动组合根注入的存量上报应用服务。
+        """
         if _server_report_service is None:
             raise RuntimeError("中心服务上报用例尚未由启动组合根装配")
         return _server_report_service
 
     @classmethod
-    def _sharing_service(cls) -> Any:
-        """返回启动组合根注入的订阅和工作流分享应用服务。"""
+    def _sharing_service(cls) -> ServerSharingService:
+        """
+        返回启动组合根注入的订阅和工作流分享应用服务。
+        """
         if _server_sharing_service is None:
             raise RuntimeError("中心服务分享用例尚未由启动组合根装配")
         return _server_sharing_service
@@ -101,7 +274,9 @@ class MoviePilotServerHelper:
         获取当前安装实例用于服务端统计识别的稳定用户 ID。
         """
         if cls._user_uid is None:
-            cls._user_uid = SystemUtils.generate_user_unique_id()
+            # 底层兼容工具尚未标注签名；实现始终返回哈希字符串或 None。
+            uid_provider: Callable[[], Optional[str]] = SystemUtils.generate_user_unique_id
+            cls._user_uid = uid_provider()
         return cls._user_uid
 
     @staticmethod
@@ -132,9 +307,9 @@ class MoviePilotServerHelper:
     def build_headers(
             cls,
             url: str,
-            headers: Optional[dict] = None,
+            headers: Optional[dict[str, Any]] = None,
             content_type: Optional[str] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         构建访问 MoviePilot 服务端需要的请求头。
         """
@@ -188,7 +363,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     def _build_github_user_request(cls) -> Optional[Dict[str, Any]]:
-        """生成 GitHub 当前用户查询计划，已有缓存或未配置凭据时不发请求。"""
+        """
+        生成 GitHub 当前用户查询计划，已有缓存或未配置凭据时不发请求。
+        """
         headers = get_runtime_setting('GITHUB_HEADERS')
         if cls._github_user is not None or not headers:
             return None
@@ -199,14 +376,16 @@ class MoviePilotServerHelper:
         }
 
     @classmethod
-    def _remember_github_user(cls, response: Any) -> None:
-        """统一解释 GitHub 用户响应并更新同步异步共享的用户名缓存。"""
+    def _remember_github_user(cls, response: Response | AsyncResponse | None) -> None:
+        """
+        统一解释 GitHub 用户响应并更新同步异步共享的用户名缓存。
+        """
         if response:
             cls._github_user = response.json().get("login")
             logger.info(f"当前Github用户: {cls._github_user}")
 
     @classmethod
-    def user_permissions(cls, github_user: str):
+    def user_permissions(cls, github_user: str) -> Optional[Response]:
         """
         查询服务端用户权限。
         """
@@ -218,7 +397,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    async def async_user_permissions(cls, github_user: str):
+    async def async_user_permissions(cls, github_user: str) -> Optional[AsyncResponse]:
         """
         异步查询服务端用户权限。
         """
@@ -228,6 +407,32 @@ class MoviePilotServerHelper:
             include_user_uid=False,
             timeout=5,
         )
+
+    @classmethod
+    async def async_user_features(cls) -> Any:
+        """
+        异步查询服务端对所有实例相同的全局功能开关。
+        """
+        return await cls._async_get(
+            cls._server_url(cls._USER_FEATURES_PATH),
+            include_user_uid=False,
+            timeout=5,
+        )
+
+    @classmethod
+    @_cached_server_lookup(maxsize=1)
+    async def async_get_features(cls) -> Dict[str, Any]:
+        """
+        获取服务端全局功能开关（如 ``community_medals``），失败时返回空对象。
+
+        结果与实例身份无关，用单一键缓存：成功 60 秒，使开关变更在一分钟内生效；服务端
+        不可达或非 200 得到的空结果只缓存 15 秒。仅缓存于进程内存。
+        """
+        try:
+            return cls._handle_mapping_response(await cls.async_user_features())
+        except Exception as err:
+            logger.debug(f"获取服务端全局功能开关失败：{str(err)}")
+        return {}
 
     @classmethod
     def get_user_permissions(cls) -> Dict[str, Any]:
@@ -246,11 +451,25 @@ class MoviePilotServerHelper:
     @classmethod
     async def async_get_user_permissions(cls) -> Dict[str, Any]:
         """
-        异步获取当前用户在服务端配置中的权限。
+        异步获取当前用户在服务端配置中的权限；未登录 GitHub 时不发请求并返回空权限。
         """
         github_user = await cls.async_get_github_user()
         if not github_user:
             return {}
+        return await cls._async_fetch_user_permissions(github_user)
+
+    @classmethod
+    @_cached_server_lookup(maxsize=4)
+    async def _async_fetch_user_permissions(cls, github_user: str) -> Dict[str, Any]:
+        """
+        按 GitHub 用户名查询并短时缓存服务端权限。
+
+        前端每次加载会同时请求 ``/system/global/user`` 与 ``/github/community``，两者都依赖
+        此结果（共享管理权限与社区勋章预览），短时缓存避免每次页面加载向服务端重复往返。
+        缓存键为用户名，换账号后不沿用旧结论。成功结果缓存 60 秒，使服务端开关与管理员名单变更在一分钟内生效；服务端
+        不可达或非 200 得到的空权限只缓存 15 秒，故障恢复后尽快重新判定。仅缓存于进程内存，
+        权限随本实例 GitHub 身份变化，不共享到 Redis。
+        """
         try:
             return cls._handle_mapping_response(
                 await cls.async_user_permissions(github_user)
@@ -277,7 +496,9 @@ class MoviePilotServerHelper:
 
     @staticmethod
     def _permissions_allow_sharing(permissions: Dict[str, Any]) -> bool:
-        """按统一权限字段判断当前用户是否可管理共享内容。"""
+        """
+        按统一权限字段判断当前用户是否可管理共享内容。
+        """
         return bool(
             permissions.get("is_admin")
             or permissions.get("subscribe_share_manage")
@@ -328,7 +549,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     def _build_usage_report_plan(cls) -> Optional[Dict[str, Any]]:
-        """在统计已启用且实例身份有效时生成版本统计载荷。"""
+        """
+        在统计已启用且实例身份有效时生成版本统计载荷。
+        """
         if not get_runtime_setting('USAGE_STATISTIC_SHARE'):
             return None
         payload = cls.build_usage_payload()
@@ -360,7 +583,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_init_subscribe_report(cls) -> None:
-        """异步初始化订阅统计标记。"""
+        """
+        异步初始化订阅统计标记。
+        """
         await cls._report_service().async_init_report(
             enabled=get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'),
             state_key=SystemConfigKey.SubscribeReport,
@@ -380,7 +605,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_init_plugin_report(cls) -> None:
-        """异步初始化插件统计标记。"""
+        """
+        异步初始化插件统计标记。
+        """
         await cls._report_service().async_init_report(
             enabled=get_runtime_setting('PLUGIN_STATISTIC_SHARE'),
             state_key=SystemConfigKey.PluginInstallReport,
@@ -388,28 +615,38 @@ class MoviePilotServerHelper:
         )
 
     @staticmethod
-    def _handle_list_response(res) -> List[dict]:
+    def _handle_list_response(res: Response | AsyncResponse | None) -> List[dict[str, Any]]:
         """
         处理服务端返回的列表响应。
         """
         if res is not None and res.status_code == 200:
-            return res.json()
+            payload: object = res.json()
+            if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+                raise ValueError("中心服务响应不是 JSON 对象列表")
+            return payload
         return []
 
     @staticmethod
-    def _handle_mapping_response(res: Any) -> Dict[str, Any]:
-        """处理服务端返回的对象响应，非成功状态统一映射为空对象。"""
+    def _handle_mapping_response(res: Response | AsyncResponse | None) -> Dict[str, Any]:
+        """
+        处理服务端返回的对象响应，非成功状态统一映射为空对象。
+        """
         if res is not None and res.status_code == 200:
-            return res.json()
+            return _response_mapping(res)
         return {}
 
     @staticmethod
-    def _response_succeeded(res: Any) -> bool:
-        """把同步与异步传输响应统一映射为服务端成功状态。"""
+    def _response_succeeded(res: Response | AsyncResponse | None) -> bool:
+        """
+        把同步与异步传输响应统一映射为服务端成功状态。
+        """
         return bool(res is not None and res.status_code == 200)
 
     @staticmethod
-    def _handle_response(res, clear_cache=None) -> Tuple[bool, str]:
+    def _handle_response(
+            res: Response | AsyncResponse | None,
+            clear_cache: Optional[Callable[[], None]] = None,
+    ) -> Tuple[bool, str]:
         """
         处理服务端写入类接口响应。
         """
@@ -425,49 +662,49 @@ class MoviePilotServerHelper:
             return False, f"响应解析失败: {getattr(res, 'text', '')[:100]}..."
 
     @classmethod
-    def usage_report(cls, payload: Dict[str, Any]):
+    def usage_report(cls, payload: Dict[str, Any]) -> Optional[Response]:
         """
         上报安装版本统计。
         """
         return cls._post_json(cls._server_url(cls._USAGE_REPORT_PATH), payload, timeout=5)
 
     @classmethod
-    async def async_usage_report(cls, payload: Dict[str, Any]):
+    async def async_usage_report(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步上报安装版本统计。
         """
         return await cls._async_post_json(cls._server_url(cls._USAGE_REPORT_PATH), payload, timeout=5)
 
     @classmethod
-    def usage_statistic(cls):
+    def usage_statistic(cls) -> Optional[Response]:
         """
         获取安装版本统计报表。
         """
         return cls._get(cls._server_url(cls._USAGE_STATISTIC_PATH), timeout=10)
 
     @classmethod
-    async def async_usage_statistic(cls):
+    async def async_usage_statistic(cls) -> Optional[AsyncResponse]:
         """
         异步获取安装版本统计报表。
         """
         return await cls._async_get(cls._server_url(cls._USAGE_STATISTIC_PATH), timeout=10)
 
     @classmethod
-    def plugin_statistic(cls):
+    def plugin_statistic(cls) -> Optional[Response]:
         """
         获取插件安装统计。
         """
         return cls._get(cls._server_url(cls._PLUGIN_STATISTIC_PATH), timeout=10)
 
     @classmethod
-    async def async_plugin_statistic(cls):
+    async def async_plugin_statistic(cls) -> Optional[AsyncResponse]:
         """
         异步获取插件安装统计。
         """
         return await cls._async_get(cls._server_url(cls._PLUGIN_STATISTIC_PATH), timeout=10)
 
     @classmethod
-    async def async_plugin_ratings(cls, plugin_ids: Optional[List[str]] = None):
+    async def async_plugin_ratings(cls, plugin_ids: Optional[List[str]] = None) -> Optional[AsyncResponse]:
         """
         异步批量查询中心端插件评分。
         """
@@ -479,7 +716,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    async def async_plugin_rating(cls, plugin_id: str):
+    async def async_plugin_rating(cls, plugin_id: str) -> Optional[AsyncResponse]:
         """
         异步查询中心端单个插件评分。
         """
@@ -489,7 +726,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    async def async_rate_plugin(cls, plugin_id: str, rating: float):
+    async def async_rate_plugin(cls, plugin_id: str, rating: float) -> Optional[AsyncResponse]:
         """
         异步提交当前安装实例的插件评分。
         """
@@ -500,14 +737,14 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def plugin_install(cls, plugin_id: str, payload: Dict[str, Any]):
+    def plugin_install(cls, plugin_id: str, payload: Dict[str, Any]) -> Optional[Response]:
         """
         上报单个插件安装统计。
         """
         return cls._post_json(f"{cls._server_url(cls._PLUGIN_INSTALL_PATH)}/{plugin_id}", payload, timeout=5)
 
     @classmethod
-    async def async_plugin_install(cls, plugin_id: str, payload: Dict[str, Any]):
+    async def async_plugin_install(cls, plugin_id: str, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步上报单个插件安装统计。
         """
@@ -518,14 +755,14 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def plugin_install_report(cls, plugins: List[Dict[str, Any]]):
+    def plugin_install_report(cls, plugins: List[Dict[str, Any]]) -> Optional[Response]:
         """
         批量上报插件安装统计。
         """
         return cls._post_json(cls._server_url(cls._PLUGIN_INSTALL_PATH), {"plugins": plugins}, timeout=5)
 
     @classmethod
-    async def async_plugin_install_report(cls, plugins: List[Dict[str, Any]]):
+    async def async_plugin_install_report(cls, plugins: List[Dict[str, Any]]) -> Optional[AsyncResponse]:
         """
         异步批量上报插件安装统计。
         """
@@ -536,8 +773,8 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    @cached(maxsize=1, ttl=1800)
-    def get_plugin_statistic(cls) -> Dict:
+    @_cached_server_result(maxsize=1, ttl=1800)
+    def get_plugin_statistic(cls) -> Dict[str, Any]:
         """
         获取插件安装统计。
         """
@@ -546,7 +783,7 @@ class MoviePilotServerHelper:
         return cls._handle_mapping_response(cls.plugin_statistic())
 
     @classmethod
-    async def async_get_plugin_statistic(cls) -> Dict:
+    async def async_get_plugin_statistic(cls) -> Dict[str, Any]:
         """
         异步获取插件安装统计。
         """
@@ -565,7 +802,10 @@ class MoviePilotServerHelper:
         try:
             res = await cls.async_plugin_ratings(plugin_ids)
             if res is not None and res.status_code == 200:
-                return res.json()
+                payload = _response_mapping(res)
+                if not all(isinstance(value, dict) for value in payload.values()):
+                    raise ValueError("中心服务评分响应包含非对象记录")
+                return payload
         except Exception as err:
             logger.debug(f"批量获取插件评分失败：{str(err)}")
         return {}
@@ -584,7 +824,7 @@ class MoviePilotServerHelper:
         try:
             res = await cls.async_plugin_rating(plugin_id)
             if res is not None and res.status_code == 200:
-                return res.json()
+                return _response_mapping(res)
         except Exception as err:
             logger.debug(f"获取插件 {plugin_id} 评分失败：{str(err)}")
         return empty_rating
@@ -601,7 +841,7 @@ class MoviePilotServerHelper:
         try:
             res = await cls.async_rate_plugin(plugin_id, rating)
             if res is not None and res.status_code == 200:
-                return res.json()
+                return _response_mapping(res)
         except Exception as err:
             logger.debug(f"提交插件 {plugin_id} 评分失败：{str(err)}")
         return None
@@ -634,7 +874,9 @@ class MoviePilotServerHelper:
             plugin_id: str,
             repo_url: Optional[str],
     ) -> Optional[Dict[str, Any]]:
-        """在插件统计已启用且插件身份有效时生成单次安装上报载荷。"""
+        """
+        在插件统计已启用且插件身份有效时生成单次安装上报载荷。
+        """
         if not get_runtime_setting('PLUGIN_STATISTIC_SHARE') or not plugin_id:
             return None
         return {
@@ -663,43 +905,45 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def subscribe_statistic(cls, params: Dict[str, Any]):
+    def subscribe_statistic(cls, params: Dict[str, Any]) -> Optional[Response]:
         """
         获取订阅统计数据。
         """
         return cls._get(cls._server_url(cls._SUBSCRIBE_STATISTIC_PATH), params=params, timeout=15)
 
     @classmethod
-    async def async_subscribe_statistic(cls, params: Dict[str, Any]):
+    async def async_subscribe_statistic(cls, params: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步获取订阅统计数据。
         """
         return await cls._async_get(cls._server_url(cls._SUBSCRIBE_STATISTIC_PATH), params=params, timeout=15)
 
     @classmethod
-    def subscribe_add(cls, payload: Dict[str, Any]):
+    def subscribe_add(cls, payload: Dict[str, Any]) -> Optional[Response]:
         """
         新增订阅统计。
         """
         return cls._post_json(cls._server_url(cls._SUBSCRIBE_ADD_PATH), payload, timeout=5)
 
     @classmethod
-    async def async_subscribe_add(cls, payload: Dict[str, Any]):
+    async def async_subscribe_add(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步新增订阅统计。
         """
         return await cls._async_post_json(cls._server_url(cls._SUBSCRIBE_ADD_PATH), payload, timeout=5)
 
     @classmethod
-    def subscribe_done(cls, payload: Dict[str, Any]):
+    def subscribe_done(cls, payload: Dict[str, Any]) -> Optional[Response]:
         """
         完成订阅统计。
         """
         return cls._post_json(cls._server_url(cls._SUBSCRIBE_DONE_PATH), payload, timeout=5)
 
     @classmethod
-    async def async_subscribe_done(cls, payload: Dict[str, Any]):
-        """异步完成订阅统计，并返回可检查 HTTP 状态的响应对象。"""
+    async def async_subscribe_done(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
+        """
+        异步完成订阅统计，并返回可检查 HTTP 状态的响应对象。
+        """
         return await cls._async_post_json(
             cls._server_url(cls._SUBSCRIBE_DONE_PATH),
             payload,
@@ -707,8 +951,10 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    async def async_subscribe_report(cls, subscribes: List[Dict[str, Any]]):
-        """异步批量上报存量订阅统计。"""
+    async def async_subscribe_report(cls, subscribes: List[Dict[str, Any]]) -> Optional[AsyncResponse]:
+        """
+        异步批量上报存量订阅统计。
+        """
         return await cls._async_post_json(
             cls._server_url(cls._SUBSCRIBE_REPORT_PATH),
             {"subscribes": subscribes},
@@ -716,7 +962,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def subscribe_report(cls, subscribes: List[Dict[str, Any]]):
+    def subscribe_report(cls, subscribes: List[Dict[str, Any]]) -> Optional[Response]:
         """
         批量上报存量订阅统计。
         """
@@ -727,21 +973,21 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def subscribe_share(cls, payload: Dict[str, Any]):
+    def subscribe_share(cls, payload: Dict[str, Any]) -> Optional[Response]:
         """
         分享订阅数据。
         """
         return cls._post_json(cls._server_url(cls._SUBSCRIBE_SHARE_PATH), payload, timeout=10)
 
     @classmethod
-    async def async_subscribe_share(cls, payload: Dict[str, Any]):
+    async def async_subscribe_share(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步分享订阅数据。
         """
         return await cls._async_post_json(cls._server_url(cls._SUBSCRIBE_SHARE_PATH), payload, timeout=10)
 
     @classmethod
-    def subscribe_share_delete(cls, share_id: int, share_uid: str):
+    def subscribe_share_delete(cls, share_id: int, share_uid: str) -> Optional[Response]:
         """
         删除订阅分享数据。
         """
@@ -752,7 +998,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    async def async_subscribe_share_delete(cls, share_id: int, share_uid: str):
+    async def async_subscribe_share_delete(cls, share_id: int, share_uid: str) -> Optional[AsyncResponse]:
         """
         异步删除订阅分享数据。
         """
@@ -763,42 +1009,42 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def subscribe_fork(cls, share_id: int):
+    def subscribe_fork(cls, share_id: int) -> Optional[Response]:
         """
         复用订阅分享数据。
         """
         return cls._get(f"{cls._server_url(cls._SUBSCRIBE_FORK_PATH)}/{share_id}", timeout=5)
 
     @classmethod
-    async def async_subscribe_fork(cls, share_id: int):
+    async def async_subscribe_fork(cls, share_id: int) -> Optional[AsyncResponse]:
         """
         异步复用订阅分享数据。
         """
         return await cls._async_get(f"{cls._server_url(cls._SUBSCRIBE_FORK_PATH)}/{share_id}", timeout=5)
 
     @classmethod
-    def subscribe_shares(cls, params: Dict[str, Any]):
+    def subscribe_shares(cls, params: Dict[str, Any]) -> Optional[Response]:
         """
         获取订阅分享数据。
         """
         return cls._get(cls._server_url(cls._SUBSCRIBE_SHARES_PATH), params=params, timeout=15)
 
     @classmethod
-    async def async_subscribe_shares(cls, params: Dict[str, Any]):
+    async def async_subscribe_shares(cls, params: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步获取订阅分享数据。
         """
         return await cls._async_get(cls._server_url(cls._SUBSCRIBE_SHARES_PATH), params=params, timeout=15)
 
     @classmethod
-    def subscribe_share_statistics(cls):
+    def subscribe_share_statistics(cls) -> Optional[Response]:
         """
         获取订阅分享统计数据。
         """
         return cls._get(cls._server_url(cls._SUBSCRIBE_SHARE_STATISTICS_PATH), timeout=15)
 
     @classmethod
-    async def async_subscribe_share_statistics(cls):
+    async def async_subscribe_share_statistics(cls) -> Optional[AsyncResponse]:
         """
         异步获取订阅分享统计数据。
         """
@@ -812,7 +1058,7 @@ class MoviePilotServerHelper:
             min_rating: Optional[float] = None,
             max_rating: Optional[float] = None,
             sort_type: Optional[str] = None,
-            **extra,
+            **extra: object,
     ) -> Dict[str, Any]:
         """
         构建订阅统计与分享查询参数。
@@ -837,7 +1083,9 @@ class MoviePilotServerHelper:
             cls,
             **kwargs: Any,
     ) -> Optional[Dict[str, Any]]:
-        """在订阅统计已启用时生成统计或分享列表查询计划。"""
+        """
+        在订阅统计已启用时生成统计或分享列表查询计划。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return None
         return cls._build_subscribe_query_params(**kwargs)
@@ -847,7 +1095,9 @@ class MoviePilotServerHelper:
             cls,
             item: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        """在订阅统计已启用且载荷有效时生成新增或完成上报计划。"""
+        """
+        在订阅统计已启用且载荷有效时生成新增或完成上报计划。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return None
         return cls._build_subscribe_statistic_payload(item)
@@ -857,13 +1107,15 @@ class MoviePilotServerHelper:
             setting_key: str,
             message: str,
     ) -> Optional[Tuple[bool, str]]:
-        """将分享功能开关统一映射为可直接返回的禁用结果。"""
+        """
+        将分享功能开关统一映射为可直接返回的禁用结果。
+        """
         if not get_runtime_setting(setting_key):
             return False, message
         return None
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
+    @_cached_server_result(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     def get_subscribe_statistic(
             cls,
             stype: str,
@@ -873,7 +1125,7 @@ class MoviePilotServerHelper:
             min_rating: Optional[float] = None,
             max_rating: Optional[float] = None,
             sort_type: Optional[str] = None,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         获取订阅统计数据。
         """
@@ -891,7 +1143,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(cls.subscribe_statistic(params))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
+    @_cached_server_result(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     async def async_get_subscribe_statistic(
             cls,
             stype: str,
@@ -901,7 +1153,7 @@ class MoviePilotServerHelper:
             min_rating: Optional[float] = None,
             max_rating: Optional[float] = None,
             sort_type: Optional[str] = None,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         异步获取订阅统计数据。
         """
@@ -919,7 +1171,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(await cls.async_subscribe_statistic(params))
 
     @classmethod
-    def sub_reg(cls, sub: dict) -> bool:
+    def sub_reg(cls, sub: dict[str, Any]) -> bool:
         """
         新增订阅统计。
         """
@@ -929,7 +1181,7 @@ class MoviePilotServerHelper:
         return cls._response_succeeded(cls.subscribe_add(payload))
 
     @classmethod
-    async def async_sub_reg(cls, sub: dict) -> bool:
+    async def async_sub_reg(cls, sub: dict[str, Any]) -> bool:
         """
         异步新增订阅统计。
         """
@@ -939,21 +1191,25 @@ class MoviePilotServerHelper:
         return cls._response_succeeded(await cls.async_subscribe_add(payload))
 
     @classmethod
-    def sub_reg_durable(cls, sub: dict) -> bool:
-        """同步上报新增统计；明确禁用时视为无需投递。"""
+    def sub_reg_durable(cls, sub: dict[str, Any]) -> bool:
+        """
+        同步上报新增统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return cls.sub_reg(sub)
 
     @classmethod
-    async def async_sub_reg_durable(cls, sub: dict) -> bool:
-        """异步上报新增统计；明确禁用时视为无需投递。"""
+    async def async_sub_reg_durable(cls, sub: dict[str, Any]) -> bool:
+        """
+        异步上报新增统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return await cls.async_sub_reg(sub)
 
     @classmethod
-    def sub_done(cls, sub: dict) -> bool:
+    def sub_done(cls, sub: dict[str, Any]) -> bool:
         """
         完成订阅统计。
         """
@@ -963,23 +1219,29 @@ class MoviePilotServerHelper:
         return cls._response_succeeded(cls.subscribe_done(payload))
 
     @classmethod
-    async def async_sub_done(cls, sub: dict) -> bool:
-        """异步完成订阅统计，并仅在服务端确认成功时返回 True。"""
+    async def async_sub_done(cls, sub: dict[str, Any]) -> bool:
+        """
+        异步完成订阅统计，并仅在服务端确认成功时返回 True。
+        """
         payload = cls._build_subscribe_statistic_plan(sub)
         if not payload:
             return False
         return cls._response_succeeded(await cls.async_subscribe_done(payload))
 
     @classmethod
-    def sub_done_durable(cls, sub: dict) -> bool:
-        """同步上报完成统计；明确禁用时视为无需投递。"""
+    def sub_done_durable(cls, sub: dict[str, Any]) -> bool:
+        """
+        同步上报完成统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return cls.sub_done(sub)
 
     @classmethod
-    async def async_sub_done_durable(cls, sub: dict) -> bool:
-        """异步上报完成统计；明确禁用时视为无需投递。"""
+    async def async_sub_done_durable(cls, sub: dict[str, Any]) -> bool:
+        """
+        异步上报完成统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return await cls.async_sub_done(sub)
@@ -991,7 +1253,9 @@ class MoviePilotServerHelper:
             submit: Callable[[Coroutine[Any, Any, Any]], object],
             action: str,
     ) -> bool:
-        """提交兼容统计上报，并在宿主不再接收任务时关闭未执行协程。"""
+        """
+        提交兼容统计上报，并在宿主不再接收任务时关闭未执行协程。
+        """
         try:
             submit(coroutine)
             return True
@@ -1001,8 +1265,10 @@ class MoviePilotServerHelper:
             return False
 
     @classmethod
-    def sub_reg_async(cls, sub: dict) -> bool:
-        """兼容旧同步入口，在宿主任务登记器中提交新增订阅统计。"""
+    def sub_reg_async(cls, sub: dict[str, Any]) -> bool:
+        """
+        兼容旧同步入口，在宿主任务登记器中提交新增订阅统计。
+        """
         return cls._submit_statistic_report(
             asyncio.to_thread(cls.sub_reg, sub),
             submit=lambda coroutine: get_task_registry().submit_threadsafe(
@@ -1015,8 +1281,10 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def sub_done_async(cls, sub: dict) -> bool:
-        """兼容旧同步入口，在宿主任务登记器中提交订阅完成统计。"""
+    def sub_done_async(cls, sub: dict[str, Any]) -> bool:
+        """
+        兼容旧同步入口，在宿主任务登记器中提交订阅完成统计。
+        """
         return cls._submit_statistic_report(
             asyncio.to_thread(cls.sub_done, sub),
             submit=lambda coroutine: get_task_registry().submit_threadsafe(
@@ -1039,7 +1307,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_sub_report(cls) -> bool:
-        """异步上报存量订阅统计。"""
+        """
+        异步上报存量订阅统计。
+        """
         return await cls._report_service().async_report_subscribes(
             enabled=get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'),
         )
@@ -1084,16 +1354,20 @@ class MoviePilotServerHelper:
 
     @classmethod
     def _build_subscribe_statistic_payload(
-            cls, item: Optional[dict]
-    ) -> Optional[dict]:
-        """构造中心服务订阅统计载荷，只保留统一身份和公开统计字段。"""
+            cls, item: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
+        """
+        构造中心服务订阅统计载荷，只保留统一身份和公开统计字段。
+        """
         return cls._report_service().build_subscribe_payload(item)
 
     @classmethod
     def _build_subscribe_share_payload(
-            cls, item: Optional[dict]
-    ) -> Optional[dict]:
-        """构造中心服务订阅分享载荷，隔离本地运行字段和旧专用 ID。"""
+            cls, item: Optional[dict[str, Any]]
+    ) -> Optional[dict[str, Any]]:
+        """
+        构造中心服务订阅分享载荷，隔离本地运行字段和旧专用 ID。
+        """
         return cls._sharing_service().build_subscribe_payload(item)
 
     @classmethod
@@ -1155,7 +1429,7 @@ class MoviePilotServerHelper:
         return cls._handle_response(await cls.async_subscribe_fork(share_id))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
+    @_cached_server_result(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     def get_subscribe_shares(
             cls,
             name: Optional[str] = None,
@@ -1165,7 +1439,7 @@ class MoviePilotServerHelper:
             min_rating: Optional[float] = None,
             max_rating: Optional[float] = None,
             sort_type: Optional[str] = None,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         获取订阅分享数据。
         """
@@ -1183,7 +1457,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(cls.subscribe_shares(params))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
+    @_cached_server_result(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
     async def async_get_subscribe_shares(
             cls,
             name: Optional[str] = None,
@@ -1193,7 +1467,7 @@ class MoviePilotServerHelper:
             min_rating: Optional[float] = None,
             max_rating: Optional[float] = None,
             sort_type: Optional[str] = None,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         异步获取订阅分享数据。
         """
@@ -1211,8 +1485,8 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(await cls.async_subscribe_shares(params))
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
-    def get_subscribe_share_statistics(cls) -> List[dict]:
+    @_cached_server_result(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
+    def get_subscribe_share_statistics(cls) -> List[dict[str, Any]]:
         """
         获取订阅分享统计数据。
         """
@@ -1221,8 +1495,8 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(cls.subscribe_share_statistics())
 
     @classmethod
-    @cached(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
-    async def async_get_subscribe_share_statistics(cls) -> List[dict]:
+    @_cached_server_result(region="subscribe_share", maxsize=32, ttl=1800, skip_empty=True)
+    async def async_get_subscribe_share_statistics(cls) -> List[dict[str, Any]]:
         """
         异步获取订阅分享统计数据。
         """
@@ -1231,21 +1505,21 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(await cls.async_subscribe_share_statistics())
 
     @classmethod
-    def workflow_share(cls, payload: Dict[str, Any]):
+    def workflow_share(cls, payload: Dict[str, Any]) -> Optional[Response]:
         """
         分享工作流数据。
         """
         return cls._post_json(cls._server_url(cls._WORKFLOW_SHARE_PATH), payload, timeout=10)
 
     @classmethod
-    async def async_workflow_share(cls, payload: Dict[str, Any]):
+    async def async_workflow_share(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步分享工作流数据。
         """
         return await cls._async_post_json(cls._server_url(cls._WORKFLOW_SHARE_PATH), payload, timeout=10)
 
     @classmethod
-    def workflow_share_delete(cls, share_id: int, share_uid: str):
+    def workflow_share_delete(cls, share_id: int, share_uid: str) -> Optional[Response]:
         """
         删除工作流分享数据。
         """
@@ -1256,7 +1530,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    async def async_workflow_share_delete(cls, share_id: int, share_uid: str):
+    async def async_workflow_share_delete(cls, share_id: int, share_uid: str) -> Optional[AsyncResponse]:
         """
         异步删除工作流分享数据。
         """
@@ -1267,35 +1541,35 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def workflow_fork(cls, share_id: int):
+    def workflow_fork(cls, share_id: int) -> Optional[Response]:
         """
         复用工作流分享数据。
         """
         return cls._get(f"{cls._server_url(cls._WORKFLOW_FORK_PATH)}/{share_id}", timeout=5)
 
     @classmethod
-    async def async_workflow_fork(cls, share_id: int):
+    async def async_workflow_fork(cls, share_id: int) -> Optional[AsyncResponse]:
         """
         异步复用工作流分享数据。
         """
         return await cls._async_get(f"{cls._server_url(cls._WORKFLOW_FORK_PATH)}/{share_id}", timeout=5)
 
     @classmethod
-    def workflow_shares(cls, params: Dict[str, Any]):
+    def workflow_shares(cls, params: Dict[str, Any]) -> Optional[Response]:
         """
         获取工作流分享数据。
         """
         return cls._get(cls._server_url(cls._WORKFLOW_SHARES_PATH), params=params, timeout=15)
 
     @classmethod
-    async def async_workflow_shares(cls, params: Dict[str, Any]):
+    async def async_workflow_shares(cls, params: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步获取工作流分享数据。
         """
         return await cls._async_get(cls._server_url(cls._WORKFLOW_SHARES_PATH), params=params, timeout=15)
 
     @classmethod
-    def _prepare_workflow_data(cls, workflow) -> dict:
+    def _prepare_workflow_data(cls, workflow: WorkflowSnapshot) -> dict[str, Any]:
         """
         准备工作流分享数据。
         """
@@ -1307,7 +1581,9 @@ class MoviePilotServerHelper:
             page: Optional[int],
             count: Optional[int],
     ) -> Optional[Dict[str, Any]]:
-        """在工作流分享已启用时生成列表查询计划。"""
+        """
+        在工作流分享已启用时生成列表查询计划。
+        """
         if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
             return None
         return {"name": name, "page": page, "count": count}
@@ -1409,13 +1685,13 @@ class MoviePilotServerHelper:
         return cls._handle_response(await cls.async_workflow_fork(share_id))
 
     @classmethod
-    @cached(region="workflow_share", maxsize=1, skip_empty=True)
+    @_cached_server_result(region="workflow_share", maxsize=1, skip_empty=True)
     def get_workflow_shares(
             cls,
             name: Optional[str] = None,
             page: Optional[int] = 1,
             count: Optional[int] = 30,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         获取工作流分享数据。
         """
@@ -1425,13 +1701,13 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(cls.workflow_shares(params))
 
     @classmethod
-    @cached(region="workflow_share", maxsize=1, skip_empty=True)
+    @_cached_server_result(region="workflow_share", maxsize=1, skip_empty=True)
     async def async_get_workflow_shares(
             cls,
             name: Optional[str] = None,
             page: Optional[int] = 1,
             count: Optional[int] = 30,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         异步获取工作流分享数据。
         """
@@ -1441,7 +1717,7 @@ class MoviePilotServerHelper:
         return cls._handle_list_response(await cls.async_workflow_shares(params))
 
     @classmethod
-    def _validate_workflow(cls, workflow) -> Tuple[bool, str]:
+    def _validate_workflow(cls, workflow: Optional[WorkflowSnapshot]) -> Tuple[bool, str]:
         """
         验证工作流是否可以分享。
         """
@@ -1465,7 +1741,9 @@ class MoviePilotServerHelper:
             cls,
             data: Dict[str, Any],
     ) -> Optional[Tuple[str, Dict[str, Any]]]:
-        """把共享识别地址与已验证请求数据组合成纯传输计划。"""
+        """
+        把共享识别地址与已验证请求数据组合成纯传输计划。
+        """
         api_url = cls.recognize_share_url()
         if not api_url:
             return None
@@ -1479,7 +1757,9 @@ class MoviePilotServerHelper:
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
-        """在共享识别已启用且关键字有效时生成查询计划。"""
+        """
+        在共享识别已启用且关键字有效时生成查询计划。
+        """
         if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
             return None
         params = cls._build_recognize_query_params(
@@ -1499,7 +1779,9 @@ class MoviePilotServerHelper:
             mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             keyword_meta: Optional[MetaBase] = None,
     ) -> Optional[Dict[str, Any]]:
-        """在共享识别已启用且统一媒体身份完整时生成上报载荷。"""
+        """
+        在共享识别已启用且统一媒体身份完整时生成上报载荷。
+        """
         if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
             return None
         return cls._build_recognize_report_payload(
@@ -1509,7 +1791,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    def recognize_query(cls, params: Dict[str, Any]):
+    def recognize_query(cls, params: Dict[str, Any]) -> Optional[Response]:
         """
         查询共享识别结果。
         """
@@ -1520,7 +1802,7 @@ class MoviePilotServerHelper:
         return cls._get(api_url, params=request_data, timeout=5)
 
     @classmethod
-    async def async_recognize_query(cls, params: Dict[str, Any]):
+    async def async_recognize_query(cls, params: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步查询共享识别结果。
         """
@@ -1531,7 +1813,7 @@ class MoviePilotServerHelper:
         return await cls._async_get(api_url, params=request_data, timeout=5)
 
     @classmethod
-    def recognize_report(cls, payload: Dict[str, Any]):
+    def recognize_report(cls, payload: Dict[str, Any]) -> Optional[Response]:
         """
         上报共享识别结果。
         """
@@ -1542,7 +1824,7 @@ class MoviePilotServerHelper:
         return cls._post_json(api_url, request_data, timeout=5)
 
     @classmethod
-    async def async_recognize_report(cls, payload: Dict[str, Any]):
+    async def async_recognize_report(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步上报共享识别结果。
         """
@@ -1559,7 +1841,7 @@ class MoviePilotServerHelper:
             mtype: Optional[MediaType] = None,
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         查询共享识别结果。
         """
@@ -1582,7 +1864,7 @@ class MoviePilotServerHelper:
             mtype: Optional[MediaType] = None,
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         异步查询共享识别结果。
         """
@@ -1639,7 +1921,7 @@ class MoviePilotServerHelper:
         return cls._parse_recognize_report_response(response)
 
     @classmethod
-    def to_recognize_params(cls, item: Optional[dict]) -> Optional[dict]:
+    def to_recognize_params(cls, item: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         """
         将服务端返回的共享识别结果转成本地统一识别参数。
         """
@@ -1714,7 +1996,7 @@ class MoviePilotServerHelper:
             cls,
             meta: Optional[MetaBase] = None,
             mtype: Optional[MediaType] = None,
-            mediainfo: Optional[MediaInfo] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
     ) -> Optional[str]:
         """
         提取媒体类型。
@@ -1736,7 +2018,7 @@ class MoviePilotServerHelper:
             cls,
             media_type: Optional[str],
             meta: Optional[MetaBase] = None,
-            mediainfo: Optional[MediaInfo] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
     ) -> Optional[int]:
         """
         提取季信息，仅电视剧使用。
@@ -1754,7 +2036,7 @@ class MoviePilotServerHelper:
     @staticmethod
     def _extract_year(
             meta: Optional[MetaBase] = None,
-            mediainfo: Optional[MediaInfo] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
     ) -> Optional[str]:
         """
         提取年份。
@@ -1772,7 +2054,7 @@ class MoviePilotServerHelper:
             mtype: Optional[MediaType] = None,
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         组装共享识别查询参数。
         """
@@ -1781,7 +2063,7 @@ class MoviePilotServerHelper:
             return None
 
         media_type = cls._extract_media_type(meta=meta, mtype=mtype)
-        params = {"keyword": keyword}
+        params: dict[str, str | int] = {"keyword": keyword}
         if media_type:
             params["type"] = media_type
         if media_type == "music":
@@ -1802,7 +2084,7 @@ class MoviePilotServerHelper:
             meta: Optional[MetaBase],
             mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             keyword_meta: Optional[MetaBase] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         组装共享识别上报载荷，电影、电视剧、音乐共用同一结构。
         """
@@ -1836,7 +2118,7 @@ class MoviePilotServerHelper:
         }
 
     @classmethod
-    def _parse_recognize_response(cls, response, keyword: Optional[str]) -> Optional[dict]:
+    def _parse_recognize_response(cls, response: Response | AsyncResponse | None, keyword: Optional[str]) -> Optional[dict[str, Any]]:
         """
         解析共享识别查询响应。
         """
@@ -1860,7 +2142,7 @@ class MoviePilotServerHelper:
         return item
 
     @classmethod
-    def _parse_recognize_report_response(cls, response) -> bool:
+    def _parse_recognize_report_response(cls, response: Response | AsyncResponse | None) -> bool:
         """
         解析共享识别上报响应。
         """
@@ -1872,14 +2154,14 @@ class MoviePilotServerHelper:
                 )
             return False
         try:
-            result = response.json()
+            result = _response_mapping(response)
         except (json.JSONDecodeError, ValueError) as err:
             logger.warn(f"解析共享媒体识别上报响应失败：{err}")
             return False
-        return result.get("code") == 0
+        return bool(result.get("code") == 0)
 
     @staticmethod
-    def _parse_response_item(data: Optional[dict]) -> Optional[dict]:
+    def _parse_response_item(data: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         """
         解析服务端返回的共享识别数据。
         """
@@ -1891,7 +2173,7 @@ class MoviePilotServerHelper:
         return item
 
     @staticmethod
-    def _response_message(response) -> str:
+    def _response_message(response: Response | AsyncResponse) -> str:
         """
         获取响应消息，兼容非 JSON 响应。
         """
@@ -1955,23 +2237,19 @@ class MoviePilotServerHelper:
         """
         清理订阅共享相关缓存。
         """
-        cls.get_subscribe_shares.cache_clear()
-        cls.async_get_subscribe_shares.cache_clear()
-        cls.get_subscribe_statistic.cache_clear()
-        cls.async_get_subscribe_statistic.cache_clear()
-        cls.get_subscribe_share_statistics.cache_clear()
-        cls.async_get_subscribe_share_statistics.cache_clear()
+        _clear_server_cache(cls.get_subscribe_shares)
+        _clear_server_cache(cls.get_subscribe_statistic)
+        _clear_server_cache(cls.get_subscribe_share_statistics)
 
     @classmethod
     def _clear_workflow_share_cache(cls) -> None:
         """
         清理工作流共享相关缓存。
         """
-        cls.get_workflow_shares.cache_clear()
-        cls.async_get_workflow_shares.cache_clear()
+        _clear_server_cache(cls.get_workflow_shares)
 
     @classmethod
-    def _has_header(cls, headers: dict, name: str) -> bool:
+    def _has_header(cls, headers: dict[str, Any], name: str) -> bool:
         """
         按 HTTP 头大小写不敏感规则判断请求头是否存在。
         """
@@ -1989,10 +2267,10 @@ class MoviePilotServerHelper:
     def _get(
             cls,
             url: str,
-            params: Optional[dict] = None,
+            params: Optional[dict[str, Any]] = None,
             timeout: int = 10,
             include_user_uid: bool = True,
-    ):
+    ) -> Optional[Response]:
         """
         发送服务端 GET 请求，默认携带安装用户 ID。
         """
@@ -2006,10 +2284,10 @@ class MoviePilotServerHelper:
     async def _async_get(
             cls,
             url: str,
-            params: Optional[dict] = None,
+            params: Optional[dict[str, Any]] = None,
             timeout: int = 10,
             include_user_uid: bool = True,
-    ):
+    ) -> Optional[AsyncResponse]:
         """
         异步发送服务端 GET 请求，默认携带安装用户 ID。
         """
@@ -2021,7 +2299,7 @@ class MoviePilotServerHelper:
         ).get_res(url, params=params)
 
     @classmethod
-    def _post_json(cls, url: str, payload: Dict[str, Any], timeout: int = 10):
+    def _post_json(cls, url: str, payload: Dict[str, Any], timeout: int = 10) -> Optional[Response]:
         """
         发送携带安装用户 ID 的服务端 JSON POST 请求。
         """
@@ -2032,7 +2310,7 @@ class MoviePilotServerHelper:
         ).post(url, json=payload)
 
     @classmethod
-    async def _async_post_json(cls, url: str, payload: Dict[str, Any], timeout: int = 10):
+    async def _async_post_json(cls, url: str, payload: Dict[str, Any], timeout: int = 10) -> Optional[AsyncResponse]:
         """
         异步发送携带安装用户 ID 的服务端 JSON POST 请求。
         """
@@ -2044,24 +2322,30 @@ class MoviePilotServerHelper:
         ).post(url, json=payload)
 
     @classmethod
-    def _delete(cls, url: str, params: Optional[dict] = None, timeout: int = 10):
+    def _delete(cls, url: str, params: Optional[dict[str, Any]] = None, timeout: int = 10) -> Optional[Response]:
         """
         发送携带安装用户 ID 的服务端 DELETE 请求。
         """
-        return RequestUtils(
+        client = RequestUtils(
             proxies=get_runtime_setting('PROXY'),
             timeout=timeout,
             headers=cls.build_headers(url),
-        ).delete_res(url, params=params)
+        )
+        if params is None:
+            return client.delete_res(url)
+        return client.delete_res(url, params=params)
 
     @classmethod
-    async def _async_delete(cls, url: str, params: Optional[dict] = None, timeout: int = 10):
+    async def _async_delete(cls, url: str, params: Optional[dict[str, Any]] = None, timeout: int = 10) -> Optional[AsyncResponse]:
         """
         异步发送携带安装用户 ID 的服务端 DELETE 请求。
         """
-        return await AsyncRequestUtils(
+        client = AsyncRequestUtils(
             http2=False,
             proxies=get_runtime_setting('PROXY'),
             timeout=timeout,
             headers=cls.build_headers(url),
-        ).delete_res(url, params=params)
+        )
+        if params is None:
+            return await client.delete_res(url)
+        return await client.delete_res(url, params=params)

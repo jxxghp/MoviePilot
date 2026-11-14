@@ -1,3 +1,7 @@
+"""
+验证接口路由聚合及端点注册边界。
+"""
+
 from typing import Any
 
 import httpx
@@ -10,7 +14,9 @@ from app.runtime.config import settings
 
 
 def _v1_routes(app: FastAPI) -> list[Any]:
-    """返回最终应用中可执行的 v1 API 路由上下文。"""
+    """
+    返回最终应用中可执行的 v1 API 路由上下文。
+    """
     routes: list[Any] = []
     for route in app.routes:
         effective_route_contexts = getattr(route, "effective_route_contexts", None)
@@ -26,7 +32,9 @@ def _v1_routes(app: FastAPI) -> list[Any]:
 
 
 def _route_contract(route: APIRoute) -> tuple[Any, ...]:
-    """提取直接聚合前后必须保持一致的公开路由合同。"""
+    """
+    提取直接聚合前后必须保持一致的公开路由合同。
+    """
     return (
         type(route),
         route.path,
@@ -55,7 +63,9 @@ def _route_contract(route: APIRoute) -> tuple[Any, ...]:
 
 
 def test_init_routers_directly_includes_endpoint_router_specs(monkeypatch):
-    """启动聚合应直接 include 原始端点路由器并一次性附加完整 v1 前缀。"""
+    """
+    启动聚合应直接 include 原始端点路由器并一次性附加完整 v1 前缀。
+    """
     from app.api.routers import API_V1_ROUTER_SPECS
     from app.startup.initializers.routers import init_routers
 
@@ -64,7 +74,9 @@ def test_init_routers_directly_includes_endpoint_router_specs(monkeypatch):
     original_include_router = app.include_router
 
     def record_include_router(router, **kwargs):
-        """记录启动聚合参数后继续执行 FastAPI 的公开 include 接口。"""
+        """
+        记录启动聚合参数后继续执行 FastAPI 的公开 include 接口。
+        """
         include_calls.append((router, kwargs.get("prefix"), kwargs.get("tags")))
         return original_include_router(router, **kwargs)
 
@@ -89,7 +101,9 @@ def test_init_routers_directly_includes_endpoint_router_specs(monkeypatch):
 
 
 def test_direct_v1_routes_and_openapi_match_compatibility_router():
-    """最终应用的 v1 路由合同与 OpenAPI 应和兼容聚合结果完全一致。"""
+    """
+    最终应用的 v1 路由合同与 OpenAPI 应和兼容聚合结果完全一致。
+    """
     from app.api.apiv1 import api_router
     from app.startup.initializers.routers import init_routers
 
@@ -123,7 +137,9 @@ def test_direct_v1_routes_and_openapi_match_compatibility_router():
 
 @pytest.mark.anyio
 async def test_direct_routes_honor_application_dependency_overrides():
-    """直接聚合后的路由仍应由最终 FastAPI 应用解析依赖覆盖。"""
+    """
+    直接聚合后的路由仍应由最终 FastAPI 应用解析依赖覆盖。
+    """
     from app.startup.initializers.routers import init_routers
 
     app = FastAPI()
@@ -141,7 +157,9 @@ async def test_direct_routes_honor_application_dependency_overrides():
 
 
 def test_compatibility_api_router_keeps_public_contract():
-    """历史导出应继续提供无 v1 根前缀的标准 APIRouter 与固定路由集合。"""
+    """
+    历史导出应继续提供无 v1 根前缀的标准 APIRouter 与固定路由集合。
+    """
     from app.api.apiv1 import api_router
     from app.api.routers import API_V1_ROUTER_SPECS
 
@@ -163,7 +181,9 @@ def test_compatibility_api_router_keeps_public_contract():
 
 
 def test_split_endpoint_routes_are_flattened_into_parent_routers():
-    """拆分端点合并后父路由只应暴露可执行路由，避免测试和工具遇到包装节点。"""
+    """
+    拆分端点合并后父路由只应暴露可执行路由，避免测试和工具遇到包装节点。
+    """
     from app.api.endpoints import plugin, subscribe, system
 
     for endpoint in (plugin, subscribe, system):
@@ -172,7 +192,9 @@ def test_split_endpoint_routes_are_flattened_into_parent_routers():
 
 
 def test_init_routers_accepts_composition_root_api_prefix():
-    """路由初始化应使用组合根传入的 API 前缀。"""
+    """
+    路由初始化应使用组合根传入的 API 前缀。
+    """
     from app.startup.initializers.routers import init_routers
 
     app = FastAPI()

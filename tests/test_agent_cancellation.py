@@ -1,20 +1,32 @@
+"""
+验证 Agent 取消传播、等待者清理和下一条消息的接续执行。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agent import AgentManager, MoviePilotAgent
+from app.agent.manager import AgentManager
+from app.agent.orchestrator import MoviePilotAgent
 
 
 def test_execute_agent_propagates_task_cancellation():
-    """取消 Agent 执行时应终止调用方任务，不能转换成普通完成结果。"""
+    """
+    取消 Agent 执行时应终止调用方任务，不能转换成普通完成结果。
+    """
     started = asyncio.Event()
 
     class _BlockingAgent:
-        """等待取消的最小 LangGraph 替身。"""
+        """
+        等待取消的最小 LangGraph 替身。
+        """
 
+        # 模型调用替身保留兼容签名，测试只使用取消事件而不读取调用参数。
         async def ainvoke(self, _payload, config=None):  # noqa: ARG002
-            """阻塞到外层任务取消。"""
+            """
+            阻塞到外层任务取消。
+            """
             started.set()
             await asyncio.Event().wait()
 
@@ -36,7 +48,9 @@ def test_execute_agent_propagates_task_cancellation():
 
 
 def test_stop_current_task_cancels_waiters_and_allows_next_message():
-    """停止会话应结束当前及排队请求，并允许同一会话继续处理消息。"""
+    """
+    停止会话应结束当前及排队请求，并允许同一会话继续处理消息。
+    """
 
     async def _run_scenario():
         manager = AgentManager()
@@ -103,7 +117,9 @@ def test_stop_current_task_cancels_waiters_and_allows_next_message():
 
 
 def test_stop_queues_new_message_until_cancellation_cleanup_finishes():
-    """旧 worker 清理期间到达的新消息应保留，并在清理完成后执行。"""
+    """
+    旧 worker 清理期间到达的新消息应保留，并在清理完成后执行。
+    """
 
     async def _run_scenario():
         manager = AgentManager()

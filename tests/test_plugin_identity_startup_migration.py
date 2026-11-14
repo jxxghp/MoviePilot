@@ -1,4 +1,6 @@
-"""存量插件身份启动迁移的来源和顺序合同测试。"""
+"""
+存量插件身份启动迁移的来源和顺序合同测试。
+"""
 
 from __future__ import annotations
 
@@ -36,7 +38,9 @@ THIRD_PARTY_SOURCE = "github:example/moviepilot-plugins"
 
 
 def _metadata(version: str, *, matches_payload: bool = True) -> PluginDeclaredMetadata:
-    """构造测试用 package 声明快照。"""
+    """
+    构造测试用 package 声明快照。
+    """
     return PluginDeclaredMetadata.from_package(
         {"name": "Demo", "v3": True, "v3t": False},
         declaration_version=version,
@@ -45,7 +49,9 @@ def _metadata(version: str, *, matches_payload: bool = True) -> PluginDeclaredMe
 
 
 class _Persistence:
-    """提供可观察 CAS 竞争的内存迁移持久化端口。"""
+    """
+    提供可观察 CAS 竞争的内存迁移持久化端口。
+    """
 
     def __init__(self, identities: tuple[PluginIdentity, ...] = ()) -> None:
         self.identities = {
@@ -55,7 +61,9 @@ class _Persistence:
         self.fail_bind = False
 
     async def get_identity(self, plugin_id: str) -> PluginIdentity | None:
-        """按规范物理 ID 返回当前身份。"""
+        """
+        按规范物理 ID 返回当前身份。
+        """
         return self.identities.get(plugin_id.lower())
 
     async def migrate_identity(
@@ -64,7 +72,9 @@ class _Persistence:
         *,
         expected_revision: int | None,
     ) -> PluginIdentity:
-        """模拟首次身份 CAS。"""
+        """
+        模拟首次身份 CAS。
+        """
         assert expected_revision is None
         if self.fail_create or identity.normalized_plugin_id in self.identities:
             raise PluginIdentityConflictError("create conflict")
@@ -77,7 +87,9 @@ class _Persistence:
         *,
         expected_revision: int,
     ) -> PluginIdentity:
-        """模拟未绑定身份的 revision CAS。"""
+        """
+        模拟未绑定身份的 revision CAS。
+        """
         current = self.identities.get(identity.normalized_plugin_id)
         if (
             self.fail_bind
@@ -96,7 +108,9 @@ def _candidate(
     source_key: str,
     repo_url: str,
 ) -> PluginMarketCandidate:
-    """构造一个 V3 在线候选。"""
+    """
+    构造一个 V3 在线候选。
+    """
     return PluginMarketCandidate(
         plugin_id=plugin_id,
         source_key=source_key,
@@ -111,7 +125,9 @@ def _inventory(
     *candidates: PluginMarketCandidate,
     failed_market: bool = False,
 ) -> CandidateInventory:
-    """构造完整或部分失败的市场库存。"""
+    """
+    构造完整或部分失败的市场库存。
+    """
     reads = [
         MarketRead.present(
             OFFICIAL_REPO,
@@ -139,7 +155,9 @@ def _inventory(
 
 
 def _legacy(plugin_id: str = "DemoPlugin") -> PluginIdentity:
-    """构造尚未绑定在线来源的存量身份。"""
+    """
+    构造尚未绑定在线来源的存量身份。
+    """
     return PluginIdentity(
         plugin_id=plugin_id,
         normalized_plugin_id=plugin_id.lower(),
@@ -167,7 +185,9 @@ def _service(
     *,
     virtual: set[str] | None = None,
 ) -> PluginIdentityMigrationService:
-    """装配固定库存和安装清单的迁移服务。"""
+    """
+    装配固定库存和安装清单的迁移服务。
+    """
     virtual_ids = virtual or set()
     return PluginIdentityMigrationService(
         persistence=persistence,
@@ -180,7 +200,9 @@ def _service(
 
 @pytest.mark.asyncio
 async def test_migration_binds_official_and_unique_third_party_sources() -> None:
-    """官方默认和完整库存中的唯一第三方来源都可建立更新绑定。"""
+    """
+    官方默认和完整库存中的唯一第三方来源都可建立更新绑定。
+    """
     persistence = _Persistence()
     inventory = _inventory(
         _candidate(
@@ -221,7 +243,9 @@ async def test_migration_binds_official_and_unique_third_party_sources() -> None
 async def test_migration_keeps_ambiguous_or_incomplete_third_party_unbound(
     failed_market: bool,
 ) -> None:
-    """多来源或库存读取失败时不得猜测第三方更新来源。"""
+    """
+    多来源或库存读取失败时不得猜测第三方更新来源。
+    """
     candidates = (
         _candidate(
             "DemoPlugin",
@@ -257,7 +281,9 @@ async def test_migration_keeps_ambiguous_or_incomplete_third_party_unbound(
 
 @pytest.mark.asyncio
 async def test_migration_later_binds_legacy_identity_without_rewriting_payload() -> None:
-    """后续市场证据充分时只升级可信来源，不改写未知存量载荷。"""
+    """
+    后续市场证据充分时只升级可信来源，不改写未知存量载荷。
+    """
     legacy = _legacy("DemoPlugin")
     persistence = _Persistence((legacy,))
     inventory = _inventory(
@@ -286,7 +312,9 @@ async def test_migration_later_binds_legacy_identity_without_rewriting_payload()
 
 @pytest.mark.asyncio
 async def test_migration_accepts_concurrent_create_winner() -> None:
-    """首次身份 CAS 竞争已有赢家时，迁移跳过而不覆盖最终身份。"""
+    """
+    首次身份 CAS 竞争已有赢家时，迁移跳过而不覆盖最终身份。
+    """
     persistence = _Persistence()
     inventory = _inventory(
         _candidate(
@@ -306,6 +334,7 @@ async def test_migration_accepts_concurrent_create_winner() -> None:
         persistence.identities[identity.normalized_plugin_id] = identity
         raise PluginIdentityConflictError("concurrent create")
 
+    # 替换实例方法以注入确定的事务失败，验证回滚边界。
     persistence.migrate_identity = create_conflict  # type: ignore[method-assign]
 
     result = await _service(persistence, inventory, ["DemoPlugin"]).migrate()
@@ -317,7 +346,9 @@ async def test_migration_accepts_concurrent_create_winner() -> None:
 
 @pytest.mark.asyncio
 async def test_migration_accepts_concurrent_bind_winner() -> None:
-    """存量绑定 CAS 已由其他执行者推进时，迁移保留赢家并幂等结束。"""
+    """
+    存量绑定 CAS 已由其他执行者推进时，迁移保留赢家并幂等结束。
+    """
     persistence = _Persistence((_legacy("DemoPlugin"),))
     inventory = _inventory(
         _candidate(
@@ -337,6 +368,7 @@ async def test_migration_accepts_concurrent_bind_winner() -> None:
         persistence.identities[identity.normalized_plugin_id] = identity
         raise PluginIdentityConflictError("concurrent bind")
 
+    # 替换实例方法以注入确定的事务失败，验证回滚边界。
     persistence.bind_online_identity = bind_conflict  # type: ignore[method-assign]
 
     result = await _service(persistence, inventory, ["DemoPlugin"]).migrate()
@@ -350,7 +382,9 @@ async def test_migration_accepts_concurrent_bind_winner() -> None:
 
 @pytest.mark.asyncio
 async def test_migration_does_not_replace_existing_bound_or_local_identity() -> None:
-    """重复启动不得覆盖已绑定在线来源或本地开发身份。"""
+    """
+    重复启动不得覆盖已绑定在线来源或本地开发身份。
+    """
     bound = replace(
         _legacy("BoundPlugin"),
         trusted_source_type=TrustedPluginSourceType.OFFICIAL,
@@ -399,7 +433,9 @@ async def test_migration_does_not_replace_existing_bound_or_local_identity() -> 
 
 @pytest.mark.asyncio
 async def test_collect_online_restore_plugins_requires_trust_and_local_payload() -> None:
-    """仅在线可信来源仍绑定的本地载荷需要进入启动恢复候选。"""
+    """
+    仅在线可信来源仍绑定的本地载荷需要进入启动恢复候选。
+    """
     trusted_local = replace(
         _legacy("TrustedLocal"),
         trusted_source_type=TrustedPluginSourceType.OFFICIAL,
@@ -451,7 +487,9 @@ async def test_collect_online_restore_plugins_requires_trust_and_local_payload()
 async def test_sync_runs_identity_migration_before_automatic_install(
     monkeypatch,
 ) -> None:
-    """启动自动同步必须在存量来源迁移完成后才能读取和替换载荷。"""
+    """
+    启动自动同步必须在存量来源迁移完成后才能读取和替换载荷。
+    """
     order: list[str] = []
     manager = MagicMock()
     manager.mutation.return_value = nullcontext()
@@ -531,7 +569,9 @@ async def test_sync_runs_identity_migration_before_automatic_install(
 async def test_sync_stops_before_automatic_install_when_identity_migration_fails(
     monkeypatch,
 ) -> None:
-    """存量身份无法持久化时，启动同步不得继续读取或替换插件载荷。"""
+    """
+    存量身份无法持久化时，启动同步不得继续读取或替换插件载荷。
+    """
     manager = MagicMock()
     manager.mutation.return_value = nullcontext()
     migration = MagicMock()

@@ -68,6 +68,13 @@ function httpRequest(url, payload, apikey) {
             return;
           }
           const content = json.result && json.result.content;
+          if (json.result && json.result.isError) {
+            const text = Array.isArray(content)
+              ? content.filter((item) => item.type === "text").map((item) => item.text).join("\n")
+              : "";
+            reject(new Error(`Tool Error: ${text || "MCP tool failed"}`));
+            return;
+          }
           if (Array.isArray(content)) {
             const textItem = content.find((c) => c.type === "text");
             if (textItem) {

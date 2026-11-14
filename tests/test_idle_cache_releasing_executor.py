@@ -1,4 +1,6 @@
-"""线程池 worker 转入空闲时交还分配器线程缓存，连续任务之间不刷新。"""
+"""
+线程池 worker 转入空闲时交还分配器线程缓存，连续任务之间不刷新。
+"""
 
 from __future__ import annotations
 
@@ -12,7 +14,9 @@ from app.runtime.execution import IdleCacheReleasingThreadPoolExecutor, OwnedThr
 
 @pytest.fixture
 def flushes(monkeypatch) -> list[int]:
-    """记录每次刷新发生在哪个线程。"""
+    """
+    记录每次刷新发生在哪个线程。
+    """
     calls: list[int] = []
     monkeypatch.setattr(
         execution,
@@ -23,7 +27,9 @@ def flushes(monkeypatch) -> list[int]:
 
 
 def test_worker_flushes_only_when_queue_drains(flushes) -> None:
-    """排队中的任务之间不刷新，最后一个任务结束、队列清空后由 worker 自己刷新一次。"""
+    """
+    排队中的任务之间不刷新，最后一个任务结束、队列清空后由 worker 自己刷新一次。
+    """
     gate = threading.Event()
     worker_ids: list[int] = []
     with IdleCacheReleasingThreadPoolExecutor(max_workers=1) as pool:
@@ -40,7 +46,9 @@ def test_worker_flushes_only_when_queue_drains(flushes) -> None:
 
 
 def test_results_and_exceptions_propagate(flushes) -> None:
-    """包装不改变任务返回值与异常，失败的任务同样在空闲前刷新。"""
+    """
+    包装不改变任务返回值与异常，失败的任务同样在空闲前刷新。
+    """
     with IdleCacheReleasingThreadPoolExecutor(max_workers=1) as pool:
         assert pool.submit(lambda value: value * 2, 21).result(timeout=5) == 42
         failing = pool.submit(lambda: 1 / 0)
@@ -51,7 +59,9 @@ def test_results_and_exceptions_propagate(flushes) -> None:
 
 
 def test_owned_executor_releases_idle_worker_cache(flushes) -> None:
-    """共享线程池 owner 继承空闲刷新，并保留自身的 Future 追踪与关闭合同。"""
+    """
+    共享线程池 owner 继承空闲刷新，并保留自身的 Future 追踪与关闭合同。
+    """
     pool = OwnedThreadPoolExecutor(max_workers=2)
     assert pool.submit(lambda: "done").result(timeout=5) == "done"
 

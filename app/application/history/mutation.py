@@ -1,4 +1,6 @@
-"""历史删除命令及其事务端口。"""
+"""
+历史删除命令及其事务端口。
+"""
 
 from __future__ import annotations
 
@@ -16,77 +18,139 @@ from app.schemas.history import TransferHistoryDeleteResult, TransferHistoryDele
 
 @dataclass(frozen=True, slots=True)
 class HistoryMutationResult:
-    """描述历史记录维护操作是否成功及兼容提示。"""
+    """
+    描述历史记录维护操作是否成功及兼容提示。
+
+    :param success: 历史维护操作是否成功
+    :param message: 操作结果的可读说明，默认空字符串
+    """
 
     success: bool
     message: str = ""
 
 
 class DownloadHistoryMutationRepository(Protocol):
-    """下载历史删除用例需要的最小持久化端口。"""
+    """
+    下载历史删除用例需要的最小持久化端口。
+
+    只暂存删除，由调用方通过工作单元提交或回滚。
+    """
 
     def stage_delete_history(self, history_id: int) -> None:
-        """暂存下载历史删除。"""
+        """
+        暂存下载历史删除。
+
+        :param history_id: 目标历史记录的数据库主键
+        """
         ...
 
 
 class TransferHistoryMutationRecord(Protocol):
-    """整理历史删除用例读取的稳定字段投影。"""
+    """
+    整理历史删除用例读取的稳定字段投影。
+    """
 
     @property
     def transfer_task_id(self) -> Optional[str]:
-        """返回持久整理任务标识。"""
+        """
+        返回持久整理任务标识。
+
+        :return: 关联的持久整理任务标识；旧历史未记录时为 None
+        """
         ...
 
     @property
     def transfer_settlement_revision(self) -> Optional[int]:
-        """返回持久整理失败回执的结算版本。"""
+        """
+        返回持久整理失败回执的结算版本。
+
+        :return: 对应持久任务终态回执的结算版本；未记录时为 None
+        """
         ...
 
     @property
     def src(self) -> Optional[str]:
-        """返回源路径。"""
+        """
+        返回源路径。
+
+        :return: 整理前的源文件或目录路径；未记录时为 None
+        """
         ...
 
     @property
     def src_storage(self) -> Optional[str]:
-        """返回源存储标识。"""
+        """
+        返回源存储标识。
+
+        :return: 源文件所在的存储配置标识；未记录时为 None
+        """
         ...
 
     @property
     def src_fileitem(self) -> Optional[JsonData]:
-        """返回源文件项快照。"""
+        """
+        返回源文件项快照。
+
+        :return: 源文件项的冻结 JSON 快照；未记录时为 None
+        """
         ...
 
     @property
     def dest_fileitem(self) -> Optional[JsonData]:
-        """返回目标文件项快照。"""
+        """
+        返回目标文件项快照。
+
+        :return: 目标文件项的冻结 JSON 快照；未记录时为 None
+        """
         ...
 
     @property
     def download_hash(self) -> Optional[str]:
-        """返回下载任务 Hash。"""
+        """
+        返回下载任务 Hash。
+
+        :return: 下载器中的任务哈希标识；未记录时为 None
+        """
         ...
 
     @property
     def cleanup_status(self) -> Optional[str]:
-        """返回媒体入库后的下载器清理状态。"""
+        """
+        返回媒体入库后的下载器清理状态。
+
+        :return: 媒体入库后下载器清理的当前状态；未记录时为 None
+        """
         ...
 
 
 class TransferHistoryMutationRepository(Protocol):
-    """整理历史删除与清理用例需要的最小持久化端口。"""
+    """
+    整理历史删除与清理用例需要的最小持久化端口。
+
+    变更只在调用方事务内暂存，不自行提交。
+    """
 
     def get(self, history_id: int) -> Optional[TransferHistoryMutationRecord]:
-        """读取整理历史。"""
+        """
+        读取整理历史。
+
+        :param history_id: 目标历史记录的数据库主键
+        :return: 删除前需要的稳定历史字段；记录不存在时返回 None
+        """
         ...
 
     def stage_delete(self, history_id: int) -> None:
-        """暂存整理历史删除。"""
+        """
+        暂存整理历史删除。
+
+        :param history_id: 目标历史记录的数据库主键
+        """
         ...
 
     def stage_truncate(self) -> None:
-        """暂存全部整理历史删除。"""
+        """
+        暂存全部整理历史删除。
+        """
         ...
 
     def stage_update_cleanup_status(
@@ -95,32 +159,54 @@ class TransferHistoryMutationRepository(Protocol):
         cleanup_status: str,
         cleanup_error: Optional[str] = None,
     ) -> None:
-        """暂存整理历史的下载器清理状态更新。"""
+        """
+        暂存整理历史的下载器清理状态更新。
+
+        :param history_id: 目标历史记录的数据库主键
+        :param cleanup_status: 拟写入的下载器清理状态
+        :param cleanup_error: 清理失败的错误说明；无错误时为 None
+        """
         ...
 
 
 class DownloadFileMutationRepository(Protocol):
-    """整理历史删除时关联下载文件状态更新端口。"""
+    """
+    整理历史删除时关联下载文件状态更新端口。
+
+    只暂存文件删除标记，由历史用例统一提交，不删除真实文件。
+    """
 
     def stage_delete_file_by_fullpath(self, fullpath: str) -> None:
-        """暂存下载文件删除状态。"""
+        """
+        暂存下载文件删除状态。
+
+        :param fullpath: 下载文件的完整路径
+        """
         ...
 
 
 class HistoryUnitOfWork(Protocol):
-    """同步历史维护用例使用的事务端口。"""
+    """
+    同步历史维护用例使用的事务端口。
+    """
 
     def commit(self) -> None:
-        """提交当前事务。"""
+        """
+        提交当前事务。
+        """
         ...
 
     def rollback(self) -> None:
-        """回滚当前事务。"""
+        """
+        回滚当前事务。
+        """
         ...
 
 
 class DownloadHistoryMutationCommand:
-    """统一提交下载历史删除，避免 API 直接持有数据库事务。"""
+    """
+    统一提交下载历史删除，避免 API 直接持有数据库事务。
+    """
 
     def __init__(
         self,
@@ -128,18 +214,24 @@ class DownloadHistoryMutationCommand:
         repository: DownloadHistoryMutationRepository,
         unit_of_work: HistoryUnitOfWork,
     ) -> None:
-        """保存下载历史持久化和事务端口。"""
+        """
+        保存下载历史持久化和事务端口。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
 
     def delete(self, history_id: int) -> HistoryMutationResult:
-        """暂存并提交单条下载历史删除。"""
+        """
+        暂存并提交单条下载历史删除。
+        """
         self._repository.stage_delete_history(history_id)
         self._commit()
         return HistoryMutationResult(True)
 
     def _commit(self) -> None:
-        """提交事务，失败时回滚。"""
+        """
+        提交事务，失败时回滚。
+        """
         try:
             self._unit_of_work.commit()
         except Exception:
@@ -148,7 +240,9 @@ class DownloadHistoryMutationCommand:
 
 
 class TransferHistoryMutationCommand:
-    """协调整理历史、关联文件状态和外部存储删除。"""
+    """
+    协调整理历史、关联文件状态和外部存储删除。
+    """
 
     def __init__(
         self,
@@ -163,7 +257,9 @@ class TransferHistoryMutationCommand:
         clear_failures: Callable[[Optional[str], Optional[str]], None],
         file_exists: Optional[Callable[[Any], Optional[bool]]] = None,
     ) -> None:
-        """保存历史事务、存储删除、事件和失败状态清理端口。"""
+        """
+        保存历史事务、存储删除、事件和失败状态清理端口。
+        """
         self._repository = repository
         self._download_repository = download_repository
         self._transfer_execution_repository = transfer_execution_repository
@@ -181,7 +277,9 @@ class TransferHistoryMutationCommand:
         delete_source: bool = False,
         delete_destination: bool = False,
     ) -> TransferHistoryDeleteResult:
-        """删除整理记录并返回源、目标文件及历史记录的分项结果。"""
+        """
+        删除整理记录并返回源、目标文件及历史记录的分项结果。
+        """
         history = self._repository.get(history_id)
         if not history:
             return TransferHistoryDeleteResult(
@@ -270,7 +368,9 @@ class TransferHistoryMutationCommand:
         )
 
     def resolve_cleanup(self, history_id: int) -> HistoryMutationResult:
-        """确认下载器任务已由用户清理，并关闭历史中的独立清理失败状态。"""
+        """
+        确认下载器任务已由用户清理，并关闭历史中的独立清理失败状态。
+        """
         history = self._repository.get(history_id)
         if not history:
             return HistoryMutationResult(False, "整理记录不存在")
@@ -289,7 +389,9 @@ class TransferHistoryMutationCommand:
         requested: bool,
         label: str,
     ) -> TransferHistoryDeleteStep:
-        """删除一个文件目标；原目标已不存在时按完成处理，失败不抛出以便继续汇总其他步骤。"""
+        """
+        删除一个文件目标；原目标已不存在时按完成处理，失败不抛出以便继续汇总其他步骤。
+        """
         if not requested:
             return TransferHistoryDeleteStep(status="not_requested")
         payload = self._file_item_payload(value)
@@ -313,17 +415,23 @@ class TransferHistoryMutationCommand:
 
     @staticmethod
     def _file_item_payload(value: JsonData) -> Optional[dict[str, JsonData]]:
-        """仅接受可安全构造文件项的历史 JSON 对象。"""
+        """
+        仅接受可安全构造文件项的历史 JSON 对象。
+        """
         return value if isinstance(value, dict) else None
 
     def truncate(self) -> HistoryMutationResult:
-        """在单一事务中清空旧历史，并保留当前失败任务记录。"""
+        """
+        在单一事务中清空旧历史，并保留当前失败任务记录。
+        """
         self._repository.stage_truncate()
         self._commit()
         return HistoryMutationResult(True, "已清空旧整理记录，失败任务记录已保留")
 
     def _commit(self) -> None:
-        """提交历史事务，失败时回滚且不发布事件或清缓存。"""
+        """
+        提交历史事务，失败时回滚且不发布事件或清缓存。
+        """
         try:
             self._unit_of_work.commit()
         except Exception:

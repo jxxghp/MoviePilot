@@ -1,4 +1,6 @@
-"""验证 lifespan provider 可对称撤销且不会串用上一代对象。"""
+"""
+验证 lifespan provider 可对称撤销且不会串用上一代对象。
+"""
 
 from __future__ import annotations
 
@@ -127,7 +129,9 @@ _MISSING = object()
 
 
 def _current_or_missing(getter: Callable[[], Any]) -> Any:
-    """读取当前 provider；未配置时返回测试专用哨兵。"""
+    """
+    读取当前 provider；未配置时返回测试专用哨兵。
+    """
     try:
         return getter()
     except RuntimeError:
@@ -139,7 +143,9 @@ def _exercise_direct_provider(
     reset: Callable[[], None],
     getter: Callable[[], Any],
 ) -> None:
-    """验证单对象 provider 的撤销、幂等和跨代隔离合同。"""
+    """
+    验证单对象 provider 的撤销、幂等和跨代隔离合同。
+    """
     previous = _current_or_missing(getter)
     first = object()
     second = object()
@@ -206,12 +212,16 @@ def test_direct_provider_reset_contract(
     reset: Callable[[], None],
     getter: Callable[[], Any],
 ) -> None:
-    """单对象 owner 在 reset 后稳定失败且新一代身份独立。"""
+    """
+    单对象 owner 在 reset 后稳定失败且新一代身份独立。
+    """
     _exercise_direct_provider(configure, reset, getter)
 
 
 def test_agent_chat_provider_reset_contract() -> None:
-    """Agent 会话查询和持久化端口可分别撤销并重新装配。"""
+    """
+    Agent 会话查询和持久化端口可分别撤销并重新装配。
+    """
     _exercise_direct_provider(
         configure_agent_chat_service,
         reset_agent_chat_service,
@@ -225,7 +235,9 @@ def test_agent_chat_provider_reset_contract() -> None:
 
 
 def test_agent_data_context_reset_discards_cached_manager() -> None:
-    """撤销 Agent 数据上下文时同步丢弃上一代 manager 缓存。"""
+    """
+    撤销 Agent 数据上下文时同步丢弃上一代 manager 缓存。
+    """
     previous_context = agent_initializer_module._agent_data_context
     previous_manager = agent_initializer_module._injected_agent_manager
     first_context = object()
@@ -233,6 +245,7 @@ def test_agent_data_context_reset_discards_cached_manager() -> None:
     second_context = object()
     second_manager = object()
     try:
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_agent_data_context(first_context)  # type: ignore[arg-type]
         agent_initializer_module._injected_agent_manager = first_manager
 
@@ -241,6 +254,7 @@ def test_agent_data_context_reset_discards_cached_manager() -> None:
         with pytest.raises(RuntimeError):
             agent_initializer_module._get_injected_agent_manager()
 
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_agent_data_context(second_context)  # type: ignore[arg-type]
         agent_initializer_module._injected_agent_manager = second_manager
         assert agent_initializer_module._get_injected_agent_manager() is second_manager
@@ -251,7 +265,9 @@ def test_agent_data_context_reset_discards_cached_manager() -> None:
 
 
 def test_user_lookup_reset_contract() -> None:
-    """三类用户查询函数必须作为同一代身份目录整体撤销。"""
+    """
+    三类用户查询函数必须作为同一代身份目录整体撤销。
+    """
     previous = (
         _current_or_missing(get_configured_user_id_lookup),
         _current_or_missing(get_configured_user_name_lookup),
@@ -290,7 +306,9 @@ def test_user_lookup_reset_contract() -> None:
 
 
 def test_passkey_provider_reset_contract() -> None:
-    """PassKey 服务和 challenge 缓存可独立撤销且不串代。"""
+    """
+    PassKey 服务和 challenge 缓存可独立撤销且不串代。
+    """
     previous_service = _current_or_missing(get_configured_passkey_service)
     previous_cache = PasskeyChallengeStore._cache
     first_service = object()
@@ -298,7 +316,9 @@ def test_passkey_provider_reset_contract() -> None:
     first_cache = object()
     second_cache = object()
     try:
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_passkey_service(first_service)  # type: ignore[arg-type]
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_passkey_challenge_cache(first_cache)  # type: ignore[arg-type]
         assert get_configured_passkey_service() is first_service
         assert PasskeyChallengeStore._get_cache() is first_cache
@@ -312,7 +332,9 @@ def test_passkey_provider_reset_contract() -> None:
         with pytest.raises(RuntimeError):
             PasskeyChallengeStore._get_cache()
 
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_passkey_service(second_service)  # type: ignore[arg-type]
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_passkey_challenge_cache(second_cache)  # type: ignore[arg-type]
         assert get_configured_passkey_service() is second_service
         assert get_configured_passkey_service() is not first_service
@@ -330,11 +352,14 @@ def test_passkey_provider_reset_contract() -> None:
 
 
 def test_security_access_reset_replaces_identity_provider() -> None:
-    """超级用户载荷 provider reset 后不能继续使用上一代身份。"""
+    """
+    超级用户载荷 provider reset 后不能继续使用上一代身份。
+    """
     previous = access_module._superuser_token_payload_provider
     first = object()
     second = object()
     try:
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         set_superuser_token_payload_provider(lambda: first)  # type: ignore[arg-type]
         assert access_module._create_superuser_token_payload() is first
 
@@ -344,6 +369,7 @@ def test_security_access_reset_replaces_identity_provider() -> None:
             access_module._create_superuser_token_payload()
         assert error.value.status_code == 503
 
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         set_superuser_token_payload_provider(lambda: second)  # type: ignore[arg-type]
         assert access_module._create_superuser_token_payload() is second
         assert access_module._create_superuser_token_payload() is not first
@@ -355,7 +381,9 @@ def test_security_access_reset_replaces_identity_provider() -> None:
 
 
 def test_server_service_reset_contract() -> None:
-    """中心服务上报与分享用例整体撤销后均稳定失败。"""
+    """
+    中心服务上报与分享用例整体撤销后均稳定失败。
+    """
     previous = (server_module._server_report_service, server_module._server_sharing_service)
     first = (object(), object())
     second = (object(), object())
@@ -386,7 +414,9 @@ def test_server_service_reset_contract() -> None:
 
 
 def test_existing_network_port_resets_are_reused() -> None:
-    """图片和消息入口沿用既有 reset，并保持跨代身份隔离。"""
+    """
+    图片和消息入口沿用既有 reset，并保持跨代身份隔离。
+    """
     try:
         previous_image: Any = image_module._image_ports_snapshot()
     except RuntimeError:
@@ -399,9 +429,12 @@ def test_existing_network_port_resets_are_reused() -> None:
     second = (object(), object(), object())
     try:
         configure_image_ports(
+            # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
             transport=first[0],  # type: ignore[arg-type]
+            # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
             internal_address=first[1],  # type: ignore[arg-type]
         )
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_message_ingress_port(first[2])  # type: ignore[arg-type]
         assert image_module._image_ports_snapshot() == first[:2]
         assert ingress_module._message_ingress_snapshot() is first[2]
@@ -416,9 +449,12 @@ def test_existing_network_port_resets_are_reused() -> None:
             ingress_module._message_ingress_snapshot()
 
         configure_image_ports(
+            # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
             transport=second[0],  # type: ignore[arg-type]
+            # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
             internal_address=second[1],  # type: ignore[arg-type]
         )
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_message_ingress_port(second[2])  # type: ignore[arg-type]
         assert image_module._image_ports_snapshot() == second[:2]
         assert image_module._image_ports_snapshot() != first[:2]
@@ -434,23 +470,33 @@ def test_existing_network_port_resets_are_reused() -> None:
 
 
 class _Dispatcher:
-    """记录 Outbox 调度器是否被当前 provider 创建并关闭。"""
+    """
+    记录 Outbox 调度器是否被当前 provider 创建并关闭。
+    """
 
     def __init__(self) -> None:
-        """初始化关闭标记。"""
+        """
+        初始化关闭标记。
+        """
         self.closed = False
 
     def dispatch_one(self) -> bool:
-        """声明当前没有待处理事件。"""
+        """
+        声明当前没有待处理事件。
+        """
         return False
 
     def close(self) -> None:
-        """记录短生命周期调度器已经释放。"""
+        """
+        记录短生命周期调度器已经释放。
+        """
         self.closed = True
 
 
 def test_outbox_dispatcher_reset_contract() -> None:
-    """Outbox reset 后拒绝调度，新一代只创建自己的 dispatcher。"""
+    """
+    Outbox reset 后拒绝调度，新一代只创建自己的 dispatcher。
+    """
     from app.application import outbox as outbox_module
 
     previous = outbox_module._configured_dispatcher
@@ -478,13 +524,16 @@ def test_outbox_dispatcher_reset_contract() -> None:
 
 
 def test_transfer_history_repository_reset_contract() -> None:
-    """整理历史仓储 factory 撤销后不再暴露旧 lifespan 仓储。"""
+    """
+    整理历史仓储 factory 撤销后不再暴露旧 lifespan 仓储。
+    """
     from app.application.history import contracts as history_contracts
 
     previous = history_contracts._configured_transfer_history_repository
     first = object()
     second = object()
     try:
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_transfer_history_repository(lambda: first)  # type: ignore[arg-type]
         assert get_transfer_history_repository() is first
 
@@ -493,6 +542,7 @@ def test_transfer_history_repository_reset_contract() -> None:
         with pytest.raises(RuntimeError):
             get_transfer_history_repository()
 
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_transfer_history_repository(lambda: second)  # type: ignore[arg-type]
         assert get_transfer_history_repository() is second
         assert get_transfer_history_repository() is not first
@@ -504,11 +554,14 @@ def test_transfer_history_repository_reset_contract() -> None:
 
 
 def test_module_runtime_reset_contract() -> None:
-    """模块运行时 reset 恢复拒绝隐式抓取的未装配状态。"""
+    """
+    模块运行时 reset 恢复拒绝隐式抓取的未装配状态。
+    """
     previous = _current_or_missing(get_module_manager)
     first = object()
     second = object()
     try:
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_module_runtime(lambda: first)  # type: ignore[return-value]
         assert get_module_manager() is first
 
@@ -517,6 +570,7 @@ def test_module_runtime_reset_contract() -> None:
         with pytest.raises(RuntimeError):
             get_module_manager()
 
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_module_runtime(lambda: second)  # type: ignore[return-value]
         assert get_module_manager() is second
         assert get_module_manager() is not first
@@ -528,7 +582,9 @@ def test_module_runtime_reset_contract() -> None:
 
 
 def test_service_directory_reset_contract() -> None:
-    """服务配置与模块目录作为一代组合整体恢复未装配状态。"""
+    """
+    服务配置与模块目录作为一代组合整体恢复未装配状态。
+    """
     previous = (service_module._config_loader, service_module._module_loader)
     first_config = object()
     first_module = object()
@@ -562,7 +618,9 @@ def test_service_directory_reset_contract() -> None:
 
 
 def test_service_config_reader_reset_contract() -> None:
-    """可选配置 reader reset 后恢复空目录且不持有旧配置对象。"""
+    """
+    可选配置 reader reset 后恢复空目录且不持有旧配置对象。
+    """
     previous = service_config_module._service_config_reader
     first = object()
     second = object()
@@ -582,11 +640,14 @@ def test_service_config_reader_reset_contract() -> None:
 
 
 def test_existing_chain_context_reset_contract() -> None:
-    """Chain context 继续使用传入 None 的既有 reset 语义。"""
+    """
+    Chain context 继续使用传入 None 的既有 reset 语义。
+    """
     previous = _current_or_missing(get_chain_runtime_context)
     first = object()
     second = object()
     try:
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_chain_runtime_context_provider(lambda: first)  # type: ignore[return-value]
         assert get_chain_runtime_context() is first
 
@@ -595,6 +656,7 @@ def test_existing_chain_context_reset_contract() -> None:
         with pytest.raises(RuntimeError):
             get_chain_runtime_context()
 
+        # 仅比较依赖代次的对象身份，使用不执行业务的占位对象或工厂。
         configure_chain_runtime_context_provider(lambda: second)  # type: ignore[return-value]
         assert get_chain_runtime_context() is second
         assert get_chain_runtime_context() is not first
@@ -606,7 +668,9 @@ def test_existing_chain_context_reset_contract() -> None:
 
 
 def test_wallpaper_provider_reset_contract() -> None:
-    """壁纸 reset 恢复空来源并清掉上一代 provider 的缓存结果。"""
+    """
+    壁纸 reset 恢复空来源并清掉上一代 provider 的缓存结果。
+    """
     previous = (
         image_module._tmdb_wallpaper_provider,
         image_module._tmdb_wallpaper_list_provider,

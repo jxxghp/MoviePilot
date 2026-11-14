@@ -1,4 +1,6 @@
-"""Application/Chain 到 Adapter 原始直连事实的收集契约。"""
+"""
+Application/Chain 到 Adapter 原始直连事实的收集契约。
+"""
 
 import json
 from collections import Counter
@@ -41,7 +43,9 @@ FROZEN_DIRECT_ADAPTER_IMPORTS = {
 
 
 def _source(tmp_path: Path, name: str, content: str) -> tuple[str, Path]:
-    """创建一个供 AST collector 使用的独立源码文件。"""
+    """
+    创建一个供 AST collector 使用的独立源码文件。
+    """
     path = tmp_path / f"{name.replace('.', '_')}.py"
     path.write_text(content, encoding="utf-8")
     return name, path
@@ -51,19 +55,25 @@ def _adapter_policy_violations(
     actual: list[dict[str, str]],
     reviewed: list[dict[str, str]],
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """返回新增直连与已经消失但未清理的陈旧 policy。"""
+    """
+    返回新增直连与已经消失但未清理的陈旧 policy。
+    """
     actual_edges = {(edge["source"], edge["target"]) for edge in actual}
     reviewed_edges = {(edge["source"], edge["target"]) for edge in reviewed}
     return sorted(actual_edges - reviewed_edges), sorted(reviewed_edges - actual_edges)
 
 
 def _is_module_or_child(module_name: str, root: str) -> bool:
-    """判断模块是否等于指定根或位于其点分子树内。"""
+    """
+    判断模块是否等于指定根或位于其点分子树内。
+    """
     return module_name == root or module_name.startswith(f"{root}.")
 
 
 def _adapter_policy_entry_errors(entries: list[dict[str, str]]) -> list[str]:
-    """校验 policy 条目结构、范围、唯一性和冻结 owner。"""
+    """
+    校验 policy 条目结构、范围、唯一性和冻结 owner。
+    """
     errors: list[str] = []
     seen: set[tuple[str, str]] = set()
     for index, entry in enumerate(entries):
@@ -92,7 +102,9 @@ def _adapter_policy_scope_errors(
     policy_scope: dict[str, object],
     fact_scope: dict[str, object],
 ) -> list[str]:
-    """要求人工 policy 与事实收集器共同锁定同一精确范围。"""
+    """
+    要求人工 policy 与事实收集器共同锁定同一精确范围。
+    """
     if policy_scope == fact_scope == DIRECT_ADAPTER_SCOPE:
         return []
     return ["direct adapter scope drift"]
@@ -101,7 +113,9 @@ def _adapter_policy_scope_errors(
 def test_direct_adapter_collector_preserves_raw_runtime_imports(
     tmp_path: Path,
 ) -> None:
-    """原始模块只去重，不展开父包、猜测导入符号或纳入类型期依赖。"""
+    """
+    原始模块只去重，不展开父包、猜测导入符号或纳入类型期依赖。
+    """
     modules = dict(
         [
             _source(
@@ -150,7 +164,9 @@ __import__("app.adapters.network.ip")
 def test_direct_adapter_collector_handles_relative_imports_and_scope(
     tmp_path: Path,
 ) -> None:
-    """相对导入按 package 解析，伪前缀、DB Adapter 和非目标 source 必须排除。"""
+    """
+    相对导入按 package 解析，伪前缀、DB Adapter 和非目标 source 必须排除。
+    """
     modules = dict(
         [
             _source(
@@ -207,7 +223,9 @@ def test_direct_adapter_collector_handles_relative_imports_and_scope(
 
 
 def test_current_direct_adapter_imports_are_stable_generated_facts() -> None:
-    """生成事实必须有稳定排序、自洽统计，且不保存符号或行号。"""
+    """
+    生成事实必须有稳定排序、自洽统计，且不保存符号或行号。
+    """
     contract = dependency_baseline()["direct_adapter_imports"]
     edges = contract["edges"]
     sources = sorted({edge["source"] for edge in edges})
@@ -235,7 +253,9 @@ def test_current_direct_adapter_imports_are_stable_generated_facts() -> None:
 
 
 def test_current_direct_adapter_imports_match_temporary_debt_policy() -> None:
-    """现存直连必须逐条绑定冻结 owner，并允许债务集合只减不增。"""
+    """
+    现存直连必须逐条绑定冻结 owner，并允许债务集合只减不增。
+    """
     policy = json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
     contract = dependency_baseline()["direct_adapter_imports"]
     adapter_policy = policy["direct_adapter_imports"]
@@ -258,7 +278,9 @@ def test_current_direct_adapter_imports_match_temporary_debt_policy() -> None:
 
 
 def test_adapter_policy_rejects_add_remove_and_replacement() -> None:
-    """新增、删除后未清 policy、以及换成另一条边都不能静默通过。"""
+    """
+    新增、删除后未清 policy、以及换成另一条边都不能静默通过。
+    """
     reviewed = [
         {
             "source": "app.application.security.passkey",
@@ -305,7 +327,9 @@ def test_adapter_policy_rejects_add_remove_and_replacement() -> None:
 
 
 def test_adapter_policy_rejects_manual_policy_bypasses() -> None:
-    """手工 policy 也不能接纳新边、错 owner、重复项或越界范围。"""
+    """
+    手工 policy 也不能接纳新边、错 owner、重复项或越界范围。
+    """
     valid = {
         "source": "app.application.backup",
         "target": "app.adapters.system.backup.files",

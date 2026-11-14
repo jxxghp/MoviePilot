@@ -1,23 +1,27 @@
 # -*- coding: utf-8 -*-
+"""
+解析 YemaPT 站点的用户资料、流量和做种信息。
+"""
+
 import json
 from typing import Optional, Tuple
 
-from app.runtime.log import logger
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.foundation import temporal as time_tools
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
+from app.runtime.log import logger
 
 
 class YemaSiteUserInfo(SiteParserBase):
     """
-    YemaPT 开放 API 用户数据解析器
+    YemaPT 开放 API 用户数据解析器。
     """
 
     schema = SiteSchema.Yema
     request_mode = "apikey"
 
-    def _parse_site_page(self, html_text: str) -> None:
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        配置 YemaPT 用户基本信息接口和认证请求头
+        配置 YemaPT 用户基本信息接口和认证请求头。
 
         :param html_text: API AuthKey 模式下的空首页数据
         """
@@ -36,9 +40,9 @@ class YemaSiteUserInfo(SiteParserBase):
             "User-Agent": self._ua,
         }
 
-    def _parse_user_base_info(self, html_text: str) -> None:
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析开放 API 返回的用户基本信息和促销流量
+        解析开放 API 返回的用户基本信息和促销流量。
 
         :param html_text: fetchBasicInfo 接口响应文本
         """
@@ -46,6 +50,8 @@ class YemaSiteUserInfo(SiteParserBase):
             self.err_msg = "获取用户信息失败，未收到开放 API 响应"
             return
         try:
+            if isinstance(html_text, dict):
+                raise TypeError("the JSON object must be str, bytes or bytearray, not dict")
             payload = json.loads(html_text)
         except (TypeError, json.JSONDecodeError) as err:
             self.err_msg = "获取用户信息失败，开放 API 响应不是有效 JSON"
@@ -73,14 +79,14 @@ class YemaSiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        跳过独立流量页面，用户基本信息接口已经返回促销流量
+        跳过独立流量页面，用户基本信息接口已经返回促销流量。
 
         :param html_text: 未使用的页面文本
         """
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        跳过独立用户详情页面，开放 API 未提供该接口
+        跳过独立用户详情页面，开放 API 未提供该接口。
 
         :param html_text: 未使用的页面文本
         """
@@ -91,7 +97,7 @@ class YemaSiteUserInfo(SiteParserBase):
         multi_page: bool = False,
     ) -> Optional[str]:
         """
-        跳过做种统计，开放 API 未提供该接口
+        跳过做种统计，开放 API 未提供该接口。
 
         :param html_text: 未使用的页面文本
         :param multi_page: 是否为后续分页
@@ -99,9 +105,9 @@ class YemaSiteUserInfo(SiteParserBase):
         """
         return None
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
-        跳过站内消息，开放 API 未提供该接口
+        跳过站内消息，开放 API 未提供该接口。
 
         :param html_text: 未使用的页面文本
         :param msg_links: 未使用的消息链接容器
@@ -114,7 +120,7 @@ class YemaSiteUserInfo(SiteParserBase):
         html_text: str,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        跳过消息详情，开放 API 未提供该接口
+        跳过消息详情，开放 API 未提供该接口。
 
         :param html_text: 未使用的页面文本
         :return: 三个空值

@@ -1,4 +1,6 @@
-"""订阅仓储的短 Session 投影与请求事务所有权测试。"""
+"""
+订阅仓储的短 Session 投影与请求事务所有权测试。
+"""
 
 from types import SimpleNamespace
 
@@ -38,15 +40,21 @@ from app.schemas.types import MediaSource, MediaType
 
 
 async def _ignore_async_modified(_payload: dict) -> None:
-    """为不触发修改事件的测试提供完整异步发布端口。"""
+    """
+    为不触发修改事件的测试提供完整异步发布端口。
+    """
 
 
 def _ignore_sync_modified(_payload: dict) -> None:
-    """为不触发修改事件的测试提供完整同步发布端口。"""
+    """
+    为不触发修改事件的测试提供完整同步发布端口。
+    """
 
 
 def test_transactional_repository_returns_frozen_detached_snapshot(db) -> None:
-    """standalone 查询在 Session 内复制 JSON，返回值不携带 ORM 生命周期。"""
+    """
+    standalone 查询在 Session 内复制 JSON，返回值不携带 ORM 生命周期。
+    """
     row = db.add(
         Subscribe(
             name="短会话订阅",
@@ -71,13 +79,17 @@ def test_transactional_repository_returns_frozen_detached_snapshot(db) -> None:
     assert snapshot.sites == [1, 2]
     assert snapshot.episode_priority == {"1": 80}
     with pytest.raises(TypeError, match="不可修改"):
+        # 本用例已构造非空数据，直接检查或修改其内容以验证快照契约。
         snapshot.sites.append(3)  # type: ignore[union-attr]
     with pytest.raises(TypeError, match="不可修改"):
+        # 主动修改快照中的嵌套数据，验证对外投影与持久对象隔离。
         snapshot.episode_priority["1"] = 100  # type: ignore[index]
 
 
 def test_sync_api_repository_dependency_binds_sync_session(db) -> None:
-    """文件统计依赖必须把同步请求 Session 交给订阅仓储。"""
+    """
+    文件统计依赖必须把同步请求 Session 交给订阅仓储。
+    """
     runtime = SimpleNamespace(repository=SessionSubscriptionRepository)
 
     repository = get_sync_subscription_repository(db.session, runtime)
@@ -86,7 +98,9 @@ def test_sync_api_repository_dependency_binds_sync_session(db) -> None:
 
 
 def test_servarr_sync_lookup_reads_session_repository(db) -> None:
-    """Servarr 同步 lookup 应从请求级订阅仓储读取媒体身份投影。"""
+    """
+    Servarr 同步 lookup 应从请求级订阅仓储读取媒体身份投影。
+    """
     row = db.add(
         Subscribe(
             name="同步 lookup 订阅",
@@ -116,7 +130,9 @@ def test_servarr_sync_lookup_reads_session_repository(db) -> None:
 
 
 def test_servarr_async_exists_reads_session_repository(db) -> None:
-    """Servarr 异步查重应从请求级订阅仓储读取命中的订阅。"""
+    """
+    Servarr 异步查重应从请求级订阅仓储读取命中的订阅。
+    """
     row = db.add(
         Subscribe(
             name="异步查重订阅",
@@ -128,7 +144,9 @@ def test_servarr_async_exists_reads_session_repository(db) -> None:
     )
 
     async def query(session: AsyncSession) -> bool:
-        """通过真实请求仓储执行 Servarr 异步查重。"""
+        """
+        通过真实请求仓储执行 Servarr 异步查重。
+        """
         service = ServarrSubscriptionService(
             async_repository=SessionSubscriptionRepository(session),
             sync_repository=SessionSubscriptionRepository(db.session),
@@ -144,7 +162,9 @@ def test_servarr_async_exists_reads_session_repository(db) -> None:
 
 
 def test_servarr_delete_commits_session_repository_transaction(db) -> None:
-    """Servarr 删除应提交请求仓储暂存的删除，而不是随会话关闭回滚。"""
+    """
+    Servarr 删除应提交请求仓储暂存的删除，而不是随会话关闭回滚。
+    """
     row = db.add(
         Subscribe(
             name="待删除 Servarr 订阅",
@@ -157,7 +177,9 @@ def test_servarr_delete_commits_session_repository_transaction(db) -> None:
     subscribe_id = row.id
 
     async def delete(session: AsyncSession) -> bool:
-        """通过真实请求仓储和 UoW 执行 Servarr 删除。"""
+        """
+        通过真实请求仓储和 UoW 执行 Servarr 删除。
+        """
         service = ServarrSubscriptionService(
             async_repository=SessionSubscriptionRepository(session),
             sync_repository=SessionSubscriptionRepository(db.session),
@@ -171,7 +193,9 @@ def test_servarr_delete_commits_session_repository_transaction(db) -> None:
 
 
 def test_transactional_repository_supports_servarr_async_contract(db) -> None:
-    """独立订阅仓储应提供 Servarr 查重与删除所需的异步事务能力。"""
+    """
+    独立订阅仓储应提供 Servarr 查重与删除所需的异步事务能力。
+    """
     row = db.add(
         Subscribe(
             name="独立 Servarr 订阅",
@@ -188,7 +212,9 @@ def test_transactional_repository_supports_servarr_async_contract(db) -> None:
     )
 
     async def execute(_session: AsyncSession) -> bool:
-        """执行独立仓储的查重与删除操作。"""
+        """
+        执行独立仓储的查重与删除操作。
+        """
         assert await repository.async_exists(
             media_source=MediaSource.TMDB,
             media_id="transactional-servarr",
@@ -203,11 +229,15 @@ def test_transactional_repository_supports_servarr_async_contract(db) -> None:
 
 
 def test_session_repository_leaves_commit_and_rollback_to_caller(db) -> None:
-    """请求级仓储只 flush 暂存记录，调用方回滚后数据库不保留该记录。"""
+    """
+    请求级仓储只 flush 暂存记录，调用方回滚后数据库不保留该记录。
+    """
     db.watermark(Subscribe)
 
     async def stage_and_rollback(session: AsyncSession) -> int:
-        """在同一请求 Session 暂存、读取并由调用方回滚。"""
+        """
+        在同一请求 Session 暂存、读取并由调用方回滚。
+        """
         repository = SessionSubscriptionRepository(session)
         result = await repository.async_stage_add(
             SubscriptionIdentity(
@@ -236,7 +266,9 @@ def test_session_repository_leaves_commit_and_rollback_to_caller(db) -> None:
 
 
 def test_completion_writes_history_and_deletes_subscription_atomically(db) -> None:
-    """完成命令在同一真实事务中写历史并删除活动订阅。"""
+    """
+    完成命令在同一真实事务中写历史并删除活动订阅。
+    """
     db.watermark(Subscribe, SubscribeHistory)
     row = db.add(
         Subscribe(
@@ -283,7 +315,9 @@ def test_completion_writes_history_and_deletes_subscription_atomically(db) -> No
 
 
 def test_delete_history_commits_request_transaction(db) -> None:
-    """授权后的历史删除由 mutation 服务提交请求 Session。"""
+    """
+    授权后的历史删除由 mutation 服务提交请求 Session。
+    """
     row = db.add(
         SubscribeHistory(
             name="待删除历史",
@@ -294,7 +328,9 @@ def test_delete_history_commits_request_transaction(db) -> None:
     history_id = row.id
 
     async def delete_history(session: AsyncSession) -> bool:
-        """使用真实 request adapter 和 UoW 删除历史。"""
+        """
+        使用真实 request adapter 和 UoW 删除历史。
+        """
         service = SubscriptionMutationService(
             repository=SessionSubscriptionRepository(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
@@ -314,7 +350,9 @@ def test_delete_history_commits_request_transaction(db) -> None:
 
 
 def test_delete_history_rolls_back_when_commit_fails(db) -> None:
-    """历史删除提交异常时回滚，同一真实 Session 中的删除不会泄漏。"""
+    """
+    历史删除提交异常时回滚，同一真实 Session 中的删除不会泄漏。
+    """
     row = db.add(
         SubscribeHistory(
             name="回滚历史",
@@ -325,22 +363,32 @@ def test_delete_history_rolls_back_when_commit_fails(db) -> None:
     history_id = row.id
 
     class _FailingUnitOfWork:
-        """提交失败并用真实 AsyncSession 执行回滚。"""
+        """
+        提交失败并用真实 AsyncSession 执行回滚。
+        """
 
         def __init__(self, session: AsyncSession) -> None:
-            """保存待回滚的请求 Session。"""
+            """
+            保存待回滚的请求 Session。
+            """
             self._session = session
 
         async def commit(self) -> None:
-            """模拟数据库提交失败。"""
+            """
+            模拟数据库提交失败。
+            """
             raise RuntimeError("commit failed")
 
         async def rollback(self) -> None:
-            """回滚同一请求 Session。"""
+            """
+            回滚同一请求 Session。
+            """
             await self._session.rollback()
 
     async def delete_history(session: AsyncSession) -> None:
-        """执行会在提交阶段失败的真实历史删除。"""
+        """
+        执行会在提交阶段失败的真实历史删除。
+        """
         service = SubscriptionMutationService(
             repository=SessionSubscriptionRepository(session),
             unit_of_work=_FailingUnitOfWork(session),
@@ -361,7 +409,9 @@ def test_delete_history_rolls_back_when_commit_fails(db) -> None:
 
 
 def test_async_mutation_commits_row_and_outbox_atomically(db) -> None:
-    """异步修改把订阅行与 outbox intent 一次提交，发布成功后再完成 intent。"""
+    """
+    异步修改把订阅行与 outbox intent 一次提交，发布成功后再完成 intent。
+    """
     db.watermark(Subscribe, OutboxMessage)
     row = db.add(
         Subscribe(
@@ -375,9 +425,13 @@ def test_async_mutation_commits_row_and_outbox_atomically(db) -> None:
     published = []
 
     async def execute(session: AsyncSession):
-        """在真实异步请求 Session 中执行一次完整修改。"""
+        """
+        在真实异步请求 Session 中执行一次完整修改。
+        """
         async def publish(payload: dict) -> None:
-            """记录提交后收到的 durable 事件快照。"""
+            """
+            记录提交后收到的 durable 事件快照。
+            """
             published.append(payload)
 
         service = SubscriptionMutationService(
@@ -407,7 +461,9 @@ def test_async_mutation_commits_row_and_outbox_atomically(db) -> None:
 
 
 def test_async_mutation_rolls_back_row_and_outbox_together(db) -> None:
-    """异步 intent 暂存失败时，已 flush 的订阅行和 intent 都必须回滚。"""
+    """
+    异步 intent 暂存失败时，已 flush 的订阅行和 intent 都必须回滚。
+    """
     db.watermark(Subscribe, OutboxMessage)
     intent_watermark = db.session.execute(
         select(func.max(OutboxMessage.id))
@@ -423,19 +479,27 @@ def test_async_mutation_rolls_back_row_and_outbox_together(db) -> None:
     )
 
     class _FailingStager:
-        """真实暂存 intent 后抛错，验证整个业务事务回滚。"""
+        """
+        真实暂存 intent 后抛错，验证整个业务事务回滚。
+        """
 
         def __init__(self, session: AsyncSession) -> None:
-            """绑定与订阅行相同的异步 Session。"""
+            """
+            绑定与订阅行相同的异步 Session。
+            """
             self._stager = SqlAlchemyAsyncOutboxStager(session)
 
         async def stage(self, intent, now) -> None:
-            """先 flush intent，再模拟事务内后续失败。"""
+            """
+            先 flush intent，再模拟事务内后续失败。
+            """
             await self._stager.stage(intent, now)
             raise RuntimeError("outbox stage failed")
 
     async def execute(session: AsyncSession) -> None:
-        """执行预期回滚的异步修改。"""
+        """
+        执行预期回滚的异步修改。
+        """
         service = SubscriptionMutationService(
             repository=SessionSubscriptionRepository(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
@@ -463,7 +527,9 @@ def test_async_mutation_rolls_back_row_and_outbox_together(db) -> None:
 
 
 def test_async_pending_intent_is_not_published_outside_outbox(db) -> None:
-    """即时认领失败时保留 pending，服务不得绕过 outbox 调用 publisher。"""
+    """
+    即时认领失败时保留 pending，服务不得绕过 outbox 调用 publisher。
+    """
     db.watermark(Subscribe, OutboxMessage)
     row = db.add(
         Subscribe(
@@ -477,24 +543,36 @@ def test_async_pending_intent_is_not_published_outside_outbox(db) -> None:
     published = []
 
     class _UnavailableStore:
-        """模拟 intent 已提交但当前未取得即时派发 lease。"""
+        """
+        模拟 intent 已提交但当前未取得即时派发 lease。
+        """
 
         async def claim_by_event_key(self, _event_key, _now, _lease_until):
-            """拒绝当前即时认领。"""
+            """
+            拒绝当前即时认领。
+            """
             return None
 
         async def complete(self, *_args, **_kwargs) -> bool:
-            """未认领时禁止完成。"""
+            """
+            未认领时禁止完成。
+            """
             raise AssertionError("pending intent 不得完成")
 
         async def retry(self, *_args, **_kwargs) -> bool:
-            """未认领时禁止释放。"""
+            """
+            未认领时禁止释放。
+            """
             raise AssertionError("pending intent 不得重试")
 
     async def execute(session: AsyncSession):
-        """提交后返回 pending 状态。"""
+        """
+        提交后返回 pending 状态。
+        """
         async def publish(payload: dict) -> None:
-            """记录任何越过 outbox 的错误发布。"""
+            """
+            记录任何越过 outbox 的错误发布。
+            """
             published.append(payload)
 
         service = SubscriptionMutationService(
@@ -525,7 +603,9 @@ def test_async_pending_intent_is_not_published_outside_outbox(db) -> None:
 
 
 def test_sync_mutation_commits_row_and_outbox_atomically(db) -> None:
-    """同步修改与异步服务共享同一行、intent、提交后派发语义。"""
+    """
+    同步修改与异步服务共享同一行、intent、提交后派发语义。
+    """
     db.watermark(Subscribe, OutboxMessage)
     row = db.add(
         Subscribe(
@@ -562,7 +642,9 @@ def test_sync_mutation_commits_row_and_outbox_atomically(db) -> None:
 
 
 def test_sync_mutation_rolls_back_row_and_outbox_together(db) -> None:
-    """同步 intent 暂存失败时回滚同行更新和已 flush 的 intent。"""
+    """
+    同步 intent 暂存失败时回滚同行更新和已 flush 的 intent。
+    """
     db.watermark(Subscribe, OutboxMessage)
     intent_watermark = db.session.execute(
         select(func.max(OutboxMessage.id))
@@ -578,14 +660,20 @@ def test_sync_mutation_rolls_back_row_and_outbox_together(db) -> None:
     )
 
     class _FailingStager:
-        """同步暂存 intent 后模拟事务内异常。"""
+        """
+        同步暂存 intent 后模拟事务内异常。
+        """
 
         def __init__(self, session) -> None:
-            """绑定与订阅行相同的同步 Session。"""
+            """
+            绑定与订阅行相同的同步 Session。
+            """
             self._stager = SqlAlchemyOutboxStager(session)
 
         def stage(self, intent, now) -> None:
-            """先 flush intent，再中断业务事务。"""
+            """
+            先 flush intent，再中断业务事务。
+            """
             self._stager.stage(intent, now)
             raise RuntimeError("sync outbox stage failed")
 

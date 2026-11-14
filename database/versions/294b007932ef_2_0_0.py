@@ -1,15 +1,15 @@
-"""2.0.0
+"""
+2.0.0 初始化默认存储配置。
 
-Revision ID: 294b007932ef
-Revises:
-Create Date: 2024-07-20 08:43:40.741251
-
+版本标识： 294b007932ef
+前置版本：
+创建时间： 2024-07-20 08:43:40.741251
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = '294b007932ef'
 down_revision = None
 branch_labels = None
@@ -21,7 +21,6 @@ def upgrade() -> None:
     v2.0.0 数据库初始化
     """
     connection = op.get_bind()
-    # 初始化本地存储
     systemconfig = sa.table(
         "systemconfig",
         sa.column("key", sa.String()),
@@ -65,4 +64,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    本版本不执行回退操作，保留升级后的结构与数据。
+    """
     pass

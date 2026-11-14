@@ -1,13 +1,16 @@
+"""
+装配宿主模块、托管资源及其启动和关闭顺序。
+"""
+
 import asyncio
 import inspect
 import sys
-from typing import Callable, cast
+from typing import Any, Callable, cast
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
-    from app.application.site.sites import SitesHelper  # noqa  # pylint: disable=import-error,no-name-in-module
+    from app.application.site.sites import SitesHelper as _SitesHelper  # noqa  # pylint: disable=import-error,no-name-in-module
 except ImportError as e:
-    SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
     print(error_message, file=sys.stderr)
     sys.exit(1)
@@ -32,7 +35,11 @@ from app.application.messaging.message import (
     stop_message,
 )
 from app.application.messaging.webagent.events import dispatch_web_agent_message_event
-from app.application.module import configure_module_runtime, reset_module_runtime
+from app.application.module import (
+    ModuleRuntime,
+    configure_module_runtime,
+    reset_module_runtime,
+)
 from app.application.outbox import configure_outbox_dispatcher
 from app.application.plugin.runtime import get_existing_plugin_manager
 from app.application.security.url import close_image_proxy_block_log_coalescer
@@ -43,7 +50,8 @@ from app.db.session import (
     close_database,
 )
 from app.runtime.config import settings as legacy_settings
-from app.runtime.events import EventHandlerBinding, EventManager
+from app.runtime.event.binding import EventHandlerBinding
+from app.runtime.events import EventManager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.module.manager import ModuleManager
 from app.runtime.extensions.service import (
@@ -55,11 +63,11 @@ from app.runtime.log import logger
 from app.runtime.settings import (
     get_runtime_setting,
 )
-from app.runtime.tasks import get_task_registry
+from app.runtime.tasks import TaskRegistry, get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
-from app.schemas.message import Message, MessageType
-from app.schemas.types import EventType, SystemConfigKey
+from app.schemas.message import Message
+from app.schemas.types import EventType, MessageType, SystemConfigKey
 from app.startup.composition.agent import (
     compose_agent,
     publish_agent_services,
@@ -134,9 +142,13 @@ from app.startup.initializers.scheduler import (
     reset_scheduler_bindings,
 )
 
+SitesHelper: Any = _SitesHelper
+
 
 def _plugin_classification_fields() -> tuple[ClassificationFieldDefinition, ...]:
-    """读取已创建插件运行时的字段快照，模块初始化阶段不提前物化管理器。"""
+    """
+    读取已创建插件运行时的字段快照，模块初始化阶段不提前物化管理器。
+    """
     manager = get_existing_plugin_manager()
     if manager is None:
         return ()
@@ -145,7 +157,8 @@ def _plugin_classification_fields() -> tuple[ClassificationFieldDefinition, ...]
             tuple[ClassificationFieldDefinition, ...],
             manager.get_classification_fields(),
         )
-    except Exception as error:  # noqa: BLE001  插件字段目录故障不得阻断策略管理
+    # 插件字段目录故障不得阻断策略管理。
+    except Exception as error:  # noqa: BLE001
         logger.warning(f"读取插件分类字段目录失败，已忽略动态字段：{error}")
         return ()
 
@@ -153,7 +166,9 @@ def _plugin_classification_fields() -> tuple[ClassificationFieldDefinition, ...]
 def _plugin_classification_facts(
     media: object,
 ) -> dict[str, dict[str, ClassificationFactValue]]:
-    """通过已创建插件运行时校验媒体对象携带的扩展事实。"""
+    """
+    通过已创建插件运行时校验媒体对象携带的扩展事实。
+    """
     manager = get_existing_plugin_manager()
     if manager is None:
         return {}
@@ -162,36 +177,47 @@ def _plugin_classification_facts(
             dict[str, dict[str, ClassificationFactValue]],
             manager.get_classification_facts(media),
         )
-    except Exception as error:  # noqa: BLE001  插件事实不得成为媒体识别硬依赖
+    # 插件事实不得成为媒体识别硬依赖。
+    except Exception as error:  # noqa: BLE001
         logger.warning(f"读取插件扩展分类事实失败，已按字段缺失继续：{error}")
         return {}
 
 
 def _existing_module_manager() -> object | None:
-    """返回已创建模块管理器；测试替身或未初始化状态按无 provider 处理。"""
+    """
+    返回已创建模块管理器；测试替身或未初始化状态按无 provider 处理。
+    """
     getter = getattr(ModuleManager, "get_existing_instance", None)
     return getter() if callable(getter) else None
 
 
 def configure_runtime_data_providers() -> None:
-    """在启动组合层装配模块和配置目录的运行时读取能力。"""
+    """
+    在启动组合层装配模块和配置目录的运行时读取能力。
+    """
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
-    configure_module_runtime(lambda: ModuleManager())
+    configure_module_runtime(lambda: cast(ModuleRuntime, ModuleManager()))
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
-        modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
+        modules=lambda module_type: list(
+            ModuleManager().get_running_type_modules(module_type)
+        ),
     )
 
 
 def reset_runtime_data_providers() -> None:
-    """按发布逆序撤销模块、服务目录和配置读取 Provider。"""
+    """
+    按发布逆序撤销模块、服务目录和配置读取 Provider。
+    """
     reset_service_directory()
     reset_module_runtime()
     reset_service_config_reader()
 
 
 def reset_event_services() -> None:
-    """撤销启动组合根登记的事件通知、监听器和宿主 resolver。"""
+    """
+    撤销启动组合根登记的事件通知、监听器和宿主 resolver。
+    """
     event_manager = EventManager.get_existing_instance()
     if event_manager is None:
         return
@@ -205,14 +231,18 @@ def reset_event_services() -> None:
 
 
 def reset_tool_services() -> None:
-    """撤销工具管理器持有的 Agent 数据上下文与目录快照。"""
+    """
+    撤销工具管理器持有的 Agent 数据上下文与目录快照。
+    """
     from app.agent.tools.manager import moviepilot_tool_manager
 
     moviepilot_tool_manager.reset_data_context()
 
 
 def _module_provider_reset_steps() -> tuple[tuple[str, Callable[[], object]], ...]:
-    """返回当前模块 lifespan 的完整 Provider 逆序撤销清单。"""
+    """
+    返回当前模块 lifespan 的完整 Provider 逆序撤销清单。
+    """
     return (
         ("事件服务", reset_event_services),
         ("资源版本 Provider", reset_site_resource_composition),
@@ -241,7 +271,9 @@ def _module_provider_reset_steps() -> tuple[tuple[str, Callable[[], object]], ..
 
 
 def reset_module_providers() -> bool:
-    """逐项撤销模块 Provider；单项失败不跳过后续 owner，并返回整体结果。"""
+    """
+    逐项撤销模块 Provider；单项失败不跳过后续 owner，并返回整体结果。
+    """
     converged = True
     for name, callback in _module_provider_reset_steps():
         try:
@@ -253,13 +285,17 @@ def reset_module_providers() -> bool:
 
 
 def _existing_singleton(instance_type: type) -> object | None:
-    """读取已经物化的 Singleton，启动失败回滚时禁止反向创建新 owner。"""
+    """
+    读取已经物化的 Singleton，启动失败回滚时禁止反向创建新 owner。
+    """
     getter = getattr(instance_type, "get_existing_instance", None)
     return getter() if callable(getter) else None
 
 
 def _call_existing_singleton(instance_type: type | None, method_name: str) -> object:
-    """调用已存在 Singleton 的关闭方法；owner 未接入或未创建时视为已经收敛。"""
+    """
+    调用已存在 Singleton 的关闭方法；owner 未接入或未创建时视为已经收敛。
+    """
     if instance_type is None:
         return True
     instance = _existing_singleton(instance_type)
@@ -269,7 +305,9 @@ def _call_existing_singleton(instance_type: type | None, method_name: str) -> ob
 
 
 def notify_event_error(title: str, message: str) -> None:
-    """将事件总线错误转发到系统消息通道。"""
+    """
+    将事件总线错误转发到系统消息通道。
+    """
     MessageHelper().put(
         title=title,
         message=message,
@@ -279,7 +317,9 @@ def notify_event_error(title: str, message: str) -> None:
 
 
 def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
-    """返回所有使用事件装饰器的宿主类及其明确实例工厂。"""
+    """
+    返回所有使用事件装饰器的宿主类及其明确实例工厂。
+    """
     from app.chain.download import DownloadChain
     from app.chain.scraping import ScrapingChain
     from app.chain.search.facade import SearchChain
@@ -303,7 +343,9 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
 
 def get_config_reload_handler_providers(
 ) -> dict[type, Callable[[], object | None]]:
-    """返回未由专属运行时接管的配置重载 owner Provider。"""
+    """
+    返回未由专属运行时接管的配置重载 owner Provider。
+    """
     from app.chain.transfer.facade import TransferChain
     from app.monitor.monitor import Monitor
     from app.runtime.state import SystemHelper
@@ -330,7 +372,9 @@ def get_config_reload_handler_providers(
 
 
 def configure_config_reload_event_handler_resolver() -> None:
-    """绑定当前生命周期已拥有的配置重载实例，惰性 owner 未创建时跳过。"""
+    """
+    绑定当前生命周期已拥有的配置重载实例，惰性 owner 未创建时跳过。
+    """
     providers = get_config_reload_handler_providers()
     runtime_providers = (
         get_existing_doh_composition,
@@ -338,7 +382,9 @@ def configure_config_reload_event_handler_resolver() -> None:
     )
 
     def resolve(owner_class: type) -> EventHandlerBinding | None:
-        """按类型身份读取当前 owner，不在事件分发路径构造资源。"""
+        """
+        按类型身份读取当前 owner，不在事件分发路径构造资源。
+        """
         provider = providers.get(owner_class)
         if provider is not None:
             instance = provider()
@@ -371,11 +417,15 @@ def configure_config_reload_event_handler_resolver() -> None:
 
 
 def configure_host_event_handler_resolver() -> None:
-    """显式登记宿主内置类处理器，禁止事件总线按类名临时构造未知对象。"""
+    """
+    显式登记宿主内置类处理器，禁止事件总线按类名临时构造未知对象。
+    """
     factories = get_host_event_handler_factories()
 
     def resolve(owner_class: type) -> EventHandlerBinding | None:
-        """按明确白名单复用单例或构造与旧路径等价的 Chain 实例。"""
+        """
+        按明确白名单复用单例或构造与旧路径等价的 Chain 实例。
+        """
         factory = factories.get(owner_class)
         if factory is None:
             return None
@@ -391,7 +441,7 @@ def configure_host_event_handler_resolver() -> None:
     EventManager().register_handler_instance_resolver("host", resolve)
 
 
-def start_frontend():
+def start_frontend() -> None:
     """
     启动前端服务
     """
@@ -413,7 +463,7 @@ def start_frontend():
     subprocess.Popen("start nginx.exe", cwd=run_nginx_dir, shell=True)
 
 
-def stop_frontend():
+def stop_frontend() -> None:
     """
     停止前端服务
     """
@@ -424,7 +474,7 @@ def stop_frontend():
     subprocess.Popen("taskkill /f /im nginx.exe", shell=True)
 
 
-def clear_temp():
+def clear_temp() -> None:
     """
     清理临时文件和图片缓存
     """
@@ -442,7 +492,7 @@ def clear_temp():
     clear_package_tool_cache()
 
 
-def clear_package_tool_cache():
+def clear_package_tool_cache() -> None:
     """
     清理 pip/uv 包下载缓存，只处理 MoviePilot 管理的工具子目录。
     """
@@ -458,7 +508,7 @@ def clear_package_tool_cache():
             logger.warning("清理包下载缓存失败：%s - %s", cache_path, err)
 
 
-def user_auth():
+def user_auth() -> None:
     """
     用户认证检查
     """
@@ -484,7 +534,7 @@ def user_auth():
         logger.info(f"用户认证失败，{msg}")
 
 
-def check_auth():
+def check_auth() -> None:
     """
     检查认证状态
     """
@@ -502,31 +552,54 @@ def check_auth():
 
 
 def update_resources() -> None:
-    """保留旧入口但不在启动后检查、下载或重启，资源由启动器预先应用。"""
+    """
+    保留旧入口但不在启动后检查、下载或重启，资源由启动器预先应用。
+    """
     return
 
 
-def close_browser_sessions() -> None:
-    """在托管资源关闭前释放所有浏览器上下文及其工作线程。"""
+def start_browser_session_reaper(tasks: TaskRegistry) -> None:
+    """
+    启动空闲浏览器回收，任务取消由当前宿主登记器负责。
+
+    :param tasks: 当前应用生命周期的后台任务登记器
+    """
     from app.adapters.network.browser import BrowserSessionHelper
 
-    BrowserSessionHelper.close_all_sessions()
+    BrowserSessionHelper.start_idle_reaper(tasks)
+
+
+def close_browser_sessions() -> None:
+    """
+    在托管资源关闭前释放所有浏览器上下文及其工作线程。
+    """
+    from app.adapters.network.browser import BrowserSessionHelper, close_browser_instances
+
+    try:
+        BrowserSessionHelper.close_all_sessions()
+    finally:
+        if not close_browser_instances():
+            raise RuntimeError("部分浏览器进程或监控线程尚未退出")
 
 
 async def drain_events() -> bool:
-    """在插件卸载前等待已接收事件及其同步、异步处理器完成。"""
+    """
+    在插件卸载前等待已接收事件及其同步、异步处理器完成。
+    """
     event_manager = EventManager.get_existing_instance()
     if event_manager is None:
         return True
-    return await event_manager.drain_async(seal=True)
+    return bool(await event_manager.drain_async(seal=True))
 
 
 async def settle_events() -> bool:
-    """在插件 handler 停用后结算在途事件，但保留停机 hook 的尾事件入口。"""
+    """
+    在插件 handler 停用后结算在途事件，但保留停机 hook 的尾事件入口。
+    """
     event_manager = EventManager.get_existing_instance()
     if event_manager is None:
         return True
-    return await event_manager.drain_async(seal=False)
+    return bool(await event_manager.drain_async(seal=False))
 
 
 async def stop_modules() -> bool:
@@ -542,7 +615,9 @@ async def stop_modules() -> bool:
         offload: bool = False,
         record_failure: bool = True,
     ) -> bool:
-        """执行单个关闭步骤，失败时继续收口并保留诚实结果。"""
+        """
+        执行单个关闭步骤，失败时继续收口并保留诚实结果。
+        """
         nonlocal all_converged
         try:
             if offload:
@@ -657,7 +732,8 @@ async def _initialize_modules() -> HostRuntime:
     except BaseException:
         try:
             await stop_database_runtime()
-        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+        # 清理失败不能掩盖原始启动异常。
+        except Exception as cleanup_error:  # noqa: BLE001
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
     publish_configuration(configuration, legacy_settings)
@@ -706,7 +782,7 @@ async def _initialize_modules() -> HostRuntime:
     configure_runtime_data_providers()
     configure_server_services(workflow_query, runtime_dependencies.subscription)
     configure_workflow_execution_composition()
-    configure_outbox_dispatcher(build_outbox_dispatcher)
+    configure_outbox_dispatcher(build_outbox_dispatcher, submit=ThreadHelper().submit)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
             max_failed_retries=get_runtime_setting("TRANSFER_MAX_FAILED_RETRIES"),
@@ -737,7 +813,7 @@ async def _initialize_modules() -> HostRuntime:
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     configure_security_access()
-    # DoH
+    # 初始化加密 DNS 解析能力。
     configure_doh_composition()
     # 站点管理
     sites_helper = SitesHelper()
@@ -777,18 +853,22 @@ async def _initialize_modules() -> HostRuntime:
 
 
 async def init_modules() -> HostRuntime:
-    """启动模块服务，并在构造中途失败时回收尚未发布的资源 owner。"""
+    """
+    启动模块服务，并在构造中途失败时回收尚未发布的资源 owner。
+    """
     try:
         return await _initialize_modules()
     except BaseException:
         try:
             if stop_message() is False:
                 logger.error("模块启动失败后的消息资源未完全收敛")
-        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+        # 清理失败不能掩盖原始启动异常。
+        except Exception as cleanup_error:  # noqa: BLE001
             logger.error(f"模块启动失败后的消息资源清理失败：{cleanup_error}")
         try:
             if await stop_modules() is False:
                 logger.error("模块启动失败后的资源 owner 未完全收敛")
-        except Exception as cleanup_error:  # noqa: BLE001  保留原始启动异常
+        # 清理失败不能掩盖原始启动异常。
+        except Exception as cleanup_error:  # noqa: BLE001
             logger.error(f"模块启动失败后的统一资源清理失败：{cleanup_error}")
         raise

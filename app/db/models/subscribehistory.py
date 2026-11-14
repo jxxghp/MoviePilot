@@ -1,6 +1,12 @@
-from typing import Any, Optional
+"""
+已完成订阅的历史记录的 ORM 模型与会话内数据操作。
 
-from sqlalchemy import JSON, Float, Index, Integer, String, func, or_, select
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
+from typing import Any, Optional, Self
+
+from sqlalchemy import JSON, ColumnElement, Float, Index, Integer, String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -14,6 +20,8 @@ class SubscribeHistory(Base):
     订阅历史表
     """
     id = get_id_column()
+    # 与原订阅共享活动标识；升级前历史不补造事件。
+    activity_key: Mapped[Optional[str]] = mapped_column(String(32))
     # 标题
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # 年份
@@ -117,8 +125,10 @@ class SubscribeHistory(Base):
     )
 
     @classmethod
-    def list_by_type(cls, db: Session, mtype: str, page: int = 1, count: int = 30):
-        """在调用方 Session 中按媒体类型分页查询订阅历史。"""
+    def list_by_type(cls, db: Session, mtype: str, page: int = 1, count: int = 30) -> list[Self]:
+        """
+        在调用方 Session 中按媒体类型分页查询订阅历史。
+        """
         return list(db.execute(
             select(cls).where(
                 cls.type == mtype
@@ -128,8 +138,10 @@ class SubscribeHistory(Base):
         ).scalars().all())
 
     @classmethod
-    async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: int = 1, count: int = 30):
-        """在调用方 AsyncSession 中按媒体类型分页查询订阅历史。"""
+    async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: int = 1, count: int = 30) -> list[Self]:
+        """
+        在调用方 AsyncSession 中按媒体类型分页查询订阅历史。
+        """
         result = await db.execute(
             select(cls).filter(
                 cls.type == mtype
@@ -147,7 +159,7 @@ class SubscribeHistory(Base):
             username: str,
             page: int = 1,
             count: int = 30
-    ):
+    ) -> list[Self]:
         """
         按订阅 owner 查询指定类型的历史分页。
         """
@@ -165,7 +177,9 @@ class SubscribeHistory(Base):
 
     @classmethod
     async def async_count_by_type(cls, db: AsyncSession, mtype: str) -> int:
-        """统计指定媒体类型的订阅历史。"""
+        """
+        统计指定媒体类型的订阅历史。
+        """
         result = await db.execute(
             select(func.count(cls.id)).where(cls.type == mtype)
         )
@@ -178,7 +192,9 @@ class SubscribeHistory(Base):
         mtype: str,
         username: str,
     ) -> int:
-        """统计指定媒体类型和 owner 的订阅历史。"""
+        """
+        统计指定媒体类型和 owner 的订阅历史。
+        """
         if not username:
             return 0
         result = await db.execute(
@@ -195,8 +211,10 @@ class SubscribeHistory(Base):
             media_source: MediaSource | str | None = None,
             media_id: Optional[str] = None,
             music_type: Optional[str] = None,
-    ):
-        """按统一媒体身份优先级构造订阅历史查询条件。"""
+    ) -> Optional[ColumnElement[bool]]:
+        """
+        按统一媒体身份优先级构造订阅历史查询条件。
+        """
         if not media_source or media_id is None or not str(media_id).strip():
             return None
         condition = (
@@ -215,8 +233,10 @@ class SubscribeHistory(Base):
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
-    ):
-        """按媒体身份、季号及可选剧集组查询订阅历史。"""
+    ) -> Optional[Self]:
+        """
+        按媒体身份、季号及可选剧集组查询订阅历史。
+        """
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )
@@ -226,7 +246,8 @@ class SubscribeHistory(Base):
         if season is not None:
             statement = statement.where(cls.season == season)
         statement = statement.where(cls.episode_group == episode_group)
-        return db.execute(statement).scalars().first()
+        history: Optional[Self] = db.execute(statement).scalars().first()
+        return history
 
     @classmethod
     async def async_exists(
@@ -234,8 +255,10 @@ class SubscribeHistory(Base):
             season: Optional[int] = None,
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
-    ):
-        """异步按媒体身份、季号及可选剧集组查询订阅历史。"""
+    ) -> Optional[Self]:
+        """
+        异步按媒体身份、季号及可选剧集组查询订阅历史。
+        """
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )
@@ -246,4 +269,5 @@ class SubscribeHistory(Base):
             query = query.filter(cls.season == season)
         query = query.filter(cls.episode_group == episode_group)
         result = await db.execute(query)
-        return result.scalars().first()
+        history: Optional[Self] = result.scalars().first()
+        return history

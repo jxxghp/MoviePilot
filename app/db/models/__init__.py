@@ -1,4 +1,6 @@
-"""ORM 模型的惰性兼容导出与显式注册入口。"""
+"""
+ORM 模型的惰性兼容导出与显式注册入口。
+"""
 
 from importlib import import_module
 from typing import Any
@@ -6,6 +8,7 @@ from typing import Any
 from . import _identity  # noqa: F401  注册全局媒体身份写入不变量
 
 _MODEL_EXPORTS = {
+    "SearchSession": ("app.db.models.searchsession", "SearchSession"),
     "AgentChat": ("app.db.models.agentchat", "AgentChat"),
     "AgentInvocation": ("app.db.models.agentinvocation", "AgentInvocation"),
     "AgentTask": ("app.db.models.agenttask", "AgentTask"),
@@ -34,6 +37,7 @@ _MODEL_EXPORTS = {
     "SiteIcon": ("app.db.models.siteicon", "SiteIcon"),
     "SiteStatistic": ("app.db.models.sitestatistic", "SiteStatistic"),
     "SiteUserData": ("app.db.models.siteuserdata", "SiteUserData"),
+    "SubscribeActivity": ("app.db.models.subscribeactivity", "SubscribeActivity"),
     "Subscribe": ("app.db.models.subscribe", "Subscribe"),
     "SubscribeHistory": (
         "app.db.models.subscribehistory",
@@ -65,17 +69,22 @@ _MODEL_EXPORTS = {
     "User": ("app.db.models.user", "User"),
     "UserConfig": ("app.db.models.userconfig", "UserConfig"),
     "Workflow": ("app.db.models.workflow", "Workflow"),
+    "WidgetRegistration": ("app.db.models.widget", "WidgetRegistration"),
 }
 
 
 def load_all_models() -> None:
-    """显式导入全部 ORM 模型，供建表和 Alembic 元数据收集使用。"""
+    """
+    显式导入全部 ORM 模型，供建表和 Alembic 元数据收集使用。
+    """
     for module_name, _ in dict.fromkeys(_MODEL_EXPORTS.values()):
         import_module(module_name)
 
 
 def __getattr__(name: str) -> Any:
-    """按需解析旧模型包级导出，并缓存模型类。"""
+    """
+    按需解析旧模型包级导出，并缓存模型类。
+    """
     contract = _MODEL_EXPORTS.get(name)
     if contract is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -86,7 +95,9 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    """返回模型包的兼容公开面。"""
+    """
+    返回模型包的兼容公开面。
+    """
     return sorted({*globals(), *_MODEL_EXPORTS, "load_all_models"})
 
 

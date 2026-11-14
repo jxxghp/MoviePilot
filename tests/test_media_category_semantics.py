@@ -1,4 +1,6 @@
-"""媒体库分类与来源描述分类的领域语义测试。"""
+"""
+媒体库分类与来源描述分类的领域语义测试。
+"""
 
 from app.domain.context import (
     MediaInfo,
@@ -11,7 +13,9 @@ from app.schemas.types import MediaType
 
 
 def _classification(path: list[str] | None = None) -> ClassificationResult:
-    """构造测试使用的最小分类结果。"""
+    """
+    构造测试使用的最小分类结果。
+    """
     category_path = path or ["现场专辑"]
     return ClassificationResult(
         recommended={
@@ -33,7 +37,9 @@ def _classification(path: list[str] | None = None) -> ClassificationResult:
 
 
 def test_media_info_legacy_category_normalizes_to_library_category() -> None:
-    """旧影视 category 构造参数和载荷应无损迁入媒体库分类。"""
+    """
+    旧影视 category 构造参数和载荷应无损迁入媒体库分类。
+    """
     media = MediaInfo(
         type=MediaType.MOVIE,
         category="动画电影",
@@ -56,7 +62,9 @@ def test_media_info_legacy_category_normalizes_to_library_category() -> None:
 
 
 def test_media_info_new_library_category_wins_and_legacy_writes_stay_synced() -> None:
-    """显式新字段应优先，旧字段和两个写入方法仍保持双写。"""
+    """
+    显式新字段应优先，旧字段和两个写入方法仍保持双写。
+    """
     media = MediaInfo(category="旧分类", library_category="新分类")
 
     assert media.category == media.library_category == "新分类"
@@ -72,7 +80,9 @@ def test_media_info_new_library_category_wins_and_legacy_writes_stay_synced() ->
 
 
 def test_music_info_metadata_category_never_becomes_library_category() -> None:
-    """显式来源描述分类不得自动成为目录分类或兼容 category。"""
+    """
+    显式来源描述分类不得自动成为目录分类或兼容 category。
+    """
     music = MusicInfo(
         title="Track",
         metadata_category="Rock / Alternative",
@@ -89,7 +99,9 @@ def test_music_info_metadata_category_never_becomes_library_category() -> None:
 
 
 def test_music_info_legacy_source_description_uses_explainable_evidence() -> None:
-    """旧音乐 category 与类型或流派吻合时应迁为来源描述。"""
+    """
+    旧音乐 category 与类型或流派吻合时应迁为来源描述。
+    """
     release = MusicInfo.from_dict(
         {
             "type": "音乐",
@@ -110,7 +122,9 @@ def test_music_info_legacy_source_description_uses_explainable_evidence() -> Non
 
 
 def test_music_info_legacy_library_category_is_preserved() -> None:
-    """无法由来源事实解释或由分类结果确认的旧值应保留为库分类。"""
+    """
+    无法由来源事实解释或由分类结果确认的旧值应保留为库分类。
+    """
     unexplained = MusicInfo.from_dict(
         {
             "type": "音乐",
@@ -134,7 +148,9 @@ def test_music_info_legacy_library_category_is_preserved() -> None:
 
 
 def test_music_info_new_payload_uses_category_only_as_library_compatibility() -> None:
-    """只要载荷包含新字段，category 就只能作为 library_category 兼容值。"""
+    """
+    只要载荷包含新字段，category 就只能作为 library_category 兼容值。
+    """
     restored = MusicInfo.from_dict(
         {
             "type": "音乐",
@@ -167,7 +183,9 @@ def test_music_info_new_payload_uses_category_only_as_library_compatibility() ->
 
 
 def test_music_album_round_trip_separates_metadata_and_library_categories() -> None:
-    """专辑摘要、序列化和 MusicInfo 投影应使用拆分后的分类语义。"""
+    """
+    专辑摘要、序列化和 MusicInfo 投影应使用拆分后的分类语义。
+    """
     album = MusicAlbumInfo(
         media_source="musicbrainz",
         media_id="album-1",
@@ -206,7 +224,9 @@ def test_music_album_round_trip_separates_metadata_and_library_categories() -> N
 
 
 def test_music_album_legacy_category_and_artist_projection_use_metadata() -> None:
-    """旧专辑描述和艺术家类型应进入 metadata_category，而非库分类。"""
+    """
+    旧专辑描述和艺术家类型应进入 metadata_category，而非库分类。
+    """
     album = MusicAlbumInfo.from_dict(
         {
             "type": "音乐",

@@ -1,4 +1,6 @@
-"""旧插件资源导入扫描与加载前准备合同测试。"""
+"""
+旧插件资源导入扫描与加载前准备合同测试。
+"""
 
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ _HEADED_CLOAKBROWSER_ENTRYPOINTS = (
 
 
 def _write_plugin(root: Path, plugin_id: str, source: str) -> Path:
-    """写入一个仅用于 AST 扫描的最小插件源码目录。"""
+    """
+    写入一个仅用于 AST 扫描的最小插件源码目录。
+    """
     plugin_dir = root / plugin_id.lower()
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "__init__.py").write_text(source, encoding="utf-8")
@@ -53,7 +57,9 @@ def test_cloakbrowser_import_shapes_require_display(
     tmp_path: Path,
     source: str,
 ) -> None:
-    """静态、星号、子模块及常量动态导入均准备虚拟显示。"""
+    """
+    静态、星号、子模块及常量动态导入均准备虚拟显示。
+    """
     plugin_dir = _write_plugin(tmp_path, "SamplePlugin", source)
 
     assert scan_plugin_resource_imports("SamplePlugin", plugin_dir) == ("host.display",)
@@ -67,7 +73,9 @@ def test_all_headed_capable_cloakbrowser_entrypoints_require_display(
     tmp_path: Path,
     entrypoint: str,
 ) -> None:
-    """CloakBrowser 六类允许 headed 模式的入口共用同一资源规则。"""
+    """
+    CloakBrowser 六类允许 headed 模式的入口共用同一资源规则。
+    """
     plugin_dir = _write_plugin(
         tmp_path,
         "HeadedPlugin",
@@ -101,14 +109,18 @@ def test_current_direct_cloakbrowser_plugin_shapes_require_display(
     plugin_id: str,
     source: str,
 ) -> None:
-    """当前五种直接 CloakBrowser 插件导入形态均命中 host.display。"""
+    """
+    当前五种直接 CloakBrowser 插件导入形态均命中 host.display。
+    """
     plugin_dir = _write_plugin(tmp_path, plugin_id, source)
 
     assert scan_plugin_resource_imports(plugin_id, plugin_dir) == ("host.display",)
 
 
 def test_sdk_browser_import_does_not_require_legacy_resource(tmp_path: Path) -> None:
-    """宿主 SDK 浏览器门面自行按 headless 参数协调资源，不应被保守扫描。"""
+    """
+    宿主 SDK 浏览器门面自行按 headless 参数协调资源，不应被保守扫描。
+    """
     plugin_dir = _write_plugin(
         tmp_path,
         "SdkPlugin",
@@ -122,7 +134,9 @@ def test_scanner_reuses_successful_file_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """未变化源码在热加载扫描时复用按文件状态缓存的结果。"""
+    """
+    未变化源码在热加载扫描时复用按文件状态缓存的结果。
+    """
     plugin_dir = _write_plugin(tmp_path, "CachedPlugin", "import cloakbrowser\n")
     parse_calls = 0
     original_parse = resource_imports.ast.parse
@@ -143,7 +157,9 @@ def test_scanner_invalidates_cache_when_source_changes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """文件大小或修改时间变化后重新解析，不沿用旧能力集合。"""
+    """
+    文件大小或修改时间变化后重新解析，不沿用旧能力集合。
+    """
     plugin_dir = _write_plugin(
         tmp_path,
         "ChangedPlugin",
@@ -175,7 +191,9 @@ def test_scanner_invalidates_equal_size_source_with_preserved_mtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """等长热更新即使保留 mtime，也不能复用替换前的导入结论。"""
+    """
+    等长热更新即使保留 mtime，也不能复用替换前的导入结论。
+    """
     plugin_dir = _write_plugin(tmp_path, "ReplacedPlugin", "import cloakbrowser\n")
     source_path = plugin_dir / "__init__.py"
     original_stat = source_path.stat()
@@ -205,7 +223,9 @@ def test_scanner_invalidates_equal_size_source_with_preserved_mtime(
 def test_scanner_conservatively_prepares_resources_for_invalid_source(
     tmp_path: Path,
 ) -> None:
-    """未被导入的残留语法文件不得阻断插件，但必须准备全部资源。"""
+    """
+    未被导入的残留语法文件不得阻断插件，但必须准备全部资源。
+    """
     plugin_dir = _write_plugin(
         tmp_path,
         "BrokenPlugin",
@@ -223,7 +243,9 @@ def test_scanner_conservatively_prepares_resources_for_read_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """源码读取失败时按全部资源准备，不能降级为空资源集合。"""
+    """
+    源码读取失败时按全部资源准备，不能降级为空资源集合。
+    """
     plugin_dir = _write_plugin(
         tmp_path,
         "UnreadablePlugin",
@@ -248,7 +270,9 @@ def test_scanner_conservatively_prepares_resources_for_walk_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """目录遍历失败时准备全部资源，后续导入仍由 Python loader 判断。"""
+    """
+    目录遍历失败时准备全部资源，后续导入仍由 Python loader 判断。
+    """
     plugin_dir = _write_plugin(tmp_path, "WalkErrorPlugin", "plugin_name = 'ok'\n")
 
     def fail_walk(_path: Path, _pattern: str):
@@ -262,7 +286,9 @@ def test_scanner_conservatively_prepares_resources_for_walk_error(
 
 
 def test_scanner_honors_python_source_encoding_cookie(tmp_path: Path) -> None:
-    """合法的非 UTF-8 Python 源码按 PEP 263 声明解析。"""
+    """
+    合法的非 UTF-8 Python 源码按 PEP 263 声明解析。
+    """
     plugin_dir = tmp_path / "encodedplugin"
     plugin_dir.mkdir()
     (plugin_dir / "__init__.py").write_bytes(
@@ -275,7 +301,9 @@ def test_scanner_honors_python_source_encoding_cookie(tmp_path: Path) -> None:
 
 
 def _fake_plugin_module(module_name: str) -> ModuleType:
-    """构造满足插件 Loader 类发现合同的内存模块。"""
+    """
+    构造满足插件 Loader 类发现合同的内存模块。
+    """
     module = ModuleType(module_name)
     plugin_type = type(
         module_name.rsplit(".", maxsplit=1)[-1].title(),
@@ -293,7 +321,9 @@ def test_plugin_preparer_runs_before_import_in_non_debug_and_isolates_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """扫描或资源失败只阻止对应插件，后续插件仍按准备后导入的顺序加载。"""
+    """
+    扫描或资源失败只阻止对应插件，后续插件仍按准备后导入的顺序加载。
+    """
     plugins_root = tmp_path / "app" / "plugins"
     for plugin_id in ("scanfailed", "resourcefailed", "healthy"):
         _write_plugin(plugins_root, plugin_id, "plugin_name = 'Fixture'\n")
@@ -340,7 +370,9 @@ def test_startup_preparer_activates_scanner_results_generically(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """组合根逐项激活扫描结果，并使用稳定的旧插件导入原因。"""
+    """
+    组合根逐项激活扫描结果，并使用稳定的旧插件导入原因。
+    """
     events: list[tuple[str, str, str]] = []
     plugin_dir = _write_plugin(tmp_path, "LegacyPlugin", "import cloakbrowser\n")
     monkeypatch.setattr(

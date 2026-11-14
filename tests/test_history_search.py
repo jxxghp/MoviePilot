@@ -1,3 +1,7 @@
+"""
+验证历史记录的搜索条件、结果和媒体筛选。
+"""
+
 import asyncio
 from pathlib import Path
 
@@ -5,18 +9,22 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db import Base
+from app.db.base import Base
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 
 
 def _enable_case_sensitive_like(db):
-    """让 SQLite 在测试中暴露与 PostgreSQL 一致的 LIKE 大小写敏感问题。"""
+    """
+    让 SQLite 在测试中暴露与 PostgreSQL 一致的 LIKE 大小写敏感问题。
+    """
     db.execute(text("PRAGMA case_sensitive_like=ON"))
 
 
 def test_transfer_history_search_is_case_insensitive(tmp_path: Path):
-    """整理历史标题和路径搜索应忽略大小写。"""
+    """
+    整理历史标题和路径搜索应忽略大小写。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'transfer_history.db'}")
     SessionFactory = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -58,10 +66,14 @@ def test_transfer_history_search_is_case_insensitive(tmp_path: Path):
 
 
 def test_download_history_title_search_is_case_insensitive(tmp_path: Path):
-    """下载历史标题搜索和计数应忽略大小写。"""
+    """
+    下载历史标题搜索和计数应忽略大小写。
+    """
 
     async def run_case():
-        """执行异步下载历史查询断言。"""
+        """
+        执行异步下载历史查询断言。
+        """
         engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'download_history.db'}")
         SessionFactory = async_sessionmaker(bind=engine)
 
@@ -101,7 +113,9 @@ def test_download_history_title_search_is_case_insensitive(tmp_path: Path):
 
 
 def test_download_history_page_is_newest_first(tmp_path: Path):
-    """下载历史分页应按时间和 ID 倒序稳定返回。"""
+    """
+    下载历史分页应按时间和 ID 倒序稳定返回。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'download_history_page.db'}")
     SessionFactory = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -142,10 +156,14 @@ def test_download_history_page_is_newest_first(tmp_path: Path):
 
 
 def test_async_download_history_page_is_newest_first(tmp_path: Path):
-    """异步下载历史分页应按时间和 ID 倒序稳定返回。"""
+    """
+    异步下载历史分页应按时间和 ID 倒序稳定返回。
+    """
 
     async def run_case():
-        """执行异步分页顺序断言。"""
+        """
+        执行异步分页顺序断言。
+        """
         engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'async_download_history_page.db'}")
         SessionFactory = async_sessionmaker(bind=engine)
 

@@ -1,4 +1,6 @@
-"""订阅兜底搜索的站点并发、冷却、恢复与取消测试。"""
+"""
+订阅兜底搜索的站点并发、冷却、恢复与取消测试。
+"""
 
 from datetime import datetime, timedelta, timezone
 
@@ -26,14 +28,18 @@ from app.runtime.stop import ProcessStopState
 
 
 def _repository(tmp_path):
-    """构造使用独立 SQLite 文件的站点预算仓储。"""
+    """
+    构造使用独立 SQLite 文件的站点预算仓储。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'site-budget.db'}")
     Base.metadata.create_all(engine)
     return TransactionalSubscriptionSearchRepository(sessionmaker(bind=engine)), engine
 
 
 def test_site_budget_allows_one_inflight_per_site_and_independent_sites(tmp_path):
-    """同站点第二个调用必须等待，不同站点可立即并行。"""
+    """
+    同站点第二个调用必须等待，不同站点可立即并行。
+    """
     repository, _engine = _repository(tmp_path)
     before_retry = datetime.now(timezone.utc)
 
@@ -50,7 +56,9 @@ def test_site_budget_allows_one_inflight_per_site_and_independent_sites(tmp_path
 
 
 def test_site_budget_recovers_expired_inflight_lease(tmp_path):
-    """进程遗留的过期站点租约可被新 worker 以新 token 恢复。"""
+    """
+    进程遗留的过期站点租约可被新 worker 以新 token 恢复。
+    """
     repository, engine = _repository(tmp_path)
     first = repository.claim_site(site_id=20, owner="worker-a", lease_seconds=900)
     expired_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds")
@@ -69,7 +77,9 @@ def test_site_budget_recovers_expired_inflight_lease(tmp_path):
 
 
 def test_busy_site_does_not_hide_other_inflight_search(tmp_path):
-    """一个站点繁忙时，任务仍应展示其它已取得租约的站点正在搜索。"""
+    """
+    一个站点繁忙时，任务仍应展示其它已取得租约的站点正在搜索。
+    """
     repository, engine = _repository(tmp_path)
     busy_claim = repository.claim_site(site_id=1, owner="other-search", lease_seconds=900)
     phases = []
@@ -98,7 +108,9 @@ def test_busy_site_does_not_hide_other_inflight_search(tmp_path):
 
 
 def test_site_budget_applies_error_cooldown_and_gradual_success_recovery(tmp_path):
-    """失败增加冷却计数，后续成功每次只恢复一级而非直接清零。"""
+    """
+    失败增加冷却计数，后续成功每次只恢复一级而非直接清零。
+    """
     repository, engine = _repository(tmp_path)
     claim = repository.claim_site(site_id=3, owner="worker-a", lease_seconds=900)
     now = datetime.now(timezone.utc)
@@ -140,7 +152,9 @@ def test_site_budget_applies_error_cooldown_and_gradual_success_recovery(tmp_pat
 
 
 def test_site_budget_ignores_legacy_success_interval(tmp_path):
-    """升级前留下的正常成功间隔不能阻止新语义下的到期订阅。"""
+    """
+    升级前留下的正常成功间隔不能阻止新语义下的到期订阅。
+    """
     repository, engine = _repository(tmp_path)
     first = repository.claim_site(site_id=4, owner="worker-a", lease_seconds=900)
     future = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(timespec="seconds")
@@ -162,6 +176,26 @@ def test_site_budget_ignores_legacy_success_interval(tmp_path):
         assert record.next_allowed_at < future
 
 
+def test_automatic_pagination_shares_success_interval_across_subscriptions(tmp_path):
+    """
+    不同订阅的自动分页共用站点成功请求间隔。
+    """
+    repository, engine = _repository(tmp_path)
+    before = datetime.now(timezone.utc)
+    first = repository.claim_site(site_id=9, owner="subscription-a", lease_seconds=900, minimum_interval=10)
+    assert first.acquired
+    assert datetime.fromisoformat(first.retry_at) >= before + timedelta(seconds=10)
+    assert repository.finish_site(site_id=9, lease_token=first.lease_token, outcome="success", next_allowed_at=first.retry_at)
+    waiting = repository.claim_site(site_id=9, owner="subscription-b", lease_seconds=900, minimum_interval=10)
+    assert not waiting.acquired
+    assert waiting.wait_reason == "cooldown"
+    assert waiting.retry_at == first.retry_at
+    other = repository.claim_site(site_id=10, owner="subscription-b", lease_seconds=900, minimum_interval=20)
+    assert other.acquired
+    assert datetime.fromisoformat(other.retry_at) >= before + timedelta(seconds=20)
+    engine.dispose()
+
+
 @pytest.mark.parametrize(
     ("error", "outcome"),
     [
@@ -172,15 +206,21 @@ def test_site_budget_ignores_legacy_success_interval(tmp_path):
     ],
 )
 def test_indexer_failures_map_to_site_cooldown_categories(error, outcome):
-    """外站典型失败必须进入对应的站点级冷却类别。"""
+    """
+    外站典型失败必须进入对应的站点级冷却类别。
+    """
     assert _classify_search_failure(error) == outcome
 
 
 class _WaitingRepository:
-    """始终返回未来重试时间的可取消预算仓储。"""
+    """
+    始终返回未来重试时间的可取消预算仓储。
+    """
 
     def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
-        """返回未认领的未来预算。"""
+        """
+        返回未认领的未来预算。
+        """
         del owner, lease_seconds
         return SiteBudgetClaim(
             site_id=site_id,
@@ -190,12 +230,16 @@ class _WaitingRepository:
         )
 
     def finish_site(self, **_kwargs) -> bool:
-        """等待测试不会取得租约，因此不应调用收口。"""
+        """
+        等待测试不会取得租约，因此不应调用收口。
+        """
         raise AssertionError("未取得站点预算时不应收口")
 
 
 def test_unavailable_site_budget_does_not_sleep_in_worker():
-    """错误冷却中的站点应立即留待下轮，不占用同步 worker 等待。"""
+    """
+    错误冷却中的站点应立即留待下轮，不占用同步 worker 等待。
+    """
     budget = SubscriptionSiteBudget(
         repository=_WaitingRepository(),
         owner="worker-a",
@@ -208,12 +252,18 @@ def test_unavailable_site_budget_does_not_sleep_in_worker():
 
 
 def test_site_budget_checks_cancellation_before_repository_claim():
-    """取消或停机必须在创建任何站点租约前终止当前任务。"""
+    """
+    取消或停机必须在创建任何站点租约前终止当前任务。
+    """
     class _ForbiddenRepository(_WaitingRepository):
-        """取消路径不允许触发持久认领。"""
+        """
+        取消路径不允许触发持久认领。
+        """
 
         def claim_site(self, **_kwargs) -> SiteBudgetClaim:
-            """若取消检查失效则立即暴露。"""
+            """
+            若取消检查失效则立即暴露。
+            """
             raise AssertionError("取消任务不应认领站点预算")
 
     budget = SubscriptionSiteBudget(
@@ -228,7 +278,9 @@ def test_site_budget_checks_cancellation_before_repository_claim():
 
 
 def test_site_budget_only_delays_external_failures():
-    """正常完成立即恢复，外站错误仍按类别进入冷却。"""
+    """
+    正常完成立即恢复，外站错误仍按类别进入冷却。
+    """
     budget = SubscriptionSiteBudget(
         repository=_WaitingRepository(),
         owner="manual-worker",
@@ -236,20 +288,29 @@ def test_site_budget_only_delays_external_failures():
         stop_state=ProcessStopState(),
     )
 
+    # 直接验证退避时长算法，不等待真实调度时间。
     assert budget._next_delay("success", consecutive_failures=0) == 0.0  # pylint: disable=protected-access
+    # 直接验证退避时长算法，不等待真实调度时间。
     assert budget._next_delay("success", consecutive_failures=2) == 0.0  # pylint: disable=protected-access
+    # 直接验证退避时长算法，不等待真实调度时间。
     assert budget._next_delay("rate_limited", consecutive_failures=0) == 900.0  # pylint: disable=protected-access
 
 
 def test_skipped_search_releases_budget_without_external_interval():
-    """本地限流等未发请求结果不应伪造成功或追加外站间隔。"""
+    """
+    本地限流等未发请求结果不应伪造成功或追加外站间隔。
+    """
     captured = {}
 
     class _Repository(_WaitingRepository):
-        """记录预算收口参数。"""
+        """
+        记录预算收口参数。
+        """
 
         def finish_site(self, **kwargs) -> bool:
-            """保存收口事实供断言。"""
+            """
+            保存收口事实供断言。
+            """
             captured.update(kwargs)
             return True
 
@@ -274,8 +335,124 @@ def test_skipped_search_releases_budget_without_external_interval():
     assert captured["next_allowed_at"] == now.isoformat(timespec="seconds")
 
 
+@pytest.mark.parametrize("outcome, attempted, delay", [
+    ("deferred", False, 6),
+    ("deferred", False, 3601),
+    ("skipped", False, 0),
+    ("success", True, 0),
+])
+def test_request_reservation_preserves_only_actual_request_interval(tmp_path, outcome, attempted, delay):
+    """
+    未发请求时按实际剩余时间释放预约，真实成功请求仍受完整访问间隔约束。
+    """
+    repository, engine = _repository(tmp_path)
+    now = datetime.now(timezone.utc)
+    budget = SubscriptionSiteBudget(
+        repository=repository, owner="scan", cancelled=lambda: False,
+        stop_state=ProcessStopState(), clock=lambda: now,
+    )
+    try:
+        claim = budget.acquire(15, minimum_interval=20)
+        assert claim.acquired
+        assert budget.finish(
+            claim, SiteSearchObservation(attempted=attempted, outcome=outcome),
+            deferral_seconds=delay,
+        )
+        with Session(engine) as session:
+            record = session.execute(select(SiteBudgetRecord).where(SiteBudgetRecord.site_id == 15)).scalar_one()
+            expected = claim.retry_at if attempted else (now + timedelta(seconds=delay)).isoformat(timespec="seconds")
+            assert record.next_allowed_at == expected
+            assert record.last_outcome == outcome
+            assert record.consecutive_failures == 0
+            assert record.lease_token is None
+    finally:
+        engine.dispose()
+
+
+def test_local_rate_limit_defers_site_budget_for_full_window():
+    """
+    本地流控拒绝必须按站点窗口写入冷却，而不是立即恢复后再次触发限流。
+    """
+    captured = {}
+
+    class _Repository(_WaitingRepository):
+        """
+        记录预算收口参数。
+        """
+
+        def finish_site(self, **kwargs) -> bool:
+            """
+            保存收口事实供断言。
+            """
+            captured.update(kwargs)
+            return True
+
+    now = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="worker-a",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+        clock=lambda: now,
+    )
+    claim = SiteBudgetClaim(
+        site_id=10,
+        acquired=True,
+        retry_at=now.isoformat(timespec="seconds"),
+        consecutive_failures=2,
+        lease_token="lease-token",
+    )
+
+    assert budget.finish(
+        claim,
+        SiteSearchObservation(attempted=False, outcome="deferred", error="触发流控规则"),
+        deferral_seconds=3601,
+    ) is True
+    assert captured["outcome"] == "deferred"
+    assert captured["error"] == "触发流控规则"
+    assert captured["next_allowed_at"] == (now + timedelta(seconds=3601)).isoformat(timespec="seconds")
+
+
+def test_deferred_site_cooldown_blocks_other_subscriptions_without_failure_growth(tmp_path):
+    """
+    窗口冷却中的站点对其它订阅同样不可认领，且本地限流不计入失败次数。
+    """
+    repository, engine = _repository(tmp_path)
+    claim = repository.claim_site(site_id=30, owner="worker-a", lease_seconds=900)
+    future = (datetime.now(timezone.utc) + timedelta(seconds=3601)).isoformat(timespec="seconds")
+
+    assert repository.finish_site(
+        site_id=30,
+        lease_token=claim.lease_token,
+        outcome="deferred",
+        next_allowed_at=future,
+        error="触发流控规则，3600 秒内访问次数不得超过 25 次",
+    ) is True
+
+    waiting = repository.claim_site(site_id=30, owner="worker-b", lease_seconds=900)
+    assert waiting.acquired is False
+    assert waiting.wait_reason == "rate_limit"
+    assert waiting.retry_at == future
+    with Session(engine) as session:
+        record = session.execute(
+            select(SiteBudgetRecord).where(SiteBudgetRecord.site_id == 30)
+        ).scalar_one()
+        assert record.consecutive_failures == 0
+        assert record.success_streak == 0
+        assert record.last_outcome == "deferred"
+        record.next_allowed_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds")
+        session.commit()
+
+    recovered = repository.claim_site(site_id=30, owner="worker-b", lease_seconds=900)
+    assert recovered.acquired is True
+    assert recovered.consecutive_failures == 0
+    engine.dispose()
+
+
 def test_search_provider_reports_cooled_site_without_blocking_other_results():
-    """错误冷却中的站点返回空页并记录延后，而非阻塞 provider 或制造失败。"""
+    """
+    错误冷却中的站点返回空页并记录延后，而非阻塞 provider 或制造失败。
+    """
     repository = _WaitingRepository()
     metrics = SubscriptionSiteBudgetMetrics()
     budget = SubscriptionSiteBudget(
@@ -289,6 +466,7 @@ def test_search_provider_reports_cooled_site_without_blocking_other_results():
     chain.configure_subscription_site_budget(budget)
     chain.search_site_torrents = lambda **_kwargs: ["unexpected"]
 
+    # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
     result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
         site={"id": 11, "name": "Cooling"},
         keyword="movie",
@@ -309,14 +487,20 @@ def test_search_provider_reports_cooled_site_without_blocking_other_results():
 
 
 def test_search_provider_releases_successful_site_budget():
-    """真实站点页正常完成后必须释放租约并立即允许下一任务。"""
+    """
+    真实站点页正常完成后必须释放租约并立即允许下一任务。
+    """
     captured = {}
 
     class _Repository(_WaitingRepository):
-        """提供立即可用租约并记录收口参数。"""
+        """
+        提供立即可用租约并记录收口参数。
+        """
 
         def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
-            """返回当前调用独占的站点租约。"""
+            """
+            返回当前调用独占的站点租约。
+            """
             del owner, lease_seconds
             return SiteBudgetClaim(
                 site_id=site_id,
@@ -327,7 +511,9 @@ def test_search_provider_releases_successful_site_budget():
             )
 
         def finish_site(self, **kwargs) -> bool:
-            """记录成功收口事实。"""
+            """
+            记录成功收口事实。
+            """
             captured.update(kwargs)
             return True
 
@@ -343,12 +529,15 @@ def test_search_provider_releases_successful_site_budget():
     chain.configure_subscription_site_budget(budget)
 
     def search_site_torrents(**_kwargs):
-        """模拟索引器成功并发布观察结果。"""
+        """
+        模拟索引器成功并发布观察结果。
+        """
         report_site_search_outcome(attempted=True, outcome="success")
         return ["torrent"]
 
     chain.search_site_torrents = search_site_torrents
 
+    # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
     result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
         site={"id": 12, "name": "Healthy"},
         keyword="movie",
@@ -370,8 +559,81 @@ def test_search_provider_releases_successful_site_budget():
     assert not chain.consume_subscription_site_budget_failures()
 
 
+@pytest.mark.parametrize("reason, seconds", [
+    ("访问间隔不得小于 20 秒", 21),
+    ("3600 秒内访问次数不得超过 25 次", 3601),
+    ("未知限制", 3601),
+])
+def test_search_provider_defers_budget_for_local_rate_limit_window(monkeypatch, reason, seconds):
+    """
+    同步 provider 按实际限流原因持久化冷却，短间隔不扩大为小时窗口，且不算站点失败。
+    """
+    captured = {}
+
+    class _Repository(_WaitingRepository):
+        """
+        提供立即可用租约并记录收口参数。
+        """
+
+        def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+            """
+            返回当前调用独占的站点租约。
+            """
+            del owner, lease_seconds
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                consecutive_failures=0,
+                lease_token="lease-token",
+            )
+
+        def finish_site(self, **kwargs) -> bool:
+            """
+            记录本地流控收口事实。
+            """
+            captured.update(kwargs)
+            return True
+
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="manual-worker",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+    )
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+
+    def search_site_torrents(**_kwargs):
+        """
+        模拟索引器被本地流控拒绝，未发出任何请求。
+        """
+        report_site_search_outcome(attempted=False, outcome="deferred", error=f"触发流控规则，{reason}")
+        return []
+
+    chain.search_site_torrents = search_site_torrents
+    before = datetime.now(timezone.utc)
+
+    # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
+    result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+        site={"id": 16, "name": "Limited", "limit_interval": 3600, "limit_count": 25, "limit_seconds": 20},
+        keyword="movie",
+        mtype=None,
+        page=0,
+    )
+
+    assert result == []
+    assert captured["outcome"] == "deferred"
+    assert captured["error"] == f"触发流控规则，{reason}"
+    delay = (datetime.fromisoformat(captured["next_allowed_at"]) - before).total_seconds()
+    assert seconds - 1 < delay <= seconds
+    assert chain.consume_subscription_site_budget_failures() == ()
+
+
 def test_other_search_results_keep_site_failures_non_terminal():
-    """插件等其他搜索源已有候选时，站点失败不得覆盖可用结果。"""
+    """
+    插件等其他搜索源已有候选时，站点失败不得覆盖可用结果。
+    """
     chain = object.__new__(SearchChain)
     chain.configure_subscription_site_budget(None)
     chain.record_subscription_site_budget_failure("站点 Flaky 搜索失败：HTTP 429")
@@ -380,14 +642,20 @@ def test_other_search_results_keep_site_failures_non_terminal():
 
 
 def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
-    """索引器吞掉外站异常返回空页时，provider 仍须暴露站点失败。"""
+    """
+    索引器吞掉外站异常返回空页时，provider 仍须暴露站点失败。
+    """
     captured = {}
 
     class _Repository(_WaitingRepository):
-        """提供立即可用租约并记录失败收口。"""
+        """
+        提供立即可用租约并记录失败收口。
+        """
 
         def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
-            """返回当前调用独占的站点租约。"""
+            """
+            返回当前调用独占的站点租约。
+            """
             del owner, lease_seconds
             now = datetime.now(timezone.utc)
             return SiteBudgetClaim(
@@ -399,12 +667,16 @@ def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
             )
 
         def finish_site(self, **kwargs) -> bool:
-            """记录预算收口，确认错误冷却仍由 budget.finish 负责。"""
+            """
+            记录预算收口，确认错误冷却仍由 budget.finish 负责。
+            """
             captured.update(kwargs)
             return True
 
     def execute_search(_site, _request):
-        """模拟 IndexerModule 捕获的 HTTP 429。"""
+        """
+        模拟 IndexerModule 捕获的 HTTP 429。
+        """
         raise RuntimeError("HTTP 429")
 
     monkeypatch.setattr(
@@ -440,6 +712,7 @@ def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
     chain.configure_subscription_site_budget(budget)
     chain.search_site_torrents = object.__new__(IndexerModule).search_torrents
 
+    # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
     result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
         site={"id": 13, "name": "Flaky"},
         keyword="movie",
@@ -475,14 +748,20 @@ def test_search_provider_explains_error_flag_without_exception(
     failure_detail,
     expected_error,
 ):
-    """索引器仅返回错误标志时也必须持久化可读原因，爬虫给出的失败原因附在兜底文案后且不改变冷却分类。"""
+    """
+    索引器仅返回错误标志时也必须持久化可读原因，爬虫给出的失败原因附在兜底文案后且不改变冷却分类。
+    """
     captured = {}
 
     class _Repository(_WaitingRepository):
-        """提供立即可用租约并记录通用失败收口。"""
+        """
+        提供立即可用租约并记录通用失败收口。
+        """
 
         def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
-            """返回当前调用独占的站点租约。"""
+            """
+            返回当前调用独占的站点租约。
+            """
             del owner, lease_seconds
             return SiteBudgetClaim(
                 site_id=site_id,
@@ -493,7 +772,9 @@ def test_search_provider_explains_error_flag_without_exception(
             )
 
         def finish_site(self, **kwargs) -> bool:
-            """记录预算收口参数供断言。"""
+            """
+            记录预算收口参数供断言。
+            """
             captured.update(kwargs)
             return True
 
@@ -532,6 +813,7 @@ def test_search_provider_explains_error_flag_without_exception(
         warnings.append,
     )
 
+    # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
     result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
         site={"id": 15, "name": "Generic"},
         keyword="movie",
@@ -549,12 +831,18 @@ def test_search_provider_explains_error_flag_without_exception(
 
 
 def test_search_provider_logs_site_budget_release_failure(monkeypatch):
-    """站点租约收口返回失败时必须进入摘要并即时记录错误。"""
+    """
+    站点租约收口返回失败时必须进入摘要并即时记录错误。
+    """
     class _Repository(_WaitingRepository):
-        """提供租约但拒绝以当前 token 收口。"""
+        """
+        提供租约但拒绝以当前 token 收口。
+        """
 
         def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
-            """返回当前调用独占的站点租约。"""
+            """
+            返回当前调用独占的站点租约。
+            """
             del owner, lease_seconds
             return SiteBudgetClaim(
                 site_id=site_id,
@@ -565,7 +853,9 @@ def test_search_provider_logs_site_budget_release_failure(monkeypatch):
             )
 
         def finish_site(self, **_kwargs) -> bool:
-            """模拟 token 已失效的 CAS 收口。"""
+            """
+            模拟 token 已失效的 CAS 收口。
+            """
             return False
 
     metrics = SubscriptionSiteBudgetMetrics()
@@ -582,6 +872,7 @@ def test_search_provider_logs_site_budget_release_failure(monkeypatch):
     errors = []
     monkeypatch.setattr("app.chain.search.provider.logger.error", lambda message, **_kwargs: errors.append(message))
 
+    # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
     result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
         site={"id": 14, "name": "Stale"},
         keyword="movie",
@@ -595,7 +886,9 @@ def test_search_provider_logs_site_budget_release_failure(monkeypatch):
 
 
 def test_retry_provider_only_searches_pending_enabled_sites(monkeypatch):
-    """恢复时不重搜成功站点和插件源，也不重新启用已经移除的站点。"""
+    """
+    恢复时不重搜成功站点和插件源，也不重新启用已经移除的站点。
+    """
     from unittest.mock import Mock
 
     from app.chain.search.provider import SearchProviderOwner
@@ -613,7 +906,9 @@ def test_retry_provider_only_searches_pending_enabled_sites(monkeypatch):
     captured = []
 
     def collect(**kwargs):
-        """只观察 provider 选择，禁止真实站点和插件调用。"""
+        """
+        只观察 provider 选择，禁止真实站点和插件调用。
+        """
         captured.extend(site["id"] for site in kwargs["indexer_sites"])
         return {}
 
@@ -625,7 +920,9 @@ def test_retry_provider_only_searches_pending_enabled_sites(monkeypatch):
 
 
 def test_deferral_reports_cooldown_separately_from_busy():
-    """冷却提示不伪装成站点占用，并保留所有未完成站点。"""
+    """
+    请求间隔按正常搜索展示，不伪装成站点占用，并保留所有未完成站点。
+    """
     from app.application.subscription.execution import raise_subscription_site_budget_deferral
     from app.application.subscription.sitebudget import SubscriptionSearchDeferred, SubscriptionSiteBudgetDeferral
 
@@ -633,7 +930,74 @@ def test_deferral_reports_cooldown_separately_from_busy():
         SubscriptionSiteBudgetDeferral(site_id=1, retry_at="2026-09-08T10:00:00+00:00", wait_reason="cooldown"),
         SubscriptionSiteBudgetDeferral(site_id=2, retry_at="2026-09-08T11:00:00+00:00", wait_reason="cooldown"),
     )
-    with pytest.raises(SubscriptionSearchDeferred, match="站点冷却中") as caught:
+    with pytest.raises(SubscriptionSearchDeferred, match="正在搜索") as caught:
         raise_subscription_site_budget_deferral(deferred_sites, None)
     assert caught.value.site_ids == (1, 2)
     assert caught.value.retry_at == deferred_sites[0].retry_at
+
+
+def test_claim_tells_failing_site_from_normal_request_interval(tmp_path):
+    """
+    出错后的暂停报告为 failing 并带上失败原因，正常请求间隔仍报告为 cooldown。
+    """
+    repository, _engine = _repository(tmp_path)
+    future = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+    claim = repository.claim_site(site_id=40, owner="worker-a", lease_seconds=900)
+    assert repository.finish_site(site_id=40, lease_token=claim.lease_token, outcome="error",
+                                  next_allowed_at=future, error="返回登录或权限提示页") is True
+    failing = repository.claim_site(site_id=40, owner="worker-b", lease_seconds=900)
+    assert failing.acquired is False
+    assert failing.wait_reason == "failing"
+    assert failing.last_error == "返回登录或权限提示页"
+    assert failing.consecutive_failures == 1
+
+    claim = repository.claim_site(site_id=41, owner="worker-a", lease_seconds=900)
+    assert repository.finish_site(site_id=41, lease_token=claim.lease_token, outcome="success",
+                                  next_allowed_at=future) is True
+    paced = repository.claim_site(site_id=41, owner="worker-b", lease_seconds=900, minimum_interval=10)
+    assert paced.acquired is False
+    assert paced.wait_reason == "cooldown"
+
+
+class _FailingSiteRepository(_WaitingRepository):
+    """
+    模拟登录失效、连续出错后暂停访问的站点。
+    """
+
+    def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+        """
+        返回出错暂停中的预算。
+        """
+        del owner, lease_seconds
+        return SiteBudgetClaim(
+            site_id=site_id, acquired=False,
+            retry_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds"),
+            consecutive_failures=30, wait_reason="failing", last_error="返回登录或权限提示页",
+        )
+
+
+def test_failing_site_is_skipped_without_deferring_subscription(monkeypatch):
+    """
+    出错暂停中的站点这一轮直接跳过，不让整个订阅重新排队等它；连续失败多时每天只警告一次。
+    """
+    from app.chain.search import provider as provider_module
+
+    warnings = []
+    monkeypatch.setattr(provider_module.logger, "warning", lambda message, *_args, **_kwargs: warnings.append(message))
+    monkeypatch.setattr(provider_module, "_site_failing_noticed_at", {})
+    budget = SubscriptionSiteBudget(repository=_FailingSiteRepository(), owner="worker", cancelled=lambda: False,
+                                    stop_state=ProcessStopState())
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+    chain.search_site_torrents = lambda **_kwargs: ["unexpected"]
+
+    for _ in range(2):
+        # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
+        result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+            site={"id": 16, "name": "我堡"}, keyword="show", mtype=None, page=0,
+        )
+        assert result == []
+
+    assert chain.consume_subscription_site_budget_deferrals() == ()
+    assert len(warnings) == 1
+    assert "我堡" in warnings[0] and "连续 30 次" in warnings[0] and "返回登录或权限提示页" in warnings[0]

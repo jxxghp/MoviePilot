@@ -1,7 +1,15 @@
-from unittest.mock import Mock
+"""
+验证各模型提供方的思考选项与客户端参数映射。
+"""
 
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import httpx
 import pytest
 
+from app.agent.llm import helper
 from app.agent.llm.helper import LLMHelper
 
 
@@ -16,9 +24,9 @@ from app.agent.llm.helper import LLMHelper
         ),
         (
             "openai",
-            "grok-4.6",
+            "custom-reasoning-model",
             "max",
-            {"reasoning_effort": "xhigh"},
+            {"reasoning_effort": "max"},
         ),
         (
             "chatgpt",
@@ -34,7 +42,9 @@ def test_openai_compatible_models_forward_reasoning_effort(
     thinking_level,
     expected,
 ):
-    """未知模型目录时，OpenAI-compatible 端点应透传用户选择的思考级别。"""
+    """
+    未知模型目录时，OpenAI-compatible 端点应透传用户选择的思考级别。
+    """
     assert (
         LLMHelper._build_thinking_kwargs(
             provider=provider,
@@ -46,7 +56,9 @@ def test_openai_compatible_models_forward_reasoning_effort(
 
 
 def test_openai_reasoning_effort_respects_model_catalog():
-    """模型目录声明的 effort 范围应约束超出范围的统一思考级别。"""
+    """
+    模型目录声明的 effort 范围应约束超出范围的统一思考级别。
+    """
     metadata = {
         "reasoning": True,
         "reasoning_options": [
@@ -68,8 +80,157 @@ def test_openai_reasoning_effort_respects_model_catalog():
     ) == {}
 
 
+def test_grok_max_uses_highest_catalog_effort():
+    """
+    Grok 4.6 目录最高为 xhigh，选择 max 时按已知能力降级。
+    """
+    metadata = {
+        "reasoning": True,
+        "reasoning_options": [
+            {"type": "effort", "values": ["low", "medium", "high", "xhigh"]}
+        ],
+    }
+
+    assert LLMHelper._build_thinking_kwargs(
+        provider="openai", model="grok-4.6", thinking_level="max", model_metadata=metadata,
+    ) == {"reasoning_effort": "xhigh"}
+
+
+@pytest.fixture
+def offline_runtime(monkeypatch):
+    """
+    替换模型运行配置和客户端构造，记录思考选项且不连接外部服务。
+    """
+    runtime = SimpleNamespace(resolve_runtime=AsyncMock(return_value={
+        "provider_id": "openai",
+        "runtime": "openai_compatible",
+        "model_id": "gpt-6-luna",
+        "api_key": "offline-key",
+        "base_url": "https://offline.example/v1",
+        "model_metadata": None,
+    }))
+    monkeypatch.setattr(helper, "_patch_openai_responses_instructions_support", lambda: None)
+    monkeypatch.setattr(helper, "_patch_tool_schema_request_support", lambda *_args, **_kwargs: None)
+    clients = []
+
+    def reject_request(_request):
+        """
+        拒绝任何意外的提供商网络调用。
+        """
+        raise AssertionError("思考级别序列化测试不得发起外部请求")
+
+    def make_client(_proxy, *, async_client=False):
+        """
+        创建仅使用离线传输器的客户端，并登记退出时的释放责任。
+        """
+        client_type = httpx.AsyncClient if async_client else httpx.Client
+        client = client_type(transport=httpx.MockTransport(reject_request))
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(helper, "_build_httpx_client", make_client)
+    yield runtime
+    for client in clients:
+        if isinstance(client, httpx.AsyncClient):
+            asyncio.run(client.aclose())
+        else:
+            client.close()
+
+
+@pytest.mark.parametrize("model_name", ["gemini-3.8-flash", "models/gemini-3.8-flash", "gemini-3-flash-preview"])
+@pytest.mark.parametrize("level", ["off", "minimal", "low", "medium", "high", "max", "xhigh", "auto"])
+def test_google_thinking_payload_respects_model_minimum(monkeypatch, offline_runtime, model_name, level) -> None:
+    """
+    原生 Google 请求对 Gemini 3.8 Flash 使用最低可用的 low，并保留旧模型的 minimal。
+    """
+    from langchain_google_genai import chat_models
+
+    offline_runtime.resolve_runtime.return_value.update(
+        provider_id="google", runtime="google", model_id=model_name, base_url=None,
+    )
+    monkeypatch.setattr(helper, "_patch_gemini_thought_signature", lambda: None)
+    monkeypatch.setattr(chat_models, "Client", Mock(return_value=Mock(aio=None)))
+
+    model = asyncio.run(LLMHelper.get_llm(
+        provider="google", model=model_name, api_key="offline-key", use_proxy=False,
+        web_search_mode="disabled", thinking_level=level, provider_runtime=offline_runtime,
+    ))
+    config = model._prepare_params(None).thinking_config
+
+    if level == "auto":
+        assert config is None or config.thinking_level is None
+        return
+    expected = {"off": "minimal", "max": "high", "xhigh": "high"}.get(level, level)
+    if "gemini-3.8-flash" in model_name and expected == "minimal":
+        expected = "low"
+    assert config.thinking_level.value.lower() == expected
+    assert config.include_thoughts is False
+
+
+@pytest.mark.parametrize("protocol", ["chat_completions", "responses"])
+@pytest.mark.parametrize("effort", ["max", "xhigh"])
+@pytest.mark.parametrize("has_catalog", [False, True])
+def test_openai_payload_preserves_selected_reasoning_effort(
+    offline_runtime, protocol, effort, has_catalog,
+) -> None:
+    """
+    SDK 实际请求须区分 max 和 xhigh，目录未知或支持两者时均保留用户选择。
+    """
+    if has_catalog:
+        offline_runtime.resolve_runtime.return_value["model_metadata"] = {
+            "reasoning": True,
+            "reasoning_options": [
+                {"type": "effort", "values": ["none", "low", "medium", "high", "xhigh", "max"]}
+            ],
+        }
+
+    model = asyncio.run(LLMHelper.get_llm(
+        provider="openai", model="gpt-6-luna", api_key="offline-key",
+        base_url="https://offline.example/v1", use_proxy=False,
+        api_protocol=protocol, web_search_mode="disabled", thinking_level=effort,
+        provider_runtime=offline_runtime,
+    ))
+    payload = model._get_request_payload("只回复 OK")
+
+    if protocol == "responses":
+        assert payload["reasoning"]["effort"] == effort
+    else:
+        assert payload["reasoning_effort"] == effort
+
+
+@pytest.mark.parametrize("protocol", ["chat_completions", "responses"])
+def test_grok_payload_uses_highest_catalog_effort(offline_runtime, protocol) -> None:
+    """
+    两种协议均按 Grok 4.6 的已知能力把 max 降级为 xhigh。
+    """
+    metadata = {
+        "reasoning": True,
+        "reasoning_options": [
+            {"type": "effort", "values": ["low", "medium", "high", "xhigh"]}
+        ],
+    }
+    offline_runtime.resolve_runtime.return_value.update(
+        model_id="grok-4.6", model_metadata=metadata,
+    )
+
+    model = asyncio.run(LLMHelper.get_llm(
+        provider="openai", model="grok-4.6", api_key="offline-key",
+        base_url="https://offline.example/v1", use_proxy=False,
+        api_protocol=protocol, web_search_mode="disabled", thinking_level="max",
+        provider_runtime=offline_runtime,
+    ))
+    payload = model._get_request_payload("只回复 OK")
+
+    if protocol == "responses":
+        assert payload["reasoning"]["effort"] == "xhigh"
+    else:
+        assert payload["reasoning_effort"] == "xhigh"
+
+
 def test_openai_reasoning_effort_skips_known_unsupported_model(monkeypatch):
-    """模型目录明确不支持思考时应跳过参数并记录原因。"""
+    """
+    模型目录明确不支持思考时应跳过参数并记录原因。
+    """
     logger = Mock()
     monkeypatch.setattr("app.agent.llm.helper.logger", logger)
 

@@ -1,28 +1,32 @@
+"""
+通过 SunnyPT 接口搜索种子并转换为通用索引结果。
+"""
+
 import base64
 import json
 import time
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
-from app.schemas.types import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class SunnyPTSpider:
     """
-    SunnyPT MoviePilot API 索引器
+    SunnyPT MoviePilot API 索引器。
     """
 
     _size = 100
     _category_cache_ttl = 3600
-    _category_cache = {}
+    _category_cache: dict[str, tuple[float, dict[str, list[str]]]] = {}
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
-        初始化 SunnyPT API 索引器
+        初始化 SunnyPT API 索引器。
 
         :param indexer: 合并站点认证信息后的索引配置
         """
@@ -31,7 +35,7 @@ class SunnyPTSpider:
         self._name = indexer.get("name") or "SunnyPT"
         self._site_url = indexer.get("domain") or "https://sunnypt.top/"
         self._api_url = str(
-            indexer.get("api_url") or "https://api.sunnypt.top/api/v1/mp"
+            indexer.get("api_url") or f"https://api.{site_rules.extract_domain(self._site_url)}/api/v1/mp"
         ).rstrip("/")
         self._proxy = get_runtime_setting('PROXY') if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
@@ -45,7 +49,7 @@ class SunnyPTSpider:
     @classmethod
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
-        获取搜索接口单页容量
+        获取搜索接口单页容量。
 
         :param keyword: 搜索关键字，SunnyPT 不按关键字改变分页容量
         :return: 搜索接口单页容量
@@ -53,14 +57,16 @@ class SunnyPTSpider:
         return cls._size
 
     @staticmethod
-    def _parse_configured_categories(category_config: dict) -> dict:
+    def _parse_configured_categories(
+        category_config: dict[str, Any],
+    ) -> dict[str, list[str]]:
         """
-        从站点索引配置提取电影、电视剧和音乐分类 ID，作为分类接口不可用时的兜底
+        从站点索引配置提取电影、电视剧和音乐分类 ID，作为分类接口不可用时的兜底。
 
         :param category_config: Build 站点配置中的分类段
         :return: 按 API media_type 索引的分类 ID
         """
-        category_map = {"movie": [], "tv": [], "music": []}
+        category_map: dict[str, list[str]] = {"movie": [], "tv": [], "music": []}
         for media_type in category_map:
             for item in category_config.get(media_type) or []:
                 category_id = item.get("id") if isinstance(item, dict) else item
@@ -69,14 +75,14 @@ class SunnyPTSpider:
         return category_map
 
     @staticmethod
-    def _parse_category_items(items: list) -> dict:
+    def _parse_category_items(items: list[object]) -> dict[str, list[str]]:
         """
-        将分类接口结果转换为按媒体类型索引的分类 ID
+        将分类接口结果转换为按媒体类型索引的分类 ID。
 
         :param items: SunnyPT 分类接口 data 数组
         :return: 按 API media_type 索引的分类 ID
         """
-        category_map = {"movie": [], "tv": [], "music": []}
+        category_map: dict[str, list[str]] = {"movie": [], "tv": [], "music": []}
         for item in items or []:
             if not isinstance(item, dict) or item.get("id") is None:
                 continue
@@ -87,11 +93,11 @@ class SunnyPTSpider:
         return category_map
 
     @classmethod
-    def _get_cached_categories(cls, api_url: str) -> Optional[dict]:
+    def _get_cached_categories(cls, api_url: str) -> Optional[dict[str, list[str]]]:
         """
-        获取未过期的站点分类缓存
+        获取未过期的站点分类缓存。
 
-        :param api_url: SunnyPT API Base URL
+        :param api_url: SunnyPT API 基础地址
         :return: 分类映射，缓存不存在或过期时返回 None
         """
         cached = cls._category_cache.get(api_url)
@@ -104,18 +110,18 @@ class SunnyPTSpider:
         return category_map
 
     @classmethod
-    def _set_cached_categories(cls, api_url: str, category_map: dict) -> None:
+    def _set_cached_categories(cls, api_url: str, category_map: dict[str, list[str]]) -> None:
         """
-        缓存站点分类映射
+        缓存站点分类映射。
 
-        :param api_url: SunnyPT API Base URL
+        :param api_url: SunnyPT API 基础地址
         :param category_map: 按媒体类型索引的分类 ID
         """
         cls._category_cache[api_url] = (time.monotonic(), category_map)
 
-    def _request_headers(self) -> dict:
+    def _request_headers(self) -> dict[str, Any]:
         """
-        构造 SunnyPT API 请求头
+        构造 SunnyPT API 请求头。
 
         :return: 不包含 Cookie 和 Authorization 的 API Key 请求头
         """
@@ -125,9 +131,9 @@ class SunnyPTSpider:
             "X-API-Key": self._api_key,
         }
 
-    def _response_data(self, response, operation: str):
+    def _response_data(self, response: Any, operation: str) -> Any:
         """
-        校验 SunnyPT 通用响应并返回 data 字段
+        校验 SunnyPT 通用响应并返回 data 字段。
 
         :param response: RequestUtils 返回的响应对象
         :param operation: 日志中使用的操作名称
@@ -152,9 +158,9 @@ class SunnyPTSpider:
             return None
         return payload.get("data")
 
-    def _load_categories(self) -> dict:
+    def _load_categories(self) -> dict[str, list[str]]:
         """
-        同步读取并缓存 SunnyPT 分类映射，接口失败时使用 Build 配置兜底
+        同步读取并缓存 SunnyPT 分类映射，接口失败时使用 Build 配置兜底。
 
         :return: 按媒体类型索引的分类 ID
         """
@@ -173,9 +179,9 @@ class SunnyPTSpider:
         self._set_cached_categories(self._api_url, category_map)
         return category_map
 
-    async def _async_load_categories(self) -> dict:
+    async def _async_load_categories(self) -> dict[str, list[str]]:
         """
-        异步读取并缓存 SunnyPT 分类映射，接口失败时使用 Build 配置兜底
+        异步读取并缓存 SunnyPT 分类映射，接口失败时使用 Build 配置兜底。
 
         :return: 按媒体类型索引的分类 ID
         """
@@ -195,9 +201,9 @@ class SunnyPTSpider:
         return category_map
 
     @staticmethod
-    def _media_type_value(media_type: MediaType) -> Optional[str]:
+    def _media_type_value(media_type: Optional[MediaType]) -> Optional[str]:
         """
-        将 MoviePilot 媒体类型转换为 SunnyPT API 枚举
+        将 MoviePilot 媒体类型转换为 SunnyPT API 枚举。
 
         :param media_type: MoviePilot 媒体类型
         :return: movie、tv、music 或 None
@@ -213,13 +219,13 @@ class SunnyPTSpider:
     def _build_params(
         self,
         keyword: Optional[str],
-        media_type: MediaType,
+        media_type: Optional[MediaType],
         category: Optional[str],
         page: Optional[int],
-        category_map: dict,
-    ) -> dict:
+        category_map: dict[str, list[str]],
+    ) -> dict[str, Any]:
         """
-        构造 SunnyPT 种子搜索参数
+        构造 SunnyPT 种子搜索参数。
 
         :param keyword: 搜索关键字或完整 IMDb ID
         :param media_type: MoviePilot 媒体类型
@@ -246,9 +252,9 @@ class SunnyPTSpider:
             params["categories"] = categories
         return params
 
-    def _parse_result(self, results: List[dict]) -> List[dict]:
+    def _parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
-        将 SunnyPT API 种子数据转换为 MoviePilot 标准字段
+        将 SunnyPT API 种子数据转换为 MoviePilot 标准字段。
 
         :param results: SunnyPT 种子接口 data.items 数组
         :return: MoviePilot 标准种子字典列表
@@ -296,9 +302,11 @@ class SunnyPTSpider:
             })
         return torrents
 
-    def _process_search_response(self, response) -> Tuple[bool, List[dict]]:
+    def _process_search_response(
+        self, response: Any
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        处理 SunnyPT 种子搜索响应
+        处理 SunnyPT 种子搜索响应。
 
         :param response: RequestUtils 返回的响应对象
         :return: 是否失败及标准种子列表
@@ -311,12 +319,12 @@ class SunnyPTSpider:
     def search(
         self,
         keyword: Optional[str],
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         cat: Optional[str] = None,
         page: Optional[int] = 0,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        同步搜索 SunnyPT 种子
+        同步搜索 SunnyPT 种子。
 
         :param keyword: 搜索关键字或完整 IMDb ID
         :param mtype: MoviePilot 媒体类型
@@ -339,12 +347,12 @@ class SunnyPTSpider:
     async def async_search(
         self,
         keyword: Optional[str],
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         cat: Optional[str] = None,
         page: Optional[int] = 0,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        异步搜索 SunnyPT 种子
+        异步搜索 SunnyPT 种子。
 
         :param keyword: 搜索关键字或完整 IMDb ID
         :param mtype: MoviePilot 媒体类型
@@ -365,11 +373,11 @@ class SunnyPTSpider:
         ).get_res(url=f"{self._api_url}/torrents", params=params)
         return self._process_search_response(response)
 
-    def _build_download_url(self, torrent_id: int) -> str:
+    def _build_download_url(self, torrent_id: object) -> str:
         """
-        构造先换取短时下载地址再下载种子文件的两段式链接
+        构造先换取短时下载地址再下载种子文件的两段式链接。
 
-        :param torrent_id: SunnyPT 种子 ID
+        :param torrent_id: SunnyPT 响应中的种子 ID，按原值拼接到地址
         :return: Base64 请求配置与 download-token 接口 URL
         """
         request_config = {
@@ -388,3 +396,29 @@ class SunnyPTSpider:
         ).decode("ascii")
         token_url = f"{self._api_url}/torrents/{torrent_id}/download-token"
         return f"[{encoded_config}]{token_url}"
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        通过与搜索相同的 profile 协议检测 API Key 和下载权限。
+
+        :return: 账号是否可用及认证、权限或连接失败原因
+        """
+        with RequestUtils(headers=self._request_headers(), ua=self._user_agent,
+                          proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=f"{self._api_url}/profile", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法连接 SunnyPT API 服务"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            try:
+                payload = response.json() or {}
+            except (TypeError, ValueError):
+                return False, "SunnyPT API 响应不是有效 JSON"
+            if not isinstance(payload, dict):
+                return False, "SunnyPT API 响应不是有效 JSON"
+            if str(payload.get("code")) != "0" or not isinstance(payload.get("data"), dict):
+                return False, payload.get("msg") or "API Key 已过期或无效"
+            if payload["data"].get("download_allowed") is False:
+                return False, "当前账号没有下载权限"
+            return True, "连接成功"

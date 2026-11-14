@@ -1,4 +1,6 @@
-"""AgentChat 同步短事务经有界 worker 委托的应用端口测试。"""
+"""
+AgentChat 同步短事务经有界 worker 委托的应用端口测试。
+"""
 
 from __future__ import annotations
 
@@ -26,7 +28,9 @@ from app.schemas.exception import (
 
 
 class _Executor:
-    """用独立线程模拟 G2B worker，验证调用方不会直接执行同步仓储。"""
+    """
+    用独立线程模拟 G2B worker，验证调用方不会直接执行同步仓储。
+    """
 
     def __init__(self) -> None:
         self.calls = 0
@@ -34,7 +38,9 @@ class _Executor:
         self.results: list[object] = []
 
     async def run(self, operation):
-        """在线程中执行一个完整的同步操作。"""
+        """
+        在线程中执行一个完整的同步操作。
+        """
         self.calls += 1
 
         def invoke():
@@ -47,29 +53,45 @@ class _Executor:
 
 
 class _Repository:
-    """记录 AgentChat 端口调用的同步仓储替身。"""
+    """
+    记录 AgentChat 端口调用的同步仓储替身。
+    """
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict]] = []
 
     def append_display_messages(self, **kwargs):
+        """
+        记录展示消息的追加参数，不执行真实写入。
+        """
         self.calls.append(("append_display_messages", kwargs))
         return None
 
     def save_display_messages(self, **kwargs):
+        """
+        记录展示消息快照的保存参数，不执行真实写入。
+        """
         self.calls.append(("save_display_messages", kwargs))
         return None
 
     def save_agent_messages(self, **kwargs):
+        """
+        记录 Agent 历史消息的保存参数，不执行真实写入。
+        """
         self.calls.append(("save_agent_messages", kwargs))
 
     def update_title_if_empty(self, **kwargs):
+        """
+        记录空标题更新参数，供调用顺序断言使用。
+        """
         self.calls.append(("update_title_if_empty", kwargs))
 
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_runs_sync_repository_inside_worker() -> None:
-    """同步 AgentChat 写入必须经过一次 worker admission。"""
+    """
+    同步 AgentChat 写入必须经过一次 worker admission。
+    """
     executor = _Executor()
     repository = _Repository()
     service = AgentChatPersistenceService(
@@ -113,10 +135,18 @@ async def test_agent_chat_persistence_runs_sync_repository_inside_worker() -> No
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_propagates_worker_failure() -> None:
-    """worker admission 或事务异常必须原样返回给 async 应用调用方。"""
+    """
+    worker admission 或事务异常必须原样返回给 async 应用调用方。
+    """
 
     class FailingExecutor:
+        """
+        模拟无法接收同步操作的后台执行器。
+        """
         async def run(self, _operation):
+            """
+            模拟后台执行器失败，原样抛出错误。
+            """
             raise RuntimeError("worker failed")
 
     service = AgentChatPersistenceService(
@@ -135,7 +165,9 @@ async def test_agent_chat_persistence_propagates_worker_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_pending_metric_uses_deltas() -> None:
-    """pending 是 UpDownCounter，准入和释放必须分别记录增减量。"""
+    """
+    pending 是 UpDownCounter，准入和释放必须分别记录增减量。
+    """
     service = AgentChatPersistenceService(
         repository=lambda _session: _Repository(),
         async_executor=_Executor(),
@@ -157,13 +189,21 @@ async def test_agent_chat_persistence_pending_metric_uses_deltas() -> None:
 
 @pytest.mark.asyncio
 async def test_authoritative_display_save_propagates_worker_overload() -> None:
-    """权威 PUT 保存不能把 worker 背压吞成成功或普通业务失败。"""
+    """
+    权威 PUT 保存不能把 worker 背压吞成成功或普通业务失败。
+    """
     repository = AsyncMock()
     repository.async_get.return_value = None
     service = AgentChatService(repository=repository)
 
     class OverloadedPersistence:
+        """
+        模拟写入容量耗尽的聊天持久化端口。
+        """
         async def async_save_display_messages(self, **_kwargs):
+            """
+            模拟展示消息写入过载，向调用方传播数据库背压错误。
+            """
             raise DatabaseWorkerOverloadedError("busy")
 
     with pytest.raises(DatabaseWorkerOverloadedError, match="busy"):
@@ -180,7 +220,9 @@ async def test_authoritative_display_save_propagates_worker_overload() -> None:
 async def test_authoritative_display_save_reads_fresh_projection_after_worker_write(
     monkeypatch,
 ) -> None:
-    """权威展示保存的响应必须读取 worker 提交后的最新投影。"""
+    """
+    权威展示保存的响应必须读取 worker 提交后的最新投影。
+    """
     existing_chat = SimpleNamespace(
         user_id="1",
         username="admin",
@@ -223,7 +265,9 @@ async def test_authoritative_display_save_reads_fresh_projection_after_worker_wr
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_rolls_back_compound_write(monkeypatch) -> None:
-    """复合写入中途失败时，创建或更新不能留下半成品。"""
+    """
+    复合写入中途失败时，创建或更新不能留下半成品。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=4)
     await worker.start()
     session_id = f"worker-rollback-{uuid4().hex}"
@@ -255,14 +299,22 @@ async def test_agent_chat_persistence_rolls_back_compound_write(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_bounds_session_waiters_and_releases_cancelled() -> None:
-    """同会话锁等待受总量限制，取消等待不会遗留 admission。"""
+    """
+    同会话锁等待受总量限制，取消等待不会遗留 admission。
+    """
 
     class BlockingExecutor:
+        """
+        通过事件控制执行时机，放大会话准入和关闭竞态。
+        """
         def __init__(self) -> None:
             self.started = asyncio.Event()
             self.release = asyncio.Event()
 
         async def run(self, operation):
+            """
+            通知测试任务已开始，等待释放事件后执行同步操作。
+            """
             self.started.set()
             await self.release.wait()
             return operation()
@@ -311,14 +363,22 @@ async def test_agent_chat_persistence_bounds_session_waiters_and_releases_cancel
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_session_admission_is_fair() -> None:
-    """热点会话的锁等待不能占满全局容量并拒绝其他会话。"""
+    """
+    热点会话的锁等待不能占满全局容量并拒绝其他会话。
+    """
 
     class BlockingExecutor:
+        """
+        通过事件控制执行时机，放大会话准入和关闭竞态。
+        """
         def __init__(self) -> None:
             self.started = asyncio.Event()
             self.release = asyncio.Event()
 
         async def run(self, operation):
+            """
+            通知测试任务已开始，等待释放事件后执行同步操作。
+            """
             self.started.set()
             await self.release.wait()
             return operation()
@@ -348,14 +408,22 @@ async def test_agent_chat_persistence_session_admission_is_fair() -> None:
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_shutdown_drains_active_writes() -> None:
-    """关闭持久化端口时拒绝新写入并等待现有会话写入收口。"""
+    """
+    关闭持久化端口时拒绝新写入并等待现有会话写入收口。
+    """
 
     class BlockingExecutor:
+        """
+        通过事件控制执行时机，放大会话准入和关闭竞态。
+        """
         def __init__(self) -> None:
             self.started = asyncio.Event()
             self.release = asyncio.Event()
 
         async def run(self, operation):
+            """
+            通知测试任务已开始，等待释放事件后执行同步操作。
+            """
             self.started.set()
             await self.release.wait()
             return operation()
@@ -382,12 +450,20 @@ async def test_agent_chat_persistence_shutdown_drains_active_writes() -> None:
 
 @pytest.mark.asyncio
 async def test_agent_chat_shutdown_timeout_keeps_worker_owner_until_write_finishes() -> None:
-    """持久化关闭超时时保留运行中的写入和数据库 worker owner。"""
+    """
+    持久化关闭超时时保留运行中的写入和数据库 worker owner。
+    """
     started = threading.Event()
     release = threading.Event()
 
     class BlockingRepository(_Repository):
+        """
+        通过线程事件延迟写入，验证关闭超时后的资源所有权。
+        """
         def save_agent_messages(self, **kwargs):
+            """
+            通知写入已开始，等待释放事件或一秒超时后记录保存参数。
+            """
             started.set()
             release.wait(1)
             super().save_agent_messages(**kwargs)
@@ -424,7 +500,9 @@ async def test_agent_chat_shutdown_timeout_keeps_worker_owner_until_write_finish
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_uses_real_worker_and_sqlite_transaction() -> None:
-    """真实 AgentChat Oper 经 worker 写入后可被 native async 查询恢复。"""
+    """
+    真实 AgentChat Oper 经 worker 写入后可被 native async 查询恢复。
+    """
     worker = DatabaseWorker(max_workers=1, capacity=4)
     await worker.start()
     session_id = f"worker-{uuid4().hex}"
@@ -461,7 +539,9 @@ async def test_agent_chat_persistence_uses_real_worker_and_sqlite_transaction() 
 
 @pytest.mark.asyncio
 async def test_agent_chat_persistence_serializes_same_session_writes() -> None:
-    """同一会话的首次创建和既有快照追加都必须串行。"""
+    """
+    同一会话的首次创建和既有快照追加都必须串行。
+    """
     worker = DatabaseWorker(max_workers=4, capacity=16)
     await worker.start()
     session_id = f"worker-race-{uuid4().hex}"

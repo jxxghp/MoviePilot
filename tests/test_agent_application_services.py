@@ -1,4 +1,6 @@
-"""Agent 应用服务的纯逻辑、端口编排和安全投影测试。"""
+"""
+Agent 应用服务的纯逻辑、端口编排和安全投影测试。
+"""
 
 from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
@@ -30,14 +32,18 @@ from app.schemas.types import EventType, MediaSource, SystemConfigKey
 
 
 def run_async(awaitable):
-    """在普通 pytest 函数中执行一个短异步断言。"""
+    """
+    在普通 pytest 函数中执行一个短异步断言。
+    """
     import asyncio
 
     return asyncio.run(awaitable)
 
 
 def test_filtering_primitives_and_projection():
-    """过滤规则基础函数应统一输入、解析引用并隔离可变输出。"""
+    """
+    过滤规则基础函数应统一输入、解析引用并隔离可变输出。
+    """
     assert filtering.normalize_optional_text(None) is None
     assert filtering.normalize_optional_text("  value  ") == "value"
     assert filtering.normalize_media_type("movie") == "电影"
@@ -80,7 +86,9 @@ def test_filtering_primitives_and_projection():
 
 
 def test_filtering_normalizers_and_usage_collection(monkeypatch):
-    """规则实体校验应拒绝重复项，并能汇总全局与订阅引用。"""
+    """
+    规则实体校验应拒绝重复项，并能汇总全局与订阅引用。
+    """
     rule = filtering.normalize_custom_rule("NEW", "New rule", "inc", None, "1-2", "3", "2024", [])
     assert rule.id == "NEW"
     with pytest.raises(ValueError, match="不能为空"):
@@ -112,10 +120,14 @@ def test_filtering_normalizers_and_usage_collection(monkeypatch):
     monkeypatch.setattr(filtering, "get_configured_system_config", lambda: config)
 
     class SubscriptionPort:
-        """提供规则组使用统计所需的最小订阅端口。"""
+        """
+        提供规则组使用统计所需的最小订阅端口。
+        """
 
         async def async_list(self):
-            """返回带规则组引用的订阅快照。"""
+            """
+            返回带规则组引用的订阅快照。
+            """
             return [
                 SimpleNamespace(
                     id=1,
@@ -140,7 +152,9 @@ def test_filtering_normalizers_and_usage_collection(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_filter_rule_service_queries_and_mutations(monkeypatch):
-    """规则服务应覆盖查询、增删改和重命名引用的事务边界。"""
+    """
+    规则服务应覆盖查询、增删改和重命名引用的事务边界。
+    """
     old_rule = CustomRule(id="OLD", name="Old", include="old")
     old_group = FilterRuleGroup(name="group", rule_string="OLD & 4K")
     monkeypatch.setattr(filtering, "get_custom_rules", lambda: [old_rule])
@@ -154,14 +168,20 @@ async def test_filter_rule_service_queries_and_mutations(monkeypatch):
 
     @asynccontextmanager
     async def mutation_scope():
-        """提供可观测的规则组异步事务。"""
+        """
+        提供可观测的规则组异步事务。
+        """
         yield mutation
 
     class SubscriptionPort:
-        """提供空订阅列表的查询端口。"""
+        """
+        提供空订阅列表的查询端口。
+        """
 
         async def async_list(self):
-            """返回空订阅集合。"""
+            """
+            返回空订阅集合。
+            """
             return []
 
     service = filtering.FilterRuleService(SubscriptionPort(), mutation_scope, publish)
@@ -191,7 +211,9 @@ async def test_filter_rule_service_queries_and_mutations(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_save_system_config_and_settings_service(monkeypatch):
-    """系统设置服务应处理摘要、脱敏、合并、列表更新和两类配置源。"""
+    """
+    系统设置服务应处理摘要、脱敏、合并、列表更新和两类配置源。
+    """
     runtime = MagicMock()
     runtime.get.side_effect = lambda key: {"LLM_MODEL": "model", "PLUGIN_MARKET": "a"}.get(key)
     runtime.update.return_value = (True, "updated")
@@ -261,7 +283,9 @@ async def test_save_system_config_and_settings_service(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_settings_service_publishes_normalized_directory_value(monkeypatch):
-    """新设置入口写库与配置事件必须共享同一份目录规范化结果。"""
+    """
+    新设置入口写库与配置事件必须共享同一份目录规范化结果。
+    """
     runtime = MagicMock()
     system = MagicMock()
     system.get.side_effect = [[], [{"name": "动漫", "media_category": "动漫/日番"}]]
@@ -292,17 +316,23 @@ async def test_settings_service_publishes_normalized_directory_value(monkeypatch
 
 @pytest.mark.asyncio
 async def test_settings_service_conditionally_replaces_system_config_atomically(monkeypatch):
-    """条件替换应拒绝过期快照，并只为成功提交发布配置事件。"""
+    """
+    条件替换应拒绝过期快照，并只为成功提交发布配置事件。
+    """
     runtime = MagicMock()
     system = MagicMock()
     state = {"value": ["old"]}
 
     def get_value(_key):
-        """返回原子测试维护的最新配置快照。"""
+        """
+        返回原子测试维护的最新配置快照。
+        """
         return list(state["value"])
 
     async def update_atomically(_key, mutation):
-        """在测试内同步执行条件 mutation 并发布最终值。"""
+        """
+        在测试内同步执行条件 mutation 并发布最终值。
+        """
         result, value = mutation(list(state["value"]))
         state["value"] = list(value or [])
         return result
@@ -348,7 +378,9 @@ async def test_settings_service_conditionally_replaces_system_config_atomically(
 
 
 def test_settings_catalog_redaction_and_projection():
-    """设置目录应支持分类别名、匹配字段和递归敏感值脱敏。"""
+    """
+    设置目录应支持分类别名、匹配字段和递归敏感值脱敏。
+    """
     assert settings_module.normalize_group("基础配置") == "settings"
     assert settings_module.normalize_group("全部") == "all"
     with pytest.raises(ValueError, match="group"):
@@ -367,7 +399,9 @@ def test_settings_catalog_redaction_and_projection():
 
 @pytest.mark.asyncio
 async def test_plugin_management_and_data_services(monkeypatch):
-    """插件管理、来源补齐和数据预览应覆盖成功与安全失败路径。"""
+    """
+    插件管理、来源补齐和数据预览应覆盖成功与安全失败路径。
+    """
     plugin = SimpleNamespace(
         id="Demo",
         plugin_name="Demo Plugin",
@@ -382,7 +416,9 @@ async def test_plugin_management_and_data_services(monkeypatch):
     )
 
     class SourceCandidate:
-        """提供插件来源检查所需的公开投影。"""
+        """
+        提供插件来源检查所需的公开投影。
+        """
 
         id = "Demo"
         plugin_name = "Demo Plugin"
@@ -394,7 +430,9 @@ async def test_plugin_management_and_data_services(monkeypatch):
         system_version_message = None
 
         def public_dict(self):
-            """返回来源候选的脱敏字典。"""
+            """
+            返回来源候选的脱敏字典。
+            """
             return {"id": self.id, "repo_url": self.repo_url}
 
     source = SourceCandidate()
@@ -450,7 +488,9 @@ async def test_plugin_management_and_data_services(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_plugin_data_summary_excludes_values_and_flags_sensitive_keys():
-    """插件数据摘要只返回类型与大小，并沿用统一敏感键规则。"""
+    """
+    插件数据摘要只返回类型与大小，并沿用统一敏感键规则。
+    """
     query_repo = MagicMock()
     query_repo.list = AsyncMock(
         return_value={
@@ -506,7 +546,9 @@ async def test_plugin_data_summary_excludes_values_and_flags_sensitive_keys():
 
 
 def test_remaining_application_guard_paths(monkeypatch):
-    """应用服务的空结果、回滚和匹配参数保护应保持可观测。"""
+    """
+    应用服务的空结果、回滚和匹配参数保护应保持可观测。
+    """
     helper = MagicMock()
     helper.get_custom_rules.return_value = []
     helper.get_rule_groups.return_value = []
@@ -533,23 +575,33 @@ def test_remaining_application_guard_paths(monkeypatch):
 
 
 def test_command_application_facade_and_dispatch(monkeypatch):
-    """命令应用门面应支持注册、查询、初始化和事件派发。"""
+    """
+    命令应用门面应支持注册、查询、初始化和事件派发。
+    """
 
     class CommandRegistry:
-        """提供命令门面所需的最小注册表实现。"""
+        """
+        提供命令门面所需的最小注册表实现。
+        """
 
         calls = []
 
         def get_commands(self):
-            """返回一个可触发的命令定义。"""
+            """
+            返回一个可触发的命令定义。
+            """
             return {"/demo": {"description": "Demo", "pid": "plugin"}}
 
         def get(self, name):
-            """按名称返回命令定义。"""
+            """
+            按名称返回命令定义。
+            """
             return self.get_commands().get(name)
 
         def init_commands(self, plugin_id=None):
-            """记录命令初始化范围。"""
+            """
+            记录命令初始化范围。
+            """
             self.calls.append(plugin_id)
 
     command_application.register_command_class(CommandRegistry)
@@ -585,7 +637,9 @@ def test_command_application_facade_and_dispatch(monkeypatch):
 
 
 def test_music_projection_and_domain_projection():
-    """音乐和豆瓣投影应保留稳定身份并裁剪大字段。"""
+    """
+    音乐和豆瓣投影应保留稳定身份并裁剪大字段。
+    """
     track = MusicInfo(
         media_source=MediaSource.MusicBrainz, media_id="track", title="Track", artists=["Artist"], year=2024
     )
@@ -612,7 +666,9 @@ def test_music_projection_and_domain_projection():
 
 
 def test_download_task_services_validate_and_delegate(monkeypatch):
-    """下载任务服务应补齐历史媒体并严格校验高级修改。"""
+    """
+    下载任务服务应补齐历史媒体并严格校验高级修改。
+    """
     torrent = SimpleNamespace(hash="a" * 40, downloader="qb")
     history = SimpleNamespace(
         media_source=MediaSource.TMDB,

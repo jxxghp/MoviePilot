@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""记录 MoviePilot 关键入口的冷导入耗时基线。"""
+"""
+记录 MoviePilot 关键入口的冷导入耗时基线。
+"""
 
 import argparse
 import json
@@ -11,7 +13,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT = (
@@ -26,17 +27,16 @@ IMPORT_TARGETS = (
     "app.factory",
     "app.main",
 )
+# 主启动各入口的冷导入中位数固定上限，单位为毫秒，不随历史采样变化。
+COLD_IMPORT_BUDGET_MS = 3000.0
 RESULT_PREFIX = "MOVIEPILOT_IMPORT_BASELINE="
 LIFECYCLE_RESULT_PREFIX = "MOVIEPILOT_LIFECYCLE_BASELINE="
-PERFORMANCE_FACTOR = 2.0
-PERFORMANCE_SLACK_MS = 500.0
-# 基线由维护者平台生成、CI 在 Linux 托管 runner 检查；在既有 2 倍/500ms
-# 硬预算之外保留 15% 的跨平台与持续调度抖动带，结构契约仍保持精确比较。
-PERFORMANCE_JITTER_FACTOR = 1.15
 
 
 def measure_import(target: str) -> dict[str, Any]:
-    """在独立解释器中测量单个模块的冷导入耗时与模块增量。"""
+    """
+    在独立解释器中测量单个模块的冷导入耗时与模块增量。
+    """
     code = f"""
 import importlib
 import json
@@ -86,9 +86,10 @@ print({RESULT_PREFIX!r} + json.dumps({{
 
 
 def measure_lifecycle(safe_mode: bool) -> dict[str, Any]:
-    """在隔离的无 I/O 生命周期中测量正常/安全模式编排和资源增量。
+    """
+    在隔离的无 I/O 生命周期中测量正常/安全模式编排和资源增量。
 
-    这里故意把每个组件回调替换为 no-op：基线用于比较生命周期编排、阶段计时、任务
+    这里故意把每个组件回调替换为 空操作：基线用于比较生命周期编排、阶段计时、任务
     和线程是否泄漏，不应在生成基线时启动真实插件、调度器或连接用户数据库。
     """
     code = f"""
@@ -108,18 +109,24 @@ from app.runtime.config import settings as legacy_settings
 
 
 def _noop():
-    '''替代无需执行的真实同步组件回调。'''
+    \"\"\"
+    替代无需执行的真实同步组件回调。
+    \"\"\"
     return None
 
 
 async def _async_noop():
-    '''替代无需执行的真实异步组件回调。'''
+    \"\"\"
+    替代无需执行的真实异步组件回调。
+    \"\"\"
     return None
 
 
 def _isolated_start(component, probe_app):
-    '''保留探针所需基础状态，其余组件启动替换为空操作。'''
-    # 保留 readiness 所需状态转换，其余真实启动回调替换为空操作。
+    \"\"\"
+    保留探针所需基础状态，其余组件启动替换为空操作。
+    \"\"\"
+    # 保留就绪检查所需的状态转换，其余真实启动回调替换为空操作。
     if component.start is None:
         return None
     if component.name == '后台任务登记器':
@@ -132,7 +139,9 @@ def _isolated_start(component, probe_app):
 
 
 def _isolated_stop(component):
-    '''真实释放探针基础设施，其余组件关闭替换为空操作。'''
+    \"\"\"
+    真实释放探针基础设施，其余组件关闭替换为空操作。
+    \"\"\"
     # TaskRegistry 是后续生命周期代码的基础设施，探针必须验证其真实释放路径。
     if component.name == '后台任务登记器':
         return component.stop
@@ -140,7 +149,9 @@ def _isolated_stop(component):
 
 
 async def _probe():
-    '''执行一次隔离生命周期并输出资源与耗时样本。'''
+    \"\"\"
+    执行一次隔离生命周期并输出资源与耗时样本。
+    \"\"\"
     legacy_settings.MOVIEPILOT_SAFE_MODE = {safe_mode!r}
     lifecycle.init_extra = _async_noop
     lifecycle.main_loop_registry.register = lambda loop: object()
@@ -161,7 +172,9 @@ async def _probe():
     original_step = lifecycle.run_startup_step
 
     async def timed_step(name, callback, timeout_seconds=None):
-        '''执行隔离启动步骤并记录耗时。'''
+        \"\"\"
+        执行隔离启动步骤并记录耗时。
+        \"\"\"
         started = time.perf_counter()
         result = await original_step(name, callback, timeout_seconds)
         stage_ms[name] = round((time.perf_counter() - started) * 1000, 3)
@@ -193,7 +206,7 @@ async def _probe():
         'tasks_before': before_tasks,
         'tasks_started': started_tasks,
         'tasks_after': len(asyncio.all_tasks()),
-        # no-op 采样不建立数据库连接；字段显式记录采样范围，避免误读为生产连接数。
+        # 空操作 采样不建立数据库连接；字段显式记录采样范围，避免误读为生产连接数。
         'database_connections_started': 0,
     }}))
 
@@ -227,7 +240,9 @@ asyncio.run(_probe())
 
 
 def collect_baseline(repeat: int) -> dict[str, Any]:
-    """按目标重复采样并生成便于后续对比的统计摘要。"""
+    """
+    按目标重复采样并生成便于后续对比的统计摘要。
+    """
     targets: dict[str, Any] = {}
     for target in IMPORT_TARGETS:
         samples = [measure_import(target) for _ in range(repeat)]
@@ -290,7 +305,9 @@ def check_baseline(
     expected: dict[str, Any],
     actual: dict[str, Any],
 ) -> list[str]:
-    """比较稳定资源契约与宽松耗时预算，返回所有不符合项。"""
+    """
+    比较稳定资源契约与固定三秒的冷导入耗时上限，返回所有不符合项。
+    """
     errors: list[str] = []
     if expected.get("schema_version") != actual.get("schema_version"):
         errors.append(
@@ -312,11 +329,11 @@ def check_baseline(
                 f"{expected_target.get('loaded_app_module_count')} -> "
                 f"{actual_target.get('loaded_app_module_count')}"
             )
-        budget_ms = import_budget_ms(expected_target)
+        budget_ms = COLD_IMPORT_BUDGET_MS
         if actual_target["median_ms"] > budget_ms:
             errors.append(
                 f"{target} 冷导入中位数 {actual_target['median_ms']}ms "
-                f"超过预算 {round(budget_ms, 3)}ms"
+                f"超过预算 {budget_ms}ms"
             )
     expected_modes = expected.get("lifecycle", {}).get("modes", {})
     actual_modes = actual.get("lifecycle", {}).get("modes", {})
@@ -348,33 +365,29 @@ def check_baseline(
     return errors
 
 
-def import_budget_ms(expected_target: dict[str, Any]) -> float:
-    """根据已提交样本计算跨平台冷导入中位数预算。"""
-    return max(
-        expected_target["max_ms"] * PERFORMANCE_FACTOR,
-        expected_target["max_ms"] + PERFORMANCE_SLACK_MS,
-    ) * PERFORMANCE_JITTER_FACTOR
-
-
 def describe_import_measurements(
     expected: dict[str, Any],
     actual: dict[str, Any],
 ) -> list[str]:
-    """输出每个公共冷导入目标的实测中位数与预算，便于诊断 CI 波动。"""
+    """
+    输出每个公共冷导入目标的实测中位数与预算，便于诊断 CI 波动。
+    """
     expected_targets = expected.get("targets", {})
     actual_targets = actual.get("targets", {})
     return [
         (
             f"启动性能采样：{target} 中位数 "
             f"{actual_targets[target]['median_ms']}ms / 预算 "
-            f"{round(import_budget_ms(expected_targets[target]), 3)}ms"
+            f"{COLD_IMPORT_BUDGET_MS}ms"
         )
         for target in sorted(set(expected_targets) & set(actual_targets))
     ]
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    """解析只读打印、检查或显式写入操作。"""
+    """
+    解析只读打印、检查或显式写入操作。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
@@ -389,7 +402,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         dest="operation",
         action="store_const",
         const="check",
-        help="按已提交基线检查资源契约和宽松性能预算",
+        help="检查资源契约，冷导入耗时上限固定为三秒",
     )
     action.add_argument(
         "--write",
@@ -405,7 +418,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 
 def _display_path(path: Path) -> Path:
-    """优先返回仓库相对路径，便于 CLI 输出稳定可读。"""
+    """
+    优先返回仓库相对路径，便于 CLI 输出稳定可读。
+    """
     try:
         return path.relative_to(PROJECT_ROOT)
     except ValueError:
@@ -413,7 +428,9 @@ def _display_path(path: Path) -> Path:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """采样关键入口，并按显式操作打印、检查或写入结果。"""
+    """
+    采样关键入口，并按显式操作打印、检查或写入结果。
+    """
     args = parse_args(argv)
     if args.repeat < 1:
         raise SystemExit("--repeat 必须大于等于 1")

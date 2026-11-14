@@ -1,3 +1,7 @@
+"""
+验证消息会话复用、过期释放及绑定替换。
+"""
+
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
@@ -5,7 +9,9 @@ from app.application.messaging.session import MessageSessionService
 
 
 def test_message_session_service_reuses_and_refreshes_active_session():
-    """复用窗口内应返回原会话并刷新最后活动时间。"""
+    """
+    复用窗口内应返回原会话并刷新最后活动时间。
+    """
     now = datetime(2026, 8, 17, 12, 0, 0)
     sessions = {"user": ("session-1", now - timedelta(minutes=5))}
     service = MessageSessionService(
@@ -24,7 +30,9 @@ def test_message_session_service_reuses_and_refreshes_active_session():
 
 
 def test_message_session_service_cleans_expired_before_creating_session():
-    """创建新会话前应释放同一映射中的全部过期 Agent 会话。"""
+    """
+    创建新会话前应释放同一映射中的全部过期 Agent 会话。
+    """
     now = datetime(2026, 8, 17, 12, 0, 0)
     sessions = {"old": ("session-old", now - timedelta(minutes=61))}
     expired_handler = Mock()
@@ -45,7 +53,9 @@ def test_message_session_service_cleans_expired_before_creating_session():
 
 
 def test_message_session_service_bind_and_clear_preserve_old_cleanup_contract():
-    """替换绑定时释放旧会话，显式清理只返回被移除的会话 ID。"""
+    """
+    替换绑定时释放旧会话，显式清理只返回被移除的会话 ID。
+    """
     now = datetime(2026, 8, 17, 12, 0, 0)
     sessions = {"user": ("session-old", now)}
     expired_handler = Mock()

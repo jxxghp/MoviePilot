@@ -1,4 +1,6 @@
-"""下载历史原子写入与持久化结算 owner。"""
+"""
+下载历史原子写入与持久化结算 owner。
+"""
 
 import time
 from pathlib import Path
@@ -19,6 +21,7 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase, MetaInfoSnapshot
 from app.domain.metainfo import MetaInfo
+from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     EventType,
@@ -28,7 +31,9 @@ from app.schemas.types import (
 
 
 class DownloadHistoryOwner(_DownloadOwnerBase):
-    """下载历史原子写入与持久化结算 owner。"""
+    """
+    下载历史原子写入与持久化结算 owner。
+    """
 
     @staticmethod
     def _build_download_note(
@@ -75,8 +80,16 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             username: Optional[str],
             torrent_content: Union[str, bytes],
             custom_words: Optional[str],
+            already_exists: bool = False,
     ) -> None:
-        """提交下载历史、文件明细和 durable 下载事件。"""
+        """
+        提交下载历史、文件明细和 durable 下载事件。
+
+        选集文件按集号交集保留，确保跨目标边界的多集视频也有文件明细。
+
+        :param already_exists: 下载器中已存在同一任务时为 True，仅补记历史，不再重复通知与文件明细；
+                               若整包全部媒体文件已记录过，同时为这个资源登记提交退避
+        """
         if layout == "NoSubfolder" or not folder_name:
             download_path = download_dir / file_list[0] if file_list else download_dir
         elif folder_name:
@@ -86,29 +99,17 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         save_path = download_dir if layout == "NoSubfolder" or not folder_name else download_path
         media_source, media_id = resolve_media_identity(media=media)
         classification = effective_classification_snapshot(media)
-        files_to_add: list[DownloadFileWrite] = []
-        custom_word_list = custom_words.splitlines() if custom_words else []
-        for file in file_list:
-            if episodes:
-                # 与订阅选集使用相同识别词，避免偏移前的文件集数被目标集数过滤。
-                file_meta = MetaInfo(Path(file).stem, custom_words=custom_word_list)
-                if not file_meta.begin_episode or file_meta.begin_episode not in episodes:
-                    continue
-            if not Path(file).suffix or Path(file).suffix.lower() not in self.runtime_config.media_extensions:
-                continue
-            files_to_add.append(
-                DownloadFileWrite(
-                    download_hash=download_hash,
-                    downloader=downloader,
-                    fullpath=(save_path / file).as_posix(),
-                    savepath=save_path.as_posix(),
-                    filepath=file,
-                    torrentname=meta.org_string,
-                )
-            )
+        history_note = self._build_download_note(
+            source,
+            media,
+            meta,
+            media_file_count=0,
+        )
+        if context.subscription_download:
+            history_note["subscription_download"] = context.subscription_download
         history = DownloadHistoryWrite(
             path=download_path.as_posix(),
-            type=media.type.value,
+            type=(media.type.value if media.type else ""),
             title=media.title or "",
             year=str(media.year) if media.year is not None else None,
             media_source=media_source,
@@ -133,20 +134,59 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             classification_policy_revision=classification.policy_revision,
             classification_source=classification.source,
             episode_group=media.episode_group,
-            note=self._build_download_note(
-                source,
-                media,
-                meta,
-                media_file_count=len(files_to_add),
-            ),
+            note=history_note,
             custom_words=custom_words,
         )
+        files_to_add: list[DownloadFileWrite] = []
+        custom_word_list = custom_words.splitlines() if custom_words else []
+        for file in file_list:
+            if not Path(file).suffix or Path(file).suffix.lower() not in self.runtime_config.media_extensions:
+                continue
+            files_to_add.append(
+                DownloadFileWrite(
+                    download_hash=download_hash,
+                    downloader=downloader,
+                    fullpath=(save_path / file).as_posix(),
+                    savepath=save_path.as_posix(),
+                    filepath=file,
+                    torrentname=meta.org_string,
+                )
+            )
+        media_file_count = len(files_to_add)
+        history_note["media_file_count"] = media_file_count
+        if already_exists:
+            retained_files = self._filter_unrecorded_download_files(files_to_add, download_hash)
+            if files_to_add and not retained_files:
+                # 必须核对整包文件，不能因本次只选了已记录的一集就阻止以后补下包内其他集。
+                self._record_duplicate_download_backoff(
+                    context=context,
+                    downloader=downloader,
+                    source=source,
+                    episodes=episodes,
+                )
+            files_to_add = retained_files
+        if episodes:
+            selected_files = []
+            unmatched_single_files = []
+            for item in files_to_add:
+                # 与订阅选集使用相同识别词，避免偏移前的文件集数被目标集数过滤。
+                file_meta = MetaInfo(Path(cast(str, item.filepath)).stem, custom_words=custom_word_list)
+                file_episodes = set(file_meta.episode_list)
+                if file_episodes.intersection(episodes):
+                    selected_files.append(item)
+                elif len(file_episodes) <= 1:
+                    unmatched_single_files.append(item)
+            if (not selected_files and len(episodes) == 1 and media_file_count == 1
+                    and len(unmatched_single_files) == 1):
+                # 下载器已按唯一视频文件兜底选集，历史也要保留该文件，避免留下空记录。
+                selected_files = unmatched_single_files
+            files_to_add = selected_files
         frozen_files = tuple(files_to_add)
         event_payload = {
             "hash": download_hash, "context": context, "username": username,
             "downloader": downloader, "episodes": episodes or meta.episode_list, "source": source,
         }
-        notification = self._build_download_notification(
+        notification = None if already_exists else self._build_download_notification(
             media=media,
             meta=meta,
             torrent=torrent,
@@ -187,3 +227,30 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             downloader=downloader,
         )
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
+
+    def _filter_unrecorded_download_files(
+            self,
+            files: list[DownloadFileWrite],
+            download_hash: str,
+    ) -> list[DownloadFileWrite]:
+        """
+        剔除同一任务 Hash 下已经记录的有效文件明细，避免重复提交写入成对副本。
+
+        :param files: 本次提交解析出的文件明细
+        :param download_hash: 下载器中的任务哈希标识
+        :return: 尚未记录过的文件明细
+        """
+        if not files:
+            return files
+        recorded = {
+            item.fullpath
+            for item in self.download_history_repository.get_files_by_hash(download_hash, state=1)
+            if item.fullpath
+        }
+        if not recorded:
+            return files
+        retained = [item for item in files if item.fullpath not in recorded]
+        skipped = len(files) - len(retained)
+        if skipped:
+            logger.info(f"下载任务 {download_hash} 的 {skipped} 条文件明细已记录，不再重复写入")
+        return retained

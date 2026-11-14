@@ -1,4 +1,6 @@
-"""验证实际整理提交回执与预览隔离，并由真实执行阶段决定完成状态。"""
+"""
+验证实际整理提交回执与预览隔离，并由真实执行阶段决定完成状态。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -20,7 +22,9 @@ from tests.test_transfer_sync_extra_files import make_fileitem, make_transfer_ch
 
 @pytest.fixture
 def submission_client(monkeypatch):
-    """挂载真实路由与响应校验，仅替换管理授权、历史端口和整理业务外部边界。"""
+    """
+    挂载真实路由与响应校验，仅替换管理授权、历史端口和整理业务外部边界。
+    """
     app = FastAPI()
     app.include_router(transfer.router, prefix="/api/v1/transfer")
     app.dependency_overrides[transfer.get_current_active_manage_user] = lambda: object()
@@ -29,10 +33,14 @@ def submission_client(monkeypatch):
     outcomes = []
 
     class FakeChain:
-        """按源文件返回可控回执，验证 HTTP 响应不会丢失状态和部分成功项。"""
+        """
+        按源文件返回可控回执，验证 HTTP 响应不会丢失状态和部分成功项。
+        """
 
         def manual_transfer(self, **kwargs):
-            """保存请求参数并返回下一个预设结果。"""
+            """
+            保存请求参数并返回下一个预设结果。
+            """
             calls.append(kwargs)
             return outcomes.pop(0)
 
@@ -43,7 +51,9 @@ def submission_client(monkeypatch):
 
 @pytest.mark.parametrize("state", ["accepted", "completed", "failed", "retry_wait", "skipped", "manual_review"])
 def test_submission_http_preserves_typed_state_and_failure_details(submission_client, state):
-    """实际阶段必须经过 FastAPI 序列化保留，不能降级为预览并丢失 state。"""
+    """
+    实际阶段必须经过 FastAPI 序列化保留，不能降级为预览并丢失 state。
+    """
     client, outcomes, calls = submission_client
     accepted = state in {"accepted", "completed", "retry_wait"}
     outcomes.append((accepted, {"items": [{
@@ -71,7 +81,9 @@ def test_submission_http_preserves_typed_state_and_failure_details(submission_cl
 
 
 def test_submission_batch_preserves_success_when_another_file_fails(submission_client):
-    """批次总失败仍返回完整逐项结果，并在业务总提示中保留失败文件路径。"""
+    """
+    批次总失败仍返回完整逐项结果，并在业务总提示中保留失败文件路径。
+    """
     client, outcomes, calls = submission_client
     first, second = make_fileitem("/downloads/a.mkv"), make_fileitem("/downloads/b.mkv")
     outcomes.extend([
@@ -95,7 +107,9 @@ def test_submission_batch_preserves_success_when_another_file_fails(submission_c
 
 
 def test_preview_http_keeps_its_summary_and_does_not_claim_execution(submission_client):
-    """预览继续返回原预览 schema，预览成功不得凭空生成实际接收状态。"""
+    """
+    预览继续返回原预览 schema，预览成功不得凭空生成实际接收状态。
+    """
     client, outcomes, calls = submission_client
     outcomes.append((True, {"summary": {"total": 1, "success": 1, "failed": 0}, "items": [{
         "source": "/downloads/a.mkv", "success": True, "title": "Example",
@@ -115,7 +129,9 @@ def test_preview_http_keeps_its_summary_and_does_not_claim_execution(submission_
 
 @pytest.fixture
 def submission_chain(monkeypatch):
-    """保留真实手动工作流，仅隔离文件、下载器、媒体识别和执行副作用。"""
+    """
+    保留真实手动工作流，仅隔离文件、下载器、媒体识别和执行副作用。
+    """
     chain = make_transfer_chain()
     fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
     _patch_transfer_planning(monkeypatch, chain, fileitem, None, [], [])
@@ -126,7 +142,9 @@ def submission_chain(monkeypatch):
 
 
 def test_background_submission_reports_queue_acceptance_without_execution(submission_chain, monkeypatch):
-    """后台成功仅确认真正入队，提交请求本身不会执行文件也不能报告 completed。"""
+    """
+    后台成功仅确认真正入队，提交请求本身不会执行文件也不能报告 completed。
+    """
     chain, fileitem = submission_chain
     queued = []
     monkeypatch.setattr(chain, "put_to_queue", lambda task: queued.append(task) or True)
@@ -139,7 +157,9 @@ def test_background_submission_reports_queue_acceptance_without_execution(submis
 
 @pytest.mark.parametrize("queued, expected", [(False, "failed"), (True, "accepted")])
 def test_background_duplicate_is_not_reported_as_accepted(submission_chain, monkeypatch, queued, expected):
-    """只有队列入口确认新接收才返回 accepted，重复准入必须明确失败。"""
+    """
+    只有队列入口确认新接收才返回 accepted，重复准入必须明确失败。
+    """
     chain, fileitem = submission_chain
     monkeypatch.setattr(chain, "put_to_queue", lambda task: queued)
     success, result = chain.manual_transfer(fileitem=fileitem, background=True, report_results=True)
@@ -151,18 +171,24 @@ def test_background_duplicate_is_not_reported_as_accepted(submission_chain, monk
     (True, False, "completed"), (False, False, "retry_wait"), (True, True, "skipped"),
 ])
 def test_sync_submission_waits_for_atomic_settlement(submission_chain, monkeypatch, settled, overwrite, expected):
-    """执行成功但原子结算未确认时必须等待恢复，覆盖跳过也不能被误报已入库。"""
+    """
+    执行成功但原子结算未确认时必须等待恢复，覆盖跳过也不能被误报已入库。
+    """
     chain, fileitem = submission_chain
     target = make_fileitem("/media/Test.Show.S01E01.mkv")
 
     def settle(task, info):
-        """模拟 writer 的明确结算回执，保留工作流中真实完成判定。"""
+        """
+        模拟 writer 的明确结算回执，保留工作流中真实完成判定。
+        """
         if settled:
             task.mark_terminal_settled()
         return info.success, info.message or ""
 
     def execute(task, callback):
-        """模拟一次文件操作并进入真实工作流回调包装。"""
+        """
+        模拟一次文件操作并进入真实工作流回调包装。
+        """
         task.bind_plan_checkpoint(SimpleNamespace())
         task.bind_admission_task_id("test-submission")
         return callback(task, TransferInfo(
@@ -182,7 +208,9 @@ def test_sync_submission_waits_for_atomic_settlement(submission_chain, monkeypat
 
 
 def test_manual_review_is_logged_without_unhandled_transfer_traceback(submission_chain, monkeypatch):
-    """外部结果未知时只记录人工复核指引，提交回执仍保留 manual_review。"""
+    """
+    外部结果未知时只记录人工复核指引，提交回执仍保留 manual_review。
+    """
     chain, fileitem = submission_chain
     task = TransferTask(fileitem=fileitem)
     task.bind_admission_task_id("manual-review-task")
@@ -228,7 +256,9 @@ def test_manual_review_is_logged_without_unhandled_transfer_traceback(submission
 
 @pytest.mark.parametrize("accepted, expected", [(True, "retry_wait"), (False, "failed")])
 def test_existing_durable_retry_keeps_its_actual_state(submission_chain, monkeypatch, accepted, expected):
-    """历史失败的原计划重试由现有调度器接管，不标记为同步完成。"""
+    """
+    历史失败的原计划重试由现有调度器接管，不标记为同步完成。
+    """
     chain, fileitem = submission_chain
     history = SimpleNamespace(status=False, transfer_task_id="task-a")
     monkeypatch.setattr(chain, "_get_manual_transfer_history", lambda **kwargs: history)
@@ -239,7 +269,9 @@ def test_existing_durable_retry_keeps_its_actual_state(submission_chain, monkeyp
 
 
 def test_legacy_manual_caller_keeps_string_result(submission_chain):
-    """未启用回执的插件和既有调用仍收到原来的布尔与字符串二元组。"""
+    """
+    未启用回执的插件和既有调用仍收到原来的布尔与字符串二元组。
+    """
     chain, fileitem = submission_chain
     success, message = chain.manual_transfer(fileitem=fileitem, background=False)
     assert success is True
@@ -248,7 +280,9 @@ def test_legacy_manual_caller_keeps_string_result(submission_chain):
 
 @pytest.mark.parametrize("background", [True, False])
 def test_cancellation_keeps_processed_and_unprocessed_file_receipts(submission_chain, monkeypatch, background):
-    """中途取消保留已入队或完成项，同时为剩余文件返回失败，禁止整批重提。"""
+    """
+    中途取消保留已入队或完成项，同时为剩余文件返回失败，禁止整批重提。
+    """
     chain, first = submission_chain
     second = make_fileitem("/downloads/Test.Show.S01E02.mkv")
     stop = SimpleNamespace(is_system_stopped=False)
@@ -257,18 +291,24 @@ def test_cancellation_keeps_processed_and_unprocessed_file_receipts(submission_c
     monkeypatch.setattr(chain, "_TransferChain__get_trans_fileitems", lambda *args, **kwargs: [(first, False), (second, False)])
 
     def register(task):
-        """使用真实作业视图记录等待任务，以验证取消后可重新准入。"""
+        """
+        使用真实作业视图记录等待任务，以验证取消后可重新准入。
+        """
         registered.append(task)
         return TransferChain._TransferChain__put_to_jobview(chain, task)
 
     def queue(task):
-        """第一个文件真实被接收后模拟用户取消整个批次。"""
+        """
+        第一个文件真实被接收后模拟用户取消整个批次。
+        """
         assert task.fileitem.path == first.path
         stop.is_system_stopped = True
         return True
 
     def execute(task, callback):
-        """第一个文件已结算后模拟取消，不执行剩余文件。"""
+        """
+        第一个文件已结算后模拟取消，不执行剩余文件。
+        """
         assert callback
         assert task.fileitem.path == first.path
         task.mark_terminal_settled()
@@ -289,16 +329,22 @@ def test_cancellation_keeps_processed_and_unprocessed_file_receipts(submission_c
 
 
 def test_post_settlement_failure_preserves_completed_receipt(submission_chain, monkeypatch):
-    """入库原子提交后通知等后续副作用失败，回执仍确认已入库，避免重复整理。"""
+    """
+    入库原子提交后通知等后续副作用失败，回执仍确认已入库，避免重复整理。
+    """
     chain, fileitem = submission_chain
 
     def settle(task, _info):
-        """原子提交成功后模拟通知异常。"""
+        """
+        原子提交成功后模拟通知异常。
+        """
         task.mark_terminal_settled()
         raise RuntimeError("通知失败")
 
     def execute(task, callback):
-        """把成功文件操作交给真实回调包装，保留提交前后的时间顺序。"""
+        """
+        把成功文件操作交给真实回调包装，保留提交前后的时间顺序。
+        """
         return callback(task, TransferInfo(success=True, target_item=make_fileitem("/media/done.mkv")))
 
     monkeypatch.setattr(chain, "_TransferChain__default_callback", settle)
@@ -315,7 +361,9 @@ def test_post_settlement_failure_preserves_completed_receipt(submission_chain, m
 
 
 def test_cancellation_during_build_releases_waiting_job(submission_chain, monkeypatch):
-    """同步任务尚未开始执行时取消，也要移除预登记占位，随后允许重新准入。"""
+    """
+    同步任务尚未开始执行时取消，也要移除预登记占位，随后允许重新准入。
+    """
     chain, first = submission_chain
     second = make_fileitem("/downloads/Test.Show.S01E02.mkv")
     stop = SimpleNamespace(is_system_stopped=False)
@@ -324,7 +372,9 @@ def test_cancellation_during_build_releases_waiting_job(submission_chain, monkey
     monkeypatch.setattr(chain, "_TransferChain__get_trans_fileitems", lambda *args, **kwargs: [(first, False), (second, False)])
 
     def register(task):
-        """第一个等待项登记后取消，模拟候选构建阶段被用户中断。"""
+        """
+        第一个等待项登记后取消，模拟候选构建阶段被用户中断。
+        """
         registered.append(task)
         queued = TransferChain._TransferChain__put_to_jobview(chain, task)
         stop.is_system_stopped = True
@@ -346,11 +396,15 @@ def test_cancellation_during_build_releases_waiting_job(submission_chain, monkey
 ])
 @pytest.mark.parametrize("planned", [True, False])
 def test_execution_failure_uses_remaining_durable_state(submission_chain, monkeypatch, persisted, expected, planned):
-    """检查点前失败、延迟重试、人工复核与已清理损坏任务分别保留真实恢复语义。"""
+    """
+    检查点前失败、延迟重试、人工复核与已清理损坏任务分别保留真实恢复语义。
+    """
     chain, fileitem = submission_chain
 
     def execute(task, callback):
-        """模拟已准入任务在完成检查点前离开执行流程。"""
+        """
+        模拟已准入任务在完成检查点前离开执行流程。
+        """
         assert callback
         task.bind_admission_task_id("test-submission")
         if planned:

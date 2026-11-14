@@ -1,4 +1,6 @@
-"""订阅 Search/Match 公共入口的跨通道准入测试。"""
+"""
+订阅 Search/Match 公共入口的跨通道准入测试。
+"""
 
 import threading
 from datetime import datetime, timedelta
@@ -13,7 +15,9 @@ from app.schemas.types import MediaType
 
 
 def _subscribe(subscribe_id: int) -> SubscriptionSnapshot:
-    """构造已越过新增保护期的活动电影订阅。"""
+    """
+    构造已越过新增保护期的活动电影订阅。
+    """
     return SubscriptionSnapshot(
         id=subscribe_id,
         name=f"并发电影 {subscribe_id}",
@@ -27,7 +31,9 @@ def _subscribe(subscribe_id: int) -> SubscriptionSnapshot:
 
 
 def _repository(*subscribes: SubscriptionSnapshot) -> SimpleNamespace:
-    """提供公共入口重新读取所需的稳定订阅仓储。"""
+    """
+    提供公共入口重新读取所需的稳定订阅仓储。
+    """
     snapshots = {subscribe.id: subscribe for subscribe in subscribes}
     return SimpleNamespace(
         get=snapshots.get,
@@ -36,7 +42,9 @@ def _repository(*subscribes: SubscriptionSnapshot) -> SimpleNamespace:
 
 
 def _configure_channel_state(monkeypatch) -> None:
-    """为不同 SubscribeChain 实例安装进程级共享准入与独立通道锁。"""
+    """
+    为不同 SubscribeChain 实例安装进程级共享准入与独立通道锁。
+    """
     monkeypatch.setattr(SubscribeChain, "_match_lock", threading.Lock())
     monkeypatch.setattr(SubscribeChain, "_search_queue_lock", threading.Lock())
     monkeypatch.setattr(
@@ -47,7 +55,9 @@ def _configure_channel_state(monkeypatch) -> None:
 
 
 def test_public_search_and_match_skip_same_subscription_across_instances(monkeypatch) -> None:
-    """两个独立 Chain 实例处理同一订阅时只能有一个进入业务路径。"""
+    """
+    两个独立 Chain 实例处理同一订阅时只能有一个进入业务路径。
+    """
     _configure_channel_state(monkeypatch)
     subscribe = _subscribe(7)
     repository = _repository(subscribe)
@@ -62,7 +72,9 @@ def test_public_search_and_match_skip_same_subscription_across_instances(monkeyp
     release_search = threading.Event()
 
     def process_search(item, _searchchain, *, execution_context):
-        """持有 Search 准入，直到 Match 完成冲突探测。"""
+        """
+        持有 Search 准入，直到 Match 完成冲突探测。
+        """
         assert execution_context.lease.subscription_id == item.id
         search_started.set()
         assert release_search.wait(timeout=3)
@@ -88,7 +100,9 @@ def test_public_search_and_match_skip_same_subscription_across_instances(monkeyp
 
 
 def test_public_search_and_match_allow_different_subscriptions_in_parallel(monkeypatch) -> None:
-    """Search 持有一条订阅时 Match 仍可处理另一条订阅。"""
+    """
+    Search 持有一条订阅时 Match 仍可处理另一条订阅。
+    """
     _configure_channel_state(monkeypatch)
     search_subscribe = _subscribe(8)
     match_subscribe = _subscribe(9)
@@ -103,7 +117,9 @@ def test_public_search_and_match_allow_different_subscriptions_in_parallel(monke
     release_search = threading.Event()
 
     def process_search(item, _searchchain, *, execution_context):
-        """阻塞 Search 以证明 Match 不依赖 Search 通道锁。"""
+        """
+        阻塞 Search 以证明 Match 不依赖 Search 通道锁。
+        """
         assert execution_context.lease.subscription_id == item.id
         search_started.set()
         assert release_search.wait(timeout=3)

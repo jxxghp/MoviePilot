@@ -1,3 +1,7 @@
+"""
+验证旧数据库接口在当前持久化实现中的行为兼容。
+"""
+
 import importlib
 
 import pytest
@@ -8,37 +12,51 @@ from app.schemas.file import FileItem
 
 
 def test_legacy_workflow_writes_delegate_to_configured_execution_port(monkeypatch):
-    """旧 WorkflowOper 无 Session 写入必须完整委托类型化事务端口。"""
+    """
+    旧 WorkflowOper 无 Session 写入必须完整委托类型化事务端口。
+    """
     legacy = importlib.import_module("app.db.workflow_oper")
     calls = []
 
     class ExecutionPort:
-        """记录五种旧工作流写入调用。"""
+        """
+        记录五种旧工作流写入调用。
+        """
 
         def start(self, workflow_id):
-            """记录启动。"""
+            """
+            记录启动。
+            """
             calls.append(("start", workflow_id))
             return True
 
         def success(self, workflow_id, result=None):
-            """记录成功。"""
+            """
+            记录成功。
+            """
             calls.append(("success", workflow_id, result))
             return True
 
         def fail(self, workflow_id, result):
-            """记录失败。"""
+            """
+            记录失败。
+            """
             calls.append(("fail", workflow_id, result))
             return True
 
         def step(self, workflow_id, action_id, context, execution_state=None):
-            """记录步骤。"""
+            """
+            记录步骤。
+            """
             calls.append(
                 ("step", workflow_id, action_id, context, execution_state)
             )
             return True
 
         def reset(self, workflow_id, reset_count=False):
-            """记录重置。"""
+            """
+            记录重置。
+            """
             calls.append(("reset", workflow_id, reset_count))
             return True
 
@@ -64,14 +82,18 @@ def test_legacy_workflow_writes_delegate_to_configured_execution_port(monkeypatc
 
 
 def test_legacy_subscribe_add_delegates_to_application_service(monkeypatch):
-    """旧 SubscribeOper.add 应保留 mediainfo 写入签名。"""
+    """
+    旧 SubscribeOper.add 应保留 mediainfo 写入签名。
+    """
     legacy = importlib.import_module("app.db.subscribe_oper")
     oper = object.__new__(legacy.SubscribeOper)
     mediainfo = object()
     captured = {}
 
     def fake_add_subscribe(*, mediainfo, subscribe_oper, **kwargs):
-        """记录同步兼容门面转交的参数。"""
+        """
+        记录同步兼容门面转交的参数。
+        """
         captured.update({
             "mediainfo": mediainfo,
             "subscribe_oper": subscribe_oper,
@@ -92,14 +114,18 @@ def test_legacy_subscribe_add_delegates_to_application_service(monkeypatch):
 def test_legacy_subscribe_facade_accepts_application_dictionary_callback(
         monkeypatch,
 ):
-    """应用服务回调兼容 Oper 时应进入新字典签名，不能再次转回应用服务。"""
+    """
+    应用服务回调兼容 Oper 时应进入新字典签名，不能再次转回应用服务。
+    """
     legacy = importlib.import_module("app.db.subscribe_oper")
     canonical = importlib.import_module("app.db.oper.subscribe")
     oper = object.__new__(legacy.SubscribeOper)
     captured = {}
 
     def fake_canonical_add(self, identity, payload, username=None):
-        """记录兼容类转交给 canonical Oper 的持久化参数。"""
+        """
+        记录兼容类转交给 canonical Oper 的持久化参数。
+        """
         captured.update({
             "self": self,
             "identity": identity,
@@ -129,14 +155,18 @@ def test_legacy_subscribe_facade_accepts_application_dictionary_callback(
 async def test_legacy_subscribe_async_add_delegates_to_application_service(
         monkeypatch,
 ):
-    """旧 SubscribeOper.async_add 应保留异步 mediainfo 写入签名。"""
+    """
+    旧 SubscribeOper.async_add 应保留异步 mediainfo 写入签名。
+    """
     legacy = importlib.import_module("app.db.subscribe_oper")
     oper = object.__new__(legacy.SubscribeOper)
     mediainfo = object()
     captured = {}
 
     async def fake_async_add_subscribe(*, mediainfo, subscribe_oper, **kwargs):
-        """记录异步兼容门面转交的参数。"""
+        """
+        记录异步兼容门面转交的参数。
+        """
         captured.update({
             "mediainfo": mediainfo,
             "subscribe_oper": subscribe_oper,
@@ -168,7 +198,9 @@ def test_legacy_transfer_history_writes_delegate_to_application_service(
         method_name,
         service_name,
 ):
-    """旧整理历史写入方法应只做代理，不把业务逻辑搬回 Oper。"""
+    """
+    旧整理历史写入方法应只做代理，不把业务逻辑搬回 Oper。
+    """
     legacy = importlib.import_module("app.db.transferhistory_oper")
     oper = object.__new__(legacy.TransferHistoryOper)
     arguments = {
@@ -183,7 +215,9 @@ def test_legacy_transfer_history_writes_delegate_to_application_service(
     captured = {}
 
     def fake_service(**kwargs):
-        """记录整理历史兼容门面转交的参数。"""
+        """
+        记录整理历史兼容门面转交的参数。
+        """
         captured.update(kwargs)
         return "history"
 
@@ -197,7 +231,9 @@ def test_legacy_transfer_history_writes_delegate_to_application_service(
 
 
 def test_legacy_transfer_history_mutations_preserve_durable_receipts(db):
-    """旧插件 delete/truncate/add_force 不能删除或覆盖 durable 终态回执。"""
+    """
+    旧插件 delete/truncate/add_force 不能删除或覆盖 durable 终态回执。
+    """
     legacy = importlib.import_module("app.db.transferhistory_oper")
     durable = TransferHistory(
         src="/downloads/durable.mkv",
@@ -241,23 +277,33 @@ def test_legacy_transfer_history_mutations_preserve_durable_receipts(db):
 
 
 class LegacyPydanticValue:
-    """模拟旧插件放进 TransferTask 的 Pydantic 风格对象。"""
+    """
+    模拟旧插件放进 TransferTask 的 Pydantic 风格对象。
+    """
 
     def model_dump(self):
-        """返回测试用序列化结果。"""
+        """
+        返回测试用序列化结果。
+        """
         return {"kind": "pydantic"}
 
 
 class LegacyDomainValue:
-    """模拟新领域对象的 to_dict 序列化接口。"""
+    """
+    模拟新领域对象的 to_dict 序列化接口。
+    """
 
     def to_dict(self):
-        """返回测试用序列化结果。"""
+        """
+        返回测试用序列化结果。
+        """
         return {"kind": "domain"}
 
 
 def test_legacy_transfer_task_keeps_wide_plugin_input_contract():
-    """旧 schemas.TransferTask 应接受自定义对象且仍可进入新整理链。"""
+    """
+    旧 schemas.TransferTask 应接受自定义对象且仍可进入新整理链。
+    """
     schemas_package = importlib.import_module("app.schemas")
     task = schemas_package.TransferTask(
         fileitem=FileItem(path="/downloads/test.mkv", storage="local"),

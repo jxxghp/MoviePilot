@@ -1,4 +1,6 @@
-"""应用层整理模块的职责边界门禁。"""
+"""
+应用层整理模块的职责边界门禁。
+"""
 
 import ast
 import importlib
@@ -11,7 +13,9 @@ JOBS_PATH = TRANSFER_ROOT / "jobs.py"
 
 
 def test_job_manager_has_one_canonical_owner_and_legacy_exports() -> None:
-    """JobManager 与作业锁只能在 jobs.py 定义，workflow.py 只保留兼容导出。"""
+    """
+    JobManager 与作业锁只能在 jobs.py 定义，workflow.py 只保留兼容导出。
+    """
     workflow_tree = ast.parse(
         WORKFLOW_PATH.read_text(encoding="utf-8-sig"),
         filename=str(WORKFLOW_PATH),
@@ -59,7 +63,9 @@ def test_job_manager_has_one_canonical_owner_and_legacy_exports() -> None:
 
 
 def test_transfer_contracts_have_one_canonical_owner_and_legacy_exports() -> None:
-    """规划模型与准入契约只能在 models.py 定义，workflow.py 只保留队列服务。"""
+    """
+    规划模型与准入契约只能在 models.py 定义，workflow.py 只保留队列服务。
+    """
     workflow_tree = ast.parse(
         WORKFLOW_PATH.read_text(encoding="utf-8-sig"),
         filename=str(WORKFLOW_PATH),

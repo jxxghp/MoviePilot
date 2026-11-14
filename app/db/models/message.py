@@ -1,6 +1,12 @@
+"""
+已发送通知与消息历史的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Any, List, Optional
 
-from sqlalchemy import Integer, String, JSON, Index, and_, delete, or_, select
+from sqlalchemy import JSON, Index, Integer, String, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -24,6 +30,8 @@ class Message(Base):
     text: Mapped[Optional[str]] = mapped_column(String)
     # 图片
     image: Mapped[Optional[str]] = mapped_column(String)
+    # 独立媒体海报，历史记录不从背景图猜测
+    poster: Mapped[Optional[str]] = mapped_column(String)
     # 链接
     link: Mapped[Optional[str]] = mapped_column(String)
     # 用户ID
@@ -39,7 +47,7 @@ class Message(Base):
         Index('ix_message_reg_time_id', 'reg_time', 'id'),
     )
 
-    def create_and_to_dict(self, db: Session) -> dict:
+    def create_and_to_dict(self, db: Session) -> dict[str, object]:
         """
         创建消息记录并返回写入后的字段字典。
         """
@@ -54,7 +62,9 @@ class Message(Base):
         page: int = 1,
         count: int = 30,
     ) -> List["Message"]:
-        """在调用方同步会话中分页获取消息记录。"""
+        """
+        在调用方同步会话中分页获取消息记录。
+        """
         return list(db.execute(
             select(cls)
             .order_by(cls.reg_time.desc(), cls.id.desc())

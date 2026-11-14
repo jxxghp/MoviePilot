@@ -1,4 +1,6 @@
-"""下载器任务查询和控制 owner。"""
+"""
+下载器任务查询和控制 owner。
+"""
 
 from typing import Any, List, Optional, Union
 
@@ -19,7 +21,9 @@ from app.schemas.types import (
 
 
 class DownloadTaskOwner(_DownloadOwnerBase):
-    """下载器任务查询和控制 owner。"""
+    """
+    下载器任务查询和控制 owner。
+    """
 
     def remote_downloading(
         self,
@@ -42,7 +46,6 @@ class DownloadTaskOwner(_DownloadOwnerBase):
                 save_history=False,
             ))
             return
-        # 发送消息
         title = f"共 {len(torrents)} 个任务正在下载："
         messages = []
         index = 1
@@ -62,11 +65,16 @@ class DownloadTaskOwner(_DownloadOwnerBase):
             save_history=False,
         ))
 
-    def downloading(self, name: Optional[str] = None) -> List[DownloaderTorrent]:
+    def downloading(self, name: Optional[str] = None, *, require_source: bool = False) -> List[DownloaderTorrent]:
         """
-        查询正在下载的任务
+        查询下载中任务并补全历史归属，小组件可要求来源报告明确结果。
+
+        :param name: 指定下载器；为空时沿用原选择规则
+        :param require_source: 拒绝来源返回 None，普通页面仍保留原空列表兼容行为
+        :return: 当前下载任务与原历史用户归属信息
+        :raises ValueError: 严格读取未取得有效来源结果
         """
-        return self._download_task_service().downloading(name)
+        return self._download_task_service(require_source=require_source).downloading(name)
 
     def set_downloading(self, hash_str: str, oper: str, name: Optional[str] = None) -> bool:
         """
@@ -84,11 +92,21 @@ class DownloadTaskOwner(_DownloadOwnerBase):
         """
         return self._download_task_service().remove_downloading(hash_str, name)
 
-    def _download_task_service(self) -> DownloadTaskService:
-        """构造绑定当前下载器能力与历史仓储的任务服务。"""
+    def _download_task_service(self, *, require_source: bool = False) -> DownloadTaskService:
+        """
+        构造绑定当前下载器能力与历史仓储的任务服务。
+
+        :param require_source: 开启时不将未知来源状态归一为成功空结果
+        :return: 使用当前链端口的任务查询服务
+        """
         def list_torrents(**kwargs: Any) -> List[DownloaderTorrent]:
-            """把下载器允许的空结果归一为应用服务要求的列表。"""
-            return self.list_torrents(**kwargs) or []
+            """
+            把下载器允许的空结果归一为应用服务要求的列表。
+            """
+            result = self.list_torrents(**kwargs)
+            if require_source and result is None:
+                raise ValueError("下载来源暂不可用")
+            return result or []
 
         return DownloadTaskService(
             list_torrents=list_torrents,
@@ -100,18 +118,31 @@ class DownloadTaskOwner(_DownloadOwnerBase):
 
     def _download_file_deleted(self, event: Event) -> None:
         """
-        下载文件删除时，同步删除下载任务
+        下载文件删除时，按查询到的下载器实例同步删除任务并通知下游。
+
+        旧 provider 未返回实例名时保留默认实例调用，兼容既有插件实现。
         """
         if not event:
             return
-        hash_str = event.event_data.get("hash")
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
+        hash_str = event_data.get("hash")
         if not hash_str:
             return
         logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")
-        # 先查询种子
         torrents: List[_SchemaDownloaderTorrent] = self.list_torrents(hashs=[hash_str]) or []
         if torrents:
-            self.remove_torrents(hashs=[hash_str], delete_file=False)
+            downloaders = list(dict.fromkeys(
+                torrent.downloader for torrent in torrents if torrent.downloader
+            ))
+            if downloaders:
+                for downloader in downloaders:
+                    self.remove_torrents(
+                        hashs=[hash_str],
+                        delete_file=False,
+                        downloader=downloader,
+                    )
+            else:
+                self.remove_torrents(hashs=[hash_str], delete_file=False)
             # 发出下载任务删除事件，如需处理辅种，可监听该事件
             self.eventmanager.send_event(EventType.DownloadDeleted, {
                 "hash": hash_str,

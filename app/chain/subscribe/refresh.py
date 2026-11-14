@@ -1,10 +1,16 @@
-"""订阅元数据、进度与剧集范围刷新"""
+"""
+订阅元数据、进度与剧集范围刷新
+"""
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime
+from threading import Event
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
+from app.application.configuration import get_scheduler_runtime_config
 from app.application.subscription import priority as _priority
+from app.application.subscription.activity import activity_time, subscription_activity_scope
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
@@ -12,10 +18,13 @@ from app.application.subscription.contract import (
     subscribe_media_keys,
 )
 from app.application.subscription.facts import FreshFactLease
+from app.application.subscription.observability import subscription_log_scope
+from app.application.subscription.refresh import RefreshPolicy
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
 from app.chain.subscribe.metadata import SubscribeMetadataOwner
+from app.chain.subscribe.poll import SubscriptionRefreshPoll
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.domain.context import (
@@ -23,8 +32,10 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.runtime.events import eventmanager
+from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.runtime.tasks import get_task_registry
 from app.schemas.event import SubscribeEpisodesRefreshEventData
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.types import (
@@ -35,19 +46,51 @@ from app.schemas.types import (
 
 
 class SubscribeRefreshOwner(SubscribeMetadataOwner):
-    """订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责实现 owner。"""
+    """
+    订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责组件。
+    """
+
+    async def async_refresh(
+        self, progress_callback: Optional[Callable[..., None]] = None, *,
+        mtype: Optional[str] = None, source: str = "automatic", scheduled: bool = False,
+    ) -> None:
+        """
+        托管同步刷新工作，取消或配置重载后仍等真实收尾才交还调度所有权。
+
+        :param progress_callback: 传递到刷新、匹配和排程进度的回调
+        :param mtype: 手工刷新可选的媒体类型
+        :param source: 活动记录来源，手工入口使用 manual
+        :param scheduled: 是否只处理自动模式下已到期站点
+        """
+        stop_event = Event()
+        task = get_task_registry().create_sync(
+            self.refresh, owner="subscription.refresh", progress_callback=progress_callback,
+            mtype=mtype, source=source, scheduled=scheduled, _stop_event=stop_event,
+        )
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            stop_event.set()
+            await await_task_to_terminal(task)
+            raise
 
     def refresh(
         self,
         progress_callback: Optional[Callable[..., None]] = None,
         *,
         mtype: Optional[str] = None,
+        source: str = "automatic",
+        scheduled: bool = False,
+        _stop_event: Optional[Event] = None,
     ) -> None:
         """
         刷新指定媒体类型的订阅
 
         :param progress_callback: 定时服务进度更新回调
         :param mtype: 可选媒体类型，省略时刷新所有类型
+        :param source: 手工入口传 manual，定时和兼容调用默认 automatic
+        :param scheduled: 自动模式的定时扫描按站点时间片运行；手工和旧插件缺省立即刷新
+        :param _stop_event: 异步宿主取消本轮时停止接纳新站点，等待已接受工作真实结束
         """
         # 触发刷新站点资源，从缓存中匹配订阅
         sites = self.get_subscribed_sites(mtype)
@@ -56,12 +99,19 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                 progress_callback(value=100, text="没有订阅需要刷新")
             return
 
+        if scheduled and self.runtime_config.subscribe_mode == "spider":
+            policy = RefreshPolicy(timezone_name=get_scheduler_runtime_config().timezone)
+            SubscriptionRefreshPoll(self, policy, progress_callback, _stop_event).run()
+            return
+
         def _update_refresh_progress(
             value: Optional[float] = None,
             text: Optional[str] = None,
             data: Optional[dict[str, Any]] = None,
         ) -> None:
-            """将站点刷新进度映射到订阅刷新的前半阶段。"""
+            """
+            将站点刷新进度映射到订阅刷新的前半阶段。
+            """
             if progress_callback:
                 progress_callback(
                     value=(value or 0) * 0.6,
@@ -74,7 +124,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             text: Optional[str] = None,
             data: Optional[dict[str, Any]] = None,
         ) -> None:
-            """将订阅匹配进度映射到订阅刷新的后半阶段。"""
+            """
+            将订阅匹配进度映射到订阅刷新的后半阶段。
+            """
             if progress_callback:
                 progress_callback(
                     value=60 + (value or 0) * 0.4,
@@ -82,20 +134,48 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                     data=data,
                 )
 
+        site_facts: list[dict[str, object]] = []
         torrents_chain = TorrentsChain()
-        candidates = torrents_chain.refresh(
-            sites=sites,
-            progress_callback=_update_refresh_progress if progress_callback else None,
-            # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
-            include_music=self.has_music_subscribe(mtype),
-        )
+        started_at = activity_time()
+        try:
+            candidates = torrents_chain.refresh(
+                sites=sites,
+                progress_callback=_update_refresh_progress if progress_callback else None,
+                # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
+                include_music=self.has_music_subscribe(mtype),
+                site_observer=site_facts.append,
+            )
+        except Exception:
+            try:
+                self._record_refresh_failure(site_facts, started_at, mtype, source)
+            except Exception:
+                logger.error("候选刷新失败活动保存失败", exc_info=True)
+            raise
         self.match(
             candidates,
             progress_callback=_update_match_progress if progress_callback else None,
             mtype=mtype,
+            site_facts=tuple(site_facts),
+            source=source,
         )
         if progress_callback:
             progress_callback(value=100, text="订阅刷新完成")
+
+    def _record_refresh_failure(self, site_facts: list[dict[str, object]], started_at: str,
+                                mtype: Optional[str], source: str) -> None:
+        """
+        上游候选刷新失败时记录未进入匹配的事实，不伪造资源判断或下载结果。
+        """
+        for subscribe in self.subscription_repository.list():
+            if subscribe.state not in {"R", "P"} or (mtype and subscribe.type != mtype):
+                continue
+            with subscription_activity_scope(getattr(self, "subscription_activity", None), subscribe, "refresh", source) as activity:
+                activity.started_at = started_at
+                activity.status = "failed"
+                activity.details["phase"] = "refresh_failed"
+                activity.details["reason"] = "本轮站点候选刷新失败，尚未进入订阅匹配；请查看运行日志了解原因"
+                activity.details["sites"] = cast(Any, list(site_facts))
+                activity.counts["sites"] = len(site_facts)
 
     def check(
         self,
@@ -111,7 +191,6 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         :param reconcile_completion: 是否复用本次新鲜媒体事实执行独立完成对账
         :param mtype: 可选媒体类型，省略时检查所有类型
         """
-        # 查询所有订阅
         repository = self.subscription_repository
         subscribes = repository.list()
         if mtype is not None:
@@ -124,36 +203,37 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                 text=f"开始更新订阅元数据，共 {total_num} 个订阅 ...",
                 data={"total": total_num, "finished": 0},
             )
-        # 遍历订阅
         for index, subscribe in enumerate(subscribes, start=1):
             if runtime_stop_state.is_system_stopped:
                 break
-            logger.info(f"开始更新订阅元数据：{subscribe.name} ...")
-            if progress_callback:
-                progress_callback(
-                    value=(index - 1) / total_num * 100 if total_num else 100,
-                    text=f"正在更新订阅元数据（{index}/{total_num}）{subscribe.name} ...",
-                    data={
-                        "total": total_num,
-                        "finished": index - 1,
-                        "current": subscribe.id,
-                    },
+            with subscription_log_scope(subscribe.id, "refresh"):
+                logger.info(f"开始更新订阅元数据：{subscribe.name} ...")
+                if progress_callback:
+                    progress_callback(
+                        value=(index - 1) / total_num * 100 if total_num else 100,
+                        text=f"正在更新订阅元数据（{index}/{total_num}）{subscribe.name} ...",
+                        data={
+                            "total": total_num,
+                            "finished": index - 1,
+                            "current": subscribe.id,
+                        },
+                    )
+                updated_subscribe = self._check_subscription(
+                    subscribe,
+                    fresh_fact_lease,
+                    reconcile_completion=reconcile_completion,
+                    media_chain_factory=MediaChain,
                 )
-            updated_subscribe = self._check_subscription(
-                subscribe,
-                fresh_fact_lease,
-                reconcile_completion=reconcile_completion,
-                media_chain_factory=MediaChain,
-            )
-            if updated_subscribe is None:
-                continue
-            logger.info(f"{updated_subscribe.name} 订阅元数据更新完成")
-            if progress_callback:
-                progress_callback(
-                    value=index / total_num * 100 if total_num else 100,
-                    text=f"订阅元数据（{index}/{total_num}）更新完成",
-                    data={"total": total_num, "finished": index},
-                )
+                if updated_subscribe is None:
+                    continue
+                logger.info(f"{updated_subscribe.name} 订阅元数据更新完成")
+                if progress_callback:
+                    progress_callback(
+                        value=index / total_num * 100 if total_num else 100,
+                        text=f"订阅元数据（{index}/{total_num}）更新完成",
+                        data={"total": total_num, "finished": index},
+                    )
+
         if progress_callback:
             progress_callback(value=100, text="订阅元数据更新完成")
 
@@ -163,7 +243,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         *,
         mtype: Optional[str] = None,
     ) -> None:
-        """刷新指定媒体类型的元数据，并复用同一轮新鲜事实执行完成对账。"""
+        """
+        刷新指定媒体类型的元数据，并复用同一轮新鲜事实执行完成对账。
+        """
         return self.check(
             progress_callback=progress_callback,
             reconcile_completion=True,
@@ -211,7 +293,7 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             if mtype == MediaType.MUSIC:
                 mediainfo = await self._async_recognize_music_subscribe(subscribe)
             else:
-                mediainfo: MediaInfo = await MediaChain().async_recognize_media(
+                mediainfo = await MediaChain().async_recognize_media(
                     mtype=mtype,
                     **subscribe_recognize_kwargs(subscribe),
                     episode_group=subscribe.episode_group,
@@ -352,7 +434,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         mediainfo: MediaInfo,
         mediakey: Optional[Union[str, int]] = None,
     ) -> int:
-        """以旧目标范围内已确认存在的最高集号限制总集数回落。"""
+        """
+        以旧目标范围内已确认存在的最高集号限制总集数回落。
+        """
         old_total = subscribe.total_episode or 0
         if candidate_total >= old_total or not old_total:
             return candidate_total
@@ -361,6 +445,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
         target_key = mediakey or subscribe_media_key(subscribe)
         target_season = subscribe.season
+        if target_key is None or target_season is None:
+            return candidate_total
         target_start = subscribe.start_episode or 1
         snapshot = replace(subscribe, total_episode=old_total)
         try:
@@ -451,6 +537,7 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
         用途：插件在"待定集数"等场景经事件注入 total_episode
         无监听者或外部未覆盖时返回入参原值，保证零行为变更。
+
         :param current_total: 主程序本次识别到的当前季总集数
         :param season: 季号
         :return: 最终采用的总集数
@@ -465,8 +552,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             scene=scene,
         )
         event = eventmanager.send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
-        if event and event.event_data:
-            result: SubscribeEpisodesRefreshEventData = event.event_data
+        if event and isinstance(event.event_data, SubscribeEpisodesRefreshEventData):
+            result = event.event_data
             if result.updated and result.total_episode:
                 result.total_episode = max(current_total or 0, result.total_episode)
                 total_episode: int = result.total_episode
@@ -497,8 +584,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             scene=scene,
         )
         event = await eventmanager.async_send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
-        if event and event.event_data:
-            result: SubscribeEpisodesRefreshEventData = event.event_data
+        if event and isinstance(event.event_data, SubscribeEpisodesRefreshEventData):
+            result = event.event_data
             if result.updated and result.total_episode:
                 result.total_episode = max(current_total or 0, result.total_episode)
                 total_episode: int = result.total_episode
@@ -570,7 +657,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
         touch_last_update: Optional[bool] = False,
     ) -> Dict[str, Any]:
-        """准备订阅进度持久化字段；算法见 application.subscription.priority。"""
+        """
+        准备订阅进度持久化字段；算法见 application.subscription.priority。
+        """
         return cast(
             Dict[str, Any],
             _priority.prepare_subscribe_progress_fields(
@@ -665,8 +754,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         """
         accepted = []
         ignored = []
-        priority_updated = []
-        priority_ignored = []
+        priority_updated: List[int] = []
+        priority_ignored: List[dict[str, Union[int, str]]] = []
         target_episodes = set(self._SubscribeChain__get_best_version_target_episodes(subscribe))
         note = sorted({int(episode) for episode in subscribe.note or [] if str(episode).isdigit()})
         note_set = set(note)

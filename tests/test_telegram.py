@@ -9,18 +9,20 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from app.domain.context import MediaInfo, Context, TorrentInfo
+from app.agent.callback import StreamingHandler
+from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.modules.telegram.botapi import TelegramApiError, TelegramNetworkError
 from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.schemas.message import Message
-from app.schemas.types import NotificationChannel
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, NotificationChannel
 
 
 @pytest.fixture
 def telegram():
-    """构造 Bot API 客户端与 ImageHelper 均已打桩的 Telegram 实例。
+    """
+    构造 Bot API 客户端与 ImageHelper 均已打桩的 Telegram 实例。
 
     空 token 会让 Telegram.__init__ 提前返回、致 send_* 抛错，故用假 bot 让初始化完整、
     消息发送走内存桩；ImageHelper 打桩避免 send_medias/send_msg 按 poster_path 真实下载海报
@@ -42,8 +44,148 @@ def telegram():
         telegram.stop()
 
 
+@pytest.fixture
+def telegram_retry_sleep(monkeypatch) -> Mock:
+    """
+    记录发送重试的退避秒数，避免网络故障用例真实等待。
+
+    :param monkeypatch: 用例结束后恢复真实等待函数的隔离夹具
+    :return: 可断言等待次数与顺序的替身
+    """
+    sleep = Mock()
+    monkeypatch.setattr("app.runtime.execution.time.sleep", sleep)
+    return sleep
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("partial_answer, trailing_tool", [(False, False), (True, False), (True, True)])
+async def test_agent_final_edit_waits_during_telegram_edit_interval(
+    telegram, monkeypatch, partial_answer, trailing_tool,
+):
+    """
+    真实 Telegram 两秒编辑间隔内收尾时，应等待并把完整答案编辑回原消息。
+    """
+    now = [100.0]
+    waits = []
+    monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+    def advance(seconds):
+        """
+        记录并推进 Telegram 编辑等待，保持用例离线且无需真实延时。
+
+        :param seconds: 等待秒数
+        """
+        waits.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+    telegram.bot.send_rich_message.return_value = {
+        "message_id": 101, "chat": {"id": "fake_chat_id"},
+    }
+    handler = StreamingHandler()
+    handler._channel = NotificationChannel.Telegram.value
+    handler._source = "bot"
+    handler._streaming_enabled = True
+    handler._original_message_id = "question"
+    module = TelegramModule()
+    module._channel = NotificationChannel.Telegram
+    monkeypatch.setattr(module, "get_configs", lambda: {"bot": SimpleNamespace(name="bot")})
+    monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
+    monkeypatch.setattr(module, "check_message", lambda *_args: True)
+    monkeypatch.setattr(module, "get_notification_targets", lambda _message: None)
+
+    async def dispatch(func, *args, **kwargs):
+        """
+        保留真实 Telegram 发送及限频逻辑，只隔离宿主模块路由和远端 Bot API。
+        """
+        if func.__name__ == "send_direct_message":
+            return module.send_direct_message(args[0])
+        if func.__name__ == "edit_message":
+            return module.edit_message(**kwargs)
+        return True
+
+    monkeypatch.setattr("app.agent.callback.run_in_threadpool", dispatch)
+    handler.record_tool_call("execute_command", tool_kwargs={"command": "capture"})
+    handler.thinking_started()
+    await handler._flush_messages()
+    handler.emit("| 剧名 | 简介 |\n| --- | --- |\n" + "| 示例 | 推荐理由 |\n" * 8)
+    if partial_answer:
+        now[0] += 2.0
+        await handler._flush_messages()
+    handler.emit("\n其中这些剧集评价最稳。\n\n要继续搜索吗？")
+    if trailing_tool:
+        handler.record_tool_call("read_file", tool_kwargs={"file_path": "result.txt"})
+    handler.flush_pending_tool_summary()
+    expected_text = handler._buffer
+
+    all_sent, final_text = await handler.stop_streaming()
+
+    assert all_sent
+    assert waits == [2.0]
+    assert await handler.take() == ""
+    telegram.bot.send_rich_message.assert_called_once()
+    assert telegram.bot.edit_message_text.call_count == (2 if partial_answer else 1)
+    assert telegram.bot.edit_message_text.call_args.kwargs["message_id"] == 101
+    rich_html = telegram.bot.edit_message_text.call_args.kwargs["rich_message"]["html"]
+    assert "<table>" in rich_html
+    assert rich_html.count("<td>推荐理由</td>") == 8
+    assert "要继续搜索吗？" in rich_html
+    assert final_text == expected_text
+    assert "要继续搜索吗？" in final_text
+    assert "思考中" not in final_text
+
+
+@pytest.mark.parametrize("url", [None, "", "   ", 123, False])
+@pytest.mark.parametrize("callback_data", [None, "", 123, "history"])
+def test_inline_keyboard_filters_invalid_actions(url, callback_data):
+    """
+    无效链接仅在具有有效回调时降级，保留其他按钮及其行顺序。
+    """
+    button = {"text": "整理记录", "url": url, "callback_data": callback_data}
+    valid_link = {"text": "打开", "url": "https://example.test/history", "callback_data": "ignored"}
+    valid_callback = {"text": "返回", "callback_data": "back"}
+
+    markup = Telegram._create_inline_keyboard([
+        [button], [], [valid_link, {"text": "无动作"}, valid_callback],
+    ])
+
+    expected = [[{"text": "打开", "url": "https://example.test/history"}, valid_callback]]
+    if callback_data == "history":
+        expected.insert(0, [{"text": "整理记录", "callback_data": "history"}])
+    assert markup == {"inline_keyboard": expected}
+    assert button == {"text": "整理记录", "url": url, "callback_data": callback_data}
+
+
+@pytest.mark.parametrize("poster_fails", [False, True])
+def test_send_msg_ignores_null_url_button_with_photo_and_text_fallback(telegram, poster_fails):
+    """
+    空链接且无回调的按钮不阻断图片通知或图片失败后的文本兜底。
+    """
+    telegram.bot.send_photo.return_value = {"message_id": 101, "chat": {"id": "fake_chat_id"}}
+    telegram.bot.send_message.return_value = {"message_id": 102, "chat": {"id": "fake_chat_id"}}
+    if poster_fails:
+        telegram.bot.send_photo.side_effect = TelegramApiError("sendPhoto", "Bad Request: wrong file", error_code=400)
+
+    result = telegram.send_msg(
+        title="整理完成", text="已入库两个文件", image="https://example.test/poster.jpg",
+        buttons=[[{"text": "查看整理记录", "url": None}]],
+    )
+
+    assert result and result["success"]
+    assert result["message_id"] == (102 if poster_fails else 101)
+    telegram.bot.send_photo.assert_called_once()
+    assert telegram.bot.send_photo.call_args.kwargs["reply_markup"] == {"inline_keyboard": []}
+    if poster_fails:
+        telegram.bot.send_message.assert_called_once()
+        assert telegram.bot.send_message.call_args.kwargs["reply_markup"] == {"inline_keyboard": []}
+    else:
+        telegram.bot.send_message.assert_not_called()
+
+
 def test_send_msg_success(telegram):
-    """测试发送普通消息成功"""
+    """
+    测试发送普通消息成功
+    """
     # 调用send_msg方法
     result = telegram.send_msg(
         title="📥 开始下载\n唐朝诡事录 (2022)S03E31-E32",
@@ -55,7 +197,9 @@ def test_send_msg_success(telegram):
 
 
 def test_topic_id_is_scoped_to_channel_and_default_chat(tmp_path):
-    """同一 bot 和群组的不同渠道应各发各的话题，私聊与空配置不带话题参数。"""
+    """
+    同一 bot 和群组的不同渠道应各发各的话题，私聊与空配置不带话题参数。
+    """
     bots = [MagicMock(), MagicMock(), MagicMock()]
     for bot in bots:
         bot.get_me.return_value = {"username": "test_bot"}
@@ -98,7 +242,9 @@ def test_topic_id_is_scoped_to_channel_and_default_chat(tmp_path):
 
 
 def test_edit_msg_with_rich_message(telegram):
-    """Telegram 流式编辑应继续使用 Rich Message 协议。"""
+    """
+    Telegram 流式编辑应继续使用 Rich Message 协议。
+    """
     telegram._bot.edit_message_text.return_value = {"message_id": 101}
 
     result = telegram.edit_msg(
@@ -117,7 +263,9 @@ def test_edit_msg_with_rich_message(telegram):
 
 
 def test_telegram_parser_preserves_reply_to_message_id():
-    """Telegram ForceReply 回复应保留来源消息和被回复消息的 message_id。"""
+    """
+    Telegram ForceReply 回复应保留来源消息和被回复消息的 message_id。
+    """
     module = TelegramModule()
     client_config = SimpleNamespace(name="telegram-test", config={})
     client = SimpleNamespace(bot_username="mp_bot")
@@ -149,7 +297,9 @@ def test_telegram_parser_preserves_reply_to_message_id():
 
 
 def test_send_msg_with_longtext(telegram):
-    """测试发送长消息"""
+    """
+    测试发送长消息
+    """
     result = telegram.send_msg(
         title="MoviePilot助手",
         text="好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？好的，为您推荐一些近期热门的电视剧：\n\n*   *怪奇物语 (Stranger Things)* - 2016年，TMDB评分8.6\n*   *小丑回魂：欢迎来到德里镇* - 2025年，TMDB评分8.0\n*   *维京传奇* - 2013年，TMDB评分8.1\n*   *地狱客栈* - 2024年，TMDB评分8.7\n*   *超人回来了* - 2013年，TMDB评分7.7\n\n还有一些经典剧集也一直很受欢迎：\n\n*   *法律与秩序：特殊受害者* - 1999年，TMDB评分7.9\n*   *实习医生格蕾* - 2005年，TMDB评分8.2\n*   *邪恶力量* - 2005年，TMDB评分8.3\n*   *菜鸟老警* - 2018年，TMDB评分8.5\n*   *猎魔人* - 2019年，TMDB评分8.0\n*   *海军罪案调查处* - 2003年，TMDB评分7.6\n*   *塔尔萨之王* - 2022年，TMDB评分8.3\n*   *武士生死斗* - 2025年，TMDB评分8.1\n*   *嗜血法医* - 2006年，TMDB评分8.2\n*   *辛普森一家* - 1989年，TMDB评分8.0\n*   *无耻之徒* - 2011年，TMDB评分8.2\n*   *绝命毒师* - 2008年，TMDB评分8.9\n*   *法律与秩序* - 1990年，TMDB评分7.4\n*   *权力的游戏* - 2011年，TMDB评分8.5\n\n您对哪部剧比较感兴趣，或者想了解更多信息呢？",
@@ -158,7 +308,9 @@ def test_send_msg_with_longtext(telegram):
 
 
 def test_send_medias_msg_success(telegram):
-    """测试发送媒体列表消息成功"""
+    """
+    测试发送媒体列表消息成功
+    """
     # 创建模拟的媒体信息列表
     media1 = MediaInfo()
     media1.type = MediaType.MOVIE
@@ -186,7 +338,9 @@ def test_send_medias_msg_success(telegram):
 
 
 def test_send_medias_msg_without_vote_average(telegram):
-    """测试发送无评分的媒体列表消息"""
+    """
+    测试发送无评分的媒体列表消息
+    """
     # 创建模拟的媒体信息列表（无评分）
     media1 = MediaInfo()
     media1.type = MediaType.MOVIE
@@ -205,7 +359,9 @@ def test_send_medias_msg_without_vote_average(telegram):
 
 
 def test_send_medias_msg_with_link_and_buttons(telegram):
-    """测试发送带链接和按钮的媒体列表消息"""
+    """
+    测试发送带链接和按钮的媒体列表消息
+    """
     media1 = MediaInfo()
     media1.type = MediaType.MOVIE
     media1.title = r"测试*-|\.电影1"
@@ -231,7 +387,9 @@ def test_send_medias_msg_with_link_and_buttons(telegram):
 
 
 def test_send_torrents_msg_success(telegram):
-    """测试发送种子列表消息成功"""
+    """
+    测试发送种子列表消息成功
+    """
     # 创建模拟的种子信息
     media_info = MediaInfo()
     media_info.type = MediaType.TV
@@ -244,7 +402,8 @@ def test_send_torrents_msg_success(telegram):
     torrent_info.title = "唐朝诡事录"
     torrent_info.description = "唐朝诡事录之长安3 / 唐朝诡事录3 / 唐朝诡事录 第三部 / 唐朝诡事录·长安 / 唐诡3 / Horror Stories of Tang Dynasty Ⅲ / Strange Legend of Tang Dynasty Ⅲ 第3季 第31-32集 | 主演: 杨旭文 杨志刚 郜思雯 [内封简繁英多国软字幕] 【去头尾广告纯享版】[非伪去头] *发现未去净的广告或片头片尾，奖励魔力1W"
     torrent_info.page_url = "http://example.com/torrent"
-    torrent_info.size = 1024 * 1024 * 1024  # 1GB
+    # 文件大小为 1 GiB。
+    torrent_info.size = 1024 * 1024 * 1024
     torrent_info.seeders = 10
     torrent_info.uploadvolumefactor = 1.0
     torrent_info.downloadvolumefactor = 0.0
@@ -267,7 +426,9 @@ def test_send_torrents_msg_success(telegram):
 
 
 def test_send_torrents_msg_with_link_and_buttons(telegram):
-    """测试发送带链接和按钮的种子列表消息"""
+    """
+    测试发送带链接和按钮的种子列表消息
+    """
     media_info = MediaInfo()
     media_info.type = MediaType.MOVIE
     media_info.title = "^测试电影~_测试_"
@@ -279,7 +440,8 @@ def test_send_torrents_msg_with_link_and_buttons(telegram):
     torrent_info.title = "测试种子标题"
     torrent_info.description = "测试种子描述"
     torrent_info.page_url = "http://example.com/torrent"
-    torrent_info.size = 1024 * 1024 * 1024  # 1GB
+    # 文件大小为 1 GiB。
+    torrent_info.size = 1024 * 1024 * 1024
     torrent_info.seeders = 10
     torrent_info.uploadvolumefactor = 1.0
     torrent_info.downloadvolumefactor = 0.0
@@ -308,7 +470,9 @@ def test_send_torrents_msg_with_link_and_buttons(telegram):
 
 
 def test_send_msg_with_buttons_and_link(telegram):
-    """测试发送带按钮和链接的消息"""
+    """
+    测试发送带按钮和链接的消息
+    """
     buttons = [[
         {"text": "测试按钮", "callback_data": "test_callback"}
     ]]
@@ -325,7 +489,9 @@ def test_send_msg_with_buttons_and_link(telegram):
 
 
 def test_send_msg_with_url_buttons(telegram):
-    """测试发送带URL按钮的消息"""
+    """
+    测试发送带URL按钮的消息
+    """
     buttons = [[
         {"text": "URL按钮", "url": "http://example.com"}
     ]]
@@ -341,7 +507,9 @@ def test_send_msg_with_url_buttons(telegram):
 
 
 def test_send_msg_markdown_escaping(telegram):
-    """测试Markdown特殊字符转义"""
+    """
+    测试Markdown特殊字符转义
+    """
     result = telegram.send_msg(
         title="测试标题",
         text="_测试_||内容||"
@@ -354,8 +522,176 @@ def test_send_msg_markdown_escaping(telegram):
     assert send_kwargs["text"].startswith("*测试标题*\n")
 
 
+@pytest.mark.parametrize("error, attempts", [
+    (TelegramApiError("sendPhoto", "invalid photo", 400), 1),
+    (TelegramNetworkError("sendPhoto", "timeout"), 3),
+])
+def test_photo_failure_falls_back_without_losing_notification_context(
+    telegram, telegram_retry_sleep, error, attempts,
+):
+    """
+    图片被拒绝或网络重试耗尽时发正文，保留格式、链接、话题与按钮。
+    """
+    telegram.bot.send_photo.side_effect = error
+    telegram.bot.send_message.return_value = {"message_id": 18, "chat": {"id": "fake_chat_id"}}
+    telegram._telegram_topic_id = 101
+    result = telegram.send_msg(
+        title="下载已添加", text="<b>正文</b>", image="https://example.com/poster.jpg",
+        link="https://example.com/detail", parse_mode="HTML", disable_web_page_preview=True,
+        buttons=[[{"text": "查看", "url": "https://example.com"}]],
+    )
+    assert result == {"success": True, "message_id": 18, "chat_id": "fake_chat_id"}
+    assert telegram.bot.send_photo.call_count == attempts
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6][:attempts - 1]
+    telegram.bot.send_message.assert_called_once()
+    photo = telegram.bot.send_photo.call_args.kwargs
+    text = telegram.bot.send_message.call_args.kwargs
+    assert text["text"] == photo["caption"]
+    assert "正文" in text["text"] and "https://example.com/detail" in text["text"]
+    for key in ("chat_id", "message_thread_id", "reply_markup", "parse_mode"):
+        assert text[key] == photo[key]
+    assert text["message_thread_id"] == 101 and text["disable_web_page_preview"] is True
+
+
+@pytest.mark.parametrize("failures", [1, 2])
+@pytest.mark.parametrize("parse_mode", ["", "HTML", "MarkdownV2"])
+@pytest.mark.parametrize("long_message", [False, True])
+def test_photo_network_retry_recovers_before_sending_text(
+    telegram, telegram_retry_sleep, failures, parse_mode, long_message,
+):
+    """
+    短通知和三种格式的长通知只重试失败图片，成功后继续发送尚未发送的正文。
+    """
+    message = {"message_id": 18, "chat": {"id": "fake_chat_id"}}
+    telegram.bot.send_photo.side_effect = [
+        TelegramNetworkError("sendPhoto", "Connection reset by peer")
+    ] * failures + [message]
+    telegram.bot.send_message.return_value = message
+    telegram._telegram_topic_id = 101
+    timeline = Mock()
+    timeline.attach_mock(telegram.bot.send_photo, "photo")
+    timeline.attach_mock(telegram_retry_sleep, "wait")
+    timeline.attach_mock(telegram.bot.send_message, "text")
+    body = "完整通知内容" * (800 if long_message else 1)
+
+    result = telegram.send_msg(
+        title="", text=body, parse_mode=parse_mode, image="https://example.com/poster.jpg",
+        buttons=[[{"text": "查看", "url": "https://example.com"}]],
+    )
+
+    assert result == {"success": True, "message_id": 18, "chat_id": "fake_chat_id"}
+    assert telegram.bot.send_photo.call_count == failures + 1
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6][:failures]
+    assert [call[0] for call in timeline.mock_calls] == (
+        ["photo", "wait"] * failures + ["photo"] + ["text"] * telegram.bot.send_message.call_count
+    )
+    photo_calls = telegram.bot.send_photo.call_args_list
+    assert all(call == photo_calls[0] for call in photo_calls)
+    photo = photo_calls[0].kwargs
+    assert photo["chat_id"] == "fake_chat_id" and photo["message_thread_id"] == 101
+    assert photo["reply_markup"]["inline_keyboard"][0][0]["text"] == "查看"
+    chunks = [call.kwargs for call in telegram.bot.send_message.call_args_list]
+    assert "".join([photo["caption"]] + [chunk["text"] for chunk in chunks]).replace("\n", "") == body
+    assert bool(chunks) is long_message
+    assert all(chunk["reply_markup"] is None for chunk in chunks)
+
+
+def test_photo_retry_stops_when_telegram_rejects_image(telegram, telegram_retry_sleep):
+    """
+    网络重试中遇到明确图片拒绝时立即改发正文，不继续上传同一坏图片。
+    """
+    telegram.bot.send_photo.side_effect = [
+        TelegramNetworkError("sendPhoto", "timeout"),
+        TelegramApiError("sendPhoto", "invalid photo", 400),
+    ]
+    result = telegram.send_msg(title="通知", image="https://example.com/poster.jpg")
+    assert result["success"] is True
+    assert telegram.bot.send_photo.call_count == 2
+    telegram_retry_sleep.assert_called_once_with(3)
+    telegram.bot.send_message.assert_called_once()
+
+
+@pytest.mark.parametrize("failures", [0, 1, 2])
+def test_photo_rate_limit_does_not_send_fallback_or_retry(telegram, telegram_retry_sleep, failures):
+    """
+    429 必须尊重冷却期，不再用文本请求加重限流。
+    """
+    rate_limit = TelegramApiError(
+        "sendPhoto", "Too Many Requests", 429, {"retry_after": 17},
+    )
+    telegram.bot.send_photo.side_effect = [TelegramNetworkError("sendPhoto", "timeout")] * failures + [rate_limit]
+    result = telegram.send_msg(title="通知", image="https://example.com/poster.jpg")
+    assert result["success"] is False
+    assert telegram.send_msg(title="冷却期间通知")["success"] is False
+    assert telegram.bot.send_photo.call_count == failures + 1
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6][:failures]
+    telegram.bot.send_message.assert_not_called()
+
+
+@pytest.mark.parametrize("parse_mode", ["", "HTML", "MarkdownV2"])
+def test_long_photo_notification_preserves_all_text_after_fallback(telegram, telegram_retry_sleep, parse_mode):
+    """
+    长正文首段图片失败时改发文本，其余分段与首段按钮保持完整。
+    """
+    telegram.bot.send_photo.side_effect = TelegramNetworkError("sendPhoto", "timeout")
+    body = "完整通知内容" * 800
+    result = telegram.send_msg(
+        title="", text=body, parse_mode=parse_mode, image="https://example.com/poster.jpg",
+        buttons=[[{"text": "查看", "url": "https://example.com"}]],
+    )
+    assert result["success"] is True
+    assert telegram.bot.send_photo.call_count == 3
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6]
+    chunks = [call.kwargs for call in telegram.bot.send_message.call_args_list]
+    assert len(chunks) > 1
+    assert "".join(chunk["text"] for chunk in chunks).replace("\n", "") == body
+    assert chunks[0]["reply_markup"] is not None
+    assert all(chunk["reply_markup"] is None for chunk in chunks[1:])
+
+
+def test_notification_failure_is_not_acknowledged_by_outbox(telegram, monkeypatch):
+    """
+    图片和正文最终都失败时，模块抛错使持久消息进入重试而非完成。
+    """
+    from datetime import datetime, timezone
+
+    from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher
+
+    telegram.bot.send_photo.side_effect = TelegramNetworkError("sendPhoto", "timeout")
+    telegram.bot.send_message.side_effect = TelegramApiError("sendMessage", "forbidden", 403)
+    # 只移除测试中的真实退避等待，保留完整重试与模块派发路径。
+    monkeypatch.setattr("app.runtime.execution.time.sleep", lambda _seconds: None)
+    module = TelegramModule()
+    monkeypatch.setattr(module, "get_configs", lambda: {"tg": SimpleNamespace(name="tg")})
+    monkeypatch.setattr(module, "check_message", lambda *_args: True)
+    monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
+    store = MagicMock()
+    store.claim.return_value = ClaimedOutboxMessage(1, "download:1", "notification", {}, 1, 1)
+    message = Message(title="下载完成", image="https://example.com/poster.jpg")
+    dispatcher = OutboxDispatcher(
+        store, {"notification": lambda _claimed: module.post_message(message)},
+        clock=lambda: datetime(2026, 10, 17, tzinfo=timezone.utc),
+    )
+    assert dispatcher.dispatch_one()
+    store.complete.assert_not_called()
+    store.retry.assert_called_once()
+    assert store.retry.call_args.kwargs["dead"] is False
+    assert "Telegram 通知发送未确认" in store.retry.call_args.kwargs["last_error"]
+
+
+def test_photo_success_does_not_send_duplicate_text(telegram):
+    """
+    正常图片通知仍只发一次，文本兜底仅在失败时启用。
+    """
+    assert telegram.send_msg(title="通知", image="https://example.com/poster.jpg")["success"]
+    telegram.bot.send_photo.assert_called_once()
+    telegram.bot.send_message.assert_not_called()
+
+
 def test_telegramify_current_fields_are_used_directly():
-    """telegramify 对象直接使用当前 MarkdownV2 字段"""
+    """
+    telegramify 对象直接使用当前 MarkdownV2 字段
+    """
     from telegramify_markdown.content import ContentTrace, File, Text
 
     text_item = Text(
@@ -380,7 +716,9 @@ def test_telegramify_current_fields_are_used_directly():
 
 
 def test_send_msg_with_html_parse_mode_keeps_html(telegram):
-    """HTML模式发送时应保留调用方传入的HTML内容"""
+    """
+    HTML模式发送时应保留调用方传入的HTML内容
+    """
     result = telegram.send_msg(
         title="测试 <标题>",
         text="<blockquote>第一行</blockquote><b>加粗</b>",
@@ -399,7 +737,9 @@ def test_send_msg_with_html_parse_mode_keeps_html(telegram):
 
 
 def test_send_msg_uses_rich_message_api(telegram):
-    """Rich Markdown 应转换后通过 Telegram sendRichMessage 发送。"""
+    """
+    Rich Markdown 应转换后通过 Telegram sendRichMessage 发送。
+    """
     telegram.bot.send_rich_message.return_value = {
         "message_id": 101,
         "chat": {"id": 10001},
@@ -427,7 +767,9 @@ def test_send_msg_uses_rich_message_api(telegram):
 
 
 def test_send_msg_edits_rich_message(telegram):
-    """带原消息定位信息的 Rich Message 应使用富文本编辑接口。"""
+    """
+    带原消息定位信息的 Rich Message 应使用富文本编辑接口。
+    """
     result = telegram.send_msg(
         title="",
         rich_message="# 更新结果\n\n- 已完成",
@@ -443,7 +785,9 @@ def test_send_msg_edits_rich_message(telegram):
 
 
 def test_telegram_module_passes_parse_mode_to_client():
-    """模块发送通知时应透传消息指定的parse_mode"""
+    """
+    模块发送通知时应透传消息指定的parse_mode
+    """
     module = TelegramModule()
     client = Mock()
 
@@ -471,7 +815,9 @@ def test_telegram_module_passes_parse_mode_to_client():
 
 
 def test_telegram_module_passes_rich_message_to_client():
-    """Telegram 模块应把消息模型中的 Rich Markdown 透传给客户端。"""
+    """
+    Telegram 模块应把消息模型中的 Rich Markdown 透传给客户端。
+    """
     module = TelegramModule()
     client = Mock()
 
@@ -497,7 +843,9 @@ def test_telegram_module_passes_rich_message_to_client():
 
 
 def test_telegram_module_passes_streaming_rich_message_to_edit_client():
-    """Telegram 模块应把流式 Rich Markdown 元数据透传给编辑客户端。"""
+    """
+    Telegram 模块应把流式 Rich Markdown 元数据透传给编辑客户端。
+    """
     module = TelegramModule()
     module._channel = NotificationChannel.Telegram
     client = Mock()
@@ -524,7 +872,9 @@ def test_telegram_module_passes_streaming_rich_message_to_edit_client():
 
 
 def test_telegram_module_plain_post_message_keeps_chat_without_editing_source_message():
-    """普通通知应保留原会话目标，同时避免把来源消息 ID 当成编辑目标。"""
+    """
+    普通通知应保留原会话目标，同时避免把来源消息 ID 当成编辑目标。
+    """
     module = TelegramModule()
     client = Mock()
 
@@ -555,7 +905,9 @@ def test_telegram_module_plain_post_message_keeps_chat_without_editing_source_me
 
 
 def test_telegram_module_passes_force_reply_to_client():
-    """模块发送通知时应透传交互消息参数"""
+    """
+    模块发送通知时应透传交互消息参数
+    """
     module = TelegramModule()
     client = Mock()
     buttons = [[{"text": "取消", "callback_data": "cancel"}]]
@@ -591,7 +943,9 @@ def test_telegram_module_passes_force_reply_to_client():
 
 
 def test_telegram_module_force_reply_sends_new_prompt_message():
-    """无按钮 ForceReply 应保留原消息 ID，让 client 发新提示并 reply_to 原消息。"""
+    """
+    无按钮 ForceReply 应保留原消息 ID，让 client 发新提示并 reply_to 原消息。
+    """
     module = TelegramModule()
     client = Mock()
 
@@ -625,7 +979,9 @@ def test_telegram_module_force_reply_sends_new_prompt_message():
 
 
 def test_telegram_module_direct_force_reply_sends_new_prompt_message():
-    """direct message 的无按钮 ForceReply 同样保留原消息 ID，交给 client 发送新提示。"""
+    """
+    direct message 的无按钮 ForceReply 同样保留原消息 ID，交给 client 发送新提示。
+    """
     module = TelegramModule()
     client = Mock()
     client.send_msg.return_value = {
@@ -665,7 +1021,9 @@ def test_telegram_module_direct_force_reply_sends_new_prompt_message():
 
 
 def test_telegram_module_direct_buttons_keep_new_message_behavior():
-    """direct message 不透传原消息上下文，避免从发新消息变成编辑旧消息。"""
+    """
+    direct message 不透传原消息上下文，避免从发新消息变成编辑旧消息。
+    """
     module = TelegramModule()
     client = Mock()
     buttons = [[{"text": "确认", "callback_data": "confirm"}]]
@@ -705,7 +1063,9 @@ def test_telegram_module_direct_buttons_keep_new_message_behavior():
 
 
 def test_telegram_module_plain_direct_message_keeps_userid_target():
-    """普通 direct message 不使用 original_chat_id，避免把私聊消息发回原群聊。"""
+    """
+    普通 direct message 不使用 original_chat_id，避免把私聊消息发回原群聊。
+    """
     module = TelegramModule()
     client = Mock()
     client.send_msg.return_value = {
@@ -743,7 +1103,9 @@ def test_telegram_module_plain_direct_message_keeps_userid_target():
 
 
 def test_telegram_private_delivery_bypasses_group_chat_mapping(telegram):
-    """私聊投递必须直接使用用户 ID，不能沿用该用户最近发言的群聊。"""
+    """
+    私聊投递必须直接使用用户 ID，不能沿用该用户最近发言的群聊。
+    """
     telegram._user_chat_mapping["10001"] = "group-1"
 
     result = telegram.send_msg(
@@ -758,7 +1120,9 @@ def test_telegram_private_delivery_bypasses_group_chat_mapping(telegram):
 
 
 def test_telegram_plain_private_delivery_keeps_literal_text(telegram):
-    """纯文本私聊不得解释或改写密钥中可能出现的 Markdown/HTML 字符。"""
+    """
+    纯文本私聊不得解释或改写密钥中可能出现的 Markdown/HTML 字符。
+    """
     literal_text = "G2A1_PROTECTED_MARKER_20260812\n**literal markdown**\n<img src=x>"
 
     result = telegram.send_msg(
@@ -776,7 +1140,9 @@ def test_telegram_plain_private_delivery_keeps_literal_text(telegram):
 
 
 def test_send_msg_with_force_reply_uses_force_reply_when_no_buttons(telegram):
-    """无按钮时force_reply应生成Telegram ForceReply标记"""
+    """
+    无按钮时force_reply应生成Telegram ForceReply标记
+    """
     result = telegram.send_msg(
         title="请输入目录",
         text="回复目录路径",
@@ -791,7 +1157,9 @@ def test_send_msg_with_force_reply_uses_force_reply_when_no_buttons(telegram):
 
 
 def test_send_msg_with_force_reply_keeps_inline_keyboard_when_buttons_exist(telegram):
-    """按钮存在时force_reply不能覆盖InlineKeyboardMarkup"""
+    """
+    按钮存在时force_reply不能覆盖InlineKeyboardMarkup
+    """
     result = telegram.send_msg(
         title="请选择目录",
         text="点击按钮选择",
@@ -808,7 +1176,9 @@ def test_send_msg_with_force_reply_keeps_inline_keyboard_when_buttons_exist(tele
 
 
 def test_send_msg_with_force_reply_and_original_message_sends_new_prompt(telegram):
-    """编辑消息场景不能带ForceReply，应改为发送新的回复提示。"""
+    """
+    编辑消息场景不能带ForceReply，应改为发送新的回复提示。
+    """
     result = telegram.send_msg(
         title="请输入关键词",
         text="回复节目关键词",
@@ -826,7 +1196,9 @@ def test_send_msg_with_force_reply_and_original_message_sends_new_prompt(telegra
 
 
 def test_send_msg_new_direct_context_message_prefers_original_chat(telegram):
-    """不编辑旧消息时，original_chat_id 仍用于把新消息发回原交互会话。"""
+    """
+    不编辑旧消息时，original_chat_id 仍用于把新消息发回原交互会话。
+    """
     result = telegram.send_msg(
         title="请输入关键词",
         text="回复节目关键词",
@@ -842,7 +1214,9 @@ def test_send_msg_new_direct_context_message_prefers_original_chat(telegram):
 
 
 def test_edit_msg_falls_back_to_caption_when_original_message_has_no_text(telegram):
-    """编辑图片消息时应在文本编辑失败后回退为 caption 编辑。"""
+    """
+    编辑图片消息时应在文本编辑失败后回退为 caption 编辑。
+    """
     telegram.bot.edit_message_text.side_effect = Exception(
         "Bad Request: there is no text in the message to edit"
     )
@@ -871,7 +1245,9 @@ def test_edit_msg_falls_back_to_caption_when_original_message_has_no_text(telegr
 
 
 def test_edit_msg_with_html_parse_mode_keeps_html(telegram):
-    """HTML模式编辑消息时应保留HTML内容"""
+    """
+    HTML模式编辑消息时应保留HTML内容
+    """
     result = telegram.edit_msg(
         chat_id="1051253579",
         message_id="110502",
@@ -887,7 +1263,9 @@ def test_edit_msg_with_html_parse_mode_keeps_html(telegram):
 
 
 def test_edit_msg_treats_message_not_modified_as_success(telegram):
-    """重复编辑相同内容时应视为成功，避免记录错误日志。"""
+    """
+    重复编辑相同内容时应视为成功，避免记录错误日志。
+    """
     telegram.bot.edit_message_text.side_effect = Exception(
         "Bad Request: message is not modified"
     )
@@ -905,7 +1283,9 @@ def test_edit_msg_treats_message_not_modified_as_success(telegram):
 
 
 def test_send_msg_edit_with_image_falls_back_to_text_when_image_url_unavailable(telegram):
-    """编辑图片消息失败时应去掉图片并降级为文本编辑。"""
+    """
+    编辑图片消息失败时应去掉图片并降级为文本编辑。
+    """
     telegram.bot.edit_message_media.side_effect = Exception(
         "Bad Request: failed to get HTTP URL content"
     )
@@ -935,7 +1315,9 @@ def test_send_msg_edit_with_image_falls_back_to_text_when_image_url_unavailable(
 
 
 def _group_message(text, **extra):
-    """构造群聊文本消息的 Bot API 结构。"""
+    """
+    构造群聊文本消息的 Bot API 结构。
+    """
     message = {
         "message_id": 5,
         "from": {"id": 42, "is_bot": False, "first_name": "u"},
@@ -947,7 +1329,9 @@ def _group_message(text, **extra):
 
 
 def test_handle_update_forwards_raw_message_dict(telegram):
-    """普通消息以 Bot API 原始 dict 转发主程序，并记录用户最近会话。"""
+    """
+    普通消息以 Bot API 原始 dict 转发主程序，并记录用户最近会话。
+    """
     message = {
         "message_id": 1,
         "from": {"id": 42, "is_bot": False, "first_name": "u"},
@@ -964,7 +1348,9 @@ def test_handle_update_forwards_raw_message_dict(telegram):
 
 @pytest.mark.parametrize("text", ["/start", "/help@test_bot", "/start@other_bot payload"])
 def test_handle_update_replies_welcome_without_forwarding(telegram, text):
-    """/start、/help 只回复使用提示，与原 SDK 一样忽略 @bot 后缀和参数。"""
+    """
+    /start、/help 只回复使用提示，与原 SDK 一样忽略 @bot 后缀和参数。
+    """
     message = _group_message(text)
     with patch.object(telegram, "_forward_to_message_chain") as forward:
         telegram._handle_update({"update_id": 1, "message": message})
@@ -976,7 +1362,9 @@ def test_handle_update_replies_welcome_without_forwarding(telegram, text):
 
 
 def test_handle_update_ignores_unsupported_content(telegram):
-    """入群通知等非转发内容类型不进入主程序。"""
+    """
+    入群通知等非转发内容类型不进入主程序。
+    """
     message = _group_message(None)
     del message["text"]
     message["new_chat_members"] = [{"id": 7}]
@@ -986,7 +1374,9 @@ def test_handle_update_ignores_unsupported_content(telegram):
 
 
 def test_group_message_requires_mention_entity(telegram):
-    """群聊消息只在 @bot 时处理，实体偏移按 UTF-16 计算。"""
+    """
+    群聊消息只在 @bot 时处理，实体偏移按 UTF-16 计算。
+    """
     assert telegram._should_process_message(_group_message("随便聊聊")) is False
     text = "😀 @test_bot 搜索"
     mentioned = _group_message(
@@ -998,7 +1388,9 @@ def test_group_message_requires_mention_entity(telegram):
 
 
 def test_handle_callback_query_answers_then_forwards(telegram):
-    """按钮回调先应答结束加载状态，再以精简结构转发主程序。"""
+    """
+    按钮回调先应答结束加载状态，再以精简结构转发主程序。
+    """
     call = {
         "id": "cb-1",
         "from": {"id": 42, "is_bot": False, "first_name": "u"},
@@ -1017,7 +1409,9 @@ def test_handle_callback_query_answers_then_forwards(telegram):
 
 
 def test_send_file_returns_message_identity(telegram, tmp_path):
-    """发送结果从 Bot API Message dict 读取 message_id 和 chat id。"""
+    """
+    发送结果从 Bot API Message dict 读取 message_id 和 chat id。
+    """
     file_path = tmp_path / "report.txt"
     file_path.write_text("ok", encoding="utf-8")
     telegram.bot.send_document.return_value = {"message_id": 88, "chat": {"id": 10001}}
@@ -1030,7 +1424,9 @@ def test_send_file_returns_message_identity(telegram, tmp_path):
 
 
 def test_register_commands_uses_bot_command_dicts(telegram):
-    """菜单命令去掉前导斜杠，按 BotCommand 结构提交。"""
+    """
+    菜单命令去掉前导斜杠，按 BotCommand 结构提交。
+    """
     telegram.register_commands({"/search": {"description": "搜索"}})
     telegram.bot.delete_my_commands.assert_called_once_with()
     telegram.bot.set_my_commands.assert_called_once_with(

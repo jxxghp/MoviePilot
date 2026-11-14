@@ -1,16 +1,32 @@
-"""音乐名称、版本与站点候选匹配的纯业务规则。"""
+"""
+音乐名称、版本与站点候选匹配的纯业务规则。
+"""
 
 import re
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Generator, Iterable, Literal, Optional
+from fnmatch import fnmatchcase
+from functools import partial
+from pathlib import Path
+from typing import Any, Callable, Generator, Iterable, Literal, Optional
 from unicodedata import combining, normalize
 
-from app.domain.context import MusicAlbumInfo, MusicInfo
+from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.foundation.text import convert as zhconv_convert
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
+
+
+def music_cover_priority(path: str, patterns: str) -> Optional[int]:
+    """
+    按配置顺序匹配同目录封面，忽略大小写且只允许可内嵌的常见图片格式。
+    """
+    name = Path(path).name.casefold()
+    if name.startswith(".") or Path(name).suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        return None
+    return next((index for index, pattern in enumerate(patterns.split(","))
+                 if pattern.strip() and fnmatchcase(name, pattern.strip().casefold())), None)
 
 _EDITION = re.compile(
     r"\s*[\[(（【](?:[^\])）】]*\b(?:deluxe|expanded|special|limited|anniversary|remaster(?:ed)?)\b"
@@ -61,17 +77,27 @@ _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
 
 class MusicDirectoryMatch(dict[str, MusicInfo]):
-    """保持旧文件映射合同，同时保存专辑目录识别的可解释诊断。"""
+    """
+    保持旧文件映射合同，同时保存专辑目录识别的可解释诊断。
+    """
 
     def __init__(self, values: Optional[dict[str, MusicInfo]] = None, *, recognition: Optional[dict[str, Any]] = None) -> None:
-        """复制映射与诊断，读取和缓存使用方不共享可变摘要。"""
+        """
+        复制映射与诊断，读取和缓存使用方不共享可变摘要。
+        """
         super().__init__(values or {})
         self.recognition = deepcopy(recognition or {})
 
 
 @dataclass(frozen=True, slots=True)
 class MusicAlbumLookup:
-    """专辑来源匹配所需的一次搜索或详情动作，不在领域层执行I/O。"""
+    """
+    专辑来源匹配所需的一次搜索或详情动作，不在领域层执行I/O。
+
+    :param meta: 用于按名称搜索的音乐信息；按标识查询时可为 None
+    :param album_id: 待获取详情的专辑标识；按名称搜索时为 None
+    :param truncated: 是否因查询预算限制截断了待执行动作
+    """
 
     meta: Optional[MetaMusic] = None
     album_id: Optional[str] = None
@@ -79,7 +105,9 @@ class MusicAlbumLookup:
 
 
 def music_album_queries(meta: MetaMusic, tracks: list[MetaMusic]) -> list[MetaMusic]:
-    """优先按已知专辑检索；专辑名缺失时最多用三首有效曲名反查所属专辑。"""
+    """
+    优先按已知专辑检索；专辑名缺失时最多用三首有效曲名反查所属专辑。
+    """
     artists = music_usable_artists([meta.album_artist] if meta.album_artist else meta.artists)
     if not music_album_title_is_weak(meta):
         title = meta.album or meta.title
@@ -101,7 +129,9 @@ def music_album_queries(meta: MetaMusic, tracks: list[MetaMusic]) -> list[MetaMu
 def music_album_lookup_plan(
         source: MediaSource, meta: MetaMusic, tracks: list[MetaMusic],
 ) -> Generator[MusicAlbumLookup, list[MusicInfo] | MusicAlbumInfo | None, list[MusicAlbumInfo]]:
-    """收集同来源的专辑ID并优先读取被多首歌共同支持的候选，最多核验五个详情。"""
+    """
+    收集同来源的专辑ID并优先读取被多首歌共同支持的候选，最多核验五个详情。
+    """
     support: dict[str, int] = {}
     artist_aliases: dict[str, list[str]] = {}
     for query in music_album_queries(meta, tracks):
@@ -133,7 +163,9 @@ def music_album_lookup_plan(
 
 
 def music_album_with_artist_aliases(album: MusicAlbumInfo, aliases: dict[str, list[str]]) -> MusicAlbumInfo:
-    """把同来源且已绑定Artist ID的搜索证据传给详情副本，不污染缓存或其它演唱者。"""
+    """
+    把同来源且已绑定Artist ID的搜索证据传给详情副本，不污染缓存或其它演唱者。
+    """
     result = deepcopy(album)
     candidates: list[MusicInfo | MusicAlbumInfo] = [result, *result.tracks]
     for candidate in candidates:
@@ -145,7 +177,9 @@ def music_album_with_artist_aliases(album: MusicAlbumInfo, aliases: dict[str, li
 
 
 def music_album_has_consistent_tracks(album: MusicAlbumInfo) -> bool:
-    """专辑与曲目须处于同一来源和发行身份中；缺失的可选身份不构成冲突。"""
+    """
+    专辑与曲目须处于同一来源和发行身份中；缺失的可选身份不构成冲突。
+    """
     source = album.media_source or next((track.media_source for track in album.tracks if track.media_source), None)
     identities = {
         "album_id": album.media_id,
@@ -164,8 +198,74 @@ def music_album_has_consistent_tracks(album: MusicAlbumInfo) -> bool:
     )
 
 
+def music_subscription_album_matches(target: MusicInfo, candidate: MusicInfo) -> bool:
+    """
+    核验订阅专辑身份；发行组冲突不可用同名覆盖，缺失身份须同时有专辑和艺人证据。
+    """
+    if target.music_type != MUSIC_ENTITY_ALBUM or candidate.music_type != MUSIC_ENTITY_ALBUM:
+        return False
+    left, right = target.musicbrainz_release_group_id, candidate.musicbrainz_release_group_id
+    if left and right and left != right:
+        return False
+    candidate_title = candidate.album or candidate.title
+    if (target.album or target.title) and candidate_title and not music_album_matches(target, candidate_title):
+        return False
+    if left and right:
+        return True
+    if (target.media_source and target.media_id
+            and (target.media_source, target.media_id) == (candidate.media_source, candidate.media_id)):
+        return True
+    return bool(music_album_matches(target, candidate.album or candidate.title)
+                and music_artist_matches(target, [candidate.album_artist] if candidate.album_artist else candidate.artists))
+
+
+def music_album_download_matches(target: MusicInfo, context: Context) -> bool:
+    """
+    跨发行版曲序不能直接拼接；完整入库对账可提供独立发行版的覆盖证明。
+    """
+    candidate = context.media_info
+    if not isinstance(candidate, MusicInfo) or not music_subscription_album_matches(target, candidate):
+        return False
+    releases = (target.musicbrainz_release_id, candidate.musicbrainz_release_id)
+    return bool(not all(releases) or releases[0] == releases[1] or context.confirmed_full_coverage)
+
+
+def music_completed_album_keys(metas: list[MetaMusic], target: MusicInfo) -> list[str]:
+    """
+    以成功入库文件的标签和有效 CUE 证明各盘完整覆盖，不从现有文件数量推断总数。
+    """
+    tracks, _ = expand_music_tracks(metas)
+    if not tracks:
+        return []
+    discs: dict[int, set[int]] = {}
+    totals: dict[int, set[int]] = {}
+    disc_totals = {meta.total_discs for meta in tracks if meta.total_discs}
+    releases = {meta.musicbrainz_release_id for meta in tracks if meta.musicbrainz_release_id}
+    if len(disc_totals) > 1 or len(releases) > 1:
+        return []
+    expected_discs = next(iter(disc_totals), target.total_discs or 1)
+    for meta in tracks:
+        disc = meta.disc_number or 1
+        if not meta.track_number or not meta.total_tracks or meta.organization_error:
+            return []
+        discs.setdefault(disc, set()).add(meta.track_number)
+        totals.setdefault(disc, set()).add(meta.total_tracks)
+    if set(discs) != set(range(1, expected_discs + 1)):
+        return []
+    if any(len(totals[disc]) != 1 or keys != set(range(1, next(iter(totals[disc])) + 1))
+           for disc, keys in discs.items()):
+        return []
+    keys = [f"[{disc},{track}]" for disc in sorted(discs) for track in sorted(discs[disc])]
+    known_discs = bool(disc_totals) or bool(target.total_discs and releases == {target.musicbrainz_release_id})
+    if len(keys) < (target.total_tracks or 0) and not known_discs:
+        return []
+    return keys
+
+
 def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks: list[MetaMusic]) -> bool:
-    """来源专辑必须满足名称、署名、版本与完整本地对位；弱专辑名需要额外曲目证据。"""
+    """
+    核验名称、署名、版本与本地对位；普通年份可缺省，弱专辑名需要额外曲目证据。
+    """
     if not tracks or not album.tracks or not music_album_has_consistent_tracks(album):
         return False
     info = album.to_music_info()
@@ -176,7 +276,7 @@ def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks
     if (artists or any(music_credit_values(meta).values())) and not music_album_artist_evidence_matches(album, meta):
         return False
     evidence = MetaMusic(title=meta.album or meta.title, version=meta.version)
-    if not music_version_matches(info, evidence) or not music_release_year_matches(info, meta):
+    if not music_version_matches(info, evidence) or not music_album_year_matches(info, meta):
         return False
     aligned = align_music_tracks(tracks, album.tracks)
     if len(aligned) != len(tracks):
@@ -193,7 +293,9 @@ def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks
 
 
 def music_album_artist_evidence_matches(album: MusicAlbumInfo, meta: MetaMusic) -> bool:
-    """古典发行的阵容可由实际曲目关系证实，不要求来源把逐曲关系复制到专辑层。"""
+    """
+    古典发行的阵容可由实际曲目关系证实，不要求来源把逐曲关系复制到专辑层。
+    """
     info = album.to_music_info()
     artists = music_usable_artists([meta.album_artist] if meta.album_artist else meta.artists)
     if music_credit_conflicts(info, meta):
@@ -207,7 +309,9 @@ def music_album_artist_evidence_matches(album: MusicAlbumInfo, meta: MetaMusic) 
 
 
 def music_package_error(filename: str) -> Optional[str]:
-    """明确音乐模式下拒绝尚未展开的发行包，不将整包误识别为单首歌曲。"""
+    """
+    明确音乐模式下拒绝尚未展开的发行包，不将整包误识别为单首歌曲。
+    """
     lowered = filename.casefold()
     if lowered.endswith((".iso", ".img", ".nrg", ".bin", ".mdf")):
         return "音乐镜像暂不支持直接整理，请先提取音频和 CUE 后重试"
@@ -218,7 +322,16 @@ def music_package_error(filename: str) -> Optional[str]:
 
 @dataclass(frozen=True, slots=True)
 class MusicCueTrack:
-    """CUE 中一个逻辑音轨的文件引用与 INDEX 01 起点，单位为每秒 75 帧。"""
+    """
+    CUE 中一个逻辑音轨的文件引用与 INDEX 01 起点，单位为每秒 75 帧。
+
+    :param number: CUE 声明的音轨序号
+    :param file_name: 音轨引用的音频文件名，保留 CUE 中的相对引用
+    :param start_frame: INDEX 01 的起始帧位置，每秒为 75 帧
+    :param title: 音轨标题；未声明时为 None
+    :param artist: 音轨艺术家；未声明时为 None
+    :param isrc: 音轨的国际标准录音代码；未声明时为 None
+    """
 
     number: int
     file_name: str
@@ -230,7 +343,16 @@ class MusicCueTrack:
 
 @dataclass(frozen=True, slots=True)
 class MusicCueSheet:
-    """不读取文件系统的 CUE 解析结果，专辑字段与逐轨字段保持独立。"""
+    """
+    不读取文件系统的 CUE 解析结果，专辑字段与逐轨字段保持独立。
+
+    :param title: CUE 专辑标题；未声明时为 None
+    :param artist: CUE 专辑艺术家；未声明时为 None
+    :param year: 专辑年份；未声明或无法解析时为 None
+    :param disc_number: 当前碟号；未声明时为 None
+    :param total_discs: 总碟数；未声明时为 None
+    :param tracks: 按 CUE 声明顺序保存的音轨
+    """
 
     title: Optional[str]
     artist: Optional[str]
@@ -241,7 +363,9 @@ class MusicCueSheet:
 
 
 def _cue_text(value: str) -> str:
-    """读取带引号或未加引号的文本，不执行反斜线转义或路径展开。"""
+    """
+    读取带引号或未加引号的文本，不执行反斜线转义或路径展开。
+    """
     value = value.strip()
     if value.startswith('"'):
         if not value.endswith('"') or len(value) < 2:
@@ -251,7 +375,9 @@ def _cue_text(value: str) -> str:
 
 
 def _cue_frames(value: str) -> int:
-    """校验分、秒、帧或直接帧数，禁止负值和超范围的秒/帧。"""
+    """
+    校验分、秒、帧或直接帧数，禁止负值和超范围的秒/帧。
+    """
     if value.isdigit():
         return int(value)
     match = re.fullmatch(r"(\d{1,5}):(\d{2}):(\d{2})", value)
@@ -264,7 +390,8 @@ def _cue_frames(value: str) -> int:
 
 
 def parse_music_cue(text: str) -> MusicCueSheet:
-    """解析音频 CUE 的专辑、FILE/TRACK/INDEX 结构，拒绝缺索引和逆序音轨。
+    """
+    解析音频 CUE 的专辑、FILE/TRACK/INDEX 结构，拒绝缺索引和逆序音轨。
 
     索引表示同一文件内的逻辑曲目，不代表已拆出独立音频。未消费的 REM、
     FLAGS 等信息继续保留在原文件中，解析器不重写用户内容。
@@ -340,7 +467,8 @@ def parse_music_cue(text: str) -> MusicCueSheet:
 
 
 def music_tags_are_usable(meta: Optional[MetaMusic]) -> bool:
-    """判断纯标签是否足以确定本地整理路径，不把文件名或目录猜测当作标签。
+    """
+    判断纯标签是否足以确定本地整理路径，不把文件名或目录猜测当作标签。
 
     年份和远端 ID 不影响本地可整理性；占位、乱码或宣传 URL 不能成为
     歌曲/专辑身份。调用方必须传入未经路径补写的原始标签证据。
@@ -353,7 +481,9 @@ def music_tags_are_usable(meta: Optional[MetaMusic]) -> bool:
 
 
 def music_track_title_is_weak(meta: MetaMusic) -> bool:
-    """编号或占位文件名不能否决实际曲目，但真实标签中的数字歌曲名仍是证据。"""
+    """
+    编号或占位文件名不能否决实际曲目，但真实标签中的数字歌曲名仍是证据。
+    """
     title = str(meta.title or "").strip()
     if not _usable_music_tag(title):
         return True
@@ -367,26 +497,29 @@ def music_track_title_is_weak(meta: MetaMusic) -> bool:
 
 
 def music_usable_artists(artists: Iterable[str]) -> list[str]:
-    """剔除抓轨占位、宣传链接和乱码署名；缺失艺人不是与指纹候选冲突的证据。"""
+    """
+    剔除抓轨占位、宣传链接和乱码署名；缺失艺人不是与指纹候选冲突的证据。
+    """
     return [artist for artist in artists if _usable_music_tag(artist)]
 
 
 def music_album_title_is_weak(meta: MetaMusic) -> bool:
-    """普通收件目录不是专辑证据，标签或种子明确提供的同名专辑仍有效。"""
+    """
+    普通收件目录不是专辑证据，标签或种子明确提供的同名专辑仍有效。
+    """
     title = meta.album or meta.title
     if not _usable_music_tag(title):
         return True
     source = meta.field_sources.get("album" if meta.album else "title")
     if source in {"tag", "album_tags", "cue", "torrent", "manual", "remote"}:
         return False
-    return music_text_key(title) in {
-        "music", "musics", "audio", "downloads", "download", "inbox", "unknown", "untitled",
-        "various", "variousartists", "va", "音乐", "音樂", "下载", "下載", "未分类", "未分類",
-    }
+    return MetaMusic.is_generic_album_name(title)
 
 
 def expand_music_tracks(metas: list[MetaMusic]) -> tuple[list[MetaMusic], list[int]]:
-    """把整轨 CUE 投影为用于匹配的逻辑曲目，并保留各曲所属物理文件索引。"""
+    """
+    把整轨 CUE 投影为用于匹配的逻辑曲目，并保留各曲所属物理文件索引。
+    """
     tracks: list[MetaMusic] = []
     owners: list[int] = []
     for owner, meta in enumerate(metas):
@@ -429,12 +562,16 @@ def expand_music_tracks(metas: list[MetaMusic]) -> tuple[list[MetaMusic], list[i
 
 
 def _alignment_title_key(title: Optional[str]) -> str:
-    """对位仅忽略名称排版差异，保留 live/remix 等版本正文和纯符号歌曲名。"""
+    """
+    对位仅忽略名称排版差异，保留 live/remix 等版本正文和纯符号歌曲名。
+    """
     return music_text_key(title) or re.sub(r"\s+", "", normalize("NFKC", str(title or ""))).casefold()
 
 
 def _music_track_identity_match(meta: MetaMusic, track: MusicInfo, allow_title_override: bool) -> Optional[bool]:
-    """返回明确录音身份的命中状态；None表示冲突，手选纠正允许覆盖原标签身份。"""
+    """
+    返回明确录音身份的命中状态；None表示冲突，手选纠正允许覆盖原标签身份。
+    """
     if not allow_title_override and music_isrc_conflicts(track, meta):
         return None
     identity_match = music_isrc_matches(track, meta)
@@ -452,8 +589,12 @@ def _music_track_identity_match(meta: MetaMusic, track: MusicInfo, allow_title_o
     return identity_match
 
 
-def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_override: bool) -> float:
-    """评估一条文件与发行曲目的证据；明确身份或时长冲突不能被其它分数抵消。"""
+def _music_track_pair_score(
+        meta: MetaMusic, track: MusicInfo, allow_title_override: bool, ignore_duration: bool,
+) -> float:
+    """
+    评估文件与发行曲目的证据，仅在手动明确忽略时长时跳过时长证据。
+    """
     if not allow_title_override and music_credit_conflicts(track, meta):
         return 0.0
     if not allow_title_override and any(music_credit_values(meta).values()) and not music_artist_evidence_matches(track, meta):
@@ -467,7 +608,7 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
             and not music_artist_evidence_matches(track, meta, artists)):
         return 0.0
     duration_close = False
-    if meta.duration and track.duration:
+    if not ignore_duration and meta.duration and track.duration:
         delta = abs(meta.duration - track.duration)
         longest = max(meta.duration, track.duration)
         if delta > max(10, longest * 0.08):
@@ -484,7 +625,7 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
     )
     if not identity_match and not title_match and not weak_title and not (allow_title_override and position_match):
         return 0.0
-    if not identity_match and not title_match and meta.duration and track.duration and not duration_close:
+    if not ignore_duration and not identity_match and not title_match and meta.duration and track.duration and not duration_close:
         return 0.0
     if not (identity_match or title_match or position_match or (weak_title and duration_close)):
         return 0.0
@@ -493,7 +634,9 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
 
 
 def _unique_track_choice(scores: dict[int, float]) -> Optional[int]:
-    """只选择有唯一最强证据的候选，不用列表顺序消除歧义。"""
+    """
+    只选择有唯一最强证据的候选，不用列表顺序消除歧义。
+    """
     if not scores:
         return None
     maximum = max(scores.values())
@@ -503,16 +646,21 @@ def _unique_track_choice(scores: dict[int, float]) -> Optional[int]:
 
 def align_music_tracks(
         metas: list[MetaMusic], tracks: list[MusicInfo], *, allow_title_override: bool = False,
+        track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
 ) -> dict[int, int]:
-    """以双向唯一证据对位曲目，返回本地索引到远端索引；无证据项保持未匹配。
-
-    手选发行可依据唯一位置纠正旧曲名及旧身份，但仍拒绝显著时长冲突。
-    双向检查使重复版本不能抢占一个位置，输入排序不会改变歌曲身份。
     """
+    以双向唯一证据对位曲目，返回本地索引到远端索引；无证据项保持未匹配。
+
+    手选发行可依据唯一位置纠正旧曲名及旧身份，默认拒绝显著时长冲突。
+    ignore_duration 跳过时长证据；sequential 按输入顺序对应且要求数量一致。
+    严格与忽略时长模式通过双向检查消除重复版本歧义，输入排序不会改变歌曲身份。
+    """
+    if track_match == "sequential":
+        return dict(enumerate(range(len(tracks)))) if len(metas) == len(tracks) else {}
     scores = {
         index: {
             remote: score for remote, track in enumerate(tracks)
-            if (score := _music_track_pair_score(meta, track, allow_title_override)) > 0
+            if (score := _music_track_pair_score(meta, track, allow_title_override, track_match == "ignore_duration")) > 0
         }
         for index, meta in enumerate(metas)
     }
@@ -535,7 +683,9 @@ def align_music_tracks(
 
 
 def _usable_music_tag(value: Optional[str]) -> bool:
-    """保守排除占位值及乱码，不误删数字专辑名和包含 Unknown 的正常标题。"""
+    """
+    保守排除占位值及乱码，不误删数字专辑名和包含 Unknown 的正常标题。
+    """
     text = str(value or "").strip()
     placeholders = {"unknown", "unknown artist", "unknown album", "untitled", "未知", "未知艺术家", "未知专辑"}
     return bool(
@@ -549,14 +699,21 @@ def _usable_music_tag(value: Optional[str]) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class MusicMatch:
-    """区分可自动采用的精确命中、仅可人工确认的候选和无关资源。"""
+    """
+    区分可自动采用的精确命中、仅可人工确认的候选和无关资源。
+
+    :param status: 匹配结论：exact 可自动采用，candidate 待人工确认，album 为专辑匹配，rejected 为拒绝
+    :param reason: 说明匹配结论所依据的原因
+    """
 
     status: Literal["exact", "candidate", "album", "rejected"]
     reason: str
 
 
 def unique_music_texts(values: Iterable[Optional[str]]) -> list[str]:
-    """保留原始文字和顺序，仅合并空白及大小写相同的名称。"""
+    """
+    保留原始文字和顺序，仅合并空白及大小写相同的名称。
+    """
     result: list[str] = []
     seen: set[str] = set()
     for value in values:
@@ -568,13 +725,38 @@ def unique_music_texts(values: Iterable[Optional[str]]) -> list[str]:
 
 
 def music_text_key(value: Optional[str]) -> str:
-    """统一繁简、大小写、全半角和拉丁变音符，忽略名称排版符号。"""
+    """
+    统一繁简、大小写、全半角和拉丁变音符，忽略名称排版符号。
+    """
     text = normalize("NFKD", str(value or "")).casefold()
     return str(zhconv_convert("".join(char for char in text if char.isalnum() and not combining(char)), "zh-hans"))
 
 
+def _music_name_key(
+    value: Optional[str], names: set[str], key: Callable[[Optional[str]], str],
+) -> str:
+    """
+    只有括号两侧均为同一实体的可信名称时，才把双语排版归并为其中一个名称。
+
+    :param value: 待核验的完整名称，不剥离未知括号说明
+    :param names: 同一作品或艺术家已确认的名称比较键
+    :param key: 对应名称类型的归一化方法，作品名可保留发行版约束
+    :return: 已确认的名称比较键；缺少任一侧证据时保留完整名称的比较键
+    """
+    text = normalize("NFKC", str(value or "")).strip()
+    original = key(text)
+    if original in names:
+        return original
+    bilingual = re.fullmatch(r"([^()]+?)\s*\(([^()]+)\)", text)
+    if bilingual and all(key(part) in names for part in bilingual.groups()):
+        return key(bilingual.group(1))
+    return original
+
+
 def music_titles(music: MusicInfo, *, album: bool = False) -> list[str]:
-    """返回同一作品的可信名称，单曲绝不消费兼容 names 中的专辑名。"""
+    """
+    返回同一作品的可信名称，单曲绝不消费兼容 names 中的专辑名。
+    """
     if album or music.music_type == MUSIC_ENTITY_ALBUM:
         return unique_music_texts([
             music.album or (music.title if music.music_type == MUSIC_ENTITY_ALBUM else None),
@@ -586,7 +768,9 @@ def music_titles(music: MusicInfo, *, album: bool = False) -> list[str]:
 
 
 def music_artists(music: MusicInfo) -> list[str]:
-    """合并实体艺术家和来源别名，仅为合辑署名扩展通用缩写。"""
+    """
+    合并实体艺术家和来源别名，仅为合辑署名扩展通用缩写。
+    """
     album_artist = music.album_artist if music.music_type == MUSIC_ENTITY_ALBUM or not music.artists else None
     artists = unique_music_texts([album_artist, *(music.artists or []), *(music.artist_aliases or [])])
     collective_keys = {music_text_key(item) for item in _COLLECTIVE_ARTISTS}
@@ -598,17 +782,22 @@ def music_artists(music: MusicInfo) -> list[str]:
 
 
 def music_artist_matches(music: MusicInfo, parsed_artists: Iterable[str]) -> bool:
-    """使用同实体署名和别名核验解析艺人，兼容完整艺名被分隔符拆成多个片段。"""
+    """
+    使用同实体署名和别名核验艺人，兼容已确认的双语排版和被分隔的完整艺名。
+    """
     artists = music_artists(music)
     parsed = unique_music_texts(parsed_artists)
-    keys = {music_text_key(artist) for artist in parsed}
+    artist_keys = {music_text_key(artist) for artist in artists}
+    keys = {_music_name_key(artist, artist_keys, music_text_key) for artist in parsed}
     if len(parsed) > 1 and any(any(separator in artist for separator in ("/", "&", ",")) for artist in artists):
         keys.add(music_text_key(" / ".join(parsed)))
-    return bool(keys & {music_text_key(artist) for artist in artists})
+    return bool(keys & artist_keys)
 
 
 def music_credit_conflicts(music: MusicInfo, meta: MetaMusic) -> bool:
-    """同角色的明确人名冲突不能被相同作品名或作曲家抵消，来源缺失字段不制造冲突。"""
+    """
+    同角色的明确人名冲突不能被相同作品名或作曲家抵消，来源缺失字段不制造冲突。
+    """
     pairs = [(getattr(meta, key), getattr(music, key)) for key in ("composers", "conductors", "orchestras")]
     pairs.extend((names, music.performers.get(role, [])) for role, names in meta.performers.items())
     for local, remote in pairs:
@@ -620,7 +809,9 @@ def music_credit_conflicts(music: MusicInfo, meta: MetaMusic) -> bool:
 
 
 def music_query_artists(meta: MetaMusic) -> list[str]:
-    """作品署名为作曲家时用明确演奏者检索Recording，不改写原标签或专辑署名。"""
+    """
+    作品署名为作曲家时用明确演奏者检索Recording，不改写原标签或专辑署名。
+    """
     artists = music_usable_artists(meta.artists)
     composers = {music_text_key(name) for name in meta.composers}
     if artists and not {music_text_key(name) for name in artists} <= composers:
@@ -632,7 +823,9 @@ def music_query_artists(meta: MetaMusic) -> list[str]:
 def music_artist_evidence_matches(
         music: MusicInfo, meta: MetaMusic, artists: Optional[Iterable[str]] = None,
 ) -> bool:
-    """兼容古典作品署名与录音署名差异，必须有真实演奏证据，作曲家相同不足以确认录音。"""
+    """
+    兼容古典作品署名与录音署名差异，必须有真实演奏证据，作曲家相同不足以确认录音。
+    """
     if music_credit_conflicts(music, meta):
         return False
     known_identity = bool((meta.media_id and meta.media_source == music.media_source and meta.media_id == music.media_id)
@@ -667,7 +860,8 @@ def music_artist_evidence_matches(
 def music_artist_alias_targets(
         pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]], source: MediaSource,
 ) -> dict[str, list[MusicInfo | MusicAlbumInfo]]:
-    """仅为其它证据合理且署名不一致的候选补证，按真实Artist ID去重并限制三个身份。
+    """
+    仅为其它证据合理且署名不一致的候选补证，按真实Artist ID去重并限制三个身份。
 
     返回当前候选的引用供应用层附加已验证别名；不从拼音推导身份，不改变署名与ID对应关系。
     """
@@ -680,7 +874,10 @@ def music_artist_alias_targets(
         title = (meta.album or meta.title) if info.music_type == MUSIC_ENTITY_ALBUM else meta.title
         if not music_title_matches(info, title, preserve_editions=True) or not music_version_matches(info, meta):
             continue
-        if not music_release_year_matches(info, meta):
+        year_matches = (music_album_year_matches
+                        if isinstance(candidate, MusicAlbumInfo) or info.music_type == MUSIC_ENTITY_ALBUM
+                        else music_release_year_matches)
+        if not year_matches(info, meta):
             continue
         for artist_id in candidate.artist_ids:
             if not artist_id or (artist_id not in targets and len(targets) >= 3):
@@ -692,7 +889,9 @@ def music_artist_alias_targets(
 
 
 def music_base_title(value: Optional[str], *, preserve_editions: bool = False) -> str:
-    """剥离明确署名、影视用途和版本注释，保留未知括号中的作品名。"""
+    """
+    剥离明确署名、影视用途和版本注释，保留未知括号中的作品名。
+    """
     text = _CJK_SOUNDTRACK_SUFFIX.sub(
         "", _SOUNDTRACK_CREDIT.sub("", _TITLE_CREDIT.sub("", str(value or "")))
     )
@@ -700,14 +899,18 @@ def music_base_title(value: Optional[str], *, preserve_editions: bool = False) -
         text = _EDITION.sub("", text)
 
     def strip_version(match: re.Match[str]) -> str:
-        """保留发行版声明，避免被包含它的录音版本标签一并删除。"""
+        """
+        保留发行版声明，避免被包含它的录音版本标签一并删除。
+        """
         return match.group(0) if preserve_editions and _EDITION.search(match.group(0)) else ""
 
     return _BARE_VERSION_SUFFIX.sub(strip_version, _VERSION_SUFFIX.sub(strip_version, text)).strip()
 
 
 def _music_title_key(value: Optional[str], *, preserve_editions: bool = False) -> str:
-    """生成音乐标题比较键，纯符号名称在普通归一化为空时保留其符号身份。"""
+    """
+    生成音乐标题比较键，纯符号名称在普通归一化为空时保留其符号身份。
+    """
     base = music_base_title(
         normalize("NFKC", str(value or "")),
         preserve_editions=preserve_editions,
@@ -718,19 +921,42 @@ def _music_title_key(value: Optional[str], *, preserve_editions: bool = False) -
     return re.sub(r"\s+", "", base).casefold()
 
 
+def _music_album_main_title(value: Optional[str], *, preserve_editions: bool = False) -> str:
+    """
+    提取带冒号说明的专辑主标题，兼容资源名省略说明性副标题的常见命名。
+    """
+    text = normalize("NFKC", str(value or "")).strip()
+    if not re.search(r"\s*[：:]\s*", text):
+        return ""
+    main = re.split(r"\s*[：:]\s*", text, maxsplit=1)[0]
+    key = _music_title_key(main, preserve_editions=preserve_editions)
+    return key if key != _music_title_key(text, preserve_editions=preserve_editions) else ""
+
+
 def music_title_matches(music: MusicInfo, title: Optional[str], *, preserve_editions: bool = False) -> bool:
-    """统一全半角后比较完整名称及别名，纯符号名称也保留其身份。"""
-    expected = _music_title_key(title, preserve_editions=preserve_editions)
-    return bool(expected and any(
-        expected == _music_title_key(name, preserve_editions=preserve_editions)
-        for name in music_titles(music)
-    ))
+    """
+    比较完整名称、可信别名及专辑主标题，保留纯符号名称和发行版的身份约束。
+    """
+    key = partial(_music_title_key, preserve_editions=preserve_editions)
+    names = {key(name) for name in music_titles(music)}
+    if music.music_type == MUSIC_ENTITY_ALBUM:
+        names.update(
+            main
+            for name in music_titles(music, album=True)
+            if (main := _music_album_main_title(name, preserve_editions=preserve_editions))
+        )
+    expected = _music_name_key(title, names, key)
+    return bool(expected and expected in names)
 
 
 def music_album_matches(music: MusicInfo, album: Optional[str]) -> bool:
-    """核验所属专辑本体，忽略 Deluxe 等发行装帧说明但保留录音版本边界。"""
+    """
+    核验所属专辑本体，忽略 Deluxe 等发行装帧说明但保留录音版本边界。
+    """
     def album_key(value: Optional[str]) -> str:
-        """目录常在发行说明后附加 CD1/Disc 2，不应改变专辑身份。"""
+        """
+        目录常在发行说明后附加 CD1/Disc 2，不应改变专辑身份。
+        """
         base = music_base_title(normalize("NFKC", str(value or "")))
         base = re.sub(r"[\s._-]*(?:cd|disc|disk)\s*\d+$", "", base, flags=re.I)
         return music_text_key(base)
@@ -743,7 +969,9 @@ def music_album_matches(music: MusicInfo, album: Optional[str]) -> bool:
 
 
 def music_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
-    """双方都有发行年份时要求一致；任一侧未知时不凭空制造冲突。"""
+    """
+    双方都有发行年份时要求一致；任一侧未知时不凭空制造冲突。
+    """
     if not music.year or not meta.year:
         return True
     try:
@@ -752,8 +980,17 @@ def music_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
         return str(music.year).strip() == str(meta.year).strip()
 
 
+def music_album_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
+    """
+    普通年份仅作排名线索；双方明确的发行年才约束版本，来源首发年不能冒充发行年。
+    """
+    return not meta.release_year or not music.release_year or meta.release_year == music.release_year
+
+
 def music_release_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
-    """具体发行按当前发行年核验；已分离的原始年不能再冒充当前年制造再版冲突。"""
+    """
+    具体发行按当前发行年核验；已分离的原始年不能再冒充当前年制造再版冲突。
+    """
     if meta.release_year:
         return not music.release_year or meta.release_year == music.release_year
     if meta.original_year or (meta.musicbrainz_release_id and meta.musicbrainz_release_id == music.musicbrainz_release_id):
@@ -762,7 +999,9 @@ def music_release_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
 
 
 def _isrc_key(value: Optional[str]) -> Optional[str]:
-    """校验 12 位 ISRC 结构，兼容展示前缀、空白和分隔符，不接受占位值。"""
+    """
+    校验 12 位 ISRC 结构，兼容展示前缀、空白和分隔符，不接受占位值。
+    """
     code = re.sub(r"[\s-]+", "", str(value or ""))
     if not _ISRC.fullmatch(code) and code[:4].lower() == "isrc":
         code = code[4:].lstrip(":")
@@ -770,33 +1009,43 @@ def _isrc_key(value: Optional[str]) -> Optional[str]:
 
 
 def music_isrc_codes(music: MusicInfo) -> set[str]:
-    """保留同一MusicBrainz录音实际返回的多个ISRC，兼容旧缓存中的原始响应。"""
+    """
+    保留同一MusicBrainz录音实际返回的多个ISRC，兼容旧缓存中的原始响应。
+    """
     values = music.raw_data.get("isrcs") if music.media_source == MediaSource.MusicBrainz else None
     values = values if isinstance(values, (list, tuple)) else []
     return {key for value in (music.isrc, *values) if (key := _isrc_key(value))}
 
 
 def music_isrc_matches(music: MusicInfo, meta: MetaMusic) -> bool:
-    """只有格式有效且属于同一录音的ISRC才能作为优先于文本匹配的身份。"""
+    """
+    只有格式有效且属于同一录音的ISRC才能作为优先于文本匹配的身份。
+    """
     expected = _isrc_key(meta.isrc)
     return bool(expected and expected in music_isrc_codes(music))
 
 
 def music_isrc_conflicts(music: MusicInfo, meta: MetaMusic) -> bool:
-    """双方均有有效ISRC且没有交集才构成冲突，缺失或无效标签继续按其它证据核验。"""
+    """
+    双方均有有效ISRC且没有交集才构成冲突，缺失或无效标签继续按其它证据核验。
+    """
     expected = _isrc_key(meta.isrc)
     actual = music_isrc_codes(music)
     return bool(expected and actual and expected not in actual)
 
 
 def _artist_match_text(text: str) -> str:
-    """归一署名比较文本但保留分隔符，避免紧凑名称丢失单词边界。"""
+    """
+    归一署名比较文本但保留分隔符，避免紧凑名称丢失单词边界。
+    """
     normalized = str(zhconv_convert(normalize("NFKD", text).casefold(), "zh-hans"))
     return "".join(char for char in normalized if not combining(char))
 
 
 def music_artist_affix_matches(title: str, artist: str, *, suffix: bool = False) -> bool:
-    """核验首尾完整署名；保留中日韩连写习惯，但不能截断其它文字的单词。"""
+    """
+    核验首尾完整署名；保留中日韩连写习惯，但不能截断其它文字的单词。
+    """
     key = music_text_key(artist)
     if not key:
         return False
@@ -811,7 +1060,9 @@ def music_artist_affix_matches(title: str, artist: str, *, suffix: bool = False)
 
 
 def _contains_artist(text: str, artist: str) -> bool:
-    """匹配完整署名，避免短拉丁艺名命中另一个人名的子串。"""
+    """
+    匹配完整署名，避免短拉丁艺名命中另一个人名的子串。
+    """
     normalized = _artist_match_text(text)
     key = music_text_key(artist)
     if not key:
@@ -821,10 +1072,21 @@ def _contains_artist(text: str, artist: str) -> bool:
 
 
 def _resource_names(primary: MetaMusic, artists: list[str], *, album: bool = False,
-                    album_suffixes: Optional[list[str]] = None) -> list[str]:
-    """复用音乐命名解析器提取作品片段，去掉已确认的首尾艺术家署名。"""
+                    album_suffixes: Optional[list[str]] = None,
+                    titles: Optional[list[str]] = None) -> list[str]:
+    """
+    提取作品片段，核验双语名称并去掉已确认的首尾艺术家署名。
+
+    :param primary: 资源自身解析出的作品与专辑证据
+    :param artists: 目标艺术家的正式署名与已确认别名
+    :param album: 是否额外比较资源的所属专辑名
+    :param album_suffixes: 单曲尾段可剥离的已确认所属专辑名
+    :param titles: 同一作品的可信名称，仅用于核验双语排版
+    :return: 可用于完整名称比较的作品片段，不生成未知别名
+    """
     names: list[str] = []
     artist_keys = [(item, music_text_key(item)) for item in artists if item]
+    title_keys = {_music_title_key(title) for title in titles or []}
     suffix_keys = {music_text_key(item) for item in album_suffixes or []}
     for value in (primary.title, primary.album if album else None):
         if not value:
@@ -836,7 +1098,7 @@ def _resource_names(primary: MetaMusic, artists: list[str], *, album: bool = Fal
             variants.append(parts[0])
         for part in variants:
             name = music_base_title(_TITLE_LABEL.sub("", part.strip()))
-            key = _music_title_key(name)
+            key = _music_name_key(name, title_keys, _music_title_key)
             if not key:
                 continue
             names.append(key)
@@ -851,13 +1113,17 @@ def _resource_names(primary: MetaMusic, artists: list[str], *, album: bool = Fal
 
 
 def _version_markers(text: str) -> set[str]:
-    """识别会改变录音身份的版本标记，普通发行后缀单独处理。"""
+    """
+    识别会改变录音身份的版本标记，普通发行后缀单独处理。
+    """
     normalized = normalize("NFKC", text)
     return {name for name, pattern in _VERSIONS.items() if re.search(pattern, normalized, re.I)}
 
 
 def _version_dates(title: Optional[str], version: Optional[str]) -> tuple[set[int], set[date]]:
-    """只提取明确版本字段及版本后缀中的日期，不把数字作品名或发行年份当作录制日期。"""
+    """
+    只提取明确版本字段及版本后缀中的日期，不把数字作品名或发行年份当作录制日期。
+    """
     title_text = normalize("NFKC", str(title or ""))
     text = normalize("NFKC", " ".join([
         str(version or ""), *_VERSION_SUFFIX.findall(title_text), *_BARE_VERSION_SUFFIX.findall(title_text),
@@ -873,7 +1139,9 @@ def _version_dates(title: Optional[str], version: Optional[str]) -> tuple[set[in
 
 
 def _resource_credits_match(music: MusicInfo, meta: MetaMusic) -> bool:
-    """资源显式客串署名必须得到目标艺术家或同一署名注释确认，不能把合作版匹配为独唱。"""
+    """
+    资源显式客串署名必须得到目标艺术家或同一署名注释确认，不能把合作版匹配为独唱。
+    """
     credits = {
         music_text_key(artist)
         for value in _FEATURED_CREDIT.findall(meta.title or "")
@@ -889,7 +1157,9 @@ def _resource_credits_match(music: MusicInfo, meta: MetaMusic) -> bool:
 
 
 def music_version_matches(music: MusicInfo, meta: MetaMusic) -> bool:
-    """资源匹配与候选确认共用录音版本约束，不从艺术家字段推断版本。"""
+    """
+    资源匹配与候选确认共用录音版本约束，不从艺术家字段推断版本。
+    """
     if not _resource_credits_match(music, meta):
         return False
     target_title = music.album or music.title if music.music_type == MUSIC_ENTITY_ALBUM else music.title
@@ -914,7 +1184,9 @@ def match_music_resource(
     *,
     meta: Optional[MetaMusic] = None,
 ) -> MusicMatch:
-    """以作品名称为基础验证艺术家、分类和版本，并保留可供人工确认的关联候选。"""
+    """
+    以作品名称为基础验证艺术家、分类和版本，并保留可供人工确认的关联候选。
+    """
     if category not in (None, "", MediaType.UNKNOWN, MediaType.UNKNOWN.value, MediaType.MUSIC, MediaType.MUSIC.value):
         return MusicMatch("rejected", "category_mismatch")
     description = description or ""
@@ -923,16 +1195,18 @@ def match_music_resource(
         return MusicMatch("rejected", "performance_mismatch")
     artists = music_artists(music)
     albums = music_titles(music, album=True)
-    names = _resource_names(resource, artists, album=music.music_type == MUSIC_ENTITY_ALBUM,
-                            album_suffixes=albums if music.music_type != MUSIC_ENTITY_ALBUM else None)
     titles = music_titles(music)
+    names = _resource_names(resource, artists, album=music.music_type == MUSIC_ENTITY_ALBUM,
+                            album_suffixes=albums if music.music_type != MUSIC_ENTITY_ALBUM else None,
+                            titles=titles)
     title_matched = any(music_title_matches(music, name) for name in names)
     content = f"{title} {description}"
     artist_matched = music_artist_evidence_matches(music, resource) if resource.artists or any(music_credit_values(resource).values()) \
         else any(_contains_artist(content, artist) for artist in artists)
     if not title_matched:
+        album_names = _resource_names(resource, artists, titles=albums)
         if music.music_type != MUSIC_ENTITY_ALBUM and artist_matched and any(
-            _music_title_key(item) in names
+            _music_title_key(item) in album_names
             for item in music_titles(music, album=True)
         ):
             return MusicMatch("album", "related_album")
@@ -945,7 +1219,7 @@ def match_music_resource(
         return MusicMatch("candidate", "category_unknown")
     if music.music_type == MUSIC_ENTITY_ALBUM:
         # 所属专辑只说明单曲归属，不能代替资源主标题证明整专范围。
-        primary_names = _resource_names(resource, artists)
+        primary_names = _resource_names(resource, artists, titles=titles)
         if resource.track_number or (resource.album and not any(
             _music_title_key(item) in primary_names for item in titles
         )):

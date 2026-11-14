@@ -1,13 +1,18 @@
+"""
+验证 API 的普通用户、管理员及敏感操作权限边界。
+"""
+
 import asyncio
 import inspect
 import io
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.adapters.web.security.access import verify_resource_token, verify_token
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -16,14 +21,18 @@ from app.api.deps import (
     get_current_active_user,
     get_current_active_user_async,
 )
+from app.api.endpoints import agent as agent_endpoint
 from app.api.endpoints import dashboard as dashboard_endpoint
 from app.api.endpoints import github as github_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
+from app.api.endpoints import media as media_endpoint
+from app.api.endpoints import message as message_endpoint
 from app.api.endpoints import plugin as plugin_endpoint
 from app.api.endpoints import rule as rule_endpoint
 from app.api.endpoints import site as site_endpoint
 from app.api.endpoints import storage as storage_endpoint
+from app.api.endpoints import subscribe as subscribe_endpoint
 from app.api.endpoints import system as system_endpoint
 from app.api.endpoints import transfer as transfer_endpoint
 from app.api.endpoints import user as user_endpoint
@@ -32,12 +41,16 @@ from app.schemas.types import SystemConfigKey
 
 
 def _dependency_of(func, parameter_name: str):
-    """读取 FastAPI 函数参数上声明的依赖函数。"""
+    """
+    读取 FastAPI 函数参数上声明的依赖函数。
+    """
     return inspect.signature(func).parameters[parameter_name].default.dependency
 
 
 def _build_request() -> Request:
-    """构造最小测试请求。"""
+    """
+    构造最小测试请求。
+    """
     return Request(
         {
             "type": "http",
@@ -52,7 +65,9 @@ def _build_request() -> Request:
 
 
 def test_system_sensitive_read_endpoints_require_superuser():
-    """系统敏感读取接口必须只允许管理员访问。"""
+    """
+    系统敏感读取接口必须只允许管理员访问。
+    """
     assert _dependency_of(system_endpoint.get_env_setting, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.get_setting, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.query_settings, "_") is get_current_active_superuser_async
@@ -64,8 +79,11 @@ def test_system_sensitive_read_endpoints_require_superuser():
 
 
 def test_github_token_endpoints_require_superuser():
-    """GitHub Token 状态和写入接口必须只允许管理员调用。"""
+    """
+    GitHub Token 状态和写入接口必须只允许管理员调用。
+    """
     endpoints = [
+        github_endpoint.get_community_profile,
         github_endpoint.get_auth_status,
         github_endpoint.start_auth,
         github_endpoint.poll_auth,
@@ -77,14 +95,18 @@ def test_github_token_endpoints_require_superuser():
 
 
 def test_system_public_read_endpoints_require_active_user():
-    """公开读取接口只要求登录且启用的用户。"""
+    """
+    公开读取接口只要求登录且启用的用户。
+    """
     assert _dependency_of(system_endpoint.ping, "_") is get_current_active_user_async
     assert _dependency_of(system_endpoint.get_public_setting, "_") is get_current_active_user_async
     assert _dependency_of(storage_endpoint.storage_options, "_") is get_current_active_user
 
 
 def test_rule_query_and_mutation_endpoints_keep_separate_permissions():
-    """规则查询允许活动用户，规则定义修改仍只允许管理员。"""
+    """
+    规则查询允许活动用户，规则定义修改仍只允许管理员。
+    """
     read_endpoints = [
         rule_endpoint.query_builtin_rules,
         rule_endpoint.query_custom_rules,
@@ -108,7 +130,9 @@ def test_rule_query_and_mutation_endpoints_keep_separate_permissions():
 
 
 def test_rule_group_mutation_routes_accept_slashes_in_group_names():
-    """规则组名称允许包含斜杠时，更新和删除路由必须接收完整名称。"""
+    """
+    规则组名称允许包含斜杠时，更新和删除路由必须接收完整名称。
+    """
     routes = {
         (route.endpoint, frozenset(route.methods)): route.path
         for route in rule_endpoint.router.routes
@@ -120,7 +144,9 @@ def test_rule_group_mutation_routes_accept_slashes_in_group_names():
 
 
 def test_dashboard_endpoints_require_superuser():
-    """仪表板页面相关接口必须只允许管理员访问。"""
+    """
+    仪表板页面相关接口必须只允许管理员访问。
+    """
     assert _dependency_of(dashboard_endpoint.statistic, "_") is get_current_active_superuser
     assert _dependency_of(dashboard_endpoint.storage, "_") is get_current_active_superuser
     assert _dependency_of(dashboard_endpoint.processes, "_") is get_current_active_superuser
@@ -134,7 +160,9 @@ def test_dashboard_endpoints_require_superuser():
 
 
 def test_plugin_dashboard_endpoints_require_superuser():
-    """插件仪表板接口必须只允许管理员访问。"""
+    """
+    插件仪表板接口必须只允许管理员访问。
+    """
     assert _dependency_of(plugin_endpoint.plugin_dashboard_meta, "_") is get_current_active_superuser
     assert _dependency_of(plugin_endpoint.plugin_dashboard_by_key, "_") is get_current_active_superuser
     assert _dependency_of(plugin_endpoint.plugin_dashboard, "_") is get_current_active_superuser
@@ -144,19 +172,47 @@ def test_plugin_dashboard_endpoints_require_superuser():
 
 
 def test_site_destructive_commands_require_superuser():
-    """CookieCloud 同步和站点重置必须保持超级管理员边界。"""
+    """
+    CookieCloud 同步和站点重置必须保持超级管理员边界。
+    """
     assert _dependency_of(site_endpoint.cookie_cloud_sync, "_") is get_current_active_superuser_async
     assert _dependency_of(site_endpoint.reset, "_") is get_current_active_superuser_async
 
 
 def test_transfer_history_clear_requires_superuser():
-    """清空全部旧整理历史必须保持超级管理员边界。"""
+    """
+    清空全部旧整理历史必须保持超级管理员边界。
+    """
     assert _dependency_of(history_endpoint.clear_transfer_history, "_") is get_current_active_superuser
     assert _dependency_of(history_endpoint.empty_transfer_history, "_") is get_current_active_superuser
 
 
+def test_webpush_send_requires_superuser_and_subscribe_accepts_login_user():
+    """
+    主动推送到全部浏览器订阅只允许管理员，订阅本身保持登录用户可用。
+    """
+    assert _dependency_of(message_endpoint.send_notification, "_") is get_current_active_superuser
+    assert _dependency_of(message_endpoint.subscribe, "_") is verify_token
+
+
+def test_global_mutations_and_agent_file_access_keep_privilege_boundaries():
+    """
+    全局状态修改和临时附件下载不能退化为普通登录或匿名访问。
+    """
+    assert _dependency_of(subscribe_endpoint.subscribe_share_delete, "_") is get_current_active_manage_user_async
+    assert _dependency_of(subscribe_endpoint.followed_subscribers, "_") is get_current_active_manage_user_async
+    assert _dependency_of(subscribe_endpoint.follow_subscriber, "_") is get_current_active_manage_user_async
+    assert _dependency_of(subscribe_endpoint.unfollow_subscriber, "_") is get_current_active_manage_user_async
+    assert _dependency_of(transfer_endpoint.remove_queue, "_") is get_current_active_manage_user
+    assert _dependency_of(history_endpoint.delete_download_history, "_") is get_current_active_manage_user
+    assert _dependency_of(message_endpoint.clear_notification_message, "_") is get_current_active_superuser
+    assert _dependency_of(agent_endpoint.download_web_agent_file, "token_payload") is verify_resource_token
+
+
 def test_manage_page_endpoints_accept_manage_permission():
-    """管理页面接口允许具备 manage 权限的普通用户访问。"""
+    """
+    管理页面接口允许具备 manage 权限的普通用户访问。
+    """
     sync_endpoints = [
         storage_endpoint.directory_settings,
         storage_endpoint.list_files,
@@ -174,6 +230,7 @@ def test_manage_page_endpoints_accept_manage_permission():
         transfer_endpoint.match_manual_transfer_target_path,
         transfer_endpoint.manual_transfer,
         transfer_endpoint.recommend_episode_format,
+        media_endpoint.scrape,
     ]
     async_endpoints = [
         site_endpoint.read_sites,
@@ -196,14 +253,20 @@ def test_manage_page_endpoints_accept_manage_permission():
 
 
 def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
-    """公开系统设置接口只能读取明确列入白名单的非敏感配置。"""
+    """
+    公开系统设置接口只能读取明确列入白名单的非敏感配置。
+    """
     calls = []
 
     class FakeSystemConfigOper:
-        """返回测试配置值的系统配置桩。"""
+        """
+        返回测试配置值的系统配置桩。
+        """
 
         def get(self, key):
-            """返回测试配置值。"""
+            """
+            返回测试配置值。
+            """
             calls.append(key)
             return [{"path": "/downloads"}]
 
@@ -232,21 +295,92 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
     assert exc_info.value.detail == "配置项不存在"
 
 
+def test_system_public_setting_storages_returns_name_and_type_only(monkeypatch):
+    """
+    公开设置读取存储时只返回名称和类型，与 /storage/options 一致，不含连接配置。
+    """
+    storages = [
+        {"type": "local", "name": "本地存储", "config": {}},
+        {
+            "type": "smb",
+            "name": "NAS",
+            "config": {"host": "192.168.1.2", "username": "smb-user", "password": "smb-password"},
+        },
+        {"type": "u115", "config": {"refresh_token": "u115-refresh", "access_token": "u115-access"}},
+        {"name": "缺少类型", "config": {"token": "untyped-token"}},
+    ]
+    fake_config = SimpleNamespace(get=lambda key: storages if key == SystemConfigKey.Storages else None)
+    monkeypatch.setattr(system_endpoint, "get_configured_system_config", lambda: fake_config)
+    monkeypatch.setattr("app.application.storage.get_configured_system_config", lambda: fake_config)
+
+    response = asyncio.run(system_endpoint.get_public_setting(SystemConfigKey.Storages.value))
+
+    assert response.success is True
+    assert response.data == {
+        "value": [
+            {"name": "本地存储", "type": "local"},
+            {"name": "NAS", "type": "smb"},
+            {"name": "u115", "type": "u115"},
+        ]
+    }
+    assert response.data["value"] == [option.model_dump() for option in storage_endpoint.storage_options()]
+    serialized = response.model_dump_json()
+    for value in ("smb-user", "smb-password", "192.168.1.2", "u115-refresh", "u115-access", "untyped-token"):
+        assert value not in serialized
+
+
+@pytest.mark.parametrize(
+    "config_key",
+    [
+        SystemConfigKey.Directories,
+        SystemConfigKey.IndexerSites,
+        SystemConfigKey.EpisodeFormatRuleTable,
+        SystemConfigKey.DefaultMovieSubscribeConfig,
+        SystemConfigKey.DefaultTvSubscribeConfig,
+        SystemConfigKey.DefaultMusicSubscribeConfig,
+        SystemConfigKey.FollowSubscribers,
+    ],
+)
+def test_system_public_setting_returns_other_keys_as_stored(monkeypatch, config_key):
+    """
+    存储以外的公开配置仍按原值返回。
+    """
+    stored = [{"name": "配置项", "config": {"nested": True}}]
+    monkeypatch.setattr(
+        system_endpoint,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: stored if key == config_key else None),
+    )
+
+    response = asyncio.run(system_endpoint.get_public_setting(config_key.value))
+
+    assert response.success is True
+    assert response.data == {"value": stored}
+
+
 def test_system_ping_returns_success():
-    """服务存活检测接口返回标准成功响应。"""
+    """
+    服务存活检测接口返回标准成功响应。
+    """
     response = asyncio.run(system_endpoint.ping())
 
     assert response.success is True
 
 
 def test_login_sets_resource_token_cookie(monkeypatch):
-    """登录成功时应立即写入资源 Cookie，避免插件静态文件抢先加载失败。"""
+    """
+    登录成功时应立即写入资源 Cookie，避免插件静态文件抢先加载失败。
+    """
 
     class FakeUserChain:
-        """返回登录成功用户的用户链桩。"""
+        """
+        返回登录成功用户的用户链桩。
+        """
 
         def user_authenticate(self, username, password, mfa_code=None):
-            """返回认证成功结果。"""
+            """
+            返回认证成功结果。
+            """
             return True, SimpleNamespace(
                 id=1,
                 name=username,
@@ -278,14 +412,20 @@ def test_login_sets_resource_token_cookie(monkeypatch):
 
 
 def test_plugin_static_file_requires_resource_token_by_default(monkeypatch):
-    """普通插件静态资源必须校验资源令牌。"""
+    """
+    普通插件静态资源必须校验资源令牌。
+    """
     calls = []
 
     class FakePluginManager:
-        """返回空认证提供方的插件管理器桩。"""
+        """
+        返回空认证提供方的插件管理器桩。
+        """
 
         def get_plugin_auth_providers(self):
-            """返回插件认证入口列表。"""
+            """
+            返回插件认证入口列表。
+            """
             return []
 
     monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", FakePluginManager)
@@ -301,14 +441,20 @@ def test_plugin_static_file_requires_resource_token_by_default(monkeypatch):
 
 
 def test_plugin_auth_remote_accepts_versioned_entry_url(monkeypatch):
-    """认证远程入口带缓存版本参数时仍允许匿名读取。"""
+    """
+    认证远程入口带缓存版本参数时仍允许匿名读取。
+    """
     calls = []
 
     class FakePluginManager:
-        """返回带版本参数的认证远程入口桩。"""
+        """
+        返回带版本参数的认证远程入口桩。
+        """
 
         def get_plugin_auth_providers(self):
-            """返回认证远程入口列表。"""
+            """
+            返回认证远程入口列表。
+            """
             return [{
                 "remote": {
                     "id": "AuthPlugin",
@@ -329,14 +475,20 @@ def test_plugin_auth_remote_accepts_versioned_entry_url(monkeypatch):
 
 
 def test_plugin_auth_remote_files_allow_anonymous_bootstrap(monkeypatch):
-    """插件登录认证远程组件需要允许登录前匿名加载。"""
+    """
+    插件登录认证远程组件需要允许登录前匿名加载。
+    """
     calls = []
 
     class FakePluginManager:
-        """返回认证插件 remote 信息的插件管理器桩。"""
+        """
+        返回认证插件 remote 信息的插件管理器桩。
+        """
 
         def get_plugin_auth_providers(self):
-            """返回插件认证入口列表。"""
+            """
+            返回插件认证入口列表。
+            """
             return [
                 {
                     "remote": {
@@ -366,9 +518,11 @@ def test_plugin_auth_remote_files_allow_anonymous_bootstrap(monkeypatch):
 
 
 def test_upload_avatar_rejects_other_user_for_non_superuser():
-    """普通用户不能通过 user_id 参数修改其他用户头像。"""
+    """
+    普通用户不能通过 user_id 参数修改其他用户头像。
+    """
     current_user = SimpleNamespace(id=1, is_superuser=False)
-    upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
+    upload_file = UploadFile(file=io.BytesIO(b"avatar"), filename="avatar.png")
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -385,22 +539,30 @@ def test_upload_avatar_rejects_other_user_for_non_superuser():
 
 
 def test_upload_avatar_returns_filename_in_data(monkeypatch):
-    """头像上传成功时应通过 data 返回文件名，message 只保留消息文本。"""
+    """
+    头像上传成功时应通过 data 返回文件名，message 只保留消息文本。
+    """
 
     fake_user = SimpleNamespace()
     current_user = SimpleNamespace(id=1, is_superuser=False)
-    upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
+    upload_file = UploadFile(file=io.BytesIO(b"avatar"), filename="avatar.png")
 
     class FakeService:
-        """记录头像查询和更新的用户服务桩。"""
+        """
+        记录头像查询和更新的用户服务桩。
+        """
 
         async def get_by_id(self, user_id: int):
-            """按 ID 返回测试用户。"""
+            """
+            按 ID 返回测试用户。
+            """
             assert user_id == 1
             return fake_user
 
         async def update(self, user_id: int, values: dict[str, str]):
-            """记录用户头像更新。"""
+            """
+            记录用户头像更新。
+            """
             assert user_id == 1
             fake_user.values = values
             return fake_user
@@ -419,4 +581,4 @@ def test_upload_avatar_returns_filename_in_data(monkeypatch):
     assert response.data == {"filename": "avatar.png"}
     assert response.message == ""
     assert not hasattr(response, "message_i18n")
-    assert fake_user.values == {"avatar": "data:image/ico;base64,b'YXZhdGFy'"}
+    assert fake_user.values == {"avatar": "data:image/ico;base64,YXZhdGFy"}

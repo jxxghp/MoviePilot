@@ -1,7 +1,12 @@
+"""
+提供订阅查询、创建、修改和控制接口。
+"""
+
+from datetime import date
 from typing import Annotated, Any, List, Optional
 
 import cn2an
-from fastapi import Depends, Header, HTTPException, Request, Response
+from fastapi import Depends, Header, HTTPException, Query, Request, Response
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.security.access import (
@@ -15,6 +20,7 @@ from app.api.context import (
     resolve_background_task_registry,
 )
 from app.api.dependencies.auth import (
+    get_current_active_manage_user_async,
     get_current_active_user,
     get_current_active_user_async,
 )
@@ -48,7 +54,7 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_configured_system_config,
 )
-from app.application.subscription.contract import SubscriptionQueryPort
+from app.application.subscription.contract import SubscriptionIdentityConflictError, SubscriptionQueryPort
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
     SubscribeDeletionActor,
@@ -62,16 +68,20 @@ from app.application.subscription.mutation import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
+from app.chain.subscribe.calendar import SubscribeCalendarChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
+from app.schemas.calendar import SubscribeCalendarPage as _SchemaSubscribeCalendarPage
 from app.schemas.common import IdData as _SchemaIdData
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
+from app.schemas.subscribe import Subscribe as _SchemaSubscribe
 from app.schemas.subscribe import SubscribeDeletionResult as _SchemaSubscribeDeletionResult
 from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
 from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
@@ -84,8 +94,6 @@ from app.schemas.types import (
     MediaType,
     SystemConfigKey,
 )
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
-from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 router = ResponseAPIRouter()
 router.routes.extend(subscribe_maintenance_router.routes)
@@ -100,7 +108,9 @@ __all__ = [
 
 
 def _public_subscription_message(message: Optional[object]) -> str:
-    """延迟加载订阅错误转换器，避免启动阶段增加宿主模块。"""
+    """
+    延迟加载订阅错误转换器，避免启动阶段增加宿主模块。
+    """
     from app.runtime.errors import public_error_message
 
     return public_error_message(message, context="subscription")
@@ -110,7 +120,9 @@ async def _attach_execution_status(
     subscribes: list[_SchemaSubscribe],
     status_service: object,
 ) -> list[_SchemaSubscribe]:
-    """批量附加当前执行状态，保持无执行记录时的旧响应形状。"""
+    """
+    批量附加当前执行状态，保持无执行记录时的旧响应形状。
+    """
     loader = getattr(status_service, "for_subscriptions", None)
     if not callable(loader):
         return subscribes
@@ -129,7 +141,7 @@ def start_subscribe_add(
     media_id: str,
     season: int,
     username: str,
-):
+) -> None:
     """
     启动订阅任务
     """
@@ -144,11 +156,12 @@ def start_subscribe_add(
     )
 
 
-def build_subscribe_event_payload(subscribe: Any) -> dict:
+def build_subscribe_event_payload(subscribe: Any) -> dict[str, Any]:
     """
     从 ORM 已加载字段构造订阅事件快照，避免异步接口里属性懒加载触发隐式 IO。
     """
-    return subscribe.to_dict()
+    payload = subscribe.to_dict()
+    return payload if isinstance(payload, dict) else {}
 
 
 def can_access_subscribe(subscribe: Any, current_user: ApiPrincipal) -> bool:
@@ -180,7 +193,9 @@ def matches_subscribe_music_type(
     subscribe: Any,
     music_type: Optional[str],
 ) -> bool:
-    """匹配订阅音乐实体，并把迁移前未标注类型的历史记录兼容为单曲。"""
+    """
+    匹配订阅音乐实体，并把迁移前未标注类型的历史记录兼容为单曲。
+    """
     if not music_type:
         return True
     subscribe_music_type = getattr(subscribe, "music_type", None)
@@ -194,7 +209,7 @@ def matches_subscribe_music_type(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_subscribes(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
@@ -212,6 +227,35 @@ async def read_subscribes(
     return await _attach_execution_status(subscribes, status_service)
 
 
+@router.get("/calendar", summary="查询日期窗口内的订阅日历", response_model=_SchemaSubscribeCalendarPage)
+async def subscribe_calendar(
+    request: Request,
+    start: Annotated[date, Query(description="开始日期（包含），格式 YYYY-MM-DD")],
+    end: Annotated[date, Query(description="结束日期（不包含），窗口最多 93 天")],
+    page: Annotated[int, Query(ge=1, description="从 1 开始的页码")] = 1,
+    count: Annotated[int, Query(ge=1, le=200, description="每页最多返回的日历条目数")] = 50,
+    query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
+) -> _SchemaSubscribeCalendarPage:
+    """
+    只返回指定播出日期内的精简日历事件，避免客户端逐订阅查询所有季集详情。
+
+    :param start: 日期窗口开始，包含当天
+    :param request: 用于探测翻月或离开页面后断开的旧请求
+    :param end: 日期窗口结束，不包含当天，跨度不超过 93 天
+    :param page: 从 1 开始的页码
+    :param count: 每页条目上限，最多 200 条
+    :param query: 注入的订阅查询服务
+    :param current_user: 当前登录用户，普通用户仅可查询自己的订阅
+    :return: 按真实播出日期排序的精简日历条目与窗口总数
+    """
+    if not 0 < (end - start).days <= 93:
+        raise HTTPException(status_code=422, detail="日历日期窗口必须大于 0 且不超过 93 天")
+    username = None if current_user.is_superuser else current_user.name
+    subscribes = await query.list_public(username)
+    return await SubscribeCalendarChain().window(subscribes, start, end, page, count, request.is_disconnected)
+
+
 @router.get(
     "/list",
     summary="查询所有订阅（API_TOKEN）",
@@ -219,15 +263,20 @@ async def read_subscribes(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_subscribes(
-    response: Response = None,
+    _: Annotated[str, Depends(verify_apitoken)],
+    response: Response = None,  # type: ignore[assignment]
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
-    _: Annotated[str, Depends(verify_apitoken)] = None,
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    查询所有订阅 API_TOKEN认证（?token=xxx）
+    通过 API_TOKEN 及当前管理员身份校验后查询全部用户的订阅。
+
+    认证依赖必须放在最外层 Annotated 中，避免被可空联合类型隐藏。
+
+    :param _: 由 ?token= 或 X-API-KEY 传入并已通过校验的凭据
+    :return: 按可选分页返回的订阅列表
     """
     page, count = resolve_compatible_pagination(page, count)
     if response is not None:
@@ -245,18 +294,18 @@ async def create_subscribe(
     *,
     subscribe_in: _SchemaSubscribe,
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     新增订阅
     """
     # 类型转换
     if subscribe_in.type:
-        mtype = MediaType(subscribe_in.type)
+        mtype = MediaType.from_agent(subscribe_in.type) or MediaType(subscribe_in.type)
     else:
         mtype = None
     # 非 TMDB 来源的标题可能自带季标记，入库前统一拆分。
     if mtype != MediaType.MUSIC and normalize_media_source(subscribe_in.media_source) not in (None, MediaSource.TMDB):
-        meta = MetaInfo(subscribe_in.name)
+        meta = MetaInfo(subscribe_in.name or "")
         subscribe_in.name = meta.name
         if subscribe_in.season is None:
             subscribe_in.season = meta.begin_season
@@ -310,7 +359,10 @@ async def update_subscribe(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
     )
-    subscribe = await mutation.get_accessible(subscribe_in.id, actor)
+    if subscribe_in.id is None:
+        return _SchemaResponse(success=False, message="订阅不存在")
+    subscribe_id = subscribe_in.id
+    subscribe = await mutation.get_accessible(subscribe_id, actor)
     if not subscribe:
         return _SchemaResponse(success=False, message="订阅不存在")
     subscribe_dict = subscribe_in.to_public_write_payload(exclude_unset=True)
@@ -363,11 +415,13 @@ async def update_subscribe(
     # 更新到数据库
     try:
         change = await mutation.update(
-            subscribe_in.id,
+            subscribe_id,
             subscribe_dict,
             actor,
             existing=subscribe,
         )
+    except SubscriptionIdentityConflictError:
+        return _SchemaResponse(success=False, message="目标媒体身份已有订阅，当前修改已取消")
     except ValueError as error:
         logger.error(f"订阅分类设置无效：{error}", exc_info=True)
         return _SchemaResponse(
@@ -544,12 +598,14 @@ async def subscribe_history(
     count: Optional[int] = 30,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
 ) -> Any:
     """
     查询电影、电视剧或音乐订阅历史
     """
     username = None if current_user.is_superuser else current_user.name
+    page = page if page is not None else 1
+    count = count if count is not None else 30
     results = await query.list_history(
         mtype,
         page=page,
@@ -621,27 +677,55 @@ async def popular_subscribes(
         ret_medias = []
         for sub in subscribes:
             # 订阅人数
-            count = sub.get("count")
+            raw_count = sub.get("count")
+            count = (
+                int(raw_count)
+                if isinstance(raw_count, (int, float, str)) and str(raw_count).strip()
+                else 0
+            )
             if min_sub and count < min_sub:
                 continue
             media = MediaInfo()
-            media.type = MediaType(sub.get("type"))
-            media.media_source = normalize_media_source(sub.get("media_source"))
-            media.media_id = str(sub.get("media_id")) if sub.get("media_id") is not None else None
+            raw_type = sub.get("type")
+            if not isinstance(raw_type, str):
+                continue
+            media.type = MediaType.from_agent(raw_type) or MediaType(raw_type)
+            raw_source = sub.get("media_source")
+            if isinstance(raw_source, str):
+                normalized_source = normalize_media_source(raw_source)
+                if normalized_source is not None:
+                    media.media_source = normalized_source
+            raw_media_id = sub.get("media_id")
+            if raw_media_id is not None:
+                media.media_id = str(raw_media_id)
             # 处理标题
-            title = sub.get("name")
-            season = sub.get("season")
-            if season not in (None, "") and int(season) != 1:
+            raw_title = sub.get("name")
+            title = str(raw_title) if raw_title is not None else ""
+            raw_season = sub.get("season")
+            season = int(raw_season) if isinstance(raw_season, (int, float, str)) and str(raw_season).strip() else None
+            if season is not None and season != 1:
                 # 小写数据转大写
                 season_str = cn2an.an2cn(season, "low")
                 title = f"{title} 第{season_str}季"
             media.title = title
-            media.year = sub.get("year")
-            media.season = sub.get("season")
-            media.overview = sub.get("description")
-            media.vote_average = sub.get("vote")
-            media.poster_path = sub.get("poster")
-            media.backdrop_path = sub.get("backdrop")
+            raw_year = sub.get("year")
+            if isinstance(raw_year, (int, float, str)) and str(raw_year).strip():
+                # 共享数据可能使用数值年份，公开响应仍遵循字符串年份契约
+                media.year = str(int(float(raw_year)))
+            if season is not None:
+                media.season = season
+            raw_description = sub.get("description")
+            if raw_description is not None:
+                media.overview = str(raw_description)
+            raw_vote = sub.get("vote")
+            if isinstance(raw_vote, (int, float, str)) and str(raw_vote).strip():
+                media.vote_average = float(raw_vote)
+            raw_poster = sub.get("poster")
+            if raw_poster is not None:
+                media.poster_path = str(raw_poster)
+            raw_backdrop = sub.get("backdrop")
+            if raw_backdrop is not None:
+                media.backdrop_path = str(raw_backdrop)
             media.popularity = count
             ret_medias.append(media)
         return [media.to_dict() for media in ret_medias]
@@ -656,7 +740,7 @@ async def popular_subscribes(
 )
 async def user_subscribes(
     username: str,
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
@@ -711,6 +795,8 @@ async def subscribe_share(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
     )
+    if sub.subscribe_id is None or sub.share_title is None or sub.share_comment is None or sub.share_user is None:
+        return _SchemaResponse(success=False, message="订阅分享参数不完整")
     subscribe = await mutation.get_accessible(sub.subscribe_id, actor)
     if not subscribe:
         return _SchemaResponse(success=False, message="订阅不存在")
@@ -727,7 +813,10 @@ async def subscribe_share(
 
 
 @router.delete("/share/{share_id}", summary="删除分享", response_model=_SchemaResponse[None])
-async def subscribe_share_delete(share_id: int, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def subscribe_share_delete(
+    share_id: int,
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+) -> Any:
     """
     删除分享
     """
@@ -752,14 +841,16 @@ async def subscribe_fork(
         if not hasattr(_SchemaSubscribe(), key):
             sub_dict.pop(key)
     result = await create_subscribe(subscribe_in=_SchemaSubscribe(**sub_dict), current_user=current_user)
-    if result.success:
+    if result.success and sub.id is not None:
         await MoviePilotServerHelper.async_sub_fork(share_id=sub.id)
     return result
 
 
 @router.get("/follow", summary="查询已Follow的订阅分享人", response_model=List[str])
 async def followed_subscribers(
-    _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询已Follow的订阅分享人
@@ -768,7 +859,10 @@ async def followed_subscribers(
 
 
 @router.post("/follow", summary="Follow订阅分享人", response_model=_SchemaResponse[None])
-async def follow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def follow_subscriber(
+    share_uid: Optional[str] = None,
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+) -> Any:
     """
     Follow订阅分享人
     """
@@ -780,7 +874,10 @@ async def follow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayl
 
 
 @router.delete("/follow", summary="取消Follow订阅分享人", response_model=_SchemaResponse[None])
-async def unfollow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def unfollow_subscriber(
+    share_uid: Optional[str] = None,
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+) -> Any:
     """
     取消Follow订阅分享人
     """

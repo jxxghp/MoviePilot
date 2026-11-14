@@ -1,4 +1,6 @@
-"""插件认证一次性票据的生命周期测试。"""
+"""
+插件认证一次性票据的生命周期测试。
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,7 +12,9 @@ from app.application.security.auth import AuthTicketStore
 
 @pytest.fixture(autouse=True)
 def clear_auth_tickets():
-    """隔离单例票据缓存，避免测试间共享认证事实。"""
+    """
+    隔离单例票据缓存，避免测试间共享认证事实。
+    """
     store = AuthTicketStore()
     with store._lock:
         store._tickets.clear()
@@ -20,7 +24,9 @@ def clear_auth_tickets():
 
 
 def test_auth_ticket_can_only_be_consumed_once():
-    """成功领取后立即删除票据，后续兑换不得重复获得认证事实。"""
+    """
+    成功领取后立即删除票据，后续兑换不得重复获得认证事实。
+    """
     store = AuthTicketStore()
     ticket = store.create(user_id=1, provider_id="plugin:test")
 
@@ -29,7 +35,9 @@ def test_auth_ticket_can_only_be_consumed_once():
 
 
 def test_auth_ticket_concurrent_consumers_have_single_winner():
-    """多个并发兑换请求只能有一个成功领取同一票据。"""
+    """
+    多个并发兑换请求只能有一个成功领取同一票据。
+    """
     store = AuthTicketStore()
     ticket = store.create(user_id=1, provider_id="plugin:test")
 
@@ -40,7 +48,9 @@ def test_auth_ticket_concurrent_consumers_have_single_winner():
 
 
 def test_auth_ticket_ttl_boundary_and_expiration(monkeypatch):
-    """票据在 TTL 边界内有效，超过边界后即使首次领取也必须失败。"""
+    """
+    票据在 TTL 边界内有效，超过边界后即使首次领取也必须失败。
+    """
     now = [1_000.0]
     monkeypatch.setattr(auth.time, "time", lambda: now[0])
     store = AuthTicketStore()
@@ -56,7 +66,9 @@ def test_auth_ticket_ttl_boundary_and_expiration(monkeypatch):
 
 
 def test_auth_ticket_metadata_is_detached_from_callers():
-    """签发和领取两侧都不能通过可变对象改写缓存中的认证元数据。"""
+    """
+    签发和领取两侧都不能通过可变对象改写缓存中的认证元数据。
+    """
     store = AuthTicketStore()
     metadata = {"groups": ["users"]}
     ticket = store.create(
@@ -72,7 +84,9 @@ def test_auth_ticket_metadata_is_detached_from_callers():
 
 
 def test_auth_ticket_capacity_is_a_hard_limit(monkeypatch):
-    """连续签发也不得让票据表永久超过容量上限。"""
+    """
+    连续签发也不得让票据表永久超过容量上限。
+    """
     monkeypatch.setattr(AuthTicketStore, "_max_items", 4)
     store = AuthTicketStore()
 

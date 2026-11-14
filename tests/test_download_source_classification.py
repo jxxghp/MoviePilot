@@ -1,4 +1,6 @@
-"""已有下载任务的资源目录分类测试。"""
+"""
+已有下载任务的资源目录分类测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -24,7 +26,9 @@ HASH = "a" * 40
 
 
 def _history(**overrides: object) -> DownloadHistorySnapshot:
-    """构造含稳定音乐分类快照的下载历史。"""
+    """
+    构造含稳定音乐分类快照的下载历史。
+    """
     values = {
         "id": 1,
         "path": "/volume1/UT/Musics/Example",
@@ -37,7 +41,9 @@ def _history(**overrides: object) -> DownloadHistorySnapshot:
 
 
 def test_resolve_source_classification_uses_task_root_and_history_category(monkeypatch):
-    """不论任务内容名称如何，目标都应是配置根目录下的历史分类。"""
+    """
+    不论任务内容名称如何，目标都应是配置根目录下的历史分类。
+    """
     directory = TransferDirectoryConf(
         storage="local",
         download_path="/volume1/UT/Musics",
@@ -71,7 +77,9 @@ def test_resolve_source_classification_uses_task_root_and_history_category(monke
 
 
 def test_task_path_matching_prefers_the_deepest_configured_download_root(monkeypatch):
-    """嵌套资源目录同时命中时必须使用最具体的配置根目录。"""
+    """
+    嵌套资源目录同时命中时必须使用最具体的配置根目录。
+    """
     generic = TransferDirectoryConf(
         storage="local",
         download_path="/downloads",
@@ -94,7 +102,9 @@ def test_task_path_matching_prefers_the_deepest_configured_download_root(monkeyp
 
 
 def test_source_classification_preview_has_no_downloader_side_effect():
-    """预览只返回当前与目标目录，不调用下载器。"""
+    """
+    预览只返回当前与目标目录，不调用下载器。
+    """
     torrent = DownloaderTorrent(hash=HASH, downloader="qb-main", save_path="/downloads")
     update_torrent = MagicMock()
     service = DownloadSourceClassificationService(
@@ -117,7 +127,9 @@ def test_source_classification_preview_has_no_downloader_side_effect():
 
 
 def test_source_classification_execute_delegates_location_move_to_downloader():
-    """确认执行时只向下载器提交校验后的目标保存目录。"""
+    """
+    确认执行时只向下载器提交校验后的目标保存目录。
+    """
     torrent = DownloaderTorrent(hash=HASH, downloader="qb-main", save_path="/downloads")
     update_torrent = MagicMock(return_value={"save_path": True})
     service = DownloadSourceClassificationService(
@@ -143,7 +155,9 @@ def test_source_classification_execute_delegates_location_move_to_downloader():
 
 
 def test_source_classification_rejects_missing_history_category(monkeypatch):
-    """无分类历史时不应猜测目录或移动做种数据。"""
+    """
+    无分类历史时不应猜测目录或移动做种数据。
+    """
     directory = TransferDirectoryConf(
         storage="local",
         download_path="/downloads",
@@ -171,7 +185,9 @@ def test_source_classification_rejects_missing_history_category(monkeypatch):
 
 
 def test_source_classification_accepts_an_enabled_manual_category(monkeypatch):
-    """旧下载历史无分类时，允许用户精确选择当前策略中的已启用分类。"""
+    """
+    旧下载历史无分类时，允许用户精确选择当前策略中的已启用分类。
+    """
     directory = TransferDirectoryConf(
         storage="local",
         download_path="/downloads",
@@ -203,7 +219,9 @@ def test_source_classification_accepts_an_enabled_manual_category(monkeypatch):
 
 
 def test_source_classification_rejects_an_unknown_manual_category():
-    """手动分类不能成为绕过活动策略校验的任意子目录。"""
+    """
+    手动分类不能成为绕过活动策略校验的任意子目录。
+    """
     helper = MagicMock()
     helper.classification_category_paths.return_value = (("Album",),)
 
@@ -220,7 +238,9 @@ def test_source_classification_rejects_an_unknown_manual_category():
 
 @pytest.mark.asyncio
 async def test_classify_source_endpoint_preserves_preview_mode(monkeypatch):
-    """REST 预览应保留 execute=false，不把查询变成移动。"""
+    """
+    REST 预览应保留 execute=false，不把查询变成移动。
+    """
     chain = SimpleNamespace(
         list_torrents=MagicMock(),
         download_history_repository=SimpleNamespace(get_by_hash=MagicMock()),

@@ -1,8 +1,9 @@
-"""插件实例生命周期应用能力。"""
+"""
+插件实例生命周期应用能力。
+"""
 
 from __future__ import annotations
 
-import threading
 import time
 import traceback
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, Optional, ParamSpec, TypeVar, cast
 
 from app.runtime.extensions.plugin.database import PluginDatabase
+from app.runtime.extensions.plugin.gate import PluginLifecycleGate
 from app.runtime.extensions.plugin.gil import (
     GilFallbackRecorder,
     attribute_gil_fallback,
@@ -18,21 +20,27 @@ from app.runtime.extensions.plugin.gil import (
 )
 from app.runtime.log import bind_plugin_instance
 from app.runtime.observability import record_metric
-from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.plugin import PluginLifecycleActivity, PluginRuntimeStatus
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
 def observe_plugin_lifecycle(operation: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """为插件生命周期入口记录不含插件标识的低基数耗时。"""
+    """
+    为插件生命周期入口记录不含插件标识的低基数耗时。
+    """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        """包装单个同步生命周期方法，并保留原始调用签名。"""
+        """
+        包装单个同步生命周期方法，并保留原始调用签名。
+        """
 
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            """执行生命周期方法并把失败状态归一为 error。"""
+            """
+            执行生命周期方法并把失败状态归一为 error。
+            """
             started_at = time.perf_counter()
             outcome = "success"
             try:
@@ -58,7 +66,9 @@ def observe_plugin_lifecycle(operation: str) -> Callable[[Callable[P, R]], Calla
 
 
 class PluginLifecycle:
-    """管理插件发现、初始化、启停和热重载，不持有市场或 HTTP 路由职责。"""
+    """
+    管理插件发现、初始化、启停和热重载，不持有市场或 HTTP 路由职责。
+    """
 
     _EVENT_HANDLERS_QUIESCED = "__event_handlers__"
 
@@ -69,7 +79,7 @@ class PluginLifecycle:
         running: dict[str, Any],
         load_plugins: Callable[[Optional[str], list[str], Callable[[Any], bool]], list[Any]],
         loadable_plugins: Callable[[], list[str]],
-        plugin_config: Callable[[str], dict],
+        plugin_config: Callable[[str], dict[str, object]],
         auth_checker: Callable[[Any], bool],
         clear_modules: Callable[[Optional[str]], Any],
         clear_tools: Callable[[], None],
@@ -83,8 +93,11 @@ class PluginLifecycle:
         refresh_classification: Callable[[str, Any], None] | None = None,
         remove_classification: Callable[[str], None] | None = None,
         gil_fallback_recorder: GilFallbackRecorder = ignore_gil_fallback,
+        enabled_state_recorder: Callable[[str], None] | None = None,
     ) -> None:
-        """保存注册表、加载器、数据库和事件端口。"""
+        """
+        保存注册表、加载器、数据库和事件端口。
+        """
         self._classes = classes
         self._running = running
         self._load_plugins = load_plugins
@@ -107,36 +120,61 @@ class PluginLifecycle:
             lambda _plugin_id: None
         )
         self._gil_fallback_recorder = gil_fallback_recorder
-        self._lifecycle_lock = threading.RLock()
+        # 启用状态变化会改变侧栏、仪表盘和助手形象等前端投影，需要推进前端刷新代次
+        self._enabled_state_recorder = enabled_state_recorder or (
+            lambda _plugin_id: None
+        )
+        self._gate = PluginLifecycleGate()
         self._quiesced_hooks: dict[str, set[str]] = {}
+
+    def activity(self) -> Optional[PluginLifecycleActivity]:
+        """
+        返回仍在执行的操作和钩子，不等待插件退出。
+        """
+        return self._gate.activity()
 
     @observe_plugin_lifecycle("start")
     def start(
         self,
         plugin_id: Optional[str] = None,
     ) -> dict[str, PluginRuntimeStatus]:
-        """加载并初始化插件，返回每个目标的明确运行结果。
+        """
+        加载并初始化插件，返回每个目标的明确运行结果。
 
-        与 stop／quiesce 共用同一把可重入锁。加载要构造实例、建库并注册事件订阅，
+        与 stop／quiesce 共用可重入执行权，竞争者在副作用前拒绝。加载要构造实例、建库并注册事件订阅，
         停止取的却是进入时的运行表快照：两者交叠时，本次加载的实例落在快照之外而
         停止仍会把它从运行表里抹掉，它注册的定时任务、线程和事件订阅却留在原处，
         此后没有任何句柄能再停掉它。
         """
-        with self._lifecycle_lock:
+        with self._gate.hold("start", plugin_id):
             loadable_plugins = self._loadable_plugins()
             results: dict[str, PluginRuntimeStatus] = {}
             if plugin_id:
                 self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
 
             def check_module(module: Any) -> bool:
-                """判断模块是否具备宿主插件最小生命周期钩子。"""
+                """
+                判断模块是否具备宿主插件最小生命周期钩子。
+                """
                 return hasattr(module, "init_plugin") and hasattr(module, "plugin_name")
 
-            plugins = self._load_plugins(plugin_id, loadable_plugins, check_module)
+            with self._gate.hold("start", plugin_id, "load"):
+                plugins = self._load_plugins(plugin_id, loadable_plugins, check_module)
             plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
             for plugin in plugins:
                 current_id = plugin.__name__
                 if plugin_id and current_id.casefold() != plugin_id.casefold():
+                    continue
+                runtime_id = self._resolve_runtime_id(current_id)
+                if runtime_id in self._running:
+                    # 未收敛实例仍由运行表持有，不能被重试构造的新实例覆盖。
+                    status = (
+                        PluginRuntimeStatus.LOAD_FAILED
+                        if runtime_id in self._quiesced_hooks
+                        else PluginRuntimeStatus.ACTIVE
+                    )
+                    self._runtime_status_writer(plugin_id or current_id, status)
+                    results[plugin_id or current_id] = status
                     continue
                 try:
                     if not self._auth_checker(plugin):
@@ -154,10 +192,15 @@ class PluginLifecycle:
                         current_id,
                         self._gil_fallback_recorder,
                     ):
-                        instance = plugin()
-                        instance.init_plugin(self._plugin_config(current_id))
-                    self._ensure_database(current_id, instance)
-                    enabled = bool(instance.get_state())
+                        with self._gate.hold("start", current_id, "__init__"):
+                            instance = plugin()
+                        self._running[current_id] = instance
+                        with self._gate.hold("start", current_id, "init_plugin"):
+                            instance.init_plugin(self._plugin_config(current_id))
+                    with self._gate.hold("start", current_id, "database"):
+                        self._ensure_database(current_id, instance)
+                    with self._gate.hold("start", current_id, "get_state"):
+                        enabled = bool(instance.get_state())
                     if enabled:
                         self._refresh_classification_safely(current_id, instance)
                     else:
@@ -174,14 +217,13 @@ class PluginLifecycle:
                     status = PluginRuntimeStatus.ACTIVE
                     self._runtime_status_writer(plugin_id or current_id, status)
                     results[plugin_id or current_id] = status
+                # 单个插件初始化失败必须隔离，撤销其分类声明并登记错误状态。
                 except Exception as error:  # noqa: BLE001
                     self._remove_classification(current_id)
                     status = PluginRuntimeStatus.LOAD_FAILED
                     self._runtime_status_writer(plugin_id or current_id, status)
                     results[plugin_id or current_id] = status
-                    # 建库发生在进入运行态之前：失败的插件不会出现在 _running 里，卸载路径
-                    # 因此够不到它，句柄只能在这里释放
-                    self._release_databases((current_id,))
+                    self._cleanup_failed_candidate(current_id)
                     self._logger.error(
                         f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
                     )
@@ -197,19 +239,42 @@ class PluginLifecycle:
                     if self._runtime_compatible(plugin_id)
                     else PluginRuntimeStatus.INCOMPATIBLE_RUNTIME
                 )
+                if status is PluginRuntimeStatus.LOAD_FAILED:
+                    self._logger.error(
+                        f"插件 {plugin_id} 加载失败：加载器未返回匹配的插件类，"
+                        "请检查插件目录内容及模块导入日志"
+                    )
                 self._runtime_status_writer(plugin_id, status)
                 results[plugin_id] = status
             self._clear_tools()
             return results
 
+    def _cleanup_failed_candidate(self, plugin_id: str) -> None:
+        """
+        收尾已经构造的失败候选；未收敛时保留实例和数据库供后续停止重试。
+
+        :param plugin_id: 初始化失败的插件运行标识
+        """
+        instance = self._running.get(plugin_id)
+        if instance is not None:
+            if not self._quiesce_selected({plugin_id: instance}):
+                return
+            self._running.pop(plugin_id, None)
+            self._quiesced_hooks.pop(plugin_id, None)
+        self._release_databases((plugin_id,))
+
     @staticmethod
     def _declaration(instance: Any, hook_name: str) -> Any:
-        """读取插件的数据库声明钩子，未实现该钩子时视为未声明。"""
+        """
+        读取插件的数据库声明钩子，未实现该钩子时视为未声明。
+        """
         hook = getattr(instance, hook_name, None)
         return hook() if callable(hook) else None
 
     def _ensure_database(self, plugin_id: str, instance: Any) -> None:
-        """按插件声明建立其自有数据库，两项声明都缺失时不建库。"""
+        """
+        按插件声明建立其自有数据库，两项声明都缺失时不建库。
+        """
         migrations = self._declaration(instance, "get_database_migrations")
         self._database().ensure(
             plugin_id,
@@ -218,82 +283,121 @@ class PluginLifecycle:
         )
 
     def _release_databases(self, plugin_ids: tuple[str, ...]) -> None:
-        """释放已卸载插件的自有数据库连接，单个失败不得阻断其余释放。"""
+        """
+        释放已卸载插件的自有数据库连接，单个失败不得阻断其余释放。
+        """
         database = self._database()
         for plugin_id in plugin_ids:
             try:
                 database.release(plugin_id)
-            except Exception as error:  # noqa: BLE001  释放故障不得阻断卸载
+            # 释放故障不得阻断卸载
+            except Exception as error:  # noqa: BLE001
                 self._logger.warning(
                     f"释放插件 {plugin_id} 的数据库连接时发生错误: {error}"
                 )
 
     @observe_plugin_lifecycle("initialize")
-    def initialize(self, plugin_id: str, config: dict) -> None:
-        """重新应用指定插件配置并刷新事件注册状态。"""
-        plugin = self._running.get(plugin_id)
-        if not plugin:
-            return
-        self._remove_classification(plugin_id)
-        try:
-            with bind_plugin_instance(plugin_id):
-                plugin.init_plugin(config)
-            enabled = bool(plugin.get_state())
-            if enabled:
-                self._refresh_classification_safely(plugin_id, plugin)
-                self._enable_events(type(plugin))
-            else:
-                self._remove_classification(plugin_id)
-                self._disable_events(type(plugin))
-        except Exception:
+    def initialize(self, plugin_id: str, config: dict[str, object]) -> None:
+        """
+        重新应用指定插件配置并刷新事件注册状态。
+        """
+        with self._gate.hold("initialize", plugin_id):
+            plugin = self._running.get(plugin_id)
+            if not plugin:
+                return
+            with self._gate.hold("initialize", plugin_id, "get_state"):
+                was_enabled = bool(plugin.get_state())
             self._remove_classification(plugin_id)
-            raise
-        self._clear_tools()
+            try:
+                with bind_plugin_instance(plugin_id), self._gate.hold("initialize", plugin_id, "init_plugin"):
+                    plugin.init_plugin(config)
+                with self._gate.hold("initialize", plugin_id, "get_state"):
+                    enabled = bool(plugin.get_state())
+                if enabled:
+                    self._refresh_classification_safely(plugin_id, plugin)
+                    self._enable_events(type(plugin))
+                else:
+                    self._remove_classification(plugin_id)
+                    self._disable_events(type(plugin))
+            except Exception:
+                self._remove_classification(plugin_id)
+                raise
+            self._clear_tools()
+            if enabled != was_enabled:
+                self._enabled_state_recorder(plugin_id)
 
     def _refresh_classification_safely(
         self,
         plugin_id: str,
         instance: Any,
     ) -> None:
-        """隔离可选分类声明故障，并确保无效声明不会保留旧注册。"""
+        """
+        隔离可选分类声明故障，并确保无效声明不会保留旧注册。
+        """
         try:
             self._refresh_classification(plugin_id, instance)
-        except Exception as error:  # noqa: BLE001  可选声明不得阻断插件主功能
+        # 可选声明不得阻断插件主功能
+        except Exception as error:  # noqa: BLE001
             self._remove_classification(plugin_id)
             self._logger.warning(
                 f"插件 {plugin_id} 的分类扩展声明无效，已忽略：{error}"
             )
 
     @observe_plugin_lifecycle("stop")
-    def stop(self, plugin_id: Optional[str] = None) -> None:
-        """按旧单阶段 ABI 先解绑 handler，再停止并强制卸载插件。"""
-        with self._lifecycle_lock:
+    def stop(self, plugin_id: Optional[str] = None) -> Optional[bool]:
+        """
+        先解绑handler并停止生产者，未收敛时返回False且保留owner；成功沿用None返回。
+
+        :param plugin_id: 指定插件标识；为空时停止全部实例
+        :return: 停止或卸载失败时为False，成功时保留旧ABI的None
+        """
+        with self._gate.hold("stop", plugin_id):
             plugins = self._select_running_plugins(plugin_id)
-            self._quiesce_selected(plugins)
-            self._finalize(
+            if not self._quiesce_selected(plugins):
+                self._record_stop_failure(plugins)
+                return False
+            if not self._finalize(
                 plugin_id,
-                require_quiesced=False,
-                disable_events=not self._handlers_quiesced(plugins),
-            )
+                require_quiesced=True,
+                disable_events=False,
+            ):
+                self._record_stop_failure(plugins)
+                return False
+            return None
+
+    def _record_stop_failure(self, plugins: dict[str, Any]) -> None:
+        """
+        将停止失败的实例标记为加载失败，运行注册表继续持有其资源。
+
+        :param plugins: 本次停止入口冻结的实例快照
+        """
+        for current_id in plugins:
+            self._runtime_status_writer(current_id, PluginRuntimeStatus.LOAD_FAILED)
 
     @observe_plugin_lifecycle("quiesce")
     def quiesce(self, plugin_id: Optional[str] = None) -> bool:
-        """先解绑事件 handler，再按旧 hook 顺序停止生产者并保留实例。"""
-        with self._lifecycle_lock:
+        """
+        先解绑事件 handler，再按旧 hook 顺序停止生产者并保留实例。
+        """
+        with self._gate.hold("quiesce", plugin_id):
             plugins = self._select_running_plugins(plugin_id)
             return self._quiesce_selected(plugins)
 
     @observe_plugin_lifecycle("quiesce_handlers")
     def quiesce_handlers(self, plugin_id: Optional[str] = None) -> bool:
-        """禁止目标插件接收新事件，保留实例供在途 handler 和后续 hook 使用。"""
-        with self._lifecycle_lock:
+        """
+        禁止目标插件接收新事件，保留实例供在途 handler 和后续 hook 使用。
+        """
+        with self._gate.hold("quiesce_handlers", plugin_id):
             plugins = self._select_running_plugins(plugin_id)
             return self._disable_selected_handlers(plugins)
 
     @observe_plugin_lifecycle("quiesce_services")
     def quiesce_services(self, plugin_id: Optional[str] = None) -> bool:
-        """在事件结算屏障后执行旧 close、stop_service hook。"""
-        with self._lifecycle_lock:
+        """
+        在事件结算屏障后执行旧 close、stop_service hook。
+        """
+        with self._gate.hold("quiesce_services", plugin_id):
             plugins = self._select_running_plugins(plugin_id)
             if not self._handlers_quiesced(plugins):
                 self._logger.warning("插件事件 handler 尚未全部停用，拒绝关闭插件资源")
@@ -301,13 +405,17 @@ class PluginLifecycle:
             return self._quiesce_hooks(plugins)
 
     def _quiesce_selected(self, plugins: dict[str, Any]) -> bool:
-        """兼容单阶段调用：先停用全部 handler，再执行稳定快照的旧 hooks。"""
+        """
+        兼容单阶段调用：先停用全部 handler，再执行稳定快照的旧 hooks。
+        """
         if not self._disable_selected_handlers(plugins):
             return False
         return self._quiesce_hooks(plugins)
 
     def _disable_selected_handlers(self, plugins: dict[str, Any]) -> bool:
-        """先停用稳定快照的全部事件入口，任一失败时不执行破坏性 hook。"""
+        """
+        先停用稳定快照的全部事件入口，任一失败时不执行破坏性 hook。
+        """
         all_converged = True
         for current_id, plugin in plugins.items():
             completed = self._quiesced_hooks.setdefault(current_id, set())
@@ -315,7 +423,8 @@ class PluginLifecycle:
                 continue
             try:
                 self._disable_events(type(plugin))
-            except Exception as error:  # noqa: BLE001  插件边界必须隔离
+            # 插件边界必须隔离
+            except Exception as error:  # noqa: BLE001
                 all_converged = False
                 self._logger.warning(
                     f"停用插件 {current_id} 的事件 handler 时发生错误: {error}"
@@ -325,7 +434,9 @@ class PluginLifecycle:
         return all_converged
 
     def _quiesce_hooks(self, plugins: dict[str, Any]) -> bool:
-        """执行旧 ABI hooks，并只重试尚未成功的步骤。"""
+        """
+        执行旧 ABI hooks，并只重试尚未成功的步骤。
+        """
         all_converged = True
         for current_id, plugin in plugins.items():
             completed = self._quiesced_hooks.setdefault(current_id, set())
@@ -337,8 +448,10 @@ class PluginLifecycle:
                     completed.add(hook_name)
                     continue
                 try:
-                    result = hook()
-                except Exception as error:  # noqa: BLE001  插件边界必须隔离
+                    with self._gate.hold("quiesce_services", current_id, hook_name):
+                        result = hook()
+                # 插件边界必须隔离
+                except Exception as error:  # noqa: BLE001
                     all_converged = False
                     self._logger.warning(
                         f"停止插件 {current_id} 的 {hook_name} 时发生错误: {error}"
@@ -355,7 +468,9 @@ class PluginLifecycle:
 
     @observe_plugin_lifecycle("finalize")
     def finalize(self, plugin_id: Optional[str] = None) -> bool:
-        """在 handler、旧 hook 和事件屏障均收敛后卸载插件实例。"""
+        """
+        在 handler、旧 hook 和事件屏障均收敛后卸载插件实例。
+        """
         return self._finalize(
             plugin_id,
             require_quiesced=True,
@@ -369,8 +484,10 @@ class PluginLifecycle:
         require_quiesced: bool,
         disable_events: bool = True,
     ) -> bool:
-        """按严格或兼容策略卸载插件，并在清理失败时保留实例所有权。"""
-        with self._lifecycle_lock:
+        """
+        按严格或兼容策略卸载插件，并在清理失败时保留实例所有权。
+        """
+        with self._gate.hold("finalize", plugin_id):
             plugins = self._select_running_plugins(plugin_id)
             if require_quiesced and any(
                 not self._is_quiesced(current_id, plugin)
@@ -387,7 +504,8 @@ class PluginLifecycle:
                 self._clear_tools()
                 for current_id in plugins:
                     self._remove_classification(current_id)
-            except Exception as error:  # noqa: BLE001  保留实例所有权供后续重试
+            # 保留实例所有权供后续重试
+            except Exception as error:  # noqa: BLE001
                 self._logger.warning(f"卸载插件运行实例时发生错误: {error}")
                 return False
 
@@ -408,7 +526,9 @@ class PluginLifecycle:
             return True
 
     def _select_running_plugins(self, plugin_id: Optional[str]) -> dict[str, Any]:
-        """返回本阶段处理的稳定实例快照，并保持旧停机日志语义。"""
+        """
+        返回本阶段处理的稳定实例快照，并保持旧停机日志语义。
+        """
         if plugin_id:
             self._logger.info(f"正在停止插件 {plugin_id}...")
             runtime_id = self._resolve_runtime_id(plugin_id)
@@ -421,14 +541,18 @@ class PluginLifecycle:
         return dict(self._running)
 
     def _resolve_runtime_id(self, plugin_id: str) -> str:
-        """按不区分大小写的插件 ID 找到运行时注册表键。"""
+        """
+        按不区分大小写的插件 ID 找到运行时注册表键。
+        """
         for runtime_id in (*self._running, *self._classes):
             if runtime_id.casefold() == plugin_id.casefold():
                 return runtime_id
         return plugin_id
 
     def _is_quiesced(self, plugin_id: str, plugin: Any) -> bool:
-        """判断 handler 及当前实例声明的旧 ABI hooks 是否均已成功收敛。"""
+        """
+        判断 handler 及当前实例声明的旧 ABI hooks 是否均已成功收敛。
+        """
         required = {self._EVENT_HANDLERS_QUIESCED} | {
             hook_name
             for hook_name in ("close", "stop_service")
@@ -437,7 +561,9 @@ class PluginLifecycle:
         return required.issubset(self._quiesced_hooks.get(plugin_id, set()))
 
     def _handlers_quiesced(self, plugins: dict[str, Any]) -> bool:
-        """判断稳定快照中的全部插件是否已经停用事件入口。"""
+        """
+        判断稳定快照中的全部插件是否已经停用事件入口。
+        """
         return all(
             self._EVENT_HANDLERS_QUIESCED
             in self._quiesced_hooks.get(plugin_id, set())
@@ -450,14 +576,19 @@ class PluginLifecycle:
         plugin_id: str,
         reload_event: Any,
     ) -> PluginRuntimeStatus:
-        """重启指定插件并返回本次加载结果。"""
-        self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
-        self.stop(plugin_id)
-        results = self.start(plugin_id)
-        status = next(
-            status
-            for result_id, status in results.items()
-            if result_id.casefold() == plugin_id.casefold()
-        )
-        self._event_sender(reload_event, data={"plugin_id": plugin_id})
-        return status
+        """
+        重启指定插件并返回本次加载结果。
+        """
+        with self._gate.hold("reload", plugin_id):
+            self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
+            if self.stop(plugin_id) is False:
+                self._runtime_status_writer(plugin_id, PluginRuntimeStatus.LOAD_FAILED)
+                return PluginRuntimeStatus.LOAD_FAILED
+            results = self.start(plugin_id)
+            status = next(
+                status
+                for result_id, status in results.items()
+                if result_id.casefold() == plugin_id.casefold()
+            )
+            self._event_sender(reload_event, data={"plugin_id": plugin_id})
+            return status

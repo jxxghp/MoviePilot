@@ -1,10 +1,14 @@
+"""
+验证整理结果消息的渲染和发送参数。
+"""
+
 from unittest.mock import patch
 
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
-from app.schemas import TransferInfo
 from app.schemas.tmdb import TmdbEpisode
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import ContentType, MediaType, MessageType
 
 

@@ -1,4 +1,6 @@
-"""专辑订阅音轨事实列迁移测试。"""
+"""
+专辑订阅音轨事实列迁移测试。
+"""
 
 import importlib
 
@@ -10,7 +12,9 @@ MIGRATION_MODULE = "database.versions.c8e4a1f7b2d6_3_0_39"
 
 
 def test_music_subscription_tracks_migration_is_idempotent_and_reversible(monkeypatch) -> None:
-    """迁移应为既有订阅表幂等增加 JSON 列，并可安全回退。"""
+    """
+    迁移应为既有订阅表幂等增加 JSON 列，并可安全回退。
+    """
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()
     sa.Table(
@@ -40,7 +44,9 @@ def test_music_subscription_tracks_migration_is_idempotent_and_reversible(monkey
 
 
 def test_music_subscription_tracks_migration_ignores_missing_table(monkeypatch) -> None:
-    """基础表尚未创建时，迁移应等待初始化建表而不是失败。"""
+    """
+    基础表尚未创建时，迁移应等待初始化建表而不是失败。
+    """
     engine = sa.create_engine("sqlite://")
 
     with engine.begin() as connection:

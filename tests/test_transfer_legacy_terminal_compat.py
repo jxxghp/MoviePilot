@@ -1,4 +1,6 @@
-"""验证旧插件同步整理 ABI 复用 canonical durable 终态写入口。"""
+"""
+验证旧插件同步整理 ABI 复用 canonical durable 终态写入口。
+"""
 
 import threading
 from types import SimpleNamespace
@@ -19,7 +21,9 @@ from app.schemas.types import EventType, MediaType
 
 
 def _fileitem(*, fileid: str = "source-v1", size: int = 1024) -> FileItem:
-    """构造可区分同路径版本的兼容调用文件项。"""
+    """
+    构造可区分同路径版本的兼容调用文件项。
+    """
     return FileItem(
         storage="local",
         path="/downloads/Movie.2026.mkv",
@@ -34,7 +38,9 @@ def _fileitem(*, fileid: str = "source-v1", size: int = 1024) -> FileItem:
 
 
 def _result(task, *, success: bool, overwrite_skipped: bool = False) -> TransferInfo:
-    """按当前任务构造足以写历史的兼容整理结果。"""
+    """
+    按当前任务构造足以写历史的兼容整理结果。
+    """
     return TransferInfo(
         success=success,
         overwrite_skipped=overwrite_skipped,
@@ -54,7 +60,9 @@ def _result(task, *, success: bool, overwrite_skipped: bool = False) -> Transfer
 
 
 def _scrape_result(task, *, need_scrape: bool = True) -> TransferInfo:
-    """构造包含目标媒体库目录的成功刮削结果。"""
+    """
+    构造包含目标媒体库目录的成功刮削结果。
+    """
     return _result(task, success=True).model_copy(update={
         "target_diritem": FileItem(
             storage="local",
@@ -68,7 +76,9 @@ def _scrape_result(task, *, need_scrape: bool = True) -> TransferInfo:
 
 
 def _compat_chain(result_factory):
-    """构造只执行旧同步命令和 task-aware 结算的 TransferChain 骨架。"""
+    """
+    构造只执行旧同步命令和 task-aware 结算的 TransferChain 骨架。
+    """
     chain = object.__new__(TransferChain)
     chain.transfer_history_repository = SimpleNamespace(
         get_by_src=lambda _src, storage=None: None
@@ -84,7 +94,9 @@ def _compat_chain(result_factory):
     executed = []
 
     def execute(task, **_kwargs):
-        """模拟外部步骤已完成并建立可独立结算的执行检查点。"""
+        """
+        模拟外部步骤已完成并建立可独立结算的执行检查点。
+        """
         executed.append(task.fileitem.fileid)
         task_id = f"task-{task.fileitem.fileid}"
         lease_token = f"lease-{task.fileitem.fileid}"
@@ -113,7 +125,9 @@ def _compat_chain(result_factory):
 
 
 def _invoke(chain: TransferChain, fileitem: FileItem) -> TransferInfo:
-    """以插件可见参数调用同步兼容入口。"""
+    """
+    以插件可见参数调用同步兼容入口。
+    """
     return chain.execute_legacy_transfer_command(
         fileitem=fileitem,
         meta=MetaBase(fileitem.name),
@@ -125,15 +139,21 @@ def _invoke(chain: TransferChain, fileitem: FileItem) -> TransferInfo:
 
 
 def _settlement_writer(*, status: bool, history_id: int = 41):
-    """返回执行 stage_history 并产出 task-aware 结果的 writer side effect。"""
+    """
+    返回执行 stage_history 并产出 task-aware 结果的 writer side effect。
+    """
     staged_payloads = []
 
     def write(**kwargs):
-        """暂存历史后返回与当前结算修订一致的投影。"""
+        """
+        暂存历史后返回与当前结算修订一致的投影。
+        """
         staging = Mock()
 
         def replace_history(history):
-            """保存历史 payload 并返回 writer 所需的最小记录。"""
+            """
+            保存历史 payload 并返回 writer 所需的最小记录。
+            """
             payload = history.to_payload()
             staged_payloads.append(payload)
             return TransferHistorySnapshot(
@@ -164,7 +184,9 @@ def _settlement_writer(*, status: bool, history_id: int = 41):
 
 
 def test_legacy_failed_result_uses_atomic_terminal_writer() -> None:
-    """失败结果也必须原子写失败历史并保留 pending，不得直接注销。"""
+    """
+    失败结果也必须原子写失败历史并保留 pending，不得直接注销。
+    """
     chain, executed = _compat_chain(lambda task: _result(task, success=False))
     write, staged_payloads = _settlement_writer(status=False)
     chain.durable_event_writer.transfer_result.side_effect = write
@@ -183,7 +205,9 @@ def test_legacy_failed_result_uses_atomic_terminal_writer() -> None:
 
 
 def test_legacy_success_with_scrape_dispatches_target_metadata_event() -> None:
-    """旧同步整理成功结算后仍须向目标媒体库目录发送刮削事件。"""
+    """
+    旧同步整理成功结算后仍须向目标媒体库目录发送刮削事件。
+    """
     chain, executed = _compat_chain(_scrape_result)
     write, _staged_payloads = _settlement_writer(status=True)
     chain.durable_event_writer.transfer_result.side_effect = write
@@ -204,14 +228,18 @@ def test_legacy_success_with_scrape_dispatches_target_metadata_event() -> None:
 
 
 def test_legacy_success_uses_planning_scrape_intent_when_result_omits_flag() -> None:
-    """旧 ABI 返回结果漏填刮削标记时仍遵循已冻结的规划意图。"""
+    """
+    旧 ABI 返回结果漏填刮削标记时仍遵循已冻结的规划意图。
+    """
     chain, _executed = _compat_chain(
         lambda task: _scrape_result(task, need_scrape=False)
     )
     execute = chain._plan_checkpoint_and_execute.side_effect
 
     def execute_with_planning_input(task, **kwargs):
-        """给兼容结算替身绑定已持久化的刮削意图。"""
+        """
+        给兼容结算替身绑定已持久化的刮削意图。
+        """
         task.bind_planning_input(
             TransferPlanningInput(
                 source_fileitem=task.fileitem.model_dump(mode="json"),
@@ -236,13 +264,17 @@ def test_legacy_success_uses_planning_scrape_intent_when_result_omits_flag() -> 
 
 
 def test_legacy_settlement_response_loss_replays_receipt_by_same_task_id() -> None:
-    """首次提交后响应丢失只能用同一 task_id 回读，不得重做外部步骤。"""
+    """
+    首次提交后响应丢失只能用同一 task_id 回读，不得重做外部步骤。
+    """
     chain, executed = _compat_chain(lambda task: _result(task, success=True))
     write, staged_payloads = _settlement_writer(status=True)
     writer_calls = 0
 
     def response_lost_then_receipt(**kwargs):
-        """首次提交历史后模拟响应丢失，第二次只返回 immutable receipt。"""
+        """
+        首次提交历史后模拟响应丢失，第二次只返回 immutable receipt。
+        """
         nonlocal writer_calls
         writer_calls += 1
         if writer_calls == 1:
@@ -270,7 +302,9 @@ def test_legacy_settlement_response_loss_replays_receipt_by_same_task_id() -> No
 
 def test_legacy_settlement_double_failure_releases_claim_without_deleting_evidence(
 ) -> None:
-    """两次 writer 均失败时必须释放 lease，并保留 pending 与步骤供恢复。"""
+    """
+    两次 writer 均失败时必须释放 lease，并保留 pending 与步骤供恢复。
+    """
     chain, executed = _compat_chain(lambda task: _result(task, success=True))
     chain._transfer_admissions = Mock()
     chain._transfer_admissions.release_claim.return_value = True
@@ -298,7 +332,9 @@ def test_legacy_settlement_double_failure_releases_claim_without_deleting_eviden
 
 
 def test_legacy_overwrite_skip_binds_existing_success_in_atomic_writer() -> None:
-    """覆盖跳过复用既有成功历史并以 succeeded 终态结算。"""
+    """
+    覆盖跳过复用既有成功历史并以 succeeded 终态结算。
+    """
     chain, executed = _compat_chain(
         lambda task: _result(task, success=False, overwrite_skipped=True)
     )
@@ -324,7 +360,9 @@ def test_legacy_overwrite_skip_binds_existing_success_in_atomic_writer() -> None
 
 
 def test_legacy_overwrite_skip_without_success_history_settles_failed() -> None:
-    """兼容入口没有既有成功历史时按失败结算并保留 pending。"""
+    """
+    兼容入口没有既有成功历史时按失败结算并保留 pending。
+    """
     chain, executed = _compat_chain(
         lambda task: _result(task, success=False, overwrite_skipped=True)
     )
@@ -349,7 +387,9 @@ def test_legacy_overwrite_skip_without_success_history_settles_failed() -> None:
 
 
 def test_legacy_same_path_changed_version_still_executes_new_task() -> None:
-    """兼容入口不能仅凭同源历史吞掉 fileid/size/mtime 已变化的新版本。"""
+    """
+    兼容入口不能仅凭同源历史吞掉 fileid/size/mtime 已变化的新版本。
+    """
     chain, executed = _compat_chain(lambda task: _result(task, success=True))
     write, _staged_payloads = _settlement_writer(status=True)
     chain.durable_event_writer.transfer_result.side_effect = write

@@ -1,4 +1,6 @@
-"""验证 durable 人工复核从未知证据到调度恢复的可发现闭环。"""
+"""
+验证 durable 人工复核从未知证据到调度恢复的可发现闭环。
+"""
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -32,7 +34,9 @@ from app.schemas.transfer import TransferManualReviewRequest
 
 @pytest.fixture
 def review_store():
-    """构造隔离的 durable 整理人工复核数据库。"""
+    """
+    构造隔离的 durable 整理人工复核数据库。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(
         engine,
@@ -50,7 +54,9 @@ def review_store():
 
 
 def _repository(factory) -> TransactionalTransferExecutionRepository:
-    """构造使用确定时钟的整理执行仓储。"""
+    """
+    构造使用确定时钟的整理执行仓储。
+    """
     return TransactionalTransferExecutionRepository(
         factory,
         local_clock=lambda: datetime(2026, 8, 27, 9, 30, 0),
@@ -62,7 +68,9 @@ def _put_in_manual_review(factory, *, task_id: str) -> tuple[
     TransactionalTransferExecutionRepository,
     str,
 ]:
-    """建立一个外部结果 UNKNOWN 且已释放租约的人工复核任务。"""
+    """
+    建立一个外部结果 UNKNOWN 且已释放租约的人工复核任务。
+    """
     source_path = f"/downloads/{task_id}.mkv"
     target_path = f"/library/{task_id}.mkv"
     planning_input = TransferPlanningInput(
@@ -156,7 +164,9 @@ def _put_in_manual_review(factory, *, task_id: str) -> tuple[
 
 
 def test_manual_review_list_is_database_paginated(review_store) -> None:
-    """待复核任务应按稳定顺序在数据库分页，不混入普通任务。"""
+    """
+    待复核任务应按稳定顺序在数据库分页，不混入普通任务。
+    """
     repository, _ = _put_in_manual_review(review_store, task_id="task-1")
     _put_in_manual_review(review_store, task_id="task-2")
 
@@ -196,7 +206,9 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
     expected_step_state: str,
     reason: str,
 ) -> None:
-    """复核理由选填；判定后持久化审计身份并进入唯一 retry_wait 恢复路径。"""
+    """
+    复核理由选填；判定后持久化审计身份并进入唯一 retry_wait 恢复路径。
+    """
     repository, operation_id = _put_in_manual_review(
         review_store,
         task_id=f"task-{decision}",

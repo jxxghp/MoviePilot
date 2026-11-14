@@ -1,3 +1,7 @@
+"""
+验证TMDB 剧集信息向 NFO 字段的映射。
+"""
+
 import pytest
 
 from app.modules.themoviedb.scraper import TmdbScraper
@@ -8,7 +12,9 @@ from app.modules.themoviedb.scraper import TmdbScraper
     ((None, None), ("None", None), ("not-a-number", None), (129, "129")),
 )
 def test_episode_nfo_omits_invalid_tmdb_id(episode_id, expected_tmdb_id):
-    """集查询返回无效 ID 时应省略身份节点，但保留其余集元数据。"""
+    """
+    集查询返回无效 ID 时应省略身份节点，但保留其余集元数据。
+    """
     document = TmdbScraper._TmdbScraper__gen_tv_episode_nfo_file(
         tmdbid=100,
         episodeinfo={"id": episode_id, "name": "测试集"},

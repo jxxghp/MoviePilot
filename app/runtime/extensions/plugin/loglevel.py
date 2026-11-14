@@ -1,4 +1,6 @@
-"""插件实例日志等级查询与设置。"""
+"""
+插件实例日志等级查询与设置。
+"""
 
 from __future__ import annotations
 
@@ -17,7 +19,9 @@ from app.schemas.plugin import PluginInstance
 
 
 class PluginLogLevelControl:
-    """组装插件全部实例（含本体）的日志等级设置，并同步落盘与进程内缓存。"""
+    """
+    组装插件全部实例（含本体）的日志等级设置，并同步落盘与进程内缓存。
+    """
 
     def __init__(
         self,
@@ -28,7 +32,8 @@ class PluginLogLevelControl:
         read_log_level: Callable[[str], tuple[Optional[str], Optional[datetime]]],
         write_log_level: Callable[[str, Optional[str], Optional[datetime]], None],
     ) -> None:
-        """保存插件存在性判定、实例枚举端口与日志等级的配置侧读写端口。
+        """
+        保存插件存在性判定、实例枚举端口与日志等级的配置侧读写端口。
 
         实例存储只回答「有哪些分身」；日志等级是用户按实例设置、带失效时间的配置，
         与业务参数同一生命周期，因此落在插件实例配置表而不是实例描述符上。
@@ -41,7 +46,8 @@ class PluginLogLevelControl:
 
     @staticmethod
     def _host_instance(plugin_id: str) -> PluginInstance:
-        """构造源插件本体自身的实例视图。
+        """
+        构造源插件本体自身的实例视图。
 
         本体不需要从实例表里读：这里只用到它的实例 ID，而本体的实例 ID 恒等于
         插件 ID。去查表反而会把「本体从未登记过任何设置」这件事变成查不到、
@@ -53,7 +59,8 @@ class PluginLogLevelControl:
         )
 
     def _resolve(self, plugin_id: str, instance_id: str) -> PluginInstance:
-        """按插件 ID 和实例 ID 定位实例描述，实例须真实归属该插件。
+        """
+        按插件 ID 和实例 ID 定位实例描述，实例须真实归属该插件。
 
         :raise LookupError: 插件不存在，``plugin_id`` 实为某个分身自身的实例 ID，
             或实例不存在／不归属该插件
@@ -71,7 +78,9 @@ class PluginLogLevelControl:
 
     @staticmethod
     def _describe(instance: PluginInstance) -> dict[str, Any]:
-        """把一个实例的日志等级覆盖投影为查询响应条目。"""
+        """
+        把一个实例的日志等级覆盖投影为查询响应条目。
+        """
         override = get_plugin_instance_log_level_override(instance.instance_id)
         configured_level, expires_at = override if override is not None else (None, None)
         return {
@@ -82,7 +91,8 @@ class PluginLogLevelControl:
         }
 
     def list_levels(self, plugin_id: str) -> list[dict[str, Any]]:
-        """列出插件全部实例（含本体）当前的日志等级设置。
+        """
+        列出插件全部实例（含本体）当前的日志等级设置。
 
         :param plugin_id: 插件 ID
         :return: 每个实例的等级设置条目列表，首项固定是本体自身
@@ -105,7 +115,8 @@ class PluginLogLevelControl:
         level: str,
         expires_at: Optional[datetime] = None,
     ) -> None:
-        """设置指定实例的日志等级覆盖，写入进程内缓存后立即落盘。
+        """
+        设置指定实例的日志等级覆盖，写入进程内缓存后立即落盘。
 
         失效时间先归一到 UTC 再分发给缓存与落盘两处：客户端提交的时间可能不带
         时区，两处各自按本地时区折算一次就会和读取口返回的 UTC 值对不上。
@@ -123,7 +134,8 @@ class PluginLogLevelControl:
         self._write_log_level(instance_id, level.strip().upper(), expiry)
 
     def clear_level(self, plugin_id: str, instance_id: str) -> None:
-        """清除指定实例的日志等级覆盖，运行期立即回落全局等级；重复清除保持幂等。
+        """
+        清除指定实例的日志等级覆盖，运行期立即回落全局等级；重复清除保持幂等。
 
         :param plugin_id: 插件 ID
         :param instance_id: 实例 ID

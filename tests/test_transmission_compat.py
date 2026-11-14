@@ -1,3 +1,7 @@
+"""
+验证Transmission 客户端协议与任务字段兼容。
+"""
+
 import importlib.util
 import sys
 import types

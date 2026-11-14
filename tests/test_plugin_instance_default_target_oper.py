@@ -1,4 +1,6 @@
-"""插件实例默认调用目标置位与清除的数据访问层测试。"""
+"""
+插件实例默认调用目标置位与清除的数据访问层测试。
+"""
 
 from __future__ import annotations
 
@@ -20,11 +22,15 @@ _INSTANCE_IDS = (
 
 @pytest.fixture(autouse=True)
 def purge_written_rows():
-    """删除用例写入的行，测试库在整个会话内共享，残留会干扰后续用例。"""
+    """
+    删除用例写入的行，测试库在整个会话内共享，残留会干扰后续用例。
+    """
     yield
 
     def purge(session: Session) -> None:
-        """按本文件使用的固定标识精确删除，不触碰其他用例的数据。"""
+        """
+        按本文件使用的固定标识精确删除，不触碰其他用例的数据。
+        """
         session.execute(
             delete(PluginInstance).where(
                 PluginInstance.instance_id.in_(_INSTANCE_IDS)
@@ -35,14 +41,18 @@ def purge_written_rows():
 
 
 def _seed(oper: PluginInstanceOper) -> None:
-    """建出一个本体和两个分身，供置位与清除用例共用。"""
+    """
+    建出一个本体和两个分身，供置位与清除用例共用。
+    """
     oper.save(instance_id="TargetOperHost", source_plugin_id="TargetOperHost")
     oper.save(instance_id="TargetOperHostX2", source_plugin_id="TargetOperHost")
     oper.save(instance_id="TargetOperHostX3", source_plugin_id="TargetOperHost")
 
 
 def test_set_default_target_marks_only_the_requested_row():
-    """置位只落在目标行上，同插件其余行保持未置位。"""
+    """
+    置位只落在目标行上，同插件其余行保持未置位。
+    """
     oper = PluginInstanceOper()
     _seed(oper)
 
@@ -60,7 +70,8 @@ def test_set_default_target_marks_only_the_requested_row():
 
 
 def test_set_default_target_clears_the_previous_default_in_one_transaction():
-    """改置默认目标时旧置位必须一并清掉，不能出现两行同时为真。
+    """
+    改置默认目标时旧置位必须一并清掉，不能出现两行同时为真。
 
     「同一源插件至多一个默认目标」由条件唯一索引在库层强制，清旧与置新若分处两个
     事务就会撞上索引；这条用例正是在真实连接上证明清旧置新落在同一次写入里。
@@ -80,7 +91,9 @@ def test_set_default_target_clears_the_previous_default_in_one_transaction():
 
 
 def test_set_default_target_rejects_a_row_belonging_to_another_plugin():
-    """目标行不归属该源插件时原样返回失败，且不动原有置位。"""
+    """
+    目标行不归属该源插件时原样返回失败，且不动原有置位。
+    """
     oper = PluginInstanceOper()
     _seed(oper)
     oper.save(instance_id="TargetOperOther", source_plugin_id="TargetOperOther")
@@ -97,7 +110,9 @@ def test_set_default_target_rejects_a_row_belonging_to_another_plugin():
 
 
 def test_set_default_target_reports_false_for_a_row_that_does_not_exist():
-    """目标行尚未落盘时如实返回失败，不隐式建行。"""
+    """
+    目标行尚未落盘时如实返回失败，不隐式建行。
+    """
     oper = PluginInstanceOper()
     _seed(oper)
 
@@ -106,7 +121,9 @@ def test_set_default_target_reports_false_for_a_row_that_does_not_exist():
 
 
 def test_clear_default_target_is_idempotent():
-    """清除置位后重复调用保持幂等，不报错也不产生新的置位。"""
+    """
+    清除置位后重复调用保持幂等，不报错也不产生新的置位。
+    """
     oper = PluginInstanceOper()
     _seed(oper)
     oper.set_default_target("TargetOperHost", "TargetOperHostX2")
@@ -120,7 +137,8 @@ def test_clear_default_target_is_idempotent():
 
 
 def test_host_row_carrying_only_a_default_target_is_not_recycled_as_empty():
-    """本体行只剩默认目标置位时不算「只剩身份列」，不能被空行回收清掉。
+    """
+    本体行只剩默认目标置位时不算「只剩身份列」，不能被空行回收清掉。
 
     回收判据漏掉这一列会让用户把本体设为默认调用目标后，下一次清空配置就把置位
     连同整行一起删掉，默认目标无声失效。

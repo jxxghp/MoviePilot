@@ -1,7 +1,19 @@
+"""
+TMDB 电视剧接口的同步与异步调用封装。
+"""
+
+from typing import Any
+
 from ..tmdb import TMDb
 
 
 class TV(TMDb):
+    """
+    提供 TMDB 电视剧接口的同步与异步封装。
+
+    网络、限流和业务响应处理沿用 TMDb 基类；接口字段保持原始 JSON 结构，
+    不在此层转换为 MoviePilot 领域模型。
+    """
     _urls = {
         "details": "/tv/%s",
         "account_states": "/tv/%s/account_states",
@@ -31,59 +43,63 @@ class TV(TMDb):
         "group_episodes": "/tv/episode_group/%s",
     }
 
-    def details(self, tv_id, append_to_response="videos,trailers,images,credits,translations"):
+    def details(self, tv_id: int, append_to_response: str | None="videos,trailers,images,credits,translations") -> Any:
         """
-        Get the primary TV show details by id.
-        :param tv_id: int
-        :param append_to_response: str
-        :return:
+        查询电视剧详情。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param append_to_response: 逗号分隔的附加子接口名称，与详情一并请求
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(
             self._urls["details"] % tv_id,
             params="append_to_response=%s" % append_to_response,
         )
 
-    def account_states(self, tv_id):
+    def account_states(self, tv_id: int) -> Any:
         """
-        Grab the following account states for a session:
-        TV show rating, If it belongs to your watchlist, or If it belongs to your favourite list.
-        :param tv_id: int
-        :return:
+        查询当前账号对电视剧的评分或收藏状态。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(
             self._urls["account_states"] % tv_id,
             params="session_id=%s" % self.session_id
         )
 
-    def aggregate_credits(self, tv_id):
+    def aggregate_credits(self, tv_id: int) -> Any:
         """
-        Get the aggregate credits (cast and crew) that have been added to a TV show.
-        This call differs from the main credits call in that it does not return the newest season but rather,
-        is a view of all the entire cast & crew for all episodes belonging to a TV show.
-        :param tv_id: int
-        :return:
+        汇总电视剧所含全部单集的演职人员信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(self._urls["aggregate_credits"] % tv_id)
 
-    def alternative_titles(self, tv_id):
+    def alternative_titles(self, tv_id: int) -> Any:
         """
-        Returns all of the alternative titles for a TV show.
-        :param tv_id: int
-        :return:
+        查询电视剧在不同地区使用的别名。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["alternative_titles"] % tv_id,
             key="results"
         )
 
-    def changes(self, tv_id, start_date=None, end_date=None, page=1):
+    def changes(self, tv_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
-        Get the changes for a TV show. By default only the last 24 hours are returned.
-        You can query up to 14 days in a single query by using the start_date and end_date query parameters.
-        :param tv_id: int
-        :param start_date: str
-        :param end_date: str
-        :param page: int
+        查询指定电视剧的字段变更记录。
+
+        日期范围交由服务端校验；未提供时使用接口默认时间窗口。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param start_date: 开始日期，格式 YYYY-MM-DD；空值不发送该筛选参数
+        :param end_date: 结束日期，格式 YYYY-MM-DD；空值不发送该筛选参数
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 changes 字段原值；未取得响应或字段缺失时返回 None
         """
         params = "page=%s" % page
         if start_date:
@@ -96,88 +112,92 @@ class TV(TMDb):
             key="changes"
         )
 
-    def content_ratings(self, tv_id):
+    def content_ratings(self, tv_id: int) -> Any:
         """
-        Get the list of content ratings (certifications) that have been added to a TV show.
-        :param tv_id: int
-        :return:
+        查询电视剧在各地区的内容分级。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["content_ratings"] % tv_id,
             key="results"
         )
 
-    def credits(self, tv_id):
+    def credits(self, tv_id: int) -> Any:
         """
-        Get the credits (cast and crew) that have been added to a TV show.
-        :param tv_id: int
-        :return:
+        查询电视剧演职人员信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(self._urls["credits"] % tv_id)
 
-    def episode_groups(self, tv_id):
+    def episode_groups(self, tv_id: int) -> Any:
         """
-        Get all of the episode groups that have been created for a TV show.
-        :param tv_id: int
-        :return:
+        查询电视剧可用的分集编排组。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["episode_groups"] % tv_id,
             key="results"
         )
 
-    def group_episodes(self, group_id):
+    def group_episodes(self, group_id: int | str) -> Any:
         """
-        查询剧集组所有剧集
-        :param group_id: int
-        :return:
+        查询指定剧集组中的分组与剧集。
+
+        :param group_id: 目标剧集组的 TMDB 标识
+        :return: 响应的 groups 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["group_episodes"] % group_id,
             key="groups"
         )
 
-    def external_ids(self, tv_id):
+    def external_ids(self, tv_id: int) -> Any:
         """
-        Get the external ids for a TV show.
-        :param tv_id: int
-        :return:
+        查询电视剧对应的外部平台标识。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(self._urls["external_ids"] % tv_id)
 
-    def images(self, tv_id, include_image_language=None):
+    def images(self, tv_id: int, include_image_language: str | None=None) -> Any:
         """
-        Get the images that belong to a TV show.
-        Querying images with a language parameter will filter the results.
-        If you want to include a fallback language (especially useful for backdrops)
-        you can use the include_image_language parameter.
-        This should be a comma separated value like so: include_image_language=en,null.
-        :param tv_id: int
-        :param include_image_language: str
-        :return:
+        查询电视剧图片信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param include_image_language: 逗号分隔的图片语言代码，可用 null 包含未标注语言的图片；空值省略参数
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(
             self._urls["images"] % tv_id,
             params="include_image_language=%s" % include_image_language if include_image_language else ""
         )
 
-    def keywords(self, tv_id):
+    def keywords(self, tv_id: int) -> Any:
         """
-        Get the keywords that have been added to a TV show.
-        :param tv_id: int
-        :return:
+        查询电视剧关联关键词。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["keywords"] % tv_id,
             key="results"
         )
 
-    def recommendations(self, tv_id, page=1):
+    def recommendations(self, tv_id: int, page: int=1) -> Any:
         """
-        Get the list of TV show recommendations for this item.
-        :param tv_id: int
-        :param page: int
-        :return:
+        查询基于该电视剧推荐的其他条目。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["recommendations"] % tv_id,
@@ -185,12 +205,13 @@ class TV(TMDb):
             key="results"
         )
 
-    def reviews(self, tv_id, page=1):
+    def reviews(self, tv_id: int, page: int=1) -> Any:
         """
-        Get the reviews for a TV show.
-        :param tv_id: int
-        :param page: int
-        :return:
+        查询电视剧用户评论。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["reviews"] % tv_id,
@@ -198,23 +219,25 @@ class TV(TMDb):
             key="results"
         )
 
-    def screened_theatrically(self, tv_id):
+    def screened_theatrically(self, tv_id: int) -> Any:
         """
-        Get a list of seasons or episodes that have been screened in a film festival or theatre.
-        :param tv_id: int
-        :return:
+        查询曾在影院或电影节放映的季和单集。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["screened_theatrically"] % tv_id,
             key="results"
         )
 
-    def similar(self, tv_id, page=1):
+    def similar(self, tv_id: int, page: int=1) -> Any:
         """
-        Get the primary TV show details by id.
-        :param tv_id: int
-        :param page: int
-        :return:
+        查询与指定电视剧相似的条目。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["similar"] % tv_id,
@@ -222,24 +245,26 @@ class TV(TMDb):
             key="results"
         )
 
-    def translations(self, tv_id):
+    def translations(self, tv_id: int) -> Any:
         """
-        Get a list of the translations that exist for a TV show.
-        :param tv_id: int
-        :return:
+        查询电视剧多语言翻译内容。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 translations 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["translations"] % tv_id,
             key="translations"
         )
 
-    def videos(self, tv_id, include_video_language=None, page=1):
+    def videos(self, tv_id: int, include_video_language: str | None=None, page: int=1) -> Any:
         """
-        Get the videos that have been added to a TV show.
-        :param tv_id: int
-        :param include_video_language: str
-        :param page: int
-        :return:
+        查询电视剧预告片等视频信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param include_video_language: 逗号分隔的视频语言代码；空值省略参数
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         params = "page=%s" % page
         if include_video_language:
@@ -249,22 +274,24 @@ class TV(TMDb):
             params=params
         )
 
-    def watch_providers(self, tv_id):
+    def watch_providers(self, tv_id: int) -> Any:
         """
-        You can query this method to get a list of the availabilities per country by provider.
-        :param tv_id: int
-        :return:
+        查询电视剧在各地区的流媒体可用信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["watch_providers"] % tv_id,
             key="results"
         )
 
-    def rate_tv_show(self, tv_id, rating):
+    def rate_tv_show(self, tv_id: int, rating: float) -> None:
         """
-        Rate a TV show.
-        :param tv_id: int
-        :param rating: float
+        为当前账号提交电视剧评分。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param rating: 提交给 TMDB 的评分值，范围与步长由服务端校验
         """
         self._request_obj(
             self._urls["rate_tv_show"] % tv_id,
@@ -273,10 +300,11 @@ class TV(TMDb):
             json={"value": rating}
         )
 
-    def delete_rating(self, tv_id):
+    def delete_rating(self, tv_id: int) -> None:
         """
-        Remove your rating for a TV show.
-        :param tv_id: int
+        删除当前账号的电视剧评分。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
         """
         self._request_obj(
             self._urls["delete_rating"] % tv_id,
@@ -284,19 +312,20 @@ class TV(TMDb):
             method="DELETE"
         )
 
-    def latest(self):
+    def latest(self) -> Any:
         """
-        Get the most newly created TV show. This is a live response and will continuously change.
-        :return:
+        查询最新创建的电视剧条目。
+
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(self._urls["latest"])
 
-    def airing_today(self, page=1):
+    def airing_today(self, page: int=1) -> Any:
         """
-        Get a list of TV shows that are airing today.
-        This query is purely day based as we do not currently support airing times.
-        :param page: int
-        :return:
+        查询今日播出的电视剧。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["airing_today"],
@@ -304,11 +333,12 @@ class TV(TMDb):
             key="results"
         )
 
-    def on_the_air(self, page=1):
+    def on_the_air(self, page: int=1) -> Any:
         """
-        Get a list of shows that are currently on the air.
-        :param page:
-        :return:
+        查询当前正在播出的电视剧。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["on_the_air"],
@@ -316,11 +346,12 @@ class TV(TMDb):
             key="results"
         )
 
-    def popular(self, page=1):
+    def popular(self, page: int=1) -> Any:
         """
-        Get a list of the current popular TV shows on TMDb. This list updates daily.
-        :param page:
-        :return:
+        查询当前热门电视剧列表。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["popular"],
@@ -328,11 +359,12 @@ class TV(TMDb):
             key="results"
         )
 
-    def top_rated(self, page=1):
+    def top_rated(self, page: int=1) -> Any:
         """
-        Get a list of the top rated TV shows on TMDb.
-        :param page:
-        :return:
+        查询高评分电视剧列表。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["top_rated"],
@@ -340,60 +372,63 @@ class TV(TMDb):
             key="results"
         )
 
-    # 异步版本方法
-    async def async_details(self, tv_id, append_to_response="videos,trailers,images,credits,translations"):
+    async def async_details(self, tv_id: int, append_to_response: str | None="videos,trailers,images,credits,translations") -> Any:
         """
-        Get the primary TV show details by id.（异步版本）
-        :param tv_id: int
-        :param append_to_response: str
-        :return:
+        查询电视剧详情。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param append_to_response: 逗号分隔的附加子接口名称，与详情一并请求
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(
             self._urls["details"] % tv_id,
             params="append_to_response=%s" % append_to_response,
         )
 
-    async def async_account_states(self, tv_id):
+    async def async_account_states(self, tv_id: int) -> Any:
         """
-        Grab the following account states for a session:
-        TV show rating, If it belongs to your watchlist, or If it belongs to your favourite list.（异步版本）
-        :param tv_id: int
-        :return:
+        查询当前账号对电视剧的评分或收藏状态。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(
             self._urls["account_states"] % tv_id,
             params="session_id=%s" % self.session_id
         )
 
-    async def async_aggregate_credits(self, tv_id):
+    async def async_aggregate_credits(self, tv_id: int) -> Any:
         """
-        Get the aggregate credits (cast and crew) that have been added to a TV show.
-        This call differs from the main credits call in that it does not return the newest season but rather,
-        is a view of all the entire cast & crew for all episodes belonging to a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        汇总电视剧所含全部单集的演职人员信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(self._urls["aggregate_credits"] % tv_id)
 
-    async def async_alternative_titles(self, tv_id):
+    async def async_alternative_titles(self, tv_id: int) -> Any:
         """
-        Returns all of the alternative titles for a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧在不同地区使用的别名。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["alternative_titles"] % tv_id,
             key="results"
         )
 
-    async def async_changes(self, tv_id, start_date=None, end_date=None, page=1):
+    async def async_changes(self, tv_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
-        Get the changes for a TV show. By default only the last 24 hours are returned.
-        You can query up to 14 days in a single query by using the start_date and end_date query parameters.（异步版本）
-        :param tv_id: int
-        :param start_date: str
-        :param end_date: str
-        :param page: int
+        查询指定电视剧的字段变更记录。
+
+        日期范围交由服务端校验；未提供时使用接口默认时间窗口。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param start_date: 开始日期，格式 YYYY-MM-DD；空值不发送该筛选参数
+        :param end_date: 结束日期，格式 YYYY-MM-DD；空值不发送该筛选参数
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 changes 字段原值；未取得响应或字段缺失时返回 None
         """
         params = "page=%s" % page
         if start_date:
@@ -406,88 +441,92 @@ class TV(TMDb):
             key="changes"
         )
 
-    async def async_content_ratings(self, tv_id):
+    async def async_content_ratings(self, tv_id: int) -> Any:
         """
-        Get the list of content ratings (certifications) that have been added to a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧在各地区的内容分级。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["content_ratings"] % tv_id,
             key="results"
         )
 
-    async def async_credits(self, tv_id):
+    async def async_credits(self, tv_id: int) -> Any:
         """
-        Get the credits (cast and crew) that have been added to a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧演职人员信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(self._urls["credits"] % tv_id)
 
-    async def async_episode_groups(self, tv_id):
+    async def async_episode_groups(self, tv_id: int) -> Any:
         """
-        Get all of the episode groups that have been created for a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧可用的分集编排组。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["episode_groups"] % tv_id,
             key="results"
         )
 
-    async def async_group_episodes(self, group_id):
+    async def async_group_episodes(self, group_id: int | str) -> Any:
         """
-        查询剧集组所有剧集（异步版本）
-        :param group_id: int
-        :return:
+        查询指定剧集组中的分组与剧集。
+
+        :param group_id: 目标剧集组的 TMDB 标识
+        :return: 响应的 groups 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["group_episodes"] % group_id,
             key="groups"
         )
 
-    async def async_external_ids(self, tv_id):
+    async def async_external_ids(self, tv_id: int) -> Any:
         """
-        Get the external ids for a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧对应的外部平台标识。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(self._urls["external_ids"] % tv_id)
 
-    async def async_images(self, tv_id, include_image_language=None):
+    async def async_images(self, tv_id: int, include_image_language: str | None=None) -> Any:
         """
-        Get the images that belong to a TV show.
-        Querying images with a language parameter will filter the results.
-        If you want to include a fallback language (especially useful for backdrops)
-        you can use the include_image_language parameter.
-        This should be a comma separated value like so: include_image_language=en,null.（异步版本）
-        :param tv_id: int
-        :param include_image_language: str
-        :return:
+        查询电视剧图片信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param include_image_language: 逗号分隔的图片语言代码，可用 null 包含未标注语言的图片；空值省略参数
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(
             self._urls["images"] % tv_id,
             params="include_image_language=%s" % include_image_language if include_image_language else ""
         )
 
-    async def async_keywords(self, tv_id):
+    async def async_keywords(self, tv_id: int) -> Any:
         """
-        Get the keywords that have been added to a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧关联关键词。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["keywords"] % tv_id,
             key="results"
         )
 
-    async def async_recommendations(self, tv_id, page=1):
+    async def async_recommendations(self, tv_id: int, page: int=1) -> Any:
         """
-        Get the list of TV show recommendations for this item.（异步版本）
-        :param tv_id: int
-        :param page: int
-        :return:
+        查询基于该电视剧推荐的其他条目。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["recommendations"] % tv_id,
@@ -495,12 +534,13 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_reviews(self, tv_id, page=1):
+    async def async_reviews(self, tv_id: int, page: int=1) -> Any:
         """
-        Get the reviews for a TV show.（异步版本）
-        :param tv_id: int
-        :param page: int
-        :return:
+        查询电视剧用户评论。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["reviews"] % tv_id,
@@ -508,23 +548,25 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_screened_theatrically(self, tv_id):
+    async def async_screened_theatrically(self, tv_id: int) -> Any:
         """
-        Get a list of seasons or episodes that have been screened in a film festival or theatre.（异步版本）
-        :param tv_id: int
-        :return:
+        查询曾在影院或电影节放映的季和单集。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["screened_theatrically"] % tv_id,
             key="results"
         )
 
-    async def async_similar(self, tv_id, page=1):
+    async def async_similar(self, tv_id: int, page: int=1) -> Any:
         """
-        Get the primary TV show details by id.（异步版本）
-        :param tv_id: int
-        :param page: int
-        :return:
+        查询与指定电视剧相似的条目。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["similar"] % tv_id,
@@ -532,24 +574,26 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_translations(self, tv_id):
+    async def async_translations(self, tv_id: int) -> Any:
         """
-        Get a list of the translations that exist for a TV show.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧多语言翻译内容。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 translations 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["translations"] % tv_id,
             key="translations"
         )
 
-    async def async_videos(self, tv_id, include_video_language=None, page=1):
+    async def async_videos(self, tv_id: int, include_video_language: str | None=None, page: int=1) -> Any:
         """
-        Get the videos that have been added to a TV show.（异步版本）
-        :param tv_id: int
-        :param include_video_language: str
-        :param page: int
-        :return:
+        查询电视剧预告片等视频信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param include_video_language: 逗号分隔的视频语言代码；空值省略参数
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         params = "page=%s" % page
         if include_video_language:
@@ -559,22 +603,24 @@ class TV(TMDb):
             params=params
         )
 
-    async def async_watch_providers(self, tv_id):
+    async def async_watch_providers(self, tv_id: int) -> Any:
         """
-        You can query this method to get a list of the availabilities per country by provider.（异步版本）
-        :param tv_id: int
-        :return:
+        查询电视剧在各地区的流媒体可用信息。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["watch_providers"] % tv_id,
             key="results"
         )
 
-    async def async_rate_tv_show(self, tv_id, rating):
+    async def async_rate_tv_show(self, tv_id: int, rating: float) -> None:
         """
-        Rate a TV show.（异步版本）
-        :param tv_id: int
-        :param rating: float
+        为当前账号提交电视剧评分。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
+        :param rating: 提交给 TMDB 的评分值，范围与步长由服务端校验
         """
         await self._async_request_obj(
             self._urls["rate_tv_show"] % tv_id,
@@ -583,10 +629,11 @@ class TV(TMDb):
             json={"value": rating}
         )
 
-    async def async_delete_rating(self, tv_id):
+    async def async_delete_rating(self, tv_id: int) -> None:
         """
-        Remove your rating for a TV show.（异步版本）
-        :param tv_id: int
+        删除当前账号的电视剧评分。
+
+        :param tv_id: 目标电视剧的 TMDB 标识
         """
         await self._async_request_obj(
             self._urls["delete_rating"] % tv_id,
@@ -594,19 +641,20 @@ class TV(TMDb):
             method="DELETE"
         )
 
-    async def async_latest(self):
+    async def async_latest(self) -> Any:
         """
-        Get the most newly created TV show. This is a live response and will continuously change.（异步版本）
-        :return:
+        查询最新创建的电视剧条目。
+
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(self._urls["latest"])
 
-    async def async_airing_today(self, page=1):
+    async def async_airing_today(self, page: int=1) -> Any:
         """
-        Get a list of TV shows that are airing today.
-        This query is purely day based as we do not currently support airing times.（异步版本）
-        :param page: int
-        :return:
+        查询今日播出的电视剧。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["airing_today"],
@@ -614,11 +662,12 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_on_the_air(self, page=1):
+    async def async_on_the_air(self, page: int=1) -> Any:
         """
-        Get a list of shows that are currently on the air.（异步版本）
-        :param page:
-        :return:
+        查询当前正在播出的电视剧。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["on_the_air"],
@@ -626,11 +675,12 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_popular(self, page=1):
+    async def async_popular(self, page: int=1) -> Any:
         """
-        Get a list of the current popular TV shows on TMDb. This list updates daily.（异步版本）
-        :param page:
-        :return:
+        查询当前热门电视剧列表。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["popular"],
@@ -638,11 +688,12 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_top_rated(self, page=1):
+    async def async_top_rated(self, page: int=1) -> Any:
         """
-        Get a list of the top rated TV shows on TMDb.（异步版本）
-        :param page:
-        :return:
+        查询高评分电视剧列表。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["top_rated"],

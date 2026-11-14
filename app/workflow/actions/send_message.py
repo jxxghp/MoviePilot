@@ -1,3 +1,7 @@
+"""
+向通知渠道发送工作流消息。
+"""
+
 from typing import List, Optional, Union
 
 from pydantic import Field
@@ -23,7 +27,10 @@ class SendMessageAction(BaseAction):
 
     contract = {}
 
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str) -> None:
+        """
+        初始化当前动作独立的执行状态。
+        """
         super().__init__(action_id)
 
     name = "发送消息"
@@ -32,13 +39,16 @@ class SendMessageAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """
+        返回当前动作是否已达到完成条件。
+        """
         return self.done
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         发送messages中的消息
         """
-        params = SendMessageParams(**params)
+        action_params = SendMessageParams.model_validate(params)
         msg_text = f"当前进度：{context.progress}%"
         index = 1
         if context.execute_history:
@@ -48,13 +58,13 @@ class SendMessageAction(BaseAction):
                 msg_text += f"\n{index}. {history.action}：{history.message}"
                 index += 1
             # 发送消息
-            if not params.client:
-                params.client = [""]
-            for client in params.client:
+            if not action_params.client:
+                action_params.client = [""]
+            for client in action_params.client:
                 ActionChain().post_message(
                     Message(
                         source=client,
-                        userid=params.userid,
+                        userid=action_params.userid,
                         title="【工作流执行结果】",
                         text=msg_text,
                         link=get_chain_runtime_config_snapshot().workflow_url

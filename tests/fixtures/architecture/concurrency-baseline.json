@@ -12,11 +12,31 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/adapters/network/browser.py:asyncio.create_task": {
+    "owners": {
+      "_BrowserLaunchOwner._close_async_resource": 1,
+      "_BrowserLaunchOwner.abort_async": 1,
+      "_queued_browser_launch_async.launch": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/adapters/network/browser.py:asyncio.to_thread": {
+    "owners": {
+      "BrowserSessionHelper.run_action_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
   "app/adapters/network/browser.py:concurrent.futures.ThreadPoolExecutor": {
     "owners": {
       "BrowserSessionHelper._get_session_executor": 1
     },
     "target": "concurrent.futures.ThreadPoolExecutor"
+  },
+  "app/adapters/network/browser.py:threading.Thread": {
+    "owners": {
+      "_BrowserLaunchOwner.__init__": 1
+    },
+    "target": "threading.Thread"
   },
   "app/adapters/network/http.py:asyncio.AbstractEventLoop.create_task": {
     "owners": {
@@ -35,6 +55,12 @@
       "SystemUtils.execute_with_subprocess_async": 1
     },
     "target": "asyncio.create_task"
+  },
+  "app/adapters/system/plugin/dependency.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "PluginDependencyInstaller.async_install": 2
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
   },
   "app/adapters/system/plugin/dependency.py:asyncio.to_thread": {
     "owners": {
@@ -211,8 +237,8 @@
   },
   "app/api/endpoints/history.py:asyncio.to_thread": {
     "owners": {
-      "_request_batch_durable_retries": 1,
-      "ai_redo_transfer_history": 1
+      "ai_redo_transfer_history": 1,
+      "batch_ai_redo_transfer_history": 1
     },
     "target": "asyncio.to_thread"
   },
@@ -242,6 +268,12 @@
       "verify_database_backup": 1
     },
     "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/api/endpoints/widget.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "widget_snapshot": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
   },
   "app/application/agenttask.py:asyncio.create_task": {
     "owners": {
@@ -324,6 +356,13 @@
       "PluginCandidateInventoryReader.async_load": 1
     },
     "target": "asyncio.to_thread"
+  },
+  "app/application/widget.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "WidgetSnapshotService._download_section": 1,
+      "WidgetSnapshotService._overview": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
   },
   "app/chain/_recognition.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
@@ -565,18 +604,6 @@
     },
     "target": "threading.Thread"
   },
-  "app/runtime/extensions/plugin/sync.py:concurrent.futures.Executor.submit": {
-    "owners": {
-      "PluginSyncService.sync": 1
-    },
-    "target": "concurrent.futures.Executor.submit"
-  },
-  "app/runtime/extensions/plugin/sync.py:concurrent.futures.ThreadPoolExecutor": {
-    "owners": {
-      "PluginSyncService.sync": 1
-    },
-    "target": "concurrent.futures.ThreadPoolExecutor"
-  },
   "app/runtime/extensions/resource.py:asyncio.to_thread": {
     "owners": {
       "AsyncManagedResourceAdapter.materialize": 1
@@ -634,6 +661,13 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/startup/composition/cliagent.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "_close_cli_extensions": 3,
+      "run_cli_agent_request": 2
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
   "app/startup/composition/network.py:asyncio.to_thread": {
     "owners": {
       "_NetworkTestTransportAdapter.websocket": 1
@@ -648,11 +682,17 @@
   },
   "app/startup/composition/system.py:asyncio.to_thread": {
     "owners": {
-      "_FileLogAdapter._follow_path": 3,
+      "_FileLogAdapter._follow_path": 1,
       "_FileLogAdapter._resolve_logfile": 1,
       "_FileLogAdapter.collect": 1
     },
     "target": "asyncio.to_thread"
+  },
+  "app/startup/initializers/agent.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "AgentInitializer._bind_runtime_data": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
   },
   "app/startup/initializers/modules.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
@@ -671,6 +711,12 @@
       "configure_plugin_services.refresh_plugin_registrations": 1,
       "configure_plugin_services.reload_plugin_tree": 1,
       "execute_task": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
+  "app/startup/initializers/scheduler.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "stop_scheduler.stop_and_reset": 1
     },
     "target": "app.runtime.execution.run_in_threadpool_to_completion"
   },

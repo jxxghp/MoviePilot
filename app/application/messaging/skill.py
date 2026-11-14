@@ -1,5 +1,10 @@
+"""
+技能目录浏览、市场来源管理与安装删除交互。
+"""
+
 import re
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
@@ -17,31 +22,72 @@ from app.schemas.types import NotificationChannel
 
 
 class SkillCatalogPort(Protocol):
-    """消息层使用的技能目录能力端口，由启动组合根注入具体实现。"""
+    """
+    消息层使用的技能目录能力端口，由启动组合根注入具体实现。
+    """
 
     def add_custom_market_source(self, source: str) -> Tuple[bool, str]:
-        """添加一个自定义技能市场来源。"""
+        """
+        添加一个自定义技能市场来源。
+
+        :param source: 用户输入的技能市场来源地址
+        :return: 是否添加成功及可向用户展示的结果说明
+        """
 
     def remove_custom_market_source(self, source: str) -> Tuple[bool, str]:
-        """移除一个自定义技能市场来源。"""
+        """
+        移除一个自定义技能市场来源。
+
+        :param source: 待移除的自定义市场来源地址
+        :return: 是否移除成功及可向用户展示的结果说明
+        """
 
     def install_market_skill(self, skill: Any) -> Tuple[bool, str]:
-        """安装指定的市场技能。"""
+        """
+        安装指定的市场技能。
+
+        :param skill: 从市场目录选出的技能条目，包含安装所需来源信息
+        :return: 是否安装成功及可向用户展示的结果说明
+        """
 
     def list_local_skills(self) -> List[Any]:
-        """列出本地技能。"""
+        """
+        列出本地技能。
+
+        :return: 当前已安装的本地技能条目列表
+        """
 
     def remove_local_skill(self, skill_id: str) -> Tuple[bool, str]:
-        """移除指定的本地技能。"""
+        """
+        移除指定的本地技能。
+
+        :param skill_id: 待删除的本地技能标识
+        :return: 是否删除成功及可向用户展示的结果说明
+        """
 
     def list_market_source_entries(self) -> List[Any]:
-        """列出技能市场来源。"""
+        """
+        列出技能市场来源。
+
+        :return: 包含来源地址及展示信息的市场来源条目列表
+        """
 
     def list_market_skills(self, force: bool = False) -> List[Any]:
-        """列出市场技能。"""
+        """
+        列出市场技能。
+
+        :param force: 是否强制刷新市场目录，默认允许使用缓存
+        :return: 已配置市场提供的技能条目列表
+        """
 
     def filter_market_skills(self, skills: List[Any], query: str) -> List[Any]:
-        """按查询词过滤市场技能。"""
+        """
+        按查询词过滤市场技能。
+
+        :param skills: 待筛选的市场技能条目
+        :param query: 用户输入的筛选关键词，空值保留全部条目
+        :return: 与关键词匹配的技能条目列表
+        """
 
 
 SkillCatalogProvider = Callable[[], SkillCatalogPort]
@@ -51,7 +97,9 @@ _skill_catalog_provider: Optional[SkillCatalogProvider] = None
 def register_skill_catalog_provider(
     provider: Optional[SkillCatalogProvider],
 ) -> Optional[SkillCatalogProvider]:
-    """注册技能目录 provider，并返回先前 provider 供失败回滚。"""
+    """
+    注册技能目录 provider，并返回先前 provider 供失败回滚。
+    """
     global _skill_catalog_provider
     previous = _skill_catalog_provider
     _skill_catalog_provider = provider
@@ -59,12 +107,16 @@ def register_skill_catalog_provider(
 
 
 def reset_skill_catalog_provider() -> None:
-    """清除技能目录 provider，避免跨 lifespan 持有旧 Agent 实现。"""
+    """
+    清除技能目录 provider，避免跨 lifespan 持有旧 Agent 实现。
+    """
     register_skill_catalog_provider(None)
 
 
 def _resolve_skill_catalog() -> SkillCatalogPort:
-    """解析已注入的技能目录；缺少组合根装配时给出明确错误。"""
+    """
+    解析已注入的技能目录；缺少组合根装配时给出明确错误。
+    """
     if _skill_catalog_provider is None:
         raise RuntimeError(
             "技能目录服务未注册：请先导入 app.startup.initializers.agent "
@@ -77,6 +129,21 @@ def _resolve_skill_catalog() -> SkillCatalogPort:
 class PendingSkillInteraction:
     """
     记录一次 /skills 会话的上下文，便于按钮和文本回复共用同一状态。
+
+    :param request_id: 当前交互请求标识，用于校验按钮是否仍属于活动会话
+    :param user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :param channel: 回复使用的通知渠道，None 表示未指定
+    :param source: 渠道实例标识，None 表示未指定实例
+    :param username: 用户显示名称，未知时为 None
+    :param view: 当前视图：root、installed、market 或 sources，默认主菜单
+    :param local_page: 本地技能列表页索引，从 0 开始
+    :param market_page: 市场技能列表页索引，从 0 开始
+    :param market_query: 市场筛选词，空字符串表示不按关键词筛选
+    :param awaiting_input: 等待的输入用途：market-search、source-add 或 None
+    :param created_at: 会话创建的本地时间，用于计算过期时间
+    :param selection_id: 最近一次列表展示的唯一标识，旧展示按钮不复用新列表序号
+    :param selection_view: 最近一次展示的列表类别，installed或market；尚未展示时为空
+    :param selection_items: 展示时条目的独立快照，操作仅按该快照定位身份
     """
 
     request_id: str
@@ -90,6 +157,9 @@ class PendingSkillInteraction:
     market_query: str = ""
     awaiting_input: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
+    selection_id: str = ""
+    selection_view: str = ""
+    selection_items: List[Any] = field(default_factory=list)
 
 
 class SkillInteractionManager(
@@ -142,8 +212,10 @@ class SkillInteractionHandler:
             messenger: MessageGateway,
             skill_catalog: Optional[SkillCatalogPort] = None,
             skill_helper: Optional[SkillCatalogPort] = None,
-    ):
-        """注入消息接口和技能目录端口，保留旧 ``skill_helper`` 关键字。"""
+    ) -> None:
+        """
+        注入消息接口和技能目录端口，保留旧 ``skill_helper`` 关键字。
+        """
         self._messenger = messenger
         self.skillhelper = skill_catalog or skill_helper or _resolve_skill_catalog()
 
@@ -153,7 +225,7 @@ class SkillInteractionHandler:
             channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         /skills 入口。创建新会话并渲染首屏菜单。
         """
@@ -185,7 +257,8 @@ class SkillInteractionHandler:
         """
         解析 /skills 按钮回调。
 
-        回调格式：skills:{request_id}:{action}[:index]
+        导航格式：skills:{request_id}:{action}[:index]。
+        安装/删除格式：skills:{request_id}:{action}:{index}:{selection_id}，展示标识另行校验。
         """
         if not callback_data.startswith("skills:"):
             return None
@@ -209,7 +282,9 @@ class SkillInteractionHandler:
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
     ) -> bool:
-        """处理 /skills 回调并保持消息链公开 ABI。"""
+        """
+        处理 /skills 回调并保持消息链公开 ABI。
+        """
         return self._handle_callback_interaction(
             callback_data,
             channel,
@@ -249,6 +324,11 @@ class SkillInteractionHandler:
                     title="技能交互已失效，请重新发送 /skills",
                 )
             )
+            return True
+
+        if self._selection_callback_is_stale(request, action, callback_data):
+            self._messenger.post_message(Message(channel=channel, source=source, userid=userid,
+                username=username, title="技能列表已变化，请使用最新列表重新选择"))
             return True
 
         request.channel = channel
@@ -318,27 +398,9 @@ class SkillInteractionHandler:
                 request.market_page = max(0, request.market_page - 1)
         elif action == "install" and index:
             request.awaiting_input = None
-            success, message = self._install_market_skill(request, index)
-            if success:
-                self._messenger.post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title=message,
-                    )
-                )
-            else:
-                self._messenger.post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title=message,
-                    )
-                )
+            _, message = self._install_market_skill(request, index)
+            self._messenger.post_message(Message(channel=channel, source=source, userid=userid,
+                                                username=username, title=message))
         elif action == "remove" and index:
             request.awaiting_input = None
             success, message = self._remove_local_skill(request, index)
@@ -387,7 +449,9 @@ class SkillInteractionHandler:
             username: str,
             text: str,
     ) -> bool:
-        """处理 /skills 文本交互并保持消息链公开 ABI。"""
+        """
+        处理 /skills 文本交互并保持消息链公开 ABI。
+        """
         return self._handle_text_interaction(channel, source, userid, username, text)
 
     def _handle_text_interaction(
@@ -687,21 +751,31 @@ class SkillInteractionHandler:
         )
         return True
 
+    @staticmethod
+    def _selection_callback_is_stale(request: PendingSkillInteraction, action: str, callback_data: str) -> bool:
+        """
+        核对安装/删除按钮的展示标识及当前视图，旧列表不能沿用新序号。
+
+        :param request: 当前技能交互会话
+        :param action: 解析后的按钮动作
+        :param callback_data: 包含展示标识的完整按钮数据
+        :return: 属于安装/删除且展示已失效时为True，其它导航动作不受影响
+        """
+        expected_view = {"install": "market", "remove": "installed"}.get(action)
+        return expected_view is not None and (
+            callback_data.split(":")[4:] != [request.selection_id]
+            or request.selection_view != expected_view or request.view != expected_view
+        )
+
     def _install_market_skill(
             self,
             request: PendingSkillInteraction,
             page_index: int,
     ) -> Tuple[bool, str]:
         """
-        按当前市场页的可见序号安装技能，避免跨页序号歧义。
+        按展示快照的可见序号安装技能，不重新按实时目录计算序号。
         """
-        market_skills = self._get_market_skills(request=request)
-        items, page, _ = self._page_items(
-            items=market_skills,
-            page=request.market_page,
-            page_size=self._page_size(request.channel),
-        )
-        request.market_page = page
+        items = request.selection_items if request.selection_view == "market" else []
         if page_index < 1 or page_index > len(items):
             return False, "安装序号无效"
         return self.skillhelper.install_market_skill(items[page_index - 1])
@@ -712,18 +786,14 @@ class SkillInteractionHandler:
             page_index: int,
     ) -> Tuple[bool, str]:
         """
-        按当前已安装页的可见序号删除技能，并拦截内置技能。
+        按展示快照删除对应技能，目标变化或内置技能不会被删除。
         """
-        local_skills = self.skillhelper.list_local_skills()
-        items, page, _ = self._page_items(
-            items=local_skills,
-            page=request.local_page,
-            page_size=self._page_size(request.channel),
-        )
-        request.local_page = page
+        items = request.selection_items if request.selection_view == "installed" else []
         if page_index < 1 or page_index > len(items):
             return False, "删除序号无效"
         target = items[page_index - 1]
+        if target not in self.skillhelper.list_local_skills():
+            return False, "技能列表已变化，请刷新后重新选择"
         if not target.removable:
             return False, f"技能 {target.id} 是内置技能，不能删除"
         return self.skillhelper.remove_local_skill(target.id)
@@ -789,7 +859,7 @@ class SkillInteractionHandler:
             self,
             request: PendingSkillInteraction,
             force_market_refresh: bool = False,
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建根菜单视图，汇总本地技能和市场概览。
         """
@@ -839,7 +909,7 @@ class SkillInteractionHandler:
     def _build_installed_view(
             self,
             request: PendingSkillInteraction
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建已安装技能视图，列出来源和可删除状态。
         """
@@ -850,6 +920,9 @@ class SkillInteractionHandler:
             page_size=self._page_size(request.channel),
         )
         request.local_page = page
+        request.selection_id = uuid.uuid4().hex[:12]
+        request.selection_view = "installed"
+        request.selection_items = deepcopy(items)
 
         text_lines = [f"第 {page + 1}/{total_pages} 页，共 {len(local_skills)} 个技能"]
         if not items:
@@ -883,7 +956,7 @@ class SkillInteractionHandler:
                     [
                         {
                             "text": f"删除 {index}",
-                            "callback_data": f"skills:{request.request_id}:remove:{index}",
+                            "callback_data": f"skills:{request.request_id}:remove:{index}:{request.selection_id}",
                         }
                     ]
                 )
@@ -900,7 +973,7 @@ class SkillInteractionHandler:
             self,
             request: PendingSkillInteraction,
             force_market_refresh: bool = False,
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建技能市场视图，仅展示尚未安装的技能。
         """
@@ -914,6 +987,9 @@ class SkillInteractionHandler:
             page_size=self._page_size(request.channel),
         )
         request.market_page = page
+        request.selection_id = uuid.uuid4().hex[:12]
+        request.selection_view = "market"
+        request.selection_items = deepcopy(items)
 
         text_lines = [f"第 {page + 1}/{total_pages} 页，共 {len(market_skills)} 个可安装技能"]
         if request.market_query:
@@ -983,7 +1059,7 @@ class SkillInteractionHandler:
                     [
                         {
                             "text": f"安装 {index}",
-                            "callback_data": f"skills:{request.request_id}:install:{index}",
+                            "callback_data": f"skills:{request.request_id}:install:{index}:{request.selection_id}",
                         }
                     ]
                 )
@@ -1000,7 +1076,7 @@ class SkillInteractionHandler:
     def _build_sources_view(
             self,
             request: PendingSkillInteraction,
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建技能源管理视图，提供自定义 GitHub 源的增删入口。
         """
@@ -1111,7 +1187,7 @@ class SkillInteractionHandler:
             request: PendingSkillInteraction,
             page: int,
             total_pages: int,
-    ) -> List[List[dict]]:
+    ) -> List[List[dict[str, str]]]:
         """
         为分页视图生成上一页和下一页按钮。
         """
@@ -1130,7 +1206,7 @@ class SkillInteractionHandler:
             username: Optional[str],
             title: str,
             text: str,
-            buttons: Optional[List[List[dict]]] = None,
+            buttons: Optional[List[List[dict[str, str]]]] = None,
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
     ) -> None:

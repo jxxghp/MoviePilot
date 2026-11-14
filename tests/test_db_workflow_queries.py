@@ -21,20 +21,26 @@ from app.schemas.workflow import Workflow as WorkflowResponse
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把工作流表纳入用例级回收。"""
+    """
+    把工作流表纳入用例级回收。
+    """
     db.watermark(Workflow)
 
 
 def _flow(name: str, trigger_type: str = "timer", state: str = "W",
           run_count: int = 0) -> Workflow:
-    """构造一条工作流记录。"""
+    """
+    构造一条工作流记录。
+    """
     return Workflow(name=name, description=name, timer="0 * * * *",
                     trigger_type=trigger_type, state=state, run_count=run_count,
                     actions=[], flows=[], context={}, execution_state={})
 
 
 async def _stage_async_action(workflow_id: int, action_id: str) -> None:
-    """用独占异步会话提交一次模型级暂存，模拟 Application UoW 边界。"""
+    """
+    用独占异步会话提交一次模型级暂存，模拟 Application UoW 边界。
+    """
     async with async_session_scope() as session:
         await Workflow.async_update_current_action(
             session,
@@ -67,7 +73,9 @@ def test_list_and_get_by_name_match_async_twins(db):
 
 
 def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
-    """WorkflowOper 绑定显式会话后不得再创建兼容查询会话。"""
+    """
+    WorkflowOper 绑定显式会话后不得再创建兼容查询会话。
+    """
     created = db.add(_flow("wf-explicit-session"))
     monkeypatch.setattr(
         db_base,
@@ -80,7 +88,9 @@ def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
     assert WorkflowOper(db.session).get_by_name(created.name).id == created.id
 
     async def check() -> None:
-        """验证异步 Oper 同样复用调用方会话。"""
+        """
+        验证异步 Oper 同样复用调用方会话。
+        """
         async with async_session_scope() as session:
             monkeypatch.setattr(
                 db_base,
@@ -94,8 +104,31 @@ def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
     asyncio.run(check())
 
 
+def test_workflow_staged_writes_require_matching_caller_sessions(db) -> None:
+    """
+    暂存入口拒绝缺失或错配会话，不能静默丢失删除或另开事务。
+    """
+    with pytest.raises(RuntimeError, match="同步 Session"):
+        WorkflowOper().stage_delete(1)
+
+    async def check() -> None:
+        """
+        分别覆盖同步删除和异步创建的会话类型边界。
+        """
+        async with async_session_scope() as session:
+            with pytest.raises(RuntimeError, match="同步 Session"):
+                WorkflowOper(session).stage_delete(1)
+        for oper in (WorkflowOper(), WorkflowOper(db.session)):
+            with pytest.raises(RuntimeError, match="异步 Session"):
+                await oper.stage_create({"name": "wrong-session"})
+
+    asyncio.run(check())
+
+
 def test_query_repository_returns_detached_deep_copied_snapshot(db):
-    """查询仓储必须在关闭短 Session 前投影，且 JSON 不与 ORM 记录共享。"""
+    """
+    查询仓储必须在关闭短 Session 前投影，且 JSON 不与 ORM 记录共享。
+    """
     workflow = _flow("wf-snapshot")
     workflow.actions = [{"id": "action-1", "config": {"value": 1}}]
     workflow.flows = [{"source": "action-1", "target": "end"}]
@@ -120,7 +153,9 @@ def test_query_repository_returns_detached_deep_copied_snapshot(db):
 
 
 def test_query_repository_async_projection_survives_session_close(db):
-    """异步查询返回值在仓储退出 Session 作用域后仍可完整序列化。"""
+    """
+    异步查询返回值在仓储退出 Session 作用域后仍可完整序列化。
+    """
     created = db.add(_flow("wf-async-snapshot"))
     repository = TransactionalWorkflowQueryRepository(
         sync_session=SessionFactory,
@@ -136,7 +171,9 @@ def test_query_repository_async_projection_survives_session_close(db):
 
 
 def test_query_repository_filters_paginates_and_counts_in_database(db):
-    """Agent 工作流筛选必须先进入 SQL，再按同一条件计数和分页。"""
+    """
+    Agent 工作流筛选必须先进入 SQL，再按同一条件计数和分页。
+    """
     first = db.add(_flow("agent-page-first", trigger_type=None, state="W"))
     second = db.add(_flow("agent-page-second", trigger_type="timer", state="W"))
     db.add(
@@ -171,7 +208,9 @@ def test_query_repository_filters_paginates_and_counts_in_database(db):
 
 
 def test_workflow_snapshot_validates_against_api_response_contract(db):
-    """冻结快照可直接序列化为 API 合同且不会暴露内部执行上下文。"""
+    """
+    冻结快照可直接序列化为 API 合同且不会暴露内部执行上下文。
+    """
     created = db.add(_flow("wf-api-snapshot"))
     repository = TransactionalWorkflowQueryRepository(
         sync_session=SessionFactory,

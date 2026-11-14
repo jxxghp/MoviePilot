@@ -1,3 +1,7 @@
+"""
+验证批量历史重做的人工智能提示内容和参数边界。
+"""
+
 from types import SimpleNamespace
 
 from app.agent.prompt import prompt_manager
@@ -5,7 +9,9 @@ from app.agent.prompt.transfer import build_batch_manual_redo_prompt
 
 
 def test_batch_manual_redo_prompt_requires_plain_text_result():
-    """批量 AI 重新整理提示词应要求最终回复只输出纯文本描述。"""
+    """
+    批量 AI 重新整理提示词应要求最终回复只输出纯文本描述。
+    """
     history = SimpleNamespace(
         id=7,
         src_fileitem={"path": "/downloads/a.mkv"},
@@ -36,10 +42,13 @@ def test_batch_manual_redo_prompt_requires_plain_text_result():
     assert "Final response must be plain text only" in prompt
     assert "Do NOT include any title/header, bullet list" in prompt
     assert "Markdown formatting" in prompt
+    assert "configured output language" in prompt
 
 
 def test_batch_manual_redo_job_definition_contains_plain_text_rules():
-    """批量 AI 重新整理任务定义应直接声明纯文本最终回复规则。"""
+    """
+    批量 AI 重新整理任务定义应直接声明纯文本最终回复规则。
+    """
     definition = prompt_manager.load_system_tasks_definition()
     task_rules = definition.task_types["batch_manual_transfer_redo"].task_rules
 
@@ -47,8 +56,10 @@ def test_batch_manual_redo_job_definition_contains_plain_text_rules():
     assert any("Markdown formatting" in rule for rule in task_rules)
 
 
-def test_manual_redo_tasks_stop_after_durable_retry_result():
-    """系统任务必须禁止 durable 历史在登记重试后继续直接整理。"""
+def test_redo_tasks_preserve_durable_evidence_and_use_safe_replan():
+    """
+    系统任务必须通过受保护的识别修正入口恢复持久化失败，不诱导删除或普通重试。
+    """
     definition = prompt_manager.load_system_tasks_definition()
 
     for task_name in (
@@ -59,5 +70,6 @@ def test_manual_redo_tasks_stop_after_durable_retry_result():
     ):
         task = definition.task_types[task_name]
         instructions = [*task.steps, *task.task_rules]
-        assert any("persistent retry scheduler" in item for item in instructions)
-        assert any("do not call `transfer.file`" in item.lower() for item in instructions)
+        assert any("transfer.history.replan" in item for item in instructions)
+        assert any("evidence" in item and ("Never" in item or "never" in item) for item in instructions)
+        assert not any("Durable records are not deleted: the API submits" in item for item in instructions)

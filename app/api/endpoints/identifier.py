@@ -1,4 +1,6 @@
-"""自定义识别词结构化读写端点。"""
+"""
+自定义识别词结构化读写端点。
+"""
 
 from typing import Any
 
@@ -25,7 +27,7 @@ from app.startup.composition.context import HostRuntime
 router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/identifiers",
     summary="查询自定义识别词",
     response_model=Response[JsonObject],
@@ -33,7 +35,9 @@ router = ResponseAPIRouter()
 async def query_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Response[Any]:
-    """返回完整的自定义识别词列表。"""
+    """
+    返回完整的自定义识别词列表。
+    """
     identifiers = [
         item
         for item in (get_configured_system_config().get(SystemConfigKey.CustomIdentifiers) or [])
@@ -45,7 +49,7 @@ async def query_custom_identifiers(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/identifiers",
     summary="更新自定义识别词",
     response_model=Response[JsonObject],
@@ -55,7 +59,9 @@ async def update_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Response[Any]:
-    """完整替换自定义识别词，并拒绝基于过期快照的覆盖。"""
+    """
+    完整替换自定义识别词，并拒绝基于过期快照的覆盖。
+    """
     identifiers = list(payload.identifiers)
     try:
         data = await SystemSettingsService(
@@ -67,6 +73,7 @@ async def update_custom_identifiers(
             value=identifiers or None,
             expected_value=payload.expected_identifiers,
             enforce_expected_value=payload.expected_identifiers is not None,
+            allow_managed_write=True,
         )
     except SystemSettingConflictError as error:
         raise HTTPException(
@@ -74,4 +81,4 @@ async def update_custom_identifiers(
             detail=str(error),
         ) from error
     data.update({"count": len(identifiers), "identifiers": identifiers})
-    return Response(success=True, message=data.get("message"), data=data)
+    return Response(success=True, message=data.get("message") or "", data=data)

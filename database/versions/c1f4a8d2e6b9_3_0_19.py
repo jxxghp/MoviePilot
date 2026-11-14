@@ -1,8 +1,9 @@
-"""3.0.19 增加订阅搜索持久批次与任务队列。
+"""
+3.0.19 增加订阅搜索持久批次与任务队列。
 
-Revision ID: c1f4a8d2e6b9
-Revises: a9d4f2c7e6b1
-Create Date: 2026-09-01
+版本标识： c1f4a8d2e6b9
+前置版本： a9d4f2c7e6b1
+创建时间： 2026-09-01
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -21,12 +22,16 @@ _TASK_TABLE = "subscriptionsearchtask"
 
 
 def _table_names() -> set[str]:
-    """返回当前数据库表名集合。"""
+    """
+    返回当前数据库表名集合。
+    """
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def upgrade() -> None:
-    """创建跨 SQLite/PostgreSQL 一致的订阅搜索治理表。"""
+    """
+    创建跨 SQLite/PostgreSQL 一致的订阅搜索治理表。
+    """
     tables = _table_names()
     if _BATCH_TABLE not in tables:
         op.create_table(
@@ -96,7 +101,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除订阅搜索治理表。"""
+    """
+    移除订阅搜索治理表。
+    """
     tables = _table_names()
     if _TASK_TABLE in tables:
         op.drop_table(_TASK_TABLE)

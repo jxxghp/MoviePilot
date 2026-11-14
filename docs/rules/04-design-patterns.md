@@ -18,36 +18,72 @@ This document defines the structural patterns used across this codebase. When im
 
 ```python
 class ExampleModule(_ModuleBase, _DownloaderBase):
+    """
+    展示下载器模块的注册、配置开关与生命周期接口。
+    """
 
     def init_module(self) -> None:
-        """模块初始化"""
+        """
+        初始化本模块管理的下载器服务。
+        """
         super().init_service(service_name=..., service_type=...)
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """返回控制此模块开关的配置项名称和匹配值"""
+        """
+        声明启用本下载器模块所需的配置匹配条件。
+
+        :return: 配置项 DOWNLOADER 及其启用值 example
+        """
         return "DOWNLOADER", "example"
 
     @staticmethod
     def get_name() -> str:
+        """
+        提供模块的展示名称。
+
+        :return: 示例下载器的名称
+        """
         return "Example"
 
     @staticmethod
     def get_type() -> ModuleType:
+        """
+        声明模块所属的能力分类。
+
+        :return: 下载器模块分类
+        """
         return ModuleType.Downloader
 
     @staticmethod
     def get_subtype() -> DownloaderType:
+        """
+        声明下载器的具体类型。
+
+        :return: 示例下载器对应的类型枚举
+        """
         return DownloaderType.Example
 
     @staticmethod
     def get_priority() -> int:
+        """
+        提供模块调度的排序优先级。
+
+        :return: 示例优先级 1，数值越小越先调用
+        """
         return 1
 
     def test(self) -> Optional[Tuple[bool, str]]:
-        """测试模块连通性"""
+        """
+        检查已配置下载器的连接状态。
+
+        :return: 检测结果与说明组成的二元组；未启用检测时返回 None
+        """
         ...
 
     def stop(self):
+        """
+        结束模块生命周期；本示例没有需要释放的资源。
+        """
         pass
 ```
 
@@ -66,12 +102,11 @@ class ExampleModule(_ModuleBase, _DownloaderBase):
 **Calling modules from a chain:**
 
 ```python
-# Preferred: call via run_module / async_run_module
+# 通过模块调度接口调用，避免链直接依赖具体模块实例
 result = self.run_module("method_name", kwarg1=val1, kwarg2=val2)
 result = await self.async_run_module("method_name", kwarg1=val1)
 
-# Only use ModuleManager directly when you need to enumerate modules,
-# inspect instances, or run health checks.
+# 仅在枚举模块、查看实例或检查健康状态时直接使用 ModuleManager
 ```
 
 **Chain-to-chain calls:** A chain may call another chain to reuse stable domain logic. Avoid introducing new circular dependencies between chains.
@@ -94,6 +129,11 @@ from app.schemas.types import EventType
 
 @eventmanager.register(EventType.TransferComplete)
 def on_transfer_complete(self, event: Event):
+    """
+    接收整理完成事件并读取本次整理结果。
+
+    :param event: 事件对象，event_data 保存整理完成后的业务数据
+    """
     event_data = event.event_data
     ...
 ```
@@ -133,6 +173,14 @@ command. Oper methods only query, stage, or flush in that caller-owned Session.
 from app.application.subscription.write import SubscribeWriter
 
 def create_subscription(writer: SubscribeWriter, identity: dict, payload: dict):
+    """
+    通过应用写入服务创建订阅。
+
+    :param writer: 已完成依赖注入的订阅写入服务
+    :param identity: 订阅媒体身份，用于确定订阅对象
+    :param payload: 本次提交的订阅配置
+    :return: 写入服务返回的创建结果，保留其成功或失败信息
+    """
     return writer.add(identity=identity, payload=payload)
 ```
 
@@ -168,10 +216,18 @@ must not copy that form.
 
 ```python
 class MyChain(ChainBase, ConfigReloadMixin):
+    """
+    在下载器配置变化后重新初始化模块。
+
+    :cvar CONFIG_WATCH: 触发重新初始化的下载器类型、地址和端口配置项
+    """
 
     CONFIG_WATCH = {"DOWNLOADER", "QB_HOST", "QB_PORT"}
 
     def on_config_changed(self):
+        """
+        在受监控的配置项变化后刷新模块实例。
+        """
         self.init_module()
 ```
 
@@ -189,6 +245,9 @@ class MyChain(ChainBase, ConfigReloadMixin):
 from app.foundation.singleton import Singleton
 
 class MyManager(metaclass=Singleton):
+    """
+    展示进程内共享同一管理器实例的声明方式。
+    """
     ...
 ```
 

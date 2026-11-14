@@ -1,4 +1,6 @@
-"""3.0.30 增加逐订阅搜索周期和持久搜索时间。"""
+"""
+3.0.30 增加逐订阅搜索周期和持久搜索时间。
+"""
 
 import sqlalchemy as sa
 from alembic import op
@@ -10,7 +12,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """兼容首次建表和已有数据库，旧订阅默认跟随系统周期。"""
+    """
+    兼容首次建表和已有数据库，旧订阅默认跟随系统周期。
+    """
     inspector = sa.inspect(op.get_bind())
     for table in ("subscribe", "subscribehistory"):
         columns = {column["name"] for column in inspector.get_columns(table)}
@@ -21,7 +25,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除新增周期字段，保留原有订阅和历史数据。"""
+    """
+    移除新增周期字段，保留原有订阅和历史数据。
+    """
     op.drop_column("subscribe", "last_search")
     for table in ("subscribe", "subscribehistory"):
         op.drop_column(table, "search_interval")

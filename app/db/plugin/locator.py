@@ -1,4 +1,6 @@
-"""插件数据库文件路径与 PostgreSQL schema 名的解析，不持有任何状态。"""
+"""
+插件数据库文件路径与 PostgreSQL schema 名的解析，不持有任何状态。
+"""
 
 from __future__ import annotations
 
@@ -34,6 +36,7 @@ def sqlite_database_path(plugin_id: str) -> Path:
     目录解析走统一入口而不是就地拼接：销毁数据库会 ``unlink`` 这些文件，而插件标识在
     重置、卸载等路径上直接来自 HTTP 路径段，就地拼接会让一个 ``..`` 把删除抬到插件数据
     根之外。
+
     :param plugin_id: 插件标识
     :return: 库文件绝对路径
     :raise ValueError: 插件标识不是一个合法的单层目录名
@@ -44,6 +47,7 @@ def sqlite_database_path(plugin_id: str) -> Path:
 def sqlite_sidecar_paths(db_path: Path) -> tuple[Path, ...]:
     """
     返回库文件对应的 WAL/SHM 边车文件路径。
+
     :param db_path: 库文件路径
     :return: 边车路径元组，不保证文件存在
     """
@@ -60,6 +64,7 @@ def plugin_schema_name(plugin_id: str) -> str:
     CASCADE``，折叠意味着删掉另一个插件的全部数据。
     因此只要归一改写过标识，就追加插件标识的哈希把它们重新分开；超长标识同样追加哈希
     再截断，截断本身也是一次折叠。
+
     :param plugin_id: 插件标识
     :return: 合法且与插件标识一一对应的 schema 名
     """

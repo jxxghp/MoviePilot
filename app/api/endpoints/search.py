@@ -1,7 +1,11 @@
+"""
+提供媒体资源搜索及搜索结果查询接口。
+"""
+
 import asyncio
 import json
 import time
-from typing import Any, AsyncIterator, Iterator, List, Optional
+from typing import Any, AsyncGenerator, AsyncIterator, Coroutine, Iterator, List, Optional, cast
 from uuid import uuid4
 
 from fastapi import Body, Depends, Request
@@ -13,20 +17,21 @@ from app.api.response import (
     CompatiblePageParam,
     ResponseAPIRouter,
 )
+from app.application.search.state import SearchStateService
 from app.application.security.url import SecurityUtils
 from app.chain.search.facade import SearchChain
 from app.domain.context import Context
 from app.domain.media import normalize_music_type
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
+from app.schemas.context import Context as _SchemaContext
+from app.schemas.context import SubtitleInfo as _SchemaSubtitleInfo
 from app.schemas.media import resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.search import SearchLastContextData as _SchemaSearchLastContextData
 from app.schemas.search import SearchRecommendStatusData as _SchemaSearchRecommendStatusData
-from app.schemas.search import SubtitleInfo as _SchemaSubtitleInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaSource, MediaType
-from app.schemas.workflow import Context as _SchemaContext
 
 router = ResponseAPIRouter()
 
@@ -38,6 +43,51 @@ _SSE_RESPONSE_HEADERS = {
     "Cache-Control": "no-cache",
     "X-Accel-Buffering": "no",
 }
+
+
+def _search_user_id(payload: object) -> Optional[int]:
+    """
+    仅从已验证的令牌载荷读取身份，缺失身份时不保存或回退全局记录。
+    """
+    return payload.sub if isinstance(payload, _SchemaTokenPayload) else None
+
+
+async def _save_user_search_context(
+    user_id: Optional[int], *, params: dict[str, Any], results: list[dict[str, Any]],
+) -> None:
+    """
+    普通搜索也发布无诊断的用户快照，防止继续显示旧的页搜索诊断。
+
+    :param user_id: 认证依赖提供的用户主键；缺失时不保存
+    :param params: 本次实际搜索参数
+    :param results: 本次完整结果；字幕保留未签名地址，读取时重新签名
+    """
+    if user_id is not None:
+        await SearchChain().async_save_search_context(user_id, _SchemaSearchLastContextData.model_validate({
+            "params": SearchStateService.build_params(**params) or {}, "results": results,
+        }))
+
+
+async def _iter_user_search_events(
+    source: AsyncIterator[dict[str, Any]], user_id: Optional[int], *, params: dict[str, Any],
+) -> AsyncIterator[dict[str, Any]]:
+    """
+    旧 SSE 仅在最终完成时发布无诊断快照，错误与取消不覆盖最近记录。
+
+    :param source: 未经传输拆包或字幕签名的原始搜索事件
+    :param user_id: 认证依赖提供的用户主键
+    :param params: 本次实际搜索参数
+    :yields: 保持原有顺序与字段的事件
+    """
+    try:
+        async for event in source:
+            if event.get("type") == "done" and event.get("stage") in (None, "done"):
+                await _save_user_search_context(user_id, params=params, results=event.get("items") or [])
+            yield event
+    finally:
+        close = getattr(source, "aclose", None)
+        if close is not None:
+            await close()
 
 
 def _parse_site_list(sites: Optional[str]) -> Optional[List[int]]:
@@ -60,7 +110,9 @@ def _resolve_media_season(
         explicit_season: Optional[int],
         recognized_season: Optional[int],
 ) -> Optional[int]:
-    """合并显式季号与识别结果，显式值优先且季 0 属于有效业务值。"""
+    """
+    合并显式季号与识别结果，显式值优先且季 0 属于有效业务值。
+    """
     return explicit_season if explicit_season is not None else recognized_season
 
 
@@ -69,8 +121,10 @@ async def _resolve_media_search_params(
         media_id: str,
         media_type: Optional[MediaType] = None,
         music_type: Optional[str] = None,
-) -> tuple[Optional[dict], str]:
-    """校验统一媒体身份并构造 SearchChain 精确搜索参数。"""
+) -> tuple[Optional[dict[str, Any]], str]:
+    """
+    校验统一媒体身份并构造 SearchChain 精确搜索参数。
+    """
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,
@@ -94,7 +148,7 @@ async def _resolve_media_search_params(
     return params, ""
 
 
-def _sse_event(data: dict, locale: Optional[str] = None) -> str:
+def _sse_event(data: dict[str, Any], locale: Optional[str] = None) -> str:
     """
     转换为SSE事件
     """
@@ -112,21 +166,24 @@ def _sse_event(data: dict, locale: Optional[str] = None) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _serialize_signed_subtitle_result(subtitle: Any) -> dict:
+def _serialize_signed_subtitle_result(subtitle: Any) -> dict[str, Any]:
     """
     序列化字幕结果并签名下载链接，签名用途绑定站点 ID。
     """
     data = subtitle.to_dict() if hasattr(subtitle, "to_dict") else dict(subtitle)
     enclosure = data.get("enclosure")
+    site_id = data.get("site")
     if enclosure:
+        if not isinstance(site_id, int):
+            raise ValueError("字幕结果缺少有效站点 ID，无法签名下载链接")
         data["enclosure"] = SecurityUtils.sign_url(
             enclosure,
-            purpose=SecurityUtils.subtitle_download_purpose(data.get("site")),
+            purpose=SecurityUtils.subtitle_download_purpose(site_id),
         )
     return data
 
 
-def _serialize_signed_subtitle_results(subtitles: List[Any]) -> List[dict]:
+def _serialize_signed_subtitle_results(subtitles: List[Any]) -> List[dict[str, Any]]:
     """
     批量序列化字幕结果，确保返回给客户端的下载链接均已签名。
     """
@@ -134,11 +191,13 @@ def _serialize_signed_subtitle_results(subtitles: List[Any]) -> List[dict]:
 
 
 def _serialize_context_results(contexts: list[Context]) -> list[dict[str, Any]]:
-    """序列化 canonical 搜索上下文，集中保持传输层投影合同。"""
+    """
+    序列化 canonical 搜索上下文，集中保持传输层投影合同。
+    """
     return [context.to_dict() for context in contexts]
 
 
-def _sign_subtitle_search_event(event: dict) -> dict:
+def _sign_subtitle_search_event(event: dict[str, Any]) -> dict[str, Any]:
     """
     签名字幕搜索流事件中的下载链接。
     """
@@ -151,8 +210,8 @@ def _sign_subtitle_search_event(event: dict) -> dict:
 
 
 async def _iter_signed_subtitle_search_events(
-    event_source: AsyncIterator[dict],
-) -> AsyncIterator[dict]:
+    event_source: AsyncIterator[dict[str, Any]],
+) -> AsyncIterator[dict[str, Any]]:
     """
     输出仅包含签名字幕下载链接的搜索流事件。
     """
@@ -160,7 +219,7 @@ async def _iter_signed_subtitle_search_events(
         yield _sign_subtitle_search_event(event)
 
 
-def _merge_append_event(pending_event: Optional[dict], event: dict) -> dict:
+def _merge_append_event(pending_event: Optional[dict[str, Any]], event: dict[str, Any]) -> dict[str, Any]:
     """
     合并短时间内连续到达的 append 事件，降低前端刷新频率。
     """
@@ -177,7 +236,7 @@ def _merge_append_event(pending_event: Optional[dict], event: dict) -> dict:
     return merged_event
 
 
-def _iter_replace_event_batches(event: dict) -> Iterator[dict]:
+def _iter_replace_event_batches(event: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """
     将超大的最终替换事件拆成有序批次，避免单个 SSE 消息承载全部完整对象。
     """
@@ -207,19 +266,21 @@ def _iter_replace_event_batches(event: dict) -> Iterator[dict]:
 
 
 async def _iter_batched_search_events(
-    event_source: AsyncIterator[dict],
-) -> AsyncIterator[dict]:
+    event_source: AsyncIterator[dict[str, Any]],
+) -> AsyncGenerator[dict[str, Any], None]:
     """
     对搜索流事件做轻量批处理，并在上游长时间静默时发送心跳。
     """
     iterator = event_source.__aiter__()
-    pending_append_event: Optional[dict] = None
-    next_event_task: Optional[asyncio.Task] = None
+    pending_append_event: Optional[dict[str, Any]] = None
+    next_event_task: Optional[asyncio.Future[dict[str, Any]]] = None
 
     try:
         while True:
             if next_event_task is None:
-                next_event_task = asyncio.create_task(anext(iterator))
+                next_event_task = asyncio.create_task(
+                    cast(Coroutine[Any, Any, dict[str, Any]], anext(iterator))
+                )
 
             timeout = (
                 _SSE_APPEND_FLUSH_INTERVAL
@@ -273,7 +334,9 @@ async def _iter_batched_search_events(
         yield pending_append_event
 
 
-async def _stream_search_events(request: Request, event_source: AsyncIterator[dict]):
+async def _stream_search_events(
+        request: Request, event_source: AsyncIterator[dict[str, Any]],
+) -> AsyncGenerator[str, None]:
     """
     输出搜索 SSE 事件，并记录连接生命周期与传输规模。
     """
@@ -363,25 +426,17 @@ async def search_latest(_: _SchemaTokenPayload = Depends(verify_token), page: Co
 )
 async def search_latest_context(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
-    查询上次搜索结果及其对应的搜索参数。
+    查询当前用户最近完成的搜索上下文，首次搜索前返回空快照。
     """
-    search_chain = SearchChain()
-    params = await search_chain.async_last_search_params() or {}
-    if params.get("result_type") == "subtitle":
-        subtitle_results = (
-            await search_chain.async_last_subtitle_search_results() or []
-        )
-        serialized_results = _serialize_signed_subtitle_results(subtitle_results)
-    else:
-        context_results = await search_chain.async_last_search_results() or []
-        serialized_results = _serialize_context_results(context_results)
-    return _SchemaResponse(
-        success=True,
-        data={
-            "params": params,
-            "results": serialized_results,
-        },
-    )
+    user_id = _search_user_id(_)
+    context = await SearchChain().async_last_search_context(user_id) if user_id is not None else _SchemaSearchLastContextData()
+    if context.params.get("result_type") == "subtitle":
+        context = _SchemaSearchLastContextData.model_validate({
+            "params": context.params,
+            "results": _serialize_signed_subtitle_results([item.model_dump(mode="json") for item in context.results]),
+            "diagnostics": context.diagnostics,
+        })
+    return _SchemaResponse(success=True, data=context)
 
 
 @router.get(
@@ -406,6 +461,9 @@ async def search_by_id_stream(
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
     include_candidates: bool = False,
+    manual_paging: bool = False,
+    page: int = 0,
+    source: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
@@ -416,8 +474,10 @@ async def search_by_id_stream(
     media_season = int(season) if season else None
     site_list = _parse_site_list(sites)
 
-    async def event_source():
-        """解析媒体身份并输出精确搜索流事件。"""
+    async def event_source() -> AsyncGenerator[dict[str, Any], None]:
+        """
+        解析媒体身份并输出精确搜索流事件。
+        """
         search_params, message = await _resolve_media_search_params(
             media_source=media_source,
             media_id=media_id,
@@ -429,6 +489,15 @@ async def search_by_id_stream(
             return
         if include_candidates:
             search_params["include_candidates"] = True
+        if manual_paging and media_type != MediaType.MUSIC:
+            async for event in SearchChain().search_page_events(params={
+                "media_source": media_source, "media_id": media_id, "mtype": media_type,
+                "area": area, "season": media_season, "sites": site_list,
+                "page": page, "source": source,
+                "user_id": _search_user_id(_),
+            }):
+                yield event
+            return
         torrents = SearchChain().async_search_by_id_stream(
             **search_params,
             mtype=media_type,
@@ -437,7 +506,9 @@ async def search_by_id_stream(
             sites=site_list,
             cache_local=True,
         )
-        async for event in torrents:
+        async for event in _iter_user_search_events(torrents, _search_user_id(_), params={
+            **search_params, "mtype": media_type, "area": area, "season": media_season, "sites": site_list,
+        }):
             yield event
 
     return StreamingResponse(
@@ -488,10 +559,15 @@ async def search_by_id(
         sites=_parse_site_list(sites),
         cache_local=True,
     )
+    serialized_results = _serialize_context_results(torrents or [])
+    await _save_user_search_context(_search_user_id(_), params={
+        **search_params, "mtype": media_type, "area": area, "season": media_season,
+        "sites": _parse_site_list(sites),
+    }, results=serialized_results)
     if not torrents:
         return _SchemaResponse(success=False, message="未搜索到任何资源")
     return _SchemaResponse(
-        success=True, data=_serialize_context_results(torrents)
+        success=True, data=serialized_results
     )
 
 
@@ -513,19 +589,30 @@ async def search_by_title_stream(
     mtype: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
+    manual_paging: bool = False,
+    source: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
     根据名称渐进式模糊搜索站点资源，返回格式为SSE
     """
 
-    event_source = SearchChain().async_search_by_title_stream(
-        title=keyword or "",
-        page=page,
-        sites=_parse_site_list(sites),
-        cache_local=True,
-        mtype=_parse_media_type(mtype),
-    )
+    if manual_paging and keyword and _parse_media_type(mtype) != MediaType.MUSIC:
+        event_source = SearchChain().search_page_events(params={
+            "keyword": keyword, "mtype": _parse_media_type(mtype), "sites": _parse_site_list(sites),
+            "page": page, "source": source,
+            "user_id": _search_user_id(_),
+        })
+    else:
+        event_source = _iter_user_search_events(SearchChain().async_search_by_title_stream(
+            title=keyword or "",
+            page=page,
+            sites=_parse_site_list(sites),
+            cache_local=True,
+            mtype=_parse_media_type(mtype),
+        ), _search_user_id(_), params={
+            "keyword": keyword or "", "mtype": _parse_media_type(mtype), "sites": _parse_site_list(sites),
+        })
     return StreamingResponse(
         _stream_search_events(request, event_source),
         media_type="text/event-stream",
@@ -555,10 +642,14 @@ async def search_by_title(
         cache_local=True,
         mtype=_parse_media_type(mtype),
     )
+    serialized_results = _serialize_context_results(torrents or [])
+    await _save_user_search_context(_search_user_id(_), params={
+        "keyword": keyword or "", "mtype": _parse_media_type(mtype), "sites": _parse_site_list(sites),
+    }, results=serialized_results)
     if not torrents:
         return _SchemaResponse(success=False, message="未搜索到任何资源")
     return _SchemaResponse(
-        success=True, data=_serialize_context_results(torrents)
+        success=True, data=serialized_results
     )
 
 
@@ -594,7 +685,9 @@ async def search_subtitle_by_title_stream(
     return StreamingResponse(
         _stream_search_events(
             request,
-            _iter_signed_subtitle_search_events(event_source),
+            _iter_signed_subtitle_search_events(_iter_user_search_events(event_source, _search_user_id(_), params={
+                "keyword": keyword or "", "sites": _parse_site_list(sites), "result_type": "subtitle",
+            })),
         ),
         media_type="text/event-stream",
         headers=_SSE_RESPONSE_HEADERS,
@@ -621,6 +714,9 @@ async def search_subtitle_by_title(
         sites=_parse_site_list(sites),
         cache_local=True,
     )
+    await _save_user_search_context(_search_user_id(_), params={
+        "keyword": keyword or "", "sites": _parse_site_list(sites), "result_type": "subtitle",
+    }, results=[subtitle.to_dict() for subtitle in subtitles or []])
     if not subtitles:
         return _SchemaResponse(success=False, message="未搜索到任何字幕")
     return _SchemaResponse(
@@ -645,7 +741,7 @@ async def _build_subtitle_search_source(
     media_episode = int(episode) if episode else None
     site_list = _parse_site_list(sites)
 
-    def call_search(**kwargs):
+    def call_search(**kwargs: Any) -> Any:
         """
         根据调用模式返回普通搜索协程或流式搜索迭代器。
         """
@@ -707,14 +803,18 @@ async def search_subtitle_by_id_stream(
         stream=True,
     )
 
-    async def event_source():
+    async def event_source() -> AsyncGenerator[dict[str, Any], None]:
         """
         输出字幕精确搜索流事件。
         """
         if not subtitles:
             yield {"type": "error", "success": False, "message": message or "未搜索到任何字幕"}
             return
-        async for event in subtitles:
+        async for event in _iter_user_search_events(subtitles, _search_user_id(_), params={
+            "media_source": media_source, "media_id": media_id, "mtype": _parse_media_type(mtype),
+            "season": int(season) if season else None, "episode": int(episode) if episode else None,
+            "sites": _parse_site_list(sites), "result_type": "subtitle",
+        }):
             yield event
 
     return StreamingResponse(
@@ -758,6 +858,11 @@ async def search_subtitle_by_id(
         return _SchemaResponse(success=False, message=message or "未搜索到任何字幕")
 
     subtitles = await subtitles
+    await _save_user_search_context(_search_user_id(_), params={
+        "media_source": media_source, "media_id": media_id, "mtype": _parse_media_type(mtype),
+        "season": int(season) if season else None, "episode": int(episode) if episode else None,
+        "sites": _parse_site_list(sites), "result_type": "subtitle",
+    }, results=[subtitle.to_dict() for subtitle in subtitles or []])
     if not subtitles:
         return _SchemaResponse(success=False, message="未搜索到任何字幕")
     return _SchemaResponse(
@@ -779,56 +884,39 @@ async def recommend_search_results(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    AI推荐资源 - 轮询接口
-    前端轮询此接口，发送筛选后的索引（如果有筛选）
-    后端根据请求变化自动取消旧任务并启动新任务
+    启动 AI 推荐或只读查询当前状态，禁用和只读状态无需读取搜索结果缓存。
 
-    参数：
-    - filtered_indices: 筛选后的索引列表（可选，为空或不提供时使用所有结果）
-    - check_only: 仅检查状态（首次打开页面时使用，避免触发不必要的重新推理）
-    - force: 强制重新推荐（清除旧结果并重新启动）
-
-    返回数据结构：
-    {
-        "success": bool,
-        "message": string,   // 错误信息（仅在错误时存在）
-        "data": {
-            "status": string,    // 状态: disabled | idle | running | completed | error
-            "results": array     // 推荐结果（仅status=completed时存在）
-        }
-    }
+    :param filtered_indices: 可选资源索引，省略时推荐当前全部候选
+    :param check_only: 仅读取状态，不启动或取消任务，也不反序列化搜索缓存
+    :param force: 清除旧状态并启动新任务，优先于 check_only
+    :param _: 已验证的访问令牌
+    :return: 推荐状态与已完成结果索引；推荐失败在 message 中返回原因
     """
-    # 从缓存获取上次搜索结果
-    results = await SearchChain().async_last_search_results() or []
+    recommend_chain = SearchChain()
+    # 禁用与只读轮询仅访问推荐状态，不反序列化可能很大的搜索结果缓存。
+    if not recommend_chain.is_ai_recommend_enabled:
+        return _SchemaResponse(success=True, data={"status": "disabled"})
+    if check_only and not force:
+        current_status = recommend_chain.get_current_recommend_status_only()
+        if current_status.get("status") == "error":
+            error_msg = current_status.pop("error", "未知错误")
+            return _SchemaResponse(success=False, message=error_msg, data=current_status)
+        return _SchemaResponse(success=True, data=current_status)
+
+    # 只有真正启动或检查推荐输入变化时才读取候选资源。
+    results = await recommend_chain.async_last_search_results() or []
     if not results:
         return _SchemaResponse(
             success=False, message="没有可用的搜索结果", data={"status": "error"}
         )
 
-    recommend_chain = SearchChain()
-
     # 如果是强制模式，先取消并清除旧结果，然后直接启动新任务
     if force:
-        # 检查功能是否启用
-        if not recommend_chain.is_ai_recommend_enabled:
-            return _SchemaResponse(success=True, data={"status": "disabled"})
         logger.info("收到新推荐请求，清除旧结果并启动新任务")
         recommend_chain.cancel_ai_recommend()
         recommend_chain.start_recommend_task(filtered_indices, len(results), results)
         # 直接返回运行中状态
         return _SchemaResponse(success=True, data={"status": "running"})
-
-    # 如果是仅检查模式，不传递 filtered_indices（避免触发请求变化检测）
-    if check_only:
-        # 返回当前运行状态，不做任何任务启动或取消操作
-        current_status = recommend_chain.get_current_recommend_status_only()
-        # 如果有错误，将错误信息放到message中
-        if current_status.get("status") == "error":
-            error_msg = current_status.pop("error", "未知错误")
-            return _SchemaResponse(
-                success=False, message=error_msg, data=current_status
-            )
-        return _SchemaResponse(success=True, data=current_status)
 
     # 获取当前状态（会检测请求是否变化）
     status_data = recommend_chain.get_recommend_status(filtered_indices, len(results))

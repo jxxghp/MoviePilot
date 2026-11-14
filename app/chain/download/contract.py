@@ -1,4 +1,6 @@
-"""DownloadChain owner 的静态组合合同。"""
+"""
+DownloadChain 各职责组件的静态组合契约。
+"""
 
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -6,7 +8,9 @@ from app.chain.base import ChainBase
 
 if TYPE_CHECKING:
     class _DownloadOwnerBase(ChainBase):
-        """向类型检查器声明同一 Facade 上的跨 owner 方法。"""
+        """
+        向类型检查器声明同一 Facade 上的跨 owner 方法。
+        """
 
         _active_download_failure_fingerprints: Callable[..., Any]
         _append_no_exists: Callable[..., None]
@@ -26,6 +30,7 @@ if TYPE_CHECKING:
         _matches_media_identity: Callable[..., bool]
         _prepare_batch_download_contexts: Callable[..., Any]
         _record_download_failure: Callable[..., Any]
+        _record_duplicate_download_backoff: Callable[..., Any]
         _record_music_album_track_keys: Callable[..., Any]
         _resolve_media_download_dir: Callable[..., Any]
         _settle_download_success: Callable[..., None]
