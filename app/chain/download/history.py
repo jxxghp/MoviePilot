@@ -13,6 +13,7 @@ from app.application.chain.events import (
 from app.application.classification.reference import effective_classification_snapshot
 from app.application.history import DownloadFileWrite, DownloadHistoryWrite
 from app.chain.download.contract import _DownloadOwnerBase
+from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -20,7 +21,6 @@ from app.domain.context import (
     TorrentInfo,
 )
 from app.domain.meta.metabase import MetaBase
-from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
@@ -128,7 +128,6 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             custom_words=custom_words,
         )
         files_to_add: list[DownloadFileWrite] = []
-        custom_word_list = custom_words.splitlines() if custom_words else []
         for file in file_list:
             if not Path(file).suffix or Path(file).suffix.lower() not in self.runtime_config.media_extensions:
                 continue
@@ -155,21 +154,13 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
                 )
             files_to_add = retained_files
         if episodes:
-            selected_files = []
-            unmatched_single_files = []
-            for item in files_to_add:
-                # 与订阅选集使用相同识别词，避免偏移前的文件集数被目标集数过滤。
-                file_meta = MetaInfo(Path(cast(str, item.filepath)).stem, custom_words=custom_word_list)
-                file_episodes = set(file_meta.episode_list)
-                if file_episodes.intersection(episodes):
-                    selected_files.append(item)
-                elif len(file_episodes) <= 1:
-                    unmatched_single_files.append(item)
-            if (not selected_files and len(episodes) == 1 and media_file_count == 1
-                    and len(unmatched_single_files) == 1):
-                # 下载器已按唯一视频文件兜底选集，历史也要保留该文件，避免留下空记录。
-                selected_files = unmatched_single_files
-            files_to_add = selected_files
+            wanted, _unwanted, _matched = torrent_rules.select_torrent_files(
+                ((index, cast(str, item.filepath)) for index, item in enumerate(files_to_add)),
+                episodes, self.runtime_config.media_extensions, custom_words,
+                torrent_rules.episode_selection_for_context(context),
+                allow_single_fallback=media_file_count == 1,
+            )
+            files_to_add = [files_to_add[index] for index in wanted]
         frozen_files = tuple(files_to_add)
         event_payload = {
             "hash": download_hash, "context": context, "username": username,

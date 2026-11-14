@@ -7,15 +7,120 @@ import binascii
 import hashlib
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlsplit
 
+from app.domain.metainfo import MetaInfo
+
 if TYPE_CHECKING:
-    from app.domain.context import TorrentInfo
+    from app.domain.context import Context, TorrentInfo
+
+
+@dataclass(frozen=True)
+class EpisodeSelection:
+    """
+    下载目标季与识别阶段已经确认的季集对应关系，不推算未确认的集数。
+
+    :param season: 目标季号，0 表示特别篇
+    :param source_season: 种子标题识别修正前的季号；None 表示未标季
+    :param episode_map: 标题原集号与目标集号的对应项；空元组表示没有额外换算依据
+    """
+
+    season: int
+    source_season: Optional[int] = None
+    episode_map: tuple[tuple[int, int], ...] = ()
+
+
+def episode_selection_for_context(context: "Context") -> Optional[EpisodeSelection]:
+    """
+    从单季候选冻结季集依据，只有等长的明确集号列表才建立逐集对应关系。
+
+    不根据目标季号或单个差值外推整包偏移。来源识别词由文件解析自行应用，
+    此处保留应用来源临时词之前的标题坐标，避免标题专用词无法命中文件名。
+    """
+    meta, torrent = context.meta_info, context.torrent_info
+    if meta is None or len(meta.season_list) != 1:
+        return None
+    season = meta.season_list[0]
+    original = MetaInfo(torrent.title or "", torrent.description) if torrent else None
+    source_season = original.begin_season if original else None
+    source_episodes = original.episode_list if original else []
+    target_episodes = meta.episode_list
+    mapping: tuple[tuple[int, int], ...] = ()
+    if original and len(original.season_list) == 1 and source_episodes and len(source_episodes) == len(target_episodes) and (
+            source_season != season or source_episodes != target_episodes
+    ):
+        mapping = tuple(zip(source_episodes, target_episodes))
+    return EpisodeSelection(season, source_season, mapping)
+
+
+def _file_episode_coordinates(
+        name: str, custom_words: Optional[list[str]], selection: Optional[EpisodeSelection],
+) -> tuple[Optional[set[int]], bool]:
+    """
+    解析文件并应用明确映射；None 表示季集冲突，布尔值区分无集号附件。
+    """
+    original = MetaInfo(Path(name).name)
+    meta = MetaInfo(Path(name).name, custom_words=custom_words) if custom_words else original
+    episodes = set(meta.episode_list)
+    numbered = bool(episodes)
+    if selection is None:
+        return episodes, numbered
+    corrected = (meta.begin_season, meta.episode_list) != (original.begin_season, original.episode_list)
+    if not corrected and selection.episode_map and original.begin_season in (None, selection.source_season):
+        mapping = dict(selection.episode_map)
+        mapped = {mapping[episode] for episode in episodes if episode in mapping}
+        return mapped or None, numbered
+    if meta.begin_season is not None and meta.season_list != [selection.season]:
+        return None, numbered
+    return episodes, numbered
+
+
+def torrent_file_episodes(
+        name: str, custom_words: Optional[list[str]] = None,
+        episode_selection: Optional[EpisodeSelection] = None,
+) -> set[int]:
+    """
+    返回文件在目标季中的已确认集号，供下载候选检查复用；冲突不贡献集数。
+    """
+    episodes, _numbered = _file_episode_coordinates(name, custom_words, episode_selection)
+    return episodes or set()
+
+
+def select_torrent_files(
+        files: Iterable[tuple[int, str]], episodes: set[int], media_extensions: Iterable[str],
+        custom_words: Optional[str] = None, episode_selection: Optional[EpisodeSelection] = None,
+        *, allow_single_fallback: bool = True,
+) -> tuple[list[int], list[int], set[int]]:
+    """
+    按目标季和已确认映射选择真实文件，下载器与历史结算共用相同规则。
+
+    :param files: 下载器文件索引和路径；仅解析文件名，父目录不作为季集依据
+    :param episodes: 必须由视频完整覆盖的目标集号
+    :param media_extensions: 视频后缀；历史调用方可传入其媒体后缀集合
+    :param custom_words: 来源临时识别词，先于明确映射应用，避免重复换算
+    :param episode_selection: 冻结的目标季与映射；None 保留旧调用方的集号选集行为
+    :param allow_single_fallback: 历史去重后不能用剩余唯一文件冒充原始单文件种子
+    :return: 需要下载的索引、不下载的索引和已选视频覆盖的目标集号
+    """
+    extensions = {extension.lower() for extension in media_extensions}
+    words = custom_words.splitlines() if custom_words else None
+    entries: list[tuple[int, set[int], bool]] = []
+    excluded: set[int] = set()
+    for file_id, name in files:
+        is_video = Path(name).suffix.lower() in extensions
+        mapped, numbered = _file_episode_coordinates(name, words, episode_selection)
+        if mapped is None and (is_video or numbered):
+            excluded.add(file_id)
+        entries.append((file_id, mapped or set(), is_video))
+    return select_episode_files(entries, episodes, excluded=excluded, allow_single_fallback=allow_single_fallback)
 
 
 def select_episode_files(
     files: Iterable[tuple[int, set[int], bool]], episodes: set[int],
+    *, excluded: Optional[set[int]] = None, allow_single_fallback: bool = True,
 ) -> tuple[list[int], list[int], set[int]]:
     """
     按视频覆盖集数选择文件，保留无集号的非视频附属文件。
@@ -25,6 +130,8 @@ def select_episode_files(
 
     :param files: 文件索引、已按来源识别词解析的集数、是否为视频组成的条目
     :param episodes: 本次需要完整覆盖的目标集数
+    :param excluded: 季集依据冲突的文件，不能参与匹配或唯一视频兜底
+    :param allow_single_fallback: 是否允许唯一视频兜底
     :return: 需要下载的索引、不下载的索引、已选视频覆盖的集数；输入条目不会被修改
     """
     wanted: list[int] = []
@@ -34,7 +141,9 @@ def select_episode_files(
     for file_id, file_episodes, is_video in files:
         if is_video:
             media_files.append((file_id, file_episodes))
-        if file_episodes.intersection(episodes):
+        if excluded and file_id in excluded:
+            unwanted.append(file_id)
+        elif file_episodes.intersection(episodes):
             wanted.append(file_id)
             if is_video:
                 matched.update(file_episodes)
@@ -42,10 +151,10 @@ def select_episode_files(
             wanted.append(file_id)
         else:
             unwanted.append(file_id)
-    if not episodes.issubset(matched) and len(episodes) == 1 and len(media_files) == 1:
+    if allow_single_fallback and not episodes.issubset(matched) and len(episodes) == 1 and len(media_files) == 1:
         file_id, file_episodes = media_files[0]
         # 无交集的多集视频不能用唯一视频规则冒充目标单集。
-        if len(file_episodes) <= 1:
+        if len(file_episodes) <= 1 and (not excluded or file_id not in excluded):
             unwanted.remove(file_id)
             wanted.append(file_id)
             matched.update(episodes)

@@ -47,6 +47,16 @@ class _DownloaderClient(Protocol):
         """
         ...
 
+    def delete_torrents(self, delete_file: bool, ids: str) -> bool:
+        """
+        请求移除指定任务，选集失败清理必须保留已存在的文件。
+
+        :param delete_file: 是否删除文件；选集清理始终传 False
+        :param ids: 本次新增任务的哈希，不能传入已有任务
+        :return: 下载器是否接受移除请求；False 时由上层通知人工核查
+        """
+        ...
+
 
 DownloaderServiceT = TypeVar("DownloaderServiceT", bound=_DownloaderClient)
 TFile = TypeVar("TFile")
@@ -56,6 +66,17 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
     """
     下载器模块业务样板基类。
     """
+
+    @staticmethod
+    def _discard_failed_selection(server: _DownloaderClient, torrent_hash: str, message: str) -> str:
+        """
+        清理本次新增但选集失败的任务，保留文件并交回下载链通知、退避和换源。
+
+        只由新增任务分支调用；已有任务不暂停、不重选也不删除。
+        """
+        if server.delete_torrents(delete_file=False, ids=torrent_hash):
+            return f"{message}；已请求移除本次新增任务（保留文件），等待后续重试或换源"
+        return f"{message}；移除本次新增任务失败，请在下载器核实（保留文件）"
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """

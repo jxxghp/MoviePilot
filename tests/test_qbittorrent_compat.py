@@ -9,7 +9,8 @@ from enum import Enum
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from app.domain.torrent import download_hashes, select_episode_files
+from app.domain.torrent import download_hashes, select_torrent_files
+from app.modules._base.downloader import _DownloaderModuleBase as ProductionDownloaderBase
 
 
 def _load_qbittorrent_modules():
@@ -164,6 +165,8 @@ def _load_qbittorrent_modules():
         """
         镜像下载器通用入口，不注册真实实例或后台任务。
         """
+
+        _discard_failed_selection = staticmethod(ProductionDownloaderBase._discard_failed_selection)
 
         def test(self):
             """
@@ -330,7 +333,7 @@ def _load_qbittorrent_modules():
     schema_types_module.DownloaderType = DownloaderType
     torrent_rules_module.is_magnet_link = _is_magnet_link
     torrent_rules_module.download_hashes = download_hashes
-    torrent_rules_module.select_episode_files = select_episode_files
+    torrent_rules_module.select_torrent_files = select_torrent_files
     url_tools_module.parse_address = _parse_address
     text_tools_module.random_string = _random_string
     size_tools_module.format_compact_size = _format_size
