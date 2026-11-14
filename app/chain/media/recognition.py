@@ -291,6 +291,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         self,
         metainfo: MetaBase,
         media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         episode_group: Optional[str] = None,
         obtain_images: bool = False,
         mtype: Optional[MediaType] = None,
@@ -301,6 +302,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
 
         :param metainfo: 标题解析元数据
         :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生标识，与 media_source 成对提供时优先按身份识别
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param mtype: 上游已确定的媒体类型
@@ -310,6 +312,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             metainfo=metainfo,
             mtype=mtype,
             media_source=media_source,
+            media_id=media_id,
             episode_group=episode_group,
             obtain_images=obtain_images,
             music_type=music_type,
@@ -323,6 +326,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         metainfo: MetaBase,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         episode_group: Optional[str] = None,
         obtain_images: bool = False,
         music_type: Optional[str] = None,
@@ -333,6 +337,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         :param metainfo: 标题解析元数据
         :param mtype: 上游已确定的媒体类型
         :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生标识，与 media_source 成对提供时优先按身份识别
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
@@ -356,6 +361,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                 meta=request.metainfo,
                 mtype=request.mtype,
                 media_source=request.media_source,
+                media_id=media_id,
                 share_meta=request.share_meta,
                 episode_group=request.episode_group,
                 music_type=request.music_type,
@@ -403,6 +409,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         self,
         metainfo: MetaBase,
         media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         episode_group: Optional[str] = None,
         obtain_images: bool = False,
         mtype: Optional[MediaType] = None,
@@ -413,6 +420,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
 
         :param metainfo: 标题解析元数据
         :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生标识，与 media_source 成对提供时优先按身份识别
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param mtype: 上游已确定的媒体类型
@@ -423,6 +431,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             metainfo=metainfo,
             mtype=mtype,
             media_source=media_source,
+            media_id=media_id,
             episode_group=episode_group,
             obtain_images=obtain_images,
             music_type=music_type,
@@ -436,6 +445,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         metainfo: MetaBase,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
         episode_group: Optional[str] = None,
         obtain_images: bool = False,
         music_type: Optional[str] = None,
@@ -446,6 +456,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         :param metainfo: 标题解析元数据
         :param mtype: 上游已确定的媒体类型
         :param media_source: 请求级识别数据源
+        :param media_id: 数据源原生标识，与 media_source 成对提供时优先按身份识别
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
@@ -469,6 +480,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                 meta=request.metainfo,
                 mtype=request.mtype,
                 media_source=request.media_source,
+                media_id=media_id,
                 share_meta=request.share_meta,
                 episode_group=request.episode_group,
                 music_type=request.music_type,

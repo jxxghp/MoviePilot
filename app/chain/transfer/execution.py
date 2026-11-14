@@ -505,6 +505,10 @@ class TransferExecutionOwner(_TransferOwnerBase):
         options: dict[str, Any] = {"obtain_images": True}
         if task.media_source:
             options["media_source"] = task.media_source
+        # 已核实的来源原生标识必须随识别下传，否则只能按标题搜索，
+        # 拼音或错名文件会在重新规划后再次识别失败。
+        if task.media_source and task.media_id:
+            options["media_id"] = task.media_id
         if task.mtype:
             options["mtype"] = task.mtype
         info = MediaChain().recognize_by_meta(task.meta, **options)
