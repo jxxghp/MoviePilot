@@ -42,6 +42,108 @@ VIDEO_BIT_RE = re.compile(
     r"(?<![A-Za-z0-9])(?P<bit>8|10|12|16)[\s._-]*bits?(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
+SUBTITLE_PERIOD_RE = re.compile(
+    r"(?<!(?:不包含|不包括|不含)\s*)(?<![全共]\s*)[第\s]+([0-9一二三四五六七八九十百零]+)\s*期(?!\s*[全共])",
+    re.IGNORECASE,
+)
+# 日语假名用于识别日番双语标题中的「第N期」季号，避免误伤中文综艺的期数。
+_JAPANESE_KANA_RE = re.compile(r"[\u3040-\u30ff]")
+# 主标题已显式声明单集集号时，不允许副标题中的完结集数范围覆盖单集结果。
+_TITLE_EPISODE_GUARD_RE = re.compile(
+    r"(?:S\d{1,2}\s*E\d{1,4}|(?<![A-Za-z0-9])EP?\d{1,4}(?![A-Za-z0-9])"
+    r"|Episode\s+\d{1,4}|第\s*[0-9一二三四五六七八九十百零]+\s*[集话話幕]"
+    r"|(?<!\d)\s-\s*(?!19\d\d\b|20\d\d\b)\d{1,3}(?=\s|\[|$)"
+    r"|\[0*\d{1,3}(?:v\d)?\])",
+    re.IGNORECASE,
+)
+
+
+def _parse_subtitle_episode_range_fin(title_text: str) -> Optional[tuple[int, int]]:
+    """
+    提取副标题中形如 01-26Fin / [01-38 END] 的完结集数范围。
+
+    :param title_text: 待检查的副标题文本
+    :return: 合法的起止集数二元组；未匹配、非法或落在年份区间时返回 None
+    """
+    episode_range_str = SUBTITLE_EPISODE_RANGE_FIN_RE.search(title_text)
+    if not episode_range_str:
+        return None
+    try:
+        begin_episode = int(episode_range_str.group(1))
+        end_episode = int(episode_range_str.group(2))
+    except Exception as err:
+        logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
+        return None
+    if begin_episode < 1 or begin_episode > end_episode or end_episode >= 10000:
+        return None
+    # 两个数字都落在常见年份区间时视为年份范围而非集数（如 2019-2020完结）
+    if begin_episode >= 1900 and end_episode <= 2155:
+        return None
+    return begin_episode, end_episode
+
+
+def _parse_subtitle_period_number(title_text: str) -> Optional[int]:
+    """
+    提取文本中形如「第2期」的期数数值。
+
+    :param title_text: 待检查的文本
+    :return: 解析得到的正整数期号；未匹配或无法转换时返回 None
+    """
+    match = SUBTITLE_PERIOD_RE.search(title_text)
+    if not match:
+        return None
+    try:
+        period = int(cn2an.cn2an(match.group(1).strip(), mode="smart"))
+    except Exception as err:
+        logger.debug(f"识别期号失败：{str(err)}")
+        return None
+    return period if 0 < period < 10000 else None
+
+
+def refine_subtitle_period_episode(
+    meta: "MetaBase",
+    source_text: Optional[str] = None,
+) -> None:
+    """
+    修正将日式番剧「第N期」误判为单集的问题，并保持中文综艺「第N期」识别不变。
+
+    当存在明确的完结集数范围（如 `[01-12Fin]`）且当前单集集号来源于「第N期」时，
+    以完结集数范围为准；当「第N期」位于包含日语假名的上下文中且无集数范围时，
+    按季号处理并清除误判的单集号。主标题已显式携带集号时不覆盖原单集结果。
+
+    :param meta: 已完成基础识别的媒体元数据对象
+    :param source_text: 本轮解析的文本；缺省时结合副标题与原标题判断
+    """
+    if meta.begin_episode is None or meta.end_episode is not None:
+        return
+    subtitle_text = (source_text if source_text is not None else meta.subtitle) or ""
+    if not subtitle_text.strip() and not (meta.org_string or "").strip():
+        return
+    padded_subtitle = f" {subtitle_text.strip()} "
+    # 仅在检查副标题时用主标题显式集号守卫，防止全季简介覆盖 S02E02 等单集文件。
+    checking_subtitle = source_text is None or source_text.strip() != (meta.org_string or "").strip()
+    if checking_subtitle and meta.org_string and _TITLE_EPISODE_GUARD_RE.search(f" {meta.org_string} "):
+        return
+    period_context = padded_subtitle
+    if source_text is None and meta.org_string:
+        period_context = f"{padded_subtitle} {meta.org_string} "
+    period_num = _parse_subtitle_period_number(period_context)
+    if period_num is None or meta.begin_episode != period_num:
+        return
+    fin_range = _parse_subtitle_episode_range_fin(padded_subtitle)
+    if fin_range is not None:
+        meta.begin_episode, meta.end_episode = fin_range
+        meta.total_episode = fin_range[1] - fin_range[0] + 1
+        meta.type = MediaType.TV
+        return
+    if _JAPANESE_KANA_RE.search(period_context):
+        meta.begin_episode = None
+        meta.end_episode = None
+        meta.total_episode = 0
+        if meta.begin_season is None:
+            meta.begin_season = period_num
+            meta.total_season = 1
+        meta.type = MediaType.TV
 
 _META_OPTIONAL_MERGE_FIELDS = (
     "resource_type",
@@ -434,6 +536,7 @@ class MetaBase(object):
                     self.total_episode = (self.end_episode - self.begin_episode) + 1
                 self.type = MediaType.TV
                 self._subtitle_flag = True
+                refine_subtitle_period_episode(self, title_text)
                 return
             # x集全/全x集
             episode_all_str = SUBTITLE_EPISODE_ALL_RE.search(title_text)
@@ -460,20 +563,10 @@ class MetaBase(object):
         """
         识别 01-26Fin / [01-38 END] 等"数字范围+完结标记"格式的集数信息。
         """
-        episode_range_str = SUBTITLE_EPISODE_RANGE_FIN_RE.search(title_text)
-        if not episode_range_str:
+        parsed_range = _parse_subtitle_episode_range_fin(title_text)
+        if not parsed_range:
             return
-        try:
-            begin_episode = int(episode_range_str.group(1))
-            end_episode = int(episode_range_str.group(2))
-        except Exception as err:
-            logger.debug(f'识别集失败：{str(err)} - {traceback.format_exc()}')
-            return
-        if begin_episode < 1 or begin_episode > end_episode or end_episode >= 10000:
-            return
-        # 两个数字都落在常见年份区间时视为年份范围而非集数（如 2019-2020完结）
-        if begin_episode >= 1900 and end_episode <= 2155:
-            return
+        begin_episode, end_episode = parsed_range
         if self.begin_episode is None:
             self.begin_episode = begin_episode
             self.end_episode = end_episode

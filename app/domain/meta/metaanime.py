@@ -11,7 +11,7 @@ import anitopy
 
 from app.domain import title as title_rules
 from app.domain.meta.customization import CustomizationMatcher
-from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metabase import MetaBase, refine_subtitle_period_episode
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
 from app.foundation import text as text_tools
 from app.foundation.text import convert as zhconv_convert
@@ -212,6 +212,7 @@ class MetaAnime(MetaBase):
                 self.init_subtitle(self.org_string or "")
                 if not self._subtitle_flag and self.subtitle:
                     self.init_subtitle(self.subtitle)
+                refine_subtitle_period_episode(self)
             if not self.type:
                 self.type = MediaType.TV
         except Exception as e:
