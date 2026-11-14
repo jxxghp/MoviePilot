@@ -29,7 +29,9 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
     def get_no_exists_info(self, meta: MetaBase,
                            mediainfo: MediaInfo | MusicInfo,
                            no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None,
-                           totals: Optional[Dict[int, int]] = None
+                           totals: Optional[Dict[int, int]] = None,
+                           *,
+                           totals_are_episode_numbers: bool = False,
                            ) -> Tuple[bool, Dict[str, Dict[int, NotExistMediaInfo]]]:
         """
         检查媒体库，查询电影或音乐是否存在；对于剧集同时返回不存在的季集信息
@@ -37,7 +39,8 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         :param meta: 元数据
         :param mediainfo: 已识别的媒体信息，指定剧集组时重新识别对应的季集结构
         :param no_exists: 在调用该方法前已经存储的不存在的季集信息，有传入时该函数搜索的内容将会叠加后输出
-        :param totals: 电视剧每季的总集数
+        :param totals: 电视剧每季的总集数；非正数视为未指定
+        :param totals_are_episode_numbers: 指定的总集数为季内末集号；早于季首时沿用原有集数口径
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
         """
         media_source, media_id = resolve_media_identity(media=mediainfo)
@@ -109,52 +112,30 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                     "season": mediainfo.season,
                 },
             )
-            if not exists_tvs:
-                for season, episodes in mediainfo.seasons.items():
-                    if not episodes:
+            existing_seasons = (exists_tvs.seasons or {}) if exists_tvs else {}
+            for season, episodes in mediainfo.seasons.items():
+                if not episodes or (meta.sea and season not in meta.season_list):
+                    continue
+                first = min(episodes)
+                total_override = max(totals.get(season) or 0, 0)
+                season_total = total_override or len(episodes)
+                episode_end = total_override if totals_are_episode_numbers and total_override >= first else 0
+                exist_episodes = existing_seasons.get(season)
+                if exist_episodes:
+                    episode_range = range(first, (episode_end or first + season_total - 1) + 1)
+                    target_episodes = episode_range if total_override else episodes
+                    lack_episodes = sorted(set(target_episodes).difference(exist_episodes))
+                    if not lack_episodes:
                         continue
-                    if meta.sea \
-                            and season not in meta.season_list:
-                        continue
-                    total_ep = totals.get(season) or len(episodes)
-                    self._append_no_exists(
-                        no_exists, media_source, media_id, season, [],
-                        total_ep, min(episodes)
-                    )
-                return False, no_exists
-            else:
-                for season, episodes in mediainfo.seasons.items():
-                    if meta.sea \
-                            and season not in meta.season_list:
-                        continue
-                    if not episodes:
-                        continue
-                    season_total = totals.get(season) or len(episodes)
-                    exist_episodes = (exists_tvs.seasons or {}).get(season)
-                    if exist_episodes:
-                        if totals.get(season):
-                            # 按总集数计算缺失集（开始集为TMDB中的最小集）
-                            lack_episodes = list(set(range(min(episodes),
-                                                           season_total + min(episodes))
-                                                     ).difference(set(exist_episodes)))
-                        else:
-                            # 按TMDB集数计算缺失集
-                            lack_episodes = list(set(episodes).difference(set(exist_episodes)))
-                        if not lack_episodes:
-                            continue
-                        self._append_no_exists(
-                            no_exists, media_source, media_id, season,
-                            lack_episodes, season_total, min(lack_episodes)
-                        )
-                    else:
-                        self._append_no_exists(
-                            no_exists, media_source, media_id, season, [],
-                            season_total, min(episodes)
-                        )
-            if no_exists:
+                    first = lack_episodes[0]
+                else:
+                    lack_episodes = self._whole_season_missing(episodes, season_total, episode_end)
+                self._append_no_exists(
+                    no_exists, media_source, media_id, season, lack_episodes, season_total, first,
+                )
+            if exists_tvs and no_exists:
                 logger.debug(f"媒体库中已存在部分剧集，缺失：{no_exists}")
-                return False, no_exists
-            return True, no_exists
+            return bool(exists_tvs) and not no_exists, no_exists
 
     def _media_exists_with_server_cache(
         self,
@@ -187,6 +168,33 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         return combined.model_copy(update={
             "seasons": {season: sorted(episodes) for season, episodes in seasons.items()},
         }) if combined else None
+
+    @staticmethod
+    def _whole_season_missing(episodes: list[int], total: int, episode_end: int) -> list[int]:
+        """
+        计算一季完全未入库时的缺集列表。
+
+        手工订阅末集号裁短本季，或恰好覆盖累计编号的整季时，写出目标范围。
+        范围内尚未确认的集号继续等待补集；超过本季已知末集号时沿用整季标记。
+        仅提供集数的调用继续在季初连续且两种口径一致时写出显式目标集。
+
+        :param episodes: 本季全部集号
+        :param total: 本季有效总集数，调用方已保证为正
+        :param episode_end: 显式末集号；未指定或早于季首时为 0
+        :return: 显式目标集；空列表表示按整季处理
+        """
+        if episode_end:
+            first = min(episodes)
+            last = max(episodes)
+            if episode_end < last or (first != 1 and episode_end == last):
+                return list(range(first, episode_end + 1))
+            return []
+        if total >= len(episodes):
+            return []
+        target = sorted(episodes)[:total]
+        if target[-1] != total:
+            return []
+        return target
 
     @staticmethod
     def _append_no_exists(

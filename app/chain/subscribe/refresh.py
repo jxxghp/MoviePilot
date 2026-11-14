@@ -355,7 +355,10 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             totals = {}
             if subscribe.season is not None and effective_total_episode:
                 totals = {subscribe.season: effective_total_episode}
-            exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo, totals=totals)
+            exist_flag, no_exists = DownloadChain().get_no_exists_info(
+                meta=meta, mediainfo=mediainfo, totals=totals,
+                totals_are_episode_numbers=bool(subscribe.manual_total_episode),
+            )
         elif meta.type != MediaType.TV and self._SubscribeChain__is_best_version_complete(subscribe):
             return True, {}
         else:
@@ -507,9 +510,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
         主流程会通过 ``__refresh_total_episode_before_completion`` 持久化增长后的总集数；
         该查询接口只需要同样避免旧 total 造成误判，因此仅使用当前 mediainfo 中更大的
-        季集数作为临时目标范围。
+        季集数作为临时目标范围。历史负数总集数按未设置处理。
         """
-        current_total = subscribe.total_episode or 0
+        current_total = max(subscribe.total_episode or 0, 0)
         if subscribe.type != MediaType.TV.value:
             return current_total
         if subscribe.manual_total_episode:
