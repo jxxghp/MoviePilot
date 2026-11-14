@@ -6,7 +6,6 @@
 规则只操作传入数据，不做网络/下载器 I/O；下载执行顺序编排仍属于链层。
 """
 
-from copy import deepcopy
 from typing import Dict, List, Optional, Set
 
 from app.domain.context import Context
@@ -23,17 +22,15 @@ def update_no_exists_seasons(
     """
     更新缺失字典中的季数记账，返回剩余需要下载的季数。
 
-    就地维护传入的 no_exists：已满足的季从记账中移除，媒体条目清空后整体删除。
+    就地移除本次成功下载的季，保留其他季的显式缺集；媒体条目清空后整体删除。
     """
     need = list(set(needed_seasons).difference(set(current_seasons)))
-    seas = deepcopy(no_exists.get(media_key))
-    if seas:
-        for season in list(seas):
-            if season not in need:
-                no_exists[media_key].pop(season)
-            if not no_exists.get(media_key) and no_exists.get(media_key) is not None:
-                no_exists.pop(media_key)
-                break
+    seasons = no_exists.get(media_key)
+    if seasons:
+        for season in current_seasons:
+            seasons.pop(season, None)
+        if not seasons:
+            no_exists.pop(media_key)
     return need
 
 

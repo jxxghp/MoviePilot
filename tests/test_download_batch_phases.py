@@ -175,6 +175,21 @@ def test_incomplete_season_becomes_labelled_candidate_after_file_inspection(batc
     batch.chain._record_download_failure.assert_not_called()
 
 
+def test_whole_season_download_preserves_other_seasons_with_explicit_missing_episodes(batch):
+    """
+    整季下载成功只清除该季，其他季的缺集仍能在本轮获得提交。
+    """
+    whole = _context("show", season=2)
+    partial = _context("show", season=1, episodes=(1,))
+    missing = {"tmdb:1": {1: _missing((1, 2)), 2: _missing(season=2)}}
+
+    result, remaining = batch.chain.batch_download([whole, partial], missing)
+
+    assert result == [whole, partial]
+    assert set(remaining["tmdb:1"]) == {1}
+    assert remaining["tmdb:1"][1].episodes == [2]
+
+
 def test_failed_season_submission_stays_in_cooldown_after_metadata_changes(batch):
     """
     整季下载失败后，即使剧集元数据变化也继续受到失败冷却约束。
