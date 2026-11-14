@@ -216,7 +216,7 @@ class WeChat:
             return False
         if text:
             formatted_text = text.replace("\n\n", "\n")
-            content = f"{title}\n{formatted_text}"
+            content = f"{title}\n{formatted_text}" if title else formatted_text
         else:
             assert title is not None
             content = title
