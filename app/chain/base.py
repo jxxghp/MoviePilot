@@ -163,14 +163,20 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
                 raise
             return
 
-    def save_cache(self, cache: Any, filename: str) -> None:
+    def save_cache(self, cache: Any, filename: str, *, strict: bool = False) -> None:
         """
-        保存缓存
+        保存同步缓存，默认保留旧调用的失败日志合同。
+
+        :param cache: 待序列化的业务快照
+        :param filename: 目标缓存键
+        :param strict: 为 True 时向需要确认保存的用例传播失败
         """
         try:
             self.filecache.set(filename, pickle.dumps(cache))
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{str(err)}")
+            if strict:
+                raise
             return
 
     def remove_cache(self, filename: str) -> None:

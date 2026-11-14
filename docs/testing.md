@@ -247,6 +247,22 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 和虚拟时钟覆盖秒级冷却下的连续恢复，验证剩余来源继续翻页、末页候选处理后正常收尾，
 且未收录缺集仍保留。新一轮搜索或缺集范围扩大时重新评估候选；旧检查点缺少该记录时兼容恢复。
 
+### 自动订阅刷新排程
+
+`tests/test_subscription_refresh_schedule.py` 使用虚拟时间验证每天 32 个白天与 4 个夜间时间片、
+跨日与夏令时、不同实例及站点偏移、启动错峰、漏触发合并、限流、失败退避和重启恢复。
+`tests/test_subscription_refresh_poll.py` 与 `tests/test_torrents_refresh_concurrency.py` 使用合成站点、
+真实线程屏障和隔离缓存，验证慢站不阻塞健康站点、同站互斥、并行缓存合并、人工识别修正保留、
+成功空页与失败区分、匹配失败恢复、五分钟匹配合并及跨轮次事实恢复，以及保存失败后仍等待已接受工作结束。
+`tests/test_scheduler_cache_expiry.py` 验证自动模式分钟扫描与 RSS 原周期，
+`tests/test_scheduler_lifecycle.py` 验证刷新取消后仍保留 Scheduler 所有权直至同步线程退出。
+这些用例不访问站点、下载器或真实数据库；不能替代真实站点的流控与响应验收。
+排程行为与持久化边界见[自动订阅刷新排程](subscription-refresh.md)。
+新增排程策略和轮询 owner 两个模块，因此三个启动入口的模块数快照各增加 2；
+仅更新该结构事实，原冷导入耗时记录与 3000ms 上限保留，生命周期组件集合及释放要求不变。
+
+### 站点流控
+
 本地流控等待由实际拒绝原因决定：访问间隔不足只等待间隔，计数配额耗尽才等待计数窗口。
 资源包说明包含上次访问时间时扣除已过去的时间，并保留一秒边界余量；原因未知时沿用保守窗口，
 时间缺失或无效时等待该规则全长。`tests/test_search_site_throttle.py`、`tests/test_search_scan.py`

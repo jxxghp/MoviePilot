@@ -558,6 +558,10 @@ flowchart TB
     I -->|是| J["标记完成 / 发送完成通知"]
 ```
 
+自动订阅刷新使用逐站时间片：Scheduler 每分钟唤醒到期检查，
+`application/subscription/refresh.py` 保存可恢复的排程事实，`chain/subscribe/poll.py` 持有有限在途工作，
+`chain/torrents.py` 在网络与识别完成后以短锁合并缓存。完整规则见[自动订阅刷新排程](subscription-refresh.md)。
+
 ### 6.3 文件整理（Transfer）与监控
 
 ```mermaid
@@ -836,8 +840,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1164 |
-| 内部导入边 | 10,136 |
+| Python 模块 | 1166 |
+| 内部导入边 | 10,159 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |

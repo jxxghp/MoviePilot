@@ -115,6 +115,12 @@ Entrypoints (app/api, app/command, app/monitor, app/scheduler, app/agent, app/wo
   `search/`, `media/`) keep class identity and event wrappers on `facade.py` and
   isolate queue, planning, execution, settlement and cache adapters in
   single-word owner modules, and retired single-file monoliths must not return.
+- Automatic subscription refresh policy and restartable time-slot facts belong
+  to `application/subscription/refresh.py`; `chain/subscribe/poll.py` owns the
+  finite set of in-flight site futures through real completion, and
+  `chain/torrents.py` owns per-site fetch/recognition and short cache merges.
+  Scheduler only wakes the injected refresh callable; it does not create a
+  separate business worker pool or own a second refresh queue.
 
 ### Module and Agent Layer
 
