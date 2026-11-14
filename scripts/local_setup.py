@@ -69,7 +69,7 @@ RESOURCE_VERSION_FLAG = "v3"
 # 提供商目录不可用时仍能提供常用平台的初始化默认值，不代替运行时能力目录。
 LLM_PROVIDER_DEFAULTS = {
     "deepseek": {
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "base_url": "https://api.deepseek.com",
     },
     "openai": {
