@@ -110,6 +110,24 @@
         ],
         "dynamic": false,
         "invalid": false,
+        "handler": "SiteChain.complete_site_rss",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "d8f405fce4efc179dea6661d54b25b700b95eef996a93d1f2b4507d022e8ee8f",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.site",
+        "reason": "站点变更提交后由 SiteChain 调用共享 RSS 用例补全缺失地址，用例保留手工配置并在短事务外执行网络验证。"
+      },
+      {
+        "caller": "app.chain.site",
+        "qualname": "SiteChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.SiteUpdated"
+        ],
+        "dynamic": false,
+        "invalid": false,
         "handler": "SiteChain.cache_site_userdata",
         "registration_kind": "decorator",
         "priority": "<default>",

@@ -412,13 +412,13 @@ flowchart TB
 
 架构基线中的 consumer 表示宿主源码中可静态证明的注册点，不是运行时 listener 实例数。
 collector 只接受 canonical `eventmanager`、`EventManager()` 及其有限别名，忽略其他对象的同名
-`register`/`add_event_listener`；当前宿主有 17 个静态注册点，另保留 1 个由工作流配置驱动的
+`register`/`add_event_listener`；当前宿主有 18 个静态注册点，另保留 1 个由工作流配置驱动的
 真实动态注册。`app/plugins/**` 插件副本不进入宿主事实。
 
 生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 76 个
 生产调用，其中 74 个静态解析为 76 个事件引用，`Command.send_plugin_event` 的插件事件类型和
 `dispatch_event_handler` 的持久事件恢复类型保持动态；后者只接受 `DURABLE_EVENT_TOPICS`
-登记的事件。18 个消费注册中 17 个静态、1 个动态。生成的
+登记的事件。19 个消费注册中 18 个静态、1 个动态。生成的
 `runtime-contract-baseline.json` 保存 line-free 事实、数量和枚举索引；人工维护的
 `runtime-contract-policy.json` 只批准 consumer 的精确 fingerprint、owner 和理由，任何新增、替换、
 重复或陈旧项都会失败，`--write-host` 不会改写该 policy。
@@ -630,6 +630,16 @@ flowchart LR
 - **RSS 和下载**：Application 持有 `RssSitePort` / `SiteProtocolPort`，启动组合根通过
   `ModuleInvocationDispatcher` 注入实现。专站 RSS 页面、表单和过期响应归 `modules/indexer/rss.py`，
   新旧换票配方、首次下载确认及旧站点加密包装归索引 Module；公共用例保留传输、限流、重试和来源安全策略。
+- **RSS 补全和续期**：`application/rss.py` 的 `ensure_site_rss` 统一服务站点更新事件、
+  CookieCloud、登录更新和订阅抓取。只为启用的私有站点补全空地址；已有手工地址保留，
+  只有完整的明确过期响应才续期，HTTP 错误、登录页和普通网络失败不会触发换票。
+  `domain/site.py` 合并生成地址与原筛选，整体替换认证值及生成页更新的有效期，支持相对链接。
+  候选经过真实 RSS 解析后，仓储以原主键、认证、访问配置和原 RSS 做单条条件更新，
+  在独立短事务中提交，防止覆盖并发修改；验证结果供本轮抓取复用。
+  同站点的生成请求互斥，网络与数据库操作在锁外；失败从五分钟退避至一小时，
+  同配置的过期失败通知每天最多一次。状态仅在进程内保存一天且最多 1024 份配置摘要，
+  修改 Cookie 或链接即获得新预算，重启会重置预算。公开站点、停用站点、缺少 Cookie 或
+  不支持生成的站点保留人工配置入口；这些机制不代表所有专站及账号已经实测。
 - **身份和兼容**：Domain 只解释通用身份字段与查询签名；专站路径和短时票据由 Module 解释，
   缺少公开资源 ID 的旧检查点继续重取原页。旧站点地址、CookieCloud 和 DB Oper 使用独立的精确 Legacy SDK 门面，
   不把一种兼容入口的符号混入另一种导出面。
@@ -835,19 +845,19 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-11-12 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-11-14 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1166 |
-| 内部导入边 | 10,159 |
+| 内部导入边 | 10,165 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |
 | Module Contract V2 spec | 237（其中 223 个方法进入 `run_module` 观察面） |
 | Event Contract | 53 |
-| Event producer / consumer | 76（74 静态、2 动态）/ 18（17 静态、1 动态） |
+| Event producer / consumer | 76（74 静态、2 动态）/ 19（18 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 

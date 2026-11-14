@@ -2,14 +2,12 @@
 站点种子刷新、预识别缓存和订阅候选准备。
 """
 
-import re
 import threading
 import time
-import traceback
 from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 from app.application.configuration import get_configured_system_config
-from app.application.rss import RssHelper
+from app.application.rss import RssHelper, RssLinkResult, ensure_site_rss
 from app.application.site.observation import SiteSearchObservation, capture_site_search_observation
 from app.application.site.protocol import site_domain, torrent_resource_identity
 
@@ -355,25 +353,18 @@ class TorrentsChain(ChainBase):
 
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
-        获取站点RSS内容，返回种子清单，TTL缓存3分钟
+        获取站点 RSS 内容，补全缺失地址，并在明确过期后同轮恢复一次。
 
         :param domain: 站点域名
+        :return: 本轮获取的种子清单；普通网络故障不触发凭据更新
         """
         logger.info(f'开始获取站点 {domain} RSS ...')
         site = SitesHelper().get_indexer(domain)
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        rss_url = UrlUtils.normalize_http_url(site.get("rss"))
-        if rss_url is None:
-            logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
-            return []
-        rss_items = RssHelper().parse(rss_url, True if site.get("proxy") else False,
-                                      timeout=int(site.get("timeout") or 30),
-                                      ua=site.get("ua") if site.get("ua") else None)
+        rss_items = self._rss_items(domain, site)
         if rss_items is None:
-            # rss过期，尝试保留原配置生成新的rss
-            self.__renew_rss_url(domain=domain, site=site)
             return []
         if not isinstance(rss_items, list):
             logger.error(f'站点 {domain} RSS返回格式无效！')
@@ -413,6 +404,40 @@ class TorrentsChain(ChainBase):
             rss_items.clear()
             del rss_items
         return ret_torrents
+
+    @staticmethod
+    def _parse_rss_url(site: dict[str, Any], url: str) -> Union[List[dict[str, Any]], None, bool]:
+        """
+        使用当前站点的代理、超时和 User-Agent 读取订阅。
+        """
+        return RssHelper().parse(url, proxy=bool(site.get("proxy")), timeout=int(site.get("timeout") or 30),
+                                 ua=site.get("ua") or None)
+
+    def _recovered_rss_items(self, result: RssLinkResult, site: dict[str, Any]) -> Union[List[dict[str, Any]], bool]:
+        """
+        复用续期时的验证结果；并发手工改成新地址时最多补抓一次，不递归续期。
+        """
+        if not result.url:
+            return False
+        if result.items is not None:
+            return result.items
+        items = self._parse_rss_url(site, result.url)
+        return items if isinstance(items, list) else False
+
+    def _rss_items(self, domain: str, site: dict[str, Any]) -> Union[List[dict[str, Any]], None, bool]:
+        """
+        区分空配置、手工无效地址、明确过期和临时故障，限制每轮只恢复一次。
+        """
+        rss_url = UrlUtils.normalize_http_url(site.get("rss"))
+        if rss_url is None:
+            if str(site.get("rss") or "").strip():
+                logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
+                return None
+            return self._recovered_rss_items(self.__renew_rss_url(domain, site, expired=False), site)
+        items = self._parse_rss_url(site, rss_url)
+        if items is None:
+            return self._recovered_rss_items(self.__renew_rss_url(domain, site), site)
+        return items
 
     @staticmethod
     def _music_browse_paths(site: dict[str, Any]) -> List[str]:
@@ -769,45 +794,22 @@ class TorrentsChain(ChainBase):
             return str(media_source)
         return "unknown"
 
-    def __renew_rss_url(self, domain: str, site: dict[str, Any]) -> None:
+    def __renew_rss_url(self, domain: str, site: dict[str, Any], *, expired: bool = True) -> RssLinkResult:
         """
-        保留原配置生成新的rss地址
+        通过统一用例补全或续期，只有被退避策略选中的过期失败才发送通知。
+
+        :param domain: 站点域名
+        :param site: 本轮抓取时的索引配置，保留实际过期地址作为比较依据
+        :param expired: 是否由明确过期响应触发，False 仅补全空地址
+        :return: 保存结果及供本轮复用的验证资源
         """
-        try:
-            # RSS链接过期
-            logger.error(f"站点 {domain} RSS链接已过期，正在尝试自动获取！")
-            # 自动生成rss地址
-            site_url = site.get("url")
-            site_cookie = site.get("cookie")
-            site_rss = site.get("rss")
-            if not isinstance(site_url, str) or not isinstance(site_cookie, str) or not isinstance(site_rss, str):
-                return
-            rss_url, errmsg = RssHelper().get_rss_link(
-                url=site_url,
-                cookie=site_cookie,
-                ua=site.get("ua") or self.runtime_config.user_agent,
-                proxy=True if site.get("proxy") else False,
-                timeout=site.get("timeout"),
-            )
-            if rss_url:
-                # 获取新的日期的passkey
-                match = re.search(r'passkey=([a-zA-Z0-9]+)', rss_url)
-                if match:
-                    new_passkey = match.group(1)
-                    # 获取过期rss除去passkey部分
-                    new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site_rss)
-                    logger.info(f"更新站点 {domain} RSS地址 ...")
-                    self.site_repository.update_rss(domain=domain, rss=new_rss)
-                else:
-                    self.post_message(
-                        Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                link=self.runtime_config.site_url)
-                    )
-            else:
-                self.post_message(
-                    Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                            link=self.runtime_config.site_url))
-        except Exception as e:
-            logger.error(f"站点 {domain} RSS链接自动获取失败：{str(e)} - {traceback.format_exc()}")
-            self.post_message(Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                      link=self.runtime_config.site_url))
+        if expired and any(not isinstance(site.get(key), str) for key in ("url", "cookie", "rss")):
+            return RssLinkResult(message="站点配置不完整，无法自动续期")
+        result = ensure_site_rss(domain, self.site_repository,
+                                 expired_url=UrlUtils.normalize_http_url(site.get("rss")) if expired else None)
+        if result.notify:
+            self.post_message(Message(
+                mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期，自动更新失败",
+                text=result.message, link=self.runtime_config.site_url,
+            ))
+        return result

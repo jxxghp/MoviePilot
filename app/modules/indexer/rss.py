@@ -4,10 +4,15 @@
 这里只选择和解释站点配方，HTTP、浏览器和 XML 解析仍由公共用例执行。
 """
 
+import re
+from html import unescape
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
+from lxml import etree
+
 from app.application.rss import RssLinkRecipe
+from app.domain import site as site_rules
 
 _DEFAULT_PARAMS = {
     "inclbookmarked": 0, "itemsmalldescr": 1, "showrows": 50, "search_mode": 1,
@@ -77,4 +82,24 @@ def is_rss_expired(text: str) -> bool:
     :param text: 原始 RSS 响应正文
     :return: 是否属于支持的过期响应
     """
-    return text.strip() in _EXPIRED_MESSAGES
+    if site_rules.is_rss_document(text):
+        return False
+    if "<" in text:
+        root = etree.HTML(text)
+        if root is None:
+            return False
+        try:
+            bodies = root.xpath("//body")
+            body = bodies[0] if bodies else root
+            text = " ".join(body.xpath(".//text()[not(ancestor::script) and not(ancestor::style)]"))
+        finally:
+            del root
+    return _expiration_text(text) in {_expiration_text(message) for message in _EXPIRED_MESSAGES}
+
+
+def _expiration_text(text: str) -> str:
+    """
+    统一过期提示的实体、换行、标点和大小写，仍要求完整文案匹配。
+    """
+    normalized = " ".join(unescape(text).replace("，", ",").replace("！", "!").split())
+    return re.sub(r"\s*([,!])\s*", r"\1", normalized).casefold()

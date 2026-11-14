@@ -34,7 +34,7 @@
       "app/application/plugin/identity.py:PluginIdentity.__post_init__": 26,
       "app/application/plugin/install.py:PluginInstallCommand.__execute_locked": 28,
       "app/application/plugin/source.py:select_plugin_candidate": 19,
-      "app/application/rss.py:RssHelper._parse_impl": 37,
+      "app/application/rss.py:RssHelper._parse_impl": 34,
       "app/application/security/cookie.py:CookieHelper._get_site_cookie_ua_impl": 45,
       "app/application/security/cookie.py:CookieHelper._get_site_cookie_ua_impl.__page_handler": 43,
       "app/application/torrent/download.py:TorrentHelper.download_torrent": 22,

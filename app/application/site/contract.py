@@ -750,6 +750,16 @@ class SiteWritePort(Protocol):
         """
         ...
 
+    def update_rss_if_unchanged(self, site: SiteSnapshot, rss: str) -> SiteWriteResult:
+        """
+        仅在生成期间站点配置未变化时，在独立同步事务中保存 RSS。
+
+        :param site: 发起生成请求前读取的配置快照，认证及原 RSS 必须参与原子比较
+        :param rss: 已通过实际抓取验证的新订阅地址
+        :return: 提交成功或配置已变化、记录已删除等失败说明
+        """
+        ...
+
     def update_userdata(
         self,
         domain: str,

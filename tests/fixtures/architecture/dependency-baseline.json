@@ -963,8 +963,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10159,
-  "edge_sha256": "b00d7edef6d49ece1f002dfef6f21b80a787959c08b60729c8b9a805d330c125",
+  "edge_count": 10165,
+  "edge_sha256": "3256a88ae8af9a22db4a253019e9cd28ba510edce839b09886aacb0011e31389",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4154,6 +4154,10 @@
     "app.application.recognition -> app.schemas.types",
     "app.application.rss -> app.application",
     "app.application.rss -> app.application.configuration",
+    "app.application.rss -> app.application.site",
+    "app.application.rss -> app.application.site.contract",
+    "app.application.rss -> app.domain",
+    "app.application.rss -> app.domain.site",
     "app.application.rss -> app.foundation",
     "app.application.rss -> app.foundation.url",
     "app.application.rss -> app.runtime",
@@ -8125,6 +8129,8 @@
     "app.modules.indexer.parser.zhixing -> app.modules.indexer.parser",
     "app.modules.indexer.rss -> app.application",
     "app.modules.indexer.rss -> app.application.rss",
+    "app.modules.indexer.rss -> app.domain",
+    "app.modules.indexer.rss -> app.domain.site",
     "app.modules.indexer.spider -> app.adapters",
     "app.modules.indexer.spider -> app.adapters.network",
     "app.modules.indexer.spider -> app.adapters.network.http",

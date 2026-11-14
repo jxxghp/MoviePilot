@@ -15,7 +15,7 @@ from lxml import etree
 
 from app.application.configuration import get_configured_system_config
 from app.application.messaging.site import SiteInteractionHandler
-from app.application.rss import RssHelper
+from app.application.rss import RssHelper, ensure_site_rss
 from app.application.security.cookie import CookieHelper
 from app.application.site.contract import (
     SiteCookieLoginSource,
@@ -534,22 +534,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
             status, _ = self.test(domain)
             if status:
                 logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
-                if not site_info.public and not site_info.rss:
-                    rss_url: Optional[str]
-                    rss_url, errmsg = rsshelper.get_rss_link(
-                        url=site_info.url,
-                        cookie=cookie,
-                        ua=site_info.ua or self.runtime_config.user_agent,
-                        proxy=bool(site_info.proxy),
-                        timeout=site_info.timeout or 15,
-                    )
-                    if rss_url:
-                        repository.update_rss(domain=domain, rss=rss_url)
-                    else:
-                        logger.warning(errmsg)
+                if not site_info.public and not str(site_info.rss or "").strip():
+                    ensure_site_rss(domain, repository, helper=rsshelper)
                 return 0, 0, 0, False
             logger.info(f"更新站点 {domain} Cookie ...")
-            repository.update_cookie(domain=domain, cookies=cookie)
+            updated = repository.update_cookie(domain=domain, cookies=cookie)
+            if updated.success:
+                ensure_site_rss(domain, repository, helper=rsshelper)
             return 1, 0, 0, True
         if not indexer:
             return 0, 0, 0, True
@@ -567,22 +558,19 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not indexer.get("public") and not SiteUtils.is_logged_in(response.text):
             logger.warning(f"站点 {indexer.get('name')} 登录失败，无法添加站点")
             return 0, 0, 1, False
-        rss_url = None
-        if not indexer.get("public") and domain_url:
-            rss_url, errmsg = rsshelper.get_rss_link(
-                url=domain_url, cookie=cookie, ua=self.runtime_config.user_agent, proxy=proxy
-            )
-            if errmsg:
-                logger.warning(errmsg)
-        repository.add(SiteMutation({
+        added = repository.add(SiteMutation({
             "name": indexer.get("name"),
             "url": domain_url,
             "domain": domain,
             "cookie": cookie,
-            "rss": rss_url,
+            "rss": None,
             "proxy": 1 if proxy else 0,
             "public": 1 if indexer.get("public") else 0,
         }))
+        if not added.success:
+            logger.warning(f"站点 {domain} 添加失败：{added.message}")
+            return 0, 0, 1, False
+        ensure_site_rss(domain, repository, helper=rsshelper)
         return 0, 1, 0, True
 
     def _cookiecloud_blacklisted(self, domain: str) -> bool:
@@ -647,6 +635,21 @@ class SiteChain(InteractionChainMixin, ChainBase):
             status_code=response.status_code,
             text=response.text,
         )
+
+    @eventmanager.register(EventType.SiteUpdated)
+    def complete_site_rss(self, event: Event) -> None:
+        """
+        手工新增、修改或更新 Cookie 提交后，补全缺失的站点 RSS。
+
+        :param event: 已提交的站点更新事件；有效的手工 RSS 不会被覆盖
+        """
+        data = event.event_data if event and isinstance(event.event_data, dict) else {}
+        domain = data.get("domain")
+        if not isinstance(domain, str) or not domain:
+            return
+        if domain.startswith("http"):
+            domain = site_domain(domain)
+        ensure_site_rss(domain, self.site_repository)
 
     @eventmanager.register(EventType.SiteUpdated)
     def cache_site_icon(self, event: Event) -> None:
@@ -927,10 +930,14 @@ class SiteChain(InteractionChainMixin, ChainBase):
             cookie, ua, msg = result
             if not cookie:
                 return False, msg
-            self.site_repository.update(site_id, SiteMutation({
+            updated = self.site_repository.update(site_id, SiteMutation({
                 "cookie": cookie,
                 "ua": ua
             }))
+            if updated is None:
+                return False, "站点已删除，Cookie未保存"
+            if updated.domain:
+                ensure_site_rss(updated.domain, self.site_repository)
             return True, msg
         return False, "未知错误"
 

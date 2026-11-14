@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import Update
 from sqlalchemy.sql.elements import TextClause
 
-from app.db.base import DbOper
+from app.db.base import DbOper, execute_dml
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
@@ -510,6 +510,29 @@ class SiteOper(DbOper):
             "rss": rss
         })
         return True, "更新站点RSS地址成功"
+
+    def update_rss_if_unchanged(self, sid: int, rss: str, expected: Mapping[str, Any]) -> Tuple[bool, str]:
+        """
+        原子比较生成前的配置并暂存 RSS，避免覆盖并发修改或同域名新建的站点。
+
+        :param sid: 原站点主键
+        :param rss: 验证成功的新地址
+        :param expected: Adapter 从快照投影的认证、地址和启用状态
+        :return: 是否暂存成功及失败原因；事务由调用方提交
+        """
+        statement = update(Site).where(
+            Site.id == sid, *(getattr(Site, key) == value for key, value in expected.items())
+        ).values(rss=rss).execution_options(synchronize_session=False)
+
+        def stage(session: Session) -> Tuple[bool, str]:
+            """
+            在调用方会话中执行带前置条件的单条更新，不持有网络请求事务。
+            """
+            if execute_dml(session, statement) == 1:
+                return True, "更新站点RSS地址成功"
+            return False, "站点配置已变化或已删除，未覆盖当前RSS地址"
+
+        return self._execute_sync_write(stage)
 
     def update_userdata(self, domain: str, name: str, payload: dict[str, Any]) -> Tuple[bool, str]:
         """

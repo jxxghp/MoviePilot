@@ -1381,8 +1381,8 @@
     ]
   },
   "event_facts": {
-    "consumer_event_reference_count": 17,
-    "consumer_registration_count": 18,
+    "consumer_event_reference_count": 18,
+    "consumer_registration_count": 19,
     "consumers": [
       {
         "caller": "app.chain.download.facade",
@@ -1467,6 +1467,21 @@
         ],
         "fingerprint": "c43b969848df947bc8e13d1777a08282cd45386867991786fba7f7ffe5027b47",
         "handler": "SiteChain.cache_site_userdata",
+        "invalid": false,
+        "method": "register",
+        "priority": "<default>",
+        "qualname": "SiteChain",
+        "receiver_kind": "canonical_singleton",
+        "registration_kind": "decorator"
+      },
+      {
+        "caller": "app.chain.site",
+        "dynamic": false,
+        "events": [
+          "EventType.SiteUpdated"
+        ],
+        "fingerprint": "d8f405fce4efc179dea6661d54b25b700b95eef996a93d1f2b4507d022e8ee8f",
+        "handler": "SiteChain.complete_site_rss",
         "invalid": false,
         "method": "register",
         "priority": "<default>",
@@ -1931,7 +1946,8 @@
         "consumer_fingerprints": [
           "1200b7097150958ec2003a597237ab746defe80a865b0efef30596dc3b503598",
           "6ca5d8f1adb42c94670be1125435387ea8b9f3f20b4505337b2adc090a4b5714",
-          "c43b969848df947bc8e13d1777a08282cd45386867991786fba7f7ffe5027b47"
+          "c43b969848df947bc8e13d1777a08282cd45386867991786fba7f7ffe5027b47",
+          "d8f405fce4efc179dea6661d54b25b700b95eef996a93d1f2b4507d022e8ee8f"
         ],
         "producer_fingerprints": [
           "7ccc7af8b1102056372e6450bf3ee6f9067aa984e3e655fd5061d16eec327097",
@@ -2023,7 +2039,7 @@
         ]
       }
     },
-    "fact_count": 94,
+    "fact_count": 95,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
     "producer_call_count": 76,
@@ -2940,7 +2956,7 @@
         "receiver_kind": "canonical_singleton"
       }
     ],
-    "static_consumer_count": 17,
+    "static_consumer_count": 18,
     "static_producer_call_count": 74
   },
   "event_specs": {
