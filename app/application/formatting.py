@@ -190,11 +190,14 @@ class FormatParser(object):
     def match(self, file: str) -> bool:
         """
         判断文件名是否满足模板及集数范围约束。
+
+        :param file: 待匹配的文件名
+        :return: 未设置模板或集号满足范围时返回 True，集号 0 参与正常匹配
         """
         if not self._format:
             return True
         s, e = self.__handle_single(file)
-        if not s:
+        if s is None:
             return False
         if self._start_ep is None:
             return True
@@ -206,7 +209,11 @@ class FormatParser(object):
 
     def split_episode(self, file_name: str, file_meta: MetaBase) -> Tuple[Optional[int], Optional[int], Optional[str]]:
         """
-        拆分集数，返回开始集数，结束集数，Part信息
+        按指定集数、定位模板或已有元数据计算偏移后的集数和分段。
+
+        :param file_name: 使用定位模板时待解析的文件名
+        :param file_meta: 未指定定位模板时提供原始起止集号的元数据
+        :return: 起始集号、结束集号及分段，缺失集号为 None，集号 0 保留并参与偏移
         """
         # 指定的具体集数，直接返回
         if self._start_ep is not None:
@@ -228,15 +235,27 @@ class FormatParser(object):
                 return start_ep, end_ep, self.part
         if not self._format:
             # 未填入`集数定位` 且没有`指定集数` 仅处理`集数偏移`
-            start_ep = calculate_episode_offset(self.__offset, file_meta.begin_episode) if file_meta.begin_episode else None
-            end_ep = calculate_episode_offset(self.__offset, file_meta.end_episode) if file_meta.end_episode else None
-            return start_ep if start_ep else None, end_ep if end_ep else None, self.part
+            start_ep = (
+                calculate_episode_offset(self.__offset, file_meta.begin_episode)
+                if file_meta.begin_episode is not None else None
+            )
+            end_ep = (
+                calculate_episode_offset(self.__offset, file_meta.end_episode)
+                if file_meta.end_episode is not None else None
+            )
+            return start_ep, end_ep, self.part
         else:
             # 有`集数定位`
             matched_start, matched_end = self.__handle_single(file_name)
-            start_ep = calculate_episode_offset(self.__offset, matched_start) if matched_start else None
-            end_ep = calculate_episode_offset(self.__offset, matched_end) if matched_end else None
-            return start_ep if start_ep else None, end_ep if end_ep else None, self.part
+            start_ep = (
+                calculate_episode_offset(self.__offset, matched_start)
+                if matched_start is not None else None
+            )
+            end_ep = (
+                calculate_episode_offset(self.__offset, matched_end)
+                if matched_end is not None else None
+            )
+            return start_ep, end_ep, self.part
 
     def __handle_single(self, file: str) -> Tuple[Optional[int], Optional[int]]:
         """
