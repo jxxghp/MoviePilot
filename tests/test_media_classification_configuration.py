@@ -176,11 +176,15 @@ def test_initialize_publishes_valid_three_media_fallbacks() -> None:
 
 def test_initialize_loads_existing_state_without_republishing() -> None:
     """
-    已存在状态时初始化只加载，不生成额外 revision。
+    已存在状态时保留自定义规则顺序，只加载而不生成额外 revision。
     """
     store = _MemoryPolicyStore()
     first = _service(store)
-    expected = first.initialize()
+    draft = build_default_classification_policy()
+    draft.rules.reverse()
+    for priority, rule in enumerate(draft.rules):
+        rule.priority = priority
+    expected = first.initialize(draft)
 
     second = _service(store)
     loaded = second.initialize(_renamed_draft("不得发布"))

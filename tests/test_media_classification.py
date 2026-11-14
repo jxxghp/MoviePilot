@@ -265,6 +265,8 @@ def test_default_music_policy_uses_structured_album_categories(
         ("电视剧", {"media.genre_keys": ["drama"], "media.countries": ["CA"]}, "tv.western"),
         ("电视剧", {"media.genre_keys": ["animation"], "media.countries": ["US"]}, "tv.animation.other"),
         ("电视剧", {"media.genre_keys": ["animation"], "media.countries": ["CN"]}, "tv.dongman.cn"),
+        ("电视剧", {"media.genre_keys": ["animation"], "media.countries": ["JP"]}, "tv.dongman.jp"),
+        ("电视剧", {"media.genre_keys": ["animation", "family"], "media.countries": ["GB"]}, "tv.animation.other"),
     ],
 )
 def test_default_policy_distinguishes_unknown_information_and_region_categories(
@@ -278,6 +280,34 @@ def test_default_policy_distinguishes_unknown_information_and_region_categories(
     assert result.result.recommended.category_id == category_id
     assert next(category.name for category in policy.categories if category.id == "tv.asian") == "亚洲剧"
     assert [rule.priority for rule in policy.rules] == list(range(len(policy.rules)))
+
+
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
+@pytest.mark.parametrize(  # type: ignore[misc]
+    "countries", [["CN"], ["TW"], ["HK"], ["JP"], ["US"], ["GB"], []],
+    ids=["cn", "tw", "hk", "jp", "us", "gb", "unknown"],
+)
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
+@pytest.mark.parametrize(  # type: ignore[misc]
+    "genre_keys", [["animation", "kids"], ["kids"]],
+    ids=["animation", "live-action"],
+)
+def test_default_policy_prioritizes_children_over_animation_and_regions(
+    genre_keys: list[str], countries: list[str],
+) -> None:
+    """
+    各地区及地区缺失的儿童动画、儿童剧集均优先归入儿童分类。
+    """
+    result = _evaluate(
+        build_default_classification_policy(),
+        _facts(
+            media_type="电视剧",
+            values={"media.genre_keys": genre_keys, "media.countries": countries},
+        ),
+    )
+
+    assert result.result.recommended.category_id == "tv.kids"
+    assert result.result.recommended.category_path == ["儿童"]
 
 
 # pytest 动态装饰器的类型无法由当前检查配置完整推断。
