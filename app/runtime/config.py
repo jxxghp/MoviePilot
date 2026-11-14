@@ -762,7 +762,7 @@ class ConfigModel(BaseModel):
     AI_AGENT_PET: str = Field(default="", description='默认助手形象，格式为 插件ID:形象key，留空使用内置机器人；用户个人选择优先')
     AI_AGENT_OUTPUT_LANGUAGE: str = Field(default="zh-CN", description='内置智能助手输出语言，默认使用简体中文')
     LLM_PROVIDER: str = Field(default="deepseek", description='LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）')
-    LLM_MODEL: str = Field(default="deepseek-chat", description='LLM模型名称')
+    LLM_MODEL: str = Field(default="deepseek-v4-flash", description='LLM模型名称')
     LLM_THINKING_LEVEL: Optional[str] = Field(
         default="off",
         description='思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh；OpenAI兼容接口保留max/xhigh，仅按已知模型能力降级',
