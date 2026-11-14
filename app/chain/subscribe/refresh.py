@@ -2,10 +2,13 @@
 订阅元数据、进度与剧集范围刷新
 """
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime
+from threading import Event
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
+from app.application.configuration import get_scheduler_runtime_config
 from app.application.subscription import priority as _priority
 from app.application.subscription.activity import activity_time, subscription_activity_scope
 from app.application.subscription.contract import (
@@ -16,10 +19,12 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.facts import FreshFactLease
 from app.application.subscription.observability import subscription_log_scope
+from app.application.subscription.refresh import RefreshPolicy
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
 from app.chain.subscribe.metadata import SubscribeMetadataOwner
+from app.chain.subscribe.poll import SubscriptionRefreshPoll
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.domain.context import (
@@ -27,8 +32,10 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.runtime.events import eventmanager
+from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.runtime.tasks import get_task_registry
 from app.schemas.event import SubscribeEpisodesRefreshEventData
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.types import (
@@ -43,12 +50,38 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
     订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责组件。
     """
 
+    async def async_refresh(
+        self, progress_callback: Optional[Callable[..., None]] = None, *,
+        mtype: Optional[str] = None, source: str = "automatic", scheduled: bool = False,
+    ) -> None:
+        """
+        托管同步刷新工作，取消或配置重载后仍等真实收尾才交还调度所有权。
+
+        :param progress_callback: 传递到刷新、匹配和排程进度的回调
+        :param mtype: 手工刷新可选的媒体类型
+        :param source: 活动记录来源，手工入口使用 manual
+        :param scheduled: 是否只处理自动模式下已到期站点
+        """
+        stop_event = Event()
+        task = get_task_registry().create_sync(
+            self.refresh, owner="subscription.refresh", progress_callback=progress_callback,
+            mtype=mtype, source=source, scheduled=scheduled, _stop_event=stop_event,
+        )
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            stop_event.set()
+            await await_task_to_terminal(task)
+            raise
+
     def refresh(
         self,
         progress_callback: Optional[Callable[..., None]] = None,
         *,
         mtype: Optional[str] = None,
         source: str = "automatic",
+        scheduled: bool = False,
+        _stop_event: Optional[Event] = None,
     ) -> None:
         """
         刷新指定媒体类型的订阅
@@ -56,12 +89,19 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         :param progress_callback: 定时服务进度更新回调
         :param mtype: 可选媒体类型，省略时刷新所有类型
         :param source: 手工入口传 manual，定时和兼容调用默认 automatic
+        :param scheduled: 自动模式的定时扫描按站点时间片运行；手工和旧插件缺省立即刷新
+        :param _stop_event: 异步宿主取消本轮时停止接纳新站点，等待已接受工作真实结束
         """
         # 触发刷新站点资源，从缓存中匹配订阅
         sites = self.get_subscribed_sites(mtype)
         if sites is None:
             if progress_callback:
                 progress_callback(value=100, text="没有订阅需要刷新")
+            return
+
+        if scheduled and self.runtime_config.subscribe_mode == "spider":
+            policy = RefreshPolicy(timezone_name=get_scheduler_runtime_config().timezone)
+            SubscriptionRefreshPoll(self, policy, progress_callback, _stop_event).run()
             return
 
         def _update_refresh_progress(

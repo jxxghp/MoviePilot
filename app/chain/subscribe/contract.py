@@ -119,6 +119,8 @@ if TYPE_CHECKING:
         get_subscribe_source_keyword: Callable[..., Any]
         get_subscribed_sites: Callable[..., Any]
         has_music_subscribe: Callable[..., Any]
+        load_cache: Callable[..., Any]
+        save_cache: Callable[..., Any]
         match: Callable[..., Any]
         media_exists: Callable[..., Any]
         media_files: Callable[..., Any]

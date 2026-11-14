@@ -260,6 +260,7 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
         "music.py",
         "notify.py",
         "policy.py",
+        "poll.py",
         "query.py",
         "reconcile.py",
         "refresh.py",

@@ -12,7 +12,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.chain.subscribe import refresh as subscription_refresh
+from app.chain.subscribe.refresh import SubscribeRefreshOwner
 from app.runtime.loop import main_loop_registry
+from app.runtime.tasks import TaskRegistry
 from app.scheduler import bridge as scheduler_bridge
 from app.scheduler import execution as scheduler_execution
 from app.scheduler import lifecycle as scheduler_lifecycle
@@ -143,6 +146,46 @@ def test_internal_loop_submission_requires_job_owner() -> None:
 
     assert parameter.default is inspect.Parameter.empty
     assert parameter.annotation is str
+
+
+@pytest.mark.asyncio
+async def test_subscription_refresh_stop_keeps_scheduler_owner_until_real_thread_exits(monkeypatch):
+    """
+    刷新协程取消后 Scheduler 保留同 ID 所有权，停止必须等待真实同步线程退出。
+    """
+    started, release = threading.Event(), threading.Event()
+    tasks = TaskRegistry()
+    monkeypatch.setattr(subscription_refresh, "get_task_registry", lambda: tasks)
+    owner = object.__new__(SubscribeRefreshOwner)
+
+    def refresh(**_kwargs):
+        """
+        模拟仍持有真实执行权的阻塞刷新。
+        """
+        started.set()
+        assert release.wait(5)
+
+    owner.refresh = refresh
+    _patch_progress(monkeypatch)
+    scheduler = _scheduler("subscribe_refresh", owner.async_refresh)
+    assert scheduler.start("subscribe_refresh", scheduled=True) is True
+    stopping = None
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        stopping = asyncio.create_task(scheduler.stop_async())
+        await asyncio.sleep(0)
+        assert not stopping.done()
+        assert scheduler._is_job_active("subscribe_refresh")
+        assert scheduler.start("subscribe_refresh", scheduled=True) is False
+        release.set()
+        await asyncio.wait_for(stopping, 2)
+        assert not scheduler._is_job_active("subscribe_refresh")
+        assert not tasks.records
+    finally:
+        release.set()
+        if stopping is not None:
+            await stopping
+        await tasks.shutdown()
 
 
 @pytest.mark.anyio
