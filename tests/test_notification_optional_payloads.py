@@ -4,6 +4,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import unquote
 
 import pytest
 
@@ -133,3 +134,44 @@ def test_slack_manifest_export_requires_object(manifest, expected):
     client._app_id = "app"
     client._manifest_client = SimpleNamespace(apps_manifest_export=Mock(return_value={"ok": True, "manifest": manifest}))
     assert client._export_manifest() == expected
+
+
+def _title_free_client(client_class):
+    """
+    构造只记录最终发送内容的 Slack、VoceChat 与 Synology Chat 客户端。
+    """
+    sent = Mock(return_value=True)
+    client = object.__new__(client_class)
+    if client_class is Slack:
+        client._client = SimpleNamespace(chat_postMessage=sent)
+        client._channel = "C1"
+        client._service_name = "slack"
+    elif client_class is VoceChat:
+        client._client = Mock()
+        client._channel_id = 1
+        client._VoceChat__send_request = sent
+    else:
+        client._webhook_url = "https://chat.test"
+        client._token = "test"
+        client._SynologyChat__send_request = sent
+    return client, sent
+
+
+@pytest.mark.parametrize("client_class", [Slack, VoceChat, SynologyChat])
+@pytest.mark.parametrize("kwargs", [
+    {"text": "仅正文"},
+    {"text": "仅正文", "image": "https://img.test/a.png"},
+    {"text": "仅正文", "link": "https://site.test/a"},
+])
+def test_text_only_notifications_do_not_render_none_title(client_class, kwargs):
+    """
+    只有正文的通知不能把缺失标题渲染成字面量 None。
+    """
+    client, sent = _title_free_client(client_class)
+    if client_class is Slack:
+        client._Slack__find_public_channel = Mock(return_value="C1")
+    client.send_msg(title=None, userid="1", **kwargs)
+    assert sent.call_count == 1
+    rendered = unquote(str(sent.call_args))
+    assert "None" not in rendered
+    assert "仅正文" in rendered

@@ -83,7 +83,7 @@ class SynologyChat:
             return False
         try:
             # 拼装消息内容
-            titles = str(title).split('\n')
+            titles = (title or '').split('\n')
             if len(titles) > 1:
                 title = titles[0]
                 if not text:
@@ -91,8 +91,10 @@ class SynologyChat:
                 else:
                     text = "%s\n%s" % ("\n".join(titles[1:]), text)
 
-            if text:
+            if text and title:
                 caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
+            elif text:
+                caption = text.replace("\n\n", "\n")
             else:
                 # 正文为空时，上方检查已保证标题存在。
                 caption = cast(str, title)

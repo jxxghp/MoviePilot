@@ -5,7 +5,7 @@ VoceChat 机器人消息发送与文件下载客户端。
 import base64
 import re
 import threading
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 from urllib.parse import quote
 
 from app.adapters.network.http import RequestUtils
@@ -107,10 +107,12 @@ class VoceChat:
             return False
 
         try:
-            if text:
+            if title and text:
                 caption = f"**{title}**\n{text}"
-            else:
+            elif title:
                 caption = f"**{title}**"
+            else:
+                caption = cast(str, text)
 
             if image:
                 caption = f"{caption}\n![]({image})"

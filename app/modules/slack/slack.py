@@ -358,7 +358,7 @@ class Slack:
                 channel = userid
             else:
                 channel = self.__find_public_channel()
-            message_text = f"{title}\n{text or ''}"
+            message_text = f"{title}\n{text or ''}" if title else (text or "")
             blocks = self._message_blocks(title, text, image, link, buttons, formatted_text)
             if buttons:
                 for button_row in buttons:
@@ -445,18 +445,18 @@ class Slack:
         elif image:
             blocks.append({"type": "section", "text": {
                 "type": "mrkdwn",
-                "text": f"*{title}*\n{text or ''}"
+                "text": f"*{title}*\n{text or ''}" if title else (text or " ")
             }, 'accessory': {
                 "type": "image",
                 "image_url": f"{image}",
-                "alt_text": f"{title}"
+                "alt_text": title or text or "image"
             }})
         elif buttons or link:
             blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*{title}*\n{text or ''}",
+                    "text": f"*{title}*\n{text or ''}" if title else (text or " "),
                 },
             })
         return blocks
