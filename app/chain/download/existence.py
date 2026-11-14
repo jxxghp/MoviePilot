@@ -118,7 +118,8 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                         continue
                     total_ep = totals.get(season) or len(episodes)
                     self._append_no_exists(
-                        no_exists, media_source, media_id, season, [],
+                        no_exists, media_source, media_id, season,
+                        self._whole_season_missing(episodes, total_ep),
                         total_ep, min(episodes)
                     )
                 return False, no_exists
@@ -148,7 +149,8 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                         )
                     else:
                         self._append_no_exists(
-                            no_exists, media_source, media_id, season, [],
+                            no_exists, media_source, media_id, season,
+                            self._whole_season_missing(episodes, season_total),
                             season_total, min(episodes)
                         )
             if no_exists:
@@ -187,6 +189,29 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         return combined.model_copy(update={
             "seasons": {season: sorted(episodes) for season, episodes in seasons.items()},
         }) if combined else None
+
+    @staticmethod
+    def _whole_season_missing(episodes: list[int], total: int) -> list[int]:
+        """
+        计算一季完全未入库时的缺集列表。
+
+        下载链把空列表当作缺整季，整季包会不选集整包提交；传入的总集数少于本季集数时
+        （如订阅只要第 1 集），必须写出目标集，下载链才会只选范围内的集。
+
+        部分入库分支把总集数当作从本季最小集号起数的集数，订阅缺集裁剪却把它当作末集号。
+        只有按两种口径得到的目标集相同（本季从第 1 集起且前段不断号）时才写出目标集；
+        口径不一致时保留空列表，避免订阅裁剪把显式集全部裁掉、误判为已完成。
+
+        :param episodes: 本季全部集号
+        :param total: 本季有效总集数
+        :return: 范围覆盖整季或口径不一致时为空列表，否则为显式目标集
+        """
+        if total >= len(episodes):
+            return []
+        target = sorted(episodes)[:total]
+        if target[-1] != total:
+            return []
+        return target
 
     @staticmethod
     def _append_no_exists(

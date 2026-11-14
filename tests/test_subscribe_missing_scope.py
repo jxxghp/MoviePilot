@@ -124,6 +124,55 @@ def test_missing_scope_materializes_full_season_after_start_episode(scope):
     assert missing["tmdb:223911"][1].start_episode == 159
 
 
+@pytest.mark.parametrize("library", [None, ExistMediaInfo(seasons={2: [1]})])
+@pytest.mark.parametrize(("total", "expected"), [(1, [1]), (5, [1, 2, 3, 4, 5]), (200, [])])
+def test_missing_scope_materializes_full_season_before_total_episode(scope, library, total, expected):
+    """
+    整季未入库且总集数裁掉季末时，同样转成显式集数；总集数覆盖整季才保留整季标记。
+
+    媒体库完全没有该剧，或只有其他季时，两条缺集分支口径一致。
+    """
+    scope.download._media_exists_with_server_cache.return_value = library
+    subscribe = replace(scope.subscribe, start_episode=1, total_episode=total, note=[])
+
+    satisfied, missing = scope.chain.resolve_subscribe_missing(
+        subscribe=subscribe, meta=MetaInfo("Renegade Immortal 2023"), mediainfo=scope.media,
+    )
+
+    assert not satisfied
+    info = missing["tmdb:223911"][1]
+    assert info.episodes == expected
+    assert info.start_episode == 1
+    assert info.total_episode == total
+
+
+@pytest.mark.parametrize(("season_episodes", "start", "total", "expected"), [
+    (list(range(13, 25)), 13, 6, []),
+    (list(range(13, 25)), None, 6, []),
+    (list(range(13, 25)), 13, 18, []),
+    (list(range(1, 11)) + [12], 1, 11, []),
+    (list(range(1, 11)) + [12], 1, 8, list(range(1, 9))),
+])
+def test_missing_scope_keeps_whole_season_when_total_semantics_disagree(
+        scope, season_episodes, start, total, expected,
+):
+    """
+    总集数按集数和按末集号理解得到不同目标集时，保留整季标记，不能裁成空集而误判订阅已完成。
+
+    季内集号不从 1 开始或前段断号时两种口径不一致；从第 1 集起且前段连续时仍写出目标集。
+    """
+    scope.download._media_exists_with_server_cache.return_value = None
+    media = replace(scope.media, seasons={1: season_episodes})
+    subscribe = replace(scope.subscribe, start_episode=start, total_episode=total, note=[])
+
+    satisfied, missing = scope.chain.resolve_subscribe_missing(
+        subscribe=subscribe, meta=MetaInfo("Renegade Immortal 2023"), mediainfo=media,
+    )
+
+    assert not satisfied
+    assert missing["tmdb:223911"][1].episodes == expected
+
+
 def test_missing_scope_finishes_only_when_subscription_range_is_satisfied(scope):
     """
     下载历史已覆盖目标范围时，应清空裁剪结果而不是返回更早的库内缺集。
@@ -232,3 +281,56 @@ def test_policy_recheck_keeps_scope_through_batch_file_selection(scope, monkeypa
         download.download_single.assert_called_once()
         assert download.download_single.call_args.kwargs["episodes"] == set(range(161, 166))
         assert set(remaining["tmdb:223911"][1].episodes) == set(range(166, 201))
+
+
+@pytest.mark.parametrize("title", [
+    "Renegade Immortal S01 2023 2160p WEB-DL H265 AAC-UBWEB",
+    "Renegade Immortal E01-E200 2023 1080p HDTV x265 AC3",
+])
+@pytest.mark.parametrize("pri_order", [0, 90])
+def test_trimmed_total_subscription_only_selects_target_from_season_pack(scope, monkeypatch, pri_order, title):
+    """
+    只订阅第 1 集时，整季包无论走首次整包优先还是回退的普通下载，都只向下载器提交第 1 集。
+
+    优先级为 0 时整包优先被拒、回退普通下载；此前缺集仍是空列表，被当成缺整季而整包提交。
+    标题无集号和标注全季集号的整包都要覆盖。
+    """
+    subscribe = replace(scope.subscribe, start_episode=1, total_episode=1, note=[])
+    scope.chain.subscription_repository.get.return_value = subscribe
+    meta = MetaInfo(title)
+    context = Context(
+        meta_info=meta,
+        media_info=scope.media,
+        torrent_info=TorrentInfo(
+            title=meta.org_string, site=1, site_name="TestSite", pri_order=pri_order,
+        ),
+    )
+    download = scope.download
+    download._media_exists_with_server_cache.return_value = None
+    download.eventmanager = SimpleNamespace(send_event=Mock(return_value=None))
+    download._active_download_failure_fingerprints = Mock(return_value={})
+    download.download_torrent = Mock(return_value=(b"torrent", None, list(range(1, 201))))
+    download.download_single = Mock(return_value="download-id")
+    helper = SimpleNamespace(
+        sort_torrents=lambda contexts: contexts,
+        get_torrent_episodes=lambda files, **_kwargs: files,
+    )
+    stop = SimpleNamespace(is_system_stopped=False)
+    monkeypatch.setattr(download_batch, "_new_torrent_helper", lambda: helper)
+    monkeypatch.setattr(download_selection, "_new_torrent_helper", lambda: helper)
+    monkeypatch.setattr(download_batch, "runtime_stop_state", stop)
+    monkeypatch.setattr(download_selection, "runtime_stop_state", stop)
+    satisfied, prepared_missing = scope.chain.resolve_subscribe_missing(
+        subscribe=subscribe, meta=build_subscribe_meta(subscribe), mediainfo=scope.media,
+    )
+    assert not satisfied
+
+    downloads, remaining = scope.chain._SubscribeChain__download_best_version_with_full_pack_first(
+        contexts=[context], no_exists=prepared_missing,
+        subscribe=subscribe, mediakey="tmdb:223911",
+    )
+
+    assert downloads == [context]
+    assert remaining == {}
+    download.download_single.assert_called_once()
+    assert download.download_single.call_args.kwargs["episodes"] == {1}
