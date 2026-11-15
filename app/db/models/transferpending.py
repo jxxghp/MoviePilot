@@ -122,6 +122,8 @@ class TransferPending(Base):
     retry_requested_by: Mapped[Optional[str]] = mapped_column(String(128))
     # 最近一次终态失败重试请求原因
     retry_reason: Mapped[Optional[str]] = mapped_column(Text)
+    # 当前待消费的人工身份修正授权；每个任务最多保存一份
+    manual_identity_authorization: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     # 已完成终态结算的单调版本
     settlement_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # 失败终态保留的整理历史标识
@@ -771,6 +773,7 @@ class TransferPending(Base):
                 execution_state="failed",
                 settlement_revision=cls.settlement_revision + 1,
                 terminal_history_id=history_id,
+                manual_identity_authorization=None,
                 lease_owner=None,
                 lease_token=None,
                 lease_expires_at=None,

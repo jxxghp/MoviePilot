@@ -45,6 +45,7 @@ POST_LEASE_EXECUTION_COLUMNS = {
     "reviewed_by",
     "review_reason",
     "review_decision",
+    "manual_identity_authorization",
 }
 
 

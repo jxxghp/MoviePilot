@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # 与对应 SKILL.md 同步维护，重新生成不能回退用户同步所需的版本。
 MOVIEPILOT_API_SKILL_VERSION = "74"
-DATABASE_OPERATION_SKILL_VERSION = "18"
+DATABASE_OPERATION_SKILL_VERSION = "19"
 
 
 DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
@@ -189,7 +189,8 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "identity and actor_name is a bounded display snapshot. Old rows have unknown origin.",
     ),
     "transferpending": (
-        "Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.",
+        "Durably stores pending transfer input, plans, checkpoints, leases, retries, manual review state, "
+        "and one short-lived pending manual identity authorization.",
         "Diagnosing restart recovery, expired leases, retry_wait, terminal failures, or manual review.",
         "Core durable state machine advanced only by planning, execution, retry, and review services.",
     ),

@@ -981,6 +981,18 @@ class TransferExecutionRepository(Protocol):
         :return: 是否接纳重新规划及持久调度状态
         """
 
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+    ) -> bool:
+        """
+        为失败历史登记一份短期身份修正授权，后续由重新规划事务一次性消费。
+
+        :param history_id: 当前失败终态关联的历史标识
+        :param task_id: 当前失败任务标识
+        :param settlement_revision: 当前失败回执的结算版本
+        :return: 授权已登记时为 True；历史或任务已变化时为 False
+        """
+
     def discard_corrupt_task(
             self,
             *,
@@ -1347,6 +1359,25 @@ class TransferExecutionCommand:
             history_id=history_id, task_id=task_id, settlement_revision=settlement_revision,
             media_source=MediaSource(media_source).value, media_id=media_id.strip(),
             media_type=normalized_type.value, season=season, episode=episode, requested_by=requested_by,
+        )
+
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+    ) -> bool:
+        """
+        为一次人工身份修正保存单个可覆盖授权，不创建授权历史。
+
+        :param history_id: 当前失败终态关联的历史标识
+        :param task_id: 当前失败任务标识
+        :param settlement_revision: 当前失败回执的结算版本
+        :return: 授权已登记时为 True；历史或任务已变化时为 False
+        :raises ValueError: 缺少历史、任务或结算版本
+        """
+        normalized_task_id = task_id.strip()
+        if history_id <= 0 or settlement_revision <= 0 or not normalized_task_id:
+            raise ValueError("人工授权缺少历史、结算版本或任务")
+        return self._repository.grant_manual_identity_authorization(
+            history_id=history_id, task_id=normalized_task_id, settlement_revision=settlement_revision,
         )
 
     def resolve_manual_review(

@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
@@ -70,6 +70,7 @@ _UNHANDLED_REVIEW_STEP_KIND = "unhandled_execution_review"
 _REVIEW_STEP_KINDS = {_LEGACY_REVIEW_STEP_KIND, _UNHANDLED_REVIEW_STEP_KIND}
 # 与迁移保留的最大序号相邻，复核凭据不占用从零连续递增的真实执行序号。
 _UNHANDLED_REVIEW_STEP_ORDINAL = 2_147_483_646
+_MANUAL_IDENTITY_AUTHORIZATION_TTL_SECONDS = 30 * 60
 
 
 def _local_now() -> datetime:
@@ -1538,7 +1539,10 @@ class TransactionalTransferExecutionRepository:
                     raise TransferExecutionConflictError("整理任务正在处理中，暂时无法重新规划")
                 checkpoint, fingerprint = self._plan_identity(pending)
                 steps = TransferExecutionStepOper(session).list_by_task_id(task_id=pending.task_id)
-                self._validate_recognition_replan(pending, history, checkpoint, steps)
+                manual_identity = self._validate_recognition_replan(
+                    pending, history, checkpoint, steps,
+                    now_utc=now_utc,
+                )
                 self._validate_plan_steps(task_id=pending.task_id, checkpoint=checkpoint,
                                           checkpoint_fingerprint=fingerprint, steps=steps)
                 snapshot = self._project_snapshot(pending, steps)
@@ -1568,8 +1572,13 @@ class TransactionalTransferExecutionRepository:
                 pending.retry_generation += 1
                 pending.retry_count += 1
                 pending.retry_due_at = now_utc
-                pending.retry_requested_by = requested_by
-                pending.retry_reason = "智能助手核实媒体身份及季集后重新规划"
+                pending.retry_requested_by = (
+                    f"{requested_by}+manual_identity" if manual_identity else requested_by
+                )
+                pending.retry_reason = (
+                    "管理用户确认媒体身份后由智能助手重新规划" if manual_identity
+                    else "智能助手核实媒体身份及季集后重新规划"
+                )
                 pending.updated_at = updated_at
                 transaction.commit()
                 return TransferRetryRequestResult(True, TransferExecutionState.RETRY_WAIT,
@@ -1578,11 +1587,10 @@ class TransactionalTransferExecutionRepository:
                 transaction.rollback()
                 raise
 
-    @staticmethod
     def _validate_recognition_replan(
-            pending: TransferPending, history: TransferHistory, checkpoint: TransferPlanCheckpoint,
-            steps: list[TransferExecutionStepModel],
-    ) -> None:
+            self, pending: TransferPending, history: TransferHistory, checkpoint: TransferPlanCheckpoint,
+            steps: list[TransferExecutionStepModel], *, now_utc: str,
+    ) -> bool:
         """
         拒绝复核、过期回执、预算耗尽或任何可能含文件副作用的重新规划。
 
@@ -1590,14 +1598,25 @@ class TransactionalTransferExecutionRepository:
         :param history: 当前读取的失败历史
         :param checkpoint: 原始冻结计划
         :param steps: 原始持久执行步骤
+        :param now_utc: 当前固定宽度 UTC 时间
+        :return: 本次放行是否消费了人工身份修正授权
         """
         if pending.execution_state != TransferExecutionState.FAILED.value:
             raise TransferExecutionConflictError("任务需要人工确认或正在处理，不能自动重新规划")
         if (history.status or pending.terminal_history_id != history.id
                 or pending.settlement_revision != history.transfer_settlement_revision):
             raise TransferExecutionConflictError("整理历史与任务结算版本已变化，请刷新后重试")
+        authorization = pending.manual_identity_authorization
+        manual_identity = (
+            isinstance(authorization, dict)
+            and authorization.get("history_id") == history.id
+            and authorization.get("settlement_revision") == pending.settlement_revision
+            and isinstance(authorization.get("expires_at"), str)
+            and authorization["expires_at"] > now_utc
+        )
         if history.auto_paused or max(history.retry_count or 0, pending.retry_count) >= max_failed_retries():
-            raise TransferExecutionConflictError("整理任务自动重试次数已耗尽，请人工处理")
+            if not manual_identity:
+                raise TransferExecutionConflictError("整理任务自动重试次数已耗尽，请人工处理")
         stage = history.failure_stage or classify_transfer_failure(checkpoint.rejection_error).stage
         if stage not in {TransferFailureStage.RECOGNITION, TransferFailureStage.PLANNING}:
             raise TransferExecutionConflictError("当前失败需要先修复文件或存储配置，不能自动修正识别")
@@ -1611,6 +1630,50 @@ class TransactionalTransferExecutionRepository:
         step = steps[0]
         if step.phase != "planning" or step.kind != "reject" or step.state != TransferStepState.SUCCEEDED.value:
             raise TransferExecutionConflictError("存在文件操作或不确定执行证据，不能自动重新规划")
+        pending.manual_identity_authorization = None
+        return manual_identity
+
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+    ) -> bool:
+        """
+        覆盖任务当前的人工身份授权槽，并拒绝已变化的失败历史。
+
+        授权绑定失败历史和结算版本，有效期为 30 分钟；不保存重复点击或消费历史。
+
+        :param history_id: 触发点击的整理历史标识
+        :param task_id: 该历史当前绑定的持久任务标识
+        :param settlement_revision: 签发时的结算版本
+        :return: 授权已登记时为 True；历史、任务状态或结算版本已变化时为 False
+        """
+        now = self._lease_clock().astimezone(timezone.utc)
+        now_utc = self._format_utc(now)
+        expires_at = self._format_utc(now + timedelta(seconds=_MANUAL_IDENTITY_AUTHORIZATION_TTL_SECONDS))
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                history = TransferHistoryOper(session).get(history_id)
+                pending = TransferPendingOper(session).get_by_task_id(task_id=task_id)
+                if (history is None or pending is None or history.transfer_task_id != task_id
+                        or history.transfer_settlement_revision != settlement_revision
+                        or pending.execution_state != TransferExecutionState.FAILED.value
+                        or pending.terminal_history_id != history_id
+                        or pending.settlement_revision != settlement_revision):
+                    transaction.rollback()
+                    return False
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=now_utc):
+                    transaction.rollback()
+                    return False
+                pending.manual_identity_authorization = {
+                    "history_id": history_id,
+                    "settlement_revision": settlement_revision,
+                    "expires_at": expires_at,
+                }
+                transaction.commit()
+                return True
+            except Exception:
+                self._rollback(transaction)
+                raise
 
     def _replan_music_rejection(
             self, session: Session, *, pending: TransferPending, updated_at: str,
