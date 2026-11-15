@@ -977,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10183,
-  "edge_sha256": "bbe1d8da1999ab7b1188d3ace6a6eb115999a182ff847078b13a914783a8e89e",
+  "edge_count": 10184,
+  "edge_sha256": "3eef6f4da0dc03f53a42dfaf719246d1d262a08b1dfa4afca94cdcb103160866",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5442,6 +5442,7 @@
     "app.chain.search.pagination -> app.chain.search",
     "app.chain.search.pagination -> app.chain.search.contract",
     "app.chain.search.pagination -> app.runtime",
+    "app.chain.search.pagination -> app.runtime.log",
     "app.chain.search.pagination -> app.runtime.stop",
     "app.chain.search.pagination -> app.runtime.tasks",
     "app.chain.search.plan -> app.application",
