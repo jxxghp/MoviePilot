@@ -102,6 +102,66 @@ async def test_site_page_iterator_cancels_and_waits_pending_requests() -> None:
 
 
 @pytest.mark.asyncio
+async def test_site_page_iterator_falls_back_when_continuation_page_fails() -> None:
+    """
+    续页请求失败时只结束该站点的分页，已取到的结果照常返回，不能让整次搜索失败。
+    """
+    chain = _make_chain()
+    calls: list[int] = []
+
+    async def search_page(_site: dict, page: int) -> list[str]:
+        """
+        第一页满页触发续页，第二页模拟站点越界返回 HTTP 500 空响应。
+        """
+        calls.append(page)
+        if page == 0:
+            return ["first", "second"]
+        raise RuntimeError("站点请求或页面解析失败（HTTP 500，响应内容为空）")
+
+    iterator = chain._iter_site_page_results(
+        indexer_sites=[{"id": 1, "name": "财神"}],
+        search_pages=[0, 1],
+        search_page=search_page,
+        should_continue=lambda _site, results: len(results) == 2,
+        task_owner="test.search.site_page",
+    )
+
+    yielded = [page async for page in iterator]
+
+    assert calls == [0, 1]
+    assert [(page, results, continued) for _site, page, results, continued, _elapsed in yielded] == [
+        (0, ["first", "second"], True),
+        (1, [], False),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_site_page_iterator_raises_when_first_page_fails() -> None:
+    """
+    第一页就失败时仍然抛出站点故障，保留现有的站点级报错和冷却语义。
+    """
+    chain = _make_chain()
+
+    async def search_page(_site: dict, _page: int) -> list[str]:
+        """
+        模拟站点第一页就请求失败。
+        """
+        raise RuntimeError("站点请求或页面解析失败（HTTP 500，响应内容为空）")
+
+    iterator = chain._iter_site_page_results(
+        indexer_sites=[{"id": 1, "name": "财神"}],
+        search_pages=[0, 1],
+        search_page=search_page,
+        should_continue=lambda _site, results: len(results) == 2,
+        task_owner="test.search.site_page",
+    )
+
+    with pytest.raises(RuntimeError):
+        await anext(iterator)
+    await iterator.aclose()
+
+
+@pytest.mark.asyncio
 async def test_subtitle_list_and_stream_share_page_continuation(monkeypatch) -> None:
     """
     字幕列表与流式入口应复用同一续页规则、页序和停止条件。

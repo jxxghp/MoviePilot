@@ -10,6 +10,7 @@ from app.application.configuration import (
     get_chain_runtime_config_snapshot,
 )
 from app.chain.search.contract import _SearchOwnerBase
+from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import get_task_registry
 
@@ -168,8 +169,17 @@ class SearchPaginationOwner(_SearchOwnerBase):
                     site, page_index, page_number = pending_tasks.pop(task)
                     page_results, error, elapsed = await task
                     if error is not None:
-                        raise error
-                    continued = should_continue(site, page_results) and page_index + 1 < len(search_pages)
+                        if not page_index:
+                            raise error
+                        # 站点已经在上一页给出结果，续页失败按「没有更多结果」收口：越界页报错、
+                        # 单页抖动都不该丢掉该站点已取到的资源，也不该让整次搜索失败。
+                        page_results = []
+                        logger.warning(
+                            f"站点 {site.get('name') or site.get('id')} 第 {page_number + 1} 页请求失败，"
+                            f"按没有更多结果结束本批分页：{error}"
+                        )
+                    continued = (error is None and should_continue(site, page_results)
+                                 and page_index + 1 < len(search_pages))
                     if continued:
                         _submit_site_page(
                             pending_tasks=pending_tasks,
