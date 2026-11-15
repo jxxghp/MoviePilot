@@ -299,6 +299,24 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             return server_obj.get_librarys(hidden, **MediaServerQueryOptions.as_kwargs(query))
         return None
 
+    def mediaserver_search(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """
+        在所有已启用 Plex 实例中搜索媒体库，并保留条目所属配置。
+
+        :param keyword: 搜索关键词
+        :param types: 需要搜索的业务类型
+        :param limit: 每个实例返回的最大条目数
+        :return: 带 Plex 配置名的搜索结果
+        """
+        items: list[_SchemaMediaServerPlayItem] = []
+        for server_name, server_obj in self.get_instances().items():
+            for item in server_obj.search_library_items(keyword, types, limit):
+                item.server = server_name
+                items.append(item)
+        return items
+
     def mediaserver_items(
         self,
         server: str,

@@ -296,6 +296,19 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         service = self.get_instance(server)
         return service.get_iteminfo(item_id, **({"query": query} if query is not None else {})) if service else None
 
+    def mediaserver_search(
+        self, keyword: str, types: List[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """搜索所有已启用 Navidrome 实例的可播放音乐单曲。"""
+        if MediaType.MUSIC.value not in types:
+            return []
+        items: List[_SchemaMediaServerPlayItem] = []
+        for server_name, service in self.get_instances().items():
+            for item in service.search_library(keyword, limit):
+                item.server = server_name
+                items.append(item)
+        return items
+
     def mediaserver_tv_episodes(
         self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
     ) -> List[_SchemaMediaServerSeasonInfo]:

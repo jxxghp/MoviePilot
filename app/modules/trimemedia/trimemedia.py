@@ -562,6 +562,33 @@ class TrimeMedia:
             return self.__build_media_server_item(item)
         return None
 
+    def search_library(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """通过飞牛搜索接口返回可播放的已入库电视剧。"""
+        if MediaType.TV.value not in types or not keyword.strip() or not self.is_authenticated() or not self._api:
+            return []
+        results: List[_SchemaMediaServerPlayItem] = []
+        for item in self._api.search_list(keywords=keyword.strip()) or []:
+            if item.type != fnapi.Type.TV or not item.guid or not item.title:
+                continue
+            year = item.air_date[:4] if item.air_date else None
+            results.append(
+                _SchemaMediaServerPlayItem(
+                    id=item.guid,
+                    item_id=item.guid,
+                    title=item.title,
+                    subtitle=year,
+                    year=year,
+                    type=MediaType.TV.value,
+                    image=item.poster,
+                    server_type="trimemedia",
+                )
+            )
+            if len(results) >= max(1, limit):
+                break
+        return results
+
     @staticmethod
     def __build_media_server_item(item: fnapi.Item) -> _SchemaMediaServerItem:
         """

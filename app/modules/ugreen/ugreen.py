@@ -1626,6 +1626,85 @@ class Ugreen:
 
         return self.__build_media_server_item(video_info, info.get("play_status"))
 
+    def search_library(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """通过绿联搜索接口返回可播放的电视剧与音乐库单曲。"""
+        if not self.is_authenticated() or not keyword.strip():
+            return []
+        results: List[_SchemaMediaServerPlayItem] = []
+        if self.__is_media_service_mode() and self._media_api:
+            item_types = []
+            if MediaType.TV.value in types:
+                item_types.append("Series")
+            if MediaType.MUSIC.value in types:
+                item_types.append("Audio")
+            if not item_types:
+                return []
+            data = self._media_api.items(
+                include_item_types=",".join(item_types),
+                search_term=keyword.strip(),
+                limit=max(1, min(limit, 50)),
+                fields="ProductionYear,Album,Artists,AlbumArtist,ImageTags,Path,ParentId,ServerId",
+            )
+            for raw_item in (data or {}).get("Items") or []:
+                raw_type = raw_item.get("Type")
+                media_type = MediaType.TV.value if raw_type == "Series" else MediaType.MUSIC.value
+                item = self.__format_media_service_item(raw_item)
+                if media_type not in types or not item or not item.item_id or not item.title:
+                    continue
+                artists = raw_item.get("Artists") or []
+                artist = next(
+                    (str(value.get("Name") if isinstance(value, Mapping) else value) for value in artists if value),
+                    None,
+                )
+                album = raw_item.get("Album")
+                year = raw_item.get("ProductionYear")
+                results.append(
+                    _SchemaMediaServerPlayItem(
+                        id=item.item_id,
+                        item_id=item.item_id,
+                        server_id=item.server_id,
+                        title=item.title,
+                        subtitle=(f"{artist or ''}{f' · {album}' if album else ''}" or None)
+                        if media_type == MediaType.MUSIC.value
+                        else str(year) if year else None,
+                        year=year,
+                        type=media_type,
+                        image=self.__build_media_service_image_url(item.item_id, remote=True),
+                        server_type="ugreen",
+                    )
+                )
+                if len(results) >= limit:
+                    break
+            return results
+
+        if MediaType.TV.value not in types or not self._api:
+            return []
+        data = self._api.search(keyword.strip()) or {}
+        for info in self.__extract_video_info_list(data.get("tv_list")):
+            item = self.__build_media_server_item(info)
+            if not item or not item.item_id or not item.title:
+                continue
+            image = self.__resolve_image(info.get("poster_path")) or self.__resolve_image(
+                info.get("backdrop_path")
+            )
+            results.append(
+                _SchemaMediaServerPlayItem(
+                    id=item.item_id,
+                    item_id=item.item_id,
+                    title=item.title,
+                    subtitle=str(item.year) if item.year else None,
+                    year=item.year,
+                    type=MediaType.TV.value,
+                    image=image,
+                    server_type="ugreen",
+                )
+            )
+            if len(results) >= limit:
+                break
+        return results
+
     def _iter_library_videos(
         self, root_path: str, page_size: int = 100,
     ) -> Generator[dict[str, Any], None, None]:

@@ -384,6 +384,39 @@ class Vyo:
             movies.append(item)
         return movies
 
+    def search_library(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """调用 Vyo 的剧集搜索接口并生成带海报的原生播放目标。"""
+        if MediaType.TV.value not in types or not keyword.strip() or not self.is_configured():
+            return []
+        rows = self.__search_rows(keyword=keyword.strip(), kinds="Series")
+        if rows is None:
+            return []
+        results: List[_SchemaMediaServerPlayItem] = []
+        try:
+            for row in rows:
+                item = self.__format_item_info(row)
+                if not item or not item.item_id or not item.title or item.item_type != "Series":
+                    continue
+                results.append(
+                    _SchemaMediaServerPlayItem(
+                        id=item.item_id,
+                        item_id=item.item_id,
+                        title=item.title,
+                        subtitle=str(item.year) if item.year else None,
+                        year=item.year,
+                        type=MediaType.TV.value,
+                        image=self._api.image_url(item.item_id, "primary"),
+                        server_type="vyo",
+                    )
+                )
+                if len(results) >= max(1, limit):
+                    break
+        except _SearchInterrupted:
+            return []
+        return results
+
     def get_tv_episodes(
         self,
         item_id: Optional[str] = None,

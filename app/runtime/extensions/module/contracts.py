@@ -286,6 +286,14 @@ _METHOD_CONTRACTS = {
         required_parameters=("server", "username", "hidden"),
         optional_parameters=("query",),
     ),
+    "mediaserver_search": ModuleMethodContract(
+        family="media-server",
+        input_contract="MediaServerLibrarySearchRequest",
+        result_contract="list[MediaServerPlayItem]",
+        result_shape=ModuleResultShape.LIST,
+        aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
+        required_parameters=("keyword", "types", "limit"),
+    ),
     "mediaserver_playing": ModuleMethodContract(
         family="media-server",
         input_contract="MediaServerRecentRequest",

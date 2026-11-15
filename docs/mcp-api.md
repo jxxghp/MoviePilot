@@ -69,6 +69,49 @@
 和 Authorization 区分缓存变体；切换身份后重新校验访问。其它业务 API
 继续按 `no-store` 读取。
 
+### iOS 媒体流与电视剧选集
+
+`GET /api/v1/mediaserver/search?keyword=...&type=电视剧&type=音乐&limit=40` 按关键词调用
+已启用媒体服务器的搜索接口，返回支持的电视剧与音乐单曲；未指定 `type` 时默认搜索两类。
+每条结果包含服务器配置名 `server`、可播放条目标识 `item_id` 和签名海报地址 `image`，供 App
+在播放前精确读取同一服务器的电视剧季集或单曲清单。
+
+`POST /api/v1/mediaserver/stream-ticket` 仅供已登录的管理用户使用，接收文件管理器选中的
+`FileItem` 和 `media_type=video|audio`。接口再次核验用户的存储目录范围，只接受本地支持的视频、音频或 `.strm` 文件，并返回绑定当前用户、
+六小时后失效且不包含明文路径的 `file.` 条目标识。文件被替换或当前登录用户不匹配时票据失效。
+整理历史播放成功记录时使用目标文件，失败记录使用源文件；不会把媒体库目录或剧集系列作为播放对象。
+
+`GET /api/v1/mediaserver/stream-info?itemid=...` 按已入库媒体服务器条目返回 `content_url`
+、媒体类型、所属媒体服务器 `server` 和同目录同基础文件名的外挂字幕清单；音频条目还会返回表演者、专辑和可选 LRC 歌词地址。
+响应不包含本机文件路径或 STRM 上游凭据。`POST /api/v1/mediaserver/stream-info/music` 接收
+单曲 recording 的来源、ID、标题、艺人和专辑信息，在已启用媒体服务器中执行精确匹配后返回实际单曲流清单；
+专辑和艺人的元数据 ID 不可用作播放条目。
+使用普通 Bearer 登录请求该清单会签发短期资源 Cookie。App 将该 Cookie 限定到当前实例的
+媒体流路径后交给播放器，不把访问令牌放入网页桥或播放 URL。
+
+`GET /api/v1/mediaserver/stream?itemid=...` 需要资源 Cookie，流式读取本地媒体文件或 STRM
+目标，支持单段 HTTP `Range` 请求供播放器拖动进度；无效或多段范围返回 `416`。
+MoviePilot 进程必须能读取媒体服务器报告的文件路径；容器部署时需要映射对应媒体目录。
+STRM 接受一行本地文件路径或 HTTP(S) 地址，不支持播放列表、嵌套 STRM、需要额外请求头的地址或 DRM。
+HTTP(S) 重定向逐跳校验；私有网络目标必须属于已配置的媒体服务器或存储主机。
+若上游不支持 Range，接口以 `501` 拒绝无法可靠跳转的请求；当前接口不转码。
+`stream-info`、媒体资源及季集查询支持可选 `server` 参数；客户端应沿用搜索或音乐匹配返回的服务器，
+避免不同服务器复用条目 ID 时播放错误内容。
+
+`GET /api/v1/mediaserver/stream-subtitle?itemid=...&subtitle_id=...` 使用当前登录身份，
+且只允许读取视频同目录中名称匹配的常见外挂字幕。符号链接不得越出媒体目录；字幕 ID
+只是文件名，不能提交路径。`stream-info`、`stream` 和 `stream-subtitle` 也接受上述短期文件票据，
+并验证当前用户与签发时的文件身份。视频文件内嵌音轨和字幕由 App 播放引擎读取及切换。
+
+`GET /api/v1/mediaserver/stream-lyrics?itemid=...` 仅返回音频同目录且基础文件名完全相同的 `.lrc` 文件；
+路径穿越和目录外符号链接会被拒绝。App 支持 UTF-8 / UTF-16 的带时间戳 LRC，
+同步滚动和高亮，并允许点按歌词跳转。
+
+电视剧详情页先调用 `GET /api/v1/mediaserver/episodes?itemid=<series-item-id>`，返回
+`data` 中按季号和集号映射的已入库单集媒体服务器 ID。季号 `0` 表示特别篇；缺集不会返回。
+客户端必须让用户选择季和集，再以选中集的 ID 请求播放清单，不能把系列或整季 ID 当作视频条目。
+ID 使用查询参数以兼容 Plex `/library/metadata/...` 条目路径。
+
 ### 插件生命周期忙碌与超时
 
 `plugin.runtime.status`（`GET /api/v1/plugin/runtime`）的可选 `active_operation` 返回当前

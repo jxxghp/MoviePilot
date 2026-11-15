@@ -546,6 +546,10 @@ class MusicMediaServerHelper:
             return False
 
         if not is_album:
+            target_album = getattr(mediainfo, "album", None)
+            actual_album = note.get("album")
+            if target_album and actual_album and not cls.same_name(actual_album, target_album):
+                return False
             return True
         try:
             expected_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)
