@@ -16,7 +16,6 @@ from app.schemas.types import (
     EventType,
 )
 
-
 # 批次聚合开关：默认关闭，整理完成后按文件/作业立即发送刮削事件。
 # 设为 1/true/yes/on 时恢复 V3 早期的“整批结束后统一发送”行为。
 _SCRAPE_BATCH_AGGREGATION_ENV = "TRANSFER_SCRAPE_BATCH_AGGREGATION"
