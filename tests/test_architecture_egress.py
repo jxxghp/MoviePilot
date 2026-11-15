@@ -91,7 +91,7 @@ FROZEN_EGRESS_REASON_BY_EDGE = {
 }
 FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     # Redis 客户端局部化后，扫描器保留了完整调用面；传输边界未增加。
-    ("app.adapters.cache.redis", "redis"): "81a91a371296446093a9796421f72fb76ea54a040a3c288c469c6c5b4dfd6c39",
+    ("app.adapters.cache.redis", "redis"): "c39973a0350bec6e946370e2bc465fd19c670206f3f09b85589ff95d9df23413",
     ("app.adapters.external.server", "httpx2"): "e9aeb562213af38c644c457850853bba9f3043c56e710c3adde98adc6a4b9dba",
     ("app.adapters.external.server", "requests"): "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037",
     ("app.adapters.external.plugin.client", "httpx2"): "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d",
