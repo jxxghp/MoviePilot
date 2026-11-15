@@ -181,10 +181,11 @@ def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, s
     assert result["summary"] == {"total": 2 if with_cover else 1, "success": 2 if with_cover else 1, "failed": 0}
 
 
-def test_music_scrape_waits_for_cover_transfer_completion():
+def test_music_scrape_waits_for_cover_transfer_completion(monkeypatch):
     """
     音轨先完成时仍等待封面任务，图片就绪后才发出只含音轨的刮削事件。
     """
+    monkeypatch.setenv("TRANSFER_SCRAPE_BATCH_AGGREGATION", "1")
     chain = make_transfer_chain()
     chain.eventmanager = Mock()
     info = MusicInfo(title="Song", album="Album", artists=["Artist"])

@@ -1697,6 +1697,7 @@ class TestTransferJobManager:
                 ]) == (planned)
         assert ([]) == (list_files_calls)
 
+    @patch.dict("os.environ", {"TRANSFER_SCRAPE_BATCH_AGGREGATION": "1"})
     def test_scrape_event_is_aggregated_by_transfer_batch_across_seasons(self):
         """
         同批次跨季整理应聚合为一次刮削事件。

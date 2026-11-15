@@ -632,7 +632,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     or []
                 ))
             __notify()
-            if not task.transfer_batch_id:
+            if self._should_scrape_immediately(task):
                 self._send_metadata_scrape_event(task, transferinfo)
 
         # 只要该种子的所有任务都已整理完成，则设置种子状态为已整理

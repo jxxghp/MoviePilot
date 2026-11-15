@@ -186,10 +186,11 @@ def test_audio_is_primary_only_in_music_context():
     assert chain._is_primary_media_file(audio, None) is False
 
 
-def test_music_scrape_batch_event_preserves_each_track_context():
+def test_music_scrape_batch_event_preserves_each_track_context(monkeypatch):
     """
     同一专辑目录的批次刮削事件应保留每个目标音轨自己的识别身份。
     """
+    monkeypatch.setenv("TRANSFER_SCRAPE_BATCH_AGGREGATION", "1")
     chain = object.__new__(TransferChain)
     chain._audio_exts = settings.RMT_AUDIOEXT
     chain._media_exts = settings.RMT_MEDIAEXT
