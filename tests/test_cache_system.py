@@ -1004,6 +1004,77 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     assert ("maxmemory-policy", "allkeys-lru") in config_calls
 
 
+def test_async_redis_get_coalesces_failures_and_allows_recovery(monkeypatch):
+    """
+    同 key 并发读取只触发一次 Redis 请求，失败退避且后续成功读取恢复请求。
+    """
+    singleton_key = (AsyncRedisHelper, (), frozenset())
+    monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
+
+    class FakeAsyncClient:
+        """
+        前两次读取模拟连接池耗尽，之后模拟缓存未命中。
+        """
+
+        def __init__(self):
+            self.calls = 0
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def get(self, _key):
+            """
+            记录底层读取次数并释放第一次模拟故障。
+            """
+            self.calls += 1
+            if self.calls <= 2:
+                if self.calls == 1:
+                    self.started.set()
+                    await self.release.wait()
+                raise ConnectionError("No connection available.")
+            return None
+
+        async def set(self, _key, _value, **_kwargs):
+            """
+            模拟恢复后的成功缓存写入。
+            """
+
+    async def run_reads():
+        """
+        并发读取同一缓存键，验证故障冷却及可恢复读取。
+        """
+        helper = AsyncRedisHelper()
+        client = FakeAsyncClient()
+        monkeypatch.setattr(helper, "_connect", AsyncMock(return_value=client))
+        key = "scheduler:mediaserver_sync_test"
+        reads = [
+            asyncio.create_task(helper.get(key, region="progress"))
+            for _ in range(64)
+        ]
+        await client.started.wait()
+        client.release.set()
+
+        assert await asyncio.gather(*reads) == [None] * len(reads)
+        assert client.calls == 1
+        assert await helper.get(key, region="progress") is None
+        assert client.calls == 1
+
+        loop = asyncio.get_running_loop()
+        identity = ("region:progress", key)
+        assert helper._read_failures[loop][identity][1] == 1.0
+        helper._read_failures[loop][identity] = (0.0, 1.0)
+        assert await helper.get(key, region="progress") is None
+        assert client.calls == 2
+        assert helper._read_failures[loop][identity][1] == 2.0
+        await helper.set(key, {"fresh": True}, region="progress")
+        assert identity not in helper._read_failures[loop]
+        assert await helper.get(key, region="progress") is None
+        assert client.calls == 3
+        assert await helper.get(key, region="progress") is None
+        assert client.calls == 4
+
+    asyncio.run(run_reads())
+
+
 def test_async_redis_helper_does_not_close_client_from_foreign_loop(monkeypatch):
     """
     异步 Redis 客户端按事件循环隔离，切换循环时不得跨循环关闭旧连接池。

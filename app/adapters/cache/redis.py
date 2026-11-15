@@ -6,7 +6,9 @@ import asyncio
 import json
 import pickle
 import threading
+import time
 import weakref
+from collections import OrderedDict
 from typing import Any, AsyncGenerator, Generator, Optional, Tuple, Union
 from urllib.parse import quote, unquote
 
@@ -31,6 +33,10 @@ _socket_timeout = 30
 _socket_connect_timeout = 5
 # 空闲连接重新使用前的健康检查间隔，单位为秒
 _health_check_interval = 60
+# 异步缓存读取失败后的单键冷却时间，按失败次数指数增长并限制最大值。
+_async_get_failure_base_seconds = 1.0
+_async_get_failure_max_seconds = 30.0
+_async_get_failure_state_limit = 1024
 
 
 def _mask_cache_key(key: Union[str, bytes], *, encoded: bool = False) -> str:
@@ -421,6 +427,9 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
 class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
     """
     按事件循环管理共享 Redis 连接池，避免不同事件循环复用异步客户端。
+
+    :ivar _read_tasks: 各事件循环中按区域和 key 合并的在途读取
+    :ivar _read_failures: 各事件循环中有界保存的单 key 读取退避状态
     """
     CONFIG_WATCH = {
         "CACHE_BACKEND_TYPE",
@@ -444,7 +453,97 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         self._connect_locks: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, asyncio.Lock
         ] = weakref.WeakKeyDictionary()
+        self._read_tasks: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop,
+            dict[tuple[str, str], asyncio.Task[Optional[Any]]],
+        ] = weakref.WeakKeyDictionary()
+        self._read_failures: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop,
+            OrderedDict[tuple[str, str], tuple[float, float]],
+        ] = weakref.WeakKeyDictionary()
         self._state_lock = threading.RLock()
+
+    def _get_async_read_task(
+        self,
+        key: str,
+        region: Optional[str],
+    ) -> Optional[asyncio.Task[Optional[Any]]]:
+        """
+        合并同一事件循环内相同区域和 key 的读取，并在冷却期内短路请求。
+        """
+        current_loop = asyncio.get_running_loop()
+        identity = (self.__get_region(region), key)
+        with self._state_lock:
+            failures = self._read_failures.setdefault(current_loop, OrderedDict())
+            failure = failures.get(identity)
+            if failure is not None and time.monotonic() < failure[0]:
+                return None
+            tasks = self._read_tasks.setdefault(current_loop, {})
+            task = tasks.get(identity)
+            if task is None:
+                task = current_loop.create_task(
+                    self._read_async(key, region, identity)
+                )
+                tasks[identity] = task
+            return task
+
+    async def _read_async(
+        self,
+        key: str,
+        region: Optional[str],
+        identity: tuple[str, str],
+    ) -> Optional[Any]:
+        """
+        执行一次共享读取，成功时清除退避，失败时记录冷却并只记录一条错误。
+        """
+        try:
+            current_client = await self._connect()
+            client = self.client if self.client is current_client else current_client
+            redis_key = self.__make_redis_key(region, key)
+            value = await client.get(redis_key)
+            result = deserialize(value) if value is not None else None
+            self._clear_async_get_failure(identity)
+            return result
+        except Exception as e:
+            self._record_async_get_failure(identity)
+            logger.error(
+                f"Failed to get key (async): {_mask_cache_key(key)} in region: {region}, error: {e}"
+            )
+            return None
+        finally:
+            current_loop = asyncio.get_running_loop()
+            current_task = asyncio.current_task()
+            with self._state_lock:
+                tasks = self._read_tasks.get(current_loop)
+                if tasks is not None and tasks.get(identity) is current_task:
+                    tasks.pop(identity, None)
+
+    def _record_async_get_failure(self, identity: tuple[str, str]) -> None:
+        """
+        为失败的缓存 key 更新有界指数退避状态。
+        """
+        current_loop = asyncio.get_running_loop()
+        with self._state_lock:
+            failures = self._read_failures.setdefault(current_loop, OrderedDict())
+            previous = failures.get(identity)
+            retry_delay = min(
+                previous[1] * 2 if previous else _async_get_failure_base_seconds,
+                _async_get_failure_max_seconds,
+            )
+            failures[identity] = (time.monotonic() + retry_delay, retry_delay)
+            failures.move_to_end(identity)
+            while len(failures) > _async_get_failure_state_limit:
+                failures.popitem(last=False)
+
+    def _clear_async_get_failure(self, identity: tuple[str, str]) -> None:
+        """
+        缓存读取成功后清除该 key 的退避状态。
+        """
+        current_loop = asyncio.get_running_loop()
+        with self._state_lock:
+            failures = self._read_failures.get(current_loop)
+            if failures is not None:
+                failures.pop(identity, None)
 
     def _get_connect_lock(self, current_loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
         """
@@ -637,6 +736,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             serialized_value = serialize(value)
             kwargs.pop("maxsize", None)
             await client.set(redis_key, serialized_value, ex=ttl, **kwargs)
+            self._clear_async_get_failure((self.__get_region(region), key))
         except Exception as e:
             logger.error(f"Failed to set key (async): {_mask_cache_key(key)} in region: {region}, error: {e}")
 
@@ -653,6 +753,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             client = self.client if self.client is current_client else current_client
             redis_key = self.__make_redis_key(region, key)
             result = await client.exists(redis_key)
+            self._clear_async_get_failure((self.__get_region(region), key))
             return bool(result == 1)
         except Exception as e:
             logger.error(f"Failed to exists key (async): {_mask_cache_key(key)} region: {region}, error: {e}")
@@ -660,23 +761,16 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
 
     async def get(self, key: str, region: Optional[str] = "DEFAULT") -> Optional[Any]:
         """
-        读取并解码缓存值，查询或解码故障时记录日志并返回 None。
+        读取并解码缓存值；同 key 并发读取共享请求，失败期间按指数退避并返回 None。
 
         :param key: 区域内的原始缓存键
         :param region: 缓存区域；为空时使用 DEFAULT
         :return: 解码后的值；键不存在或发生故障时返回 None
         """
-        try:
-            current_client = await self._connect()
-            client = self.client if self.client is current_client else current_client
-            redis_key = self.__make_redis_key(region, key)
-            value = await client.get(redis_key)
-            if value is not None:
-                return deserialize(value)
+        task = self._get_async_read_task(key, region)
+        if task is None:
             return None
-        except Exception as e:
-            logger.error(f"Failed to get key (async): {_mask_cache_key(key)} in region: {region}, error: {e}")
-            return None
+        return await asyncio.shield(task)
 
     async def delete(self, key: str, region: Optional[str] = "DEFAULT") -> None:
         """
@@ -690,6 +784,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             client = self.client if self.client is current_client else current_client
             redis_key = self.__make_redis_key(region, key)
             await client.delete(redis_key)
+            self._clear_async_get_failure((self.__get_region(region), key))
         except Exception as e:
             logger.error(f"Failed to delete key (async): {_mask_cache_key(key)} in region: {region}, error: {e}")
 
