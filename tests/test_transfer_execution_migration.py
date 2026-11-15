@@ -28,6 +28,7 @@ from app.db.adapters.transfer.execution import (
 from app.db.models.transferpending import TransferPending
 
 MIGRATION = "database.versions.e5c7a9b1d3f6_3_0_16"
+MANUAL_GRANT_MIGRATION = "database.versions.b7c1e3d5f9a2_transfer_manual_grant"
 LEGACY_DIAGNOSTIC = "升级检测到既有执行迹象，需人工确认后再处理"
 
 
@@ -781,6 +782,13 @@ def test_migrated_legacy_reviews_are_discoverable_resolvable_and_retryable(
         _insert_legacy_rows(connection, pending)
         migration = _bind_migration(monkeypatch, connection)
         migration.upgrade()
+        current_migration = importlib.import_module(MANUAL_GRANT_MIGRATION)
+        monkeypatch.setattr(
+            current_migration,
+            "op",
+            Operations(MigrationContext.configure(connection)),
+        )
+        current_migration.upgrade()
 
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     repository = TransactionalTransferExecutionRepository(

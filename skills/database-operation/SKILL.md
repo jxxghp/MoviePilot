@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 18
+version: 19
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -344,10 +344,10 @@ and pass the flag only for an explicitly authorized repair.
 - Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `origin`, `registration`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `media_category_id`, `category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `retry_count`, `auto_paused`, `failure_stage`, `recovery_action`, `cleanup_status`, `cleanup_error`, `date`, `files`, `episode_group`
 
 ### `transferpending`
-- Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.
+- Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, manual review state, and one short-lived pending manual identity authorization.
 - Useful queries: Diagnosing restart recovery, expired leases, retry_wait, terminal failures, or manual review.
 - Write boundary: Core durable state machine advanced only by planning, execution, retry, and review services.
-- Columns: `id`, `task_id`, `storage`, `src_path`, `created_at`, `state`, `updated_at`, `last_error`, `input_version`, `planning_input`, `input_fingerprint`, `checkpoint_version`, `checkpoint_payload`, `planned_at`, `lease_owner`, `lease_token`, `lease_expires_at`, `heartbeat_at`, `attempt_count`, `execution_state`, `execution_version`, `execution_payload`, `execution_fingerprint`, `retry_generation`, `retry_count`, `retry_due_at`, `retry_requested_by`, `retry_reason`, `settlement_revision`, `terminal_history_id`, `manual_review_revision`, `reviewed_at`, `reviewed_by`, `review_reason`, `review_decision`
+- Columns: `id`, `task_id`, `storage`, `src_path`, `created_at`, `state`, `updated_at`, `last_error`, `input_version`, `planning_input`, `input_fingerprint`, `checkpoint_version`, `checkpoint_payload`, `planned_at`, `lease_owner`, `lease_token`, `lease_expires_at`, `heartbeat_at`, `attempt_count`, `execution_state`, `execution_version`, `execution_payload`, `execution_fingerprint`, `retry_generation`, `retry_count`, `retry_due_at`, `retry_requested_by`, `retry_reason`, `manual_identity_authorization`, `settlement_revision`, `terminal_history_id`, `manual_review_revision`, `reviewed_at`, `reviewed_by`, `review_reason`, `review_decision`
 
 ### `transfersettlementreceipt`
 - Purpose: Stores immutable terminal settlement receipts with contiguous revisions per transfer task.
