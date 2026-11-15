@@ -6866,6 +6866,27 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "mediaserver_search": {
+      "aggregation": "ordered_list_merge",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerLibrarySearchRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "keyword",
+        "limit",
+        "types"
+      ],
+      "result_contract": "list[MediaServerPlayItem]",
+      "result_shape": "list",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "mediaserver_season_episode_ids": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -8602,10 +8623,10 @@
     }
   },
   "run_module": {
-    "call_count": 275,
+    "call_count": 276,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 223,
+    "method_count": 224,
     "methods": {
       "anilist_credits": [
         {
@@ -9694,6 +9715,13 @@
         }
       ],
       "mediaserver_playing": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_search": [
         {
           "caller": "app.chain.mediaserver",
           "count": 1,

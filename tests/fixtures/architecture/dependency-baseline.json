@@ -43,10 +43,10 @@
       "app.application": 0,
       "app.chain": 0
     },
-    "count": 51,
+    "count": 52,
     "counts_by_kind": {
       "network_sdk": 22,
-      "protocol_operation": 7,
+      "protocol_operation": 8,
       "raw_transport": 22
     },
     "entries": [
@@ -125,6 +125,18 @@
         "source": "app.adapters.external.server",
         "target": "requests",
         "uses": []
+      },
+      {
+        "bindings": [
+          "import:socket as socket"
+        ],
+        "fingerprint": "7d2dacd96e8845f7d346d6afe0af16e80db9020f60c65643632011a928627537",
+        "kind": "protocol_operation",
+        "source": "app.adapters.mediastream",
+        "target": "socket.getaddrinfo",
+        "uses": [
+          "_validate_stream_url|call:socket.getaddrinfo"
+        ]
       },
       {
         "bindings": [
@@ -657,7 +669,7 @@
           "from:plexapi.video.Season as Season",
           "from:plexapi.video.Show as Show"
         ],
-        "fingerprint": "6109de36f963b5c6193ed60941a88856cbee9c37303dedf13da3a3be94478543",
+        "fingerprint": "f56b4be76061f6041f381acc5db5577c86de42bf50ada7dfa4b79d2ddb2ce0be",
         "kind": "network_sdk",
         "source": "app.modules.plex.plex",
         "target": "plexapi",
@@ -687,7 +699,9 @@
           "Plex.reconnect|call:server.PlexServer",
           "Plex.refresh_library_by_items|call:library.update",
           "Plex.refresh_library_by_items|call:query",
-          "Plex.refresh_root_library|call:library.update"
+          "Plex.refresh_root_library|call:library.update",
+          "Plex.search_library_items|call:library.search",
+          "Plex.search_library_items|call:library.sections"
         ]
       },
       {
@@ -963,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10169,
-  "edge_sha256": "cc3ba1dd8781800999f526a56f051b8241bca9d4f0284e1deca7686464fc2bd7",
+  "edge_count": 10183,
+  "edge_sha256": "bbe1d8da1999ab7b1188d3ace6a6eb115999a182ff847078b13a914783a8e89e",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1063,6 +1077,13 @@
     "app.adapters.external.server -> app.schemas",
     "app.adapters.external.server -> app.schemas.media",
     "app.adapters.external.server -> app.schemas.types",
+    "app.adapters.mediastream -> app.adapters",
+    "app.adapters.mediastream -> app.adapters.network",
+    "app.adapters.mediastream -> app.adapters.network.http",
+    "app.adapters.mediastream -> app.runtime",
+    "app.adapters.mediastream -> app.runtime.settings",
+    "app.adapters.mediastream -> app.schemas",
+    "app.adapters.mediastream -> app.schemas.mediaserver",
     "app.adapters.network.browser -> app.adapters",
     "app.adapters.network.browser -> app.adapters.network",
     "app.adapters.network.browser -> app.adapters.network.http",
@@ -2736,16 +2757,22 @@
     "app.api.endpoints.media -> app.schemas.token",
     "app.api.endpoints.media -> app.schemas.types",
     "app.api.endpoints.mediaserver -> app.adapters",
+    "app.api.endpoints.mediaserver -> app.adapters.mediastream",
     "app.api.endpoints.mediaserver -> app.adapters.web",
     "app.api.endpoints.mediaserver -> app.adapters.web.security",
     "app.api.endpoints.mediaserver -> app.adapters.web.security.access",
     "app.api.endpoints.mediaserver -> app.api",
     "app.api.endpoints.mediaserver -> app.api.dependencies",
+    "app.api.endpoints.mediaserver -> app.api.dependencies.auth",
     "app.api.endpoints.mediaserver -> app.api.dependencies.history",
+    "app.api.endpoints.mediaserver -> app.api.endpoints",
+    "app.api.endpoints.mediaserver -> app.api.endpoints.storage",
+    "app.api.endpoints.mediaserver -> app.api.principal",
     "app.api.endpoints.mediaserver -> app.api.response",
     "app.api.endpoints.mediaserver -> app.application",
     "app.api.endpoints.mediaserver -> app.application.configuration",
     "app.api.endpoints.mediaserver -> app.application.mediaserver",
+    "app.api.endpoints.mediaserver -> app.application.storage",
     "app.api.endpoints.mediaserver -> app.chain",
     "app.api.endpoints.mediaserver -> app.chain.download",
     "app.api.endpoints.mediaserver -> app.chain.mediaserver",
@@ -9812,6 +9839,7 @@
     "app.schemas.media -> app.schemas.types",
     "app.schemas.mediaserver -> app.schemas",
     "app.schemas.mediaserver -> app.schemas.common",
+    "app.schemas.mediaserver -> app.schemas.file",
     "app.schemas.mediaserver -> app.schemas.media",
     "app.schemas.mediaserver -> app.schemas.types",
     "app.schemas.message -> app.foundation",
@@ -11136,7 +11164,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1166,
+  "module_count": 1167,
   "modules": [
     "app",
     "app.adapters",
@@ -11153,6 +11181,7 @@
     "app.adapters.external.plugin.client",
     "app.adapters.external.server",
     "app.adapters.external.wechat",
+    "app.adapters.mediastream",
     "app.adapters.network",
     "app.adapters.network.browser",
     "app.adapters.network.cloudflare",

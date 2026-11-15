@@ -14,7 +14,6 @@ from urllib.parse import quote, urljoin, urlsplit
 
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, Request, status
-from fastapi.responses import Response as HttpResponse
 from fastapi.responses import StreamingResponse
 
 from app.adapters.network.http import RequestUtils
@@ -617,14 +616,14 @@ def _remote_stream_response(
     url: str,
     range_header: Optional[str],
     configured_hosts: set[str],
-) -> StreamingResponse | HttpResponse:
+) -> StreamingResponse:
     """
     代理 STRM 上游媒体流并保留其真实的 Range 响应。
 
     :param url: 已解析的上游媒体地址
     :param range_header: 客户端 Range 请求头
     :param configured_hosts: 管理员明确配置的媒体服务器与存储主机名
-    :return: 流式响应或上游的 416 范围错误
+    :return: 流式响应
     :raises HTTPException: 上游错误或未实现所请求的 Range 时
     """
     _validate_range_syntax(range_header)
@@ -633,7 +632,11 @@ def _remote_stream_response(
         headers = {key: upstream.headers[key] for key in ("Content-Range", "Accept-Ranges") if key in upstream.headers}
         context.__exit__(None, None, None)
         client.close()
-        return HttpResponse(status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE, headers=headers)
+        raise HTTPException(
+            status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
+            detail="请求的字节范围无效",
+            headers=headers,
+        )
     if upstream.status_code not in {status.HTTP_200_OK, status.HTTP_206_PARTIAL_CONTENT}:
         context.__exit__(None, None, None)
         client.close()

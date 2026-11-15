@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import Depends, HTTPException, Query, Request, status
-from fastapi.responses import Response as HttpResponse
 from fastapi.responses import StreamingResponse
 
 from app.adapters.mediastream import (
@@ -363,14 +362,17 @@ def music_stream_info(
     name="stream_item_content",
     response_class=StreamingResponse,
     response_model=None,
-    responses={206: {"description": "部分媒体内容"}, 416: {"description": "字节范围无效"}},
+    responses={
+        206: {"description": "部分媒体内容"},
+        416: {"model": _SchemaResponse[None], "description": "字节范围无效"},
+    },
 )
 def stream_item_content(
     itemid: str,
     request: Request,
     server: Optional[str] = None,
     userinfo: _SchemaTokenPayload = Depends(verify_resource_token),
-) -> StreamingResponse | HttpResponse:
+) -> StreamingResponse:
     """
     按已入库媒体条目提供支持 HTTP Range 的本地或 STRM 内容流。
 
@@ -395,7 +397,10 @@ def stream_item_content(
     name="stream_item_subtitle",
     response_class=StreamingResponse,
     response_model=None,
-    responses={206: {"description": "部分字幕内容"}, 416: {"description": "字节范围无效"}},
+    responses={
+        206: {"description": "部分字幕内容"},
+        416: {"model": _SchemaResponse[None], "description": "字节范围无效"},
+    },
 )
 def stream_item_subtitle(
     itemid: str,

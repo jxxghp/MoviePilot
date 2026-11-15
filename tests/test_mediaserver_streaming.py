@@ -498,6 +498,30 @@ def test_remote_stream_preserves_range_response(monkeypatch: pytest.MonkeyPatch)
     client.close.assert_called_once()
 
 
+def test_remote_stream_maps_upstream_range_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    上游 416 应转换为本地化的标准错误，同时保留播放器所需的范围头。
+    """
+    upstream = Mock(
+        status_code=416,
+        headers={"Content-Range": "bytes */20", "Accept-Ranges": "bytes"},
+    )
+    context = Mock()
+    context.__enter__ = Mock(return_value=upstream)
+    context.__exit__ = Mock(return_value=False)
+    client = Mock(get_stream=Mock(return_value=context))
+    monkeypatch.setattr(mediastream, "RequestUtils", lambda **_kwargs: client)
+    monkeypatch.setattr(mediastream, "_validate_stream_url", lambda url, **_kwargs: url)
+
+    with pytest.raises(HTTPException) as error:
+        mediastream._remote_stream_response("https://media.example/video.mp4", "bytes=100-", set())
+
+    assert error.value.status_code == 416
+    assert error.value.headers == {"Content-Range": "bytes */20", "Accept-Ranges": "bytes"}
+    context.__exit__.assert_called_once()
+    client.close.assert_called_once()
+
+
 def test_strm_connection_failure_closes_transport(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     上游打开失败也必须释放当前请求创建的传输，且不回显带凭据的上游地址。
