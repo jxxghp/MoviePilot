@@ -1,4 +1,10 @@
 {
+  "app/adapters/cache/redis.py:asyncio.AbstractEventLoop.create_task": {
+    "owners": {
+      "AsyncRedisHelper._get_async_read_task": 1
+    },
+    "target": "asyncio.AbstractEventLoop.create_task"
+  },
   "app/adapters/external/plugin/client.py:asyncio.to_thread": {
     "owners": {
       "PluginMarketTransport.async_get_plugin_system_version_check_message": 1

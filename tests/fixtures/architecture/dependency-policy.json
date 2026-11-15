@@ -100,7 +100,7 @@
         "owner": "$source",
         "reason": "精确 Adapter source 持有其 Redis、浏览器、HTTP 或 DNS transport；上层只能消费 Port 或统一 Facade。",
         "facts": [
-          {"source": "app.adapters.cache.redis", "target": "redis", "kind": "network_sdk", "fingerprint": "81a91a371296446093a9796421f72fb76ea54a040a3c288c469c6c5b4dfd6c39"},
+          {"source": "app.adapters.cache.redis", "target": "redis", "kind": "network_sdk", "fingerprint": "c39973a0350bec6e946370e2bc465fd19c670206f3f09b85589ff95d9df23413"},
           {"source": "app.adapters.network.browser", "target": "cloakbrowser", "kind": "network_sdk", "fingerprint": "42efc4434e0c8c55b6527356bc1f712efd6905fcb8c80b856a893745377f1f81"},
           {"source": "app.adapters.network.doh", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71"},
           {"source": "app.adapters.network.doh", "target": "urllib.request", "kind": "raw_transport", "fingerprint": "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b"},
