@@ -28,6 +28,7 @@ from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.mediaserver import MediaServerQueryService
 from app.application.module import get_module_manager
+from app.application.server.mapping import get_media_mapping_port
 from app.application.subscription.contract import SubscriptionIdentity
 from app.application.subscription.query import SubscriptionQueryService
 from app.chain.media import MediaChain
@@ -49,12 +50,29 @@ from app.schemas.context import MediaSearchResults as _SchemaMediaSearchResults
 from app.schemas.context import MediaSeason as _SchemaMediaSeason
 from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
 from app.schemas.file import FileItem as _SchemaFileItem
+from app.schemas.mapping import MediaMapping, MediaMappingQuery
 from app.schemas.media import MediaStatusQuery, MediaStatusResult, normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicEntityType
 
 router = ResponseAPIRouter()
+
+
+@router.get("/mapping", summary="查询已有的 TMDB 共享关系", response_model=MediaMapping | None)
+async def media_mapping(
+    query: Annotated[MediaMappingQuery, Query()],
+    _: ApiPrincipal = Depends(get_current_active_user_async),
+) -> MediaMapping | None:
+    """
+    只查询缓存或中心已有关系，不进行名称匹配，不阻塞媒体详情请求。
+
+    :param query: 非 TMDB 原来源身份和可选影视类型、季号
+    :param _: 已认证的当前用户
+    :return: 已知的 TMDB 关系；未命中、未启用或服务故障时为 None
+    """
+    port = get_media_mapping_port()
+    return await port.async_query(query) if port is not None else None
 
 
 @router.post("/status", summary="批量查询本地入库与订阅状态", response_model=list[MediaStatusResult])

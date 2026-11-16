@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 75
+version: 76
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -162,6 +162,12 @@ not atomic; cross-share hard links are unsupported. Update saved directory and
 downloader mappings when switching path modes.
 
 ## Overall Workflow
+
+Conversions from other video sources to TMDB reuse cached community mappings
+before matching names and share successful results. Browsing only looks up known
+mappings to add a TheMovieDb link and preserves the original source identity.
+`GET /api/v1/media/mapping` is a frontend helper, without an Agent operation;
+continue using `media.detail` and do not construct extra HTTP requests.
 
 1. Select the exact `operation_id` from the category index below.
 2. Call `read_skill` again with `name="moviepilot-api"` and
