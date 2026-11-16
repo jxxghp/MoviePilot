@@ -2,6 +2,22 @@
 
 本文面向通过 MCP 调用 MoviePilot 的外部 Agent 和工具开发者。接入后，客户端通过工具目录发现能力，按 JSON Schema 构造参数，并根据业务结果判断操作是否完成。
 
+### 已有的跨来源 TMDB 对应关系
+
+登录用户可通过 `GET /api/v1/media/mapping` 查询非 TMDB 影视来源已有的对应关系，
+参数为 `media_source`、`media_id` 和可选的 `type=movie|tv`、`season`。接口返回统一响应，
+`data` 为关系或 `null`；只查本地缓存及 Server，不现场按名称匹配，也不增加 Agent operation。
+关系包含 `tmdb_id`、`tmdb_type` 和 `tmdb_season`，剧集外链使用 TMDB 季号而非原来源季号。
+
+转换流程仅对“非 TMDB → TMDB”接入此查询；未命中时沿用原转换，成功后向 Server 后台共享。
+沿用 `MEDIA_RECOGNIZE_SHARE` 开关，服务地址为 `MP_SERVER_HOST + /recognize/mapping`，
+独立于种子名识别接口 `MEDIA_RECOGNIZE_SHARE_API`。中心查询总时限 800 毫秒，上报 500 毫秒；
+成功关系缓存一小时、未命中十分钟，故障冷却三十秒，并合并并发查询、限制在途请求数。
+详情页独立异步补充 TheMovieDb 外链，查询失败时保留原详情及操作。
+
+Server 使用独立 SQL 表长期保存关系，不属于识别缓存清理范围。公共上报只补缺，
+管理后台可纠正目标或撤销错误关系；撤销保留记录，防止旧实例覆盖。实例正缓存最多一小时后更新。
+
 ### 外部整理历史登记
 
 管理员可通过 `transfer.history.register`（`POST /api/v1/history/transfer`）登记已经完成的
