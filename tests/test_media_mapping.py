@@ -204,3 +204,38 @@ def test_browsing_endpoint_only_reads_existing_mapping():
     configure_media_mapping_port(port)
     assert asyncio.run(endpoint.media_mapping(query())) == relation()
     port.share.assert_not_called()
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_unavailable_shared_tmdb_detail_falls_back_to_original_conversion(monkeypatch, asynchronous):
+    """
+    共享目标无法读取时仍执行原转换，并共享本次有效匹配，避免旧关系阻断订阅。
+    """
+    from app.chain.media import projection
+
+    port = SimpleNamespace(query=Mock(return_value=relation()), async_query=AsyncMock(return_value=relation()), share=Mock())
+    configure_media_mapping_port(port)
+    fresh = {"id": 789, "media_type": "tv", "season": 2}
+    match = AsyncMock(return_value=fresh) if asynchronous else Mock(return_value=fresh)
+    monkeypatch.setattr(projection, "_async_convert_builtin_projection" if asynchronous else "_convert_builtin_projection", match)
+    owner = SimpleNamespace(tmdb_info=Mock(return_value=None), async_tmdb_info=AsyncMock(return_value=None))
+    args = dict(target_source=MediaSource.TMDB, media_source=MediaSource.AniList, media_id="123", mtype=MediaType.TV)
+    result = asyncio.run(MediaChain.async_convert_media_identity(owner, **args)) if asynchronous else MediaChain.convert_media_identity(owner, **args)
+    assert result == fresh
+    assert port.share.call_args.args[0] == relation(tmdb_id=789, tmdb_season=2)
+
+
+@pytest.mark.parametrize("result", [{"id": 0, "media_type": "tv"}, {"id": 789, "media_type": "music"}, {"id": 789}])
+def test_incomplete_plugin_result_is_returned_without_polluting_shared_relations(monkeypatch, result):
+    """
+    旧插件不提供完整 TMDB 类型或有效 ID 时保持兼容结果，但禁止写入公共关系。
+    """
+    from app.chain.media import projection
+
+    port = SimpleNamespace(query=Mock(return_value=None), share=Mock())
+    configure_media_mapping_port(port)
+    monkeypatch.setattr(projection, "_convert_builtin_projection", Mock(return_value=result))
+    actual = MediaChain.convert_media_identity(SimpleNamespace(), target_source=MediaSource.TMDB,
+                                               media_source=MediaSource.AniList, media_id="123")
+    assert actual == result
+    port.share.assert_not_called()
