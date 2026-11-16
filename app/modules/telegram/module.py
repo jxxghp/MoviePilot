@@ -186,7 +186,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     NotificationChannel.Telegram,
                     client_config.config,
                     user_id,
-                ),
+                 source=client_config.name),
                 text=callback_text,
                 is_callback=True,
                 callback_data=callback_data,
@@ -250,6 +250,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             )
 
             user_list = (client_config.config or {}).get("TELEGRAM_USERS")
+            from app.application.security.authorization import get_channel_authorization
+
+            if get_channel_authorization() is not None:
+                user_list = None
 
             if cleaned_text and cleaned_text.startswith("/"):
                 if self._should_reject_admin_command(client_config.config, user_id):
@@ -274,7 +278,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     NotificationChannel.Telegram,
                     client_config.config,
                     user_id,
-                ),
+                 source=client_config.name),
                 text=cleaned_text,
                 message_id=message_id,
                 chat_id=str(chat_id) if chat_id else None,

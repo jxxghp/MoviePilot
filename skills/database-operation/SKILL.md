@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 19
+version: 20
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -178,19 +178,31 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.
 - Useful queries: Inspecting task ownership, enablement, cron/run_at settings, and the latest result.
 - Write boundary: Create, update, enable, disable, or delete tasks through the Agent task API.
-- Columns: `id`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `enabled`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `session_id`, `channel`, `source`, `original_chat_id`, `last_status`, `last_run_at`, `last_result`, `last_run_id`, `run_count`, `created_at`, `updated_at`
+- Columns: `id`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `enabled`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `execution_authorization_id`, `session_id`, `channel`, `source`, `original_chat_id`, `last_status`, `last_run_at`, `last_result`, `last_run_id`, `run_count`, `created_at`, `updated_at`
 
 ### `agenttaskrun`
 - Purpose: Stores the input snapshot, status, timestamps, and result of each Agent task execution.
 - Useful queries: Auditing one run or correlating a failure with task_id, run_id, and trigger source.
 - Write boundary: Execution evidence owned by the task runner; never fabricate rows or edit run status.
-- Columns: `id`, `run_id`, `task_id`, `trigger_source`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `session_id`, `channel`, `message_source`, `original_chat_id`, `status`, `started_at`, `finished_at`, `result`
+- Columns: `id`, `run_id`, `task_id`, `trigger_source`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `execution_authorization_id`, `session_id`, `channel`, `message_source`, `original_chat_id`, `status`, `started_at`, `finished_at`, `result`
 
 ### `alembic_version`
 - Purpose: Records the Alembic migration revision currently applied to the database.
 - Useful queries: Diagnosing startup migration failures or a database/code revision mismatch.
 - Write boundary: Never edit it directly; advance or roll back revisions only through Alembic.
 - Columns: `version_num`
+
+### `channelauthorization`
+- Purpose: Stores per-instance channel authorization, approval state, scopes, and immutable business ownership.
+- Useful queries: Inspecting requests, member capabilities, suspension, and legacy whitelist migration.
+- Write boundary: Owned by channel authorization; never bypass approval, account linking, or live revocation with direct writes.
+- Columns: `id`, `notification_id`, `channel`, `sender_id`, `display_name`, `status`, `role`, `scopes`, `user_id`, `user_identity`, `linked_user_id`, `aliases`, `created_at`, `updated_at`, `origin`, `reviewed_by`
+
+### `channelbinding`
+- Purpose: Stores web-initiated one-time channel binding digests and their five-minute expiry.
+- Useful queries: Checking expiry or consumption without reading or reconstructing the original binding code.
+- Write boundary: Consumed atomically by two-sided identity verification; never extend expiry, forge digests, or replace owners directly.
+- Columns: `id`, `user_id`, `user_identity`, `expires_at`
 
 ### `downloadfailure`
 - Purpose: Stores stable fingerprints, media/torrent context, errors, and retry scheduling for failed downloads.
@@ -359,7 +371,7 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores user accounts, password hashes, administrator state, OTP, permissions, and preferences.
 - Useful queries: Authorized diagnostics of account state, permissions, or authentication configuration.
 - Write boundary: Security-sensitive; manage through user, permission, password, and two-factor APIs.
-- Columns: `id`, `name`, `email`, `hashed_password`, `is_active`, `is_superuser`, `avatar`, `is_otp`, `otp_secret`, `permissions`, `settings`, `notification_identity`
+- Columns: `id`, `name`, `account_type`, `email`, `hashed_password`, `is_active`, `is_superuser`, `avatar`, `is_otp`, `otp_secret`, `permissions`, `settings`, `notification_identity`
 
 ### `userconfig`
 - Purpose: Stores per-user JSON configuration isolated by username and key.

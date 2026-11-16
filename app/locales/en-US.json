@@ -650,7 +650,12 @@
     "登记路径必须为不含父目录跳转的绝对路径": "Registration paths must be absolute and cannot contain parent-directory traversal.",
     "登记字段不能包含控制字符": "Registration fields cannot contain control characters.",
     "源文件与目标文件不能是同一地址": "The source and destination cannot have the same address.",
-    "电影登记不能包含季集信息": "Movie registration cannot include season or episode information."
+    "电影登记不能包含季集信息": "Movie registration cannot include season or episode information.",
+    "请登录 MoviePilot 网页账号生成关联码": "Sign in to a MoviePilot web account to generate a linking code",
+    "渠道授权服务尚未就绪": "The channel authorization service is not ready",
+    "请使用 MoviePilot 系统管理员账号管理渠道授权": "Use a MoviePilot system administrator account to manage channel authorization",
+    "目标渠道不存在或尚未启用": "The target channel does not exist or is disabled",
+    "渠道授权服务不可用": "The channel authorization service is unavailable"
   },
   "message_patterns": [
     {

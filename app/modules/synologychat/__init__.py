@@ -181,7 +181,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                                            NotificationChannel.SynologyChat,
                                            client_config.config,
                                            user_id,
-                                       ), text=text or "",
+                                        source=client_config.name), text=text or "",
                                        images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.debug(f"解析SynologyChat消息失败：{str(err)}")

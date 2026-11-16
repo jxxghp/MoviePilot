@@ -121,6 +121,7 @@ class _MessageTask:
     :param scheduled_run_id: 定时任务持久化运行标识；普通消息任务为 None
     :param execution_user_id: 宿主已验证的计划任务执行账号；普通会话为 None
     :param execution_user_identity: 执行账号的不可变身份；普通会话为 None
+    :param authorization_id: 定时任务冻结的渠道授权身份，交互入口按当前渠道解析
     :param steering_status_callback: 报告运行中补充消息处理状态的回调
     :ivar steering_inbox: 宿主执行时绑定的补充消息队列，初始为 None，不接受构造输入
     :ivar terminal_scope: 宿主装配的终端所有权作用域；定时任务在初始化时绑定
@@ -154,6 +155,7 @@ class _MessageTask:
     scheduled_run_id: Optional[str] = None
     execution_user_id: Optional[int] = None
     execution_user_identity: Optional[str] = None
+    authorization_id: Optional[str] = None
     steering_status_callback: Optional[SteeringStatusCallback] = None
     steering_inbox: Optional[SteeringInbox] = field(default=None, init=False, repr=False)
     terminal_scope: Optional[TerminalScope] = field(default=None, init=False)
@@ -374,6 +376,7 @@ class AgentSessionOwner:
             scheduled_run_id: Optional[str] = None,
             execution_user_id: Optional[int] = None,
             execution_user_identity: Optional[str] = None,
+            authorization_id: Optional[str] = None,
     ) -> str:
         """
         处理用户消息：同渠道的运行中补充输入进入当前上下文，其余消息按会话排队。
@@ -381,6 +384,7 @@ class AgentSessionOwner:
 
         :param execution_user_id: 宿主已验证的计划任务执行账号，不由模型或渠道输入指定
         :param execution_user_identity: 对应账号的不可变身份，避免删除后的用户主键复用
+        :param authorization_id: 本轮定时执行绑定的渠道授权，不接受模型参数覆盖
         """
         completion_future: Optional[asyncio.Future[str]] = (
             asyncio.get_running_loop().create_future() if wait_for_completion else None
@@ -411,6 +415,7 @@ class AgentSessionOwner:
             scheduled_run_id=scheduled_run_id,
             execution_user_id=execution_user_id,
             execution_user_identity=execution_user_identity,
+            authorization_id=authorization_id,
         )
         async with self._lifecycle_lock:
             if not self._accepting_tasks:
@@ -817,6 +822,7 @@ class AgentSessionOwner:
         # 每轮都覆盖执行主体，防止计划任务与交互消息复用会话时串用权限。
         agent.execution_user_id = task.execution_user_id
         agent.execution_user_identity = task.execution_user_identity
+        agent.authorization_id = task.authorization_id
         task.agent = agent
         inbox = self._session_steering_inboxes.get(session_id)
         if inbox is None:

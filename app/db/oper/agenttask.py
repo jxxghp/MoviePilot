@@ -160,6 +160,7 @@ class AgentTaskOper(DbOper):
                 "last_result",
                 "execution_user_id",
                 "execution_user_identity",
+                "execution_authorization_id",
                 "username",
             }
         }

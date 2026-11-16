@@ -169,13 +169,16 @@ class DownloadHistory(Base):
 
     @classmethod
     async def async_list_by_page(
-        cls, db: AsyncSession, page: int = 1, count: int = 30
+        cls, db: AsyncSession, page: int = 1, count: int = 30, *, username: str | None = None,
     ) -> list[Self]:
         """
         异步按时间和主键倒序分页读取下载历史。
         """
+        statement = select(cls)
+        if username is not None:
+            statement = statement.where(cls.username == username)
         result = await db.execute(
-            select(cls)
+            statement
             .order_by(cls.date.desc(), cls.id.desc())
             .offset((page - 1) * count)
             .limit(count)
@@ -201,11 +204,14 @@ class DownloadHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    async def async_count(cls, db: AsyncSession) -> int:
+    async def async_count(cls, db: AsyncSession, *, username: str | None = None) -> int:
         """
         异步统计下载历史总数，空表返回零。
         """
-        result = await db.execute(select(func.count(cls.id)))
+        statement = select(func.count(cls.id))
+        if username is not None:
+            statement = statement.where(cls.username == username)
+        result = await db.execute(statement)
         count: int = result.scalar()
         return count
 

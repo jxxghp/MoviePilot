@@ -67,6 +67,8 @@ class AgentTask(Base):
     execution_user_id: Mapped[Optional[int]] = mapped_column(Integer)
     # 防止 SQLite 自增主键在删除账号后被另一个账号复用
     execution_user_identity: Mapped[Optional[str]] = mapped_column(String(32))
+    # 渠道授权主体随定义固定，后台运行不得脱离该授权提升权限。
+    execution_authorization_id: Mapped[Optional[str]] = mapped_column(String(32))
     session_id: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[Optional[str]] = mapped_column(String)
     source: Mapped[Optional[str]] = mapped_column(String)

@@ -228,6 +228,12 @@
     },
     "target": "asyncio.create_task"
   },
+  "app/api/dependencies/auth.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "get_current_user_async": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
   "app/api/endpoints/anthropic.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
       "_check_auth": 1
@@ -241,11 +247,17 @@
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },
+  "app/api/endpoints/history.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "download_history": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
   "app/api/endpoints/history.py:asyncio.to_thread": {
     "owners": {
+      "_grant_manual_identity_authorization": 1,
       "ai_redo_transfer_history": 1,
-      "batch_ai_redo_transfer_history": 1,
-      "_grant_manual_identity_authorization": 1
+      "batch_ai_redo_transfer_history": 1
     },
     "target": "asyncio.to_thread"
   },

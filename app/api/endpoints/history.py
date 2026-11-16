@@ -279,6 +279,19 @@ async def download_history(
     """
     page = page if page is not None else 1
     count = count if count is not None else 30
+    if isinstance(_, _SchemaTokenPayload) and _.agent_authorization_id:
+        from app.application.security.authorization import get_channel_authorization
+        from app.runtime.execution import run_in_threadpool
+
+        authorization = get_channel_authorization()
+        if authorization is None:
+            raise HTTPException(status_code=503, detail="渠道授权服务不可用")
+        user = await run_in_threadpool(authorization.authorize_operation, _.agent_authorization_id, _.agent_operation or "")
+        username = None if user.is_superuser else user.name
+        results = await query.list_download(page=page, count=count, username=username)
+        if response is not None:
+            response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download(username=username))
+        return results
     results = await query.list_download(page=page, count=count)
     if response is not None:
         response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download())

@@ -186,7 +186,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     username=username,
                     is_channel_admin=matches_channel_admin(
                         NotificationChannel.Slack, client_config.config, userid
-                    ),
+                    , source=client_config.name),
                     text=text,
                     is_callback=True,
                     callback_data=callback_data,
@@ -243,7 +243,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 username=username,
                 is_channel_admin=matches_channel_admin(
                     NotificationChannel.Slack, client_config.config, userid
-                ),
+                , source=client_config.name),
                 text=text,
                 message_id=message_id,
                 chat_id=chat_id,

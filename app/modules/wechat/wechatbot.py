@@ -670,6 +670,7 @@ class WeChatBot:
                 "WECHAT_MODE": "bot",
             },
             sender,
+            source=self._config_name,
         )
         if text and text.startswith("/") and self._admins and not is_channel_admin:
             self.send_msg(title="只有管理员才有权限执行此命令", userid=sender)

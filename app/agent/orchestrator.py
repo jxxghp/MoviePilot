@@ -86,6 +86,7 @@ from app.agent.terminal.ownership import (
     close_terminal_scope,
     current_terminal_scope,
 )
+from app.agent.tools.base import run_agent_blocking
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import create_external_mcp_tools
@@ -510,8 +511,15 @@ class MoviePilotAgent:
         )
         self._steering_inbox = SteeringInbox(session_id, str(user_id or ""))
         self._scheduled_terminal_scopes: set[TerminalScope] = set()
-        learning_dir = agent_runtime_manager.get_user_learning_dir(user_id)
-        user_memory_dir = agent_runtime_manager.get_user_memory_dir(user_id)
+        self._memory_owner_id = user_id
+        if channel and source and channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}:
+            from app.application.security.authorization import get_channel_authorization
+
+            authorization = get_channel_authorization()
+            if authorization is not None:
+                self._memory_owner_id = authorization.memory_owner(channel, source, str(user_id or ""))
+        learning_dir = agent_runtime_manager.get_user_learning_dir(self._memory_owner_id)
+        user_memory_dir = agent_runtime_manager.get_user_memory_dir(self._memory_owner_id)
         self._learning = LearningSession(
             session_id=session_id, skill_root=learning_dir / 'skills', memory_root=user_memory_dir,
             public_roots=(agent_runtime_manager.skills_dir,), on_usage=self._record_review_usage,
@@ -523,6 +531,8 @@ class MoviePilotAgent:
         self.execution_user_id: int | None = None
         self.execution_user_identity: str | None = None
         self.is_channel_admin = is_channel_admin
+        # 定时任务的渠道授权随任务冻结；交互入口每轮按渠道实例重新解析。
+        self.authorization_id: str | None = None
         self.original_message_id = original_message_id
         self.original_chat_id = original_chat_id
         self.reply_mode = replay_mode
@@ -1081,6 +1091,24 @@ class MoviePilotAgent:
 
         自主任务使用已固定账号的实时权限，内部后台维护仍保留宿主管理员语义。
         """
+        if self.authorization_id:
+            from app.application.security.authorization import get_channel_authorization
+
+            authorization = get_channel_authorization()
+            if authorization is None:
+                return False
+            user = await run_agent_blocking("db", authorization.principal, self.authorization_id)
+            return bool(user.is_superuser)
+        if self.channel and self.source and self.channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}:
+            from app.application.security.authorization import get_channel_authorization
+
+            authorization = get_channel_authorization()
+            if authorization is not None:
+                try:
+                    user = await run_agent_blocking("db", authorization.resolve, self.channel, self.source, str(self.user_id or ""))
+                    return bool(user.is_superuser)
+                except PermissionError:
+                    return False
         if self.execution_user_id is not None:
             execution_user = await require_execution_user(
                 self._data.users if self._data is not None else None, self.execution_user_id,
@@ -1102,16 +1130,26 @@ class MoviePilotAgent:
         try:
             if self._data is None:
                 return False
-            user = await self._data.users.async_get_by_name(self.username)
+            local_user = await self._data.users.async_get_by_name(self.username)
         except Exception as e:
             logger.error(f"检查 Agent 用户管理员身份失败: {e}")
             return False
-        return bool(user and user.is_superuser)
+        return bool(local_user and local_user.is_superuser)
 
     async def _build_tool_context(self, should_dispatch_reply: bool) -> Dict[str, object]:
         """
         构造本轮工具共享上下文。
         """
+        authorization_id = self.authorization_id
+        authorization_required = bool(authorization_id)
+        if not authorization_id and self.channel and self.source and self.channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}:
+            from app.application.security.authorization import get_channel_authorization
+
+            authorization = get_channel_authorization()
+            if authorization is not None:
+                authorization_required = True
+                member = await run_agent_blocking("db", authorization.find, self.channel, self.source, str(self.user_id or ""))
+                authorization_id = member.id if member and member.status == "approved" else None
         return {
             "user_reply_sent": False,
             "reply_mode": None,
@@ -1119,6 +1157,9 @@ class MoviePilotAgent:
             "is_admin": await self._is_system_admin_context(),
             "execution_user_id": self.execution_user_id,
             "execution_user_identity": self.execution_user_identity,
+            "authorization_id": authorization_id,
+            "channel_authorization_required": authorization_required,
+            "memory_owner_id": self._memory_owner_id,
             "execution_identity_error": {},
             "require_secret_confirmation": True,
             "secret_confirmation_handler": self._register_secret_confirmation,
@@ -1916,6 +1957,9 @@ class MoviePilotAgent:
                 "is_admin": bool(self._tool_context.get("is_admin")),
                 "execution_user_id": self.execution_user_id,
                 "execution_user_identity": self.execution_user_identity,
+                "authorization_id": self._tool_context.get("authorization_id"),
+                "channel_authorization_required": self._tool_context.get("channel_authorization_required", False),
+                "memory_owner_id": self._memory_owner_id,
                 "execution_identity_error": self._tool_context.get("execution_identity_error", {}),
                 "require_secret_confirmation": True,
             },
@@ -1956,6 +2000,9 @@ class MoviePilotAgent:
                 "is_admin": bool(self._tool_context.get("is_admin")),
                 "execution_user_id": self.execution_user_id,
                 "execution_user_identity": self.execution_user_identity,
+                "authorization_id": self._tool_context.get("authorization_id"),
+                "channel_authorization_required": self._tool_context.get("channel_authorization_required", False),
+                "memory_owner_id": self._memory_owner_id,
                 "execution_identity_error": self._tool_context.get("execution_identity_error", {}),
             },
             specs=specs,
@@ -2062,7 +2109,7 @@ class MoviePilotAgent:
                     stream_handler=self.stream_handler,
                 )
                 skill_tools = list(getattr(skills_middleware, "tools", []) or [])
-                user_memory_dir = agent_runtime_manager.get_user_memory_dir(self.user_id)
+                user_memory_dir = agent_runtime_manager.get_user_memory_dir(self._memory_owner_id)
                 memory_middleware = MemoryMiddleware(
                     memory_dir=str(agent_runtime_manager.memory_dir),
                     user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
@@ -2075,10 +2122,10 @@ class MoviePilotAgent:
                     memory_tools.extend(learning_middleware.tools)
                 recall_service = getattr(self._data, "recall", None)
                 recall_middlewares = []
-                if recall_service and build_user_memory_key(self.user_id):
+                if recall_service and build_user_memory_key(self._memory_owner_id):
                     history_session = await self._recall_session(agent_model)
                     if history_session is not None:
-                        recall_middlewares.append(RecallMiddleware(recall_service, str(self.user_id), history_session))
+                        recall_middlewares.append(RecallMiddleware(recall_service, str(self._memory_owner_id), history_session))
                 memory_tools.extend(tool for middleware in recall_middlewares for tool in middleware.tools)
                 policy_context = self._build_policy_context()
                 subagent_middlewares, subagent_task_tools = create_subagent_middlewares(

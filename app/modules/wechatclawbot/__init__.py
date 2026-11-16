@@ -392,7 +392,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
             NotificationChannel.WechatClawBot,
             config,
             user_id,
-        )
+         source=client_config.name)
         if is_admin_command and admins and not is_channel_admin:
             client = self.get_instance(client_config.name)
             if client:

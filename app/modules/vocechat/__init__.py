@@ -175,7 +175,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
                                        is_channel_admin=matches_channel_admin(
                                            NotificationChannel.VoceChat, client_config.config,
                                            from_uid, actor_userid,
-                                       ), text=text or "",
+                                        source=client_config.name), text=text or "",
                                        images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.error(f"VoceChat消息处理发生错误：{str(err)}")

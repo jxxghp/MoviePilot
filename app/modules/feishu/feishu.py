@@ -105,6 +105,10 @@ class Feishu:
         """
         判断飞书命令或命令型按钮回调是否应因非管理员身份被拒绝。
         """
+        from app.application.security.authorization import get_channel_authorization
+
+        if get_channel_authorization() is not None:
+            return False
         if not self._admins:
             return False
         return not matches_channel_admin(
@@ -606,6 +610,15 @@ class Feishu:
         userid = open_id or user_id
         if not userid:
             return None
+        from app.application.security.authorization import get_channel_authorization
+
+        authorization = get_channel_authorization()
+        if authorization is not None:
+            try:
+                authorization.observe_aliases(NotificationChannel.Feishu.value, self._name, str(userid), open_id, user_id)
+            except (PermissionError, ValueError) as error:
+                logger.warning(f"飞书渠道发送者身份无法确认：{error}")
+                return None
 
         if message.get("type") == "cardAction":
             callback_data = message.get("callback_data")
@@ -634,6 +647,7 @@ class Feishu:
                     },
                     open_id,
                     user_id,
+                    source=self._name,
                 ),
                 text=f"CALLBACK:{callback_data}",
                 is_callback=True,
@@ -680,6 +694,7 @@ class Feishu:
                 },
                 open_id,
                 user_id,
+                source=self._name,
             ),
             text=text,
             message_id=message.get("message_id"),

@@ -18,11 +18,21 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 与对应 SKILL.md 同步维护，重新生成不能回退用户同步所需的版本。
-MOVIEPILOT_API_SKILL_VERSION = "76"
-DATABASE_OPERATION_SKILL_VERSION = "19"
+MOVIEPILOT_API_SKILL_VERSION = "77"
+DATABASE_OPERATION_SKILL_VERSION = "20"
 
 
 DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
+    "channelauthorization": (
+        "Stores per-instance channel authorization, approval state, scopes, and immutable business ownership.",
+        "Inspecting requests, member capabilities, suspension, and legacy whitelist migration.",
+        "Owned by channel authorization; never bypass approval, account linking, or live revocation with direct writes.",
+    ),
+    "channelbinding": (
+        "Stores web-initiated one-time channel binding digests and their five-minute expiry.",
+        "Checking expiry or consumption without reading or reconstructing the original binding code.",
+        "Consumed atomically by two-sided identity verification; never extend expiry, forge digests, or replace owners directly.",
+    ),
     "alembic_version": (
         "Records the Alembic migration revision currently applied to the database.",
         "Diagnosing startup migration failures or a database/code revision mismatch.",

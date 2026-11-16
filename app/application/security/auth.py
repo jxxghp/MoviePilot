@@ -307,11 +307,23 @@ class AuthService:
         """
         按当前持久化用户状态校验令牌身份与权限声明。
         """
+        if payload.agent_authorization_id:
+            from app.application.security.authorization import get_channel_authorization
+
+            service = get_channel_authorization()
+            if service is None or not payload.agent_operation:
+                raise PermissionError("渠道授权服务不可用")
+            channel_user = service.authorize_operation(payload.agent_authorization_id, payload.agent_operation)
+            if payload.sub != channel_user.id or payload.username != channel_user.name or payload.super_user != channel_user.is_superuser:
+                raise PermissionError("渠道授权身份或权限已改变，请重试")
+            return
         if payload.sub is None:
             raise PermissionError("用户不存在或已禁用")
         user = self._users.get_by_id(payload.sub)
         if not user or not user.is_active:
             raise PermissionError("用户不存在或已禁用")
+        if getattr(user, "account_type", "local") != "local":
+            raise PermissionError("渠道身份不能使用网页登录凭据")
         if payload.username != user.name or payload.super_user != user.is_superuser:
             raise PermissionError("令牌身份或权限上下文不匹配")
 
@@ -319,6 +331,8 @@ class AuthService:
         """
         使用统一逻辑构造登录 Token 响应。
         """
+        if getattr(user, "account_type", "local") != "local":
+            raise PermissionError("渠道身份不可网页登录")
         level = SitesHelper().auth_level
         config = get_api_runtime_config_snapshot()
         return _SchemaToken(

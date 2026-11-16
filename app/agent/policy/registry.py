@@ -136,7 +136,7 @@ class ToolPolicyRegistry:
             }.get(action, ActionEffect.UNKNOWN)
             return ActionPolicy(
                 effect=effect,
-                required_role=PrincipalRole.SYSTEM_ADMIN,
+                required_role=required_role,
                 confirmation=(ConfirmationMode.NONE if effect is ActionEffect.SAFE_READ else ConfirmationMode.REQUIRED),
                 recovery=(RecoveryMode.NONE if effect is ActionEffect.SAFE_READ else RecoveryMode.RECONCILE),
                 result_sensitivity=ResultSensitivity.NORMAL,

@@ -187,7 +187,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                     username=username,
                     is_channel_admin=matches_channel_admin(
                         NotificationChannel.Discord, client_config.config, userid
-                    ),
+                    , source=client_config.name),
                     text=f"CALLBACK:{callback_data}",
                     is_callback=True,
                     callback_data=callback_data,
@@ -221,7 +221,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                     username=username,
                     is_channel_admin=matches_channel_admin(
                         NotificationChannel.Discord, client_config.config, userid
-                    ),
+                    , source=client_config.name),
                     text=text,
                     chat_id=str(chat_id) if chat_id else None,
                     images=images,

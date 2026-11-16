@@ -60,6 +60,8 @@ class UserSnapshot:
     :param permissions: 用户权限的只读快照
     :param settings: 用户个性化设置的只读快照
     :param notification_identity: 不可变的通知绑定身份，不从客户端设置中读取
+    :param account_type: local 为网页登录账号，channel 为不可登录的内部渠道归属
+    :param authorization_id: 本次执行使用的渠道授权身份，普通网页登录为空
     """
 
     id: int
@@ -72,6 +74,8 @@ class UserSnapshot:
     permissions: Mapping[str, FrozenJson]
     settings: Mapping[str, FrozenJson]
     notification_identity: str = ""
+    account_type: str = "local"
+    authorization_id: str | None = None
 
     @classmethod
     def build(
@@ -87,6 +91,7 @@ class UserSnapshot:
         permissions: Optional[Mapping[str, Any]],
         settings: Optional[Mapping[str, Any]],
         notification_identity: str = "",
+        account_type: str = "local",
     ) -> "UserSnapshot":
         """
         复制持久化字段并构造不可变的公开用户快照。
@@ -102,6 +107,7 @@ class UserSnapshot:
             permissions=_freeze_mapping(permissions),
             settings=_freeze_mapping(settings),
             notification_identity=notification_identity,
+            account_type=account_type,
         )
 
 

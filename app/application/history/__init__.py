@@ -393,12 +393,14 @@ class DownloadHistoryQueryPort(Protocol):
         self,
         page: int = 1,
         count: int = 30,
+        *, username: str | None = None,
     ) -> list[DownloadHistorySnapshot]:
         """
         异步按下载时间倒序分页返回历史快照。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的记录数
+        :param username: 限定业务归属；为空时保留全局查询
         :return: 按下载时间倒序排列的当前页历史快照
         """
         ...
@@ -443,20 +445,22 @@ class AsyncDownloadHistoryQueryRepository(Protocol):
     下载历史只读用例需要的最小异步持久化端口。
     """
 
-    async def async_list_by_page(self, page: int = 1, count: int = 30) -> list[DownloadHistorySnapshot]:
+    async def async_list_by_page(self, page: int = 1, count: int = 30, *, username: str | None = None) -> list[DownloadHistorySnapshot]:
         """
         按下载时间倒序分页读取历史记录。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的记录数
+        :param username: 限定业务归属；为空时查询全部账号
         :return: 按下载时间倒序排列的当前页历史快照
         """
         ...
 
-    async def async_count(self) -> int:
+    async def async_count(self, *, username: str | None = None) -> int:
         """
         返回下载历史记录总数。
 
+        :param username: 限定业务归属；为空时统计全部账号
         :return: 下载历史记录总数
         """
         ...
@@ -578,18 +582,19 @@ class HistoryQueryService:
         *,
         page: int = 1,
         count: int = 30,
+        username: str | None = None,
     ) -> list[DownloadHistory]:
         """
         分页读取下载历史并转换为稳定的接口 DTO。
         """
-        records = await self._download_repository.async_list_by_page(page, count)
+        records = await self._download_repository.async_list_by_page(page, count, username=username) if username is not None else await self._download_repository.async_list_by_page(page, count)
         return [DownloadHistory.model_validate(record) for record in records]
 
-    async def count_download(self) -> int:
+    async def count_download(self, *, username: str | None = None) -> int:
         """
         返回下载历史精确总数，供分页 API 通过附加元数据报告。
         """
-        return await self._download_repository.async_count()
+        return await self._download_repository.async_count(username=username) if username is not None else await self._download_repository.async_count()
 
     async def list_transfer(
         self,

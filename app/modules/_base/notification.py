@@ -45,6 +45,11 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
         """
         判断命令或命令型按钮回调是否应因非管理员身份被拒绝。
         """
+        from app.application.security.authorization import get_channel_authorization
+
+        if get_channel_authorization() is not None:
+            # 申请命令在统一消息入口处理，其余传统命令也在该入口检查管理员角色。
+            return False
         if not self._get_admins(config):
             return False
         # 模块实例未初始化时 self._channel 为空，退回静态子类型声明
