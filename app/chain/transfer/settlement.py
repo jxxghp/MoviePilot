@@ -622,6 +622,11 @@ class TransferSettlementOwner(_TransferOwnerBase):
 
             self._record_scrape_target(task, transferinfo)
             self.notify_successful_transfer(task, transferinfo)
+            # 立即模式下每个主媒体任务成功结算就以自己的文件列表发送刮削事件，
+            # 不再受作业完成门槛限制：同作业的字幕/封面任务最后完成或末集失败时，
+            # 先前成功任务的事件也不会丢失。
+            if self._should_scrape_immediately(task):
+                self._send_metadata_scrape_event(task, transferinfo)
 
         # 成功汇总需要季集元数据；缺少元数据的规划拒绝只走失败反馈。
         if task.meta is not None and self.jobview.is_finished(task):
@@ -632,8 +637,6 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     or []
                 ))
             __notify()
-            if self._should_scrape_immediately(task):
-                self._send_metadata_scrape_event(task, transferinfo)
 
         # 只要该种子的所有任务都已整理完成，则设置种子状态为已整理
         self._TransferChain__mark_torrent_completed_if_done(task.download_hash, task.downloader)

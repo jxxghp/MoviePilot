@@ -404,6 +404,7 @@ class ChainRuntimeConfig:
     :param transfer_failure_notification_aggregation: 是否按媒体聚合整理失败通知，关闭时保持逐条发送
     :param transfer_success_notification_aggregation: 是否按批次聚合电影、电视剧和音乐的整理成功通知
     :param transfer_task_timeout: 外部接管的运行中整理任务无状态心跳超时（分钟），0 表示禁用
+    :param transfer_scrape_batch_aggregation: 是否把同批整理的元数据刮削事件聚合到批次结束；默认关闭，每个文件整理完成即发送
     :param scrape_follow_tmdb: 是否使用 TMDB 的季集编排刮削电视剧元数据
     :param metadata_cache_ttl: 识别元数据缓存的有效期，单位为秒
     :param auto_download_user: 允许交互搜索后自动下载的用户标识，多个用逗号分隔，None 表示未配置
@@ -497,6 +498,7 @@ class ChainRuntimeConfig:
     transfer_failure_notification_aggregation: bool = True
     transfer_success_notification_aggregation: bool = True
     transfer_task_timeout: int = 120
+    transfer_scrape_batch_aggregation: bool = False
     scrape_follow_tmdb: bool = True
     metadata_cache_ttl: int = 3600
     auto_download_user: Optional[str] = None

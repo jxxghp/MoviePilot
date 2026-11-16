@@ -2,7 +2,6 @@
 整理批次的元数据刮削事件聚合。
 """
 
-import os
 from typing import Any, Optional
 
 from app.application.transfer.workflow import TransferTask, job_lock
@@ -16,27 +15,24 @@ from app.schemas.types import (
     EventType,
 )
 
-# 批次聚合开关：默认关闭，整理完成后按文件/作业立即发送刮削事件。
-# 设为 1/true/yes/on 时恢复 V3 早期的“整批结束后统一发送”行为。
-_SCRAPE_BATCH_AGGREGATION_ENV = "TRANSFER_SCRAPE_BATCH_AGGREGATION"
-
-
-def _scrape_batch_aggregation_enabled() -> bool:
-    """
-    是否仍然把刮削事件聚合到批次结束。
-
-    :return: True 表示保留批次聚合行为
-    """
-    value = os.environ.get(_SCRAPE_BATCH_AGGREGATION_ENV, "0")
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
 
 class ScrapeBatchMixin(_TransferOwnerBase):
     """
-    聚合同批整理结果并仅在批次完成后发送刮削事件。
+    聚合同批整理结果；默认逐任务立即发送，开启批次聚合时改为整批完成后统一发送。
     """
 
     __mixin_host_protocol__ = TransferMixinHost
+
+    def _scrape_batch_aggregation_enabled(self) -> bool:
+        """
+        从注入的运行时配置读取批次聚合开关。
+
+        TRANSFER_SCRAPE_BATCH_AGGREGATION 已登记在统一配置模型中，因此一并支持
+        环境变量与部署环境文件两种来源，不在此另建环境变量解析通道。
+
+        :return: True 表示仍把同一批次的刮削事件聚合到批次结束
+        """
+        return bool(self.runtime_config.transfer_scrape_batch_aggregation)
 
     def _should_scrape_immediately(self, task: TransferTask) -> bool:
         """
@@ -49,7 +45,11 @@ class ScrapeBatchMixin(_TransferOwnerBase):
         :param task: 整理任务
         :return: True 表示应在任务完成时立即发送刮削事件
         """
-        return not task or not task.transfer_batch_id or not _scrape_batch_aggregation_enabled()
+        return (
+                not task
+                or not task.transfer_batch_id
+                or not self._scrape_batch_aggregation_enabled()
+        )
 
     def _send_metadata_scrape_event(
             self, task: TransferTask, transferinfo: TransferInfo
@@ -157,7 +157,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             return
 
         # 默认逐文件立即发送，不再登记批次汇总目标，避免同一目录的后续文件被吞掉。
-        if not _scrape_batch_aggregation_enabled():
+        if not self._scrape_batch_aggregation_enabled():
             return
 
         target_diritem = transferinfo.target_diritem

@@ -4,6 +4,7 @@
 
 import os
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -181,12 +182,14 @@ def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, s
     assert result["summary"] == {"total": 2 if with_cover else 1, "success": 2 if with_cover else 1, "failed": 0}
 
 
-def test_music_scrape_waits_for_cover_transfer_completion(monkeypatch):
+def test_music_scrape_waits_for_cover_transfer_completion():
     """
     音轨先完成时仍等待封面任务，图片就绪后才发出只含音轨的刮削事件。
     """
-    monkeypatch.setenv("TRANSFER_SCRAPE_BATCH_AGGREGATION", "1")
     chain = make_transfer_chain()
+    chain.runtime_config = replace(
+        chain.runtime_config, transfer_scrape_batch_aggregation=True
+    )
     chain.eventmanager = Mock()
     info = MusicInfo(title="Song", album="Album", artists=["Artist"])
     audio = TransferTask(fileitem=make_fileitem("/source/01.flac"), mediainfo=info,
