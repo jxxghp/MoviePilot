@@ -27,6 +27,7 @@ def services():
         SimpleNamespace(
             list_by_media_identity=AsyncMock(return_value=[]),
             list_by_video_metadata=AsyncMock(return_value=[]),
+            list_by_projected_identity=AsyncMock(return_value=[]),
         ),
     )
 

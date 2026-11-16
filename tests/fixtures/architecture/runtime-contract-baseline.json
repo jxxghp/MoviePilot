@@ -8623,7 +8623,7 @@
     }
   },
   "run_module": {
-    "call_count": 276,
+    "call_count": 278,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 224,
@@ -8645,6 +8645,11 @@
       "anilist_info": [
         {
           "caller": "app.chain.anilist",
+          "count": 1,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.media.projection",
           "count": 1,
           "mode": "sync"
         }
@@ -8708,6 +8713,11 @@
       "async_anilist_info": [
         {
           "caller": "app.chain.anilist",
+          "count": 1,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.media.projection",
           "count": 1,
           "mode": "async"
         }

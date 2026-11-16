@@ -13737,6 +13737,18 @@
           "additionalProperties": false,
           "description": "subscription.find 的筛选和控制参数。按规范媒体身份和可选季查找一个可访问订阅。仅使用下列已声明字段。",
           "properties": {
+            "episode_group": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "用于其他剧集排序方式的 TMDB 剧集组标识。",
+              "title": "Episode Group"
+            },
             "media_source": {
               "$ref": "#/$defs/MediaSource",
               "description": "元数据来源标识，保留与 media_id 一同返回的精确值。"

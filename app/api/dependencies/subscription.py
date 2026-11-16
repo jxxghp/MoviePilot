@@ -43,6 +43,7 @@ from app.application.subscription.execution import SubscriptionSearchRepository
 from app.application.subscription.identity import (
     DeleteSubscriptionsByIdentityCommand,
 )
+from app.application.subscription.lookup import SubscriptionIdentityLookup
 from app.application.subscription.mutation import (
     SubscriptionMutationService,
 )
@@ -58,6 +59,7 @@ from app.application.subscription.status import (
 from app.application.subscription.write import (
     SubscriptionBatchWritePort,
 )
+from app.chain.media import MediaChain
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
@@ -211,6 +213,10 @@ def get_subscription_query_service(
         repository=runtime.subscription.repository(db),
         async_repository=runtime.subscription.repository(db),
         history_repository=runtime.subscription.history_repository(db),
+        identity_lookup=SubscriptionIdentityLookup(
+            MediaChain().convert_media_identity,
+            MediaChain().async_convert_media_identity,
+        ),
     )
 
 

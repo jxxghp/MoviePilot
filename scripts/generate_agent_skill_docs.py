@@ -18,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 与对应 SKILL.md 同步维护，重新生成不能回退用户同步所需的版本。
-MOVIEPILOT_API_SKILL_VERSION = "74"
+MOVIEPILOT_API_SKILL_VERSION = "75"
 DATABASE_OPERATION_SKILL_VERSION = "19"
 
 
@@ -389,8 +389,10 @@ _OPERATION_NOTES: dict[str, list[str]] = {
 # 在生成的 Schema 字段旁保留经过维护的操作指引。
 _OPERATION_PURPOSE_NOTES: dict[str, str] = {
     "subscription.find": (
-        "For movies and TV, if exact identity misses and mtype/title are supplied, match across "
-        "sources by type, normalized title, optional season, and year. An exact year ranks first; "
+        "For movies and TV, if exact identity misses and mtype is supplied, first confirm "
+        "cross-source subscriptions through a shared TMDB identity, preserving season, episode "
+        "group and owner boundaries. If projection fails and title is supplied, retain the "
+        "type/title/year fallback as a display hint. An exact year ranks first; "
         "a subscription with no year may match when the card has a year, while a card with no "
         "year only matches a subscription with no year. Music uses exact identity only."
     ),
