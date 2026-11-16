@@ -977,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10184,
-  "edge_sha256": "3eef6f4da0dc03f53a42dfaf719246d1d262a08b1dfa4afca94cdcb103160866",
+  "edge_count": 10185,
+  "edge_sha256": "7f38852ed55a0002549c7dbe94b8810841659290fce66ed8721376f3a518dc14",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6076,6 +6076,7 @@
     "app.chain.transfer.execution -> app.runtime",
     "app.chain.transfer.execution -> app.runtime.log",
     "app.chain.transfer.execution -> app.schemas",
+    "app.chain.transfer.execution -> app.schemas.exception",
     "app.chain.transfer.execution -> app.schemas.transfer",
     "app.chain.transfer.execution -> app.schemas.types",
     "app.chain.transfer.facade -> app.chain",

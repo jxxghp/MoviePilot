@@ -209,6 +209,13 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 
 ### 存储严格查询回执回归
 
+`tests/test_u115_storage.py` 在 OSS 和 115 API 边界模拟分片完成返回 203、HTTP 200 回调失败、
+目录暂不可见及身份冲突，核对目标目录/名称、文件标识、精确字节数和可用的 SHA1。
+身份未确认时保留源文件，不能合成成功元数据；跨存储移动只在核验成功后删除源文件。
+`tests/test_transfer_execution_runner.py` 使用独立数据库验证这种不确定结果持久进入人工复核，
+通用路径查询不能把它降级为可重试失败，旧 worker 也不能再次上传。这些离线用例不代表真实
+115 回调故障已复现或报告者 Docker 环境已验收。
+
 `tests/test_storage_cleanup_receipts.py` 通过真实 StorageChain、模块调度器和 FileManager，
 验证未知存储、未初始化模块、缺失模块和适配器不可用均保留整理历史。自定义存储提供方
 放在插件优先路径或宿主前后顺序时，都须能传递明确的文件项/不存在回执；普通查询仍可返回空值。
