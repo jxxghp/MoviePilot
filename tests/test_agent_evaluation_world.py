@@ -131,6 +131,20 @@ def test_existing_identity_is_found_under_old_title_without_writing() -> None:
     assert world.ledger[0]["observations"] == [{"kind": "subscription", "record": subscription["data"]}]
 
 
+def test_subscription_lookup_filters_episode_group_without_writing() -> None:
+    """
+    独立评测世界接受剧集组筛选，错误类型不产生证据，未命中的组不返回其它组订阅。
+    """
+    world = EvaluationWorld("dedup_existing")
+    query = {"media_source": world.scenario.media_source, "episode_group": "alternate"}
+    result = world.execute("subscription.find", path_params={"media_id": world.scenario.media_id}, query=query)
+    assert result["outcome"] == "succeeded" and result["data"] == {}
+    query["episode_group"] = 1
+    result = world.execute("subscription.find", path_params={"media_id": world.scenario.media_id}, query=query)
+    assert result["outcome"] == "failed"
+    assert world.snapshot() == world.initial_snapshot()
+
+
 @pytest.mark.parametrize("operation,arguments", [
     ("download.list", {}),
     ("download.tasks.active", {"query": {"infohash": "a1" * 20}}),

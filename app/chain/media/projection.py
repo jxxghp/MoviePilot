@@ -10,6 +10,7 @@ from enum import Enum, auto
 from typing import Any, Final, Optional, cast
 
 from app.chain.media.contract import _MediaOwnerBase
+from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.event import (
     MediaRecognizeConvertEventData as _SchemaMediaRecognizeConvertEventData,
@@ -30,6 +31,8 @@ class _ProjectionRule(Enum):
     DOUBAN_TO_TMDB = auto()
     # 根据 Bangumi 详情匹配 TMDB 身份。
     BANGUMI_TO_TMDB = auto()
+    # 根据 AniList 的多语言标题、年份和季信息匹配 TMDB 身份。
+    ANILIST_TO_TMDB = auto()
     # 根据 TMDB 详情匹配豆瓣身份。
     TMDB_TO_DOUBAN = auto()
     # 根据 Bangumi 详情匹配豆瓣身份。
@@ -41,11 +44,13 @@ class _ProjectionRule(Enum):
 _PROJECTION_RULES: Final = {
     (MediaSource.Douban, MediaSource.TMDB): _ProjectionRule.DOUBAN_TO_TMDB,
     (MediaSource.Bangumi, MediaSource.TMDB): _ProjectionRule.BANGUMI_TO_TMDB,
+    (MediaSource.AniList, MediaSource.TMDB): _ProjectionRule.ANILIST_TO_TMDB,
     (MediaSource.TMDB, MediaSource.Douban): _ProjectionRule.TMDB_TO_DOUBAN,
     (MediaSource.Bangumi, MediaSource.Douban): _ProjectionRule.BANGUMI_TO_DOUBAN,
 }
 _NUMERIC_SOURCE_RULES: Final = {
     _ProjectionRule.BANGUMI_TO_TMDB,
+    _ProjectionRule.ANILIST_TO_TMDB,
     _ProjectionRule.TMDB_TO_DOUBAN,
     _ProjectionRule.BANGUMI_TO_DOUBAN,
 }
@@ -223,6 +228,27 @@ def _build_bangumi_tmdb_match(
     )
 
 
+def _build_anilist_tmdb_match(
+    plan: _ProjectionPlan,
+    source_info: _ProjectionSource,
+) -> Optional[_TmdbMatch]:
+    """
+    复用 AniList 详情投影的多语言别名及续季解析，避免用季标题建立独立剧集身份。
+    """
+    media = MediaInfo(anilist_info=dict(source_info))
+    raw_names = _unique_names(tuple(media.names or []) + (media.title, media.original_title))
+    names = _unique_names(tuple(MetaInfo(name).name for name in raw_names) + raw_names)
+    if not names:
+        return None
+    return _TmdbMatch(
+        names=names,
+        year=_optional_text(media.year),
+        media_type=plan.media_type or media.type or MediaType.TV,
+        season=plan.season if plan.season is not None else media.season,
+        include_season=True,
+    )
+
+
 def _build_tmdb_douban_match(
     plan: _ProjectionPlan,
     source_info: _ProjectionSource,
@@ -279,6 +305,7 @@ def _build_projection_match(
     builders = {
         _ProjectionRule.DOUBAN_TO_TMDB: _build_douban_tmdb_match,
         _ProjectionRule.BANGUMI_TO_TMDB: _build_bangumi_tmdb_match,
+        _ProjectionRule.ANILIST_TO_TMDB: _build_anilist_tmdb_match,
         _ProjectionRule.TMDB_TO_DOUBAN: _build_tmdb_douban_match,
         _ProjectionRule.BANGUMI_TO_DOUBAN: _build_bangumi_douban_match,
     }
@@ -295,6 +322,8 @@ def _load_projection_source(
     """
     if plan.rule == _ProjectionRule.DOUBAN_TO_TMDB:
         return owner.douban_info(doubanid=plan.media_id, mtype=plan.media_type)
+    if plan.rule == _ProjectionRule.ANILIST_TO_TMDB:
+        return cast(Optional[_ProjectionPayload], owner.run_module("anilist_info", anilist_id=int(plan.media_id)))
     if plan.rule in {
         _ProjectionRule.BANGUMI_TO_TMDB,
         _ProjectionRule.BANGUMI_TO_DOUBAN,
@@ -319,6 +348,8 @@ async def _async_load_projection_source(
             doubanid=plan.media_id,
             mtype=plan.media_type,
         )
+    elif plan.rule == _ProjectionRule.ANILIST_TO_TMDB:
+        source_info = await owner.async_run_module("async_anilist_info", anilist_id=int(plan.media_id))
     elif plan.rule in {
         _ProjectionRule.BANGUMI_TO_TMDB,
         _ProjectionRule.BANGUMI_TO_DOUBAN,

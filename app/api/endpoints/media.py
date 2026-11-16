@@ -28,6 +28,7 @@ from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.mediaserver import MediaServerQueryService
 from app.application.module import get_module_manager
+from app.application.subscription.contract import SubscriptionIdentity
 from app.application.subscription.query import SubscriptionQueryService
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
@@ -106,7 +107,20 @@ async def _query_media_status(
         record for record in candidates
         if current_user.is_superuser or (bool(record.username) and record.username == current_user.name)
     ]
+    if item.mtype is not None:
+        accessible = [record for record in accessible if record.type == item.mtype.value]
     matched = [record for record in accessible if season is None or record.season == season]
+    if (not matched and item.media_source and item.media_id
+            and item.mtype is not None and item.mtype in (MediaType.MOVIE, MediaType.TV)):
+        projected = await subscriptions.list_by_projected_identity(
+            SubscriptionIdentity(
+                media_source=item.media_source, media_id=item.media_id, type=item.mtype.value,
+                season=season,
+            ),
+            username=None if current_user.is_superuser else current_user.name,
+        )
+        accessible.extend(projected)
+        matched = [record for record in accessible if season is None or record.season == season]
     if not matched and title and item.mtype in (MediaType.MOVIE, MediaType.TV):
         fallback = await subscriptions.list_by_video_metadata(
             title=title, year=item.year, media_type=item.mtype, season=season,

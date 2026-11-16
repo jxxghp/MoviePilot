@@ -3,8 +3,10 @@
 """
 
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple, cast
 
+from app.application.subscription.lookup import subscription_identity
 from app.application.subscription.write import (
     SubscriptionBatchWritePort,
     SubscriptionCreateRequest,
@@ -15,7 +17,11 @@ from app.application.subscription.write import (
 from app.chain.media import MediaChain
 from app.chain.subscribe.context import _SubscribeCreateContext, _SubscribePostCommitContext
 from app.chain.subscribe.contract import _SubscribeOwnerBase
-from app.chain.subscribe.identity import media_recognize_kwargs
+from app.chain.subscribe.identity import (
+    async_find_existing_subscription,
+    find_existing_subscription,
+    media_recognize_kwargs,
+)
 from app.domain.context import MediaInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
@@ -612,6 +618,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         """
         if context.mediainfo is None:
             return None, "未识别到媒体信息"
+        existing = find_existing_subscription(context, self.subscription_repository)
+        if existing:
+            return existing.id, "订阅已存在"
         mediainfo = context.mediainfo
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
             context,
@@ -647,6 +656,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         """
         if context.mediainfo is None:
             return None, "未识别到媒体信息"
+        existing = await async_find_existing_subscription(context, self.subscription_repository)
+        if existing:
+            return existing.id, "订阅已存在"
         mediainfo = context.mediainfo
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
             context,
@@ -874,6 +886,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             )
             if request is None:
                 return None, "媒体身份不完整"
+            existing = await async_find_existing_subscription(context, self.subscription_repository)
+            if existing:
+                request = replace(request, identity=subscription_identity(existing))
             requests.append(request)
 
         results = await batch_writer.async_add(requests)
