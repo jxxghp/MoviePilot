@@ -466,6 +466,14 @@ class _ProviderCatalog:
                 api_key_hint="填写 UberLLM API Key（ull_ 开头），注册后在 https://uberllm.dev/dashboard/keys 创建。需预充值，无免费额度。",
                 description="UberLLM 按量付费的 OpenAI-compatible 聚合模型平台，一个 Key 覆盖 GPT、Claude、Gemini、DeepSeek、Qwen、Kimi 等模型。",
             ),
+            openai_provider(
+                provider_id="trustedrouter",
+                name="TrustedRouter",
+                default_base_url="https://api.trustedrouter.com/v1",
+                sort_order=63,
+                api_key_hint="填写 TrustedRouter API Key，可在 https://trustedrouter.com 注册后获取。",
+                description="TrustedRouter OpenAI-compatible 模型网关，模型 ID 带厂商前缀（如 anthropic/claude-sonnet-4.5），trustedrouter/auto 为自动路由。",
+            ),
             catalog_openai_provider(
                 provider_id="github-models",
                 name="GitHub Models",
