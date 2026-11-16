@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer.execution import (
     TransferExecutionCommand,
+    TransferExecutionLeaseLostError,
     TransferExecutionState,
     TransferManualReviewDecision,
     TransferOperationObservation,
@@ -39,6 +40,7 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.transhandler import TransHandler
+from app.schemas.exception import StorageOperationUncertainError
 from app.schemas.types import MediaType
 from app.schemas.workflow import FileItem
 
@@ -295,6 +297,37 @@ def test_runner_defers_after_execute_error_observed_not_applied(
     assert snapshot.state is TransferExecutionState.RETRY_WAIT
     assert snapshot.steps[0].result == evidence
     assert snapshot.steps[0].state.value == "failed"
+
+
+def test_runner_preserves_storage_uncertainty_and_blocks_replay(execution_repository) -> None:
+    """
+    存储已判定写入结果不确定时，即使通用目录探测会报不存在也必须持久隔离并阻止重放。
+    """
+    execute = Mock(side_effect=StorageOperationUncertainError("OSS 203，远端文件身份待确认"))
+    observe = Mock(return_value=TransferOperationObservation(
+        state=TransferOperationObservationState.NOT_APPLIED,
+        evidence=TransferStepResult(payload={"target_exists": False}),
+    ))
+
+    with pytest.raises(transfer_chain_module._TransferManualReviewRequired, match="OSS 203"):
+        _runner(execution_repository).run(
+            phase="transfer", kind="materialize_target", payload=_runner_step_payload(),
+            execute=execute, observe=observe,
+        )
+    # 人工复核已释放任务租约；旧 worker 重入也不能再次执行上传。
+    with pytest.raises(TransferExecutionLeaseLostError):
+        _runner(execution_repository).run(
+            phase="transfer", kind="materialize_target", payload=_runner_step_payload(),
+            execute=execute, observe=observe,
+        )
+
+    snapshot = execution_repository.get_snapshot(task_id="task-runner")
+    assert snapshot.state is TransferExecutionState.MANUAL_REVIEW
+    assert snapshot.steps[0].state.value == "manual_review"
+    assert snapshot.retry_count == 0
+    assert snapshot.steps[0].result.payload == {"execute_error": "OSS 203，远端文件身份待确认"}
+    execute.assert_called_once()
+    observe.assert_not_called()
 
 
 @pytest.mark.parametrize(

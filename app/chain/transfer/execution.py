@@ -41,6 +41,7 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import is_music_media_source
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
+from app.schemas.exception import StorageOperationUncertainError
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MediaSource,
@@ -147,12 +148,20 @@ class _DurableTransferStepRunner:
     ) -> TransferStepResult:
         """
         在事务外执行副作用，异常后先探测结果再决定重试或人工复核。
+
+        适配器已确认写入结果不确定时，保留其判断，避免目录延迟可见被误判为未执行。
         """
         try:
             result = execute()
         except Exception as error:
             try:
-                observation = observe()
+                if isinstance(error, StorageOperationUncertainError):
+                    observation = TransferOperationObservation(
+                        state=TransferOperationObservationState.UNKNOWN,
+                        evidence=TransferStepResult(payload={"execute_error": str(error)}),
+                    )
+                else:
+                    observation = observe()
             except Exception as observe_error:
                 observation = TransferOperationObservation(
                     state=TransferOperationObservationState.UNKNOWN,
