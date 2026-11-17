@@ -65,8 +65,8 @@ from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPla
 from app.schemas.mediaserver import MediaServerStreamInfo as _SchemaMediaServerStreamInfo
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 router = ResponseAPIRouter()

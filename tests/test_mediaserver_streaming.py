@@ -20,8 +20,8 @@ from app.adapters import mediastream
 from app.api.endpoints import mediaserver
 from app.chain.mediaserver import MediaServerChain
 from app.schemas.mediaserver import MediaServerItem, MediaServerPlayItem, MediaServerSeasonInfo
-from app.schemas.token import TokenPayload
 from app.schemas.tmdb import TmdbEpisode
+from app.schemas.token import TokenPayload
 from app.schemas.types import MediaSource
 
 
