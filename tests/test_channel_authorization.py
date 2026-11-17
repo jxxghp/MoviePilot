@@ -609,3 +609,300 @@ def test_authorization_public_operations_match_the_audited_gateway_contract():
     from app.domain.authorization import CHANNEL_PUBLIC_OPERATIONS
 
     assert CHANNEL_PUBLIC_OPERATIONS == API_UNBOUND_READ_OPERATIONS
+
+
+def _authorization_app(user):
+    """
+    创建仅挂载真实授权路由的隔离应用，以合成用户替代网页登录依赖。
+    """
+    from fastapi import FastAPI
+
+    from app.api.dependencies.auth import get_current_active_superuser, get_current_active_user
+    from app.api.endpoints.authorization import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/authorization")
+    app.dependency_overrides[get_current_active_superuser] = lambda: user
+    app.dependency_overrides[get_current_active_user] = lambda: user
+    return app
+
+
+def test_direct_authorization_api_commits_then_replies_privately(channel_authorization, monkeypatch):
+    """
+    直接授权写入真实数据库后私发回执；渠道停用与成员不存在时不误发成功通知。
+    """
+    from fastapi.testclient import TestClient
+
+    from app.api.endpoints import authorization as endpoint
+
+    service, configs, _ = channel_authorization
+    monkeypatch.setattr(
+        endpoint, "get_notification_configs",
+        lambda **options: [item for item in configs if options.get("include_disabled") or item.enabled],
+    )
+    sent = Mock()
+    monkeypatch.setattr("app.chain.message.MessageChain", lambda: SimpleNamespace(post_message=sent))
+    app = _authorization_app(SimpleNamespace(id=1, account_type="local", authorization_id=None))
+    payload = {
+        "notification_id": "telegram-a", "sender_id": " 42 ", "display_name": " 成员 ",
+        "status": "approved", "role": "member", "scopes": ["search"],
+    }
+    with TestClient(app) as client:
+        response = client.post("/authorization/", json=payload)
+        assert response.status_code == 200
+        result = response.json()["data"]
+        member = service.find("Telegram", "机器人A", "42")
+        assert result["id"] == member.id and result["display_name"] == "成员"
+        assert service.principal(member.id).permissions["search"] is True
+        message = sent.call_args.args[0]
+        assert message.channel == NotificationChannel.Telegram and message.source == "机器人A"
+        assert message.userid == "42" and message.private_delivery is True and message.save_history is False
+        assert "重新发送" in message.title
+        assert client.put(
+            "/authorization/missing-member", json={"status": "approved", "scopes": []},
+        ).status_code == 400
+        sent.reset_mock()
+        configs[0].enabled = False
+        assert client.post("/authorization/", json=payload).status_code == 400
+        assert client.post(
+            "/authorization/", json={**payload, "notification_id": "missing-instance"},
+        ).status_code == 400
+        assert client.put(
+            f"/authorization/{member.id}", json={"status": "disabled", "scopes": []},
+        ).status_code == 200
+        sent.assert_not_called()
+        monkeypatch.setattr(endpoint, "get_channel_authorization", lambda: None)
+        assert client.get("/authorization/").status_code == 503
+
+
+def test_binding_api_requires_local_account_and_does_not_approve_member(channel_authorization, db):
+    """
+    关联端点仅为当前网页账号生成短时码，渠道主体不能生成码或借关联取得审批。
+    """
+    from fastapi.testclient import TestClient
+
+    service, _, _ = channel_authorization
+    local = db.add(User(name="binding-api-account", is_active=True, is_superuser=False))
+    user = SimpleNamespace(id=local.id, account_type="local", authorization_id=None)
+    with TestClient(_authorization_app(user)) as client:
+        response = client.post("/authorization/binding")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["expires_at"] > 0 and len(data["code"]) >= 20
+        member = service.bind("Telegram", "机器人A", "42", "成员", data["code"])
+        assert member.status == "pending" and member.linked_user_id == local.id
+        user.authorization_id = member.id
+        assert client.post("/authorization/binding").status_code == 403
+        user.authorization_id = None
+        user.account_type = "channel"
+        assert client.post("/authorization/binding").status_code == 403
+
+
+@pytest.mark.parametrize("async_request", [False, True])
+@pytest.mark.parametrize("state", ["approved", "disabled", "missing-operation", "unavailable"])
+def test_current_user_rechecks_channel_claims_without_querying_web_user(
+    channel_authorization, monkeypatch, async_request, state,
+):
+    """
+    同步和异步依赖实时复核渠道签名，缺失服务或操作声明时拒绝且不回退网页登录用户。
+    """
+    from app.api.dependencies import auth as dependencies
+
+    service, _, _ = channel_authorization
+    member = _approve(service)
+    user = service.principal(member.id)
+    payload = TokenPayload(
+        sub=user.id, username=user.name, super_user=False,
+        agent_authorization_id=member.id, agent_operation="subscription.list",
+    )
+    repository = Mock()
+    runtime = SimpleNamespace(authentication=SimpleNamespace(user_repository=repository))
+    if state == "disabled":
+        service.update(member.id, status="disabled", role="member", scopes=(), reviewer_id=1)
+    elif state == "missing-operation":
+        payload.agent_operation = None
+    elif state == "unavailable":
+        monkeypatch.setattr(dependencies, "get_channel_authorization", lambda: None)
+
+    def current_user():
+        """
+        经被测同步或异步依赖解析当前签名主体。
+        """
+        if async_request:
+            return asyncio.run(dependencies.get_current_user_async(db=None, token_data=payload, runtime=runtime))
+        return dependencies.get_current_user(db=None, token_data=payload, runtime=runtime)
+
+    if state == "approved":
+        resolved = current_user()
+        assert resolved.id == user.id and resolved.authorization_id == member.id
+    else:
+        with pytest.raises(HTTPException) as error:
+            current_user()
+        assert error.value.status_code == (403 if state == "disabled" else 401)
+    repository.assert_not_called()
+
+
+def test_channel_tokens_reject_missing_service_and_changed_identity(channel_authorization, monkeypatch):
+    """
+    已签发令牌不能在角色或账号声明改变后继续使用，服务未装配时也不能放行。
+    """
+    service, _, users = channel_authorization
+    member = _approve(service)
+    user = service.principal(member.id)
+    auth = AuthService(users=users, config=Mock(), passkeys=Mock())
+    payload = TokenPayload(
+        sub=user.id, username=user.name, super_user=False,
+        agent_authorization_id=member.id, agent_operation="subscription.list",
+    )
+    for values in ({"sub": user.id + 1}, {"username": "other-account"}, {"super_user": True}):
+        with pytest.raises(PermissionError, match="身份或权限已改变"):
+            auth.validate_token_identity(payload.model_copy(update=values))
+    with pytest.raises(PermissionError, match="服务不可用"):
+        auth.validate_token_identity(payload.model_copy(update={"agent_operation": None}))
+    monkeypatch.setattr(authorization_module, "get_channel_authorization", lambda: None)
+    with pytest.raises(PermissionError, match="服务不可用"):
+        auth.validate_token_identity(payload)
+
+
+def test_implicit_channel_source_must_resolve_one_instance(channel_authorization, monkeypatch):
+    """
+    兼容调用缺少来源名时只接受唯一配置，重复配置不能猜测实例或借旧名单恢复权限。
+    """
+    from app.application import notification
+    from app.application.messaging.channel.admin import matches_channel_admin
+
+    service, configs, _ = channel_authorization
+    member = _approve(service, role="admin")
+    config = {"TELEGRAM_ADMINS": "42", "TELEGRAM_CHAT_ID": "42"}
+    configs[0].config = config
+    monkeypatch.setattr(notification, "get_notification_configs", lambda: configs)
+    assert matches_channel_admin(NotificationChannel.Telegram, config, None, "42")
+    configs[1].config = config.copy()
+    assert not matches_channel_admin(NotificationChannel.Telegram, config, "42")
+    configs[1].config = {}
+    service.update(member.id, status="disabled", role="admin", scopes=(), reviewer_id=1)
+    assert not matches_channel_admin(NotificationChannel.Telegram, config, "42")
+
+
+def test_channel_connection_probe_reports_first_unready_instance(monkeypatch):
+    """
+    消息渠道连接探测聚合客户端就绪状态，无实例不误报失败且保留首个故障说明。
+    """
+    from app.modules.telegram.module import TelegramModule
+
+    module = TelegramModule()
+    monkeypatch.setattr(module, "get_instances", lambda: {})
+    assert module.test() is None
+    ready = SimpleNamespace(get_state=lambda: True)
+    unavailable = SimpleNamespace(get_state=lambda: False)
+    monkeypatch.setattr(module, "get_instances", lambda: {"就绪实例": ready})
+    assert module.test() == (True, "")
+    monkeypatch.setattr(module, "get_instances", lambda: {"就绪实例": ready, "故障实例": unavailable})
+    state, message = module.test()
+    assert state is False and "故障实例" in message
+    monkeypatch.setattr(module, "_test_connection", lambda _: (False, "连接失败"))
+    assert "连接失败" in module.test()[1]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "operation", "allowed"),
+    [
+        ("moviepilot_api", "media.search", True),
+        ("moviepilot_api", "site.list", False),
+        ("send_message", None, True),
+        ("send_voice_message", None, True),
+        ("memory_read", None, False),
+    ],
+)
+def test_unapproved_channel_tools_allow_only_public_reads_and_replies(tool_name, operation, allowed):
+    """
+    未批准渠道不能借普通工具或非公开 API 执行业务，仅公开资料与消息回执例外。
+    """
+    from app.agent.middleware.policy import AgentPolicyMiddleware
+    from app.agent.policy.contracts import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
+    from app.agent.tools.impl.api import MoviePilotApiTool
+
+    tool = (
+        MoviePilotApiTool(session_id="unapproved", user_id="42")
+        if tool_name == "moviepilot_api" else SimpleNamespace(name=tool_name)
+    )
+    middleware = AgentPolicyMiddleware(context=ToolPolicyContext(
+        session_id="unapproved", user_id="42", origin=ToolOrigin.AGENT_INTERACTIVE,
+        principal_type=PrincipalType.HUMAN, auth_source=AuthSource.CHANNEL,
+        agent_context={"channel_authorization_required": True},
+    ))
+    handler = AsyncMock(return_value="公开结果")
+    accepted, result = asyncio.run(middleware.execute_tool_call(
+        tool=tool, arguments={"operation_id": operation} if operation else {},
+        handler=handler, enforce_decision=False,
+    ))
+    assert accepted is allowed
+    if allowed:
+        assert result == "公开结果"
+        handler.assert_awaited_once()
+    else:
+        assert result.status == "error" and "申请使用" in result.content
+        handler.assert_not_awaited()
+
+
+@pytest.mark.parametrize("extension", ["plugin", "mcp"])
+def test_channel_middleware_rechecks_role_before_extension_tools(channel_authorization, extension):
+    """
+    扩展工具执行前重读渠道角色，普通成员不可调用，即使中间件保留过管理员快照。
+    """
+    from app.agent.mcp import AgentMcpServerConfig, AgentMcpToolSpec
+    from app.agent.middleware.policy import AgentPolicyMiddleware
+    from app.agent.policy.contracts import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
+    from app.agent.tools.impl.mcp import McpExternalTool
+
+    service, _, _ = channel_authorization
+    member = _approve(service, role="admin")
+    context = {"authorization_id": member.id, "is_admin": True}
+    middleware = AgentPolicyMiddleware(context=ToolPolicyContext(
+        session_id="extension", user_id="42", origin=ToolOrigin.AGENT_INTERACTIVE,
+        principal_type=PrincipalType.HUMAN, auth_source=AuthSource.CHANNEL, agent_context=context,
+    ))
+    tool = SimpleNamespace(name="extension-tool", _agent_tool_source="plugin:example")
+    if extension == "mcp":
+        tool = McpExternalTool(
+            AgentMcpToolSpec(
+                server=AgentMcpServerConfig(id="offline", name="测试服务"),
+                name="read", agent_tool_name="offline_read", description="离线工具", input_schema={"type": "object"},
+            ),
+            session_id="extension", user_id="42",
+        )
+    handler = AsyncMock(return_value="授权结果")
+    accepted, result = asyncio.run(middleware.execute_tool_call(
+        tool=tool, arguments={}, handler=handler, enforce_decision=False,
+    ))
+    assert accepted and result == "授权结果"
+    handler.reset_mock()
+    service.update(member.id, status="approved", role="member", scopes=("search",), reviewer_id=1)
+    accepted, result = asyncio.run(middleware.execute_tool_call(
+        tool=tool, arguments={}, handler=handler, enforce_decision=False,
+    ))
+    assert not accepted and "渠道管理员" in result.content and context["is_admin"] is False
+    handler.assert_not_awaited()
+
+
+def test_channel_middleware_fails_closed_without_service(channel_authorization, monkeypatch):
+    """
+    工具中间件在服务未装配时拒绝执行，不因已有授权 ID 和管理员快照而放行。
+    """
+    from app.agent.middleware.policy import AgentPolicyMiddleware
+    from app.agent.policy.contracts import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
+
+    service, _, _ = channel_authorization
+    member = _approve(service)
+    middleware = AgentPolicyMiddleware(context=ToolPolicyContext(
+        session_id="unavailable", user_id="42", origin=ToolOrigin.AGENT_INTERACTIVE,
+        principal_type=PrincipalType.HUMAN, auth_source=AuthSource.CHANNEL,
+        agent_context={"authorization_id": member.id, "is_admin": True},
+    ))
+    monkeypatch.setattr(authorization_module, "get_channel_authorization", lambda: None)
+    handler = AsyncMock()
+    accepted, result = asyncio.run(middleware.execute_tool_call(
+        tool=SimpleNamespace(name="memory_read"), arguments={}, handler=handler,
+    ))
+    assert not accepted and "服务不可用" in result.content
+    handler.assert_not_awaited()

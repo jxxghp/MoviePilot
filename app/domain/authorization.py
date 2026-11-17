@@ -4,9 +4,6 @@
 旧投递接收人只在升级时用于保留已有管理员身份，运行时不再据此授权。
 """
 
-from collections.abc import Mapping
-from typing import Any
-
 from app.schemas.types import NotificationChannel
 
 # 类型、渠道、旧普通用户键、旧管理员键和升级时保留的主用户键。
@@ -96,26 +93,3 @@ CHANNEL_PUBLIC_OPERATIONS = frozenset(
         "plugin.statistics",
     }
 )
-
-
-def split_principals(value: Any) -> set[str]:
-    """
-    解析历史逗号分隔名单，保留完整稳定 ID 并去重。
-    """
-    return {item.strip() for item in str(value or "").split(",") if item.strip()}
-
-
-def legacy_principals(channel_type: str, config: Mapping[str, Any]) -> dict[str, str]:
-    """
-    投影单个旧渠道实例的角色；同一成员同时命中时保留管理员权限。
-    """
-    definition = LEGACY_CHANNELS.get(channel_type)
-    if definition is None:
-        return {}
-    _, users_key, admins_key, primary_key = definition
-    members = dict.fromkeys(split_principals(config.get(users_key)), "member")
-    admins = split_principals(config.get(admins_key))
-    if primary_key and (channel_type != "wechat" or config.get("WECHAT_MODE", "app") == "bot"):
-        admins.update(split_principals(config.get(primary_key)))
-    members.update(dict.fromkeys(admins, "admin"))
-    return members
