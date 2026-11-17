@@ -7,13 +7,17 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import httpx2
 import pytest
+from fastapi import FastAPI, Request
 
 from app.adapters.external import mapping as transport
+from app.adapters.network.http import AsyncRequestUtils
 from app.api.endpoints import media as endpoint
 from app.application.server.mapping import configure_media_mapping_port
 from app.chain.media import MediaChain
 from app.runtime.loop import main_loop_registry
+from app.runtime.tasks import get_task_registry
 from app.schemas.mapping import MediaMapping, MediaMappingQuery
 from app.schemas.types import MediaSource, MediaType
 
@@ -204,6 +208,61 @@ def test_browsing_endpoint_only_reads_existing_mapping():
     configure_media_mapping_port(port)
     assert asyncio.run(endpoint.media_mapping(query())) == relation()
     port.share.assert_not_called()
+
+
+def test_report_json_is_accepted_and_visible_to_another_instance(client, monkeypatch):
+    """
+    真实 HTTP 编码必须通过中心同款请求模型解析，并允许另一实例查询已共享关系。
+    """
+    app = FastAPI()
+    stored = {}
+    requests = []
+
+    @app.middleware("http")
+    async def capture(request: Request, call_next):
+        """
+        记录最终发送的请求头与接收端状态，防止仅 mock post 方法漏过编码错误。
+        """
+        response = await call_next(request)
+        requests.append((request.method, request.headers.get("content-type"), response.status_code))
+        return response
+
+    @app.post("/recognize/mapping")
+    async def report(item: MediaMapping):
+        """
+        复用中心服务的 JSON 请求约束，拒绝表单类型的请求体。
+        """
+        stored["item"] = item.model_dump(mode="json")
+        return {"code": 0, "data": {"item": stored["item"]}}
+
+    @app.get("/recognize/mapping")
+    async def lookup():
+        """
+        模拟另一实例读取已通过请求模型验证的关系。
+        """
+        return {"code": 0, "data": {"item": stored.get("item")}}
+
+    async def run():
+        """
+        通过真实请求工具和 ASGI 传输执行后台上报及跨实例查询，全程不访问外网。
+        """
+        async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app)) as http:
+            def request_client(**kwargs):
+                """
+                只替换网络传输，保留生产请求头构造和 JSON 编码路径。
+                """
+                return AsyncRequestUtils(client=http, **kwargs)
+
+            monkeypatch.setattr(transport, "AsyncRequestUtils", request_client)
+            client.share(relation())
+            await asyncio.gather(*(record.task for record in get_task_registry().records if record.owner == "media-mapping.share"))
+            assert requests[0] == ("POST", "application/json", 200)
+            assert stored["item"] == relation().model_dump(mode="json")
+            other = transport.MediaMappingClient()
+            assert await other.async_query(query()) == relation()
+            assert len(requests) == 2
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

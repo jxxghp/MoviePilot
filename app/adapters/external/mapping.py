@@ -86,7 +86,8 @@ class MediaMappingClient:
         try:
             async with asyncio.timeout(REPORT_TIMEOUT if report else QUERY_TIMEOUT):
                 client = AsyncRequestUtils(http2=False, timeout=REPORT_TIMEOUT if report else QUERY_TIMEOUT,
-                                           proxies=get_runtime_setting("PROXY"), verify=True, follow_redirects=False)
+                                           proxies=get_runtime_setting("PROXY"), verify=True, follow_redirects=False,
+                                           content_type="application/json")
                 if report:
                     response = await client.post(url, json=payload)
                 else:
