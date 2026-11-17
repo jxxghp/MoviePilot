@@ -235,7 +235,7 @@ _METHOD_CONTRACTS = {
         result_contract="ExistMediaInfo | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("mediainfo", "itemid", "server"),
-        optional_parameters=("query",),
+        optional_parameters=("query", "raise_on_query_failure"),
     ),
     "media_statistic": ModuleMethodContract(
         family="media-server",

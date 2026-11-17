@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
+from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription.activity import current_activity_run, subscription_activity_scope
 from app.application.subscription.contract import (
     SubscriptionRepository,
@@ -81,8 +82,13 @@ def _finish_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscripti
     current = owner.subscription_repository.get(subscribe.id)
     if current is None or owner._SubscribeChain__candidate_contract_changed(subscribe, current):
         return
-    exists, missing = owner.resolve_subscribe_missing(
-        subscribe=current, meta=target.meta, mediainfo=target.media, mediakey=target.media_key)
+    try:
+        exists, missing = owner.resolve_subscribe_missing(
+            subscribe=current, meta=target.meta, mediainfo=target.media, mediakey=target.media_key)
+    except MediaServerQueryError as err:
+        # 媒体库查询失败时缺集未知，不结算完成状态，下一轮重新对账。
+        logger.warning(f"订阅《{subscribe.name}》媒体库查询失败，本轮不结算完成状态：{err}")
+        return
     owner.finish_subscribe_or_not(subscribe=current, meta=target.meta, mediainfo=target.media,
                                   downloads=[], lefts=missing, force=exists)
 

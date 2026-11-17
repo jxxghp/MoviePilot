@@ -44,7 +44,7 @@ def _no_exists_info(db, year: str):
     chain = DownloadChain()
     chain.media_server_repository = MediaServerOper(db.session)
 
-    def media_exists(mediainfo, itemid=None, server=None, *, query=None):
+    def media_exists(mediainfo, itemid=None, server=None, *, query=None, raise_on_query_failure=False):
         """
         模拟媒体服务器按缓存条目返回动画已有的 26 集。
         """

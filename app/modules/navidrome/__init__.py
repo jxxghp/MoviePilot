@@ -153,6 +153,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         server: Optional[str] = None,
         *,
         query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
     ) -> Optional[_SchemaExistMediaInfo]:
         """
         按条目标识或音乐名称检查媒体是否已入库。
@@ -161,6 +162,8 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param itemid: 可选专辑标识，优先查询；不匹配时继续按名称搜索
         :param server: 媒体服务器配置名称；省略时汇总本类型全部实例
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
+        :param raise_on_query_failure: 仅为兼容链路严格口径保留，本方法只处理音乐，
+            严格口径仅用于电视剧，故该参数不改变本方法的行为
         :return: 首个匹配项的服务器和条目标识；非音乐或未找到匹配项时返回 None
         """
         if mediainfo.type != MediaType.MUSIC or not isinstance(mediainfo, MusicInfo):
