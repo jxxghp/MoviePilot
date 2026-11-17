@@ -128,6 +128,11 @@ HTTP(S) 重定向逐跳校验；私有网络目标必须属于已配置的媒体
 客户端必须让用户选择季和集，再以选中集的 ID 请求播放清单，不能把系列或整季 ID 当作视频条目。
 ID 使用查询参数以兼容 Plex `/library/metadata/...` 条目路径。
 
+媒体库搜索选集可调用 `GET /api/v1/mediaserver/episode-metadata?itemid=...&server=...&season=...`，
+按同一服务器中系列的明确 TMDB 身份补充集海报、标题、简介、播出日期和时长。
+没有明确 TMDB 身份时返回空列表，不按标题匹配其它作品；客户端只给已入库集映射补充展示信息，
+元数据不可用时仍可选择真实单集播放。该接口需要普通登录认证，季号 `0` 同样表示特别篇。
+
 ### 插件生命周期忙碌与超时
 
 `plugin.runtime.status`（`GET /api/v1/plugin/runtime`）的可选 `active_operation` 返回当前

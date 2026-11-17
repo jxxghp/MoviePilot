@@ -45,6 +45,7 @@ from app.application.mediaserver import (
 from app.application.storage import StorageHelper
 from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
+from app.chain.tmdb import TmdbChain
 from app.domain.context import MediaInfo
 from app.domain.context import MusicInfo as _DomainMusicInfo
 from app.domain.metainfo import MetaInfo
@@ -64,6 +65,7 @@ from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPla
 from app.schemas.mediaserver import MediaServerStreamInfo as _SchemaMediaServerStreamInfo
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
@@ -502,6 +504,46 @@ def episode_ids(
         if available:
             result_map[season] = available
     return _SchemaResponse(success=True, data=result_map)
+
+
+@router.get(
+    "/episode-metadata",
+    summary="查询已入库电视剧单季的集展示信息",
+    response_model=_SchemaResponse[list[_SchemaTmdbEpisode]],
+)
+def episode_metadata(
+    itemid: str,
+    season: int = Query(ge=0),
+    server: Optional[str] = None,
+    _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+) -> _SchemaResponse[list[_SchemaTmdbEpisode]]:
+    """
+    沿用已入库系列的明确 TMDB 身份补充集海报、名称和简介，不按标题猜测作品。
+
+    :param itemid: 媒体服务器中的系列条目标识
+    :param season: 媒体服务器的原生季号，0 表示特别篇
+    :param server: 搜索结果提供的媒体服务器配置名称
+    :param _: 已验证的访问令牌
+    :param page: 兼容分页参数，省略时返回该季全部展示信息
+    :param count: 兼容分页大小，由统一响应路由处理显式分页窗口
+    :return: 该季的可选展示信息；缺少明确 TMDB 身份时为空，不改变可播放集映射
+    :raises HTTPException: 系列条目不存在时返回 404
+    """
+    find_options = {"server": server} if server else {}
+    result = MediaServerChain().find_item(
+        itemid, **find_options,
+        query=MediaServerQueryOptions(fields=frozenset({MediaServerField.IDENTITY})),
+    )
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到已入库电视剧")
+    item = result[1]
+    source, media_id = resolve_media_identity(media=item)
+    if source != MediaSource.TMDB or not media_id or not media_id.isdigit():
+        return _SchemaResponse(success=True, data=[])
+    episodes = TmdbChain().tmdb_episodes(tmdbid=int(media_id), season=season)
+    return _SchemaResponse(success=True, data=episodes)
 
 
 @router.get(
