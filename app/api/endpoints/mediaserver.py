@@ -516,6 +516,8 @@ def episode_metadata(
     season: int = Query(ge=0),
     server: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> _SchemaResponse[list[_SchemaTmdbEpisode]]:
     """
     沿用已入库系列的明确 TMDB 身份补充集海报、名称和简介，不按标题猜测作品。
@@ -524,6 +526,8 @@ def episode_metadata(
     :param season: 媒体服务器的原生季号，0 表示特别篇
     :param server: 搜索结果提供的媒体服务器配置名称
     :param _: 已验证的访问令牌
+    :param page: 兼容分页参数，省略时返回该季全部展示信息
+    :param count: 兼容分页大小，由统一响应路由处理显式分页窗口
     :return: 该季的可选展示信息；缺少明确 TMDB 身份时为空，不改变可播放集映射
     :raises HTTPException: 系列条目不存在时返回 404
     """
