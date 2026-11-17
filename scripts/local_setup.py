@@ -300,6 +300,8 @@ LOCAL_FRONTEND_SERVICE_SCRIPT = textwrap.dedent(
     app.use(
       '/api',
       proxy(`${backendHost}:${backendPort}`, {
+        // 保留设备访问的主机名，避免播放清单生成后端回环地址。
+        preserveHostHdr: true,
         proxyReqPathResolver: req => `/api${req.url}`
       })
     )

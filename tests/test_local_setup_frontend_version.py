@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import tempfile
 import uuid
 from pathlib import Path
@@ -25,6 +26,24 @@ def load_local_setup_module():
     assert spec and spec.loader
     spec.loader.exec_module(module)
     return module
+
+
+def test_frontend_service_preserves_public_api_host(tmp_path):
+    """
+    生成的 API 代理保留外部 Host，供播放清单生成设备可达的媒体地址。
+    """
+    module = load_local_setup_module()
+    module._write_local_frontend_service_script(tmp_path)
+    script = (tmp_path / "service.js").read_text(encoding="utf-8")
+    api_proxy = re.search(
+        r"app\.use\(\s*'/api',\s*proxy\([^,]+,\s*\{(?P<options>.*?)\}\)",
+        script,
+        re.DOTALL,
+    )
+
+    assert api_proxy is not None
+    assert "preserveHostHdr: true" in api_proxy["options"]
+    assert "proxyReqPathResolver: req => `/api${req.url}`" in api_proxy["options"]
 
 
 def test_repo_frontend_version_reads_version_file():
