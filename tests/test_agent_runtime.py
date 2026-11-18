@@ -2,6 +2,7 @@
 Agent 运行时配置与已废弃活动目录的 pytest 回归。
 """
 
+import hashlib
 import os
 import shutil
 import sqlite3
@@ -168,6 +169,79 @@ def test_load_runtime_config_syncs_defaults_and_parses_sections(context):
     assert (context.agent_root / 'runtime' / 'personas' / 'default' / 'PERSONA.md').exists()
     assert (context.agent_root / 'runtime' / 'subagents' / 'general-purpose' / 'SUBAGENT.md').exists()
     assert [subagent.subagent_id for subagent in runtime_config.available_subagents] == ['general-purpose']
+
+
+def test_nine_default_personas_are_distinct_and_default_selection_is_preserved(context):
+    """
+    九套内置人格都能加载且各有声音，不因升级模板改变当前激活选择。
+    """
+    config = context._manager().load_runtime_config()
+    by_id = {persona.persona_id: persona for persona in config.available_personas}
+
+    assert set(by_id) == {
+        "default", "concise", "guide", "aloof", "disdain", "cute", "moe", "anime", "catgirl",
+    }
+    assert config.active_persona == "default"
+    assert len({persona.text for persona in by_id.values()}) == len(by_id)
+    assert "direct insult or humiliation" in by_id["disdain"].text
+    assert "solve the actual problem" in by_id["anime"].text
+    assert "喵" in by_id["catgirl"].text
+    assert "别把“可能”说成“已经”" in by_id["default"].text
+
+
+def test_bundled_persona_refresh_never_overwrites_user_runtime_customization(context):
+    """
+    升级内置默认模板时保留用户已经修改的运行时 PERSONA 文件。
+    """
+    defaults_root = context.temp_root / "defaults"
+    shutil.copytree(context.defaults_root, defaults_root)
+    manager = AgentRuntimeManager(agent_root_dir=context.agent_root, bundled_defaults_dir=defaults_root)
+    manager.ensure_layout()
+    runtime_persona = context.agent_root / "runtime" / "personas" / "catgirl" / "PERSONA.md"
+    customized = runtime_persona.read_text(encoding="utf-8") + "\n用户自己的固定说法：先确认片库路径。\n"
+    runtime_persona.write_text(customized, encoding="utf-8")
+
+    bundled_persona = defaults_root / "personas" / "catgirl" / "PERSONA.md"
+    bundled_text = bundled_persona.read_text(encoding="utf-8")
+    bundled_persona.write_text(
+        bundled_text.replace("version: 2", "version: 3", 1) + "\n新增内置说明：这是新模板。\n",
+        encoding="utf-8",
+    )
+    manager.ensure_layout()
+
+    refreshed = runtime_persona.read_text(encoding="utf-8")
+    assert refreshed == customized
+    assert "新增内置说明" not in refreshed
+    assert "active_persona: default" in (context.agent_root / "runtime" / "CURRENT_PERSONA.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_bundled_persona_refresh_only_updates_an_exact_approved_legacy_copy(tmp_path):
+    """
+    人格覆盖只接受版本升级和完整旧文件 SHA 双重匹配，正文改写即保留。
+    """
+    target = tmp_path / "runtime" / "personas" / "default" / "PERSONA.md"
+    source = tmp_path / "defaults" / "personas" / "default" / "PERSONA.md"
+    target.parent.mkdir(parents=True)
+    source.parent.mkdir(parents=True)
+    legacy = (
+        "---\nversion: 1\npersona_id: default\nlabel: 默认\n"
+        "description: 旧内置定义\naliases: []\n---\n旧版默认人格正文\n"
+    ).encode("utf-8")
+    legacy_digest = hashlib.sha256(legacy).hexdigest()
+    target.write_bytes(legacy)
+    source.write_text(
+        "---\nversion: 2\nprevious_default_sha256s:\n"
+        f"  - {legacy_digest}\npersona_id: default\nlabel: 默认\n"
+        "description: 新内置定义\naliases: []\n---\n新版默认人格正文\n",
+        encoding="utf-8",
+    )
+    relative = Path("personas/default/PERSONA.md")
+
+    assert AgentRuntimeManager._should_update_bundled_persona(relative, source, target)
+    target.write_bytes(legacy + "\n用户自定义内容\n".encode("utf-8"))
+    assert not AgentRuntimeManager._should_update_bundled_persona(relative, source, target)
 
 
 def test_legacy_root_markdown_is_migrated_to_memory_directory(context):
