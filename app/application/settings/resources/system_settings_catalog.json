@@ -1378,6 +1378,11 @@
       "enum_name": "AIAgentConfig",
       "source_file": "app/schemas/types.py"
     },
+    "AIAgentKnowledge": {
+      "description": "AI智能体私有中心知识配置；显式绑定 HTTPS 源与独立读取令牌，默认关闭",
+      "enum_name": "AIAgentKnowledge",
+      "source_file": "app/schemas/types.py"
+    },
     "AIAgentMcpServers": {
       "description": "AI智能体外部MCP服务器配置",
       "enum_name": "AIAgentMcpServers",

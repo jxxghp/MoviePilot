@@ -493,6 +493,8 @@ class SystemConfigKey(Enum):
     NotificationSendTime = "NotificationSendTime"
     # AI智能体配置
     AIAgentConfig = "AIAgentConfig"
+    # AI智能体私有中心知识配置；显式绑定 HTTPS 源与独立读取令牌，默认关闭
+    AIAgentKnowledge = "AIAgentKnowledge"
     # GitHub OAuth 设备授权元数据
     GithubAuth = "GithubAuth"
     # AI智能体外部MCP服务器配置

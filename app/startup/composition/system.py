@@ -242,9 +242,23 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
 
     async def publish(self, key: Any, value: Any = None) -> None:
         """
-        同步失效派生缓存并等待全部配置重载处理器完成。
+        同步失效派生缓存并等待全部配置重载处理器完成；中心知识凭据不随事件广播。
         """
-        payload = ConfigChangeEventData(key=key, value=value, change_type="update")
+        if isinstance(key, (str, SystemConfigKey)):
+            key_items = (key,)
+        else:
+            try:
+                key_items = tuple(key)
+            except TypeError:
+                key_items = (key,)
+        normalized_keys = {
+            item.value if isinstance(item, SystemConfigKey) else str(item)
+            for item in key_items
+        }
+        event_value = value
+        if SystemConfigKey.AIAgentKnowledge.value in normalized_keys:
+            event_value = {"enabled": value.get("enabled") is True} if isinstance(value, dict) else None
+        payload = ConfigChangeEventData(key=key, value=event_value, change_type="update")
         if payload.key.intersection(_RUST_METAINFO_OPTION_SETTING_KEYS):
             # 必须在写入入口返回前失效缓存，避免下一次识别读取旧配置。
             clear_rust_parse_options_cache()
