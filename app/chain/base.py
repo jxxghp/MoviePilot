@@ -1189,6 +1189,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         server: Optional[str] = None,
         *,
         query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
     ) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
@@ -1197,15 +1198,24 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param itemid:  媒体服务器ItemID
         :param server:  媒体服务器
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
+        :param raise_on_query_failure: 剧集查询失败时抛 MediaServerQueryError 而不是返回 None；
+            默认 False 保持既有行为。严格口径必须走严格分发，否则分发器会吞掉提供方异常。
+            仅电视剧服务能区分查询失败与未找到；电影/音乐服务不受该参数影响
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        :raises MediaServerQueryError: 剧集查询失败且 raise_on_query_failure 为 True 时
         """
-        return cast(Optional[ExistMediaInfo], self.run_module(
-            "media_exists",
-            mediainfo=mediainfo,
-            itemid=itemid,
-            server=server,
+        kwargs: Dict[str, Any] = {
+            "mediainfo": mediainfo,
+            "itemid": itemid,
+            "server": server,
             **({"query": query} if query is not None else {}),
-        ))
+            "raise_on_query_failure": raise_on_query_failure,
+        }
+        # 严格口径与宽松口径分别走字面调度调用：宽松分发会吞掉提供方异常，
+        # 严格分发必须走 run_module_strict；字面调用同时保持架构基线对调度点的记录
+        if raise_on_query_failure:
+            return cast(Optional[ExistMediaInfo], self.run_module_strict("media_exists", **kwargs))
+        return cast(Optional[ExistMediaInfo], self.run_module("media_exists", **kwargs))
 
     def media_files(self, mediainfo: MediaInfo) -> Optional[List[FileItem]]:
         """

@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.classification.reference import effective_classification_snapshot
+from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     subscribe_media_key,
@@ -222,14 +223,20 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
     ) -> bool:
         """
         使用已取得的新鲜媒体事实独立对账订阅完成状态。
+
+        媒体库查询失败时返回未完成，不把未知状态当作已完成。
         """
         mediakey = subscribe_media_key(subscribe)
-        completed, _no_exists = self.check_and_handle_existing_media(
-            subscribe=subscribe,
-            meta=meta,
-            mediainfo=mediainfo,
-            mediakey=mediakey,
-        )
+        try:
+            completed, _no_exists = self.check_and_handle_existing_media(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=mediakey,
+            )
+        except MediaServerQueryError as err:
+            logger.warning(f"订阅 {subscribe.name} 媒体库查询失败，本轮不对账完成状态：{err}")
+            return False
         return bool(completed)
 
     def _SubscribeChain__update_subscribe_note(

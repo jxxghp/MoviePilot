@@ -173,6 +173,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         server: Optional[str] = None,
         *,
         query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
     ) -> Optional[_SchemaExistMediaInfo]:
         """
         按媒体类型查询首个匹配的入库记录。
@@ -181,6 +182,8 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param itemid: 缓存条目标识；电影优先直接查详情，剧集失效后可回退搜索
         :param server: 指定实例名称，省略时依次查询全部实例
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
+        :param raise_on_query_failure: 仅为兼容链路严格口径保留，Plex 查询失败与未找到
+            均返回空结果，无法区分，故该参数不改变本方法的行为
         :return: 存在信息，电视剧结果包含季集映射；没有匹配记录时返回 None
         """
         servers: Iterable[tuple[Optional[str], Optional[Plex]]]

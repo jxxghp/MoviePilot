@@ -436,4 +436,5 @@ def test_music_library_exists_uses_atomic_album_lookup():
         mediainfo=album,
         itemid="album-item-1",
         query=MEDIA_SERVER_EXISTENCE_QUERY,
+        raise_on_query_failure=False,
     )

@@ -9,6 +9,7 @@ from typing import Any, Optional, TypeVar, cast
 from app.application.classification.reference import (
     subscription_classification_override,
 )
+from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
@@ -74,9 +75,14 @@ def prepare_search_target(owner: _SubscribeOwnerBase, subscribe: SubscriptionSna
     ensure_active()
     media = apply_subscription_classification(media, subscribe)
     key = subscribe_media_key(subscribe)
-    exists, missing = owner.check_and_handle_existing_media(
-        subscribe=subscribe, meta=meta, mediainfo=media, mediakey=key,
-    )
+    try:
+        exists, missing = owner.check_and_handle_existing_media(
+            subscribe=subscribe, meta=meta, mediainfo=media, mediakey=key,
+        )
+    except MediaServerQueryError as err:
+        # 媒体库查询失败时缺集未知，跳过本轮搜索，不更新订阅状态，下一轮重新查询。
+        logger.warning(f"订阅《{subscribe.name}》媒体库查询失败，本轮跳过搜索：{err}")
+        return None
     return None if exists else SubscriptionSearchTarget(subscribe, meta, media, missing, key)
 
 
