@@ -999,7 +999,7 @@ class LLMHelper:
         """
         Gemini 3 使用 thinking_level；Gemini 2.5 使用 thinking_budget。
 
-        Gemini 3.8 Flash 不接受 minimal，也不能完全关闭思考，因此将关闭和最小映射到 low。
+        Gemini 3.8 Flash 与 Gemini 3 Pro 不接受 minimal，也不能完全关闭思考，因此将关闭和最小映射到 low。
 
         :param model_name: 已规范化的模型标识
         :param thinking_level: 用户选择的统一思考级别
@@ -1041,7 +1041,10 @@ class LLMHelper:
             )
 
         if "gemini-3" in model_name:
-            minimum_level = "low" if "gemini-3.8-flash" in model_name else "minimal"
+            is_pro = "-pro" in model_name
+            minimum_level = (
+                "low" if "gemini-3.8-flash" in model_name or is_pro else "minimal"
+            )
             level_map = {
                 "off": minimum_level,
                 "minimal": minimum_level,

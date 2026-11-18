@@ -167,6 +167,36 @@ def test_google_thinking_payload_respects_model_minimum(monkeypatch, offline_run
     assert config.include_thoughts is False
 
 
+@pytest.mark.parametrize("model_name,level,expected", [
+    ("gemini-3.1-pro-preview", "off", "low"),
+    ("gemini-3.1-pro-preview", "minimal", "low"),
+    ("gemini-3.1-pro-preview", "medium", "medium"),
+    ("models/gemini-3.1-pro-preview", "xhigh", "high"),
+])
+def test_google_pro_thinking_payload_uses_supported_levels(
+    monkeypatch, offline_runtime, model_name, level, expected,
+) -> None:
+    """
+    Gemini 3 Pro 的受支持级别不含 minimal，须映射为 low。
+    """
+    from langchain_google_genai import chat_models
+
+    offline_runtime.resolve_runtime.return_value.update(
+        provider_id="google", runtime="google", model_id=model_name, base_url=None,
+    )
+    monkeypatch.setattr(helper, "_patch_gemini_thought_signature", lambda: None)
+    monkeypatch.setattr(chat_models, "Client", Mock(return_value=Mock(aio=None)))
+
+    model = asyncio.run(LLMHelper.get_llm(
+        provider="google", model=model_name, api_key="offline-key", use_proxy=False,
+        web_search_mode="disabled", thinking_level=level, provider_runtime=offline_runtime,
+    ))
+    config = model._prepare_params(None).thinking_config
+
+    assert config.thinking_level.value.lower() == expected
+    assert config.include_thoughts is False
+
+
 @pytest.mark.parametrize("protocol", ["chat_completions", "responses"])
 @pytest.mark.parametrize("effort", ["max", "xhigh"])
 @pytest.mark.parametrize("has_catalog", [False, True])
