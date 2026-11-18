@@ -971,12 +971,14 @@ class TorrentHelper:
             torrent_meta: MetaBase,
     ) -> bool:
         """
-        判断无年份标题是否只通过目标别名命中，需进一步核验媒体身份。
+        判断无年份目标是否只通过别名命中，需进一步核验媒体身份。
         """
         if (
                 mediainfo.type != MediaType.TV
-                or getattr(torrent_meta, "year", None)
-                or not getattr(mediainfo, "year", None)
+                or (
+                    getattr(mediainfo, "year", None)
+                    and getattr(torrent_meta, "year", None)
+                )
         ):
             return False
         media_titles = {
@@ -1014,9 +1016,9 @@ class TorrentHelper:
         判断无年份别名资源能否按订阅目标处理，只有明确属于另一部作品时才拒绝。
 
         同名撞车偶尔下错的代价远低于资源一直下不下来：原名或语言不同、候选条目没有首播日期
-        （多为未播出或残缺的重复条目）都不足以否定目标，按目标处理。唯一拒绝的情况是候选是另一部
-        已播出作品，且首播年份与目标及其各季年份都对不上，例如 2024 年韩剧的英文别名撞上 2008 年同名美剧。
-        TMDB 的电影与电视剧数字 ID 不可跨类型比较。
+        （多为未播出或残缺的重复条目）都不足以否定目标，按目标处理。若目标没有年份，但候选与目标
+        来自同一媒体源且媒体编号明确不同，则可以确认是另一部作品，应拒绝；对没有可比身份的候选
+        仍保留原有的宽松兜底。TMDB 的电影与电视剧数字 ID 不可跨类型比较。
 
         :return: 是否按目标处理，以及给用户看的依据或拒绝原因
         """
@@ -1050,6 +1052,17 @@ class TorrentHelper:
                 return True, "与订阅的作品有相同的媒体编号"
 
         if not target_years:
+            if (
+                    same_type
+                    and all(target_identity)
+                    and all(candidate_identity)
+                    and target_identity[0] == candidate_identity[0]
+                    and target_identity != candidate_identity
+            ):
+                return False, (
+                    f"按名字查到的是另一部作品《{candidate_mediainfo.title}》（{candidate_year}），"
+                    f"与订阅的《{target_mediainfo.title}》媒体编号不同"
+                )
             return True, "订阅的作品没有年份可以比较"
         return False, (
             f"按名字查到的是另一部作品《{candidate_mediainfo.title}》（{candidate_year}），"
