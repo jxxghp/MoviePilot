@@ -18,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 与对应 SKILL.md 同步维护，重新生成不能回退用户同步所需的版本。
-MOVIEPILOT_API_SKILL_VERSION = "77"
+MOVIEPILOT_API_SKILL_VERSION = "78"
 DATABASE_OPERATION_SKILL_VERSION = "20"
 
 
@@ -343,6 +343,11 @@ _OPERATION_NOTES: dict[str, list[str]] = {
         "log override, or configuration; an empty configuration object still protects the row. "
         "It never stops a plugin or deletes plugin data, databases, or files. Rows with settings, "
         "clones, missing rows, or mixed scopes are rejected.",
+    ],
+    "plugin.market": [
+        "- If the market view has no online candidates and one or more configured index reads fail, "
+        "the endpoint returns HTTP `424` with a retryable index-read error instead of an empty list. "
+        "A confirmed empty index or an absent package generation remains a successful read.",
     ],
     "library.exists": [
         "- **Agent note:** The media-type field name is `mtype` (placed inside `query`). "

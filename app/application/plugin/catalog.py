@@ -36,6 +36,12 @@ ProgressCallback = Callable[..., Any]
 DEFAULT_MARKET_FETCH_CONCURRENCY = 5
 
 
+class PluginMarketUnavailableError(RuntimeError):
+    """
+    有市场索引读取失败，且未取得可用候选，无法确认市场为空。
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class _CatalogLoadRequest:
     """
@@ -169,16 +175,20 @@ class PluginCatalogService:
             self,
             request: _CatalogLoadRequest,
             online_plugins: Optional[dict[str, dict[str, Any]]],
-    ) -> list[Any]:
+    ) -> Optional[list[Any]]:
         """
         统一加载失败告警与在线目录到插件 DTO 的投影。
+
+        :param request: 本次读取的市场和代际参数
+        :param online_plugins: 已读取的索引；None 表示传输或解析失败
+        :return: 映射后的插件目录；索引读取失败时返回 None
         """
         if online_plugins is None:
             self._warning(
                 f"获取{request.package_version if request.package_version else ''}插件库失败："
                 f"{request.market}，请检查 GitHub 网络连接"
             )
-            return []
+            return None
         return self._map_plugins(
             online_plugins, request.market, request.package_version
         )
@@ -202,7 +212,7 @@ class PluginCatalogService:
             self._market_loader(
                 request.market, request.package_version, request.force
             ),
-        )
+        ) or []
 
     async def async_load(
             self,
@@ -211,7 +221,28 @@ class PluginCatalogService:
             force: bool = False,
     ) -> list[Any]:
         """
-        异步读取并映射指定市场和插件代际。
+        异步读取指定市场，沿用单仓目录读取失败时返回空列表的约定。
+
+        :param market: 插件市场仓库地址
+        :param package_version: 要读取的索引代际；None 表示基础索引
+        :param force: 是否跳过读取缓存
+        :return: 映射后的插件目录，读取失败时为空
+        """
+        return await self.async_read(market, package_version, force) or []
+
+    async def async_read(
+            self,
+            market: str,
+            package_version: Optional[str] = None,
+            force: bool = False,
+    ) -> Optional[list[Any]]:
+        """
+        异步读取并映射指定索引，保留失败状态供市场聚合使用。
+
+        :param market: 插件市场仓库地址
+        :param package_version: 要读取的索引代际；None 表示基础索引
+        :param force: 是否跳过读取缓存
+        :return: 映射后的插件目录，读取失败时返回 None
         """
         request = PluginCatalogService._load_request(
             market, package_version, force
@@ -277,6 +308,28 @@ class PluginCatalogService:
             (higher_plugins if is_higher else base_plugins).extend(plugins)
         return self.merge(higher_plugins, base_plugins, markets)
 
+    @staticmethod
+    def _require_available_market_candidates(
+        *,
+        required: bool,
+        candidates: list[Any],
+        expected_reads: int,
+        successful_reads: int,
+    ) -> None:
+        """
+        在市场页候选为空且读取不完整时保留上游依赖错误。
+
+        :param required: 调用方是否需要确认市场状态
+        :param candidates: 已成功读取仓库映射后的候选
+        :param expected_reads: 本轮预期的仓库和代际读取数
+        :param successful_reads: 已成功返回可判定索引的读取数
+        :raises PluginMarketUnavailableError: 存在失败读取且没有可展示候选
+        """
+        if required and not candidates and successful_reads < expected_reads:
+            raise PluginMarketUnavailableError(
+                "插件市场索引暂时无法读取，请检查 GitHub 网络连接和代理配置"
+            )
+
     async def async_collect(
             self,
             *,
@@ -285,13 +338,24 @@ class PluginCatalogService:
             force: bool,
             loader: Callable[
                 [str, Optional[str], bool],
-                Awaitable[list[Any]],
+                Awaitable[Optional[list[Any]]],
             ],
             preserve_sources: bool = False,
+            require_available: bool = False,
             progress_callback: Optional[ProgressCallback] = None,
     ) -> list[Any]:
         """
         异步读取多个市场和代际，并按调用方需要合并或保留仓库候选。
+
+        :param markets: 本轮读取的仓库地址，顺序决定合并优先级
+        :param compatible_flags: 要读取的插件代际及其优先级
+        :param force: 是否跳过索引缓存
+        :param loader: 单个市场和代际的异步读取入口；失败时返回 None 或抛错
+        :param preserve_sources: 是否保留每个仓库的候选，不跨仓去重
+        :param require_available: 是否在没有候选且有索引读取失败时报告市场不可用
+        :param progress_callback: 可选的进度更新回调
+        :return: 合并或保留来源后的插件目录
+        :raises PluginMarketUnavailableError: 要求确认市场可用，但存在失败且没有候选
         """
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
@@ -300,15 +364,15 @@ class PluginCatalogService:
                 package_version: Optional[str],
                 result_version: str,
                 task_index: int,
-        ) -> tuple[int, str, list[Any]]:
+        ) -> tuple[int, str, Optional[list[Any]]]:
             """
             读取一个市场代际并保留创建时的稳定任务序号。
             """
             async with semaphore:
                 plugins = await loader(market, package_version, force)
-            return task_index, result_version, plugins or []
+            return task_index, result_version, plugins
 
-        tasks: list[asyncio.Task[tuple[int, str, list[Any]]]] = []
+        tasks: list[asyncio.Task[tuple[int, str, Optional[list[Any]]]]] = []
         for market in markets:
             tasks.append(asyncio.create_task(
                 fetch(market, None, "base_version", len(tasks)),
@@ -323,10 +387,10 @@ class PluginCatalogService:
         try:
             higher_plugins: list[Any] = []
             base_plugins: list[Any] = []
+            task_results: dict[int, tuple[str, list[Any]]] = {}
             if tasks:
                 total_tasks = len(tasks)
                 finished_tasks = 0
-                task_results: dict[int, tuple[str, list[Any]]] = {}
                 if progress_callback:
                     progress_callback(
                         value=0,
@@ -336,7 +400,8 @@ class PluginCatalogService:
                 for completed_task in asyncio.as_completed(tasks):
                     try:
                         task_index, version, plugins = await completed_task
-                        task_results[task_index] = (version, plugins)
+                        if plugins is not None:
+                            task_results[task_index] = (version, plugins)
                     except Exception as err:
                         self._error(f"获取插件市场数据失败：{str(err)}")
                     finished_tasks += 1
@@ -358,6 +423,12 @@ class PluginCatalogService:
                 self.merge_by_source(higher_plugins, base_plugins, markets)
                 if preserve_sources
                 else self.merge(higher_plugins, base_plugins, markets)
+            )
+            self._require_available_market_candidates(
+                required=require_available,
+                candidates=result,
+                expected_reads=len(tasks),
+                successful_reads=len(task_results),
             )
             if progress_callback:
                 progress_callback(value=100, text="插件市场缓存刷新完成")
@@ -581,6 +652,11 @@ class PluginCatalogQuery:
     ) -> list[Plugin]:
         """
         按 installed、market 或 all 返回插件页所需稳定目录。
+
+        :param state: 目录范围；market 失败时传播市场不可用状态
+        :param force: 是否强制刷新在线目录
+        :return: 按所选范围筛选后的插件目录
+        :raises PluginMarketUnavailableError: 市场视图没有在线候选且有索引读取失败
         """
         installed_plugins = self._installed_plugins()
         if state == "installed":
@@ -589,7 +665,12 @@ class PluginCatalogQuery:
         local_plugins = self._local_plugins()
         not_installed = [plugin for plugin in local_plugins if not plugin.installed]
         local_repo_plugins = self._local_repo_plugins()
-        online_plugins = await self._online_candidates(force)
+        try:
+            online_plugins = await self._online_candidates(force)
+        except PluginMarketUnavailableError:
+            if state == "market" and not local_repo_plugins and not not_installed:
+                raise
+            online_plugins = []
         installed_ids = [plugin.id for plugin in installed_plugins if plugin.id]
         candidates = (
             self._process_plugins(online_plugins + local_repo_plugins, [])

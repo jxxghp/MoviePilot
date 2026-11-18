@@ -6,7 +6,8 @@ import asyncio
 import json
 import threading
 from contextlib import asynccontextmanager, contextmanager
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -56,8 +57,10 @@ async def test_failed_indexes_retry_after_short_cache_and_preserve_success_ttl(m
         """
         requests.append(clock[0])
         if clock[0] < 300:
-            return None if failure_status is None else (failure_status, "")
-        return 200, '{"Demo": {"version": "1.0.0"}}'
+            return helper._resolve_plugin_index_result(
+                None if failure_status is None else (failure_status, "")
+            )
+        return {"Demo": {"version": "1.0.0"}}
 
     async def async_request(*args, **kwargs):
         """
@@ -103,13 +106,13 @@ async def test_force_refresh_bypasses_shared_negative_cache(monkeypatch):
         """
         模拟同步入口首次连接仓库失败。
         """
-        return None
+        return helper._resolve_plugin_index_result(None)
 
     async def async_request(*_args, **_kwargs):
         """
         模拟强制重试时仓库已经恢复。
         """
-        return 200, '{"Demo": {"version": "2.0.0"}}'
+        return {"Demo": {"version": "2.0.0"}}
 
     monkeypatch.setattr(helper, SYNC_INDEX_REQUEST, sync_request)
     request = AsyncMock(side_effect=async_request)
@@ -199,8 +202,20 @@ class _SyncStreamResponse:
     提供 requests 流式响应所需的最小测试契约。
     """
 
-    def __init__(self, content: bytes, content_length: str | None = None) -> None:
-        self.status_code = 200
+    def __init__(
+        self,
+        content: bytes,
+        content_length: str | None = None,
+        status_code: int = 200,
+    ) -> None:
+        """
+        保存本次离线流的正文、可选长度和 HTTP 状态。
+
+        :param content: 按字节读取的响应正文
+        :param content_length: 可选的 Content-Length 头值
+        :param status_code: 模拟响应状态码
+        """
+        self.status_code = status_code
         self.headers = {}
         if content_length is not None:
             self.headers["Content-Length"] = content_length
@@ -222,8 +237,20 @@ class _AsyncStreamResponse:
     提供 httpx 流式响应所需的最小测试契约。
     """
 
-    def __init__(self, content: bytes, content_length: str | None = None) -> None:
-        self.status_code = 200
+    def __init__(
+        self,
+        content: bytes,
+        content_length: str | None = None,
+        status_code: int = 200,
+    ) -> None:
+        """
+        保存本次离线异步流的正文、可选长度和 HTTP 状态。
+
+        :param content: 按字节读取的响应正文
+        :param content_length: 可选的 Content-Length 头值
+        :param status_code: 模拟响应状态码
+        """
+        self.status_code = status_code
         self.headers = {}
         if content_length is not None:
             self.headers["Content-Length"] = content_length
@@ -271,7 +298,7 @@ def test_plugin_index_request_uses_sync_stream_transport(monkeypatch) -> None:
         headers={"Accept": "application/json"},
     )
 
-    assert result == (200, '{"DemoPlugin":{"version":"1.0.0"}}')
+    assert result == {"DemoPlugin": {"version": "1.0.0"}}
     assert calls[0][0]["headers"] == {"Accept": "application/json"}
     assert calls[0][2] is True
 
@@ -308,9 +335,111 @@ async def test_plugin_index_request_uses_async_stream_transport(monkeypatch) -> 
         headers={"Accept": "application/json"},
     )
 
-    assert result == (200, '{"DemoPlugin":{"version":"1.0.0"}}')
+    assert result == {"DemoPlugin": {"version": "1.0.0"}}
     assert calls[0][0]["headers"] == {"Accept": "application/json"}
     assert calls[0][2] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+@pytest.mark.parametrize(
+    ("mirror", "origin_status", "expected_error"),
+    [
+        pytest.param((200, b"{}"), 200, None, id="valid-empty-mirror"),
+        pytest.param((404, b"<html>not found</html>"), 200, None, id="mirror-404"),
+        pytest.param((503, b"unavailable"), 200, None, id="mirror-503"),
+        pytest.param((200, b"<html>anti-bot page</html>"), 200, None, id="mirror-html"),
+        pytest.param((200, b"[]"), 200, None, id="mirror-json-array"),
+        pytest.param((200, b"x" * (PLUGIN_INDEX_MAX_BYTES + 1)), 200, None, id="mirror-oversize"),
+        pytest.param((404, b"not found"), 404, None, id="origin-404"),
+        pytest.param((404, b"not found"), 503, "HTTP 503", id="origin-503"),
+        pytest.param((404, b"not found"), None, "连接失败", id="origin-unreachable"),
+    ],
+)
+async def test_plugin_index_fallback_checks_response_before_accepting_it(
+    monkeypatch,
+    mode: str,
+    mirror: tuple[int, bytes],
+    origin_status: int | None,
+    expected_error: str | None,
+) -> None:
+    """
+    只有可解析索引或原始出口的 404 可以结束降级；镜像失败后仍保留原始出口的结果。
+    """
+    settings = {
+        "GITHUB_PROXY": "https://mirror.example",
+        "PROXY_HOST": None,
+        "PROXY": None,
+    }
+    monkeypatch.setattr(
+        plugin_client_module,
+        "get_runtime_setting",
+        lambda key, default=None: settings.get(key, default),
+    )
+    calls: list[str] = []
+    index_url = "https://raw.githubusercontent.com/example/repo/main/package.v3.json"
+    mirror_url = f"https://mirror.example/{index_url}"
+
+    def response_for(url: str) -> tuple[int, bytes] | None:
+        """
+        记录出口顺序并按实际请求地址选择离线响应。
+        """
+        calls.append(url)
+        if url == mirror_url:
+            return mirror
+        assert url == index_url
+        if origin_status is None:
+            return None
+        return origin_status, b'{"DemoPlugin": {"version": "1.0.0"}}'
+
+    @contextmanager
+    def sync_stream(*, url: str, raise_exception: bool):
+        """
+        用离线响应替代同步出站流。
+        """
+        assert raise_exception is True
+        raw = response_for(url)
+        yield _SyncStreamResponse(raw[1], status_code=raw[0]) if raw else None
+
+    @asynccontextmanager
+    async def async_stream(*, url: str, raise_exception: bool):
+        """
+        用离线响应替代异步出站流。
+        """
+        assert raise_exception is True
+        raw = response_for(url)
+        yield _AsyncStreamResponse(raw[1], status_code=raw[0]) if raw else None
+
+    monkeypatch.setattr(
+        plugin_client_module, "RequestUtils", Mock(return_value=SimpleNamespace(get_stream=sync_stream))
+    )
+    monkeypatch.setattr(
+        plugin_client_module, "AsyncRequestUtils", Mock(return_value=SimpleNamespace(get_stream=async_stream))
+    )
+    transport = PluginMarketTransport()
+
+    async def fetch():
+        """
+        通过实际传输入口执行同步或异步索引读取。
+        """
+        if mode == "sync":
+            return transport._fetch_plugin_index_sync(index_url, None)
+        return await transport._fetch_plugin_index_async(index_url, None)
+
+    if expected_error:
+        with pytest.raises(RuntimeError, match=expected_error):
+            await fetch()
+    elif mirror == (200, b"{}"):
+        assert await fetch() == {}
+    elif origin_status == 404:
+        assert await fetch() is None
+    else:
+        assert await fetch() == {"DemoPlugin": {"version": "1.0.0"}}
+
+    if mirror == (200, b"{}"):
+        assert calls == [mirror_url]
+    else:
+        assert calls == [mirror_url, index_url]
 
 
 @pytest.mark.asyncio
@@ -322,7 +451,7 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
     """
     helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/policy-repository"
-    response = (200, '{"DemoPlugin": {"version": "1.2.3"}}')
+    response = {"DemoPlugin": {"version": "1.2.3"}}
     sync_requests: list[tuple[str, dict]] = []
     async_requests: list[tuple[str, dict]] = []
 
@@ -380,7 +509,7 @@ async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
     async def request(_url: str, *, headers: dict):
         nonlocal requests
         requests += 1
-        return 200, '{"DemoPlugin": {"version": "1.2.3"}}'
+        return {"DemoPlugin": {"version": "1.2.3"}}
 
     monkeypatch.setattr(
         helper,
@@ -411,7 +540,7 @@ def test_sync_force_refresh_bypasses_index_cache(
     def request(_url: str, *, headers: dict):
         nonlocal requests
         requests += 1
-        return 200, f'{{"DemoPlugin": {{"version": "{version}"}}}}'
+        return {"DemoPlugin": {"version": version}}
 
     monkeypatch.setattr(
         helper,
@@ -451,7 +580,7 @@ async def test_async_force_refresh_bypasses_index_cache(
     async def request(_url: str, *, headers: dict):
         nonlocal requests
         requests += 1
-        return 200, f'{{"DemoPlugin": {{"version": "{version}"}}}}'
+        return {"DemoPlugin": {"version": version}}
 
     monkeypatch.setattr(
         helper,
@@ -487,7 +616,7 @@ async def test_absent_plugin_generation_is_cached(monkeypatch) -> None:
     async def request(_url: str, *, headers: dict):
         nonlocal requests
         requests += 1
-        return 404, ""
+        return None
 
     monkeypatch.setattr(
         helper,
@@ -516,7 +645,7 @@ async def test_index_cache_retains_multi_market_generation_working_set(
     async def request(_url: str, *, headers: dict):
         nonlocal requests
         requests += 1
-        return 200, '{"DemoPlugin": {"version": "1.0.0"}}'
+        return {"DemoPlugin": {"version": "1.0.0"}}
 
     monkeypatch.setattr(
         helper,
@@ -827,7 +956,7 @@ def test_plugin_index_result_preserves_read_state(
     repo_url = f"https://github.com/policy-owner/policy-repository-{status_code}"
 
     def request(_url: str, *, headers: dict):
-        return status_code, content
+        return helper._resolve_plugin_index_result((status_code, content))
 
     monkeypatch.setattr(helper, SYNC_INDEX_REQUEST, request)
     helper.get_plugin_index_result.cache_clear()
@@ -856,7 +985,7 @@ def test_plugin_index_result_raises_for_unusable_reads(
     helper = PluginMarketTransport()
 
     def request(_url: str, *, headers: dict):
-        return status_code, content
+        return helper._resolve_plugin_index_result((status_code, content))
 
     monkeypatch.setattr(helper, SYNC_INDEX_REQUEST, request)
     helper.get_plugin_index_result.cache_clear()
@@ -878,7 +1007,7 @@ def test_invalid_plugin_index_is_not_cached(monkeypatch) -> None:
     def request(_url: str, *, headers: dict):
         nonlocal requests
         requests += 1
-        return 200, "not-json"
+        return helper._resolve_plugin_index_result((200, "not-json"))
 
     monkeypatch.setattr(helper, SYNC_INDEX_REQUEST, request)
     helper.get_plugin_index_result.cache_clear()
@@ -901,7 +1030,7 @@ async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> 
     helper = PluginMarketTransport()
 
     async def request(_url: str, *, headers: dict):
-        return 404, ""
+        return None
 
     monkeypatch.setattr(
         helper,
@@ -932,7 +1061,7 @@ async def test_async_plugin_index_failure_is_not_reported_as_background_task_err
     previous_handler = loop.get_exception_handler()
 
     async def request(_url: str, *, headers: dict):
-        return 200, "not-json"
+        return helper._resolve_plugin_index_result((200, "not-json"))
 
     monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
     monkeypatch.setattr(
@@ -972,7 +1101,7 @@ async def test_async_plugin_index_requests_are_single_flight(monkeypatch) -> Non
         requests += 1
         started.set()
         await release.wait()
-        return 200, '{"DemoPlugin": {"version": "1.2.3"}}'
+        return {"DemoPlugin": {"version": "1.2.3"}}
 
     monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
     await helper.async_get_plugin_index_result.cache_clear()
@@ -1021,7 +1150,7 @@ async def test_async_plugin_index_requests_share_process_gate(monkeypatch) -> No
             started.set()
         await release.wait()
         active -= 1
-        return 200, '{"DemoPlugin": {"version": "1.2.3"}}'
+        return {"DemoPlugin": {"version": "1.2.3"}}
 
     monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
     await helper.async_get_plugin_index_result.cache_clear()
