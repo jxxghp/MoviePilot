@@ -202,7 +202,6 @@ def _verify_plugin_static_file_access(
     "/",
     summary="所有插件",
     response_model=List[_SchemaPlugin],
-    responses={status.HTTP_424_FAILED_DEPENDENCY: {"description": "插件市场索引读取失败且无可用候选"}},
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def all_plugins(
@@ -213,7 +212,7 @@ async def all_plugins(
     max_results: Annotated[Optional[int], Query(ge=1, le=200)] = None,
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-    response: Response = None,  # type: ignore[assignment]
+    response: Response = cast(Response, None),
 ) -> List[_SchemaPlugin]:
     """
     查询插件清单；未指定分页或限量时返回完整清单。

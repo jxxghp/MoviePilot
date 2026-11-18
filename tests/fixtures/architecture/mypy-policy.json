@@ -529,16 +529,6 @@
       "reason": "fastapi-response-default"
     },
     {
-      "path": "app/api/endpoints/plugin.py",
-      "owner": "all_plugins",
-      "codes": [
-        "assignment"
-      ],
-      "fingerprint": "5f6a039d011683394079e360301c9a5ea1b5f5aa09ee4e4826c56fdaff1aaf4f",
-      "statement": "@router.get('/', summary='所有插件', response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def all_plugins(_: ApiPrincipal=Depends(get_current_active_superuser_async), state: Optional[str]='all', force: bool=False, query: Optional[str]=None, max_results: Annotated[Optional[int], Query(ge=1, le=200)]=None, page: CompatiblePageParam=None, count: CompatibleCountParam=None, response: Response=None) -> List[_SchemaPlugin]:",
-      "reason": "fastapi-response-default"
-    },
-    {
       "path": "app/api/endpoints/pluginclone.py",
       "owner": "plugin_restorable_instances",
       "codes": [
