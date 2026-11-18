@@ -620,7 +620,9 @@ def test_site(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    测试站点是否可用
+    检查站点连通性及适配器支持的登录状态。
+
+    通用检测只检查网页和 Cookie；此接口不验证用户认证页保存的 UID、Passkey 等参数。
     """
     site = query.get_sync(site_id)
     if not site:

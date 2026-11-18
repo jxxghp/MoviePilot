@@ -5,6 +5,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from app.api.endpoints import site as site_endpoint
 from app.application.site.auth import (
     normalize_site_auth_config,
@@ -23,6 +25,32 @@ HAIDAN_AUTH_SITES = {
         }
     }
 }
+
+AUTH_SITES = {
+    **HAIDAN_AUTH_SITES,
+    "hdkyl": {"params": {"uid": {"name": "用户ID"}, "passkey": {"name": "密钥"}}},
+}
+
+
+def test_normalization_removes_other_site_credentials_without_mutating_input() -> None:
+    """
+    切换站点遗留的前缀凭据被过滤，当前站点和未知扩展字段继续兼容。
+    """
+    params = {"id": 123, "passkey": "current", "HDKYL_UID": 456, "HDKYL_PASSKEY": "old", "extra": "value"}
+    original = dict(params)
+
+    assert normalize_site_auth_params("haidan", params, AUTH_SITES) == {
+        "HAIDAN_ID": 123, "HAIDAN_PASSKEY": "current", "extra": "value",
+    }
+    assert params == original
+
+
+@pytest.mark.parametrize("site,params", [(None, None), ("unknown", {"field": "value"})])
+def test_unrecognized_auth_configuration_keeps_legacy_parameters(site, params) -> None:
+    """
+    缺失或尚未识别的资源配置不能删除调用方提供的扩展参数。
+    """
+    assert normalize_site_auth_params(site, params, AUTH_SITES) == (params or {})
 
 
 def test_normalize_site_auth_params_accepts_resource_field_names() -> None:
@@ -73,13 +101,13 @@ def test_auth_site_normalizes_parameters_before_check_and_persist(monkeypatch) -
     认证端点应以规范化键名调用资源并只持久化成功配置。
     """
     helper = Mock()
-    helper.get_authsites.return_value = HAIDAN_AUTH_SITES
+    helper.get_authsites.return_value = AUTH_SITES
     helper.check_user.return_value = (True, "haidan")
     config = Mock()
     _patch_auth_endpoint(monkeypatch, helper, config)
 
     response = site_endpoint.auth_site(
-        SiteAuth(site="haidan", params={"id": 63632, "passkey": "secret"}),
+        SiteAuth(site="haidan", params={"id": 63632, "passkey": "secret", "HDKYL_PASSKEY": "old"}),
         SimpleNamespace(),
     )
 
@@ -141,6 +169,30 @@ def test_startup_auth_prefers_environment_configuration(monkeypatch) -> None:
     module_initializer.user_auth()
 
     helper.check_user.assert_called_once_with()
+
+
+def test_startup_auth_filters_other_site_credentials_in_saved_configuration(monkeypatch) -> None:
+    """
+    启动时只按保存的站点认证，混存的其他站点前缀不能进入资源调用。
+    """
+    helper = Mock(auth_level=1)
+    helper.get_authsites.return_value = AUTH_SITES
+    helper.check_user.return_value = (False, "请求超时")
+    config = Mock()
+    config.get.return_value = {
+        "site": "haidan",
+        "params": {"id": 123, "passkey": "current", "HDKYL_UID": 456, "HDKYL_PASSKEY": "old"},
+    }
+    monkeypatch.setattr(module_initializer, "SitesHelper", Mock(return_value=helper))
+    monkeypatch.setattr(module_initializer, "get_configured_system_config", Mock(return_value=config))
+    monkeypatch.setattr(module_initializer, "get_runtime_setting", lambda _key: "")
+
+    module_initializer.user_auth()
+
+    helper.check_user.assert_called_once_with(
+        site="haidan", params={"HAIDAN_ID": 123, "HAIDAN_PASSKEY": "current"},
+    )
+    config.set.assert_not_called()
 
 
 def test_scheduler_auth_prefers_environment_configuration(monkeypatch) -> None:

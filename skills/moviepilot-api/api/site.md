@@ -157,7 +157,7 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `site.test`
 `GET /api/v1/site/test/{site_id}`; policy effect: `safe_read`.
-Purpose: 测试一个已配置站点的连通性和认证状态。
+Purpose: 测试站点连通性和适配器支持的登录状态；通用网页检测仅检查页面和 Cookie，不校验独立的用户认证接口，不能据此判断 UID、Passkey 等用户认证参数有效。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: `site_id*` (integer): site.list 返回的持久化站点标识。
 - `query`: none

@@ -111,6 +111,11 @@ AppPush 的所有用户范围由 `tests/test_notification_routing_parity.py` 验
 - 用例**不得**连接或写入真实数据库、不得读写真实 `config/`。需要的库状态在用例内构造。
 - 用例**不得**依赖某个本地才有的动态模块副本；缺失的外部模块由 conftest 兜底或用例自行 mock。
 
+`tests/test_site_auth.py` 验证用户认证参数规范化、切换站点后过滤其他站点前缀、仅持久化成功
+配置，以及启动认证的环境变量优先级。`tests/test_site_chain_ports.py` 覆盖错误 HTTP 响应、
+Cloudflare、空浏览器页面和通用检测的范围提示；这些检测不会验证用户认证页的 UID 或 Passkey。
+认证扩展的传输诊断与各平台 ABI 由 MoviePilot-Build 的离线回放和编译资源验证负责。
+
 ## 外部依赖：一律 mock，零真实网络
 
 季集选集由 `tests/test_episode_file_selection.py`、`tests/test_download_batch_phases.py` 和
