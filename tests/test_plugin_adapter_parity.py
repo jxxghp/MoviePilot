@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.adapters.external.plugin.client import PluginMarketTransport
+from app.adapters.external.plugin.client import PluginIndex, PluginMarketTransport
 from app.adapters.system.plugin.dependency import PluginDependencyInstaller
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.runtime import cache as cache_module
@@ -45,19 +45,19 @@ async def test_plugin_index_sync_async_result_contract_is_identical(
     monkeypatch.setattr(cache_module.MemoryBackend, "_region_caches", {})
     transport = PluginMarketTransport()
 
-    def request(_url: str, *, headers: dict) -> tuple[int, str] | None:
+    def request(_url: str, *, headers: dict) -> PluginIndex | None:
         """
         返回本参数用例的固定同步传输结果。
         """
-        return response
+        return transport._resolve_plugin_index_result(response)
 
     async def async_request(
         _url: str, *, headers: dict
-    ) -> tuple[int, str] | None:
+    ) -> PluginIndex | None:
         """
         返回与同步入口相同的异步传输结果。
         """
-        return response
+        return transport._resolve_plugin_index_result(response)
 
     monkeypatch.setattr(transport, SYNC_INDEX_REQUEST, request)
     monkeypatch.setattr(transport, ASYNC_INDEX_REQUEST, async_request)

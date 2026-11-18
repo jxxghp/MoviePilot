@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.application.plugin.catalog import PluginCatalogService, PluginMarketUnavailableError
 from app.runtime import log as log_module
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.log import set_plugin_instance_log_level
@@ -74,6 +75,44 @@ async def test_source_candidates_only_load_selected_configured_repository(monkey
     else:
         assert collect.await_args.kwargs["markets"] == ["https://github.com/Example/Plugins"]
         assert collect.await_args.kwargs["compatible_flags"] == ["v3", "v2"]
+
+
+@pytest.mark.asyncio
+async def test_catalog_warns_when_market_candidates_cannot_be_loaded(monkeypatch):
+    """
+    全市场查询保留索引失败，单仓文档查询继续返回空候选。
+    """
+    from app.runtime.extensions.plugin import catalog as catalog_module
+
+    repo = "https://github.com/Example/Plugins"
+    warnings: list[str] = []
+    loader = AsyncMock(return_value=None)
+    service = PluginCatalogService(
+        market_loader=lambda *_args: None,
+        async_market_loader=loader,
+        installed_plugins_provider=list,
+        plugin_mapper=lambda *_args: None,
+        is_local_repo=lambda _value: False,
+        version_compare=lambda *_args: False,
+        warning=warnings.append,
+        error=warnings.append,
+    )
+    monkeypatch.setattr(catalog_module, "get_runtime_setting", lambda key: {
+        "PLUGIN_MARKET": repo,
+        "VERSION_FLAG": "v3",
+    }[key])
+    facade = _facade(
+        system=lambda: SimpleNamespace(compatible_flags=lambda _flag: ["v3"]),
+        market_catalog=lambda: service,
+        async_market_loader=service.async_load,
+    )
+
+    with pytest.raises(PluginMarketUnavailableError, match="插件市场索引暂时无法读取"):
+        await facade.async_online_candidates(force=True)
+    loader.assert_any_await(repo, "v3", True)
+
+    assert await facade.async_online_candidates(repo_url=repo) == []
+    assert len(warnings) == 4
 
 
 @pytest.mark.asyncio

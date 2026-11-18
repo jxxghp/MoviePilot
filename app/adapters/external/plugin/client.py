@@ -90,13 +90,19 @@ _PLUGIN_INDEX_FETCH_GATE = threading.BoundedSemaphore(
 )
 
 
-class _PluginIndexTooLargeError(RuntimeError):
+class _PluginIndexReadError(RuntimeError):
+    """
+    传输或解析未能确认索引存在状态。
+    """
+
+
+class _PluginIndexTooLargeError(_PluginIndexReadError):
     """
     插件索引的声明长度或实际读取字节超过资源边界。
     """
 
 
-class _PluginIndexUnavailableError(RuntimeError):
+class _PluginIndexUnavailableError(_PluginIndexReadError):
     """
     插件索引连接或 HTTP 状态暂时失败，可短暂缓存并保留库存不完整语义。
     """
@@ -968,6 +974,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def __read_plugin_index_response(cls, response: Response) -> tuple[int, str]:
         """
         从同步流式响应读取有界的解压后索引文本。
+
+        :param response: 当前出口返回的开放响应流
+        :return: 状态码与正文；非 200 响应不读取正文
+        :raises _PluginIndexTooLargeError: 声明长度或已读取字节数超过上限
         """
         status_code = response.status_code
         if status_code != 200:
@@ -994,6 +1004,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     ) -> tuple[int, str]:
         """
         从异步流式响应读取有界的解压后索引文本。
+
+        :param response: 当前出口返回的开放异步流
+        :return: 状态码与正文；非 200 响应不读取正文
+        :raises _PluginIndexTooLargeError: 声明长度或已读取字节数超过上限
         """
         status_code = response.status_code
         if status_code != 200:
@@ -1049,9 +1063,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         url: str,
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
-    ) -> Optional[tuple[int, str]]:
+    ) -> Optional[PluginIndex]:
         """
-        按 GitHub 降级顺序流式读取同步插件索引，并限制解压后字节数。
+        按 GitHub 降级顺序流式读取并验证同步插件索引。
+
+        :param url: GitHub 原始索引地址
+        :param headers: 仓库请求头
+        :param timeout: 单出口请求超时秒数
+        :return: 有效索引，或以 None 表示原始出口确认索引不存在
+        :raises _PluginIndexReadError: 所有出口均未返回可判定结果
         """
         strategies = cls._build_github_request_strategies(
             url=url,
@@ -1059,6 +1079,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             timeout=timeout,
         )
         for strategy_name, target_url, request_params in strategies:
+            from_mirror = strategy_name == "镜像站"
             logger.debug(
                 f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
             )
@@ -1068,19 +1089,19 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     url=target_url,
                     raise_exception=True,
                 ) as response:
-                    if response is None:
-                        continue
-                    return cls.__read_plugin_index_response(response)
-            except _PluginIndexTooLargeError:
-                raise
+                    raw = cls.__read_plugin_index_response(response) if response is not None else None
+                return cls._resolve_plugin_index_result(raw, from_mirror=from_mirror)
+            except _PluginIndexReadError as error:
+                if not from_mirror:
+                    raise
+                logger.warning(f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}")
             # 失败后尝试下一传输策略
             except Exception as error:  # noqa: BLE001
                 logger.error(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
                     f"URL：{target_url}，错误：{_format_request_error(error)}"
                 )
-        logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
-        return None
+        raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
 
     @classmethod
     async def __async_request_plugin_index_with_fallback(
@@ -1088,9 +1109,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         url: str,
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
-    ) -> Optional[tuple[int, str]]:
+    ) -> Optional[PluginIndex]:
         """
-        按 GitHub 降级顺序流式读取异步插件索引，并限制解压后字节数。
+        按 GitHub 降级顺序流式读取并验证异步插件索引。
+
+        :param url: GitHub 原始索引地址
+        :param headers: 仓库请求头
+        :param timeout: 单出口请求超时秒数
+        :return: 有效索引，或以 None 表示原始出口确认索引不存在
+        :raises _PluginIndexReadError: 所有出口均未返回可判定结果
         """
         strategies = cls._build_github_request_strategies(
             url=url,
@@ -1098,6 +1125,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             timeout=timeout,
         )
         for strategy_name, target_url, request_params in strategies:
+            from_mirror = strategy_name == "镜像站"
             logger.debug(
                 f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
             )
@@ -1107,19 +1135,22 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     url=target_url,
                     raise_exception=True,
                 ) as response:
-                    if response is None:
-                        continue
-                    return await cls.__async_read_plugin_index_response(response)
-            except _PluginIndexTooLargeError:
-                raise
+                    raw = (
+                        await cls.__async_read_plugin_index_response(response)
+                        if response is not None else None
+                    )
+                return cls._resolve_plugin_index_result(raw, from_mirror=from_mirror)
+            except _PluginIndexReadError as error:
+                if not from_mirror:
+                    raise
+                logger.warning(f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}")
             # 失败后尝试下一传输策略
             except Exception as error:  # noqa: BLE001
                 logger.error(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
                     f"URL：{target_url}，错误：{_format_request_error(error)}"
                 )
-        logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
-        return None
+        raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
 
     @classmethod
     def _resolve_plugin_index_response(
@@ -1140,24 +1171,27 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def _resolve_plugin_index_result(
             cls,
             response: Optional[tuple[int, str]],
+            *,
+            from_mirror: bool = False,
     ) -> Optional[PluginIndex]:
         """
         把传输结果统一映射为索引读取合同。
 
         :param response: 传输层返回的状态码和已受限响应文本；None 表示连接失败
+        :param from_mirror: 是否由镜像站返回；镜像 404 无法证明原始索引不存在
         :return: 有效索引，或以 None 表示仓库明确不存在该索引
-        :raises RuntimeError: 连接失败、非成功状态或响应格式无效
+        :raises _PluginIndexReadError: 连接失败、非成功状态或响应格式无效
         """
         if response is None:
             raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
         status_code, content = response
-        if status_code == 404:
+        if status_code == 404 and not from_mirror:
             return None
         if status_code != 200:
             raise _PluginIndexUnavailableError(f"插件索引请求失败：HTTP {status_code}")
         payload = cls.__parse_plugin_index_response(content)
         if payload is None:
-            raise RuntimeError("插件索引响应格式无效")
+            raise _PluginIndexReadError("插件索引响应格式无效")
         return payload
 
     @staticmethod
@@ -1353,11 +1387,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         在共享进程级闸门内完成一次同步索引读取。
         """
         with _PLUGIN_INDEX_FETCH_GATE:
-            response = self.__request_plugin_index_with_fallback(
+            return self.__request_plugin_index_with_fallback(
                 package_url,
                 headers=headers,
             )
-        return self._resolve_plugin_index_result(response)
 
     async def _fetch_plugin_index_async(
         self,
@@ -1369,13 +1402,12 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         await self._acquire_index_fetch_slot()
         try:
-            response = await self.__async_request_plugin_index_with_fallback(
+            return await self.__async_request_plugin_index_with_fallback(
                 package_url,
                 headers=headers,
             )
         finally:
             _PLUGIN_INDEX_FETCH_GATE.release()
-        return self._resolve_plugin_index_result(response)
 
     async def _fetch_plugin_index_async_task(
         self,

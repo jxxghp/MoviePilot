@@ -3,12 +3,15 @@
 """
 
 import asyncio
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from packaging.version import Version
 
-from app.application.plugin.catalog import PluginCatalogService
+from app.application.plugin.catalog import (
+    PluginCatalogService,
+    PluginMarketUnavailableError,
+)
 from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
 from app.schemas.plugin import Plugin
 
@@ -209,6 +212,7 @@ async def test_async_collect_isolates_failure_and_completes_progress():
         compatible_flags=["v3"],
         force=True,
         loader=loader,
+        require_available=True,
         progress_callback=progress,
     )
 
@@ -219,6 +223,53 @@ async def test_async_collect_isolates_failure_and_completes_progress():
     error.assert_called_once()
     assert progress.call_args_list[0].kwargs["value"] == 0
     assert progress.call_args_list[-1].kwargs["value"] == 100
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("base_index", [None, {}], ids=["all-failed", "base-absent"])
+async def test_async_collect_reports_failure_without_candidates(base_index):
+    """
+    没有候选且存在读取失败时报告市场不可用，已确认缺少基础索引也不能掩盖失败。
+    """
+    warnings = Mock()
+    service = _service(
+        async_market_loader=AsyncMock(side_effect=[base_index, None, None]),
+        warning=warnings,
+    )
+
+    with pytest.raises(PluginMarketUnavailableError, match="插件市场索引暂时无法读取"):
+        await service.async_collect(
+            markets=["https://market-a"],
+            compatible_flags=["v3", "v2"],
+            force=False,
+            loader=service.async_read,
+            require_available=True,
+        )
+
+    assert warnings.call_count == (3 if base_index is None else 2)
+
+
+@pytest.mark.asyncio
+async def test_async_collect_keeps_valid_empty_market_results():
+    """
+    成功读取到的空目录仍是有效结果，不能误报为网络不可用。
+    """
+    errors = Mock()
+    service = _service(
+        async_market_loader=AsyncMock(return_value={}),
+        error=errors,
+    )
+
+    result = await service.async_collect(
+        markets=["https://market-empty"],
+        compatible_flags=["v3"],
+        force=False,
+        loader=service.async_read,
+        require_available=True,
+    )
+
+    assert result == []
+    errors.assert_not_called()
 
 
 @pytest.mark.asyncio

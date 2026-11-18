@@ -326,6 +326,7 @@ class PluginCatalogFacade:
         :param force: 是否忽略索引缓存
         :param repo_url: 可选的目标仓库；未配置或非法来源返回空列表
         :return: 指定来源或全部配置市场的候选
+        :raises PluginMarketUnavailableError: 读取全市场时存在索引失败且没有可用候选
         """
         plugin_market = get_runtime_setting('PLUGIN_MARKET')
         if not plugin_market:
@@ -336,14 +337,16 @@ class PluginCatalogFacade:
             markets = [market for market in markets if target and market.lower() == target.lower()]
             if not markets:
                 return []
-        result: list[Plugin] = await self._market_catalog().async_collect(
+        market_catalog = self._market_catalog()
+        result: list[Plugin] = await market_catalog.async_collect(
             markets=markets,
             compatible_flags=self._system().compatible_flags(
                 get_runtime_setting('VERSION_FLAG')
             ),
             force=force,
-            loader=self._async_market_loader,
+            loader=market_catalog.async_read if repo_url is None else self._async_market_loader,
             preserve_sources=True,
+            require_available=repo_url is None,
         )
         return result
 
