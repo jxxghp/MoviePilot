@@ -113,6 +113,98 @@ def test_exact_search_reuses_disambiguation_for_same_parsed_title(monkeypatch):
     media_chain.recognize_by_meta.assert_called_once()
 
 
+def test_exact_search_rejects_yearful_wrong_work_for_yearless_alias(monkeypatch):
+    """目标缺少年份时，带年份的错误英文别名资源也必须经过消歧。"""
+    target = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="304086",
+        tmdb_id=304086,
+        title="铁证",
+        original_title="铁证",
+        names=["Evidence"],
+        type=MediaType.TV,
+        year=None,
+    )
+    candidate = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="330828",
+        tmdb_id=330828,
+        title="证词",
+        original_title="证词",
+        type=MediaType.TV,
+        year="2023",
+        original_language="zh",
+    )
+    torrent = TorrentInfo(
+        title="Evidence S01 2023 1080p WEB-DL H264 AAC",
+        site_name="测试站点",
+        category=MediaType.TV.value,
+    )
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = candidate
+    monkeypatch.setattr(search_module, "MediaChain", Mock(return_value=media_chain))
+    monkeypatch.setattr(
+        search_module.TorrentHelper,
+        "sort_torrents",
+        staticmethod(lambda contexts: contexts),
+    )
+    chain = object.__new__(SearchChain)
+
+    contexts = chain._parse_result(
+        torrents=[torrent],
+        mediainfo=target,
+        rule_groups=[],
+    )
+
+    assert contexts == []
+    media_chain.recognize_by_meta.assert_called_once()
+
+
+def test_exact_search_accepts_yearless_alias_when_identity_is_confirmed(monkeypatch):
+    """目标缺少年份时，二次识别确认同一媒体仍可保留资源。"""
+    target = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="304086",
+        tmdb_id=304086,
+        title="铁证",
+        original_title="铁证",
+        names=["Evidence"],
+        type=MediaType.TV,
+        year=None,
+    )
+    candidate = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="304086",
+        tmdb_id=304086,
+        title="铁证",
+        original_title="铁证",
+        type=MediaType.TV,
+    )
+    torrent = TorrentInfo(
+        title="Evidence S01 2026 1080p WEB-DL H264 AAC",
+        site_name="测试站点",
+        category=MediaType.TV.value,
+    )
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = candidate
+    monkeypatch.setattr(search_module, "MediaChain", Mock(return_value=media_chain))
+    monkeypatch.setattr(
+        search_module.TorrentHelper,
+        "sort_torrents",
+        staticmethod(lambda contexts: contexts),
+    )
+    chain = object.__new__(SearchChain)
+
+    contexts = chain._parse_result(
+        torrents=[torrent],
+        mediainfo=target,
+        rule_groups=[],
+    )
+
+    assert len(contexts) == 1
+    media_chain.recognize_by_meta.assert_called_once()
+
+
 def test_parallel_filter_propagates_request_context(monkeypatch):
     """
     按站点并行过滤时，每个 worker 都应保留触发解析的关联 ID。
