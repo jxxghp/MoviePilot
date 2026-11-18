@@ -12853,7 +12853,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "测试一个已配置站点的连通性和认证状态。请求方法：GET；路径：/api/v1/site/test/{site_id}。操作效果：safe_read；身份范围：bound_user。所需角色：user。",
+      "description": "测试站点连通性和适配器支持的登录状态；通用网页检测仅检查页面和 Cookie，不校验独立的用户认证接口，不能据此判断 UID、Passkey 等用户认证参数有效。请求方法：GET；路径：/api/v1/site/test/{site_id}。操作效果：safe_read；身份范围：bound_user。所需角色：user。",
       "properties": {
         "operation_id": {
           "const": "site.test",
@@ -12862,7 +12862,7 @@
         },
         "path_params": {
           "additionalProperties": false,
-          "description": "site.test 的资源标识参数。测试一个已配置站点的连通性和认证状态。仅使用下列已声明字段。",
+          "description": "site.test 的资源标识参数。测试站点连通性和适配器支持的登录状态；通用网页检测仅检查页面和 Cookie，不校验独立的用户认证接口，不能据此判断 UID、Passkey 等用户认证参数有效。仅使用下列已声明字段。",
           "properties": {
             "site_id": {
               "description": "site.list 返回的持久化站点标识。",

@@ -400,6 +400,19 @@
     "无法打开网站！": "Unable to open the site!",
     "无法获取Token": "Unable to get token",
     "连接成功": "Connection successful",
+    "网页可访问（按站点设置检查登录状态，未验证用户认证接口）": "Page reachable (login checked according to site settings; user-authentication endpoint not verified)",
+    "请求超时": "Request timed out",
+    "DNS 解析失败": "DNS resolution failed",
+    "代理连接失败": "Proxy connection failed",
+    "TLS 连接失败": "TLS connection failed",
+    "网络连接失败": "Network connection failed",
+    "认证请求失败": "Authentication request failed",
+    "认证接口未收到响应": "No response from the authentication endpoint",
+    "认证接口返回内容为空": "Authentication endpoint returned an empty response",
+    "认证接口返回内容与预期不符（不是 JSON 对象）": "Unexpected authentication response (expected a JSON object)",
+    "认证接口返回内容与预期不符（不是有效 JSON）": "Unexpected authentication response (invalid JSON)",
+    "认证接口返回内容与预期不符（缺少认证状态）": "Unexpected authentication response (missing authentication status)",
+    "认证未通过，请检查凭据和站点用户状态！": "Authentication was not approved. Check your credentials and site account status.",
     "Cookie已失效": "Cookie has expired",
     "鉴权已过期或无效": "Authentication has expired or is invalid",
     "Cookie已过期": "Cookie has expired",
@@ -658,6 +671,14 @@
     "渠道授权服务不可用": "The channel authorization service is unavailable"
   },
   "message_patterns": [
+    {
+      "source": "认证接口返回 HTTP {status}",
+      "target": "Authentication endpoint returned HTTP {status}"
+    },
+    {
+      "source": "用户认证出错（{error_type}）",
+      "target": "User authentication error ({error_type})"
+    },
     {
       "source": "{name} 未能加入整理队列，请稍后重试",
       "target": "Could not add {name} to the organization queue. Try again later"
