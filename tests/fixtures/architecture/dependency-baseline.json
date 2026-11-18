@@ -977,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10333,
-  "edge_sha256": "2fcd2139eeb96786c233172e5529094016404aaf87bd15711174c65dea2eb066",
+  "edge_count": 10335,
+  "edge_sha256": "5718f6bd1f1f823a40222a7695ea32056aea169e5082271da7ccc39d4d3cf198",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8369,6 +8369,8 @@
     "app.modules.indexer.spider.hddolby -> app.application.configuration",
     "app.modules.indexer.spider.hddolby -> app.domain",
     "app.modules.indexer.spider.hddolby -> app.domain.site",
+    "app.modules.indexer.spider.hddolby -> app.foundation",
+    "app.modules.indexer.spider.hddolby -> app.foundation.text",
     "app.modules.indexer.spider.hddolby -> app.runtime",
     "app.modules.indexer.spider.hddolby -> app.runtime.log",
     "app.modules.indexer.spider.hddolby -> app.runtime.settings",
