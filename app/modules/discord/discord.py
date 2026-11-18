@@ -20,6 +20,14 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MessageType
 
+# Discord 嵌入消息长度上限：标题、描述、字段名、字段值、字段数和整条合计。
+EMBED_TITLE_LIMIT = 256
+EMBED_DESCRIPTION_LIMIT = 4096
+EMBED_FIELD_NAME_LIMIT = 256
+EMBED_FIELD_VALUE_LIMIT = 1024
+EMBED_FIELD_COUNT_LIMIT = 25
+EMBED_TOTAL_LIMIT = 6000
+
 # 仅这些通知类型将正文拆为卡片字段，其他类型保留原始文本。
 PARSE_FIELD_TYPES = {
     # 下载资源通知。
@@ -1194,6 +1202,15 @@ class Discord:
             return False
 
     @staticmethod
+    def _clip(value: Optional[str], limit: int) -> Optional[str]:
+        """
+        按字符数截断文本，超出时以省略号结尾，总长不超过 limit。
+        """
+        if not value or len(value) <= limit:
+            return value
+        return value[: limit - 1] + "…"
+
+    @staticmethod
     def _build_embed(
         title: str,
         text: Optional[str],
@@ -1309,6 +1326,34 @@ class Discord:
         description = "\n".join(desc_lines).strip()
         if not description and not fields and text:
             description = text.strip()
+        # Discord 对嵌入消息有硬性长度上限，超出会被 API 拒绝，需要提前截断
+        title = Discord._clip(title, EMBED_TITLE_LIMIT)
+        description = Discord._clip(description, EMBED_DESCRIPTION_LIMIT)
+        fields = [
+            {
+                "name": Discord._clip(field["name"], EMBED_FIELD_NAME_LIMIT),
+                "value": Discord._clip(field["value"], EMBED_FIELD_VALUE_LIMIT),
+            }
+            for field in fields[:EMBED_FIELD_COUNT_LIMIT]
+        ]
+
+        def _total() -> int:
+            """
+            计算嵌入消息中计入总长度上限的字符数。
+            """
+            return (
+                len(title or "")
+                + len(description)
+                + sum(len(f["name"]) + len(f["value"]) for f in fields)
+            )
+
+        overflow = _total() - EMBED_TOTAL_LIMIT
+        if overflow > 0 and description:
+            description = Discord._clip(
+                description, max(len(description) - overflow, 1)
+            )
+        while fields and _total() > EMBED_TOTAL_LIMIT:
+            fields.pop()
         embed = discord.Embed(
             title=title,
             url=link or "https://github.com/jxxghp/MoviePilot",
