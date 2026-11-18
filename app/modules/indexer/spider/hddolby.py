@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
 from app.domain import site as site_rules
+from app.foundation import text as text_tools
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MediaType
@@ -196,6 +197,7 @@ class HddolbySpider:
                 'freedate': result.get('promotion_until'),
                 'page_url': self._pageurl % result.get('id') if self._pageurl else '',
                 'labels': torrentLabels,
+                'hit_and_run': text_tools.parse_bool(result.get('hr')),
                 'category': category
             }
             torrents.append(torrent)
