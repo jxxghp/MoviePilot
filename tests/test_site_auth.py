@@ -12,8 +12,8 @@ from app.application.site.auth import (
     normalize_site_auth_config,
     normalize_site_auth_params,
 )
-from app.scheduler import reconcile as scheduler_reconcile
 from app.runtime.localization import LocaleHelper
+from app.scheduler import reconcile as scheduler_reconcile
 from app.schemas.site import SiteAuth
 from app.schemas.types import SystemConfigKey
 from app.startup.initializers import modules as module_initializer
