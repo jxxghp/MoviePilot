@@ -94,6 +94,11 @@ Do not raise `HTTPException` in chain or module code. Chains and modules return 
 | Chain | Log the error, return `None` or an appropriate domain object with failure indication |
 | Endpoint | Translate `None` or failure result into a `Response(success=False, ...)` or `HTTPException` |
 
+媒体库存在性查询使用严格口径时，模块通过 `MediaServerQueryError` 传播无法确认的查询结果，
+订阅入口跳过本轮并保留缺集进度。Emby/Jellyfin 的标题和分集查询仅将 HTTP 200 且
+`Items` 为有效条目列表的空结果视为“未找到”；超时、非 200、无效响应及无法确认的条目身份
+必须保留失败状态。多服务器查询中任一服务器失败时，不能用其他服务器的部分集数推断缺失。
+
 ```python
 def test(self) -> Optional[Tuple[bool, str]]:
     """

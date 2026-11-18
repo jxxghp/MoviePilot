@@ -26,12 +26,18 @@ class _FakeResponse:
         保存模拟接口的响应内容与状态，避免实际网络请求。
         """
         self._payload = payload
+        self.status_code = 200
 
     def json(self):
         """
         返回测试预置的响应体。
         """
         return self._payload
+
+    def close(self):
+        """
+        保留响应释放接缝，测试替身不持有网络资源。
+        """
 
 
 def _build_plex():
