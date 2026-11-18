@@ -325,6 +325,8 @@ class AgentPolicyMiddleware(AgentMiddleware):
         if isinstance(tool, McpExternalTool):
             return False
         name = getattr(tool, "name", None)
+        if name in {"knowledge_search", "knowledge_read"}:
+            return False
         if name in SUBAGENT_READ_ACTIONS:
             action = arguments.get("action")
             return bool(

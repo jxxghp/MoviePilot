@@ -31,6 +31,17 @@ _SENSITIVE_QUERY = re.compile(
 )
 
 
+def contains_knowledge_secret(value: str, site: Optional[str] = None) -> bool:
+    """
+    在工具参数进入基类日志之前拒绝已知令牌、Cookie 和凭据形态。
+
+    :param value: 模型提供的短问题
+    :param site: 模型提供的可选站点名或别名
+    :return: 发现已知凭据形态时为 True
+    """
+    return bool(_SENSITIVE_QUERY.search(value + "\n" + (site or "")))
+
+
 def normalize_knowledge_config(key: object, value: object) -> object:
     """
     在所有配置服务写入路径上规范化中心地址并校验完整令牌绑定。
@@ -135,7 +146,7 @@ class KnowledgeService:
         :param purpose: 本轮查询用途
         :return: 有限证据或明确失败状态
         """
-        if _SENSITIVE_QUERY.search(query + "\n" + (site or "")):
+        if contains_knowledge_secret(query, site):
             return KnowledgeOutcome("invalid_request")
         version = self._version()
         stable = re.fullmatch(r"v?(\d+\.\d+\.\d+)", version or "")

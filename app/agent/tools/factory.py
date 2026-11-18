@@ -26,6 +26,7 @@ from app.agent.tools.impl.browse_webpage import BrowseWebpageTool
 from app.agent.tools.impl.edit_file import EditFileTool
 from app.agent.tools.impl.execute_code import ExecuteCodeTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
+from app.agent.tools.impl.knowledge import KnowledgeReadTool, KnowledgeSearchTool
 from app.agent.tools.impl.persona import PersonaTool
 from app.agent.tools.impl.query_doctor_report import QueryDoctorReportTool
 from app.agent.tools.impl.read_file import ReadFileTool
@@ -78,6 +79,7 @@ class _ToolFactoryOptions(TypedDict):
     :ivar agent_context: 可缺省的 Agent 上下文
     :ivar allow_message_tools: 是否允许消息工具
     :ivar include_external_service_tools: 是否包含外部服务工具
+    :ivar include_knowledge_tools: 是否允许为主 Agent 注入中心知识工具
     :ivar data: 可缺省的 Agent 数据上下文
     """
 
@@ -90,6 +92,7 @@ class _ToolFactoryOptions(TypedDict):
     agent_context: NotRequired[Optional[dict[str, object]]]
     allow_message_tools: NotRequired[bool]
     include_external_service_tools: NotRequired[bool]
+    include_knowledge_tools: NotRequired[bool]
     data: NotRequired[Optional[AgentDataContext]]
 
 
@@ -138,7 +141,7 @@ class MoviePilotToolFactory:
 
     # 这些通用工具需要始终保留，避免大工具集裁剪后让 Agent 丢失基础的
     # 文件系统、命令执行、历史检索或交互确认能力。AskUserChoiceTool 仅在支持按钮
-    # 的渠道中才会实际注入，因此后续会再按已加载工具做一次求交集。
+    # 的渠道中才会实际注入；知识搜索也应能被主模型直接看到而非被工具预算裁掉。
     TOOL_SELECTOR_ALWAYS_INCLUDE_NAMES = (
         "moviepilot_api",
         "write_file",
@@ -149,6 +152,8 @@ class MoviePilotToolFactory:
         "execute_code",
         "ask_user_choice",
         "agent_task",
+        "knowledge_search",
+        "knowledge_read",
         "search_memory",
         "session_search",
     )
@@ -231,6 +236,7 @@ class MoviePilotToolFactory:
         agent_context: Optional[dict[str, object]] = None,
         allow_message_tools: bool = True,
         include_external_service_tools: bool = False,
+        include_knowledge_tools: bool = False,
         data: Optional[AgentDataContext] = None,
     ) -> List[MoviePilotTool]:
         """
@@ -244,6 +250,9 @@ class MoviePilotToolFactory:
         tool_definitions = cls._get_builtin_tool_classes(channel)
         if include_external_service_tools:
             tool_definitions.extend(cls.EXTERNAL_SERVICE_TOOL_CLASSES)
+        knowledge_service = getattr(data, "knowledge", None) if data is not None else None
+        if include_knowledge_tools and knowledge_service is not None and knowledge_service.current_config() is not None:
+            tool_definitions.extend((KnowledgeSearchTool, KnowledgeReadTool))
         # 创建内置工具
         for ToolClass in tool_definitions:
             if ToolClass is ExecuteCodeTool and (include_external_service_tools or not (agent_context or {}).get('is_admin')):

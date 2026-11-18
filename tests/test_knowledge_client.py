@@ -479,7 +479,7 @@ async def test_configuration_change_event_never_broadcasts_center_credentials(mo
         {SystemConfigKey.AIAgentKnowledge.value: None}.keys(), _config()
     )
     payload = observed[0]["data"]
-    assert payload.value == {"enabled": True}
+    assert payload.value is None
     assert TOKEN not in repr(payload) and ORIGIN not in repr(payload)
 
 

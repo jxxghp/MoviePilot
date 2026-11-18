@@ -16,6 +16,7 @@ from app.application.agenttask import (
     configure_agent_task_execution,
     reset_agent_task_execution,
 )
+from app.application.knowledge import KnowledgeService
 from app.application.maintenance import read_cleanup_policy
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
@@ -88,12 +89,25 @@ def compose_agent(
     system_config: SystemConfigOper,
     dependencies: RuntimeDependencies,
     tasks: TaskRegistry | None = None,
+    knowledge: KnowledgeService | None = None,
 ) -> AgentComposition:
     """
     在数据库 worker 启动后构造共享的 Agent 数据与任务服务。
+
+    :param runtime: 数据库 worker 与事务边界
+    :param system_config: 已加载的系统配置快照
+    :param dependencies: HostRuntime 已装配的数据与业务仓储端口
+    :param tasks: 可选的宿主后台任务登记器
+    :param knowledge: 可选的替代只读知识用例；None 时由组合根装配默认实现
+    :return: Agent 数据上下文、仓储与执行服务
     """
     from app.agent.history.storage import SqliteRecallRepository
     from app.agent.runtime import agent_runtime_manager
+    if knowledge is None:
+        from app.adapters.external.knowledge import KnowledgeClient
+        from app.runtime.version import get_app_version
+
+        knowledge = KnowledgeService(system_config, KnowledgeClient(), get_app_version)
 
     persistence = AgentChatPersistenceService(
         repository=AgentChatOper,
@@ -125,6 +139,7 @@ def compose_agent(
         plugin_data=TransactionalPluginDataRepository(async_session_scope),
         invocations=TransactionalInvocationRepository(SessionFactory),
         recall=recall,
+        knowledge=knowledge,
     )
     return AgentComposition(
         data=data,

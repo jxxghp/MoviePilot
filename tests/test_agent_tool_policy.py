@@ -176,6 +176,7 @@ def test_builtin_policy_inventory_covers_every_fixed_tool() -> None:
         _tool_class_name(tool_class)
         for tool_class in MoviePilotToolFactory.EXTERNAL_SERVICE_TOOL_CLASSES
     )
+    fixed_tool_names.update({"knowledge_search", "knowledge_read"})
 
     assert DEFAULT_TOOL_POLICY_REGISTRY.builtin_tool_inventory == fixed_tool_names
 
@@ -213,6 +214,16 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
     assert safe_policy.effect is ActionEffect.SAFE_READ
     assert safe_policy.result_sensitivity is ResultSensitivity.NORMAL
     assert safe_policy.migration_state is MigrationState.ENFORCED
+    for tool_name in ("knowledge_search", "knowledge_read"):
+        knowledge_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+            tool_name=tool_name,
+            arguments={},
+            requires_admin=False,
+        )
+        assert knowledge_policy.effect is ActionEffect.SAFE_READ
+        assert knowledge_policy.confirmation is ConfirmationMode.NONE
+        assert knowledge_policy.required_role is PrincipalRole.USER
+        assert knowledge_policy.migration_state is MigrationState.ENFORCED
     assert persona_switch_policy.required_role is PrincipalRole.SYSTEM_ADMIN
 
     assert admin_safe_policy.effect is ActionEffect.SAFE_READ
@@ -226,6 +237,18 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
     assert dynamic_policy.migration_state is MigrationState.LEGACY_SHADOW
     assert dynamic_policy.effect is ActionEffect.UNKNOWN
     assert dynamic_policy.result_sensitivity is ResultSensitivity.UNKNOWN
+
+
+def test_subagent_never_receives_private_knowledge_reads():
+    """
+    标签即使声明 read，也不能让知识工具进入子代理的只读范围。
+    """
+    from app.agent.middleware.policy import AgentPolicyMiddleware
+    from app.agent.tools.impl.knowledge import KnowledgeReadTool, KnowledgeSearchTool
+
+    for tool_type in (KnowledgeSearchTool, KnowledgeReadTool):
+        tool = tool_type(session_id="subagent-policy", user_id="user")
+        assert AgentPolicyMiddleware._subagent_read_allowed(tool, {}) is False
 
 
 @pytest.mark.parametrize("show_secrets", [None, False])
