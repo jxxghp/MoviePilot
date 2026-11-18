@@ -896,5 +896,6 @@ Pylint 分别提供对应证据。验证结论应绑定实际源码提交，不�
 | [数据与持久化](rules/10-data-and-persistent.md) | 数据模型、事务、迁移与缓存 |
 | [开发环境设置](development-setup.md) | 锁定依赖、环境映射与治理检查 |
 | [测试规范](testing.md) | 隔离、测试范围与 CI 证据 |
+| [订阅生命周期](subscribe-lifecycle.md) | 订阅模式、字段所有权与生命周期阶段 |
 | [MCP 接入](mcp-api.md) | 外部 Agent 连接、认证、工具发现和调用 |
 | [CLI](cli.md) / [Doctor](doctor.md) | 本地管理与故障诊断 |
