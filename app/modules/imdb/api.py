@@ -97,6 +97,7 @@ class ImdbTitle(ImdbModel):
 
     id: str = Field(description='IMDb 影视条目标识，通常以 tt 开头')
     type: str = Field(description='IMDb 原始条目类型，如 movie 或 tvSeries')
+    parent_series_id: Optional[str] = Field(None, alias='parentSeriesId', description='单集所属剧集的 IMDb 标识')
     is_adult: Optional[bool] = Field(None, alias='isAdult', description='是否为成人内容，来源未说明时为 None')
     primary_title: Optional[str] = Field(None, alias='primaryTitle', description='当前展示标题，缺失时为 None')
     original_title: Optional[str] = Field(None, alias='originalTitle', description='作品原始标题，缺失时为 None')
@@ -171,6 +172,7 @@ query TitleDetails($titles: [ID!]!) {
     id
     titleText { text }
     titleType { id }
+    series { series { id } }
     releaseYear { year }
     originalTitleText { text }
     primaryImage { url width height }
@@ -492,11 +494,15 @@ class ImdbApi:
         genres = (item.get("titleGenres") or {}).get("genres") or []
         countries = (item.get("countriesOfOrigin") or {}).get("countries") or []
         languages = (item.get("spokenLanguages") or {}).get("spokenLanguages") or []
+        series = item.get("series")
+        parent = series.get("series") if isinstance(series, dict) else None
+        parent_id = parent.get("id") if isinstance(parent, dict) else None
         return cls._parse(
             ImdbTitle,
             {
                 "id": item.get("id"),
                 "type": (item.get("titleType") or {}).get("id"),
+                "parentSeriesId": parent_id if isinstance(parent_id, str) else None,
                 "isAdult": item.get("isAdult"),
                 "primaryTitle": (item.get("titleText") or {}).get("text"),
                 "originalTitle": (item.get("originalTitleText") or {}).get(
