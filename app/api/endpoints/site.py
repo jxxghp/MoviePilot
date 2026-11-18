@@ -863,6 +863,8 @@ def auth_site(
         auth_info.params,
         sites_helper.get_authsites(),
     )
+    if not auth_params:
+        return _SchemaResponse(success=False, message="请输入认证站点和认证参数")
     status, msg = sites_helper.check_user(auth_info.site, auth_params)
     if status:
         get_configured_system_config().set(

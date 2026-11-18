@@ -145,6 +145,26 @@ def test_auth_site_does_not_persist_failed_parameters(monkeypatch) -> None:
     config.set.assert_not_called()
 
 
+def test_auth_site_rejects_parameters_belonging_only_to_another_site(monkeypatch) -> None:
+    """
+    过滤后为空时直接拒绝，避免资源把空参数误当成改用环境变量认证。
+    """
+    helper = Mock()
+    helper.get_authsites.return_value = AUTH_SITES
+    config = Mock()
+    _patch_auth_endpoint(monkeypatch, helper, config)
+
+    response = site_endpoint.auth_site(
+        SiteAuth(site="haidan", params={"HDKYL_UID": 456, "HDKYL_PASSKEY": "old"}),
+        SimpleNamespace(),
+    )
+
+    assert response.success is False
+    assert response.message == "请输入认证站点和认证参数"
+    helper.check_user.assert_not_called()
+    config.set.assert_not_called()
+
+
 @pytest.mark.parametrize("locale,message,expected", [
     ("en-US", "请求超时", "Request timed out"),
     ("en-US", "认证接口返回 HTTP 403", "Authentication endpoint returned HTTP 403"),
