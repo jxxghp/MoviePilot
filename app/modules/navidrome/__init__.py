@@ -359,6 +359,22 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         service = self.get_instance(server)
         return service.get_play_url(str(item_id)) if service else None
 
+    def mediaserver_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        返回 Navidrome 已签名的原始音频流地址。
+
+        :param server: Navidrome 配置名称
+        :param item_id: Navidrome 曲目标识
+        :param item_type: 媒体服务器返回的类型，本适配器只服务音频条目
+        :return: 上游音频流地址；条目不是音频或实例不可用时返回 None
+        """
+        if (item_type or "").casefold() not in {"audio", "music", "track", MediaType.MUSIC.value.casefold()}:
+            return None
+        service = self.get_instance(server)
+        return service.get_play_url(str(item_id)) if service else None
+
     def mediaserver_latest(
         self,
         server: Optional[str] = None,

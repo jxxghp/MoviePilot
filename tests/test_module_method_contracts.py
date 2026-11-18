@@ -80,6 +80,7 @@ def test_contract_v2_freezes_every_observed_host_method() -> None:
     host_internal_methods = {"plan_transfer", "execute_transfer_plan", "restore_search_torrent", "link_file",
                              "test_site", "parse_torrent_download_response", "get_site_domain", "torrent_resource_identity",
                              "is_expiring_download_url", "is_torrent_download_confirmation", "parse_torrent_download_confirmation",
+                             "mediaserver_stream_url",
                              "get_site_rss_recipe", "is_site_rss_expired", "has_site_subtitle_api", "encrypt_site_payload"}
     for method_name, contract in contracts.items():
         assert contract.version == 1

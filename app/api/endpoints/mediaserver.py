@@ -19,9 +19,9 @@ from app.adapters.mediastream import (
     _is_file_stream_ticket,
     _remote_stream_response,
     _resolve_file_stream_ticket,
-    _resolve_media_path,
     _stream_source,
     _subtitle_tracks,
+    _validate_stream_url,
 )
 from app.adapters.mediastream import _configured_stream_hosts as _configured_media_stream_hosts
 from app.adapters.mediastream import _create_file_stream_ticket as _create_media_file_stream_ticket
@@ -72,26 +72,29 @@ from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 router = ResponseAPIRouter()
 
 
-def _configured_stream_hosts(path: Path) -> set[str]:
+def _configured_stream_hosts(path: Optional[Path], *, include_media_servers: bool = False) -> set[str]:
     """
     从应用层配置读取允许 STRM 使用的媒体服务器和云存储主机。
 
-    :param path: 媒体条目报告的本机文件或 STRM 文件路径
+    :param path: 可选的本机文件或 STRM 文件路径
+    :param include_media_servers: 是否允许代理已配置媒体服务器的原始流地址
     :return: 管理员明确配置的主机名集合
     """
-    if path.suffix.casefold() != ".strm":
+    if not include_media_servers and (not path or path.suffix.casefold() != ".strm"):
         return set()
     return _configured_media_stream_hosts(get_mediaserver_configs(), StorageHelper.get_storagies())
 
 
-def _find_stream_item(itemid: str, server: Optional[str] = None) -> tuple[str, _SchemaMediaServerItem, Path]:
+def _find_stream_item(
+    itemid: str, server: Optional[str] = None
+) -> tuple[str, _SchemaMediaServerItem, Optional[Path]]:
     """
-    查找已入库媒体条目，并验证其路径可由当前进程读取。
+    查找已入库媒体条目，同时保留本机可读取时的文件路径。
 
     :param itemid: 媒体服务器条目标识
     :param server: 可选的媒体服务器配置名，用于精确定位同 ID 条目
-    :return: 媒体服务器名称、条目和已验证的本地路径
-    :raises HTTPException: 条目缺失或路径无法读取时
+    :return: 媒体服务器名称、条目和当前主机可读取时的文件路径
+    :raises HTTPException: 媒体服务器条目不存在时
     """
     find_options = {"server": server} if server else {}
     result = MediaServerChain().find_item(
@@ -102,41 +105,39 @@ def _find_stream_item(itemid: str, server: Optional[str] = None) -> tuple[str, _
     if not result:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到已入库媒体")
     server, item = result
-    return server, item, _resolve_media_path(item.path)
+    path = Path(item.path) if item.path else None
+    return server, item, path if path and path.is_file() else None
 
 
 def _resolve_stream_item(
     itemid: str, user_id: Optional[int], server: Optional[str] = None
-) -> tuple[_SchemaMediaServerItem, Path]:
+) -> tuple[Optional[str], _SchemaMediaServerItem, Optional[Path]]:
     """
     解析媒体服务器条目或当前用户的单文件播放票据。
 
     :param itemid: 媒体服务器条目标识或单文件票据
     :param user_id: 当前已认证用户主键，用于限制票据使用人
     :param server: 可选的媒体服务器配置名，用于精确定位同 ID 条目
-    :return: 播放条目与已验证的本地媒体路径
-    :raises HTTPException: 条目缺失、票据不属于当前用户或文件不可读时
+    :return: 媒体服务器名称、播放条目及可选的本地媒体路径
+    :raises HTTPException: 条目缺失或票据不属于当前用户时
     """
     if not _is_file_stream_ticket(itemid):
-        if server:
-            _, item, path = _find_stream_item(itemid, server=server)
-        else:
-            _, item, path = _find_stream_item(itemid)
-        return item, path
+        server_name, item, path = _find_stream_item(itemid, **({"server": server} if server else {}))
+        return server_name, item, path
     path = _resolve_file_stream_ticket(itemid, user_id)
     item_type = "Audio" if _file_stream_ticket_media_type(itemid) == "audio" else "Episode"
-    return _SchemaMediaServerItem(item_id=itemid, title=path.stem, item_type=item_type, path=str(path)), path
+    return None, _SchemaMediaServerItem(item_id=itemid, title=path.stem, item_type=item_type, path=str(path)), path
 
 
 def _find_music_stream_item(
     music: _SchemaMediaServerMusicStreamRequest,
-) -> tuple[str, _SchemaMediaServerItem, Path]:
+) -> tuple[str, _SchemaMediaServerItem, Optional[Path]]:
     """
     通过标准录音信息匹配已入库单曲，并从对应媒体服务器读取实际路径。
 
     :param music: 单曲来源身份、标题和表演者信息
-    :return: 匹配的服务器配置名、单曲条目和经验证的本地路径
-    :raises HTTPException: 曲目未入库、无路径或实际条目不是可播放音频时
+    :return: 匹配的服务器配置名、单曲条目和可选的本地文件路径
+    :raises HTTPException: 曲目未入库或实际条目不是可播放音频时
     """
     chain = MediaServerChain()
     mediainfo = _DomainMusicInfo(
@@ -163,10 +164,38 @@ def _find_music_stream_item(
     )
     if not item or str(item.item_id or item.id or "") != str(match.itemid):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到已入库音乐")
-    path = _resolve_media_path(item.path)
-    if not _is_audio_path(path) and (item.item_type or "").casefold() not in {"audio", "music"}:
+    path = Path(item.path) if item.path else None
+    path = path if path and path.is_file() else None
+    if not _is_audio_item(item, path):
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="该音乐格式不支持在线播放")
     return match.server, item, path
+
+
+def _playback_source(
+    server: Optional[str], itemid: str, item: _SchemaMediaServerItem, path: Optional[Path]
+) -> tuple[str, Path | str, set[str]]:
+    """
+    优先选择媒体服务器原始流，适配器不支持时才解析本地文件或 STRM。
+
+    单文件票据没有媒体服务器来源，不会进入媒体服务器查询。
+
+    :param server: 已定位的媒体服务器配置名，单文件票据为 None
+    :param itemid: 已授权的条目标识或单文件票据
+    :param item: 已授权的媒体服务器条目
+    :param path: 可选的本机媒体文件路径
+    :return: 流来源类型、文件路径或上游 URL，以及允许的已配置主机名
+    :raises HTTPException: 媒体服务器不支持原始流且本地文件不可读取时
+    """
+    if server:
+        upstream = MediaServerChain().get_stream_url(server, itemid, item.item_type)
+        if upstream:
+            hosts = _configured_stream_hosts(path, include_media_servers=True)
+            return "server", _validate_stream_url(upstream, configured_hosts=hosts), hosts
+    if not path:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="媒体服务器不支持文件流且本地文件不可读取")
+    hosts = _configured_stream_hosts(path)
+    source_type, source = _stream_source(path, hosts)
+    return source_type, source, hosts
 
 
 def _stream_item_note(item: _SchemaMediaServerItem, key: str) -> Optional[str]:
@@ -201,15 +230,17 @@ def _lyrics_url(
     return str(request.url_for("stream_item_lyrics").include_query_params(**query))
 
 
-def _is_audio_item(item: _SchemaMediaServerItem, path: Path) -> bool:
+def _is_audio_item(item: _SchemaMediaServerItem, path: Optional[Path]) -> bool:
     """
     通过音频扩展名或媒体服务器的 Audio 类型识别普通音频和音频 STRM。
 
     :param item: 已解析的媒体服务器条目
-    :param path: 条目报告的媒体路径
+    :param path: 条目报告的本地媒体路径，缺失时使用条目的媒体类型
     :return: 可作为音频播放时返回 True
     """
-    return _is_audio_path(path) or (item.item_type or "").casefold() in {"audio", "music"}
+    return (path is not None and _is_audio_path(path)) or (item.item_type or "").casefold() in {
+        "audio", "music", "track", MediaType.MUSIC.value.casefold(),
+    }
 
 
 @router.post(
@@ -291,7 +322,7 @@ def stream_info(
     userinfo: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaMediaServerStreamInfo]:
     """
-    返回当前实例内的媒体流地址和同目录同名外挂字幕。
+    返回当前实例代理的媒体流地址；媒体服务器条目优先通过服务器原始流播放。
 
     :param itemid: 媒体服务器条目标识
     :param request: 当前请求，用于构造本实例流地址
@@ -299,24 +330,24 @@ def stream_info(
     :param userinfo: 已验证的访问令牌
     :return: 可供原生播放器读取的媒体流清单
     """
-    item, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
-    _stream_source(path, _configured_stream_hosts(path))
+    server_name, item, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    _playback_source(server_name, itemid, item, path)
     stream_query = {"itemid": itemid}
-    if server:
-        stream_query["server"] = server
+    if server_name:
+        stream_query["server"] = server_name
     content_url = request.url_for("stream_item_content").include_query_params(**stream_query)
     return _SchemaResponse(
         success=True,
         data=_SchemaMediaServerStreamInfo(
             item_id=item.item_id or itemid,
-            server=server,
-            title=item.title or path.stem,
+            server=server_name,
+            title=item.title or (path.stem if path else itemid),
             content_url=str(content_url),
             media_type="audio" if _is_audio_item(item, path) else "video",
             artist=_stream_item_note(item, "artist"),
             album=_stream_item_note(item, "album"),
-            subtitles=[] if _is_audio_item(item, path) else _subtitle_tracks(itemid, path, request, server),
-            lyrics_url=_lyrics_url(itemid, path, request, server) if _is_audio_item(item, path) else None,
+            subtitles=[] if not path or _is_audio_item(item, path) else _subtitle_tracks(itemid, path, request, server),
+            lyrics_url=_lyrics_url(itemid, path, request, server) if path and _is_audio_item(item, path) else None,
         ),
     )
 
@@ -340,8 +371,8 @@ def music_stream_info(
     :return: 实际媒体服务器单曲的音频流和可选同名歌词清单
     """
     server, item, path = _find_music_stream_item(music)
-    _stream_source(path, _configured_stream_hosts(path))
     itemid = str(item.item_id or item.id or "")
+    _playback_source(server, itemid, item, path)
     content_url = request.url_for("stream_item_content").include_query_params(itemid=itemid, server=server)
     return _SchemaResponse(
         success=True,
@@ -353,7 +384,7 @@ def music_stream_info(
             media_type="audio",
             artist=music.artist or music.album_artist or next(iter(music.artists), None) or _stream_item_note(item, "artist"),
             album=music.album or _stream_item_note(item, "album"),
-            lyrics_url=_lyrics_url(itemid, path, request, server),
+            lyrics_url=_lyrics_url(itemid, path, request, server) if path else None,
         ),
     )
 
@@ -376,7 +407,7 @@ def stream_item_content(
     userinfo: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> StreamingResponse:
     """
-    按已入库媒体条目提供支持 HTTP Range 的本地或 STRM 内容流。
+    媒体服务器条目优先代理原始流，明确不支持时回退本地；文件票据只读本地。
 
     :param itemid: 媒体服务器条目标识
     :param request: 当前请求，包含可选 Range 头
@@ -384,10 +415,17 @@ def stream_item_content(
     :param userinfo: 已验证的访问令牌
     :return: 本地文件或受控 STRM 上游流式响应
     """
-    _, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
-    configured_hosts = _configured_stream_hosts(path)
-    source_type, source = _stream_source(path, configured_hosts)
+    server_name, item, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    source_type, source, configured_hosts = _playback_source(server_name, itemid, item, path)
     range_header = request.headers.get("range")
+    if source_type == "server":
+        try:
+            return _remote_stream_response(str(source), range_header, configured_hosts)
+        except HTTPException as error:
+            if not path or error.status_code not in {status.HTTP_404_NOT_FOUND, status.HTTP_501_NOT_IMPLEMENTED}:
+                raise
+            configured_hosts = _configured_stream_hosts(path)
+            source_type, source = _stream_source(path, configured_hosts)
     if source_type == "file":
         return _file_stream_response(Path(source), range_header)
     return _remote_stream_response(str(source), range_header, configured_hosts)
@@ -422,7 +460,9 @@ def stream_item_subtitle(
     :return: 字幕文件流式响应
     :raises HTTPException: 字幕不存在或不属于当前影片时返回 404
     """
-    _, video_path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    _, _, video_path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    if not video_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到同名字幕")
     subtitle_path = _find_subtitle_path(video_path, subtitle_id)
     return _file_stream_response(subtitle_path, request.headers.get("range"))
 
@@ -450,8 +490,8 @@ def stream_item_lyrics(
     :return: UTF-8 文本歌词的流式响应
     :raises HTTPException: 歌词不存在或条目不是音频时返回 404
     """
-    item, audio_path = _resolve_stream_item(itemid, userinfo.sub, server=server)
-    if not _is_audio_item(item, audio_path):
+    _, item, audio_path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    if not audio_path or not _is_audio_item(item, audio_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到音乐歌词")
     lyrics_path = _find_lyrics_path(audio_path)
     if not lyrics_path:

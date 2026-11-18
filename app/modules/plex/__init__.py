@@ -493,6 +493,22 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             return None
         return server_obj.get_play_url(str(item_id))
 
+    def mediaserver_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        返回 Plex 原始音视频文件流地址。
+
+        :param server: Plex 配置名称
+        :param item_id: Plex 条目标识
+        :param item_type: 媒体服务器返回的条目类型，只接受具体音视频
+        :return: 原始媒体流地址；实例不可用或条目不是音视频时返回 None
+        """
+        if (item_type or "").casefold() not in {"movie", "episode", "audio", "music", "track"}:
+            return None
+        server_obj = self.get_instance(server)
+        return server_obj.get_stream_url(str(item_id)) if server_obj else None
+
     def mediaserver_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
     ) -> Optional[Dict[int, str]]:

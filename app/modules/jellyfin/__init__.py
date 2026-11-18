@@ -281,6 +281,20 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
             return None
         return server_obj.get_play_url(str(item_id))
 
+    def mediaserver_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        返回 Jellyfin 支持 Range 的静态媒体流，而不暴露服务器令牌给客户端。
+
+        :param server: Jellyfin 配置名称
+        :param item_id: Jellyfin 条目标识
+        :param item_type: 媒体服务器返回的类型，用于选择音频或视频接口
+        :return: 上游媒体流地址；实例不存在或适配器无法构造地址时返回 None
+        """
+        server_obj = self.get_instance(server)
+        return server_obj.get_stream_url(str(item_id), item_type) if server_obj else None
+
     def mediaserver_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
     ) -> Optional[Dict[int, str]]:

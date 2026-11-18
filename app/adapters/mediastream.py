@@ -568,9 +568,9 @@ def _open_upstream_stream(
     configured_hosts: set[str],
 ) -> tuple[Any, AbstractContextManager[Any], RequestUtils]:
     """
-    打开 STRM 上游流并逐跳验证重定向地址。
+    打开媒体服务器或 STRM 上游流，并逐跳验证重定向地址。
 
-    :param url: 已解析并校验的 STRM 地址
+    :param url: 媒体服务器原始流或已解析的 STRM 地址
     :param range_header: 客户端 Range 请求头
     :param configured_hosts: 管理员明确配置的媒体服务器与存储主机名
     :return: 上游响应、负责关闭响应的上下文和 HTTP 客户端
@@ -618,7 +618,7 @@ def _remote_stream_response(
     configured_hosts: set[str],
 ) -> StreamingResponse:
     """
-    代理 STRM 上游媒体流并保留其真实的 Range 响应。
+    代理媒体服务器或 STRM 上游流，并保留其真实的 Range 响应。
 
     :param url: 已解析的上游媒体地址
     :param range_header: 客户端 Range 请求头
@@ -640,12 +640,17 @@ def _remote_stream_response(
     if upstream.status_code not in {status.HTTP_200_OK, status.HTTP_206_PARTIAL_CONTENT}:
         context.__exit__(None, None, None)
         client.close()
-        mapped_status = (
-            status.HTTP_404_NOT_FOUND
-            if upstream.status_code == status.HTTP_404_NOT_FOUND
-            else status.HTTP_502_BAD_GATEWAY
-        )
+        mapped_status = {
+            status.HTTP_404_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+            status.HTTP_405_METHOD_NOT_ALLOWED: status.HTTP_501_NOT_IMPLEMENTED,
+            status.HTTP_501_NOT_IMPLEMENTED: status.HTTP_501_NOT_IMPLEMENTED,
+        }.get(upstream.status_code, status.HTTP_502_BAD_GATEWAY)
         raise HTTPException(status_code=mapped_status, detail="STRM 上游媒体读取失败")
+    content_type = upstream.headers.get("Content-Type", "").split(";", 1)[0].strip().casefold()
+    if content_type in {"text/html", "application/xhtml+xml", "application/json"}:
+        context.__exit__(None, None, None)
+        client.close()
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="上游未返回媒体文件流")
     if range_header and upstream.status_code != status.HTTP_206_PARTIAL_CONTENT:
         context.__exit__(None, None, None)
         client.close()
