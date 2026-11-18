@@ -45,6 +45,9 @@ required Python version.
   library browsing, scans, and metadata refreshes.
 - A provider result is not automatically a MoviePilot transfer, subscription,
   or history fact. Use the appropriate MoviePilot API for those workflows.
+- App 原生播放的流清单由 MoviePilot REST 接口按来源选择：媒体服务器条目优先代理原始流，
+  不支持时回退可读取的本地文件；文件管理和媒体整理的单文件票据只读取本地文件。
+  此行为不改变本 Skill 的播放会话操作；不要把网页跳转链接、凭据或上游 URL 交给 App 桥。
 
 ## Instance And Provider Discovery
 

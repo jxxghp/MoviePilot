@@ -2,11 +2,13 @@
 Emby 媒体服务器客户端，负责内容查询、图片、刷新及 Webhook 转换。
 """
 
+import hashlib
 import json
 import re
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from urllib.parse import quote, urlencode
 
 from requests import Response
 
@@ -1234,6 +1236,48 @@ class Emby:
         server_query = f"&serverId={server_id}" if server_id else ""
         return f"{self._playhost or self._host}web/index.html#!" \
             f"/item?id={item_id}&context=home{server_query}"
+
+    def get_stream_url(self, item_id: str, item_type: Optional[str]) -> Optional[str]:
+        """
+        为原生播放器构造支持 Range 的 Emby 静态文件流地址。
+
+        PlaySessionId 按服务器、用户与条目稳定派生，确保多个 Range 请求继续读取同一媒体源。
+
+        :param item_id: Emby 条目标识
+        :param item_type: 媒体服务器返回的条目类型
+        :return: Emby 原始媒体流地址；实例配置或条目标识缺失时返回 None
+        """
+        if not self._host or not self._apikey or not item_id:
+            return None
+        try:
+            response = RequestUtils(timeout=10).get_res(
+                f"{self._host}emby/Items/{quote(str(item_id), safe='')}/PlaybackInfo",
+                params={"api_key": self._apikey, "UserId": self.user},
+            )
+            if response is None or response.status_code != 200:
+                return None
+            sources = response.json().get("MediaSources") or []
+            source = next(
+                (value for value in sources if isinstance(value, dict) and value.get("Id")
+                 and not value.get("RequiresOpening")),
+                None,
+            )
+            if not source:
+                return None
+        except Exception:
+            logger.warning("Emby 原始媒体流信息读取失败，尝试本地文件播放")
+            return None
+        route = "Audio" if (item_type or "").casefold() in {"audio", "music", MediaType.MUSIC.value.casefold()} else "Videos"
+        play_session_id = hashlib.sha256(
+            f"{self._host}:{self.user or ''}:{item_id}".encode("utf-8")
+        ).hexdigest()[:32]
+        query = urlencode({
+            "static": "true",
+            "MediaSourceId": str(source["Id"]),
+            "PlaySessionId": play_session_id,
+            "api_key": self._apikey,
+        })
+        return f"{self._host}emby/{route}/{quote(str(item_id), safe='')}/stream?{query}"
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """

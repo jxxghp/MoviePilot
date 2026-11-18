@@ -89,7 +89,7 @@ async def media_status(
     :param library: 本地媒体库查询服务
     :param subscriptions: 订阅查询服务
     :param current_user: 当前用户，普通用户只能看到自己的订阅
-    :return: 与输入同序的入库标识、订阅状态及同来源各季模式，不返回完整订阅
+    :return: 与输入同序的入库标识、所属服务器、订阅状态及各季模式，不返回完整订阅
     """
     return [await _query_media_status(item, library, subscriptions, current_user) for item in items]
 
@@ -107,14 +107,14 @@ async def _query_media_status(
     :param library: 只访问本地数据库的媒体库查询服务
     :param subscriptions: 订阅查询服务
     :param current_user: 决定订阅 owner 范围的当前主体
-    :return: 单个媒体的轻量状态，不返回他人订阅或完整记录
+    :return: 单个媒体的轻量状态；条目标识和服务器名来自同一缓存记录
     """
     metadata = MetaInfo(item.title) if item.title else None
     title = metadata.name if metadata else None
     season = item.season if item.season is not None else metadata.begin_season if metadata else None
-    item_id = None
+    media_item = None
     if item.mtype != MediaType.MUSIC:
-        item_id = await library.find_item_id(
+        media_item = await library.find_item(
             title=title, year=item.year, mtype=item.mtype.value if item.mtype else None,
             media_source=item.media_source, media_id=item.media_id, season=season,
         )
@@ -148,7 +148,8 @@ async def _query_media_status(
             if current_user.is_superuser or (bool(record.username) and record.username == current_user.name)
         ]
     return MediaStatusResult(
-        item_id=item_id,
+        item_id=media_item.item_id if media_item else None,
+        server=media_item.server if media_item else None,
         subscribed=bool(matched),
         seasons={
             record.season: "normal" if not record.best_version else "best_version_full" if record.best_version_full else "best_version"

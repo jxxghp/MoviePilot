@@ -115,8 +115,10 @@ def test_stream_routes_connect_manifest_subtitles_and_range(monkeypatch: pytest.
     video = tmp_path / "Episode.mkv"
     video.write_bytes(b"0123456789")
     (tmp_path / "Episode.zh.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\n测试\n", encoding="utf-8")
-    def find_stream_item(item_id: str) -> tuple[str, MediaServerItem, Path]:
-        """要求流和字幕路由保留完整的 Plex 条目标识。"""
+    def find_stream_item(item_id: str, server: Optional[str] = None) -> tuple[str, MediaServerItem, Path]:
+        """
+        要求流和字幕路由保留完整的 Plex 条目标识。
+        """
         assert item_id == "/library/metadata/123"
         return (
             "Emby",
@@ -131,6 +133,7 @@ def test_stream_routes_connect_manifest_subtitles_and_range(monkeypatch: pytest.
         )
 
     monkeypatch.setattr(mediaserver, "_find_stream_item", find_stream_item)
+    monkeypatch.setattr(mediaserver.MediaServerChain, "get_stream_url", lambda *_args: None)
     app = FastAPI()
     app.include_router(mediaserver.router, prefix="/api/v1/mediaserver")
     app.dependency_overrides[mediaserver.verify_token] = lambda: TokenPayload(sub=1)
@@ -148,7 +151,7 @@ def test_stream_routes_connect_manifest_subtitles_and_range(monkeypatch: pytest.
     assert manifest["item_id"] == "/library/metadata/123"
     assert str(video) not in manifest_response.text
     assert manifest["content_url"] == (
-        "http://testserver/api/v1/mediaserver/stream?itemid=%2Flibrary%2Fmetadata%2F123"
+        "http://testserver/api/v1/mediaserver/stream?itemid=%2Flibrary%2Fmetadata%2F123&server=Emby"
     )
     assert manifest["subtitles"][0]["subtitle_id"] == "Episode.zh.srt"
     assert media_response.status_code == 206
@@ -276,11 +279,14 @@ def test_audio_file_ticket_mounts_matching_lrc_and_range_stream(
 def test_music_stream_info_matches_a_library_track_by_recording_metadata(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """验证音乐详情的来源 ID 被映射为媒体服务器单曲 ID 后才返回流地址。"""
+    """
+    验证音乐详情的来源 ID 被映射为媒体服务器单曲 ID 后才返回流地址。
+    """
     audio = tmp_path / "晴天.flac"
     audio.write_bytes(b"audio-bytes")
     (tmp_path / "晴天.lrc").write_text("[00:00.00]晴天\n", encoding="utf-8")
     chain = mediaserver.MediaServerChain
+    monkeypatch.setattr(chain, "get_stream_url", lambda *_args: None)
     media_exists_calls: list[object] = []
     monkeypatch.setattr(
         chain,

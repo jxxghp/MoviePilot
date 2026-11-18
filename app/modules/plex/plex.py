@@ -7,7 +7,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from plexapi.audio import Album, Artist, Track
 from plexapi.base import PlexPartialObject
@@ -1283,6 +1283,33 @@ class Plex:
         if self._plex is None:
             raise AttributeError("'NoneType' object has no attribute 'machineIdentifier'")
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
+
+    def get_stream_url(self, item_id: str) -> Optional[str]:
+        """
+        从 Plex 条目解析单个原始媒体文件的服务端读取地址。
+
+        不使用网页链接或转码地址；多段媒体无法用一个原始流表达时保留本地回退。
+
+        :param item_id: Plex 条目标识，可以是数字或 /library/metadata/ 路径
+        :return: 包含服务端鉴权参数的原始文件流地址；未连接或无法解析时返回 None
+        """
+        if self._plex is None or not self._host or not self._token or not item_id:
+            return None
+        try:
+            item = self.__fetch_item(item_id)
+            if not isinstance(item, (Movie, Episode, Track)):
+                return None
+            parts = list(item.iterParts())
+            if len(parts) != 1 or not isinstance(parts[0].key, str):
+                return None
+            part_key = parts[0].key
+            if not part_key.startswith("/library/parts/"):
+                return None
+            separator = "&" if "?" in part_key else "?"
+            return f"{self._host.rstrip('/')}{part_key}{separator}{urlencode({'X-Plex-Token': self._token})}"
+        except Exception:
+            logger.warning("Plex 原始媒体流信息读取失败，尝试本地文件播放")
+            return None
 
     def get_resume(
         self, num: Optional[int] = 12, *, query: Optional[MediaServerQueryOptions] = None

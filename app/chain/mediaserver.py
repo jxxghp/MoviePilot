@@ -381,6 +381,24 @@ class MediaServerChain(ChainBase):
         """
         return cast(Optional[str], self.run_module("mediaserver_play_url", server=server, item_id=item_id))
 
+    def get_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        获取媒体服务器支持 HTTP Range 的原始媒体流地址。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体服务器条目标识
+        :param item_type: 媒体服务器返回的条目类型
+        :return: 原始媒体流地址；当前适配器不支持时返回 None
+        """
+        return cast(
+            Optional[str],
+            self.run_module(
+                "mediaserver_stream_url", server=server, item_id=item_id, item_type=item_type
+            ),
+        )
+
     def get_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
     ) -> Dict[int, str]:

@@ -5,7 +5,7 @@
 定时重连与连接测试。服务器差异（认证 API、存在性检查端点、连接探测方式）
 通过类属性与钩子方法保留在各模块。
 """
-from typing import TYPE_CHECKING, Any, Generator, Iterable, Mapping, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Mapping, Optional, Tuple, Union, cast
 
 from app.application.mediaserver import MediaServerQueryError, MusicMediaServerHelper
 from app.domain.context import MediaInfo, MusicInfo
@@ -183,6 +183,19 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
     _server_type_value: str = ""
     # 仅已实现查询投影的适配器向原生客户端透传新参数。
     _query_options_supported: bool = False
+
+    def mediaserver_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        为没有声明原始流接口的媒体服务器适配器提供兼容性空结果。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体服务器条目标识
+        :param item_type: 媒体服务器返回的条目类型
+        :return: 当前适配器不支持原始文件流时返回 None
+        """
+        return None
 
     def user_authenticate(
             self,
