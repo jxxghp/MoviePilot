@@ -6613,7 +6613,8 @@
       "family": "media-server",
       "input_contract": "MediaExistsRequest",
       "optional_parameters": [
-        "query"
+        "query",
+        "raise_on_query_failure"
       ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,

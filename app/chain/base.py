@@ -1204,15 +1204,18 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         :raises MediaServerQueryError: 剧集查询失败且 raise_on_query_failure 为 True 时
         """
-        dispatch = self.run_module_strict if raise_on_query_failure else self.run_module
-        return cast(Optional[ExistMediaInfo], dispatch(
-            "media_exists",
-            mediainfo=mediainfo,
-            itemid=itemid,
-            server=server,
+        kwargs: Dict[str, Any] = {
+            "mediainfo": mediainfo,
+            "itemid": itemid,
+            "server": server,
             **({"query": query} if query is not None else {}),
-            raise_on_query_failure=raise_on_query_failure,
-        ))
+            "raise_on_query_failure": raise_on_query_failure,
+        }
+        # 严格口径与宽松口径分别走字面调度调用：宽松分发会吞掉提供方异常，
+        # 严格分发必须走 run_module_strict；字面调用同时保持架构基线对调度点的记录
+        if raise_on_query_failure:
+            return cast(Optional[ExistMediaInfo], self.run_module_strict("media_exists", **kwargs))
+        return cast(Optional[ExistMediaInfo], self.run_module("media_exists", **kwargs))
 
     def media_files(self, mediainfo: MediaInfo) -> Optional[List[FileItem]]:
         """
