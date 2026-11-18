@@ -9,7 +9,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from sqlalchemy import and_, func, or_, select
@@ -561,6 +561,88 @@ class TransactionalTransferExecutionRepository:
             for step in previous_steps
         )
 
+    @staticmethod
+    def _move_rename_intent_belongs_to_checkpoint(
+            checkpoint: TransferPlanCheckpoint, payload: dict[str, Any],
+            previous_steps: list[TransferExecutionStepModel],
+    ) -> bool:
+        """
+        补改名只允许消费同一冻结叶计划中已确认的原名移动回执。
+
+        :param checkpoint: 含原始源与最终目标的冻结计划
+        :param payload: 仅包含存储、原名落点与最终路径的改名参数
+        :param previous_steps: 当前改名之前的持久步骤，移动必须已成功
+        :return: 参数和移动回执是否均归属于该计划
+        """
+        if checkpoint.resolved_transfer_type != "move":
+            return False
+        for item in checkpoint.items:
+            source = item.source_fileitem
+            if source.get("storage") != item.target_storage or item.target_storage == "local":
+                continue
+            target = Path(item.target_path)
+            intermediate = target.with_name(Path(cast(str, source["path"])).name).as_posix()
+            if intermediate == item.target_path or payload != {
+                    "storage": item.target_storage, "source_path": intermediate, "target_path": item.target_path,
+            }:
+                continue
+            return any(
+                step.phase == "transfer" and step.kind == "materialize_target"
+                and step.state == TransferStepState.SUCCEEDED.value
+                and step.intent_payload == {
+                    "source": source, "target_storage": item.target_storage,
+                    "target_path": item.target_path, "transfer_type": "move",
+                }
+                and isinstance(step.result_payload, dict)
+                and isinstance(step.result_payload.get("item"), dict)
+                and step.result_payload["item"].get("path") == intermediate
+                for step in previous_steps
+            )
+        return False
+
+    @classmethod
+    def _transfer_intent_belongs_to_checkpoint(
+            cls, checkpoint: TransferPlanCheckpoint, kind: str, payload: dict[str, Any],
+            previous_steps: list[TransferExecutionStepModel],
+    ) -> bool:
+        """
+        将文件落地、剩余改名及跨存储源删除约束在同一冻结叶计划内。
+
+        :param checkpoint: 包含整理方式与叶子路径的冻结计划
+        :param kind: 文件落地、补改名或源删除步骤类型
+        :param payload: 需要与冻结计划精确匹配的步骤参数
+        :param previous_steps: 已记录的前驱步骤，补改名必须有移动成功回执
+        :return: 步骤是否获准操作本计划的文件
+        """
+        if kind == "rename_move_target":
+            return cls._move_rename_intent_belongs_to_checkpoint(checkpoint, payload, previous_steps)
+        if kind == "materialize_target":
+            return any(payload == {
+                "source": item.source_fileitem,
+                "target_storage": item.target_storage,
+                "target_path": item.target_path,
+                "transfer_type": (
+                    "copy"
+                    if (
+                        checkpoint.resolved_transfer_type == "move"
+                        and item.source_fileitem.get("storage") != item.target_storage
+                    )
+                    else checkpoint.resolved_transfer_type
+                ),
+            } for item in checkpoint.items)
+        return (
+            checkpoint.resolved_transfer_type == "move"
+            and any(
+                item.source_fileitem.get("storage") != item.target_storage
+                and payload == {
+                    "source": item.source_fileitem,
+                    "target_storage": item.target_storage,
+                    "target_path": item.target_path,
+                }
+                for item in checkpoint.items
+            )
+        )
+
     @classmethod
     def _intent_belongs_to_checkpoint(
             cls,
@@ -608,33 +690,9 @@ class TransactionalTransferExecutionRepository:
                 "source": item.source_fileitem.get("path"),
                 "target": item.target_path,
             } for item in plan_items)
-        if phase == "transfer" and kind == "materialize_target":
-            return any(payload == {
-                "source": item.source_fileitem,
-                "target_storage": item.target_storage,
-                "target_path": item.target_path,
-                "transfer_type": (
-                    "copy"
-                    if (
-                        checkpoint.resolved_transfer_type == "move"
-                        and item.source_fileitem.get("storage")
-                        != item.target_storage
-                    )
-                    else checkpoint.resolved_transfer_type
-                ),
-            } for item in plan_items)
-        if phase == "transfer" and kind == "delete_move_source":
-            return (
-                checkpoint.resolved_transfer_type == "move"
-                and any(
-                    item.source_fileitem.get("storage") != item.target_storage
-                    and payload == {
-                        "source": item.source_fileitem,
-                        "target_storage": item.target_storage,
-                        "target_path": item.target_path,
-                    }
-                    for item in plan_items
-                )
+        if phase == "transfer" and kind in {"materialize_target", "rename_move_target", "delete_move_source"}:
+            return cls._transfer_intent_belongs_to_checkpoint(
+                checkpoint, kind, payload, previous_steps,
             )
         source = checkpoint.planning_input.source_fileitem
         if phase == "prepare" and kind == "cleanup_previous_destination":

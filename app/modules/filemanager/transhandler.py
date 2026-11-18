@@ -1091,6 +1091,7 @@ class TransHandler:
 
         移动根据源与目标的存在性判断；本地复制比较完整内容，链接核对文件身份或链接指向。
         非本地目标已存在时，仅凭存在性不能认定复制已完成。
+        同一远端移动遗留原名落点时，严格核对稳定文件 ID 后只确认移动完成，改名单独收口。
 
         :param fileitem: 冻结的源文件项
         :param target_storage: 目标存储标识
@@ -1121,6 +1122,10 @@ class TransHandler:
             "target_exists": target_exists,
             "item": TransHandler.__serialize_step_item(target_item),
         })
+        if (transfer_type == "move" and fileitem.storage == target_storage != "local"
+                and not source_exists and not target_exists
+                and Path(fileitem.path).name != target_file.name):
+            return TransHandler.__observe_intermediate_move(fileitem, target_oper, target_file, evidence)
         # 115 盘内操作包含复制/移动及改名。最终路径缺失不能排除中间副本已产生，
         # 包括旧版适配器留下的原名或编号副本，禁止据此自动重复复制。
         if fileitem.storage == target_storage == "u115":
@@ -1195,6 +1200,43 @@ class TransHandler:
         )
 
     @classmethod
+    def __observe_intermediate_move(
+            cls, source: FileItem, storage_oper: StorageBase, target: Path, evidence: TransferStepResult,
+    ) -> TransferOperationObservation:
+        """
+        只读确认远端移动后的原名落点，禁止凭同名或同大小接纳无关文件。
+
+        源与最终目标均已确认不存在时，只有原名落点与冻结源的稳定 ID、大小和类型一致，
+        才记录移动回执。后续必须通过独立改名步骤完成最终目标，不能直接结算成功。
+
+        :param source: 含原路径和稳定文件 ID 的冻结源身份
+        :param storage_oper: 提供严格查询的同一远端存储
+        :param target: 冻结的最终文件路径
+        :param evidence: 源与最终目标均缺失的只读证据
+        :return: 原名落点的移动回执；身份冲突或查询不确定时继续隔离
+        """
+        intermediate = target.with_name(Path(cast(str, source.path)).name)
+        payload = {**evidence.payload, "intermediate_path": intermediate.as_posix()}
+        try:
+            item = storage_oper.get_item_strict(intermediate)
+            if item is None:
+                state = TransferOperationObservationState.CONFLICT
+            elif not source.fileid:
+                state = TransferOperationObservationState.UNKNOWN
+                payload["identity_error"] = "冻结源缺少稳定文件 ID，无法确认原名落点"
+            else:
+                cls.__assert_file_identity(source, item)
+                state = TransferOperationObservationState.APPLIED
+                payload["item"] = cls.__serialize_step_item(item)
+        except TransferExecutionConflictError as error:
+            state = TransferOperationObservationState.CONFLICT
+            payload["identity_error"] = str(error)
+        except Exception as error:
+            state = TransferOperationObservationState.UNKNOWN
+            payload["query_error"] = str(error)
+        return TransferOperationObservation(state=state, evidence=TransferStepResult(payload=payload))
+
+    @classmethod
     def __execute_transfer_with_steps(
             cls,
             *,
@@ -1209,7 +1251,7 @@ class TransHandler:
             materialize_kind: str = "materialize_target",
     ) -> tuple[Optional[FileItem], str]:
         """
-        按冻结叶节点执行传输，并把跨存储 move 拆为落地与源删除。
+        按冻结叶节点执行传输，分别恢复远端移动的剩余改名及跨存储移动的源删除。
 
         意图直接消费原始快照，避免旧快照补默认字段或适配器更新运行期文件信息
         导致步骤身份漂移；每个外部操作单独恢复文件对象。
@@ -1290,6 +1332,11 @@ class TransHandler:
         if not new_item:
             return None, "整理步骤成功证据缺少目标文件"
         if not cross_storage_move:
+            if transfer_type == "move" and fileitem.storage == target_storage != "local":
+                new_item = cls.__finish_remote_move_with_step(
+                    step_runner=step_runner, storage_oper=target_oper, source=fileitem,
+                    moved=new_item, target=target_file,
+                )
             return new_item, str(materialized.payload.get("message") or "")
         new_item = cls.__restore_move_target_identity(fileitem, new_item)
 
@@ -1330,6 +1377,37 @@ class TransHandler:
             ),
         )
         return new_item, str(materialized.payload.get("message") or "")
+
+    @classmethod
+    def __finish_remote_move_with_step(
+            cls, *, step_runner: Optional[TransferStepRunner], storage_oper: StorageBase,
+            source: FileItem, moved: FileItem, target: Path,
+    ) -> FileItem:
+        """
+        消费已持久化的移动回执，仅对身份确认的原名落点补齐改名。
+
+        保留旧 materialize_target 意图和顺序；旧成功回执已是最终路径时直接复用。
+        原名回执即使在改名后重启也不改写，由独立改名步骤观察并恢复最终结果。
+
+        :param step_runner: 持久步骤执行器；为空时同步执行
+        :param storage_oper: 同一远端存储的查询与改名适配器
+        :param source: 冻结的原始源文件身份
+        :param moved: 已确认移动成功的文件回执
+        :param target: 冻结的最终文件路径
+        :return: 最终路径下的文件身份
+        :raises TransferExecutionConflictError: 回执既不是最终路径也不是可信的原名落点
+        """
+        if moved.path == target.as_posix():
+            return moved
+        intermediate = target.with_name(Path(cast(str, source.path)).name)
+        if moved.path != intermediate.as_posix() or not source.fileid:
+            raise TransferExecutionConflictError("远端移动回执缺少可信的原名落点，禁止自动改名")
+        cls.__assert_file_identity(source, moved)
+        renamed = cls.__rename_with_step(
+            step_runner=step_runner, storage_oper=storage_oper, storage=cast(str, source.storage),
+            source=intermediate, target=target, kind="rename_move_target", expected_source=moved,
+        )
+        return cast(FileItem, renamed)
 
     @classmethod
     def __observe_rename(
