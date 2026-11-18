@@ -10,6 +10,7 @@ import time
 import traceback
 import uuid
 import warnings
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -28,6 +29,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
+from app.agent.evidence.middleware import EphemeralEvidenceMiddleware
+from app.agent.evidence.scope import evidence_turn, redact_evidence_message
 from app.agent.graph import AgentGraphCache, CompiledAgentBundle
 from app.agent.identity import require_execution_user
 from app.agent.learning.session import LearningSession
@@ -2219,6 +2222,8 @@ class MoviePilotAgent:
                     middlewares.append(tool_selector)
                 middlewares.append(CodeCaptureMiddleware(code_middleware))
 
+                # 临时资料计入主模型预算，摘要和写回状态仍只保留安全占位。
+                middlewares.append(EphemeralEvidenceMiddleware())
                 # 所有压缩都在最终请求边界完成，避免主模型失败前写入摘要状态。
                 middlewares.append(
                     FinalRequestCompactionMiddleware(
@@ -2552,7 +2557,7 @@ class MoviePilotAgent:
         """
         为中断恢复复制消息，只保留脱敏正文与工具协议需要的字段。
         """
-        message = sanitize_tool_image_message(message)
+        message = sanitize_tool_image_message(redact_evidence_message(message))
         if isinstance(message, HumanMessage) and isinstance(message.content, list):
             # 用户主动提供的附件须保持有效，日志去像素策略不能用于恢复请求的图片块。
             content = [deepcopy(block) if is_image_content_block(block) else sanitize_for_host(block) for block in message.content]
@@ -2721,6 +2726,8 @@ class MoviePilotAgent:
         streaming_stopped = False
         agent = None
         agent_config: dict[str, Any] = {}
+        evidence_owner = ExitStack()
+        evidence_owner.enter_context(evidence_turn())
         try:
             if self._learning_enabled() and self._learning is not None:
                 await self._learning.begin(messages)
@@ -2838,6 +2845,8 @@ class MoviePilotAgent:
             await self._dispatch_execution_notice(friendly_message)
             return friendly_message, {}
         finally:
+            # 先封闭原文容器，后续用量或渠道收尾即使失败也不能延长资料寿命。
+            evidence_owner.close()
             selection = self._llm_provider_selection or {}
             record_metric(
                 "agent.provider.duration",

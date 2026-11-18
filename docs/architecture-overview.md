@@ -214,7 +214,7 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 | `app/db/` | SQLAlchemy 模型、表级 Oper、会话/UoW 与 Application 持久化适配器；Model 只接受显式 Session，不拥有事务提交 | `models/`、`oper/`、`adapters/`、`uow.py` |
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
 | `app/api/` | FastAPI 主端点、鉴权依赖、统一 `Response` 响应封装；动态插件端点不走此统一包装 | `apiv1.py`、`endpoints/`、`response.py` |
-| `app/agent/` | AI Agent：稳定 Manager 门面、会话/生命周期/后台任务 owner、单 Agent 编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `manager.py`、`session.py`、`lifecycle.py`、`tasks.py`、`orchestrator.py` |
+| `app/agent/` | AI Agent：稳定 Manager 门面、会话/生命周期/后台任务 owner、单 Agent 编排器、运行时、工具、中间件、LLM、记忆、技能、策略及单轮临时证据 | `manager.py`、`session.py`、`lifecycle.py`、`tasks.py`、`orchestrator.py`、`evidence/` |
 | `app/startup/` | 唯一组合根：跨层装配、领域初始化、声明式生命周期排序与重启策略 | `composition/`、`initializers/`、`lifecycle/` |
 | `app/sdk/` | 面向新插件的稳定导入面（网络、缓存、日志、浏览器等）；`_legacy/` 只承载旧插件行为适配薄门面 | `network.py`、`browser.py`、`cache.py`、`_legacy/` |
 | `app/monitor/` | 源目录监控 → 触发整理 | `watcher.py`、`dispatcher.py` |
@@ -845,13 +845,13 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-11-17 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-11-19 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1178 |
-| 内部导入边 | 10,335 |
+| Python 模块 | 1181 |
+| 内部导入边 | 10,349 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |

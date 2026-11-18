@@ -150,6 +150,11 @@ Entrypoints (app/api, app/command, app/monitor, app/scheduler, app/agent, app/wo
   (`app.agent.llm.LLMHelper`, `app.helper.llm`) resolve through exact
   `SYMBOL_ALIASES`. Models created by `LLMHelper.get_llm()` own dedicated HTTP
   clients closed via `LLMHelper.close_llm()`.
+- `app/agent/evidence/` owns per-turn in-memory knowledge and request projection.
+  Tools publish a safe receipt before logging; only the main model receives the
+  temporary content. Summarization inputs and state commands redact it at their
+  producer boundary, while history and recovery remove local references.
+  Evidence never grants tool authority or becomes a cross-turn result cache.
 
 ### DB, Repository, Outbox and Durable Transfer Layer
 

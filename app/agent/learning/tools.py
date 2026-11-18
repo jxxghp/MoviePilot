@@ -9,6 +9,7 @@ from typing import Any
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict
 
+from app.agent.evidence.scope import evidence_in_use
 from app.agent.learning.memory import MemoryStore
 from app.agent.learning.schema import ManageSkillsInput, MemoryInput, ViewSkillInput
 from app.agent.learning.skills import SkillLibrary
@@ -84,15 +85,20 @@ class LearningTools:
 
     async def skill_manage(self, **kwargs: Any) -> str:
         """
-        只通过有所有权、路径与事务保护的技能管理器修改。
+        临时资料轮次不维护技能；其他轮次继续使用所有权、路径与事务保护。
         """
+        if evidence_in_use():
+            return json.dumps(dict(success=False, error='本轮使用了临时知识，不能将其写入长期技能。'), ensure_ascii=False)
         return await self._execute(self.skills.manage, ManageSkillsInput(**kwargs))
 
     async def manage_memory(self, **kwargs: Any) -> str:
         """
-        记忆管理只操作绑定用户的两份稳定文件。
+        临时资料轮次只允许读取提案，不能把该轮资料写进稳定记忆。
         """
-        return await self._execute(self.memory.manage, MemoryInput(**kwargs))
+        args = MemoryInput(**kwargs)
+        if evidence_in_use() and (args.action != 'pending' or args.operations):
+            return json.dumps(dict(success=False, error='本轮使用了临时知识，不能将其写入长期记忆。'), ensure_ascii=False)
+        return await self._execute(self.memory.manage, args)
 
     @staticmethod
     async def _execute(function: Any, *args: Any) -> str:
