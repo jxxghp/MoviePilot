@@ -25,7 +25,8 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.types import MediaSource, MediaType, ProgressKey, SystemConfigKey
 
 SiteKey = Tuple[Optional[int], Optional[str]]
-DisambiguationCache = Dict[Tuple[str, str, str], Optional[MediaInfo]]
+DisambiguationKey = Tuple[str, str, str, Optional[int], Optional[int]]
+DisambiguationCache = Dict[DisambiguationKey, Optional[MediaInfo]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,11 +160,11 @@ def _torrent_meta(torrent: TorrentInfo, custom_words: List[str], mediainfo: Medi
     return meta
 
 
-def _disambiguation_key(meta: MetaBase) -> Tuple[str, str, str]:
+def _disambiguation_key(meta: MetaBase) -> DisambiguationKey:
     """
-    构造同名候选识别缓存键。
+    按名称、年份及季范围缓存识别，避免同名同年的不同季互相复用结果。
     """
-    return meta.cn_name or "", meta.en_name or "", str(meta.year or "")
+    return meta.cn_name or "", meta.en_name or "", str(meta.year or ""), meta.begin_season, meta.end_season
 
 
 def _same_work_matched(
@@ -173,16 +174,14 @@ def _same_work_matched(
     cache: DisambiguationCache,
 ) -> bool:
     """
-    无年份资源只靠别名对上订阅时，按名字再识别一次；只有明确属于另一部作品才跳过。
-
-    识别不到不算反证：宁可偶尔下错同名作品，也不能让资源一直下不下来。
+    目标或资源缺少年份时核对别名命中，只有明确属于另一部作品才跳过。
     """
     key = _disambiguation_key(torrent_meta)
     if key not in cache:
         cache[key] = MediaChain().recognize_by_meta(torrent_meta, obtain_images=False)
     candidate = cache[key]
     if not candidate:
-        logger.debug(f"{torrent.site_name} - {torrent.title} 资源名没有年份，按名字也识别不到作品，按订阅的作品处理")
+        logger.debug(f"{torrent.site_name} - {torrent.title} 按名称未识别到作品，保留别名匹配结果")
         return True
     matched, evidence = TorrentHelper.match_same_work_evidence(
         target_mediainfo=mediainfo,
@@ -190,9 +189,9 @@ def _same_work_matched(
         torrent_meta=torrent_meta,
     )
     if matched:
-        logger.debug(f"{torrent.site_name} - {torrent.title} 资源名没有年份，{evidence}，按订阅的作品处理")
+        logger.debug(f"{torrent.site_name} - {torrent.title}，{evidence}，保留别名匹配结果")
     else:
-        logger.info(f"跳过 {torrent.title}（{torrent.site_name}）：资源名没有年份，{evidence}")
+        logger.info(f"跳过 {torrent.title}（{torrent.site_name}）：{evidence}")
     return matched
 
 
