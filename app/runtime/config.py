@@ -712,6 +712,7 @@ class ConfigModel(BaseModel):
                 "bangumi.lol",
                 "raw.githubusercontent.com",
                 "github.com",
+                "avatars.githubusercontent.com",
                 "thetvdb.com",
                 "cctvpic.com",
                 "iqiyipic.com",
