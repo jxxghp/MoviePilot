@@ -158,11 +158,10 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
 
         :param mediainfo: 本次查询的媒体信息
         :param query: 本次查询的媒体服务器参数
-        :param raise_on_query_failure: 剧集查询失败且没有服务器确认存在时抛
-            MediaServerQueryError；默认 False 时查询失败按未找到处理
+        :param raise_on_query_failure: 任一服务器剧集查询失败时抛 MediaServerQueryError，
+            避免用其他服务器的部分集数推断缺失；默认 False 时保留已确认结果
         :return: 已确认存在的媒体信息；没有服务器确认存在时为 None
-        :raises MediaServerQueryError: 剧集查询失败且 raise_on_query_failure 为 True，
-            且没有服务器确认媒体存在时
+        :raises MediaServerQueryError: 任一剧集查询失败且 raise_on_query_failure 为 True
         """
         server_names = [str(config.name) for config in get_mediaserver_configs() if config.name]
         if not server_names:
@@ -185,7 +184,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                     raise_on_query_failure=raise_on_query_failure,
                 )
             except MediaServerQueryError:
-                # 单台服务器失败不阻断其余服务器；全部失败才在循环后统一抛异常。
+                # 收集失败并继续查询其余服务器；严格口径不能据部分结果推断缺集。
                 failed_servers.append(server)
                 continue
             if exists:
@@ -194,14 +193,14 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                 combined = combined or exists
                 for season, episodes in (exists.seasons or {}).items():
                     seasons.setdefault(season, set()).update(episodes)
-        if combined:
-            return combined.model_copy(update={
-                "seasons": {season: sorted(episodes) for season, episodes in seasons.items()},
-            })
         if failed_servers and raise_on_query_failure:
             raise MediaServerQueryError(
                 f"媒体库查询失败，未能确认 {mediainfo.title_year} 是否已入库：{', '.join(failed_servers)}"
             )
+        if combined:
+            return combined.model_copy(update={
+                "seasons": {season: sorted(episodes) for season, episodes in seasons.items()},
+            })
         return None
 
     @staticmethod

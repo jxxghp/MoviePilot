@@ -158,6 +158,14 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 
 > 注意：识别这类端到端流程往往不止一个外部出口。例如 TMDB 识别除了目录请求，链路层还会向 MP 服务器上报/查询「共享识别 API」——这类旁路出口必须一并打桩。用下文的 socket 探针确认确实零出站。
 
+### 媒体库查询失败与订阅缺集
+
+`tests/test_mediaserver_existence_failure.py` 连接真实 Emby/Jellyfin 客户端、模块调度器、
+缺集计算和订阅进度入口，仅替换 HTTP 与持久化出口。测试覆盖标题搜索、缓存回查、详情及
+分集接口的无响应、HTTP 错误和无效条目结构，以及空库、服务恢复和多服务器部分失败。
+失败时不写缺集进度、不完成订阅；媒体库恢复后按实际已有季集重新计算，保留订阅下载事实。
+这些离线测试不代表真实媒体服务器或报告者 Docker 实例验收。
+
 ### 飞书长会话流式卡片回归
 
 `tests/test_feishu.py` 在 CardKit API 边界模拟 `300309` / `200850`：重开同一卡片的

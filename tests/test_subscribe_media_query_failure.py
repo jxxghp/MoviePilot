@@ -254,11 +254,11 @@ def test_server_cache_raises_when_all_servers_fail(monkeypatch: pytest.MonkeyPat
     assert isinstance(excinfo.value, _query_error_type())
 
 
-def test_server_cache_returns_confirmed_episodes_when_one_server_fails(
+def test_lenient_server_cache_returns_confirmed_episodes_when_one_server_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    一台服务器失败、另一台确认存在时，应合并已确认的集，不抛异常。
+    宽松查询在一台服务器失败时仍返回其他服务器已确认的集，保留既有调用语义。
     """
     owner = _existence_owner()
     monkeypatch.setattr(
@@ -280,7 +280,7 @@ def test_server_cache_returns_confirmed_episodes_when_one_server_fails(
 
     owner.media_exists = Mock(side_effect=_media_exists)  # type: ignore[method-assign]
 
-    result = owner._media_exists_with_server_cache(_media_info(), {}, raise_on_query_failure=True)
+    result = owner._media_exists_with_server_cache(_media_info(), {})
 
     assert result is not None
     assert result.seasons == {1: list(range(1, 168))}
