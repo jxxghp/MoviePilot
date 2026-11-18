@@ -13,6 +13,7 @@ from app.application.site.auth import (
     normalize_site_auth_params,
 )
 from app.scheduler import reconcile as scheduler_reconcile
+from app.runtime.localization import LocaleHelper
 from app.schemas.site import SiteAuth
 from app.schemas.types import SystemConfigKey
 from app.startup.initializers import modules as module_initializer
@@ -142,6 +143,54 @@ def test_auth_site_does_not_persist_failed_parameters(monkeypatch) -> None:
 
     assert response.success is False
     config.set.assert_not_called()
+
+
+@pytest.mark.parametrize("locale,message,expected", [
+    ("en-US", "请求超时", "Request timed out"),
+    ("en-US", "认证接口返回 HTTP 403", "Authentication endpoint returned HTTP 403"),
+    ("en-US", "用户认证出错（RuntimeError）", "User authentication error (RuntimeError)"),
+    ("zh-TW", "请求超时", "請求逾時"),
+    ("zh-TW", "认证接口返回 HTTP 403", "認證介面回傳 HTTP 403"),
+    ("zh-TW", "用户认证出错（RuntimeError）", "使用者認證出錯（RuntimeError）"),
+])
+def test_auth_failure_response_keeps_the_requested_language(monkeypatch, locale, message, expected) -> None:
+    """
+    认证资源的新诊断通过真实 API 响应本地化，不让前端原样显示中文 fallback。
+    """
+    helper = Mock()
+    helper.get_authsites.return_value = HAIDAN_AUTH_SITES
+    helper.check_user.return_value = (False, message)
+    _patch_auth_endpoint(monkeypatch, helper, Mock())
+    token = LocaleHelper.set_current_locale(locale)
+    try:
+        response = site_endpoint.auth_site(SiteAuth(site="haidan", params={"id": 123}), SimpleNamespace())
+    finally:
+        LocaleHelper.reset_current_locale(token)
+
+    assert response.message == expected
+    assert response.success is False
+
+
+@pytest.mark.parametrize("locale,expected", [
+    ("en-US", "Page reachable (login checked according to site settings; user-authentication endpoint not verified)"),
+    ("zh-TW", "網頁可存取（依站點設定檢查登入狀態，未驗證使用者認證介面）"),
+])
+def test_connectivity_scope_response_keeps_the_requested_language(monkeypatch, locale, expected) -> None:
+    """
+    站点测试成功的范围说明经过 API 翻译后再由前端展示。
+    """
+    chain = Mock()
+    chain.test.return_value = (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")
+    monkeypatch.setattr(site_endpoint, "SiteChain", Mock(return_value=chain))
+    query = Mock(get_sync=Mock(return_value=SimpleNamespace(domain="site.test")))
+    token = LocaleHelper.set_current_locale(locale)
+    try:
+        response = site_endpoint.test_site(1, query=query)
+    finally:
+        LocaleHelper.reset_current_locale(token)
+
+    assert response.message == expected
+    assert response.success is True
 
 
 def test_startup_auth_prefers_environment_configuration(monkeypatch) -> None:
