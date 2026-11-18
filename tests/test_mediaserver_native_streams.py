@@ -5,8 +5,8 @@
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import parse_qs, urlsplit
 from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import FastAPI

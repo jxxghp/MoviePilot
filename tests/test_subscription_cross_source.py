@@ -304,7 +304,7 @@ async def test_detail_and_card_status_use_projection_before_title_fallback(proje
     assert result.id == 73
     statuses = await media_status([
         MediaStatusQuery(media_source=MediaSource.TMDB, media_id="259140", season=2, mtype=MediaType.TV),
-    ], SimpleNamespace(find_item_id=AsyncMock(return_value=None)), query, actor)
+    ], SimpleNamespace(find_item=AsyncMock(return_value=None)), query, actor)
     assert statuses[0].subscribed is True and statuses[0].seasons == {2: "normal"}
     repository.async_list_by_title.assert_not_awaited()
     repository.async_list.assert_awaited_once()
