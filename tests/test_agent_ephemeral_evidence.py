@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from langchain.agents import create_agent
-from langchain.agents.middleware.types import ModelRequest, ModelResponse
+from langchain.agents.middleware.types import ModelRequest, ModelResponse, ToolCallRequest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatResult
@@ -130,6 +130,74 @@ def _staged(content: str = BODY) -> ToolMessage:
         identity = reference()
         assert identity is not None
         return _message(identity)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("malformed_receipt", [False, True])
+async def test_published_tool_failure_never_exposes_private_payload(malformed_receipt: bool) -> None:
+    """
+    工具发布临时资料后发生异常或生成非标准回执，均以安全错误终止且不回显正文。
+    """
+    middleware = EphemeralEvidenceMiddleware()
+    request = ToolCallRequest(tool_call={"id": "call", "name": "fixture_knowledge", "args": {}},
+                              tool=None, state={"messages": []}, runtime=None)
+
+    async def fail(_request: ToolCallRequest) -> Any:
+        """
+        先经真实发布边界登记资料，再模拟工具执行或回执构造失败。
+        """
+        publish_evidence(BODY)
+        if malformed_receipt:
+            return BODY
+        raise ValueError(BODY)
+
+    with evidence_turn(), pytest.raises(EphemeralEvidenceError) as failure:
+        await middleware.awrap_tool_call(request, fail)
+    assert SENTINEL not in "".join(traceback.format_exception(failure.value))
+
+
+def test_sync_model_projection_keeps_state_private() -> None:
+    """
+    同步模型也只在本次请求副本中读取原文，图消息和状态持续持有安全引用。
+    """
+    middleware = EphemeralEvidenceMiddleware()
+    model = _Model(responses=[AIMessage(content="unused")])
+    with evidence_turn():
+        message = _staged()
+        request = ModelRequest(model=model, messages=[message], tools=[], state={"messages": [message]}, runtime=None)
+
+        def infer(current: ModelRequest) -> ModelResponse:
+            """
+            验证真实正文仅到达模型处理器，返回可持久化的普通回答。
+            """
+            assert SENTINEL in str(current.messages)
+            return ModelResponse([AIMessage(content="根据当前资料给出必要事实")])
+
+        result = middleware.wrap_model_call(request, infer)
+        assert result.result[0].content == "根据当前资料给出必要事实"
+        assert SENTINEL not in str(request.messages) + str(request.state)
+
+
+@pytest.mark.parametrize("has_evidence", [False, True])
+def test_sync_model_errors_hide_only_private_evidence(has_evidence: bool) -> None:
+    """
+    使用临时资料的同步请求隐藏提供方错误原文，普通请求仍保持既有错误类型。
+    """
+    middleware = EphemeralEvidenceMiddleware()
+    model = _Model(responses=[AIMessage(content="unused")])
+    with evidence_turn():
+        message = _staged() if has_evidence else HumanMessage(content="普通任务")
+        request = ModelRequest(model=model, messages=[message], tools=[], state={"messages": [message]}, runtime=None)
+
+        def fail(_current: ModelRequest) -> ModelResponse:
+            """
+            模拟提供方拒绝请求，同时保留正常请求的故障传播语义。
+            """
+            raise ValueError(BODY if has_evidence else "ordinary-provider-error")
+
+        with pytest.raises(EphemeralEvidenceError if has_evidence else ValueError) as failure:
+            middleware.wrap_model_call(request, fail)
+        assert SENTINEL not in "".join(traceback.format_exception(failure.value))
 
 
 def test_publish_without_both_host_boundaries_fails_closed() -> None:
