@@ -217,7 +217,7 @@ def test_bundled_persona_refresh_never_overwrites_user_runtime_customization(con
     )
 
 
-def test_bundled_persona_refresh_only_updates_an_exact_approved_legacy_copy(tmp_path):
+def test_bundled_persona_refresh_only_updates_an_exact_approved_legacy_copy(tmp_path, monkeypatch):
     """
     人格覆盖只接受版本升级和完整旧文件 SHA 双重匹配，正文改写即保留。
     """
@@ -241,6 +241,19 @@ def test_bundled_persona_refresh_only_updates_an_exact_approved_legacy_copy(tmp_
 
     assert AgentRuntimeManager._should_update_bundled_persona(relative, source, target)
     target.write_bytes(legacy + "\n用户自定义内容\n".encode("utf-8"))
+    assert not AgentRuntimeManager._should_update_bundled_persona(relative, source, target)
+    target.write_bytes(legacy)
+    original_read_bytes = Path.read_bytes
+
+    def unreadable_target(path):
+        """
+        模拟人格文件在版本读取后变得不可读，升级应保留当前运行时副本。
+        """
+        if path == target:
+            raise PermissionError("synthetic-persona-read-denied")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", unreadable_target)
     assert not AgentRuntimeManager._should_update_bundled_persona(relative, source, target)
 
 
