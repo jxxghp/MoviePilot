@@ -30,19 +30,21 @@ def test_long_title_and_description_are_truncated():
     assert embed.description.endswith("…")
 
 
-def test_long_field_value_is_truncated():
+def test_long_field_name_and_value_are_truncated():
     """
-    超长字段值应被截断到 1024 字符。
+    超长字段名和值分别被截断到 256 和 1024 字符。
     """
     embed = Discord._build_embed(
         title="标题",
-        text="名称：" + "值" * 3000,
+        text="名" * 3000 + "：" + "值" * 3000,
         image=None,
         link=None,
         mtype=MessageType.Download,
     )
 
     assert len(embed.fields) == 1
+    assert len(embed.fields[0].name) == 256
+    assert embed.fields[0].name.endswith("…")
     assert len(embed.fields[0].value) == 1024
     assert embed.fields[0].value.endswith("…")
 

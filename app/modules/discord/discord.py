@@ -1202,13 +1202,54 @@ class Discord:
             return False
 
     @staticmethod
-    def _clip(value: Optional[str], limit: int) -> Optional[str]:
+    def _clip(value: str, limit: int) -> str:
         """
         按字符数截断文本，超出时以省略号结尾，总长不超过 limit。
         """
         if not value or len(value) <= limit:
             return value
         return value[: limit - 1] + "…"
+
+    @staticmethod
+    def _limit_embed_content(
+        title: str, description: str, fields: List[Dict[str, str]]
+    ) -> Tuple[str, str, List[Dict[str, str]]]:
+        """
+        截断 Discord 嵌入消息内容，保证各文本字段及总长度均不超限。
+
+        :param title: 嵌入消息标题
+        :param description: 嵌入消息描述
+        :param fields: 按显示顺序排列的字段
+        :return: 截断后的标题、描述和字段
+        """
+        title = Discord._clip(title, EMBED_TITLE_LIMIT)
+        description = Discord._clip(description, EMBED_DESCRIPTION_LIMIT)
+        fields = [
+            {
+                "name": Discord._clip(field["name"], EMBED_FIELD_NAME_LIMIT),
+                "value": Discord._clip(field["value"], EMBED_FIELD_VALUE_LIMIT),
+            }
+            for field in fields[:EMBED_FIELD_COUNT_LIMIT]
+        ]
+
+        def _total() -> int:
+            """
+            计算嵌入消息中计入总长度上限的字符数。
+            """
+            return (
+                len(title)
+                + len(description)
+                + sum(len(field["name"]) + len(field["value"]) for field in fields)
+            )
+
+        overflow = _total() - EMBED_TOTAL_LIMIT
+        if overflow > 0 and description:
+            description = Discord._clip(
+                description, max(len(description) - overflow, 1)
+            )
+        while fields and _total() > EMBED_TOTAL_LIMIT:
+            fields.pop()
+        return title, description, fields
 
     @staticmethod
     def _build_embed(
@@ -1224,7 +1265,7 @@ class Discord:
         仅下载、整理、订阅和手动通知解析“字段：值”；书名括号、URL 和时间中的冒号
         保留为普通正文，避免错误切分。未提供详情链接时使用项目主页。
         """
-        fields: List[Dict[str, Union[str, bool]]] = []
+        fields: List[Dict[str, str]] = []
         desc_lines: List[str] = []
         should_parse_fields = mtype in PARSE_FIELD_TYPES if mtype else False
 
@@ -1314,7 +1355,7 @@ class Discord:
                             value = m.group(2).strip(" ，,;；。、\t") or "-"
                             if name:
                                 fields.append(
-                                    {"name": name, "value": value, "inline": False}
+                                    {"name": name, "value": value}
                                 )
                             last_end = m.end()
                         # 匹配末尾后的文本
@@ -1327,33 +1368,9 @@ class Discord:
         if not description and not fields and text:
             description = text.strip()
         # Discord 对嵌入消息有硬性长度上限，超出会被 API 拒绝，需要提前截断
-        title = Discord._clip(title, EMBED_TITLE_LIMIT)
-        description = Discord._clip(description, EMBED_DESCRIPTION_LIMIT)
-        fields = [
-            {
-                "name": Discord._clip(field["name"], EMBED_FIELD_NAME_LIMIT),
-                "value": Discord._clip(field["value"], EMBED_FIELD_VALUE_LIMIT),
-            }
-            for field in fields[:EMBED_FIELD_COUNT_LIMIT]
-        ]
-
-        def _total() -> int:
-            """
-            计算嵌入消息中计入总长度上限的字符数。
-            """
-            return (
-                len(title or "")
-                + len(description)
-                + sum(len(f["name"]) + len(f["value"]) for f in fields)
-            )
-
-        overflow = _total() - EMBED_TOTAL_LIMIT
-        if overflow > 0 and description:
-            description = Discord._clip(
-                description, max(len(description) - overflow, 1)
-            )
-        while fields and _total() > EMBED_TOTAL_LIMIT:
-            fields.pop()
+        title, description, fields = Discord._limit_embed_content(
+            title, description, fields
+        )
         embed = discord.Embed(
             title=title,
             url=link or "https://github.com/jxxghp/MoviePilot",
