@@ -275,6 +275,7 @@ class Message(BaseModel):
     title: Optional[str] = Field(default=None, description="标题")
     text: Optional[str] = Field(default=None, description="文本内容")
     image: Optional[str] = Field(default=None, description="图片")
+    native_image: bool = Field(default=False, description="是否发送原生图片；企业微信自建应用支持，默认沿用图文消息")
     poster: Optional[str] = Field(default=None, description="独立媒体海报，不使用背景图回退")
     voice_path: Optional[str] = Field(default=None, description="语音文件路径")
     file_path: Optional[str] = Field(default=None, description="本地文件路径")

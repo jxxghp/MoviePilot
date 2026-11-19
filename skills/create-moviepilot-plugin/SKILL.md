@@ -372,7 +372,12 @@ Use only the extension points the requested plugin actually needs:
   `init_plugin()` reads config; `update_config()` persists internal changes.
 - Data: use `save_data()`, `get_data()`, `del_data()`, and `get_data_path()`.
 - Notification: use `post_message()` instead of directly calling message
-  modules.
+  modules. For QR codes or screenshots sent through a WeCom custom application,
+  pass `image=<HTTP(S) URL or Base64 JPG/PNG data URL>, native_image=True`.
+  This uploads and sends a native image with any title/text sent separately;
+  the link (including the default plugin-page link) is ignored. Images must be
+  larger than 5 bytes and at most 10 MiB. The default remains a news card;
+  other channels and WeCom bot mode keep their existing behavior.
 - APIs: return route definitions from `get_api()`; default auth is `apikey`
   when `auth` is omitted. Vue component APIs should normally use
   `auth: "bear"` and be called through the `api` prop passed by the frontend.
