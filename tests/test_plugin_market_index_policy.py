@@ -876,6 +876,137 @@ def test_plugin_index_parse_error_does_not_log_response_payload(monkeypatch) -> 
     assert all("PRIVATE-PAYLOAD" not in message for message in messages)
 
 
+def test_plugin_index_parse_error_logs_source_without_cache_buster(monkeypatch) -> None:
+    """
+    解析失败日志应给出索引来源便于定位仓库，同时去掉缓存穿透参数与响应正文。
+    """
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.logger.warning",
+        lambda message: messages.append(message),
+    )
+
+    result = PluginMarketTransport()._resolve_plugin_index_response(
+        200,
+        "not-json-PRIVATE-PAYLOAD",
+        source=(
+            "https://raw.githubusercontent.com/example/repo/main/package.v2.json"
+            "?_refresh=123"
+        ),
+    )
+
+    assert result is None
+    assert any("package.v2.json" in message for message in messages)
+    assert all("_refresh=" not in message for message in messages)
+    assert all("PRIVATE-PAYLOAD" not in message for message in messages)
+
+
+def test_plugin_index_source_log_drops_credentials(monkeypatch) -> None:
+    """
+    镜像地址可能带有凭据，失败日志只能保留主机与路径。
+    """
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.logger.warning",
+        lambda message: messages.append(message),
+    )
+
+    result = PluginMarketTransport()._resolve_plugin_index_response(
+        200,
+        "not-json",
+        source=(
+            "https://user:secret@mirror.example.com/example/repo/"
+            "package.v2.json?_refresh=1"
+        ),
+    )
+
+    assert result is None
+    assert any(
+        "mirror.example.com/example/repo/package.v2.json" in message
+        for message in messages
+    )
+    assert all("secret" not in message for message in messages)
+
+
+def test_plugin_index_read_failure_logs_requested_url(monkeypatch) -> None:
+    """
+    索引读取降级链路必须把实际请求地址带进解析失败日志。
+    """
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.logger.warning",
+        lambda message: messages.append(message),
+    )
+
+    class FakeResponse:
+        """占位响应对象，实际内容由读取函数替换。"""
+
+    class FakeStream:
+        """提供 with 语义的占位流。"""
+
+        def __enter__(self):
+            return FakeResponse()
+
+        def __exit__(self, *_args):
+            return False
+
+    class FakeRequestUtils:
+        """跳过真实网络请求的请求器。"""
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def get_stream(self, **_kwargs):
+            return FakeStream()
+
+    monkeypatch.setattr(plugin_client_module, "RequestUtils", FakeRequestUtils)
+    monkeypatch.setattr(
+        PluginMarketTransport,
+        "_build_github_request_strategies",
+        staticmethod(lambda url, headers=None, timeout=None: [("直连", url, {})]),
+    )
+    monkeypatch.setattr(
+        PluginMarketTransport,
+        "_PluginMarketTransport__read_plugin_index_response",
+        classmethod(lambda cls, _response: (200, "not-json")),
+    )
+
+    package_url = (
+        "https://raw.githubusercontent.com/example/repo/main/package.v2.json"
+        "?_refresh=1"
+    )
+    with pytest.raises(plugin_client_module._PluginIndexReadError):
+        PluginMarketTransport._PluginMarketTransport__request_plugin_index_with_fallback(
+            package_url
+        )
+
+    assert any(
+        "example/repo/main/package.v2.json" in message for message in messages
+    )
+    assert all("_refresh=" not in message for message in messages)
+
+
+def test_local_plugin_index_parse_error_logs_package_file(monkeypatch, tmp_path) -> None:
+    """
+    本地索引非法时，解析失败日志应指出具体插件包文件。
+    """
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.logger.warning",
+        lambda message: messages.append(message),
+    )
+    package_file = tmp_path / "package.v3.json"
+    package_file.write_text("not-json", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="格式无效"):
+        PluginMarketTransport._PluginMarketTransport__get_local_package(
+            tmp_path,
+            "v3",
+        )
+
+    assert any(str(package_file) in message for message in messages)
+
+
 def test_plugin_index_rejects_excessive_json_nesting() -> None:
     """
     深度异常的 JSON 必须形成读取失败，不能把解析器异常泄漏到市场调用方。

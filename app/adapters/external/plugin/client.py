@@ -66,6 +66,8 @@ PLUGIN_INDEX_READ_CHUNK_SIZE = 64 * 1024
 PLUGIN_INDEX_REQUEST_TIMEOUT = 15
 # 索引不存在或暂时不可达时五分钟后重试，不沿用成功索引的半小时有效期。
 PLUGIN_INDEX_FAILURE_TTL = 300
+# 失败日志中的索引来源标识上限，避免异常仓库地址放大日志体积。
+PLUGIN_INDEX_LOG_SOURCE_LIMIT = 512
 # 文档探测只在打开详情时执行，失败结果也缓存五分钟。
 PLUGIN_README_REQUEST_TIMEOUT = 5
 DEFAULT_PLUGIN_INDEX_FETCH_CONCURRENCY = 5
@@ -576,7 +578,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             content = raw_content.decode("utf-8", errors="replace")
         except OSError as error:
             raise RuntimeError(f"读取本地插件包 {package_file} 失败：{error}") from error
-        payload = cls.__parse_plugin_index_response(content)
+        payload = cls.__parse_plugin_index_response(
+            content,
+            source=f"本地插件包 {package_file}",
+        )
         if payload is None:
             raise RuntimeError(f"本地插件包 {package_file} 格式无效")
         return payload
@@ -877,25 +882,66 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
         return normalized, None, dropped_fields
 
+    @staticmethod
+    def __plugin_index_log_source(source: Optional[str]) -> str:
+        """
+        生成失败日志使用的有界来源标识，去掉凭据、缓存穿透参数并限制长度。
+        """
+        if not isinstance(source, str):
+            return ""
+        label = source.strip()
+        if not label:
+            return ""
+        parts = urlsplit(label)
+        if "@" in parts.netloc:
+            parts = parts._replace(netloc=parts.netloc.rsplit("@", 1)[-1])
+        if parts.query:
+            query = "&".join(
+                item
+                for item in parts.query.split("&")
+                if not item.startswith("_refresh=")
+            )
+            parts = parts._replace(query=query)
+        label = parts.geturl()
+        if len(label) > PLUGIN_INDEX_LOG_SOURCE_LIMIT:
+            label = f"{label[:PLUGIN_INDEX_LOG_SOURCE_LIMIT]}..."
+        return label
+
     @classmethod
-    def __parse_plugin_index_response(cls, content: str) -> Optional[PluginIndex]:
+    def __plugin_index_log_suffix(cls, source: Optional[str]) -> str:
+        """
+        把索引来源追加到警告文案；没有来源时保持原有日志不变。
+        """
+        label = cls.__plugin_index_log_source(source)
+        return f"（来源：{label}）" if label else ""
+
+    @classmethod
+    def __parse_plugin_index_response(
+            cls,
+            content: str,
+            source: Optional[str] = None,
+    ) -> Optional[PluginIndex]:
         """
         解析并规范化插件索引，兼容 BOM 与 plugins 列表包装格式。
+
+        :param content: 已限长的索引响应文本
+        :param source: 可选索引来源，仅用于失败日志定位仓库或本地文件
         """
+        suffix = cls.__plugin_index_log_suffix(source)
         try:
             payload = json.loads(content.lstrip("\ufeff"))
         except (ValueError, RecursionError):
-            logger.warning("插件包数据解析失败：响应不是有效 JSON")
+            logger.warning(f"插件包数据解析失败：响应不是有效 JSON{suffix}")
             return None
 
         if not isinstance(payload, dict):
             logger.warning(
-                f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}"
+                f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}{suffix}"
             )
             return None
         if not cls.__plugin_index_nesting_is_valid(payload):
             logger.warning(
-                f"插件包 JSON 嵌套超过上限：{PLUGIN_INDEX_MAX_NESTING} 层"
+                f"插件包 JSON 嵌套超过上限：{PLUGIN_INDEX_MAX_NESTING} 层{suffix}"
             )
             return None
         plugin_entries: list[tuple[object, object]]
@@ -916,7 +962,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         if len(plugin_entries) > PLUGIN_INDEX_MAX_ENTRIES:
             logger.warning(
                 f"插件包条目超过上限：{len(plugin_entries)} > "
-                f"{PLUGIN_INDEX_MAX_ENTRIES}"
+                f"{PLUGIN_INDEX_MAX_ENTRIES}{suffix}"
             )
             return None
 
@@ -955,7 +1001,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             )
             summaries.append(f"丢弃异常展示字段（{fields}）")
         if summaries:
-            logger.warning(f"插件包数据已隔离异常内容：{'；'.join(summaries)}")
+            logger.warning(
+                f"插件包数据已隔离异常内容：{'；'.join(summaries)}{suffix}"
+            )
 
         return normalized
 
@@ -1090,7 +1138,11 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     raise_exception=True,
                 ) as response:
                     raw = cls.__read_plugin_index_response(response) if response is not None else None
-                return cls._resolve_plugin_index_result(raw, from_mirror=from_mirror)
+                return cls._resolve_plugin_index_result(
+                    raw,
+                    from_mirror=from_mirror,
+                    source=target_url,
+                )
             except _PluginIndexReadError as error:
                 if not from_mirror:
                     raise
@@ -1139,7 +1191,11 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                         await cls.__async_read_plugin_index_response(response)
                         if response is not None else None
                     )
-                return cls._resolve_plugin_index_result(raw, from_mirror=from_mirror)
+                return cls._resolve_plugin_index_result(
+                    raw,
+                    from_mirror=from_mirror,
+                    source=target_url,
+                )
             except _PluginIndexReadError as error:
                 if not from_mirror:
                     raise
@@ -1157,12 +1213,18 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             cls,
             status_code: int,
             content: str,
+            source: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
         统一解释插件索引 HTTP 响应，保留不存在、失败和有效索引三态。
+
+        :param source: 可选索引来源，仅用于失败日志定位仓库或本地文件
         """
         try:
-            payload = cls._resolve_plugin_index_result((status_code, content))
+            payload = cls._resolve_plugin_index_result(
+                (status_code, content),
+                source=source,
+            )
         except RuntimeError:
             return None
         return payload if payload is not None else {}
@@ -1173,12 +1235,14 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             response: Optional[tuple[int, str]],
             *,
             from_mirror: bool = False,
+            source: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
         把传输结果统一映射为索引读取合同。
 
         :param response: 传输层返回的状态码和已受限响应文本；None 表示连接失败
         :param from_mirror: 是否由镜像站返回；镜像 404 无法证明原始索引不存在
+        :param source: 可选索引来源，仅用于失败日志定位仓库或本地文件
         :return: 有效索引，或以 None 表示仓库明确不存在该索引
         :raises _PluginIndexReadError: 连接失败、非成功状态或响应格式无效
         """
@@ -1189,7 +1253,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             return None
         if status_code != 200:
             raise _PluginIndexUnavailableError(f"插件索引请求失败：HTTP {status_code}")
-        payload = cls.__parse_plugin_index_response(content)
+        payload = cls.__parse_plugin_index_response(content, source=source)
         if payload is None:
             raise _PluginIndexReadError("插件索引响应格式无效")
         return payload
