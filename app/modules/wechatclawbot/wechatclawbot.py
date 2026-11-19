@@ -21,6 +21,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
 from app.adapters.network.http import RequestUtils
+from app.adapters.system.attachment import load_image
 from app.application.messaging.ingress import forward_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -2458,17 +2459,19 @@ class WechatClawBot:
         image: Optional[str] = None,
         userid: Optional[str] = None,
         link: Optional[str] = None,
+        native_image: bool = False,
         **kwargs: object,
     ) -> Optional[bool]:
         """
-        优先发送组合文字，只有无文字或仅有标题（无正文、链接）时才尝试发送图片。
+        默认沿用通知文字优先规则，显式原图消息保留图片及附带说明。
 
         各目标独立发送，已发出的分块不会撤回。当前无文字且无可用图片时，
         只要存在目标也会返回 True，此结果不表示实际发出消息。
 
         :param title: 可选标题
         :param text: 可选正文
-        :param image: 可选远程图片或图片数据地址；有正文或链接时忽略；仅有标题时与标题一同发送
+        :param image: 可选图片来源；显式原图时支持 URL、Base64 和本地 JPG/PNG
+        :param native_image: 是否完整发送原图及说明，忽略默认详情链接
         :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
         :param link: 追加为详情文字的链接
         :param kwargs: 兼容发送接口的附加参数，当前忽略
@@ -2478,20 +2481,23 @@ class WechatClawBot:
         if not targets:
             logger.warning("未找到可发送的微信 ClawBot 目标")
             return False
-        content = self._compose_text(title=title, text=text, link=link)
+        content = self._compose_text(title=title, text=text, link=None if native_image else link)
         # 当前 iLink 发送实现会把图文拆成两条消息发送。
         # 为避免用户看到“同一条通知被拆成文本 + 图片”两次触达，这里约定：
         # 只要通知里已有正文或链接，就优先只发文本；纯图片通知才发送图片。
         # 仅有标题（如 send_message 为纯图片通知补的“图片”占位标题）视为纯图片，
         # 图片带标题一并发送；图片加载失败时退回只发标题文字。
         title_only = not text and not link
-        image_bytes = (
-            self._load_remote_image(image)
-            if image and (not content or title_only)
-            else None
-        )
-        if image and (not content or title_only) and not image_bytes:
+        image_bytes = None
+        if image and native_image:
+            loaded = load_image(image)
+            image_bytes = loaded[0] if loaded else None
+        elif image and (not content or title_only):
+            image_bytes = self._load_remote_image(image)
+        if image and (native_image or not content or title_only) and not image_bytes:
             logger.warning("微信 ClawBot 图片加载失败，已跳过图片")
+            if native_image:
+                return False
         ok = False
         for target in targets:
             context_token = self._get_context_token(target)
@@ -2550,8 +2556,8 @@ class WechatClawBot:
 
         :param file_path: 本地普通文件路径；完整读入内存后发送，保留源文件
         :param file_name: 普通附件显示名称；为空时使用路径文件名
-        :param title: 兼容发送接口的标题，当前不发送
-        :param text: 兼容发送接口的说明，当前不发送
+        :param title: 可选的附件说明标题
+        :param text: 可选的附件说明正文，和标题一同保留
         :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
         :param kwargs: 兼容发送接口的附加参数，当前忽略
         :return: 至少一个目标的全部发送步骤成功时返回 True；无目标或全部发送失败返回 False
@@ -2569,8 +2575,11 @@ class WechatClawBot:
         ok = False
         for target in targets:
             context_token = self._get_context_token(target)
-            # send_file 的主语义是发送附件本体，附加文案可以丢弃，避免出现
-            # “先发一段说明，再发一个文件”的重复触达体验。
+            caption = self._compose_text(title=title or "", text=text)
+            if caption and not all(self._build_client().send_text(
+                to_user=target, text=chunk, context_token=context_token,
+            ) for chunk in self._split_content(caption)):
+                continue
             if mime_type.startswith("image/"):
                 sent = self._build_client().send_image_png(
                     to_user=target,

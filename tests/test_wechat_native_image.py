@@ -313,11 +313,11 @@ def test_plugin_native_image_survives_default_link_and_message_roundtrip(
 
 
 @pytest.mark.parametrize("native_image", [False, True])
-def test_bot_mode_does_not_receive_app_only_keyword(
+def test_bot_mode_receives_same_native_image_request(
     monkeypatch: pytest.MonkeyPatch, native_image: bool,
 ) -> None:
     """
-    机器人模式继续使用原有发送参数，不接收仅自建应用支持的开关。
+    机器人模式与自建应用使用同一原图开关，未启用时仍沿用旧通知参数。
     """
     bot = WeChatBot.__new__(WeChatBot)
     send = Mock()
@@ -327,8 +327,11 @@ def test_bot_mode_does_not_receive_app_only_keyword(
 
     module.post_message(message)
 
-    send.assert_called_once_with(title="标题", text=None, image=_IMAGE_URL,
-                                 userid="member-1", link="https://detail.example")
+    expected = {"title": "标题", "text": None, "image": _IMAGE_URL,
+                "userid": "member-1", "link": "https://detail.example"}
+    if native_image:
+        expected["native_image"] = True
+    send.assert_called_once_with(**expected)
 
 
 def test_native_image_respects_notification_filter(

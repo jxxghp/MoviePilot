@@ -372,16 +372,15 @@ Use only the extension points the requested plugin actually needs:
   `init_plugin()` reads config; `update_config()` persists internal changes.
 - Data: use `save_data()`, `get_data()`, `del_data()`, and `get_data_path()`.
 - Notification: use `post_message()` instead of directly calling message
-  modules. For QR codes or screenshots sent through a WeCom custom application,
-  pass `image=<HTTP(S) URL or Base64 JPG/PNG data URL>, native_image=True`.
-  This uploads and sends a native image with any title/text sent separately;
-  the link (including the default plugin-page link) is ignored. Images must be
-  larger than 5 bytes and at most 10 MiB. The default remains a news card;
-  other channels and WeCom bot mode keep their existing behavior.
-  WeCom custom applications also support local attachments through
-  `file_path=<local path>, file_name=<optional display name>` (larger than
-  5 bytes, at most 20 MiB). Attachments take precedence over image/voice fields;
-  the source file is preserved, and bot mode does not support file sending.
+  modules. Use the same `image=<source>, native_image=True` call for QR codes
+  and screenshots on every channel; upload-capable adapters accept HTTP(S),
+  Base64 or local JPG/PNG (over 5 bytes, up to 10 MiB). Send attachments through
+  `file_path=<local path>, file_name=<optional display name>`. Do not branch on
+  channel names, WeCom modes, vendor media IDs or upload APIs. The host preserves
+  captions and both parts of a combined image/file message, selects the platform
+  protocol, and provides an explicit notice when a local attachment cannot be sent.
+  Source files are preserved. The default `image` cover behavior remains unchanged.
+  See `docs/message-attachments.md` for the maintained host capability matrix.
 - APIs: return route definitions from `get_api()`; default auth is `apikey`
   when `auth` is omitted. Vue component APIs should normally use
   `auth: "bear"` and be called through the `api` prop passed by the frontend.

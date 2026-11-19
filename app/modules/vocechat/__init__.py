@@ -329,9 +329,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param kwargs: 兼容统一通知入口的扩展参数，当前不使用
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             userid = self.get_notification_userid(message, "vocechat_userid")
             client = self.get_instance(conf.name)
             if client:

@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 from app.adapters.network.feishu import FeishuLongConnection
 from app.adapters.network.http import RequestUtils
 from app.adapters.network.ip import IpUtils
+from app.adapters.system.attachment import image_upload_file
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
@@ -1634,6 +1635,43 @@ class Feishu:
             or self._default_chat_id
         )
         return result
+
+    def send_image(self, image: str, title: Optional[str] = None, text: Optional[str] = None,
+                   userid: Optional[str] = None, chat_id: Optional[str] = None,
+                   receive_id_type: Optional[str] = None, original_message_id: Optional[str] = None,
+                   buttons: Optional[List[List[dict[str, Any]]]] = None) -> Optional[JsonDict]:
+        """
+        发送独立图片消息，说明和交互按钮另发卡片，保留原消息回复目标。
+
+        :param image: HTTP(S)、Base64 或本地 JPG/PNG
+        :param title: 图片说明标题
+        :param text: 图片说明正文
+        :param userid: 接收用户标识
+        :param chat_id: 接收会话标识
+        :param receive_id_type: 沿用宿主解析的 open_id、user_id 或 chat_id
+        :param original_message_id: 原消息标识，非空时回复该消息
+        :param buttons: 可选的交互按钮，随说明发送一次
+        :return: 图片消息的发送结果；图片或说明失败时 success 为 False
+        """
+        with image_upload_file(image) as path:
+            image_key = self._upload_image(path) if path is not None else None
+            if not image_key:
+                return {"success": False}
+        if title or text or buttons:
+            caption = self.send_notification(
+                Message(title=title or (None if text else "图片"), text=text, buttons=buttons), userid=userid, chat_id=chat_id,
+                receive_id_type=receive_id_type, original_message_id=original_message_id,
+            )
+            if not caption or not caption.get("success"):
+                return {"success": False}
+        if original_message_id:
+            result = self._reply_message(original_message_id, "image", {"image_key": image_key})
+        else:
+            result = self._send_with_fallback_broadcast(
+                "image", {"image_key": image_key}, userid=userid, chat_id=chat_id,
+                receive_id_type=receive_id_type,
+            )
+        return result or {"success": False}
 
     def send_file(
             self,

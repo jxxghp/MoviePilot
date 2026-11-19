@@ -60,6 +60,8 @@ class ChannelCapability(Enum):
     MARKDOWN = "markdown"
     # 支持图片
     IMAGES = "images"
+    # 支持将完整原图上传为图片消息，独立于图文封面能力。
+    NATIVE_IMAGES = "native_images"
     # 支持链接
     LINKS = "links"
     # 支持原生语音输出
@@ -134,6 +136,7 @@ class ChannelCapabilityManager:
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.RICH_TEXT,
                 ChannelCapability.IMAGES,
+                ChannelCapability.NATIVE_IMAGES,
                 ChannelCapability.LINKS,
                 ChannelCapability.AUDIO_OUTPUT,
                 ChannelCapability.FILE_SENDING,
@@ -153,6 +156,7 @@ class ChannelCapabilityManager:
             notification_mode_value="bot",
             capabilities={
                 ChannelCapability.IMAGES,
+                ChannelCapability.NATIVE_IMAGES,
                 ChannelCapability.LINKS,
                 ChannelCapability.AUDIO_OUTPUT,
                 ChannelCapability.MENU_COMMANDS,
@@ -170,6 +174,7 @@ class ChannelCapabilityManager:
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.RICH_TEXT,
                 ChannelCapability.IMAGES,
+                ChannelCapability.NATIVE_IMAGES,
                 ChannelCapability.LINKS,
                 ChannelCapability.AUDIO_OUTPUT,
                 ChannelCapability.FILE_SENDING,
@@ -186,6 +191,7 @@ class ChannelCapabilityManager:
             capabilities={
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.IMAGES,
+                ChannelCapability.NATIVE_IMAGES,
                 ChannelCapability.LINKS,
                 ChannelCapability.FILE_SENDING,
             },
@@ -203,6 +209,7 @@ class ChannelCapabilityManager:
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.RICH_TEXT,
                 ChannelCapability.IMAGES,
+                ChannelCapability.NATIVE_IMAGES,
                 ChannelCapability.LINKS,
                 ChannelCapability.MENU_COMMANDS,
                 ChannelCapability.FILE_SENDING,
@@ -227,6 +234,7 @@ class ChannelCapabilityManager:
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.RICH_TEXT,
                 ChannelCapability.IMAGES,
+                ChannelCapability.NATIVE_IMAGES,
                 ChannelCapability.LINKS,
                 ChannelCapability.FILE_SENDING,
                 ChannelCapability.PROCESSING_STATUS,
