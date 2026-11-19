@@ -973,8 +973,8 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
 
     client = get_composed_plugin_market_client()
     return PluginCatalogService(
-        market_loader=client.get_plugins,
-        async_market_loader=client.async_get_plugins,
+        market_loader=client.get_plugin_index_result,
+        async_market_loader=client.async_get_plugin_index_result,
         installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
@@ -983,6 +983,7 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
         version_compare=version_matches,
         warning=logger.warning,
         error=logger.error,
+        info=logger.info,
     )
 
 

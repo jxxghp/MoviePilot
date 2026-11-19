@@ -87,38 +87,6 @@ class PluginRuntimeHost(Protocol):
         """
         ...
 
-    def get_plugins_from_market(
-        self,
-        market: str,
-        package_version: Optional[str] = None,
-        force: bool = False,
-    ) -> Optional[list[Any]]:
-        """
-        读取指定市场目录。
-
-        :param market: 插件市场地址
-        :param package_version: 限定的插件代际；为 None 时按当前主程序兼容范围读取
-        :param force: 是否跳过目录缓存并重新获取，默认使用缓存
-        :return: 可用的插件目录条目；获取失败或没有可用目录时可返回 None
-        """
-        ...
-
-    async def async_get_plugins_from_market(
-        self,
-        market: str,
-        package_version: Optional[str] = None,
-        force: bool = False,
-    ) -> Optional[list[Any]]:
-        """
-        异步读取指定市场目录。
-
-        :param market: 插件市场地址
-        :param package_version: 限定的插件代际；为 None 时按当前主程序兼容范围读取
-        :param force: 是否跳过目录缓存并重新获取，默认使用缓存
-        :return: 等待后取得插件目录条目；获取失败或没有可用目录时可返回 None
-        """
-        ...
-
 
 PluginCatalogFactory = Callable[[Callable[..., Any]], Any]
 PluginImportService = Callable[..., None]
@@ -354,16 +322,6 @@ def build_plugin_runtime(
         storage=environment.storage,
         system=environment.system,
         market_catalog=lambda: environment.catalog_factory(metadata.map),
-        market_loader=lambda market, package_version=None, force=False: (
-            host.get_plugins_from_market(market, package_version, force)
-        ),
-        async_market_loader=lambda market, package_version=None, force=False: (
-            host.async_get_plugins_from_market(
-                market,
-                package_version,
-                force,
-            )
-        ),
         map_plugin=lambda **kwargs: metadata.map(
             plugin_id=kwargs["pid"],
             plugin_info=kwargs["plugin_info"],

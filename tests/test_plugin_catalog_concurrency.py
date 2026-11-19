@@ -14,20 +14,24 @@ from app.application.plugin.catalog import PluginCatalogService
 
 def _catalog(
         max_concurrency: int = 2,
+        *,
+        market_loader: Callable = lambda *_args: {},
+        async_market_loader: Callable = lambda *_args: {},
         error: Callable[[str], None] | None = None,
 ) -> PluginCatalogService:
     """
     构造不依赖真实插件目录和网络的目录服务。
     """
     return PluginCatalogService(
-        market_loader=lambda *_args: {},
-        async_market_loader=lambda *_args: {},
+        market_loader=market_loader,
+        async_market_loader=async_market_loader,
         installed_plugins_provider=lambda: [],
         plugin_mapper=lambda *_args, **_kwargs: None,
         is_local_repo=lambda _repo_url: False,
         version_compare=lambda *_args: False,
         warning=lambda *_args: None,
         error=error if error is not None else lambda *_args: None,
+        info=lambda *_args: None,
         max_concurrency=max_concurrency,
     )
 
@@ -42,6 +46,9 @@ def test_sync_collect_limits_market_fetch_concurrency() -> None:
     calls: list[tuple[str, str | None, bool]] = []
 
     def loader(market: str, package_version: str | None, force: bool):
+        """
+        记录每次同步读取的并发峰值。
+        """
         nonlocal active, peak
         with lock:
             active += 1
@@ -50,13 +57,12 @@ def test_sync_collect_limits_market_fetch_concurrency() -> None:
         time.sleep(0.01)
         with lock:
             active -= 1
-        return []
+        return {}
 
-    result = _catalog(max_concurrency=2).collect(
+    result = _catalog(max_concurrency=2, market_loader=loader).collect(
         markets=["market-a", "market-b", "market-c"],
         compatible_flags=["v3"],
         force=True,
-        loader=loader,
     )
 
     assert result == []
@@ -75,19 +81,22 @@ def test_sync_collect_isolates_market_failure() -> None:
             package_version: str | None,
             _force: bool,
     ):
-        if market == "market-b" and package_version == "v3":
+        """
+        让一个仓库所有代际失败，其余仓库仍可返回有效空索引。
+        """
+        if market == "market-b":
             raise RuntimeError("market unavailable")
-        return []
+        return {}
 
-    result = _catalog(max_concurrency=2, error=errors.append).collect(
+    result = _catalog(max_concurrency=2, market_loader=loader, error=errors.append).collect(
         markets=["market-a", "market-b"],
         compatible_flags=["v3"],
         force=True,
-        loader=loader,
     )
 
     assert result == []
     assert len(errors) == 1
+    assert "market-b" in errors[0]
     assert "market unavailable" in errors[0]
 
 
@@ -100,18 +109,20 @@ async def test_async_collect_limits_market_fetch_concurrency() -> None:
     peak = 0
 
     async def loader(_market: str, _package_version: str | None, _force: bool):
+        """
+        记录同时在途的异步索引读取数。
+        """
         nonlocal active, peak
         active += 1
         peak = max(peak, active)
         await asyncio.sleep(0.01)
         active -= 1
-        return []
+        return {}
 
-    result = await _catalog(max_concurrency=2).async_collect(
+    result = await _catalog(max_concurrency=2, async_market_loader=loader).async_collect(
         markets=["market-a", "market-b", "market-c"],
         compatible_flags=["v3"],
         force=True,
-        loader=loader,
     )
 
     assert result == []
