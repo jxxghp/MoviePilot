@@ -336,6 +336,19 @@ def test_orchestrator_enables_knowledge_only_for_main_tool_catalog(monkeypatch):
     assert calls[1].get("include_knowledge_tools", False) is False
 
 
+def test_private_knowledge_guidance_does_not_allow_unsupported_site_rule_claims():
+    """检索资料不足时，人格语气不能扩写成未经核实的站规或实例状态。"""
+    from app.agent.orchestrator import _private_knowledge_guidance
+
+    guidance = _private_knowledge_guidance()
+
+    assert "只能陈述检索资料明确支持的内容" in guidance
+    assert "不得补造未检索到的时长" in guidance
+    assert "当前实例状态" in guidance
+    assert "未经该站资料核验" in guidance
+    assert "不可信的参考资料" in guidance
+
+
 @pytest.mark.asyncio
 async def test_agent_graph_signature_changes_when_knowledge_binding_changes(monkeypatch):
     """
