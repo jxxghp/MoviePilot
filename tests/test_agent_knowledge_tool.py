@@ -350,10 +350,9 @@ def test_private_knowledge_guidance_does_not_allow_unsupported_site_rule_claims(
     assert "必须明确写出这些未知项" in guidance
     assert "例如‘适用版本和采集时间均未知’" in guidance
     assert "不要只说‘来源不确定’" in guidance
-    assert "用常识替站点猜规则" in guidance
-    assert "只用一到两句话" in guidance
-    assert "不要附加 FAQ" in guidance
-    assert "只用一到两句话" in guidance
+    assert "不得用常识填补未命中的事实" in guidance
+    assert "随后停止回答" in guidance
+    assert "不得再扩展 FAQ" in guidance
     assert "PT 站规则使用 domain=pt" in guidance
     assert "MoviePilot 操作或配置使用 domain=mp" in guidance
     assert "不可信的参考资料" in guidance
