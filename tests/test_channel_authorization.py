@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
 from app.agent.identity import AgentIdentityError, require_execution_user, resolve_task_user
+from app.application.messaging.plugin import plugin_input_interaction_manager
 from app.application.security import authorization as authorization_module
 from app.application.security.auth import AuthService
 from app.application.security.authorization import ChannelAuthorizationService
@@ -23,9 +24,10 @@ from app.db.adapters.user import TransactionalUserRepository
 from app.db.models.authorization import ChannelAuthorization, ChannelBinding
 from app.db.models.user import User
 from app.db.session import SessionFactory, async_session_scope
+from app.schemas.message import IncomingMessage
 from app.schemas.system import NotificationConf
 from app.schemas.token import TokenPayload
-from app.schemas.types import NotificationChannel
+from app.schemas.types import EventType, NotificationChannel
 
 
 @pytest.fixture
@@ -257,6 +259,212 @@ def test_channel_member_text_cannot_reenter_legacy_admin_sessions(channel_author
             NotificationChannel.Telegram, "机器人A", "42", "昵称", "", "system:restart"
         )
         assert "管理员" in post.call_args.args[0].title
+
+
+@pytest.mark.parametrize("text", ["#123456", "?930441", "？930441", "🔥123456", " \n＃123456"])
+@pytest.mark.parametrize(("ai_enabled", "ai_global"), [(False, False), (True, False), (True, True)])
+@pytest.mark.parametrize("member_status", ["missing", "pending", "member", "admin", "unmanaged"])
+@pytest.mark.parametrize(("channel", "source"), [
+    (NotificationChannel.Telegram, "机器人A"), (NotificationChannel.Wechat, "企微A"),
+])
+def test_special_prefix_text_is_routed_to_plugins_without_agent_or_history(
+        channel_authorization, monkeypatch, text, ai_enabled, ai_global, member_status, channel, source,
+):
+    """
+    企微和 Telegram 插件验证码在不同 Agent 模式和成员身份下均交给插件且不保存普通历史。
+    """
+    from dataclasses import replace
+
+    service, configs, _ = channel_authorization
+    if channel == NotificationChannel.Wechat:
+        configs.append(NotificationConf(id="wechat-enterprise", name=source, type="wechat", enabled=True))
+    if member_status in {"pending", "member", "admin"}:
+        member = service.request(channel.value, source, "42", "成员")
+        if member_status != "pending":
+            service.update(member.id, status="approved", role=member_status, scopes=(), reviewer_id=1)
+    if member_status == "unmanaged":
+        authorization_module.configure_channel_authorization(None)
+
+    chain = MessageChain()
+    monkeypatch.setattr(
+        chain,
+        "runtime_config",
+        replace(chain.runtime_config, ai_agent_enable=ai_enabled, ai_agent_global=ai_global),
+    )
+    event_handler = Mock()
+    event_handler.handle_text.return_value = False
+    agent_handler = Mock()
+    post_message = Mock()
+    record_message = Mock()
+    send_event = Mock()
+    monkeypatch.setattr(chain, "_plugin_input_interaction_handler", lambda: event_handler)
+    monkeypatch.setattr(chain, "_handle_ai_message", agent_handler)
+    monkeypatch.setattr(chain, "post_message", post_message)
+    monkeypatch.setattr(chain, "_record_user_message", record_message)
+    monkeypatch.setattr(chain.eventmanager, "send_event", send_event)
+
+    chain.handle_message(
+        channel=channel,
+        source=source,
+        userid="42",
+        username="成员",
+        text=text,
+        original_chat_id="chat-7479",
+        reply_to_message_id="prompt-7479",
+    )
+
+    event_handler.handle_text.assert_called_once()
+    agent_handler.assert_not_called()
+    post_message.assert_not_called()
+    record_message.assert_not_called()
+    send_event.assert_called_once_with(
+        EventType.UserMessage,
+        {
+            "text": text,
+            "userid": "42",
+            "channel": channel,
+            "source": source,
+            "chat_id": "chat-7479",
+            "reply_to_message_id": "prompt-7479",
+        },
+    )
+
+
+@pytest.mark.parametrize("status", ["disabled", "rejected"])
+def test_special_prefix_text_remains_blocked_for_disabled_channel_member(channel_authorization, monkeypatch, status):
+    """
+    标点开头的插件输入不能绕过已停用或拒绝成员的渠道授权。
+    """
+    from dataclasses import replace
+
+    service, _, _ = channel_authorization
+    member = service.request("Telegram", "机器人A", "42", "成员")
+    service.update(member.id, status=status, role="member", scopes=(), reviewer_id=1)
+
+    chain = MessageChain()
+    monkeypatch.setattr(
+        chain, "runtime_config", replace(chain.runtime_config, ai_agent_enable=False, ai_agent_global=False)
+    )
+    post_message = Mock()
+    send_event = Mock()
+    monkeypatch.setattr(chain, "post_message", post_message)
+    monkeypatch.setattr(chain.eventmanager, "send_event", send_event)
+
+    chain.handle_message(
+        channel=NotificationChannel.Telegram,
+        source="机器人A",
+        userid="42",
+        username="成员",
+        text="#123456",
+    )
+
+    post_message.assert_called_once()
+    assert not any(call.args[0] == EventType.UserMessage for call in send_event.call_args_list)
+
+
+@pytest.mark.parametrize("status", ["pending", "approved"])
+def test_special_prefix_text_consumes_plugin_session_before_broadcast(channel_authorization, monkeypatch, status):
+    """
+    插件活动输入会话先收到验证码，并保留回复定位且不重复广播或写入消息历史。
+    """
+    service, _, _ = channel_authorization
+    member = service.request("Telegram", "机器人A", "42", "成员")
+    if status == "approved":
+        service.update(member.id, status=status, role="member", scopes=(), reviewer_id=1)
+    chain = MessageChain()
+    post = Mock()
+    record = Mock()
+    agent = Mock()
+    send_event = Mock()
+    monkeypatch.setattr(chain, "post_message", post)
+    monkeypatch.setattr(chain, "_record_user_message", record)
+    monkeypatch.setattr(chain, "_handle_ai_message", agent)
+    monkeypatch.setattr(chain.eventmanager, "send_event", send_event)
+    request = plugin_input_interaction_manager.create_or_replace(
+        user_id="42", plugin_id="example_plugin", channel=NotificationChannel.Telegram,
+        source="机器人A", username="成员", chat_id="chat-7479", prompt_message_id="prompt-7479",
+    )
+    try:
+        chain.handle_message(
+            NotificationChannel.Telegram, "机器人A", "42", "成员", "#123456",
+            original_chat_id="chat-7479", reply_to_message_id="prompt-7479",
+        )
+        send_event.assert_called_once()
+        event_type, payload = send_event.call_args.args
+        assert event_type == EventType.MessageAction
+        assert payload["input_text"] == "#123456"
+        assert payload["input_session_id"] == request.request_id
+        assert payload["__mp_target_plugin_id"] == "example_plugin"
+        assert payload["chat_id"] == "chat-7479"
+        assert payload["reply_to_message_id"] == "prompt-7479"
+        assert plugin_input_interaction_manager.get_by_user(
+            "42", NotificationChannel.Telegram, "机器人A", "chat-7479",
+        ) is None
+        post.assert_not_called()
+        record.assert_not_called()
+        agent.assert_not_called()
+    finally:
+        plugin_input_interaction_manager.remove(request.request_id)
+
+
+@pytest.mark.parametrize(("text", "attachments"), [
+    ("/help", {}), ("/ai 查询", {}), ("123456", {}), ("普通文本", {}), ("", {}),
+    ("#123456", {"images": [{"ref": "synthetic-image"}]}),
+    ("#123456", {"files": [IncomingMessage.MessageAttachment(ref="synthetic-file")]}),
+    ("#123456", {"audio_refs": ["synthetic-audio"]}),
+    ("#123456", {"callback_data": "plugin:callback"}),
+])
+def test_plugin_input_exception_does_not_bypass_other_authorization(
+        channel_authorization, monkeypatch, text, attachments,
+):
+    """
+    插件纯文本豁免不放开普通文本、斜杠命令、附件或按钮回调的授权要求。
+    """
+    from dataclasses import replace
+
+    chain = MessageChain()
+    monkeypatch.setattr(chain, "runtime_config", replace(chain.runtime_config, ai_agent_enable=False))
+    post = Mock()
+    plugin = Mock()
+    monkeypatch.setattr(chain, "post_message", post)
+    monkeypatch.setattr(chain, "_plugin_input_interaction_handler", plugin)
+    chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "成员", text, **attachments)
+    post.assert_called_once()
+    plugin.assert_not_called()
+    assert "授权" in post.call_args.args[0].title
+
+
+@pytest.mark.parametrize(("channel", "text", "attachments"), [
+    (NotificationChannel.Web, "#123456", {}),
+    (NotificationChannel.WebAgent, "#123456", {}),
+    (NotificationChannel.Telegram, "/help", {}),
+    (NotificationChannel.Telegram, "/ai 查询", {}),
+    (NotificationChannel.Telegram, "普通文本", {}),
+    (NotificationChannel.Telegram, "#123456", {"callback_data": "plugin:callback"}),
+    (NotificationChannel.Telegram, "#123456", {"images": [{"ref": "synthetic-image"}]}),
+    (NotificationChannel.Telegram, "#123456", {"audio_refs": ["synthetic-audio"]}),
+])
+def test_special_plugin_route_preserves_web_commands_and_attachments(
+        channel_authorization, monkeypatch, channel, text, attachments,
+):
+    """
+    网页会话、命令、回调及带附件消息仍进入既有核心路由。
+    """
+    _approve(channel_authorization[0], role="admin")
+    chain = MessageChain()
+    core = Mock(return_value=False)
+    plugin = Mock()
+    plugin.handle_text.return_value = False
+    dispatch = Mock()
+    monkeypatch.setattr(chain, "_handle_message_core", core)
+    monkeypatch.setattr(chain, "_plugin_input_interaction_handler", lambda: plugin)
+    monkeypatch.setattr(chain, "_dispatch_plugin_text", dispatch)
+    monkeypatch.setattr(chain, "_transcribe_audio_refs", Mock(return_value="语音转写"))
+    monkeypatch.setattr(chain, "_record_user_message", Mock())
+    monkeypatch.setattr(chain, "_mark_message_processing_started", Mock(return_value=None))
+    chain.handle_message(channel, "机器人A", "42", "成员", text, **attachments)
+    dispatch.assert_not_called()
+    core.assert_called_once()
 
 
 def test_account_binding_requires_both_sides_and_never_approves_pending_member(channel_authorization, db):
