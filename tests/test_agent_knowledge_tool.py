@@ -347,7 +347,9 @@ def test_private_knowledge_guidance_does_not_allow_unsupported_site_rule_claims(
     assert "当前实例状态" in guidance
     assert "未经该站资料核验" in guidance
     assert "未知范围不应抹掉摘录里的明确事实" in guidance
-    assert "必须点明具体未知项" in guidance
+    assert "必须明确写出这些未知项" in guidance
+    assert "例如‘适用版本和采集时间均未知’" in guidance
+    assert "不要只说‘来源不确定’" in guidance
     assert "用常识替站点猜规则" in guidance
     assert "只用一到两句话" in guidance
     assert "不要附加 FAQ" in guidance
