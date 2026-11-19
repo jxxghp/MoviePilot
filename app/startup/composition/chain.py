@@ -27,6 +27,7 @@ from app.application.image import (
     reset_wallpaper_providers,
 )
 from app.application.module import ModuleRuntime, configure_module_runtime
+from app.application.server.lookup import MediaMappingLookup, configure_media_mapping_lookup
 from app.application.server.mapping import configure_media_mapping_port
 from app.application.subscription.activity import SubscriptionActivityService
 from app.application.system import SystemService
@@ -35,6 +36,7 @@ from app.chain._recognition import (
     configure_recognition_share_port,
     reset_recognition_share_port,
 )
+from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.subscribe.notify import (
     SubscriptionSharePort,
@@ -64,6 +66,7 @@ from app.runtime.extensions.module.manager import ModuleManager
 from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.stop import runtime_stop_state
 from app.schemas.common import JsonData
+from app.schemas.mapping import MediaMapping, MediaMappingMatchQuery
 from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.types import MediaType
 from app.startup.composition.database import build_transactional_user_repository
@@ -337,6 +340,16 @@ class _NetworkFilesystemAdapter:
         ))
 
 
+async def _match_media_mapping(query: MediaMappingMatchQuery) -> MediaMapping | None:
+    """
+    把详情页按需查找交给媒体门面，执行与订阅相同的来源转换。
+
+    :param query: 已校验的原来源身份、影视类型和季号
+    :return: 本次转换得到的 TMDB 关系；未匹配时为 None
+    """
+    return await MediaChain().async_match_media_mapping(query)
+
+
 def configure_chain_port_composition() -> None:
     """
     原子装配 Chain 的共享服务与文件系统端口。
@@ -344,6 +357,7 @@ def configure_chain_port_composition() -> None:
     reset_chain_port_composition()
     try:
         configure_media_mapping_port(MediaMappingClient())
+        configure_media_mapping_lookup(MediaMappingLookup(_match_media_mapping))
         configure_recognition_share_port(
             cast(RecognitionSharePort, _RecognitionShareAdapter())
         )
@@ -362,6 +376,7 @@ def reset_chain_port_composition() -> None:
     """
     释放 Chain 技术端口，支持重复 lifespan 与启动失败回滚。
     """
+    configure_media_mapping_lookup(None)
     configure_media_mapping_port(None)
     reset_network_filesystem_port()
     reset_subscription_share_port()

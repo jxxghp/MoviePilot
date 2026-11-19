@@ -570,8 +570,10 @@ def configure_plugin_system_services():
     )
 
     init_chain_ports()
-    # 共享关系是新增的外部端口；普通单元测试保持未装配，由专项测试注入受控实现。
+    # 共享关系与详情页查找会访问外部服务；普通单元测试保持未装配，由专项测试注入受控实现。
+    from app.application.server.lookup import configure_media_mapping_lookup
     from app.application.server.mapping import configure_media_mapping_port
+    configure_media_mapping_lookup(None)
     configure_media_mapping_port(None)
     init_chain_network_ports()
     configure_site_query_service(SiteQueryService(repository=site_repository()))
