@@ -22,6 +22,9 @@ from app.runtime.log import logger
 
 lock = threading.Lock()
 
+# 企业微信临时图片素材上限为 10 MiB，仅接受 JPG、PNG。
+_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+
 
 class RetryException(Exception):
     """
@@ -284,15 +287,17 @@ class WeChat:
             return False
 
     def send_msg(self, title: Optional[str], text: Optional[str] = None, image: Optional[str] = None,
-                 userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
+                 userid: Optional[str] = None, link: Optional[str] = None, *,
+                 native_image: bool = False) -> Optional[bool]:
         """
-        获取访问令牌后发送文本或图文消息。
+        获取访问令牌后发送文本、图文或显式指定的原生图片消息。
 
         :param title: 消息标题
         :param text: 消息正文
-        :param image: 封面地址；非空时使用图文消息，否则使用文本
+        :param image: 图片地址；默认作为图文封面，原生图片还支持 Base64 数据地址
         :param userid: 企业微信用户标识；为空时发送给全体应用成员
         :param link: 消息跳转地址
+        :param native_image: 有图片时上传并发送原生图片；标题和正文另发文本，忽略跳转地址
         :return: 接口接受消息时返回 True；发送失败返回 False；无访问令牌返回 None
         """
         try:
@@ -300,6 +305,8 @@ class WeChat:
                 logger.error("获取微信access_token失败，请检查参数配置")
                 return None
 
+            if image and native_image:
+                return self._send_native_image(image=image, title=title, text=text, userid=userid)
             if image:
                 ret_code = self.__send_image_message(title=title, text=text, image_url=image, userid=userid, link=link)
             else:
@@ -309,6 +316,90 @@ class WeChat:
         except Exception as e:
             logger.error(f"发送消息失败：{e}")
             return False
+
+    @staticmethod
+    def _load_native_image(image: str) -> Optional[bytes]:
+        """
+        读取原生图片并限制下载量，不在磁盘或图片缓存中保存二维码。
+
+        :param image: HTTP(S) 图片地址或 JPG/PNG 的 Base64 数据地址
+        :return: 大于 5 字节且不超过 10 MiB 的 JPG/PNG 内容；来源、格式或大小无效返回 None
+        """
+        content: Optional[bytes]
+        if image.startswith("data:image/"):
+            try:
+                header, encoded = image.split(",", 1)
+                if not header.endswith(";base64") or len(encoded) > ((_IMAGE_MAX_BYTES + 2) // 3) * 4:
+                    logger.error("企业微信原生图片数据地址无效或超过 10MB")
+                    return None
+                content = base64.b64decode(encoded, validate=True)
+            except ValueError:
+                logger.error("企业微信原生图片 Base64 数据无效")
+                return None
+        elif image.startswith(("https://", "http://")):
+            content = WeChat._download_native_image(image)
+        else:
+            logger.error("企业微信原生图片仅支持 HTTP(S) 或 Base64 数据地址")
+            return None
+
+        if not content or not 5 < len(content) <= _IMAGE_MAX_BYTES or WeChat._guess_mime_type(content, "") not in {
+            "image/jpeg", "image/png",
+        }:
+            logger.error("企业微信原生图片必须为大于 5 字节且不超过 10MB 的 JPG/PNG")
+            return None
+        return content
+
+    @staticmethod
+    def _download_native_image(image: str) -> Optional[bytes]:
+        """
+        有界读取图片响应，并在成功、拒绝或读取异常时关闭连接。
+
+        :param image: 插件显式指定的 HTTP(S) 图片地址
+        :return: 下载得到的原始字节；无响应、非 200 响应或超过 10 MiB 时返回 None
+        """
+        response = RequestUtils(timeout=30).get_res(image, stream=True)
+        if response is None:
+            return None
+        try:
+            if response.status_code != 200:
+                logger.error(f"下载企业微信原生图片失败，HTTP 状态码：{response.status_code}")
+                return None
+            chunks = bytearray()
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if len(chunks) + len(chunk) > _IMAGE_MAX_BYTES:
+                    logger.error("企业微信原生图片超过 10MB")
+                    return None
+                chunks.extend(chunk)
+            return bytes(chunks)
+        finally:
+            response.close()
+
+    def _send_native_image(self, image: str, title: Optional[str], text: Optional[str],
+                           userid: Optional[str]) -> bool:
+        """
+        上传原图并发送图片消息，附带文字独立发送且不使用图文卡片。
+
+        :param image: HTTP(S) 或 Base64 图片地址
+        :param title: 可选的说明标题
+        :param text: 可选的说明正文
+        :param userid: 企业微信用户标识；为空时发送给全体应用成员
+        :return: 图片及附带文字均发送成功时返回 True；任一步骤失败返回 False
+        """
+        content = self._load_native_image(image)
+        if content is None:
+            return False
+        suffix = ".png" if content.startswith(b"\x89PNG\r\n\x1a\n") else ".jpg"
+        media_id = self._upload_temp_media(Path(f"image{suffix}"), media_type="image", content=content)
+        if not media_id:
+            return False
+        if (title or text) and not self.__send_message(title=title, text=text, userid=userid):
+            return False
+        return self.__post_request(self._send_msg_url, {
+            "touser": userid or "@all",
+            "msgtype": "image",
+            "agentid": self._appid,
+            "image": {"media_id": media_id},
+        })
 
     @staticmethod
     def _guess_mime_type(content: bytes, default: str = "image/jpeg") -> str:
@@ -457,12 +548,14 @@ class WeChat:
             return None
         return dst_path
 
-    def _upload_temp_media(self, media_path: Path, media_type: str = "voice") -> Optional[str]:
+    def _upload_temp_media(self, media_path: Path, media_type: str = "voice", *,
+                           content: Optional[bytes] = None) -> Optional[str]:
         """
         上传临时素材并取得企业微信媒体标识。
 
-        :param media_path: 需要完整读入内存的本地素材路径
+        :param media_path: 本地素材路径；传入 content 时仅使用文件名，不读取磁盘
         :param media_type: 企业微信素材类型，默认 voice
+        :param content: 可直接上传的素材字节；为空时从 media_path 读取，保留语音调用兼容性
         :return: 上传成功的 media_id；读取、请求或响应解析失败返回 None
         """
         access_token = self.__get_access_token()
@@ -474,8 +567,12 @@ class WeChat:
         )
         try:
             # 先读入字节并关闭文件，避免上传过程持有文件句柄
-            with media_path.open("rb") as media_file:
-                file_content = media_file.read()
+            if content is None:
+                content = media_path.read_bytes()
+
+            mime_type = "voice/amr" if media_type == "voice" else "application/octet-stream"
+            if media_type == "image":
+                mime_type = self._guess_mime_type(content)
 
             # 只声明响应格式，让请求库按文件上传内容生成 Content-Type
             response = RequestUtils(timeout=60).request(
@@ -485,8 +582,8 @@ class WeChat:
                 files={
                     "media": (
                         media_path.name,
-                        file_content,
-                        "voice/amr" if media_type == "voice" else "application/octet-stream",
+                        content,
+                        mime_type,
                     )
                 },
             )

@@ -335,7 +335,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
 
     def post_message(self, message: Message, **kwargs: object) -> None:
         """
-        向符合通知规则的实例发送文本、图文或语音。
+        向符合通知规则的实例发送文本、图文、原生图片或语音。
 
         :param message: 通知内容及接收对象；语音发送失败时回退到文本或图文
         :param kwargs: 兼容模块分发的附加参数，当前不使用
@@ -347,6 +347,10 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
             client = self.get_instance(conf.name)
             if client:
                 text = message.channel_text(NotificationChannel.Wechat, conf.config) or message.text
+                if message.native_image and message.image and isinstance(client, WeChat):
+                    client.send_msg(title=message.title, text=text, image=message.image,
+                                    userid=userid, link=message.link, native_image=True)
+                    continue
                 if message.voice_path and hasattr(client, "send_voice"):
                     sent = client.send_voice(
                         voice_path=message.voice_path,
