@@ -5,6 +5,7 @@
 import asyncio
 import json
 import time
+import uuid
 from queue import Queue
 from threading import Event as ThreadEvent
 from types import SimpleNamespace
@@ -2319,6 +2320,212 @@ def test_web_agent_stream_rechecks_running_service_before_enqueue():
     assert '"type": "error"' in body
     assert '"type": "done"' in body
     stale_manager.process_message.assert_not_awaited()
+
+
+def test_web_agent_plugin_button_click_falls_back_to_traditional_callback():
+    """
+    插件按钮回调未登记为 Agent 选择时，应按传统回调派发而不是报错终止。
+    """
+    callback_data = "[PLUGIN]UpdateWeChatIp|扫码完成|test"
+    payload = _build_web_agent_traditional_callback_payload(callback_data)
+    # 前端选择卡片 id 是未登记的随机 UUID，不是 Agent 选择请求 id。
+    plugin_card_id = uuid.uuid4().hex
+    request_payload = schemas.AgentWebChatRequest(
+        text=payload["message"],
+        display_text=payload["display_message"],
+        session_id="plugin-choice-fallback",
+        choice_selection={"choice_id": plugin_card_id, "title": "扫码完成"},
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+
+    async def fake_collect(**kwargs):
+        """
+        模拟传统消息链路回执插件回调结果。
+        """
+        return [{"type": "delta", "content": "登录成功"}]
+
+    async def scenario():
+        response = await web_agent_stream(request_payload, request, user)
+        iterator = response.body_iterator.__aiter__()
+        received = []
+        while True:
+            try:
+                chunk = await asyncio.wait_for(anext(iterator), timeout=1)
+            except StopAsyncIteration:
+                break
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            received.append(text)
+        await wait_web_agent_background_tasks()
+        return "".join(received)
+
+    with (
+        patch(
+            "app.application.messaging.agent.build_web_agent_session_id_async",
+            return_value="web-agent:plugin-choice-fallback",
+        ),
+        patch(
+            "app.application.messaging.agent.collect_web_agent_traditional_events",
+            side_effect=fake_collect,
+        ) as collect_mock,
+        patch(
+            "app.application.messaging.agent.save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
+        ),
+    ):
+        body = asyncio.run(scenario())
+
+    assert '"type": "error"' not in body
+    assert '"type": "delta"' in body
+    assert '"type": "done"' in body
+    collect_mock.assert_awaited_once()
+    assert collect_mock.await_args.kwargs["text"] == f"CALLBACK:{callback_data}"
+
+
+def test_web_agent_unknown_agent_choice_still_errors_for_plain_text():
+    """
+    非传统文本携带未登记选择时，仍应返回“该选择已处理或不属于当前会话”。
+    """
+    request_payload = schemas.AgentWebChatRequest(
+        text="你好",
+        session_id="unknown-choice-control",
+        choice_selection={"choice_id": uuid.uuid4().hex[:12], "title": "请选择"},
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+
+    async def scenario():
+        response = await web_agent_stream(request_payload, request, user)
+        iterator = response.body_iterator.__aiter__()
+        received = []
+        while True:
+            try:
+                chunk = await asyncio.wait_for(anext(iterator), timeout=1)
+            except StopAsyncIteration:
+                break
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            received.append(text)
+        await wait_web_agent_background_tasks()
+        return "".join(received)
+
+    with (
+        patch(
+            "app.application.messaging.agent.build_web_agent_session_id_async",
+            return_value="web-agent:unknown-choice-control",
+        ),
+        patch(
+            "app.application.messaging.agent.collect_web_agent_traditional_events",
+            new_callable=AsyncMock,
+        ) as collect_mock,
+        patch(
+            "app.application.messaging.agent.save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
+        ),
+    ):
+        body = asyncio.run(scenario())
+
+    assert "该选择已处理或不属于当前会话" in body
+    collect_mock.assert_not_awaited()
+
+
+def test_web_agent_stale_agent_choice_with_slash_value_still_errors():
+    """
+    已过期 Agent 选择的选项值即使是斜杠命令，也不得当作传统命令执行。
+    """
+    request_payload = schemas.AgentWebChatRequest(
+        text="/restart",
+        session_id="stale-choice-slash",
+        # Agent 选择请求 id 格式（12 位十六进制），但未登记、已过期。
+        choice_selection={"choice_id": uuid.uuid4().hex[:12], "title": "请选择"},
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+
+    async def scenario():
+        response = await web_agent_stream(request_payload, request, user)
+        iterator = response.body_iterator.__aiter__()
+        received = []
+        while True:
+            try:
+                chunk = await asyncio.wait_for(anext(iterator), timeout=1)
+            except StopAsyncIteration:
+                break
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            received.append(text)
+        await wait_web_agent_background_tasks()
+        return "".join(received)
+
+    with (
+        patch(
+            "app.application.messaging.agent.build_web_agent_session_id_async",
+            return_value="web-agent:stale-choice-slash",
+        ),
+        patch(
+            "app.application.messaging.agent.collect_web_agent_traditional_events",
+            new_callable=AsyncMock,
+        ) as collect_mock,
+        patch(
+            "app.application.messaging.agent.save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
+        ),
+        # 模拟生产环境命令注册表已初始化（/restart 为已注册命令），
+        # 使测试只验证选择校验分支，不受测试环境命令服务未初始化影响。
+        patch(
+            "app.application.messaging.agent.get_web_agent_unknown_command_message",
+            return_value=None,
+        ),
+    ):
+        body = asyncio.run(scenario())
+
+    assert "该选择已处理或不属于当前会话" in body
+    collect_mock.assert_not_awaited()
+
+
+def test_web_agent_stale_agent_choice_with_callback_value_still_errors():
+    """
+    已过期 Agent 选择的选项值即使是插件回调，也不得绕过选择校验执行。
+    """
+    request_payload = schemas.AgentWebChatRequest(
+        text="CALLBACK:[PLUGIN]UpdateWeChatIp|扫码完成|test",
+        session_id="stale-choice-callback",
+        # Agent 选择请求 id 格式（12 位十六进制），但未登记、已过期。
+        choice_selection={"choice_id": uuid.uuid4().hex[:12], "title": "请选择"},
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+
+    async def scenario():
+        response = await web_agent_stream(request_payload, request, user)
+        iterator = response.body_iterator.__aiter__()
+        received = []
+        while True:
+            try:
+                chunk = await asyncio.wait_for(anext(iterator), timeout=1)
+            except StopAsyncIteration:
+                break
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            received.append(text)
+        await wait_web_agent_background_tasks()
+        return "".join(received)
+
+    with (
+        patch(
+            "app.application.messaging.agent.build_web_agent_session_id_async",
+            return_value="web-agent:stale-choice-callback",
+        ),
+        patch(
+            "app.application.messaging.agent.collect_web_agent_traditional_events",
+            new_callable=AsyncMock,
+        ) as collect_mock,
+        patch(
+            "app.application.messaging.agent.save_web_agent_display_snapshot",
+            new_callable=AsyncMock,
+        ),
+    ):
+        body = asyncio.run(scenario())
+
+    assert "该选择已处理或不属于当前会话" in body
+    collect_mock.assert_not_awaited()
 
 
 def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():

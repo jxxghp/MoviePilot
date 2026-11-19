@@ -13,6 +13,21 @@ from typing import Any, Optional
 AGENT_CHOICE_PREFIX = "agent_interaction:choice:"
 LEGACY_AGENT_CHOICE_PREFIX = "agent_choice:"
 
+# Agent 选择请求 id 由 create_request 生成：uuid4 hex 前 12 位。
+AGENT_CHOICE_REQUEST_ID_LENGTH = 12
+
+
+def is_agent_choice_request_id(choice_id: str) -> bool:
+    """
+    判断选择 id 是否为 Agent 选择请求 id 格式。
+
+    :param choice_id: 前端提交的选择卡片 id
+    :return: 符合 Agent 选择请求 id 格式时返回 True
+    """
+    return len(choice_id) == AGENT_CHOICE_REQUEST_ID_LENGTH and all(
+        char in "0123456789abcdef" for char in choice_id
+    )
+
 
 def is_agent_learning_command(text: str | None) -> bool:
     """
