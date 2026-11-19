@@ -426,9 +426,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         :param message: 通知内容与接收目标；普通文件优先，其次把语音作为文件发送
         :param kwargs: 兼容模块分发的附加参数，当前不使用
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             userid = self.get_notification_userid(
                 message, "wechatclawbot_userid"
             )
@@ -457,6 +455,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
                     image=message.image,
                     userid=userid,
                     link=message.link,
+                    native_image=message.native_image,
                 )
 
     def download_wechat_image_to_data_url(

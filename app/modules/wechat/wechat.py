@@ -324,7 +324,7 @@ class WeChat:
         """
         读取原生图片并限制下载量，不在磁盘或图片缓存中保存二维码。
 
-        :param image: HTTP(S) 图片地址或 JPG/PNG 的 Base64 数据地址
+        :param image: HTTP(S) 图片地址、JPG/PNG 的 Base64 数据地址或本地图片路径
         :return: 大于 5 字节且不超过 10 MiB 的 JPG/PNG 内容；来源、格式或大小无效返回 None
         """
         content: Optional[bytes]
@@ -340,8 +340,11 @@ class WeChat:
                 return None
         elif image.startswith(("https://", "http://")):
             content = WeChat._download_native_image(image)
+        elif "://" not in image:
+            with Path(image).expanduser().open("rb") as image_file:
+                content = image_file.read(_IMAGE_MAX_BYTES + 1)
         else:
-            logger.error("企业微信原生图片仅支持 HTTP(S) 或 Base64 数据地址")
+            logger.error("企业微信原生图片仅支持 HTTP(S)、Base64 或本地图片路径")
             return None
 
         if not content or not 5 < len(content) <= _IMAGE_MAX_BYTES or WeChat._guess_mime_type(content, "") not in {

@@ -10,12 +10,14 @@ import re
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import websocket
 from Crypto.Cipher import AES
 
 from app.adapters.network.http import RequestUtils
+from app.adapters.system.attachment import load_image
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.image import build_wechat_image_url
 from app.application.messaging.ingress import submit_message_to_host
@@ -388,13 +390,14 @@ class WeChatBot:
             raise RuntimeError("企业微信智能机器人未连接")
         self._ws_app.send(json.dumps(payload, ensure_ascii=False))
 
-    def _send_with_ack(self, payload: Dict[str, Any]) -> bool:
+    def _send_with_ack(self, payload: Dict[str, Any], *, response: Optional[Dict[str, Any]] = None) -> bool:
         """
         等待认证后串行写入报文，并等待对应服务器确认。
 
         认证和确认各最多等待 10 秒；等待记录在结束时清理，底层发送异常向上传播。
 
         :param payload: 必须在 headers.req_id 中包含请求标识的协议报文
+        :param response: 可选的确认结果容器，仅成功时填入，供临时素材上传读取服务端标识
         :return: 收到错误码为 0 的确认时返回 True；缺少标识、认证或确认超时及服务端错误返回 False
         """
         req_id = (payload.get("headers") or {}).get("req_id")
@@ -423,6 +426,8 @@ class WeChatBot:
                     f"企业微信智能机器人消息发送失败：{ack.get('errmsg')} ({ack.get('errcode')})"
                 )
                 return False
+            if response is not None:
+                response.update(ack)
             return True
         finally:
             with self._acks_lock:
@@ -795,7 +800,8 @@ class WeChatBot:
         return send_success
 
     def send_msg(self, title: Optional[str], text: Optional[str] = None, image: Optional[str] = None,
-                 userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
+                 userid: Optional[str] = None, link: Optional[str] = None, *,
+                 native_image: bool = False) -> Optional[bool]:
         """
         将通知组合成 Markdown 并发送给目标会话。
 
@@ -804,10 +810,110 @@ class WeChatBot:
         :param image: 可选封面地址
         :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
         :param link: 可选跳转链接
+        :param native_image: 上传 image 并发送独立原图，支持 URL、Base64 和本地 JPG/PNG，忽略详情链接
         :return: 至少一个目标的全部分块发送成功时返回 True；内容为空、无目标或全部目标失败返回 False
         """
+        if native_image and image:
+            loaded = load_image(image)
+            if loaded is None:
+                logger.warning("企业微信机器人原图不可用")
+                return False
+            image_bytes, suffix = loaded
+            return self._send_media(image_bytes, "image", f"image{suffix}", title, text, userid)
         content = self._build_markdown(title=title, text=text, image=image, link=link)
         return self._send_markdown(content=content, userid=userid)
+
+    def _media_command(self, command: str, body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        发送素材协议命令并读取成功回执的业务字段，不新增线程或绕过认证。
+        """
+        response: Dict[str, Any] = {}
+        if not self._send_with_ack({
+            "cmd": command, "headers": {"req_id": self._build_req_id(command)}, "body": body,
+        }, response=response):
+            return None
+        value = response.get("body")
+        return value if isinstance(value, dict) else {}
+
+    def _upload_media(self, content: bytes, media_type: str, filename: str) -> Optional[str]:
+        """
+        按官方长连接协议初始化、逐片确认并完成素材上传。
+
+        每片最多 512 KiB，从 1 编号；失败片最多重试两次，未确认前不发送下一片。
+
+        :param content: 已校验大小的完整素材
+        :param media_type: image 或 file
+        :param filename: 接收端文件名
+        :return: 完成上传的 media_id；任一步失败或缺少必要回执字段返回 None
+        """
+        chunk_bytes = 512 * 1024
+        total_chunks = (len(content) + chunk_bytes - 1) // chunk_bytes
+        initialized = self._media_command("aibot_upload_media_init", {
+            "type": media_type, "filename": filename, "total_size": len(content),
+            "total_chunks": total_chunks, "md5": hashlib.md5(content).hexdigest(),
+        })
+        upload_id = (initialized or {}).get("upload_id")
+        if not isinstance(upload_id, str) or not upload_id:
+            return None
+        for index in range(total_chunks):
+            chunk = content[index * chunk_bytes:(index + 1) * chunk_bytes]
+            body = {"upload_id": upload_id, "chunk_index": index + 1,
+                    "base64_data": base64.b64encode(chunk).decode()}
+            if not any(self._media_command("aibot_upload_media_chunk", body) is not None for _ in range(3)):
+                return None
+        completed = self._media_command("aibot_upload_media_finish", {"upload_id": upload_id})
+        media_id = (completed or {}).get("media_id")
+        return media_id if isinstance(media_id, str) and media_id else None
+
+    def _send_media(self, content: bytes, media_type: str, filename: str, title: Optional[str],
+                    text: Optional[str], userid: Optional[str]) -> bool:
+        """
+        一次上传素材后按现有单聊、群聊目标发送，保留附带说明且不回退裁切图文。
+        """
+        targets = self._resolve_targets(userid)
+        if not targets:
+            return False
+        media_id = self._upload_media(content, media_type, filename)
+        if not media_id:
+            return False
+        caption = self._build_markdown(title=title, text=text)
+        success = False
+        for target, chat_type in targets:
+            qualified = f"{'group' if chat_type == 2 else 'user'}:{target}"
+            if caption and not self._send_markdown(caption, qualified):
+                continue
+            sent = self._send_with_ack({
+                "cmd": "aibot_send_msg", "headers": {"req_id": self._build_req_id("aibot_send_msg")},
+                "body": {"chatid": target, "chat_type": chat_type, "msgtype": media_type,
+                         media_type: {"media_id": media_id}},
+            })
+            success = success or sent
+        return success
+
+    def send_file(self, file_path: str, file_name: Optional[str] = None, title: Optional[str] = None,
+                  text: Optional[str] = None, userid: Optional[str] = None) -> bool:
+        """
+        通过统一附件参数发送本地文件，限制为大于 5 字节且不超过 20 MiB，保留源文件。
+
+        :param file_path: 插件提供的本地路径
+        :param file_name: 可选展示名，默认使用源文件名
+        :param title: 附件说明标题
+        :param text: 附件说明正文
+        :param userid: 沿用既有 user:、group: 或默认目标
+        :return: 至少一个目标发送成功时返回 True
+        """
+        try:
+            path = Path(file_path).expanduser()
+            limit = 20 * 1024 * 1024
+            with path.open("rb") as file:
+                content = file.read(limit + 1)
+            if not 5 < len(content) <= limit:
+                logger.warning("企业微信机器人文件须大于 5 字节且不超过 20 MiB")
+                return False
+            return self._send_media(content, "file", Path(file_name or path.name).name, title, text, userid)
+        except Exception as error:
+            logger.error(f"企业微信机器人文件发送失败：{type(error).__name__}")
+            return False
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None) -> Optional[bool]:
         """

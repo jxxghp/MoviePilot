@@ -131,6 +131,12 @@ Entrypoints (app/api, app/command, app/monitor, app/scheduler, app/agent, app/wo
 - `app/modules/_base/` (`downloader.py`, `mediaserver.py`, `notification.py`)
   holds only shared connection, reconnect, auth and command-registration
   templates typed by `TService`, never per-provider business logic.
+- Notification modules consume the same `Message` image/file intent through
+  `_MessageBase.iter_message_configs`; `application/messaging/attachment.py`
+  owns composition and unsupported-capability notices, while
+  `adapters/system/attachment.py` owns bounded image reads and short-lived
+  upload files. Provider protocols stay in their clients; plugins do not
+  select uploads, media identifiers or instance modes.
 - Strict file existence checks use `get_file_item_strict(storage, path)`
   returning `FileItemQueryResult(item=...)` (`None` means unsupported provider,
   whereas `item=None` proves absence and storage/query errors raise). Destructive

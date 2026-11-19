@@ -363,15 +363,10 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
             logger.debug("[Discord] get_configs() 返回空，没有可用的 Discord 配置")
             return
 
-        for conf in configs.values():
+        for conf, message in self.iter_message_configs(message):
             logger.debug(
                 f"[Discord] 检查配置: name={conf.name}, type={conf.type}, enabled={conf.enabled}"
             )
-            if not self.check_message(message, conf.name):
-                logger.debug(
-                    f"[Discord] check_message 返回 False，跳过配置: {conf.name}"
-                )
-                continue
             logger.debug(f"[Discord] check_message 通过，准备发送到: {conf.name}")
             targets = self.get_notification_targets(message)
             userid = message.userid
@@ -388,7 +383,12 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 logger.debug(
                     f"[Discord] 调用 client 发送, userid={userid}, title={message.title[:50] if message.title else None}..."
                 )
-                if message.file_path:
+                if message.native_image and message.image:
+                    result = client.send_image(
+                        image=message.image, title=message.title, text=message.text, userid=userid,
+                        original_chat_id=None if message.private_delivery else message.original_chat_id, buttons=message.buttons,
+                    )
+                elif message.file_path:
                     result = client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
@@ -622,6 +622,12 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
+        通过统一媒体协议发送完整通知，返回首条消息引用，任一附件失败则返回 None。
+        """
+        return self._send_direct_parts(message, self._send_direct_message_part)
+
+    def _send_direct_message_part(self, message: Message) -> Optional[MessageResponse]:
+        """
         向匹配的 Discord 通知实例直接发送文件或文本。
 
         :param message: 提供接收对象、文件或文本内容的通知消息
@@ -639,13 +645,19 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                     return None
             client: Optional[Discord] = self.get_instance(conf.name)
             if client:
-                if message.file_path:
+                if message.native_image and message.image:
+                    result = client.send_image(
+                        image=message.image, title=message.title, text=message.text, userid=userid,
+                        original_chat_id=None if message.private_delivery else message.original_chat_id, buttons=message.buttons,
+                    )
+                elif message.file_path:
                     result = client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
                         userid=userid,
+                        original_chat_id=None if message.private_delivery else message.original_chat_id,
                     )
                 else:
                     result = client.send_msg(

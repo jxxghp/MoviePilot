@@ -5,12 +5,14 @@ Discord 机器人连接、频道路由、消息卡片和输入状态生命周期
 import asyncio
 import re
 import threading
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import discord
 from discord import app_commands
 
+from app.adapters.system.attachment import load_image
 from app.application.messaging.ingress import async_forward_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -587,6 +589,34 @@ class Discord:
             logger.error(f"发送 Discord 消息失败：{err}")
             return False
 
+    def send_image(self, image: str, title: Optional[str] = None, text: Optional[str] = None,
+                   userid: Optional[str] = None, original_chat_id: Optional[str] = None,
+                   buttons: Optional[List[List[dict[str, Any]]]] = None) -> Union[bool, Tuple[bool, Optional[Dict[str, str]]]]:
+        """
+        上传完整原图并保留接收会话；有按钮时先发送一次说明与按钮。
+
+        :param image: HTTP(S)、Base64 或本地 JPG/PNG
+        :param title: 图片说明标题
+        :param text: 图片说明正文
+        :param userid: 接收用户标识
+        :param original_chat_id: 优先接收的原会话标识
+        :param buttons: 可选的交互按钮，随说明发送一次
+        :return: 沿用文件接口的成功标记及消息引用；失败返回 False
+        """
+        loaded = load_image(image)
+        if loaded is None:
+            return False
+        if buttons:
+            result = self.send_msg(title=title or ("" if text else "图片"), text=text, userid=userid,
+                                   original_chat_id=original_chat_id, buttons=buttons)
+            if not result or (isinstance(result, tuple) and not result[0]):
+                return False
+            title, text = None, None
+        content, suffix = loaded
+        # 字节由发送协程持有，入口超时也不会提前删除仍在上传的临时文件。
+        return self.send_file(f"image{suffix}", title=title, text=text, userid=userid,
+                              original_chat_id=original_chat_id, file_content=content)
+
     def send_file(
         self,
         file_path: str,
@@ -595,6 +625,7 @@ class Discord:
         userid: Optional[str] = None,
         file_name: Optional[str] = None,
         original_chat_id: Optional[str] = None,
+        file_content: Optional[bytes] = None,
     ) -> Union[bool, Tuple[bool, Optional[Dict[str, str]]]]:
         """
         在专用事件循环中上传本地文件，最多等待 30 秒。
@@ -605,6 +636,7 @@ class Discord:
         :param userid: 用于上下文频道路由或私聊回退的用户标识
         :param file_name: 可选上传文件名，默认使用本地名称
         :param original_chat_id: 优先接收文件的频道标识
+        :param file_content: 原图适配器提供的字节；非空时由发送协程持有，不读取 file_path
         :return: 内部发送完成时返回 (成功标记, 消息标识字典或 None)；入口校验、超时或调度失败返回 False
         """
         if not self.get_state():
@@ -621,6 +653,7 @@ class Discord:
                     userid=userid,
                     file_name=file_name,
                     original_chat_id=original_chat_id,
+                    file_content=file_content,
                 ),
                 self._loop,
             )
@@ -1065,9 +1098,10 @@ class Discord:
         userid: Optional[str],
         file_name: Optional[str],
         original_chat_id: Optional[str],
+        file_content: Optional[bytes] = None,
     ) -> Tuple[bool, Optional[Dict[str, str]]]:
         """
-        在线程池检查本地文件后，上传到解析出的接收频道。
+        上传到解析出的接收频道，本地文件先检查，原图字节由当前协程持有到完成。
 
         标题和正文合并为附言，超过 1900 字符时截断并追加省略号。
 
@@ -1079,7 +1113,7 @@ class Discord:
             return False, None
 
         local_file = Path(file_path)
-        if not await run_in_threadpool(
+        if file_content is None and not await run_in_threadpool(
                 _is_regular_file,
                 local_file,
         ):
@@ -1093,7 +1127,8 @@ class Discord:
 
         try:
             discord_file = discord.File(
-                str(local_file), filename=file_name or local_file.name
+                BytesIO(file_content) if file_content is not None else str(local_file),
+                filename=file_name or local_file.name,
             )
             sent_message = await channel.send(content=content, file=discord_file)
             return (

@@ -145,7 +145,6 @@
       "app/modules/jellyfin/jellyfin.py:Jellyfin.get_movies": 6,
       "app/modules/qbittorrent/__init__.py:QbittorrentModule.download": 7,
       "app/modules/rtorrent/__init__.py:RtorrentModule.download": 6,
-      "app/modules/slack/__init__.py:SlackModule.send_direct_message": 6,
       "app/modules/slack/slack.py:Slack.send_medias_msg": 6,
       "app/modules/transmission/__init__.py:TransmissionModule.download": 7,
       "app/modules/wechat/wechat.py:WeChat.__split_content": 6,

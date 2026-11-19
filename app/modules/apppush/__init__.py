@@ -249,9 +249,7 @@ class AppPushModule(_ModuleBase, _MessageBase[object]):
         """
         仅向路由确定的不可变账号身份投递；缺少绑定绝不退回全设备广播。
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             link = message.link or "/?shotcut=message"
             # 外部下载或媒体链接留在消息列表中，系统通知点击始终交给本实例。
             route = link if link.startswith("/") and not link.startswith("//") and "\\" not in link else "/?shotcut=message"

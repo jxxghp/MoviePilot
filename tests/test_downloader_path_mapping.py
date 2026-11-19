@@ -115,6 +115,7 @@ def _load_downloader_base():
     log_module.logger = _Logger()
     mixins_module.ConfigReloadMixin = _ConfigReloadMixin
     schema_message_module.Message = object
+    schema_message_module.MessageResponse = object
     schema_system_module.NotificationConf = object
     schema_system_module.MediaServerConf = object
     schema_system_module.DownloaderConf = object

@@ -425,21 +425,25 @@ class _PluginBase(metaclass=ABCMeta):
     def post_message(self, channel: Optional[NotificationChannel] = None,
                      mtype: Optional[MessageType] = None,
                      title: Optional[str] = None,
-                     text: Optional[str] = None, image: Optional[str] = None, link: Optional[str] = None,
+                     text: Optional[str] = None, image: Optional[Union[str, Path]] = None, link: Optional[str] = None,
                      userid: Optional[str] = None, username: Optional[str] = None,
+                     *, native_image: bool = False, file_path: Optional[Union[str, Path]] = None, file_name: Optional[str] = None,
                      **kwargs: Any) -> None:
         """
         发送消息，沿用宿主通知开关和收件人路由。
 
-        :param kwargs: 可传 rich_content 通用结构化通知；宿主按渠道能力排版，text 保留为纯文本回退。
-            传 native_image=True 可让企业微信自建应用发送完整原图，默认仍发送图文卡片。
-            传 file_path 和可选 file_name 可发送本地附件，企业微信自建应用上限为 20 MiB。
+        :param native_image: 将 image 作为完整 JPG/PNG 原图发送；支持 HTTP(S)、Base64 或本地路径，无需判断渠道
+        :param file_path: 本地附件路径；宿主负责渠道上传，发送后保留源文件
+        :param file_name: 可选的附件展示名；为空时使用源文件名
+        :param kwargs: 可传 rich_content 通用结构化通知；宿主按渠道能力排版，不支持附件的渠道明确提示
         """
         if not link:
             link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")
         self.chain.post_message(Message(
             channel=channel, mtype=mtype, title=title, text=text,
-            image=image, link=link, userid=userid, username=username, **kwargs
+            image=str(image) if image is not None else None, native_image=native_image,
+            file_path=str(file_path) if file_path is not None else None, file_name=file_name,
+            link=link, userid=userid, username=username, **kwargs
         ))
 
     def close(self) -> None:

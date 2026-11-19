@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.agent.tools.impl import send_local_file as file_tool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.modules.wechat import WechatModule
 from app.modules.wechat import wechat as wechat_client
@@ -225,64 +224,57 @@ def test_file_notification_keeps_instance_and_channel_filters(
     http.post.assert_not_called()
 
 
-def test_bot_does_not_silently_replace_file_with_text(
+def test_bot_receives_same_file_request_as_application(
     attachment: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    机器人模式拒绝文件发送，不将未送出的附件伪装为普通文本通知。
+    机器人模式通过统一参数发送文件，不能将附件替换成普通文本。
     """
     bot = WeChatBot.__new__(WeChatBot)
     send = Mock()
+    send_file = Mock(return_value=True)
     monkeypatch.setattr(bot, "send_msg", send)
+    monkeypatch.setattr(bot, "send_file", send_file)
 
     _module(monkeypatch, bot).post_message(Message(file_path=str(attachment), title="附件", userid="member-1"))
 
     send.assert_not_called()
+    send_file.assert_called_once_with(file_path=str(attachment), file_name=None, title="附件", text=None, userid="member-1")
 
 
-@pytest.mark.parametrize("mode, source_exists, accepted", [
-    ("app", True, True), (None, True, True), ("bot", True, False), ("app", False, False),
-])
-def test_agent_file_sending_checks_actual_wechat_mode(
-    attachment: Path, monkeypatch: pytest.MonkeyPatch, mode: str | None, source_exists: bool, accepted: bool,
+@pytest.mark.parametrize("channel", [NotificationChannel.Wechat, NotificationChannel.Telegram,
+                                     NotificationChannel.Feishu, NotificationChannel.Slack, NotificationChannel.Discord])
+def test_agent_file_sending_uses_common_channel_capability(
+    attachment: Path, monkeypatch: pytest.MonkeyPatch, channel: NotificationChannel,
 ) -> None:
     """
-    Agent 只向当前存在的自建应用实例发送附件，默认模式兼容旧配置。
+    Agent 只查询通用附件能力，具体模式及发送协议交给宿主渠道模块。
     """
-    config = {"WECHAT_MODE": mode} if mode else {}
-    conf = SimpleNamespace(name="wechat-test", config=config)
-    monkeypatch.setattr(file_tool, "get_notification_configs", lambda: [conf] if source_exists else [])
     send = AsyncMock()
     monkeypatch.setattr(SendLocalFileTool, "send_message", send)
     tool = SendLocalFileTool(session_id="file-test", user_id="member-1")
-    tool.set_message_attr(channel=NotificationChannel.Wechat.value, source="wechat-test", username="member")
+    tool.set_message_attr(channel=channel.value, source="source", username="member")
 
     result = asyncio.run(tool.run(str(attachment), file_name="download.srt"))
 
-    assert ChannelCapabilityManager.supports_capability(NotificationChannel.Wechat, ChannelCapability.FILE_SENDING)
-    assert bool(send.await_count) is accepted
-    if accepted:
-        assert result == "本地附件已发送"
-        assert send.await_args.args[0].file_path == str(attachment)
-        assert send.await_args.args[0].file_name == "download.srt"
-        assert send.await_args.args[0].userid == "member-1"
-    else:
-        assert "仅自建应用" in result
+    assert ChannelCapabilityManager.supports_capability(channel, ChannelCapability.FILE_SENDING)
+    assert result == "本地附件已发送"
+    assert send.await_count == 1
+    assert send.await_args.args[0].file_path == str(attachment)
+    assert send.await_args.args[0].file_name == "download.srt"
+    assert send.await_args.args[0].userid == "member-1"
 
 
-def test_other_file_channels_do_not_require_wechat_configuration(
+def test_unsupported_file_channel_returns_reason_without_sending(
     attachment: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    现有附件渠道不读取企业微信实例配置，保持原有文件发送能力。
+    未声明文件能力时不伪造成功回执，明确返回原因。
     """
-    config_lookup = Mock(side_effect=AssertionError("其他渠道不应查询企业微信配置"))
-    monkeypatch.setattr(file_tool, "get_notification_configs", config_lookup)
     send = AsyncMock()
     monkeypatch.setattr(SendLocalFileTool, "send_message", send)
     tool = SendLocalFileTool(session_id="file-test", user_id="member-1")
-    tool.set_message_attr(channel=NotificationChannel.Telegram.value, source="telegram-test", username="member")
+    tool.set_message_attr(channel=NotificationChannel.DingTalk.value, source="dingtalk-test", username="member")
 
-    assert asyncio.run(tool.run(str(attachment))) == "本地附件已发送"
-    config_lookup.assert_not_called()
-    send.assert_awaited_once()
+    assert "暂不支持" in asyncio.run(tool.run(str(attachment)))
+    send.assert_not_awaited()
