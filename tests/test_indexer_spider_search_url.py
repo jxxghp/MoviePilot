@@ -2,9 +2,11 @@
 验证站点爬虫构造搜索地址时的查询参数与路径。
 """
 
-from unittest.mock import patch
+import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import parse_qs, urlparse
 
+from app.modules.indexer import spider as spider_module
 from app.modules.indexer.spider import SiteSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.schemas.types import MediaType
@@ -51,6 +53,36 @@ def _get_haidan_params(keyword: str | None, mtype: MediaType = None) -> dict:
     spider = HaiDanSpider(indexer={"domain": "https://www.haidan.video/", "name": "海胆"})
     params = parse_qs(spider._HaiDanSpider__get_params(keyword, mtype), keep_blank_values=True)
     return {key: values[0] for key, values in params.items()}
+
+
+def test_spider_request_url_is_logged_at_debug_with_credentials_masked(monkeypatch):
+    """
+    同步与异步搜索都应在 DEBUG 记录脱敏后的完整请求地址。
+    """
+    indexer = _build_indexer(
+        domain="https://example.com/",
+        search={
+            "paths": [{"path": "torrents.php"}],
+            "params": {"search": "{keyword}", "passkey": "secret-value"},
+        },
+    )
+    debug_messages: list[str] = []
+    info_messages: list[str] = []
+    monkeypatch.setattr(spider_module.logger, "debug", debug_messages.append)
+    monkeypatch.setattr(spider_module.logger, "info", info_messages.append)
+    monkeypatch.setattr(spider_module.RequestUtils, "get_res", Mock(return_value=Mock()))
+    monkeypatch.setattr(spider_module.AsyncRequestUtils, "get_res", AsyncMock(return_value=Mock()))
+    monkeypatch.setattr(SiteSpider, "_SiteSpider__decode_response", Mock(return_value=""))
+    monkeypatch.setattr(SiteSpider, "parse", Mock(return_value=[]))
+
+    SiteSpider(indexer=indexer, keyword="Movie", page=1).get_torrents()
+    asyncio.run(SiteSpider(indexer=indexer, keyword="Movie", page=1).async_get_torrents())
+
+    assert debug_messages == [
+        "开始请求：https://example.com/torrents.php?search_mode=0&search_area=0&page=1&notnewword=1&search=Movie&passkey=<REDACTED>",
+        "开始异步请求：https://example.com/torrents.php?search_mode=0&search_area=0&page=1&notnewword=1&search=Movie&passkey=<REDACTED>",
+    ]
+    assert info_messages == []
 
 
 def test_eastgame_imdb_search_uses_imdb_area():
