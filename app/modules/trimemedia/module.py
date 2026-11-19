@@ -2,18 +2,26 @@
 飞牛模块，将媒体库、播放信息与受保护图片接入统一接口。
 """
 
+import time
 from typing import Any, Generator, Iterable, List, Optional, Tuple, Union
 
+from app.application.mediaserver import MediaServerQueryError
+from app.domain.context import MediaInfo
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.trimemedia.trimemedia import TrimeMedia
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.schemas.types import MediaServerType, ModuleType
+from app.schemas.types import MediaServerType, MediaType, ModuleType
+
+# 让飞牛 API 有短暂恢复时间，同时限制一次重试对订阅检查的额外等待。
+_TV_EXISTENCE_QUERY_RETRY_DELAY_SECONDS = 0.5
 
 
 class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
@@ -62,6 +70,52 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 4
+
+    def media_exists(
+        self,
+        mediainfo: MediaInfo,
+        itemid: Optional[str] = None,
+        server: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
+    ) -> Optional[_SchemaExistMediaInfo]:
+        """
+        查询媒体库存在性，并对飞牛电视剧的临时查询失败进行一次重试。
+
+        重试只用于严格口径的电视剧查询；确认未找到时不重试，连续失败仍保留异常，
+        由订阅调用方跳过本轮，避免把未知状态记成缺集。
+
+        :param mediainfo: 已识别的媒体信息
+        :param itemid: 当前服务器缓存的条目标识
+        :param server: 媒体服务器配置名称
+        :param query: 媒体服务器查询投影
+        :param raise_on_query_failure: 查询失败时是否抛出 MediaServerQueryError
+        :return: 已确认存在的媒体信息；未找到时为 None
+        :raises MediaServerQueryError: 严格电视剧查询连续失败时
+        """
+        try:
+            return super().media_exists(
+                mediainfo=mediainfo,
+                itemid=itemid,
+                server=server,
+                query=query,
+                raise_on_query_failure=raise_on_query_failure,
+            )
+        except MediaServerQueryError as err:
+            if not raise_on_query_failure or mediainfo.type != MediaType.TV:
+                raise
+            logger.warning(
+                f"{mediainfo.title_year} 查询飞牛影视失败，{_TV_EXISTENCE_QUERY_RETRY_DELAY_SECONDS}秒后重试：{err}"
+            )
+            time.sleep(_TV_EXISTENCE_QUERY_RETRY_DELAY_SECONDS)
+            return super().media_exists(
+                mediainfo=mediainfo,
+                itemid=itemid,
+                server=server,
+                query=query,
+                raise_on_query_failure=raise_on_query_failure,
+            )
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
