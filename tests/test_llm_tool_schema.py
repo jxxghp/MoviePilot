@@ -139,6 +139,9 @@ def test_non_gemini_requests_preserve_nullable_tool_parameters(
     assert skill["properties"]["file"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
     assert skill["required"] == (["name", "file"] if bind_kwargs.get("strict") else ["name"])
 
+    image_data = _parameters(tools, "view_image")["properties"]["image_data"]
+    assert image_data["anyOf"] == [{"type": "string"}, {"type": "null"}]
+
 
 def test_optional_fields_collapse_to_single_type_for_gemini_models() -> None:
     """
