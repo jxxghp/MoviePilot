@@ -443,8 +443,7 @@ class SystemSettingsService:
             raise ValueError(f"系统设置项 '{setting_key}' 不存在")
         value = self._load(spec)
         sensitive = should_redact_setting(spec, value)
-        never_reveal = spec.systemconfig_key == SystemConfigKey.AIAgentKnowledge
-        redacted = sensitive and (never_reveal or not show_secrets)
+        redacted = sensitive and not show_secrets
         response_value = (
             redact_setting_value(spec, value)
             if redacted
@@ -501,8 +500,7 @@ class SystemSettingsService:
         for spec in specs:
             value = self._load(spec)
             sensitive = should_redact_setting(spec, value)
-            never_reveal = spec.systemconfig_key == SystemConfigKey.AIAgentKnowledge
-            redacted = sensitive and (never_reveal or not show_secrets)
+            redacted = sensitive and not show_secrets
             response_value = (
                 redact_setting_value(spec, value)
                 if redacted

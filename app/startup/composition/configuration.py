@@ -26,7 +26,6 @@ from app.application.directory import (
     DirectoryConfigurationMutationService,
     normalize_directory_configurations_for_policy,
 )
-from app.application.knowledge import normalize_knowledge_config
 from app.application.security.userconfig import (
     UserConfigurationService,
     configure_user_configuration,
@@ -90,7 +89,6 @@ async def compose_configuration(
         repository=system_config,
         async_executor=executor,
         directory_mutation=directory_mutation,
-        value_normalizer=normalize_knowledge_config,
     )
     user_service = UserConfigurationService(
         repository=user_config,

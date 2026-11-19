@@ -46,6 +46,11 @@
       "group": "ai_agent",
       "source_file": "app/runtime/config.py"
     },
+    "AI_AGENT_KNOWLEDGE_ENABLE": {
+      "description": "是否允许 Agent 使用 MoviePilot Server 的中心知识工具",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py"
+    },
     "AI_AGENT_OUTPUT_LANGUAGE": {
       "description": "内置智能助手输出语言，默认使用简体中文",
       "group": "ai_agent",
@@ -1376,11 +1381,6 @@
     "AIAgentConfig": {
       "description": "AI智能体配置",
       "enum_name": "AIAgentConfig",
-      "source_file": "app/schemas/types.py"
-    },
-    "AIAgentKnowledge": {
-      "description": "AI智能体私有中心知识配置；显式绑定 HTTPS 源与独立读取令牌，默认关闭",
-      "enum_name": "AIAgentKnowledge",
       "source_file": "app/schemas/types.py"
     },
     "AIAgentMcpServers": {

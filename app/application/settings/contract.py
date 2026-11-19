@@ -20,7 +20,6 @@ from app.runtime.config import Settings
 from app.schemas.agent import AgentMcpServerConfig
 from app.schemas.category import ClassificationPolicyState
 from app.schemas.common import JsonData
-from app.schemas.knowledge import AgentKnowledgeConfig
 from app.schemas.plugin import PluginFoldersData
 from app.schemas.rule import CustomRule, FilterRuleGroup
 from app.schemas.site import SiteAuth
@@ -471,9 +470,6 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
     ),
     SystemConfigKey.AIAgentConfig: _internal_contract(
         "ai_agent", Optional[dict[str, JsonData]], sensitive=True
-    ),
-    SystemConfigKey.AIAgentKnowledge: _contract(
-        "ai_agent", Optional[AgentKnowledgeConfig], sensitive=True
     ),
     SystemConfigKey.GithubAuth: _internal_contract(
         "dependencies", Optional[dict[str, JsonData]], sensitive=True

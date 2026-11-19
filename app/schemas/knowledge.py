@@ -2,7 +2,6 @@
 中心知识的受保护配置与有界只读协议，不包含知识落盘或采集能力。
 """
 
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Annotated, Literal, Optional, Union
@@ -23,14 +22,13 @@ EvidenceIdentifier = Annotated[str, Field(pattern=r"^ke_[A-Za-z0-9_-]{43}$")]
 
 class AgentKnowledgeConfig(BaseModel):
     """
-    保存显式绑定的中心地址和独立读取凭据；仅允许完整替换。
+    保存宿主当前 Server 地址和实验室工具开关，不包含实例令牌。
     """
 
     model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
 
-    enabled: bool = Field(default=False, description="是否启用主 Agent 的只读中心知识工具")
-    origin: str = Field(default="", max_length=512, repr=False, description="读取令牌所属的 HTTPS 源，不含路径或查询")
-    token: str = Field(default="", repr=False, description="该中心签发的独立 mpk_ 读取令牌；不能填写脱敏占位符")
+    enabled: bool = Field(default=True, description="是否启用主 Agent 的只读中心知识工具")
+    origin: str = Field(default="", max_length=512, repr=False, description="MoviePilot Server 的 HTTPS 源，不含路径或查询")
 
     @field_validator("origin")
     @classmethod
@@ -38,7 +36,7 @@ class AgentKnowledgeConfig(BaseModel):
         """
         仅接受明确的 HTTPS 源，阻止凭据、额外路径或控制字符。
 
-        :param value: 管理员提供的中心源地址
+        :param value: 来自 MoviePilot Server 连接设置的服务地址
         :return: 去除末尾斜线的规范源地址，或停用配置的空值
         """
         if not value:
@@ -52,30 +50,6 @@ class AgentKnowledgeConfig(BaseModel):
         # 显式检查非法端口；请求层不负责修复配置。
         _ = parsed.port
         return value.rstrip("/")
-
-    @field_validator("token")
-    @classmethod
-    def validate_token(cls, value: str) -> str:
-        """
-        拒绝管理登录凭据、星号回填和换行注入，只接受当前独立令牌格式。
-
-        :param value: 管理员重新提供的原始读取令牌
-        :return: 独立令牌，或用于清除配置的空值
-        """
-        if value and not re.fullmatch(r"mpk_[A-Za-z0-9_-]{43}", value):
-            raise ValueError("必须重新提供中心签发的独立知识读取令牌")
-        return value
-
-    @model_validator(mode="after")
-    def require_enabled_credentials(self) -> "AgentKnowledgeConfig":
-        """
-        启用时必须同时明确地址和凭据，不从其他服务配置补全。
-
-        :return: 完整配置，或有效的停用配置
-        """
-        if self.enabled and (not self.origin or not self.token):
-            raise ValueError("启用知识工具前必须配置中心源地址和读取令牌")
-        return self
 
 
 class KnowledgeSearch(BaseModel):
@@ -136,6 +110,7 @@ class KnowledgeEvidence(BaseModel):
     domain: KnowledgeDomain = Field(description="证据所属领域")
     product: str = Field(max_length=64, description="证据所属产品")
     site_id: Optional[str] = Field(max_length=64, description="证据关联的中心站点身份；通用知识为 null")
+    site_name: Optional[str] = Field(default=None, max_length=120, description="PT 站点级资料对应的示例站点名称")
     applicable_versions: KnowledgeVersions = Field(description="版本适用性及上下界")
     fetched_at: Optional[datetime] = Field(description="实际采集时间；未知时为 null")
     valid_until: Optional[datetime] = Field(description="明确维护的有效期；未知时为 null")

@@ -28,7 +28,7 @@ _HTTP_FAILURES: dict[int, KnowledgeFailure] = {
 
 class KnowledgeClient:
     """
-    复用宿主网络层，只向配置中的中心源发送独立读取令牌。
+    复用宿主网络层，只向 MoviePilot Server 发送有界只读请求。
     """
 
     def __init__(self, transport: Optional["KnowledgeHttpTransport"] = None) -> None:
@@ -43,25 +43,28 @@ class KnowledgeClient:
         self, config: AgentKnowledgeConfig, request: Union[KnowledgeSearch, KnowledgeRead],
     ) -> KnowledgeOutcome:
         """
-        固定路径、校验证书并关闭跳转；缓冲后执行响应字节和协议预算检查。
+        固定路径、校验证书并关闭跳转；不携带 Cookie 或用户身份令牌。
 
-        :param config: 当前显式中心源及该源的独立读取凭据
+        :param config: 当前 Server 源和本地工具开关
         :param request: 宿主验证的检索或补读请求，不接受任意路径
         :return: 不含外部异常详情的结果或受控失败
         """
         if not config.enabled:
             return KnowledgeOutcome("disabled")
-        path = "search" if isinstance(request, KnowledgeSearch) else "read"
+        path = "agent/search" if isinstance(request, KnowledgeSearch) else "agent/read"
+        origin = config.origin.rstrip("/")
+        if not origin:
+            return KnowledgeOutcome("unavailable")
         transport = self._transport or AsyncRequestUtils(
             proxies=get_runtime_setting("PROXY"), http2=False, timeout=QUERY_SECONDS, verify=True,
             follow_redirects=False, trust_env=False,
         )
         try:
             response = await transport.post_res(
-                f"{config.origin}/knowledge/v1/{path}", json=request.model_dump(mode="json"),
+                f"{origin}/knowledge/v1/{path}", json=request.model_dump(mode="json"),
                 allow_redirects=False, raise_exception=True,
-                headers={"Authorization": "Bearer " + config.token, "Accept": "application/json",
-                         "Content-Type": "application/json", "Accept-Encoding": "identity"},
+                headers={"Accept": "application/json", "Content-Type": "application/json",
+                         "Accept-Encoding": "identity"},
             )
         except (AsyncHttpRequestError, OSError, ValueError):
             return KnowledgeOutcome("unavailable")
@@ -132,7 +135,7 @@ class KnowledgeHttpTransport(Protocol):
         :param json: 已验证的协议 DTO
         :param allow_redirects: 必须为 False
         :param raise_exception: 必须为 True，不将传输错误伪装成空结果
-        :param headers: 含中心独立令牌的单次请求头
+        :param headers: 不含 Cookie 或身份令牌的单次请求头
         :return: 已缓冲的 HTTP 响应；无响应时为 None
         """
         ...

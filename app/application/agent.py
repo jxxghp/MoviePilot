@@ -61,7 +61,7 @@ class AgentDataContext:
     :param plugin_data: 插件持久化数据查询端口
     :param invocations: 写工具调用的幂等回执仓储，None 表示未装配该能力
     :param recall: 独立原始消息归档与检索服务，None 表示未装配该能力
-    :param knowledge: 默认关闭的中心知识用例，None 表示未装配该能力
+    :param knowledge: 由实验室开关控制的中心知识用例，None 表示未装配该能力
     """
 
     chat: AgentChatService

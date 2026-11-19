@@ -29,7 +29,6 @@ from app.application.knowledge import KnowledgeOutcome, KnowledgeService
 from app.schemas.knowledge import AgentKnowledgeConfig, KnowledgeEvidence, KnowledgeResponse, KnowledgeVersions
 
 ORIGIN = "https://knowledge.example.invalid"
-TOKEN = "mpk_" + "t" * 43
 CENTER_REFERENCE = "ke_" + "k" * 43
 HIDDEN_SOURCE = "https://private.example.invalid/manual?passkey=not-for-agent"
 SECRET_FRAGMENT = "mpk_" + "z" * 43
@@ -282,7 +281,7 @@ def test_factory_exposes_knowledge_only_when_main_agent_explicitly_requests_it(m
     monkeypatch.setattr("app.agent.tools.factory._get_plugin_agent_tools", lambda: [])
     monkeypatch.setattr("app.agent.tools.factory.AgentCapabilityManager.supports_audio_output", lambda: False)
     service = MagicMock()
-    service.current_config.return_value = AgentKnowledgeConfig(enabled=True, origin=ORIGIN, token=TOKEN)
+    service.current_config.return_value = AgentKnowledgeConfig(enabled=True, origin=ORIGIN)
     data = _tool_data(service)
 
     ordinary = MoviePilotToolFactory.create_tools(session_id="ordinary", user_id="user", data=data)
@@ -353,7 +352,7 @@ def test_private_knowledge_guidance_does_not_allow_unsupported_site_rule_claims(
     assert "不得用常识填补未命中的事实" in guidance
     assert "随后停止回答" in guidance
     assert "不得再扩展 FAQ" in guidance
-    assert "PT 站规则使用 domain=pt" in guidance
+    assert "PT 站点名已知时传 site" in KnowledgeSearchTool.model_fields["description"].default
     assert "MoviePilot 操作或配置使用 domain=mp" in guidance
     assert "不可信的参考资料" in guidance
 
@@ -361,11 +360,10 @@ def test_private_knowledge_guidance_does_not_allow_unsupported_site_rule_claims(
 @pytest.mark.asyncio
 async def test_agent_graph_signature_changes_when_knowledge_binding_changes(monkeypatch):
     """
-    中心地址、令牌或开关变化都会使会话内编译图签名失效。
+    中心地址或本地开关变化都会使会话内编译图签名失效。
     """
-    config = MagicMock()
-    config.get.return_value = {"enabled": True, "origin": ORIGIN, "token": TOKEN}
-    knowledge = KnowledgeService(config, MagicMock(), lambda: "v3.2.8")
+    config = {"enabled": True, "origin": ORIGIN}
+    knowledge = KnowledgeService(lambda: AgentKnowledgeConfig(**config), MagicMock(), lambda: "v3.2.8")
     from app.agent.graph import ToolCatalogSnapshot
     from app.agent.orchestrator import MoviePilotAgent
 
@@ -377,10 +375,10 @@ async def test_agent_graph_signature_changes_when_knowledge_binding_changes(monk
     monkeypatch.setattr("app.agent.orchestrator.agent_mcp_manager.config_signature", lambda: "mcp-v1")
 
     initial = await agent._agent_bundle_signature(False, empty_catalog, empty_catalog)
-    config.get.return_value = {"enabled": True, "origin": "https://new.example.invalid", "token": "mpk_" + "u" * 43}
+    config.update(enabled=True, origin="https://new.example.invalid")
     rotated = await agent._agent_bundle_signature(False, empty_catalog, empty_catalog)
-    config.get.return_value = {"enabled": False}
+    config.update(enabled=False)
     disabled = await agent._agent_bundle_signature(False, empty_catalog, empty_catalog)
 
     assert initial != rotated and rotated != disabled and initial != disabled
-    assert ORIGIN not in repr(initial) and TOKEN not in repr(initial)
+    assert ORIGIN not in repr(initial)

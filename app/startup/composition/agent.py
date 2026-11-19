@@ -37,7 +37,9 @@ from app.db.adapters.recall import LegacyRecallRepository
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.session import SessionFactory, async_session_scope
+from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import TaskRegistry
+from app.schemas.knowledge import AgentKnowledgeConfig
 from app.startup.composition.context import (
     AgentChatRepositoryFactory,
 )
@@ -75,6 +77,18 @@ class AgentComposition:
     execution: AgentTaskExecutionService
 
 
+def _agent_knowledge_config() -> AgentKnowledgeConfig:
+    """
+    从宿主实验室开关与既有 Server 地址生成每次检索使用的配置快照。
+
+    :return: 未配置独立用户凭据的中心知识读取设置
+    """
+    return AgentKnowledgeConfig(
+        enabled=get_runtime_setting("AI_AGENT_KNOWLEDGE_ENABLE", True) is True,
+        origin=get_runtime_setting("MP_SERVER_HOST", "") or "",
+    )
+
+
 def _history_retention_cutoff() -> float | None:
     """
     独立 Agent 库复用已配置的清理开关和会话保留期，零天表示不自动删除。
@@ -107,7 +121,7 @@ def compose_agent(
         from app.adapters.external.knowledge import KnowledgeClient
         from app.runtime.version import get_app_version
 
-        knowledge = KnowledgeService(system_config, KnowledgeClient(), get_app_version)
+        knowledge = KnowledgeService(_agent_knowledge_config, KnowledgeClient(), get_app_version)
 
     persistence = AgentChatPersistenceService(
         repository=AgentChatOper,

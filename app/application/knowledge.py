@@ -1,5 +1,5 @@
 """
-默认关闭、每次重新读取配置的中心知识只读用例与技术端口。
+通过实验室开关控制、每次重新读取配置的中心知识只读用例与技术端口。
 """
 
 import asyncio
@@ -10,7 +10,6 @@ from typing import Optional, Protocol, Union
 
 from pydantic import ValidationError
 
-from app.application.configuration import SystemConfigReader
 from app.schemas.knowledge import (
     QUERY_SECONDS,
     AgentKnowledgeConfig,
@@ -20,7 +19,6 @@ from app.schemas.knowledge import (
     KnowledgeRead,
     KnowledgeSearch,
 )
-from app.schemas.types import SystemConfigKey
 
 # 只拦截已知高风险形态，不声称识别任意秘密；工具仍须提炼短问题而非转发会话。
 _SENSITIVE_QUERY = re.compile(
@@ -42,22 +40,6 @@ def contains_knowledge_secret(value: str, site: Optional[str] = None) -> bool:
     return bool(_SENSITIVE_QUERY.search(value + "\n" + (site or "")))
 
 
-def normalize_knowledge_config(key: object, value: object) -> object:
-    """
-    在所有配置服务写入路径上规范化中心地址并校验完整令牌绑定。
-
-    :param key: 系统配置枚举或持久化键名
-    :param value: 候选 JSON 设置值
-    :return: 非目标设置原样返回；中心配置返回不包含默认字段的规范字典
-    """
-    if key not in (SystemConfigKey.AIAgentKnowledge, SystemConfigKey.AIAgentKnowledge.value):
-        return value
-    if value is None:
-        return None
-    config = AgentKnowledgeConfig.model_validate(value)
-    return config.model_dump(mode="json", exclude_unset=True)
-
-
 class KnowledgePort(Protocol):
     """
     宿主注入的有界只读技术端口，不提供采集、列表或写知识能力。
@@ -69,7 +51,7 @@ class KnowledgePort(Protocol):
         """
         以当前配置完成一次检索或补读，不缓存正文或回显传输异常。
 
-        :param config: 当前显式绑定的中心源与独立读取凭据
+        :param config: 当前 MoviePilot Server 地址与本地工具开关
         :param request: 宿主已验证的短查询或短期补读身份
         :return: 受控的成功响应或失败状态
         """
@@ -78,14 +60,16 @@ class KnowledgePort(Protocol):
 
 class KnowledgeService:
     """
-    管理默认开关、当前配置、宿主版本和单次请求预算，不保留响应正文。
+    管理当前开关、Server 配置、宿主版本和单次请求预算，不保留响应正文。
     """
 
-    def __init__(self, config: SystemConfigReader, port: KnowledgePort, version: Callable[[], Optional[str]]) -> None:
+    def __init__(
+        self, config: Callable[[], AgentKnowledgeConfig], port: KnowledgePort, version: Callable[[], Optional[str]],
+    ) -> None:
         """
         注入快照配置、外部技术端口和宿主版本读取器。
 
-        :param config: 仅从内存快照读取系统配置的端口
+        :param config: 由宿主组合根提供的 Server 地址与本地开关快照读取器
         :param port: 由组合根提供的只读中心适配器
         :param version: 返回宿主当前版本，不能取自模型参数
         """
@@ -95,19 +79,19 @@ class KnowledgeService:
 
     def current_config(self) -> Optional[AgentKnowledgeConfig]:
         """
-        每次读取并验证完整配置，旧格式、未配置和停用均失败关闭。
+        每次读取并验证当前 Server 地址和本地开关，损坏配置保持关闭。
 
         :return: 已启用配置；不可用时为 None
         """
         try:
-            value = AgentKnowledgeConfig.model_validate(self._config.get(SystemConfigKey.AIAgentKnowledge) or {})
+            value = AgentKnowledgeConfig.model_validate(self._config())
         except (ValueError, TypeError):
             return None
-        return value if value.enabled else None
+        return value if value.enabled and value.origin else None
 
     def signature(self) -> str:
         """
-        给工具目录提供不含地址和凭据原文的变更身份。
+        给工具目录提供不暴露 Server 地址的变更身份。
 
         :return: 当前完整配置摘要；未启用时为 disabled
         """
@@ -116,7 +100,7 @@ class KnowledgeService:
 
     async def _query(self, request: Union[KnowledgeSearch, KnowledgeRead]) -> KnowledgeOutcome:
         """
-        在请求前后核对配置，停用或换凭据后的迟到正文不再交给调用方。
+        在请求前后核对配置，停用或 Server 地址变化后的迟到正文不再交给调用方。
 
         :param request: 仅包含当前问题及已验证范围的协议输入
         :return: 当前配置下的结果；请求中配置变化时丢弃响应

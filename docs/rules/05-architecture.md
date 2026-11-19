@@ -155,11 +155,13 @@ Entrypoints (app/api, app/command, app/monitor, app/scheduler, app/agent, app/wo
   temporary content. Summarization inputs and state commands redact it at their
   producer boundary, while history and recovery remove local references.
   Evidence never grants tool authority or becomes a cross-turn result cache.
-- `app/application/knowledge.py` owns the default-off read-only knowledge use
+- `app/application/knowledge.py` owns the locally switchable read-only knowledge use
   case and technical Port. `app/adapters/external/knowledge.py` implements the
   protocol through the host HTTP layer; shared configuration and response DTOs
-  live in `app/schemas/knowledge.py`. Explicit center credentials never fall back
-  to `MP_SERVER_HOST`, and no response body is cached by this capability.
+  live in `app/schemas/knowledge.py`. The public read-only endpoint uses the
+  existing `MP_SERVER_HOST` connection and carries no per-install access token.
+  Knowledge tools are controlled by `AI_AGENT_KNOWLEDGE_ENABLE` and response
+  bodies are not cached by this capability.
 
 ### DB, Repository, Outbox and Durable Transfer Layer
 
