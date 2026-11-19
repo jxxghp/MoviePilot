@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+from app.application.notification import get_notification_configs
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
@@ -120,6 +121,14 @@ class SendLocalFileTool(MoviePilotTool):
             channel, ChannelCapability.FILE_SENDING
         ):
             return f"当前渠道 {channel.value} 暂不支持发送本地文件"
+
+        if channel == NotificationChannel.Wechat:
+            configs = await self.run_blocking("config", get_notification_configs)
+            if not any(
+                config.name == self._source and (config.config or {}).get("WECHAT_MODE", "app") != "bot"
+                for config in configs
+            ):
+                return "企业微信仅自建应用模式支持发送本地文件，请检查当前通知实例"
 
         resolved_path = Path(file_path).expanduser()
         if not resolved_path.is_absolute():

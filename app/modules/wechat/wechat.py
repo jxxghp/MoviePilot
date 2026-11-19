@@ -24,6 +24,8 @@ lock = threading.Lock()
 
 # 企业微信临时图片素材上限为 10 MiB，仅接受 JPG、PNG。
 _IMAGE_MAX_BYTES = 10 * 1024 * 1024
+# 企业微信普通文件素材上限为 20 MiB，不限制文件扩展名。
+_FILE_MAX_BYTES = 20 * 1024 * 1024
 
 
 class RetryException(Exception):
@@ -554,7 +556,7 @@ class WeChat:
         上传临时素材并取得企业微信媒体标识。
 
         :param media_path: 本地素材路径；传入 content 时仅使用文件名，不读取磁盘
-        :param media_type: 企业微信素材类型，默认 voice
+        :param media_type: 企业微信素材类型，支持 voice、image 和 file，默认 voice
         :param content: 可直接上传的素材字节；为空时从 media_path 读取，保留语音调用兼容性
         :return: 上传成功的 media_id；读取、请求或响应解析失败返回 None
         """
@@ -605,6 +607,43 @@ class WeChat:
             return None
         media_id = ret_json.get("media_id")
         return media_id if isinstance(media_id, str) else None
+
+    def send_file(self, file_path: str, file_name: Optional[str] = None, title: Optional[str] = None,
+                  text: Optional[str] = None, userid: Optional[str] = None) -> Optional[bool]:
+        """
+        上传并发送普通文件，保留调用方文件且不回退为下载链接。
+
+        :param file_path: 本地文件路径，支持展开用户目录；内容须大于 5 字节且不超过 20 MiB
+        :param file_name: 接收端显示的文件名；为空时使用源文件名，仅保留名称部分
+        :param title: 可选的说明标题，随正文独立发送为文本
+        :param text: 可选的说明正文
+        :param userid: 企业微信用户标识；为空时发送给全体应用成员
+        :return: 文件及说明文字均成功时返回 True；失败返回 False；无访问令牌返回 None
+        """
+        try:
+            if not self.__get_access_token():
+                logger.error("获取微信access_token失败，请检查参数配置")
+                return None
+            source = Path(file_path).expanduser()
+            with source.open("rb") as media_file:
+                content = media_file.read(_FILE_MAX_BYTES + 1)
+            if not 5 < len(content) <= _FILE_MAX_BYTES:
+                logger.error("企业微信文件必须大于 5 字节且不超过 20MB")
+                return False
+            media_id = self._upload_temp_media(Path(file_name or source.name), media_type="file", content=content)
+            if not media_id:
+                return False
+            if (title or text) and not self.__send_message(title=title, text=text, userid=userid):
+                return False
+            return self.__post_request(self._send_msg_url, {
+                "touser": userid or "@all",
+                "msgtype": "file",
+                "agentid": self._appid,
+                "file": {"media_id": media_id},
+            })
+        except Exception as err:
+            logger.error(f"发送企业微信文件消息失败：{err}")
+            return False
 
     def send_voice(self, voice_path: str, userid: Optional[str] = None) -> Optional[bool]:
         """

@@ -335,9 +335,9 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
 
     def post_message(self, message: Message, **kwargs: object) -> None:
         """
-        向符合通知规则的实例发送文本、图文、原生图片或语音。
+        向符合通知规则的实例发送文本、图文、原生图片、文件或语音。
 
-        :param message: 通知内容及接收对象；语音发送失败时回退到文本或图文
+        :param message: 通知内容及接收对象；文件优先于图片和语音，语音发送失败时回退到文本或图文
         :param kwargs: 兼容模块分发的附加参数，当前不使用
         """
         for conf in self.get_configs().values():
@@ -347,6 +347,13 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
             client = self.get_instance(conf.name)
             if client:
                 text = message.channel_text(NotificationChannel.Wechat, conf.config) or message.text
+                if message.file_path:
+                    if isinstance(client, WeChat):
+                        client.send_file(file_path=message.file_path, file_name=message.file_name,
+                                         title=message.title, text=text, userid=userid)
+                    else:
+                        logger.warning("企业微信机器人模式暂不支持发送本地文件")
+                    continue
                 if message.native_image and message.image and isinstance(client, WeChat):
                     client.send_msg(title=message.title, text=text, image=message.image,
                                     userid=userid, link=message.link, native_image=True)

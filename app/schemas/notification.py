@@ -156,6 +156,7 @@ class ChannelCapabilityManager:
                 ChannelCapability.LINKS,
                 ChannelCapability.AUDIO_OUTPUT,
                 ChannelCapability.MENU_COMMANDS,
+                ChannelCapability.FILE_SENDING,
             },
             fallback_enabled=True,
         ),
