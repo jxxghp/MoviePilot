@@ -2021,7 +2021,7 @@
       "EventType.UserMessage": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "6e4d8de098b200f04c1089fc9a5a67e1064a5fac50a1c0ce0a13ea0f6cece32f"
+          "9934766390c1470e31c1c04239785b21af3fcdba636898b752c920bee8143e11"
         ]
       },
       "EventType.WebhookMessage": {
@@ -2411,18 +2411,6 @@
         "caller": "app.chain.message",
         "dynamic": false,
         "events": [
-          "EventType.UserMessage"
-        ],
-        "fingerprint": "6e4d8de098b200f04c1089fc9a5a67e1064a5fac50a1c0ce0a13ea0f6cece32f",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "MessageChain._handle_message_core",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain.message",
-        "dynamic": false,
-        "events": [
           "EventType.CommandExcute"
         ],
         "fingerprint": "f022ca0218b956cfd193695721ddc60343030bf15baa2d7bb0a2e9ccacce6bba",
@@ -2441,6 +2429,18 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "MessageChain._interaction_router._dispatch_plugin_callback",
+        "receiver_kind": "injected_event_manager"
+      },
+      {
+        "caller": "app.chain.message",
+        "dynamic": false,
+        "events": [
+          "EventType.UserMessage"
+        ],
+        "fingerprint": "9934766390c1470e31c1c04239785b21af3fcdba636898b752c920bee8143e11",
+        "invalid": false,
+        "method": "send_event",
+        "qualname": "MessageChain._publish_user_message",
         "receiver_kind": "injected_event_manager"
       },
       {
