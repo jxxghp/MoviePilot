@@ -343,9 +343,17 @@ def test_private_knowledge_guidance_does_not_allow_unsupported_site_rule_claims(
     guidance = _private_knowledge_guidance()
 
     assert "只能陈述检索资料明确支持的内容" in guidance
-    assert "不得补造未检索到的时长" in guidance
+    assert "不得补造其他时长" in guidance
     assert "当前实例状态" in guidance
     assert "未经该站资料核验" in guidance
+    assert "未知范围不应抹掉摘录里的明确事实" in guidance
+    assert "必须点明具体未知项" in guidance
+    assert "用常识替站点猜规则" in guidance
+    assert "只用一到两句话" in guidance
+    assert "不要附加 FAQ" in guidance
+    assert "只用一到两句话" in guidance
+    assert "PT 站规则使用 domain=pt" in guidance
+    assert "MoviePilot 操作或配置使用 domain=mp" in guidance
     assert "不可信的参考资料" in guidance
 
 
