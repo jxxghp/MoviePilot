@@ -2,6 +2,7 @@
 飞牛影视客户端，协调登录、媒体库权限、刷新、播放链接与图片授权。
 """
 
+import time
 from pathlib import Path
 from typing import Dict, Generator, List, Optional, Tuple, Union
 
@@ -18,6 +19,9 @@ from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPla
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.schemas.types import MediaSource, MediaType
+
+# 让飞牛 API 有短暂恢复时间，同时限制一次查询额外等待。
+_TV_EXISTENCE_QUERY_RETRY_DELAY_SECONDS = 0.5
 
 
 class TrimeMedia:
@@ -438,10 +442,10 @@ class TrimeMedia:
         season: Optional[int] = None,
     ) -> Tuple[Optional[str], Optional[Dict[int, list[int]]]]:
         """
-        查询电视剧已入库的季集编号，并校验媒体来源身份。
+        查询电视剧已入库的季集编号，遇到临时请求失败时重试一次。
 
         缓存标识失效时按标题重新搜索。请求失败与确认未入库分别返回两项 None 和空集映射，
-        以免订阅把未知集数当作整季缺失。
+        首次请求失败会等待 0.5 秒重试；仍失败时保留两项 None，以免订阅把未知集数当作整季缺失。
 
         :param item_id: 优先使用的缓存电视剧 guid
         :param title: 缺少标识或缓存失效时回退搜索的剧名
@@ -449,8 +453,54 @@ class TrimeMedia:
         :param media_source: 用于排除身份冲突的来源
         :param media_id: 对应来源内的标识
         :param season: 目标季号，None 表示全部季
-        :return: 电视剧 guid 与“季号到集号列表”映射；未认证、搜索、季列表或分集列表请求失败时
-            返回两项 None；成功确认未收录、身份冲突或没有分集时返回空映射
+        :return: 电视剧 guid 与“季号到集号列表”映射；确认未收录、身份冲突或没有分集时返回空映射，
+            连续请求失败时返回两项 None
+        """
+        if not self.is_authenticated():
+            return None, None
+        result = self.__get_tv_episodes_once(
+            item_id=item_id,
+            title=title,
+            year=year,
+            media_source=media_source,
+            media_id=media_id,
+            season=season,
+        )
+        if result != (None, None):
+            return result
+        logger.warning(
+            f"{title or item_id or '未知剧集'} 查询飞牛影视失败，"
+            f"{_TV_EXISTENCE_QUERY_RETRY_DELAY_SECONDS}秒后重试"
+        )
+        time.sleep(_TV_EXISTENCE_QUERY_RETRY_DELAY_SECONDS)
+        return self.__get_tv_episodes_once(
+            item_id=item_id,
+            title=title,
+            year=year,
+            media_source=media_source,
+            media_id=media_id,
+            season=season,
+        )
+
+    def __get_tv_episodes_once(
+        self,
+        item_id: Optional[str] = None,
+        title: Optional[str] = None,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+    ) -> Tuple[Optional[str], Optional[Dict[int, list[int]]]]:
+        """
+        执行一次电视剧季集查询并区分失败与确认未找到。
+
+        :param item_id: 优先使用的缓存电视剧 guid
+        :param title: 缺少标识或缓存失效时使用的剧名
+        :param year: 可选首播年份
+        :param media_source: 用于排除身份冲突的媒体来源
+        :param media_id: 对应来源内的媒体标识
+        :param season: 指定查询季号；None 表示查询全部季
+        :return: 查询结果；上游请求失败时为两项 None，确认未收录时为空集映射
         """
         if not self.is_authenticated():
             return None, None

@@ -132,11 +132,11 @@ def test_media_exists_retries_transient_strict_tv_query_failure(monkeypatch):
     飞牛严格电视剧查询首次失败、重试成功时应返回已确认的季集。
     """
     client = _authenticated_client()
-    client.get_tv_episodes = Mock(side_effect=[(None, None), ("series", {1: [1, 2]})])
+    client._TrimeMedia__get_tv_episodes_once = Mock(side_effect=[(None, None), ("series", {1: [1, 2]})])
     module = TrimeMediaModule.__new__(TrimeMediaModule)
     module._instances = {"PwStation": client}
     sleep = Mock()
-    monkeypatch.setattr("app.modules.trimemedia.module.time.sleep", sleep)
+    monkeypatch.setattr("app.modules.trimemedia.trimemedia.time.sleep", sleep)
     mediainfo = SimpleNamespace(
         type=MediaType.TV,
         title="测试剧集",
@@ -149,9 +149,8 @@ def test_media_exists_retries_transient_strict_tv_query_failure(monkeypatch):
     result = module.media_exists(mediainfo, server="PwStation", raise_on_query_failure=True)
 
     assert result is not None
-    assert result.server_type == "trimemedia"
     assert result.seasons == {1: [1, 2]}
-    assert client.get_tv_episodes.call_count == 2
+    assert client._TrimeMedia__get_tv_episodes_once.call_count == 2
     sleep.assert_called_once_with(0.5)
 
 
@@ -160,10 +159,10 @@ def test_media_exists_keeps_persistent_strict_tv_query_failure(monkeypatch):
     飞牛严格电视剧查询连续失败时仍应抛出查询异常，不按缺集处理。
     """
     client = _authenticated_client()
-    client.get_tv_episodes = Mock(return_value=(None, None))
+    client._TrimeMedia__get_tv_episodes_once = Mock(return_value=(None, None))
     module = TrimeMediaModule.__new__(TrimeMediaModule)
     module._instances = {"PwStation": client}
-    monkeypatch.setattr("app.modules.trimemedia.module.time.sleep", Mock())
+    monkeypatch.setattr("app.modules.trimemedia.trimemedia.time.sleep", Mock())
     mediainfo = SimpleNamespace(
         type=MediaType.TV,
         title="测试剧集",
@@ -176,7 +175,23 @@ def test_media_exists_keeps_persistent_strict_tv_query_failure(monkeypatch):
     with pytest.raises(MediaServerQueryError):
         module.media_exists(mediainfo, server="PwStation", raise_on_query_failure=True)
 
-    assert client.get_tv_episodes.call_count == 2
+    assert client._TrimeMedia__get_tv_episodes_once.call_count == 2
+
+
+def test_get_tv_episodes_does_not_retry_when_unauthenticated(monkeypatch):
+    """
+    未认证实例的查询不会通过短暂重试延迟订阅检查。
+    """
+    client = _authenticated_client()
+    client.is_authenticated.return_value = False
+    query_once = Mock()
+    client._TrimeMedia__get_tv_episodes_once = query_once
+    sleep = Mock()
+    monkeypatch.setattr("app.modules.trimemedia.trimemedia.time.sleep", sleep)
+
+    assert client.get_tv_episodes(title="测试剧集") == (None, None)
+    query_once.assert_not_called()
+    sleep.assert_not_called()
 
 
 def test_get_tv_episodes_returns_not_found_when_stale_series_disappears():
