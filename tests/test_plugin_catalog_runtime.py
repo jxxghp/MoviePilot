@@ -36,8 +36,6 @@ def _facade(**overrides):
         ),
         system=lambda: SimpleNamespace(),
         market_catalog=lambda: None,
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,
@@ -78,15 +76,16 @@ async def test_source_candidates_only_load_selected_configured_repository(monkey
 
 
 @pytest.mark.asyncio
-async def test_catalog_warns_when_market_candidates_cannot_be_loaded(monkeypatch):
+async def test_catalog_reports_when_market_candidates_cannot_be_loaded(monkeypatch):
     """
     全市场查询保留索引失败，单仓文档查询继续返回空候选。
     """
     from app.runtime.extensions.plugin import catalog as catalog_module
 
     repo = "https://github.com/Example/Plugins"
-    warnings: list[str] = []
-    loader = AsyncMock(return_value=None)
+    errors: list[str] = []
+    info: list[str] = []
+    loader = AsyncMock(side_effect=RuntimeError("索引请求失败"))
     service = PluginCatalogService(
         market_loader=lambda *_args: None,
         async_market_loader=loader,
@@ -94,8 +93,9 @@ async def test_catalog_warns_when_market_candidates_cannot_be_loaded(monkeypatch
         plugin_mapper=lambda *_args: None,
         is_local_repo=lambda _value: False,
         version_compare=lambda *_args: False,
-        warning=warnings.append,
-        error=warnings.append,
+        warning=lambda message: pytest.fail(message),
+        error=errors.append,
+        info=info.append,
     )
     monkeypatch.setattr(catalog_module, "get_runtime_setting", lambda key: {
         "PLUGIN_MARKET": repo,
@@ -104,7 +104,6 @@ async def test_catalog_warns_when_market_candidates_cannot_be_loaded(monkeypatch
     facade = _facade(
         system=lambda: SimpleNamespace(compatible_flags=lambda _flag: ["v3"]),
         market_catalog=lambda: service,
-        async_market_loader=service.async_load,
     )
 
     with pytest.raises(PluginMarketUnavailableError, match="插件市场索引暂时无法读取"):
@@ -112,7 +111,8 @@ async def test_catalog_warns_when_market_candidates_cannot_be_loaded(monkeypatch
     loader.assert_any_await(repo, "v3", True)
 
     assert await facade.async_online_candidates(repo_url=repo) == []
-    assert len(warnings) == 4
+    assert len(errors) == len(info) == 2
+    assert all(repo in error for error in errors)
 
 
 @pytest.mark.asyncio
@@ -154,8 +154,6 @@ async def test_async_online_normalizes_market_configuration(monkeypatch) -> None
             compatible_flags=lambda _flag: [],
         ),
         market_catalog=lambda: FakeMarketCatalog(),
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,
@@ -200,8 +198,6 @@ def test_installed_catalog_keeps_plugins_that_are_not_loaded():
         ),
         system=lambda: SimpleNamespace(),
         market_catalog=lambda: None,
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,
@@ -248,8 +244,6 @@ def test_local_repository_failure_does_not_break_catalog_projection():
             local_candidates=local_candidates,
         ),
         market_catalog=lambda: None,
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,

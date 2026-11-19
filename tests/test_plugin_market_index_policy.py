@@ -366,6 +366,10 @@ async def test_plugin_index_fallback_checks_response_before_accepting_it(
     """
     只有可解析索引或原始出口的 404 可以结束降级；镜像失败后仍保留原始出口的结果。
     """
+    debug, warning, error = Mock(), Mock(), Mock()
+    monkeypatch.setattr(plugin_client_module.logger, "debug", debug)
+    monkeypatch.setattr(plugin_client_module.logger, "warning", warning)
+    monkeypatch.setattr(plugin_client_module.logger, "error", error)
     settings = {
         "GITHUB_PROXY": "https://mirror.example",
         "PROXY_HOST": None,
@@ -380,7 +384,7 @@ async def test_plugin_index_fallback_checks_response_before_accepting_it(
     index_url = "https://raw.githubusercontent.com/example/repo/main/package.v3.json"
     mirror_url = f"https://mirror.example/{index_url}"
 
-    def response_for(url: str) -> tuple[int, bytes] | None:
+    def response_for(url: str) -> tuple[int, bytes]:
         """
         记录出口顺序并按实际请求地址选择离线响应。
         """
@@ -389,7 +393,7 @@ async def test_plugin_index_fallback_checks_response_before_accepting_it(
             return mirror
         assert url == index_url
         if origin_status is None:
-            return None
+            raise TimeoutError("直连超时")
         return origin_status, b'{"DemoPlugin": {"version": "1.0.0"}}'
 
     @contextmanager
@@ -398,8 +402,8 @@ async def test_plugin_index_fallback_checks_response_before_accepting_it(
         用离线响应替代同步出站流。
         """
         assert raise_exception is True
-        raw = response_for(url)
-        yield _SyncStreamResponse(raw[1], status_code=raw[0]) if raw else None
+        status, content = response_for(url)
+        yield _SyncStreamResponse(content, status_code=status)
 
     @asynccontextmanager
     async def async_stream(*, url: str, raise_exception: bool):
@@ -407,8 +411,8 @@ async def test_plugin_index_fallback_checks_response_before_accepting_it(
         用离线响应替代异步出站流。
         """
         assert raise_exception is True
-        raw = response_for(url)
-        yield _AsyncStreamResponse(raw[1], status_code=raw[0]) if raw else None
+        status, content = response_for(url)
+        yield _AsyncStreamResponse(content, status_code=status)
 
     monkeypatch.setattr(
         plugin_client_module, "RequestUtils", Mock(return_value=SimpleNamespace(get_stream=sync_stream))
@@ -440,6 +444,11 @@ async def test_plugin_index_fallback_checks_response_before_accepting_it(
         assert calls == [mirror_url]
     else:
         assert calls == [mirror_url, index_url]
+        assert any("将使用原始出口" in call.args[0] for call in debug.call_args_list)
+    if origin_status is None:
+        assert any("直连超时" in call.args[0] for call in debug.call_args_list)
+    warning.assert_not_called()
+    error.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -862,7 +871,7 @@ def test_plugin_index_parse_error_does_not_log_response_payload(monkeypatch) -> 
     """
     messages: list[str] = []
     monkeypatch.setattr(
-        "app.adapters.external.plugin.client.logger.warning",
+        "app.adapters.external.plugin.client.logger.debug",
         lambda message: messages.append(message),
     )
 
@@ -882,7 +891,7 @@ def test_plugin_index_parse_error_logs_source_without_cache_buster(monkeypatch) 
     """
     messages: list[str] = []
     monkeypatch.setattr(
-        "app.adapters.external.plugin.client.logger.warning",
+        "app.adapters.external.plugin.client.logger.debug",
         lambda message: messages.append(message),
     )
 
@@ -907,7 +916,7 @@ def test_plugin_index_source_log_drops_credentials(monkeypatch) -> None:
     """
     messages: list[str] = []
     monkeypatch.setattr(
-        "app.adapters.external.plugin.client.logger.warning",
+        "app.adapters.external.plugin.client.logger.debug",
         lambda message: messages.append(message),
     )
 
@@ -934,29 +943,47 @@ def test_plugin_index_read_failure_logs_requested_url(monkeypatch) -> None:
     """
     messages: list[str] = []
     monkeypatch.setattr(
-        "app.adapters.external.plugin.client.logger.warning",
+        "app.adapters.external.plugin.client.logger.debug",
         lambda message: messages.append(message),
     )
 
     class FakeResponse:
-        """占位响应对象，实际内容由读取函数替换。"""
+        """
+        占位响应对象，实际内容由读取函数替换。
+        """
 
     class FakeStream:
-        """提供 with 语义的占位流。"""
+        """
+        提供 with 语义的占位流。
+        """
 
         def __enter__(self):
+            """
+            返回用于触发解析失败的占位响应。
+            """
             return FakeResponse()
 
         def __exit__(self, *_args):
+            """
+            让读取异常按原样离开上下文。
+            """
             return False
 
     class FakeRequestUtils:
-        """跳过真实网络请求的请求器。"""
+        """
+        跳过真实网络请求的请求器。
+        """
 
         def __init__(self, **_kwargs):
+            """
+            接受测试生成的出口参数。
+            """
             pass
 
         def get_stream(self, **_kwargs):
+            """
+            返回无网络依赖的响应上下文。
+            """
             return FakeStream()
 
     monkeypatch.setattr(plugin_client_module, "RequestUtils", FakeRequestUtils)

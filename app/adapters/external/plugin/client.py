@@ -885,14 +885,17 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     @staticmethod
     def __plugin_index_log_source(source: Optional[str]) -> str:
         """
-        生成失败日志使用的有界来源标识，去掉凭据、缓存穿透参数并限制长度。
+        生成索引日志使用的有界来源标识，去掉凭据和缓存穿透参数。
         """
         if not isinstance(source, str):
             return ""
         label = source.strip()
         if not label:
             return ""
-        parts = urlsplit(label)
+        try:
+            parts = urlsplit(label)
+        except ValueError:
+            return ""
         if "@" in parts.netloc:
             parts = parts._replace(netloc=parts.netloc.rsplit("@", 1)[-1])
         if parts.query:
@@ -910,7 +913,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     @classmethod
     def __plugin_index_log_suffix(cls, source: Optional[str]) -> str:
         """
-        把索引来源追加到警告文案；没有来源时保持原有日志不变。
+        把索引来源追加到诊断文案；没有来源时保持原有日志不变。
         """
         label = cls.__plugin_index_log_source(source)
         return f"（来源：{label}）" if label else ""
@@ -920,27 +923,31 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             cls,
             content: str,
             source: Optional[str] = None,
+            *,
+            remote_probe: bool = False,
     ) -> Optional[PluginIndex]:
         """
         解析并规范化插件索引，兼容 BOM 与 plugins 列表包装格式。
 
         :param content: 已限长的索引响应文本
-        :param source: 可选索引来源，仅用于失败日志定位仓库或本地文件
+        :param source: 可选索引来源，仅用于日志定位仓库或本地文件
+        :param remote_probe: 远程探测的读取失败只记录调试明细，交由上层汇总
         """
         suffix = cls.__plugin_index_log_suffix(source)
+        log_failure = logger.debug if remote_probe else logger.warning
         try:
             payload = json.loads(content.lstrip("\ufeff"))
         except (ValueError, RecursionError):
-            logger.warning(f"插件包数据解析失败：响应不是有效 JSON{suffix}")
+            log_failure(f"插件包数据解析失败：响应不是有效 JSON{suffix}")
             return None
 
         if not isinstance(payload, dict):
-            logger.warning(
+            log_failure(
                 f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}{suffix}"
             )
             return None
         if not cls.__plugin_index_nesting_is_valid(payload):
-            logger.warning(
+            log_failure(
                 f"插件包 JSON 嵌套超过上限：{PLUGIN_INDEX_MAX_NESTING} 层{suffix}"
             )
             return None
@@ -960,7 +967,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             plugin_entries = list(payload.items())
 
         if len(plugin_entries) > PLUGIN_INDEX_MAX_ENTRIES:
-            logger.warning(
+            log_failure(
                 f"插件包条目超过上限：{len(plugin_entries)} > "
                 f"{PLUGIN_INDEX_MAX_ENTRIES}{suffix}"
             )
@@ -1115,6 +1122,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         按 GitHub 降级顺序流式读取并验证同步插件索引。
 
+        逐出口明细保留在调试日志，索引结果由调用方按仓库汇总。
+
         :param url: GitHub 原始索引地址
         :param headers: 仓库请求头
         :param timeout: 单出口请求超时秒数
@@ -1128,8 +1137,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         )
         for strategy_name, target_url, request_params in strategies:
             from_mirror = strategy_name == "镜像站"
+            log_source = cls.__plugin_index_log_source(target_url)
             logger.debug(
-                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
+                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{log_source}"
             )
             try:
                 request = RequestUtils(**request_params)
@@ -1146,12 +1156,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             except _PluginIndexReadError as error:
                 if not from_mirror:
                     raise
-                logger.warning(f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}")
+                logger.debug(
+                    f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}（{log_source}）"
+                )
             # 失败后尝试下一传输策略
             except Exception as error:  # noqa: BLE001
-                logger.error(
+                detail = _format_request_error(error).replace(target_url, log_source)
+                logger.debug(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
-                    f"URL：{target_url}，错误：{_format_request_error(error)}"
+                    f"URL：{log_source}，错误：{detail}"
                 )
         raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
 
@@ -1164,6 +1177,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     ) -> Optional[PluginIndex]:
         """
         按 GitHub 降级顺序流式读取并验证异步插件索引。
+
+        逐出口明细保留在调试日志，索引结果由调用方按仓库汇总。
 
         :param url: GitHub 原始索引地址
         :param headers: 仓库请求头
@@ -1178,8 +1193,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         )
         for strategy_name, target_url, request_params in strategies:
             from_mirror = strategy_name == "镜像站"
+            log_source = cls.__plugin_index_log_source(target_url)
             logger.debug(
-                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
+                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{log_source}"
             )
             try:
                 request = AsyncRequestUtils(**request_params)
@@ -1199,12 +1215,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             except _PluginIndexReadError as error:
                 if not from_mirror:
                     raise
-                logger.warning(f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}")
+                logger.debug(
+                    f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}（{log_source}）"
+                )
             # 失败后尝试下一传输策略
             except Exception as error:  # noqa: BLE001
-                logger.error(
+                detail = _format_request_error(error).replace(target_url, log_source)
+                logger.debug(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
-                    f"URL：{target_url}，错误：{_format_request_error(error)}"
+                    f"URL：{log_source}，错误：{detail}"
                 )
         raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
 
@@ -1253,7 +1272,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             return None
         if status_code != 200:
             raise _PluginIndexUnavailableError(f"插件索引请求失败：HTTP {status_code}")
-        payload = cls.__parse_plugin_index_response(content, source=source)
+        payload = cls.__parse_plugin_index_response(content, source=source, remote_probe=True)
         if payload is None:
             raise _PluginIndexReadError("插件索引响应格式无效")
         return payload

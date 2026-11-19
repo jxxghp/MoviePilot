@@ -105,8 +105,8 @@ def _configure_plugin_catalog_factory(monkeypatch):
         """
         client = PluginMarketClient()
         return PluginCatalogService(
-            market_loader=client.get_plugins,
-            async_market_loader=client.async_get_plugins,
+            market_loader=client.get_plugin_index_result,
+            async_market_loader=client.async_get_plugin_index_result,
             installed_plugins_provider=lambda: get_plugin_storage().read(
                 SystemConfigKey.UserInstalledPlugins
             ) or [],
@@ -115,6 +115,7 @@ def _configure_plugin_catalog_factory(monkeypatch):
             version_compare=compare_version,
             warning=manager_module.logger.warning,
             error=manager_module.logger.error,
+            info=manager_module.logger.info,
         )
 
     monkeypatch.setattr(manager_module, "_plugin_catalog_factory", build_catalog)
@@ -934,7 +935,7 @@ class TestPluginHelper:
         )
         monkeypatch.setattr(
             PluginMarketTransport,
-            "get_plugins",
+            "get_plugin_index_result",
             lambda _self, *_args: market_plugins,
         )
 
@@ -976,9 +977,11 @@ class TestPluginHelper:
         }
 
         def fake_get_plugins(_self, _repo_url, package_version=None):
-            # package.v3.json 不存在（404 → 空字典），package.v2.json 返回 v2 原生插件
+            """
+            模拟 v3 索引缺失，同时保留 v2 和基础索引的候选。
+            """
             if package_version == "v3":
-                return {}
+                return None
             if package_version == "v2":
                 return v2_native_plugins
             return base_plugins
@@ -1004,7 +1007,7 @@ class TestPluginHelper:
             "app.runtime.extensions.plugin.manager._site_auth_level_provider",
             lambda: 1,
         )
-        monkeypatch.setattr(PluginMarketTransport, "get_plugins", fake_get_plugins)
+        monkeypatch.setattr(PluginMarketTransport, "get_plugin_index_result", fake_get_plugins)
 
         plugins = plugin_manager.get_online_plugins(force=False)
         plugin_ids = {p.id for p in plugins}
@@ -1230,7 +1233,7 @@ class TestPluginHelper:
             PLUGIN_MARKET="https://github.com/demo/plugins",
             VERSION_FLAG="v3",
         )
-        monkeypatch.setattr(PluginManager, "get_plugins_from_market", lambda *_args, **_kwargs: [])
+        monkeypatch.setattr(PluginMarketTransport, "get_plugin_index_result", lambda *_args, **_kwargs: {})
 
         PluginManager().get_online_plugins(force=True)
 
@@ -1251,14 +1254,17 @@ class TestPluginHelper:
             clear_calls.append("clear")
 
         async def fake_market(*_args, **_kwargs):
-            return []
+            """
+            模拟成功读取空索引，隔离真实的市场请求。
+            """
+            return {}
 
         _patch_catalog_settings(
             monkeypatch,
             PLUGIN_MARKET="https://github.com/demo/plugins",
             VERSION_FLAG="v3",
         )
-        monkeypatch.setattr(PluginManager, "async_get_plugins_from_market", fake_market)
+        monkeypatch.setattr(PluginMarketTransport, "async_get_plugin_index_result", fake_market)
 
         asyncio.run(PluginManager().async_get_online_plugins(force=True))
 

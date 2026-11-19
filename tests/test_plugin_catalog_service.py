@@ -40,7 +40,7 @@ def _service(**overrides) -> PluginCatalogService:
     """
     defaults = {
         "market_loader": Mock(return_value={}),
-        "async_market_loader": Mock(),
+        "async_market_loader": AsyncMock(return_value={}),
         "installed_plugins_provider": Mock(return_value=[]),
         "plugin_mapper": Mock(),
         "is_local_repo": lambda value: str(value).startswith("local://"),
@@ -50,6 +50,7 @@ def _service(**overrides) -> PluginCatalogService:
         ),
         "warning": Mock(),
         "error": Mock(),
+        "info": Mock(),
     }
     defaults.update(overrides)
     return PluginCatalogService(**defaults)
@@ -194,8 +195,6 @@ async def test_async_collect_isolates_failure_and_completes_progress():
     """
     progress = Mock()
     error = Mock()
-    service = _service(error=error)
-
     async def loader(market: str, package_version: str | None, _force: bool):
         """
         模拟一个失败代际和其余可正常完成的市场请求。
@@ -205,13 +204,19 @@ async def test_async_collect_isolates_failure_and_completes_progress():
             raise RuntimeError("unavailable")
         version = "2.0.0" if package_version else "1.0.0"
         plugin_id = "MarketA" if market.endswith("market-a") else "MarketB"
-        return [_plugin(plugin_id, version, market)]
+        return {plugin_id: {"version": version}}
 
+    service = _service(
+        async_market_loader=loader,
+        plugin_mapper=lambda plugin_id, info, market, _installed, _time, generation: (
+            _plugin(plugin_id, info["version"], market, generation)
+        ),
+        error=error,
+    )
     result = await service.async_collect(
         markets=["https://market-a", "https://market-b"],
         compatible_flags=["v3"],
         force=True,
-        loader=loader,
         require_available=True,
         progress_callback=progress,
     )
@@ -220,21 +225,23 @@ async def test_async_collect_isolates_failure_and_completes_progress():
         "MarketA",
         "MarketB",
     }
-    error.assert_called_once()
+    error.assert_not_called()
     assert progress.call_args_list[0].kwargs["value"] == 0
     assert progress.call_args_list[-1].kwargs["value"] == 100
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("base_index", [None, {}], ids=["all-failed", "base-absent"])
+@pytest.mark.parametrize("base_index", [None, {}], ids=["base-absent", "base-empty"])
 async def test_async_collect_reports_failure_without_candidates(base_index):
     """
     没有候选且存在读取失败时报告市场不可用，已确认缺少基础索引也不能掩盖失败。
     """
-    warnings = Mock()
+    errors = Mock()
+    summary = Mock()
     service = _service(
-        async_market_loader=AsyncMock(side_effect=[base_index, None, None]),
-        warning=warnings,
+        async_market_loader=AsyncMock(side_effect=[base_index, RuntimeError("timeout"), None]),
+        error=errors,
+        info=summary,
     )
 
     with pytest.raises(PluginMarketUnavailableError, match="插件市场索引暂时无法读取"):
@@ -242,11 +249,97 @@ async def test_async_collect_reports_failure_without_candidates(base_index):
             markets=["https://market-a"],
             compatible_flags=["v3", "v2"],
             force=False,
-            loader=service.async_read,
             require_available=True,
         )
 
-    assert warnings.call_count == (3 if base_index is None else 2)
+    summary.assert_called_once()
+    if base_index is None:
+        errors.assert_called_once()
+        assert "https://market-a" in errors.call_args.args[0]
+    else:
+        errors.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_market_refresh_summarizes_index_probes_by_repository(mode):
+    """
+    每轮只汇总一次，回退和空索引无需报错，整个仓库不可用时只报一次。
+    """
+    v2_repo, v1_repo, empty_repo, broken_repo, missing_repo = (
+        f"https://github.com/market-test/{name}"
+        for name in ("v2", "v1", "empty", "broken", "missing")
+    )
+    markets = [v2_repo, v1_repo, empty_repo, broken_repo, missing_repo]
+    outcomes = {
+        (v2_repo, "v2"): {"Modern": {"version": "1.0.0"}},
+        (v2_repo, None): {"Other": {"version": "1.0.0"}},
+        (v1_repo, "v3"): TimeoutError("直连超时"),
+        (v1_repo, None): {"Legacy": {"version": "1.0.0"}},
+        (empty_repo, "v3"): {},
+        (broken_repo, "v3"): RuntimeError("响应格式无效"),
+        (broken_repo, "v2"): RuntimeError("HTTP 503"),
+    }
+    warning, error, info = Mock(), Mock(), Mock()
+
+    def load(market: str, generation: str | None, force: bool):
+        """
+        为每个仓库代际返回索引、确认缺失，或抛出读取异常。
+        """
+        assert force
+        outcome = outcomes.get((market, generation))
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    service = _service(
+        market_loader=Mock(side_effect=load),
+        async_market_loader=AsyncMock(side_effect=load),
+        plugin_mapper=lambda plugin_id, metadata, market, _installed, _time, generation: (
+            _plugin(plugin_id, metadata["version"], market, generation)
+        ),
+        warning=warning,
+        error=error,
+        info=info,
+    )
+    kwargs = {"markets": markets, "compatible_flags": ["v3", "v2"], "force": True}
+    result = await service.async_collect(**kwargs) if mode == "async" else service.collect(**kwargs)
+
+    assert [(plugin.id, plugin.package_version) for plugin in result] == [
+        ("Modern", "v2"), ("Other", None), ("Legacy", None),
+    ]
+    warning.assert_not_called()
+    assert error.call_count == 2
+    assert broken_repo in error.call_args_list[0].args[0]
+    assert "v3 响应格式无效" in error.call_args_list[0].args[0]
+    assert "v2 HTTP 503" in error.call_args_list[0].args[0]
+    assert missing_repo in error.call_args_list[1].args[0]
+    info.assert_called_once()
+    summary = info.call_args.args[0]
+    assert "共 5 个仓库，3 个可用，2 个无可用索引，2 个回退到较低代际" in summary
+    assert "缺少索引 8 次（v3 2 / v2 3 / v1 3）" in summary
+    assert "读取失败 3 次（v3 2 / v2 1）" in summary
+    assert "获取到 3 个线上插件" in summary
+
+
+@pytest.mark.asyncio
+async def test_single_index_query_still_warns_without_a_refresh_summary():
+    """
+    单代查询失败继续提示，确认缺失的索引则直接返回空目录。
+    """
+    warning, info = Mock(), Mock()
+    service = _service(
+        market_loader=Mock(side_effect=RuntimeError("HTTP 503")),
+        async_market_loader=AsyncMock(return_value=None),
+        warning=warning,
+        info=info,
+    )
+
+    assert service.load("https://market-a", "v3") == []
+    assert await service.async_load("https://market-a", "v2") == []
+    warning.assert_called_once()
+    assert "HTTP 503" in warning.call_args.args[0]
+    info.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -264,7 +357,6 @@ async def test_async_collect_keeps_valid_empty_market_results():
         markets=["https://market-empty"],
         compatible_flags=["v3"],
         force=False,
-        loader=service.async_read,
         require_available=True,
     )
 
@@ -277,22 +369,25 @@ async def test_async_collect_preserves_each_repository_update_candidate():
     """
     来源准入读取应保留每个仓库的最高版本，不能先按插件 ID 全局去重。
     """
-    service = _service()
-
     async def loader(market: str, package_version: str | None, _force: bool):
         """
         按仓库返回不同版本，验证来源保留模式不会提前跨仓去重。
         """
         if package_version is None:
-            return []
+            return None
         version = "2.0.0" if market == "https://market-bound" else "3.0.0"
-        return [_plugin("Demo", version, market)]
+        return {"Demo": {"version": version}}
 
+    service = _service(
+        async_market_loader=loader,
+        plugin_mapper=lambda plugin_id, info, market, _installed, _time, generation: (
+            _plugin(plugin_id, info["version"], market, generation)
+        ),
+    )
     result = await service.async_collect(
         markets=["https://market-bound", "https://market-alternative"],
         compatible_flags=["v3"],
         force=False,
-        loader=loader,
         preserve_sources=True,
     )
 
@@ -308,7 +403,6 @@ async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
     """
     请求取消时必须取消并回收全部市场 loader，不能把子任务遗留在事件循环。
     """
-    service = _service()
     blocker = asyncio.Event()
     all_started = asyncio.Event()
     started = 0
@@ -327,14 +421,15 @@ async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
         except asyncio.CancelledError:
             cancelled += 1
             raise
-        return []
+        return {}
 
+    summary = Mock()
+    service = _service(async_market_loader=loader, info=summary)
     collect_task = asyncio.create_task(
         service.async_collect(
             markets=["https://market-a", "https://market-b"],
             compatible_flags=[],
             force=True,
-            loader=loader,
         )
     )
     await asyncio.wait_for(all_started.wait(), timeout=1)
@@ -344,6 +439,7 @@ async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
             await collect_task
         await asyncio.sleep(0)
         assert cancelled == 2
+        summary.assert_not_called()
     finally:
         blocker.set()
         await asyncio.sleep(0)
@@ -354,7 +450,6 @@ async def test_async_collect_cleans_loaders_when_progress_callback_fails():
     """
     进度回调异常也必须取消并回收尚未完成的市场 loader。
     """
-    service = _service()
     blocker = asyncio.Event()
     slow_started = asyncio.Event()
     slow_cancelled = asyncio.Event()
@@ -365,14 +460,14 @@ async def test_async_collect_cleans_loaders_when_progress_callback_fails():
         """
         if market == "https://market-a":
             await slow_started.wait()
-            return []
+            return {}
         slow_started.set()
         try:
             await blocker.wait()
         except asyncio.CancelledError:
             slow_cancelled.set()
             raise
-        return []
+        return {}
 
     def progress(*, value: float, **_kwargs) -> None:
         """
@@ -381,13 +476,13 @@ async def test_async_collect_cleans_loaders_when_progress_callback_fails():
         if value > 0:
             raise RuntimeError("progress unavailable")
 
+    service = _service(async_market_loader=loader)
     with pytest.raises(RuntimeError, match="progress unavailable"):
         await asyncio.wait_for(
             service.async_collect(
                 markets=["https://market-a", "https://market-b"],
                 compatible_flags=[],
                 force=True,
-                loader=loader,
                 progress_callback=progress,
             ),
             timeout=1,
