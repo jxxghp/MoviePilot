@@ -433,6 +433,7 @@ class _PluginBase(metaclass=ABCMeta):
 
         :param kwargs: 可传 rich_content 通用结构化通知；宿主按渠道能力排版，text 保留为纯文本回退。
             传 native_image=True 可让企业微信自建应用发送完整原图，默认仍发送图文卡片。
+            传 file_path 和可选 file_name 可发送本地附件，企业微信自建应用上限为 20 MiB。
         """
         if not link:
             link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")

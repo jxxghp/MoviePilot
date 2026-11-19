@@ -378,6 +378,10 @@ Use only the extension points the requested plugin actually needs:
   the link (including the default plugin-page link) is ignored. Images must be
   larger than 5 bytes and at most 10 MiB. The default remains a news card;
   other channels and WeCom bot mode keep their existing behavior.
+  WeCom custom applications also support local attachments through
+  `file_path=<local path>, file_name=<optional display name>` (larger than
+  5 bytes, at most 20 MiB). Attachments take precedence over image/voice fields;
+  the source file is preserved, and bot mode does not support file sending.
 - APIs: return route definitions from `get_api()`; default auth is `apikey`
   when `auth` is omitted. Vue component APIs should normally use
   `auth: "bear"` and be called through the `api` prop passed by the frontend.
