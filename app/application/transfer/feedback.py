@@ -111,6 +111,30 @@ _STAGE_ACTIONS: dict[TransferFailureStage, str] = {
     TransferFailureStage.UNKNOWN: "检查源文件、路径映射和目标存储，修复后重新整理",
 }
 
+# CUE 解析失败的恢复动作：文案本身已带 CUE 文件名和原因，恢复动作必须指向
+# CUE 而不是通用重试，否则用户会往限流/发行版等方向空耗排查。
+_CUE_FAILURE_ACTION = "检查 CUE 文件内容，或关闭「识别 CUE」后重试"
+
+# CUE 解析失败的稳定措辞，取自 CUE 解析与校验抛出的真实文案
+#（app/application/audio.py、app/domain/music.py、app/chain/transfer/music.py）。
+# 必须用完整措辞而不是裸 "CUE" 子串：路径、文件名（ALBUM.CUE、"CUE Collection"
+# 目录）和无关文案（.iso 镜像提示里的 "CUE"）都可能含有裸 CUE，造成误归类。
+_CUE_FAILURE_MARKERS = (
+    "关联 CUE",
+    "CUE 文件",
+    "CUE FILE",
+    "CUE 引用",
+    "CUE 索引",
+    "CUE 音轨",
+    "CUE 时间",
+    "CUE 文本",
+    "CUE 同一文件",
+    "CUE 没有音轨",
+    "CUE 超过",
+    "内容冲突的 CUE",
+    "整轨 CUE",
+)
+
 _STAGE_LABELS: dict[TransferFailureStage, str] = {
     TransferFailureStage.SOURCE_ACCESS: "源文件访问",
     TransferFailureStage.RECOGNITION: "媒体识别",
@@ -146,16 +170,35 @@ def classify_transfer_failure(
     """
     if overwrite_skipped:
         stage = TransferFailureStage.OVERWRITE
+        action = _STAGE_ACTIONS[stage]
     else:
         message = " ".join(str(error or "").split())
         stage = TransferFailureStage.TRANSFER
-        for candidate, markers in _STAGE_RULES:
-            if any(marker in message for marker in markers):
-                stage = candidate
-                break
+        action = _STAGE_ACTIONS[stage]
+        source_access_markers = next(
+            markers
+            for candidate, markers in _STAGE_RULES
+            if candidate is TransferFailureStage.SOURCE_ACCESS
+        )
+        if any(marker in message for marker in source_access_markers):
+            # 源文件缺失优先于 CUE 措辞：源路径本身可能含 "CUE 文件" 等字样，
+            # 此时缺失源文件才是真正原因，CUE 解析尚未开始。
+            stage = TransferFailureStage.SOURCE_ACCESS
+            action = _STAGE_ACTIONS[stage]
+        elif any(marker in message for marker in _CUE_FAILURE_MARKERS):
+            # CUE 解析失败属于媒体识别失败：错误文案本身已带 CUE 文件名和原因，
+            # 阶段与恢复动作同样必须指向 CUE。
+            stage = TransferFailureStage.RECOGNITION
+            action = _CUE_FAILURE_ACTION
+        else:
+            for candidate, markers in _STAGE_RULES:
+                if any(marker in message for marker in markers):
+                    stage = candidate
+                    action = _STAGE_ACTIONS[stage]
+                    break
     return TransferFailureFeedback(
         stage=stage,
-        action=_STAGE_ACTIONS[stage],
+        action=action,
         retryable=stage not in {
             TransferFailureStage.OVERWRITE,
             TransferFailureStage.DOWNLOADER_CLEANUP,

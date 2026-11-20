@@ -584,6 +584,62 @@ def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, 
     assert not (tmp_path / "library").exists()
 
 
+def test_broken_cue_batch_preview_names_cue_and_recovery_action(tmp_path, monkeypatch):
+    """
+    多碟整轨 CUE 损坏时批量预览逐文件失败，失败项须指明 CUE 文件名与原因，
+    阶段为媒体识别、恢复动作为关闭「识别 CUE」后重试，而不是任务执行/刷新历史。
+    """
+    source = _split_album(tmp_path, text=DISC_BROKEN_CUE,
+                          tracks=(("disc1.flac", "第一首", 1), ("disc2.flac", "第三首", 3)))
+    monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", True)
+    storage = LocalStorage()
+    items = [storage.get_item(source / name) for name in ("disc1.flac", "disc2.flac")]
+    owner = make_transfer_chain()
+    bind_empty_history_repositories(owner)
+    owner.eventmanager = SimpleNamespace(send_event=lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(owner, "_TransferChain__get_trans_fileitems", lambda *_args, **_kwargs: [(item, False) for item in items])
+    monkeypatch.setattr(owner, "_TransferChain__put_to_jobview", lambda _task: True)
+    monkeypatch.setattr(owner, "_register_scrape_batch_task", lambda _task: None)
+    monkeypatch.setattr(owner, "_close_scrape_batch", lambda _batch: None)
+    monkeypatch.setattr(owner, "_transfer_storage_chain", lambda: SimpleNamespace(get_item=lambda source: storage.get_item(Path(source.path))))
+    monkeypatch.setattr("app.chain.transfer.workflow.get_configured_system_config", lambda: SimpleNamespace(get=lambda _key: None))
+    monkeypatch.setattr("app.modules.filemanager.transhandler.eventmanager.send_event", Mock(return_value=None))
+    plans = []
+
+    def preview(task, **_kwargs):
+        """
+        使用真实规划与预览执行，不触发实际文件写入。
+        """
+        plans.append(task)
+        handler = TransHandler()
+        checkpoint = handler.plan_transfer(
+            task.planning_input, meta=task.meta, mediainfo=task.mediainfo, source_oper=storage,
+            target_storage="local", target_path=tmp_path / "library", transfer_type="copy",
+            need_scrape=False, need_rename=True, need_notify=False, overwrite_mode="never",
+            episodes_info=None, preview=True,
+        )
+        return handler.execute_transfer_plan(checkpoint, meta=task.meta, mediainfo=task.mediainfo,
+                                             source_oper=storage, target_oper=storage)
+
+    monkeypatch.setattr(owner, "_plan_checkpoint_and_execute", preview)
+    state, result = owner.do_transfer(
+        fileitem=items[0], mtype=MediaType.MUSIC, force=True, preview=True,
+        target_directory=TransferDirectoryConf(library_path=str(tmp_path / "library"), library_storage="local", renaming=True),
+    )
+
+    assert state is False
+    assert plans == []
+    assert isinstance(result, dict)
+    assert result["summary"] == {"total": 2, "success": 0, "failed": 2}
+    assert "album.cue" in result["message"]
+    for item in result["items"]:
+        assert item["success"] is False
+        assert "album.cue" in item["message"]
+        assert item["failure_stage"] == "recognition"
+        assert "关闭「识别 CUE」" in item["recovery_action"]
+    assert not (tmp_path / "library").exists()
+
+
 def test_cue_override_isolated_between_concurrent_tasks_and_restored_on_error(monkeypatch):
     """
     并发手动识别及嵌套异常不能串用策略或修改其它任务的系统默认。

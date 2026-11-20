@@ -19,6 +19,7 @@ from app.application.history.retry import (
     evaluate_history_gate,
     is_skip_action,
 )
+from app.application.transfer.feedback import classify_transfer_failure
 from app.application.transfer.history import history_file_fingerprint
 from app.application.transfer.workflow import (
     TransferAdmission,
@@ -1211,10 +1212,15 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         if preview and (
                             not preview_items or preview_items[-1].get("source") != transfer_task.fileitem.path
                         ):
+                            # 预览失败若未经过执行回调则没有 TransferInfo 携带的阶段裁决，
+                            # 按错误文案归类而不是一律写死为任务执行：预览任务必定已结算，
+                            # 写死的执行阶段会把 CUE 解析失败等识别类错误误导向刷新历史/人工复核。
+                            feedback = classify_transfer_failure(err_msg)
                             preview_items.append(
                                 build_transfer_preview_item(transfer_task, TransferInfo(
-                                    success=False, message=err_msg, failure_stage="execution",
-                                    recovery_action="刷新整理历史，等待任务结束；仍无法继续时提交人工复核",
+                                    success=False, message=err_msg,
+                                    failure_stage=feedback.stage.value,
+                                    recovery_action=feedback.action,
                                 ))
                             )
                         fail_num += 1
