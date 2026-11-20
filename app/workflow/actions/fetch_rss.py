@@ -108,6 +108,7 @@ class FetchRssAction(BaseAction):
                 continue
             torrentinfo = TorrentInfo(
                 title=item.get("title"),
+                site_proxy=bool(action_params.proxy),
                 enclosure=item.get("enclosure"),
                 page_url=item.get("link"),
                 size=float(item["size"]) if isinstance(item.get("size"), (int, float)) else 0.0,
