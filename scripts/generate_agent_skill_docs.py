@@ -18,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 与对应 SKILL.md 同步维护，重新生成不能回退用户同步所需的版本。
-MOVIEPILOT_API_SKILL_VERSION = "78"
+MOVIEPILOT_API_SKILL_VERSION = "79"
 DATABASE_OPERATION_SKILL_VERSION = "20"
 
 
@@ -384,6 +384,11 @@ _OPERATION_NOTES: dict[str, list[str]] = {
         "`*`-marked path parameter across this document set (`media_type`, `site_id`, …).",
         "",
         "#### Candidate Selection and Empty-Result Retries",
+        "",
+        "With `include_candidates=true`, manually reviewable music candidates also include resources "
+        "rejected by automatic identity matching. `match_status` is `candidate`, `match_reason` "
+        "retains the rejection reason (for example `title_mismatch`), and `media_info` is null. "
+        "Do not treat them as confirmed matches or download them automatically; existing search filters still apply.",
         "",
         "- When `media.search` returns multiple candidates, select based on "
         "**title matching the user's request AND `type` (movie/series) matching**; do not "
