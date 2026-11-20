@@ -72,13 +72,14 @@ def test_fetch_rss_reads_proxy_from_chain_snapshot(monkeypatch):
     )
     monkeypatch.setattr(fetch_rss_module.runtime_stop_state, "is_workflow_stopped", lambda _: False)
 
-    FetchRssAction("rss").execute(
+    context = FetchRssAction("rss").execute(
         workflow_id=1,
         params={"url": "https://example.com/rss.xml", "proxy": True},
         context=ActionContext(),
     )
 
     assert captured["proxy"] == {"https": "http://snapshot-proxy:7890"}
+    assert context.torrents[0].torrent_info.site_proxy is True
 
 
 def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
