@@ -567,7 +567,12 @@ def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, 
     if invalid and effective:
         assert state is False
         assert plans == []
-        assert "CUE" in str(result)
+        assert len(result["items"]) == 1
+        failure = result["items"][0]
+        assert failure["success"] is False
+        assert "CUE" in failure["message"]
+        assert failure["failure_stage"] == "recognition"
+        assert failure["recovery_action"] == "检查 CUE 文件内容，或关闭「识别 CUE」后重试"
     elif effective:
         assert state is True
         assert [task.fileitem.path for task in plans] == [str(audio), str(cue)]
@@ -581,6 +586,47 @@ def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, 
     assert all(task.planning_input.options["music_cue_enable"] == effective for task in plans)
     assert settings.MUSIC_CUE_ENABLE == cue_enabled
     assert music_cue_enabled() == cue_enabled
+    assert not (tmp_path / "library").exists()
+
+
+def test_broken_cue_batch_preview_explains_recovery(tmp_path, monkeypatch):
+    """
+    多碟坏索引的批量失败逐项保留 CUE 原因及恢复提示，预览不进入文件执行。
+    """
+    source = _split_album(tmp_path, text=DISC_BROKEN_CUE,
+                          tracks=(("disc1.flac", "第一首", 1), ("disc2.flac", "第三首", 3)))
+    monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", True)
+    storage = LocalStorage()
+    items = [storage.get_item(source / name) for name in ("disc1.flac", "disc2.flac")]
+    before = {path.name: path.read_bytes() for path in source.iterdir()}
+    owner = make_transfer_chain()
+    bind_empty_history_repositories(owner)
+    owner.eventmanager = SimpleNamespace(send_event=lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(owner, "_TransferChain__get_trans_fileitems", lambda *_args, **_kwargs: [(item, False) for item in items])
+    monkeypatch.setattr(owner, "_TransferChain__put_to_jobview", lambda _task: True)
+    monkeypatch.setattr(owner, "_register_scrape_batch_task", lambda _task: None)
+    monkeypatch.setattr(owner, "_close_scrape_batch", lambda _batch: None)
+    monkeypatch.setattr(owner, "_transfer_storage_chain", lambda: SimpleNamespace(get_item=lambda item: storage.get_item(Path(item.path))))
+    monkeypatch.setattr("app.chain.transfer.workflow.get_configured_system_config", lambda: SimpleNamespace(get=lambda _key: None))
+    execute = Mock(side_effect=AssertionError("损坏 CUE 不应进入文件执行"))
+    monkeypatch.setattr(owner, "_plan_checkpoint_and_execute", execute)
+
+    state, result = owner.do_transfer(
+        fileitem=items[0], mtype=MediaType.MUSIC, force=True, preview=True,
+        target_directory=TransferDirectoryConf(library_path=str(tmp_path / "library"), library_storage="local", renaming=True),
+    )
+
+    assert state is False
+    assert result["summary"] == {"total": 2, "success": 0, "failed": 2}
+    assert {item["source"] for item in result["items"]} == {item.path for item in items}
+    for item in result["items"]:
+        assert item["success"] is False
+        assert "album.cue" in item["message"]
+        assert "重复或逆序" in item["message"]
+        assert item["failure_stage"] == "recognition"
+        assert "关闭「识别 CUE」" in item["recovery_action"]
+    execute.assert_not_called()
+    assert {path.name: path.read_bytes() for path in source.iterdir()} == before
     assert not (tmp_path / "library").exists()
 
 

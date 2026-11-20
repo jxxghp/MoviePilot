@@ -608,6 +608,8 @@ class _TransferCandidatePlanner:
 def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) -> dict[str, Any]:
     """
     按实际整理结果投影预览项，失败阶段与恢复动作保留原始裁决。
+
+    仅为本次确由 CUE 结构校验拒绝的预览补充恢复提示，不改变正式整理的失败分类和自动接管。
     """
     from app.application.transfer.feedback import classify_transfer_failure
 
@@ -617,24 +619,32 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
         transferinfo.message,
         overwrite_skipped=bool(transferinfo.overwrite_skipped),
     )
+    music = music_transfer_preview(item_meta, item_media, task.music_preview_context,
+                                   selected=bool(task.manual and task.media_source and task.media_id))
+    failure_stage, recovery_action = feedback.stage.value, feedback.action
+    # 解析器已记录结构状态；同时核对当前错误，避免存储故障被残留 CUE 诊断或路径文字覆盖。
+    if (task.preview and music and music.get("layout") == "cue_invalid" and transferinfo.message
+            and transferinfo.message == getattr(item_meta, "organization_error", None)
+            and not transferinfo.overwrite_skipped):
+        failure_stage = "recognition"
+        recovery_action = "检查 CUE 文件内容，或关闭「识别 CUE」后重试"
     return (
         {
             "source": task.fileitem.path,
             "source_storage": task.fileitem.storage,
             "source_item": task.fileitem.model_dump(exclude={"children", "url", "thumbnail"}),
-            "music": music_transfer_preview(item_meta, item_media, task.music_preview_context,
-                                            selected=bool(task.manual and task.media_source and task.media_id)),
+            "music": music,
             "target": transferinfo.target_item.path if transferinfo.target_item else None,
             "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
             "success": transferinfo.success,
             "message": transferinfo.message,
             "failure_stage": (
-                transferinfo.failure_stage or feedback.stage.value
+                transferinfo.failure_stage or failure_stage
                 if not transferinfo.success
                 else None
             ),
             "recovery_action": (
-                transferinfo.recovery_action or feedback.action
+                transferinfo.recovery_action or recovery_action
                 if not transferinfo.success
                 else None
             ),

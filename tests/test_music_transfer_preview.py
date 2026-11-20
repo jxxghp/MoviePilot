@@ -40,6 +40,68 @@ def _preview(task, success=True):
     ))
 
 
+def test_invalid_cue_preview_uses_structured_failure_evidence():
+    """
+    损坏 CUE 的预览恢复提示取决于结构证据，不依赖解析器报错中的关键词。
+    """
+    meta = MetaMusic("Artist - Song.flac", music_layout="cue_invalid", organization_error="索引数据损坏")
+    result = ManualTransferPreviewItem.model_validate(build_transfer_preview_item(
+        _task(meta), TransferInfo(success=False, message=meta.organization_error),
+    ))
+
+    assert result.message == "索引数据损坏"
+    assert result.failure_stage == "recognition"
+    assert result.recovery_action == "检查 CUE 文件内容，或关闭「识别 CUE」后重试"
+
+
+@pytest.mark.parametrize("layout,error,message,stage", [
+    (None, None, "目标目录 /music/CUE 文件/album 获取失败", "destination_access"),
+    ("cue_invalid", "关联 CUE 无法解析：album.cue", "目标目录 /music/CUE 文件/album 获取失败", "destination_access"),
+    ("cue_invalid", "关联 CUE 无法解析：album.cue", "源文件不存在：/music/CUE 文件/album.flac", "source_access"),
+    ("image_cue", "整轨 CUE 包含多首歌曲，请选择专辑身份整理", "整轨 CUE 包含多首歌曲，请选择专辑身份整理", "transfer"),
+    (None, None, "音乐镜像暂不支持直接整理，请先提取音频和 CUE 后重试", "transfer"),
+])
+def test_cue_preview_does_not_replace_unrelated_failure(layout, error, message, stage):
+    """
+    目录错误、有效整轨身份冲突和音乐镜像提示不能被误判为 CUE 解析损坏。
+    """
+    meta = MetaMusic("Artist - Song.flac", music_layout=layout, organization_error=error)
+    result = ManualTransferPreviewItem.model_validate(build_transfer_preview_item(
+        _task(meta), TransferInfo(success=False, message=message),
+    ))
+
+    assert result.failure_stage == stage
+    assert "关闭「识别 CUE」" not in result.recovery_action
+
+
+@pytest.mark.parametrize("success,explicit,skipped,preview,stage", [
+    (True, False, False, True, None),
+    (False, True, False, True, "execution"),
+    (False, False, True, True, "overwrite"),
+    (False, False, False, False, "transfer"),
+])
+def test_cue_preview_preserves_execution_decisions(success, explicit, skipped, preview, stage):
+    """
+    CUE 展示提示不能覆盖显式裁决、成功或覆盖跳过，也不能改变正式整理的分类。
+    """
+    meta = MetaMusic("Artist - Song.flac", music_layout="cue_invalid", organization_error="关联 CUE 无法解析：album.cue")
+    task = _task(meta)
+    task.preview = preview
+    result = ManualTransferPreviewItem.model_validate(build_transfer_preview_item(
+        task, TransferInfo(
+            success=success, message=meta.organization_error, overwrite_skipped=skipped,
+            failure_stage="execution" if explicit else None,
+            recovery_action="请先人工确认" if explicit else None,
+        ),
+    ))
+
+    assert result.failure_stage == stage
+    if explicit:
+        assert result.recovery_action == "请先人工确认"
+    else:
+        assert "关闭「识别 CUE」" not in (result.recovery_action or "")
+
+
 @pytest.mark.parametrize("status", ["not_found", "ambiguous", "conflict", "service_error", "budget_exhausted"])
 def test_pending_diagnostic_cannot_become_online_success(status):
     """
