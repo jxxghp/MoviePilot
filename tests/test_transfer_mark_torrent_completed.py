@@ -13,6 +13,7 @@ from app.runtime.config import settings
 from app.schemas.file import FileItem
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
+from tests.test_transfer_sync_extra_files import bind_empty_history_repositories, make_fileitem, make_transfer_chain
 
 
 class _FakeMeta(MetaBase):
@@ -403,3 +404,41 @@ def test_mark_uses_selected_completion_when_downloader_reports_it():
         _mark(chain, "hash1", "rtorrent")
 
         assert bool(completed) is expected, torrent
+
+
+def test_reused_task_whose_files_are_all_transferred_gets_tag_back_next_round(monkeypatch):
+    """
+    重复提交同一种子按原样复用受理时会移除"已整理"（用户删了媒体文件和整理记录后再下载同一种子，不移除就永远不会
+    重新整理）。文件都已整理过的任务因此回到下载器整理轮询，下一轮整理链发现全部文件都有整理记录，不新建整理任务，
+    并补打"已整理"，任务退出轮询，只多扫这一轮。
+    """
+    owner = make_transfer_chain()
+    bind_empty_history_repositories(owner)
+    owner.eventmanager = SimpleNamespace(send_event=lambda *_args, **_kwargs: None)
+    root = FileItem(storage="local", path="/downloads/Test.Show.S01", type="dir", name="Test.Show.S01")
+    episodes = [make_fileitem(f"/downloads/Test.Show.S01/Test.Show.S01E0{number}.mkv") for number in (1, 2)]
+    owner.transfer_history_repository = SimpleNamespace(
+        get_by_src=lambda src, storage=None: SimpleNamespace(
+            id=1, status=True, src=src, src_storage="local", download_hash="hash1", downloader="qbittorrent",
+        ),
+    )
+    monkeypatch.setattr(
+        owner, "_TransferChain__get_trans_fileitems", lambda *_args, **_kwargs: [(item, False) for item in episodes],
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.get_configured_system_config", lambda: SimpleNamespace(get=lambda _key: None),
+    )
+    planned = []
+    monkeypatch.setattr(owner, "_plan_checkpoint_and_execute", lambda task, **_kwargs: planned.append(task))
+    completed = []
+    owner.transfer_completed = lambda **kwargs: completed.append(kwargs)
+    owner.list_torrents = lambda **_kwargs: [DownloaderTorrent(hash="hash1", progress=100, selected_size=100)]
+    # 整理轮询交给整理时记录的选中大小，与当前一致，说明期间没有追加文件。
+    owner._transfer_scan_size_records()[("qbittorrent", "hash1")] = 100
+
+    owner.do_transfer(
+        fileitem=root, mtype=MediaType.TV, downloader="qbittorrent", download_hash="hash1", background=False,
+    )
+
+    assert planned == []
+    assert completed == [{"hashs": "hash1", "downloader": "qbittorrent"}]
