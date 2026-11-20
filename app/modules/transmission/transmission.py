@@ -36,7 +36,7 @@ class Transmission:
               "leftUntilDone", "rateDownload", "rateUpload", "recheckProgress", "rateDownload", "rateUpload",
               "peersGettingFromUs", "peersSendingToUs", "uploadRatio", "uploadedEver", "downloadedEver", "downloadDir",
               "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers",
-              "downloadLimit", "uploadLimit", "seedRatioLimit", "seedIdleLimit"]
+              "downloadLimit", "uploadLimit", "seedRatioLimit", "seedIdleLimit", "sizeWhenDone"]
 
     def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
                  username: Optional[str] = None, password: Optional[str] = None,
@@ -166,7 +166,8 @@ class Transmission:
         if status and not isinstance(status, list):
             status = [status]
         if tags and not isinstance(tags, list):
-            tags = tags.split(',')
+            # 与任务标签的解析一致去掉空白：TORRENT_TAG 配成 "MOVIEPILOT, TV" 时也要匹配到带 TV 标签的任务
+            tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
         ret_torrents = []
         try:
             for torrent in torrents:
@@ -235,6 +236,26 @@ class Transmission:
             return False
         try:
             self.trc.change_torrent(labels=list(set((org_tags or []) + tags)), ids=ids)
+            return True
+        except Exception as err:
+            logger.error(f"设置种子标签出错：{str(err)}")
+            return False
+
+    def replace_torrent_labels(self, ids: TorrentIds, labels: list[str]) -> bool:
+        """
+        用给定列表整体替换任务标签，允许传入空列表清空全部标签。
+
+        ``set_torrent_tag`` 把空列表当作无效输入直接返回，任务只剩"已整理"一个标签时就无法移除，
+        该任务会被下载器整理永久跳过；需要按计算结果整体写回（包括清空）时使用本方法。
+
+        :param ids: 种子哈希或哈希列表
+        :param labels: 写入后的完整标签列表；空列表表示清空
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
+        """
+        if not self.trc or not ids:
+            return False
+        try:
+            self.trc.change_torrent(labels=list(dict.fromkeys(labels)), ids=ids)
             return True
         except Exception as err:
             logger.error(f"设置种子标签出错：{str(err)}")

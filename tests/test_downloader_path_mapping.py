@@ -241,6 +241,17 @@ def _load_transmission_module():
             return torrent_info, torrent_content
 
         @staticmethod
+        def _admit_transfer_torrent(_server, torrent, **_raw_paths):
+            """
+            与真实基类一致的整理轮询准入：选中大小不小于总大小（或未知）时原样交给整理。
+
+            这里的任务都没有选中大小；需要逐文件确认的情况不在隔离测试范围内，出现时直接失败而不是静默放行。
+            """
+            selected_size, size = getattr(torrent, "selected_size", None), getattr(torrent, "size", None)
+            assert selected_size is None or not size or selected_size >= size, "隔离测试未模拟逐文件状态"
+            return [torrent]
+
+        @staticmethod
         def _normalize_query_status(status):
             """
             与真实基类一致的查询状态归一，返回隔离测试枚举。
@@ -438,6 +449,8 @@ def _load_transmission_module():
     modules_module._base = base_module
     base_module.downloader = base_downloader_module
     base_downloader_module._DownloaderModuleBase = _DownloaderModuleBase
+    # 与 app.modules._base.downloader.TRANSFERRED_TAG 一致，Transmission 模块导入时需要。
+    base_downloader_module.TRANSFERRED_TAG = "已整理"
     torrent_rules_module.is_magnet_link = _is_magnet_link
     size_tools_module.format_compact_size = _format_size
     temporal_tools_module.format_duration = _format_duration

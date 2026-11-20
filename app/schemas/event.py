@@ -478,6 +478,13 @@ class DownloadAddedContractData(BaseEventData):
     downloader: Optional[str] = Field(default=None, description="下载器")
     episodes: List[int] = Field(default_factory=list, description="剧集信息")
     source: Optional[str] = Field(default=None, description="数据来源")
+    task_action: Optional[str] = Field(
+        default=None,
+        description=(
+            "下载器对任务的实际动作：created 新建、appended 已有任务追加了本次文件、"
+            "resumed 按手动指定恢复了已暂停的已有任务、reused 已有任务原样复用；旧版本或重放的历史事件为空"
+        ),
+    )
     idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
 
@@ -1076,6 +1083,13 @@ class DownloadAddedEventData(BaseEventData):
     downloader: Optional[str] = Field(default=None, description="下载器名称")
     episodes: List[int] = Field(default_factory=list, description="下载剧集列表")
     source: Optional[str] = Field(default=None, description="下载来源")
+    task_action: Optional[str] = Field(
+        default=None,
+        description=(
+            "下载器对任务的实际动作：created 新建、appended 已有任务追加了本次文件、"
+            "resumed 按手动指定恢复了已暂停的已有任务、reused 已有任务原样复用；旧版本或重放的历史事件为空"
+        ),
+    )
     idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
 

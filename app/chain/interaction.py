@@ -735,12 +735,14 @@ class MediaInteractionChain(ChainBase):
                 context=context,
         ):
             return
+        # 用户在消息交互里选中了这个具体资源，属于明确指定种子。
         DownloadChain().download_single(
             context,
             channel=channel,
             source=source,
             userid=userid,
             username=username,
+            user_specified=True,
         )
 
     def _prompt_download_dir_selection(
@@ -873,6 +875,7 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
                 save_path=save_path,
+                user_specified=True,
             )
             return
 

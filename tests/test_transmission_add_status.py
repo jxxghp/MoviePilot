@@ -138,3 +138,17 @@ def test_add_status_without_connection_does_not_claim_success() -> None:
 
     assert server.add_torrent_with_status(_MAGNET) == (None, False)
     server.reconnect.assert_not_called()
+
+
+@pytest.mark.parametrize("labels", [[], ["MOVIEPILOT"]])
+def test_replace_torrent_labels_can_clear_the_only_archive_label(client, labels) -> None:
+    """
+    任务只剩"已整理"一个标签时，整体写回空列表必须真正发送请求清空，而不是像 set_torrent_tag 那样直接返回。
+    """
+    client.trc._http_session.post.return_value = _response()
+
+    assert client.replace_torrent_labels(ids=_HASH, labels=labels) is True
+
+    request = client.trc._http_session.post.call_args.kwargs["json"]
+    assert request["method"] == "torrent-set"
+    assert request["arguments"]["labels"] == labels

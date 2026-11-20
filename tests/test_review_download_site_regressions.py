@@ -87,7 +87,8 @@ def test_f037_rtorrent_selection_failure_never_reports_hash(monkeypatch, files, 
     未确认选集及启动成功时不返回能被下载链结算的Hash。
     """
     content = _torrent()
-    server = SimpleNamespace(add_torrent=Mock(return_value=True),
+    # 下载器里还没有同一任务：rTorrent 添加前会先按 hash 查找（load.raw 异步判重）。
+    server = SimpleNamespace(add_torrent=Mock(return_value=True), get_torrents=Mock(return_value=([], False)),
         get_torrent_id_by_tag=Mock(return_value=Torrent.from_string(content).info_hash),
         get_files=Mock(return_value=files), set_files=Mock(return_value=set_ok),
         start_torrents=Mock(return_value=start_ok), stop_torrents=Mock(return_value=True),

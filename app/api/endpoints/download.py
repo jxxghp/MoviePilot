@@ -269,6 +269,7 @@ def download(
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
@@ -334,6 +335,7 @@ def download_artist_collection(
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="艺术家合集任务添加失败")
@@ -382,6 +384,7 @@ def add(
         downloader=downloader,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")

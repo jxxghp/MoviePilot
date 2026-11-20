@@ -115,6 +115,8 @@ if TYPE_CHECKING:
         _build_music_planning_input: Callable[..., Any]
         _TransferChain__ensure_recovery_scheduler: Callable[..., Any]
         _transfer_validation_error: Callable[..., Any]
+        _transfer_scan_size_records: Callable[..., Any]
+        _covered_by_downloader_polling: Callable[..., Any]
         _resolve_download_history: Callable[..., Any]
         _resolve_music_batch_file_context: Callable[..., Any]
         _restore_music_download_context: Callable[..., Any]

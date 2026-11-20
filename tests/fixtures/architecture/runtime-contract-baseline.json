@@ -5687,8 +5687,10 @@
       "family": "downloader",
       "input_contract": "DownloadTaskRequest",
       "optional_parameters": [
+        "confirmed_selection",
         "custom_words",
-        "episode_selection"
+        "episode_selection",
+        "user_specified"
       ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,

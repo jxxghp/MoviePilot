@@ -124,7 +124,7 @@ Cloudflare、空浏览器页面和通用检测的范围提示；这些检测不�
 等长的集号对应项，不根据季号猜测整包偏移；无对应依据时拒绝跨季同号文件，特别篇 S00
 独立匹配。来源识别词已经修正的文件不重复换算，无集号附件继续保留。
 选集失败只请求移除本次新增任务并保留文件，再由现有下载链记录退避、通知和尝试其它候选；
-下载器拒绝清理时明确提示人工核查。已有任务不启停、不重选也不删除。
+下载器拒绝清理时明确提示人工核查。已有任务只追加目标文件，规则见下文“种子下载重试回归”。
 `tests/test_module_invocation_dispatcher.py` 同时验证旧插件下载器不接收新增可选的
 `episode_selection` 时继续兼容。这些测试使用离线下载器替身，不代表真实 Docker 实例验收。
 
@@ -258,7 +258,23 @@ CloudDrive 的移动后改名失败，验证重新取得租约后仅补改名、
 从订阅计划一直传到下载器文件选择；目标集数不匹配或优先级未确认时不启动任务，不能写成功历史。
 启动结果未知时尝试确认暂停；无法确认则明确要求检查下载器，不能宣称任务已停止。
 已有下载任务只按原始种子 info 字节或磁力中的 v1/v2 哈希确认，名称与大小相同不能接管任务。
-已有任务返回存在标志，保留启停状态和文件选择，包括之前暂停的任务；不再通过重复提交自动恢复选集。
+同一 hash 已有任务时按 `app/domain/torrent.py` 的 `decide_existing_task` 核验能否受理：自动流程（订阅、工作流、
+插件）只把目标中尚未选中的文件设为下载，从不暂停、取消选择或删除；已暂停且目标未下完的任务拒绝，由订阅换种子；
+MP 曾确认选中（下载历史 note 中的 `confirmed_selection`）、现在被取消的目标主文件按“被别人取消”拒绝。用户手动指定
+种子（`download_single(user_specified=True)`）时重新选中被取消的目标，先追加再恢复暂停的任务。追加、恢复、移除
+“已整理”与补写系统种子标签都要回读确认，未确认即失败；拒绝不让订阅跳过候选，通知按原因与范围去重。见
+`tests/test_existing_task_decision.py`、`tests/test_episode_file_selection.py` 与 `tests/test_downloader_submission.py`；
+旧插件下载器不接收新增参数时的兼容见 `tests/test_module_invocation_dispatcher.py`。同一任务上“读取状态 → 改动”的
+操作持有 `downloader_task_locks`，见 `tests/test_runtime_keyed_locks.py` 与 `tests/test_download_task_service.py`。
+
+只选中部分文件的任务进入下载器整理轮询时逐文件确认，附上下载器报告未下完的文件（相对任务内容路径），整理时跳过，
+蓝光原盘盘内有未完成文件时整盘跳过；音频同目录的 CUE 未下完时该目录的音频本轮延期，同时本轮不写“已整理”。读不到
+文件状态或路径对应不上时本轮不整理。打“已整理”前确认选中部分已下完、选中大小与交给整理时一致；移动整理后删除任务前
+确认任务目录里没有未整理的媒体文件。见 `tests/test_transfer_downloader_storage.py`、`tests/test_music_cue.py`、
+`tests/test_transfer_mark_torrent_completed.py` 与 `tests/test_transfer_torrent_cleanup.py`。rTorrent 按
+`d.is_partially_done` 合成完成标记（进度仍按全部数据计算），添加前按 hash 预查，校验期间按运行处理，恢复时补
+`d.resume`，见 `tests/test_rtorrent_responses.py`；这些命令按文档实现，尚未在真实 rTorrent 实例上验证。
+
 新任务的视频文件按目标集交集选择，允许多集文件连带下载相邻集；无集号的非视频附属文件保留，
 无集号视频不随整包附件自动选中。只有视频可证明目标集完整覆盖，单集请求仍允许唯一视频兜底。
 `tests/test_episode_file_selection.py` 覆盖三种下载器的一致规则，历史明细也按交集保留多集视频。
@@ -370,13 +386,11 @@ HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站
 换票诊断包含 HTTP 状态、有限错误字段摘要及是否携带 Cookie，不输出凭据或完整签名 URL。
 再次调用可重新换票，但不增加自动换票重试次数；明确限流仍优先沿用站点窗口，
 直接链接真实损坏种子的 24 小时黑名单与已经写入的旧冷却记录保持不变。
-下载器报告同一任务已存在且整包全部媒体文件明细已记录时，按资源指纹登记 7 天提交退避，
-使订阅不再重投同一个已持有的整包；退避只压制该资源，候选仍继续尝试同媒体的其他种子，
-订阅不会被判定完成或失败，且仅订阅来源写台账（手动补投不留冷却记录）。冷却跳过日志转述台账
-中的原因，不再把它断言成"添加下载失败"。见 `tests/test_torrent_download_retry.py` 与
-`tests/test_downloader_submission.py`。
+下载器确认原样复用已有任务（没有追加文件）、本次提交记不下任何集且整包全部媒体文件明细已记录时，按资源指纹登记
+7 天提交退避，指纹包含订阅 ID 与下载器范围；追加了文件或带集数的提交都不登记，以免挡住扩大范围后的补集。退避只压制
+该订阅往该下载器重投该资源，订阅不会被判定完成或失败，仅订阅来源写台账，冷却跳过日志转述台账中的原因。见
+`tests/test_torrent_download_retry.py` 与 `tests/test_downloader_submission.py`。
 整包退避指纹不包含解析种子后补齐的集数，下一轮搜索仍能命中；普通失败仍按原有集数指纹隔离。
-只重复选择了已记录的部分集数、但包内仍有未记录文件时，不登记整包退避，也不把未选文件写入历史。
 
 换票资源的跨批次复用见 `tests/test_download_resource_cache.py`：种子成功解析后，
 本地 `torrents` 缓存以站点资源身份、原始换票请求和 Cookie 的摘要保存内容，命中后
