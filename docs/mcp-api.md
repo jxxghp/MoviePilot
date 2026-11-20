@@ -101,6 +101,14 @@ Server 使用独立 SQL 表长期保存关系，不属于识别缓存清理范�
 和 Authorization 区分缓存变体；切换身份后重新校验访问。其它业务 API
 继续按 `no-store` 读取。
 
+### 音乐资源人工候选
+
+`GET /api/v1/search/media/{media_id}` 及对应 `/stream` 接口在显式设置
+`include_candidates=true` 时，保留通过现有筛选规则的非精确音乐资源，包括名称、演出或站点分类
+与目标不符的资源。它们以 `match_status=candidate` 返回，`match_reason` 保留匹配原因，
+`media_info` 为空，不会绑定搜索目标身份。前端在“待确认”中展示，下载前仍须人工核对确认。
+默认精确搜索和自动订阅继续只采用精确匹配结果。
+
 ### iOS 媒体流与电视剧选集
 
 `GET /api/v1/mediaserver/search?keyword=...&type=电视剧&type=音乐&limit=40` 按关键词调用
