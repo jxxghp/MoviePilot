@@ -477,7 +477,8 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         try:
             repository: DownloadFailureRepository = self.download_failure_repository
-            record = repository.get_active_by_fingerprints(fingerprints=[fingerprint], now_time=now_time).get(fingerprint)
+            active = repository.get_active_by_fingerprints(fingerprints=[fingerprint], now_time=now_time)
+            record = active.get(fingerprint)
         except Exception as err:
             logger.error(f"查询已有任务拒绝记录失败：{str(err)}")
             return False

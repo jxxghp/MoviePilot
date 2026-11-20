@@ -4,7 +4,7 @@
 
 import re
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Tuple, Union, cast
 
 from app.application.audio import capture_audio_metadata
@@ -119,44 +119,46 @@ def _covered_by_downloader_monitor(file_uri: FileURI, download_dirs: List[Transf
     )
 
 
-def _reported_incomplete(item: FileItem, incomplete_files: Optional[list[str]]) -> bool:
+def _storage_posix_path(path: Optional[str]) -> PurePosixPath:
     """
-    判断候选文件是否是下载器报告尚未下载完成的文件。
+    把存储路径规范为以 "/" 开头、以 "/" 分隔的路径，便于逐级比较（兼容 Windows 本地路径的反斜杠）。
 
-    下载器报告的是任务内的相对路径，候选是存储上的完整路径，两者只有前缀不同（保存目录、路径映射），
-    按以 "/" 为边界的路径后缀比对；同一任务内的相对路径互不相同。
-
-    :param item: 候选文件
-    :param incomplete_files: 下载器报告尚未下载完成的文件相对路径；为空表示无需过滤
-    :return: 候选是其中某个文件时返回 True
+    :param path: 存储上的路径
+    :return: 规范后的路径
     """
-    if not incomplete_files:
-        return False
-    path = "/" + str(item.path or "").replace("\\", "/").lstrip("/")
-    return any(path.endswith("/" + str(name).replace("\\", "/").lstrip("/")) for name in incomplete_files if name)
+    return PurePosixPath("/" + str(path or "").replace("\\", "/").lstrip("/"))
 
 
 def _drop_reported_incomplete(
-        candidates: List[Tuple[FileItem, bool]], incomplete_files: Optional[list[str]],
+        candidates: List[Tuple[FileItem, bool]], incomplete_files: Optional[list[str]], root: FileItem,
 ) -> List[Tuple[FileItem, bool]]:
     """
-    从候选中去掉下载器报告尚未下载完成的文件，并记录跳过了哪些。
+    从候选中去掉下载器报告尚未下载完成的文件，以及包含这类文件的目录候选，并记录跳过了哪些。
+
+    下载器报告的是相对任务内容路径（即整理根目录 ``root``）的路径，拼成完整路径后与候选逐级精确比较：
+    - 候选是普通文件时，只跳过同一个文件；文件名相同但位于其他目录的文件（例如根目录的 ``E01.mkv`` 未完成、
+      ``Extras/E01.mkv`` 已完成）照常整理；
+    - 候选是蓝光原盘目录时整盘作为一个整理对象，盘内只要有一个文件没下完，整盘都不整理。
 
     :param candidates: 遍历得到的候选文件与是否位于蓝光目录
-    :param incomplete_files: 下载器报告尚未下载完成的文件相对路径；为空表示无需过滤
+    :param incomplete_files: 下载器报告尚未下载完成的文件，相对任务内容路径；为空表示无需过滤
+    :param root: 整理根目录，即下载器任务的内容路径
     :return: 保留的候选
     """
     if not incomplete_files:
         return candidates
+    root_path = _storage_posix_path(root.path)
+    incomplete = [root_path / str(name).replace("\\", "/").lstrip("/") for name in incomplete_files]
     kept: List[Tuple[FileItem, bool]] = []
     skipped: List[str] = []
     for item, is_bluray_dir in candidates:
-        if _reported_incomplete(item, incomplete_files):
+        path = _storage_posix_path(item.path)
+        if any(target == path or path in target.parents for target in incomplete):
             skipped.append(str(item.name))
         else:
             kept.append((item, is_bluray_dir))
     if skipped:
-        logger.info(f"跳过下载器报告尚未下载完成的文件：{'、'.join(skipped)}")
+        logger.info(f"跳过下载器报告尚未下载完成的文件（或包含这类文件的蓝光原盘目录）：{'、'.join(skipped)}")
     return kept
 
 
@@ -409,8 +411,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         候选遍历只负责发现文件，业务过滤集中在此阶段；返回模板命中状态供公开整理流程
         保持“未命中自定义集数模板时跳过”的旧行为。
 
-        :param incomplete_files: 下载器报告尚未下载完成的文件相对路径（只选中部分文件的下载器任务），一律跳过：
-            取消选择前下了一部分、或与选中文件共用分块被写入部分数据的文件留在任务目录里，不能当成正常文件整理
+        :param incomplete_files: 下载器报告尚未下载完成的文件（只选中部分文件的下载器任务），相对 ``fileitem``（任务
+            内容路径），一律跳过，包含这类文件的蓝光原盘目录整盘跳过：取消选择前下了一部分、或与选中文件共用分块被写入
+            部分数据的文件留在任务目录里，不能当成正常文件整理
         """
         format_handler = (
             FormatParser(
@@ -479,7 +482,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 for selected_fileitem in selected_fileitems
                 if (latest_fileitem := storage_chain.get_item(selected_fileitem))
             ]
-        candidates = _drop_reported_incomplete(candidates, incomplete_files)
+        candidates = _drop_reported_incomplete(candidates, incomplete_files, fileitem)
         return [
             (item, is_bluray_dir) for item, is_bluray_dir in candidates if is_allowed(item, is_bluray_dir)
         ], matched_template
@@ -634,8 +637,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param skip_success: 在预览、历史清理及任务准入前跳过成功记录
         :param music_track_match: 手选专辑的曲目对齐方式，默认严格校验
         :param music_target_path: 本次音乐最终目录，冻结后用于预览及恢复执行
-        :param incomplete_files: 下载器报告尚未下载完成的文件相对路径，整理时跳过；由下载器整理轮询对只选中部分文件的
-            任务提供，其余调用方省略
+        :param incomplete_files: 下载器报告尚未下载完成的文件，相对 ``fileitem``（任务内容路径），整理时跳过；由下载器
+            整理轮询对只选中部分文件的任务经 ``_execute_transfer`` 提供，公开的 ``do_transfer`` 不接收此参数
         返回：成功标识，错误信息
         """
         selected_music_album: Optional[MusicAlbumInfo]

@@ -1616,6 +1616,37 @@ class TransferQueueOwner(_TransferOwnerBase):
             self.__dict__.setdefault("_transfer_scan_sizes", {}),
         )
 
+    def _transfer_downloader_task(
+            self,
+            torrent: DownloaderTorrent,
+            fileitem: FileItem,
+            mediainfo: Any,
+            mtype: Optional[MediaType],
+    ) -> None:
+        """
+        把下载器整理轮询查到的已完成任务交给整理。
+
+        只选中部分文件的任务要跳过下载器报告尚未下载完成的文件。这是下载器整理轮询的内部参数，不进入公开的
+        ``do_transfer`` 签名，与恢复回放一样经 ``_execute_transfer`` 传入；其余任务照旧调用 ``do_transfer``，
+        替换或包装了它的插件看到的调用不变。
+
+        :param torrent: 已完成的下载器任务
+        :param fileitem: 任务内容路径对应的存储文件项（整理根目录）
+        :param mediainfo: 按下载记录识别的媒体信息；非 MoviePilot 下载的任务为 None，按文件识别
+        :param mtype: 下载记录中的媒体类型；无下载记录时为 None
+        """
+        transfer_kwargs: Dict[str, Any] = {
+            "fileitem": fileitem,
+            "mediainfo": mediainfo,
+            "mtype": mtype,
+            "downloader": torrent.downloader,
+            "download_hash": torrent.hash,
+        }
+        if torrent.incomplete_files:
+            self._execute_transfer(**transfer_kwargs, incomplete_files=torrent.incomplete_files)
+        else:
+            self.do_transfer(**transfer_kwargs)
+
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
         """
         获取下载器中的种子列表，并执行整理
@@ -1716,15 +1747,8 @@ class TransferQueueOwner(_TransferOwnerBase):
                         mediainfo = None
 
                     self._remember_transfer_scan(torrent)
-                    # 执行异步整理，匹配源目录；只选中部分文件的任务跳过下载器报告未下载完成的文件
-                    self.do_transfer(
-                        fileitem=fileitem,
-                        mediainfo=mediainfo,
-                        mtype=mtype,
-                        downloader=torrent.downloader,
-                        download_hash=torrent.hash,
-                        incomplete_files=torrent.incomplete_files,
-                    )
+                    # 执行异步整理，匹配源目录
+                    self._transfer_downloader_task(torrent, fileitem, mediainfo, mtype)
                     if progress_callback:
                         progress_callback(
                             value=index / total_num * 100,

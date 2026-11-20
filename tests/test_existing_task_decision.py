@@ -24,7 +24,10 @@ def _snapshot(*files, state=ExistingTaskState.RUNNING):
     构造已有任务快照；files 为 (名称, 已选中, 已完成) 三元组，按顺序编号。
     """
     return ExistingTaskSnapshot(
-        files=tuple(ExistingTaskFile(index, name, wanted, completed) for index, (name, wanted, completed) in enumerate(files)),
+        files=tuple(
+            ExistingTaskFile(index, name, wanted, completed)
+            for index, (name, wanted, completed) in enumerate(files)
+        ),
         state=state,
     )
 
@@ -139,7 +142,9 @@ def test_confirmed_selection_note_round_trip_and_legacy_notes():
     assert ConfirmedSelection.from_note(None) == ConfirmedSelection()
     # 开发期的旧格式（逐文件带路径）版本不符，按没有记录处理。
     assert ConfirmedSelection.from_note(
-        {torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: {"version": 2, "downloaders": {"qb": [{"index": 0, "path": ["a"]}]}}},
+        {torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: {
+            "version": 2, "downloaders": {"qb": [{"index": 0, "path": ["a"]}]},
+        }},
     ) == ConfirmedSelection()
 
 

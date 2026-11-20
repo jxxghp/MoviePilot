@@ -2,6 +2,7 @@
 验证 rTorrent XML-RPC 返回值映射及异常响应的隔离。
 """
 
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -90,13 +91,15 @@ def test_partially_selected_task_counts_as_complete(
 def test_partially_selected_task_enters_downloader_transfer_polling(client, torrent_row):
     """
     只选了 E01 的季包下完 E01 后，要出现在下载器整理轮询里，进度按选中部分为 100，选中大小可用于整理链比对。
-    E02 下到一部分后被取消选择、残缺文件仍在磁盘上：随任务附上"未下载完成的文件"，整理时跳过它。
+    E02 下到一部分后被取消选择、残缺文件仍在磁盘上：随任务附上"未下载完成的文件"（相对任务内容路径），整理时跳过它。
+    多文件任务的 ``d.directory`` 是任务目录本身（含种子名），``f.path`` 相对它、不带顶层目录。
     """
+    torrent_row[8] = "/downloads/movie"
     torrent_row[9] = get_runtime_setting("TORRENT_TAG") or ""
     torrent_row[14] = 1
     client._proxy.d.multicall2.return_value = [torrent_row]
     client._proxy.f.multicall.return_value = [
-        ["movie/Show.S01E01.mkv", 250, 1, 4, 4], ["movie/Show.S01E02.mkv", 750, 0, 1, 12],
+        ["Show.S01E01.mkv", 250, 1, 4, 4], ["Show.S01E02.mkv", 750, 0, 1, 12],
     ]
     module = RtorrentModule.__new__(RtorrentModule)
     module.get_instances = Mock(return_value={"rt": client})
@@ -108,7 +111,8 @@ def test_partially_selected_task_enters_downloader_transfer_polling(client, torr
     assert torrent.progress == 100
     assert torrent.selected_size == 250
     assert torrent.state == DownloadTaskState.COMPLETED.value
-    assert torrent.incomplete_files == ["movie/Show.S01E02.mkv"]
+    assert torrent.path == Path("/downloads/movie")
+    assert torrent.incomplete_files == ["Show.S01E02.mkv"]
     assert module.list_torrents(status=TorrentQueryStatus.DOWNLOADING) == []
 
 
@@ -176,3 +180,43 @@ def test_tag_operations_preserve_merge_remove_and_empty_response(client):
     client._proxy.d.custom1.return_value = ["invalid"]
     assert client.set_torrents_tag("ABC", ["new"]) is False
     assert client.get_torrent_tags("ABC") == []
+
+
+def test_resume_torrents_sends_resume_for_each_task(client):
+    """
+    恢复被 ``d.pause`` 暂停的任务：单个 hash 与列表都逐个发送 ``d.resume``；请求异常或未连接时报告失败。
+    """
+    assert client.resume_torrents("ABC") is True
+    client._proxy.d.resume.assert_called_once_with("ABC")
+
+    client._proxy.d.resume.reset_mock()
+    assert client.resume_torrents(["A1", "B2"]) is True
+    assert [call.args for call in client._proxy.d.resume.call_args_list] == [("A1",), ("B2",)]
+
+    client._proxy.d.resume.side_effect = OSError("rpc down")
+    assert client.resume_torrents("ABC") is False
+    client._proxy = None
+    assert client.resume_torrents("ABC") is False
+
+
+@pytest.mark.parametrize("value,expected", [
+    (1, True), ("1", True), (0, False), ("0", False), ("", False), (False, False),
+])
+def test_hash_checking_parses_rpc_values(client, value, expected):
+    """
+    ``d.is_hash_checking`` 的整数、字符串与布尔返回值都归一为布尔。
+    """
+    client._proxy.d.is_hash_checking.return_value = value
+
+    assert client.is_hash_checking("ABC") is expected
+    client._proxy.d.is_hash_checking.assert_called_once_with("ABC")
+
+
+def test_hash_checking_is_unknown_when_query_fails(client):
+    """
+    查询失败或没有 hash 时返回 None（状态未知），不当成"未在校验"。
+    """
+    client._proxy.d.is_hash_checking.side_effect = OSError("rpc down")
+
+    assert client.is_hash_checking("ABC") is None
+    assert client.is_hash_checking("") is None

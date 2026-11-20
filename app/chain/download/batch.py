@@ -163,7 +163,8 @@ class _BatchDownloadRun:
         self.allowed_episodes = set(allowed_episodes) if allowed_episodes is not None else None
         self.downloaded: List[Context] = []
         self.failures: Dict[str, Optional[DownloadFailureSnapshot]] = {}
-        # 本批内已被下载器以"只针对这几集"的原因拒绝的（候选, 目标集），见 _submit。
+        # 本批内已被下载器以"只针对这几集"的原因拒绝的（候选, 目标集），见 _submit。候选按对象身份（id）区分：
+        # 本批始终持有这些 Context，身份在批内稳定；资源指纹在缺少媒体或资源身份时为空，不能作这里的键。
         self.target_failures: Set[Tuple[int, frozenset[int]]] = set()
         words = options["custom_words"]
         self.custom_words = words.splitlines() if words else None

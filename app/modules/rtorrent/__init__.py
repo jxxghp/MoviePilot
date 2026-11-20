@@ -148,7 +148,10 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         # 已存在时新种子被静默丢弃，RPC 不报错、也不会出现带临时标签的新任务。因此不能只靠"添加失败"
         # 发现已有任务，添加前先按 hash 查一次（也省掉随后最长约 27 秒的临时标签轮询）。代价是每次添加
         # 多一次全量任务列表查询（rTorrent 没有按 hash 过滤的批量接口），任务数上千时约几十到几百毫秒。
-        existing, _error = self._find_existing_task(server, expected_hashes)
+        existing, error = self._find_existing_task(server, expected_hashes)
+        if error:
+            # 预查只是优化：照常添加，添加后的临时标签轮询同样会按 hash 认出已有任务，只是要多等一会儿。
+            logger.warning(f"添加前查询 rTorrent 任务列表失败，无法预先判断是否已有同一任务，继续添加：{torrent_desc_text}")
         if existing is not None:
             return self._finish_found_task(
                 server, existing, episodes, custom_words, downloader, episode_selection, confirmed_selection,
@@ -511,8 +514,11 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                 content_path=self.normalize_return_path(torrent_path, downloader_name),
                 progress=torrent_data.get("progress", 0),
                 size=total_size,
-                # complete 表示选中部分已下完（见 Rtorrent.get_torrents），此时已完成字节数近似为选中下载的数据量；
-                # 未选中文件里恰好已完成的分块也计入，整理链只用它判断"选中范围是否变化"。
+                # complete 表示选中部分已下完（见 Rtorrent.get_torrents），此时已完成字节数近似为选中下载的数据量，
+                # 未选中文件里恰好已完成的分块也计入。只用于两处，近似不影响结论：
+                # - 整理链判断"整理期间选中范围是否变化"：之后新选中的文件只要还缺分块，下完它就会让该值变大；
+                #   数据本来就齐的文件在扫描时已是完整文件，不在未完成列表里，本轮已经整理；
+                # - 逐文件准入短路：达到总大小意味着全部分块已完成，所有文件都完整，无需逐文件确认。
                 selected_size=completed_size if str(torrent_data.get("complete")) == "1" else None,
                 state=self.__normalize_torrent_state(
                     torrent_data.get("state"), torrent_data.get("complete")

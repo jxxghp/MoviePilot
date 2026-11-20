@@ -166,7 +166,8 @@ class Transmission:
         if status and not isinstance(status, list):
             status = [status]
         if tags and not isinstance(tags, list):
-            tags = tags.split(',')
+            # 与任务标签的解析一致去掉空白：TORRENT_TAG 配成 "MOVIEPILOT, TV" 时也要匹配到带 TV 标签的任务
+            tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
         ret_torrents = []
         try:
             for torrent in torrents:

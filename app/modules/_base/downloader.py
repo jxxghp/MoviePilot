@@ -7,7 +7,7 @@
 依赖的文件、状态、标签读写接口）仍留在各模块。
 """
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, List, Optional, Protocol, Set, Tuple, TypeVar, Union, cast
 
 from torrentool.torrent import Torrent
@@ -271,27 +271,64 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
             return True
         return any(item.wanted and not item.completed for item in files)
 
-    def _admit_transfer_torrent(self, server: DownloaderServiceT, torrent: DownloaderTorrent) -> List[DownloaderTorrent]:
+    def _admit_transfer_torrent(
+            self, server: DownloaderServiceT, torrent: DownloaderTorrent,
+    ) -> List[DownloaderTorrent]:
         """
         下载器整理轮询的逐文件准入：只选中了部分文件的已完成任务，附上下载器报告尚未下载完成的文件。
 
         "已完成"指选中的文件已下完，但整理链会递归扫描整个任务目录：取消选择前已下了一部分的文件，以及与选中文件
         共用分块、被 rTorrent / Transmission 写入了部分数据的相邻文件，都留在磁盘上，不过滤就会被当成正常剧集整理入库。
-        选中大小小于总大小才需要逐文件确认（多一次文件列表查询）；读不到文件状态时本轮不交给整理，下一轮再试，
-        宁可晚整理，也不整理残缺文件。
+        选中大小小于总大小才需要逐文件确认（多一次文件列表查询）。rTorrent 的选中大小是已完成字节数的近似值（含未选中
+        文件里已完成的分块），达到总大小意味着全部分块都已完成，所有文件都是完整的，同样无需确认。
+        读不到文件状态、或文件路径对应不到任务内容路径时本轮不交给整理，下一轮再试，宁可晚整理，也不整理残缺文件。
 
         :param server: 当前下载器客户端
         :param torrent: 整理轮询查到的已完成任务
         :return: 需要交给整理的任务（至多一个）；读不到文件状态时为空列表
         """
-        if torrent.selected_size is None or not torrent.size or torrent.selected_size >= torrent.size or not torrent.hash:
+        selected, total = torrent.selected_size, torrent.size
+        if selected is None or not total or selected >= total or not torrent.hash:
             return [torrent]
         files = self._existing_task_files(server, torrent.hash)
         if not files:
             logger.warning(f"读取种子 {torrent.hash} 的文件状态失败，无法排除未下载完成的文件，本轮暂不整理")
             return []
-        torrent.incomplete_files = [item.name for item in files if not item.completed]
+        incomplete = self._content_relative_paths(torrent, [item.name for item in files if not item.completed])
+        if incomplete is None:
+            logger.warning(
+                f"种子 {torrent.hash} 的文件路径对应不到任务内容路径 {torrent.path}，无法排除未下载完成的文件，本轮暂不整理"
+            )
+            return []
+        torrent.incomplete_files = incomplete
         return [torrent]
+
+    @staticmethod
+    def _content_relative_paths(torrent: DownloaderTorrent, names: List[str]) -> Optional[List[str]]:
+        """
+        把下载器文件列表中的文件名换算为相对任务内容路径（``torrent.path``，即整理根目录）的路径。
+
+        三个下载器的文件名都相对保存目录（``save_path``）：qBittorrent、Transmission 的多文件任务带顶层目录名；
+        rTorrent 多文件任务的保存目录（``d.directory``）本身就是任务目录，文件名不带顶层目录。按"保存目录 + 文件名"
+        拼出完整路径再求相对内容路径，各自的命名差异都能对上，整理链据此逐级精确比较，不靠文件名后缀猜测。
+
+        :param torrent: 整理轮询查到的任务，``path`` 与 ``save_path`` 已按同一路径映射转换
+        :param names: 下载器报告的文件名
+        :return: 相对内容路径的路径（内容路径本身记为 "."）；缺少保存目录或文件不在内容路径之下时返回 None
+        """
+        if not names:
+            return []
+        if not torrent.path or not torrent.save_path:
+            return None
+        root = PurePosixPath(str(torrent.path).replace("\\", "/"))
+        base = PurePosixPath(str(torrent.save_path).replace("\\", "/"))
+        relative: List[str] = []
+        for name in names:
+            try:
+                relative.append((base / str(name).replace("\\", "/").lstrip("/")).relative_to(root).as_posix())
+            except ValueError:
+                return None
+        return relative
 
     def _existing_task_files(
             self, server: DownloaderServiceT, torrent_hash: str,

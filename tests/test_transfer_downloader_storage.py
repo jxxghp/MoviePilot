@@ -4,7 +4,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, create_autospec, patch
 
 import pytest
 
@@ -36,12 +36,22 @@ def monitored_source(monkeypatch):
     storage.get_file_item_strict.return_value = source
     monkeypatch.setattr(workflow_module, "StorageChain", Mock(return_value=storage))
     monkeypatch.setattr(queue_module.DirectoryHelper, "get_download_dirs", lambda _: [directory])
+    # 整理入口执行真实的 do_transfer / _execute_transfer 委托，只把最终的整理工作流替换为按真实签名校验参数的替身：
+    # 轮询传了某一层不接受的参数时直接报 TypeError，而不是被宽松的 Mock 吞掉。
+    owner = workflow_module.TransferWorkflowOwner
+    run_workflow = create_autospec(owner._run_transfer_workflow, return_value=(True, ""))
     chain = SimpleNamespace(
         jobview=Mock(), list_torrents=Mock(return_value=[torrent]),
-        download_history_repository=Mock(), do_transfer=Mock(return_value=(True, "")),
-        _build_transfer_fileitem=workflow_module.TransferWorkflowOwner._build_transfer_fileitem,
+        download_history_repository=Mock(),
+        _build_transfer_fileitem=owner._build_transfer_fileitem,
         # 整理轮询记录交给整理时的选中大小，打"已整理"标签前比对，见 test_transfer_mark_torrent_completed.py。
         _transfer_scan_sizes={},
+    )
+    chain._run_transfer_workflow = lambda *args, **kwargs: run_workflow(chain, *args, **kwargs)
+    chain.do_transfer = Mock(side_effect=lambda *args, **kwargs: owner.do_transfer(chain, *args, **kwargs))
+    chain._execute_transfer = Mock(side_effect=lambda *args, **kwargs: owner._execute_transfer(chain, *args, **kwargs))
+    chain._transfer_downloader_task = (
+        lambda *args: queue_module.TransferQueueOwner._transfer_downloader_task(chain, *args)
     )
     chain._remember_transfer_scan = (
         lambda item: queue_module.TransferQueueOwner._remember_transfer_scan(chain, item)
@@ -51,7 +61,9 @@ def monitored_source(monkeypatch):
     )
     chain.jobview.get_all_torrent_hashes.return_value = set()
     chain.download_history_repository.get_by_hash.return_value = None
-    return SimpleNamespace(chain=chain, storage=storage, source=source, torrent=torrent, directory=directory)
+    return SimpleNamespace(
+        chain=chain, storage=storage, source=source, torrent=torrent, directory=directory, run_workflow=run_workflow,
+    )
 
 
 @pytest.mark.parametrize("storage_type", ["smb", "local"])
@@ -73,10 +85,12 @@ def test_downloader_monitor_reads_source_through_storage(monitored_source, stora
     state.storage.get_file_item_strict.assert_called_once_with(
         storage=storage_type, path=Path("/incoming/Movie/movie.mkv"),
     )
+    # 没有未完成文件的任务照旧走公开的 do_transfer，替换或包装了它的插件看到的调用不变。
     state.chain.do_transfer.assert_called_once_with(
-        fileitem=state.source, mediainfo=None, mtype=None,
-        downloader="remote-qb", download_hash="hash-smb", incomplete_files=None,
+        fileitem=state.source, mediainfo=None, mtype=None, downloader="remote-qb", download_hash="hash-smb",
     )
+    state.chain._execute_transfer.assert_not_called()
+    state.run_workflow.assert_called_once()
 
 
 def test_downloader_monitor_remembers_selected_size_for_tagging(monitored_source):
@@ -95,42 +109,83 @@ def test_downloader_monitor_remembers_selected_size_for_tagging(monitored_source
 
 def test_downloader_monitor_passes_incomplete_files_to_transfer(monitored_source):
     """
-    只选中部分文件的任务，下载器报告尚未下载完成的文件随任务交给整理，整理时跳过。
+    只选中部分文件的任务，下载器报告尚未下载完成的文件随任务交给整理，整理时跳过。该参数是轮询内部参数，
+    经 ``_execute_transfer`` 传到整理工作流，不进入公开的 ``do_transfer`` 签名。
     """
     state = monitored_source
-    state.torrent.incomplete_files = ["Movie/movie.part2.mkv"]
+    state.torrent.incomplete_files = ["movie.part2.mkv"]
 
     with patch.object(Path, "exists", side_effect=AssertionError("禁止入口查本地文件")), \
             patch.object(Path, "stat", side_effect=AssertionError("禁止入口读取本地属性")):
         queue_module.TransferQueueOwner.process(state.chain)
 
-    assert state.chain.do_transfer.call_args.kwargs["incomplete_files"] == ["Movie/movie.part2.mkv"]
+    state.chain.do_transfer.assert_not_called()
+    state.chain._execute_transfer.assert_called_once()
+    kwargs = state.run_workflow.call_args.kwargs
+    assert kwargs["incomplete_files"] == ["movie.part2.mkv"]
+    assert kwargs["fileitem"] is state.source
+    assert kwargs["download_hash"] == "hash-smb"
 
 
-def _file(path):
+def _file(path, *, file_type="file"):
     """
-    构造整理候选文件。
+    构造整理候选文件或目录。
     """
-    return FileItem(storage="local", path=path, name=Path(path).name, type="file", size=1024, extension="mkv")
+    return FileItem(storage="local", path=path, name=Path(path).name, type=file_type, size=1024, extension="mkv")
+
+
+_ROOT = _file("/media/incoming/Show.S01/", file_type="dir")
 
 
 def test_candidates_skip_files_the_downloader_reports_incomplete():
     """
-    E01 下完、E02 下到一半后被取消选择：残缺的 E02 仍在任务目录里，整理只能拿到 E01。下载器报告的是任务内相对
-    路径，候选是存储上的完整路径（保存目录、路径映射不同），按以 "/" 为边界的路径后缀比对，同名前缀不误伤。
+    E01 下完、E02 下到一半后被取消选择：残缺的 E02 仍在任务目录里，整理只能拿到 E01。下载器报告的是相对任务内容路径
+    （整理根目录）的路径，拼成完整路径后逐级精确比较，文件名相似的其他文件不受影响。
     """
     e01, e02 = _file("/media/incoming/Show.S01/Show.S01E01.mkv"), _file("/media/incoming/Show.S01/Show.S01E02.mkv")
     lookalike = _file("/media/incoming/Show.S01/Extra.Show.S01E02.mkv")
     candidates = [(e01, False), (e02, False), (lookalike, False)]
 
-    kept = workflow_module._drop_reported_incomplete(candidates, ["Show.S01/Show.S01E02.mkv"])
+    kept = workflow_module._drop_reported_incomplete(candidates, ["Show.S01E02.mkv"], _ROOT)
 
     assert kept == [(e01, False), (lookalike, False)]
-    assert workflow_module._drop_reported_incomplete(candidates, None) is candidates
-    assert workflow_module._drop_reported_incomplete(candidates, []) is candidates
-    # Windows 风格分隔符与没有根目录的布局（qB NoSubfolder）同样能认出。
-    assert workflow_module._reported_incomplete(e02, ["Show.S01\\Show.S01E02.mkv"])
-    assert workflow_module._reported_incomplete(e02, ["Show.S01E02.mkv"])
+    assert workflow_module._drop_reported_incomplete(candidates, None, _ROOT) is candidates
+    assert workflow_module._drop_reported_incomplete(candidates, [], _ROOT) is candidates
+    # Windows 风格分隔符同样能认出。
+    windows_root = _file("C:\\media\\incoming\\Show.S01", file_type="dir")
+    windows_e02 = _file("C:\\media\\incoming\\Show.S01\\Extras\\E02.mkv")
+    assert workflow_module._drop_reported_incomplete([(windows_e02, False)], ["Extras\\E02.mkv"], windows_root) == []
+
+
+def test_completed_file_with_same_name_in_other_directory_is_kept():
+    """
+    根目录的 E01.mkv 没下完、Extras/E01.mkv 已下完：只跳过根目录那个，同名但位于其他目录的完整文件照常整理。
+    反过来报告 Extras/E01.mkv 未完成时，根目录的 E01.mkv 也不受影响。
+    """
+    root_e01 = _file("/media/incoming/Show.S01/E01.mkv")
+    extras_e01 = _file("/media/incoming/Show.S01/Extras/E01.mkv")
+    candidates = [(root_e01, False), (extras_e01, False)]
+
+    assert workflow_module._drop_reported_incomplete(candidates, ["E01.mkv"], _ROOT) == [(extras_e01, False)]
+    assert workflow_module._drop_reported_incomplete(candidates, ["Extras/E01.mkv"], _ROOT) == [(root_e01, False)]
+
+
+@pytest.mark.parametrize("disc_path,incomplete,kept", [
+    # 原盘位于任务目录下：盘内有文件没下完时整盘跳过，另一张完整的盘照常整理。
+    ("/media/incoming/Show.S01/Disc1", ["Disc1/BDMV/STREAM/00002.m2ts"], False),
+    ("/media/incoming/Show.S01/Disc1", ["Disc2/BDMV/STREAM/00002.m2ts"], True),
+    # 任务目录本身就是原盘根目录。
+    ("/media/incoming/Show.S01", ["BDMV/STREAM/00002.m2ts"], False),
+])
+def test_bluray_disc_with_incomplete_file_is_skipped_as_a_whole(disc_path, incomplete, kept):
+    """
+    蓝光原盘以整个原盘目录作为整理候选，盘内只要有一个文件没下完，整盘都不整理，不能把残缺原盘当成完整影片入库。
+    """
+    disc = _file(disc_path, file_type="dir")
+
+    result = workflow_module._drop_reported_incomplete([(disc, True)], incomplete, _ROOT)
+
+    assert result == ([(disc, True)] if kept else [])
 
 
 @pytest.mark.parametrize("task_path", [

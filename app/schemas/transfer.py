@@ -35,8 +35,9 @@ class DownloaderTorrent(BaseModel):
     incomplete_files: Optional[list[str]] = Field(
         default=None,
         description=(
-            "下载器整理轮询中只选中了部分文件的任务，下载器报告尚未下载完成的文件相对路径（含取消选择后残留在磁盘上的"
-            "部分数据、与选中文件共用分块而被写入部分数据的相邻文件），整理时跳过；为空表示无需过滤"
+            "下载器整理轮询中只选中了部分文件的任务，下载器报告尚未下载完成的文件，路径相对任务内容路径 path（含取消选择"
+            "后残留在磁盘上的部分数据、与选中文件共用分块而被写入部分数据的相邻文件），整理时跳过，包含这类文件的蓝光原盘"
+            "目录整盘跳过；为空表示无需过滤"
         ),
     )
     progress: Optional[float] = Field(default=0.0, description="当前完成百分比")

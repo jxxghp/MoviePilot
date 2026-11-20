@@ -637,7 +637,10 @@ def test_existing_task_requires_actual_info_hash(downloader, version, matching):
     server.get_files.side_effect = lambda *_args, **_kwargs: (
         [{"id": index, "name": name, "priority": 1, "progress": 1} for index, name in enumerate(_FILES)]
         if isinstance(module, QbittorrentModule) else
-        [SimpleNamespace(id=index, name=name, selected=True, completed=21, size=21) for index, name in enumerate(_FILES)]
+        [
+            SimpleNamespace(id=index, name=name, selected=True, completed=21, size=21)
+            for index, name in enumerate(_FILES)
+        ]
     )
 
     result = module.download(content, Path("/downloads"), "", downloader="test-downloader")
@@ -649,14 +652,13 @@ def test_existing_task_requires_actual_info_hash(downloader, version, matching):
         server.set_torrent_tag.assert_not_called()
 
 
+@pytest.mark.parametrize("downloader", [TransmissionModule], indirect=True)
 @pytest.mark.parametrize("matching", [True, False])
 def test_transmission_duplicate_rpc_task_appends_target(downloader, matching):
     """
     RPC 返回重复任务时同样按目标追加；识别词不匹配时目标对不上，按失败处理且不改动任务。
     """
     module, server, content, torrent_hash = downloader
-    if not isinstance(module, TransmissionModule):
-        pytest.skip("Transmission RPC 重复添加返回非空 Torrent")
     _files, task = existing_task(
         module, server, torrent_hash, [f"Folder.S09E99/{name}" for name in _FILES], tags=["已整理"],
     )
@@ -679,14 +681,13 @@ def test_transmission_duplicate_rpc_task_appends_target(downloader, matching):
     server.set_unwanted_files.assert_not_called()
 
 
+@pytest.mark.parametrize("downloader", [TransmissionModule], indirect=True)
 def test_transmission_duplicate_rpc_rejects_without_changes_when_labels_cannot_be_read(downloader):
     """
     重复添加后读不到标签时，既判断不了暂停来源，也无法安全移除"已整理"：拒绝且不改动任务，
     更不能把未知标签当成空标签写回覆盖原有标签；稍后重试即可。
     """
     module, server, content, torrent_hash = downloader
-    if not isinstance(module, TransmissionModule):
-        pytest.skip("Transmission RPC 重复添加返回非空 Torrent")
     existing_task(module, server, torrent_hash, [f"Folder.S09E99/{name}" for name in _FILES], tags=["已整理"])
     server.add_torrent_with_status.return_value = (SimpleNamespace(hashString=torrent_hash), True)
     read_torrents = server.get_torrents.side_effect
@@ -1071,7 +1072,9 @@ def test_submission_passes_latest_confirmed_selection_and_holds_task_lock(downlo
 
     chain = DownloadChain.__new__(DownloadChain)
     chain.run_module = lambda method, **kwargs: fake_download(**kwargs)
-    chain._settle_accepted_download = Mock(side_effect=lambda **_kwargs: lock_states.append(("settle", stripe.locked())))
+    chain._settle_accepted_download = Mock(
+        side_effect=lambda **_kwargs: lock_states.append(("settle", stripe.locked())),
+    )
     chain._record_rejected_download = Mock()
     chain.download_history_repository = Mock()
     chain.download_history_repository.get_by_hashes.side_effect = read_histories
@@ -1339,9 +1342,21 @@ class _FailureLedger:
 
     def get_active_by_fingerprints(self, fingerprints, now_time):
         """
-        返回给定指纹中已登记的记录（测试不模拟过期）。
+        与真实仓储一致，只返回冷却结束时间晚于 ``now_time`` 的记录（两者都是同一格式的时间文本）。
         """
-        return {item: self.records[item] for item in fingerprints if item in self.records}
+        return {
+            item: self.records[item] for item in fingerprints
+            if item in self.records and (self.records[item].next_retry_at or "") > now_time
+        }
+
+    def expire_all(self) -> None:
+        """
+        把全部记录的冷却结束时间改到过去，模拟记录过期。
+        """
+        for fingerprint, record in self.records.items():
+            self.records[fingerprint] = DownloadFailureSnapshot(
+                fingerprint=record.fingerprint, error_message=record.error_message, next_retry_at="2000-01-01 00:00:00",
+            )
 
 
 def _season_context(site_downloader=None, season=1):
@@ -1421,6 +1436,28 @@ def test_repeated_rejection_is_notified_once_per_reason_and_scope():
     assert chain.post_message.call_count == 6
 
 
+def test_rejection_is_notified_again_after_record_expires():
+    """
+    静默只在记录有效期内生效：记录过期后同一原因、同一范围再次被拒时重新通知，并写入新的记录。
+    """
+    chain = _ledger_chain()
+    chain.post_message = Mock()
+    context = _season_context()
+    paused = ExistingTaskRejection.PAUSED.describe("abc", "任务已暂停")
+
+    _rejected(chain, context, paused, episodes={3})
+    _rejected(chain, context, paused, episodes={3})
+    assert chain.post_message.call_count == 1
+
+    chain.download_failure_repository.expire_all()
+    _rejected(chain, context, paused, episodes={3})
+    _rejected(chain, context, paused, episodes={3})
+
+    assert chain.post_message.call_count == 2
+    (record,) = chain.download_failure_repository.records.values()
+    assert record.next_retry_at > "2000-01-01 00:00:00"
+
+
 @pytest.mark.parametrize("source", [None, "Workflow|7", "插件名"])
 def test_other_automated_sources_are_deduplicated_too(source):
     """
@@ -1492,16 +1529,18 @@ def test_appended_settlement_notifies_even_when_files_were_recorded():
     (DownloadTaskAction.REUSED, None, True),
     (DownloadTaskAction.REUSED, [5, 6], False),
     (DownloadTaskAction.APPENDED, None, False),
-], ids=["reused-no-episodes", "reused-with-episodes", "appended"])
+    (DownloadTaskAction.RESUMED, None, False),
+], ids=["reused-no-episodes", "reused-with-episodes", "appended", "resumed"])
 def test_duplicate_backoff_only_for_unrecordable_resubmission(task_action, selected_episodes, backoff):
     """
     只有下载器对任务没有任何推进（原样复用）、且本次提交记不下任何集（订阅下一轮必然重投）时才登记
     #7107 退避。
 
     带集数的提交成功后订阅会记下这些集，不会循环；对它登记退避反而会挡住同一订阅之后
-    扩大范围时对这个包的补集。追加文件算推进，不登记。
+    扩大范围时对这个包的补集。追加文件、恢复暂停的任务都算推进，不登记，并照常发送下载通知。
     """
     chain, payload = _settle_existing(task_action, recorded=_FILES, selected_episodes=selected_episodes)
 
     assert chain.download_failure_repository.record_failure.called is backoff
-    assert (payload["notification_payload"] is not None) is (task_action is DownloadTaskAction.APPENDED)
+    notified = task_action in (DownloadTaskAction.APPENDED, DownloadTaskAction.RESUMED)
+    assert (payload["notification_payload"] is not None) is notified

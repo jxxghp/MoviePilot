@@ -7,8 +7,9 @@ import zlib
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 
-# 分段数只影响不同键之间偶然共用同一把锁的概率；锁只在极短的下载器操作期间持有，64 段足够。
-_DEFAULT_STRIPES = 64
+# 分段数只影响不同键之间偶然共用同一把锁的概率。持锁期间包含下载器 RPC（rTorrent 新建任务的临时标签轮询最长约
+# 27 秒）和本地数据库写入，不同任务撞到同一段就要陪着等；256 段把两个无关任务撞段的概率压到 1/256，内存开销可忽略。
+_DEFAULT_STRIPES = 256
 
 
 class KeyedLocks:

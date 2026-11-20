@@ -209,10 +209,11 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
 
+        # 逗号分隔的标签去掉空白再写入，与整理轮询、已有任务受理的标签解析一致
         if label:
-            labels = label.split(',')
+            labels = [item.strip() for item in label.split(',') if item.strip()] or None
         elif get_runtime_setting('TORRENT_TAG'):
-            labels = get_runtime_setting('TORRENT_TAG').split(',')
+            labels = [item.strip() for item in get_runtime_setting('TORRENT_TAG').split(',') if item.strip()] or None
         else:
             labels = None
         added_torrent, already_exists = server.add_torrent_with_status(
@@ -360,7 +361,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         """
         Transmission 只能整体覆盖标签，用调用方刚读取的当前标签计算新值。
         """
-        return server.replace_torrent_labels(ids=torrent_hash, labels=current + [tag for tag in tags if tag not in current])
+        labels = current + [tag for tag in tags if tag not in current]
+        return server.replace_torrent_labels(ids=torrent_hash, labels=labels)
 
     def _remove_task_tags(self, server: Transmission, torrent_hash: str, tags: List[str], current: List[str]) -> bool:
         """
@@ -650,9 +652,9 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         撤回刚写入的"已整理"标签，必须基于重新读到的当前标签计算。
 
         Transmission 只能整体覆盖标签，复核期间别处（PT 站工具、辅种插件）可能刚加了标签，用写入前的旧列表覆盖会
-        把它们清掉。读取失败时短暂重试；仍读不到就不撤回、只记录：复核走到这里多半是因为文件状态也读不到（下载器
-        暂时不可用，"有待下载的文件"只是保守假设），此时标签多数本来就该留着；确实有新选中的文件时，下一次对该任务的
-        受理会移除"已整理"，或需要在下载器中手动移除。
+        把它们清掉。读取或写入失败时短暂重试，每次重试都重新读取当前标签；仍不成功就不撤回、只记录：复核走到这里多半
+        是因为文件状态也读不到（下载器暂时不可用，"有待下载的文件"只是保守假设），此时标签多数本来就该留着；确实有新
+        选中的文件时，下一次对该任务的受理会移除"已整理"，或需要在下载器中手动移除。
 
         :param server: 当前 Transmission 客户端
         :param torrent_hash: 刚写入"已整理"的任务 hash
@@ -661,12 +663,14 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             if attempt:
                 time.sleep(_LABEL_REREAD_INTERVAL)
             current = self._task_tags(server, torrent_hash)
-            if current is not None:
-                if TRANSFERRED_TAG in current:
-                    self._remove_task_tags(server, torrent_hash, [TRANSFERRED_TAG], current)
+            if current is None:
+                continue
+            if TRANSFERRED_TAG not in current:
+                return
+            if self._remove_task_tags(server, torrent_hash, [TRANSFERRED_TAG], current):
                 return
         logger.warning(
-            f"读取种子 {torrent_hash} 的当前标签失败，未撤回已整理标签（不用旧列表覆盖，以免清掉其他标签）；"
+            f"读取或写入种子 {torrent_hash} 的标签失败，未撤回已整理标签（不用旧列表覆盖，以免清掉其他标签）；"
             "如该任务有新选中的文件，下载完成后请在下载器中移除已整理标签"
         )
 
