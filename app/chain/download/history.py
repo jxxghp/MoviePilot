@@ -79,6 +79,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             torrent_content: Union[str, bytes],
             custom_words: Optional[str],
             task_action: DownloadTaskAction = DownloadTaskAction.CREATED,
+            previous_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+            downloader_scope: str = "",
     ) -> None:
         """
         提交下载历史、文件明细和 durable 下载事件。
@@ -88,12 +90,14 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         下载历史、文件明细、通知与重复退避是四件不同的事，不能互相替代（#7078/#7107 的教训）：
         - 下载历史：每次受理都写，记录这一次请求；
         - 文件明细：复用已有任务时按完整路径去重，只防止重复写入同一行，不参与任何业务判断；
-        - 通知：只在新建任务或真正追加了文件时发送，原样复用、仅恢复或任务被暂缓时不发"开始下载"；
-        - 确认记录：note 中累积"MP 在该任务上确认选中过的目标"，用于之后识别被别人取消的文件，
-          见 ``_confirmed_task_selection``；
+        - 通知：只在新建任务或真正追加了文件时发送，原样复用时不发"开始下载"；
+        - 确认记录：note 中累积"MP 在各台下载器的该任务上确认选中过的文件"，用于之后识别被别人取消的
+          文件，见 ``_confirmed_task_selection``；
         - 重复退避：见 ``_should_record_duplicate_backoff``。
 
         :param task_action: 下载器对任务的实际动作，由下载器返回的说明识别；默认按新建任务结算
+        :param previous_selection: 提交前在同一把任务锁内读到的确认记录；None 表示没有该 hash 的下载历史
+        :param downloader_scope: 请求指向的下载器范围，重复提交退避按它记录
         """
         if layout == "NoSubfolder" or not folder_name:
             download_path = download_dir / file_list[0] if file_list else download_dir
@@ -134,7 +138,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             note={**self._build_download_note(source, media, meta),
                   **({"subscription_download": context.subscription_download} if context.subscription_download else {}),
                   torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: self._confirmed_task_selection(
-                      download_hash, episodes, task_action,
+                      previous_selection, downloader=downloader, file_list=file_list, episodes=episodes,
+                      custom_words=custom_words, context=context, task_action=task_action,
                   ).to_note()},
             custom_words=custom_words,
         )
@@ -161,6 +166,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
                     downloader=downloader,
                     source=source,
                     episodes=episodes,
+                    downloader_scope=downloader_scope,
                 )
             files_to_add = retained_files
         if episodes:
@@ -221,30 +227,47 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
 
     def _confirmed_task_selection(
-            self, download_hash: str, episodes: Optional[Set[int]], task_action: DownloadTaskAction,
+            self,
+            previous: Optional[torrent_rules.ConfirmedSelection],
+            *,
+            downloader: Optional[str],
+            file_list: list[str],
+            episodes: Optional[Set[int]],
+            custom_words: Optional[str],
+            context: Context,
+            task_action: DownloadTaskAction,
     ) -> torrent_rules.ConfirmedSelection:
         """
-        计算写入本条下载历史的"MP 在该任务上确认选中过的目标"。
+        计算写入本条下载历史的"MP 在同一种子上确认选中过的文件"（按下载器分开）。
 
-        下载器只有在目标确认选中后才返回 hash，因此本次请求的目标总是已确认的。新建任务从零开始，
-        只记本次目标：同一 hash 的旧任务可能已被删除后重新添加，旧记录里的集在新任务上从未选中，
-        若沿用会被误判为"被取消"。复用已有任务时与该任务最新一条历史中的记录合并，使记录随多次
-        追加累积，下一次只需读取最新一条历史。
-        这是"读取—合并—写回"，下载链提交时整段持有该任务的 ``downloader_task_locks``，两次并发追加
-        不会各自读到旧记录、后写的覆盖先写的（见 ``_submit_prepared_download``）。
+        下载器只有在目标确认选中后才返回 hash，因此按与下载器相同的选集规则，从种子文件清单算出的目标
+        主文件就是这次确认选中的文件（见 ``app.domain.torrent.confirmed_target_files``）。写入时：
+        - 新建任务：替换这台下载器的旧记录。同一 hash 的旧任务可能已被删除后重新添加，旧记录里的文件在
+          新任务上从未选中，沿用会被误判为"被取消"；
+        - 复用已有任务：与这台下载器的旧记录合并，使记录随多次追加累积；
+        - 其他下载器的记录原样保留，下一次只需读取最新一条历史。
+        ``previous`` 由下载链在提交前、同一把任务锁内读取（见 ``_submit_prepared_download``），读取、合并与
+        写回之间不会被同一任务上的并发提交打断。磁力链接没有种子文件清单，本次记不下文件身份。
 
-        :param download_hash: 下载器返回的任务 hash
+        :param previous: 提交前读到的确认记录；None 表示没有该 hash 的下载历史
+        :param downloader: 下载器返回的实际下载器名称
+        :param file_list: 种子内文件的相对路径，按种子内顺序排列；磁力链接为空
         :param episodes: 本次目标集号；为空表示整个种子
+        :param custom_words: 来源识别词，与下载器选集使用同一份
+        :param context: 本次提交的上下文，用于取得与下载器相同的季集映射
         :param task_action: 下载器对任务的实际动作
         :return: 合并后的确认记录
         """
-        current = torrent_rules.ConfirmedSelection.from_request(episodes)
-        if not task_action.is_existing_task:
-            return current
-        previous = self.download_history_repository.get_by_hash(download_hash)
-        if previous is None:
-            return current
-        return torrent_rules.ConfirmedSelection.from_note(previous.note).merge(current)
+        current = torrent_rules.confirmed_target_files(
+            file_list,
+            episodes=episodes,
+            media_extensions=self.runtime_config.media_extensions,
+            custom_words=custom_words,
+            episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
+        )
+        return (previous or torrent_rules.ConfirmedSelection()).record(
+            str(downloader or ""), current, replace=not task_action.is_existing_task,
+        )
 
     @staticmethod
     def _should_record_duplicate_backoff(
@@ -258,8 +281,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
 
         #7107 用"整包文件明细都已记录"推断"没有新增交付"，并按不含集数的资源指纹退避 7 天，
         结果同一季包后续的补集请求在选源阶段就被挡住。现在只在以下条件同时成立时才登记：
-        - 下载器确认对任务没有任何推进：原样复用，或任务被暂缓（目标已选中、等暂停方恢复）；
-          追加了文件或恢复了以“可恢复”意图暂停的任务都算推进，不登记；
+        - 下载器确认对任务没有任何推进：原样复用；追加了文件算推进，不登记；
         - 本次提交没有可记录的集数（``selected_episodes`` 为空，例如多季包），订阅成功后记不下
           任何集，下一轮必然重投同一资源；带集数的提交成功后会写入订阅进度，不会循环，登记退避
           反而会挡住同一订阅之后扩大范围时对这个包的补集；
@@ -271,7 +293,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         :param retained_files: 去重后尚未记录的文件明细
         :return: 需要登记重复提交退避时返回 True
         """
-        if task_action not in (DownloadTaskAction.REUSED, DownloadTaskAction.DEFERRED):
+        if task_action is not DownloadTaskAction.REUSED:
             return False
         if context.selected_episodes:
             return False

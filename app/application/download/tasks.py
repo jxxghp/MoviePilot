@@ -7,7 +7,6 @@ from typing import Any, Callable, List, Optional
 from app.application.directory import validate_download_save_path
 from app.application.download.validation import validate_torrent_hash
 from app.application.history import DownloadHistorySnapshot
-from app.schemas.download import DownloadTaskActor
 from app.schemas.transfer import DownloaderTorrent, DownloadTaskMedia
 from app.schemas.types import TorrentStatus
 
@@ -75,28 +74,14 @@ class DownloadTaskService:
         hash_str: str,
         operation: str,
         name: Optional[str] = None,
-        actor: Optional[DownloadTaskActor] = None,
     ) -> bool:
         """
         按 start/stop 操作控制单个下载任务。
-
-        暂停时在下载器任务上写入 MP 暂停标签，暂停意图沿用 ``ChainBase.stop_torrents`` 的默认值"放弃"：
-        用户在 MP 中手动暂停，订阅之后改用其他资源。不提供暂停方时不写标签，任务会被当成外部暂停。
-        恢复时由下载器模块清除暂停标签。
-
-        :param hash_str: 任务 hash
-        :param operation: start 或 stop
-        :param name: 下载器名称
-        :param actor: 暂停方，只用于展示；Web 界面与接口传 USER，插件请直接使用 ``ChainBase.stop_torrents``
-            并声明自己的暂停意图
-        :return: 下载器报告的执行结果；未知操作返回 False
         """
         if operation == "start":
             return self._start_torrents(hashs=[hash_str], downloader=name)
         if operation == "stop":
-            if actor is None:
-                return self._stop_torrents(hashs=[hash_str], downloader=name)
-            return self._stop_torrents(hashs=[hash_str], downloader=name, actor=actor)
+            return self._stop_torrents(hashs=[hash_str], downloader=name)
         return False
 
     def remove_downloading(
@@ -223,8 +208,6 @@ class DownloadTaskMutationService:
                     hash_str=hash_value,
                     oper=action,
                     name=resolved_downloader,
-                    # 高级更新只由管理用户在 MP 中发起，暂停按用户放弃该资源处理。
-                    actor=DownloadTaskActor.USER,
                 )
             )
             action_name = "开始" if action == "start" else "暂停"

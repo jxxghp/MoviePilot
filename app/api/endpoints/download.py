@@ -44,7 +44,6 @@ from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
 from app.schemas.download import DownloadSourceClassificationData as _SchemaDownloadSourceClassificationData
 from app.schemas.download import DownloadSourceClassificationRequest as _SchemaDownloadSourceClassificationRequest
-from app.schemas.download import DownloadTaskActor as _SchemaDownloadTaskActor
 from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUpdateData
 from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
@@ -270,6 +269,7 @@ def download(
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
@@ -335,6 +335,7 @@ def download_artist_collection(
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="艺术家合集任务添加失败")
@@ -383,6 +384,7 @@ def add(
         downloader=downloader,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
@@ -451,11 +453,8 @@ def stop(
 ) -> Any:
     """
     由管理用户暂停指定下载任务。
-
-    暂停会在下载器任务上写入"MP暂停:放弃:用户"标签：用户手动暂停按"放弃该资源"处理，订阅之后不会
-    恢复或复用这个任务，而是改用其他资源；用户再次点击开始时清除标签。
     """
-    ret = DownloadChain().set_downloading(hashString, "stop", name=name, actor=_SchemaDownloadTaskActor.USER)
+    ret = DownloadChain().set_downloading(hashString, "stop", name=name)
     return _SchemaResponse(success=True if ret else False)
 
 

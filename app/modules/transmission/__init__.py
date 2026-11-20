@@ -174,8 +174,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param custom_words: 来源识别词，按行参与文件名识别，使选集结果与订阅一致
         :param episode_selection: 目标季与已确认的季集对应关系；选集失败清理本次新增任务并保留文件
-        :param confirmed_selection: 下载链从下载历史读出的"MP 此前在同一任务上确认选中过的目标"，
-            只在同一 hash 已存在时使用；None 表示 MP 没有该 hash 的下载历史
+        :param confirmed_selection: 下载链从下载历史读出的"MP 此前在同一种子上确认选中过的文件"（按下载器分开），
+            只在同一 hash 已存在时使用；None 表示本次不识别"被取消"（没有下载历史，或用户手动指定了该种子）
         :return: 下载器名称、任务哈希、内容布局和结果说明；无适用实例时返回 None，
             添加或已有任务核验失败时前三项为空，说明包含失败原因；已有任务的说明为
             ``app.schemas.download`` 中约定的四个常量之一
@@ -221,11 +221,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         if added_torrent and already_exists:
             torrent_hash = added_torrent.hashString
             logger.warn(f"下载器中已存在该种子任务：{torrent_hash}")
-            # torrent-duplicate 响应只带 id、name 与 hashString，标签需要另行读取；读取失败时标签未知，
-            # 不能当作空标签写回，否则会覆盖任务原有标签。
             return self._finish_existing_task(
-                server, torrent_hash, self._task_tags(server, torrent_hash), episodes, custom_words, downloader,
-                episode_selection, confirmed_selection,
+                server, torrent_hash, episodes, custom_words, downloader, episode_selection, confirmed_selection,
             )
 
         if not added_torrent:
@@ -245,7 +242,6 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                             logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.name}")
                             return self._finish_existing_task(
                                 server, torrent_hash,
-                                [str(tag).strip() for tag in torrent.labels] if hasattr(torrent, "labels") else [],
                                 episodes, custom_words, downloader, episode_selection, confirmed_selection,
                             )
                 finally:
@@ -266,7 +262,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
 
     def _finish_existing_task(
-            self, server: Transmission, torrent_hash: str, labels: Optional[List[str]], episodes: Optional[Set[int]],
+            self, server: Transmission, torrent_hash: str, episodes: Optional[Set[int]],
             custom_words: Optional[str], downloader: Optional[str],
             episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
             confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
@@ -278,17 +274,15 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
 
         :param server: 当前 Transmission 客户端
         :param torrent_hash: 已有任务的 hash
-        :param labels: 已有任务当前的标签列表；None 表示读取失败、标签未知，此时拒绝受理，
-            不能当作空标签处理，否则既判断不了暂停来源，也可能覆盖任务原有标签
         :param episodes: 本次目标集号；为空表示整个种子
         :param custom_words: 来源识别词
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param episode_selection: 目标季与已确认的季集映射
-        :param confirmed_selection: MP 此前在该任务上确认选中过的目标；None 表示没有下载历史
+        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件（按下载器分开）；None 表示本次不识别"被取消"
         :return: 下载器名称、任务哈希、内容布局和约定说明；失败时前三项为空
         """
         accepted, message = self._accept_existing_task(
-            server, torrent_hash, labels, episodes, custom_words, episode_selection, confirmed_selection,
+            server, torrent_hash, episodes, custom_words, episode_selection, confirmed_selection, downloader,
         )
         if not accepted:
             return None, None, None, message
@@ -355,12 +349,6 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         Transmission 只能整体覆盖标签，用调用方刚读取的当前标签计算新值；结果为空时会真正清空标签。
         """
         return server.replace_torrent_labels(ids=torrent_hash, labels=[tag for tag in current if tag not in tags])
-
-    def _start_existing_task(self, server: Transmission, torrent_hash: str) -> bool:
-        """
-        启动已停止的已有任务并确认进入运行状态，避免 RPC 返回成功但任务仍停止（4bf11c327）。
-        """
-        return server.ensure_torrent_state(torrent_hash, paused=False)
 
     @staticmethod
     def _fetch_files_with_metadata(
@@ -757,7 +745,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
     def start_torrents(self, hashs: Union[list[str], str],
                        downloader: Optional[str] = None) -> Optional[bool]:
         """
-        启动指定下载任务，成功后清除任务上的 MP 暂停标签。
+        启动指定下载任务。
 
         :param hashs: 种子哈希或哈希列表
         :param downloader: 下载器配置名称，省略时使用默认实例
@@ -766,28 +754,20 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         server = self.get_instance(downloader)
         if not server:
             return None
-        started = server.start_torrents(ids=hashs)
-        if started:
-            # 任务已恢复，MP 暂停标签不再有效，留着会让之后的暂停被误判来源。
-            self._clear_pause_tags(server, hashs)
-        return started
+        return server.start_torrents(ids=hashs)
 
     def stop_torrents(self, hashs: Union[list[str], str],
-                      downloader: Optional[str] = None, pause_tag: Optional[str] = None) -> Optional[bool]:
+                      downloader: Optional[str] = None) -> Optional[bool]:
         """
-        暂停指定下载任务，可同时写入 MP 暂停标签记录是谁、为什么暂停。
+        暂停指定下载任务。
 
         :param hashs: 种子哈希或哈希列表
         :param downloader: 下载器配置名称，省略时使用默认实例
-        :param pause_tag: 由 ``app.domain.torrent.pause_tag`` 生成的暂停标签；省略时不写标签，
-            任务会被识别为外部暂停
         :return: 客户端报告的执行结果；找不到适用的下载器时返回 None
         """
         server = self.get_instance(downloader)
         if not server:
             return None
-        if pause_tag:
-            self._mark_paused_tasks(server, hashs, pause_tag)
         return server.stop_torrents(ids=hashs)
 
     def torrent_files(

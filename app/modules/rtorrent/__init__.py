@@ -107,8 +107,8 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param custom_words: 来源识别词，按行参与文件名识别，使选集结果与订阅一致
         :param episode_selection: 目标季与已确认的季集对应关系；选集失败清理本次新增任务并保留文件
-        :param confirmed_selection: 下载链从下载历史读出的"MP 此前在同一任务上确认选中过的目标"，
-            只在同一 hash 已存在时使用；None 表示 MP 没有该 hash 的下载历史
+        :param confirmed_selection: 下载链从下载历史读出的"MP 此前在同一种子上确认选中过的文件"（按下载器分开），
+            只在同一 hash 已存在时使用；None 表示本次不识别"被取消"（没有下载历史，或用户手动指定了该种子）
         :return: 下载器名称、任务哈希、内容布局和结果说明；无适用实例时返回 None，
             添加或已有任务核验失败时前三项为空，说明包含失败原因；已有任务的说明为
             ``app.schemas.download`` 中约定的四个常量之一
@@ -277,12 +277,12 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         torrent_hash = cast(str, torrent.get("hash"))
         logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.get('name')}")
         return self._finish_existing_task(
-            server, torrent_hash, torrent.get("tags", ""), episodes, custom_words,
+            server, torrent_hash, episodes, custom_words,
             downloader, episode_selection, confirmed_selection,
         )
 
     def _finish_existing_task(
-            self, server: Rtorrent, torrent_hash: str, raw_tags: str, episodes: Optional[Set[int]],
+            self, server: Rtorrent, torrent_hash: str, episodes: Optional[Set[int]],
             custom_words: Optional[str], downloader: Optional[str],
             episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
             confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
@@ -294,17 +294,15 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
         :param server: 当前 rTorrent 客户端
         :param torrent_hash: 已有任务的 hash
-        :param raw_tags: 已有任务当前的逗号分隔标签（d.custom1，来自任务列表）
         :param episodes: 本次目标集号；为空表示整个种子
         :param custom_words: 来源识别词
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param episode_selection: 目标季与已确认的季集映射
-        :param confirmed_selection: MP 此前在该任务上确认选中过的目标；None 表示没有下载历史
+        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件（按下载器分开）；None 表示本次不识别"被取消"
         :return: 下载器名称、任务哈希、内容布局和约定说明；失败时前三项为空
         """
-        tags = [str(t).strip() for t in (raw_tags or "").split(",") if t.strip()]
         accepted, message = self._accept_existing_task(
-            server, torrent_hash, tags, episodes, custom_words, episode_selection, confirmed_selection,
+            server, torrent_hash, episodes, custom_words, episode_selection, confirmed_selection, downloader,
         )
         if not accepted:
             return None, None, None, message
@@ -393,12 +391,6 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         客户端在一次请求内读取并改写 d.custom1，不需要使用当前标签。
         """
         return server.remove_torrents_tag(ids=torrent_hash, tag=tags)
-
-    def _start_existing_task(self, server: Rtorrent, torrent_hash: str) -> bool:
-        """
-        恢复已停止的已有任务，沿用新任务选集后的启动方式。
-        """
-        return server.start_torrents(torrent_hash)
 
     @staticmethod
     def _select_episode_files(
@@ -706,7 +698,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         self, hashs: Union[list[str], str], downloader: Optional[str] = None
     ) -> Optional[bool]:
         """
-        启动指定下载任务，成功后清除任务上的 MP 暂停标签。
+        启动指定下载任务。
 
         :param hashs: 种子哈希或哈希列表
         :param downloader: 下载器配置名称，省略时使用默认实例
@@ -715,30 +707,21 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         server = self.get_instance(downloader)
         if not server:
             return None
-        started = server.start_torrents(ids=hashs)
-        if started:
-            # 任务已恢复，MP 暂停标签不再有效，留着会让之后的暂停被误判来源。
-            self._clear_pause_tags(server, hashs)
-        return started
+        return server.start_torrents(ids=hashs)
 
     def stop_torrents(
-        self, hashs: Union[list[str], str], downloader: Optional[str] = None,
-        pause_tag: Optional[str] = None,
+        self, hashs: Union[list[str], str], downloader: Optional[str] = None
     ) -> Optional[bool]:
         """
-        暂停指定下载任务，可同时写入 MP 暂停标签记录是谁、为什么暂停。
+        暂停指定下载任务。
 
         :param hashs: 种子哈希或哈希列表
         :param downloader: 下载器配置名称，省略时使用默认实例
-        :param pause_tag: 由 ``app.domain.torrent.pause_tag`` 生成的暂停标签；省略时不写标签，
-            任务会被识别为外部暂停
         :return: 客户端报告的执行结果；找不到适用的下载器时返回 None
         """
         server = self.get_instance(downloader)
         if not server:
             return None
-        if pause_tag:
-            self._mark_paused_tasks(server, hashs, pause_tag)
         return server.stop_torrents(ids=hashs)
 
     def torrent_files(

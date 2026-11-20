@@ -14,12 +14,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 from urllib.parse import parse_qs, urlsplit
 
 from app.domain.metainfo import MetaInfo
-from app.schemas.download import (
-    DownloadPauseIntent,
-    DownloadTaskAction,
-    DownloadTaskActor,
-    ExistingTaskRejection,
-)
+from app.schemas.download import DownloadTaskAction, ExistingTaskRejection
 
 if TYPE_CHECKING:
     from app.domain.context import Context, TorrentInfo
@@ -169,193 +164,137 @@ def select_episode_files(
 
 
 # ---------------------------------------------------------------------------
-# 已有任务：暂停标签
-#
-# 同一 hash 已在下载器中且处于暂停时，MP 要先知道暂停方的意图，才能决定能否恢复、继续使用。
-# 处理方式只看意图（放弃 / 暂缓 / 可恢复），不看是谁暂停的：同样的业务意图得到同样的结果，
-# 插件想让 MP 换种子就声明放弃，不必冒充用户。暂停方（用户 / 插件 / 系统）只用于展示。
-# 意图写在下载器标签上而不是数据库里：插件可能直接调用下载器客户端，模块层也不能写数据库；
-# 标签跟着任务走，数据库重置、更换 MP 实例后仍有效，用户在下载器里也能直接看到原因。
-# 没有 MP 暂停标签的暂停一律视为"外部暂停"，意图未知，MP 不会恢复。
-# ---------------------------------------------------------------------------
-
-PAUSE_TAG_PREFIX = "MP暂停"
-_PAUSE_TAG_SEPARATOR = ":"
-_PAUSE_INTENT_LABELS = {
-    DownloadPauseIntent.ABANDON: "放弃",
-    DownloadPauseIntent.DEFER: "暂缓",
-    DownloadPauseIntent.RESUMABLE: "可恢复",
-}
-_PAUSE_ACTOR_LABELS = {
-    DownloadTaskActor.SYSTEM: "系统",
-    DownloadTaskActor.USER: "用户",
-    DownloadTaskActor.PLUGIN: "插件",
-}
-# 多个暂停标签并存时的保守程度，数值越小越保守：放弃 > 暂缓 > 可恢复。
-_PAUSE_INTENT_RANK = {
-    DownloadPauseIntent.ABANDON: 0,
-    DownloadPauseIntent.DEFER: 1,
-    DownloadPauseIntent.RESUMABLE: 2,
-}
-
-
-@dataclass(frozen=True)
-class PauseMark:
-    """
-    下载器任务上 MP 暂停标签表达的暂停意图与暂停方。
-
-    :param actor: 暂停方，只用于展示；不会是外部（外部暂停没有标签）
-    :param intent: 暂停意图，决定 MP 之后如何处理该任务
-    :param plugin_id: 插件暂停时的插件 ID
-    """
-
-    actor: DownloadTaskActor
-    intent: DownloadPauseIntent = DownloadPauseIntent.ABANDON
-    plugin_id: Optional[str] = None
-
-    @property
-    def abandons_resource(self) -> bool:
-        """
-        暂停方是否放弃了这个资源；只看意图，与暂停方无关。
-        """
-        return self.intent is DownloadPauseIntent.ABANDON
-
-    def describe_actor(self) -> str:
-        """
-        面向用户的暂停方描述，例如"用户"或"插件 AutoClean"。
-        """
-        if self.actor is DownloadTaskActor.PLUGIN:
-            return f"插件 {self.plugin_id}"
-        return _PAUSE_ACTOR_LABELS.get(self.actor, str(self.actor.value))
-
-    def describe_intent(self) -> str:
-        """
-        面向用户的暂停意图描述，例如"放弃"。
-        """
-        return _PAUSE_INTENT_LABELS[self.intent]
-
-
-def pause_tag(mark: PauseMark) -> str:
-    """
-    生成写入下载器的暂停标签。
-
-    格式为 ``MP暂停:<意图>:<暂停方>``，插件再加插件 ID，例如 ``MP暂停:放弃:用户``、
-    ``MP暂停:暂缓:插件:NightOnly``、``MP暂停:可恢复:系统``。意图放在最前，是因为 MP 只按意图处理；
-    暂停方仅供展示。qB/TR/rT 都用逗号分隔多个标签，因此标签内不能出现逗号；冒号用作字段分隔。
-
-    :param mark: 暂停意图与暂停方
-    :return: 标签文本
-    :raises ValueError: 外部暂停没有标签；插件暂停缺少插件 ID，或插件 ID 含逗号、冒号
-    """
-    if mark.actor is DownloadTaskActor.EXTERNAL:
-        raise ValueError("外部暂停没有 MoviePilot 暂停标签")
-    parts = [PAUSE_TAG_PREFIX, _PAUSE_INTENT_LABELS[mark.intent], _PAUSE_ACTOR_LABELS[mark.actor]]
-    if mark.actor is DownloadTaskActor.PLUGIN:
-        plugin_id = (mark.plugin_id or "").strip()
-        if not plugin_id or "," in plugin_id or _PAUSE_TAG_SEPARATOR in plugin_id:
-            raise ValueError("插件暂停必须提供不含逗号和冒号的插件 ID")
-        parts.append(plugin_id)
-    return _PAUSE_TAG_SEPARATOR.join(parts)
-
-
-def is_pause_tag(tag: str) -> bool:
-    """
-    判断标签是否为 MP 暂停标签（包括无法解析或手工改坏的标签）。
-    """
-    text = str(tag or "").strip()
-    return text == PAUSE_TAG_PREFIX or text.startswith(PAUSE_TAG_PREFIX + _PAUSE_TAG_SEPARATOR)
-
-
-def _parse_pause_tag(tag: str) -> Optional[PauseMark]:
-    """
-    解析单个暂停标签；格式不符时返回 None。
-    """
-    parts = str(tag or "").strip().split(_PAUSE_TAG_SEPARATOR)
-    if len(parts) < 3 or parts[0] != PAUSE_TAG_PREFIX:
-        return None
-    intent = next((key for key, label in _PAUSE_INTENT_LABELS.items() if label == parts[1]), None)
-    actor = next((key for key, label in _PAUSE_ACTOR_LABELS.items() if label == parts[2]), None)
-    if intent is None or actor is None:
-        return None
-    if actor is DownloadTaskActor.PLUGIN:
-        if len(parts) == 4 and parts[3]:
-            return PauseMark(actor=actor, intent=intent, plugin_id=parts[3])
-        return None
-    return PauseMark(actor=actor, intent=intent) if len(parts) == 3 else None
-
-
-def parse_pause_mark(tags: Iterable[str]) -> Optional[PauseMark]:
-    """
-    从任务标签中解析 MP 暂停标签。
-
-    正常情况下任务上最多只有一个暂停标签（暂停时会替换旧标签，恢复时会清除）。出现多个时取最
-    保守的一个：放弃 > 暂缓 > 可恢复，宁可不恢复也不推翻别人的决定。无法解析的暂停标签忽略，
-    任务若处于暂停会按外部暂停处理，同样不会被恢复。
-
-    :param tags: 任务当前全部标签
-    :return: 暂停意图与暂停方；没有可解析的暂停标签时返回 None
-    """
-    marks = [mark for tag in tags if (mark := _parse_pause_tag(tag)) is not None]
-    if not marks:
-        return None
-    return min(marks, key=lambda mark: _PAUSE_INTENT_RANK[mark.intent])
-
-
-# ---------------------------------------------------------------------------
-# 已有任务：MP 确认选中过的目标
+# 已有任务：MP 确认选中过的文件
 #
 # 下载器里"取消选择"和"从未选中"是同一个状态（qB/rT 优先级为 0，TR 未选中），只看下载器无法区分。
-# MP 在每次受理成功后把"本任务上确认选中过的集"累积写进下载历史的 note；之后同一任务上目标视频
-# 不再下载，而它在这份记录里，就说明是被别人取消的，MP 不会重新选中。
-# 升级前的历史没有这份记录（其中还可能有原 bug 记成已下载、实际从未选中的集），一律按"从未选中"处理。
+# MP 在每次受理成功后，把"本次在该任务上确认选中的目标主文件"累积写进下载历史的 note；之后同一任务上
+# 某个目标主文件不再下载，而它在这份记录里，就说明是被别人取消的，订阅不会重新选中它。
+#
+# 记录的是文件身份（种子内的文件索引 + 相对路径），按下载器分开，而不是集号：
+# - 集号要靠当时的季号、识别词、季集映射才能对应到文件，换一个季、改一次识别词，同样的集号就会
+#   对应到别的文件（例如多季包里 S01E01 选过，S02E01 会被误判为"选过又被取消"）；
+# - 同一种子可能同时在多台下载器里，各台的选择互不相干。
+# 已知近似：
+# - 文件身份由下载链从种子文件按与下载器相同的选集规则算出（不额外查询下载器）。磁力链接没有种子文件，
+#   记不下文件身份，这类任务不识别"被取消"；
+# - 带填充文件（BEP 47）的种子，qBittorrent 的文件索引会跳过填充文件，与种子内顺序对不上，对不上的文件
+#   按"从未选中"处理（宁可重新选中，也不误拒正常请求）；
+# - 任务在 MP 之外被删除后又在 MP 之外重新添加时，旧记录仍然有效，新任务上从未选中的文件会被当成
+#   "被取消"而拒绝（订阅换种子；用户手动指定该种子时不受影响）。
 # ---------------------------------------------------------------------------
 
 CONFIRMED_SELECTION_NOTE_KEY = "confirmed_selection"
+# note 中确认记录的格式版本；读取时版本不符一律按"没有记录"处理。
+_CONFIRMED_SELECTION_VERSION = 2
+
+
+def _path_parts(name: str) -> tuple[str, ...]:
+    """
+    把种子内路径或下载器报告的文件名拆成路径分段，兼容正反斜杠，忽略空段。
+    """
+    return tuple(part for part in str(name or "").replace("\\", "/").split("/") if part)
+
+
+@dataclass(frozen=True)
+class ConfirmedFile:
+    """
+    MP 在某个下载任务上确认选中过的一个目标主文件。
+
+    :param index: 文件在种子内的顺序号（从 0 开始），对应下载器的文件索引
+    :param path: 文件在种子内的相对路径分段，不含多文件种子的根目录；单文件种子为文件名
+    """
+
+    index: int
+    path: tuple[str, ...]
+
+    def matches(self, file_id: int, name: str) -> bool:
+        """
+        判断下载器报告的文件是否就是这个文件：索引相同，且路径相同或只多出最前面一层目录。
+
+        各下载器报告的文件名前缀不同：qBittorrent"原始"布局与 Transmission 带种子根目录，qBittorrent
+        "不创建子文件夹"布局与 rTorrent 不带根目录，qBittorrent"创建子文件夹"布局会给单文件种子加一层目录。
+        同时要求索引相同，避免不同目录下的同名文件互相冒认。
+
+        :param file_id: 下载器内的文件索引
+        :param name: 下载器报告的文件相对路径
+        :return: 是同一个文件时返回 True
+        """
+        if file_id != self.index:
+            return False
+        parts = _path_parts(name)
+        return parts == self.path or parts[1:] == self.path
 
 
 @dataclass(frozen=True)
 class ConfirmedSelection:
     """
-    MP 在同一下载任务上经下载器确认选中过的目标。
+    MP 在同一种子（同一 hash）的各台下载器任务上确认选中过的目标主文件，按下载器名称分开记录。
 
-    :param episodes: 确认选中过的集号
-    :param whole: 是否确认选中过整个种子（不带集数的请求）；为 True 时全部视频都算确认过
+    :param downloaders: 下载器配置名称到确认文件的映射；没有记录的下载器视为从未确认选中任何文件
     """
 
-    episodes: frozenset[int] = frozenset()
-    whole: bool = False
+    downloaders: tuple[tuple[str, frozenset[ConfirmedFile]], ...] = ()
 
-    def merge(self, other: "ConfirmedSelection") -> "ConfirmedSelection":
+    def files_for(self, downloader: str) -> frozenset[ConfirmedFile]:
         """
-        合并两次确认记录，用于同一任务上的多次受理累积。
+        取出某台下载器上的确认文件。
+
+        :param downloader: 下载器配置名称
+        :return: 确认文件；没有记录时为空集合
         """
-        return ConfirmedSelection(episodes=self.episodes | other.episodes, whole=self.whole or other.whole)
+        return next((files for name, files in self.downloaders if name == downloader), frozenset())
+
+    def record(self, downloader: str, files: frozenset[ConfirmedFile], *, replace: bool) -> "ConfirmedSelection":
+        """
+        记录某台下载器上本次确认选中的文件，其他下载器的记录保持不变。
+
+        :param downloader: 本次受理的下载器配置名称
+        :param files: 本次确认选中的目标主文件
+        :param replace: 为 True 时替换该下载器的旧记录（新建任务：同 hash 的旧任务可能已被删除后重新添加，
+            旧记录里的文件在新任务上从未选中），否则与旧记录合并（在已有任务上追加）
+        :return: 新的确认记录
+        """
+        merged = files if replace else self.files_for(downloader) | files
+        others = tuple((name, items) for name, items in self.downloaders if name != downloader)
+        return ConfirmedSelection(downloaders=tuple(sorted(others + ((downloader, merged),), key=lambda item: item[0])))
 
     def to_note(self) -> dict[str, Any]:
         """
         转为写入下载历史 note 的 JSON 值。
         """
-        return {"version": 1, "whole": self.whole, "episodes": sorted(self.episodes)}
-
-    @classmethod
-    def from_request(cls, episodes: Optional[set[int]]) -> "ConfirmedSelection":
-        """
-        由一次已受理的请求构造确认记录；不带集数表示整个种子。
-        """
-        return cls(episodes=frozenset(episodes)) if episodes else cls(whole=True)
+        return {
+            "version": _CONFIRMED_SELECTION_VERSION,
+            "downloaders": {
+                name: [{"index": item.index, "path": list(item.path)} for item in sorted(files, key=lambda f: f.index)]
+                for name, files in self.downloaders
+            },
+        }
 
     @classmethod
     def from_note(cls, note: object) -> "ConfirmedSelection":
         """
-        从下载历史 note 读取确认记录；升级前的历史或格式不符时返回空记录（视为从未确认选中）。
+        从下载历史 note 读取确认记录；没有记录、版本不符或格式不符时返回空记录（视为从未确认选中）。
         """
         payload = note.get(CONFIRMED_SELECTION_NOTE_KEY) if isinstance(note, dict) else None
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict) or payload.get("version") != _CONFIRMED_SELECTION_VERSION:
             return cls()
-        episodes = frozenset(
-            int(item) for item in payload.get("episodes") or [] if isinstance(item, int) and not isinstance(item, bool)
-        )
-        return cls(episodes=episodes, whole=payload.get("whole") is True)
+        downloaders = payload.get("downloaders")
+        if not isinstance(downloaders, dict):
+            return cls()
+        records: list[tuple[str, frozenset[ConfirmedFile]]] = []
+        for name, items in downloaders.items():
+            if not isinstance(name, str) or not isinstance(items, list):
+                continue
+            files = frozenset(
+                ConfirmedFile(index=item["index"], path=tuple(item["path"]))
+                for item in items
+                if isinstance(item, dict)
+                and isinstance(item.get("index"), int) and not isinstance(item.get("index"), bool)
+                and isinstance(item.get("path"), list) and item["path"]
+                and all(isinstance(part, str) and part for part in item["path"])
+            )
+            records.append((name, files))
+        return cls(downloaders=tuple(sorted(records, key=lambda item: item[0])))
 
 
 # ---------------------------------------------------------------------------
@@ -402,12 +341,10 @@ class ExistingTaskSnapshot:
 
     :param files: 实时文件列表；为空表示读取失败或尚无元数据
     :param state: 归一后的运行状态
-    :param tags: 任务当前全部标签；None 表示读取失败、标签未知
     """
 
     files: tuple[ExistingTaskFile, ...]
     state: ExistingTaskState
-    tags: Optional[tuple[str, ...]]
 
 
 @dataclass(frozen=True)
@@ -415,24 +352,22 @@ class ExistingTaskDecision:
     """
     已有任务能否受理本次请求，以及受理时下载器模块要做的最小改动。
 
-    只描述"追加"，从不包含"取消选择"或"暂停"：已有任务上的其他文件、优先级都保持原样（#7362）。
+    只描述"追加"，从不包含"取消选择""暂停"或"恢复"：已有任务上的其他文件、优先级和启停状态都保持原样（#7362）。
 
     :param action: 受理时下载器对任务的动作；拒绝时为 None
     :param rejection: 拒绝原因；受理时为 None
     :param detail: 拒绝时面向用户的细节与处理建议
     :param enable: 需要从不下载改为下载的文件索引
+    :param required: 受理后必须处于选中状态的全部目标文件索引（含本次追加的），写入后据此回读确认
     :param pending: 目标中是否仍有未下载完成的文件；为 True 时 rTorrent 需要刷新优先级
-    :param resume: 是否需要恢复任务（只用于以“可恢复”意图暂停的任务）
-    :param clear_pause_tags: 受理后是否清除任务上的 MP 暂停标签（任务已在运行或本次恢复）
     """
 
     action: Optional[DownloadTaskAction] = None
     rejection: Optional[ExistingTaskRejection] = None
     detail: str = ""
     enable: tuple[int, ...] = ()
+    required: tuple[int, ...] = ()
     pending: bool = False
-    resume: bool = False
-    clear_pause_tags: bool = False
 
 
 def _reject(rejection: ExistingTaskRejection, detail: str) -> ExistingTaskDecision:
@@ -476,89 +411,104 @@ def _episode_targets(
     return wanted, matched
 
 
-def _confirmed_file_ids(
-        files: dict[int, ExistingTaskFile], confirmed: Optional[ConfirmedSelection], media_extensions: set[str],
+def _request_targets(
+        files: dict[int, ExistingTaskFile], episodes: Optional[set[int]], media_extensions: set[str],
         custom_words: Optional[str], episode_selection: Optional[EpisodeSelection],
-) -> set[int]:
+) -> tuple[list[int], set[int], set[int]]:
     """
-    MP 此前在该任务上确认选中过的文件；用于识别"被别人取消"的文件。
+    计算一次请求在文件列表上的目标文件与主文件，新任务记录与已有任务决策共用。
 
-    ``confirmed`` 为 None 表示 MP 没有该 hash 的任何下载历史（外部添加的任务），空记录表示只有
-    升级前的历史；两者都没有可信的确认记录，返回空集合，即所有未选中的文件都按"从未选中"处理。
+    主文件：有视频的种子是全部视频，没有视频的种子（例如音乐专辑）是全部文件，与整包目标的口径一致。
+
+    :return: 目标文件索引、被视频覆盖到的集号（整包请求为空集合）和主文件索引
     """
-    if confirmed is None:
-        return set()
-    if confirmed.whole:
-        return set(_whole_torrent_targets(files, media_extensions))
-    if confirmed.episodes:
-        wanted, _matched = _episode_targets(files, set(confirmed.episodes), media_extensions, custom_words, episode_selection)
-        return set(wanted)
-    return set()
+    primary = set(_whole_torrent_targets(files, media_extensions))
+    if episodes:
+        target, matched = _episode_targets(files, episodes, media_extensions, custom_words, episode_selection)
+        return target, matched, primary
+    return sorted(primary), set(), primary
 
 
-def _decide_pending_task(snapshot: ExistingTaskSnapshot, enable: tuple[int, ...]) -> ExistingTaskDecision:
+def confirmed_target_files(
+        files: Iterable[str], *, episodes: Optional[set[int]], media_extensions: Iterable[str],
+        custom_words: Optional[str] = None, episode_selection: Optional[EpisodeSelection] = None,
+) -> frozenset[ConfirmedFile]:
     """
-    目标仍有未下载完成的文件时，按任务状态和暂停意图决定能否受理。
+    按与下载器完全相同的选集规则，从种子文件清单算出本次受理确认选中的目标主文件。
 
-    规则（MoviePilot 只按暂停方声明的意图行事，不推翻用户、插件或外部的决定；只看意图、不看是谁暂停的）：
+    下载器只有在目标确认选中后才返回 hash，因此由同一规则算出的目标主文件就是这次确认选中的文件。
+    只记主文件：被取消的字幕等附属文件在决策中本来就静默跳过，不需要记录。
+
+    :param files: 种子内文件的相对路径，按种子内顺序排列（下标即文件索引）；磁力链接为空
+    :param episodes: 本次目标集号；None 或空集合表示整个种子
+    :param media_extensions: 视频后缀集合
+    :param custom_words: 来源识别词，与下载器选集使用同一份
+    :param episode_selection: 目标季与已确认的季集映射，与下载器选集使用同一份
+    :return: 确认选中的目标主文件；目标集对应不上（不应发生）或没有文件时为空集合
+    """
+    indexed = {index: ExistingTaskFile(index, name, True, False) for index, name in enumerate(files)}
+    if not indexed:
+        return frozenset()
+    extensions = {str(extension).lower() for extension in media_extensions}
+    target, matched, primary = _request_targets(indexed, episodes, extensions, custom_words, episode_selection)
+    if episodes and not episodes.issubset(matched):
+        return frozenset()
+    return frozenset(
+        ConfirmedFile(index=file_id, path=_path_parts(indexed[file_id].name))
+        for file_id in target if file_id in primary and _path_parts(indexed[file_id].name)
+    )
+
+
+def _decide_pending_task(
+        snapshot: ExistingTaskSnapshot, enable: tuple[int, ...], required: tuple[int, ...],
+) -> ExistingTaskDecision:
+    """
+    目标仍有未下载完成的文件时，按任务运行状态决定能否受理。
+
+    MoviePilot 从不替别人恢复任务，也不往暂停的任务里追加：
     - 运行中：追加后自然开始下载，受理；
-    - 以"可恢复"暂停：恢复后受理；
-    - 以"暂缓"暂停：不恢复，目标文件选中后受理，等暂停方自己恢复；
-    - 以"放弃"暂停：不恢复也不改动，拒绝，订阅换种子；
-    - 没有 MP 标签的暂停（外部）：不知道意图，不恢复也不改动，拒绝并短冷却；用户在下载器里恢复后
-      下次就能继续使用。做种完成后被下载器分享率规则停掉的任务也属于这一类。
+    - 已暂停：不论是谁暂停的（MP 里的用户、插件、下载器界面、分享率规则），都不恢复、不改动，拒绝；
+      订阅当轮改用其他资源，并只对这台下载器里的这个任务短冷却。暂停方恢复任务后，下次就能接着使用；
+    - 状态读不到：拒绝，稍后重试。
     """
     if snapshot.state is ExistingTaskState.RUNNING:
         return ExistingTaskDecision(
             action=DownloadTaskAction.APPENDED if enable else DownloadTaskAction.REUSED,
-            enable=enable, pending=True, clear_pause_tags=True,
+            enable=enable, required=required, pending=True,
         )
-    if snapshot.state is not ExistingTaskState.PAUSED:
-        return _reject(ExistingTaskRejection.STATE_UNAVAILABLE, "读取任务运行状态失败，未改动该任务，稍后重试")
-    mark = parse_pause_mark(snapshot.tags or ())
-    if mark is None:
+    if snapshot.state is ExistingTaskState.PAUSED:
         return _reject(
-            ExistingTaskRejection.PAUSED_EXTERNALLY,
-            "任务已暂停，但没有 MoviePilot 暂停标签（可能是在下载器中手动暂停、第三方工具或直接操作下载器的插件所为），"
-            "MP 不恢复也不改动该任务；如需继续使用，请在下载器中恢复后重试",
+            ExistingTaskRejection.PAUSED,
+            "任务已暂停，目标文件尚未下载完成；MP 不恢复也不改动暂停的任务，本次改用其他资源。"
+            "如需继续使用该任务，请先在下载器或 MoviePilot 下载管理中恢复",
         )
-    if mark.intent is DownloadPauseIntent.RESUMABLE:
-        return ExistingTaskDecision(
-            action=DownloadTaskAction.APPENDED if enable else DownloadTaskAction.RESUMED,
-            enable=enable, pending=True, resume=True, clear_pause_tags=True,
-        )
-    if mark.intent is DownloadPauseIntent.DEFER:
-        return ExistingTaskDecision(action=DownloadTaskAction.DEFERRED, enable=enable, pending=True)
-    return _reject(
-        ExistingTaskRejection.PAUSED_ABANDONED,
-        f"任务已被{mark.describe_actor()}以“{mark.describe_intent()}”暂停，MP 不恢复也不改动，本次改用其他资源；"
-        "如需继续使用该任务，请在 MoviePilot 下载管理中恢复",
-    )
+    return _reject(ExistingTaskRejection.STATE_UNAVAILABLE, "读取任务运行状态失败，未改动该任务，稍后重试")
 
 
 def decide_existing_task(
-        snapshot: ExistingTaskSnapshot, *, episodes: Optional[set[int]], confirmed: Optional[ConfirmedSelection],
+        snapshot: ExistingTaskSnapshot, *, episodes: Optional[set[int]], confirmed: Optional[frozenset[ConfirmedFile]],
         media_extensions: Iterable[str], custom_words: Optional[str] = None,
         episode_selection: Optional[EpisodeSelection] = None,
 ) -> ExistingTaskDecision:
     """
-    同一 hash 已在下载器中时，判断能否受理本次请求，以及需要追加选择哪些文件、是否恢复任务。
+    同一 hash 已在下载器中时，判断能否受理本次请求，以及需要追加选择哪些文件。
 
     同一个整季包可以被多次请求不同的集（试看 E01、再要 E02、最后追整季），每次请求都要在原任务上
     追加本次目标，而不是把已有任务原样当成"已受理"（#7405 的问题）。决策顺序：
-    1. 读不到文件列表、标签，或任务出错：拒绝，不改动；
+    1. 读不到文件列表，或任务出错：拒绝，不改动；
     2. 目标集找不到对应视频：拒绝；
     3. 目标主文件（视频；没有视频的种子为全部文件）曾被 MP 确认选中、现在被取消：拒绝，不重新选中
        （别人取消的）；被取消的字幕等附属文件静默跳过；
     4. 目标已全部下载完成：受理，不论任务是否暂停都不改启停状态；
-    5. 否则按任务状态与暂停意图决定，见 ``_decide_pending_task``。
+    5. 否则按任务运行状态决定，见 ``_decide_pending_task``。
 
     目标文件的匹配规则与新任务选集完全相同（``select_torrent_files``），区别只在于：新任务会把
     非目标文件设为不下载，已有任务绝不取消任何文件的选择。
 
     :param snapshot: 下载器实时读取的任务状态；不能用下载历史或种子文件代替
     :param episodes: 本次目标集号；None 或空集合表示整个种子，目标为全部视频文件
-    :param confirmed: MP 此前在该任务上确认选中过的目标；None 表示 MP 没有该 hash 的下载历史
+    :param confirmed: MP 此前在这台下载器的该任务上确认选中过的文件。None 表示本次不识别"被取消"：
+        MP 没有该 hash 的下载历史（外部添加的任务），或用户手动指定了这个种子（明确要下载，覆盖之前的取消）
     :param media_extensions: 视频后缀集合
     :param custom_words: 来源识别词，与新任务选集使用同一份
     :param episode_selection: 目标季与已确认的季集映射，与新任务选集使用同一份
@@ -567,49 +517,45 @@ def decide_existing_task(
     files = {item.file_id: item for item in snapshot.files}
     if not files:
         return _reject(ExistingTaskRejection.FILES_UNAVAILABLE, "读取文件列表失败（磁力任务可能尚未获取元数据），未改动该任务，稍后重试")
-    if snapshot.tags is None:
-        # 标签既用于判断暂停意图，也用于受理后移除"已整理"；读不到就无法安全处理，宁可稍后重试。
-        return _reject(ExistingTaskRejection.STATE_UNAVAILABLE, "读取任务标签失败，未改动该任务，稍后重试")
     if snapshot.state is ExistingTaskState.ERROR:
         return _reject(
             ExistingTaskRejection.TASK_ERROR,
             "下载器报告该任务出错（例如数据文件缺失），未改动该任务，本次改用其他资源；请先在下载器中处理",
         )
     extensions = {str(extension).lower() for extension in media_extensions}
-    if episodes:
-        target, matched = _episode_targets(files, episodes, extensions, custom_words, episode_selection)
-        if not episodes.issubset(matched):
-            return _reject(
-                ExistingTaskRejection.EPISODES_NOT_FOUND,
-                f"未找到能覆盖目标集数 {sorted(episodes)} 的视频，未改动该任务，请检查季集映射",
-            )
-    else:
-        target = _whole_torrent_targets(files, extensions)
-    previously_confirmed = _confirmed_file_ids(files, confirmed, extensions, custom_words, episode_selection)
+    target, matched, primary = _request_targets(files, episodes, extensions, custom_words, episode_selection)
+    if episodes and not episodes.issubset(matched):
+        return _reject(
+            ExistingTaskRejection.EPISODES_NOT_FOUND,
+            f"未找到能覆盖目标集数 {sorted(episodes)} 的视频，未改动该任务，请检查季集映射",
+        )
+    # 确认记录存的是文件身份（索引 + 种子内路径），直接与下载器报告的文件比对，不按当前请求的季集规则重新换算。
+    previously_confirmed = {
+        file_id for file_id, item in files.items()
+        if any(record.matches(file_id, item.name) for record in confirmed or ())
+    }
     cancelled = {file_id for file_id in target if file_id in previously_confirmed and not files[file_id].wanted}
-    # 主文件：有视频的种子是全部视频，没有视频的种子（例如音乐专辑）是全部文件，与整包目标的口径一致。
-    # 只按"视频"判断的话，纯音频种子的音轨全部被取消后会被判成"目标已完成"而复用成功，缺轨记成已下载。
-    primary = set(_whole_torrent_targets(files, extensions))
+    # 只按"视频"判断主文件的话，纯音频种子的音轨全部被取消后会被判成"目标已完成"而复用成功，缺轨记成已下载。
     cancelled_primary = sorted(files[file_id].name for file_id in cancelled if file_id in primary)
     if cancelled_primary:
         return _reject(
             ExistingTaskRejection.FILES_CANCELLED,
             f"目标文件 {'、'.join(cancelled_primary)} 曾由 MoviePilot 选中，现已在下载器中被取消选择，"
-            "MP 不会重新选中，本次改用其他资源",
+            "MP 不会重新选中，本次改用其他资源；如确实需要，请手动指定该种子下载",
         )
     # 追加范围：目标中尚未选中、且不是被别人取消的文件。被取消的只可能是非主文件（字幕等附属文件，主文件已在
     # 上面拒绝），静默跳过，不重新选中，也不计入待下载。
     # 外部添加的任务（confirmed 为 None）没有确认记录，按"从未选中"允许追加，与升级前的旧任务一致。
     # 如果以后发现往外部任务里追加文件会打乱用户在下载器中的安排，只需在这里对 confirmed is None
-    # 返回拒绝（或清空 enable），其余流程不受影响。
-    enable = tuple(file_id for file_id in target if not files[file_id].wanted and file_id not in cancelled)
-    if all(files[file_id].completed for file_id in target if file_id not in cancelled):
+    # 返回拒绝（或清空 enable），其余流程不受影响；注意用户手动指定种子时 confirmed 也是 None。
+    required = tuple(file_id for file_id in target if file_id not in cancelled)
+    enable = tuple(file_id for file_id in required if not files[file_id].wanted)
+    if all(files[file_id].completed for file_id in required):
         return ExistingTaskDecision(
-            action=DownloadTaskAction.APPENDED if enable else DownloadTaskAction.REUSED, enable=enable,
-            # 任务已在运行却还带着暂停标签，说明是在 MP 之外恢复的，顺手清掉过期标签。
-            clear_pause_tags=snapshot.state is ExistingTaskState.RUNNING,
+            action=DownloadTaskAction.APPENDED if enable else DownloadTaskAction.REUSED,
+            enable=enable, required=required,
         )
-    return _decide_pending_task(snapshot, enable)
+    return _decide_pending_task(snapshot, enable, required)
 
 
 def is_magnet_link(content: Union[str, bytes]) -> bool:

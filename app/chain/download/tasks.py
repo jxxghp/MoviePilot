@@ -9,7 +9,6 @@ from app.chain.download.contract import _DownloadOwnerBase
 from app.foundation import size as size_tools
 from app.runtime.events import Event
 from app.runtime.log import logger
-from app.schemas.download import DownloadTaskActor
 from app.schemas.message import Message
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
@@ -77,24 +76,14 @@ class DownloadTaskOwner(_DownloadOwnerBase):
         """
         return self._download_task_service(require_source=require_source).downloading(name)
 
-    def set_downloading(
-        self, hash_str: str, oper: str, name: Optional[str] = None,
-        actor: Optional[DownloadTaskActor] = None,
-    ) -> bool:
+    def set_downloading(self, hash_str: str, oper: str, name: Optional[str] = None) -> bool:
         """
-        控制下载任务 start/stop。
-
-        :param hash_str: 任务 hash
-        :param oper: start 或 stop
-        :param name: 下载器名称
-        :param actor: 暂停方，写入 MP 暂停标签；省略时不写标签，任务会被当成外部暂停
-        :return: 下载器报告的执行结果
+        控制下载任务 start/stop
         """
         return self._download_task_service().set_downloading(
             hash_str,
             oper,
             name,
-            actor,
         )
 
     def remove_downloading(self, hash_str: str, name: Optional[str] = None) -> bool:

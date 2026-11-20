@@ -1498,7 +1498,6 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.BOOLEAN,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("hashs", "downloader"),
-        optional_parameters=("pause_tag",),
     ),
     "update_torrent": ModuleMethodContract(
         family="downloader",

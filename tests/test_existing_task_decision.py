@@ -1,5 +1,5 @@
 """
-已有下载任务受理决策、MP 暂停标签与"确认选中过的目标"记录的纯规则回归。
+已有下载任务受理决策与"MP 确认选中过的文件"记录的纯规则回归。
 
 下载器模块上的端到端行为见 ``tests/test_episode_file_selection.py``；这里覆盖规则本身的边界。
 """
@@ -8,136 +8,205 @@ import pytest
 
 from app.domain import torrent as torrent_rules
 from app.domain.torrent import (
+    ConfirmedFile,
     ConfirmedSelection,
+    EpisodeSelection,
     ExistingTaskFile,
     ExistingTaskSnapshot,
     ExistingTaskState,
-    PauseMark,
 )
-from app.schemas.download import (
-    DownloadPauseIntent,
-    DownloadTaskAction,
-    DownloadTaskActor,
-    ExistingTaskRejection,
-)
+from app.schemas.download import DownloadTaskAction, ExistingTaskRejection
 
 _MEDIA = [".mkv", ".mp4"]
 
 
-def _snapshot(*files, state=ExistingTaskState.RUNNING, tags=()):
+def _snapshot(*files, state=ExistingTaskState.RUNNING):
     """
     构造已有任务快照；files 为 (名称, 已选中, 已完成) 三元组，按顺序编号。
     """
     return ExistingTaskSnapshot(
         files=tuple(ExistingTaskFile(index, name, wanted, completed) for index, (name, wanted, completed) in enumerate(files)),
         state=state,
-        tags=None if tags is None else tuple(tags),
     )
 
 
-def _decide(snapshot, episodes=None, confirmed=None):
+def _decide(snapshot, episodes=None, confirmed=None, **kwargs):
     """
     以统一的视频后缀调用决策。
     """
-    return torrent_rules.decide_existing_task(snapshot, episodes=episodes, confirmed=confirmed, media_extensions=_MEDIA)
-
-
-@pytest.mark.parametrize("mark,tag", [
-    (PauseMark(DownloadTaskActor.SYSTEM, DownloadPauseIntent.RESUMABLE), "MP暂停:可恢复:系统"),
-    (PauseMark(DownloadTaskActor.USER), "MP暂停:放弃:用户"),
-    (PauseMark(DownloadTaskActor.USER, DownloadPauseIntent.DEFER), "MP暂停:暂缓:用户"),
-    (PauseMark(DownloadTaskActor.PLUGIN, DownloadPauseIntent.ABANDON, "AutoClean"), "MP暂停:放弃:插件:AutoClean"),
-    (PauseMark(DownloadTaskActor.PLUGIN, DownloadPauseIntent.DEFER, "NightOnly"), "MP暂停:暂缓:插件:NightOnly"),
-    (PauseMark(DownloadTaskActor.PLUGIN, DownloadPauseIntent.RESUMABLE, "Saver"), "MP暂停:可恢复:插件:Saver"),
-])
-def test_pause_tag_round_trips(mark, tag):
-    """
-    暂停标签可以生成并原样解析回暂停意图与暂停方；任何暂停方都可以声明任何意图。
-    """
-    assert torrent_rules.pause_tag(mark) == tag
-    assert torrent_rules.is_pause_tag(tag)
-    assert torrent_rules.parse_pause_mark(["MOVIEPILOT", tag]) == mark
-
-
-@pytest.mark.parametrize("mark", [
-    PauseMark(DownloadTaskActor.EXTERNAL),
-    PauseMark(DownloadTaskActor.PLUGIN, plugin_id=None),
-    PauseMark(DownloadTaskActor.PLUGIN, plugin_id="a,b"),
-    PauseMark(DownloadTaskActor.PLUGIN, plugin_id="a:b"),
-])
-def test_pause_tag_rejects_external_and_invalid_plugin_ids(mark):
-    """
-    外部暂停没有标签；插件 ID 缺失或含分隔符时拒绝生成，避免写出无法解析的标签。
-    """
-    with pytest.raises(ValueError):
-        torrent_rules.pause_tag(mark)
-
-
-def test_most_conservative_pause_mark_wins():
-    """
-    同时存在多个暂停标签时取最保守的意图：放弃 > 暂缓 > 可恢复，宁可不恢复也不推翻别人的决定。
-    """
-    assert torrent_rules.parse_pause_mark(["MP暂停:可恢复:系统", "MP暂停:暂缓:插件:A"]).intent is DownloadPauseIntent.DEFER
-    assert torrent_rules.parse_pause_mark(["MP暂停:暂缓:插件:A", "MP暂停:放弃:用户"]).actor is DownloadTaskActor.USER
-    assert torrent_rules.parse_pause_mark(
-        ["MP暂停", "MP暂停:未知:插件:A", "MP暂停:放弃:插件", "MP暂停:放弃:用户:多余", "其他"],
-    ) is None
-
-
-@pytest.mark.parametrize("mark,expected", [
-    (PauseMark(DownloadTaskActor.USER, DownloadPauseIntent.ABANDON), ExistingTaskRejection.PAUSED_ABANDONED),
-    (PauseMark(DownloadTaskActor.PLUGIN, DownloadPauseIntent.ABANDON, "AutoClean"), ExistingTaskRejection.PAUSED_ABANDONED),
-    (PauseMark(DownloadTaskActor.USER, DownloadPauseIntent.DEFER), DownloadTaskAction.DEFERRED),
-    (PauseMark(DownloadTaskActor.PLUGIN, DownloadPauseIntent.DEFER, "NightOnly"), DownloadTaskAction.DEFERRED),
-    (PauseMark(DownloadTaskActor.SYSTEM, DownloadPauseIntent.RESUMABLE), DownloadTaskAction.APPENDED),
-    (PauseMark(DownloadTaskActor.PLUGIN, DownloadPauseIntent.RESUMABLE, "Saver"), DownloadTaskAction.APPENDED),
-])
-def test_paused_task_handling_depends_only_on_intent(mark, expected):
-    """
-    已暂停的任务怎么处理只看意图、不看是谁暂停的：插件声明放弃与用户暂停一样换种子；
-    任何暂停方声明可恢复，MP 都会在需要时恢复。
-    """
-    snapshot = _snapshot(
-        ("S01E01.mkv", True, True), ("S01E02.mkv", False, False),
-        state=ExistingTaskState.PAUSED, tags=[torrent_rules.pause_tag(mark)],
+    return torrent_rules.decide_existing_task(
+        snapshot, episodes=episodes, confirmed=confirmed, media_extensions=_MEDIA, **kwargs,
     )
 
-    decision = _decide(snapshot, episodes={2})
 
-    if isinstance(expected, ExistingTaskRejection):
-        assert decision.rejection is expected
-        assert decision.enable == () and decision.resume is False
-    else:
-        assert decision.action is expected
-        assert decision.enable == (1,)
-        assert decision.resume is (mark.intent is DownloadPauseIntent.RESUMABLE)
-
-
-def test_confirmed_selection_note_round_trip_and_legacy_notes():
+def _confirmed(*names):
     """
-    确认记录写入下载历史 note 后可读回；升级前的 note 或格式不符时视为空记录。
+    按快照文件顺序构造确认文件；names 为 (索引, 种子内相对路径) 二元组。
     """
-    merged = ConfirmedSelection.from_request({5}).merge(ConfirmedSelection.from_request({6}))
-    note = {"source": "Subscribe|{}", torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: merged.to_note()}
-
-    assert ConfirmedSelection.from_note(note) == ConfirmedSelection(episodes=frozenset({5, 6}))
-    assert ConfirmedSelection.from_request(None) == ConfirmedSelection(whole=True)
-    assert ConfirmedSelection.from_note({"source": "旧版本"}) == ConfirmedSelection()
-    assert ConfirmedSelection.from_note(None) == ConfirmedSelection()
-    assert ConfirmedSelection.from_note({torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: {"episodes": ["5", True]}}) == ConfirmedSelection()
+    return frozenset(ConfirmedFile(index, tuple(name.split("/"))) for index, name in names)
 
 
-def test_external_pause_after_seeding_is_not_resumed():
+def test_paused_task_is_rejected_whoever_paused_it():
     """
-    做种完成后被下载器分享率规则停掉的任务也没有 MP 标签：追加新集时不恢复，按外部暂停拒绝。
+    任务已暂停、目标还没下完时一律拒绝且不改动：不论是谁暂停的，MP 都不恢复，也不往里追加。
     """
     snapshot = _snapshot(("S01E01.mkv", True, True), ("S01E02.mkv", False, False), state=ExistingTaskState.PAUSED)
 
     decision = _decide(snapshot, episodes={2})
 
-    assert decision.rejection is ExistingTaskRejection.PAUSED_EXTERNALLY
+    assert decision.rejection is ExistingTaskRejection.PAUSED
+    assert decision.enable == () and decision.required == ()
+    # 暂停方恢复后就能接着用，只短冷却，且冷却作用于整个任务。
     assert not decision.rejection.is_resource_level
-    assert decision.enable == () and decision.resume is False
+    assert not decision.rejection.is_target_specific
+
+
+def test_paused_task_with_complete_target_is_reused_without_resuming():
+    """
+    目标已经下完时，暂停的任务照样按复用受理，不改启停状态。
+    """
+    snapshot = _snapshot(("S01E01.mkv", True, True), ("S01E02.mkv", False, False), state=ExistingTaskState.PAUSED)
+
+    decision = _decide(snapshot, episodes={1})
+
+    assert decision.action is DownloadTaskAction.REUSED
+    assert decision.required == (0,) and decision.pending is False
+
+
+def test_running_task_appends_and_requires_all_targets():
+    """
+    运行中的任务只追加尚未选中的目标；回读要核对的是全部目标，而不只是新追加的。
+    """
+    snapshot = _snapshot(("S01E01.mkv", True, False), ("S01E02.mkv", False, False), ("S01E03.mkv", False, False))
+
+    decision = _decide(snapshot, episodes={1, 2})
+
+    assert decision.action is DownloadTaskAction.APPENDED
+    assert decision.enable == (1,)
+    assert decision.required == (0, 1)
+    assert decision.pending is True
+
+
+def test_confirmed_selection_note_round_trip_and_legacy_notes():
+    """
+    确认记录按下载器分开写入下载历史 note 后可读回；没有记录、版本或格式不符时视为空记录。
+    """
+    selection = ConfirmedSelection().record("qb", _confirmed((0, "S01E01.mkv")), replace=True)
+    selection = selection.record("qb", _confirmed((1, "Sub/S01E02.mkv")), replace=False)
+    selection = selection.record("tr", _confirmed((3, "S01E04.mkv")), replace=True)
+    note = {"source": "Subscribe|{}", torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: selection.to_note()}
+
+    restored = ConfirmedSelection.from_note(note)
+
+    assert restored == selection
+    assert restored.files_for("qb") == _confirmed((0, "S01E01.mkv"), (1, "Sub/S01E02.mkv"))
+    assert restored.files_for("tr") == _confirmed((3, "S01E04.mkv"))
+    assert restored.files_for("rt") == frozenset()
+    assert ConfirmedSelection.from_note({"source": "旧版本"}) == ConfirmedSelection()
+    assert ConfirmedSelection.from_note(None) == ConfirmedSelection()
+    assert ConfirmedSelection.from_note(
+        {torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: {"version": 1, "episodes": [5]}},
+    ) == ConfirmedSelection()
+    malformed = {torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: {
+        "version": 2,
+        "downloaders": {"qb": [{"index": True, "path": ["a.mkv"]}, {"index": 1, "path": []}, "x"], 7: []},
+    }}
+    assert ConfirmedSelection.from_note(malformed) == ConfirmedSelection(downloaders=(("qb", frozenset()),))
+
+
+def test_new_task_replaces_only_its_own_downloader_record():
+    """
+    新建任务替换这台下载器的旧记录（同 hash 的旧任务可能已被删除重建），其他下载器的记录保留。
+    """
+    selection = ConfirmedSelection().record("qb", _confirmed((0, "E01.mkv")), replace=True)
+    selection = selection.record("tr", _confirmed((1, "E02.mkv")), replace=True)
+
+    rebuilt = selection.record("qb", _confirmed((2, "E03.mkv")), replace=True)
+
+    assert rebuilt.files_for("qb") == _confirmed((2, "E03.mkv"))
+    assert rebuilt.files_for("tr") == _confirmed((1, "E02.mkv"))
+
+
+@pytest.mark.parametrize("name", ["Show/Season 1/E01.mkv", "Season 1/E01.mkv"])
+def test_confirmed_file_matches_with_or_without_torrent_root(name):
+    """
+    下载器报告的文件名可能带种子根目录（qB 原始布局、TR），也可能不带（qB 不建子文件夹、rT），都能对上。
+    """
+    record = ConfirmedFile(0, ("Season 1", "E01.mkv"))
+
+    assert record.matches(0, name)
+    assert not record.matches(1, name)
+    assert not record.matches(0, "Show/Season 2/E01.mkv")
+
+
+def test_same_named_file_in_another_folder_is_not_confused():
+    """
+    索引不同的同名文件不会被当成同一个：只看路径时，不带根目录的 "Season 2/E01.mkv" 去掉一层后会冒认 "E01.mkv"。
+    """
+    record = ConfirmedFile(0, ("E01.mkv",))
+
+    assert not record.matches(1, "Season 2/E01.mkv")
+
+
+def test_confirmed_target_files_follow_downloader_selection_rules():
+    """
+    受理后记录的是按与下载器相同的选集规则算出的目标主文件，字幕等附属文件不记录。
+    """
+    files = ["Season 1/S01E01.mkv", "Season 1/S01E01.ass", "Season 1/S01E02.mkv", "Season 1/S01E03.mkv"]
+
+    assert torrent_rules.confirmed_target_files(files, episodes={1, 2}, media_extensions=_MEDIA) == _confirmed(
+        (0, "Season 1/S01E01.mkv"), (2, "Season 1/S01E02.mkv"),
+    )
+    assert torrent_rules.confirmed_target_files(files, episodes=None, media_extensions=_MEDIA) == _confirmed(
+        (0, "Season 1/S01E01.mkv"), (2, "Season 1/S01E02.mkv"), (3, "Season 1/S01E03.mkv"),
+    )
+    assert torrent_rules.confirmed_target_files([], episodes={1}, media_extensions=_MEDIA) == frozenset()
+    assert torrent_rules.confirmed_target_files(files, episodes={9}, media_extensions=_MEDIA) == frozenset()
+
+
+def test_other_season_with_same_episode_number_is_not_treated_as_cancelled():
+    """
+    多季包里 S01E01 确认选中过，之后请求 S02E01：确认记录存的是文件身份，不会按集号把 S02E01 误判为被取消。
+    """
+    files = ["S01/Show.S01E01.mkv", "S02/Show.S02E01.mkv"]
+    confirmed = torrent_rules.confirmed_target_files(
+        files, episodes={1}, media_extensions=_MEDIA, episode_selection=EpisodeSelection(season=1),
+    )
+    snapshot = _snapshot(("Show/S01/Show.S01E01.mkv", True, True), ("Show/S02/Show.S02E01.mkv", False, False))
+
+    decision = _decide(snapshot, episodes={1}, confirmed=confirmed, episode_selection=EpisodeSelection(season=2))
+
+    assert confirmed == _confirmed((0, "S01/Show.S01E01.mkv"))
+    assert decision.action is DownloadTaskAction.APPENDED
+    assert decision.enable == (1,)
+
+
+def test_changed_recognition_words_do_not_reinterpret_confirmed_files():
+    """
+    识别词改动后同一集号对应到别的文件，也不会把从未选中的文件误判为被取消：比对的是文件身份。
+    """
+    snapshot = _snapshot(("E01.mkv", True, True), ("E02.mkv", False, False))
+
+    decision = _decide(snapshot, episodes={2}, confirmed=_confirmed((0, "E01.mkv")), custom_words="E01 => E02")
+
+    assert decision.rejection is None
+    assert decision.enable == (1,)
+
+
+def test_cancelled_target_is_rejected_unless_confirmation_is_ignored():
+    """
+    MP 确认选中过、现在被取消的目标主文件按取消拒绝；用户手动指定种子时下载链不传确认记录，重新选中。
+    """
+    snapshot = _snapshot(("S01E01.mkv", False, False), ("S01E02.mkv", True, False))
+    confirmed = _confirmed((0, "S01E01.mkv"))
+
+    rejected = _decide(snapshot, episodes={1}, confirmed=confirmed)
+    explicit = _decide(snapshot, episodes={1}, confirmed=None)
+
+    assert rejected.rejection is ExistingTaskRejection.FILES_CANCELLED
+    assert rejected.rejection.is_target_specific and rejected.rejection.is_resource_level
+    assert explicit.action is DownloadTaskAction.APPENDED
+    assert explicit.enable == (0,)
 
 
 def test_cancelled_attachment_is_skipped_silently_but_never_reselected():
@@ -146,10 +215,11 @@ def test_cancelled_attachment_is_skipped_silently_but_never_reselected():
     """
     snapshot = _snapshot(("S01E01.mkv", True, True), ("S01E01.ass", False, True), ("S01E02.mkv", False, False))
 
-    decision = _decide(snapshot, episodes={1, 2}, confirmed=ConfirmedSelection(episodes=frozenset({1})))
+    decision = _decide(snapshot, episodes={1, 2}, confirmed=_confirmed((0, "S01E01.mkv"), (1, "S01E01.ass")))
 
     assert decision.action is DownloadTaskAction.APPENDED
     assert decision.enable == (2,)
+    assert decision.required == (0, 2)
 
 
 @pytest.mark.parametrize("cancelled", [{0, 1}, {1}])
@@ -160,7 +230,7 @@ def test_cancelled_tracks_of_audio_only_torrent_are_rejected(cancelled):
     """
     files = [(f"{index:02d}.flac", index not in cancelled, index not in cancelled) for index in range(2)]
 
-    decision = _decide(_snapshot(*files), confirmed=ConfirmedSelection(whole=True))
+    decision = _decide(_snapshot(*files), confirmed=_confirmed((0, "00.flac"), (1, "01.flac")))
 
     assert decision.rejection is ExistingTaskRejection.FILES_CANCELLED
     assert decision.enable == ()
@@ -172,24 +242,24 @@ def test_cancelled_non_video_files_beside_videos_stay_attachments():
     """
     snapshot = _snapshot(("Movie.mkv", True, True), ("Movie.Commentary.flac", False, False))
 
-    decision = _decide(snapshot, confirmed=ConfirmedSelection(whole=True))
+    decision = _decide(snapshot, confirmed=_confirmed((0, "Movie.mkv"), (1, "Movie.Commentary.flac")))
 
     assert decision.action is DownloadTaskAction.REUSED
     assert decision.enable == ()
 
 
-def test_unknown_tags_and_states_are_never_guessed():
+def test_unknown_states_are_never_guessed():
     """
-    标签读不到时一律拒绝；状态读不到时只有在仍需下载时才拒绝（目标已完成不需要知道状态）。
+    状态读不到时只有在仍需下载时才拒绝（目标已完成不需要知道状态）；文件列表读不到时一律拒绝。
     """
     files = (("S01E01.mkv", True, False),)
 
-    assert _decide(_snapshot(*files, tags=None), episodes={1}).rejection is ExistingTaskRejection.STATE_UNAVAILABLE
     assert _decide(_snapshot(*files, state=ExistingTaskState.UNKNOWN), episodes={1}).rejection is (
         ExistingTaskRejection.STATE_UNAVAILABLE
     )
     done = _snapshot(("S01E01.mkv", True, True), state=ExistingTaskState.UNKNOWN)
     assert _decide(done, episodes={1}).action is DownloadTaskAction.REUSED
+    assert _decide(_snapshot(), episodes={1}).rejection is ExistingTaskRejection.FILES_UNAVAILABLE
 
 
 def test_error_state_is_rejected_even_when_target_is_complete():
@@ -202,6 +272,18 @@ def test_error_state_is_rejected_even_when_target_is_complete():
 
     assert decision.rejection is ExistingTaskRejection.TASK_ERROR
     assert decision.rejection.is_resource_level
+    assert not decision.rejection.is_target_specific
+
+
+def test_missing_target_episodes_are_rejected_for_these_episodes_only():
+    """
+    目标集在文件列表里找不到时拒绝，冷却只针对这几集。
+    """
+    # 两个视频：只有一个视频时单集请求会走"唯一视频兜底"，不会判为找不到。
+    decision = _decide(_snapshot(("S01E01.mkv", True, True), ("S01E03.mkv", True, True)), episodes={2})
+
+    assert decision.rejection is ExistingTaskRejection.EPISODES_NOT_FOUND
+    assert decision.rejection.is_target_specific
 
 
 def test_rejection_messages_are_recognized_by_prefix():

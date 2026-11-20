@@ -80,6 +80,58 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         return f"subscribe:{subscription_id}" if subscription_id is not None else str(source)
 
     @staticmethod
+    def _download_scope(downloader: Optional[str], torrent: Optional[TorrentInfo]) -> str:
+        """
+        本次请求指向的下载器配置，作为已有任务冷却与重复提交退避的作用范围。
+
+        选源阶段还不知道下载器实际选用了哪个实例，只能用"调用方指定的下载器，否则站点配置的下载器"表示；
+        提交与记录时必须用同一口径，冷却才能命中。两者都没有时为空字符串，代表当时的默认下载器
+        （默认下载器在冷却期内被改成别的实例属于已知近似，最多让一次请求多冷却或少冷却）。
+
+        :param downloader: 调用方指定的下载器配置名称
+        :param torrent: 候选种子，读取站点配置的下载器
+        :return: 下载器范围标识
+        """
+        return str(downloader or getattr(torrent, "site_downloader", None) or "")
+
+    @classmethod
+    def _build_existing_task_fingerprint(
+            cls, context: Context, *, downloader_scope: str, episodes: Optional[Set[int]] = None,
+            target_specific: bool = False,
+    ) -> Optional[str]:
+        """
+        生成"下载器中已有同一种子任务、但不能受理"的冷却指纹，与普通失败指纹隔离。
+
+        已有任务的拒绝只说明这台下载器里的这个任务暂时用不了，不能像普通失败那样按种子标题解析出的
+        集数挡住整包（例如 E03 被取消后，同一任务上的 E04 仍可正常追加；换一台下载器也能新建任务）：
+        - 针对整个任务的原因（暂停、出错、读取或写入未确认）：范围是"下载器 + 种子"，选源阶段即可拦截；
+        - 只针对本次目标的原因（目标集找不到、目标文件被取消）：范围再加上"本次目标集"，只能在算出
+          本次要下载哪几集之后、提交下载器之前拦截，见 ``_existing_task_cooldown``。
+        原因归类见 ``ExistingTaskRejection.is_target_specific``。
+
+        :param context: 本次提交的上下文，读取站点与种子资源键
+        :param downloader_scope: 下载器范围，见 ``_download_scope``
+        :param episodes: 本次目标集号；None 或空集合表示整个种子，仅 ``target_specific`` 时使用
+        :param target_specific: 是否为只针对本次目标的原因
+        :return: 冷却指纹；缺少种子资源键时返回 None
+        """
+        torrent = getattr(context, "torrent_info", None)
+        resource = cls._torrent_resource_key(torrent)
+        if not resource:
+            return None
+        site = getattr(torrent, "site", None) or getattr(torrent, "site_name", None)
+        payload: Dict[str, object] = {
+            "kind": "existing_task",
+            "downloader": downloader_scope,
+            "site": str(site or ""),
+            "resource": resource,
+        }
+        if target_specific:
+            payload["episodes"] = sorted(episodes) if episodes else "whole"
+        raw_text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+
+    @staticmethod
     def _format_failure_episodes(meta: Optional[MetaBase]) -> Optional[str]:
         """
         从识别元数据中格式化用于失败记录的集数。
@@ -128,17 +180,20 @@ class DownloadFailureOwner(_DownloadOwnerBase):
     @classmethod
     def _build_download_failure_fingerprint(
             cls, context: Context, *, resource_backoff: bool = False, source: Optional[str] = None,
+            downloader_scope: str = "",
     ) -> Optional[str]:
         """
         根据媒体和种子资源信息生成冷却指纹，整包退避不依赖解析后补齐的集数。
 
-        重复提交退避的指纹额外包含订阅 ID：退避只表达"这个订阅反复重投该资源没有进展"，不能
-        挡住其他订阅（例如试看后新建的正式订阅）对同一季包的补集请求。这一字段同时让旧版本按
+        重复提交退避的指纹额外包含订阅 ID 与下载器范围：退避只表达"这个订阅往这台下载器反复重投该资源
+        没有进展"，不能挡住其他订阅（例如试看后新建的正式订阅）对同一季包的补集请求；订阅改用另一台
+        下载器后，同一资源会在那台下载器上新建任务，也不应被挡住。这两个字段同时让旧版本按
         "数据库明细已全部记录"写入、未经下载器核验的整包退避记录自然失效。
 
         :param context: 识别出的媒体与资源上下文
         :param resource_backoff: 是否为重复提交退避；与普通失败指纹隔离
         :param source: 下载来源，仅重复提交退避使用其中的订阅 ID
+        :param downloader_scope: 下载器范围（见 ``_download_scope``），仅重复提交退避使用
         :return: 稳定资源指纹；缺少身份时返回 None
         """
         media = getattr(context, "media_info", None)
@@ -166,6 +221,7 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         }
         if resource_backoff:
             payload["subscription"] = cls._subscription_scope(source)
+            payload["downloader"] = downloader_scope
         if not payload["media_type"] or not payload["media_key"] or not payload["resource"]:
             return None
         raw_text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -206,25 +262,36 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             episodes: Optional[Set[int]] = None,
             ttl_seconds: Optional[int] = None,
             resource_backoff: bool = False,
+            downloader_scope: Optional[str] = None,
     ) -> Optional[str]:
         """
         记录资源级冷却事实，并返回本次资源指纹。
 
         该台账是资源级退避记录，既承载真实失败，也承载"重复提交但无新增交付"这类
         没有失败、但不值得立刻再试一次的事实，因此 ``error_msg`` 只是跳过原因说明。
+        下载器以 ``ExistingTaskRejection`` 开头拒绝的已有任务，按已有任务指纹记录，作用范围见
+        ``_build_existing_task_fingerprint``。
 
         :param context: 本次提交的上下文，用于计算资源指纹
         :param error_msg: 写入台账的跳过原因说明
-        :param downloader: 本次使用的下载器
+        :param downloader: 本次使用的下载器；拒绝时下载器不返回实际实例，即为请求指向的下载器
         :param source: 下载来源，仅订阅来源的冷却会被读取
         :param episodes: 目标集数，缺省时按识别元数据记录
         :param ttl_seconds: 显式冷却秒数，缺省时按原因文本推断
         :param resource_backoff: 是否使用不含运行时集数的整包退避指纹
+        :param downloader_scope: 指纹使用的下载器范围（见 ``_download_scope``）；缺省时取 ``downloader``
         :return: 本次记录的资源指纹；缺少身份时返回 None
         """
-        fingerprint = self._build_download_failure_fingerprint(
-            context, resource_backoff=resource_backoff, source=source,
-        )
+        scope = downloader_scope if downloader_scope is not None else str(downloader or "")
+        rejection = None if resource_backoff else ExistingTaskRejection.from_message(error_msg)
+        if rejection is not None:
+            fingerprint = self._build_existing_task_fingerprint(
+                context, downloader_scope=scope, episodes=episodes, target_specific=rejection.is_target_specific,
+            )
+        else:
+            fingerprint = self._build_download_failure_fingerprint(
+                context, resource_backoff=resource_backoff, source=source, downloader_scope=scope,
+            )
         if not fingerprint:
             return None
 
@@ -287,19 +354,21 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             downloader: Optional[str] = None,
             source: Optional[str] = None,
             episodes: Optional[Set[int]] = None,
+            downloader_scope: str = "",
     ) -> Optional[str]:
         """
         为订阅重复接受且未带来任何新增文件的资源记录退避，并返回该资源指纹。
 
         登记条件由 ``DownloadHistoryOwner._should_record_duplicate_backoff`` 判断。退避只压制
-        这一个订阅对这一个资源的重投，订阅候选会继续尝试同媒体的其他资源，其他订阅不受影响；
-        订阅本身既不会被判定完成也不会被判失败，冷却到期后仍可重试。
+        这一个订阅对这一台下载器重投这一个资源，订阅候选会继续尝试同媒体的其他资源，其他订阅、
+        其他下载器不受影响；订阅本身既不会被判定完成也不会被判失败，冷却到期后仍可重试。
         仅订阅来源需要记录，因为候选过滤只在订阅来源读取该台账。
 
         :param context: 本次结算的上下文，用于计算资源指纹
-        :param downloader: 本次使用的下载器
+        :param downloader: 本次实际使用的下载器，写入台账供展示
         :param source: 下载来源
         :param episodes: 目标集数
+        :param downloader_scope: 请求指向的下载器范围（见 ``_download_scope``），写入指纹；选源阶段只知道这一口径
         :return: 本次记录的整包资源指纹；非订阅来源返回 None
         """
         if not self._is_subscribe_source(source):
@@ -312,33 +381,45 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             episodes=episodes,
             ttl_seconds=DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS,
             resource_backoff=True,
+            downloader_scope=downloader_scope,
         )
 
     def _active_download_failure_fingerprints(
             self,
             contexts: List[Context],
             source: Optional[str],
+            downloader: Optional[str] = None,
     ) -> Dict[str, DownloadFailureSnapshot]:
         """
-        查询候选的普通失败与整包退避，并映射回当前候选指纹供所有选源阶段消费。
+        查询候选的普通失败、整包退避与已有任务冷却，并映射回当前候选指纹供所有选源阶段消费。
+
+        已有任务冷却在这里只查"下载器 + 种子"范围的（暂停、出错等针对整个任务的原因）；只针对目标集的
+        冷却要等算出本次目标后才能判断，见 ``_existing_task_cooldown``。
 
         :param contexts: 本轮待筛选的资源上下文
         :param source: 本次批量下载的业务来源
+        :param downloader: 本次批量下载指定的下载器，用于计算下载器范围
         :return: 当前候选指纹到有效冷却记录的映射；非订阅来源不读取台账
         """
         if not self._is_subscribe_source(source):
             return {}
-        backoff_fingerprints = {
-            fingerprint: self._build_download_failure_fingerprint(
-                context, resource_backoff=True, source=source,
-            ) or fingerprint
-            for context in contexts or []
-            if (fingerprint := self._build_download_failure_fingerprint(context))
-        }
-        fingerprints = list(dict.fromkeys([
-            *backoff_fingerprints,
-            *backoff_fingerprints.values(),
-        ]))
+        related: Dict[str, List[str]] = {}
+        for context in contexts or []:
+            fingerprint = self._build_download_failure_fingerprint(context)
+            if not fingerprint:
+                continue
+            scope = self._download_scope(downloader, getattr(context, "torrent_info", None))
+            related[fingerprint] = [
+                item for item in (
+                    self._build_download_failure_fingerprint(
+                        context, resource_backoff=True, source=source, downloader_scope=scope,
+                    ),
+                    self._build_existing_task_fingerprint(context, downloader_scope=scope),
+                ) if item
+            ]
+        fingerprints = list(dict.fromkeys(
+            item for fingerprint, extras in related.items() for item in (fingerprint, *extras)
+        ))
         if not fingerprints:
             return {}
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
@@ -347,14 +428,58 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             records = repository.get_active_by_fingerprints(
                 fingerprints=fingerprints, now_time=now_time,
             )
-            return {
-                fingerprint: records.get(fingerprint) or records[backoff]
-                for fingerprint, backoff in backoff_fingerprints.items()
-                if fingerprint in records or backoff in records
-            }
         except Exception as err:
             logger.error(f"查询下载失败冷却失败：{str(err)}")
             return {}
+        active: Dict[str, DownloadFailureSnapshot] = {}
+        for fingerprint, extras in related.items():
+            record = next((records[item] for item in (fingerprint, *extras) if item in records), None)
+            if record is not None:
+                active[fingerprint] = record
+        return active
+
+    def _existing_task_cooldown(
+            self,
+            context: Context,
+            *,
+            downloader_scope: str,
+            episodes: Optional[Set[int]],
+            source: Optional[str],
+    ) -> Optional[DownloadFailureSnapshot]:
+        """
+        提交下载器之前，检查这个种子在目标下载器里的已有任务是否仍在冷却。
+
+        选源阶段只能按"下载器 + 种子"拦截；拆包、整季核对等阶段在读取种子文件后才知道本次要下载
+        哪几集，"下载器 + 种子 + 这几集"范围的冷却（目标集找不到、目标文件被取消）只能在这里判断。
+        "下载器 + 种子"范围的也一并检查，覆盖不经过批量选源的订阅提交。只读取订阅来源的冷却，
+        与选源阶段一致：用户手动下载不受冷却影响。
+
+        :param context: 本次提交的上下文
+        :param downloader_scope: 下载器范围，见 ``_download_scope``
+        :param episodes: 本次目标集号；None 或空集合表示整个种子
+        :param source: 下载来源
+        :return: 仍有效的冷却记录；没有时返回 None
+        """
+        if not self._is_subscribe_source(source):
+            return None
+        fingerprints = [
+            item for item in (
+                self._build_existing_task_fingerprint(context, downloader_scope=downloader_scope),
+                self._build_existing_task_fingerprint(
+                    context, downloader_scope=downloader_scope, episodes=episodes, target_specific=True,
+                ),
+            ) if item
+        ]
+        if not fingerprints:
+            return None
+        now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        try:
+            repository: DownloadFailureRepository = self.download_failure_repository
+            records = repository.get_active_by_fingerprints(fingerprints=fingerprints, now_time=now_time)
+        except Exception as err:
+            logger.error(f"查询已有任务冷却失败：{str(err)}")
+            return None
+        return next((records[item] for item in fingerprints if item in records), None)
 
     @staticmethod
     def _log_download_failure_cooldown(

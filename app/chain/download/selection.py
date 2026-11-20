@@ -160,6 +160,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
             for fingerprint, failure in self._active_download_failure_fingerprints(
                 contexts=contexts,
                 source=source,
+                downloader=downloader,
             ).items()
         }
         return contexts, active_failures

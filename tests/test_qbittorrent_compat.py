@@ -173,18 +173,13 @@ def _load_qbittorrent_modules():
         """
 
         _discard_failed_selection = staticmethod(ProductionDownloaderBase._discard_failed_selection)
-        # 已有任务的统一核验流程与暂停标签维护直接复用生产实现，文件、状态与标签钩子由被测模块提供。
+        # 已有任务的统一核验流程直接复用生产实现，文件、状态与标签钩子由被测模块提供。
         _accept_existing_task = ProductionDownloaderBase._accept_existing_task
         _apply_existing_task_decision = ProductionDownloaderBase._apply_existing_task_decision
         _confirm_existing_files_enabled = ProductionDownloaderBase._confirm_existing_files_enabled
-        _resume_existing_task = ProductionDownloaderBase._resume_existing_task
-        _pause_mark_overriding_resume = ProductionDownloaderBase._pause_mark_overriding_resume
-        _stop_existing_task = ProductionDownloaderBase._stop_existing_task
         _refresh_accepted_task_tags = ProductionDownloaderBase._refresh_accepted_task_tags
         _refresh_existing_priorities = ProductionDownloaderBase._refresh_existing_priorities
         _has_pending_wanted_files = ProductionDownloaderBase._has_pending_wanted_files
-        _mark_paused_tasks = ProductionDownloaderBase._mark_paused_tasks
-        _clear_pause_tags = ProductionDownloaderBase._clear_pause_tags
 
         def test(self):
             """

@@ -12,6 +12,7 @@ from torrentool.bencode import Bencode
 
 import app.chain.download.submission as submission_module
 import app.modules.transmission.transmission as transmission_client
+from app.application.download.failures import DownloadFailureSnapshot
 from app.chain.download.facade import DownloadChain
 from app.chain.download.failure import (
     DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS,
@@ -21,7 +22,7 @@ from app.chain.download.failure import (
 from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
-from app.domain.torrent import ConfirmedSelection
+from app.domain.torrent import ConfirmedFile, ConfirmedSelection
 from app.modules.qbittorrent import QbittorrentModule
 from app.modules.transmission import TransmissionModule
 from app.modules.transmission.transmission import Transmission
@@ -783,12 +784,10 @@ def _report_existing_task(server, module, torrent_hash) -> None:
     (None, DownloadTaskAction.CREATED),
     ({"wanted": {0, 1}, "completed": {0, 1}}, DownloadTaskAction.REUSED),
     ({"wanted": {0}, "completed": {0}}, DownloadTaskAction.APPENDED),
-    ({"wanted": {0, 1}, "stopped": True, "tags": ["MP暂停:可恢复:系统"]}, DownloadTaskAction.RESUMED),
-    ({"wanted": {0, 1}, "stopped": True, "tags": ["MP暂停:暂缓:插件:NightOnly"]}, DownloadTaskAction.DEFERRED),
-], ids=["created", "reused", "appended", "resumed", "deferred"])
+], ids=["created", "reused", "appended"])
 def test_downloader_task_action_reaches_settlement(downloader, existing, expected):
     """
-    新建、追加、恢复、暂缓与原样复用在结算入口必须可区分，供链路决定通知、文件明细与重复退避。
+    新建、追加与原样复用在结算入口必须可区分，供链路决定通知、文件明细与重复退避。
     """
     module, server, content, torrent_hash = downloader
     if existing is not None:
@@ -930,7 +929,8 @@ def test_reuse_settlement_without_media_files_skips_file_lookup():
 
 
 def _settle_existing(
-        task_action, *, recorded, source="Subscribe|1", selected_episodes=None, episodes=None, previous_note=None,
+        task_action, *, recorded, source="Subscribe|1", selected_episodes=None, episodes=None, previous_selection=None,
+        downloader_scope="",
 ):
     """
     以同一整包对已有任务执行一次成功结算，返回链实例与 durable 写入参数。
@@ -940,7 +940,8 @@ def _settle_existing(
     :param source: 下载来源
     :param selected_episodes: 提交前冻结的订阅集数；None 表示本次没有可记录的集数
     :param episodes: 本次目标集号
-    :param previous_note: 该任务最新一条下载历史的 note；None 表示没有历史
+    :param previous_selection: 提交前读到的确认记录；None 表示没有历史
+    :param downloader_scope: 请求指向的下载器范围
     :return: 下载链实例与 durable_event_writer.download_added 的关键字参数
     """
     meta = MetaInfo("A.Will.Eternal.S04.2160p")
@@ -952,9 +953,6 @@ def _settle_existing(
     chain.download_history_repository.get_files_by_hash.return_value = [
         SimpleNamespace(fullpath=f"/downloads/shared-show/{name}") for name in recorded
     ]
-    chain.download_history_repository.get_by_hash.return_value = (
-        None if previous_note is None else SimpleNamespace(note=previous_note)
-    )
     chain.durable_event_writer = MagicMock()
     chain._build_download_notification = MagicMock(return_value=Message(title="开始下载"))
     context = Context(meta_info=meta, media_info=media, torrent_info=torrent)
@@ -967,26 +965,34 @@ def _settle_existing(
         download_hash="reuse-hash", download_episodes=None, episodes=episodes,
         channel=None, source=source, userid=None, username=None,
         torrent_content=b"torrent", custom_words=None, task_action=task_action,
+        previous_selection=previous_selection, downloader_scope=downloader_scope,
     )
     return chain, chain.durable_event_writer.download_added.call_args.kwargs
 
 
+def _files_on(downloader, *indexes):
+    """
+    构造某台下载器上确认选中过 ``_FILES`` 中指定文件的记录。
+    """
+    files = frozenset(ConfirmedFile(index, (_FILES[index],)) for index in indexes)
+    return ConfirmedSelection().record(downloader, files, replace=True)
+
+
 @pytest.mark.parametrize("task_action,previous,episodes,expected", [
-    (DownloadTaskAction.CREATED, {5}, {6}, ConfirmedSelection(episodes=frozenset({6}))),
-    (DownloadTaskAction.APPENDED, {5}, {6}, ConfirmedSelection(episodes=frozenset({5, 6}))),
-    (DownloadTaskAction.REUSED, None, {6}, ConfirmedSelection(episodes=frozenset({6}))),
-    (DownloadTaskAction.DEFERRED, {5}, None, ConfirmedSelection(episodes=frozenset({5}), whole=True)),
-], ids=["created-resets", "appended-merges", "no-history", "whole-request"])
+    (DownloadTaskAction.CREATED, _files_on("qb", 0), {6}, _files_on("qb", 1)),
+    (DownloadTaskAction.APPENDED, _files_on("qb", 0), {6}, _files_on("qb", 0, 1)),
+    (DownloadTaskAction.REUSED, None, {6}, _files_on("qb", 1)),
+    (DownloadTaskAction.REUSED, _files_on("qb", 0), None, _files_on("qb", 0, 1)),
+    (DownloadTaskAction.CREATED, _files_on("tr", 0), {5}, _files_on("tr", 0).record(
+        "qb", frozenset({ConfirmedFile(0, (_FILES[0],))}), replace=True,
+    )),
+], ids=["created-resets", "appended-merges", "no-history", "whole-request", "other-downloader-kept"])
 def test_settlement_accumulates_confirmed_selection_in_history_note(task_action, previous, episodes, expected):
     """
-    受理后把"MP 在该任务上确认选中过的目标"写进下载历史 note：复用已有任务时与最新一条历史累积，
-    新建任务从零开始（同一 hash 的旧任务可能已删除后重新添加，旧记录里的集在新任务上从未选中）。
+    受理后把"MP 在该任务上确认选中的文件"按下载器写进下载历史 note：复用已有任务时与之前的记录累积，
+    新建任务替换这台下载器的旧记录（同一 hash 的旧任务可能已删除后重新添加），其他下载器的记录保留。
     """
-    previous_note = None if previous is None else {
-        torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: ConfirmedSelection(episodes=frozenset(previous)).to_note(),
-    }
-
-    _chain, payload = _settle_existing(task_action, recorded=_FILES, episodes=episodes, previous_note=previous_note)
+    _chain, payload = _settle_existing(task_action, recorded=_FILES, episodes=episodes, previous_selection=previous)
 
     assert ConfirmedSelection.from_note(payload["history"].note) == expected
 
@@ -994,7 +1000,7 @@ def test_settlement_accumulates_confirmed_selection_in_history_note(task_action,
 def test_submission_passes_latest_confirmed_selection_and_holds_task_lock(downloader, monkeypatch):
     """
     提交前按种子 hash（大小写两种写法）读取最新一条下载历史中的确认记录交给下载器。
-    读取确认记录、调用下载器、写入下载历史整段持有该 hash 的任务锁：与整理链回写、删除及暂停恢复互斥，
+    读取确认记录、调用下载器、写入下载历史整段持有该 hash 的任务锁：与整理链回写、删除及暂停开始互斥，
     两次并发追加也不会各自读到旧记录、后写的覆盖先写的而丢掉一次确认。
     """
     module, _server, content, torrent_hash = downloader
@@ -1019,7 +1025,7 @@ def test_submission_passes_latest_confirmed_selection_and_holds_task_lock(downlo
         lock_states.append(("read", stripe.locked()))
         return {
             torrent_hash.upper(): SimpleNamespace(date="2026-01-02 00:00:00", note={
-                torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: ConfirmedSelection(episodes=frozenset({5, 6})).to_note(),
+                torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: _files_on("test-downloader", 0, 1).to_note(),
             }),
             torrent_hash: SimpleNamespace(date="2026-01-01 00:00:00", note={}),
         }
@@ -1035,7 +1041,7 @@ def test_submission_passes_latest_confirmed_selection_and_holds_task_lock(downlo
 
     queried = chain.download_history_repository.get_by_hashes.call_args.args[0]
     assert {torrent_hash, torrent_hash.upper()} <= set(queried)
-    assert seen == {"confirmed": ConfirmedSelection(episodes=frozenset({5, 6}))}
+    assert seen == {"confirmed": _files_on("test-downloader", 0, 1)}
     assert lock_states == [("read", True), ("download", True), ("settle", True)]
     assert not submission_module.downloader_task_locks._locks[
         submission_module.downloader_task_locks._stripe(torrent_hash)
@@ -1064,16 +1070,16 @@ def test_submission_breaks_same_second_history_ties_by_primary_key(downloader):
     chain.download_history_repository = Mock()
     chain.download_history_repository.get_by_hashes.return_value = {
         torrent_hash: SimpleNamespace(id=7, date="2026-01-01 00:00:00", note={
-            torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: ConfirmedSelection(episodes=frozenset({5})).to_note(),
+            torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: _files_on("test-downloader", 0).to_note(),
         }),
         torrent_hash.upper(): SimpleNamespace(id=8, date="2026-01-01 00:00:00", note={
-            torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: ConfirmedSelection(episodes=frozenset({5, 6})).to_note(),
+            torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: _files_on("test-downloader", 0, 1).to_note(),
         }),
     }
 
     _submit(chain, content, {170}, _CUSTOM_WORDS)
 
-    assert seen["confirmed"] == ConfirmedSelection(episodes=frozenset({5, 6}))
+    assert seen["confirmed"] == _files_on("test-downloader", 0, 1)
 
 
 @pytest.mark.parametrize("histories,expected", [
@@ -1105,23 +1111,158 @@ def test_submission_without_history_passes_no_confirmed_selection(downloader, hi
 
 
 @pytest.mark.parametrize("rejection,ttl", [
-    (ExistingTaskRejection.PAUSED_ABANDONED, DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS),
     (ExistingTaskRejection.FILES_CANCELLED, DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS),
     (ExistingTaskRejection.EPISODES_NOT_FOUND, DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS),
     (ExistingTaskRejection.TASK_ERROR, DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS),
-    (ExistingTaskRejection.PAUSED_EXTERNALLY, DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS),
+    (ExistingTaskRejection.PAUSED, DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS),
     (ExistingTaskRejection.FILES_UNAVAILABLE, DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS),
     (ExistingTaskRejection.STATE_UNAVAILABLE, DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS),
     (ExistingTaskRejection.NOT_CONFIRMED, DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS),
 ])
 def test_existing_task_rejection_cooldown_follows_reason(rejection, ttl):
     """
-    已有任务的拒绝按原因冷却：资源当前用不了（放弃、取消、集数对不上、出错）按资源级冷却，
-    读取失败、外部暂停、写入未确认按瞬时冷却；细节里的"删除""not found"等字样不能升级冷却。
+    已有任务的拒绝按原因冷却：有人处理前重试结果不变的（取消、集数对不上、出错）按资源级冷却，
+    暂停、读取失败、写入未确认按瞬时冷却；细节里的"删除""not found"等字样不能升级冷却。
     """
     message = rejection.describe("abc", "目标视频已被删除（not found）")
 
     assert DownloadFailureOwner._download_failure_ttl(message) == ttl
+
+
+class _FailureLedger:
+    """
+    内存中的下载失败台账，按指纹保存最后一次写入，供冷却范围测试读写。
+    """
+
+    def __init__(self) -> None:
+        """
+        创建空台账。
+        """
+        self.records: dict[str, DownloadFailureSnapshot] = {}
+
+    def record_failure(self, failure) -> None:
+        """
+        保存一次失败事实。
+        """
+        self.records[failure.fingerprint] = DownloadFailureSnapshot(
+            fingerprint=failure.fingerprint, error_message=failure.error_message, next_retry_at=failure.next_retry_at,
+        )
+
+    def get_active_by_fingerprints(self, fingerprints, now_time):
+        """
+        返回给定指纹中已登记的记录（测试不模拟过期）。
+        """
+        return {item: self.records[item] for item in fingerprints if item in self.records}
+
+
+def _season_context(site_downloader=None):
+    """
+    构造一个整季包候选上下文，标题解析出 E01-E10。
+    """
+    torrent = TorrentInfo(
+        title="Show.S01E01-E10.1080p", site=1, site_name="站点",
+        page_url="https://pt.example/details.php?id=42", site_downloader=site_downloader,
+    )
+    return Context(
+        meta_info=MetaInfo("Show.S01E01-E10.1080p"),
+        media_info=MediaInfo(type=MediaType.TV, title="Show", tmdb_id=1),
+        torrent_info=torrent,
+    )
+
+
+def _ledger_chain():
+    """
+    构造只带内存台账的下载链。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_failure_repository = _FailureLedger()
+    return chain
+
+
+def test_target_specific_rejection_cools_down_only_those_episodes():
+    """
+    E03 在下载器里被取消后，冷却只作用于"这台下载器 + 这个种子 + E03"：同一任务上的 E04 照常提交，
+    选源阶段也不会把整包挡掉（旧实现按标题解析的 E01-E10 冷却整包 24 小时）。
+    """
+    chain = _ledger_chain()
+    context = _season_context()
+    message = ExistingTaskRejection.FILES_CANCELLED.describe("abc", "E03 已被取消")
+
+    chain._record_download_failure(context=context, error_msg=message, downloader="qb", source="Subscribe|1",
+                                   episodes={3})
+
+    assert chain._active_download_failure_fingerprints([context], "Subscribe|1", downloader="qb") == {}
+    assert chain._existing_task_cooldown(context, downloader_scope="qb", episodes={3}, source="Subscribe|1")
+    assert chain._existing_task_cooldown(context, downloader_scope="qb", episodes={4}, source="Subscribe|1") is None
+    assert chain._existing_task_cooldown(context, downloader_scope="tr", episodes={3}, source="Subscribe|1") is None
+    # 用户手动下载不读冷却。
+    assert chain._existing_task_cooldown(context, downloader_scope="qb", episodes={3}, source="Manual") is None
+
+
+def test_task_level_rejection_cools_down_this_task_in_this_downloader():
+    """
+    任务暂停只说明这台下载器里的这个任务暂时用不了：选源阶段即可拦截，冷却 1 小时；换一台下载器不受影响。
+    """
+    chain = _ledger_chain()
+    context = _season_context(site_downloader="qb")
+    message = ExistingTaskRejection.PAUSED.describe("abc", "任务已暂停")
+
+    chain._record_download_failure(context=context, error_msg=message, downloader="qb", source="Subscribe|1",
+                                   episodes={3})
+
+    generic = DownloadChain._build_download_failure_fingerprint(context)
+    assert set(chain._active_download_failure_fingerprints([context], "Subscribe|1")) == {generic}
+    assert chain._active_download_failure_fingerprints([context], "Subscribe|1", downloader="tr") == {}
+    assert chain._existing_task_cooldown(context, downloader_scope="qb", episodes={7}, source="Subscribe|1")
+    (record,) = chain.download_failure_repository.records.values()
+    assert record.error_message == message
+
+
+def test_cooled_down_existing_task_is_skipped_before_submission():
+    """
+    提交前发现"这几集"在这台下载器的已有任务上仍在冷却：不调用下载器，也不再登记新的失败（否则冷却会被
+    每一轮重新延长），交回订阅换下一个资源。
+    """
+    chain = _ledger_chain()
+    context = _season_context()
+    prepared = SimpleNamespace(torrent=context.torrent_info, media=context.media_info)
+    chain._prepare_download_single = Mock(return_value=(prepared, None))
+    chain._has_completed_music_download = Mock(return_value=False)
+    chain._submit_prepared_download = Mock()
+    chain._record_download_failure(
+        context=context, error_msg=ExistingTaskRejection.EPISODES_NOT_FOUND.describe("abc", "找不到"),
+        downloader="qb", source="Subscribe|1", episodes={3},
+    )
+    governance = Mock(cancelled=None, prepare_submission=None, mark_started=None)
+
+    result = chain._execute_download_single(
+        context=context, episodes={3}, source="Subscribe|1", downloader="qb", return_detail=True,
+        governance=governance,
+    )
+
+    assert result[0] is None and "暂时不能受理" in result[1]
+    chain._submit_prepared_download.assert_not_called()
+    assert len(chain.download_failure_repository.records) == 1
+    assert governance.report.call_args.args[1] == "rejected"
+
+
+def test_duplicate_backoff_is_scoped_to_the_requested_downloader():
+    """
+    #7107 重复提交退避按"订阅 + 下载器范围"登记：订阅改用另一台下载器后，同一资源会在那台下载器上新建任务，
+    不能被这条退避挡住。
+    """
+    chain, _payload = _settle_existing(DownloadTaskAction.REUSED, recorded=_FILES, downloader_scope="qb")
+
+    (failure,), _kwargs = chain.download_failure_repository.record_failure.call_args
+    context = Context(meta_info=MetaInfo("A.Will.Eternal.S04.2160p"),
+                      media_info=MediaInfo(type=MediaType.TV, title="一念永恒", tmdb_id=107371),
+                      torrent_info=TorrentInfo(title="A.Will.Eternal.S04.2160p"))
+    assert failure.fingerprint == DownloadChain._build_download_failure_fingerprint(
+        context, resource_backoff=True, source="Subscribe|1", downloader_scope="qb",
+    )
+    assert failure.fingerprint != DownloadChain._build_download_failure_fingerprint(
+        context, resource_backoff=True, source="Subscribe|1", downloader_scope="tr",
+    )
 
 
 def test_appended_settlement_notifies_even_when_files_were_recorded():
@@ -1140,18 +1281,16 @@ def test_appended_settlement_notifies_even_when_files_were_recorded():
 
 @pytest.mark.parametrize("task_action,selected_episodes,backoff", [
     (DownloadTaskAction.REUSED, None, True),
-    (DownloadTaskAction.DEFERRED, None, True),
-    (DownloadTaskAction.RESUMED, None, False),
     (DownloadTaskAction.REUSED, [5, 6], False),
     (DownloadTaskAction.APPENDED, None, False),
-], ids=["reused-no-episodes", "deferred-no-episodes", "resumed-no-episodes", "reused-with-episodes", "appended"])
+], ids=["reused-no-episodes", "reused-with-episodes", "appended"])
 def test_duplicate_backoff_only_for_unrecordable_resubmission(task_action, selected_episodes, backoff):
     """
-    只有下载器对任务没有任何推进（原样复用或任务被暂缓）、且本次提交记不下任何集（订阅下一轮
-    必然重投）时才登记 #7107 退避。
+    只有下载器对任务没有任何推进（原样复用）、且本次提交记不下任何集（订阅下一轮必然重投）时才登记
+    #7107 退避。
 
     带集数的提交成功后订阅会记下这些集，不会循环；对它登记退避反而会挡住同一订阅之后
-    扩大范围时对这个包的补集。追加文件或恢复以“可恢复”暂停的任务都算推进，不登记。
+    扩大范围时对这个包的补集。追加文件算推进，不登记。
     """
     chain, payload = _settle_existing(task_action, recorded=_FILES, selected_episodes=selected_episodes)
 

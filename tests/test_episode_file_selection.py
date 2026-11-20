@@ -19,9 +19,7 @@ from app.modules.rtorrent import RtorrentModule
 from app.modules.transmission import TransmissionModule
 from app.schemas.download import (
     DOWNLOAD_TASK_ALREADY_EXISTS,
-    DOWNLOAD_TASK_DEFERRED,
     DOWNLOAD_TASK_FILES_APPENDED,
-    DOWNLOAD_TASK_RESUMED,
     ExistingTaskRejection,
 )
 from app.schemas.types import MediaType
@@ -276,14 +274,6 @@ def existing_task(module, server, torrent_hash, names, *, wanted=(), completed=(
 _SEASON = ["Show.S01E05.mkv", "Show.S01E06.mkv", "Show.S01E07.mkv"]
 
 
-@pytest.fixture(autouse=True)
-def _instant_resume_confirmation(monkeypatch):
-    """
-    恢复后回读确认不真实等待，避免"恢复未生效"用例拖慢测试。
-    """
-    monkeypatch.setattr(downloader_base, "_RESUME_CONFIRM_INTERVAL", 0)
-
-
 def _assert_never_removes_or_deselects(server) -> None:
     """
     已有任务的不变量（#7362）：不暂停、不把任何文件改为不下载、不删除任务。
@@ -333,15 +323,10 @@ def test_existing_running_task_appends_only_missing_target_files(selected_downlo
     _assert_never_removes_or_deselects(server)
 
 
-@pytest.mark.parametrize("tags,rejection", [
-    (["MP暂停:放弃:用户"], ExistingTaskRejection.PAUSED_ABANDONED),
-    (["MP暂停:放弃:插件:AutoClean"], ExistingTaskRejection.PAUSED_ABANDONED),
-    ([], ExistingTaskRejection.PAUSED_EXTERNALLY),
-    (["MP暂停:乱写"], ExistingTaskRejection.PAUSED_EXTERNALLY),
-])
-def test_paused_task_not_owned_by_mp_is_left_untouched(selected_downloader, tags, rejection) -> None:
+@pytest.mark.parametrize("tags", [[], ["MOVIEPILOT", "PT站"]])
+def test_paused_task_is_left_untouched(selected_downloader, tags) -> None:
     """
-    以“放弃”暂停（不论用户还是插件）或外部暂停的任务：不恢复、不追加、不改标签，拒绝后由订阅换种子。
+    暂停的任务目标还没下完：不论是谁暂停的都不恢复、不追加、不改标签，拒绝后由订阅换种子。
     """
     module, server, content, torrent_hash = selected_downloader
     files, task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0}, stopped=True, tags=tags)
@@ -349,61 +334,20 @@ def test_paused_task_not_owned_by_mp_is_left_untouched(selected_downloader, tags
     result = module.download(content, Path("/downloads"), "", episodes={6})
 
     assert result[1] is None
-    assert ExistingTaskRejection.from_message(result[3]) is rejection
+    assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.PAUSED
     assert torrent_hash in result[3]
     assert files[1]["wanted"] is False and task["stopped"] is True and task["tags"] == tags
     _assert_task_untouched(server)
 
 
-@pytest.mark.parametrize("wanted,expected", [({0}, DOWNLOAD_TASK_FILES_APPENDED), ({0, 1}, DOWNLOAD_TASK_RESUMED)])
-def test_system_paused_task_is_resumed_and_pause_tag_cleared(selected_downloader, wanted, expected) -> None:
-    """
-    以“可恢复”暂停的任务可以由 MP 恢复：追加目标后恢复下载，并清除暂停标签。
-    """
-    module, server, content, torrent_hash = selected_downloader
-    files, task = existing_task(
-        module, server, torrent_hash, _SEASON, wanted=wanted, completed={0}, stopped=True,
-        tags=["MOVIEPILOT", "MP暂停:可恢复:系统"],
-    )
-
-    result = module.download(content, Path("/downloads"), "", episodes={6})
-
-    assert result[1] == torrent_hash
-    assert result[3] == expected
-    assert files[1]["wanted"] is True and task["stopped"] is False
-    assert task["tags"] == ["MOVIEPILOT"]
-    _assert_never_removes_or_deselects(server)
-
-
-def test_plugin_deferred_task_accepts_without_resuming(selected_downloader) -> None:
-    """
-    以"暂缓"暂停的任务：追加目标后视为受理，但不恢复，暂停标签留给暂停方自己处理。
-    """
-    module, server, content, torrent_hash = selected_downloader
-    files, task = existing_task(
-        module, server, torrent_hash, _SEASON, wanted={0}, completed={0}, stopped=True,
-        tags=["MOVIEPILOT", "MP暂停:暂缓:插件:NightOnly"],
-    )
-
-    result = module.download(content, Path("/downloads"), "", episodes={6})
-
-    assert result[1] == torrent_hash
-    assert result[3] == DOWNLOAD_TASK_DEFERRED
-    _assert_files_enabled(module, server, torrent_hash, [1])
-    assert task["stopped"] is True
-    assert "MP暂停:暂缓:插件:NightOnly" in task["tags"]
-    server.start_torrents.assert_not_called()
-    _assert_never_removes_or_deselects(server)
-
-
 @pytest.mark.parametrize("stopped,tags,completed", [
-    (True, ["MP暂停:放弃:用户"], {1}),
+    (True, ["MOVIEPILOT"], {1}),
     (False, [], {1}),
     (False, [], set()),
 ])
 def test_existing_satisfied_target_is_reused_without_writes(selected_downloader, stopped, tags, completed) -> None:
     """
-    目标已选中且已下完（即使用户暂停了任务）或正在下载时原样复用，不写入任何文件或启停。
+    目标已选中且已下完（即使任务已暂停）或正在下载时原样复用，不写入任何文件或启停。
     """
     module, server, content, torrent_hash = selected_downloader
     existing_task(module, server, torrent_hash, _SEASON, wanted={1}, completed=completed, stopped=stopped, tags=tags)
@@ -415,21 +359,6 @@ def test_existing_satisfied_target_is_reused_without_writes(selected_downloader,
     for method in ("set_files", "start_torrents", "torrents_set_force_start"):
         getattr(server, method).assert_not_called()
     _assert_never_removes_or_deselects(server)
-
-
-def test_running_task_with_stale_pause_tag_is_cleared(selected_downloader) -> None:
-    """
-    任务在 MP 之外被恢复、却还带着暂停标签：受理时清掉过期标签，避免之后的暂停被误判来源。
-    """
-    module, server, content, torrent_hash = selected_downloader
-    _files, task = existing_task(
-        module, server, torrent_hash, _SEASON, wanted={1}, tags=["MOVIEPILOT", "MP暂停:放弃:用户"],
-    )
-
-    result = module.download(content, Path("/downloads"), "", episodes={6})
-
-    assert result[3] == DOWNLOAD_TASK_ALREADY_EXISTS
-    assert task["tags"] == ["MOVIEPILOT"]
 
 
 def test_existing_whole_torrent_request_selects_every_video_only(selected_downloader) -> None:
@@ -446,18 +375,28 @@ def test_existing_whole_torrent_request_selects_every_video_only(selected_downlo
     _assert_never_removes_or_deselects(server)
 
 
+def _confirmed_on(downloader, *indexes):
+    """
+    构造某台下载器上确认选中过 ``_SEASON`` 中指定文件的记录。
+    """
+    files = frozenset(torrent_rules.ConfirmedFile(index, (_SEASON[index],)) for index in indexes)
+    return torrent_rules.ConfirmedSelection().record(downloader, files, replace=True)
+
+
 @pytest.mark.parametrize("confirmed,accepted", [
-    (torrent_rules.ConfirmedSelection(episodes=frozenset({6})), False),
-    (torrent_rules.ConfirmedSelection(whole=True), False),
-    (torrent_rules.ConfirmedSelection(episodes=frozenset({5})), True),
+    (_confirmed_on("test-downloader", 1), False),
+    (_confirmed_on("test-downloader", 0, 1, 2), False),
+    (_confirmed_on("test-downloader", 0), True),
+    (_confirmed_on("其他下载器", 1), True),
     (torrent_rules.ConfirmedSelection(), True),
     (None, True),
 ])
 def test_cancelled_target_video_is_never_reselected(selected_downloader, confirmed, accepted) -> None:
     """
-    E06 曾由 MP 确认选中、现在不再下载，只可能是别人取消的：不重新选中，拒绝后换种子。
+    E06 曾由 MP 在这台下载器上确认选中、现在不再下载，只可能是别人取消的：不重新选中，拒绝后换种子。
 
-    从未被 MP 确认选中过的文件（只确认过 E05、只有升级前的历史、或外部添加的任务）照常追加。
+    从未被 MP 在这台下载器上确认选中过的文件（只确认过 E05、只在别的下载器上确认过、只有升级前的历史、
+    外部添加的任务，或用户手动指定种子时下载链不传记录）照常追加。
     """
     module, server, content, torrent_hash = selected_downloader
     files, _task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
@@ -474,38 +413,87 @@ def test_cancelled_target_video_is_never_reselected(selected_downloader, confirm
         _assert_task_untouched(server)
 
 
+@pytest.mark.parametrize("user_specified,accepted", [(False, False), (True, True)])
+def test_user_specified_torrent_reselects_cancelled_target(selected_downloader, user_specified, accepted) -> None:
+    """
+    用户手动指定种子时，按这次的明确要求重新选中之前被取消的目标；订阅等自动流程尊重之前的取消。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    files, _task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain._existing_task_confirmed_selection = Mock(return_value=_confirmed_on("test-downloader", 1))
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+    prepared = SimpleNamespace(
+        torrent_content=content, torrent=SimpleNamespace(site_cookie=""),
+        download_dir=Path("/downloads"), media=SimpleNamespace(category="TV"), site_downloader=None,
+    )
+
+    result, _message = chain._submit_prepared_download(
+        prepared=prepared, context=Context(), episodes={6}, channel=None, source="Manual",
+        downloader=None, userid=None, username=None, label=None, custom_words=None, governance=None,
+        user_specified=user_specified,
+    )
+
+    assert (result == torrent_hash) is accepted
+    assert files[1]["wanted"] is accepted
+    if accepted:
+        # 受理后仍以提交前读到的记录为基础合并写回，其他下载器与之前确认过的文件不会丢。
+        settled = chain._settle_accepted_download.call_args.kwargs
+        assert settled["previous_selection"] == _confirmed_on("test-downloader", 1)
+    else:
+        chain._settle_accepted_download.assert_not_called()
+
+
+def test_append_confirms_every_required_target(selected_downloader) -> None:
+    """
+    追加 E06 的同时，别人在下载器里取消了此前已选中的 E05：回读核对的是全部目标，E05 不在选中状态就不算受理，
+    不能把 E05 记成已下载。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    files, _task = existing_task(module, server, torrent_hash, _SEASON, wanted={0})
+    write_files = server.set_files.side_effect
+
+    def write_and_deselect(*args, **kwargs):
+        """
+        追加文件期间 E05 被别人取消选择。
+        """
+        files[0]["wanted"] = False
+        return write_files(*args, **kwargs)
+
+    server.set_files.side_effect = write_and_deselect
+
+    result = module.download(content, Path("/downloads"), "", episodes={5, 6})
+
+    assert result[1] is None
+    assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.NOT_CONFIRMED
+    _assert_never_removes_or_deselects(server)
+
+
 @pytest.mark.parametrize("failure,rejection", [
     ("unmatched", ExistingTaskRejection.EPISODES_NOT_FOUND),
     ("unconfirmed", ExistingTaskRejection.NOT_CONFIRMED),
     ("no_metadata", ExistingTaskRejection.FILES_UNAVAILABLE),
     ("no_metadata_whole", ExistingTaskRejection.FILES_UNAVAILABLE),
     ("error", ExistingTaskRejection.TASK_ERROR),
-    ("resume_unconfirmed", ExistingTaskRejection.NOT_CONFIRMED),
 ])
 def test_existing_task_failure_never_settles_success(selected_downloader, failure, rejection) -> None:
     """
-    目标未匹配、写入未生效、读不到文件列表（不论是否带集数）、任务出错或恢复未生效时都不返回 hash。
+    目标未匹配、写入未生效、读不到文件列表（不论是否带集数）或任务出错时都不返回 hash。
 
     已有任务失败时绝不能套用新任务的清理逻辑（#7419），否则会删掉正在做种的整包。
     """
     module, server, content, torrent_hash = selected_downloader
     if failure == "error" and isinstance(module, RtorrentModule):
         pytest.skip("rTorrent 没有可靠的任务错误状态")
-    existing_task(
-        module, server, torrent_hash, _SEASON, wanted={0}, tags=["已整理"] if failure != "resume_unconfirmed" else ["MP暂停:可恢复:系统"],
-        stopped=failure == "resume_unconfirmed", error=failure == "error",
-    )
+    existing_task(module, server, torrent_hash, _SEASON, wanted={0}, tags=["已整理"], error=failure == "error")
     if failure == "unconfirmed":
         server.set_files.side_effect = None
         server.set_files.return_value = True
     elif failure.startswith("no_metadata"):
         server.get_files.side_effect = None
         server.get_files.return_value = []
-    elif failure == "resume_unconfirmed":
-        server.start_torrents.side_effect = None
-        server.start_torrents.return_value = True
-        server.ensure_torrent_state.side_effect = None
-        server.ensure_torrent_state.return_value = True
 
     episodes = None if failure == "no_metadata_whole" else {9 if failure == "unmatched" else 6}
     result = module.download(content, Path("/downloads"), "", episodes=episodes)
@@ -633,105 +621,6 @@ def test_rtorrent_pending_target_refreshes_priorities_on_retry(selected_download
 
     assert result[3] == DOWNLOAD_TASK_ALREADY_EXISTS
     server.update_priorities.assert_called_once_with(torrent_hash)
-
-
-def test_stop_with_pause_tag_replaces_old_marks_and_start_clears_them(selected_downloader) -> None:
-    """
-    通过 MP 暂停时写入暂停标签并替换旧的暂停标签；恢复成功后清除，其他标签保持不变。
-    """
-    module, server, _content, torrent_hash = selected_downloader
-    _files, task = existing_task(module, server, torrent_hash, _SEASON, tags=["MOVIEPILOT", "MP暂停:可恢复:系统"])
-
-    assert module.stop_torrents(torrent_hash, pause_tag="MP暂停:放弃:用户") is True
-    assert task == {"stopped": True, "tags": ["MOVIEPILOT", "MP暂停:放弃:用户"]}
-
-    assert module.start_torrents(torrent_hash) is True
-    assert task == {"stopped": False, "tags": ["MOVIEPILOT"]}
-
-
-def test_user_pause_is_never_resumed_when_old_system_mark_cannot_be_removed(selected_downloader) -> None:
-    """
-    以"放弃"暂停时先写新标签再删旧的"可恢复"标签：旧标签删不掉也不影响，最保守的"放弃"生效，
-    订阅不会把用户暂停的任务恢复。
-    """
-    module, server, content, torrent_hash = selected_downloader
-    _files, task = existing_task(module, server, torrent_hash, _SEASON, tags=["MOVIEPILOT", "MP暂停:可恢复:系统"])
-    server.remove_torrents_tag.side_effect = lambda *_args, **_kwargs: False
-
-    def replace_labels(*_args, labels=(), **_kwargs):
-        """
-        Transmission 整体覆盖标签：只允许追加，删除一律失败。
-        """
-        if len(labels) < len(task["tags"]):
-            return False
-        task["tags"] = list(labels)
-        return True
-
-    server.replace_torrent_labels.side_effect = replace_labels
-
-    assert module.stop_torrents(torrent_hash, pause_tag="MP暂停:放弃:用户") is True
-    assert task["stopped"] is True
-    assert set(task["tags"]) == {"MOVIEPILOT", "MP暂停:可恢复:系统", "MP暂停:放弃:用户"}
-
-    result = module.download(content, Path("/downloads"), "", episodes={6})
-
-    assert result[1] is None
-    assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.PAUSED_ABANDONED
-    assert task["stopped"] is True
-
-
-def test_resume_is_undone_when_task_is_abandoned_meanwhile(selected_downloader) -> None:
-    """
-    订阅按"可恢复"决定恢复，期间进程外的操作（例如智能助手脚本）写入"放弃"并暂停，MP 的启动随后才到达：
-    恢复后重新读取标签发现被以"放弃"重新暂停，MP 撤销自己的恢复，不清掉对方刚写的标签，本次按未确认失败。
-    """
-    module, server, content, torrent_hash = selected_downloader
-    _files, task = existing_task(module, server, torrent_hash, _SEASON, wanted={1}, stopped=True,
-                                 tags=["MOVIEPILOT", "MP暂停:可恢复:系统"])
-    start = server.start_torrents.side_effect
-
-    def abandoned_then_started(*args, **kwargs):
-        """
-        对方在 MP 读取快照之后写入"放弃"标签并暂停，然后 MP 的启动请求到达。
-        """
-        task["tags"].append("MP暂停:放弃:用户")
-        return start(*args, **kwargs)
-
-    server.start_torrents.side_effect = abandoned_then_started
-    server.torrents_set_force_start.side_effect = abandoned_then_started
-
-    result = module.download(content, Path("/downloads"), "", episodes={6})
-
-    assert result[1] is None
-    assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.NOT_CONFIRMED
-    assert "已撤销 MP 本次的恢复" in result[3]
-    assert task["stopped"] is True
-    assert "MP暂停:放弃:用户" in task["tags"]
-
-
-def test_only_pause_tags_seen_by_the_decision_are_cleared(selected_downloader) -> None:
-    """
-    任务在运行、还带着过期的暂停标签时受理会顺手清掉它；但决策之后才出现的暂停标签是别人新做的决定，必须保留。
-    """
-    module, server, content, torrent_hash = selected_downloader
-    _files, task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0},
-                                 tags=["MOVIEPILOT", "MP暂停:可恢复:系统"])
-    write_files = server.set_files.side_effect
-
-    def write_and_mark(*args, **kwargs):
-        """
-        追加文件期间别人写入了新的暂停标签。
-        """
-        task["tags"].append("MP暂停:暂缓:插件:NightOnly")
-        return write_files(*args, **kwargs)
-
-    server.set_files.side_effect = write_and_mark
-
-    result = module.download(content, Path("/downloads"), "", episodes={6})
-
-    assert result[3] == DOWNLOAD_TASK_FILES_APPENDED
-    assert "MP暂停:可恢复:系统" not in task["tags"]
-    assert "MP暂停:暂缓:插件:NightOnly" in task["tags"]
 
 
 def test_transferred_tag_written_after_snapshot_is_still_removed(selected_downloader) -> None:
@@ -882,16 +771,19 @@ def test_rtorrent_hash_checking_task_is_not_treated_as_paused(state, active, che
         server.is_hash_checking.assert_not_called()
 
 
-def test_stop_without_pause_tag_leaves_tags_alone(selected_downloader) -> None:
+def test_stop_and_start_leave_tags_alone(selected_downloader) -> None:
     """
-    不提供暂停标签时只暂停，任务会被当成外部暂停（兼容旧调用方）。
+    暂停与开始只改启停状态，不读写任务标签。
     """
     module, server, _content, torrent_hash = selected_downloader
     _files, task = existing_task(module, server, torrent_hash, _SEASON, tags=["MOVIEPILOT"])
 
     module.stop_torrents(torrent_hash)
-
     assert task == {"stopped": True, "tags": ["MOVIEPILOT"]}
+    module.start_torrents(torrent_hash)
+    assert task == {"stopped": False, "tags": ["MOVIEPILOT"]}
+    for method in ("set_torrents_tag", "remove_torrents_tag", "replace_torrent_labels"):
+        getattr(server, method).assert_not_called()
 
 
 def test_episode_selection_preserves_input_sets() -> None:
