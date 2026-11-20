@@ -24,7 +24,7 @@ if TYPE_CHECKING:
         _download_movie_music_candidates: Callable[..., None]
         _execute_batch_download: Callable[..., Any]
         _execute_download_single: Callable[..., Any]
-        _existing_task_cooldown: Callable[..., Any]
+        _existing_task_rejection_noted: Callable[..., bool]
         _format_failure_episodes: Callable[..., Any]
         _is_job_active: Callable[..., bool]
         _is_subscribe_source: Callable[..., bool]

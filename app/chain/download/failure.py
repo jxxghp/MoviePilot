@@ -82,11 +82,11 @@ class DownloadFailureOwner(_DownloadOwnerBase):
     @staticmethod
     def _download_scope(downloader: Optional[str], torrent: Optional[TorrentInfo]) -> str:
         """
-        本次请求指向的下载器配置，作为已有任务冷却与重复提交退避的作用范围。
+        本次请求指向的下载器配置，作为已有任务拒绝的通知去重与重复提交退避的作用范围。
 
         选源阶段还不知道下载器实际选用了哪个实例，只能用"调用方指定的下载器，否则站点配置的下载器"表示；
-        提交与记录时必须用同一口径，冷却才能命中。两者都没有时为空字符串，代表当时的默认下载器
-        （默认下载器在冷却期内被改成别的实例属于已知近似，最多让一次请求多冷却或少冷却）。
+        提交与记录时必须用同一口径，记录才能命中。两者都没有时为空字符串，代表当时的默认下载器
+        （默认下载器在记录有效期内被改成别的实例属于已知近似，最多让一次重复退避多挡或少挡一次）。
 
         :param downloader: 调用方指定的下载器配置名称
         :param torrent: 候选种子，读取站点配置的下载器
@@ -100,20 +100,20 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             target_specific: bool = False,
     ) -> Optional[str]:
         """
-        生成"下载器中已有同一种子任务、但不能受理"的冷却指纹，与普通失败指纹隔离。
+        生成"下载器中已有同一种子任务、但不能受理"的记录指纹，与普通失败指纹隔离。
 
-        已有任务的拒绝只说明这台下载器里的这个任务暂时用不了，不能像普通失败那样按种子标题解析出的
-        集数挡住整包（例如 E03 被取消后，同一任务上的 E04 仍可正常追加；换一台下载器也能新建任务）：
-        - 针对整个任务的原因（暂停、出错、读取或写入未确认）：范围是"下载器 + 种子"，选源阶段即可拦截；
-        - 只针对本次目标的原因（目标集找不到、目标文件被取消）：范围再加上"本次目标集"，只能在算出
-          本次要下载哪几集之后、提交下载器之前拦截，见 ``_existing_task_cooldown``。
+        这类记录只用于"同一原因持续期间不重复通知"，不会让订阅跳过候选（见
+        ``_existing_task_rejection_noted``），因此范围要与拒绝原因的实际范围一致，避免把别的情况当成重复：
+        - 针对整个任务的原因（暂停、出错、读取或写入未确认）：范围是"下载器 + 种子"；
+        - 只针对本次目标的原因（目标集找不到、目标文件被取消）：范围再加上本次目标，包括下载器选集实际使用的
+          目标季与季集映射，多季包里 S01E03 与 S02E03 是不同的目标。
         原因归类见 ``ExistingTaskRejection.is_target_specific``。
 
-        :param context: 本次提交的上下文，读取站点与种子资源键
+        :param context: 本次提交的上下文，读取站点、种子资源键与目标季集依据
         :param downloader_scope: 下载器范围，见 ``_download_scope``
         :param episodes: 本次目标集号；None 或空集合表示整个种子，仅 ``target_specific`` 时使用
         :param target_specific: 是否为只针对本次目标的原因
-        :return: 冷却指纹；缺少种子资源键时返回 None
+        :return: 记录指纹；缺少种子资源键时返回 None
         """
         torrent = getattr(context, "torrent_info", None)
         resource = cls._torrent_resource_key(torrent)
@@ -127,7 +127,15 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             "resource": resource,
         }
         if target_specific:
+            meta = getattr(context, "meta_info", None)
+            selection = (
+                torrent_rules.episode_selection_for_context(context)
+                if episodes and meta is not None and torrent is not None else None
+            )
+            meta_season = getattr(meta, "season", None)
             payload["episodes"] = sorted(episodes) if episodes else "whole"
+            payload["season"] = selection.season if selection else str(meta_season or "")
+            payload["episode_map"] = [list(pair) for pair in selection.episode_map] if selection else []
         raw_text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
@@ -269,8 +277,8 @@ class DownloadFailureOwner(_DownloadOwnerBase):
 
         该台账是资源级退避记录，既承载真实失败，也承载"重复提交但无新增交付"这类
         没有失败、但不值得立刻再试一次的事实，因此 ``error_msg`` 只是跳过原因说明。
-        下载器以 ``ExistingTaskRejection`` 开头拒绝的已有任务，按已有任务指纹记录，作用范围见
-        ``_build_existing_task_fingerprint``。
+        下载器以 ``ExistingTaskRejection`` 开头拒绝的已有任务，按已有任务指纹记录，只用于通知去重，
+        见 ``_build_existing_task_fingerprint``。
 
         :param context: 本次提交的上下文，用于计算资源指纹
         :param error_msg: 写入台账的跳过原因说明
@@ -391,10 +399,10 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             downloader: Optional[str] = None,
     ) -> Dict[str, DownloadFailureSnapshot]:
         """
-        查询候选的普通失败、整包退避与已有任务冷却，并映射回当前候选指纹供所有选源阶段消费。
+        查询候选的普通失败与整包退避，并映射回当前候选指纹供所有选源阶段消费。
 
-        已有任务冷却在这里只查"下载器 + 种子"范围的（暂停、出错等针对整个任务的原因）；只针对目标集的
-        冷却要等算出本次目标后才能判断，见 ``_existing_task_cooldown``。
+        已有任务的拒绝记录不在这里拦截候选：任务状态随时可能被用户或下载器改变（恢复暂停、重新勾选文件、
+        删除任务），每一轮都要交给下载器按实时状态重新判断，见 ``_existing_task_rejection_noted``。
 
         :param contexts: 本轮待筛选的资源上下文
         :param source: 本次批量下载的业务来源
@@ -414,7 +422,6 @@ class DownloadFailureOwner(_DownloadOwnerBase):
                     self._build_download_failure_fingerprint(
                         context, resource_backoff=True, source=source, downloader_scope=scope,
                     ),
-                    self._build_existing_task_fingerprint(context, downloader_scope=scope),
                 ) if item
             ]
         fingerprints = list(dict.fromkeys(
@@ -438,48 +445,46 @@ class DownloadFailureOwner(_DownloadOwnerBase):
                 active[fingerprint] = record
         return active
 
-    def _existing_task_cooldown(
+    def _existing_task_rejection_noted(
             self,
             context: Context,
             *,
+            rejection: ExistingTaskRejection,
             downloader_scope: str,
             episodes: Optional[Set[int]],
             source: Optional[str],
-    ) -> Optional[DownloadFailureSnapshot]:
+    ) -> bool:
         """
-        提交下载器之前，检查这个种子在目标下载器里的已有任务是否仍在冷却。
+        判断这次已有任务的拒绝是否与仍在有效期内的上一次记录相同，相同则不再通知、不顺延记录。
 
-        选源阶段只能按"下载器 + 种子"拦截；拆包、整季核对等阶段在读取种子文件后才知道本次要下载
-        哪几集，"下载器 + 种子 + 这几集"范围的冷却（目标集找不到、目标文件被取消）只能在这里判断。
-        "下载器 + 种子"范围的也一并检查，覆盖不经过批量选源的订阅提交。只读取订阅来源的冷却，
-        与选源阶段一致：用户手动下载不受冷却影响。
+        已有任务的拒绝不让订阅跳过候选，每一轮都会重新交给下载器判断；如果原因一直没变（例如任务始终暂停），
+        每一轮都通知会刷屏。这里只做去重：同一范围（见 ``_build_existing_task_fingerprint``）在记录有效期内
+        出现同一原因时返回 True；原因变了、记录过期或范围不同都会照常通知并重新记录。有效期沿用失败冷却时长
+        （取消、找不到、出错 24 小时，其余 1 小时），到期后再通知一次。只对订阅来源去重，用户手动下载每次都通知。
 
         :param context: 本次提交的上下文
+        :param rejection: 本次拒绝原因
         :param downloader_scope: 下载器范围，见 ``_download_scope``
         :param episodes: 本次目标集号；None 或空集合表示整个种子
         :param source: 下载来源
-        :return: 仍有效的冷却记录；没有时返回 None
+        :return: 与有效记录的原因相同时返回 True
         """
         if not self._is_subscribe_source(source):
-            return None
-        fingerprints = [
-            item for item in (
-                self._build_existing_task_fingerprint(context, downloader_scope=downloader_scope),
-                self._build_existing_task_fingerprint(
-                    context, downloader_scope=downloader_scope, episodes=episodes, target_specific=True,
-                ),
-            ) if item
-        ]
-        if not fingerprints:
-            return None
+            return False
+        fingerprint = self._build_existing_task_fingerprint(
+            context, downloader_scope=downloader_scope, episodes=episodes,
+            target_specific=rejection.is_target_specific,
+        )
+        if not fingerprint:
+            return False
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         try:
             repository: DownloadFailureRepository = self.download_failure_repository
-            records = repository.get_active_by_fingerprints(fingerprints=fingerprints, now_time=now_time)
+            record = repository.get_active_by_fingerprints(fingerprints=[fingerprint], now_time=now_time).get(fingerprint)
         except Exception as err:
-            logger.error(f"查询已有任务冷却失败：{str(err)}")
-            return None
-        return next((records[item] for item in fingerprints if item in records), None)
+            logger.error(f"查询已有任务拒绝记录失败：{str(err)}")
+            return False
+        return record is not None and ExistingTaskRejection.from_message(record.error_message) is rejection
 
     @staticmethod
     def _log_download_failure_cooldown(

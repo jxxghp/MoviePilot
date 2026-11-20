@@ -113,8 +113,9 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
         ``app.domain.torrent.decide_existing_task``；这里只负责读取实时状态、执行决策并回读确认：
         - 绝不暂停或恢复任务、绝不把任何文件改为不下载、绝不删除已有任务，也不修改保存目录；
         - 只把目标中尚未选中、也不是被别人取消的文件改为下载；暂停的任务目标没下完就拒绝；
-        - 写入后回读确认本次需要的全部目标文件都处于选中状态（不只是本次追加的那几个：期间别人可能
-          取消了其中之前已选中的文件），任何一步无法确认都返回失败，不能让下载链把未受理的集记成已下载；
+        - 受理前重新读取文件列表，确认本次需要的全部目标文件都处于选中状态：追加时不只核对新追加的
+          那几个，原样复用时也要核对（读取快照之后，别人可能在下载器里取消了其中之前已选中的文件）。
+          任何一步无法确认都返回失败，不能让下载链把未受理的集记成已下载；
         - 受理后才移除"已整理"标签：先移除的话，旧整理回调可能赶在追加生效前按"已完成"重新打回
           标签，追加的文件下载完成后就再也不会进入下载器整理。移除前重新读取标签、移除后回读确认，
           不依赖受理前读到的标签（整理回调可能在两者之间写入标签）；
@@ -167,35 +168,35 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
         :param decision: 受理决策
         :return: 全部确认时返回 None，否则返回失败细节
         """
-        if decision.enable and not self._confirm_existing_files_enabled(
-                server, torrent_hash, decision.enable, decision.required,
-        ):
-            return "追加选择目标文件未确认，请在下载器核实，未记录成功"
+        if not self._confirm_required_files_selected(server, torrent_hash, decision.enable, decision.required):
+            if decision.enable:
+                return "追加选择目标文件未确认，请在下载器核实，未记录成功"
+            return "目标文件未确认处于选中状态（可能刚在下载器中被取消选择），未记录成功"
         if decision.pending and not self._refresh_existing_priorities(server, torrent_hash):
             return "文件优先级刷新未确认，请在下载器核实，未记录成功"
         return None
 
-    def _confirm_existing_files_enabled(
+    def _confirm_required_files_selected(
             self, server: DownloaderServiceT, torrent_hash: str, file_ids: Tuple[int, ...],
             required: Tuple[int, ...],
     ) -> bool:
         """
-        把文件设为需要下载后重新读取文件列表，确认本次需要的全部目标文件都已处于选中状态。
+        按需追加选择文件，然后重新读取文件列表，确认本次需要的全部目标文件都处于选中状态。
 
         下载器接口返回成功只代表请求已发出（rTorrent 还会逐个文件写入），必须回读实际状态。回读时核对的是
-        全部目标文件，而不只是本次追加的：决策之后别人可能在下载器里取消了其中之前已选中的文件，只核对
-        新追加的会把那一集记成已下载。
+        全部目标文件，而不只是本次追加的；没有追加（原样复用）时同样回读一次：决策读取快照之后，别人可能在
+        下载器里取消了其中之前已选中的文件，不核对就会把那一集记成已下载。代价是每次受理多一次文件列表查询。
 
         :param server: 当前下载器客户端
         :param torrent_hash: 已有任务的 hash
-        :param file_ids: 需要追加选择的文件索引，调用方保证非空
+        :param file_ids: 需要追加选择的文件索引；为空表示不需要写入
         :param required: 受理后必须处于选中状态的全部目标文件索引，包含 ``file_ids``
-        :return: 写入请求完成且回读确认全部目标文件已选中时返回 True
+        :return: 写入请求（如有）完成且回读确认全部目标文件已选中时返回 True
         """
-        if not self._enable_existing_files(server, torrent_hash, list(file_ids)):
+        if file_ids and not self._enable_existing_files(server, torrent_hash, list(file_ids)):
             return False
-        confirmed = {item.file_id for item in self._existing_task_files(server, torrent_hash) or [] if item.wanted}
-        return set(file_ids).union(required).issubset(confirmed)
+        selected = {item.file_id for item in self._existing_task_files(server, torrent_hash) or [] if item.wanted}
+        return set(file_ids).union(required).issubset(selected)
 
     def _refresh_accepted_task_tags(self, server: DownloaderServiceT, torrent_hash: str) -> bool:
         """

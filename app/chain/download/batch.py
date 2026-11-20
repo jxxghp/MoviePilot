@@ -16,6 +16,7 @@ from app.domain.context import (
 )
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.download import ExistingTaskRejection
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import (
     MediaType,
@@ -162,6 +163,8 @@ class _BatchDownloadRun:
         self.allowed_episodes = set(allowed_episodes) if allowed_episodes is not None else None
         self.downloaded: List[Context] = []
         self.failures: Dict[str, Optional[DownloadFailureSnapshot]] = {}
+        # 本批内已被下载器以"只针对这几集"的原因拒绝的（候选, 目标集），见 _submit。
+        self.target_failures: Set[Tuple[int, frozenset[int]]] = set()
         words = options["custom_words"]
         self.custom_words = words.splitlines() if words else None
 
@@ -207,6 +210,39 @@ class _BatchDownloadRun:
         fingerprint = self.owner._build_download_failure_fingerprint(context)
         if fingerprint:
             self.failures[fingerprint] = None
+
+    def _submit(self, context: Context, *, by_keyword: bool = True, **submission: object) -> bool:
+        """
+        提交单个资源，失败时按下载器给出的拒绝范围记入本批失败。
+
+        下载器以"只针对这几集"的原因拒绝（同一任务上的目标集找不到、目标文件被取消）时，只记"这个候选 +
+        这几集"：后续阶段从同一个包里补别的集（例如备用种子补上被取消的 E03 后，拆包阶段只要 E04）仍可提交。
+        其余失败照旧记整个候选，本批内不再重复提交。
+
+        :param context: 待提交的候选
+        :param by_keyword: 是否以关键字参数传入候选；沿用各阶段原有的调用形状，插件替换的下载入口不受影响
+        :param submission: 透传给单资源下载的 ``episodes``、``torrent_content`` 等参数
+        :return: 下载器受理时返回 True
+        """
+        episodes = cast(Optional[Set[int]], submission.get("episodes"))
+        key = (id(context), frozenset(episodes or ()))
+        if key in self.target_failures:
+            logger.info(f"{context.torrent_info.title if context.torrent_info else '未知资源'} 本批已因同样的目标被拒绝，跳过")
+            return False
+        if by_keyword:
+            result = self.owner.download_single(context=context, **submission, **self.options, return_detail=True)
+        else:
+            result = self.owner.download_single(context, **submission, **self.options, return_detail=True)
+        # 插件替换的下载入口可能仍只返回任务 ID。
+        download_id, message = result if isinstance(result, tuple) else (result, None)
+        if download_id:
+            return True
+        rejection = ExistingTaskRejection.from_message(message)
+        if rejection is not None and rejection.is_target_specific:
+            self.target_failures.add(key)
+        else:
+            self._remember_failure(context)
+        return False
 
     def _read_torrent(
             self, context: Context, *, partial: bool = False,
@@ -360,14 +396,11 @@ class _BatchDownloadRun:
                 return False
             content, complete, selected = inspected
             logger.info(f"开始下载 {context.torrent_info.title} ...")
-            download_id = self.owner.download_single(
-                context=context, torrent_content=content, episodes=selected, **self.options,
-            )
+            accepted = self._submit(context, torrent_content=content, episodes=selected)
         else:
             logger.info(f"开始下载 {context.torrent_info.title} ...")
-            download_id = self.owner.download_single(context, **self.options)
-        if not download_id:
-            self._remember_failure(context)
+            accepted = self._submit(context, by_keyword=False)
+        if not accepted:
             return False
         if complete:
             context.confirmed_full_coverage = True
@@ -404,8 +437,7 @@ class _BatchDownloadRun:
             meta = context.meta_info
             assert meta is not None
             logger.info(f"开始下载 {meta.title} ...")
-            if not self.owner.download_single(context, episodes=episodes, **self.options):
-                self._remember_failure(context)
+            if not self._submit(context, by_keyword=False, episodes=episodes):
                 continue
             if _selection.requires_complete_coverage(info):
                 context.confirmed_full_coverage = True
@@ -517,10 +549,7 @@ class _BatchDownloadRun:
             return set()
         logger.info(f"{torrent.site_name} - {torrent.title} 选中集数：{selected}")
         logger.info(f"开始下载 {torrent.title} ...")
-        if not self.owner.download_single(
-                context=context, torrent_content=content, episodes=selected, **self.options,
-        ):
-            self._remember_failure(context)
+        if not self._submit(context, torrent_content=content, episodes=selected):
             return set()
         logger.info(f"{torrent.title} 添加下载成功")
         self.downloaded.append(context)

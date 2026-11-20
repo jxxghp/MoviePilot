@@ -13,6 +13,7 @@ from app.application.torrent.download import TorrentHelper
 from app.chain.download import DownloadChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.schemas.download import ExistingTaskRejection
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
@@ -283,6 +284,47 @@ def test_partial_packs_only_settle_successful_allowed_episode_selections(batch):
     assert first.meta_info.episode_list == [1, 3, 4]
     assert second.meta_info.episode_list == [2, 4]
     assert failed.meta_info.episode_list == [1, 4]
+
+
+@pytest.mark.parametrize("rejection,retried", [
+    (ExistingTaskRejection.FILES_CANCELLED, True),
+    (ExistingTaskRejection.EPISODES_NOT_FOUND, True),
+    (ExistingTaskRejection.PAUSED, False),
+])
+def test_target_specific_rejection_only_blocks_those_episodes_in_the_batch(batch, rejection, retried):
+    """
+    原包提交 E03-E04 时，下载器因 E03 在已有任务上被取消而拒绝；备用种子补上 E03 后，拆包阶段只要 E04，
+    同一批次内仍应从原包追加 E04。只有"只针对这几集"的拒绝才这样处理，任务暂停等针对整个任务的拒绝
+    照旧让本批不再提交这个候选。
+    """
+    original = _context("original", episodes=(3, 4))
+    backup = _context("backup", episodes=(3,))
+    missing = {"tmdb:1": {1: _missing((3, 4))}}
+
+    def submit(*args, **kwargs):
+        """
+        原包提交 E03-E04 时被拒，其余提交都受理。
+        """
+        context = args[0] if args else kwargs["context"]
+        if context is original and kwargs.get("episodes") == {3, 4}:
+            return None, rejection.describe("abc", "原因")
+        return "download-id", "添加下载成功"
+
+    batch.chain.download_single.side_effect = submit
+
+    result, remaining = batch.chain.batch_download([original, backup], missing)
+
+    submitted = [
+        (call.args[0] if call.args else call.kwargs["context"], call.kwargs.get("episodes"))
+        for call in batch.chain.download_single.call_args_list
+    ]
+    if retried:
+        assert submitted == [(original, {3, 4}), (backup, {3}), (original, {4})]
+        assert result == [backup, original]
+        assert remaining == {}
+    else:
+        assert submitted == [(original, {3, 4}), (backup, {3})]
+        assert result == [backup]
 
 
 @pytest.mark.parametrize("missing", [None, {}])

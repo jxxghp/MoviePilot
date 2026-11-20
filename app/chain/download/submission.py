@@ -45,7 +45,7 @@ from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
-from app.schemas.download import DownloadTaskAction
+from app.schemas.download import DownloadTaskAction, ExistingTaskRejection
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
@@ -653,23 +653,6 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             if governance:
                 governance.report(context, "rejected", reason)
             return (None, reason) if return_detail else None
-        cooldown = self._existing_task_cooldown(
-            context,
-            downloader_scope=self._download_scope(downloader, prepared.torrent),
-            episodes=episodes,
-            source=source,
-        )
-        if cooldown is not None:
-            # 选源阶段只能按"下载器 + 种子"拦截，"这几集"范围的已有任务冷却只能在这里判断；跳过时不再
-            # 登记新的失败，否则冷却会被每一轮重新延长。
-            reason = (
-                f"下载器中的同一任务暂时不能受理（{cooldown.error_message or '未知原因'}），"
-                f"将于 {cooldown.next_retry_at} 后重试"
-            )
-            logger.info(f"{prepared.torrent.title} {reason}，本次继续尝试其他资源")
-            if governance:
-                governance.report(context, "rejected", reason)
-            return (None, reason) if return_detail else None
         download_hash, error_msg = self._submit_prepared_download(
             prepared=prepared,
             context=context,
@@ -892,21 +875,31 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         task_hashes = torrent_rules.download_hashes(prepared.torrent_content)
         # 读取确认记录 → 下载器受理 → 写入下载历史整段持有任务锁，见 downloader_task_locks：
         # 已有任务上的追加与整理链回写、删除、暂停开始互斥，确认记录的读取、合并与写回也不会被并发提交打断。
+        result: Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]
         with downloader_task_locks.hold(task_hashes):
-            previous_selection = self._existing_task_confirmed_selection(task_hashes)
-            result = self.download(
-                content=prepared.torrent_content,
-                cookie=prepared.torrent.site_cookie,
-                episodes=cast(Set[int], episodes),
-                download_dir=prepared.download_dir,
-                category=category,
-                label=label,
-                downloader=downloader or prepared.site_downloader,
-                custom_words=custom_words,
-                episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
-                # 用户手动指定种子时不识别"被取消"：这次是明确要下载，覆盖之前在下载器里的取消。
-                confirmed_selection=None if user_specified else previous_selection,
-            )
+            try:
+                previous_selection = self._existing_task_confirmed_selection(task_hashes)
+            except Exception as err:
+                # 读不到历史时不能当成"没有历史"继续：受理后写回的确认记录只会剩下本次的文件，之前被取消的
+                # 文件从此不再受保护。数据库读不了时写历史同样会失败，直接按瞬时失败稍后重试，不调用下载器。
+                logger.warning(f"读取下载历史中的已确认选集失败：{err}")
+                previous_selection, result = None, (
+                    None, None, None, f"读取下载历史失败，未提交下载器，稍后重试：{err}",
+                )
+            else:
+                result = self.download(
+                    content=prepared.torrent_content,
+                    cookie=prepared.torrent.site_cookie,
+                    episodes=cast(Set[int], episodes),
+                    download_dir=prepared.download_dir,
+                    category=category,
+                    label=label,
+                    downloader=downloader or prepared.site_downloader,
+                    custom_words=custom_words,
+                    episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
+                    # 用户手动指定种子时不识别"被取消"：这次是明确要下载，覆盖之前在下载器里的取消。
+                    confirmed_selection=None if user_specified else previous_selection,
+                )
             actual_downloader, download_hash, layout, error_msg = (
                 result if result else (None, None, None, "未找到下载器")
             )
@@ -925,6 +918,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     layout=layout,
                     task_action=DownloadTaskAction.from_downloader_message(error_msg),
                     previous_selection=previous_selection,
+                    accepted_files=self._accepted_task_files(download_hash, actual_downloader),
                     downloader_scope=self._download_scope(downloader, prepared.torrent),
                 )
         if not download_hash:
@@ -955,16 +949,12 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         :param task_hashes: 由种子内容计算出的 v1/v2 hash；无法解析时为空
         :return: 确认记录；MP 没有该 hash 的任何下载历史（外部添加或从未下载过）时返回 None，
             只有升级前的历史时返回空记录
+        :raises Exception: 读取下载历史失败时原样抛出，调用方按失败处理，不能当成"没有历史"
         """
         candidates = sorted({variant for item in task_hashes for variant in (item.lower(), item.upper())})
         if not candidates:
             return None
-        try:
-            histories = self.download_history_repository.get_by_hashes(candidates)
-        except Exception as err:
-            # 读不到时按"没有确认记录"处理：只会让被取消的文件可能被重新选中，不会误拒合法请求。
-            logger.warning(f"读取下载历史中的已确认选集失败：{err}")
-            return None
+        histories = self.download_history_repository.get_by_hashes(candidates)
         if not histories:
             return None
         # 大小写两种写法各返回一条时取最新的；登记时间只精确到秒，同一秒内以主键为准。
@@ -973,6 +963,37 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             key=lambda item: (str(getattr(item, "date", "") or ""), getattr(item, "id", None) or 0),
         )
         return torrent_rules.ConfirmedSelection.from_note(latest.note)
+
+    def _accepted_task_files(
+        self, download_hash: str, downloader: Optional[str],
+    ) -> Optional[list[tuple[int, str]]]:
+        """
+        受理后读取下载器里该任务的文件索引与相对路径，用于写入"MP 确认选中过的文件"。
+
+        必须在下载链持有任务锁期间读取：之后的受理决策读到的是同一套下载器索引，不受种子文件顺序（BEP 47
+        填充文件）或文件改名影响，磁力链接取得元数据后也能记录。读不到时返回 None，本次不记录确认文件，
+        宁可之后把被取消的文件重新选中，也不误拒正常请求。
+
+        :param download_hash: 下载器返回的任务 hash
+        :param downloader: 下载器返回的实际下载器名称
+        :return: 文件索引与相对路径；读取失败、没有文件或索引不是整数时返回 None
+        """
+        try:
+            files = self.torrent_files(download_hash, downloader)
+        except Exception as err:
+            logger.warning(f"读取下载任务 {download_hash} 的文件列表失败，本次不记录已确认选集：{err}")
+            return None
+        entries: list[tuple[int, str]] = []
+        for item in files or []:
+            file_id = getattr(item, "id", None)
+            if isinstance(file_id, bool) or not isinstance(file_id, (int, str)) or not str(file_id).isdigit():
+                logger.warning(f"下载任务 {download_hash} 的文件索引无法识别，本次不记录已确认选集")
+                return None
+            entries.append((int(file_id), str(getattr(item, "name", "") or "")))
+        if not entries:
+            logger.warning(f"未读取到下载任务 {download_hash} 的文件列表，本次不记录已确认选集")
+            return None
+        return entries
 
     def _settle_accepted_download(
         self,
@@ -990,6 +1011,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         layout: Optional[str],
         task_action: DownloadTaskAction = DownloadTaskAction.CREATED,
         previous_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+        accepted_files: Optional[list[tuple[int, str]]] = None,
         downloader_scope: str = "",
     ) -> None:
         """
@@ -1000,6 +1022,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
 
         :param task_action: 下载器对任务的实际动作，决定通知、文件明细去重与重复退避
         :param previous_selection: 提交前在同一把任务锁内读到的确认记录，受理后与本次确认的文件合并写回
+        :param accepted_files: 受理后在同一把任务锁内读到的下载器文件索引与路径，见 ``_accepted_task_files``
         :param downloader_scope: 请求指向的下载器范围，重复提交退避按它记录
         """
         if task_action.is_existing_task:
@@ -1031,6 +1054,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             custom_words=custom_words,
             task_action=task_action,
             previous_selection=previous_selection,
+            accepted_files=accepted_files,
             downloader_scope=downloader_scope,
         )
 
@@ -1093,7 +1117,21 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
     ) -> None:
         """
         按普通失败合同记录下载器明确拒绝并通知原调用渠道。
+
+        已有任务的拒绝不会让订阅跳过候选，每一轮都交给下载器按实时状态重新判断（用户在下载器里恢复任务、
+        重新勾选文件后下一轮就能接着用）。同一原因在通知静默期内重复出现时只记日志，不再通知、不顺延记录，
+        见 ``_existing_task_rejection_noted``。
         """
+        rejection = ExistingTaskRejection.from_message(error_msg)
+        downloader_scope = self._download_scope(downloader, prepared.torrent)
+        if rejection is not None and self._existing_task_rejection_noted(
+                context, rejection=rejection, downloader_scope=downloader_scope, episodes=episodes, source=source,
+        ):
+            logger.info(
+                f"{prepared.media.title_year} 下载器中的同一任务仍不能受理（与上次原因相同，不重复通知）："
+                f"{prepared.torrent.title}，{error_msg}"
+            )
+            return
         logger.error(
             f"{prepared.media.title_year} 添加下载任务失败："
             f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"
@@ -1104,6 +1142,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             downloader=actual_downloader or downloader or prepared.site_downloader,
             source=source,
             episodes=episodes,
+            downloader_scope=downloader_scope,
         )
         self.post_message(
             Message(

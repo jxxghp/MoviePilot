@@ -36,6 +36,9 @@ def qb_download():
     chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
     chain._settle_accepted_download = Mock()
     chain._record_rejected_download = Mock()
+    # 没有下载历史：提交前读取确认记录时返回空结果，读失败会让提交按失败处理。
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
     return chain, server, torrent_hash
 
 

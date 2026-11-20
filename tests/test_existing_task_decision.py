@@ -109,7 +109,7 @@ def test_confirmed_selection_note_round_trip_and_legacy_notes():
     ) == ConfirmedSelection()
     malformed = {torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: {
         "version": 2,
-        "downloaders": {"qb": [{"index": True, "path": ["a.mkv"]}, {"index": 1, "path": []}, "x"], 7: []},
+        "downloaders": {"qb": [{"index": True, "path": ["a.mkv"]}, {"index": 1, "path": [""]}, "x"], 7: []},
     }}
     assert ConfirmedSelection.from_note(malformed) == ConfirmedSelection(downloaders=(("qb", frozenset()),))
 
@@ -127,38 +127,43 @@ def test_new_task_replaces_only_its_own_downloader_record():
     assert rebuilt.files_for("tr") == _confirmed((1, "E02.mkv"))
 
 
-@pytest.mark.parametrize("name", ["Show/Season 1/E01.mkv", "Season 1/E01.mkv"])
-def test_confirmed_file_matches_with_or_without_torrent_root(name):
+def test_confirmed_file_matches_by_downloader_index_only():
     """
-    下载器报告的文件名可能带种子根目录（qB 原始布局、TR），也可能不带（qB 不建子文件夹、rT），都能对上。
+    确认记录按下载器自己的文件索引比对：文件在下载器里被改名后仍能认出，索引不同的同名文件不会冒认。
     """
     record = ConfirmedFile(0, ("Season 1", "E01.mkv"))
 
-    assert record.matches(0, name)
-    assert not record.matches(1, name)
-    assert not record.matches(0, "Show/Season 2/E01.mkv")
+    assert record.matches(0)
+    assert not record.matches(1)
 
 
-def test_same_named_file_in_another_folder_is_not_confused():
+def test_renamed_file_cancelled_in_downloader_is_not_reselected():
     """
-    索引不同的同名文件不会被当成同一个：只看路径时，不带根目录的 "Season 2/E01.mkv" 去掉一层后会冒认 "E01.mkv"。
+    用户在下载器里给 E06 改了名又取消选择：索引没变，仍按被取消处理，不会当成"从未选中"重新勾选。
     """
-    record = ConfirmedFile(0, ("E01.mkv",))
+    snapshot = _snapshot(("E05.mkv", True, True), ("E06 我的改名.mkv", False, False))
 
-    assert not record.matches(1, "Season 2/E01.mkv")
+    decision = _decide(snapshot, confirmed=_confirmed((0, "E05.mkv"), (1, "E06.mkv")))
+
+    assert decision.rejection is ExistingTaskRejection.FILES_CANCELLED
 
 
 def test_confirmed_target_files_follow_downloader_selection_rules():
     """
-    受理后记录的是按与下载器相同的选集规则算出的目标主文件，字幕等附属文件不记录。
+    受理后记录的是按与下载器相同的选集规则算出的全部目标文件，包括对应集的字幕与无集号附件；
+    整包请求的目标只有视频，与已有任务上的整包目标一致。
     """
-    files = ["Season 1/S01E01.mkv", "Season 1/S01E01.ass", "Season 1/S01E02.mkv", "Season 1/S01E03.mkv"]
+    files = list(enumerate([
+        "Show/Season 1/S01E01.mkv", "Show/Season 1/S01E01.ass", "Show/Season 1/S01E02.mkv",
+        "Show/Season 1/S01E03.mkv", "Show/Fonts.7z",
+    ]))
 
     assert torrent_rules.confirmed_target_files(files, episodes={1, 2}, media_extensions=_MEDIA) == _confirmed(
-        (0, "Season 1/S01E01.mkv"), (2, "Season 1/S01E02.mkv"),
+        (0, "Show/Season 1/S01E01.mkv"), (1, "Show/Season 1/S01E01.ass"), (2, "Show/Season 1/S01E02.mkv"),
+        (4, "Show/Fonts.7z"),
     )
     assert torrent_rules.confirmed_target_files(files, episodes=None, media_extensions=_MEDIA) == _confirmed(
-        (0, "Season 1/S01E01.mkv"), (2, "Season 1/S01E02.mkv"), (3, "Season 1/S01E03.mkv"),
+        (0, "Show/Season 1/S01E01.mkv"), (2, "Show/Season 1/S01E02.mkv"), (3, "Show/Season 1/S01E03.mkv"),
     )
     assert torrent_rules.confirmed_target_files([], episodes={1}, media_extensions=_MEDIA) == frozenset()
     assert torrent_rules.confirmed_target_files(files, episodes={9}, media_extensions=_MEDIA) == frozenset()
@@ -168,7 +173,7 @@ def test_other_season_with_same_episode_number_is_not_treated_as_cancelled():
     """
     多季包里 S01E01 确认选中过，之后请求 S02E01：确认记录存的是文件身份，不会按集号把 S02E01 误判为被取消。
     """
-    files = ["S01/Show.S01E01.mkv", "S02/Show.S02E01.mkv"]
+    files = [(0, "Show/S01/Show.S01E01.mkv"), (1, "Show/S02/Show.S02E01.mkv")]
     confirmed = torrent_rules.confirmed_target_files(
         files, episodes={1}, media_extensions=_MEDIA, episode_selection=EpisodeSelection(season=1),
     )
@@ -176,7 +181,7 @@ def test_other_season_with_same_episode_number_is_not_treated_as_cancelled():
 
     decision = _decide(snapshot, episodes={1}, confirmed=confirmed, episode_selection=EpisodeSelection(season=2))
 
-    assert confirmed == _confirmed((0, "S01/Show.S01E01.mkv"))
+    assert confirmed == _confirmed((0, "Show/S01/Show.S01E01.mkv"))
     assert decision.action is DownloadTaskAction.APPENDED
     assert decision.enable == (1,)
 
@@ -220,6 +225,19 @@ def test_cancelled_attachment_is_skipped_silently_but_never_reselected():
     assert decision.action is DownloadTaskAction.APPENDED
     assert decision.enable == (2,)
     assert decision.required == (0, 2)
+
+
+def test_cancelled_subtitle_does_not_block_a_paused_task_with_complete_video():
+    """
+    暂停的任务上 E05 视频已下完、确认选中过的字幕被取消（没下完）：字幕按附属文件静默跳过，按复用受理；
+    不能因为字幕没下完就判成"目标仍需下载"而拒绝。
+    """
+    snapshot = _snapshot(("S01E05.mkv", True, True), ("S01E05.ass", False, False), state=ExistingTaskState.PAUSED)
+
+    decision = _decide(snapshot, episodes={5}, confirmed=_confirmed((0, "S01E05.mkv"), (1, "S01E05.ass")))
+
+    assert decision.action is DownloadTaskAction.REUSED
+    assert decision.enable == () and decision.required == (0,)
 
 
 @pytest.mark.parametrize("cancelled", [{0, 1}, {1}])

@@ -80,6 +80,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             custom_words: Optional[str],
             task_action: DownloadTaskAction = DownloadTaskAction.CREATED,
             previous_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+            accepted_files: Optional[list[tuple[int, str]]] = None,
             downloader_scope: str = "",
     ) -> None:
         """
@@ -97,6 +98,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
 
         :param task_action: 下载器对任务的实际动作，由下载器返回的说明识别；默认按新建任务结算
         :param previous_selection: 提交前在同一把任务锁内读到的确认记录；None 表示没有该 hash 的下载历史
+        :param accepted_files: 受理后在同一把任务锁内读到的下载器文件索引与路径；None 表示读取失败，本次不记录确认文件
         :param downloader_scope: 请求指向的下载器范围，重复提交退避按它记录
         """
         if layout == "NoSubfolder" or not folder_name:
@@ -138,7 +140,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             note={**self._build_download_note(source, media, meta),
                   **({"subscription_download": context.subscription_download} if context.subscription_download else {}),
                   torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: self._confirmed_task_selection(
-                      previous_selection, downloader=downloader, file_list=file_list, episodes=episodes,
+                      previous_selection, downloader=downloader, accepted_files=accepted_files, episodes=episodes,
                       custom_words=custom_words, context=context, task_action=task_action,
                   ).to_note()},
             custom_words=custom_words,
@@ -231,7 +233,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             previous: Optional[torrent_rules.ConfirmedSelection],
             *,
             downloader: Optional[str],
-            file_list: list[str],
+            accepted_files: Optional[list[tuple[int, str]]],
             episodes: Optional[Set[int]],
             custom_words: Optional[str],
             context: Context,
@@ -240,18 +242,19 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         """
         计算写入本条下载历史的"MP 在同一种子上确认选中过的文件"（按下载器分开）。
 
-        下载器只有在目标确认选中后才返回 hash，因此按与下载器相同的选集规则，从种子文件清单算出的目标
-        主文件就是这次确认选中的文件（见 ``app.domain.torrent.confirmed_target_files``）。写入时：
+        下载器只有在目标确认选中后才返回 hash，因此按与下载器相同的选集规则，从受理后读到的下载器文件列表
+        算出的目标文件（含附属文件）就是这次确认选中的文件（见 ``app.domain.torrent.confirmed_target_files``）。
+        写入时：
         - 新建任务：替换这台下载器的旧记录。同一 hash 的旧任务可能已被删除后重新添加，旧记录里的文件在
           新任务上从未选中，沿用会被误判为"被取消"；
         - 复用已有任务：与这台下载器的旧记录合并，使记录随多次追加累积；
         - 其他下载器的记录原样保留，下一次只需读取最新一条历史。
-        ``previous`` 由下载链在提交前、同一把任务锁内读取（见 ``_submit_prepared_download``），读取、合并与
-        写回之间不会被同一任务上的并发提交打断。磁力链接没有种子文件清单，本次记不下文件身份。
+        ``previous`` 与 ``accepted_files`` 都由下载链在同一把任务锁内读取（见 ``_submit_prepared_download``），
+        读取、合并与写回之间不会被同一任务上的并发提交打断。文件列表读取失败时本次不记录确认文件。
 
         :param previous: 提交前读到的确认记录；None 表示没有该 hash 的下载历史
         :param downloader: 下载器返回的实际下载器名称
-        :param file_list: 种子内文件的相对路径，按种子内顺序排列；磁力链接为空
+        :param accepted_files: 受理后读到的下载器文件索引与相对路径；None 表示读取失败
         :param episodes: 本次目标集号；为空表示整个种子
         :param custom_words: 来源识别词，与下载器选集使用同一份
         :param context: 本次提交的上下文，用于取得与下载器相同的季集映射
@@ -259,7 +262,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         :return: 合并后的确认记录
         """
         current = torrent_rules.confirmed_target_files(
-            file_list,
+            accepted_files or (),
             episodes=episodes,
             media_extensions=self.runtime_config.media_extensions,
             custom_words=custom_words,

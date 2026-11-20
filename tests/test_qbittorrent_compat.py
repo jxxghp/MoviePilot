@@ -176,7 +176,7 @@ def _load_qbittorrent_modules():
         # 已有任务的统一核验流程直接复用生产实现，文件、状态与标签钩子由被测模块提供。
         _accept_existing_task = ProductionDownloaderBase._accept_existing_task
         _apply_existing_task_decision = ProductionDownloaderBase._apply_existing_task_decision
-        _confirm_existing_files_enabled = ProductionDownloaderBase._confirm_existing_files_enabled
+        _confirm_required_files_selected = ProductionDownloaderBase._confirm_required_files_selected
         _refresh_accepted_task_tags = ProductionDownloaderBase._refresh_accepted_task_tags
         _refresh_existing_priorities = ProductionDownloaderBase._refresh_existing_priorities
         _has_pending_wanted_files = ProductionDownloaderBase._has_pending_wanted_files
@@ -894,7 +894,10 @@ def test_download_removes_temporary_tag_from_existing_torrent():
         "state": "uploading",
     }], None)
     # 已有任务受理需要读到实时文件列表；文件已选中且下载完成，按原样复用处理。
-    fake_server.get_files.return_value = [{"id": 0, "name": "test.mkv", "priority": 1, "progress": 1, "size": 15}]
+    # 每次读取返回新列表：受理前还会回读一次确认目标仍处于选中状态，模块读完会清空列表释放内存。
+    fake_server.get_files.side_effect = lambda *_args, **_kwargs: [
+        {"id": 0, "name": "test.mkv", "priority": 1, "progress": 1, "size": 15},
+    ]
 
     module = _build_module(fake_server)
     result = module.download(

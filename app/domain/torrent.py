@@ -167,20 +167,20 @@ def select_episode_files(
 # 已有任务：MP 确认选中过的文件
 #
 # 下载器里"取消选择"和"从未选中"是同一个状态（qB/rT 优先级为 0，TR 未选中），只看下载器无法区分。
-# MP 在每次受理成功后，把"本次在该任务上确认选中的目标主文件"累积写进下载历史的 note；之后同一任务上
-# 某个目标主文件不再下载，而它在这份记录里，就说明是被别人取消的，订阅不会重新选中它。
+# MP 在每次受理成功后，把"本次在该任务上确认选中的目标文件"累积写进下载历史的 note；之后同一任务上
+# 某个目标文件不再下载，而它在这份记录里，就说明是被别人取消的：主文件被取消就拒绝，字幕等附属文件
+# 被取消就静默跳过，都不会重新选中。
 #
-# 记录的是文件身份（种子内的文件索引 + 相对路径），按下载器分开，而不是集号：
+# 记录的是下载器自己的文件索引，按下载器分开，而不是集号：
 # - 集号要靠当时的季号、识别词、季集映射才能对应到文件，换一个季、改一次识别词，同样的集号就会
 #   对应到别的文件（例如多季包里 S01E01 选过，S02E01 会被误判为"选过又被取消"）；
+# - 索引由下载链在受理后、同一把任务锁内读取下载器文件列表得到，之后的决策读到的是同一套索引；
+#   不用种子文件里的顺序（qBittorrent 会跳过 BEP 47 填充文件，顺序对不上），也不用路径（用户可能在下载器里
+#   给文件改名）；磁力链接取得元数据后同样能记录；
 # - 同一种子可能同时在多台下载器里，各台的选择互不相干。
-# 已知近似：
-# - 文件身份由下载链从种子文件按与下载器相同的选集规则算出（不额外查询下载器）。磁力链接没有种子文件，
-#   记不下文件身份，这类任务不识别"被取消"；
-# - 带填充文件（BEP 47）的种子，qBittorrent 的文件索引会跳过填充文件，与种子内顺序对不上，对不上的文件
-#   按"从未选中"处理（宁可重新选中，也不误拒正常请求）；
-# - 任务在 MP 之外被删除后又在 MP 之外重新添加时，旧记录仍然有效，新任务上从未选中的文件会被当成
-#   "被取消"而拒绝（订阅换种子；用户手动指定该种子时不受影响）。
+# 已知近似：受理后读不到下载器文件列表时，本次不记录（宁可之后重新选中，也不误拒正常请求）；任务在 MP 之外
+# 被删除后又在 MP 之外重新添加时，旧记录仍然有效，新任务上从未选中的文件会被当成"被取消"而拒绝（订阅换种子；
+# 用户手动指定该种子时不受影响）。
 # ---------------------------------------------------------------------------
 
 CONFIRMED_SELECTION_NOTE_KEY = "confirmed_selection"
@@ -198,31 +198,23 @@ def _path_parts(name: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class ConfirmedFile:
     """
-    MP 在某个下载任务上确认选中过的一个目标主文件。
+    MP 在某个下载任务上确认选中过的一个目标文件。
 
-    :param index: 文件在种子内的顺序号（从 0 开始），对应下载器的文件索引
-    :param path: 文件在种子内的相对路径分段，不含多文件种子的根目录；单文件种子为文件名
+    :param index: 下载器内的文件索引，同一任务内稳定，是比对时唯一使用的身份
+    :param path: 记录时下载器报告的文件相对路径分段，只用于排查与提示，不参与比对（文件可能被改名）
     """
 
     index: int
     path: tuple[str, ...]
 
-    def matches(self, file_id: int, name: str) -> bool:
+    def matches(self, file_id: int) -> bool:
         """
-        判断下载器报告的文件是否就是这个文件：索引相同，且路径相同或只多出最前面一层目录。
-
-        各下载器报告的文件名前缀不同：qBittorrent"原始"布局与 Transmission 带种子根目录，qBittorrent
-        "不创建子文件夹"布局与 rTorrent 不带根目录，qBittorrent"创建子文件夹"布局会给单文件种子加一层目录。
-        同时要求索引相同，避免不同目录下的同名文件互相冒认。
+        判断下载器报告的文件是否就是这个文件：只比对下载器内的文件索引。
 
         :param file_id: 下载器内的文件索引
-        :param name: 下载器报告的文件相对路径
         :return: 是同一个文件时返回 True
         """
-        if file_id != self.index:
-            return False
-        parts = _path_parts(name)
-        return parts == self.path or parts[1:] == self.path
+        return file_id == self.index
 
 
 @dataclass(frozen=True)
@@ -290,7 +282,7 @@ class ConfirmedSelection:
                 for item in items
                 if isinstance(item, dict)
                 and isinstance(item.get("index"), int) and not isinstance(item.get("index"), bool)
-                and isinstance(item.get("path"), list) and item["path"]
+                and isinstance(item.get("path"), list)
                 and all(isinstance(part, str) and part for part in item["path"])
             )
             records.append((name, files))
@@ -430,33 +422,31 @@ def _request_targets(
 
 
 def confirmed_target_files(
-        files: Iterable[str], *, episodes: Optional[set[int]], media_extensions: Iterable[str],
+        files: Iterable[tuple[int, str]], *, episodes: Optional[set[int]], media_extensions: Iterable[str],
         custom_words: Optional[str] = None, episode_selection: Optional[EpisodeSelection] = None,
 ) -> frozenset[ConfirmedFile]:
     """
-    按与下载器完全相同的选集规则，从种子文件清单算出本次受理确认选中的目标主文件。
+    按与下载器完全相同的选集规则，从下载器文件列表算出本次受理确认选中的目标文件。
 
-    下载器只有在目标确认选中后才返回 hash，因此由同一规则算出的目标主文件就是这次确认选中的文件。
-    只记主文件：被取消的字幕等附属文件在决策中本来就静默跳过，不需要记录。
+    下载器只有在目标确认选中后才返回 hash，因此由同一规则算出的目标文件就是这次确认选中的文件。
+    主文件与附属文件（对应集的字幕、无集号的字体等）都记录：附属文件被取消后，之后的请求要静默跳过它，
+    不能当成"从未选中"重新勾选，也不能因为它没下完而认为目标仍需下载。
 
-    :param files: 种子内文件的相对路径，按种子内顺序排列（下标即文件索引）；磁力链接为空
+    :param files: 受理后读取的下载器文件索引与相对路径
     :param episodes: 本次目标集号；None 或空集合表示整个种子
     :param media_extensions: 视频后缀集合
     :param custom_words: 来源识别词，与下载器选集使用同一份
     :param episode_selection: 目标季与已确认的季集映射，与下载器选集使用同一份
-    :return: 确认选中的目标主文件；目标集对应不上（不应发生）或没有文件时为空集合
+    :return: 确认选中的目标文件；目标集对应不上（不应发生）或没有文件时为空集合
     """
-    indexed = {index: ExistingTaskFile(index, name, True, False) for index, name in enumerate(files)}
+    indexed = {file_id: ExistingTaskFile(file_id, name, True, False) for file_id, name in files}
     if not indexed:
         return frozenset()
     extensions = {str(extension).lower() for extension in media_extensions}
-    target, matched, primary = _request_targets(indexed, episodes, extensions, custom_words, episode_selection)
+    target, matched, _primary = _request_targets(indexed, episodes, extensions, custom_words, episode_selection)
     if episodes and not episodes.issubset(matched):
         return frozenset()
-    return frozenset(
-        ConfirmedFile(index=file_id, path=_path_parts(indexed[file_id].name))
-        for file_id in target if file_id in primary and _path_parts(indexed[file_id].name)
-    )
+    return frozenset(ConfirmedFile(index=file_id, path=_path_parts(indexed[file_id].name)) for file_id in target)
 
 
 def _decide_pending_task(
@@ -468,7 +458,7 @@ def _decide_pending_task(
     MoviePilot 从不替别人恢复任务，也不往暂停的任务里追加：
     - 运行中：追加后自然开始下载，受理；
     - 已暂停：不论是谁暂停的（MP 里的用户、插件、下载器界面、分享率规则），都不恢复、不改动，拒绝；
-      订阅当轮改用其他资源，并只对这台下载器里的这个任务短冷却。暂停方恢复任务后，下次就能接着使用；
+      订阅当轮改用其他资源；下一轮仍会重新读取实时状态，暂停方恢复任务后就能接着使用；
     - 状态读不到：拒绝，稍后重试。
     """
     if snapshot.state is ExistingTaskState.RUNNING:
@@ -529,10 +519,9 @@ def decide_existing_task(
             ExistingTaskRejection.EPISODES_NOT_FOUND,
             f"未找到能覆盖目标集数 {sorted(episodes)} 的视频，未改动该任务，请检查季集映射",
         )
-    # 确认记录存的是文件身份（索引 + 种子内路径），直接与下载器报告的文件比对，不按当前请求的季集规则重新换算。
+    # 确认记录存的是下载器的文件索引，直接与下载器报告的文件比对，不按当前请求的季集规则重新换算。
     previously_confirmed = {
-        file_id for file_id, item in files.items()
-        if any(record.matches(file_id, item.name) for record in confirmed or ())
+        file_id for file_id in files if any(record.matches(file_id) for record in confirmed or ())
     }
     cancelled = {file_id for file_id in target if file_id in previously_confirmed and not files[file_id].wanted}
     # 只按"视频"判断主文件的话，纯音频种子的音轨全部被取消后会被判成"目标已完成"而复用成功，缺轨记成已下载。

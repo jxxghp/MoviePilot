@@ -132,14 +132,24 @@ def test_unique_video_fallback_keeps_unnumbered_attachments(selected_downloader,
     _assert_selected_files(module, server, torrent_hash, [1, 2, 0], [])
 
 
+def _offline_chain(module):
+    """
+    构造只连到真实下载器模块的下载链：没有下载历史，提交前读取确认记录时返回空结果。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    return chain
+
+
 def test_subscription_words_reach_all_downloader_modules(selected_downloader) -> None:
     """
     从下载链传入识别词，让多视频种子的修正集号在三个下载器上均能选中。
     """
     module, server, content, torrent_hash = selected_downloader
     _set_files(module, server, ["Show.S01E54.mkv", "Show.S01E55.mkv", "Fonts.7z"])
-    chain = DownloadChain.__new__(DownloadChain)
-    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain = _offline_chain(module)
     chain._settle_accepted_download = Mock()
     chain._record_rejected_download = Mock()
     prepared = SimpleNamespace(
@@ -420,8 +430,7 @@ def test_user_specified_torrent_reselects_cancelled_target(selected_downloader, 
     """
     module, server, content, torrent_hash = selected_downloader
     files, _task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
-    chain = DownloadChain.__new__(DownloadChain)
-    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain = _offline_chain(module)
     chain._existing_task_confirmed_selection = Mock(return_value=_confirmed_on("test-downloader", 1))
     chain._settle_accepted_download = Mock()
     chain._record_rejected_download = Mock()
@@ -444,6 +453,59 @@ def test_user_specified_torrent_reselects_cancelled_target(selected_downloader, 
         assert settled["previous_selection"] == _confirmed_on("test-downloader", 1)
     else:
         chain._settle_accepted_download.assert_not_called()
+
+
+def test_reuse_confirms_targets_are_still_selected(selected_downloader) -> None:
+    """
+    目标在第一次读取时都已选中、不需要追加：读取之后别人在下载器里取消了 E06，受理前的回读要发现，
+    不能按原样复用记成功。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    files, _task = existing_task(module, server, torrent_hash, _SEASON, wanted={0, 1})
+    read_files = server.get_files.side_effect
+    reads = []
+
+    def deselect_after_snapshot(*args, **kwargs):
+        """
+        第一次读取（决策快照）之后，E06 被取消选择。
+        """
+        reads.append(1)
+        if len(reads) == 2:
+            files[1]["wanted"] = False
+        return read_files(*args, **kwargs)
+
+    server.get_files.side_effect = deselect_after_snapshot
+
+    result = module.download(content, Path("/downloads"), "", episodes={6})
+
+    assert result[1] is None
+    assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.NOT_CONFIRMED
+    server.set_files.assert_not_called()
+
+
+def test_confirmed_record_uses_downloader_file_list(selected_downloader) -> None:
+    """
+    受理后在任务锁内读一次下载器文件列表，确认记录按下载器自己的文件索引写入，而不是种子文件里的顺序。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
+    chain = _offline_chain(module)
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+    prepared = SimpleNamespace(
+        torrent_content=content, torrent=SimpleNamespace(site_cookie=""),
+        download_dir=Path("/downloads"), media=SimpleNamespace(category="TV"), site_downloader=None,
+    )
+
+    result, _message = chain._submit_prepared_download(
+        prepared=prepared, context=Context(), episodes={6}, channel=None, source="subscribe",
+        downloader=None, userid=None, username=None, label=None, custom_words=None, governance=None,
+    )
+
+    assert result == torrent_hash
+    settled = chain._settle_accepted_download.call_args.kwargs
+    assert settled["accepted_files"] == list(enumerate(_SEASON))
+    assert settled["previous_selection"] is None
 
 
 def test_append_confirms_every_required_target(selected_downloader) -> None:
@@ -817,8 +879,7 @@ def test_recognized_season_episode_mapping_reaches_selection(
         torrent_content=content, torrent=context.torrent_info,
         download_dir=Path("/downloads"), media=context.media_info, site_downloader=None,
     )
-    chain = DownloadChain.__new__(DownloadChain)
-    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain = _offline_chain(module)
     chain._settle_accepted_download = Mock()
     chain._record_rejected_download = Mock()
 
@@ -922,8 +983,7 @@ def test_missing_mapping_notifies_and_records_download_backoff(selected_download
     prepared = SimpleNamespace(torrent_content=content, torrent=context.torrent_info,
                                meta=context.meta_info, media=context.media_info,
                                download_dir=Path("/downloads"), site_downloader=None)
-    chain = DownloadChain.__new__(DownloadChain)
-    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain = _offline_chain(module)
     chain._settle_accepted_download = Mock()
     chain._record_download_failure = Mock()
     chain.post_message = Mock()
