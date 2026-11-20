@@ -50,6 +50,27 @@ class MediaMappingQuery(BaseModel):
         return value
 
 
+class MediaMappingMatchQuery(MediaMappingQuery):
+    """
+    详情页按需查找 TMDB 关系的请求，影视类型必填。
+
+    订阅转换总会携带类型，必填可让查找结果与订阅写入的共享关系落在同一缓存键上。
+    """
+
+    type: Literal["movie", "tv"] = Field(description="原来源影视类型，必填")
+
+    @model_validator(mode="after")
+    def validate_season(self) -> "MediaMappingMatchQuery":
+        """
+        拒绝电影携带季号，避免同一电影因季号不同被重复查找。
+
+        :return: 类型与季号相容的查询
+        """
+        if self.type == "movie" and self.season is not None:
+            raise ValueError("电影来源不能指定季号")
+        return self
+
+
 class MediaMapping(MediaMappingQuery):
     """
     记录单向转换的原身份及对应的 TMDB 类型、ID、季号。

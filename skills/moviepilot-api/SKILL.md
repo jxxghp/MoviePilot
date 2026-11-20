@@ -166,8 +166,10 @@ downloader mappings when switching path modes.
 Conversions from other video sources to TMDB reuse cached community mappings
 before matching names and share successful results. Browsing only looks up known
 mappings to add a TheMovieDb link and preserves the original source identity.
-`GET /api/v1/media/mapping` is a frontend helper, without an Agent operation;
-continue using `media.detail` and do not construct extra HTTP requests.
+`GET /api/v1/media/mapping` and `POST /api/v1/media/mapping/match` (an explicit
+user click that runs the subscription conversion when no mapping is known) are
+frontend helpers, without Agent operations; continue using `media.detail` and do
+not construct extra HTTP requests.
 
 1. Select the exact `operation_id` from the category index below.
 2. Call `read_skill` again with `name="moviepilot-api"` and

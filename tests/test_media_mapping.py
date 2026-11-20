@@ -186,6 +186,23 @@ def test_miss_keeps_existing_conversion_and_shares_success(monkeypatch):
     assert port.share.call_args.args[0] == relation(season=1, tmdb_season=2)
 
 
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_unlisted_tmdb_season_keeps_conversion_without_sharing(monkeypatch, asynchronous):
+    """
+    季匹配回退到整剧名称且 TMDB 详情未列出附带的季时，订阅转换结果不变，但不上报季关系。
+    """
+    from app.chain.media import projection
+    port = SimpleNamespace(query=Mock(return_value=None), async_query=AsyncMock(return_value=None), share=Mock())
+    configure_media_mapping_port(port)
+    fallback = {"id": 456, "media_type": "tv", "season": 2, "seasons": [{"season_number": 0}, {"season_number": 1}]}
+    match = AsyncMock(return_value=fallback) if asynchronous else Mock(return_value=fallback)
+    monkeypatch.setattr(projection, "_async_convert_builtin_projection" if asynchronous else "_convert_builtin_projection", match)
+    args = dict(target_source=MediaSource.TMDB, media_source=MediaSource.AniList, media_id="123", mtype=MediaType.TV, season=2)
+    result = asyncio.run(MediaChain.async_convert_media_identity(SimpleNamespace(), **args)) if asynchronous else MediaChain.convert_media_identity(SimpleNamespace(), **args)
+    assert result == fallback
+    port.share.assert_not_called()
+
+
 def test_reverse_conversion_never_queries_or_shares(monkeypatch):
     """
     原有 TMDB 到其他来源转换保持原行为，不接入关系共享。
