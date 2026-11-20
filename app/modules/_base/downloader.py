@@ -272,7 +272,12 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
         return any(item.wanted and not item.completed for item in files)
 
     def _admit_transfer_torrent(
-            self, server: DownloaderServiceT, torrent: DownloaderTorrent,
+            self,
+            server: DownloaderServiceT,
+            torrent: DownloaderTorrent,
+            *,
+            save_path: Optional[Union[str, Path]],
+            content_path: Optional[Union[str, Path]],
     ) -> List[DownloaderTorrent]:
         """
         下载器整理轮询的逐文件准入：只选中了部分文件的已完成任务，附上下载器报告尚未下载完成的文件。
@@ -285,6 +290,8 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
 
         :param server: 当前下载器客户端
         :param torrent: 整理轮询查到的已完成任务
+        :param save_path: 下载器返回的原始保存目录（未经路径映射）
+        :param content_path: 下载器返回的原始任务内容路径（未经路径映射），即映射后作为整理根目录的那个路径
         :return: 需要交给整理的任务（至多一个）；读不到文件状态时为空列表
         """
         selected, total = torrent.selected_size, torrent.size
@@ -294,34 +301,41 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
         if not files:
             logger.warning(f"读取种子 {torrent.hash} 的文件状态失败，无法排除未下载完成的文件，本轮暂不整理")
             return []
-        incomplete = self._content_relative_paths(torrent, [item.name for item in files if not item.completed])
+        names = [item.name for item in files if not item.completed]
+        incomplete = self._content_relative_paths(names, save_path, content_path)
         if incomplete is None:
             logger.warning(
-                f"种子 {torrent.hash} 的文件路径对应不到任务内容路径 {torrent.path}，无法排除未下载完成的文件，本轮暂不整理"
+                f"种子 {torrent.hash} 的文件路径对应不到任务内容路径（下载器保存目录 {save_path}，内容路径 "
+                f"{content_path}），无法排除未下载完成的文件，本轮暂不整理"
             )
             return []
         torrent.incomplete_files = incomplete
         return [torrent]
 
     @staticmethod
-    def _content_relative_paths(torrent: DownloaderTorrent, names: List[str]) -> Optional[List[str]]:
+    def _content_relative_paths(
+            names: List[str], save_path: Optional[Union[str, Path]], content_path: Optional[Union[str, Path]],
+    ) -> Optional[List[str]]:
         """
-        把下载器文件列表中的文件名换算为相对任务内容路径（``torrent.path``，即整理根目录）的路径。
+        把下载器文件列表中的文件名换算为相对任务内容路径（映射后即整理根目录）的路径。
 
-        三个下载器的文件名都相对保存目录（``save_path``）：qBittorrent、Transmission 的多文件任务带顶层目录名；
-        rTorrent 多文件任务的保存目录（``d.directory``）本身就是任务目录，文件名不带顶层目录。按"保存目录 + 文件名"
-        拼出完整路径再求相对内容路径，各自的命名差异都能对上，整理链据此逐级精确比较，不靠文件名后缀猜测。
+        三个下载器的文件名都相对保存目录：qBittorrent、Transmission 的多文件任务带顶层目录名；rTorrent 多文件任务的
+        保存目录（``d.directory``）本身就是任务目录，文件名不带顶层目录。按"保存目录 + 文件名"拼出完整路径再求相对
+        内容路径，各自的命名差异都能对上，整理链据此逐级精确比较，不靠文件名后缀猜测。
+        必须用下载器返回的原始路径计算：路径映射可以分别作用于保存目录和内容路径（例如只把季包目录映射到远程存储），
+        映射后的两者不一定还有共同前缀；相对路径与映射无关，整理链把它接到映射后的整理根目录上即可。
 
-        :param torrent: 整理轮询查到的任务，``path`` 与 ``save_path`` 已按同一路径映射转换
         :param names: 下载器报告的文件名
-        :return: 相对内容路径的路径（内容路径本身记为 "."）；缺少保存目录或文件不在内容路径之下时返回 None
+        :param save_path: 下载器返回的原始保存目录
+        :param content_path: 下载器返回的原始任务内容路径
+        :return: 相对内容路径的路径（内容路径本身记为 "."）；缺少路径或文件不在内容路径之下时返回 None
         """
         if not names:
             return []
-        if not torrent.path or not torrent.save_path:
+        if not save_path or not content_path:
             return None
-        root = PurePosixPath(str(torrent.path).replace("\\", "/"))
-        base = PurePosixPath(str(torrent.save_path).replace("\\", "/"))
+        root = PurePosixPath(str(content_path).replace("\\", "/"))
+        base = PurePosixPath(str(save_path).replace("\\", "/"))
         relative: List[str] = []
         for name in names:
             try:

@@ -522,17 +522,20 @@ class TransferHistoryOwner(_TransferOwnerBase):
             if not isinstance(torrent_files, list):
                 torrent_files = torrent_files.data
 
-            # 检查是否有媒体文件未被屏蔽且存在
-            save_path = torrents[0].path.parent
+            # 检查是否有媒体文件未被屏蔽且存在。下载器文件名的相对基准不同：qBittorrent、Transmission 相对保存目录
+            # （多文件任务带顶层目录），rTorrent 多文件任务和 qBittorrent 不建子目录的任务相对任务内容目录本身，且路径映射
+            # 可能只覆盖内容目录。这里只决定"还能不能删"，文件在任一位置存在就保留任务：只按保存目录拼会找错目录，把还没
+            # 整理的文件（例如整理期间追加并下完的新集）当成不存在，连同任务一起删掉。
+            content_path = torrents[0].path
             for file in torrent_files:
-                file_path = save_path / file.name
                 # 如果存在未被屏蔽的媒体文件，则不删除种子
-                if (
+                if any(
                         file_path.suffix in self._allowed_exts
                         and not self._is_blocked_by_exclude_words(
                             file_path.as_posix(), transfer_exclude_words
                         )
                         and file_path.exists()
+                        for file_path in (content_path.parent / file.name, content_path / file.name)
                 ):
                     return False
 

@@ -129,6 +129,34 @@ def _storage_posix_path(path: Optional[str]) -> PurePosixPath:
     return PurePosixPath("/" + str(path or "").replace("\\", "/").lstrip("/"))
 
 
+def _incomplete_matcher(
+        incomplete_files: Optional[list[str]], root: FileItem,
+) -> Optional[Callable[[Optional[str]], bool]]:
+    """
+    构造"路径是否是、或包含下载器报告尚未下载完成的文件"的判断。
+
+    下载器报告的是相对任务内容路径（即整理根目录 ``root``）的路径，拼成完整路径后逐级精确比较：路径是其中某个文件
+    本身，或是某个文件的上级目录（例如蓝光原盘目录）时成立；文件名相同但位于其他目录的文件不受影响。
+
+    :param incomplete_files: 下载器报告尚未下载完成的文件，相对任务内容路径；为空表示无需过滤
+    :param root: 整理根目录，即下载器任务的内容路径
+    :return: 判断函数；无需过滤时返回 None
+    """
+    if not incomplete_files:
+        return None
+    root_path = _storage_posix_path(root.path)
+    targets = [root_path / str(name).replace("\\", "/").lstrip("/") for name in incomplete_files]
+
+    def covers_incomplete(path: Optional[str]) -> bool:
+        """
+        判断给定存储路径是否是、或包含未下载完成的文件。
+        """
+        candidate = _storage_posix_path(path)
+        return any(target == candidate or candidate in target.parents for target in targets)
+
+    return covers_incomplete
+
+
 def _drop_reported_incomplete(
         candidates: List[Tuple[FileItem, bool]], incomplete_files: Optional[list[str]], root: FileItem,
 ) -> List[Tuple[FileItem, bool]]:
@@ -145,15 +173,13 @@ def _drop_reported_incomplete(
     :param root: 整理根目录，即下载器任务的内容路径
     :return: 保留的候选
     """
-    if not incomplete_files:
+    covers_incomplete = _incomplete_matcher(incomplete_files, root)
+    if covers_incomplete is None:
         return candidates
-    root_path = _storage_posix_path(root.path)
-    incomplete = [root_path / str(name).replace("\\", "/").lstrip("/") for name in incomplete_files]
     kept: List[Tuple[FileItem, bool]] = []
     skipped: List[str] = []
     for item, is_bluray_dir in candidates:
-        path = _storage_posix_path(item.path)
-        if any(target == path or path in target.parents for target in incomplete):
+        if covers_incomplete(item.path):
             skipped.append(str(item.name))
         else:
             kept.append((item, is_bluray_dir))
@@ -695,6 +721,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             sync_extra_files=bool(sync_extra_files),
             fileitem=fileitem,
             sync_music_covers=not manual and selected_fileitems is None,
+            reported_incomplete=_incomplete_matcher(incomplete_files, fileitem),
         )
 
         try:
@@ -726,6 +753,13 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if not file_items:
             return submission.result(True, [], preview=bool(preview), preview_items=[])
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
+        if download_hash and (deferred_items := candidate_planner.deferred_items):
+            # 选中且已下完的文件本轮延期（依赖的 CUE 未下完）：这轮扫描的那批文件没有全部整理，扫描记录不能再用来确认
+            # "已整理"，否则同一任务其余文件整理完成（或补打标签）时会打上标签，延期的文件此后不再进入下载器整理。
+            # 只有下载器整理轮询会带未完成文件清单，任务一定在轮询范围内，删除记录后按"无法核实"处理、不打标签，
+            # 留给下一轮重新扫描（见 ``_TransferChain__selection_changed_since_scan``）。
+            self._transfer_scan_size_records().pop((downloader, download_hash), None)
+            logger.info(f"种子 {download_hash} 有 {len(deferred_items)} 个文件等待依赖的文件下载完成，本轮不设置已整理标签")
 
         selected_music_track_map, selected_music_error = self._selected_music_track_map(
             file_items, selected_music_album,

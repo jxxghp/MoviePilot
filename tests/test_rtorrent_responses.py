@@ -63,7 +63,7 @@ def test_zero_size_and_tuple_rows_remain_supported(client, torrent_row):
 
 @pytest.mark.parametrize("complete,partially_done,completed,expected_complete,expected_progress", [
     (1, 1, 1000, 1, 100),
-    (0, 1, 250, 1, 100),
+    (0, 1, 250, 1, 25.0),
     (0, 0, 250, 0, 25.0),
     (0, 1, 0, 0, 0),
 ])
@@ -72,8 +72,9 @@ def test_partially_selected_task_counts_as_complete(
 ):
     """
     rTorrent 的 d.complete 只在整个种子的全部分块完成时为 1：只选了部分文件的任务，选中部分下完后只有
-    d.is_partially_done 为 1。按选中部分合成完成标记与进度，与 qBittorrent、Transmission 一致，否则只下几集的
-    任务永远进不了下载器整理；没有任何已下载数据（例如全部文件都设为不下载）时不算完成。
+    d.is_partially_done 为 1。按选中部分合成完成标记，否则只下几集的任务永远进不了下载器整理；没有任何已下载数据
+    （例如全部文件都设为不下载）时不算完成。进度仍按全部数据计算：未选中的文件可能被写入了部分数据，按进度 100
+    判断"目录里的文件都已下完"的地方（工作流整理整个目录、移动整理后删除任务）不能把它当成已下完。
     """
     torrent_row[3], torrent_row[7], torrent_row[14] = completed, complete, partially_done
     client._proxy.d.multicall2.return_value = [torrent_row]
@@ -90,7 +91,8 @@ def test_partially_selected_task_counts_as_complete(
 
 def test_partially_selected_task_enters_downloader_transfer_polling(client, torrent_row):
     """
-    只选了 E01 的季包下完 E01 后，要出现在下载器整理轮询里，进度按选中部分为 100，选中大小可用于整理链比对。
+    只选了 E01 的季包下完 E01 后，要出现在下载器整理轮询里，标记选中部分已下完（进度仍按全部数据计算），选中大小可用于
+    整理链比对。
     E02 下到一部分后被取消选择、残缺文件仍在磁盘上：随任务附上"未下载完成的文件"（相对任务内容路径），整理时跳过它。
     多文件任务的 ``d.directory`` 是任务目录本身（含种子名），``f.path`` 相对它、不带顶层目录。
     """
@@ -108,12 +110,17 @@ def test_partially_selected_task_enters_downloader_transfer_polling(client, torr
     (torrent,) = module.list_torrents(status=TorrentQueryStatus.TRANSFER)
 
     assert torrent.hash == "ABC"
-    assert torrent.progress == 100
+    assert torrent.progress == 25.0
+    assert torrent.selected_completed is True
     assert torrent.selected_size == 250
     assert torrent.state == DownloadTaskState.COMPLETED.value
     assert torrent.path == Path("/downloads/movie")
     assert torrent.incomplete_files == ["Show.S01E02.mkv"]
     assert module.list_torrents(status=TorrentQueryStatus.DOWNLOADING) == []
+    # 按 hash 查询（工作流判断下载完成、移动整理后判断能否删除任务）看到的进度不到 100，不会把整个目录当成已下完；
+    # 打"已整理"标签前按 selected_completed 确认选中部分已下完。
+    (queried,) = module.list_torrents(hashs="ABC")
+    assert (queried.progress, queried.selected_completed, queried.incomplete_files) == (25.0, True, None)
 
 
 def test_partially_selected_task_is_held_back_when_files_are_unreadable(client, torrent_row):

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import app.chain.transfer.settlement as settlement_module
-from app.schemas.transfer import TransferInfo
+from app.schemas.transfer import DownloaderFile, DownloaderTorrent, TransferInfo
 from tests.test_transfer_job_manager import (
     FakeMedia,
     bind_terminal_checkpoint,
@@ -112,3 +112,41 @@ def test_move_cleanup_checks_and_removes_under_task_lock(monkeypatch):
 
     assert held == [True, True]
     assert not stripe.locked()
+
+
+@pytest.mark.parametrize("names,content,episode", [
+    (["Show.S01E01.mkv", "Show.S01E02.mkv"], "Show.S01", "Show.S01/Show.S01E02.mkv"),
+    (["Show.S01/Show.S01E01.mkv", "Show.S01/Show.S01E02.mkv"], "Show.S01", "Show.S01/Show.S01E02.mkv"),
+    (["Show.S01E02.mkv"], "Show.S01E02.mkv", "Show.S01E02.mkv"),
+], ids=["rtorrent-multi-file", "save-path-relative", "single-file"])
+@pytest.mark.parametrize("remaining", [True, False], ids=["episode-remaining", "all-moved"])
+def test_move_cleanup_keeps_task_while_untransferred_media_remains(tmp_path, names, content, episode, remaining):
+    """
+    移动整理后删除任务前，按任务内容路径检查还有没有未整理的媒体文件，用真实文件验证。rTorrent 多文件任务的文件名相对
+    任务目录本身、不带顶层目录，qBittorrent、Transmission 相对保存目录、带顶层目录：只按保存目录拼会找错目录，
+    把整理期间追加并下完、尚未整理的新集当成不存在，连同任务一起删掉。E01 已移走，E02 还在时必须保留任务。
+    """
+    content_path = tmp_path / content
+    (tmp_path / episode).parent.mkdir(parents=True, exist_ok=True)
+    if remaining:
+        (tmp_path / episode).write_bytes(b"episode")
+    chain = make_transfer_chain()
+    chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(hash="hash-rt", path=content_path, progress=100)])
+    chain.torrent_files = MagicMock(return_value=[DownloaderFile(name=name) for name in names])
+
+    assert chain._can_delete_torrent("hash-rt", "rt", []) is not remaining
+
+
+def test_move_cleanup_keeps_partially_selected_rtorrent_task(tmp_path):
+    """
+    rTorrent 只选了部分文件的任务，选中部分下完后进度仍按全部数据计算、不到 100：未选中的文件可能被写入了部分数据，
+    移动整理后不删除任务。
+    """
+    chain = make_transfer_chain()
+    chain.list_torrents = MagicMock(return_value=[
+        DownloaderTorrent(hash="hash-rt", path=tmp_path / "Show.S01", progress=25.0, selected_completed=True),
+    ])
+    chain.torrent_files = MagicMock(return_value=[DownloaderFile(name="Show.S01E01.mkv")])
+
+    assert chain._can_delete_torrent("hash-rt", "rt", []) is False
+    chain.torrent_files.assert_not_called()

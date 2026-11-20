@@ -194,6 +194,22 @@ def _record_downloader_cleanup_failure(
             )
 
 
+def _selected_part_downloaded(torrent: Any) -> bool:
+    """
+    判断下载器任务选中下载的文件是否都已下完，用于打"已整理"标签前的确认。
+
+    qBittorrent、Transmission 的完成百分比只算选中的文件；rTorrent 按全部数据计算，只选了部分文件时选中部分下完也
+    不到 100，由下载器模块提供的 ``selected_completed`` 表示。
+
+    :param torrent: 按 hash 查询到的下载器任务；没有 ``selected_completed`` 时按完成百分比判断
+    :return: 选中的文件都已下完时返回 True
+    """
+    selected_completed = getattr(torrent, "selected_completed", None)
+    if selected_completed is not None:
+        return bool(selected_completed)
+    return (torrent.progress or 0) >= 100
+
+
 class TransferSettlementOwner(_TransferOwnerBase):
     """
     唯一持有整理终态结算、历史事件和失败通知。
@@ -847,7 +863,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     f"下载器 {downloader} 中未查询到种子 {download_hash}，无法回写已整理标签，请检查种子是否已移除或历史关联是否正确"
                 )
                 return False
-            if not all((torrent.progress or 0) >= 100 for torrent in torrents):
+            if not all(_selected_part_downloaded(torrent) for torrent in torrents):
                 return False
             return not self._TransferChain__selection_changed_since_scan(download_hash, downloader, torrents)
         except Exception as e:
@@ -867,7 +883,8 @@ class TransferSettlementOwner(_TransferOwnerBase):
         "已整理"必须对应实际扫描过的那批文件：
         - 发现变化后保留扫描记录、不删除：同一任务这一轮可能还有别的整理回调（例如同一种子的其他文件
           稍后整理完成，或"补打已整理"），删掉记录的话它们会退回"没有记录"的处理，把没整理过的新文件
-          标成已整理。记录只在下一轮扫描时被新值覆盖，或在成功写入"已整理"后删除；
+          标成已整理。记录只在下一轮扫描时被新值覆盖，或在成功写入"已整理"后删除；例外是本轮有已下完的文件因依赖
+          未下完而延期（见 ``_TransferCandidatePlanner.deferred_items``）：规划时即删除记录，按下面"没有扫描记录"处理；
         - 没有扫描记录（重启后回放的整理任务、手动整理等）时无法核实。任务在下载器整理轮询范围内的，
           按"已变化"处理不打标签，下一轮轮询会重新扫描、记录选中大小，跳过已整理过的文件后再打标签；
           不在轮询范围内的，标签不影响轮询（轮询本来就扫不到它），沿用原有判断，照常打标签供其他

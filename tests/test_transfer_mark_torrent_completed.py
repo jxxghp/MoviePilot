@@ -11,6 +11,7 @@ from app.chain.transfer.facade import TransferChain
 from app.domain.meta.metabase import MetaBase
 from app.runtime.config import settings
 from app.schemas.file import FileItem
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
 
 
@@ -380,3 +381,25 @@ def test_downloader_polling_coverage_follows_monitor_directories(monkeypatch):
     assert TransferChain._covered_by_downloader_polling(SimpleNamespace(path=Path("/downloads/tv/Show"))) is True
     assert TransferChain._covered_by_downloader_polling(SimpleNamespace(path=Path("/downloads/movie/Film"))) is False
     assert TransferChain._covered_by_downloader_polling(SimpleNamespace(path=None)) is False
+
+
+def test_mark_uses_selected_completion_when_downloader_reports_it():
+    """
+    rTorrent 的完成百分比按全部数据计算：只选了部分文件的任务，选中部分下完后进度不到 100，由 ``selected_completed``
+    表示选中部分已下完，照常打标签；选中部分没下完（例如追加的新集还在下载）时不打。没有该字段时按完成百分比判断。
+    """
+    for torrent, expected in (
+            (DownloaderTorrent(progress=25.0, selected_completed=True), True),
+            (DownloaderTorrent(progress=100, selected_completed=False), False),
+            (DownloaderTorrent(progress=100), True),
+            (DownloaderTorrent(progress=25.0), False),
+    ):
+        chain = _make_chain()
+        completed = []
+        chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
+        chain.list_torrents = lambda _torrent=torrent, **kwargs: [_torrent]
+        _finish_task(chain, _make_task(1, "hash1", "rtorrent"))
+
+        _mark(chain, "hash1", "rtorrent")
+
+        assert bool(completed) is expected, torrent

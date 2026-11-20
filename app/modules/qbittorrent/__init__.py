@@ -548,7 +548,10 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                         tags = torrent_info.get("tags") or []
                         if "已整理" in tags:
                             continue
-                        ret_torrents.extend(self._admit_transfer_torrent(server, __build_torrent(name, torrent_info)))
+                        ret_torrents.extend(self._admit_transfer_torrent(
+                            server, __build_torrent(name, torrent_info),
+                            save_path=torrent_info.get('save_path'), content_path=__get_torrent_path(torrent_info),
+                        ))
                 finally:
                     torrents.clear()
                     del torrents

@@ -513,6 +513,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                 ) if torrent_data.get("save_path") else None,
                 content_path=self.normalize_return_path(torrent_path, downloader_name),
                 progress=torrent_data.get("progress", 0),
+                selected_completed=str(torrent_data.get("complete")) == "1",
                 size=total_size,
                 # complete 表示选中部分已下完（见 Rtorrent.get_torrents），此时已完成字节数近似为选中下载的数据量，
                 # 未选中文件里恰好已完成的分块也计入。只用于两处，近似不影响结论：
@@ -554,7 +555,10 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
                         if "已整理" in tag_list:
                             continue
-                        ret_torrents.extend(self._admit_transfer_torrent(server, __build_torrent(name, torrent_info)))
+                        ret_torrents.extend(self._admit_transfer_torrent(
+                            server, __build_torrent(name, torrent_info),
+                            save_path=torrent_info.get("save_path"), content_path=__get_torrent_path(torrent_info),
+                        ))
                 finally:
                     torrents.clear()
                     del torrents

@@ -34,7 +34,7 @@ class TorrentData(TypedDict):
     :ivar is_open: 下载器返回的文件打开状态
     :ivar ratio: 从千分比转换后的分享率
     :ivar content_path: 完整内容路径；下载器未提供时为 None，由调用端回退计算
-    :ivar progress: 下载进度百分比；选中部分已全部下载时为 100，否则为已下载字节占总字节的比例，零大小任务为 0
+    :ivar progress: 下载进度百分比，按全部数据计算（只选了部分文件的任务选中部分下完后也不到 100），零大小任务为 0
     """
 
     hash: str
@@ -345,20 +345,21 @@ class Rtorrent:
                     "progress": 0,
                     "content_path": _rpc_optional_text(r[13]),
                 }
-                # rTorrent 的 d.complete 只在整个种子的全部分块都完成时才为 1（libtorrent FileList::is_done）。
-                # 只选了部分文件的任务，选中部分下完后只有 d.is_partially_done 为 1（需要的分块已全部完成），
-                # d.complete 一直是 0：不合成的话，只下几集的任务永远进不了下载器整理，进度也停在部分比例。
-                # 没有任何已下载数据时（例如全部文件都设为不下载）不算完成。
-                if torrent["complete"] != 1 and _rpc_number(r[14]) == 1 and torrent["completed"] > 0:
-                    torrent["complete"] = 1
-                if torrent["complete"] == 1:
-                    torrent["progress"] = 100
-                elif torrent["total_size"] > 0:
+                if torrent["total_size"] > 0:
                     torrent["progress"] = (
                         torrent["completed"] / torrent["total_size"] * 100
                     )
                 else:
                     torrent["progress"] = 0
+                # rTorrent 的 d.complete 只在整个种子的全部分块都完成时才为 1（libtorrent FileList::is_done）。
+                # 只选了部分文件的任务，选中部分下完后只有 d.is_partially_done 为 1（需要的分块已全部完成），
+                # d.complete 一直是 0：不合成的话，只下几集的任务永远进不了下载器整理。没有任何已下载数据时
+                # （例如全部文件都设为不下载）不算完成。
+                # 进度仍按全部数据计算，不改成 100：未选中的文件可能因与选中文件共用分块被写入部分数据，工作流
+                # "下载完成后整理整个目录"、移动整理后删除任务等按进度 100 判断"目录里的文件都已下完"的地方
+                # 不能把这类任务当成已下完。
+                if torrent["complete"] != 1 and _rpc_number(r[14]) == 1 and torrent["completed"] > 0:
+                    torrent["complete"] = 1
 
                 if ids:
                     if isinstance(ids, str):

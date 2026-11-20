@@ -41,6 +41,13 @@ class DownloaderTorrent(BaseModel):
         ),
     )
     progress: Optional[float] = Field(default=0.0, description="当前完成百分比")
+    selected_completed: Optional[bool] = Field(
+        default=None,
+        description=(
+            "选中下载的文件是否已全部下载完成；完成百分比按全部数据计算的下载器（rTorrent，只选了部分文件时选中部分下完"
+            "也不到 100）提供，为空时按完成百分比是否达到 100 判断"
+        ),
+    )
     state: Optional[str] = Field(default="downloading", description="当前业务状态")
     upspeed: Optional[str] = Field(default=None, description="当前上传速度的格式化展示文本")
     dlspeed: Optional[str] = Field(default=None, description="当前下载速度的格式化展示文本")

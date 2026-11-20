@@ -876,18 +876,16 @@ def test_multiple_torrent_tags_are_checked_one_by_one(selected_downloader, monke
         server.set_torrents_tag.assert_called_once_with(ids=torrent_hash, tags=written)
 
 
-def _transfer_torrent(
-        torrent_hash, *, selected_size, size=126, save_path="/downloads/Show.S01", path="/downloads/Show.S01",
-):
+def _admit(module, server, torrent_hash, *, selected_size, size=126, save_path="/downloads/Show.S01",
+           content_path="/downloads/Show.S01"):
     """
-    构造整理轮询查到的已完成任务。
+    以整理轮询查到的已完成任务调用逐文件准入。
 
-    默认保存目录就是任务目录（rTorrent 多文件任务、qBittorrent 无顶层目录的布局），文件名即相对内容路径。
+    默认保存目录就是任务目录（rTorrent 多文件任务、qBittorrent 无顶层目录的布局），文件名即相对内容路径；
+    ``save_path`` 与 ``content_path`` 是下载器返回的原始路径。
     """
-    return DownloaderTorrent(
-        downloader="test-downloader", hash=torrent_hash, size=size, selected_size=selected_size,
-        save_path=save_path, path=Path(path),
-    )
+    torrent = DownloaderTorrent(downloader="test-downloader", hash=torrent_hash, size=size, selected_size=selected_size)
+    return module._admit_transfer_torrent(server, torrent, save_path=save_path, content_path=content_path)
 
 
 def test_partial_task_reports_incomplete_files_for_transfer(selected_downloader) -> None:
@@ -898,7 +896,7 @@ def test_partial_task_reports_incomplete_files_for_transfer(selected_downloader)
     module, server, _content, torrent_hash = selected_downloader
     existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
 
-    (admitted,) = module._admit_transfer_torrent(server, _transfer_torrent(torrent_hash, selected_size=42))
+    (admitted,) = _admit(module, server, torrent_hash, selected_size=42)
 
     assert admitted.incomplete_files == ["Show.S01E06.mkv", "Show.S01E07.mkv"]
 
@@ -911,31 +909,37 @@ def test_incomplete_files_are_reported_relative_to_content_path(selected_downloa
     module, server, _content, torrent_hash = selected_downloader
     existing_task(module, server, torrent_hash, [f"Show.S01/{name}" for name in _SEASON], wanted={0}, completed={0})
 
-    (admitted,) = module._admit_transfer_torrent(
-        server, _transfer_torrent(torrent_hash, selected_size=42, save_path="/downloads", path="/downloads/Show.S01"),
+    (admitted,) = _admit(
+        module, server, torrent_hash, selected_size=42, save_path="/downloads", content_path="/downloads/Show.S01",
     )
 
     assert admitted.incomplete_files == ["Show.S01E06.mkv", "Show.S01E07.mkv"]
 
 
+@pytest.mark.parametrize("mapping,expected_path", [
+    (None, "/data/Show.S01"),
+    # 只把季包目录映射到远程存储，保存目录不在映射范围内：映射后的两者没有共同前缀，必须按原始路径换算。
+    ([("smb:/incoming/Show.S01", "/data/Show.S01")], "smb:/incoming/Show.S01"),
+], ids=["unmapped", "content-dir-only-mapping"])
 @pytest.mark.parametrize("selected_downloader", [QbittorrentModule], indirect=True)
-def test_qbittorrent_transfer_polling_attaches_incomplete_files(selected_downloader) -> None:
+def test_qbittorrent_transfer_polling_attaches_incomplete_files(selected_downloader, mapping, expected_path) -> None:
     """
-    qBittorrent 整理轮询查到只选中部分文件的已完成任务（size 小于 total_size）时，经逐文件准入附上未下载完成的文件。
+    qBittorrent 整理轮询查到只选中部分文件的已完成任务（size 小于 total_size）时，经逐文件准入附上未下载完成的文件，
+    路径相对任务内容路径；路径映射只覆盖内容目录时也一样，已下完的 E05 照常进入整理。
     """
     module, server, _content, torrent_hash = selected_downloader
     existing_task(module, server, torrent_hash, [f"Show.S01/{name}" for name in _SEASON], wanted={0}, completed={0})
     server.get_completed_torrents.return_value = [{
-        "hash": torrent_hash, "name": "Show.S01", "save_path": "/downloads", "content_path": "/downloads/Show.S01",
+        "hash": torrent_hash, "name": "Show.S01", "save_path": "/data", "content_path": "/data/Show.S01",
         "total_size": 126, "size": 42, "completed": 42, "tags": "MOVIEPILOT", "progress": 1, "state": "pausedUP",
     }]
     module.get_instances = Mock(return_value={"qb": server})
-    module.get_config = Mock(return_value=None)
+    module.get_config = Mock(return_value=SimpleNamespace(path_mapping=mapping) if mapping else None)
 
     (torrent,) = module.list_torrents(status=TorrentQueryStatus.TRANSFER)
 
     assert torrent.selected_size == 42
-    assert torrent.path == Path("/downloads/Show.S01")
+    assert torrent.path == Path(expected_path)
     assert torrent.incomplete_files == ["Show.S01E06.mkv", "Show.S01E07.mkv"]
 
 
@@ -948,9 +952,7 @@ def test_incomplete_files_outside_content_path_wait_for_next_round(selected_down
     module, server, _content, torrent_hash = selected_downloader
     existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
 
-    torrent = _transfer_torrent(torrent_hash, selected_size=42, save_path=save_path)
-
-    assert module._admit_transfer_torrent(server, torrent) == []
+    assert _admit(module, server, torrent_hash, selected_size=42, save_path=save_path) == []
 
 
 def test_fully_selected_task_needs_no_file_check(selected_downloader) -> None:
@@ -959,7 +961,7 @@ def test_fully_selected_task_needs_no_file_check(selected_downloader) -> None:
     """
     module, server, _content, torrent_hash = selected_downloader
 
-    (admitted,) = module._admit_transfer_torrent(server, _transfer_torrent(torrent_hash, selected_size=126))
+    (admitted,) = _admit(module, server, torrent_hash, selected_size=126)
 
     assert admitted.incomplete_files is None
     server.get_files.assert_not_called()
@@ -972,7 +974,7 @@ def test_partial_task_with_unreadable_files_waits_for_next_round(selected_downlo
     module, server, _content, torrent_hash = selected_downloader
     server.get_files.return_value = None
 
-    assert module._admit_transfer_torrent(server, _transfer_torrent(torrent_hash, selected_size=42)) == []
+    assert _admit(module, server, torrent_hash, selected_size=42) == []
 
 
 @pytest.mark.parametrize("selected_downloader", [RtorrentModule], indirect=True)

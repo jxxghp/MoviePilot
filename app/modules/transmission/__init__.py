@@ -569,7 +569,10 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                         if not path:
                             logger.debug(f"未获取到 {torrent_info.name} 下载保存路径")
                             continue
-                        ret_torrents.extend(self._admit_transfer_torrent(server, __build_torrent(name, torrent_info)))
+                        ret_torrents.extend(self._admit_transfer_torrent(
+                            server, __build_torrent(name, torrent_info),
+                            save_path=path, content_path=__get_torrent_path(torrent_info),
+                        ))
                 finally:
                     torrents.clear()
                     del torrents

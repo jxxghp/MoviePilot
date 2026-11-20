@@ -241,7 +241,7 @@ def _load_transmission_module():
             return torrent_info, torrent_content
 
         @staticmethod
-        def _admit_transfer_torrent(_server, torrent):
+        def _admit_transfer_torrent(_server, torrent, **_raw_paths):
             """
             与真实基类一致的整理轮询准入：选中大小不小于总大小（或未知）时原样交给整理。
 
