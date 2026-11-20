@@ -1211,10 +1211,10 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         if preview and (
                             not preview_items or preview_items[-1].get("source") != transfer_task.fileitem.path
                         ):
+                            # 校验阶段未经过回调时，交给预览投影补充失败提示，避免写死为任务执行。
                             preview_items.append(
                                 build_transfer_preview_item(transfer_task, TransferInfo(
-                                    success=False, message=err_msg, failure_stage="execution",
-                                    recovery_action="刷新整理历史，等待任务结束；仍无法继续时提交人工复核",
+                                    success=False, message=err_msg,
                                 ))
                             )
                         fail_num += 1
