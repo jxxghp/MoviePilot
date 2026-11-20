@@ -2,12 +2,14 @@
 下载器模块业务样板基类。
 
 沉淀三个内置下载器模块（qbittorrent/transmission/rtorrent）逐字复制的样板：
-连接测试、定时重连、种子信息读取与查询状态归一。差异化逻辑
-（任务添加、原始状态映射、任务列表构建）仍留在各模块。
+连接测试、定时重连、种子信息读取与查询状态归一，同一 hash 已存在时的统一核验流程
+（``_accept_existing_task``），以及暂停/恢复时 MP 暂停标签的维护。差异化逻辑（任务添加、
+原始状态映射、任务列表构建，以及核验流程依赖的文件、状态、标签读写接口）仍留在各模块。
 """
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, List, Optional, Protocol, Tuple, TypeVar, Union
+from typing import Any, List, Optional, Protocol, Set, Tuple, TypeVar, Union, cast
 
 from torrentool.torrent import Torrent
 
@@ -15,7 +17,30 @@ from app.domain import torrent as torrent_rules
 from app.modules import _DownloaderBase, _ModuleBase
 from app.runtime.cache import FileCache
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.download import (
+    DOWNLOAD_TASK_ALREADY_EXISTS,
+    DOWNLOAD_TASK_DEFERRED,
+    DOWNLOAD_TASK_FILES_APPENDED,
+    DOWNLOAD_TASK_RESUMED,
+    DownloadPauseIntent,
+    DownloadTaskAction,
+    ExistingTaskRejection,
+)
 from app.schemas.types import TorrentQueryStatus, TorrentStatus
+
+# 整理完成后写入下载器的标签；带此标签的任务不再进入下载器整理轮询。
+TRANSFERRED_TAG = "已整理"
+# 恢复以“可恢复”意图暂停的任务后，最多读取 3 次状态确认已运行，每次间隔 1 秒。
+_RESUME_CONFIRM_TIMES = 3
+_RESUME_CONFIRM_INTERVAL = 1
+# 受理已有任务时，下载器动作到 download() 约定说明的映射；新建任务不经过这里。
+_EXISTING_TASK_MESSAGES = {
+    DownloadTaskAction.APPENDED: DOWNLOAD_TASK_FILES_APPENDED,
+    DownloadTaskAction.RESUMED: DOWNLOAD_TASK_RESUMED,
+    DownloadTaskAction.DEFERRED: DOWNLOAD_TASK_DEFERRED,
+    DownloadTaskAction.REUSED: DOWNLOAD_TASK_ALREADY_EXISTS,
+}
 
 
 class _DownloaderClient(Protocol):
@@ -57,6 +82,15 @@ class _DownloaderClient(Protocol):
         """
         ...
 
+    def stop_torrents(self, ids: str) -> bool:
+        """
+        暂停指定任务；已有任务流程只用它撤销 MP 自己刚做的恢复。
+
+        :param ids: 任务哈希
+        :return: 下载器是否接受暂停请求
+        """
+        ...
+
 
 DownloaderServiceT = TypeVar("DownloaderServiceT", bound=_DownloaderClient)
 TFile = TypeVar("TFile")
@@ -77,6 +111,372 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
         if server.delete_torrents(delete_file=False, ids=torrent_hash):
             return f"{message}；已请求移除本次新增任务（保留文件），等待后续重试或换源"
         return f"{message}；移除本次新增任务失败，请在下载器核实（保留文件）"
+
+    def _accept_existing_task(
+            self, server: DownloaderServiceT, torrent_hash: str, tags: Optional[Sequence[str]],
+            episodes: Optional[Set[int]], custom_words: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+            confirmed: Optional[torrent_rules.ConfirmedSelection],
+    ) -> Tuple[bool, str]:
+        """
+        同一 hash 已在下载器中时，核验已有任务能否受理本次请求，能受理就做最小改动，只有确认受理才算成功。
+
+        历史背景（修改前务必理解）：
+        - 4955b7b9e 曾对已有任务"暂停 + 重新选集"，会把正在下载或做种的整包改成只下几集（#7362）；
+        - #7405 改为已有任务直接返回"任务已存在"，但下载链仍按成功结算，导致同一季包先下 E01、
+          再要 E02 时 E02 根本没被选中，订阅却记成已下载。
+
+        现在的原则是"MoviePilot 只按暂停方声明的意图行事，不推翻用户、插件或外部的决定"，具体规则见
+        ``app.domain.torrent.decide_existing_task``；这里只负责读取实时状态、执行决策并回读确认：
+        - 绝不暂停任务、绝不把任何文件改为不下载、绝不删除已有任务，也不修改保存目录；
+        - 只把目标中尚未选中、也不是被别人取消的文件改为下载；
+        - 只恢复以“可恢复”意图暂停的任务；以“放弃”“暂缓”意图暂停或外部暂停的任务保持暂停；恢复后若发现
+          期间有人以更保守的意图重新暂停（进程外操作），撤销 MP 自己的恢复，见 ``_pause_mark_overriding_resume``；
+        - 写入后回读确认，任何一步无法确认都返回失败，不能让下载链把未受理的集记成已下载；
+        - 受理后才移除"已整理"标签：先移除的话，旧整理回调可能赶在追加生效前按"已完成"重新打回
+          标签，追加的文件下载完成后就再也不会进入下载器整理。移除前重新读取标签、移除后回读确认，
+          不依赖受理前的标签快照（整理回调可能在两者之间写入标签）；
+        - 调用方（下载链）在整个 download() 期间持有 ``app.runtime.locks.downloader_task_locks``，
+          整理链"判断完成 + 写已整理标签"与移动模式"检查 + 删除任务"持有同一把锁，三者按 hash 互斥。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 下载器中已有任务的 hash
+        :param tags: 已有任务当前的全部标签；None 表示读取失败、标签未知
+        :param episodes: 本次目标集号；None 或空集合表示请求下载整个种子
+        :param custom_words: 来源识别词，与新任务选集使用同一份
+        :param episode_selection: 目标季与已确认的季集映射，与新任务选集使用同一份
+        :param confirmed: 下载链从下载历史读出的"MP 此前在该任务上确认选中过的目标"；
+            None 表示 MP 没有该 hash 的任何下载历史（外部添加的任务）
+        :return: 是否确认受理及说明；受理时说明为 ``app.schemas.download`` 中约定的四个常量之一，
+            拒绝时以 ``ExistingTaskRejection`` 的某个原因开头
+        """
+        snapshot = torrent_rules.ExistingTaskSnapshot(
+            files=tuple(self._existing_task_files(server, torrent_hash) or ()),
+            state=self._existing_task_state(server, torrent_hash),
+            tags=None if tags is None else tuple(str(tag).strip() for tag in tags if str(tag).strip()),
+        )
+        media_extensions = [str(extension).lower() for extension in get_runtime_setting("RMT_MEDIAEXT", [])]
+        decision = torrent_rules.decide_existing_task(
+            snapshot, episodes=episodes, confirmed=confirmed, media_extensions=media_extensions,
+            custom_words=custom_words, episode_selection=episode_selection,
+        )
+        if decision.rejection is not None:
+            return False, decision.rejection.describe(torrent_hash, decision.detail)
+        failure = self._apply_existing_task_decision(server, torrent_hash, decision)
+        # 只清除决策所依据的那些暂停标签；决策之后才出现的暂停标签是别人新做的决定，必须保留。
+        stale_pause_tags = [tag for tag in snapshot.tags or () if torrent_rules.is_pause_tag(tag)]
+        if failure is None and not self._refresh_accepted_task_tags(
+                server, torrent_hash, stale_pause_tags=stale_pause_tags if decision.clear_pause_tags else [],
+        ):
+            failure = '已受理本次目标，但移除"已整理"标签未确认，追加的文件下载完成后可能不会自动整理，请在下载器核实'
+        if failure is not None:
+            return False, ExistingTaskRejection.NOT_CONFIRMED.describe(torrent_hash, failure)
+        return True, _EXISTING_TASK_MESSAGES[cast(DownloadTaskAction, decision.action)]
+
+    def _apply_existing_task_decision(
+            self, server: DownloaderServiceT, torrent_hash: str, decision: torrent_rules.ExistingTaskDecision,
+    ) -> Optional[str]:
+        """
+        按受理决策追加选择文件、刷新优先级、恢复任务，每一步都回读确认。
+
+        失败时不回滚已写入的文件：下一次请求会重新读取实时状态，只补写仍未选中的部分。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :param decision: 受理决策
+        :return: 全部确认时返回 None，否则返回失败细节
+        """
+        if decision.enable and not self._confirm_existing_files_enabled(server, torrent_hash, decision.enable):
+            return "追加选择目标文件未确认，请在下载器核实，未记录成功"
+        if decision.pending and not self._refresh_existing_priorities(server, torrent_hash):
+            return "文件优先级刷新未确认，请在下载器核实，未记录成功"
+        if decision.resume:
+            if not self._resume_existing_task(server, torrent_hash):
+                return "恢复以“可恢复”意图暂停的任务未确认，请在下载器核实，未记录成功"
+            repaused = self._pause_mark_overriding_resume(server, torrent_hash)
+            if repaused is not None:
+                undone = self._stop_existing_task(server, torrent_hash)
+                return (
+                    f"任务在恢复期间被{repaused.describe_actor()}以“{repaused.describe_intent()}”重新暂停，"
+                    + ("已撤销 MP 本次的恢复" if undone else "撤销 MP 本次的恢复失败，请在下载器核实")
+                    + "，未记录成功"
+                )
+        return None
+
+    def _pause_mark_overriding_resume(
+            self, server: DownloaderServiceT, torrent_hash: str,
+    ) -> Optional[torrent_rules.PauseMark]:
+        """
+        恢复后重新读取标签，检查期间是否有人以更保守的意图重新暂停了任务。
+
+        MP 进程内的暂停与这里共用任务锁，不会交错；这里防的是锁管不到的进程外操作（例如智能助手脚本
+        直接调用下载器）：订阅按"可恢复"决定恢复，期间对方写入"放弃"并暂停，随后 MP 的启动请求才到达，
+        任务又被启动。发现这种情况时 MP 撤销自己刚做的恢复（只撤销自己的操作），本次按未确认失败，
+        下次请求会按新的意图重新决定。读不到标签时不在这里判断，随后刷新标签同样要读取，会按未确认失败。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 刚恢复的任务 hash
+        :return: 覆盖了"可恢复"的暂停意图；没有时返回 None
+        """
+        current = self._task_tags(server, torrent_hash)
+        mark = torrent_rules.parse_pause_mark(current or ())
+        if mark is None or mark.intent is DownloadPauseIntent.RESUMABLE:
+            return None
+        return mark
+
+    def _stop_existing_task(self, server: DownloaderServiceT, torrent_hash: str) -> bool:
+        """
+        暂停已有任务，只用于撤销 MP 自己刚做的恢复。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :return: 暂停请求完成时返回 True
+        """
+        return bool(server.stop_torrents(torrent_hash))
+
+    def _confirm_existing_files_enabled(
+            self, server: DownloaderServiceT, torrent_hash: str, file_ids: Tuple[int, ...],
+    ) -> bool:
+        """
+        把文件设为需要下载后重新读取文件列表，确认每个文件都已处于选中状态。
+
+        下载器接口返回成功只代表请求已发出（rTorrent 还会逐个文件写入），必须回读实际状态。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :param file_ids: 需要追加选择的文件索引，调用方保证非空
+        :return: 写入请求完成且回读确认全部已选中时返回 True
+        """
+        if not self._enable_existing_files(server, torrent_hash, list(file_ids)):
+            return False
+        confirmed = {item.file_id for item in self._existing_task_files(server, torrent_hash) or [] if item.wanted}
+        return set(file_ids).issubset(confirmed)
+
+    def _resume_existing_task(self, server: DownloaderServiceT, torrent_hash: str) -> bool:
+        """
+        恢复以“可恢复”意图暂停的任务，并回读确认任务已进入运行状态。
+
+        启动接口返回成功只代表请求已发出；下载器处理恢复是异步的，最多读取
+        ``_RESUME_CONFIRM_TIMES`` 次状态，期间仍未运行就按失败处理（4bf11c327 的同类问题）。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :return: 确认已运行时返回 True
+        """
+        if not self._start_existing_task(server, torrent_hash):
+            return False
+        for attempt in range(_RESUME_CONFIRM_TIMES):
+            if self._existing_task_state(server, torrent_hash) is torrent_rules.ExistingTaskState.RUNNING:
+                return True
+            if attempt + 1 < _RESUME_CONFIRM_TIMES:
+                time.sleep(_RESUME_CONFIRM_INTERVAL)
+        return False
+
+    def _refresh_accepted_task_tags(
+            self, server: DownloaderServiceT, torrent_hash: str, *, stale_pause_tags: Sequence[str],
+    ) -> bool:
+        """
+        受理已有任务后刷新标签：移除"已整理"，按需清除 MP 暂停标签，并补上系统种子标签。
+
+        移除"已整理"是受理的一部分：标签留着的话，追加的文件下载完成后不会进入下载器整理，因此
+        必须确认它已不在任务上，否则本次受理失败（下次请求会重新读取标签再试）：
+        - 移除前重新读取标签，不用受理前的快照：快照之后整理回调可能已经写入了"已整理"；
+        - 移除后再读一次确认：下载器接口返回成功只代表请求已发出，不代表标签真的没了；
+        - 任一次读取失败都按未确认处理。
+        清除暂停标签、补系统种子标签只影响展示与归属识别，失败只记日志。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :param stale_pause_tags: 需要清除的过期 MP 暂停标签（任务已在运行或本次已恢复时，为决策所依据的
+            那些暂停标签；否则为空）。决策之后才出现的暂停标签不在其中，不会被清掉
+        :return: 确认任务上已没有"已整理"标签时返回 True
+        """
+        current = self._task_tags(server, torrent_hash)
+        if current is None:
+            return False
+        removable = [tag for tag in current if tag == TRANSFERRED_TAG or tag in stale_pause_tags]
+        if removable and not self._remove_task_tags(server, torrent_hash, removable, current):
+            if TRANSFERRED_TAG in removable:
+                return False
+            logger.warning(f"清除种子 {torrent_hash} 的过期暂停标签失败：{removable}")
+        remaining = [tag for tag in current if tag not in removable]
+        if TRANSFERRED_TAG in removable:
+            refreshed = self._task_tags(server, torrent_hash)
+            if refreshed is None or TRANSFERRED_TAG in refreshed:
+                return False
+            remaining = refreshed
+        torrent_tag = get_runtime_setting('TORRENT_TAG')
+        if torrent_tag and torrent_tag not in remaining:
+            logger.info(f"给种子 {torrent_hash} 打上标签：{torrent_tag}")
+            if not self._add_task_tags(server, torrent_hash, [torrent_tag], remaining):
+                logger.warning(f"给种子 {torrent_hash} 打上系统种子标签失败")
+        return True
+
+    def _has_pending_wanted_files(self, server: DownloaderServiceT, torrent_hash: str) -> bool:
+        """
+        打上"已整理"标签后复核任务：仍有已选中但未下载完成的文件，说明期间被追加了新文件。
+
+        整理回调先确认种子已下载完成、再写入标签，这两步之间若有新的下载请求在同一任务上追加了
+        文件（同一季包分多次下载不同集），标签会把追加的文件挡在下载器整理之外。MP 进程内的追加与
+        整理回调由 ``app.runtime.locks.downloader_task_locks`` 串行化；这里的复核是兜底，覆盖锁管不到的
+        情况（例如用户在下载器里手动勾选了文件）。追加后又在整理期间就下载完成的情况，由整理链在
+        打标签前比对选中大小处理（见整理链 ``_TransferChain__selection_changed_since_scan``）。
+        读取失败时无法确认，按"有待下载"处理撤回标签：撤回只会让下一轮整理重新检查该任务，
+        已整理过的文件会被跳过，代价远小于把新文件永久挡在整理之外。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 刚写入"已整理"标签的任务 hash
+        :return: 存在已选中但未完成的文件，或无法读取文件状态时返回 True，调用方应撤回标签
+        """
+        files = self._existing_task_files(server, torrent_hash)
+        if not files:
+            return True
+        return any(item.wanted and not item.completed for item in files)
+
+    def _mark_paused_tasks(self, server: DownloaderServiceT, hashes: Union[str, List[str]], tag: str) -> None:
+        """
+        暂停前给任务写上 MP 暂停标签，替换任务上已有的其他暂停标签。
+
+        先写标签再暂停：标签写入失败时仍会暂停（暂停是操作方的主要意图），此时任务没有 MP 标签，
+        会被当成外部暂停，MP 同样不会恢复，只是失去了"暂缓""可恢复"等可以继续的信息。
+
+        替换顺序是"先写新标签、再删旧标签"，而不是反过来：多个暂停标签并存时取最保守的
+        （见 ``app.domain.torrent.parse_pause_mark``），新标签写上后，旧标签删不掉也不会让 MP 误恢复。
+        反过来的话，旧的"可恢复"标签删除失败、又跳过写新标签，以"放弃"暂停的任务会被订阅恢复。
+        新标签写入失败时，仍尽量删掉旧暂停标签，让任务退化为外部暂停（MP 不恢复）；两步都失败时
+        只能记日志，残留的旧标签可能让 MP 按旧来源处理，需要在下载器中核实。
+
+        :param server: 当前下载器客户端
+        :param hashes: 任务 hash 或 hash 列表
+        :param tag: 由 ``app.domain.torrent.pause_tag`` 生成的暂停标签
+        """
+        for torrent_hash in [hashes] if isinstance(hashes, str) else hashes:
+            current = self._task_tags(server, torrent_hash)
+            if current is None:
+                logger.warning(f"读取种子 {torrent_hash} 的标签失败，本次暂停不写入 MP 暂停标签")
+                continue
+            written = tag in current or self._add_task_tags(server, torrent_hash, [tag], current)
+            if not written:
+                logger.warning(f"给种子 {torrent_hash} 写入暂停标签 {tag} 失败，将按外部暂停处理")
+            stale = [item for item in current if torrent_rules.is_pause_tag(item) and item != tag]
+            if not stale:
+                continue
+            # Transmission 只能整体覆盖标签，删除时要基于写入新标签之后的完整标签计算。
+            latest = current + [tag] if written and tag not in current else current
+            if not self._remove_task_tags(server, torrent_hash, stale, latest):
+                logger.warning(f"清除种子 {torrent_hash} 的旧暂停标签失败：{stale}"
+                               + ("" if written else "；新暂停标签也未写入，请在下载器核实"))
+
+    def _clear_pause_tags(self, server: DownloaderServiceT, hashes: Union[str, List[str]]) -> None:
+        """
+        任务恢复后清除 MP 暂停标签；失败只记日志，过期标签会在 MP 下次发现任务在运行时再清除。
+
+        :param server: 当前下载器客户端
+        :param hashes: 任务 hash 或 hash 列表
+        """
+        for torrent_hash in [hashes] if isinstance(hashes, str) else hashes:
+            current = self._task_tags(server, torrent_hash)
+            stale = [item for item in current or [] if torrent_rules.is_pause_tag(item)]
+            if stale and not self._remove_task_tags(server, torrent_hash, stale, current or []):
+                logger.warning(f"清除种子 {torrent_hash} 的暂停标签失败：{stale}")
+
+    def _existing_task_files(
+            self, server: DownloaderServiceT, torrent_hash: str,
+    ) -> Optional[List[torrent_rules.ExistingTaskFile]]:
+        """
+        读取已有任务的实时文件状态，由各下载器模块实现。
+
+        只读一次，不为等待元数据而启动或暂停任务（#7348 的取元数据流程只用于新任务）。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :return: 文件状态列表；读取失败或尚无元数据时返回 None 或空列表
+        """
+        raise NotImplementedError
+
+    def _enable_existing_files(self, server: DownloaderServiceT, torrent_hash: str, file_ids: List[int]) -> bool:
+        """
+        把指定文件设为需要下载，由各下载器模块实现；不得改动其他文件。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :param file_ids: 需要追加选择的非空文件索引
+        :return: 请求完成时返回 True，不代表状态已生效，调用方会回读确认
+        """
+        raise NotImplementedError
+
+    def _refresh_existing_priorities(self, server: DownloaderServiceT, torrent_hash: str) -> bool:
+        """
+        让已写入的文件优先级生效；默认无需额外动作。
+
+        rTorrent 写入文件优先级后必须调用 ``d.update_priorities`` 才会生效，且中途失败的写入
+        在重试时读回来已是"选中"，因此只要目标仍有未完成文件就需要再刷新一次，由其模块覆盖。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :return: 刷新请求完成或无需刷新时返回 True
+        """
+        return True
+
+    def _existing_task_state(
+            self, server: DownloaderServiceT, torrent_hash: str,
+    ) -> torrent_rules.ExistingTaskState:
+        """
+        读取已有任务的运行状态并归一，由各下载器模块实现。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :return: 归一后的状态；读取失败或无法识别时返回 UNKNOWN
+        """
+        raise NotImplementedError
+
+    def _start_existing_task(self, server: DownloaderServiceT, torrent_hash: str) -> bool:
+        """
+        恢复已停止的已有任务，由各下载器模块实现，沿用新任务选集后的启动方式。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 已有任务的 hash
+        :return: 启动请求完成时返回 True；调用方会回读状态确认
+        """
+        raise NotImplementedError
+
+    def _task_tags(self, server: DownloaderServiceT, torrent_hash: str) -> Optional[List[str]]:
+        """
+        读取任务当前的全部标签，由各下载器模块实现。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 任务 hash
+        :return: 标签列表；读取失败时返回 None，不能用空列表代替（否则会被当成"没有标签"写回）
+        """
+        raise NotImplementedError
+
+    def _add_task_tags(
+            self, server: DownloaderServiceT, torrent_hash: str, tags: List[str], current: List[str],
+    ) -> bool:
+        """
+        给任务追加标签并保留其他标签，由各下载器模块实现。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 任务 hash
+        :param tags: 需要追加的标签
+        :param current: 调用方刚读取到的全部标签；只能整体覆盖标签的下载器（Transmission）据此计算新值
+        :return: 请求完成时返回 True
+        """
+        raise NotImplementedError
+
+    def _remove_task_tags(
+            self, server: DownloaderServiceT, torrent_hash: str, tags: List[str], current: List[str],
+    ) -> bool:
+        """
+        从任务上移除指定标签并保留其他标签，由各下载器模块实现。
+
+        :param server: 当前下载器客户端
+        :param torrent_hash: 任务 hash
+        :param tags: 需要移除的标签
+        :param current: 调用方刚读取到的全部标签；只能整体覆盖标签的下载器（Transmission）据此计算新值
+        :return: 请求完成时返回 True
+        """
+        raise NotImplementedError
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """

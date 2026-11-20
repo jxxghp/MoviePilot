@@ -1457,7 +1457,7 @@ _METHOD_CONTRACTS = {
         result_contract="DownloadTaskResult | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader"),
-        optional_parameters=("custom_words", "episode_selection"),
+        optional_parameters=("custom_words", "episode_selection", "confirmed_selection"),
     ),
     "download_added": ModuleMethodContract(
         family="downloader",
@@ -1498,6 +1498,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.BOOLEAN,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("hashs", "downloader"),
+        optional_parameters=("pause_tag",),
     ),
     "update_torrent": ModuleMethodContract(
         family="downloader",

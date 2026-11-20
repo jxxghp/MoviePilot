@@ -592,6 +592,10 @@ class Rtorrent:
         """
         批量设置文件优先级并通知任务更新优先级。
 
+        rTorrent 的 ``f.priority.set`` 写入后要调用 ``d.update_priorities`` 才会生效。逐个写入中途
+        失败时，此前已写入的优先级仍会被尽力刷新，避免它们停留在"读出来已选中、实际未生效"的
+        状态；此时仍返回 False，由调用方重新读取实际状态。
+
         :param torrent_hash: 种子哈希，不接受空值
         :param file_ids: 种子内部的非空文件索引列表
         :param priority: 文件优先级，0 表示不下载，1 表示普通下载
@@ -601,14 +605,49 @@ class Rtorrent:
             return False
         if not torrent_hash or not file_ids:
             return False
+        written = False
         try:
             for file_id in file_ids:
                 self._proxy.f.priority.set(f"{torrent_hash}:f{file_id}", priority)
+                written = True
             self._proxy.d.update_priorities(torrent_hash)
             return True
         except Exception as err:
             logger.error(f"设置种子文件状态出错：{str(err)}")
+            if written:
+                self.update_priorities(torrent_hash)
             return False
+
+    def update_priorities(self, torrent_hash: str) -> bool:
+        """
+        让任务已写入的文件优先级生效（``d.update_priorities``），重复调用不会改变优先级本身。
+
+        :param torrent_hash: 种子哈希，不接受空值
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False
+        """
+        if not self._proxy or not torrent_hash:
+            return False
+        try:
+            self._proxy.d.update_priorities(torrent_hash)
+            return True
+        except Exception as err:
+            logger.error(f"刷新种子文件优先级出错：{str(err)}")
+            return False
+
+    def is_hash_checking(self, torrent_hash: str) -> Optional[bool]:
+        """
+        查询任务是否正在校验数据（``d.is_hash_checking``）；校验期间任务处于不活动状态。
+
+        :param torrent_hash: 种子哈希，不接受空值
+        :return: 正在校验返回 True，未在校验返回 False；未连接或查询失败返回 None
+        """
+        if not self._proxy or not torrent_hash:
+            return None
+        try:
+            return str(self._proxy.d.is_hash_checking(torrent_hash)) not in ("0", "", "False")
+        except Exception as err:
+            logger.error(f"查询种子校验状态出错：{str(err)}")
+            return None
 
     def set_torrents_tag(
         self, ids: Union[str, list[str]], tags: List[str], overwrite: bool = False

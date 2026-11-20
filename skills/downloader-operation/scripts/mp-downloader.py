@@ -202,13 +202,13 @@ ACTIONS: dict[str, ActionSpec] = {
         (ArgumentSpec("task_id", "string", TASK_ID.description, required=True),),
     ),
     "tasks.start": ActionSpec(
-        "启动或恢复一个或多个任务。",
+        "启动或恢复一个或多个任务，并清除任务上的 MP 暂停标签。",
         "reversible_write",
         arguments=(TASK_ID, TASK_IDS),
         argument_rules=("task_id 和 task_ids 必须且只能提供一项。",),
     ),
     "tasks.stop": ActionSpec(
-        "暂停一个或多个任务。",
+        "暂停一个或多个任务，并写入 MP暂停:放弃:用户 标签：按放弃该资源处理，订阅不会再恢复或复用这些任务。",
         "reversible_write",
         arguments=(TASK_ID, TASK_IDS),
         argument_rules=("task_id 和 task_ids 必须且只能提供一项。",),
@@ -657,6 +657,83 @@ def _tags_set(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
     return client.set_torrents_tag(ids=ids, tags=tags)
 
 
+def _current_tags(client: Any, provider: str, task_id: str) -> Optional[list[str]]:
+    """
+    读取单个任务的全部标签；查询失败返回 None，不能当成"没有标签"覆盖写回。
+    """
+    tasks, error = client.get_torrents(ids=task_id)
+    if error or not tasks:
+        return None
+    task = tasks[0]
+    if provider == "transmission":
+        return [str(item).strip() for item in (getattr(task, "labels", None) or []) if str(item).strip()]
+    raw = task.get("tags") if isinstance(task, Mapping) else None
+    return [item.strip() for item in str(raw or "").split(",") if item.strip()]
+
+
+def _update_tags(client: Any, provider: str, task_id: str, *, remove: list[str], add: list[str]) -> None:
+    """
+    追加并移除任务标签，保留其他标签；Transmission 只能整体覆盖，按当前标签计算新值。
+
+    先追加再移除：替换暂停标签时，新标签写上后旧标签删不掉也不会让 MoviePilot 按旧意图处理
+    （多个暂停标签并存时取最保守的）。
+    """
+    if not remove and not add:
+        return
+    if provider == "transmission":
+        current = _current_tags(client, provider, task_id)
+        if current is None:
+            return
+        labels = [item for item in current if item not in remove]
+        client.replace_torrent_labels(ids=task_id, labels=labels + [item for item in add if item not in labels])
+        return
+    if add:
+        client.set_torrents_tag(ids=task_id, tags=add)
+    if remove:
+        client.remove_torrents_tag(ids=task_id, tag=remove)
+
+
+def _stop_tasks_as_user(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
+    """
+    代用户暂停任务：智能助手代用户操作，与用户在 MoviePilot 中手动暂停一样按"放弃"意图处理。
+
+    先写 ``MP暂停:放弃:用户`` 标签（替换任务上已有的其他 MP 暂停标签）再暂停。MoviePilot 订阅之后
+    遇到以"放弃"暂停的任务不会恢复或复用，而是改用其他资源，规则见 ``app.domain.torrent``。
+    标签读取或写入失败时仍会暂停，任务会被当成外部暂停，同样不会被 MoviePilot 恢复。
+    脚本运行在 MoviePilot 进程之外，无法持有宿主的任务锁，只能依靠"先写新标签再删旧标签"保证
+    最保守的意图生效。
+    """
+    _ensure_project_import()
+    torrent_rules = importlib.import_module("app.domain.torrent")
+    download_schemas = importlib.import_module("app.schemas.download")
+    tag = torrent_rules.pause_tag(torrent_rules.PauseMark(
+        actor=download_schemas.DownloadTaskActor.USER, intent=download_schemas.DownloadPauseIntent.ABANDON,
+    ))
+    ids = _task_ids(arguments)
+    for task_id in [ids] if isinstance(ids, str) else ids:
+        current = _current_tags(client, provider, task_id)
+        if current is None:
+            continue
+        stale = [item for item in current if torrent_rules.is_pause_tag(item) and item != tag]
+        _update_tags(client, provider, task_id, remove=stale, add=[] if tag in current else [tag])
+    return client.stop_torrents(ids)
+
+
+def _start_tasks(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
+    """
+    启动任务，成功后清除 MP 暂停标签：任务已恢复，留着标签会让之后的暂停被误判来源。
+    """
+    _ensure_project_import()
+    torrent_rules = importlib.import_module("app.domain.torrent")
+    ids = _task_ids(arguments)
+    started = client.start_torrents(ids)
+    if started:
+        for task_id in [ids] if isinstance(ids, str) else ids:
+            stale = [item for item in _current_tags(client, provider, task_id) or [] if torrent_rules.is_pause_tag(item)]
+            _update_tags(client, provider, task_id, remove=stale, add=[])
+    return started
+
+
 def _reannounce(client: Any, provider: str, arguments: Mapping[str, Any]) -> bool:
     """
     调用服务实现 SDK 的固定重新汇报动作。
@@ -764,9 +841,9 @@ def _dispatch(client: Any, provider: str, action: str, arguments: Mapping[str, A
     if action == "tasks.peers":
         return client.qbc.sync_torrent_peers(str(_require(arguments, "task_id")))
     if action == "tasks.start":
-        return client.start_torrents(_task_ids(arguments))
+        return _start_tasks(client, provider, arguments)
     if action == "tasks.stop":
-        return client.stop_torrents(_task_ids(arguments))
+        return _stop_tasks_as_user(client, provider, arguments)
     if action == "tasks.delete":
         return client.delete_torrents(bool(arguments.get("delete_files", False)), _task_ids(arguments))
     if action == "tasks.recheck":

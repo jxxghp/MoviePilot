@@ -95,11 +95,14 @@ class DownloadHistory(Base):
     def get_by_hash(cls, db: Session, download_hash: str) -> Optional["DownloadHistory"]:
         """
         按下载任务哈希读取登记时间最新的下载历史。
+
+        登记时间只精确到秒，同一秒内对同一任务的多次登记（例如同一季包连续追加两集）以主键为准，
+        保证总能读到最后写入的一条；已有任务的"确认选中记录"依赖这一点（见下载链历史登记）。
         """
         history: Optional[DownloadHistory] = db.execute(
             select(DownloadHistory)
             .where(DownloadHistory.download_hash == download_hash)
-            .order_by(DownloadHistory.date.desc())
+            .order_by(DownloadHistory.date.desc(), DownloadHistory.id.desc())
         ).scalars().first()
         return history
 
@@ -122,7 +125,8 @@ class DownloadHistory(Base):
         histories = db.execute(
             select(DownloadHistory)
             .where(DownloadHistory.download_hash.in_(normalized_hashes))
-            .order_by(DownloadHistory.download_hash, DownloadHistory.date.desc())
+            # 登记时间只精确到秒，同一秒内的多条记录以主键为准，与 get_by_hash 的"最新"口径一致。
+            .order_by(DownloadHistory.download_hash, DownloadHistory.date.desc(), DownloadHistory.id.desc())
         ).scalars().all()
         latest_histories = {}
         for history in histories:

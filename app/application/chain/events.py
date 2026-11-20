@@ -263,6 +263,7 @@ def snapshot_download_added(payload: dict[str, Any]) -> dict[str, Any]:
         "downloader": payload.get("downloader"),
         "episodes": list(payload.get("episodes") or []),
         "source": payload.get("source"),
+        "task_action": payload.get("task_action"),
         "idempotency_key": payload.get("idempotency_key"),
     }))
 

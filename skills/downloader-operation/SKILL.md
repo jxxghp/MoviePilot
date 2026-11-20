@@ -176,8 +176,8 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 | `tasks.queue.move` | 将任务移至队首、上移、下移或移至队尾。; arguments: `task_id`, `task_ids`, `position*` |
 | `tasks.reannounce` | 强制向 Tracker 重新汇报。; arguments: `task_id`, `task_ids` |
 | `tasks.recheck` | 强制校验任务数据。; arguments: `task_id`, `task_ids` |
-| `tasks.start` | 启动或恢复一个或多个任务。; arguments: `task_id`, `task_ids` |
-| `tasks.stop` | 暂停一个或多个任务。; arguments: `task_id`, `task_ids` |
+| `tasks.start` | 启动或恢复一个或多个任务，并清除任务上的 MP 暂停标签。; arguments: `task_id`, `task_ids` |
+| `tasks.stop` | 暂停一个或多个任务，并写入 MP暂停:放弃:用户 标签：按放弃该资源处理，订阅不会再恢复或复用这些任务。; arguments: `task_id`, `task_ids` |
 | `tasks.tags.get` | 读取任务标签。; arguments: `task_id*` |
 | `tasks.tags.set` | 设置或添加任务标签。; arguments: `task_id`, `task_ids`, `tags*` |
 | `tasks.trackers` | 列出单个任务的 Tracker。; arguments: `task_id*` |
@@ -299,13 +299,13 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 - Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.start`
-启动或恢复一个或多个任务。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+启动或恢复一个或多个任务，并清除任务上的 MP 暂停标签。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
 - `task_id` (string): 下载器自身返回的单个任务哈希或标识。
 - `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
 - Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.stop`
-暂停一个或多个任务。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+暂停一个或多个任务，并写入 MP暂停:放弃:用户 标签：按放弃该资源处理，订阅不会再恢复或复用这些任务。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
 - `task_id` (string): 下载器自身返回的单个任务哈希或标识。
 - `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
 - Rule: task_id 和 task_ids 必须且只能提供一项。

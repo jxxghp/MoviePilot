@@ -133,6 +133,10 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._owned_leases: Dict[str, Tuple[str, float]] = {}
         self._queued_lease_tokens: set[Tuple[str, str]] = set()
         self._resident_tasks: Dict[Tuple[str, str], TransferTask] = {}
+        # 下载器整理轮询把任务交给整理时记录的"选中文件总大小"，键为（下载器, hash）。整理结束打"已整理"
+        # 标签前与当前值比对：期间同一任务被追加了新文件（即使已经下载完成）就不打标签，让下一轮整理
+        # 把新文件也整理掉。只在内存中保存，重启后缺失时退回原有判断。
+        self._transfer_scan_sizes: Dict[Tuple[Optional[str], str], Optional[float]] = {}
         self._replay_thread: Optional[threading.Thread] = None
         self._replay_stop_event = threading.Event()
         self._recovery_wakeup_event = threading.Event()
@@ -1586,6 +1590,32 @@ class TransferQueueOwner(_TransferOwnerBase):
         """
         return self._transfer_queue_service().list_page(page, count)
 
+    def _remember_transfer_scan(self, torrent: DownloaderTorrent) -> None:
+        """
+        记录任务交给整理时的选中文件总大小，供整理结束打"已整理"标签前比对。
+
+        见 ``_TransferChain__selection_changed_since_scan``：期间同一任务被追加了新文件时选中大小会变，
+        此时不能打标签，否则新文件不会再进入下载器整理。
+
+        :param torrent: 本轮交给整理的已完成任务
+        """
+        if torrent.hash:
+            self._transfer_scan_size_records()[(torrent.downloader, torrent.hash)] = torrent.selected_size
+
+    def _transfer_scan_size_records(self) -> Dict[Tuple[Optional[str], str], Optional[float]]:
+        """
+        返回"交给整理时的选中大小"记录，缺失时按需创建。
+
+        正常由 ``__init__`` 创建；绕过 ``__init__`` 构造的实例（测试骨架、复用整理流程的补丁）也要能
+        正常读写，否则打标签前的比对会因缺少属性被异常处理吞掉，任务永远不会打上"已整理"。
+
+        :return: 键为（下载器, hash）的选中大小记录
+        """
+        return cast(
+            Dict[Tuple[Optional[str], str], Optional[float]],
+            self.__dict__.setdefault("_transfer_scan_sizes", {}),
+        )
+
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
         """
         获取下载器中的种子列表，并执行整理
@@ -1685,6 +1715,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                         # 非MoviePilot下载的任务，按文件识别
                         mediainfo = None
 
+                    self._remember_transfer_scan(torrent)
                     # 执行异步整理，匹配源目录
                     self.do_transfer(
                         fileitem=fileitem,

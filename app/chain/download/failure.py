@@ -23,11 +23,13 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
+from app.schemas.download import ExistingTaskRejection
 from app.schemas.media import build_media_key, resolve_media_identity
 
 DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60
 DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS = 60 * 60
-# 重复提交退避只压制单个资源指纹，必须长于订阅重新选源的周期，否则同一个整包仍会被反复接受。
+# 重复提交退避只压制单个订阅对单个资源的重投，必须长于订阅重新选源的周期，否则同一个整包仍会被
+# 反复接受。登记条件见 DownloadHistoryOwner._should_record_duplicate_backoff。
 DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS = 7 * 24 * 60 * 60
 # 退避记录写入台账的成因说明，候选跳过日志直接引用它，不能再假设这是一次失败。
 DOWNLOAD_FAILURE_DUPLICATE_MESSAGE = "下载器已存在同一任务且本次无新增文件明细"
@@ -57,6 +59,25 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         判断下载来源是否为订阅任务。
         """
         return bool(source and str(source).startswith("Subscribe|"))
+
+    @staticmethod
+    def _subscription_scope(source: Optional[str]) -> str:
+        """
+        从订阅来源中取出订阅 ID，作为重复提交退避的作用范围。
+
+        订阅来源格式为 ``Subscribe|{JSON}``，JSON 中的名称等字段可能被修改，只取稳定的 ``id``；
+        无法解析时退回完整来源文本，保证仍按来源隔离。
+
+        :param source: 下载来源
+        :return: 订阅范围标识；非订阅来源返回空字符串
+        """
+        if not source or not str(source).startswith("Subscribe|"):
+            return ""
+        try:
+            subscription_id = json.loads(str(source).split("|", 1)[1]).get("id")
+        except (ValueError, AttributeError):
+            subscription_id = None
+        return f"subscribe:{subscription_id}" if subscription_id is not None else str(source)
 
     @staticmethod
     def _format_failure_episodes(meta: Optional[MetaBase]) -> Optional[str]:
@@ -106,13 +127,18 @@ class DownloadFailureOwner(_DownloadOwnerBase):
 
     @classmethod
     def _build_download_failure_fingerprint(
-            cls, context: Context, *, resource_backoff: bool = False,
+            cls, context: Context, *, resource_backoff: bool = False, source: Optional[str] = None,
     ) -> Optional[str]:
         """
         根据媒体和种子资源信息生成冷却指纹，整包退避不依赖解析后补齐的集数。
 
+        重复提交退避的指纹额外包含订阅 ID：退避只表达"这个订阅反复重投该资源没有进展"，不能
+        挡住其他订阅（例如试看后新建的正式订阅）对同一季包的补集请求。这一字段同时让旧版本按
+        "数据库明细已全部记录"写入、未经下载器核验的整包退避记录自然失效。
+
         :param context: 识别出的媒体与资源上下文
-        :param resource_backoff: 是否为整包均已记录的资源退避；与普通失败指纹隔离
+        :param resource_backoff: 是否为重复提交退避；与普通失败指纹隔离
+        :param source: 下载来源，仅重复提交退避使用其中的订阅 ID
         :return: 稳定资源指纹；缺少身份时返回 None
         """
         media = getattr(context, "media_info", None)
@@ -138,6 +164,8 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             "site": str(site or ""),
             "resource": cls._torrent_resource_key(torrent),
         }
+        if resource_backoff:
+            payload["subscription"] = cls._subscription_scope(source)
         if not payload["media_type"] or not payload["media_key"] or not payload["resource"]:
             return None
         raw_text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -146,7 +174,8 @@ class DownloadFailureOwner(_DownloadOwnerBase):
     @staticmethod
     def _download_failure_ttl(error_msg: Optional[str]) -> int:
         """
-        限流按站点窗口冷却；换票、临时地址和泛化空内容失败使用瞬时冷却。
+        限流按站点窗口冷却；已有任务的拒绝按原因区分资源级与瞬时冷却；换票、临时地址和泛化空内容
+        失败使用瞬时冷却。
 
         :param error_msg: 准备或下载器提交阶段保留的具体失败原因
         :return: 冷却秒数；换票诊断中的 404 等关键字不能升级为资源失效
@@ -154,6 +183,13 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         rate_limit_ttl = torrent_rules.rate_limit_cooldown(error_msg)
         if rate_limit_ttl is not None:
             return rate_limit_ttl
+        # 已有任务的拒绝原因由下载器以固定开头返回，按原因归类，不从细节文本里匹配关键字
+        # （细节里会出现"已删除""不存在"等字样，不能误判为资源失效）。
+        rejection = ExistingTaskRejection.from_message(error_msg)
+        if rejection is not None:
+            if rejection.is_resource_level:
+                return DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS
+            return DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS
         error_text = str(error_msg or "").lower()
         if error_text.startswith(("换票失败：", "临时下载地址失效：")):
             return DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS
@@ -186,7 +222,9 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         :param resource_backoff: 是否使用不含运行时集数的整包退避指纹
         :return: 本次记录的资源指纹；缺少身份时返回 None
         """
-        fingerprint = self._build_download_failure_fingerprint(context, resource_backoff=resource_backoff)
+        fingerprint = self._build_download_failure_fingerprint(
+            context, resource_backoff=resource_backoff, source=source,
+        )
         if not fingerprint:
             return None
 
@@ -251,10 +289,11 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             episodes: Optional[Set[int]] = None,
     ) -> Optional[str]:
         """
-        为重复接受且未带来任何新增文件的资源记录退避，并返回该资源指纹。
+        为订阅重复接受且未带来任何新增文件的资源记录退避，并返回该资源指纹。
 
-        调用方须确认整包全部媒体文件均已记录。退避只压制这一个资源，订阅候选会继续
-        尝试同媒体的其他资源，订阅本身既不会被判定完成也不会被判失败，冷却到期后仍可重试。
+        登记条件由 ``DownloadHistoryOwner._should_record_duplicate_backoff`` 判断。退避只压制
+        这一个订阅对这一个资源的重投，订阅候选会继续尝试同媒体的其他资源，其他订阅不受影响；
+        订阅本身既不会被判定完成也不会被判失败，冷却到期后仍可重试。
         仅订阅来源需要记录，因为候选过滤只在订阅来源读取该台账。
 
         :param context: 本次结算的上下文，用于计算资源指纹
@@ -290,7 +329,9 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         if not self._is_subscribe_source(source):
             return {}
         backoff_fingerprints = {
-            fingerprint: self._build_download_failure_fingerprint(context, resource_backoff=True) or fingerprint
+            fingerprint: self._build_download_failure_fingerprint(
+                context, resource_backoff=True, source=source,
+            ) or fingerprint
             for context in contexts or []
             if (fingerprint := self._build_download_failure_fingerprint(context))
         }

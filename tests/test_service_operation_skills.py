@@ -445,6 +445,78 @@ def test_downloader_file_selection_uses_normalized_provider_methods(
     client.set_unwanted_files.assert_called_once_with("hash", [3])
 
 
+class _TaggedClient:
+    """
+    记录标签与启停状态的下载器客户端替身，覆盖三种下载器的标签写法。
+    """
+
+    def __init__(self, provider: str, tags: list[str]) -> None:
+        """
+        保存下载器类型与任务初始标签。
+        """
+        self.provider = provider
+        self.tags = list(tags)
+        self.stopped = False
+
+    def get_torrents(self, ids=None):
+        """
+        按各下载器的任务对象协议返回标签。
+        """
+        if self.provider == "transmission":
+            return [SimpleNamespace(labels=list(self.tags))], False
+        return [{"tags": ",".join(self.tags)}], False
+
+    def set_torrents_tag(self, ids, tags):
+        """
+        qB/rT 追加标签。
+        """
+        self.tags += [tag for tag in tags if tag not in self.tags]
+        return True
+
+    def remove_torrents_tag(self, ids, tag):
+        """
+        qB/rT 移除标签。
+        """
+        self.tags = [item for item in self.tags if item not in tag]
+        return True
+
+    def replace_torrent_labels(self, ids, labels):
+        """
+        Transmission 整体覆盖标签。
+        """
+        self.tags = list(labels)
+        return True
+
+    def stop_torrents(self, ids):
+        """
+        暂停任务。
+        """
+        self.stopped = True
+        return True
+
+    def start_torrents(self, ids):
+        """
+        启动任务。
+        """
+        self.stopped = False
+        return True
+
+
+@pytest.mark.parametrize("provider", ["qbittorrent", "transmission", "rtorrent"])
+def test_downloader_stop_marks_user_pause_and_start_clears_it(downloader_module: ModuleType, provider: str) -> None:
+    """
+    智能助手代用户暂停时写入"MP暂停:放弃:用户"（替换旧的暂停标签），MoviePilot 订阅之后不会恢复或复用；
+    恢复成功后清除暂停标签，其他标签保持不变。
+    """
+    client = _TaggedClient(provider, ["PT站", "MP暂停:可恢复:系统"])
+
+    assert downloader_module._dispatch(client, provider, "tasks.stop", {"task_id": "hash"}) is True
+    assert (client.stopped, client.tags) == (True, ["PT站", "MP暂停:放弃:用户"])
+
+    assert downloader_module._dispatch(client, provider, "tasks.start", {"task_id": "hash"}) is True
+    assert (client.stopped, client.tags) == (False, ["PT站"])
+
+
 def test_provider_projection_removes_nested_authentication_fields(
     downloader_module: ModuleType,
     mediaserver_module: ModuleType,

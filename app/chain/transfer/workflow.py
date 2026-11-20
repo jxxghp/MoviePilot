@@ -101,10 +101,46 @@ def _normalize_transfer_identity(
     return mediainfo, normalized_source, normalized_media_id, None
 
 
+def _covered_by_downloader_monitor(file_uri: FileURI, download_dirs: List[TransferDirectoryConf]) -> bool:
+    """
+    判断路径是否位于"下载器监控"类型的下载目录内，即会被下载器整理轮询扫描到。
+
+    :param file_uri: 下载器任务映射后的存储与路径
+    :param download_dirs: 当前下载目录配置
+    :return: 位于某个下载器监控目录（存储一致）之下时返回 True
+    """
+    file_path = Path(file_uri.path or "/")
+    return any(
+        directory.monitor_type == "downloader"
+        and directory.storage == file_uri.storage
+        and directory.download_path
+        and file_path.is_relative_to(Path(directory.download_path))
+        for directory in download_dirs
+    )
+
+
 class TransferWorkflowOwner(_TransferOwnerBase):
     """
     协调请求级候选构建并委托规划、执行与结算组件。
     """
+
+    @staticmethod
+    def _covered_by_downloader_polling(torrent: Any) -> bool:
+        """
+        判断下载器任务是否在下载器整理轮询的扫描范围内（只看路径，不访问存储）。
+
+        :param torrent: 下载器任务，读取其映射后的 ``path``；没有路径时视为不在范围内
+        :return: 任务位于下载器监控目录内时返回 True；读取目录配置失败时按在范围内处理（更保守）
+        """
+        path = getattr(torrent, "path", None)
+        if not path:
+            return False
+        try:
+            download_dirs = DirectoryHelper().get_download_dirs()
+        except Exception as err:
+            logger.warning(f"读取下载目录配置失败，按下载器监控范围内处理：{err}")
+            return True
+        return _covered_by_downloader_monitor(FileURI.from_uri(Path(path).as_posix()), download_dirs)
 
     @staticmethod
     def _build_transfer_fileitem(
@@ -124,13 +160,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if ".." in file_path.parts:
             logger.warning(f"下载器整理源路径包含越界目录：{file_uri.uri}")
             return None
-        if not any(
-                directory.monitor_type == "downloader"
-                and directory.storage == file_uri.storage
-                and directory.download_path
-                and file_path.is_relative_to(Path(directory.download_path))
-                for directory in download_dirs
-        ):
+        if not _covered_by_downloader_monitor(file_uri, download_dirs):
             if file_uri.storage == "local" and any(
                     directory.monitor_type == "downloader"
                     and directory.storage != "local"

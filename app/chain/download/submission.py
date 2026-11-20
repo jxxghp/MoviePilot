@@ -43,8 +43,9 @@ from app.domain.meta.metabase import MetaBase
 from app.foundation.url import UrlUtils, url_origin_for_log
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
+from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
-from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
+from app.schemas.download import DownloadTaskAction
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
@@ -856,36 +857,42 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         # 音乐尚无目录分类时仍提供稳定的下载器分类，不回写媒体的目录或元数据分类。
         if not category and prepared.media.type == MediaType.MUSIC:
             category = MediaType.MUSIC.value
-        result = self.download(
-            content=prepared.torrent_content,
-            cookie=prepared.torrent.site_cookie,
-            episodes=cast(Set[int], episodes),
-            download_dir=prepared.download_dir,
-            category=category,
-            label=label,
-            downloader=downloader or prepared.site_downloader,
-            custom_words=custom_words,
-            episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
-        )
-        actual_downloader, download_hash, layout, error_msg = (
-            result if result else (None, None, None, "未找到下载器")
-        )
-        if download_hash:
-            self._settle_accepted_download(
-                prepared=prepared,
-                context=context,
-                episodes=episodes,
-                channel=channel,
-                source=source,
-                userid=userid,
-                username=username,
+        task_hashes = torrent_rules.download_hashes(prepared.torrent_content)
+        # 读取确认记录 → 下载器受理 → 写入下载历史整段持有任务锁，见 downloader_task_locks：
+        # 已有任务上的追加与整理链回写、删除、暂停恢复互斥，确认记录的读取、合并与写回也不会被并发提交打断。
+        with downloader_task_locks.hold(task_hashes):
+            confirmed_selection = self._existing_task_confirmed_selection(task_hashes)
+            result = self.download(
+                content=prepared.torrent_content,
+                cookie=prepared.torrent.site_cookie,
+                episodes=cast(Set[int], episodes),
+                download_dir=prepared.download_dir,
+                category=category,
+                label=label,
+                downloader=downloader or prepared.site_downloader,
                 custom_words=custom_words,
-                actual_downloader=actual_downloader,
-                download_hash=download_hash,
-                layout=layout,
-                already_exists=error_msg == DOWNLOAD_TASK_ALREADY_EXISTS,
+                episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
+                confirmed_selection=confirmed_selection,
             )
-        else:
+            actual_downloader, download_hash, layout, error_msg = (
+                result if result else (None, None, None, "未找到下载器")
+            )
+            if download_hash:
+                self._settle_accepted_download(
+                    prepared=prepared,
+                    context=context,
+                    episodes=episodes,
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    custom_words=custom_words,
+                    actual_downloader=actual_downloader,
+                    download_hash=download_hash,
+                    layout=layout,
+                    task_action=DownloadTaskAction.from_downloader_message(error_msg),
+                )
+        if not download_hash:
             self._record_rejected_download(
                 prepared=prepared,
                 context=context,
@@ -898,6 +905,41 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 error_msg=error_msg,
             )
         return download_hash, error_msg
+
+    def _existing_task_confirmed_selection(
+        self, task_hashes: frozenset[str],
+    ) -> Optional[torrent_rules.ConfirmedSelection]:
+        """
+        读取 MP 此前在同一种子任务上确认选中过的目标，供下载器识别被别人取消的文件。
+
+        下载器只在同一 hash 已存在时使用这份记录，新建任务时忽略。记录随每次受理累积写在该任务
+        最新一条下载历史的 note 中（见 ``_confirmed_task_selection``），这里只需读取最新一条。
+        下载器返回的 hash 大小写不一（rTorrent 为大写），因此大小写两种写法都查询。
+        同一 hash 同时存在于多个下载器时不区分下载器、只取最新一条，属于已知的近似：不同下载器的
+        记录可能互相覆盖，既可能多拒绝一次（订阅换种子），也可能漏判一次取消（重新选中被取消的文件）。
+        同一种子同时放在多台下载器里很少见，暂不按下载器区分；需要时在这里按下载器过滤历史即可。
+
+        :param task_hashes: 由种子内容计算出的 v1/v2 hash；无法解析时为空
+        :return: 确认记录；MP 没有该 hash 的任何下载历史（外部添加或从未下载过）时返回 None，
+            只有升级前的历史时返回空记录
+        """
+        candidates = sorted({variant for item in task_hashes for variant in (item.lower(), item.upper())})
+        if not candidates:
+            return None
+        try:
+            histories = self.download_history_repository.get_by_hashes(candidates)
+        except Exception as err:
+            # 读不到时按"没有确认记录"处理：只会让被取消的文件可能被重新选中，不会误拒合法请求。
+            logger.warning(f"读取下载历史中的已确认选集失败：{err}")
+            return None
+        if not histories:
+            return None
+        # 大小写两种写法各返回一条时取最新的；登记时间只精确到秒，同一秒内以主键为准。
+        latest = max(
+            histories.values(),
+            key=lambda item: (str(getattr(item, "date", "") or ""), getattr(item, "id", None) or 0),
+        )
+        return torrent_rules.ConfirmedSelection.from_note(latest.note)
 
     def _settle_accepted_download(
         self,
@@ -913,15 +955,18 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         download_hash: str,
         layout: Optional[str],
-        already_exists: bool = False,
+        task_action: DownloadTaskAction = DownloadTaskAction.CREATED,
     ) -> None:
         """
         按普通下载合同结算下载器明确返回的成功结果。
 
-        :param already_exists: 下载器中已存在同一任务时为 True，结算时复用现有任务而不重复通知
+        下载器只有在本次目标确认受理后才返回 hash（已有任务会先追加目标文件），
+        因此这里沿用请求集数结算订阅进度是安全的。
+
+        :param task_action: 下载器对任务的实际动作，决定通知、文件明细去重与重复退避
         """
-        if already_exists:
-            logger.info(f"{prepared.torrent.title} 下载器中已存在同一任务，沿用现有下载进度")
+        if task_action.is_existing_task:
+            logger.info(f"{prepared.torrent.title} 下载器中已存在同一任务（{task_action.value}），沿用该任务")
         # 下载器中已存在相同 Hash 时下载器会沿用原保存目录，须以实际目录记录
         download_dir = self._resolve_actual_download_dir(
             downloader=actual_downloader,
@@ -947,7 +992,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             username=username,
             torrent_content=prepared.torrent_content,
             custom_words=custom_words,
-            already_exists=already_exists,
+            task_action=task_action,
         )
 
     def _resolve_actual_download_dir(

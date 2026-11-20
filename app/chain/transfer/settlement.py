@@ -51,10 +51,11 @@ from app.chain.transfer.format import build_failure_notification
 from app.domain import episode as episode_rules
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
+from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.schemas.message import Message
-from app.schemas.transfer import TransferInfo
+from app.schemas.transfer import DownloaderTorrent, TransferInfo
 from app.schemas.types import (
     EventType,
     MediaType,
@@ -691,12 +692,17 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 # 检查该种子的所有任务（跨作业）是否都已成功
                 if self.jobview.is_torrent_success(t.download_hash):
                     processed_hashes.add(t.download_hash)
-                    if self._can_delete_torrent(
+                    # 检查与删除之间不能被下载链在同一任务上追加文件，否则会连同新文件一起删掉，
+                    # 见 downloader_task_locks。
+                    with downloader_task_locks.hold({t.download_hash}):
+                        removable = self._can_delete_torrent(
                             t.download_hash, t.downloader, transfer_exclude_words
-                    ):
-                        if self.remove_torrents(
-                                t.download_hash, downloader=t.downloader
-                        ):
+                        )
+                        removed = removable and self.remove_torrents(
+                            t.download_hash, downloader=t.downloader
+                        )
+                    if removable:
+                        if removed:
                             logger.info(
                                 f"移动模式删除种子成功：{t.download_hash}"
                             )
@@ -799,6 +805,10 @@ class TransferSettlementOwner(_TransferOwnerBase):
     ) -> None:
         """
         当同一种子的任务都已结束且种子已完成下载时，回写下载器已整理标签。
+
+        "确认已完成"到"写入标签"整段持有 ``downloader_task_locks``：下载链在同一季包上追加新集时
+        也持有这把锁。否则可能出现"这里刚确认完成 → 下载链追加了一个数据已齐的文件 → 这里写入标签"，
+        下载器模块写标签后的复核看不到未完成文件，标签留下，追加的文件就再也不会进入下载器整理。
         """
         if (
                 not history_exists
@@ -806,20 +816,22 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 or not self.jobview.is_torrent_done(download_hash)
         ):
             return
-        # 作业视图只包含已登记的整理任务；多集种子部分文件先下载完成时，
-        # 剩余文件尚未产生任务，此时打已整理标签会使下载器轮询永久跳过
-        # 剩余文件（#6009），因此必须确认种子已整体下载完成。
-        if not self._TransferChain__is_torrent_download_completed(download_hash, downloader):
-            logger.debug(
-                f"种子 {download_hash} 尚未下载完成或状态未知，暂不设置已整理标签"
-            )
-            return
-        if not self.jobview.is_torrent_done(download_hash):
-            logger.debug(
-                f"种子 {download_hash} 存在新登记的整理任务，暂不设置已整理标签"
-            )
-            return
-        self.transfer_completed(hashs=download_hash, downloader=downloader)
+        with downloader_task_locks.hold({download_hash}):
+            # 作业视图只包含已登记的整理任务；多集种子部分文件先下载完成时，
+            # 剩余文件尚未产生任务，此时打已整理标签会使下载器轮询永久跳过
+            # 剩余文件（#6009），因此必须确认种子已整体下载完成。
+            if not self._TransferChain__is_torrent_download_completed(download_hash, downloader):
+                logger.debug(
+                    f"种子 {download_hash} 尚未下载完成或状态未知，暂不设置已整理标签"
+                )
+                return
+            if not self.jobview.is_torrent_done(download_hash):
+                logger.debug(
+                    f"种子 {download_hash} 存在新登记的整理任务，暂不设置已整理标签"
+                )
+                return
+            self.transfer_completed(hashs=download_hash, downloader=downloader)
+            self._transfer_scan_size_records().pop((downloader, download_hash), None)
 
     def _TransferChain__is_torrent_download_completed(
             self, download_hash: str, downloader: Optional[str]
@@ -835,10 +847,51 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     f"下载器 {downloader} 中未查询到种子 {download_hash}，无法回写已整理标签，请检查种子是否已移除或历史关联是否正确"
                 )
                 return False
-            return all((torrent.progress or 0) >= 100 for torrent in torrents)
+            if not all((torrent.progress or 0) >= 100 for torrent in torrents):
+                return False
+            return not self._TransferChain__selection_changed_since_scan(download_hash, downloader, torrents)
         except Exception as e:
             logger.error(f"检查种子 {download_hash} 下载进度失败：{e}")
             return False
+
+    def _TransferChain__selection_changed_since_scan(
+            self, download_hash: str, downloader: Optional[str], torrents: List[DownloaderTorrent],
+    ) -> bool:
+        """
+        判断任务交给整理之后，选中的文件是否变了（同一季包被追加了新文件）。
+
+        整理只处理扫描时已存在的文件；之后追加的文件如果在整理期间就下载完成，任务依然是"已完成"，
+        直接打"已整理"会让新文件永远不再进入下载器整理。此时不打标签，任务留在待整理列表，
+        下一轮整理会跳过已整理过的文件，只整理新文件。
+
+        "已整理"必须对应实际扫描过的那批文件：
+        - 发现变化后保留扫描记录、不删除：同一任务这一轮可能还有别的整理回调（例如同一种子的其他文件
+          稍后整理完成，或"补打已整理"），删掉记录的话它们会退回"没有记录"的处理，把没整理过的新文件
+          标成已整理。记录只在下一轮扫描时被新值覆盖，或在成功写入"已整理"后删除；
+        - 没有扫描记录（重启后回放的整理任务、手动整理等）时无法核实。任务在下载器整理轮询范围内的，
+          按"已变化"处理不打标签，下一轮轮询会重新扫描、记录选中大小，跳过已整理过的文件后再打标签；
+          不在轮询范围内的，标签不影响轮询（轮询本来就扫不到它），沿用原有判断，照常打标签供其他
+          工具使用；
+        - 下载器给不出选中大小时无法比较，沿用原有判断。
+
+        :param download_hash: 任务 hash
+        :param downloader: 下载器名称
+        :param torrents: 刚查询到的任务
+        :return: 选中大小与扫描时不同时返回 True
+        """
+        records = self._transfer_scan_size_records()
+        key = (downloader, download_hash)
+        if key not in records:
+            if self._covered_by_downloader_polling(torrents[0]):
+                logger.info(f"种子 {download_hash} 没有本轮扫描记录，无法核实整理的是哪批文件，留给下一轮下载器整理重新扫描")
+                return True
+            return False
+        scanned = records[key]
+        current = getattr(torrents[0], "selected_size", None)
+        if scanned is None or current is None or current == scanned:
+            return False
+        logger.info(f"种子 {download_hash} 在整理期间追加了新文件，暂不设置已整理标签，等待下一轮整理")
+        return True
 
     def _TransferChain__finish_job_execution(
             self,

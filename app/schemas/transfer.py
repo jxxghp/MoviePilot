@@ -28,6 +28,10 @@ class DownloaderTorrent(BaseModel):
     season_episode: Optional[str] = Field(default=None, description="季集信息的展示文本")
     path: Optional[Path] = Field(default=None, description="文件或目录路径")
     size: Optional[float] = Field(default=0.0, description="文件大小，单位为字节")
+    selected_size: Optional[float] = Field(
+        default=None,
+        description="当前选中下载的文件总大小，单位为字节；同一任务追加文件后会变大，下载器无法提供时为空",
+    )
     progress: Optional[float] = Field(default=0.0, description="当前完成百分比")
     state: Optional[str] = Field(default="downloading", description="当前业务状态")
     upspeed: Optional[str] = Field(default=None, description="当前上传速度的格式化展示文本")

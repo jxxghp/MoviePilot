@@ -40,6 +40,14 @@ def monitored_source(monkeypatch):
         jobview=Mock(), list_torrents=Mock(return_value=[torrent]),
         download_history_repository=Mock(), do_transfer=Mock(return_value=(True, "")),
         _build_transfer_fileitem=workflow_module.TransferWorkflowOwner._build_transfer_fileitem,
+        # 整理轮询记录交给整理时的选中大小，打"已整理"标签前比对，见 test_transfer_mark_torrent_completed.py。
+        _transfer_scan_sizes={},
+    )
+    chain._remember_transfer_scan = (
+        lambda item: queue_module.TransferQueueOwner._remember_transfer_scan(chain, item)
+    )
+    chain._transfer_scan_size_records = (
+        lambda: queue_module.TransferQueueOwner._transfer_scan_size_records(chain)
     )
     chain.jobview.get_all_torrent_hashes.return_value = set()
     chain.download_history_repository.get_by_hash.return_value = None
@@ -69,6 +77,20 @@ def test_downloader_monitor_reads_source_through_storage(monitored_source, stora
         fileitem=state.source, mediainfo=None, mtype=None,
         downloader="remote-qb", download_hash="hash-smb",
     )
+
+
+def test_downloader_monitor_remembers_selected_size_for_tagging(monitored_source):
+    """
+    交给整理时记录任务的选中大小，整理结束打"已整理"标签前据此判断期间是否追加了新文件。
+    """
+    state = monitored_source
+    state.torrent.selected_size = 2048
+
+    with patch.object(Path, "exists", side_effect=AssertionError("禁止入口查本地文件")), \
+            patch.object(Path, "stat", side_effect=AssertionError("禁止入口读取本地属性")):
+        queue_module.TransferQueueOwner.process(state.chain)
+
+    assert state.chain._transfer_scan_sizes == {("remote-qb", "hash-smb"): 2048}
 
 
 @pytest.mark.parametrize("task_path", [

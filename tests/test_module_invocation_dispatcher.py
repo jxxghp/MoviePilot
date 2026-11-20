@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from unittest.mock import Mock
 
 import pytest
 
-from app.domain.torrent import EpisodeSelection
+from app.domain.torrent import ConfirmedSelection, EpisodeSelection
 from app.runtime.extensions.module.dispatcher import (
     FrozenModuleProviderMissingError,
     FrozenPluginProviderRef,
@@ -106,6 +107,43 @@ async def test_download_season_mapping_preserves_custom_words_provider(
     result = await dispatcher.async_dispatch("download", **kwargs) if async_dispatch else dispatcher.dispatch("download", **kwargs)
     assert result == ("current" if accepts_selection else "previous")
     assert calls == ([("words", selection)] if accepts_selection else ["words"])
+    plugin_error.assert_not_called()
+    system_error.assert_not_called()
+
+
+@pytest.mark.parametrize("provider_type", ["plugin", "system"])
+@pytest.mark.parametrize("method,kwargs,new_parameter", [
+    ("stop_torrents", {"hashs": "hash", "downloader": "test", "pause_tag": "MP暂停:放弃:用户"}, "pause_tag"),
+    ("download", {
+        "content": b"torrent", "download_dir": "/downloads", "cookie": "", "episodes": {8}, "category": None,
+        "label": None, "downloader": "test", "confirmed_selection": ConfirmedSelection(episodes=frozenset({7})),
+    }, "confirmed_selection"),
+])
+def test_pause_attribution_parameters_skip_legacy_providers(provider_type, method, kwargs, new_parameter):
+    """
+    暂停标签与确认记录是新增可选参数：尚未支持的插件下载器照常被调用，只是收不到这两个参数。
+    """
+    calls = []
+
+    def legacy(**received):
+        """
+        模拟只接受旧参数的下载器方法。
+        """
+        calls.append(received)
+        return True
+
+    legacy.__signature__ = inspect.Signature([
+        inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY) for name in kwargs if name != new_parameter
+    ])
+    module = _Module("下载器", 10, legacy)
+    setattr(module, method, legacy)
+    dispatcher, plugin_error, system_error, _ = _dispatcher(
+        plugins={("legacy", "旧插件"): {method: legacy}} if provider_type == "plugin" else None,
+        modules=[module] if provider_type == "system" else None,
+    )
+
+    assert dispatcher.dispatch(method, **kwargs) is True
+    assert calls == [{name: value for name, value in kwargs.items() if name != new_parameter}]
     plugin_error.assert_not_called()
     system_error.assert_not_called()
 

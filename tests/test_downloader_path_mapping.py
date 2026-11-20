@@ -438,6 +438,8 @@ def _load_transmission_module():
     modules_module._base = base_module
     base_module.downloader = base_downloader_module
     base_downloader_module._DownloaderModuleBase = _DownloaderModuleBase
+    # 与 app.modules._base.downloader.TRANSFERRED_TAG 一致，Transmission 模块导入时需要。
+    base_downloader_module.TRANSFERRED_TAG = "已整理"
     torrent_rules_module.is_magnet_link = _is_magnet_link
     size_tools_module.format_compact_size = _format_size
     temporal_tools_module.format_duration = _format_duration

@@ -18,10 +18,13 @@ from app.application.configuration import (
 )
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._recognition import RecognitionMixin
+from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, MusicArtistInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
+from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
 from app.schemas.context import MediaPerson
+from app.schemas.download import DownloadPauseIntent, DownloadTaskActor
 from app.schemas.exception import BusinessRejectedError, RateLimitExceededException
 from app.schemas.file import FileItem
 from app.schemas.mediaserver import ExistMediaInfo, MediaServerQueryOptions, WebhookEventInfo
@@ -39,7 +42,6 @@ from app.schemas.types import (
 
 if TYPE_CHECKING:
     from app.application.transfer.workflow import TransferPlanCheckpoint, TransferPlanningInput
-    from app.domain import torrent as torrent_rules
 
 
 class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, metaclass=ABCMeta):
@@ -859,6 +861,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         downloader: Optional[str] = None,
         custom_words: Optional[str] = None,
         episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+        confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
@@ -872,6 +875,8 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param downloader:  下载器
         :param custom_words: 来源识别词，选集须与订阅解析采用相同规则
         :param episode_selection: 目标季与已确认的原始集号对应关系，旧模块可不接收
+        :param confirmed_selection: MP 此前在同一任务上确认选中过的目标，用于识别被别人取消的文件；
+            None 表示没有该任务的下载历史，旧模块可不接收
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return cast(Optional[Tuple[Optional[str], Optional[str], Optional[str], str]], self.run_module(
@@ -885,6 +890,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             downloader=downloader,
             custom_words=custom_words,
             episode_selection=episode_selection,
+            confirmed_selection=confirmed_selection,
         ))
 
     def download_added(
@@ -1086,23 +1092,57 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
 
     def start_torrents(self, hashs: Union[list[str], str], downloader: Optional[str] = None) -> bool:
         """
-        开始下载
+        开始下载；内置下载器恢复成功后会清除任务上的 MP 暂停标签。
+
+        与暂停、订阅追加文件、整理回写按 hash 互斥（见 ``app.runtime.locks.downloader_task_locks``）。
 
         :param hashs:  种子Hash
         :param downloader:  下载器
         :return: 下载器模块报告的操作结果，成功时为 True
         """
-        return cast(bool, self.run_module("start_torrents", hashs=hashs, downloader=downloader))
+        with downloader_task_locks.hold([hashs] if isinstance(hashs, str) else hashs):
+            return cast(bool, self.run_module("start_torrents", hashs=hashs, downloader=downloader))
 
-    def stop_torrents(self, hashs: Union[list[str], str], downloader: Optional[str] = None) -> bool:
+    def stop_torrents(
+        self,
+        hashs: Union[list[str], str],
+        downloader: Optional[str] = None,
+        *,
+        actor: Optional[DownloadTaskActor] = None,
+        intent: DownloadPauseIntent = DownloadPauseIntent.ABANDON,
+        plugin_id: Optional[str] = None,
+    ) -> bool:
         """
-        停止下载
+        停止下载，并在下载器任务上记录暂停意图与暂停方。
+
+        MP 之后遇到同一任务时只按暂停意图决定能否继续使用，与谁暂停无关（见
+        ``app.domain.torrent.decide_existing_task``）：
+        - ``ABANDON`` 放弃：不恢复、不复用，订阅改用其他资源（例如不想要了、死种、假种）；
+        - ``DEFER`` 暂缓：不恢复，但视为该资源仍在下载，由暂停方负责恢复（例如分时段下载）；
+        - ``RESUMABLE`` 可恢复：订阅需要这个任务继续下载时，MP 可以直接恢复（例如为节省资源临时停下）。
+        不传 ``actor`` 时不写标签，任务会被当成外部暂停（意图未知，同样不会被恢复）。
+
+        暂停与订阅追加文件、整理回写按 hash 互斥（见 ``app.runtime.locks.downloader_task_locks``），
+        不会出现"这里刚暂停，订阅又凭暂停前读到的标签把任务恢复"的情况。
+
+        插件示例：``self.stop_torrents(hashs, downloader, actor=DownloadTaskActor.PLUGIN,
+        intent=DownloadPauseIntent.ABANDON, plugin_id=self.__class__.__name__)``。
 
         :param hashs:  种子Hash
         :param downloader:  下载器
+        :param actor: 暂停方，只用于展示；不能是 EXTERNAL
+        :param intent: 暂停意图，决定 MP 之后如何处理该任务；默认放弃该资源
+        :param plugin_id: 插件暂停时的插件 ID，不能含逗号或冒号
         :return: 下载器模块报告的操作结果，成功时为 True
+        :raises ValueError: 暂停方为 EXTERNAL，或插件暂停缺少合法的插件 ID
         """
-        return cast(bool, self.run_module("stop_torrents", hashs=hashs, downloader=downloader))
+        tag = None if actor is None else torrent_rules.pause_tag(
+            torrent_rules.PauseMark(actor=actor, intent=intent, plugin_id=plugin_id)
+        )
+        with downloader_task_locks.hold([hashs] if isinstance(hashs, str) else hashs):
+            if tag is None:
+                return cast(bool, self.run_module("stop_torrents", hashs=hashs, downloader=downloader))
+            return cast(bool, self.run_module("stop_torrents", hashs=hashs, downloader=downloader, pause_tag=tag))
 
     def set_torrents_tag(self, hashs: Union[list[str], str], tags: list[str], downloader: Optional[str] = None) -> bool:
         """

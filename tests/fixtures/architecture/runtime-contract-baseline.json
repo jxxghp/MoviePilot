@@ -5687,6 +5687,7 @@
       "family": "downloader",
       "input_contract": "DownloadTaskRequest",
       "optional_parameters": [
+        "confirmed_selection",
         "custom_words",
         "episode_selection"
       ],
@@ -7917,7 +7918,9 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentControlRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "pause_tag"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -8645,7 +8648,7 @@
     }
   },
   "run_module": {
-    "call_count": 279,
+    "call_count": 280,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 225,
@@ -10160,7 +10163,7 @@
       "stop_torrents": [
         {
           "caller": "app.chain.base",
-          "count": 1,
+          "count": 2,
           "mode": "sync"
         }
       ],
@@ -10518,6 +10521,16 @@
         "kind": "import",
         "name": "ChainBase",
         "target": "app.chain.base.ChainBase"
+      },
+      {
+        "kind": "import",
+        "name": "DownloadPauseIntent",
+        "target": "app.schemas.download.DownloadPauseIntent"
+      },
+      {
+        "kind": "import",
+        "name": "DownloadTaskActor",
+        "target": "app.schemas.download.DownloadTaskActor"
       }
     ],
     "app.sdk.classification": [

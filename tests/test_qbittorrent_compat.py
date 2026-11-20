@@ -9,7 +9,13 @@ from enum import Enum
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from app.domain.torrent import download_hashes, select_torrent_files
+from app.domain.torrent import (
+    ConfirmedSelection,
+    ExistingTaskFile,
+    ExistingTaskState,
+    download_hashes,
+    select_torrent_files,
+)
 from app.modules._base.downloader import _DownloaderModuleBase as ProductionDownloaderBase
 
 
@@ -167,6 +173,18 @@ def _load_qbittorrent_modules():
         """
 
         _discard_failed_selection = staticmethod(ProductionDownloaderBase._discard_failed_selection)
+        # 已有任务的统一核验流程与暂停标签维护直接复用生产实现，文件、状态与标签钩子由被测模块提供。
+        _accept_existing_task = ProductionDownloaderBase._accept_existing_task
+        _apply_existing_task_decision = ProductionDownloaderBase._apply_existing_task_decision
+        _confirm_existing_files_enabled = ProductionDownloaderBase._confirm_existing_files_enabled
+        _resume_existing_task = ProductionDownloaderBase._resume_existing_task
+        _pause_mark_overriding_resume = ProductionDownloaderBase._pause_mark_overriding_resume
+        _stop_existing_task = ProductionDownloaderBase._stop_existing_task
+        _refresh_accepted_task_tags = ProductionDownloaderBase._refresh_accepted_task_tags
+        _refresh_existing_priorities = ProductionDownloaderBase._refresh_existing_priorities
+        _has_pending_wanted_files = ProductionDownloaderBase._has_pending_wanted_files
+        _mark_paused_tasks = ProductionDownloaderBase._mark_paused_tasks
+        _clear_pause_tags = ProductionDownloaderBase._clear_pause_tags
 
         def test(self):
             """
@@ -334,6 +352,10 @@ def _load_qbittorrent_modules():
     torrent_rules_module.is_magnet_link = _is_magnet_link
     torrent_rules_module.download_hashes = download_hashes
     torrent_rules_module.select_torrent_files = select_torrent_files
+    # 被测模块的已有任务状态与确认记录类型直接使用生产定义。
+    torrent_rules_module.ExistingTaskState = ExistingTaskState
+    torrent_rules_module.ExistingTaskFile = ExistingTaskFile
+    torrent_rules_module.ConfirmedSelection = ConfirmedSelection
     url_tools_module.parse_address = _parse_address
     text_tools_module.random_string = _random_string
     size_tools_module.format_compact_size = _format_size
@@ -868,12 +890,16 @@ def test_download_removes_temporary_tag_from_existing_torrent():
     fake_server = MagicMock()
     fake_server.add_torrent.return_value = (False, [])
     fake_server.get_content_layout.return_value = "Original"
-    fake_server.get_torrents.return_value = ([{
+    # 每次查询返回新列表：模块读完会清空列表释放内存，共用同一个列表会让后续回读读到空结果。
+    fake_server.get_torrents.side_effect = lambda *_args, **_kwargs: ([{
         "name": "test",
         "total_size": len(content),
         "hash": torrent_hash,
         "tags": None,
+        "state": "uploading",
     }], None)
+    # 已有任务受理需要读到实时文件列表；文件已选中且下载完成，按原样复用处理。
+    fake_server.get_files.return_value = [{"id": 0, "name": "test.mkv", "priority": 1, "progress": 1, "size": 15}]
 
     module = _build_module(fake_server)
     result = module.download(
