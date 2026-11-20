@@ -21,6 +21,10 @@ _DEFAULT_XPATH = "//a[@class='faqlink']/@href"
 
 # 只登记相对于通用配方的专站差异，配方构造时复制参数，避免跨请求共享可变状态。
 _SITE_RECIPES: dict[str, dict[str, Any]] = {
+    "star-space.net": {
+        "url": "p_rss/rss_create.php", "method": "get", "params": {},
+        "xpath": "//a[contains(@href, 'rss.php?key=')]/@href",
+    },
     "hares.top": {"xpath": "//*[@id='layui-layer100001']/div[2]/div/p[4]/a/@href"},
     "et8.org": {"xpath": "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/a[2]/@href"},
     "pttime.org": {
@@ -70,8 +74,9 @@ def get_rss_recipe(url: str) -> RssLinkRecipe:
     return RssLinkRecipe(
         url=urljoin(url, conf.get("url") or "getrss.php"),
         xpath=conf.get("xpath") or _DEFAULT_XPATH,
-        params=dict(conf.get("params") or _DEFAULT_PARAMS),
+        params=dict(conf.get("params", _DEFAULT_PARAMS)),
         render=bool(conf.get("render")),
+        method=conf.get("method", "post"),
     )
 
 
