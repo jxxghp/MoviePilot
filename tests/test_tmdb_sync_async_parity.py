@@ -311,7 +311,7 @@ def test_name_match_sync_async_share_ordered_fallback_plan() -> None:
             season_number=2,
             group_seasons=group_seasons,
         ),
-        call(name="测试剧", mtype=MediaType.TV),
+        call(name="测试剧", soft_year="2024", mtype=MediaType.TV),
     ]
     assert module.tmdb.match.call_args_list == expected_calls
     assert module.tmdb.async_match.call_args_list == expected_calls

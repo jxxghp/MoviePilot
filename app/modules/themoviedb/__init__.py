@@ -134,6 +134,7 @@ class _MatchStep:
     :param include_season: 是否传递季号和季年份
     :param include_group_seasons: 是否传递已获取的剧集组详情
     :param multi: 是否使用不限定类型的混合搜索
+    :param soft_year: 仅用于排序与校验的软年份，不作为 TMDB 查询过滤条件，可为空
     """
 
     name: str
@@ -145,6 +146,7 @@ class _MatchStep:
     include_season: bool = False
     include_group_seasons: bool = False
     multi: bool = False
+    soft_year: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -689,7 +691,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                     include_season=True,
                     include_group_seasons=True,
                 ),
-                _MatchStep(name=name, mtype=meta.type),
+                _MatchStep(name=name, mtype=meta.type, soft_year=normalized_year),
             )
         return (
             _MatchStep(
@@ -716,6 +718,8 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         kwargs: Dict[str, Any] = {"name": step.name}
         if step.include_year:
             kwargs["year"] = step.year
+        if step.soft_year is not None:
+            kwargs["soft_year"] = step.soft_year
         if step.mtype is not None:
             kwargs["mtype"] = step.mtype
         if step.include_season:
@@ -735,18 +739,50 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         else:
             logger.info(f"正在识别 {name} ...")
 
+    @staticmethod
+    def _match_result_year(info: _TmdbData) -> str:
+        """
+        取匹配结果的首播或上映年份；无有效日期时返回空串。
+
+        :param info: TMDB 匹配结果
+        :return: 四位年份字符串，无有效日期时为空串
+        """
+        return (info.get("first_air_date") or info.get("release_date") or "")[:4]
+
     def _search_by_name(self, name: str, meta: MetaBase, group_seasons: _TmdbDataList) -> Optional[_TmdbData]:
         """
         根据名称搜索媒体信息。
+
+        携带软年份的回退步骤命中年份不符的候选时不立即采纳，先暂存并继续
+        尝试后续步骤；只有全部步骤都没有年份相符的结果时，才返回暂存的
+        候选并记录年份不符警告，避免同名不同年作品被静默误认。
         """
         self._log_match_start(name, meta)
+        deferred_info: Optional[_TmdbData] = None
         for step in self._build_match_plan(name, meta):
             if step.multi:
                 info = self.tmdb.match_multi(name=step.name)
             else:
                 info = self.tmdb.match(**self._match_kwargs(step, group_seasons))
-            if info:
-                return info
+            if not info:
+                continue
+            if (
+                step.soft_year is not None
+                and meta.year
+                and (result_year := self._match_result_year(info))
+                and result_year != str(meta.year)
+            ):
+                if deferred_info is None:
+                    deferred_info = info
+                continue
+            return info
+        if deferred_info is not None:
+            logger.warning(
+                f"{name} TMDB回退匹配年份不符：元数据年份={meta.year}，"
+                f"返回 {self._match_result_year(deferred_info)} 年条目 tmdbid={deferred_info.get('id')}，"
+                "请核对是否为同名作品"
+            )
+            return deferred_info
         return None
 
     async def _async_search_by_name(
@@ -754,15 +790,37 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     ) -> Optional[_TmdbData]:
         """
         根据名称搜索媒体信息（异步版本）。
+
+        携带软年份的回退步骤命中年份不符的候选时不立即采纳，先暂存并继续
+        尝试后续步骤；只有全部步骤都没有年份相符的结果时，才返回暂存的
+        候选并记录年份不符警告，避免同名不同年作品被静默误认。
         """
         self._log_match_start(name, meta)
+        deferred_info: Optional[_TmdbData] = None
         for step in self._build_match_plan(name, meta):
             if step.multi:
                 info = await self.tmdb.async_match_multi(name=step.name)
             else:
                 info = await self.tmdb.async_match(**self._match_kwargs(step, group_seasons))
-            if info:
-                return info
+            if not info:
+                continue
+            if (
+                step.soft_year is not None
+                and meta.year
+                and (result_year := self._match_result_year(info))
+                and result_year != str(meta.year)
+            ):
+                if deferred_info is None:
+                    deferred_info = info
+                continue
+            return info
+        if deferred_info is not None:
+            logger.warning(
+                f"{name} TMDB回退匹配年份不符：元数据年份={meta.year}，"
+                f"返回 {self._match_result_year(deferred_info)} 年条目 tmdbid={deferred_info.get('id')}，"
+                "请核对是否为同名作品"
+            )
+            return deferred_info
         return None
 
     @classmethod
