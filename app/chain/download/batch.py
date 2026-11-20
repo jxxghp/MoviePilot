@@ -3,6 +3,7 @@
 """
 
 import copy
+import inspect
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple, TypedDict, cast
 
 from app.application.download import selection as _selection
@@ -34,6 +35,26 @@ def _new_torrent_helper() -> TorrentHelper:
     factory = cast(Callable[[], TorrentHelper], TorrentHelper)
     return factory()
 
+
+def _accepts_keyword(func: Callable[..., object], name: str) -> bool:
+    """
+    判断可调用对象能否接受指定的关键字参数，用于兼容插件替换的旧签名下载入口。
+
+    :param func: 待调用的对象
+    :param name: 关键字参数名
+    :return: 签名里有该参数或 ``**kwargs`` 时返回 True；读不到签名时返回 False，按旧签名调用
+    """
+    try:
+        parameters = inspect.signature(func).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        or (parameter.name == name and parameter.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY,
+        ))
+        for parameter in parameters
+    )
 
 class DownloadBatchOwner(_DownloadOwnerBase):
     """
@@ -230,10 +251,12 @@ class _BatchDownloadRun:
         if key in self.target_failures:
             logger.info(f"{context.torrent_info.title if context.torrent_info else '未知资源'} 本批已因同样的目标被拒绝，跳过")
             return False
+        # 插件替换的下载入口可能是不接受 return_detail 的旧签名：不传，按旧方式只取任务 ID。
+        detail = {"return_detail": True} if _accepts_keyword(self.owner.download_single, "return_detail") else {}
         if by_keyword:
-            result = self.owner.download_single(context=context, **submission, **self.options, return_detail=True)
+            result = self.owner.download_single(context=context, **submission, **self.options, **detail)
         else:
-            result = self.owner.download_single(context, **submission, **self.options, return_detail=True)
+            result = self.owner.download_single(context, **submission, **self.options, **detail)
         # 插件替换的下载入口可能仍只返回任务 ID。
         download_id, message = result if isinstance(result, tuple) else (result, None)
         if download_id:

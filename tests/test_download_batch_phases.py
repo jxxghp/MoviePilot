@@ -327,6 +327,86 @@ def test_target_specific_rejection_only_blocks_those_episodes_in_the_batch(batch
         assert result == [backup]
 
 
+def test_same_target_rejected_once_is_not_resubmitted_in_later_phases(batch):
+    """
+    下载器以"只针对这几集"的原因拒绝某个候选的 E03-E04 后，本批后续阶段遇到同一候选、同一目标时直接跳过，
+    不再向下载器重复提交；缺集原样保留，交给下一轮或别的种子。
+    """
+    original = _context("original", episodes=(3, 4))
+    missing = {"tmdb:1": {1: _missing((3, 4))}}
+    batch.chain.download_single.side_effect = lambda *_args, **_kwargs: (
+        None, ExistingTaskRejection.FILES_CANCELLED.describe("abc", "原因"),
+    )
+
+    result, remaining = batch.chain.batch_download([original], missing)
+
+    assert [call.kwargs.get("episodes") for call in batch.chain.download_single.call_args_list] == [{3, 4}]
+    assert result == []
+    assert remaining["tmdb:1"][1].episodes == [3, 4]
+
+
+def test_plugin_download_entry_with_legacy_signature_is_not_passed_return_detail(batch):
+    """
+    插件替换的单资源下载入口可能是不接受 ``return_detail`` 的旧签名：批量下载不能因为传了它而抛 TypeError，按旧方式
+    只取任务 ID，失败时按整个候选记入本批失败。
+    """
+    submitted = []
+
+    def legacy_download_single(context, episodes=None, torrent_content=None, save_path=None, channel=None,
+                               source=None, userid=None, username=None, downloader=None, custom_words=None,
+                               governance=None):
+        """
+        旧签名的插件下载入口：只返回任务 ID，第一次提交失败。
+        """
+        submitted.append(episodes)
+        return None if len(submitted) == 1 else "download-id"
+
+    batch.chain.download_single = legacy_download_single
+    original = _context("original", episodes=(3, 4))
+
+    result, _remaining = batch.chain.batch_download([original], {"tmdb:1": {1: _missing((3, 4))}})
+
+    assert submitted == [{3, 4}]
+    assert result == []
+
+
+def test_keyword_support_follows_entry_point_signature():
+    """
+    只在下载入口的签名里有该参数或 ``**kwargs`` 时才传；读不到签名时按旧签名处理，不传。
+    """
+    class Unreadable:
+        """
+        签名属性非法、读取签名会失败的可调用对象。
+        """
+
+        __signature__ = "invalid"
+
+        def __call__(self, *args, **kwargs):
+            """
+            不会被调用。
+            """
+
+    def legacy(context, episodes=None):
+        """
+        旧签名入口。
+        """
+
+    def detailed(context, *, return_detail=False):
+        """
+        支持详细结果的入口。
+        """
+
+    def flexible(context, **kwargs):
+        """
+        接受任意关键字参数的入口。
+        """
+
+    assert download_batch._accepts_keyword(legacy, "return_detail") is False
+    assert download_batch._accepts_keyword(detailed, "return_detail") is True
+    assert download_batch._accepts_keyword(flexible, "return_detail") is True
+    assert download_batch._accepts_keyword(Unreadable(), "return_detail") is False
+
+
 @pytest.mark.parametrize("missing", [None, {}])
 def test_batch_preserves_optional_missing_result_and_resets_per_call_state(batch, missing):
     """

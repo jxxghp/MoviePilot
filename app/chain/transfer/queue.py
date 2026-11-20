@@ -1596,6 +1596,9 @@ class TransferQueueOwner(_TransferOwnerBase):
 
         见 ``_TransferChain__selection_changed_since_scan``：期间同一任务被追加了新文件时选中大小会变，
         此时不能打标签，否则新文件不会再进入下载器整理。
+        记录不会在打标签前被下一轮覆盖：任务在整理作业视图里还有作业时，轮询不会再扫描它（见 ``process`` 的
+        ``existing_hashes``），而打标签发生在整理回调里、作业移出作业视图之前；两轮轮询之间由 ``downloader_lock``
+        串行。
 
         :param torrent: 本轮交给整理的已完成任务
         """

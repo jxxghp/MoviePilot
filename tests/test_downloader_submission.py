@@ -1544,3 +1544,30 @@ def test_duplicate_backoff_only_for_unrecordable_resubmission(task_action, selec
     assert chain.download_failure_repository.record_failure.called is backoff
     notified = task_action in (DownloadTaskAction.APPENDED, DownloadTaskAction.RESUMED)
     assert (payload["notification_payload"] is not None) is notified
+
+
+def test_rejection_ledger_skips_contexts_without_resource_or_subscription():
+    """
+    非订阅来源没有订阅范围；没有种子信息的候选生成不了指纹，既不参与冷却查询，也不判定为"已通知过"，照常通知。
+    """
+    chain = _ledger_chain()
+    bare = Context(meta_info=MetaInfo("Show.S01E01-E10.1080p"), media_info=MediaInfo(type=MediaType.TV, title="Show"))
+
+    assert DownloadChain._subscription_scope("Manual") == ""
+    assert DownloadChain._subscription_scope(None) == ""
+    assert chain._active_download_failure_fingerprints([bare], "Subscribe|1") == {}
+    assert chain._existing_task_rejection_noted(
+        bare, rejection=ExistingTaskRejection.PAUSED, downloader_scope="qb", episodes={3},
+    ) is False
+
+
+def test_rejection_ledger_read_failure_counts_as_not_noted():
+    """
+    读取已有任务拒绝记录失败时按"没通知过"处理，照常通知，宁可多通知一次也不吞掉拒绝原因。
+    """
+    chain = _ledger_chain()
+    chain.download_failure_repository.get_active_by_fingerprints = Mock(side_effect=RuntimeError("db down"))
+
+    assert chain._existing_task_rejection_noted(
+        _season_context(), rejection=ExistingTaskRejection.PAUSED, downloader_scope="qb", episodes={3},
+    ) is False
