@@ -243,6 +243,11 @@ def _match_torrents(
 ) -> List[MatchedTorrent]:
     """
     按输入顺序匹配资源，并复用同名候选的识别结果。
+
+    显式人工候选模式会保留全部音乐匹配结论，包括被自动匹配拒绝的资源；
+    这些资源在上下文投影时不会绑定目标媒体，只能由用户确认后继续操作。
+
+    :param include_candidates: 是否保留供用户人工确认的非精确音乐候选
     """
     logger.info(f"开始匹配结果 类型：{(mediainfo.type or MediaType.UNKNOWN).value}，标题：{mediainfo.title}，别名：{mediainfo.names}")
     progress.update(value=51, text=f"开始匹配，总 {len(torrents)} 个资源 ...")
@@ -273,7 +278,7 @@ def _match_torrents(
                 meta=cast(MetaMusic, meta),
             )
             diagnostics[match.reason] += 1
-            if match.status == "exact" or (include_candidates and match.status != "rejected"):
+            if match.status == "exact" or include_candidates:
                 matches.append(MatchedTorrent(torrent, meta, "title", match))
             else:
                 logger.debug(f"音乐资源 {torrent.site_name} - {torrent.title} 未通过匹配：{match.reason}")
