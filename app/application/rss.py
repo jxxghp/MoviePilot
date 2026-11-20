@@ -124,12 +124,14 @@ class RssLinkRecipe:
     :param xpath: 获取生成链接的页面选择器
     :param params: 获取链接时提交的表单字段
     :param render: 是否使用已注入的浏览器端口
+    :param method: 页面读取方法；默认 POST 保持通用生成表单的既有行为
     """
 
     url: str
     xpath: str
     params: dict[str, Any]
     render: bool = False
+    method: Literal["get", "post"] = "post"
 
 
 class RssSitePort(Protocol):
@@ -521,14 +523,23 @@ class RssHelper:
                     timeout=timeout or 60
                 )
             else:
-                res = http_port.post(
-                    url=recipe.url,
-                    data=recipe.params,
-                    cookie=cookie,
-                    ua=ua,
-                    proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
-                    timeout=timeout or 30,
-                )
+                if recipe.method == "get":
+                    res = http_port.get(
+                        url=recipe.url,
+                        ua=ua,
+                        headers={"Cookie": cookie},
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
+                        timeout=timeout or 30,
+                    )
+                else:
+                    res = http_port.post(
+                        url=recipe.url,
+                        data=recipe.params,
+                        cookie=cookie,
+                        ua=ua,
+                        proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
+                        timeout=timeout or 30,
+                    )
                 if res is not None and res.status_code == 200:
                     html_text = res.text
                 elif res is not None:

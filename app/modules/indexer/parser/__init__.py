@@ -37,6 +37,8 @@ class SiteSchema(Enum):
     NexusPhp = "NexusPhp"
     # 采用 NexusProject 页面结构的站点。
     NexusProject = "NexusProject"
+    # 星空的 FireFly 定制页面。
+    StarSpace = "StarSpace"
     # 采用 NexusRabbit JSON 接口的站点。
     NexusRabbit = "NexusRabbit"
     # 憨憨的 NexusPHP 定制页面。

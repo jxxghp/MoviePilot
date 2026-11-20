@@ -977,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10419,
-  "edge_sha256": "07addae85ceb8650f858dee5e61b5612e04e3e3cda83c96809ef9f3594d65a08",
+  "edge_count": 10428,
+  "edge_sha256": "1aba7ad1b3c39cff4b0300db80d2f3de3b61246109f5481f3e0160752f0fb765",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8321,6 +8321,15 @@
     "app.modules.indexer.parser.small_horse -> app.modules",
     "app.modules.indexer.parser.small_horse -> app.modules.indexer",
     "app.modules.indexer.parser.small_horse -> app.modules.indexer.parser",
+    "app.modules.indexer.parser.starspace -> app.foundation",
+    "app.modules.indexer.parser.starspace -> app.foundation.temporal",
+    "app.modules.indexer.parser.starspace -> app.foundation.text",
+    "app.modules.indexer.parser.starspace -> app.modules",
+    "app.modules.indexer.parser.starspace -> app.modules.indexer",
+    "app.modules.indexer.parser.starspace -> app.modules.indexer.parser",
+    "app.modules.indexer.parser.starspace -> app.modules.indexer.parser.nexus_php",
+    "app.modules.indexer.parser.starspace -> app.runtime",
+    "app.modules.indexer.parser.starspace -> app.runtime.log",
     "app.modules.indexer.parser.sunnypt -> app.foundation",
     "app.modules.indexer.parser.sunnypt -> app.foundation.temporal",
     "app.modules.indexer.parser.sunnypt -> app.modules",
@@ -11400,7 +11409,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1188,
+  "module_count": 1189,
   "modules": [
     "app",
     "app.adapters",
@@ -12221,6 +12230,7 @@
     "app.modules.indexer.parser.piggo",
     "app.modules.indexer.parser.rousi",
     "app.modules.indexer.parser.small_horse",
+    "app.modules.indexer.parser.starspace",
     "app.modules.indexer.parser.sunnypt",
     "app.modules.indexer.parser.tnode",
     "app.modules.indexer.parser.torrent_leech",
