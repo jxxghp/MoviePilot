@@ -292,3 +292,29 @@ def test_media_api_authenticates_and_uses_user_scoped_items() -> None:
     }
     assert 'Token="media-token"' in fake_session.calls[1][1]["headers"]["X-Emby-Authorization"]
     assert fake_session.calls[1][1]["verify"] is False
+
+
+def test_media_api_tracks_status_code_and_formats_ssl_hint() -> None:
+    """
+    媒体库接口应记录失败状态码，并在证书校验异常时补充自签证书提示。
+    """
+    api = UgreenMediaApi(host="https://nas.example:9443", verify_ssl=True)
+    api._request_utils = _FakeSession(
+        post_responses=[_FakeResponse({"Message": "Unauthorized"}, status_code=401)]
+    )
+    with patch("app.modules.ugreen.api.logger.error") as mocked_error:
+        session = api.authenticate("tester", "pwd", log_failure=False)
+    assert session is None
+    assert api.last_status_code == 401
+    mocked_error.assert_not_called()
+
+    def _raise_ssl(*_args: object, **_kwargs: object) -> None:
+        raise OSError("SSL: CERTIFICATE_VERIFY_FAILED self-signed certificate")
+
+    api._request_utils = SimpleNamespace(post_res=_raise_ssl, close=lambda: None)
+    with patch("app.modules.ugreen.api.logger.error") as mocked_error:
+        session = api.authenticate("tester", "pwd", log_failure=False)
+    assert session is None
+    assert api.last_status_code is None
+    mocked_error.assert_called_once()
+    assert "校验 SSL 证书" in mocked_error.call_args.args[0]

@@ -323,11 +323,112 @@ def test_resolve_connection_mode_uses_media_service_port():
     9443 默认使用媒体库服务，显式 internal 可保留旧接口行为。
     """
     resolve = Ugreen._Ugreen__resolve_connection_mode
+    has_explicit = Ugreen._Ugreen__has_explicit_connection_mode
 
     assert resolve("https://nas.example:9443") == Ugreen.MEDIA_SERVICE_CONNECTION_MODE
+    assert resolve("https://nas.example:9443", "auto") == Ugreen.MEDIA_SERVICE_CONNECTION_MODE
     assert resolve("nas.example:9443") == Ugreen.MEDIA_SERVICE_CONNECTION_MODE
     assert resolve("https://nas.example:9443", "internal") == Ugreen.INTERNAL_CONNECTION_MODE
     assert resolve("https://nas.example:9999", "media_service") == Ugreen.MEDIA_SERVICE_CONNECTION_MODE
+    assert has_explicit(None) is False
+    assert has_explicit("auto") is False
+    assert has_explicit("internal") is True
+    assert has_explicit("media_service") is True
+
+
+def test_reconnect_9443_auto_mode_falls_back_to_internal_on_401():
+    """
+    9443 端口未显式锁定模式时，媒体库服务返回 401 应自动回退绿联内部接口。
+    """
+    ugreen = Ugreen.__new__(Ugreen)
+    ugreen._host = "https://nas.example:9443"
+    ugreen._username = "tester"
+    ugreen._password = "secret"
+    ugreen._verify_ssl = False
+    ugreen._connection_mode = Ugreen.MEDIA_SERVICE_CONNECTION_MODE
+    ugreen._explicit_mode = False
+    ugreen._api = None
+    ugreen._media_api = None
+    ugreen._userinfo = None
+
+    class _UnauthorizedMediaApi:
+        """
+        模拟媒体库服务认证返回 401 的伪客户端。
+        """
+
+        last_status_code = 401
+
+        @staticmethod
+        def authenticate(_username: str, _password: str, log_failure: bool = True) -> None:
+            """
+            模拟媒体库服务拒绝系统账号登录。
+            """
+            assert log_failure is False
+            return None
+
+        @staticmethod
+        def close() -> None:
+            """
+            关闭伪客户端连接。
+            """
+            return None
+
+    with patch("app.modules.ugreen.ugreen.UgreenMediaApi", return_value=_UnauthorizedMediaApi()), patch.object(
+        Ugreen, "_Ugreen__restore_persisted_session", return_value=False
+    ), patch("app.modules.ugreen.ugreen.Api", return_value=_FakeReconnectApi()), patch.object(
+        Ugreen, "_Ugreen__save_persisted_session", return_value=None
+    ):
+        assert ugreen.reconnect() is True
+
+    assert ugreen._connection_mode == Ugreen.INTERNAL_CONNECTION_MODE
+    assert ugreen.is_authenticated() is True
+
+
+def test_reconnect_9443_explicit_media_service_or_ssl_error_does_not_fallback():
+    """
+    显式指定 media_service 或发生网络/证书无响应时，不回退内部接口。
+    """
+    for explicit_mode, status_code in ((True, 401), (False, None)):
+        ugreen = Ugreen.__new__(Ugreen)
+        ugreen._host = "https://nas.example:9443"
+        ugreen._username = "tester"
+        ugreen._password = "secret"
+        ugreen._verify_ssl = True
+        ugreen._connection_mode = Ugreen.MEDIA_SERVICE_CONNECTION_MODE
+        ugreen._explicit_mode = explicit_mode
+        ugreen._api = None
+        ugreen._media_api = None
+        ugreen._userinfo = None
+
+        class _FailedMediaApi:
+            """
+            模拟媒体库服务返回预设失败状态的伪客户端。
+            """
+
+            last_status_code = status_code
+
+            @staticmethod
+            def authenticate(_username: str, _password: str, log_failure: bool = True) -> None:
+                """
+                验证日志开关并模拟认证失败。
+                """
+                assert log_failure is explicit_mode
+                return None
+
+            @staticmethod
+            def close() -> None:
+                """
+                关闭伪客户端连接。
+                """
+                return None
+
+        with patch("app.modules.ugreen.ugreen.UgreenMediaApi", return_value=_FailedMediaApi()), patch(
+            "app.modules.ugreen.ugreen.Api"
+        ) as mocked_internal_api:
+            assert ugreen.reconnect() is False
+
+        mocked_internal_api.assert_not_called()
+        assert ugreen._connection_mode == Ugreen.MEDIA_SERVICE_CONNECTION_MODE
 
 
 def test_media_service_supports_library_query_and_core_media_operations():

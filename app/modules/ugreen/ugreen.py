@@ -45,10 +45,13 @@ class Ugreen:
 
     # 目录索引最多读取 200 页，防止固件错误的分页标志导致无限循环。
     LIBRARY_PATH_PAGE_LIMIT = 200
-    # UGOS Pro 独立媒体库服务的固定 HTTPS 端口。
+    # UGOS Pro 独立媒体库服务及系统 HTTPS 默认共用的 9443 端口。
     MEDIA_SERVICE_PORT = 9443
+    AUTO_CONNECTION_MODE = "auto"
     INTERNAL_CONNECTION_MODE = "internal"
     MEDIA_SERVICE_CONNECTION_MODE = "media_service"
+    # 自动识别模式下，媒体库服务接口返回这些状态码时回退尝试绿联内部接口。
+    MEDIA_SERVICE_FALLBACK_STATUS_CODES = frozenset({401, 403, 404})
 
     _username: Optional[str] = None
     _password: Optional[str] = None
@@ -64,6 +67,7 @@ class Ugreen:
     _scan_type: int = 2
     _verify_ssl: bool = True
     _connection_mode: str = INTERNAL_CONNECTION_MODE
+    _explicit_mode: bool = False
 
     _api: Optional[Api] = None
     _media_api: Optional[UgreenMediaApi] = None
@@ -104,6 +108,7 @@ class Ugreen:
         self._host = host
         self._username = username
         self._password = password
+        self._explicit_mode = self.__has_explicit_connection_mode(mode)
         self._connection_mode = self.__resolve_connection_mode(host, mode)
         self._sync_libraries = sync_libraries or []
         # 绿联媒体库扫描模式：
@@ -172,12 +177,29 @@ class Ugreen:
         return self._userinfo is None
 
     @staticmethod
+    def __has_explicit_connection_mode(mode: Optional[str] = None) -> bool:
+        """
+        判断是否显式指定了具体的绿联连接模式。
+
+        未配置或设为 auto 时返回 False，允许 9443 端口在媒体库服务认证不通过时回退内部接口。
+        """
+        configured_mode = str(mode or "").strip().lower()
+        return configured_mode in {
+            Ugreen.MEDIA_SERVICE_CONNECTION_MODE,
+            "media-server",
+            "media_server",
+            "emby",
+            Ugreen.INTERNAL_CONNECTION_MODE,
+            "ugreen",
+        }
+
+    @staticmethod
     def __resolve_connection_mode(host: str, mode: Optional[str] = None) -> str:
         """
         解析绿联连接模式。
 
-        显式配置优先；未配置时按 UGOS Pro 媒体库服务固定使用的 9443 端口
-        自动选择 Emby 兼容接口，其他地址继续使用原有内部接口。
+        显式配置优先；未配置或设为 auto 时按 UGOS Pro 9443 端口优先尝试媒体库服务
+        Emby 兼容接口，其他地址继续使用原有内部接口。
         """
         configured_mode = str(mode or "").strip().lower()
         if configured_mode in {
@@ -312,12 +334,83 @@ class Ugreen:
         logger.debug(f"{self._username} 已复用绿联影视持久化会话")
         return True
 
+    def _reconnect_media_service(
+        self,
+        media_host: str,
+        media_username: str,
+        media_password: str,
+        *,
+        log_failure: bool = True,
+    ) -> tuple[bool, Optional[int]]:
+        """
+        使用媒体库服务 Emby 兼容接口建立认证会话。
+
+        :param media_host: 绿联服务地址
+        :param media_username: 登录账号
+        :param media_password: 登录密码
+        :param log_failure: 收到非 2xx HTTP 状态码时是否记录错误日志
+        :return: 是否登录成功及最近一次 HTTP 状态码
+        """
+        media_api = UgreenMediaApi(
+            host=media_host,
+            verify_ssl=self._verify_ssl,
+        )
+        session = media_api.authenticate(
+            media_username,
+            media_password,
+            log_failure=log_failure,
+        )
+        if session is None:
+            status_code = media_api.last_status_code
+            media_api.close()
+            return False, status_code
+        self._media_api = media_api
+        self._userinfo = session.user or {
+            "Id": session.user_id,
+            "Name": media_username,
+        }
+        logger.debug(f"{self._username} 成功登录绿联媒体库服务")
+        return True, 200
+
+    def _reconnect_internal(
+        self,
+        media_host: str,
+        media_username: str,
+        media_password: str,
+    ) -> bool:
+        """
+        使用绿联内部加密接口恢复持久化会话或执行账号登录。
+
+        :param media_host: 绿联服务地址
+        :param media_username: 登录账号
+        :param media_password: 登录密码
+        :return: 登录并验证当前用户信息后返回 True，否则返回 False
+        """
+        if self.__restore_persisted_session(media_host):
+            return True
+
+        self._api = Api(host=media_host, verify_ssl=self._verify_ssl)
+        if self._api.login(media_username, media_password) is None:
+            self.__remove_persisted_session()
+            return False
+
+        self._userinfo = self._api.current_user()
+        if not self._userinfo:
+            self.__remove_persisted_session()
+            return False
+
+        # 登录成功后持久化参数，下次优先复用
+        self.__save_persisted_session()
+        logger.debug(f"{self._username} 成功登录绿联影视")
+        return True
+
     def reconnect(self) -> bool:
         """
         关闭旧客户端并按配置重新认证，重置媒体库与目录缓存。
 
         关闭旧连接时不主动登出，以保留可复用会话。内部接口成功登录后保存新会话，
-        媒体库服务模式不使用内部接口的会话持久化流程。
+        媒体库服务模式不使用内部接口的会话持久化流程；未显式锁定模式且 9443 端口的
+        媒体库服务返回认证或路径不匹配状态时，自动回退尝试绿联内部接口。
 
         :return: 认证并获取必要用户信息后返回 True；配置缺失或认证失败时返回 False
         """
@@ -337,39 +430,31 @@ class Ugreen:
         self.disconnect(logout=False)
 
         if self.__is_media_service_mode():
-            media_api = UgreenMediaApi(
-                host=media_host,
-                verify_ssl=self._verify_ssl,
+            allow_fallback = not getattr(self, "_explicit_mode", False)
+            ok, status_code = self._reconnect_media_service(
+                media_host,
+                media_username,
+                media_password,
+                log_failure=not allow_fallback,
             )
-            session = media_api.authenticate(media_username, media_password)
-            if session is None:
-                media_api.close()
+            if ok:
+                return True
+            if (
+                not allow_fallback
+                or status_code not in self.MEDIA_SERVICE_FALLBACK_STATUS_CODES
+            ):
                 return False
-            self._media_api = media_api
-            self._userinfo = session.user or {
-                "Id": session.user_id,
-                "Name": media_username,
-            }
-            logger.debug(f"{self._username} 成功登录绿联媒体库服务")
-            return True
-
-        if self.__restore_persisted_session(media_host):
-            return True
-
-        self._api = Api(host=media_host, verify_ssl=self._verify_ssl)
-        if self._api.login(media_username, media_password) is None:
-            self.__remove_persisted_session()
+            logger.info(
+                f"绿联 {media_host} 媒体库服务认证未通过（HTTP {status_code}），回退尝试绿联影视内部接口"
+            )
+            previous_mode = self._connection_mode
+            self._connection_mode = self.INTERNAL_CONNECTION_MODE
+            if self._reconnect_internal(media_host, media_username, media_password):
+                return True
+            self._connection_mode = previous_mode
             return False
 
-        self._userinfo = self._api.current_user()
-        if not self._userinfo:
-            self.__remove_persisted_session()
-            return False
-
-        # 登录成功后持久化参数，下次优先复用
-        self.__save_persisted_session()
-        logger.debug(f"{self._username} 成功登录绿联影视")
-        return True
+        return self._reconnect_internal(media_host, media_username, media_password)
 
     def disconnect(self, logout: bool = False) -> None:
         """
