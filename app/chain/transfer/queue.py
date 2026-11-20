@@ -1716,13 +1716,14 @@ class TransferQueueOwner(_TransferOwnerBase):
                         mediainfo = None
 
                     self._remember_transfer_scan(torrent)
-                    # 执行异步整理，匹配源目录
+                    # 执行异步整理，匹配源目录；只选中部分文件的任务跳过下载器报告未下载完成的文件
                     self.do_transfer(
                         fileitem=fileitem,
                         mediainfo=mediainfo,
                         mtype=mtype,
                         downloader=torrent.downloader,
                         download_hash=torrent.hash,
+                        incomplete_files=torrent.incomplete_files,
                     )
                     if progress_callback:
                         progress_callback(

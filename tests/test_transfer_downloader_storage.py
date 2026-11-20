@@ -75,7 +75,7 @@ def test_downloader_monitor_reads_source_through_storage(monitored_source, stora
     )
     state.chain.do_transfer.assert_called_once_with(
         fileitem=state.source, mediainfo=None, mtype=None,
-        downloader="remote-qb", download_hash="hash-smb",
+        downloader="remote-qb", download_hash="hash-smb", incomplete_files=None,
     )
 
 
@@ -91,6 +91,46 @@ def test_downloader_monitor_remembers_selected_size_for_tagging(monitored_source
         queue_module.TransferQueueOwner.process(state.chain)
 
     assert state.chain._transfer_scan_sizes == {("remote-qb", "hash-smb"): 2048}
+
+
+def test_downloader_monitor_passes_incomplete_files_to_transfer(monitored_source):
+    """
+    只选中部分文件的任务，下载器报告尚未下载完成的文件随任务交给整理，整理时跳过。
+    """
+    state = monitored_source
+    state.torrent.incomplete_files = ["Movie/movie.part2.mkv"]
+
+    with patch.object(Path, "exists", side_effect=AssertionError("禁止入口查本地文件")), \
+            patch.object(Path, "stat", side_effect=AssertionError("禁止入口读取本地属性")):
+        queue_module.TransferQueueOwner.process(state.chain)
+
+    assert state.chain.do_transfer.call_args.kwargs["incomplete_files"] == ["Movie/movie.part2.mkv"]
+
+
+def _file(path):
+    """
+    构造整理候选文件。
+    """
+    return FileItem(storage="local", path=path, name=Path(path).name, type="file", size=1024, extension="mkv")
+
+
+def test_candidates_skip_files_the_downloader_reports_incomplete():
+    """
+    E01 下完、E02 下到一半后被取消选择：残缺的 E02 仍在任务目录里，整理只能拿到 E01。下载器报告的是任务内相对
+    路径，候选是存储上的完整路径（保存目录、路径映射不同），按以 "/" 为边界的路径后缀比对，同名前缀不误伤。
+    """
+    e01, e02 = _file("/media/incoming/Show.S01/Show.S01E01.mkv"), _file("/media/incoming/Show.S01/Show.S01E02.mkv")
+    lookalike = _file("/media/incoming/Show.S01/Extra.Show.S01E02.mkv")
+    candidates = [(e01, False), (e02, False), (lookalike, False)]
+
+    kept = workflow_module._drop_reported_incomplete(candidates, ["Show.S01/Show.S01E02.mkv"])
+
+    assert kept == [(e01, False), (lookalike, False)]
+    assert workflow_module._drop_reported_incomplete(candidates, None) is candidates
+    assert workflow_module._drop_reported_incomplete(candidates, []) is candidates
+    # Windows 风格分隔符与没有根目录的布局（qB NoSubfolder）同样能认出。
+    assert workflow_module._reported_incomplete(e02, ["Show.S01\\Show.S01E02.mkv"])
+    assert workflow_module._reported_incomplete(e02, ["Show.S01E02.mkv"])
 
 
 @pytest.mark.parametrize("task_path", [

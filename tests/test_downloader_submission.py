@@ -12,6 +12,7 @@ from torrentool.bencode import Bencode
 
 import app.chain.download.submission as submission_module
 import app.modules.transmission.transmission as transmission_client
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.download.failures import DownloadFailureSnapshot
 from app.chain.download.facade import DownloadChain
 from app.chain.download.failure import (
@@ -22,7 +23,7 @@ from app.chain.download.failure import (
 from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
-from app.domain.torrent import ConfirmedFile, ConfirmedSelection
+from app.domain.torrent import ConfirmedSelection
 from app.modules.qbittorrent import QbittorrentModule
 from app.modules.transmission import TransmissionModule
 from app.modules.transmission.transmission import Transmission
@@ -622,7 +623,10 @@ def test_existing_task_requires_actual_info_hash(downloader, version, matching):
         [SimpleNamespace(name="Same.Show.S01", total_size=42, hashString=existing_hash, labels=list(task["tags"]))],
         None,
     )
-    # 受理后会回读确认"已整理"已移除，标签写入要反映到后续查询里。
+    # 受理后会回读确认"已整理"已移除、系统种子标签已补上，标签写入要反映到后续查询里。
+    server.set_torrents_tag.side_effect = lambda *_args, tags=(), **_kwargs: task.update(
+        tags=task["tags"] + [item for item in tags if item not in task["tags"]],
+    ) or True
     server.remove_torrents_tag.side_effect = lambda *_args, tag=(), **_kwargs: task.update(
         tags=[item for item in task["tags"] if item not in ([tag] if isinstance(tag, str) else list(tag))],
     ) or True
@@ -976,8 +980,7 @@ def _files_on(downloader, *indexes):
     """
     构造某台下载器上确认选中过 ``_FILES`` 中指定文件的记录。
     """
-    files = frozenset(ConfirmedFile(index, (_FILES[index],)) for index in indexes)
-    return ConfirmedSelection().record(downloader, files, replace=True)
+    return ConfirmedSelection().record(downloader, frozenset(indexes), replace=True)
 
 
 @pytest.mark.parametrize("task_action,previous,episodes,expected", [
@@ -986,7 +989,7 @@ def _files_on(downloader, *indexes):
     (DownloadTaskAction.REUSED, None, {6}, _files_on("qb", 1)),
     (DownloadTaskAction.REUSED, _files_on("qb", 0), None, _files_on("qb", 0, 1)),
     (DownloadTaskAction.CREATED, _files_on("tr", 0), {5}, _files_on("tr", 0).record(
-        "qb", frozenset({ConfirmedFile(0, (_FILES[0],))}), replace=True,
+        "qb", frozenset({0}), replace=True,
     )),
 ], ids=["created-resets", "appended-merges", "no-history", "whole-request", "other-downloader-kept"])
 def test_settlement_accumulates_confirmed_selection_in_history_note(task_action, previous, episodes, expected):
@@ -998,6 +1001,23 @@ def test_settlement_accumulates_confirmed_selection_in_history_note(task_action,
     _chain, payload = _settle_existing(task_action, recorded=_FILES, episodes=episodes, previous_selection=previous)
 
     assert ConfirmedSelection.from_note(payload["history"].note) == expected
+
+
+@pytest.mark.parametrize("task_action,expected", [
+    (DownloadTaskAction.CREATED, {0, 1, 2}),
+    (DownloadTaskAction.REUSED, {0}),
+])
+def test_new_whole_torrent_records_attachments_too(task_action, expected):
+    """
+    新建整包时下载器默认选中全部文件，确认记录包括字幕、字体等附件：之后用户取消的附件会被静默跳过，
+    不会因为"从未记录"而被订阅重新勾选。复用已有任务的整包请求只确保视频已选中，记录也只有视频。
+    """
+    _chain, payload = _settle_existing(
+        task_action, recorded=_FILES[:1], episodes=None,
+        accepted_files=[(0, "Show.S04E05.mkv"), (1, "Show.S04E05.ass"), (2, "Fonts.7z")],
+    )
+
+    assert ConfirmedSelection.from_note(payload["history"].note).files_for("qb") == frozenset(expected)
 
 
 @pytest.mark.parametrize("task_action,expected", [
@@ -1065,6 +1085,134 @@ def test_submission_passes_latest_confirmed_selection_and_holds_task_lock(downlo
     assert not submission_module.downloader_task_locks._locks[
         submission_module.downloader_task_locks._stripe(torrent_hash)
     ].locked()
+
+
+@pytest.mark.parametrize("user_specified", [False, True])
+def test_submission_passes_user_specified_with_the_real_record(downloader, user_specified):
+    """
+    "用户手动指定"作为独立参数交给下载器，由下载器决定重新选中被取消的目标、恢复暂停的任务；确认记录照常传递，
+    不再用"不传记录"来表达手动指定。
+    """
+    _module, _server, content, torrent_hash = downloader
+    seen = {}
+
+    def fake_run_module(method, **kwargs):
+        """
+        记录下载器收到的两个参数。
+        """
+        if method == "torrent_files":
+            return []
+        seen.update(confirmed=kwargs["confirmed_selection"], user_specified=kwargs["user_specified"])
+        return "qb", torrent_hash, "Original", "添加下载成功"
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = fake_run_module
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {
+        torrent_hash: SimpleNamespace(id=1, date="2026-01-01 00:00:00", note={
+            torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: _files_on("test-downloader", 1).to_note(),
+        }),
+    }
+    prepared = SimpleNamespace(
+        torrent_content=content, torrent=SimpleNamespace(site_cookie=""),
+        download_dir=Path("/downloads"), media=SimpleNamespace(category="TV"), site_downloader=None,
+    )
+
+    chain._submit_prepared_download(
+        prepared=prepared, context=Context(), episodes={170}, channel=None, source="Manual",
+        downloader="test-downloader", userid=None, username=None, label=None,
+        custom_words=_CUSTOM_WORDS, governance=None, user_specified=user_specified,
+    )
+
+    assert seen == {"confirmed": _files_on("test-downloader", 1), "user_specified": user_specified}
+
+
+def test_subscription_cancelled_while_waiting_for_task_lock_never_submits(downloader):
+    """
+    等任务锁期间订阅被取消（同一任务上的整理回写、rTorrent 新建任务的标签轮询可能持锁数十秒）：取得锁后
+    再检查一次，不调用下载器、不结算，也不标记"已开始产生下载副作用"。
+    """
+    _module, _server, content, torrent_hash = downloader
+    stripe = submission_module.downloader_task_locks._locks[
+        submission_module.downloader_task_locks._stripe(torrent_hash)
+    ]
+    checks = []
+
+    def cancelled():
+        """
+        入口检查时还没取消，取得锁后的检查时已取消；同时记录检查时是否持有任务锁。
+        """
+        checks.append(stripe.locked())
+        return len(checks) > 1
+
+    governance = SubscriptionDownloadGovernance(cancelled=cancelled, mark_started=Mock())
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = Mock()
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    prepared = SimpleNamespace(
+        torrent_content=content, torrent=SimpleNamespace(site_cookie="", title="Show"),
+        download_dir=Path("/downloads"), media=SimpleNamespace(category="TV"), site_downloader=None,
+    )
+
+    result = chain._submit_prepared_download(
+        prepared=prepared, context=Context(), episodes={170}, channel=None, source="Subscribe|1",
+        downloader="test-downloader", userid=None, username=None, label=None,
+        custom_words=_CUSTOM_WORDS, governance=governance,
+    )
+
+    assert result == (None, "订阅下载在提交前已取消")
+    assert checks == [False, True]
+    chain.run_module.assert_not_called()
+    chain._settle_accepted_download.assert_not_called()
+    chain._record_rejected_download.assert_not_called()
+    governance.mark_started.assert_not_called()
+
+
+def test_side_effects_are_marked_inside_the_task_lock_right_before_submission(downloader):
+    """
+    "开始产生下载副作用"在取得任务锁、确认未取消之后、调用下载器之前标记。
+    """
+    _module, _server, content, torrent_hash = downloader
+    stripe = submission_module.downloader_task_locks._locks[
+        submission_module.downloader_task_locks._stripe(torrent_hash)
+    ]
+    events = []
+    governance = SubscriptionDownloadGovernance(
+        cancelled=lambda: False, mark_started=lambda: events.append(("started", stripe.locked())),
+    )
+
+    def fake_run_module(method, **_kwargs):
+        """
+        记录下载器调用顺序；受理后读取文件列表时返回空。
+        """
+        if method == "torrent_files":
+            return []
+        events.append(("download", stripe.locked()))
+        return "qb", torrent_hash, "Original", "添加下载成功"
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = fake_run_module
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    prepared = SimpleNamespace(
+        torrent_content=content, torrent=SimpleNamespace(site_cookie="", title="Show"),
+        download_dir=Path("/downloads"), media=SimpleNamespace(category="TV"), site_downloader=None,
+    )
+
+    chain._submit_prepared_download(
+        prepared=prepared, context=Context(), episodes={170}, channel=None, source="Subscribe|1",
+        downloader="test-downloader", userid=None, username=None, label=None,
+        custom_words=_CUSTOM_WORDS, governance=governance,
+    )
+
+    assert events == [("started", True), ("download", True)]
 
 
 def test_submission_breaks_same_second_history_ties_by_primary_key(downloader):
@@ -1220,7 +1368,7 @@ def _ledger_chain():
     return chain
 
 
-def _rejected(chain, context, message, *, episodes, source="Subscribe|1", downloader="qb"):
+def _rejected(chain, context, message, *, episodes, source="Subscribe|1", downloader="qb", user_specified=False):
     """
     以真实的拒绝结算入口记录一次已有任务的拒绝。
     """
@@ -1229,7 +1377,7 @@ def _rejected(chain, context, message, *, episodes, source="Subscribe|1", downlo
     )
     chain._record_rejected_download(
         prepared=prepared, context=context, episodes=episodes, channel=None, source=source,
-        downloader=downloader, userid=None, actual_downloader=None, error_msg=message,
+        downloader=downloader, userid=None, actual_downloader=None, error_msg=message, user_specified=user_specified,
     )
 
 
@@ -1253,7 +1401,7 @@ def test_existing_task_rejections_never_block_candidates():
 def test_repeated_rejection_is_notified_once_per_reason_and_scope():
     """
     同一原因、同一范围在记录有效期内重复出现时只记日志，不再通知、不顺延记录；原因变了、换了目标集、
-    换了季（多季合集里 S01E03 与 S02E03 是不同目标）或换了下载器都照常通知。用户手动下载每次都通知。
+    换了季（多季合集里 S01E03 与 S02E03 是不同目标）或换了下载器都照常通知。用户手动指定种子时每次都通知。
     """
     chain = _ledger_chain()
     chain.post_message = Mock()
@@ -1269,8 +1417,26 @@ def test_repeated_rejection_is_notified_once_per_reason_and_scope():
     _rejected(chain, _season_context(season=2), cancelled, episodes={3})
     _rejected(chain, context, cancelled, episodes={3}, downloader="tr")
     _rejected(chain, context, ExistingTaskRejection.PAUSED.describe("abc", "任务已暂停"), episodes={3})
-    _rejected(chain, context, cancelled, episodes={3}, source="Manual")
+    _rejected(chain, context, cancelled, episodes={3}, source="Manual", user_specified=True)
     assert chain.post_message.call_count == 6
+
+
+@pytest.mark.parametrize("source", [None, "Workflow|7", "插件名"])
+def test_other_automated_sources_are_deduplicated_too(source):
+    """
+    工作流、插件等非订阅的自动流程也会定时重复提交（工作流失败时不写缓存，下一次照样提交）：同一原因、同一范围
+    在静默期内只通知一次，与订阅共用同一份记录。
+    """
+    chain = _ledger_chain()
+    chain.post_message = Mock()
+    context = _season_context()
+    paused = ExistingTaskRejection.PAUSED.describe("abc", "任务已暂停")
+
+    for _ in range(3):
+        _rejected(chain, context, paused, episodes={3}, source=source)
+    _rejected(chain, context, paused, episodes={3}, source="Subscribe|1")
+
+    assert chain.post_message.call_count == 1
 
 
 def test_record_with_another_reason_does_not_silence_a_new_reason():

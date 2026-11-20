@@ -32,6 +32,13 @@ class DownloaderTorrent(BaseModel):
         default=None,
         description="当前选中下载的文件总大小，单位为字节；同一任务追加文件后会变大，下载器无法提供时为空",
     )
+    incomplete_files: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "下载器整理轮询中只选中了部分文件的任务，下载器报告尚未下载完成的文件相对路径（含取消选择后残留在磁盘上的"
+            "部分数据、与选中文件共用分块而被写入部分数据的相邻文件），整理时跳过；为空表示无需过滤"
+        ),
+    )
     progress: Optional[float] = Field(default=0.0, description="当前完成百分比")
     state: Optional[str] = Field(default="downloading", description="当前业务状态")
     upspeed: Optional[str] = Field(default=None, description="当前上传速度的格式化展示文本")

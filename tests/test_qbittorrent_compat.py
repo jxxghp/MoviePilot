@@ -885,14 +885,19 @@ def test_download_removes_temporary_tag_from_existing_torrent():
     fake_server = MagicMock()
     fake_server.add_torrent.return_value = (False, [])
     fake_server.get_content_layout.return_value = "Original"
+    tags: list[str] = []
     # 每次查询返回新列表：模块读完会清空列表释放内存，共用同一个列表会让后续回读读到空结果。
     fake_server.get_torrents.side_effect = lambda *_args, **_kwargs: ([{
         "name": "test",
         "total_size": len(content),
         "hash": torrent_hash,
-        "tags": None,
+        "tags": ",".join(tags) or None,
         "state": "uploading",
     }], None)
+    # 受理时会补写系统种子标签并回读确认，写入要反映到后续查询里。
+    fake_server.set_torrents_tag.side_effect = lambda *_args, **kwargs: (
+        tags.extend(item for item in kwargs.get("tags", ()) if item not in tags) or True
+    )
     # 已有任务受理需要读到实时文件列表；文件已选中且下载完成，按原样复用处理。
     # 每次读取返回新列表：受理前还会回读一次确认目标仍处于选中状态，模块读完会清空列表释放内存。
     fake_server.get_files.side_effect = lambda *_args, **_kwargs: [

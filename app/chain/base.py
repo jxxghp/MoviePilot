@@ -862,6 +862,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         custom_words: Optional[str] = None,
         episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
         confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+        user_specified: bool = False,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
@@ -876,7 +877,9 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param custom_words: 来源识别词，选集须与订阅解析采用相同规则
         :param episode_selection: 目标季与已确认的原始集号对应关系，旧模块可不接收
         :param confirmed_selection: MP 此前在同一种子上确认选中过的文件（按下载器分开），用于识别被别人取消的文件；
-            None 表示本次不识别"被取消"（没有下载历史，或用户手动指定了该种子），旧模块可不接收
+            None 表示没有下载历史，旧模块可不接收
+        :param user_specified: 用户明确指定了这个种子：同一 hash 已存在时重新选中被取消的目标，任务已暂停且目标
+            未下完时恢复任务；旧模块可不接收
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return cast(Optional[Tuple[Optional[str], Optional[str], Optional[str], str]], self.run_module(
@@ -891,6 +894,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             custom_words=custom_words,
             episode_selection=episode_selection,
             confirmed_selection=confirmed_selection,
+            user_specified=user_specified,
         ))
 
     def download_added(

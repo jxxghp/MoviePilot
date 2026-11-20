@@ -58,7 +58,7 @@ def _download_chain() -> DownloadChain:
     chain._resolve_media_download_dir = MagicMock(
         return_value=("local", Path("/downloads"), None)
     )
-    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",))
+    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",), video_extensions=(".mkv",))
     return chain
 
 

@@ -139,6 +139,7 @@ SCHEMA_EXPORTS = {
     'CustomRule': ('app.schemas.rule', 'CustomRule'),
     'DOWNLOAD_TASK_ALREADY_EXISTS': ('app.schemas.download', 'DOWNLOAD_TASK_ALREADY_EXISTS'),
     'DOWNLOAD_TASK_FILES_APPENDED': ('app.schemas.download', 'DOWNLOAD_TASK_FILES_APPENDED'),
+    'DOWNLOAD_TASK_RESUMED': ('app.schemas.download', 'DOWNLOAD_TASK_RESUMED'),
     'DashboardMemoryInfo': ('app.schemas.dashboard', 'DashboardMemoryInfo'),
     'DashboardSystemInfo': ('app.schemas.dashboard', 'DashboardSystemInfo'),
     'DataT': ('app.schemas.response', 'DataT'),

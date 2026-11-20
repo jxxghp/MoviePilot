@@ -482,7 +482,7 @@ class DownloadAddedContractData(BaseEventData):
         default=None,
         description=(
             "下载器对任务的实际动作：created 新建、appended 已有任务追加了本次文件、"
-            "reused 已有任务原样复用；旧版本或重放的历史事件为空"
+            "resumed 按手动指定恢复了已暂停的已有任务、reused 已有任务原样复用；旧版本或重放的历史事件为空"
         ),
     )
     idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
@@ -1087,7 +1087,7 @@ class DownloadAddedEventData(BaseEventData):
         default=None,
         description=(
             "下载器对任务的实际动作：created 新建、appended 已有任务追加了本次文件、"
-            "reused 已有任务原样复用；旧版本或重放的历史事件为空"
+            "resumed 按手动指定恢复了已暂停的已有任务、reused 已有任务原样复用；旧版本或重放的历史事件为空"
         ),
     )
     idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")

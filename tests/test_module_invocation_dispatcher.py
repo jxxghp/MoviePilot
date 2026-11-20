@@ -10,7 +10,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.domain.torrent import ConfirmedFile, ConfirmedSelection, EpisodeSelection
+from app.domain.torrent import ConfirmedSelection, EpisodeSelection
 from app.runtime.extensions.module.dispatcher import (
     FrozenModuleProviderMissingError,
     FrozenPluginProviderRef,
@@ -112,17 +112,17 @@ async def test_download_season_mapping_preserves_custom_words_provider(
 
 
 @pytest.mark.parametrize("provider_type", ["plugin", "system"])
-def test_confirmed_selection_skips_legacy_downloaders(provider_type):
+def test_existing_task_parameters_skip_legacy_downloaders(provider_type):
     """
-    确认记录是新增可选参数：尚未支持的插件下载器照常被调用，只是收不到这个参数。
+    确认记录与"用户手动指定"是新增可选参数：尚未支持的插件下载器照常被调用，只是收不到这两个参数。
     """
     calls = []
+    new_parameters = {"confirmed_selection", "user_specified"}
     kwargs = {
         "content": b"torrent", "download_dir": "/downloads", "cookie": "", "episodes": {8}, "category": None,
         "label": None, "downloader": "test",
-        "confirmed_selection": ConfirmedSelection(
-            downloaders=(("test", frozenset({ConfirmedFile(index=0, path=("E07.mkv",))})),),
-        ),
+        "confirmed_selection": ConfirmedSelection(downloaders=(("test", frozenset({0})),)),
+        "user_specified": True,
     }
 
     def legacy(**received):
@@ -133,7 +133,7 @@ def test_confirmed_selection_skips_legacy_downloaders(provider_type):
         return True
 
     legacy.__signature__ = inspect.Signature([
-        inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY) for name in kwargs if name != "confirmed_selection"
+        inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY) for name in kwargs if name not in new_parameters
     ])
     module = _Module("下载器", 10, legacy)
     setattr(module, "download", legacy)
@@ -143,7 +143,7 @@ def test_confirmed_selection_skips_legacy_downloaders(provider_type):
     )
 
     assert dispatcher.dispatch("download", **kwargs) is True
-    assert calls == [{name: value for name, value in kwargs.items() if name != "confirmed_selection"}]
+    assert calls == [{name: value for name, value in kwargs.items() if name not in new_parameters}]
     plugin_error.assert_not_called()
     system_error.assert_not_called()
 

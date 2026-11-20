@@ -90,6 +90,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         custom_words: Optional[str] = None,
         episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
         confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+        user_specified: bool = False,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         读取种子内容并添加下载任务，按需选择剧集文件。
@@ -108,10 +109,12 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param custom_words: 来源识别词，按行参与文件名识别，使选集结果与订阅一致
         :param episode_selection: 目标季与已确认的季集对应关系；选集失败清理本次新增任务并保留文件
         :param confirmed_selection: 下载链从下载历史读出的"MP 此前在同一种子上确认选中过的文件"（按下载器分开），
-            只在同一 hash 已存在时使用；None 表示本次不识别"被取消"（没有下载历史，或用户手动指定了该种子）
+            只在同一 hash 已存在时使用；None 表示 MP 没有该 hash 的下载历史
+        :param user_specified: 用户明确指定了这个种子（Web、接口、智能助手、消息交互），只在同一 hash 已存在时
+            使用：重新选中之前被取消的目标，任务已暂停且目标未下完时恢复任务
         :return: 下载器名称、任务哈希、内容布局和结果说明；无适用实例时返回 None，
             添加或已有任务核验失败时前三项为空，说明包含失败原因；已有任务的说明为
-            ``app.schemas.download`` 中约定的四个常量之一
+            ``app.schemas.download`` 中约定的三个常量之一
         """
 
         if not content:
@@ -149,6 +152,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         if existing is not None:
             return self._finish_found_task(
                 server, existing, episodes, custom_words, downloader, episode_selection, confirmed_selection,
+                user_specified,
             )
 
         # 生成随机Tag
@@ -179,6 +183,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             if existing is not None:
                 return self._finish_found_task(
                     server, existing, episodes, custom_words, downloader, episode_selection, confirmed_selection,
+                    user_specified,
                 )
             return None, None, None, f"添加种子任务失败：{torrent_desc_text}"
         else:
@@ -186,6 +191,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             if existing is not None:
                 return self._finish_found_task(
                     server, existing, episodes, custom_words, downloader, episode_selection, confirmed_selection,
+                    user_specified,
                 )
             if not added_torrent_hash:
                 return (
@@ -270,6 +276,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             custom_words: Optional[str], downloader: Optional[str],
             episode_selection: Optional[torrent_rules.EpisodeSelection],
             confirmed_selection: Optional[torrent_rules.ConfirmedSelection],
+            user_specified: bool,
     ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
         """
         记录日志后按已有任务流程核验找到的同 hash 任务，参数含义同 ``_finish_existing_task``。
@@ -279,6 +286,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         return self._finish_existing_task(
             server, torrent_hash, episodes, custom_words,
             downloader, episode_selection, confirmed_selection,
+            user_specified=user_specified,
         )
 
     def _finish_existing_task(
@@ -286,6 +294,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             custom_words: Optional[str], downloader: Optional[str],
             episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
             confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+            user_specified: bool = False,
     ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
         """
         核验已有任务能否受理本次请求，受理后返回任务信息，规则见 ``_accept_existing_task``。
@@ -298,11 +307,13 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param custom_words: 来源识别词
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param episode_selection: 目标季与已确认的季集映射
-        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件（按下载器分开）；None 表示本次不识别"被取消"
+        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件（按下载器分开）；None 表示没有下载历史
+        :param user_specified: 用户明确指定了这个种子，见 ``_accept_existing_task``
         :return: 下载器名称、任务哈希、内容布局和约定说明；失败时前三项为空
         """
         accepted, message = self._accept_existing_task(
             server, torrent_hash, episodes, custom_words, episode_selection, confirmed_selection, downloader,
+            user_specified=user_specified,
         )
         if not accepted:
             return None, None, None, message
@@ -343,6 +354,18 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         """
         return server.update_priorities(torrent_hash)
 
+    def _resume_existing_task(self, server: Rtorrent, torrent_hash: str) -> bool:
+        """
+        恢复已暂停的任务并回读确认运行状态。
+
+        ``d.start`` 只把任务放进 started 视图，能启动已停止（state=0）的任务；被 ``d.pause`` 暂停的任务
+        （state=1、不活动）本来就在 started 视图里，还需要 ``d.resume``。rTorrent 的命令在回复前已执行，
+        回读状态可靠，因此按运行状态（含校验中）确认。
+        """
+        if not server.start_torrents(torrent_hash) or not server.resume_torrents(torrent_hash):
+            return False
+        return self._existing_task_state(server, torrent_hash) is torrent_rules.ExistingTaskState.RUNNING
+
     def _existing_task_state(
             self, server: Rtorrent, torrent_hash: str,
     ) -> torrent_rules.ExistingTaskState:
@@ -354,7 +377,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         - state=1 且 is_active=0：要么正在校验数据（启动后、重启恢复会话或手动重新校验时，校验完成前
           任务不活动，之后会自动开始），按运行处理；要么是被 d.pause 暂停（ruTorrent 的"暂停"），按暂停处理。
           rTorrent 本身没有任务排队；第三方排队脚本若用 d.pause/d.stop 让任务等待，与手动暂停无法区分，
-          一律按暂停处理（没有 MP 标签即外部暂停，不恢复、短冷却）；
+          一律按暂停处理（自动流程不恢复，用户手动指定种子时恢复）；
         - 读不到校验状态时返回未知，不猜。
         rTorrent 没有可靠的任务错误状态，不归为错误。
         """
@@ -488,7 +511,8 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                 content_path=self.normalize_return_path(torrent_path, downloader_name),
                 progress=torrent_data.get("progress", 0),
                 size=total_size,
-                # rTorrent 只在全部分块完成时标记 complete，此时已完成字节数即选中下载的数据量。
+                # complete 表示选中部分已下完（见 Rtorrent.get_torrents），此时已完成字节数近似为选中下载的数据量；
+                # 未选中文件里恰好已完成的分块也计入，整理链只用它判断"选中范围是否变化"。
                 selected_size=completed_size if str(torrent_data.get("complete")) == "1" else None,
                 state=self.__normalize_torrent_state(
                     torrent_data.get("state"), torrent_data.get("complete")
@@ -524,7 +548,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
                         if "已整理" in tag_list:
                             continue
-                        ret_torrents.append(__build_torrent(name, torrent_info))
+                        ret_torrents.extend(self._admit_transfer_torrent(server, __build_torrent(name, torrent_info)))
                 finally:
                     torrents.clear()
                     del torrents

@@ -12,14 +12,16 @@ from app.schemas.types import MediaSource as _MediaSource
 from app.schemas.types import MusicEntityType as _MusicEntityType
 
 # 下载器模块 download() 四元组第四项的约定说明。同一 hash 已在下载器中时，内置下载器会先按
-# 本次目标核验已有任务（是否暂停、哪些文件被取消过），能受理才返回 hash，并用以下两个值之一告诉
+# 本次目标核验已有任务（是否暂停、哪些文件被取消过），能受理才返回 hash，并用以下三个值之一告诉
 # 下载链"这次对已有任务做了什么"；不能受理时不返回 hash，说明以 ``ExistingTaskRejection`` 开头。
 # 插件提供的下载器模块不返回这些值时，下载链按原有"新建任务"语义结算。
 #
 # 已有任务原样复用：目标文件此前已选中，且已下载完成或任务正在运行，下载器状态未做任何改动。
 DOWNLOAD_TASK_ALREADY_EXISTS = "下载任务已存在"
-# 已有任务追加了本次目标文件，下载链按新增下载发送通知。
+# 已有任务追加了本次目标文件（用户手动指定种子时，暂停的任务会同时恢复），下载链按新增下载发送通知。
 DOWNLOAD_TASK_FILES_APPENDED = "下载任务已存在，已追加选择本次目标文件"
+# 用户手动指定种子，目标文件此前已选中但任务已暂停、目标未下完：恢复了该任务，下载链按新增下载发送通知。
+DOWNLOAD_TASK_RESUMED = "下载任务已存在，已恢复下载"
 
 
 class DownloadTaskAction(str, _Enum):
@@ -34,6 +36,8 @@ class DownloadTaskAction(str, _Enum):
     CREATED = "created"
     # 已有任务追加选择了本次目标文件
     APPENDED = "appended"
+    # 已有任务的目标文件此前已选中，用户手动指定种子时恢复了暂停的任务
+    RESUMED = "resumed"
     # 已有任务原样复用，未做任何改动
     REUSED = "reused"
 
@@ -43,10 +47,11 @@ class DownloadTaskAction(str, _Enum):
         按下载器返回的说明识别本次对任务的动作。
 
         :param message: 下载器 download() 返回的第四项说明；仅在已返回 hash 时有意义
-        :return: 已有任务的两种约定说明分别映射为追加和复用，其余说明视为新建任务
+        :return: 已有任务的三种约定说明分别映射为追加、恢复和复用，其余说明视为新建任务
         """
         return {
             DOWNLOAD_TASK_FILES_APPENDED: cls.APPENDED,
+            DOWNLOAD_TASK_RESUMED: cls.RESUMED,
             DOWNLOAD_TASK_ALREADY_EXISTS: cls.REUSED,
         }.get(message or "", cls.CREATED)
 
@@ -73,13 +78,13 @@ class ExistingTaskRejection(str, _Enum):
     EPISODES_NOT_FOUND = "已有任务中未找到目标集数"
     # 目标主文件（视频；没有视频的种子为全部文件）此前经 MP 确认选中过，现在被取消选择（只可能是用户、插件或外部所为）
     FILES_CANCELLED = "已有任务的目标文件已被取消选择"
-    # 任务已暂停且目标尚未下载完成；不论是谁暂停的，MP 都不恢复
+    # 任务已暂停且目标尚未下载完成；自动流程不论是谁暂停的都不恢复（用户手动指定种子时会恢复，不会产生此原因）
     PAUSED = "已有任务已暂停"
     # 下载器报告任务出错（例如数据文件缺失）
     TASK_ERROR = "已有任务处于错误状态"
     # 读取任务状态失败，无法判断能否继续下载
     STATE_UNAVAILABLE = "已有任务的状态暂时无法读取"
-    # 追加选择、刷新优先级或移除"已整理"标签后回读未确认
+    # 追加选择、刷新优先级、恢复任务、移除"已整理"或补写系统种子标签后未能确认
     NOT_CONFIRMED = "已有任务的修改未能确认"
 
     @property

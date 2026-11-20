@@ -854,8 +854,12 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         """
         在可取消边界后调用下载器，并分派成功或拒绝结算。
 
-        :param user_specified: 用户明确指定了这个种子：不把确认记录交给下载器，之前被取消的目标文件会
-            重新选中；确认记录仍会读取，受理后与本次确认的文件合并写回
+        取消检查做两次：入口先检查一次，尽早退出；取得任务锁后、调用下载器前再检查一次，并在那里才标记
+        "开始产生下载副作用"。等锁期间（同一任务上的整理回写、rTorrent 新建任务的临时标签轮询等可能持锁
+        数十秒）订阅可能已被取消，只在入口检查的话，锁一释放仍会提交下载器并结算。
+
+        :param user_specified: 用户明确指定了这个种子，交给下载器：同一 hash 已存在时重新选中之前被取消的目标，
+            任务已暂停且目标未下完时恢复任务；拒绝时每次都通知，不做通知去重
         """
         if self._subscription_download_cancelled(governance):
             return None, "订阅下载在提交前已取消"
@@ -866,8 +870,6 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         submission_label = subscription_download_label(context.subscription_download)
         if submission_label:
             logger.info(f"开始下载【{submission_label}】{prepared.torrent.title} ...")
-        if governance and governance.mark_started:
-            governance.mark_started()
         category = prepared.media.category
         # 音乐尚无目录分类时仍提供稳定的下载器分类，不回写媒体的目录或元数据分类。
         if not category and prepared.media.type == MediaType.MUSIC:
@@ -887,6 +889,10 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     None, None, None, f"读取下载历史失败，未提交下载器，稍后重试：{err}",
                 )
             else:
+                if self._subscription_download_cancelled(governance):
+                    return None, "订阅下载在提交前已取消"
+                if governance and governance.mark_started:
+                    governance.mark_started()
                 result = self.download(
                     content=prepared.torrent_content,
                     cookie=prepared.torrent.site_cookie,
@@ -897,8 +903,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     downloader=downloader or prepared.site_downloader,
                     custom_words=custom_words,
                     episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
-                    # 用户手动指定种子时不识别"被取消"：这次是明确要下载，覆盖之前在下载器里的取消。
-                    confirmed_selection=None if user_specified else previous_selection,
+                    confirmed_selection=previous_selection,
+                    user_specified=user_specified,
                 )
             actual_downloader, download_hash, layout, error_msg = (
                 result if result else (None, None, None, "未找到下载器")
@@ -932,6 +938,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 userid=userid,
                 actual_downloader=actual_downloader,
                 error_msg=error_msg,
+                user_specified=user_specified,
             )
         return download_hash, error_msg
 
@@ -1114,18 +1121,21 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         userid: Union[str, int, None],
         actual_downloader: Optional[str],
         error_msg: str,
+        user_specified: bool = False,
     ) -> None:
         """
         按普通失败合同记录下载器明确拒绝并通知原调用渠道。
 
         已有任务的拒绝不会让订阅跳过候选，每一轮都交给下载器按实时状态重新判断（用户在下载器里恢复任务、
-        重新勾选文件后下一轮就能接着用）。同一原因在通知静默期内重复出现时只记日志，不再通知、不顺延记录，
-        见 ``_existing_task_rejection_noted``。
+        重新勾选文件后下一轮就能接着用）。自动流程（订阅、工作流、插件）在同一原因的通知静默期内重复遇到时
+        只记日志，不再通知、不顺延记录，见 ``_existing_task_rejection_noted``；用户手动指定种子时每次都通知。
+
+        :param user_specified: 用户明确指定了这个种子
         """
         rejection = ExistingTaskRejection.from_message(error_msg)
         downloader_scope = self._download_scope(downloader, prepared.torrent)
-        if rejection is not None and self._existing_task_rejection_noted(
-                context, rejection=rejection, downloader_scope=downloader_scope, episodes=episodes, source=source,
+        if rejection is not None and not user_specified and self._existing_task_rejection_noted(
+                context, rejection=rejection, downloader_scope=downloader_scope, episodes=episodes,
         ):
             logger.info(
                 f"{prepared.media.title_year} 下载器中的同一任务仍不能受理（与上次原因相同，不重复通知）："

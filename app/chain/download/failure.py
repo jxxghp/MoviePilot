@@ -452,25 +452,22 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             rejection: ExistingTaskRejection,
             downloader_scope: str,
             episodes: Optional[Set[int]],
-            source: Optional[str],
     ) -> bool:
         """
         判断这次已有任务的拒绝是否与仍在有效期内的上一次记录相同，相同则不再通知、不顺延记录。
 
-        已有任务的拒绝不让订阅跳过候选，每一轮都会重新交给下载器判断；如果原因一直没变（例如任务始终暂停），
-        每一轮都通知会刷屏。这里只做去重：同一范围（见 ``_build_existing_task_fingerprint``）在记录有效期内
-        出现同一原因时返回 True；原因变了、记录过期或范围不同都会照常通知并重新记录。有效期沿用失败冷却时长
-        （取消、找不到、出错 24 小时，其余 1 小时），到期后再通知一次。只对订阅来源去重，用户手动下载每次都通知。
+        已有任务的拒绝不让订阅跳过候选，每一轮都会重新交给下载器判断；工作流、插件等自动流程也会定时重复提交。
+        如果原因一直没变（例如任务始终暂停），每次都通知会刷屏。这里只做去重：同一范围（见
+        ``_build_existing_task_fingerprint``，不区分来源）在记录有效期内出现同一原因时返回 True；原因变了、记录过期
+        或范围不同都会照常通知并重新记录。有效期沿用失败冷却时长（取消、找不到、出错 24 小时，其余 1 小时），
+        到期后再通知一次。调用方只对自动流程调用；用户手动指定种子时每次都通知。
 
         :param context: 本次提交的上下文
         :param rejection: 本次拒绝原因
         :param downloader_scope: 下载器范围，见 ``_download_scope``
         :param episodes: 本次目标集号；None 或空集合表示整个种子
-        :param source: 下载来源
         :return: 与有效记录的原因相同时返回 True
         """
-        if not self._is_subscribe_source(source):
-            return False
         fingerprint = self._build_existing_task_fingerprint(
             context, downloader_scope=downloader_scope, episodes=episodes,
             target_specific=rejection.is_target_specific,

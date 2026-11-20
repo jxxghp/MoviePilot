@@ -119,6 +119,47 @@ def _covered_by_downloader_monitor(file_uri: FileURI, download_dirs: List[Transf
     )
 
 
+def _reported_incomplete(item: FileItem, incomplete_files: Optional[list[str]]) -> bool:
+    """
+    判断候选文件是否是下载器报告尚未下载完成的文件。
+
+    下载器报告的是任务内的相对路径，候选是存储上的完整路径，两者只有前缀不同（保存目录、路径映射），
+    按以 "/" 为边界的路径后缀比对；同一任务内的相对路径互不相同。
+
+    :param item: 候选文件
+    :param incomplete_files: 下载器报告尚未下载完成的文件相对路径；为空表示无需过滤
+    :return: 候选是其中某个文件时返回 True
+    """
+    if not incomplete_files:
+        return False
+    path = "/" + str(item.path or "").replace("\\", "/").lstrip("/")
+    return any(path.endswith("/" + str(name).replace("\\", "/").lstrip("/")) for name in incomplete_files if name)
+
+
+def _drop_reported_incomplete(
+        candidates: List[Tuple[FileItem, bool]], incomplete_files: Optional[list[str]],
+) -> List[Tuple[FileItem, bool]]:
+    """
+    从候选中去掉下载器报告尚未下载完成的文件，并记录跳过了哪些。
+
+    :param candidates: 遍历得到的候选文件与是否位于蓝光目录
+    :param incomplete_files: 下载器报告尚未下载完成的文件相对路径；为空表示无需过滤
+    :return: 保留的候选
+    """
+    if not incomplete_files:
+        return candidates
+    kept: List[Tuple[FileItem, bool]] = []
+    skipped: List[str] = []
+    for item, is_bluray_dir in candidates:
+        if _reported_incomplete(item, incomplete_files):
+            skipped.append(str(item.name))
+        else:
+            kept.append((item, is_bluray_dir))
+    if skipped:
+        logger.info(f"跳过下载器报告尚未下载完成的文件：{'、'.join(skipped)}")
+    return kept
+
+
 class TransferWorkflowOwner(_TransferOwnerBase):
     """
     协调请求级候选构建并委托规划、执行与结算组件。
@@ -360,12 +401,16 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         season: Optional[int],
         continue_callback: Optional[Callable[[], bool]],
         selected_fileitems: Optional[list[FileItem]] = None,
+        incomplete_files: Optional[list[str]] = None,
     ) -> Tuple[List[Tuple[FileItem, bool]], bool]:
         """
         收集并过滤本次整理的候选文件。
 
         候选遍历只负责发现文件，业务过滤集中在此阶段；返回模板命中状态供公开整理流程
         保持“未命中自定义集数模板时跳过”的旧行为。
+
+        :param incomplete_files: 下载器报告尚未下载完成的文件相对路径（只选中部分文件的下载器任务），一律跳过：
+            取消选择前下了一部分、或与选中文件共用分块被写入部分数据的文件留在任务目录里，不能当成正常文件整理
         """
         format_handler = (
             FormatParser(
@@ -434,6 +479,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 for selected_fileitem in selected_fileitems
                 if (latest_fileitem := storage_chain.get_item(selected_fileitem))
             ]
+        candidates = _drop_reported_incomplete(candidates, incomplete_files)
         return [
             (item, is_bluray_dir) for item, is_bluray_dir in candidates if is_allowed(item, is_bluray_dir)
         ], matched_template
@@ -549,6 +595,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         skip_success: bool = False,
         music_track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
         music_target_path: Optional[Path] = None,
+        incomplete_files: Optional[list[str]] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         执行一个复杂目录的整理操作
@@ -587,6 +634,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param skip_success: 在预览、历史清理及任务准入前跳过成功记录
         :param music_track_match: 手选专辑的曲目对齐方式，默认严格校验
         :param music_target_path: 本次音乐最终目录，冻结后用于预览及恢复执行
+        :param incomplete_files: 下载器报告尚未下载完成的文件相对路径，整理时跳过；由下载器整理轮询对只选中部分文件的
+            任务提供，其余调用方省略
         返回：成功标识，错误信息
         """
         selected_music_album: Optional[MusicAlbumInfo]
@@ -654,6 +703,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 season=season,
                 continue_callback=continue_callback,
                 selected_fileitems=selected_fileitems,
+                incomplete_files=incomplete_files,
             )
         except OperationInterrupted:
             return submission.result(False, [f"{fileitem.name} 已取消"], preview=False, preview_items=[])

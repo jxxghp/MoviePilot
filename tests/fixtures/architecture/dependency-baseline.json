@@ -977,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10435,
-  "edge_sha256": "b18ce82adce70c6a46f1d1a202eb0ac583d4f7a1861c9c2ad6c8ffe6b689153d",
+  "edge_count": 10436,
+  "edge_sha256": "3e3475aea3339aa6161d6a47463f55b78928a77525c5531cb213ce48e4b1c7ec",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7551,6 +7551,7 @@
     "app.modules._base.downloader -> app.runtime.settings",
     "app.modules._base.downloader -> app.schemas",
     "app.modules._base.downloader -> app.schemas.download",
+    "app.modules._base.downloader -> app.schemas.transfer",
     "app.modules._base.downloader -> app.schemas.types",
     "app.modules._base.media -> app.domain",
     "app.modules._base.media -> app.domain.context",

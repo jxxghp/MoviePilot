@@ -2088,7 +2088,7 @@ def test_settle_accepted_download_records_actual_path_for_existing_torrent():
     复现刷流先下载场景：下载历史与文件明细须记录下载器实际路径。
     """
     chain = DownloadChain.__new__(DownloadChain)
-    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",))
+    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",), video_extensions=(".mkv",))
     chain.durable_event_writer = None
     chain.download_history_repository = MagicMock()
     chain._build_download_notification = MagicMock(return_value=None)

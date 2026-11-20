@@ -13,6 +13,7 @@ from app.chain.download.facade import DownloadChain
 from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.modules import transmission as transmission_module
 from app.modules._base import downloader as downloader_base
 from app.modules.qbittorrent import QbittorrentModule
 from app.modules.rtorrent import RtorrentModule
@@ -20,8 +21,10 @@ from app.modules.transmission import TransmissionModule
 from app.schemas.download import (
     DOWNLOAD_TASK_ALREADY_EXISTS,
     DOWNLOAD_TASK_FILES_APPENDED,
+    DOWNLOAD_TASK_RESUMED,
     ExistingTaskRejection,
 )
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
 
 
@@ -273,6 +276,7 @@ def existing_task(module, server, torrent_hash, names, *, wanted=(), completed=(
     server.set_files.side_effect = write_files
     server.start_torrents.side_effect = start
     server.torrents_set_force_start.side_effect = start
+    server.resume_torrents.side_effect = start
     server.stop_torrents.side_effect = stop
     server.set_torrents_tag.side_effect = add_tags
     server.remove_torrents_tag.side_effect = remove_tags
@@ -350,6 +354,56 @@ def test_paused_task_is_left_untouched(selected_downloader, tags) -> None:
     _assert_task_untouched(server)
 
 
+@pytest.mark.parametrize("target_selected,message", [
+    (False, DOWNLOAD_TASK_FILES_APPENDED),
+    (True, DOWNLOAD_TASK_RESUMED),
+])
+def test_user_specified_torrent_resumes_paused_task(selected_downloader, target_selected, message) -> None:
+    """
+    用户手动指定了这个种子：任务已暂停、目标没下完时，先追加目标（如需）再恢复任务；只是没下完时只恢复。
+    其他文件与优先级保持原样，不取消任何选择。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    files, task = existing_task(
+        module, server, torrent_hash, _SEASON, wanted={0, 1} if target_selected else {0}, completed={0}, stopped=True,
+    )
+    start = server.start_torrents.side_effect
+
+    def start_after_append(*args, **kwargs):
+        """
+        恢复时目标必须已经追加：先恢复再追加的话，任务会先按旧的选择跑一会儿。
+        """
+        assert files[1]["wanted"] is True
+        return start(*args, **kwargs)
+
+    server.start_torrents.side_effect = start_after_append
+
+    result = module.download(content, Path("/downloads"), "", episodes={6}, user_specified=True)
+
+    assert result[1] == torrent_hash
+    assert result[3] == message
+    assert [files[index]["wanted"] for index in range(3)] == [True, True, False]
+    assert task["stopped"] is False
+    for call in server.set_files.call_args_list:
+        assert call.kwargs.get("priority", 1) > 0
+    server.set_unwanted_files.assert_not_called()
+
+
+def test_resume_failure_fails_acceptance(selected_downloader) -> None:
+    """
+    恢复暂停的任务未确认时不算受理，不能让下载链记成已下载；已追加的文件不回滚，下次请求会接着补做。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    files, task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0}, stopped=True)
+    server.start_torrents.side_effect = lambda *_args, **_kwargs: False
+
+    result = module.download(content, Path("/downloads"), "", episodes={6}, user_specified=True)
+
+    assert result[1] is None
+    assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.NOT_CONFIRMED
+    assert files[1]["wanted"] is True and task["stopped"] is True
+
+
 @pytest.mark.parametrize("stopped,tags,completed", [
     (True, ["MOVIEPILOT"], {1}),
     (False, [], {1}),
@@ -389,8 +443,7 @@ def _confirmed_on(downloader, *indexes):
     """
     构造某台下载器上确认选中过 ``_SEASON`` 中指定文件的记录。
     """
-    files = frozenset(torrent_rules.ConfirmedFile(index, (_SEASON[index],)) for index in indexes)
-    return torrent_rules.ConfirmedSelection().record(downloader, files, replace=True)
+    return torrent_rules.ConfirmedSelection().record(downloader, frozenset(indexes), replace=True)
 
 
 @pytest.mark.parametrize("confirmed,accepted", [
@@ -406,7 +459,7 @@ def test_cancelled_target_video_is_never_reselected(selected_downloader, confirm
     E06 曾由 MP 在这台下载器上确认选中、现在不再下载，只可能是别人取消的：不重新选中，拒绝后换种子。
 
     从未被 MP 在这台下载器上确认选中过的文件（只确认过 E05、只在别的下载器上确认过、只有升级前的历史、
-    外部添加的任务，或用户手动指定种子时下载链不传记录）照常追加。
+    外部添加的任务）照常追加；用户手动指定种子的情况见 ``test_user_specified_torrent_reselects_cancelled_target``。
     """
     module, server, content, torrent_hash = selected_downloader
     files, _task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
@@ -600,6 +653,31 @@ def test_archive_tag_removal_failure_fails_acceptance(selected_downloader) -> No
     assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.NOT_CONFIRMED
 
 
+@pytest.mark.parametrize("failure", ["write", "read_back"])
+def test_torrent_tag_must_be_confirmed(selected_downloader, failure) -> None:
+    """
+    外部添加、没有系统种子标签的任务：下载器整理轮询只扫描带这个标签的任务，补写失败或回读不到时不算受理，
+    否则追加的集下载完成后不会被自动整理，订阅却已记成下载中。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    files, task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0}, tags=["PT站"])
+    if failure == "write":
+        server.set_torrents_tag.side_effect = lambda *_args, **_kwargs: False
+        server.replace_torrent_labels.side_effect = lambda *_args, **_kwargs: False
+    else:
+        server.set_torrents_tag.side_effect = lambda *_args, **_kwargs: True
+        server.replace_torrent_labels.side_effect = lambda *_args, **_kwargs: True
+
+    result = module.download(content, Path("/downloads"), "", episodes={6})
+
+    assert result[1] is None
+    assert ExistingTaskRejection.from_message(result[3]) is ExistingTaskRejection.NOT_CONFIRMED
+    assert "MOVIEPILOT" in result[3]
+    assert task["tags"] == ["PT站"]
+    # 已追加的文件不回滚，下一轮按原样复用重试补写标签。
+    assert files[1]["wanted"] is True
+
+
 def test_transmission_clears_only_archive_label_without_torrent_tag(selected_downloader, monkeypatch) -> None:
     """
     未配置系统种子标签且只剩"已整理"时也要清空：旧实现把移除嵌在系统标签判断里，永远清不掉。
@@ -668,6 +746,122 @@ def test_transfer_completed_never_overwrites_labels_when_read_fails(selected_dow
     assert task["tags"] == ["PT站", "MOVIEPILOT"]
     server.replace_torrent_labels.assert_not_called()
     server.set_torrent_tag.assert_not_called()
+
+
+@pytest.mark.parametrize("failed_reads,expected", [
+    (0, ["PT站", "新标签"]),
+    (1, ["PT站", "新标签"]),
+    (3, ["PT站", "已整理", "新标签"]),
+])
+def test_transmission_rollback_rereads_labels(selected_downloader, monkeypatch, failed_reads, expected) -> None:
+    """
+    Transmission 只能整体覆盖标签：写入"已整理"后复核期间别处新加了标签，撤回时基于重新读到的标签计算，保留新标签。
+    读取失败时短暂重试；一直读不到就不撤回，绝不用写入前的旧列表覆盖（那会清掉刚加的标签）。
+    """
+    module, server, _content, torrent_hash = selected_downloader
+    if not isinstance(module, TransmissionModule):
+        pytest.skip("只有 Transmission 需要整体覆盖标签")
+    monkeypatch.setattr(transmission_module, "_LABEL_REREAD_INTERVAL", 0)
+    _files, task = existing_task(module, server, torrent_hash, _SEASON, wanted={0, 1}, completed={0}, tags=["PT站"])
+    read_files = server.get_files.side_effect
+    read_torrents = server.get_torrents.side_effect
+    failures = {"left": failed_reads}
+
+    def flaky_torrents(*args, **kwargs):
+        """
+        复核之后的标签读取先失败指定次数。
+        """
+        if failures["left"] > 0:
+            failures["left"] -= 1
+            return [], True
+        return read_torrents(*args, **kwargs)
+
+    def tag_during_review(*args, **kwargs):
+        """
+        复核逐文件状态时，别处给任务加了新标签；之后的标签读取按需失败。
+        """
+        task["tags"].append("新标签")
+        server.get_torrents.side_effect = flaky_torrents
+        return read_files(*args, **kwargs)
+
+    server.get_files.side_effect = tag_during_review
+
+    module.transfer_completed(torrent_hash)
+
+    assert task["tags"] == expected
+
+
+@pytest.mark.parametrize("existing,written", [
+    (["MOVIEPILOT", "TV"], None),
+    (["MOVIEPILOT"], ["TV"]),
+    (["PT站"], ["MOVIEPILOT", "TV"]),
+])
+def test_multiple_torrent_tags_are_checked_one_by_one(selected_downloader, monkeypatch, existing, written) -> None:
+    """
+    TORRENT_TAG 可以配置多个逗号分隔的标签，整理轮询要求全部带上：只补缺少的，回读确认全部都在；
+    已经全部带上时不写入，也不能因为把整串配置当成一个标签比较而误判失败、让订阅换源重复下载。
+    """
+    module, server, content, torrent_hash = selected_downloader
+    original = downloader_base.get_runtime_setting
+    monkeypatch.setattr(
+        downloader_base, "get_runtime_setting",
+        lambda key, *args: "MOVIEPILOT, TV" if key == "TORRENT_TAG" else original(key, *args),
+    )
+    _files, task = existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0}, tags=existing)
+
+    result = module.download(content, Path("/downloads"), "", episodes={6})
+
+    assert result[3] == DOWNLOAD_TASK_FILES_APPENDED
+    assert set(task["tags"]) == {*existing, "MOVIEPILOT", "TV"}
+    if written is None:
+        server.set_torrents_tag.assert_not_called()
+        server.replace_torrent_labels.assert_not_called()
+    elif isinstance(module, TransmissionModule):
+        server.replace_torrent_labels.assert_called_once_with(ids=torrent_hash, labels=[*existing, *written])
+    else:
+        server.set_torrents_tag.assert_called_once_with(ids=torrent_hash, tags=written)
+
+
+def _transfer_torrent(torrent_hash, *, selected_size, size=126):
+    """
+    构造整理轮询查到的已完成任务。
+    """
+    return DownloaderTorrent(downloader="test-downloader", hash=torrent_hash, size=size, selected_size=selected_size)
+
+
+def test_partial_task_reports_incomplete_files_for_transfer(selected_downloader) -> None:
+    """
+    E05 已下完，E06 下到一半后被取消选择（残缺文件仍在磁盘上），E07 从未下载：任务按选中部分已完成进入整理轮询，
+    同时附上下载器报告未下载完成的 E06、E07，整理时跳过，不把残缺视频当成正常剧集入库。
+    """
+    module, server, _content, torrent_hash = selected_downloader
+    existing_task(module, server, torrent_hash, _SEASON, wanted={0}, completed={0})
+
+    (admitted,) = module._admit_transfer_torrent(server, _transfer_torrent(torrent_hash, selected_size=42))
+
+    assert admitted.incomplete_files == ["Show.S01E06.mkv", "Show.S01E07.mkv"]
+
+
+def test_fully_selected_task_needs_no_file_check(selected_downloader) -> None:
+    """
+    选中大小等于总大小（整包都下完）时不需要逐文件确认，不多查一次文件列表。
+    """
+    module, server, _content, torrent_hash = selected_downloader
+
+    (admitted,) = module._admit_transfer_torrent(server, _transfer_torrent(torrent_hash, selected_size=126))
+
+    assert admitted.incomplete_files is None
+    server.get_files.assert_not_called()
+
+
+def test_partial_task_with_unreadable_files_waits_for_next_round(selected_downloader) -> None:
+    """
+    只选中部分文件、却读不到逐文件状态时本轮不交给整理：宁可晚整理，也不整理残缺文件。
+    """
+    module, server, _content, torrent_hash = selected_downloader
+    server.get_files.return_value = None
+
+    assert module._admit_transfer_torrent(server, _transfer_torrent(torrent_hash, selected_size=42)) == []
 
 
 def test_rtorrent_pending_target_refreshes_priorities_on_retry(selected_downloader) -> None:

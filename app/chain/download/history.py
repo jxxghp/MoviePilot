@@ -91,7 +91,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         下载历史、文件明细、通知与重复退避是四件不同的事，不能互相替代（#7078/#7107 的教训）：
         - 下载历史：每次受理都写，记录这一次请求；
         - 文件明细：复用已有任务时按完整路径去重，只防止重复写入同一行，不参与任何业务判断；
-        - 通知：只在新建任务或真正追加了文件时发送，原样复用时不发"开始下载"；
+        - 通知：只在新建任务、真正追加了文件或按手动指定恢复了暂停的任务时发送，原样复用时不发"开始下载"；
         - 确认记录：note 中累积"MP 在各台下载器的该任务上确认选中过的文件"，用于之后识别被别人取消的
           文件，见 ``_confirmed_task_selection``；
         - 重复退避：见 ``_should_record_duplicate_backoff``。
@@ -185,7 +185,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             "downloader": downloader, "episodes": episodes or meta.episode_list, "source": source,
             "task_action": task_action.value,
         }
-        notify = task_action in (DownloadTaskAction.CREATED, DownloadTaskAction.APPENDED)
+        notify = task_action in (DownloadTaskAction.CREATED, DownloadTaskAction.APPENDED, DownloadTaskAction.RESUMED)
         notification = None if not notify else self._build_download_notification(
             media=media,
             meta=meta,
@@ -242,9 +242,9 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         """
         计算写入本条下载历史的"MP 在同一种子上确认选中过的文件"（按下载器分开）。
 
-        下载器只有在目标确认选中后才返回 hash，因此按与下载器相同的选集规则，从受理后读到的下载器文件列表
-        算出的目标文件（含附属文件）就是这次确认选中的文件（见 ``app.domain.torrent.confirmed_target_files``）。
-        写入时：
+        下载器只有在目标确认选中后才返回 hash，因此按与下载器相同的规则，从受理后读到的下载器文件列表
+        算出的文件就是这次确认选中的文件（见 ``app.domain.torrent.confirmed_target_files``）：新建整包是全部文件，
+        其余是按选集规则算出的目标文件（含附属文件）。写入时：
         - 新建任务：替换这台下载器的旧记录。同一 hash 的旧任务可能已被删除后重新添加，旧记录里的文件在
           新任务上从未选中，沿用会被误判为"被取消"；
         - 复用已有任务：与这台下载器的旧记录合并，使记录随多次追加累积；
@@ -264,9 +264,12 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         current = torrent_rules.confirmed_target_files(
             accepted_files or (),
             episodes=episodes,
-            media_extensions=self.runtime_config.media_extensions,
+            # 必须与下载器选集同一口径（RMT_MEDIAEXT，只有视频）：runtime_config.media_extensions 还包括字幕、音频、
+            # 歌词与临时文件后缀，用它会把字幕当成视频，算出的目标与下载器实际选中的不一致。
+            media_extensions=self.runtime_config.video_extensions,
             custom_words=custom_words,
             episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
+            new_task=not task_action.is_existing_task,
         )
         return (previous or torrent_rules.ConfirmedSelection()).record(
             str(downloader or ""), current, replace=not task_action.is_existing_task,

@@ -26,14 +26,15 @@ class TorrentData(TypedDict):
     :ivar dlspeed: 当前下载速率，字节每秒
     :ivar upspeed: 当前上传速率，字节每秒
     :ivar state: 启动状态，0 为停止，1 为启动
-    :ivar complete: 完成标记，0 为未完成，1 为完成
+    :ivar complete: 选中部分是否已全部下载，0 为未完成，1 为完成；由 ``d.complete`` 与 ``d.is_partially_done``
+        合成，与 qBittorrent、Transmission 的"已完成"口径一致，见 ``Rtorrent.get_torrents``
     :ivar save_path: 保存目录
     :ivar tags: custom1 存储的逗号分隔标签
     :ivar is_active: 下载器返回的活动状态
     :ivar is_open: 下载器返回的文件打开状态
     :ivar ratio: 从千分比转换后的分享率
     :ivar content_path: 完整内容路径；下载器未提供时为 None，由调用端回退计算
-    :ivar progress: 下载进度百分比，零大小任务为 0
+    :ivar progress: 下载进度百分比；选中部分已全部下载时为 100，否则为已下载字节占总字节的比例，零大小任务为 0
     """
 
     hash: str
@@ -322,6 +323,7 @@ class Rtorrent:
                 "d.is_open=",
                 "d.ratio=",
                 "d.base_path=",
+                "d.is_partially_done=",
             ]
             results = self._proxy.d.multicall2("", "main", *fields)
             torrents: list[TorrentData] = []
@@ -343,7 +345,15 @@ class Rtorrent:
                     "progress": 0,
                     "content_path": _rpc_optional_text(r[13]),
                 }
-                if torrent["total_size"] > 0:
+                # rTorrent 的 d.complete 只在整个种子的全部分块都完成时才为 1（libtorrent FileList::is_done）。
+                # 只选了部分文件的任务，选中部分下完后只有 d.is_partially_done 为 1（需要的分块已全部完成），
+                # d.complete 一直是 0：不合成的话，只下几集的任务永远进不了下载器整理，进度也停在部分比例。
+                # 没有任何已下载数据时（例如全部文件都设为不下载）不算完成。
+                if torrent["complete"] != 1 and _rpc_number(r[14]) == 1 and torrent["completed"] > 0:
+                    torrent["complete"] = 1
+                if torrent["complete"] == 1:
+                    torrent["progress"] = 100
+                elif torrent["total_size"] > 0:
                     torrent["progress"] = (
                         torrent["completed"] / torrent["total_size"] * 100
                     )
@@ -481,6 +491,26 @@ class Rtorrent:
             return True
         except Exception as err:
             logger.error(f"启动种子出错：{str(err)}")
+            return False
+
+    def resume_torrents(self, ids: Union[str, list[str]]) -> bool:
+        """
+        恢复被 ``d.pause`` 暂停的种子任务（``d.resume``）；对已在运行的任务没有影响。
+
+        ``d.start`` 只把任务放进 started 视图，已在该视图中、被暂停的任务不会因此恢复。
+        批量操作按任务依次发送，后续失败不会撤销此前已完成的请求。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
+        """
+        if not self._proxy:
+            return False
+        try:
+            for tid in [ids] if isinstance(ids, str) else ids:
+                self._proxy.d.resume(tid)
+            return True
+        except Exception as err:
+            logger.error(f"恢复种子出错：{str(err)}")
             return False
 
     def stop_torrents(self, ids: Union[str, list[str]]) -> bool:
