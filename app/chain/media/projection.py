@@ -463,6 +463,23 @@ def _mapping_query(plan: _ProjectionPlan) -> MediaMappingQuery | None:
         return None
 
 
+def _season_unlisted(result: _ProjectionPayload, season: object) -> bool:
+    """
+    判断 TMDB 详情是否给出了季列表却没有转换附带的季号。
+
+    TMDB 季匹配未命中时会按整剧名称回退，转换仍附带请求的季号；只有详情带季列表时才能核实，
+    缺少季列表的插件结果保持原有处理。
+
+    :param result: 转换得到的完整 TMDB 详情
+    :param season: 转换附带的 TMDB 季号，None 表示未指定
+    :return: 详情给出季列表但其中没有该季时为 True
+    """
+    seasons = result.get("seasons")
+    if season is None or not isinstance(seasons, Sequence) or isinstance(seasons, (str, bytes)):
+        return False
+    return not any(isinstance(item, Mapping) and item.get("season_number") == season for item in seasons)
+
+
 def _extract_mapping(
     plan: _ProjectionPlan,
     query: MediaMappingQuery,
@@ -474,7 +491,7 @@ def _extract_mapping(
     :param plan: 原来源身份及转换上下文，结果未声明类型时回退到调用方类型
     :param query: 由同一转换计划生成的共享查询
     :param result: 转换得到的完整 TMDB 详情，失败为 None
-    :return: 可共享的关系；结果缺少有效 TMDB 类型或 ID 时为 None
+    :return: 可共享的关系；结果缺少有效 TMDB 类型或 ID，或 TMDB 详情未列出附带的季时为 None
     """
     if not result:
         return None
@@ -485,10 +502,13 @@ def _extract_mapping(
         if media_type not in (MediaType.MOVIE, MediaType.TV):
             return None
         target_type: Literal["movie", "tv"] = "movie" if media_type == MediaType.MOVIE else "tv"
+        tmdb_season = result.get("season") if target_type == "tv" else None
+        if _season_unlisted(result, tmdb_season):
+            # 整剧回退命中的季号未经核实，不能写成不存在的季链接；订阅转换结果本身不受影响。
+            return None
         return MediaMapping.model_validate({
             **query.model_dump(), "type": query.type or target_type,
-            "tmdb_id": result.get("id"), "tmdb_type": target_type,
-            "tmdb_season": result.get("season") if target_type == "tv" else None,
+            "tmdb_id": result.get("id"), "tmdb_type": target_type, "tmdb_season": tmdb_season,
         })
     except (ValidationError, TypeError, ValueError):
         # 未提供有效 TMDB 身份的旧插件结果继续返回业务调用方，但不能污染公共关系表。

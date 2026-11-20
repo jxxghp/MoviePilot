@@ -384,6 +384,28 @@ def test_chain_match_returns_none_without_valid_identity(monkeypatch, result) ->
     port.share.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("seasons", "listed"),
+    [
+        ([{"season_number": 0}, {"season_number": 1}], False),
+        ([{"season_number": 1}, {"season_number": 2}], True),
+    ],
+)
+def test_chain_match_returns_season_only_when_tmdb_lists_it(monkeypatch, seasons, listed) -> None:
+    """
+    季匹配回退到整剧名称时转换仍附带请求的季号；TMDB 详情未列出该季则不返回也不上报。
+    """
+    from app.chain.media import projection
+
+    port = SimpleNamespace(async_query=AsyncMock(return_value=None), share=Mock())
+    configure_media_mapping_port(port)
+    result = {"id": 456, "media_type": MediaType.TV, "season": 2, "seasons": seasons}
+    monkeypatch.setattr(projection, "_async_convert_builtin_projection", AsyncMock(return_value=result))
+    actual = asyncio.run(MediaChain.async_match_media_mapping(SimpleNamespace(), match_query()))
+    assert actual == (found(match_query()) if listed else None)
+    assert port.share.called is listed
+
+
 def test_chain_match_rejects_unsupported_identity_without_conversion(monkeypatch) -> None:
     """
     来源 ID 不符合转换规则时直接返回 None，不进入转换，也不写回共享表。

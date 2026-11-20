@@ -179,7 +179,9 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 优先于本地记录（没找到后被订阅补齐、本地结果被 Server 修正）、10 分钟记录与 LRU 淘汰、
 同条目合并、第 5 个不同条目被拒绝、请求断开后查找继续并占用名额、任务首次调度前被关停取消时
 仍清理在途项、超时和异常不写记录，以及结论日志。Chain 方法用例覆盖豆瓣电影、豆瓣剧集、
-Bangumi、AniList 与插件来源，确认返回值与上报关系一致；接口用例覆盖参数校验和 429/502/503 翻译。
+Bangumi、AniList 与插件来源，确认返回值与上报关系一致；季匹配回退到整剧名称且 TMDB 详情未列出
+所附季号时既不返回也不上报，订阅转换结果保持不变（`tests/test_media_mapping.py` 同步覆盖上报路径）；
+接口用例覆盖参数校验和 429/502/503 翻译。
 新增 `app/application/server/lookup.py` 进入启动导入闭包，三个启动入口的模块数快照各增加 1；
 仅更新该结构事实，原冷导入耗时记录与 3000ms 上限保留。上述用例不访问 TMDB、豆瓣或 Server。
 
