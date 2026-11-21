@@ -474,6 +474,14 @@ class _ProviderCatalog:
                 api_key_hint="填写 TrustedRouter API Key，可在 https://trustedrouter.com 注册后获取。",
                 description="TrustedRouter OpenAI-compatible 模型网关，模型 ID 带厂商前缀（如 anthropic/claude-sonnet-4.5），trustedrouter/auto 为自动路由。",
             ),
+            openai_provider(
+                provider_id="aigrow",
+                name="AIGROW",
+                default_base_url="https://aigrow.gg/v1",
+                sort_order=64,
+                api_key_hint="填写 AIGROW API Key，可在 https://aigrow.gg/dashboard/api 创建。需预充值。",
+                description="AIGROW 预充值的 OpenAI-compatible 模型平台，一个 Key 覆盖 Claude、GPT、Gemini、Grok、Qwen 与 Kimi 等模型，模型 ID 不带厂商前缀（如 claude-haiku-5.5）。",
+            ),
             catalog_openai_provider(
                 provider_id="github-models",
                 name="GitHub Models",
