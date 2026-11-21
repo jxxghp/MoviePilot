@@ -6,12 +6,13 @@ import hashlib
 import json
 import re
 from collections import Counter
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union, cast
 
-from app.application.audio import AudioMetadataHelper, capture_audio_metadata
+from app.application.audio import AudioMetadataHelper, capture_audio_metadata, music_cue_enabled
 from app.application.history import DownloadHistorySnapshot
 from app.application.history.retry import max_failed_retries
 from app.application.music.observation import BLOCKING_MUSIC_RECOGNITION_STATES, RETRYABLE_MUSIC_RECOGNITION_STATES
@@ -276,24 +277,67 @@ def _release_item_path(item: FileItem) -> Path:
     return Path(item.path)
 
 
+def _incomplete_cue_name(directory: Path, reported_incomplete: Callable[[Optional[str]], bool]) -> Optional[str]:
+    """
+    找出目录中磁盘上已存在、但下载器报告尚未下载完成的 CUE。
+
+    与音频元数据读取扫描 CUE 的范围一致：只看同目录、不以点开头的 ``.cue`` 文件。
+
+    :param directory: 音频所在目录
+    :param reported_incomplete: 判断存储路径是否是下载器报告尚未下载完成的文件
+    :return: 其中一个未下载完成的 CUE 文件名；没有或目录无法读取时为 None（目录读取失败交给后续读取元数据处理）
+    """
+    try:
+        names = sorted(
+            entry.name for entry in directory.iterdir()
+            if entry.suffix.casefold() == ".cue" and not entry.name.startswith(".") and entry.is_file()
+        )
+    except OSError:
+        return None
+    return next((name for name in names if reported_incomplete(str(directory / name))), None)
+
+
 def append_cue_companions(
         owner: _TransferOwnerBase,
         items: list[tuple[FileItem, bool]],
         inherited: dict[Tuple[str, str], Any],
         video_source: bool,
         exclude_words: Any,
+        reported_incomplete: Optional[Callable[[Optional[str]], bool]] = None,
 ) -> tuple[list[tuple[FileItem, bool]], dict[Tuple[str, str], Any]]:
     """
     把有效整轨 CUE 排在其音频后归档；分轨 CUE 仅供识别，避免复制失效引用。
+
+    下载器报告音频同目录的 CUE 尚未下载完成时（只选中部分文件的下载器任务），该目录的音频本轮都不整理，CUE 也不补入：
+    整轨/分轨的判断和 CUE 里的曲目信息都来自同目录的 CUE，残缺的 CUE 可能解析失败（整理报错）、解析出不全的曲目
+    （整轨被当成单曲或分轨归档），或根本找不到对音频的引用（整轨被当成普通音频归档）。等 CUE 下完后的下一轮再整理；
+    磁盘上不存在的 CUE（未选中且没有写入数据）不影响解析，不因此延期。被延期的音频不在返回的整理项里。
+
+    :param owner: 整理链实例
+    :param items: 已规划的整理项
+    :param inherited: 已继承的文件元数据，补入的 CUE 在此登记音频元数据
+    :param video_source: 本次请求是否有可靠的视频来源；有则不处理音乐 CUE
+    :param exclude_words: 用户的整理过滤规则
+    :param reported_incomplete: 判断存储路径是否是下载器报告尚未下载完成的文件；为 None 表示无需过滤
+    :return: 补入 CUE 后的整理项（去掉本轮延期的音频）与继承元数据
     """
     if video_source:
         return items, inherited
     result = list(items)
     known = {owner._get_file_key(item) for item, _ in items}
+    waiting: set[Tuple[str, str]] = set()
+    incomplete_cues: dict[Path, Optional[str]] = {}
     for item, bluray in items:
         if bluray or item.storage != "local" or not item.path or not owner._is_audio_file(item):
             continue
         path = Path(item.path)
+        if reported_incomplete is not None and music_cue_enabled():
+            if path.parent not in incomplete_cues:
+                incomplete_cues[path.parent] = _incomplete_cue_name(path.parent, reported_incomplete)
+            if cue_name := incomplete_cues[path.parent]:
+                logger.info(f"同目录的 {cue_name} 尚未下载完成，本轮不整理 {path.name}；如未在下载器中选中该 CUE，请选中并等待下载完成")
+                waiting.add(owner._get_file_key(item))
+                continue
         meta = AudioMetadataHelper.read(path)
         if meta.music_layout != "image_cue" or not meta.cue_filename or meta.organization_error:
             continue
@@ -314,6 +358,8 @@ def append_cue_companions(
             result.append((cue_item, False))
             known.add(key)
         inherited[key] = deepcopy(meta)
+    if waiting:
+        result = [entry for entry in result if owner._get_file_key(entry[0]) not in waiting]
     return result, inherited
 
 

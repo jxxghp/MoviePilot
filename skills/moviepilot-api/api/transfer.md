@@ -130,7 +130,10 @@ Purpose: 为没有文件副作用的识别失败历史提交已核实的电影�
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `history_id*` (integer): 历史查询操作返回的持久化整理或订阅历史标识。
 - `query`: none
-- `body`: `episode` (integer|null): 修正后的单集集号；为空时保留原集数范围; `media_id*` (string; minimum length `1`): 经媒体查询核实的来源原生 ID; `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `media_type*` (string(movie,tv)): 经核实的电影或电视剧类型; `season` (integer|null): 修正后的季号，0 为特别篇；为空时保留原值; `settlement_revision*` (integer; minimum `1.0`): 接管上下文中的原始结算版本，拒绝分析期间已变化的任务; `task_id*` (string; minimum length `1`): 接管上下文中的原始持久任务标识，必须与历史绑定一致
+- `body`: `episode` (integer|null): 修正后的单集集号；为空时保留原集数范围; `media_id*` (string; minimum length `1`): 经媒体查询核实并与 media_source 原样配对的来源原生 ID，重新规划时直接按该身份识别; `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `media_type*` (string(movie,tv)): 经核实的电影或电视剧类型，须与该来源原生 ID 对应; `season` (integer|null): 修正后的季号，0 为特别篇；为空时保留原值; `settlement_revision*` (integer; minimum `1.0`): 接管上下文中的原始结算版本，拒绝分析期间已变化的任务; `task_id*` (string; minimum length `1`): 接管上下文中的原始持久任务标识，必须与历史绑定一致
+- `path_params.history_id` 使用本次失败历史 ID，`body.task_id` 和 `body.settlement_revision` 原样保留接管上下文中的任务与结算版本。
+- `body.media_source`、`body.media_id`、`body.media_type` 必须来自同一次核实的媒体身份。重新规划会清空旧识别结果，再按该身份直接查询，预览与提交使用同一身份及季集。
+- 受理后通过 `transfer.history` 核实整理结果，受理或排队仅表示任务等待执行。
 
 ### `transfer.manual_history`
 `POST /api/v1/transfer/manual/history`; policy effect: `safe_read`.

@@ -712,6 +712,7 @@ class ConfigModel(BaseModel):
                 "bangumi.lol",
                 "raw.githubusercontent.com",
                 "github.com",
+                "avatars.githubusercontent.com",
                 "thetvdb.com",
                 "cctvpic.com",
                 "iqiyipic.com",
@@ -753,6 +754,7 @@ class ConfigModel(BaseModel):
 
     # AI智能体配置
     AI_AGENT_ENABLE: bool = Field(default=False, description='AI智能体开关')
+    AI_AGENT_KNOWLEDGE_ENABLE: bool = Field(default=True, description='是否允许 Agent 使用 MoviePilot Server 的中心知识工具')
     AGENT_INTERACTIVE_PRIORITY: bool = Field(default=True, description='为交互式智能助手隔离执行容量，并让新启动的非关键后台服务有限避让')
     AGENT_BACKGROUND_DEFER_SECONDS: int = Field(default=30, ge=0, description='交互活跃时非关键后台服务最多避让的秒数，0为不避让；不暂停已开始的任务')
     AGENT_LLM_TIMEOUT: int = Field(default=180, ge=0, description='Agent单次模型请求的总超时秒数，包含供应商重试；0为不限制')

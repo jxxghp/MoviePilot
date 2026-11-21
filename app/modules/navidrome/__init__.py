@@ -153,6 +153,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         server: Optional[str] = None,
         *,
         query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
     ) -> Optional[_SchemaExistMediaInfo]:
         """
         按条目标识或音乐名称检查媒体是否已入库。
@@ -161,6 +162,8 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param itemid: 可选专辑标识，优先查询；不匹配时继续按名称搜索
         :param server: 媒体服务器配置名称；省略时汇总本类型全部实例
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
+        :param raise_on_query_failure: 仅为兼容链路严格口径保留，本方法只处理音乐，
+            严格口径仅用于电视剧，故该参数不改变本方法的行为
         :return: 首个匹配项的服务器和条目标识；非音乐或未找到匹配项时返回 None
         """
         if mediainfo.type != MediaType.MUSIC or not isinstance(mediainfo, MusicInfo):
@@ -296,6 +299,19 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         service = self.get_instance(server)
         return service.get_iteminfo(item_id, **({"query": query} if query is not None else {})) if service else None
 
+    def mediaserver_search(
+        self, keyword: str, types: List[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """搜索所有已启用 Navidrome 实例的可播放音乐单曲。"""
+        if MediaType.MUSIC.value not in types:
+            return []
+        items: List[_SchemaMediaServerPlayItem] = []
+        for server_name, service in self.get_instances().items():
+            for item in service.search_library(keyword, limit):
+                item.server = server_name
+                items.append(item)
+        return items
+
     def mediaserver_tv_episodes(
         self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
     ) -> List[_SchemaMediaServerSeasonInfo]:
@@ -340,6 +356,22 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param item_id: Navidrome 条目标识
         :return: 带鉴权参数的播放 URL；实例或服务地址不存在时返回 None
         """
+        service = self.get_instance(server)
+        return service.get_play_url(str(item_id)) if service else None
+
+    def mediaserver_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        返回 Navidrome 已签名的原始音频流地址。
+
+        :param server: Navidrome 配置名称
+        :param item_id: Navidrome 曲目标识
+        :param item_type: 媒体服务器返回的类型，本适配器只服务音频条目
+        :return: 上游音频流地址；条目不是音频或实例不可用时返回 None
+        """
+        if (item_type or "").casefold() not in {"audio", "music", "track", MediaType.MUSIC.value.casefold()}:
+            return None
         service = self.get_instance(server)
         return service.get_play_url(str(item_id)) if service else None
 

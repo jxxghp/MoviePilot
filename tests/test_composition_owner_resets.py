@@ -4,8 +4,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -22,6 +23,9 @@ from app.application.messaging import ingress as ingress_provider
 from app.application.security import auth as auth_provider
 from app.application.security import passkey as passkey_provider
 from app.application.security import user as user_provider
+from app.application.server import lookup as lookup_provider
+from app.application.server import mapping as mapping_provider
+from app.schemas.mapping import MediaMappingMatchQuery
 from app.startup.composition import agent as agent_composition
 from app.startup.composition import chain as chain_composition
 from app.startup.composition import network as network_composition
@@ -215,6 +219,41 @@ def test_chain_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
     assert wallpaper.get_tmdb_wallpapers() == []
     assert wallpaper.get_mediaserver_wallpaper() is None
     assert wallpaper.get_mediaserver_wallpapers() == []
+
+
+def test_chain_port_owner_publishes_and_releases_mapping_lookup(monkeypatch) -> None:
+    """
+    Chain 端口 owner 在共享关系端口之后发布详情页查找协调对象，撤销时先撤协调对象且可重复执行。
+    """
+    relation = object()
+    match = AsyncMock(return_value=relation)
+    monkeypatch.setattr(chain_composition.MediaChain, "async_match_media_mapping", match)
+    calls: list[str] = []
+    original_lookup = chain_composition.configure_media_mapping_lookup
+    original_port = chain_composition.configure_media_mapping_port
+    monkeypatch.setattr(chain_composition, "configure_media_mapping_lookup",
+                        lambda value: (calls.append(f"lookup:{value is not None}"), original_lookup(value)))
+    monkeypatch.setattr(chain_composition, "configure_media_mapping_port",
+                        lambda value: (calls.append(f"port:{value is not None}"), original_port(value)))
+
+    chain_composition.configure_chain_port_composition()
+    published = lookup_provider.get_media_mapping_lookup()
+    assert isinstance(published, lookup_provider.MediaMappingLookup)
+    assert mapping_provider.get_media_mapping_port() is not None
+    query = MediaMappingMatchQuery(media_source="douban", media_id="1001", type="tv")
+    assert asyncio.run(published._matcher(query)) is relation
+    match.assert_awaited_once_with(query)
+    chain_composition.reset_chain_port_composition()
+    chain_composition.reset_chain_port_composition()
+
+    assert lookup_provider.get_media_mapping_lookup() is None
+    assert mapping_provider.get_media_mapping_port() is None
+    assert calls == [
+        "lookup:False", "port:False",
+        "port:True", "lookup:True",
+        "lookup:False", "port:False",
+        "lookup:False", "port:False",
+    ]
 
 
 def test_composition_owner_resets_run_in_reverse_publication_order(monkeypatch) -> None:

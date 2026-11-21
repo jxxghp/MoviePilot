@@ -121,7 +121,9 @@ def test_history_and_processing_keep_source_without_changing_template(monkeypatc
     chain = DownloadHistoryOwner.__new__(DownloadHistoryOwner)
     chain.durable_event_writer = MagicMock()
     chain._build_download_notification = DownloadProcessingOwner._build_download_notification.__get__(chain)
-    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",), downloading_url="/downloading")
+    chain.runtime_config = SimpleNamespace(
+        media_extensions=(".mkv",), video_extensions=(".mkv",), downloading_url="/downloading",
+    )
     monkeypatch.setattr("app.application.messaging.message.MessageTemplateHelper.render",
                         lambda **_kwargs: Message(title=title, text="自定义模板内容"))
     chain._settle_download_success(context=context, media=context.media_info, meta=context.meta_info,

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from app.application.agenttask import AgentTaskRepository
 from app.application.history import DownloadHistoryRepository, TransferHistoryRepository
 from app.application.invocation import InvocationRepository
+from app.application.knowledge import KnowledgeService
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AgentChatService,
@@ -60,6 +61,7 @@ class AgentDataContext:
     :param plugin_data: 插件持久化数据查询端口
     :param invocations: 写工具调用的幂等回执仓储，None 表示未装配该能力
     :param recall: 独立原始消息归档与检索服务，None 表示未装配该能力
+    :param knowledge: 由实验室开关控制的中心知识用例，None 表示未装配该能力
     """
 
     chat: AgentChatService
@@ -78,6 +80,7 @@ class AgentDataContext:
     plugin_data: PluginDataQueryRepository
     invocations: InvocationRepository | None = None
     recall: RecallService | None = None
+    knowledge: KnowledgeService | None = None
 
 
 Provider = Callable[[], Any]

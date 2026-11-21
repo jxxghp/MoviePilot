@@ -40,6 +40,37 @@ def test_webp_conversion_preserves_transparency() -> None:
         assert image.convert("RGBA").getpixel((0, 0))[3] == 0
 
 
+def test_normalize_artwork_preserves_valid_svg() -> None:
+    """
+    有效 SVG 保留来源字节，供支持 SVG 的媒体服务器读取矢量图。
+    """
+    source = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1">'
+        b"<path d=\"M0 0h1v1z\"/></svg>"
+    )
+
+    normalized, suffix = normalize_artwork(source)
+
+    assert normalized == source
+    assert suffix == ".svg"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'<!DOCTYPE svg [<!ENTITY x "expanded">]><svg>&x;</svg>',
+        b'<svg xmlns="urn:not-svg"/>',
+    ],
+)
+def test_normalize_artwork_rejects_unsupported_svg_xml(content: bytes) -> None:
+    """
+    拒绝带实体声明或伪造 SVG 命名空间的 XML 内容。
+    """
+    with pytest.raises(ValueError):
+        normalize_artwork(content)
+
+
 @pytest.mark.parametrize("content", [b"", b"<html>not artwork</html>", b"RIFF0000WEBPbroken"])
 def test_normalize_artwork_rejects_invalid_content(content) -> None:
     """

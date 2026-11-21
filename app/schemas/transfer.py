@@ -28,7 +28,26 @@ class DownloaderTorrent(BaseModel):
     season_episode: Optional[str] = Field(default=None, description="季集信息的展示文本")
     path: Optional[Path] = Field(default=None, description="文件或目录路径")
     size: Optional[float] = Field(default=0.0, description="文件大小，单位为字节")
+    selected_size: Optional[float] = Field(
+        default=None,
+        description="当前选中下载的文件总大小，单位为字节；同一任务追加文件后会变大，下载器无法提供时为空",
+    )
+    incomplete_files: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "下载器整理轮询中只选中了部分文件的任务，下载器报告尚未下载完成的文件，路径相对任务内容路径 path（含取消选择"
+            "后残留在磁盘上的部分数据、与选中文件共用分块而被写入部分数据的相邻文件），整理时跳过，包含这类文件的蓝光原盘"
+            "目录整盘跳过；为空表示无需过滤"
+        ),
+    )
     progress: Optional[float] = Field(default=0.0, description="当前完成百分比")
+    selected_completed: Optional[bool] = Field(
+        default=None,
+        description=(
+            "选中下载的文件是否已全部下载完成；完成百分比按全部数据计算的下载器（rTorrent，只选了部分文件时选中部分下完"
+            "也不到 100）提供，为空时按完成百分比是否达到 100 判断"
+        ),
+    )
     state: Optional[str] = Field(default="downloading", description="当前业务状态")
     upspeed: Optional[str] = Field(default=None, description="当前上传速度的格式化展示文本")
     dlspeed: Optional[str] = Field(default=None, description="当前下载速度的格式化展示文本")

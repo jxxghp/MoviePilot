@@ -743,10 +743,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def test(self, url: str) -> Tuple[bool, str]:
         """
-        测试站点是否可用
+        测试站点连通性，并在适配器支持时检查对应的认证接口。
+
+        通用网页检测会检查页面可达性和已保存 Cookie 的登录状态，但不会验证独立的
+        UID、Passkey 或 API Key 认证参数。
 
         :param url: 站点域名
-        :return: (是否可用, 错误信息)
+        :return: 检测是否通过及对应的范围或失败原因
         """
         domain = site_domain(url)
         repository = self.site_repository
@@ -803,6 +806,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 proxies=proxy_server,
                 timeout=timeout,
             ) or ""
+            if not page_source:
+                return False, "无法打开网站！"
             if not public and not SiteUtils.is_logged_in(page_source):
                 if ports.challenge.detected(page_source):
                     return False, "无法通过Cloudflare！"
@@ -814,8 +819,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 cookie=site_cookie,
                 ua=ua,
                 proxies=proxies,
+                timeout=timeout,
             ) as res:
-                if res and res.status_code in [200, 500, 403]:
+                if res is not None and res.status_code in [200, 500, 403]:
                     content = res.text
                     if not public and not SiteUtils.is_logged_in(content):
                         if _site_ports_snapshot().challenge.detected(content):
@@ -825,13 +831,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
                         else:
                             msg = f"错误：{res.status_code} {res.reason}"
                         return False, f"{msg}！"
-                    if public and res.status_code != 200:
+                    if res.status_code != 200:
                         return False, f"错误：{res.status_code} {res.reason}！"
                 elif res is not None:
                     return False, f"错误：{res.status_code} {res.reason}！"
                 else:
                     return False, "无法打开网站！"
-        return True, "连接成功"
+        return True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）"
 
     def _interaction_handler(self) -> "SiteInteractionHandler":
         """

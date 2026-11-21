@@ -9,6 +9,7 @@ from threading import Event
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.configuration import get_scheduler_runtime_config
+from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription import priority as _priority
 from app.application.subscription.activity import activity_time, subscription_activity_scope
 from app.application.subscription.contract import (
@@ -345,6 +346,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         best_version_accept_downloaded 仅用于分集洗版的外部完成守卫：为 True 时，
         priority>0 的目标集视为已满足；默认 False 保持主程序洗版完成需 priority==100
         的搜索/完成口径。
+
+        :raises MediaServerQueryError: 非洗版电视剧订阅的媒体库查询失败时；调用方应跳过
+            本轮，不把未知状态写成缺集
         """
         mediakey = mediakey or subscribe_media_key(subscribe)
         if subscribe.type == MediaType.TV.value:
@@ -355,7 +359,12 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             totals = {}
             if subscribe.season is not None and effective_total_episode:
                 totals = {subscribe.season: effective_total_episode}
-            exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo, totals=totals)
+            exist_flag, no_exists = DownloadChain().get_no_exists_info(
+                meta=meta, mediainfo=mediainfo, totals=totals,
+                totals_are_episode_numbers=bool(subscribe.manual_total_episode),
+                # 仅电视剧服务能区分查询失败与未找到；电影/音乐查询失败仍按未找到处理。
+                raise_on_query_failure=mediainfo.type == MediaType.TV,
+            )
         elif meta.type != MediaType.TV and self._SubscribeChain__is_best_version_complete(subscribe):
             return True, {}
         else:
@@ -507,9 +516,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
         主流程会通过 ``__refresh_total_episode_before_completion`` 持久化增长后的总集数；
         该查询接口只需要同样避免旧 total 造成误判，因此仅使用当前 mediainfo 中更大的
-        季集数作为临时目标范围。
+        季集数作为临时目标范围。历史负数总集数按未设置处理。
         """
-        current_total = subscribe.total_episode or 0
+        current_total = max(subscribe.total_episode or 0, 0)
         if subscribe.type != MediaType.TV.value:
             return current_total
         if subscribe.manual_total_episode:
@@ -726,12 +735,18 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             if not mediainfo:
                 return {"scene": scene, "updated": False, "fields": [], "reason": "recognize_failed"}
             mediakey = subscribe_media_key(subscribe)
-            exist_flag, no_exists = self.resolve_subscribe_missing(
-                subscribe=subscribe,
-                meta=meta,
-                mediainfo=mediainfo,
-                mediakey=mediakey,
-            )
+            try:
+                exist_flag, no_exists = self.resolve_subscribe_missing(
+                    subscribe=subscribe,
+                    meta=meta,
+                    mediainfo=mediainfo,
+                    mediakey=mediakey,
+                )
+            except MediaServerQueryError as err:
+                # 媒体库查询失败时缺集未知，不写回进度，下一轮重新查询。
+                # 与 resolve 返回空的 "resolve_missing_failed" 区分，便于从进度摘要识别媒体库故障。
+                logger.warning(f"订阅 {subscribe.name} 媒体库查询失败，本轮不刷新进度：{err}")
+                return {"scene": scene, "updated": False, "fields": [], "reason": "media_query_failed"}
             if not exist_flag and not no_exists:
                 return {"scene": scene, "updated": False, "fields": [], "reason": "resolve_missing_failed"}
 

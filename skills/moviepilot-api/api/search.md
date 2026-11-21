@@ -45,6 +45,8 @@ Identity scope: `bound_user`; required role: `user`.
 
 #### Candidate Selection and Empty-Result Retries
 
+With `include_candidates=true`, manually reviewable music candidates also include resources rejected by automatic identity matching. `match_status` is `candidate`, `match_reason` retains the rejection reason (for example `title_mismatch`), and `media_info` is null. Do not treat them as confirmed matches or download them automatically; existing search filters still apply.
+
 - When `media.search` returns multiple candidates, select based on **title matching the user's request AND `type` (movie/series) matching**; do not mechanically pick the first or an arbitrary candidate without comparison. If the first candidate happens to exactly match and its type is correct, you may use it directly; when several are close, prefer the higher-ranked / more popular one.
 - `search.torrents` must be called with `media_source` + `media_id`, and both must come from the **same** recognition result — do not mix `source`/`id` from different candidates.
 - Do not repeat an unchanged empty or failed search without new evidence. On failure, inspect and report the error; an unavailable source does not prove there are no resources.

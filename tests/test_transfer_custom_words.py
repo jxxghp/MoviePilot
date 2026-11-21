@@ -184,6 +184,24 @@ def test_transfer_uses_file_episode_for_multi_file_download():
     assert result.resource_pix == "1080p"
 
 
+def test_transfer_restores_episode_range_for_single_file_download():
+    """
+    单个文件包含多集时，自动整理应使用下载时确认的完整集数范围。
+    """
+    history = _fake_download_history(
+        episodes="E04-E05",
+        note={"media_file_count": 1},
+    )
+    file_meta = MetaInfo("Wrong.Title.S01E04.2160p.mkv")
+
+    result = TransferChain._merge_download_meta(file_meta, history)
+
+    assert result.begin_season == 3
+    assert result.begin_episode == 4
+    assert result.end_episode == 5
+    assert result.episode_list == [4, 5]
+
+
 def test_transfer_restores_legacy_history_columns_without_snapshot():
     """无结构化快照的旧下载也应优先复用标题、季集和媒体身份。"""
     history = _fake_download_history(note={"source": "Subscribe|{}"})

@@ -61,6 +61,7 @@ def _query(candidates: list[Plugin], readme: AsyncMock) -> PluginCatalogQuery:
         version_compare=lambda left, operator, right: compare_version(left, operator, right) is True,
         warning=Mock(),
         error=Mock(),
+        info=Mock(),
     )
     return PluginCatalogQuery(
         installed_plugins=lambda: [],

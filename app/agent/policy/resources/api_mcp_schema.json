@@ -6130,7 +6130,7 @@
           "title": "Episode"
         },
         "media_id": {
-          "description": "经媒体查询核实的来源原生 ID",
+          "description": "经媒体查询核实并与 media_source 原样配对的来源原生 ID，重新规划时直接按该身份识别",
           "minLength": 1,
           "title": "Media Id",
           "type": "string"
@@ -6140,7 +6140,7 @@
           "description": "元数据来源标识，保留与 media_id 一同返回的精确值。"
         },
         "media_type": {
-          "description": "经核实的电影或电视剧类型",
+          "description": "经核实的电影或电视剧类型，须与该来源原生 ID 对应",
           "enum": [
             "movie",
             "tv"
@@ -12853,7 +12853,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "测试一个已配置站点的连通性和认证状态。请求方法：GET；路径：/api/v1/site/test/{site_id}。操作效果：safe_read；身份范围：bound_user。所需角色：user。",
+      "description": "测试站点连通性和适配器支持的登录状态；通用网页检测仅检查页面和 Cookie，不校验独立的用户认证接口，不能据此判断 UID、Passkey 等用户认证参数有效。请求方法：GET；路径：/api/v1/site/test/{site_id}。操作效果：safe_read；身份范围：bound_user。所需角色：user。",
       "properties": {
         "operation_id": {
           "const": "site.test",
@@ -12862,7 +12862,7 @@
         },
         "path_params": {
           "additionalProperties": false,
-          "description": "site.test 的资源标识参数。测试一个已配置站点的连通性和认证状态。仅使用下列已声明字段。",
+          "description": "site.test 的资源标识参数。测试站点连通性和适配器支持的登录状态；通用网页检测仅检查页面和 Cookie，不校验独立的用户认证接口，不能据此判断 UID、Passkey 等用户认证参数有效。仅使用下列已声明字段。",
           "properties": {
             "site_id": {
               "description": "site.list 返回的持久化站点标识。",
@@ -13737,6 +13737,18 @@
           "additionalProperties": false,
           "description": "subscription.find 的筛选和控制参数。按规范媒体身份和可选季查找一个可访问订阅。仅使用下列已声明字段。",
           "properties": {
+            "episode_group": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "用于其他剧集排序方式的 TMDB 剧集组标识。",
+              "title": "Episode Group"
+            },
             "media_source": {
               "$ref": "#/$defs/MediaSource",
               "description": "元数据来源标识，保留与 media_id 一同返回的精确值。"

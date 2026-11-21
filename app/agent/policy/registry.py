@@ -16,7 +16,7 @@ from app.agent.policy.contracts import (
 )
 
 # 这些非管理员读取在运行时解析为强制 SAFE_READ；管理员门禁仍沿用原有授权事实源。
-SAFE_READ_TOOL_NAMES: frozenset[str] = frozenset()
+SAFE_READ_TOOL_NAMES: frozenset[str] = frozenset({"knowledge_search", "knowledge_read"})
 
 
 def requests_system_setting_secrets(arguments: Mapping[str, Any]) -> bool:
@@ -136,7 +136,7 @@ class ToolPolicyRegistry:
             }.get(action, ActionEffect.UNKNOWN)
             return ActionPolicy(
                 effect=effect,
-                required_role=PrincipalRole.SYSTEM_ADMIN,
+                required_role=required_role,
                 confirmation=(ConfirmationMode.NONE if effect is ActionEffect.SAFE_READ else ConfirmationMode.REQUIRED),
                 recovery=(RecoveryMode.NONE if effect is ActionEffect.SAFE_READ else RecoveryMode.RECONCILE),
                 result_sensitivity=ResultSensitivity.NORMAL,

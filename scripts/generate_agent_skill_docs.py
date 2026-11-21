@@ -18,11 +18,21 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 与对应 SKILL.md 同步维护，重新生成不能回退用户同步所需的版本。
-MOVIEPILOT_API_SKILL_VERSION = "73"
-DATABASE_OPERATION_SKILL_VERSION = "18"
+MOVIEPILOT_API_SKILL_VERSION = "79"
+DATABASE_OPERATION_SKILL_VERSION = "20"
 
 
 DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
+    "channelauthorization": (
+        "Stores per-instance channel authorization, approval state, scopes, and immutable business ownership.",
+        "Inspecting requests, member capabilities, suspension, and legacy whitelist migration.",
+        "Owned by channel authorization; never bypass approval, account linking, or live revocation with direct writes.",
+    ),
+    "channelbinding": (
+        "Stores web-initiated one-time channel binding digests and their five-minute expiry.",
+        "Checking expiry or consumption without reading or reconstructing the original binding code.",
+        "Consumed atomically by two-sided identity verification; never extend expiry, forge digests, or replace owners directly.",
+    ),
     "alembic_version": (
         "Records the Alembic migration revision currently applied to the database.",
         "Diagnosing startup migration failures or a database/code revision mismatch.",
@@ -189,7 +199,8 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "identity and actor_name is a bounded display snapshot. Old rows have unknown origin.",
     ),
     "transferpending": (
-        "Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.",
+        "Durably stores pending transfer input, plans, checkpoints, leases, retries, manual review state, "
+        "and one short-lived pending manual identity authorization.",
         "Diagnosing restart recovery, expired leases, retry_wait, terminal failures, or manual review.",
         "Core durable state machine advanced only by planning, execution, retry, and review services.",
     ),
@@ -305,6 +316,13 @@ _MEDIA_TYPE_FIELD_VALUES: dict[tuple[str, str, str], str] = {
 # OpenAPI 无法表达的操作级 Agent 指引，在生成时追加到操作参数组之后，
 # 保证运行中的 Skill 包含这些指引，无需手动修改生成的 api/*.md。
 _OPERATION_NOTES: dict[str, list[str]] = {
+    "transfer.history.replan": [
+        "- `path_params.history_id` 使用本次失败历史 ID，`body.task_id` 和 `body.settlement_revision` "
+        "原样保留接管上下文中的任务与结算版本。",
+        "- `body.media_source`、`body.media_id`、`body.media_type` 必须来自同一次核实的媒体身份。"
+        "重新规划会清空旧识别结果，再按该身份直接查询，预览与提交使用同一身份及季集。",
+        "- 受理后通过 `transfer.history` 核实整理结果，受理或排队仅表示任务等待执行。",
+    ],
     "transfer.history.register": [
         "- **Completed external work only:** Register a completed copy, native local hard link, or move; "
         "this operation only writes history and never moves files, scrapes metadata, or changes downloads.",
@@ -325,6 +343,11 @@ _OPERATION_NOTES: dict[str, list[str]] = {
         "log override, or configuration; an empty configuration object still protects the row. "
         "It never stops a plugin or deletes plugin data, databases, or files. Rows with settings, "
         "clones, missing rows, or mixed scopes are rejected.",
+    ],
+    "plugin.market": [
+        "- If the market view has no online candidates and one or more configured index reads fail, "
+        "the endpoint returns HTTP `424` with a retryable index-read error instead of an empty list. "
+        "A confirmed empty index or an absent package generation remains a successful read.",
     ],
     "library.exists": [
         "- **Agent note:** The media-type field name is `mtype` (placed inside `query`). "
@@ -362,6 +385,11 @@ _OPERATION_NOTES: dict[str, list[str]] = {
         "",
         "#### Candidate Selection and Empty-Result Retries",
         "",
+        "With `include_candidates=true`, manually reviewable music candidates also include resources "
+        "rejected by automatic identity matching. `match_status` is `candidate`, `match_reason` "
+        "retains the rejection reason (for example `title_mismatch`), and `media_info` is null. "
+        "Do not treat them as confirmed matches or download them automatically; existing search filters still apply.",
+        "",
         "- When `media.search` returns multiple candidates, select based on "
         "**title matching the user's request AND `type` (movie/series) matching**; do not "
         "mechanically pick the first or an arbitrary candidate without comparison. If the first "
@@ -381,8 +409,10 @@ _OPERATION_NOTES: dict[str, list[str]] = {
 # 在生成的 Schema 字段旁保留经过维护的操作指引。
 _OPERATION_PURPOSE_NOTES: dict[str, str] = {
     "subscription.find": (
-        "For movies and TV, if exact identity misses and mtype/title are supplied, match across "
-        "sources by type, normalized title, optional season, and year. An exact year ranks first; "
+        "For movies and TV, if exact identity misses and mtype is supplied, first confirm "
+        "cross-source subscriptions through a shared TMDB identity, preserving season, episode "
+        "group and owner boundaries. If projection fails and title is supplied, retain the "
+        "type/title/year fallback as a display hint. An exact year ranks first; "
         "a subscription with no year may match when the card has a year, while a card with no "
         "year only matches a subscription with no year. Music uses exact identity only."
     ),

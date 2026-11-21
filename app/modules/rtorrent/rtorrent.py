@@ -26,14 +26,15 @@ class TorrentData(TypedDict):
     :ivar dlspeed: 当前下载速率，字节每秒
     :ivar upspeed: 当前上传速率，字节每秒
     :ivar state: 启动状态，0 为停止，1 为启动
-    :ivar complete: 完成标记，0 为未完成，1 为完成
+    :ivar complete: 选中部分是否已全部下载，0 为未完成，1 为完成；由 ``d.complete`` 与 ``d.is_partially_done``
+        合成，与 qBittorrent、Transmission 的"已完成"口径一致，见 ``Rtorrent.get_torrents``
     :ivar save_path: 保存目录
     :ivar tags: custom1 存储的逗号分隔标签
     :ivar is_active: 下载器返回的活动状态
     :ivar is_open: 下载器返回的文件打开状态
     :ivar ratio: 从千分比转换后的分享率
     :ivar content_path: 完整内容路径；下载器未提供时为 None，由调用端回退计算
-    :ivar progress: 下载进度百分比，零大小任务为 0
+    :ivar progress: 下载进度百分比，按全部数据计算（只选了部分文件的任务选中部分下完后也不到 100），零大小任务为 0
     """
 
     hash: str
@@ -322,6 +323,7 @@ class Rtorrent:
                 "d.is_open=",
                 "d.ratio=",
                 "d.base_path=",
+                "d.is_partially_done=",
             ]
             results = self._proxy.d.multicall2("", "main", *fields)
             torrents: list[TorrentData] = []
@@ -349,6 +351,15 @@ class Rtorrent:
                     )
                 else:
                     torrent["progress"] = 0
+                # rTorrent 的 d.complete 只在整个种子的全部分块都完成时才为 1（libtorrent FileList::is_done）。
+                # 只选了部分文件的任务，选中部分下完后只有 d.is_partially_done 为 1（需要的分块已全部完成），
+                # d.complete 一直是 0：不合成的话，只下几集的任务永远进不了下载器整理。没有任何已下载数据时
+                # （例如全部文件都设为不下载）不算完成。
+                # 进度仍按全部数据计算，不改成 100：未选中的文件可能因与选中文件共用分块被写入部分数据，工作流
+                # "下载完成后整理整个目录"、移动整理后删除任务等按进度 100 判断"目录里的文件都已下完"的地方
+                # 不能把这类任务当成已下完。
+                if torrent["complete"] != 1 and _rpc_number(r[14]) == 1 and torrent["completed"] > 0:
+                    torrent["complete"] = 1
 
                 if ids:
                     if isinstance(ids, str):
@@ -483,6 +494,26 @@ class Rtorrent:
             logger.error(f"启动种子出错：{str(err)}")
             return False
 
+    def resume_torrents(self, ids: Union[str, list[str]]) -> bool:
+        """
+        恢复被 ``d.pause`` 暂停的种子任务（``d.resume``）；对已在运行的任务没有影响。
+
+        ``d.start`` 只把任务放进 started 视图，已在该视图中、被暂停的任务不会因此恢复。
+        批量操作按任务依次发送，后续失败不会撤销此前已完成的请求。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
+        """
+        if not self._proxy:
+            return False
+        try:
+            for tid in [ids] if isinstance(ids, str) else ids:
+                self._proxy.d.resume(tid)
+            return True
+        except Exception as err:
+            logger.error(f"恢复种子出错：{str(err)}")
+            return False
+
     def stop_torrents(self, ids: Union[str, list[str]]) -> bool:
         """
         暂停指定种子任务。
@@ -592,6 +623,10 @@ class Rtorrent:
         """
         批量设置文件优先级并通知任务更新优先级。
 
+        rTorrent 的 ``f.priority.set`` 写入后要调用 ``d.update_priorities`` 才会生效。逐个写入中途
+        失败时，此前已写入的优先级仍会被尽力刷新，避免它们停留在"读出来已选中、实际未生效"的
+        状态；此时仍返回 False，由调用方重新读取实际状态。
+
         :param torrent_hash: 种子哈希，不接受空值
         :param file_ids: 种子内部的非空文件索引列表
         :param priority: 文件优先级，0 表示不下载，1 表示普通下载
@@ -601,14 +636,49 @@ class Rtorrent:
             return False
         if not torrent_hash or not file_ids:
             return False
+        written = False
         try:
             for file_id in file_ids:
                 self._proxy.f.priority.set(f"{torrent_hash}:f{file_id}", priority)
+                written = True
             self._proxy.d.update_priorities(torrent_hash)
             return True
         except Exception as err:
             logger.error(f"设置种子文件状态出错：{str(err)}")
+            if written:
+                self.update_priorities(torrent_hash)
             return False
+
+    def update_priorities(self, torrent_hash: str) -> bool:
+        """
+        让任务已写入的文件优先级生效（``d.update_priorities``），重复调用不会改变优先级本身。
+
+        :param torrent_hash: 种子哈希，不接受空值
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False
+        """
+        if not self._proxy or not torrent_hash:
+            return False
+        try:
+            self._proxy.d.update_priorities(torrent_hash)
+            return True
+        except Exception as err:
+            logger.error(f"刷新种子文件优先级出错：{str(err)}")
+            return False
+
+    def is_hash_checking(self, torrent_hash: str) -> Optional[bool]:
+        """
+        查询任务是否正在校验数据（``d.is_hash_checking``）；校验期间任务处于不活动状态。
+
+        :param torrent_hash: 种子哈希，不接受空值
+        :return: 正在校验返回 True，未在校验返回 False；未连接或查询失败返回 None
+        """
+        if not self._proxy or not torrent_hash:
+            return None
+        try:
+            return str(self._proxy.d.is_hash_checking(torrent_hash)) not in ("0", "", "False")
+        except Exception as err:
+            logger.error(f"查询种子校验状态出错：{str(err)}")
+            return None
 
     def set_torrents_tag(
         self, ids: Union[str, list[str]], tags: List[str], overwrite: bool = False

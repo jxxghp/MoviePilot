@@ -4,12 +4,13 @@
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from typing import TypedDict as _TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 from app.schemas.common import JsonData
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
 
@@ -225,6 +226,73 @@ class MediaServerSeasonInfo(BaseModel):
     episodes: Optional[List[int]] = Field(default_factory=list, description="剧集信息")
 
 
+class MediaServerSubtitleTrack(BaseModel):
+    """
+    声明可通过本服务流式读取的同名外挂字幕。
+    """
+
+    subtitle_id: str = Field(description="字幕文件名标识，不包含服务端目录路径")
+    title: str = Field(description="播放器显示名称")
+    language: Optional[str] = Field(default=None, description="从文件名识别的语言标识")
+    url: str = Field(description="当前 MoviePilot 实例的字幕流地址")
+
+
+class MediaServerStreamInfo(BaseModel):
+    """
+    声明原生播放器使用的当前实例媒体流地址和外挂字幕。
+    """
+
+    item_id: str = Field(description="已解析的媒体服务器条目标识")
+    server: Optional[str] = Field(default=None, description="媒体服务器配置名称；单文件票据省略")
+    title: str = Field(description="媒体标题")
+    content_url: str = Field(description="当前 MoviePilot 实例的媒体流地址")
+    media_type: Literal["video", "audio"] = Field(default="video", description="播放器使用的媒体类型")
+    artist: Optional[str] = Field(default=None, description="音乐表演者")
+    album: Optional[str] = Field(default=None, description="音乐专辑")
+    subtitles: List[MediaServerSubtitleTrack] = Field(default_factory=list, description="同目录同名外挂字幕")
+    lyrics_url: Optional[str] = Field(default=None, description="当前实例的同名 LRC 歌词流地址")
+
+
+class MediaServerMusicStreamRequest(BaseModel):
+    """
+    用标准音乐身份和元数据查找媒体库中的单曲条目。
+    """
+
+    media_source: MediaSource = Field(description="音乐元数据来源")
+    media_id: str = Field(description="单曲录音的来源 ID")
+    title: str = Field(description="单曲标题")
+    artists: List[str] = Field(default_factory=list, description="单曲表演者")
+    artist: Optional[str] = Field(default=None, description="单曲主表演者")
+    album: Optional[str] = Field(default=None, description="所属专辑名称")
+    album_artist: Optional[str] = Field(default=None, description="专辑表演者")
+    year: Optional[int] = Field(default=None, description="发行年份")
+    track_number: Optional[int] = Field(default=None, description="专辑曲序")
+    disc_number: Optional[int] = Field(default=None, description="专辑碟号")
+
+
+class MediaServerFileStreamTicketRequest(BaseModel):
+    """
+    请求为文件管理器选中的本地媒体文件签发短期播放票据。
+
+    文件对象仍需在端点按当前管理用户的存储范围重新核验。
+    """
+
+    file: _SchemaFileItem = Field(description="文件管理器当前选中的本地文件条目")
+    media_type: Literal["video", "audio"] = Field(default="video", description="所选文件的媒体类型")
+
+
+class MediaServerFileStreamTicket(BaseModel):
+    """
+    返回单个文件的受控播放标识与显示标题。
+
+    标识只代表票据签发时通过权限检查的那一个文件。
+    """
+
+    item_id: str = Field(description="不包含服务器路径的短期媒体票据标识")
+    title: str = Field(description="供播放器显示的文件标题")
+    media_type: Literal["video", "audio"] = Field(default="video", description="所选文件的媒体类型")
+
+
 class WebhookEventInfo(BaseModel):
     """
     Webhook事件信息。
@@ -316,9 +384,11 @@ class MediaServerPlayItem(BaseModel):
     """
     id: Optional[Union[str, int]] = Field(default=None, description="记录标识")
     item_id: Optional[Union[str, int]] = Field(default=None, description="媒体项目 ID")
+    server: Optional[str] = Field(default=None, description="媒体服务器配置名称")
     server_id: Optional[str] = Field(default=None, description="媒体服务器 ID")
     title: Optional[str] = Field(default=None, description="标题")
     subtitle: Optional[str] = Field(default=None, description="副标题")
+    year: Optional[Union[str, int]] = Field(default=None, description="发行年份")
     type: Optional[str] = Field(default=None, description="类型标识")
     image: Optional[str] = Field(default=None, description="图片")
     link: Optional[str] = Field(default=None, description="链接")

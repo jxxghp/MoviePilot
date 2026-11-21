@@ -217,6 +217,20 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return value if cls._IMDB_ID_PATTERN.fullmatch(value) else None
 
     @classmethod
+    def _episode_parent_id(cls, episode: ImdbTitle, mtype: Optional[MediaType]) -> Optional[str]:
+        """
+        取单集指向的剧集标识，不接受自引用或与电影请求冲突的关系。
+
+        :param episode: IMDb 单集详情
+        :param mtype: 调用方明确要求的媒体类型
+        :return: 可查询的父剧集标识，缺失或无效时为 None
+        """
+        parent_id = cls._normalize_imdb_id(episode.parent_series_id)
+        if parent_id == episode.id or mtype == MediaType.MOVIE:
+            return None
+        return parent_id
+
+    @classmethod
     def _supports_request_type(
         cls, meta: Optional[MetaBase], mtype: Optional[MediaType]
     ) -> bool:
@@ -688,6 +702,8 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         按明确 IMDb 身份或标题线索识别影视媒体。
 
+        单集标识仅在确认所属剧集后返回该剧集身份，季集范围仍由资源解析结果确定。
+
         :param meta: 标题、年份、季号等解析线索，明确身份查询时可省略
         :param mtype: 目标媒体类型，用于候选筛选
         :param media_source: 显式识别来源，其他来源不响应
@@ -708,6 +724,11 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             if plan.media_id is not None
             else self._match_by_meta(plan.require_meta(), plan.media_type)
         )
+        if title and title.type == "tvEpisode":
+            parent_id = self._episode_parent_id(title, plan.media_type)
+            title = self.imdb_api.get_title(parent_id) if parent_id else None
+            if not title or title.id != parent_id or self._media_type(title.type) != MediaType.TV:
+                return None
         if not title:
             return None
         return self._finish_recognition(self._load_media_info(title), plan.meta)
@@ -724,6 +745,8 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     ) -> Optional[MediaInfo]:
         """
         异步按明确 IMDb 身份或标题线索识别影视媒体。
+
+        单集标识仅在确认所属剧集后返回该剧集身份，季集范围仍由资源解析结果确定。
 
         :param meta: 标题、年份、季号等解析线索，明确身份查询时可省略
         :param mtype: 目标媒体类型，用于候选筛选
@@ -745,6 +768,11 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             if plan.media_id is not None
             else await self._async_match_by_meta(plan.require_meta(), plan.media_type)
         )
+        if title and title.type == "tvEpisode":
+            parent_id = self._episode_parent_id(title, plan.media_type)
+            title = await self.imdb_api.async_get_title(parent_id) if parent_id else None
+            if not title or title.id != parent_id or self._media_type(title.type) != MediaType.TV:
+                return None
         if not title:
             return None
         media_info = await self._async_load_media_info(title)

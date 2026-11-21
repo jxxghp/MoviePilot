@@ -32,8 +32,6 @@ class PluginCatalogFacade:
         storage: Callable[[], PluginStorage],
         system: Callable[[], PluginSystemServices],
         market_catalog: Callable[[], Any],
-        market_loader: Callable[..., Any],
-        async_market_loader: Callable[..., Any],
         map_plugin: Callable[..., Optional[Plugin]],
         auth_checker: Callable[..., bool],
         plugin_attr: Callable[[str, str], Any],
@@ -51,8 +49,6 @@ class PluginCatalogFacade:
         self._storage = storage
         self._system = system
         self._market_catalog = market_catalog
-        self._market_loader = market_loader
-        self._async_market_loader = async_market_loader
         self._map_plugin = map_plugin
         self._auth_checker = auth_checker
         self._plugin_attr = plugin_attr
@@ -76,9 +72,7 @@ class PluginCatalogFacade:
                 get_runtime_setting('VERSION_FLAG')
             ),
             force=force,
-            loader=self._market_loader,
         )
-        self._logger.info(f"获取到 {len(result)} 个线上插件")
         return result
 
     def local(self) -> list[Plugin]:
@@ -311,10 +305,8 @@ class PluginCatalogFacade:
                 get_runtime_setting('VERSION_FLAG')
             ),
             force=force,
-            loader=self._async_market_loader,
             progress_callback=progress_callback,
         )
-        self._logger.info(f"获取到 {len(result)} 个线上插件")
         return result
 
     async def async_online_candidates(
@@ -326,6 +318,7 @@ class PluginCatalogFacade:
         :param force: 是否忽略索引缓存
         :param repo_url: 可选的目标仓库；未配置或非法来源返回空列表
         :return: 指定来源或全部配置市场的候选
+        :raises PluginMarketUnavailableError: 读取全市场时存在索引失败且没有可用候选
         """
         plugin_market = get_runtime_setting('PLUGIN_MARKET')
         if not plugin_market:
@@ -342,8 +335,8 @@ class PluginCatalogFacade:
                 get_runtime_setting('VERSION_FLAG')
             ),
             force=force,
-            loader=self._async_market_loader,
             preserve_sources=True,
+            require_available=repo_url is None,
         )
         return result
 

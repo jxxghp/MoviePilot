@@ -361,9 +361,24 @@ class Navidrome:
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一专辑条目；专辑不存在或请求失败时返回 None
         """
+        song_payload = self._call("getSong", id=item_id)
+        song = (song_payload or {}).get("song")
+        if song:
+            return self._song_to_item(song)
         payload = self._call("getAlbum", id=item_id)
         album = (payload or {}).get("album") or {}
         return self._album_to_item(album) if album else None
+
+    def search_library(self, keyword: str, limit: int) -> List[_SchemaMediaServerPlayItem]:
+        """调用 Subsonic 搜索接口并返回可流式播放的单曲结果。"""
+        if not keyword.strip() or not self.user:
+            return []
+        payload = self._call(
+            "search3", query=keyword.strip(), artistCount=0, albumCount=0, songCount=max(1, min(limit, 50))
+        )
+        songs = ((payload or {}).get("searchResult3") or {}).get("song") or []
+        query = MediaServerQueryOptions(fields=frozenset({MediaServerField.IMAGES}))
+        return [self._song_to_play_item(song, query=query) for song in songs if isinstance(song, dict)][:limit]
 
     def search_music(
         self,

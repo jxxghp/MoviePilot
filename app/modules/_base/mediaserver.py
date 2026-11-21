@@ -5,9 +5,9 @@
 定时重连与连接测试。服务器差异（认证 API、存在性检查端点、连接探测方式）
 通过类属性与钩子方法保留在各模块。
 """
-from typing import TYPE_CHECKING, Any, Generator, Iterable, Mapping, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Mapping, Optional, Tuple, Union, cast
 
-from app.application.mediaserver import MusicMediaServerHelper
+from app.application.mediaserver import MediaServerQueryError, MusicMediaServerHelper
 from app.domain.context import MediaInfo, MusicInfo
 from app.modules import TService, _MediaServerBase, _ModuleBase
 from app.runtime.events import eventmanager
@@ -25,6 +25,32 @@ if TYPE_CHECKING:
 _EMBY_ITEMS_PAGE_SIZE = 200
 # 单个合并文件可覆盖的最大集数；异常的 IndexNumberEnd 展开为千万级列表会耗尽内存。
 _EMBY_EPISODE_RANGE_MAX_SPAN = 1000
+
+
+def read_emby_query_items(
+    request: "RequestUtils", url: str, params: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    读取存在性查询的条目列表，区分成功空列表与不可确认的响应。
+
+    :param request: 保留当前媒体服务器认证配置的 HTTP 工具
+    :param url: 标题搜索或分集查询地址
+    :param params: 当前请求的查询条件与内容投影
+    :return: 已验证的原始条目列表，成功查询无条目时为空列表
+    :raises MediaServerQueryError: 无响应、非 200 状态或条目结构无效
+    """
+    response = request.get_res(url, params)
+    if response is None:
+        raise MediaServerQueryError("媒体库查询失败：未收到响应")
+    try:
+        if response.status_code != 200:
+            raise MediaServerQueryError(f"媒体库查询失败：HTTP {response.status_code}")
+        items = response.json().get("Items")
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            raise MediaServerQueryError("媒体库查询失败：条目列表格式无效")
+        return items
+    finally:
+        response.close()
 
 
 def _read_emby_item_page(
@@ -158,6 +184,19 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
     # 仅已实现查询投影的适配器向原生客户端透传新参数。
     _query_options_supported: bool = False
 
+    def mediaserver_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        为没有声明原始流接口的媒体服务器适配器提供兼容性空结果。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体服务器条目标识
+        :param item_type: 媒体服务器返回的条目类型
+        :return: 当前适配器不支持原始文件流时返回 None
+        """
+        return None
+
     def user_authenticate(
             self,
             credentials: _SchemaAuthCredentials,
@@ -221,6 +260,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         server: Optional[str] = None,
         *,
         query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
     ) -> Optional[_SchemaExistMediaInfo]:
         """
         判断媒体文件是否存在。
@@ -229,7 +269,13 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         :param itemid:  媒体服务器ItemID
         :param server:  媒体服务器名称
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
+        :param raise_on_query_failure: 剧集查询失败时抛 MediaServerQueryError 而不是返回 None；
+            默认 False 保持既有行为。仅电视剧分支区分失败与未找到：各剧集服务约定查询失败
+            返回两项 None，未找到返回 None 和空映射；电影/音乐服务无法区分两种情况，
+            不受该参数影响
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        :raises MediaServerQueryError: 剧集查询失败且 raise_on_query_failure 为 True，
+            且没有服务器确认媒体存在时
         """
         if not self._query_options_supported:
             query = None
@@ -238,6 +284,8 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
             servers = [(server, self.get_instance(server))]
         else:
             servers = self.get_instances().items()
+        query_failed = False
+        failed_servers: list[str] = []
         for name, s in servers:
             if not s:
                 continue
@@ -291,6 +339,13 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                     item_id=itemid,
                     **({"query": query} if query is not None else {}),
                 )
+                if tvs is None:
+                    # 查询失败（返回两项 None）与未找到（返回 None 和空映射）必须区分：
+                    # 前者不得被当作缺失，否则一次读取失败会触发整季重复下载。
+                    query_failed = True
+                    failed_servers.append(str(name))
+                    logger.warning(f"{mediainfo.title_year} 查询媒体库 {name} 失败，无法确认是否已入库")
+                    continue
                 if not tvs:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
@@ -299,6 +354,10 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                     return _SchemaExistMediaInfo(
                         type=MediaType.TV, seasons=tvs, server_type=self._server_type_value, server=name, itemid=itemid
                     )
+        if query_failed and raise_on_query_failure:
+            raise MediaServerQueryError(
+                f"媒体库查询失败，未能确认 {mediainfo.title_year} 是否已入库：{', '.join(failed_servers)}"
+            )
         return None
 
     def scheduler_job(self) -> None:

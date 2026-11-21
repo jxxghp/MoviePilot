@@ -243,6 +243,9 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
     async def publish(self, key: Any, value: Any = None) -> None:
         """
         同步失效派生缓存并等待全部配置重载处理器完成。
+
+        :param key: 已提交设置键或同一事务提交的键集合
+        :param value: 单键设置的新值；批量变化默认不广播值
         """
         payload = ConfigChangeEventData(key=key, value=value, change_type="update")
         if payload.key.intersection(_RUST_METAINFO_OPTION_SETTING_KEYS):

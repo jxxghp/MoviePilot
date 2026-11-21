@@ -23,10 +23,11 @@ def services():
     构造相互隔离的本地媒体库与订阅查询替身，避免访问数据库和外部服务。
     """
     return (
-        SimpleNamespace(find_item_id=AsyncMock(return_value="local-item")),
+        SimpleNamespace(find_item=AsyncMock(return_value=SimpleNamespace(item_id="local-item", server="Emby-客厅"))),
         SimpleNamespace(
             list_by_media_identity=AsyncMock(return_value=[]),
             list_by_video_metadata=AsyncMock(return_value=[]),
+            list_by_projected_identity=AsyncMock(return_value=[]),
         ),
     )
 
@@ -55,8 +56,9 @@ async def test_batch_status_keeps_owner_modes_identity_and_input_order(services,
         expected.update({3: "best_version", 4: "normal"})
     assert result[0].seasons == expected
     assert result[0].item_id == "local-item"
-    assert set(result[0].model_dump()) == {"item_id", "subscribed", "seasons"}
-    assert [call.kwargs["season"] for call in library.find_item_id.await_args_list] == [3, 1]
+    assert result[0].server == "Emby-客厅"
+    assert set(result[0].model_dump()) == {"item_id", "server", "subscribed", "seasons"}
+    assert [call.kwargs["season"] for call in library.find_item.await_args_list] == [3, 1]
     assert subscriptions.list_by_media_identity.await_args.args[1] == "874"
 
 
@@ -74,7 +76,9 @@ async def test_batch_status_preserves_video_metadata_fallback_and_music_entity(s
     ], library, subscriptions, actor)
     assert movie.subscribed is True
     assert music.subscribed is False and music.item_id is None
-    library.find_item_id.assert_awaited_once()
+    assert movie.server == "Emby-客厅"
+    assert music.server is None
+    library.find_item.assert_awaited_once()
     subscriptions.list_by_video_metadata.assert_awaited_once()
     assert subscriptions.list_by_video_metadata.await_args.kwargs["year"] == "2026"
     assert subscriptions.list_by_media_identity.await_args.args[1:] == ("album-874", "album")
@@ -95,4 +99,6 @@ def test_batch_status_http_bounds_and_identity_validation(services):
             assert client.post("/media/status", json=payload).status_code == 422
         response = client.post("/media/status", json=[{"title": "电影", "mtype": "电影"}])
     assert response.status_code == 200
-    assert response.json()["data"] == [{"item_id": "local-item", "subscribed": False, "seasons": {}}]
+    assert response.json()["data"] == [{
+        "item_id": "local-item", "server": "Emby-客厅", "subscribed": False, "seasons": {},
+    }]

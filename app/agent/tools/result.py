@@ -10,6 +10,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import ToolException
 from langgraph.types import Command
 
+from app.agent.evidence.scope import redact_evidence_message
 from app.agent.policy.contracts import ExecutionOutcome
 
 EXECUTION_OUTCOME_KEY = "moviepilot_execution_outcome"
@@ -53,10 +54,10 @@ def sanitize_tool_image_message(message: BaseMessage) -> BaseMessage:
 
 def messages_for_persistence(messages: list[BaseMessage]) -> list[BaseMessage]:
     """
-    仅过滤宿主明确标记的临时观察消息，再移除工具图像；真实用户消息原样保留。
+    过滤宿主临时观察，并移除临时知识与工具图像；真实用户消息原样保留。
     """
     return [
-        sanitize_tool_image_message(message)
+        sanitize_tool_image_message(redact_evidence_message(message))
         for message in messages
         if not (isinstance(message, HumanMessage) and message.additional_kwargs.get(TOOL_OBSERVATION_MARKER) is True)
     ]

@@ -69,7 +69,7 @@ class SynologyChat:
         """
         向指定用户或机器人全部可见用户发送消息。
 
-        :param title: 消息标题，可与正文择一提供
+        :param title: 消息标题，可与正文择一提供；为空时只发送正文
         :param text: 消息正文
         :param image: 可选图片下载地址
         :param userid: 指定数字用户标识；为空时查询机器人全部可见用户
@@ -83,7 +83,7 @@ class SynologyChat:
             return False
         try:
             # 拼装消息内容
-            titles = str(title).split('\n')
+            titles = (title or '').split('\n')
             if len(titles) > 1:
                 title = titles[0]
                 if not text:
@@ -91,8 +91,10 @@ class SynologyChat:
                 else:
                     text = "%s\n%s" % ("\n".join(titles[1:]), text)
 
-            if text:
+            if text and title:
                 caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
+            elif text:
+                caption = text.replace("\n\n", "\n")
             else:
                 # 正文为空时，上方检查已保证标题存在。
                 caption = cast(str, title)

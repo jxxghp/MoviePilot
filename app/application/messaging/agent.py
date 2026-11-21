@@ -1695,18 +1695,24 @@ async def build_web_agent_stream(
         choice_id = str(command.choice_selection.get("choice_id") or "")
         claimed = agent_interaction.agent_interaction_manager.get_web_choice(choice_id, str(current_user.id), session_id)
         if claimed is None:
-            return WebAgentStreamResult(events=_single_web_agent_event({
-                "type": "error", "message": "该选择已处理或不属于当前会话",
-            }))
-        choice_request, option = claimed
-        canonical = resolve_web_agent_choice_payload(
-            agent_interaction.build_agent_choice_callback(choice_id, choice_request.selected_index or 1), str(current_user.id),
-        )
-        if canonical is None:
-            return WebAgentStreamResult(events=_single_web_agent_event({"type": "error", "message": "该选择已失效"}))
-        prompt = option.value
-        display_prompt = option.description or option.label
-        command = replace(command, text=prompt, display_text=display_prompt, choice_selection=canonical["choice_selection"])
+            if agent_interaction.is_agent_choice_request_id(choice_id) or not prompt.startswith("CALLBACK:"):
+                return WebAgentStreamResult(events=_single_web_agent_event({
+                    "type": "error", "message": "该选择已处理或不属于当前会话",
+                }))
+            # 插件按钮回调从未登记为 Agent 选择：其选择卡片 id 不是
+            # Agent 选择请求 id。忽略该快照并按传统消息处理，使
+            # CALLBACK:[PLUGIN]… 能继续派发给插件，而不是被选择校验拦截。
+            command = replace(command, choice_selection=None)
+        else:
+            choice_request, option = claimed
+            canonical = resolve_web_agent_choice_payload(
+                agent_interaction.build_agent_choice_callback(choice_id, choice_request.selected_index or 1), str(current_user.id),
+            )
+            if canonical is None:
+                return WebAgentStreamResult(events=_single_web_agent_event({"type": "error", "message": "该选择已失效"}))
+            prompt = option.value
+            display_prompt = option.description or option.label
+            command = replace(command, text=prompt, display_text=display_prompt, choice_selection=canonical["choice_selection"])
     is_secret_confirmation_candidate = (
         prompt in {"确认", "取消"} and not command.images and not command.audio_refs and not command.files
     )

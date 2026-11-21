@@ -8,6 +8,7 @@ import pickle
 import traceback
 from abc import ABCMeta
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, cast
 
@@ -20,6 +21,7 @@ from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._recognition import RecognitionMixin
 from app.domain.context import Context, MediaInfo, MusicArtistInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
+from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
 from app.schemas.context import MediaPerson
 from app.schemas.exception import BusinessRejectedError, RateLimitExceededException
@@ -39,6 +41,7 @@ from app.schemas.types import (
 
 if TYPE_CHECKING:
     from app.application.transfer.workflow import TransferPlanCheckpoint, TransferPlanningInput
+    from app.domain import torrent as torrent_rules
 
 
 class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, metaclass=ABCMeta):
@@ -857,6 +860,9 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         label: Optional[str] = None,
         downloader: Optional[str] = None,
         custom_words: Optional[str] = None,
+        episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+        confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+        user_specified: bool = False,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
@@ -869,6 +875,11 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param label:  标签
         :param downloader:  下载器
         :param custom_words: 来源识别词，选集须与订阅解析采用相同规则
+        :param episode_selection: 目标季与已确认的原始集号对应关系，旧模块可不接收
+        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件（按下载器分开），用于识别被别人取消的文件；
+            None 表示没有下载历史，旧模块可不接收
+        :param user_specified: 用户明确指定了这个种子：同一 hash 已存在时重新选中被取消的目标，任务已暂停且目标
+            未下完时恢复任务；旧模块可不接收
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return cast(Optional[Tuple[Optional[str], Optional[str], Optional[str], str]], self.run_module(
@@ -881,6 +892,9 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             label=label,
             downloader=downloader,
             custom_words=custom_words,
+            episode_selection=episode_selection,
+            confirmed_selection=confirmed_selection,
+            user_specified=user_specified,
         ))
 
     def download_added(
@@ -1052,12 +1066,15 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
 
     def transfer_completed(self, hashs: str, downloader: Optional[str] = None) -> None:
         """
-        下载器转移完成后的处理
+        下载器转移完成后的处理（内置下载器写入"已整理"标签）。
+
+        与订阅追加文件等同一任务上的读写按 hash 互斥，见 ``_hold_task_locks``。
 
         :param hashs:  种子Hash
         :param downloader:  下载器
         """
-        return cast(None, self.run_module("transfer_completed", hashs=hashs, downloader=downloader))
+        with self._hold_task_locks(hashs):
+            return cast(None, self.run_module("transfer_completed", hashs=hashs, downloader=downloader))
 
     def remove_torrents(
         self,
@@ -1068,48 +1085,79 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         """
         删除下载器种子
 
+        与订阅追加文件等同一任务上的读写按 hash 互斥，见 ``_hold_task_locks``：订阅刚受理的追加
+        不会和删除交错，删除后下载链也不会把已删除的任务记成已受理。
+
         :param hashs:  种子Hash
         :param delete_file: 是否删除文件
         :param downloader:  下载器
         :return: 下载器模块报告的操作结果，成功时为 True
         """
-        return cast(bool, self.run_module(
-            "remove_torrents",
-            hashs=hashs,
-            delete_file=delete_file,
-            downloader=downloader,
-        ))
+        with self._hold_task_locks(hashs):
+            return cast(bool, self.run_module(
+                "remove_torrents",
+                hashs=hashs,
+                delete_file=delete_file,
+                downloader=downloader,
+            ))
+
+    @staticmethod
+    def _hold_task_locks(hashs: Union[str, list[str]]) -> AbstractContextManager[None]:
+        """
+        持有指定下载任务的按 hash 互斥锁，见 ``app.runtime.locks.downloader_task_locks``。
+
+        下载链在同一季包上追加文件时，"读取任务状态 → 追加选择 → 写下载历史"整段持有同一把锁；
+        这里让 MP 进程内其他改动同一任务的入口（暂停/开始、改标签、改属性、删除、写已整理标签）与之
+        串行：例如用户刚点了暂停，订阅不会凭暂停前读到的"运行中"往任务里追加文件并记成已下载；
+        Transmission 只能整体覆盖标签，两个流程交错写标签时后写的会覆盖先写的。锁可重入，
+        已持有锁的流程（例如整理链移动模式删除）再调用这些方法不会死锁。
+
+        :param hashs: 种子 hash 或 hash 列表
+        :return: 上下文管理器，退出时释放锁
+        """
+        return downloader_task_locks.hold([hashs] if isinstance(hashs, str) else hashs)
 
     def start_torrents(self, hashs: Union[list[str], str], downloader: Optional[str] = None) -> bool:
         """
         开始下载
 
+        与订阅追加文件等同一任务上的读写按 hash 互斥，见 ``_hold_task_locks``。
+
         :param hashs:  种子Hash
         :param downloader:  下载器
         :return: 下载器模块报告的操作结果，成功时为 True
         """
-        return cast(bool, self.run_module("start_torrents", hashs=hashs, downloader=downloader))
+        with self._hold_task_locks(hashs):
+            return cast(bool, self.run_module("start_torrents", hashs=hashs, downloader=downloader))
 
     def stop_torrents(self, hashs: Union[list[str], str], downloader: Optional[str] = None) -> bool:
         """
         停止下载
 
+        暂停的任务目标没下完时，订阅不会恢复它，也不会往里追加文件，而是改用其他资源
+        （见 ``app.domain.torrent.decide_existing_task``）。与订阅追加文件等同一任务上的读写按 hash 互斥，
+        见 ``_hold_task_locks``。
+
         :param hashs:  种子Hash
         :param downloader:  下载器
         :return: 下载器模块报告的操作结果，成功时为 True
         """
-        return cast(bool, self.run_module("stop_torrents", hashs=hashs, downloader=downloader))
+        with self._hold_task_locks(hashs):
+            return cast(bool, self.run_module("stop_torrents", hashs=hashs, downloader=downloader))
 
     def set_torrents_tag(self, hashs: Union[list[str], str], tags: list[str], downloader: Optional[str] = None) -> bool:
         """
         设置种子标签
+
+        与订阅追加文件等同一任务上的读写按 hash 互斥，见 ``_hold_task_locks``。
 
         :param hashs:  种子Hash
         :param tags:  标签列表
         :param downloader:  下载器
         :return: 下载器模块报告的操作结果，成功时为 True
         """
-        return cast(bool, self.run_module("set_torrents_tag", hashs=hashs, tags=tags, downloader=downloader))
+        with self._hold_task_locks(hashs):
+            return cast(bool, self.run_module("set_torrents_tag", hashs=hashs, tags=tags, downloader=downloader))
 
     def update_torrent(
         self,
@@ -1136,19 +1184,22 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param ratio_limit: 分享率限制
         :param seeding_time_limit: 做种时间限制，单位分钟
         :return: 各项修改结果
+
+        与订阅追加文件等同一任务上的读写按 hash 互斥，见 ``_hold_task_locks``。
         """
-        return cast(Optional[Dict[str, bool]], self.run_module(
-            "update_torrent",
-            hash_string=hash_string,
-            downloader=downloader,
-            download_limit=download_limit,
-            upload_limit=upload_limit,
-            tracker_list=tracker_list,
-            save_path=save_path,
-            category=category,
-            ratio_limit=ratio_limit,
-            seeding_time_limit=seeding_time_limit,
-        ))
+        with self._hold_task_locks(hash_string):
+            return cast(Optional[Dict[str, bool]], self.run_module(
+                "update_torrent",
+                hash_string=hash_string,
+                downloader=downloader,
+                download_limit=download_limit,
+                upload_limit=upload_limit,
+                tracker_list=tracker_list,
+                save_path=save_path,
+                category=category,
+                ratio_limit=ratio_limit,
+                seeding_time_limit=seeding_time_limit,
+            ))
 
     def get_torrent_trackers(
         self,
@@ -1185,6 +1236,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         server: Optional[str] = None,
         *,
         query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
     ) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
@@ -1193,15 +1245,24 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param itemid:  媒体服务器ItemID
         :param server:  媒体服务器
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
+        :param raise_on_query_failure: 剧集查询失败时抛 MediaServerQueryError 而不是返回 None；
+            默认 False 保持既有行为。严格口径必须走严格分发，否则分发器会吞掉提供方异常。
+            仅电视剧服务能区分查询失败与未找到；电影/音乐服务不受该参数影响
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        :raises MediaServerQueryError: 剧集查询失败且 raise_on_query_failure 为 True 时
         """
-        return cast(Optional[ExistMediaInfo], self.run_module(
-            "media_exists",
-            mediainfo=mediainfo,
-            itemid=itemid,
-            server=server,
+        kwargs: Dict[str, Any] = {
+            "mediainfo": mediainfo,
+            "itemid": itemid,
+            "server": server,
             **({"query": query} if query is not None else {}),
-        ))
+            "raise_on_query_failure": raise_on_query_failure,
+        }
+        # 严格口径与宽松口径分别走字面调度调用：宽松分发会吞掉提供方异常，
+        # 严格分发必须走 run_module_strict；字面调用同时保持架构基线对调度点的记录
+        if raise_on_query_failure:
+            return cast(Optional[ExistMediaInfo], self.run_module_strict("media_exists", **kwargs))
+        return cast(Optional[ExistMediaInfo], self.run_module("media_exists", **kwargs))
 
     def media_files(self, mediainfo: MediaInfo) -> Optional[List[FileItem]]:
         """

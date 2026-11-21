@@ -26,6 +26,7 @@ from langchain_core.messages.utils import count_tokens_approximately, get_buffer
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import Command
 
+from app.agent.evidence.scope import redact_evidence_message
 from app.agent.middleware.usage import UsageMiddleware
 from app.runtime.log import logger
 
@@ -116,9 +117,11 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         self, messages_to_summarize: list[AnyMessage]
     ) -> str:
         """
-        复用 LangChain 裁剪策略生成摘要模型输入。
+        摘要只读取临时资料的安全占位，不能把原文重新写进摘要。
         """
-        trimmed_messages = self._trim_messages_for_summary(messages_to_summarize)
+        trimmed_messages = self._trim_messages_for_summary([
+            redact_evidence_message(message) for message in messages_to_summarize
+        ])
         if not trimmed_messages:
             raise ContextSummarizationError(self._UNSUMMARIZABLE_MESSAGE)
         return get_buffer_string(trimmed_messages, format="xml")
@@ -673,15 +676,16 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         response: ModelResponse, compacted_messages: list[AnyMessage]
     ) -> ExtendedModelResponse:
         """
-        主模型成功后一次性替换历史，同时保留本次模型结果。
+        主模型成功后写回安全历史，原文不能随近期保留消息进入图状态。
         """
+        # LangChain 会提前收集内层命令，必须在生成命令处清理，不能依赖外层包装器。
         return ExtendedModelResponse(
             model_response=response,
             command=Command(
                 update={
                     "messages": [
                         RemoveMessage(id=REMOVE_ALL_MESSAGES),
-                        *compacted_messages,
+                        *[redact_evidence_message(message, keep_reference=True) for message in compacted_messages],
                         *response.result,
                     ]
                 }

@@ -111,7 +111,22 @@ AppPush 的所有用户范围由 `tests/test_notification_routing_parity.py` 验
 - 用例**不得**连接或写入真实数据库、不得读写真实 `config/`。需要的库状态在用例内构造。
 - 用例**不得**依赖某个本地才有的动态模块副本；缺失的外部模块由 conftest 兜底或用例自行 mock。
 
+`tests/test_site_auth.py` 验证用户认证参数规范化、切换站点后过滤其他站点前缀、仅持久化成功
+配置，以及启动认证的环境变量优先级。`tests/test_site_chain_ports.py` 覆盖错误 HTTP 响应、
+Cloudflare、空浏览器页面和通用检测的范围提示；这些检测不会验证用户认证页的 UID 或 Passkey。
+认证扩展的传输诊断与各平台 ABI 由 MoviePilot-Build 的离线回放和编译资源验证负责。
+
 ## 外部依赖：一律 mock，零真实网络
+
+季集选集由 `tests/test_episode_file_selection.py`、`tests/test_download_batch_phases.py` 和
+`tests/test_download_history_episode_mapping.py` 验证：S01E20 已识别为 S02E08 时，整包选中
+真实第 20 集，候选集数检查与历史文件明细采用相同对应关系。仅使用标题与识别结果中明确、
+等长的集号对应项，不根据季号猜测整包偏移；无对应依据时拒绝跨季同号文件，特别篇 S00
+独立匹配。来源识别词已经修正的文件不重复换算，无集号附件继续保留。
+选集失败只请求移除本次新增任务并保留文件，再由现有下载链记录退避、通知和尝试其它候选；
+下载器拒绝清理时明确提示人工核查。已有任务只追加目标文件，规则见下文“种子下载重试回归”。
+`tests/test_module_invocation_dispatcher.py` 同时验证旧插件下载器不接收新增可选的
+`episode_selection` 时继续兼容。这些测试使用离线下载器替身，不代表真实 Docker 实例验收。
 
 AniList 直接访问官方 GraphQL 接口，不再探测 `trace.moe/anilist/`。中文数据集保存在
 `<CONFIG_DIR>/cache/anilist/anilist-chinese.json`，有效期 24 小时，同步、异步查询和重建客户端
@@ -148,6 +163,28 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 
 > 注意：识别这类端到端流程往往不止一个外部出口。例如 TMDB 识别除了目录请求，链路层还会向 MP 服务器上报/查询「共享识别 API」——这类旁路出口必须一并打桩。用下文的 socket 探针确认确实零出站。
 
+### 媒体库查询失败与订阅缺集
+
+`tests/test_mediaserver_existence_failure.py` 连接真实 Emby/Jellyfin 客户端、模块调度器、
+缺集计算和订阅进度入口，仅替换 HTTP 与持久化出口。测试覆盖标题搜索、缓存回查、详情及
+分集接口的无响应、HTTP 错误和无效条目结构，以及空库、服务恢复和多服务器部分失败。
+失败时不写缺集进度、不完成订阅；媒体库恢复后按实际已有季集重新计算，保留订阅下载事实。
+`tests/test_trimemedia_coverage.py` 验证飞牛严格电视剧查询首次失败后等待 0.5 秒重试一次，
+重试仍失败时继续抛出查询异常；普通未找到不触发重试。上述离线测试不代表真实媒体服务器
+或报告者 Docker 实例验收。
+
+### 详情页按需查找 TMDB 链接
+
+`tests/test_media_mapping_lookup.py` 注入假匹配、可控时钟和独立 `TaskRegistry`，验证共享关系
+优先于本地记录（没找到后被订阅补齐、本地结果被 Server 修正）、10 分钟记录与 LRU 淘汰、
+同条目合并、第 5 个不同条目被拒绝、请求断开后查找继续并占用名额、任务首次调度前被关停取消时
+仍清理在途项、超时和异常不写记录，以及结论日志。Chain 方法用例覆盖豆瓣电影、豆瓣剧集、
+Bangumi、AniList 与插件来源，确认返回值与上报关系一致；季匹配回退到整剧名称且 TMDB 详情未列出
+所附季号时既不返回也不上报，订阅转换结果保持不变（`tests/test_media_mapping.py` 同步覆盖上报路径）；
+接口用例覆盖参数校验和 429/502/503 翻译。
+新增 `app/application/server/lookup.py` 进入启动导入闭包，三个启动入口的模块数快照各增加 1；
+仅更新该结构事实，原冷导入耗时记录与 3000ms 上限保留。上述用例不访问 TMDB、豆瓣或 Server。
+
 ### 飞书长会话流式卡片回归
 
 `tests/test_feishu.py` 在 CardKit API 边界模拟 `300309` / `200850`：重开同一卡片的
@@ -164,6 +201,11 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 恢复回归还需验证源文件被替换、新目标变成半文件、备份被替换以及历史清理的符号链接路径，
 不能仅凭路径存在就删除源文件或旧备份。
 远端状态不明保持人工复核，不能通过删除旧文件后盲目重试证明成功。
+
+`tests/test_transfer_remote_move_recovery.py` 使用真实临时文件和独立 SQLite 步骤账本回放
+CloudDrive 的移动后改名失败，验证重新取得租约后仅补改名、移动及改名后的进程中断恢复、
+旧最终路径回执兼容、并发替换与查询故障隔离，以及补改名意图不能脱离冻结计划和移动回执。
+这些离线测试不代表真实 CloudDrive gRPC 通道或报告者的百文件并发场景已验收。
 
 下载源移动后留下的悬空软链接应由本地存储先暂存私有链接再原子替换，覆盖绝对与相对链接、
 四种覆盖策略、同步与持久执行、暂存失败和提升前后中断恢复。
@@ -199,6 +241,13 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 
 ### 存储严格查询回执回归
 
+`tests/test_u115_storage.py` 在 OSS 和 115 API 边界模拟分片完成返回 203、HTTP 200 回调失败、
+目录暂不可见及身份冲突，核对目标目录/名称、文件标识、精确字节数和可用的 SHA1。
+身份未确认时保留源文件，不能合成成功元数据；跨存储移动只在核验成功后删除源文件。
+`tests/test_transfer_execution_runner.py` 使用独立数据库验证这种不确定结果持久进入人工复核，
+通用路径查询不能把它降级为可重试失败，旧 worker 也不能再次上传。这些离线用例不代表真实
+115 回调故障已复现或报告者 Docker 环境已验收。
+
 `tests/test_storage_cleanup_receipts.py` 通过真实 StorageChain、模块调度器和 FileManager，
 验证未知存储、未初始化模块、缺失模块和适配器不可用均保留整理历史。自定义存储提供方
 放在插件优先路径或宿主前后顺序时，都须能传递明确的文件项/不存在回执；普通查询仍可返回空值。
@@ -209,7 +258,23 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 从订阅计划一直传到下载器文件选择；目标集数不匹配或优先级未确认时不启动任务，不能写成功历史。
 启动结果未知时尝试确认暂停；无法确认则明确要求检查下载器，不能宣称任务已停止。
 已有下载任务只按原始种子 info 字节或磁力中的 v1/v2 哈希确认，名称与大小相同不能接管任务。
-已有任务返回存在标志，保留启停状态和文件选择，包括之前暂停的任务；不再通过重复提交自动恢复选集。
+同一 hash 已有任务时按 `app/domain/torrent.py` 的 `decide_existing_task` 核验能否受理：自动流程（订阅、工作流、
+插件）只把目标中尚未选中的文件设为下载，从不暂停、取消选择或删除；已暂停且目标未下完的任务拒绝，由订阅换种子；
+MP 曾确认选中（下载历史 note 中的 `confirmed_selection`）、现在被取消的目标主文件按“被别人取消”拒绝。用户手动指定
+种子（`download_single(user_specified=True)`）时重新选中被取消的目标，先追加再恢复暂停的任务。追加、恢复、移除
+“已整理”与补写系统种子标签都要回读确认，未确认即失败；拒绝不让订阅跳过候选，通知按原因与范围去重。见
+`tests/test_existing_task_decision.py`、`tests/test_episode_file_selection.py` 与 `tests/test_downloader_submission.py`；
+旧插件下载器不接收新增参数时的兼容见 `tests/test_module_invocation_dispatcher.py`。同一任务上“读取状态 → 改动”的
+操作持有 `downloader_task_locks`，见 `tests/test_runtime_keyed_locks.py` 与 `tests/test_download_task_service.py`。
+
+只选中部分文件的任务进入下载器整理轮询时逐文件确认，附上下载器报告未下完的文件（相对任务内容路径），整理时跳过，
+蓝光原盘盘内有未完成文件时整盘跳过；音频同目录的 CUE 未下完时该目录的音频本轮延期，同时本轮不写“已整理”。读不到
+文件状态或路径对应不上时本轮不整理。打“已整理”前确认选中部分已下完、选中大小与交给整理时一致；移动整理后删除任务前
+确认任务目录里没有未整理的媒体文件。见 `tests/test_transfer_downloader_storage.py`、`tests/test_music_cue.py`、
+`tests/test_transfer_mark_torrent_completed.py` 与 `tests/test_transfer_torrent_cleanup.py`。rTorrent 按
+`d.is_partially_done` 合成完成标记（进度仍按全部数据计算），添加前按 hash 预查，校验期间按运行处理，恢复时补
+`d.resume`，见 `tests/test_rtorrent_responses.py`；这些命令按文档实现，尚未在真实 rTorrent 实例上验证。
+
 新任务的视频文件按目标集交集选择，允许多集文件连带下载相邻集；无集号的非视频附属文件保留，
 无集号视频不随整包附件自动选中。只有视频可证明目标集完整覆盖，单集请求仍允许唯一视频兜底。
 `tests/test_episode_file_selection.py` 覆盖三种下载器的一致规则，历史明细也按交集保留多集视频。
@@ -236,6 +301,10 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 或写入洗版优先级。测试覆盖显式缺集列表、后页整包、不完整包和搜索期间进度变化，均隔离外部服务。
 完整覆盖目标来自订阅起止集；整包含范围外剧集时只选目标集提交，例如只订阅第 5 集时整季包也只下载
 第 5 集，种子集数与目标一致时仍整包提交。下载层用例见 `tests/test_download_batch_phases.py`。
+整包未通过优先级门槛而回退普通下载时，按订阅范围拆包。`tests/test_subscribe_missing_scope.py`
+覆盖媒体库无此剧和只有其他季两种情况，并验证单集、累计编号和断号资源只提交范围内可用的集。
+断号缺失集继续等待补集。早于季首的历史集数设置保留原缺集语义，历史负数按未设置处理。
+`tests/test_download_batch_phases.py` 验证下载一季后，其他季的显式缺集仍可在本轮提交。
 
 整包优先也约束候选分批：已收集的整包即使排序低于分集、检查点恢复后缺少临时下载地址，
 也须先恢复地址并共同进入下载选择；多个整包不完整、下载失败或恢复后已不可用时才回退分集。
@@ -317,13 +386,11 @@ HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站
 换票诊断包含 HTTP 状态、有限错误字段摘要及是否携带 Cookie，不输出凭据或完整签名 URL。
 再次调用可重新换票，但不增加自动换票重试次数；明确限流仍优先沿用站点窗口，
 直接链接真实损坏种子的 24 小时黑名单与已经写入的旧冷却记录保持不变。
-下载器报告同一任务已存在且整包全部媒体文件明细已记录时，按资源指纹登记 7 天提交退避，
-使订阅不再重投同一个已持有的整包；退避只压制该资源，候选仍继续尝试同媒体的其他种子，
-订阅不会被判定完成或失败，且仅订阅来源写台账（手动补投不留冷却记录）。冷却跳过日志转述台账
-中的原因，不再把它断言成"添加下载失败"。见 `tests/test_torrent_download_retry.py` 与
-`tests/test_downloader_submission.py`。
+下载器确认原样复用已有任务（没有追加文件）、本次提交记不下任何集且整包全部媒体文件明细已记录时，按资源指纹登记
+7 天提交退避，指纹包含订阅 ID 与下载器范围；追加了文件或带集数的提交都不登记，以免挡住扩大范围后的补集。退避只压制
+该订阅往该下载器重投该资源，订阅不会被判定完成或失败，仅订阅来源写台账，冷却跳过日志转述台账中的原因。见
+`tests/test_torrent_download_retry.py` 与 `tests/test_downloader_submission.py`。
 整包退避指纹不包含解析种子后补齐的集数，下一轮搜索仍能命中；普通失败仍按原有集数指纹隔离。
-只重复选择了已记录的部分集数、但包内仍有未记录文件时，不登记整包退避，也不把未选文件写入历史。
 
 换票资源的跨批次复用见 `tests/test_download_resource_cache.py`：种子成功解析后，
 本地 `torrents` 缓存以站点资源身份、原始换票请求和 Cookie 的摘要保存内容，命中后

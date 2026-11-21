@@ -2,18 +2,25 @@
 Emby 媒体服务器客户端，负责内容查询、图片、刷新及 Webhook 转换。
 """
 
+import hashlib
 import json
 import re
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from urllib.parse import quote, urlencode
 
 from requests import Response
 
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
-from app.modules._base.mediaserver import emby_episode_numbers, emby_query_params, iter_emby_items
+from app.modules._base.mediaserver import (
+    emby_episode_numbers,
+    emby_query_params,
+    iter_emby_items,
+    read_emby_query_items,
+)
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
@@ -452,15 +459,11 @@ class Emby:
         }
         try:
             params.update(emby_query_params(query))
-            res = RequestUtils().get_res(url, params)
-            if res:
-                res_items = res.json().get("Items")
-                if res_items:
-                    for res_item in res_items:
-                        if res_item.get("Name") == name and (
-                            not year or str(res_item.get("ProductionYear")) == str(year)
-                        ):
-                            return _optional_text(res_item.get("Id"))
+            for res_item in read_emby_query_items(RequestUtils(), url, params):
+                if res_item.get("Name") == name and (
+                    not year or str(res_item.get("ProductionYear")) == str(year)
+                ):
+                    return _optional_text(res_item.get("Id"))
         except Exception as e:
             logger.error("连接Items出错：" + str(e))
             return None
@@ -569,6 +572,79 @@ class Emby:
             logger.debug(f"查询Emby音乐出错：{e}")
             return []
 
+    def search_library(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """
+        通过 Emby Items 搜索接口查询电视剧和可播放音乐单曲。
+
+        :param keyword: 搜索关键词
+        :param types: 需要搜索的业务类型
+        :param limit: 最多返回的条目数量
+        :return: 带封面、年份或音乐副标题的媒体服务器条目
+        """
+        if not self._host or not self._apikey or not self.user or not keyword.strip():
+            return []
+        server_types = []
+        if MediaType.TV.value in types:
+            server_types.append("Series")
+        if MediaType.MUSIC.value in types:
+            server_types.append("Audio")
+        if not server_types:
+            return []
+        url = f"{self._host}emby/Users/{self.user}/Items"
+        params = {
+            "api_key": self._apikey,
+            "IncludeItemTypes": ",".join(server_types),
+            "Fields": "ProductionYear,Album,Artists,AlbumArtist,ImageTags",
+            "Recursive": "true",
+            "SearchTerm": keyword.strip(),
+            "StartIndex": 0,
+            "Limit": max(1, min(limit, 50)),
+        }
+        try:
+            response = RequestUtils().get_res(url, params)
+            if not response or response.status_code != 200:
+                return []
+            results: list[_SchemaMediaServerPlayItem] = []
+            for item in (response.json().get("Items") or []):
+                item_id = _optional_text(item.get("Id"))
+                title = _optional_text(item.get("Name"))
+                item_type = item.get("Type")
+                if not item_id or not title or item_type not in server_types:
+                    continue
+                artists = item.get("Artists") or []
+                artist_names = [
+                    artist.get("Name") if isinstance(artist, dict) else artist
+                    for artist in artists
+                ]
+                artist = next((str(value) for value in artist_names if value), None)
+                album = _optional_text(item.get("Album"))
+                image_url = f"{self._host}Items/{item_id}/Images/Primary?api_key={self._apikey}"
+                image_tag = (item.get("ImageTags") or {}).get("Primary")
+                if image_tag:
+                    image_url += f"&tag={image_tag}"
+                results.append(
+                    _SchemaMediaServerPlayItem(
+                        id=item_id,
+                        item_id=item_id,
+                        title=title,
+                        subtitle=(str(artist or "") + (f" · {album}" if album else "")) or None
+                        if item_type == "Audio"
+                        else str(item.get("ProductionYear")) if item.get("ProductionYear") else None,
+                        year=item.get("ProductionYear"),
+                        type=MediaType.TV.value if item_type == "Series" else MediaType.MUSIC.value,
+                        image=image_url,
+                        server_type="emby",
+                    )
+                )
+                if len(results) >= limit:
+                    break
+            return results
+        except Exception as e:
+            logger.debug(f"搜索 Emby 媒体库出错：{e}")
+            return []
+
     def get_tv_episodes(
         self,
         item_id: Optional[str] = None,
@@ -593,8 +669,8 @@ class Emby:
         :param media_id: 对应来源的媒体标识
         :param season: 目标季号；None 表示查询全部季
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
-        :return: 电视剧条目标识与“季号到集号列表”映射；配置缺失或异常返回两项 None，
-            未找到、身份不兼容或响应无可用数据时返回 None 和空映射
+        :return: 电视剧条目标识与季集映射；配置、请求或身份校验不可用时返回两项 None，
+            仅确认未找到、身份冲突或成功查询无分集时返回空映射
         """
         if not self._host or not self._apikey:
             return None, None
@@ -623,7 +699,7 @@ class Emby:
                 **({"query": query.with_fields(MediaServerField.IDENTITY)} if query is not None else {}),
             )
         if not item_info:
-            return None, {}
+            return None, None
         if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
             return None, {}
         if season is None:
@@ -636,28 +712,23 @@ class Emby:
                     MediaServerQueryOptions(fields=frozenset()) if query is not None and query.fields is not None else None
                 )
             )
-            res_json = RequestUtils().get_res(url, params)
-            if res_json:
-                tv_item = res_json.json()
-                res_items = tv_item.get("Items")
-                season_episodes: dict[int, list[int]] = {}
-                for res_item in res_items:
-                    season_index = res_item.get("ParentIndexNumber")
-                    if season_index is None:
-                        continue
-                    if season is not None and season != season_index:
-                        continue
-                    episode_index = res_item.get("IndexNumber")
-                    if episode_index is None:
-                        continue
-                    if season_index not in season_episodes:
-                        season_episodes[season_index] = []
-                    season_episodes[season_index].extend(emby_episode_numbers(res_item))
-                return item_id, season_episodes
+            season_episodes: dict[int, list[int]] = {}
+            for res_item in read_emby_query_items(RequestUtils(), url, params):
+                season_index = res_item.get("ParentIndexNumber")
+                if season_index is None:
+                    continue
+                if season is not None and season != season_index:
+                    continue
+                episode_index = res_item.get("IndexNumber")
+                if episode_index is None:
+                    continue
+                if season_index not in season_episodes:
+                    season_episodes[season_index] = []
+                season_episodes[season_index].extend(emby_episode_numbers(res_item))
+            return item_id, season_episodes
         except Exception as e:
             logger.error("连接Shows/Id/Episodes出错：" + str(e))
             return None, None
-        return None, {}
 
     def get_season_episode_ids(
         self, item_id: str, season: int, *, query: Optional[MediaServerQueryOptions] = None
@@ -1165,6 +1236,48 @@ class Emby:
         server_query = f"&serverId={server_id}" if server_id else ""
         return f"{self._playhost or self._host}web/index.html#!" \
             f"/item?id={item_id}&context=home{server_query}"
+
+    def get_stream_url(self, item_id: str, item_type: Optional[str]) -> Optional[str]:
+        """
+        为原生播放器构造支持 Range 的 Emby 静态文件流地址。
+
+        PlaySessionId 按服务器、用户与条目稳定派生，确保多个 Range 请求继续读取同一媒体源。
+
+        :param item_id: Emby 条目标识
+        :param item_type: 媒体服务器返回的条目类型
+        :return: Emby 原始媒体流地址；实例配置或条目标识缺失时返回 None
+        """
+        if not self._host or not self._apikey or not item_id:
+            return None
+        try:
+            response = RequestUtils(timeout=10).get_res(
+                f"{self._host}emby/Items/{quote(str(item_id), safe='')}/PlaybackInfo",
+                params={"api_key": self._apikey, "UserId": self.user},
+            )
+            if response is None or response.status_code != 200:
+                return None
+            sources = response.json().get("MediaSources") or []
+            source = next(
+                (value for value in sources if isinstance(value, dict) and value.get("Id")
+                 and not value.get("RequiresOpening")),
+                None,
+            )
+            if not source:
+                return None
+        except Exception:
+            logger.warning("Emby 原始媒体流信息读取失败，尝试本地文件播放")
+            return None
+        route = "Audio" if (item_type or "").casefold() in {"audio", "music", MediaType.MUSIC.value.casefold()} else "Videos"
+        play_session_id = hashlib.sha256(
+            f"{self._host}:{self.user or ''}:{item_id}".encode("utf-8")
+        ).hexdigest()[:32]
+        query = urlencode({
+            "static": "true",
+            "MediaSourceId": str(source["Id"]),
+            "PlaySessionId": play_session_id,
+            "api_key": self._apikey,
+        })
+        return f"{self._host}emby/{route}/{quote(str(item_id), safe='')}/stream?{query}"
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """

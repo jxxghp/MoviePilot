@@ -620,7 +620,9 @@ def test_site(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    测试站点是否可用
+    检查站点连通性及适配器支持的登录状态。
+
+    通用检测只检查网页和 Cookie；此接口不验证用户认证页保存的 UID、Passkey 等参数。
     """
     site = query.get_sync(site_id)
     if not site:
@@ -861,6 +863,8 @@ def auth_site(
         auth_info.params,
         sites_helper.get_authsites(),
     )
+    if not auth_params:
+        return _SchemaResponse(success=False, message="请输入认证站点和认证参数")
     status, msg = sites_helper.check_user(auth_info.site, auth_params)
     if status:
         get_configured_system_config().set(

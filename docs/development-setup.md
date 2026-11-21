@@ -337,6 +337,21 @@ uv run --locked --no-sync python scripts/architecture/mypy_policy.py --write
 人工复核登记和配置差异；不能用写入命令自动接收。CI 执行同一门禁，并测试新文件报错、
 例外转移、类型桩遮蔽和写入拒绝行为。发布前以最终提交的全量检查结果为准。
 
+### 6.3 容器原生崩溃诊断
+
+容器后端通过 `-X faulthandler` 启动 Python，在导入应用和原生扩展前启用诊断，
+覆盖默认降权启动和 `START_NOGOSU=true` 两种方式。发生 `SIGSEGV`、`SIGABRT` 等致命信号时，
+Python 会尝试将线程栈写入标准错误，由 supervisor 转发到容器日志。
+Python 3.14 还会在平台支持时输出 C 栈；关闭 GIL 时只转储当前线程，避免数据竞争。
+这项诊断用于收集崩溃现场，不会阻止崩溃或代替根因修复。
+
+仍使用旧启动脚本的镜像可在容器环境中设置 `PYTHONFAULTHANDLER=1`，重建容器后生效；
+只在 MoviePilot 的 `app.env` 中设置会晚于解释器初始化，不会自动启用该功能。
+出现异常后，保留容器日志中从 `Fatal Python error` 开始的线程栈、扩展模块列表及前后日志，
+一并记录镜像 digest、revision、Python 和 `moviepilot-rust` 版本。
+标准 GIL 镜像可单独设置 `RUST_ACCEL=false` 对比观察；这只关闭 Rust 业务快路径，
+不保证卸载已导入的扩展，也不能仅凭一次未复现就排除问题。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)

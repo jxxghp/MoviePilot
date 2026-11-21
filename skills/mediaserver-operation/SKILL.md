@@ -45,6 +45,11 @@ required Python version.
   library browsing, scans, and metadata refreshes.
 - A provider result is not automatically a MoviePilot transfer, subscription,
   or history fact. Use the appropriate MoviePilot API for those workflows.
+- Native App playback manifests select a stream source in the MoviePilot REST API:
+  media-server items prefer the server's original stream and fall back to a readable
+  local file when unsupported; single-file tickets from file management and media
+  organization always read locally. This does not change this skill's playback
+  session actions; never pass web links, credentials, or upstream URLs through the App bridge.
 
 ## Instance And Provider Discovery
 

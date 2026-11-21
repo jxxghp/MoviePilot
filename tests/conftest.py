@@ -139,6 +139,23 @@ def compose_cache_backend():
 
 
 @pytest.fixture(autouse=True)
+def isolate_channel_authorization_service():
+    """
+    隔离启动测试登记的渠道授权服务，显式授权用例自行装配临时数据库服务。
+
+    :yields: 没有隐式渠道配置的测试阶段；退出时恢复原进程提供方
+    """
+    from app.application.security.authorization import configure_channel_authorization, get_channel_authorization
+
+    previous = get_channel_authorization()
+    configure_channel_authorization(None)
+    try:
+        yield
+    finally:
+        configure_channel_authorization(previous)
+
+
+@pytest.fixture(autouse=True)
 def install_runtime_settings_test_proxies(monkeypatch):
     """
     向已导入的历史配置替换点注入本用例专用代理。
@@ -553,6 +570,11 @@ def configure_plugin_system_services():
     )
 
     init_chain_ports()
+    # 共享关系与详情页查找会访问外部服务；普通单元测试保持未装配，由专项测试注入受控实现。
+    from app.application.server.lookup import configure_media_mapping_lookup
+    from app.application.server.mapping import configure_media_mapping_port
+    configure_media_mapping_lookup(None)
+    configure_media_mapping_port(None)
     init_chain_network_ports()
     configure_site_query_service(SiteQueryService(repository=site_repository()))
     configure_site_health_service(SiteHealthService(repository=site_repository()))

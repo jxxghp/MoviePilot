@@ -221,6 +221,15 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "item_id"),
     ),
+    "mediaserver_stream_url": ModuleMethodContract(
+        family="media-server",
+        input_contract="MediaServerStreamRequest",
+        result_contract="str | None",
+        result_shape=ModuleResultShape.STRING,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("server", "item_id", "item_type"),
+        public_to_plugins=False,
+    ),
     "mediaserver_tv_episodes": ModuleMethodContract(
         family="media-server",
         input_contract="MediaServerEpisodesRequest",
@@ -235,7 +244,7 @@ _METHOD_CONTRACTS = {
         result_contract="ExistMediaInfo | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("mediainfo", "itemid", "server"),
-        optional_parameters=("query",),
+        optional_parameters=("query", "raise_on_query_failure"),
     ),
     "media_statistic": ModuleMethodContract(
         family="media-server",
@@ -285,6 +294,14 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "username", "hidden"),
         optional_parameters=("query",),
+    ),
+    "mediaserver_search": ModuleMethodContract(
+        family="media-server",
+        input_contract="MediaServerLibrarySearchRequest",
+        result_contract="list[MediaServerPlayItem]",
+        result_shape=ModuleResultShape.LIST,
+        aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
+        required_parameters=("keyword", "types", "limit"),
     ),
     "mediaserver_playing": ModuleMethodContract(
         family="media-server",
@@ -1440,7 +1457,7 @@ _METHOD_CONTRACTS = {
         result_contract="DownloadTaskResult | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader"),
-        optional_parameters=("custom_words",),
+        optional_parameters=("custom_words", "episode_selection", "confirmed_selection", "user_specified"),
     ),
     "download_added": ModuleMethodContract(
         family="downloader",

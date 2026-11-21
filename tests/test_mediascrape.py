@@ -32,6 +32,7 @@ with stub_modules(
     from app.schemas.file import FileItem
     from app.schemas.types import (
         EventType,
+        MediaSource,
         MediaType,
         ScrapingMetadata,
         ScrapingPolicy,
@@ -855,6 +856,42 @@ def test_download_and_save_image_reuses_one_download(
 
 
 @patch("app.chain.scraping._scraping_http_snapshot")
+def test_download_and_save_image_preserves_svg_suffix_and_bytes(
+        mock_http, image_context, tmp_path,
+) -> None:
+    """
+    SVG logo 下载后使用实际格式后缀落盘，并保留矢量原始字节。
+    """
+    chain = image_context.media_chain
+    chain._download_and_save_image = image_context.original_download
+    fileitem = FileItem(path=str(tmp_path), name=tmp_path.name, type="dir", storage="local")
+    content = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>'
+    stream = mock_http.return_value.stream.return_value.__enter__.return_value
+    stream.status_code = 200
+    stream.iter_content.return_value = [content]
+
+    def upload(*, fileitem, path, new_name):
+        """
+        将上传临时文件写到测试目标，并模拟存储适配器消费临时文件。
+        """
+        destination = Path(fileitem.path) / new_name
+        destination.write_bytes(path.read_bytes())
+        path.unlink()
+        return FileItem(path=str(destination), name=new_name, type="file", storage="local")
+
+    chain.storagechain.upload_file.side_effect = upload
+    chain._download_and_save_image(
+        fileitem,
+        tmp_path / "logo.jpg",
+        "https://artwork.invalid/logo.svg",
+    )
+
+    saved_logo = tmp_path / "logo.svg"
+    assert saved_logo.read_bytes() == content
+    chain.storagechain.upload_file.assert_called_once()
+
+
+@patch("app.chain.scraping._scraping_http_snapshot")
 def test_image_download_failure_cleans_temp_files(mock_http, image_context, tmp_path) -> None:
     """
     错误响应内容不会上传，下载临时文件在格式验证失败后仍会清理。
@@ -1156,6 +1193,37 @@ def test_scrape_metadata_tv(mock_recognize, mock_handle_tv, event_context) -> No
         overwrite=False,
         recursive=True,
     )
+
+
+@pytest.mark.parametrize("episode", [0, 1, None])
+def test_tv_file_scraping_preserves_zero_episode(monkeypatch, tv_context, episode) -> None:
+    """
+    文件刮削入口允许第零集参与识别和 NFO、图片生成，仅缺失集号时跳过。
+    """
+    episode_text = "" if episode is None else f".S01E{episode:02d}"
+    fileitem = FileItem(
+        path=f"/tv/Test.Show{episode_text}.mkv",
+        name=f"Test.Show{episode_text}.mkv",
+        type="file",
+        storage="local",
+    )
+    mediainfo = MediaInfo(type=MediaType.TV, media_source=MediaSource.TMDB, media_id="12345", tmdb_id=12345)
+    recognize = MagicMock(return_value=MediaInfo(type=MediaType.TV, tmdb_id=12345))
+    monkeypatch.setattr("app.chain.scraping.MediaChain", lambda: SimpleNamespace(recognize_media=recognize))
+
+    tv_context.media_chain.scrape_metadata(fileitem=fileitem, mediainfo=mediainfo)
+
+    if episode is None:
+        recognize.assert_not_called()
+        tv_context.media_chain._scrape_nfo_generic.assert_not_called()
+        tv_context.media_chain._scrape_images_generic.assert_not_called()
+        return
+    recognize.assert_called_once()
+    assert recognize.call_args.kwargs["meta"].begin_episode == episode
+    tv_context.media_chain._scrape_nfo_generic.assert_called_once()
+    assert tv_context.media_chain._scrape_nfo_generic.call_args.kwargs["episode_number"] == episode
+    tv_context.media_chain._scrape_images_generic.assert_called_once()
+    assert tv_context.media_chain._scrape_images_generic.call_args.kwargs["episode_number"] == episode
 
 
 @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")

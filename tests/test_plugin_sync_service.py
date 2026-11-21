@@ -51,6 +51,7 @@ def _merge_catalog_plugins(higher, base, markets):
         ),
         warning=Mock(),
         error=Mock(),
+        info=Mock(),
     )
     return service.merge(higher, base, markets)
 

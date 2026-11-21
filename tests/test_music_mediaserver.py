@@ -14,6 +14,8 @@ from app.modules.emby import EmbyModule
 from app.modules.emby.emby import Emby
 from app.modules.jellyfin import JellyfinModule
 from app.modules.jellyfin.jellyfin import Jellyfin
+from app.modules.navidrome import NavidromeModule
+from app.modules.navidrome.navidrome import Navidrome
 from app.modules.plex import PlexModule
 from app.modules.plex.plex import Plex
 
@@ -74,6 +76,19 @@ def test_music_media_server_helper_requires_exact_recording_and_artist():
     assert MusicMediaServerHelper.item_matches(_recording(), exact) is True
 
 
+def test_music_media_server_helper_rejects_same_song_from_a_different_album():
+    """
+    同一艺人同名曲目在媒体库已提供专辑信息时必须命中所属专辑。
+    """
+    other_album = schemas.MediaServerItem(
+        item_id="other-release-recording",
+        title="晴天",
+        note={"artist": "周杰伦", "album": "范特西"},
+    )
+
+    assert MusicMediaServerHelper.item_matches(_recording(), other_album) is False
+
+
 def test_music_media_server_helper_requires_complete_album_track_count():
     """
     专辑名称和艺术家相同但曲目不足时，仍必须保持订阅等待整专。
@@ -91,6 +106,45 @@ def test_music_media_server_helper_requires_complete_album_track_count():
 
     assert MusicMediaServerHelper.item_matches(_album(), incomplete) is False
     assert MusicMediaServerHelper.item_matches(_album(), complete) is True
+
+
+def test_navidrome_search_returns_streamable_single_tracks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 Navidrome 模糊搜索结果保留单曲 ID、封面，并能读取单曲路径播放。"""
+    service = object.__new__(Navidrome)
+    service.user = "music-user"
+    service._host = "https://music.example"
+    service._play_host = service._host
+    service._username = "music-user"
+    service._password = "test-password"
+    song = {
+        "id": "song-1",
+        "title": "晴天",
+        "artist": "周杰伦",
+        "album": "叶惠美",
+        "coverArt": "album-1",
+        "path": "/music/晴天.mp3",
+    }
+    api_call = Mock(
+        side_effect=lambda method, **_kwargs: {
+            "searchResult3": {"song": [song]} if method == "search3" else None,
+            "song": song if method == "getSong" else None,
+        }
+    )
+    monkeypatch.setattr(service, "_call", api_call)
+    module = object.__new__(NavidromeModule)
+    monkeypatch.setattr(module, "get_instances", lambda: {"家庭音乐库": service})
+
+    results = module.mediaserver_search("晴", ["音乐"], 10)
+    item = service.get_iteminfo("song-1")
+
+    assert len(results) == 1
+    assert results[0].server == "家庭音乐库"
+    assert results[0].item_id == "song-1"
+    assert results[0].type == "音乐"
+    assert "getCoverArt" in (results[0].image or "")
+    assert item is not None
+    assert item.path == "/music/晴天.mp3"
+    api_call.assert_any_call("getSong", id="song-1")
 
 
 def test_music_media_server_helper_normalizes_emby_music_fields():

@@ -186,7 +186,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     username=username,
                     is_channel_admin=matches_channel_admin(
                         NotificationChannel.Slack, client_config.config, userid
-                    ),
+                    , source=client_config.name),
                     text=text,
                     is_callback=True,
                     callback_data=callback_data,
@@ -243,7 +243,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 username=username,
                 is_channel_admin=matches_channel_admin(
                     NotificationChannel.Slack, client_config.config, userid
-                ),
+                , source=client_config.name),
                 text=text,
                 message_id=message_id,
                 chat_id=chat_id,
@@ -404,9 +404,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         :param message: 提供通知范围、接收人、标题和原消息标识等信息的消息
         :param kwargs: 兼容统一接口的扩展参数，当前不使用
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
@@ -417,13 +415,19 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
             client = self.get_instance(conf.name)
             if client:
                 userid_text = str(userid) if userid is not None else None
-                if message.file_path:
+                if message.native_image and message.image:
+                    client.send_image(
+                        image=message.image, title=message.title, text=message.text,
+                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
+                        buttons=message.buttons,
+                    )
+                elif message.file_path:
                     client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
-                        userid=userid_text,
+                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
                     )
                 else:
                     client.send_msg(
@@ -673,6 +677,12 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
+        通过统一媒体协议发送完整通知，返回首条消息引用，任一附件失败则返回 None。
+        """
+        return self._send_direct_parts(message, self._send_direct_message_part)
+
+    def _send_direct_message_part(self, message: Message) -> Optional[MessageResponse]:
+        """
         向首个成功匹配的 Slack 实例直接发送文件或文本。
 
         文本使用 Slack 时间戳作为消息标识；文件上传可能仅返回文件标识，频道标识可能为空。
@@ -693,13 +703,19 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
             client = self.get_instance(conf.name)
             if client:
                 userid_text = str(userid) if userid is not None else None
-                if message.file_path:
+                if message.native_image and message.image:
+                    result = client.send_image(
+                        image=message.image, title=message.title, text=message.text,
+                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
+                        buttons=message.buttons,
+                    )
+                elif message.file_path:
                     result = client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
-                        userid=userid_text,
+                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
                     )
                 else:
                     result = client.send_msg(
@@ -709,28 +725,25 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                         formatted_text=message.channel_text(NotificationChannel.Slack),
                     )
                 if result and result[0]:
-                    # Slack 使用时间戳作为 message_id，chat_id 是频道ID
-                    response_data = result[1]
-                    message_id = None
-                    channel_id = None
-                    if hasattr(response_data, "get"):
-                        message_id = response_data.get("ts")
-                        channel_id = response_data.get("channel")
-                    if not message_id and hasattr(response_data, "data"):
-                        files = (response_data.data or {}).get("files") or []
-                        if files:
-                            message_id = files[0].get("id")
-                            shares = (
-                                files[0].get("shares", {})
-                                .get("private", {})
-                            )
-                            if shares:
-                                channel_id = next(iter(shares.keys()), None)
-                    return MessageResponse(
-                        message_id=message_id,
-                        chat_id=channel_id,
-                        channel=NotificationChannel.Slack,
-                        source=conf.name,
-                        success=True,
-                    )
+                    return self._direct_message_response(result[1], conf.name)
         return None
+
+    @staticmethod
+    def _direct_message_response(response_data: Any, source: Optional[str]) -> MessageResponse:
+        """
+        从普通消息或文件上传响应读取引用，避免发送流程嵌套平台响应结构。
+
+        :param response_data: Slack 消息或文件上传结果
+        :param source: 成功发送的实例名称
+        :return: 保留消息或文件 ID、分享频道及实例来源的成功回执
+        """
+        message_id = response_data.get("ts") if hasattr(response_data, "get") else None
+        channel_id = response_data.get("channel") if hasattr(response_data, "get") else None
+        if not message_id and hasattr(response_data, "data"):
+            files = (response_data.data or {}).get("files") or []
+            if files:
+                message_id = files[0].get("id")
+                shares = files[0].get("shares", {}).get("private", {})
+                channel_id = next(iter(shares), channel_id)
+        return MessageResponse(message_id=message_id, chat_id=channel_id, channel=NotificationChannel.Slack,
+                               source=source, success=True)

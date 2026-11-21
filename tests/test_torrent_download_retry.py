@@ -2,6 +2,7 @@
 种子 GET 的有界重试、缓存与冷却策略离线回归。
 """
 
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from requests import Response
 import app.application.torrent.download as download
 import app.chain.download.failure as failure_owner
 import app.chain.download.submission as submission
+from app.application.download.failures import DownloadFailureWrite
 from app.chain.download import DownloadChain
 from app.chain.download.failure import (
     DOWNLOAD_FAILURE_DUPLICATE_MESSAGE,
@@ -25,6 +27,7 @@ from app.db.models.downloadfailure import DownloadFailure
 from app.db.session import SessionFactory
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.types import MediaType
 
 URL = "https://tracker.example/download.php?id=39"
@@ -564,7 +567,7 @@ def test_duplicate_submission_backoff_is_subscribe_only_and_long(source, recorde
     assert write.downloader == "qb"
     assert (datetime.fromisoformat(write.next_retry_at)
             - datetime.fromisoformat(write.failed_at)).total_seconds() == DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS
-    assert fingerprint == chain._build_download_failure_fingerprint(context, resource_backoff=True)
+    assert fingerprint == chain._build_download_failure_fingerprint(context, resource_backoff=True, source=source)
 
 
 def test_duplicate_backoff_cools_only_that_resource_for_subscription_candidates(db, monkeypatch):
@@ -613,6 +616,69 @@ def test_duplicate_backoff_survives_whole_season_episode_expansion(db):
     active = chain._active_download_failure_fingerprints(contexts=[next_round], source="Subscribe|1")
 
     assert chain._build_download_failure_fingerprint(next_round) in active
+
+
+def _subscribe_source(subscription_id: int, name: str = "Series") -> str:
+    """
+    按订阅链路的格式构造订阅来源，名称字段可以被用户修改。
+    """
+    return "Subscribe|" + json.dumps({"id": subscription_id, "name": name}, ensure_ascii=False)
+
+
+def test_duplicate_backoff_only_applies_to_the_same_subscription(db):
+    """
+    一个订阅对整包登记的重复退避，不能挡住另一个订阅（例如试看后新建的正式订阅）对同一季包的补集；
+    同一订阅改名后仍按订阅 ID 命中。
+    """
+    db.watermark(DownloadFailure)
+    chain = object.__new__(DownloadChain)
+    chain.download_failure_repository = TransactionalDownloadFailureRepository(SessionFactory)
+    chain._record_duplicate_download_backoff(context=_duplicate_backoff_context(), source=_subscribe_source(1))
+    candidate = _duplicate_backoff_context()
+    fingerprint = chain._build_download_failure_fingerprint(candidate)
+
+    same = chain._active_download_failure_fingerprints(contexts=[candidate], source=_subscribe_source(1, "改名"))
+    other = chain._active_download_failure_fingerprints(contexts=[candidate], source=_subscribe_source(2))
+
+    assert fingerprint in same
+    assert other == {}
+
+
+def _legacy_backoff_fingerprint(context: Context) -> str:
+    """
+    按升级前（d57af7979）的公式计算整包退避指纹：不含订阅范围字段。
+    """
+    media, meta, torrent = context.media_info, context.meta_info, context.torrent_info
+    media_source, media_id = resolve_media_identity(media=media)
+    payload = {
+        "media_type": media.type.value,
+        "media_key": build_media_key(media_source, media_id) or f"{media.title}:{media.year}",
+        "season": str(meta.season) if meta.season is not None else "",
+        "episodes": None,
+        "site": str(torrent.site),
+        "resource": DownloadChain._torrent_resource_key(torrent),
+    }
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def test_legacy_resource_backoff_without_subscription_scope_is_ignored(db):
+    """
+    旧版本按"数据库明细已全部记录"写入、未经下载器核验的整包退避，升级后不再挡住补集。
+    """
+    db.watermark(DownloadFailure)
+    chain = object.__new__(DownloadChain)
+    chain.download_failure_repository = TransactionalDownloadFailureRepository(SessionFactory)
+    context = _duplicate_backoff_context()
+    chain.download_failure_repository.record_failure(DownloadFailureWrite(
+        fingerprint=_legacy_backoff_fingerprint(context),
+        failed_at="2026-11-19 00:00:00", next_retry_at="2099-01-01 00:00:00",
+        torrent_id=DownloadChain._torrent_resource_key(context.torrent_info),
+        source=_subscribe_source(1), error_message=DOWNLOAD_FAILURE_DUPLICATE_MESSAGE,
+    ))
+
+    active = chain._active_download_failure_fingerprints(contexts=[context], source=_subscribe_source(1))
+
+    assert active == {}
 
 
 def test_cooldown_log_keeps_backoff_reason_neutral(monkeypatch):

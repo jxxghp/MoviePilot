@@ -99,6 +99,63 @@ def _response(status: int, text: str) -> Response:
     return response
 
 
+@pytest.mark.parametrize("hostname", ["star-space.net", "www.star-space.net"])
+def test_starspace_reads_existing_feed_from_prefixed_rss_page(rss_access: Mock, hostname: str) -> None:
+    """
+    星空只读取站内已创建的 RSS 链接，保留完整票据且不提交通用生成表单。
+    """
+    rss_access.get.return_value = _response(
+        200, '<a href="../p_rss/rss.php?key=FAKESTAR&amp;cat=all">RSS</a>'
+        '<a href="../p_login/logout.php">退出</a>',
+    )
+
+    link, message = RssHelper().get_rss_link(f"https://{hostname}/", "FAKECOOKIE", "audit", timeout=19)
+
+    assert link == f"https://{hostname}/p_rss/rss.php?key=FAKESTAR&cat=all"
+    assert not message
+    rss_access.get.assert_called_once_with(
+        url=f"https://{hostname}/p_rss/rss_create.php", ua="audit",
+        headers={"Cookie": "FAKECOOKIE"}, proxies=None, timeout=19,
+    )
+    rss_access.post.assert_not_called()
+
+
+@pytest.mark.parametrize("hostname", ["star-space.net.evil.example", "notstar-space.net"])
+def test_starspace_recipe_does_not_match_unrelated_hosts(hostname: str) -> None:
+    """
+    名称相似的无关站点继续使用通用 RSS 页面和表单。
+    """
+    recipe = get_rss_recipe(f"https://{hostname}/")
+    assert recipe.url == f"https://{hostname}/getrss.php"
+    assert recipe.params["showrows"] == 50
+
+
+@pytest.mark.parametrize("body", [
+    "<html><body>尚未创建 RSS</body></html>",
+    '<a href="/p_rss/rss_create.php">创建 RSS</a>',
+    '<form action="/p_login/login_act.php">登录</form>',
+])
+def test_starspace_missing_existing_feed_does_not_create_or_guess_one(rss_access: Mock, body: str) -> None:
+    """
+    未创建 RSS 或登录失效时明确失败，不自动创建站内订阅或拼接账号票据。
+    """
+    rss_access.get.return_value = _response(200, body)
+    link, message = RssHelper().get_rss_link("https://star-space.net/", "FAKECOOKIE", "audit")
+    assert not link and message
+    rss_access.post.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [403, 404, 503])
+def test_starspace_rss_get_keeps_http_failure_details(rss_access: Mock, status: int) -> None:
+    """
+    读取失败保留 HTTP 状态诊断，且不会换用错误的通用生成表单。
+    """
+    rss_access.get.return_value = _response(status, "")
+    link, message = RssHelper().get_rss_link("https://star-space.net/", "FAKECOOKIE", "audit")
+    assert not link and str(status) in message
+    rss_access.post.assert_not_called()
+
+
 @pytest.mark.parametrize("old_query,new_query,expected", [
     ("passkey=OLD&cat=1", "passkey=NEW", [("cat", "1"), ("passkey", "NEW")]),
     ("cat=1&passkey=OLD-TAIL", "passkey=NEW", [("cat", "1"), ("passkey", "NEW")]),

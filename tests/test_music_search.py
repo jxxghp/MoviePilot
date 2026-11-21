@@ -86,6 +86,29 @@ def test_music_manual_candidates_keep_resource_identity_separate():
     assert candidate.media_info_is_target is False
 
 
+def test_music_manual_candidates_include_rejected_resources_with_reason():
+    """
+    显式人工候选搜索应展示自动匹配拒绝的资源，并保留拒绝原因供用户判断。
+    """
+    chain = SearchChain()
+    target = MusicInfo(title="2026 原音精选")
+    torrent = TorrentInfo(
+        title="VA-2026 The Perfect Sound 原音精選 (香港高級視聽展 SACD)DSF",
+        category=MediaType.MUSIC.value,
+    )
+
+    assert chain._build_music_contexts([torrent], target, rule_groups=[]) == []
+    candidates = chain._build_music_contexts(
+        [torrent], target, rule_groups=[], include_candidates=True,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].match_status == "candidate"
+    assert candidates[0].match_reason == "title_mismatch"
+    assert candidates[0].media_info is None
+    assert candidates[0].media_info_is_target is False
+
+
 def test_music_description_title_is_available_as_manual_candidate():
     """
     描述中的明确专辑名应进入人工候选，不得绕过默认精确搜索安全边界。
@@ -107,7 +130,8 @@ def test_music_description_title_is_available_as_manual_candidate():
     assert candidates[0].media_info is None
 
 
-def test_music_stream_counts_rejected_site_results():
+@pytest.mark.parametrize("include_candidates", [False, True])
+def test_music_stream_counts_rejected_site_results(include_candidates):
     """
     分类和名称不符仍属于站点原始候选，空态应能说明为何没有最终结果。
     """
@@ -124,13 +148,20 @@ def test_music_stream_counts_rejected_site_results():
         """
         使用显式关键词把样例限定为一次站点查询。
         """
-        return [event async for event in chain._async_process_music_stream(target, keyword="One", rule_groups=[])]
+        return [event async for event in chain._async_process_music_stream(
+            target, keyword="One", rule_groups=[], include_candidates=include_candidates,
+        )]
 
     with patch.object(chain, "_SearchChain__async_search_all_sites_stream", side_effect=batches):
         events = asyncio.run(collect())
     assert events[-1]["candidate_items"] == 1
-    assert events[-1]["total_items"] == 0
+    assert events[-1]["total_items"] == int(include_candidates)
     assert events[-1]["match_counts"] == {"title_mismatch": 1}
+    if include_candidates:
+        candidate = events[-1]["items"][0]
+        assert candidate["match_status"] == "candidate"
+        assert candidate["match_reason"] == "title_mismatch"
+        assert candidate["media_info"] is None
 
 
 def test_music_context_builder_keeps_only_music_category():

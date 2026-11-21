@@ -5,12 +5,14 @@ Discord 机器人连接、频道路由、消息卡片和输入状态生命周期
 import asyncio
 import re
 import threading
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import discord
 from discord import app_commands
 
+from app.adapters.system.attachment import load_image
 from app.application.messaging.ingress import async_forward_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -19,6 +21,14 @@ from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MessageType
+
+# Discord 嵌入消息长度上限：标题、描述、字段名、字段值、字段数和整条合计。
+EMBED_TITLE_LIMIT = 256
+EMBED_DESCRIPTION_LIMIT = 4096
+EMBED_FIELD_NAME_LIMIT = 256
+EMBED_FIELD_VALUE_LIMIT = 1024
+EMBED_FIELD_COUNT_LIMIT = 25
+EMBED_TOTAL_LIMIT = 6000
 
 # 仅这些通知类型将正文拆为卡片字段，其他类型保留原始文本。
 PARSE_FIELD_TYPES = {
@@ -579,6 +589,34 @@ class Discord:
             logger.error(f"发送 Discord 消息失败：{err}")
             return False
 
+    def send_image(self, image: str, title: Optional[str] = None, text: Optional[str] = None,
+                   userid: Optional[str] = None, original_chat_id: Optional[str] = None,
+                   buttons: Optional[List[List[dict[str, Any]]]] = None) -> Union[bool, Tuple[bool, Optional[Dict[str, str]]]]:
+        """
+        上传完整原图并保留接收会话；有按钮时先发送一次说明与按钮。
+
+        :param image: HTTP(S)、Base64 或本地 JPG/PNG
+        :param title: 图片说明标题
+        :param text: 图片说明正文
+        :param userid: 接收用户标识
+        :param original_chat_id: 优先接收的原会话标识
+        :param buttons: 可选的交互按钮，随说明发送一次
+        :return: 沿用文件接口的成功标记及消息引用；失败返回 False
+        """
+        loaded = load_image(image)
+        if loaded is None:
+            return False
+        if buttons:
+            result = self.send_msg(title=title or ("" if text else "图片"), text=text, userid=userid,
+                                   original_chat_id=original_chat_id, buttons=buttons)
+            if not result or (isinstance(result, tuple) and not result[0]):
+                return False
+            title, text = None, None
+        content, suffix = loaded
+        # 字节由发送协程持有，入口超时也不会提前删除仍在上传的临时文件。
+        return self.send_file(f"image{suffix}", title=title, text=text, userid=userid,
+                              original_chat_id=original_chat_id, file_content=content)
+
     def send_file(
         self,
         file_path: str,
@@ -587,6 +625,7 @@ class Discord:
         userid: Optional[str] = None,
         file_name: Optional[str] = None,
         original_chat_id: Optional[str] = None,
+        file_content: Optional[bytes] = None,
     ) -> Union[bool, Tuple[bool, Optional[Dict[str, str]]]]:
         """
         在专用事件循环中上传本地文件，最多等待 30 秒。
@@ -597,6 +636,7 @@ class Discord:
         :param userid: 用于上下文频道路由或私聊回退的用户标识
         :param file_name: 可选上传文件名，默认使用本地名称
         :param original_chat_id: 优先接收文件的频道标识
+        :param file_content: 原图适配器提供的字节；非空时由发送协程持有，不读取 file_path
         :return: 内部发送完成时返回 (成功标记, 消息标识字典或 None)；入口校验、超时或调度失败返回 False
         """
         if not self.get_state():
@@ -613,6 +653,7 @@ class Discord:
                     userid=userid,
                     file_name=file_name,
                     original_chat_id=original_chat_id,
+                    file_content=file_content,
                 ),
                 self._loop,
             )
@@ -1057,9 +1098,10 @@ class Discord:
         userid: Optional[str],
         file_name: Optional[str],
         original_chat_id: Optional[str],
+        file_content: Optional[bytes] = None,
     ) -> Tuple[bool, Optional[Dict[str, str]]]:
         """
-        在线程池检查本地文件后，上传到解析出的接收频道。
+        上传到解析出的接收频道，本地文件先检查，原图字节由当前协程持有到完成。
 
         标题和正文合并为附言，超过 1900 字符时截断并追加省略号。
 
@@ -1071,7 +1113,7 @@ class Discord:
             return False, None
 
         local_file = Path(file_path)
-        if not await run_in_threadpool(
+        if file_content is None and not await run_in_threadpool(
                 _is_regular_file,
                 local_file,
         ):
@@ -1085,7 +1127,8 @@ class Discord:
 
         try:
             discord_file = discord.File(
-                str(local_file), filename=file_name or local_file.name
+                BytesIO(file_content) if file_content is not None else str(local_file),
+                filename=file_name or local_file.name,
             )
             sent_message = await channel.send(content=content, file=discord_file)
             return (
@@ -1194,6 +1237,56 @@ class Discord:
             return False
 
     @staticmethod
+    def _clip(value: str, limit: int) -> str:
+        """
+        按字符数截断文本，超出时以省略号结尾，总长不超过 limit。
+        """
+        if not value or len(value) <= limit:
+            return value
+        return value[: limit - 1] + "…"
+
+    @staticmethod
+    def _limit_embed_content(
+        title: str, description: str, fields: List[Dict[str, str]]
+    ) -> Tuple[str, str, List[Dict[str, str]]]:
+        """
+        截断 Discord 嵌入消息内容，保证各文本字段及总长度均不超限。
+
+        :param title: 嵌入消息标题
+        :param description: 嵌入消息描述
+        :param fields: 按显示顺序排列的字段
+        :return: 截断后的标题、描述和字段
+        """
+        title = Discord._clip(title, EMBED_TITLE_LIMIT)
+        description = Discord._clip(description, EMBED_DESCRIPTION_LIMIT)
+        fields = [
+            {
+                "name": Discord._clip(field["name"], EMBED_FIELD_NAME_LIMIT),
+                "value": Discord._clip(field["value"], EMBED_FIELD_VALUE_LIMIT),
+            }
+            for field in fields[:EMBED_FIELD_COUNT_LIMIT]
+        ]
+
+        def _total() -> int:
+            """
+            计算嵌入消息中计入总长度上限的字符数。
+            """
+            return (
+                len(title)
+                + len(description)
+                + sum(len(field["name"]) + len(field["value"]) for field in fields)
+            )
+
+        overflow = _total() - EMBED_TOTAL_LIMIT
+        if overflow > 0 and description:
+            description = Discord._clip(
+                description, max(len(description) - overflow, 1)
+            )
+        while fields and _total() > EMBED_TOTAL_LIMIT:
+            fields.pop()
+        return title, description, fields
+
+    @staticmethod
     def _build_embed(
         title: str,
         text: Optional[str],
@@ -1207,7 +1300,7 @@ class Discord:
         仅下载、整理、订阅和手动通知解析“字段：值”；书名括号、URL 和时间中的冒号
         保留为普通正文，避免错误切分。未提供详情链接时使用项目主页。
         """
-        fields: List[Dict[str, Union[str, bool]]] = []
+        fields: List[Dict[str, str]] = []
         desc_lines: List[str] = []
         should_parse_fields = mtype in PARSE_FIELD_TYPES if mtype else False
 
@@ -1297,7 +1390,7 @@ class Discord:
                             value = m.group(2).strip(" ，,;；。、\t") or "-"
                             if name:
                                 fields.append(
-                                    {"name": name, "value": value, "inline": False}
+                                    {"name": name, "value": value}
                                 )
                             last_end = m.end()
                         # 匹配末尾后的文本
@@ -1309,6 +1402,10 @@ class Discord:
         description = "\n".join(desc_lines).strip()
         if not description and not fields and text:
             description = text.strip()
+        # Discord 对嵌入消息有硬性长度上限，超出会被 API 拒绝，需要提前截断
+        title, description, fields = Discord._limit_embed_content(
+            title, description, fields
+        )
         embed = discord.Embed(
             title=title,
             url=link or "https://github.com/jxxghp/MoviePilot",

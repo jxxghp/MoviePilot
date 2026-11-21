@@ -13,6 +13,7 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 
 from app.adapters.network.http import RequestUtils
+from app.adapters.system.attachment import image_upload_file
 from app.application.messaging.ingress import forward_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -336,7 +337,7 @@ class Slack:
 
         仅首批编辑原消息，剩余批次作为新消息发送；后续失败不会撤销已发送的批次。
 
-        :param title: 消息标题，可与普通正文择一提供
+        :param title: 消息标题，可与普通正文择一提供；为空时只发送正文
         :param text: 普通正文，兼作通知摘要和格式化失败时的回退
         :param image: 可选图片地址
         :param link: 未提供按钮时显示的详情链接
@@ -358,7 +359,7 @@ class Slack:
                 channel = userid
             else:
                 channel = self.__find_public_channel()
-            message_text = f"{title}\n{text or ''}"
+            message_text = f"{title}\n{text or ''}" if title else (text or "")
             blocks = self._message_blocks(title, text, image, link, buttons, formatted_text)
             if buttons:
                 for button_row in buttons:
@@ -435,6 +436,8 @@ class Slack:
                         formatted_text: Optional[str]) -> List[Dict[str, Any]]:
         """
         选择渠道正文或原有图文结构，按钮仍由发送入口统一添加。
+
+        无标题时使用正文；图片说明使用正文时最多保留 2000 字符，避免超过 SDK 限制。
         """
         blocks: list[dict[str, Any]]
         blocks = cls._formatted_blocks(formatted_text) if formatted_text else []
@@ -445,18 +448,18 @@ class Slack:
         elif image:
             blocks.append({"type": "section", "text": {
                 "type": "mrkdwn",
-                "text": f"*{title}*\n{text or ''}"
+                "text": f"*{title}*\n{text or ''}" if title else (text or " ")
             }, 'accessory': {
                 "type": "image",
                 "image_url": f"{image}",
-                "alt_text": f"{title}"
+                "alt_text": title or (text or "image")[:2000]
             }})
         elif buttons or link:
             blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*{title}*\n{text or ''}",
+                    "text": f"*{title}*\n{text or ''}" if title else (text or " "),
                 },
             })
         return blocks
@@ -487,6 +490,29 @@ class Slack:
             batches = [headers + content[index:index + capacity] + actions
                        for index in range(0, len(content), capacity)]
         return batches
+
+    def send_image(self, image: str, title: Optional[str] = None, text: Optional[str] = None,
+                   userid: Optional[str] = None, buttons: Optional[List[List[dict[str, Any]]]] = None) -> Tuple[bool, Any]:
+        """
+        上传完整原图，保留说明及可选的交互按钮，不依赖外部图片地址可公开访问。
+
+        :param image: HTTP(S)、Base64 或本地 JPG/PNG
+        :param title: 图片说明标题
+        :param text: 图片说明正文
+        :param userid: 接收用户或频道，沿用宿主解析的目标
+        :param buttons: 可选的交互按钮，随说明发送一次
+        :return: 沿用文件上传的成功标记和响应；原图或说明失败时返回 False 及原因
+        """
+        with image_upload_file(image) as path:
+            if path is None:
+                return False, "图片不可用"
+            if buttons:
+                sent, _ = self.send_msg(title=title or (None if text else "图片"), text=text,
+                                        userid=userid, buttons=buttons)
+                if not sent:
+                    return False, "图片说明发送失败"
+                title, text = None, None
+            return self.send_file(str(path), title=title, text=text, userid=userid)
 
     def send_file(
         self,

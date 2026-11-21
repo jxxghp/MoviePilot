@@ -50,3 +50,7 @@ class TokenPayload(BaseModel):
         default=None,
         description="宿主 Agent 签发令牌时绑定的渠道发起用户标识；仅宿主内部调用的令牌携带",
     )
+    agent_authorization_id: Optional[str] = Field(default=None, description="统一渠道成员身份；每次请求重新校验当前授权")
+    agent_operation: Optional[str] = Field(default=None, description="当前受控业务操作，不得复用于其它 API")
+    agent_method: Optional[str] = Field(default=None, description="本次内部 API 请求的固定 HTTP 方法")
+    agent_path: Optional[str] = Field(default=None, description="本次内部 API 请求的固定路径，不含查询参数")

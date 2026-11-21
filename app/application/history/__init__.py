@@ -123,7 +123,8 @@ class DownloadHistorySnapshot:
     :param username: 触发下载的本地用户名
     :param channel: 触发下载的消息渠道名称
     :param date: 历史记录的时间文本
-    :param note: 冻结的附加 JSON 信息，包含恢复音乐上下文所需的扩展数据
+    :param note: 冻结的附加 JSON 信息：恢复音乐上下文所需的扩展数据；下载链写入的 ``confirmed_selection``（按下载器
+        记录已确认需要下载的文件索引区间，同一任务再次受理时读取，见 ``app.domain.torrent.ConfirmedSelection``）
     :param media_category_id: 媒体类别的稳定标识
     :param media_category: 下载时保存的媒体类别路径快照
     :param classification_rule_id: 当次分类命中的规则标识
@@ -220,7 +221,8 @@ class DownloadHistoryWrite:
     :param username: 触发下载的本地用户名
     :param channel: 触发下载的消息渠道名称
     :param date: 历史记录的时间文本
-    :param note: 冻结的附加 JSON 信息，包含恢复音乐上下文所需的扩展数据
+    :param note: 冻结的附加 JSON 信息：恢复音乐上下文所需的扩展数据；下载链写入的 ``confirmed_selection``（按下载器
+        记录已确认需要下载的文件索引区间，同一任务再次受理时读取，见 ``app.domain.torrent.ConfirmedSelection``）
     :param media_category_id: 媒体类别的稳定标识
     :param media_category: 下载时保存的媒体类别路径快照
     :param classification_rule_id: 当次分类命中的规则标识
@@ -393,12 +395,14 @@ class DownloadHistoryQueryPort(Protocol):
         self,
         page: int = 1,
         count: int = 30,
+        *, username: str | None = None,
     ) -> list[DownloadHistorySnapshot]:
         """
         异步按下载时间倒序分页返回历史快照。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的记录数
+        :param username: 限定业务归属；为空时保留全局查询
         :return: 按下载时间倒序排列的当前页历史快照
         """
         ...
@@ -443,20 +447,22 @@ class AsyncDownloadHistoryQueryRepository(Protocol):
     下载历史只读用例需要的最小异步持久化端口。
     """
 
-    async def async_list_by_page(self, page: int = 1, count: int = 30) -> list[DownloadHistorySnapshot]:
+    async def async_list_by_page(self, page: int = 1, count: int = 30, *, username: str | None = None) -> list[DownloadHistorySnapshot]:
         """
         按下载时间倒序分页读取历史记录。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的记录数
+        :param username: 限定业务归属；为空时查询全部账号
         :return: 按下载时间倒序排列的当前页历史快照
         """
         ...
 
-    async def async_count(self) -> int:
+    async def async_count(self, *, username: str | None = None) -> int:
         """
         返回下载历史记录总数。
 
+        :param username: 限定业务归属；为空时统计全部账号
         :return: 下载历史记录总数
         """
         ...
@@ -578,18 +584,19 @@ class HistoryQueryService:
         *,
         page: int = 1,
         count: int = 30,
+        username: str | None = None,
     ) -> list[DownloadHistory]:
         """
         分页读取下载历史并转换为稳定的接口 DTO。
         """
-        records = await self._download_repository.async_list_by_page(page, count)
+        records = await self._download_repository.async_list_by_page(page, count, username=username) if username is not None else await self._download_repository.async_list_by_page(page, count)
         return [DownloadHistory.model_validate(record) for record in records]
 
-    async def count_download(self) -> int:
+    async def count_download(self, *, username: str | None = None) -> int:
         """
         返回下载历史精确总数，供分页 API 通过附加元数据报告。
         """
-        return await self._download_repository.async_count()
+        return await self._download_repository.async_count(username=username) if username is not None else await self._download_repository.async_count()
 
     async def list_transfer(
         self,

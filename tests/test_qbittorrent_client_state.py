@@ -41,3 +41,20 @@ def test_configured_force_resume_preserves_raw_flag(monkeypatch, force_resume):
     assert client.qbc is sdk
     assert client.is_inactive() is False
     assert client.is_force_resume() is force_resume
+
+
+def test_tag_filter_ignores_spaces_after_commas():
+    """
+    TORRENT_TAG 配成 "MOVIEPILOT, TV" 时，整理轮询按去掉空白后的标签匹配，与已有任务受理确认标签的解析一致；
+    否则受理时确认两个标签都在，轮询却在找带前导空格的 " TV"，追加的剧集下完也不会整理。
+    """
+    client = Qbittorrent.__new__(Qbittorrent)
+    client.qbc = Mock()
+    client.qbc.torrents_info.return_value = [
+        {"hash": "both", "tags": "MOVIEPILOT, TV"}, {"hash": "one", "tags": "MOVIEPILOT"},
+    ]
+
+    torrents, error = client.get_torrents(tags="MOVIEPILOT, TV")
+
+    assert error is False
+    assert [torrent["hash"] for torrent in torrents] == ["both"]

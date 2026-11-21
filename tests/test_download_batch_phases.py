@@ -9,9 +9,11 @@ import pytest
 
 import app.chain.download.batch as download_batch
 import app.chain.download.selection as download_selection
+from app.application.torrent.download import TorrentHelper
 from app.chain.download import DownloadChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.schemas.download import ExistingTaskRejection
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
@@ -23,6 +25,9 @@ def _context(
         season: int = 1,
         media_type: MediaType = MediaType.TV,
 ) -> Context:
+    """
+    构造指定媒体身份、季和集号的批量下载候选。
+    """
     meta = MetaInfo(f"{name} S{season:02d}")
     if episodes:
         meta.set_episode_list(list(episodes))
@@ -41,6 +46,9 @@ def _missing(
         season: int = 1,
         complete: bool = False,
 ) -> NotExistMediaInfo:
+    """
+    构造单季缺集或完整覆盖要求。
+    """
     return NotExistMediaInfo(
         season=season, episodes=list(episodes), total_episode=total,
         start_episode=1, require_complete_coverage=complete,
@@ -72,10 +80,32 @@ def batch(monkeypatch):
 
 
 def _submitted(chain) -> list[Context]:
+    """
+    按调用顺序提取批量下载提交的候选。
+    """
     return [
         call.args[0] if call.args else call.kwargs["context"]
         for call in chain.download_single.call_args_list
     ]
+
+
+def test_partial_pack_maps_file_episodes_before_missing_intersection(batch):
+    """
+    拆包候选检查也须先映射，避免目标 E05 在累计编号包中被提前丢弃。
+    """
+    context = _context("Show", episodes=tuple(range(1, 13)), season=2)
+    context.torrent_info.title = "Show.S01E13-E24"
+    batch.chain.download_torrent.return_value = (
+        b"torrent", None, [f"Show.S01E{episode:02}.mkv" for episode in range(13, 25)],
+    )
+    batch.helper.get_torrent_episodes = TorrentHelper.get_torrent_episodes
+    missing = {"tmdb:1": {2: _missing((5,), total=12, season=2)}}
+
+    downloaded, remaining = batch.chain.batch_download([context], missing)
+
+    assert downloaded == [context]
+    assert remaining == {}
+    assert batch.chain.download_single.call_args.kwargs["episodes"] == {5}
 
 
 def test_batch_preserves_phase_order_and_submission_options(batch):
@@ -144,6 +174,21 @@ def test_incomplete_season_becomes_labelled_candidate_after_file_inspection(batc
     batch.chain.download_single.assert_called_once()
     assert "torrent_content" not in batch.chain.download_single.call_args.kwargs
     batch.chain._record_download_failure.assert_not_called()
+
+
+def test_whole_season_download_preserves_other_seasons_with_explicit_missing_episodes(batch):
+    """
+    整季下载成功只清除该季，其他季的缺集仍能在本轮获得提交。
+    """
+    whole = _context("show", season=2)
+    partial = _context("show", season=1, episodes=(1,))
+    missing = {"tmdb:1": {1: _missing((1, 2)), 2: _missing(season=2)}}
+
+    result, remaining = batch.chain.batch_download([whole, partial], missing)
+
+    assert result == [whole, partial]
+    assert set(remaining["tmdb:1"]) == {1}
+    assert remaining["tmdb:1"][1].episodes == [2]
 
 
 def test_failed_season_submission_stays_in_cooldown_after_metadata_changes(batch):
@@ -239,6 +284,127 @@ def test_partial_packs_only_settle_successful_allowed_episode_selections(batch):
     assert first.meta_info.episode_list == [1, 3, 4]
     assert second.meta_info.episode_list == [2, 4]
     assert failed.meta_info.episode_list == [1, 4]
+
+
+@pytest.mark.parametrize("rejection,retried", [
+    (ExistingTaskRejection.FILES_CANCELLED, True),
+    (ExistingTaskRejection.EPISODES_NOT_FOUND, True),
+    (ExistingTaskRejection.PAUSED, False),
+])
+def test_target_specific_rejection_only_blocks_those_episodes_in_the_batch(batch, rejection, retried):
+    """
+    原包提交 E03-E04 时，下载器因 E03 在已有任务上被取消而拒绝；备用种子补上 E03 后，拆包阶段只要 E04，
+    同一批次内仍应从原包追加 E04。只有"只针对这几集"的拒绝才这样处理，任务暂停等针对整个任务的拒绝
+    照旧让本批不再提交这个候选。
+    """
+    original = _context("original", episodes=(3, 4))
+    backup = _context("backup", episodes=(3,))
+    missing = {"tmdb:1": {1: _missing((3, 4))}}
+
+    def submit(*args, **kwargs):
+        """
+        原包提交 E03-E04 时被拒，其余提交都受理。
+        """
+        context = args[0] if args else kwargs["context"]
+        if context is original and kwargs.get("episodes") == {3, 4}:
+            return None, rejection.describe("abc", "原因")
+        return "download-id", "添加下载成功"
+
+    batch.chain.download_single.side_effect = submit
+
+    result, remaining = batch.chain.batch_download([original, backup], missing)
+
+    submitted = [
+        (call.args[0] if call.args else call.kwargs["context"], call.kwargs.get("episodes"))
+        for call in batch.chain.download_single.call_args_list
+    ]
+    if retried:
+        assert submitted == [(original, {3, 4}), (backup, {3}), (original, {4})]
+        assert result == [backup, original]
+        assert remaining == {}
+    else:
+        assert submitted == [(original, {3, 4}), (backup, {3})]
+        assert result == [backup]
+
+
+def test_same_target_rejected_once_is_not_resubmitted_in_later_phases(batch):
+    """
+    下载器以"只针对这几集"的原因拒绝某个候选的 E03-E04 后，本批后续阶段遇到同一候选、同一目标时直接跳过，
+    不再向下载器重复提交；缺集原样保留，交给下一轮或别的种子。
+    """
+    original = _context("original", episodes=(3, 4))
+    missing = {"tmdb:1": {1: _missing((3, 4))}}
+    batch.chain.download_single.side_effect = lambda *_args, **_kwargs: (
+        None, ExistingTaskRejection.FILES_CANCELLED.describe("abc", "原因"),
+    )
+
+    result, remaining = batch.chain.batch_download([original], missing)
+
+    assert [call.kwargs.get("episodes") for call in batch.chain.download_single.call_args_list] == [{3, 4}]
+    assert result == []
+    assert remaining["tmdb:1"][1].episodes == [3, 4]
+
+
+def test_plugin_download_entry_with_legacy_signature_is_not_passed_return_detail(batch):
+    """
+    插件替换的单资源下载入口可能是不接受 ``return_detail`` 的旧签名：批量下载不能因为传了它而抛 TypeError，按旧方式
+    只取任务 ID，失败时按整个候选记入本批失败。
+    """
+    submitted = []
+
+    def legacy_download_single(context, episodes=None, torrent_content=None, save_path=None, channel=None,
+                               source=None, userid=None, username=None, downloader=None, custom_words=None,
+                               governance=None):
+        """
+        旧签名的插件下载入口：只返回任务 ID，第一次提交失败。
+        """
+        submitted.append(episodes)
+        return None if len(submitted) == 1 else "download-id"
+
+    batch.chain.download_single = legacy_download_single
+    original = _context("original", episodes=(3, 4))
+
+    result, _remaining = batch.chain.batch_download([original], {"tmdb:1": {1: _missing((3, 4))}})
+
+    assert submitted == [{3, 4}]
+    assert result == []
+
+
+def test_keyword_support_follows_entry_point_signature():
+    """
+    只在下载入口的签名里有该参数或 ``**kwargs`` 时才传；读不到签名时按旧签名处理，不传。
+    """
+    class Unreadable:
+        """
+        签名属性非法、读取签名会失败的可调用对象。
+        """
+
+        __signature__ = "invalid"
+
+        def __call__(self, *args, **kwargs):
+            """
+            不会被调用。
+            """
+
+    def legacy(context, episodes=None):
+        """
+        旧签名入口。
+        """
+
+    def detailed(context, *, return_detail=False):
+        """
+        支持详细结果的入口。
+        """
+
+    def flexible(context, **kwargs):
+        """
+        接受任意关键字参数的入口。
+        """
+
+    assert download_batch._accepts_keyword(legacy, "return_detail") is False
+    assert download_batch._accepts_keyword(detailed, "return_detail") is True
+    assert download_batch._accepts_keyword(flexible, "return_detail") is True
+    assert download_batch._accepts_keyword(Unreadable(), "return_detail") is False
 
 
 @pytest.mark.parametrize("missing", [None, {}])

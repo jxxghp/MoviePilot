@@ -200,6 +200,72 @@ class MediaServerChain(ChainBase):
             "mediaserver_iteminfo", server=server, item_id=item_id, **({"query": query} if query is not None else {})
         ))
 
+    def find_item(
+        self,
+        item_id: str,
+        *,
+        server: Optional[str] = None,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[Tuple[str, MediaServerItem]]:
+        """
+        在已启用的媒体服务器中按条目标识查找首个匹配项。
+
+        :param item_id: 媒体服务器条目标识
+        :param server: 可选的媒体服务器配置名称，用于避免跨服务器条目标识冲突
+        :param query: 可选查询内容投影
+        :return: 配置名称和匹配条目；未找到时返回 None
+        """
+        if not item_id:
+            return None
+        servers = [server] if server else [config.name for config in get_mediaserver_configs() if config.name]
+        for server_name in servers:
+            if not server_name:
+                continue
+            item = self.iteminfo(server=server_name, item_id=item_id, query=query)
+            if item and str(item.item_id or item.id or "") == item_id:
+                return server_name, item
+        return None
+
+    def search_library(
+        self,
+        keyword: str,
+        types: Optional[List[str]] = None,
+        limit: int = 30,
+    ) -> List[MediaServerPlayItem]:
+        """
+        在已配置媒体服务器中搜索电视剧和音乐单曲，并代理签名海报地址。
+
+        :param keyword: 用户输入的搜索词
+        :param types: 允许的业务类型；省略时搜索电视剧和音乐
+        :param limit: 返回的最大结果数，服务端适配器也会按此限制请求
+        :return: 带媒体服务器配置名的海报结果
+        """
+        query = keyword.strip()
+        if not query:
+            return []
+        selected_types = [value for value in (types or [MediaType.TV.value, MediaType.MUSIC.value]) if value]
+        items = cast(
+            List[MediaServerPlayItem],
+            self.run_module(
+                "mediaserver_search",
+                keyword=query,
+                types=selected_types,
+                limit=max(1, min(limit, 50)),
+            ),
+        )
+        filtered = [item for item in items or [] if item.type in selected_types and item.item_id]
+        seen: set[tuple[Optional[str], str]] = set()
+        results: List[MediaServerPlayItem] = []
+        for item in filtered:
+            key = (item.server, str(item.item_id))
+            if key in seen:
+                continue
+            seen.add(key)
+            if item.image:
+                item.image = self._sign_image_url(item.image)
+            results.append(item)
+        return results[:max(1, min(limit, 50))]
+
     def episodes(
         self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
     ) -> List[MediaServerSeasonInfo]:
@@ -314,6 +380,24 @@ class MediaServerChain(ChainBase):
         获取播放地址
         """
         return cast(Optional[str], self.run_module("mediaserver_play_url", server=server, item_id=item_id))
+
+    def get_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        获取媒体服务器支持 HTTP Range 的原始媒体流地址。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体服务器条目标识
+        :param item_type: 媒体服务器返回的条目类型
+        :return: 原始媒体流地址；当前适配器不支持时返回 None
+        """
+        return cast(
+            Optional[str],
+            self.run_module(
+                "mediaserver_stream_url", server=server, item_id=item_id, item_type=item_type
+            ),
+        )
 
     def get_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None

@@ -285,6 +285,21 @@ class MoviePilotApiTool(MoviePilotTool):
         把 Web、渠道或集成身份解析为真实 MoviePilot API 用户身份。
         """
         raw_user_id = str(self._user_id or "")
+        from app.application.security.authorization import get_channel_authorization
+
+        authorization = get_channel_authorization()
+        authorization_id = self._agent_context.get("authorization_id")
+        if authorization is not None and (authorization_id or (self._channel and self._source and self._channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value})):
+            try:
+                if isinstance(authorization_id, str) and authorization_id:
+                    user = await self.run_blocking("db", authorization.principal, authorization_id)
+                else:
+                    user = await self.run_blocking("db", authorization.resolve, self._channel, self._source, raw_user_id)
+                self._agent_context["authorization_id"] = user.authorization_id
+                return str(user.id), user.name, user.is_superuser
+            except PermissionError as error:
+                self._record_identity_error(str(error))
+                raise ApiExecutionError(str(error)) from error
         execution_user_id = self._agent_context.get("execution_user_id")
         if isinstance(execution_user_id, int):
             try:
@@ -402,6 +417,7 @@ class MoviePilotApiTool(MoviePilotTool):
                     channel_user_id=(
                         str(self._user_id) if self._channel and self._user_id and not public_read_only else None
                     ),
+                        authorization_id=str(self._agent_context.get("authorization_id") or "") or None,
                 )
             ),
             is_admin,

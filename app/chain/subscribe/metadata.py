@@ -9,6 +9,7 @@ from typing import Any, Optional, TypeVar, cast
 from app.application.classification.reference import (
     subscription_classification_override,
 )
+from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
@@ -74,9 +75,14 @@ def prepare_search_target(owner: _SubscribeOwnerBase, subscribe: SubscriptionSna
     ensure_active()
     media = apply_subscription_classification(media, subscribe)
     key = subscribe_media_key(subscribe)
-    exists, missing = owner.check_and_handle_existing_media(
-        subscribe=subscribe, meta=meta, mediainfo=media, mediakey=key,
-    )
+    try:
+        exists, missing = owner.check_and_handle_existing_media(
+            subscribe=subscribe, meta=meta, mediainfo=media, mediakey=key,
+        )
+    except MediaServerQueryError as err:
+        # 媒体库查询失败时缺集未知，跳过本轮搜索，不更新订阅状态，下一轮重新查询。
+        logger.warning(f"订阅《{subscribe.name}》媒体库查询失败，本轮跳过搜索：{err}")
+        return None
     return None if exists else SubscriptionSearchTarget(subscribe, meta, media, missing, key)
 
 
@@ -113,7 +119,7 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         media_chain_factory: Callable[[], Any],
     ) -> Optional[SubscriptionSnapshot]:
         """
-        在元数据巡检中重试豆瓣或 Bangumi 到 TMDB 的订阅身份转换。
+        在元数据巡检中重试豆瓣、Bangumi 或 AniList 到 TMDB 的订阅身份转换。
 
         该补偿复用既有的 TMDB 元数据巡检周期。没有匹配结果、外部识别失败或目标身份
         已被其他订阅占用时保留原订阅，避免转换失败影响当前订阅的后续搜索。
@@ -129,7 +135,7 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         if is_tmdb_recognize_source is None or not is_tmdb_recognize_source():
             return None
         source, media_id = resolve_media_identity(media=subscribe)
-        if source not in (MediaSource.Douban, MediaSource.Bangumi) or not media_id:
+        if source not in (MediaSource.Douban, MediaSource.Bangumi, MediaSource.AniList) or not media_id:
             return None
 
         media_chain = media_chain_factory()

@@ -1139,6 +1139,9 @@ class LoggerManager:
             except (TypeError, ValueError):
                 formatted_msg = f"{formatted_msg} {' '.join(str(arg) for arg in args)}"
 
+        # 渠道关联码属于一次性认证凭据；入站 SDK 可能记录完整消息，所有日志出口前统一隐藏。
+        formatted_msg = re.sub(r"(绑定账号\s+)[A-Za-z0-9_-]{20,}", r"\1[已隐藏]", formatted_msg)
+
         file_exc_info = _normalize_exc_info(kwargs.get("exc_info"))
 
         if scope:

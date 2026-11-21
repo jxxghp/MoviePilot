@@ -3,12 +3,15 @@ IMDb 原生媒体数据源 Module 测试。
 """
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from app.api.endpoints import download as download_endpoint
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.metainfo import MetaInfo
 from app.modules.imdb import ImdbModule
 from app.modules.imdb.api import (
     ImdbAka,
@@ -23,6 +26,7 @@ from app.modules.imdb.api import (
 )
 from app.runtime.config import settings
 from app.runtime.tasks import TaskRegistry
+from app.schemas.context import TorrentInfo
 from app.schemas.types import MediaRecognizeType, MediaSource, MediaType
 
 
@@ -625,6 +629,121 @@ def test_async_imdb_recognition_uses_async_detail_pipeline(
     assert result.backdrop_path == "https://image.example/backdrop.jpg"
     imdb_module.imdb_api.async_get_title.assert_awaited()
     imdb_module.imdb_api.async_list_credits.assert_awaited_once_with("tt0903747")
+
+
+@pytest.fixture
+def imdb_episode_title(imdb_api: Mock, imdb_title: ImdbTitle) -> ImdbTitle:
+    """
+    在同步和异步标题接口中提供同一单集及其父剧集详情。
+    """
+    episode = ImdbApi._parse_title({
+        "titles": [{
+            "id": "tt0959621",
+            "titleType": {"id": "tvEpisode"},
+            "titleText": {"text": "Pilot"},
+            "series": {
+                "series": {"id": imdb_title.id},
+                "episodeNumber": {"seasonNumber": 1, "episodeNumber": 1},
+            },
+        }],
+    })
+    assert episode is not None
+    titles = {episode.id: episode, imdb_title.id: imdb_title}
+    imdb_api.get_title.side_effect = titles.get
+    imdb_api.async_get_title.side_effect = titles.get
+    return episode
+
+
+@pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+def test_imdb_episode_recognition_uses_parent_identity_and_resource_range(
+    imdb_module: ImdbModule, imdb_episode_title: ImdbTitle, async_mode: bool,
+) -> None:
+    """
+    从单集识别所属剧集，保留资源本身的季集范围。
+    """
+    meta = MetaInfo("Breaking.Bad.S02E02-E07.1080p.WEB-DL")
+    query = {"meta": meta, "media_source": MediaSource.IMDb, "media_id": imdb_episode_title.id}
+    if async_mode:
+        result = asyncio.run(imdb_module.async_recognize_media(**query))
+    else:
+        result = imdb_module.recognize_media(**query)
+
+    assert result is not None
+    assert (result.media_source, result.media_id, result.imdb_id) == (
+        MediaSource.IMDb, "tt0903747", "tt0903747",
+    )
+    assert (result.type, result.title, result.season) == (MediaType.TV, "Breaking Bad", 2)
+    assert meta.season_list == [2]
+    assert meta.episode_list == [2, 3, 4, 5, 6, 7]
+
+
+@pytest.mark.parametrize("parent_problem", ["no_link", "no_title", "movie", "different_id"])
+@pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+def test_imdb_episode_without_verified_parent_is_unrecognized(
+    imdb_module: ImdbModule, imdb_api: Mock, imdb_episode_title: ImdbTitle,
+    parent_problem: str, async_mode: bool,
+) -> None:
+    """
+    父剧集缺失或返回身份冲突时，单集不能作为可用媒体身份。
+    """
+    titles = {imdb_episode_title.id: imdb_episode_title}
+    if parent_problem == "no_link":
+        titles[imdb_episode_title.id] = ImdbTitle(id=imdb_episode_title.id, type="tvEpisode")
+    elif parent_problem == "movie":
+        titles["tt0903747"] = ImdbTitle(id="tt0903747", type="movie")
+    elif parent_problem == "different_id":
+        titles["tt0903747"] = ImdbTitle(id="tt0000001", type="tvSeries")
+    imdb_api.get_title.side_effect = titles.get
+    imdb_api.async_get_title.side_effect = titles.get
+
+    if async_mode:
+        result = asyncio.run(imdb_module.async_recognize_media(
+            media_source=MediaSource.IMDb, media_id=imdb_episode_title.id,
+        ))
+    else:
+        result = imdb_module.recognize_media(
+            media_source=MediaSource.IMDb, media_id=imdb_episode_title.id,
+        )
+
+    assert result is None
+    imdb_api.list_episodes.assert_not_called()
+    imdb_api.async_list_episodes.assert_not_awaited()
+
+
+@pytest.mark.parametrize("parent_found", [True, False], ids=["parent-found", "parent-missing"])
+def test_download_add_resolves_imdb_episode_for_season_pack(
+    imdb_module: ImdbModule, imdb_api: Mock, imdb_episode_title: ImdbTitle,
+    parent_found: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    整季下载仅使用已核实的父剧集身份，查不到时要求确认。
+    """
+    if not parent_found:
+        imdb_api.get_title.side_effect = {imdb_episode_title.id: imdb_episode_title}.get
+    downloader = Mock()
+    downloader.download_single.return_value = "download-1"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: imdb_module)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: downloader)
+
+    response = download_endpoint.add(
+        torrent_in=TorrentInfo(title="Breaking Bad S02 Complete 1080p WEB-DL"),
+        media_source=MediaSource.IMDb,
+        media_id=imdb_episode_title.id,
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    if not parent_found:
+        assert response.success is False
+        assert response.data.requires_confirmation is True
+        downloader.download_single.assert_not_called()
+        return
+    assert response.success is True
+    downloader.download_single.assert_called_once()
+    context = downloader.download_single.call_args.kwargs["context"]
+    assert context.media_info.media_id == "tt0903747"
+    assert context.media_info.type == MediaType.TV
+    assert context.meta_info.season_list == [2]
+    assert context.meta_info.episode_list == []
 
 
 def test_imdb_scraping_only_handles_imdb_source(

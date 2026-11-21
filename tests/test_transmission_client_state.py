@@ -303,3 +303,20 @@ def test_state_change_rpc_failure_never_confirms_success(state_clock, paused) ->
 
     assert client.ensure_torrent_state("hash", paused=paused) is False
     assert state_clock.now == 0
+
+
+def test_tag_filter_ignores_spaces_after_commas():
+    """
+    TORRENT_TAG 配成 "MOVIEPILOT, TV" 时，整理轮询按去掉空白后的标签匹配，与已有任务受理确认标签的解析一致。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrents.return_value = [
+        SimpleNamespace(hashString="both", status="seeding", labels=["MOVIEPILOT", "TV"]),
+        SimpleNamespace(hashString="one", status="seeding", labels=["MOVIEPILOT"]),
+    ]
+
+    torrents, error = client.get_torrents(tags="MOVIEPILOT, TV")
+
+    assert error is False
+    assert [torrent.hashString for torrent in torrents] == ["both"]

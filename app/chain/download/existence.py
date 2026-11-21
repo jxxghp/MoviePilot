@@ -4,7 +4,11 @@
 
 from typing import Any, Dict, Optional, Tuple, cast
 
-from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY, get_mediaserver_configs
+from app.application.mediaserver import (
+    MEDIA_SERVER_EXISTENCE_QUERY,
+    MediaServerQueryError,
+    get_mediaserver_configs,
+)
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.media import MediaChain
 from app.domain.context import (
@@ -29,7 +33,10 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
     def get_no_exists_info(self, meta: MetaBase,
                            mediainfo: MediaInfo | MusicInfo,
                            no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None,
-                           totals: Optional[Dict[int, int]] = None
+                           totals: Optional[Dict[int, int]] = None,
+                           *,
+                           totals_are_episode_numbers: bool = False,
+                           raise_on_query_failure: bool = False,
                            ) -> Tuple[bool, Dict[str, Dict[int, NotExistMediaInfo]]]:
         """
         检查媒体库，查询电影或音乐是否存在；对于剧集同时返回不存在的季集信息
@@ -37,8 +44,12 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         :param meta: 元数据
         :param mediainfo: 已识别的媒体信息，指定剧集组时重新识别对应的季集结构
         :param no_exists: 在调用该方法前已经存储的不存在的季集信息，有传入时该函数搜索的内容将会叠加后输出
-        :param totals: 电视剧每季的总集数
+        :param totals: 电视剧每季的总集数；非正数视为未指定
+        :param totals_are_episode_numbers: 指定的总集数为季内末集号；早于季首时沿用原有集数口径
+        :param raise_on_query_failure: 剧集查询失败时抛 MediaServerQueryError 而不是写出整季缺失；
+            默认 False 保持既有行为，仅订阅等需要区分失败与未找到的调用方传入 True
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
+        :raises MediaServerQueryError: 剧集查询失败且 raise_on_query_failure 为 True 时
         """
         media_source, media_id = resolve_media_identity(media=mediainfo)
         if mediainfo.type == MediaType.TV and not build_media_key(media_source, media_id):
@@ -108,85 +119,116 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                     "media_id": media_id,
                     "season": mediainfo.season,
                 },
+                raise_on_query_failure=raise_on_query_failure,
             )
-            if not exists_tvs:
-                for season, episodes in mediainfo.seasons.items():
-                    if not episodes:
+            existing_seasons = (exists_tvs.seasons or {}) if exists_tvs else {}
+            for season, episodes in mediainfo.seasons.items():
+                if not episodes or (meta.sea and season not in meta.season_list):
+                    continue
+                first = min(episodes)
+                total_override = max(totals.get(season) or 0, 0)
+                season_total = total_override or len(episodes)
+                episode_end = total_override if totals_are_episode_numbers and total_override >= first else 0
+                exist_episodes = existing_seasons.get(season)
+                if exist_episodes:
+                    episode_range = range(first, (episode_end or first + season_total - 1) + 1)
+                    target_episodes = episode_range if total_override else episodes
+                    lack_episodes = sorted(set(target_episodes).difference(exist_episodes))
+                    if not lack_episodes:
                         continue
-                    if meta.sea \
-                            and season not in meta.season_list:
-                        continue
-                    total_ep = totals.get(season) or len(episodes)
-                    self._append_no_exists(
-                        no_exists, media_source, media_id, season, [],
-                        total_ep, min(episodes)
-                    )
-                return False, no_exists
-            else:
-                for season, episodes in mediainfo.seasons.items():
-                    if meta.sea \
-                            and season not in meta.season_list:
-                        continue
-                    if not episodes:
-                        continue
-                    season_total = totals.get(season) or len(episodes)
-                    exist_episodes = (exists_tvs.seasons or {}).get(season)
-                    if exist_episodes:
-                        if totals.get(season):
-                            # 按总集数计算缺失集（开始集为TMDB中的最小集）
-                            lack_episodes = list(set(range(min(episodes),
-                                                           season_total + min(episodes))
-                                                     ).difference(set(exist_episodes)))
-                        else:
-                            # 按TMDB集数计算缺失集
-                            lack_episodes = list(set(episodes).difference(set(exist_episodes)))
-                        if not lack_episodes:
-                            continue
-                        self._append_no_exists(
-                            no_exists, media_source, media_id, season,
-                            lack_episodes, season_total, min(lack_episodes)
-                        )
-                    else:
-                        self._append_no_exists(
-                            no_exists, media_source, media_id, season, [],
-                            season_total, min(episodes)
-                        )
-            if no_exists:
+                    first = lack_episodes[0]
+                else:
+                    lack_episodes = self._whole_season_missing(episodes, season_total, episode_end)
+                self._append_no_exists(
+                    no_exists, media_source, media_id, season, lack_episodes, season_total, first,
+                )
+            if exists_tvs and no_exists:
                 logger.debug(f"媒体库中已存在部分剧集，缺失：{no_exists}")
-                return False, no_exists
-            return True, no_exists
+            return bool(exists_tvs) and not no_exists, no_exists
 
     def _media_exists_with_server_cache(
         self,
         mediainfo: MediaInfo,
         query: dict[str, Any],
+        *,
+        raise_on_query_failure: bool = False,
     ) -> Optional[ExistMediaInfo]:
         """
         按媒体服务器隔离缓存条目，并合并各服务器已确认存在的剧集。
+
+        :param mediainfo: 本次查询的媒体信息
+        :param query: 本次查询的媒体服务器参数
+        :param raise_on_query_failure: 任一服务器剧集查询失败时抛 MediaServerQueryError，
+            避免用其他服务器的部分集数推断缺失；默认 False 时保留已确认结果
+        :return: 已确认存在的媒体信息；没有服务器确认存在时为 None
+        :raises MediaServerQueryError: 任一剧集查询失败且 raise_on_query_failure 为 True
         """
         server_names = [str(config.name) for config in get_mediaserver_configs() if config.name]
         if not server_names:
             itemid = self.media_server_repository.get_item_id(**query)
-            return self.media_exists(mediainfo=mediainfo, itemid=itemid, query=MEDIA_SERVER_EXISTENCE_QUERY)
+            return self.media_exists(
+                mediainfo=mediainfo, itemid=itemid, query=MEDIA_SERVER_EXISTENCE_QUERY,
+                raise_on_query_failure=raise_on_query_failure,
+            )
         combined: Optional[ExistMediaInfo] = None
         seasons: dict[int, set[int]] = {}
+        failed_servers: list[str] = []
         for server in server_names:
             itemid = self.media_server_repository.get_item_id(
                 server=server,
                 **query,
             )
-            exists = self.media_exists(
-                mediainfo=mediainfo, itemid=itemid, server=server, query=MEDIA_SERVER_EXISTENCE_QUERY
-            )
+            try:
+                exists = self.media_exists(
+                    mediainfo=mediainfo, itemid=itemid, server=server, query=MEDIA_SERVER_EXISTENCE_QUERY,
+                    raise_on_query_failure=raise_on_query_failure,
+                )
+            except MediaServerQueryError:
+                # 收集失败并继续查询其余服务器；严格口径不能据部分结果推断缺集。
+                failed_servers.append(server)
+                continue
             if exists:
                 if mediainfo.type != MediaType.TV:
                     return exists
                 combined = combined or exists
                 for season, episodes in (exists.seasons or {}).items():
                     seasons.setdefault(season, set()).update(episodes)
-        return combined.model_copy(update={
-            "seasons": {season: sorted(episodes) for season, episodes in seasons.items()},
-        }) if combined else None
+        if failed_servers and raise_on_query_failure:
+            raise MediaServerQueryError(
+                f"媒体库查询失败，未能确认 {mediainfo.title_year} 是否已入库：{', '.join(failed_servers)}"
+            )
+        if combined:
+            return combined.model_copy(update={
+                "seasons": {season: sorted(episodes) for season, episodes in seasons.items()},
+            })
+        return None
+
+    @staticmethod
+    def _whole_season_missing(episodes: list[int], total: int, episode_end: int) -> list[int]:
+        """
+        计算一季完全未入库时的缺集列表。
+
+        手工订阅末集号裁短本季，或恰好覆盖累计编号的整季时，写出目标范围。
+        范围内尚未确认的集号继续等待补集；超过本季已知末集号时沿用整季标记。
+        仅提供集数的调用继续在季初连续且两种口径一致时写出显式目标集。
+
+        :param episodes: 本季全部集号
+        :param total: 本季有效总集数，调用方已保证为正
+        :param episode_end: 显式末集号；未指定或早于季首时为 0
+        :return: 显式目标集；空列表表示按整季处理
+        """
+        if episode_end:
+            first = min(episodes)
+            last = max(episodes)
+            if episode_end < last or (first != 1 and episode_end == last):
+                return list(range(first, episode_end + 1))
+            return []
+        if total >= len(episodes):
+            return []
+        target = sorted(episodes)[:total]
+        if target[-1] != total:
+            return []
+        return target
 
     @staticmethod
     def _append_no_exists(

@@ -356,6 +356,7 @@ async def test_execute_timeout_or_cancellation_closes_descendant_pipes(
         + ("raise SystemExit(0)\n" if parent_exits else "time.sleep(30)\n")
     ))
     ready = asyncio.Event()
+    ready_output = bytearray()
     captured: list[asyncio.subprocess.Process] = []
     original_create = asyncio.create_subprocess_exec
 
@@ -369,10 +370,11 @@ async def test_execute_timeout_or_cancellation_closes_descendant_pipes(
 
         async def read(size: int = -1) -> bytes:
             """
-            确认父进程已创建后代并输出 READY 后才允许测试发起取消。
+            确认完整 READY 行已被读取后才发起取消，避免把缓冲中的换行误判为管道未关闭。
             """
             data = await original_read(size)
-            if b"READY" in data:
+            ready_output.extend(data)
+            if b"READY\n" in ready_output:
                 ready.set()
             return data
 

@@ -246,10 +246,11 @@ class MediaStatusQuery(OptionalMediaIdentityMixin, BaseModel):
 
 class MediaStatusResult(BaseModel):
     """
-    与输入顺序对应的本地入库、订阅状态和当前媒体各季订阅模式。
+    与输入顺序对应的本地入库、服务器来源、订阅状态和各季订阅模式。
     """
 
     item_id: Optional[str] = Field(default=None, description="本地媒体库条目标识，未入库时为空")
+    server: Optional[str] = Field(default=None, description="条目所属的精确媒体服务器配置名称")
     subscribed: bool = Field(default=False, description="当前用户是否订阅了查询媒体及指定季")
     seasons: dict[int, Literal["normal", "best_version", "best_version_full"]] = Field(
         default_factory=dict, description="同来源当前剧集的已订阅季及普通、洗版、完整洗版模式"

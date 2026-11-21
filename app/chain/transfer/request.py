@@ -114,11 +114,15 @@ class _TransferCandidatePlanner:
             fileitem: FileItem,
             manual: bool = False,
             sync_music_covers: bool = False,
+            reported_incomplete: Optional[Callable[[Optional[str]], bool]] = None,
     ) -> None:
         """
         冻结候选规划依赖，避免请求阶段再读取可变配置。
 
+        :param manual: 是否为手动整理；手动整理保留本次识别与覆盖结果
         :param sync_music_covers: 自动整理音乐封面，不扩展影视附加文件的同步范围
+        :param reported_incomplete: 判断存储路径是否是下载器报告尚未下载完成的文件；候选收集已按它过滤，规划阶段
+            另行补入的关联文件（整轨 CUE）同样要遵守。无需过滤时为 None
         """
         self._chain = chain
         self._meta = meta
@@ -134,6 +138,9 @@ class _TransferCandidatePlanner:
         self._sync_music_covers = sync_extra_files or sync_music_covers
         self._fileitem = fileitem
         self._manual = manual
+        self._reported_incomplete = reported_incomplete
+        # 本次规划因依赖的文件（整轨 CUE）尚未下载完成而延期的整理项，见 ``deferred_items``。
+        self._deferred: List[FileItem] = []
         # 自动类型请求在候选收集后补充可靠的视频上下文，供目录封面和附属音轨判断。
         self._has_video_batch_source = False
 
@@ -428,6 +435,38 @@ class _TransferCandidatePlanner:
                 continue
             self._append_item(planned, seen, item, is_bluray_dir)
 
+    def _append_cue_companions(
+            self, items: List[Tuple[FileItem, bool]], inherited: Dict[Tuple[str, str], MetaBase],
+    ) -> Tuple[List[Tuple[FileItem, bool]], Dict[Tuple[str, str], MetaBase]]:
+        """
+        按本次请求的视频来源、过滤规则与未完成文件清单补入整轨 CUE，见 ``append_cue_companions``。
+
+        补入只会增加整理项；结果里少掉的就是依赖的 CUE 尚未下载完成、本轮延期的整轨音频，记入 ``deferred_items``。
+
+        :param items: 已规划的整理项
+        :param inherited: 已继承的文件元数据
+        :return: 补入 CUE 后的整理项与继承元数据
+        """
+        planned, inherited = append_cue_companions(
+            self._chain, items, inherited, self._has_reliable_video_source(), self._transfer_exclude_words,
+            reported_incomplete=self._reported_incomplete,
+        )
+        kept = {self._chain._get_file_key(item) for item, _ in planned}
+        self._deferred.extend(item for item, _ in items if self._chain._get_file_key(item) not in kept)
+        return planned, inherited
+
+    @property
+    def deferred_items(self) -> List[FileItem]:
+        """
+        返回本次规划中因依赖的文件尚未下载完成而延期、本轮没有交给整理的文件。
+
+        这些文件本身已下完、也是选中的，只是暂时不能整理：任务不能因为其余文件整理完成就打上"已整理"，否则下一轮
+        下载器整理不会再扫描它，依赖下完后也不会再整理。
+
+        :return: 延期的文件，按规划顺序
+        """
+        return list(self._deferred)
+
     def _plan_file_items(
             self,
             items: List[Tuple[FileItem, bool]]
@@ -499,7 +538,7 @@ class _TransferCandidatePlanner:
                         )
                         if main_meta:
                             inherited_map[self._chain._get_file_key(current_item)] = deepcopy(main_meta)
-                    return append_cue_companions(self._chain, list(items), inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
+                    return self._append_cue_companions(list(items), inherited_map)
 
         if not main_items:
             remaining = [
@@ -513,7 +552,7 @@ class _TransferCandidatePlanner:
                     and self._chain._is_music_lyrics_file(item[0])
                 )
             ]
-            return append_cue_companions(self._chain, remaining, inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
+            return self._append_cue_companions(remaining, inherited_map)
 
         planned_items: List[Tuple[FileItem, bool]] = []
         seen_file_keys: set[Tuple[str, str]] = set()
@@ -614,12 +653,14 @@ class _TransferCandidatePlanner:
 
         self._append_remaining_items(items, planned_items, seen_file_keys, inherited_map)
 
-        return append_cue_companions(self._chain, planned_items, inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
+        return self._append_cue_companions(planned_items, inherited_map)
 
 
 def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) -> dict[str, Any]:
     """
     按实际整理结果投影预览项，失败阶段与恢复动作保留原始裁决。
+
+    仅为本次确由 CUE 结构校验拒绝的预览补充恢复提示，不改变正式整理的失败分类和自动接管。
     """
     from app.application.transfer.feedback import classify_transfer_failure
 
@@ -629,24 +670,32 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
         transferinfo.message,
         overwrite_skipped=bool(transferinfo.overwrite_skipped),
     )
+    music = music_transfer_preview(item_meta, item_media, task.music_preview_context,
+                                   selected=bool(task.manual and task.media_source and task.media_id))
+    failure_stage, recovery_action = feedback.stage.value, feedback.action
+    # 解析器已记录结构状态；同时核对当前错误，避免存储故障被残留 CUE 诊断或路径文字覆盖。
+    if (task.preview and music and music.get("layout") == "cue_invalid" and transferinfo.message
+            and transferinfo.message == getattr(item_meta, "organization_error", None)
+            and not transferinfo.overwrite_skipped):
+        failure_stage = "recognition"
+        recovery_action = "检查 CUE 文件内容，或关闭「识别 CUE」后重试"
     return (
         {
             "source": task.fileitem.path,
             "source_storage": task.fileitem.storage,
             "source_item": task.fileitem.model_dump(exclude={"children", "url", "thumbnail"}),
-            "music": music_transfer_preview(item_meta, item_media, task.music_preview_context,
-                                            selected=bool(task.manual and task.media_source and task.media_id)),
+            "music": music,
             "target": transferinfo.target_item.path if transferinfo.target_item else None,
             "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
             "success": transferinfo.success,
             "message": transferinfo.message,
             "failure_stage": (
-                transferinfo.failure_stage or feedback.stage.value
+                transferinfo.failure_stage or failure_stage
                 if not transferinfo.success
                 else None
             ),
             "recovery_action": (
-                transferinfo.recovery_action or feedback.action
+                transferinfo.recovery_action or recovery_action
                 if not transferinfo.success
                 else None
             ),

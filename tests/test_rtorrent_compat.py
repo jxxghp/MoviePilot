@@ -137,3 +137,46 @@ def test_set_torrent_location_updates_directory():
         "ABCDEF1234567890ABCDEF1234567890ABCDEF12",
         "/downloads/new",
     )
+
+
+def test_set_files_flushes_written_priorities_after_partial_failure():
+    """
+    逐个写入优先级中途失败时，已写入的部分仍要刷新生效并返回失败，由调用方重新读取实际状态。
+
+    否则重试时读到这些文件已是"选中"不会再写入，优先级却始终没有生效。
+    """
+    downloader = Rtorrent.__new__(Rtorrent)
+    fake_proxy = MagicMock()
+    fake_proxy.f.priority.set.side_effect = [None, RuntimeError("连接中断")]
+    downloader._proxy = fake_proxy
+
+    assert downloader.set_files(torrent_hash="ABCDEF", file_ids=[1, 2], priority=1) is False
+
+    fake_proxy.d.update_priorities.assert_called_once_with("ABCDEF")
+
+
+def test_set_files_without_any_write_skips_priority_refresh():
+    """
+    第一个文件就写入失败时没有需要刷新的优先级，不额外发送刷新请求。
+    """
+    downloader = Rtorrent.__new__(Rtorrent)
+    fake_proxy = MagicMock()
+    fake_proxy.f.priority.set.side_effect = RuntimeError("连接中断")
+    downloader._proxy = fake_proxy
+
+    assert downloader.set_files(torrent_hash="ABCDEF", file_ids=[1], priority=1) is False
+
+    fake_proxy.d.update_priorities.assert_not_called()
+
+
+def test_update_priorities_reports_request_result():
+    """
+    单独刷新文件优先级时如实返回请求是否完成。
+    """
+    downloader = Rtorrent.__new__(Rtorrent)
+    fake_proxy = MagicMock()
+    downloader._proxy = fake_proxy
+
+    assert downloader.update_priorities("ABCDEF") is True
+    fake_proxy.d.update_priorities.side_effect = RuntimeError("连接中断")
+    assert downloader.update_priorities("ABCDEF") is False

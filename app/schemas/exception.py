@@ -94,6 +94,14 @@ class StorageQueryError(Exception):
     pass
 
 
+class StorageOperationUncertainError(RuntimeError):
+    """
+    存储写入可能已经生效，但适配器无法确认目标文件身份。
+
+    调用方必须保留源文件并转人工复核，不能仅凭目录暂不可见就自动重放写入。
+    """
+
+
 class PersistenceUnavailableError(RuntimeError):
     """
     持久化执行能力暂时拒绝新操作，调用方可在稍后重试。
