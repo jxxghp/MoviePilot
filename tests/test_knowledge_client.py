@@ -10,7 +10,12 @@ import httpx2
 import pytest
 from pydantic import ValidationError
 
-from app.adapters.external.knowledge import MAX_RESPONSE_BYTES, KnowledgeClient
+from app.adapters.external.knowledge import (
+    MAX_RESPONSE_BYTES,
+    QUERY_ATTEMPT_SECONDS,
+    QUERY_MAX_RETRIES,
+    KnowledgeClient,
+)
 from app.adapters.network.http import AsyncRequestUtils
 from app.application.knowledge import KnowledgeService
 from app.runtime.config import Settings
@@ -62,7 +67,7 @@ def _requester(client):
     :param client: 由测试管理的合成传输客户端
     :return: 不跟随跳转、验证 TLS 且禁用环境代理继承的宿主请求器
     """
-    return AsyncRequestUtils(client=client, http2=False, timeout=3, verify=True,
+    return AsyncRequestUtils(client=client, http2=False, timeout=QUERY_ATTEMPT_SECONDS, verify=True,
                              follow_redirects=False, trust_env=False)
 
 
@@ -244,10 +249,10 @@ async def test_invalid_encoding_type_or_buffered_size_is_rejected(response):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["connect", "timeout"])
-async def test_transport_failures_are_sanitized_and_not_retried(kind):
+@pytest.mark.parametrize("kind", ["connect", "timeout", "os", "empty", "invalid"])
+async def test_transport_failures_are_sanitized_and_retried_within_a_bound(kind):
     """
-    传输异常不回显可能含凭据的异常文本，POST 失败也不自动重放。
+    只读请求在传输异常后有限重试，最终失败不回显可能含凭据的异常文本。
     """
     calls = []
 
@@ -259,13 +264,130 @@ async def test_transport_failures_are_sanitized_and_not_retried(kind):
         :return: 始终抛出合成网络错误
         """
         calls.append(request)
+        if kind == "os":
+            raise OSError(SENTINEL)
+        if kind == "invalid":
+            raise ValueError(SENTINEL)
         error = httpx2.ReadTimeout if kind == "timeout" else httpx2.ConnectError
         raise error(SENTINEL, request=request)
 
     async with httpx2.AsyncClient(transport=httpx2.MockTransport(handle)) as http:
-        result = await KnowledgeClient(_requester(http)).query(AgentKnowledgeConfig(**_config()), KnowledgeSearch(query="规则"))
+        transport = _requester(http)
+        if kind == "empty":
+            transport = MagicMock(post_res=AsyncMock(return_value=None))
+        result = await KnowledgeClient(transport).query(AgentKnowledgeConfig(**_config()), KnowledgeSearch(query="规则"))
     assert result == KnowledgeOutcome("unavailable")
-    assert len(calls) == 1 and SENTINEL not in repr(result)
+    expected_calls = 1 if kind == "invalid" else QUERY_MAX_RETRIES + 1
+    assert (transport.post_res.await_count if kind == "empty" else len(calls)) == expected_calls
+    assert SENTINEL not in repr(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["search", "read"])
+async def test_transient_transport_failure_retries_and_success_uses_fresh_connection(monkeypatch, operation):
+    """
+    短暂连接故障后重试成功，并关闭连接复用以便新请求重新解析 DNS。
+    """
+    calls = []
+    options = []
+
+    def handle(request):
+        """
+        通过真实宿主请求器回放一次连接故障和后续的正常中心响应。
+
+        :param request: 宿主构造的固定路径只读请求
+        :return: 重试后返回的有效中心响应
+        """
+        calls.append(request)
+        if len(calls) == 1:
+            raise httpx2.ConnectError(SENTINEL, request=request)
+        return httpx2.Response(200, json=_reply())
+
+    def create_transport(**kwargs):
+        """
+        捕获生产请求器选项并返回离线合成传输。
+
+        :param kwargs: 请求器生产配置
+        :return: 用于合成响应的传输
+        """
+        options.append(kwargs)
+        return AsyncRequestUtils(client=http, **kwargs)
+
+    monkeypatch.setattr("app.adapters.external.knowledge.AsyncRequestUtils", create_transport)
+    payload = KnowledgeSearch(query="规则") if operation == "search" else KnowledgeRead(evidence_id=REFERENCE)
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handle)) as http:
+        result = await KnowledgeClient().query(AgentKnowledgeConfig(**_config()), payload)
+        assert not http.is_closed
+    assert result.status == "matched"
+    assert len(calls) == 2
+    assert all(str(request.url) == f"{ORIGIN}/knowledge/v1/agent/{operation}" for request in calls)
+    assert calls[0].content == calls[1].content
+    assert len(options) == 2
+    assert all(option["timeout"] == QUERY_ATTEMPT_SECONDS for option in options)
+    assert all(option["max_keepalive_connections"] == 0 for option in options)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["search", "read"])
+async def test_service_accepts_slow_response_within_total_budget(operation):
+    """
+    5.5 秒的有效中心响应在适配器和服务总预算内都能正常返回。
+    """
+
+    observed = []
+
+    async def handle(request):
+        """
+        通过真实宿主 HTTP 请求器回放 5.5 秒后返回的中心响应。
+
+        :param request: 宿主构造的固定路径只读请求
+        :return: 合成的有效中心响应
+        """
+        observed.append(request)
+        await asyncio.sleep(5.5)
+        return httpx2.Response(200, json=_reply())
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handle)) as http:
+        port = KnowledgeClient(_requester(http))
+        service = KnowledgeService(lambda: AgentKnowledgeConfig(**_config()), port, lambda: "3.2.9")
+        result = await service.search("慢响应测试") if operation == "search" else await service.read(REFERENCE)
+    assert result.status == "matched"
+    assert len(observed) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recover", [True, False])
+async def test_attempt_deadline_cancels_stalled_request_before_retry(monkeypatch, recover):
+    """
+    单次请求卡住时先取消并释放该次等待，再有限重试或返回不可用。
+    """
+    observed = []
+    cancelled = []
+
+    async def handle(request):
+        """
+        用可取消等待模拟卡住的连接，并按用例选择让第二次请求恢复。
+
+        :param request: 当前合成请求
+        :return: 恢复后的有效中心响应
+        """
+        observed.append(request)
+        assert len(cancelled) == len(observed) - 1
+        if recover and len(observed) == 2:
+            return httpx2.Response(200, json=_reply())
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.append(request)
+
+    monkeypatch.setattr("app.adapters.external.knowledge.QUERY_ATTEMPT_SECONDS", 0.01)
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handle)) as http:
+        result = await asyncio.wait_for(KnowledgeClient(_requester(http)).query(
+            AgentKnowledgeConfig(**_config()), KnowledgeSearch(query="规则"),
+        ), timeout=1)
+    assert result.status == ("matched" if recover else "unavailable")
+    assert len(observed) == (2 if recover else QUERY_MAX_RETRIES + 1)
+    assert len(cancelled) == (1 if recover else QUERY_MAX_RETRIES + 1)
 
 
 @pytest.mark.asyncio

@@ -711,8 +711,9 @@ Agent 使用既有 `MP_SERVER_HOST` 连接 MoviePilot Server，不需要填写�
 发布后的知识只读，后台来源凭据不会随检索响应返回。
 
 Agent 使用固定 `/knowledge/v1/agent/search` 与 `/knowledge/v1/agent/read` 路径，校验 TLS、关闭重定向、
-不自动重放 POST，也不发送站点 Cookie、登录 Cookie、API Key 或用户 UID。单次查询总预算 3 秒、
-搜索最多 3 条且每条最多 1600 字符、补读最多 1 条 4000 字符；总正文预算 6000 字符。96 KiB 响应检查
+也不发送站点 Cookie、登录 Cookie、API Key 或用户 UID。两条协议路径均为固定只读 POST：传输失败时单次预算为 7.5 秒，
+最多重试 2 次，总预算 23 秒；每轮重试都建立新连接，不重试 HTTP 错误或协议无效响应。搜索最多 3 条且每条最多 1600 字符、
+补读最多 1 条 4000 字符；总正文预算 6000 字符。96 KiB 响应检查
 发生在宿主 HTTP 层缓冲之后，不代表传输前的硬内存上限。请求途中开关或 Server 地址变化会丢弃迟到结果。
 
 Agent 仅在回答 MoviePilot 使用、配置、开发、故障或 PT 站点规则时检索；问候、闲聊和普通常识不触发。

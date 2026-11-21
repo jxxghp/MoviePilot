@@ -1,7 +1,8 @@
 """
-中心知识协议的只读 HTTPS 适配器，不缓存、不重放、不回显中心错误正文。
+中心知识协议的只读 HTTPS 适配器，不缓存、有限重试传输故障、不回显中心错误正文。
 """
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any, Literal, Optional, Protocol, Union
 
@@ -10,7 +11,6 @@ from pydantic import ValidationError
 from app.adapters.network.http import AsyncHttpRequestError, AsyncRequestUtils
 from app.runtime.settings import get_runtime_setting
 from app.schemas.knowledge import (
-    QUERY_SECONDS,
     AgentKnowledgeConfig,
     KnowledgeFailure,
     KnowledgeOutcome,
@@ -20,6 +20,9 @@ from app.schemas.knowledge import (
 )
 
 MAX_RESPONSE_BYTES = 96 * 1024
+# 单轮覆盖中心约 7 秒的正常慢响应，三轮仍受服务层 23 秒总预算约束。
+QUERY_ATTEMPT_SECONDS = 7.5
+QUERY_MAX_RETRIES = 2
 _HTTP_FAILURES: dict[int, KnowledgeFailure] = {
     401: "unauthorized", 403: "forbidden", 410: "reference_expired", 413: "invalid_request",
     415: "invalid_request", 422: "invalid_request", 429: "rate_limited", 503: "unavailable",
@@ -39,11 +42,42 @@ class KnowledgeClient:
         """
         self._transport = transport
 
+    async def _post(self, url: str, payload: dict[str, Any]) -> Optional["KnowledgeHttpResponse"]:
+        """
+        对固定只读接口执行有界传输重试，每次生产请求都建立新连接。
+
+        :param url: 当前知识中心固定协议地址
+        :param payload: 已校验且不含用户凭据的协议请求
+        :return: 收到的 HTTP 响应；请求失败或无响应时为 None
+        """
+        for attempt in range(QUERY_MAX_RETRIES + 1):
+            transport = self._transport or AsyncRequestUtils(
+                proxies=get_runtime_setting("PROXY"), http2=False, timeout=QUERY_ATTEMPT_SECONDS,
+                verify=True, follow_redirects=False, trust_env=False, max_keepalive_connections=0,
+            )
+            try:
+                async with asyncio.timeout(QUERY_ATTEMPT_SECONDS):
+                    response = await transport.post_res(
+                        url, json=payload, allow_redirects=False, raise_exception=True,
+                        headers={"Accept": "application/json", "Content-Type": "application/json",
+                                 "Accept-Encoding": "identity"},
+                    )
+            except (AsyncHttpRequestError, OSError):
+                # asyncio.timeout 的 TimeoutError 同属 OSError；取消当前尝试后才重试。
+                if attempt < QUERY_MAX_RETRIES:
+                    continue
+                return None
+            except ValueError:
+                return None
+            if response is not None:
+                return response
+        return None
+
     async def query(
         self, config: AgentKnowledgeConfig, request: Union[KnowledgeSearch, KnowledgeRead],
     ) -> KnowledgeOutcome:
         """
-        固定路径、校验证书并关闭跳转；不携带 Cookie 或用户身份令牌。
+        固定路径、校验证书并关闭跳转；传输失败时有界重试，不携带 Cookie 或用户身份令牌。
 
         :param config: 当前 Server 源和本地工具开关
         :param request: 宿主验证的检索或补读请求，不接受任意路径
@@ -55,19 +89,9 @@ class KnowledgeClient:
         origin = config.origin.rstrip("/")
         if not origin:
             return KnowledgeOutcome("unavailable")
-        transport = self._transport or AsyncRequestUtils(
-            proxies=get_runtime_setting("PROXY"), http2=False, timeout=QUERY_SECONDS, verify=True,
-            follow_redirects=False, trust_env=False,
+        response = await self._post(
+            f"{origin}/knowledge/v1/{path}", request.model_dump(mode="json"),
         )
-        try:
-            response = await transport.post_res(
-                f"{origin}/knowledge/v1/{path}", json=request.model_dump(mode="json"),
-                allow_redirects=False, raise_exception=True,
-                headers={"Accept": "application/json", "Content-Type": "application/json",
-                         "Accept-Encoding": "identity"},
-            )
-        except (AsyncHttpRequestError, OSError, ValueError):
-            return KnowledgeOutcome("unavailable")
         if response is None:
             return KnowledgeOutcome("unavailable")
         try:
