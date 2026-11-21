@@ -792,19 +792,36 @@ def not_exists(
 def latest(
     server: str,
     count: Optional[int] = 20,
+    page: Optional[int] = None,
     userinfo: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    获取媒体服务器最新入库条目
+    获取媒体服务器最新入库条目；传入 `page` 时按 `count` 分页切片返回，支持客户端无限滚动加载。
     """
-    return _require_mediaserver_result(
+    if page is None or page < 1:
+        return _require_mediaserver_result(
+            MediaServerChain().latest(
+                server=server,
+                count=count,
+                username=userinfo.username,
+                query=_CARD_QUERY,
+            )
+        )
+    page_size = max(1, min(count or 20, 50))
+    offset = (page - 1) * page_size
+    max_total = 200
+    if offset >= max_total:
+        return []
+    fetch_count = min(offset + page_size, max_total)
+    items = _require_mediaserver_result(
         MediaServerChain().latest(
             server=server,
-            count=count,
+            count=fetch_count,
             username=userinfo.username,
             query=_CARD_QUERY,
         )
     )
+    return items[offset : offset + page_size]
 
 
 @router.get("/playing", summary="正在播放条目", response_model=List[_SchemaMediaServerPlayItem])
