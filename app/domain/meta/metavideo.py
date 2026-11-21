@@ -10,7 +10,7 @@ from typing import Optional, Sequence
 from Pinyin2Hanzi import is_pinyin
 
 from app.domain.meta.customization import CustomizationMatcher
-from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metabase import MetaBase, refine_subtitle_period_episode
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
 from app.domain.meta.runtime import get_media_extensions
 from app.domain.meta.streamingplatform import StreamingPlatforms
@@ -261,6 +261,7 @@ class MetaVideo(MetaBase):
         self.init_subtitle(self.org_string or "")
         if not self._subtitle_flag and self.subtitle:
             self.init_subtitle(self.subtitle)
+        refine_subtitle_period_episode(self)
         # 去掉名字中不需要的干扰字符，过短的纯数字不要
         self.cn_name = self.__fix_name(self.cn_name)
         self.en_name = text_tools.title_case(self.__fix_name(self.en_name))
