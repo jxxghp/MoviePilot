@@ -265,6 +265,9 @@ class WeChat:
         """
         if text:
             text = text.replace("\n\n", "\n")
+        if not title:
+            # 企业微信图文消息要求标题非空，缺省时取正文首行，仍为空则用应用名
+            title = next((line.strip() for line in (text or "").splitlines() if line.strip()), "MoviePilot")
         if not userid:
             userid = "@all"
         req_json = {

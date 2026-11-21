@@ -140,3 +140,40 @@ def test_wechat_news_payload_uses_signed_douban_proxy(
     image_url = captured["news"]["articles"][0]["picurl"]
     signed_source = parse_qs(urlparse(image_url).query)["url"][0]
     assert image_urls.verify_wechat_image_url(signed_source) == source_url
+
+
+@pytest.mark.parametrize(
+    ("title", "text", "expected"),
+    [
+        (None, "已添加订阅\n详情", "已添加订阅"),
+        ("", "\n第二行", "第二行"),
+        (None, None, "MoviePilot"),
+        ("奥德赛", "已添加订阅", "奥德赛"),
+    ],
+)
+def test_wechat_news_payload_title_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    title: Any,
+    text: Any,
+    expected: str,
+) -> None:
+    """
+    图文消息没有标题时不应发送空标题，企业微信会拒收该消息。
+    """
+    monkeypatch.setattr(image_urls, "get_runtime_setting", _settings_with_domain)
+    captured: dict[str, Any] = {}
+    client = WeChat.__new__(WeChat)
+    client._appid = "1"
+    monkeypatch.setattr(
+        client,
+        "_WeChat__post_request",
+        lambda url, payload: captured.update(payload) or True,
+    )
+
+    assert client._WeChat__send_image_message(
+        title=title,
+        text=text,
+        image_url="https://image.tmdb.org/poster.jpg",
+    ) is True
+
+    assert captured["news"]["articles"][0]["title"] == expected
