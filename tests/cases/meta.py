@@ -39,6 +39,70 @@ meta_cases = [{
         "fps": 60
     }
 }, {
+    "title": "Season 5 (2026)",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "",
+        "year": "",
+        "part": "",
+        "season": "S05",
+        "episode": "",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
+    "title": "S05 (2026)",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "",
+        "year": "",
+        "part": "",
+        "season": "S05",
+        "episode": "",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
+    "title": "Season 5",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "",
+        "year": "",
+        "part": "",
+        "season": "S05",
+        "episode": "",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
+    "title": "Season 12 (2024)",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "",
+        "year": "",
+        "part": "",
+        "season": "S12",
+        "episode": "",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
     "title": "【爪爪字幕组】★7月新番[欢迎来到实力至上主义的教室 第二季/Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e S2][11][1080p][HEVC][GB][MP4][招募翻译校对]",
     "subtitle": "",
     "target": {
@@ -1178,6 +1242,21 @@ meta_cases = [{
         "audio_codec": "",
         "media_source": "themoviedb",
         "media_id": "1396"
+    }
+}, {
+    "path": "/tv/克拉克森的农场 (2021)/Season 5 (2026)/",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "克拉克森的农场",
+        "en_name": "",
+        "year": "2021",
+        "part": "",
+        "season": "S05",
+        "episode": "",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
     }
 }, {
     "path": "/movies/Breaking Bad (2008) [tmdb=1396]/Season 1/Breaking.Bad.S01E01.1080p.mkv",
