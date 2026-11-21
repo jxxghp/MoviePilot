@@ -1411,7 +1411,7 @@ class TmdbApi:
     @staticmethod
     def _build_include_image_language(original_language: Optional[str] = None) -> str:
         """
-        构造图片接口语言回退列表，优先当前语言及其基础语言码，避免当前语言没有图片时返回空列表。
+        构造 TMDB 图片接口 ISO-639-1 语言回退列表，优先当前语言，避免当前语言没有图片时返回空列表。
         """
         from app.runtime.localization import LocaleHelper
 
@@ -1423,9 +1423,8 @@ class TmdbApi:
             text = str(raw_locale or "").strip()
             if not text:
                 continue
-            candidates.append(text)
             base = text.split("-")[0].split("_")[0].strip().lower()
-            if base and base != text.lower():
+            if base:
                 candidates.append(base)
         candidates.extend(["en", None, original_language])
 

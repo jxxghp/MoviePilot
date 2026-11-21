@@ -977,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10436,
-  "edge_sha256": "3e3475aea3339aa6161d6a47463f55b78928a77525c5531cb213ce48e4b1c7ec",
+  "edge_count": 10439,
+  "edge_sha256": "fb6a89a847896d271ec9aeef7cc19391950e76d9635320ae2e5fe20bb9da05c4",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7825,6 +7825,7 @@
     "app.modules.fanart -> app.modules",
     "app.modules.fanart -> app.runtime",
     "app.modules.fanart -> app.runtime.cache",
+    "app.modules.fanart -> app.runtime.localization",
     "app.modules.fanart -> app.runtime.log",
     "app.modules.fanart -> app.runtime.settings",
     "app.modules.fanart -> app.runtime.tasks",
@@ -8993,6 +8994,7 @@
     "app.modules.themoviedb -> app.modules.themoviedb.tmdbv3api",
     "app.modules.themoviedb -> app.modules.themoviedb.tmdbv3api.exceptions",
     "app.modules.themoviedb -> app.runtime",
+    "app.modules.themoviedb -> app.runtime.localization",
     "app.modules.themoviedb -> app.runtime.log",
     "app.modules.themoviedb -> app.runtime.settings",
     "app.modules.themoviedb -> app.schemas",
@@ -9046,6 +9048,7 @@
     "app.modules.themoviedb.tmdbapi -> app.modules.themoviedb.tmdbv3api",
     "app.modules.themoviedb.tmdbapi -> app.modules.themoviedb.tmdbv3api.exceptions",
     "app.modules.themoviedb.tmdbapi -> app.runtime",
+    "app.modules.themoviedb.tmdbapi -> app.runtime.localization",
     "app.modules.themoviedb.tmdbapi -> app.runtime.log",
     "app.modules.themoviedb.tmdbapi -> app.runtime.settings",
     "app.modules.themoviedb.tmdbapi -> app.schemas",
