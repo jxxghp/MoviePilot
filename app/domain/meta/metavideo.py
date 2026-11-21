@@ -18,7 +18,7 @@ from app.domain.tokens import Tokens
 from app.foundation import text as text_tools
 from app.schemas.types import MediaType
 
-SEASON_FULL_RE = re.compile(r"^(?:Season\s+|S)(\d{1,3})$", re.IGNORECASE)
+SEASON_FULL_RE = re.compile(r"^(?:Season\s+|S)(\d{1,3})(?:\s*\(\d{4}\))?$", re.IGNORECASE)
 FIRST_BRACKET_RE = re.compile(r'^[\[【](.+?)[\]】]')
 BRACKET_DOT_TITLE_RE = re.compile(r'[A-Za-z]+\..+(?:19|20)\d{2}')
 BRACKET_RESOURCE_RE = re.compile(
