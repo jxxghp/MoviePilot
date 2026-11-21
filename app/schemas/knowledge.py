@@ -16,7 +16,7 @@ KnowledgeFailure = Literal[
     "disabled", "configuration_changed", "unauthorized", "forbidden", "reference_expired",
     "rate_limited", "unavailable", "invalid_request", "invalid_response", "timeout",
 ]
-# 覆盖 4.5 秒单次预算的首轮请求与四次重试，并为调度留出余量。
+# 覆盖 7.5 秒单次预算的首轮请求与两次重试，并为调度留出余量。
 QUERY_SECONDS = 23.0
 EvidenceIdentifier = Annotated[str, Field(pattern=r"^ke_[A-Za-z0-9_-]{43}$")]
 

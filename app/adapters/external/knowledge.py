@@ -20,8 +20,9 @@ from app.schemas.knowledge import (
 )
 
 MAX_RESPONSE_BYTES = 96 * 1024
-QUERY_ATTEMPT_SECONDS = 4.5
-QUERY_MAX_RETRIES = 4
+# 单轮覆盖中心约 7 秒的正常慢响应，三轮仍受服务层 23 秒总预算约束。
+QUERY_ATTEMPT_SECONDS = 7.5
+QUERY_MAX_RETRIES = 2
 _HTTP_FAILURES: dict[int, KnowledgeFailure] = {
     401: "unauthorized", 403: "forbidden", 410: "reference_expired", 413: "invalid_request",
     415: "invalid_request", 422: "invalid_request", 429: "rate_limited", 503: "unavailable",
@@ -61,7 +62,8 @@ class KnowledgeClient:
                         headers={"Accept": "application/json", "Content-Type": "application/json",
                                  "Accept-Encoding": "identity"},
                     )
-            except (AsyncHttpRequestError, OSError, TimeoutError):
+            except (AsyncHttpRequestError, OSError):
+                # asyncio.timeout 的 TimeoutError 同属 OSError；取消当前尝试后才重试。
                 if attempt < QUERY_MAX_RETRIES:
                     continue
                 return None
