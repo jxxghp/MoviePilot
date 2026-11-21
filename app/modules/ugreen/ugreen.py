@@ -3,10 +3,11 @@
 """
 
 import hashlib
+import re
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Mapping, Optional, Union
+from typing import Any, Dict, Generator, Iterable, List, Mapping, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 from app.application.configuration import get_configured_system_config
@@ -27,6 +28,9 @@ from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
+# 绿联影视在部分剧集标题尾部附加“第 1 季”“季 1”等季号后缀，匹配标题时去除该后缀。
+_UGREEN_SEASON_SUFFIX_RE = re.compile(r"\s*(?:第\s*\d+\s*季|季\s*\d+)$")
+
 
 def _media_service_items(data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     """
@@ -36,6 +40,79 @@ def _media_service_items(data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if not isinstance(items, list):
         raise ConnectionError("绿联媒体库服务列表响应格式错误")
     return items
+
+
+def _normalize_ugreen_title(title: Optional[str]) -> str:
+    """
+    规整绿联媒体标题，去除首尾空白及尾部季号后缀。
+
+    :param title: 原始媒体标题
+    :return: 规整后的标题文本；空值返回空字符串
+    """
+    text = str(title or "").strip()
+    if not text:
+        return ""
+    stripped = _UGREEN_SEASON_SUFFIX_RE.sub("", text).strip()
+    return stripped or text
+
+
+def _matches_media_candidate(
+    *,
+    candidate_titles: Iterable[Optional[str]],
+    candidate_year: Optional[Union[str, int]],
+    candidate_source: Optional[MediaSource],
+    candidate_media_id: Optional[str],
+    title: str,
+    year: Optional[str],
+    media_source: Optional[MediaSource],
+    media_id: Optional[str],
+) -> bool:
+    """
+    判断绿联搜索候选项是否与目标媒体匹配。
+
+    先用统一身份排除明显冲突；若来源与媒体标识完全一致则直接命中，兼容绿联分季标题
+    与分季年份差异；否则按规整标题及可选年份核对。
+
+    :param candidate_titles: 候选项的名称与原始名称集合
+    :param candidate_year: 候选项年份
+    :param candidate_source: 候选项媒体来源
+    :param candidate_media_id: 候选项媒体来源标识
+    :param title: 目标媒体标题
+    :param year: 目标年份，空值不限年份
+    :param media_source: 目标媒体来源
+    :param media_id: 目标媒体来源标识
+    :return: 候选项匹配目标媒体时返回 True，否则返回 False
+    """
+    if not MediaServerIdentityHelper.are_compatible(
+        candidate_source,
+        candidate_media_id,
+        media_source,
+        media_id,
+    ):
+        return False
+
+    if (
+        media_source is not None
+        and media_id
+        and candidate_source == media_source
+        and str(candidate_media_id or "").strip() == str(media_id).strip()
+    ):
+        return True
+
+    target_raw = title.strip()
+    target_norm = _normalize_ugreen_title(title)
+    normalized_candidates = {
+        value
+        for candidate in candidate_titles
+        if candidate
+        for value in (str(candidate).strip(), _normalize_ugreen_title(candidate))
+        if value
+    }
+    if target_raw not in normalized_candidates and target_norm not in normalized_candidates:
+        return False
+    if year and str(candidate_year) != str(year):
+        return False
+    return True
 
 
 class Ugreen:
@@ -683,19 +760,17 @@ class Ugreen:
 
     def __build_play_url(self, item_id: Union[str, int], video_type: Any, media_lib_set_id: Any) -> str:
         """
-        按连接模式生成播放跳转地址。
+        生成绿联网页跳转地址。
 
-        :param item_id: 媒体库服务的条目标识
-        :param video_type: 兼容内部调用的类型参数，当前不参与链接构造
-        :param media_lib_set_id: 兼容内部调用的媒体库标识，当前不参与链接构造
-        :return: 媒体库模式返回条目网页链接；内部模式因深链不稳定回退 NAS 根地址
+        绿联 UGOS Pro（含 9443 媒体库服务）不提供 Emby `/web/index.html` 页面且内部深链
+        在不同版本间不稳定，因此统一回落到 NAS 根地址，避免点击卡片跳转 404。
+
+        :param item_id: 保留兼容的条目标识参数
+        :param video_type: 保留兼容的条目类型参数
+        :param media_lib_set_id: 保留兼容的媒体库标识参数
+        :return: 可访问的 NAS 根地址
         """
-        if self.__is_media_service_mode() and self._media_api:
-            host = self._playhost or self._media_api.host
-            server_id = self._media_api.server_id
-            server_query = f"&serverId={server_id}" if server_id else ""
-            return f"{host.rstrip('/')}/web/index.html#!/item?id={item_id}&context=home{server_query}"
-        # 绿联深链在部分版本会失效，统一回落到 NAS 根地址。
+        _ = item_id, video_type, media_lib_set_id
         return self.__build_root_url()
 
     def __format_media_service_item(
@@ -732,14 +807,12 @@ class Ugreen:
 
     def __build_media_service_library_link(self, library_id: Union[str, int]) -> str:
         """
-        生成媒体库服务媒体库视图的 Emby 网页链接。
+        生成媒体库服务视图的跳转地址。
+
+        UGOS Pro 9443 端口不提供 Emby Web 前端 `/web/index.html`，统一回落至 NAS 根地址。
         """
-        if not self._media_api:
-            return self.__build_root_url()
-        host = self._playhost or self._media_api.host
-        server_id = self._media_api.server_id
-        server_query = f"serverId={server_id}&" if server_id else ""
-        return f"{host.rstrip('/')}/web/index.html#!/videos?{server_query}parentId={library_id}"
+        _ = library_id
+        return self.__build_root_url()
 
     def __get_media_service_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
@@ -1225,17 +1298,24 @@ class Ugreen:
             limit=10,
             fields=("ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId"),
         )
-        if data is None:
+        if data is None or not isinstance(data.get("Items"), list):
             return None
 
         movies: List[_SchemaMediaServerItem] = []
         for item in data.get("Items") or []:
             media_item = self.__format_media_service_item(item)
-            if not media_item or not MediaServerIdentityHelper.is_compatible(media_item, media_source, media_id):
+            if not media_item:
                 continue
-            if title not in [media_item.title, media_item.original_title]:
-                continue
-            if year and str(media_item.year) != str(year):
+            if not _matches_media_candidate(
+                candidate_titles=(media_item.title, media_item.original_title),
+                candidate_year=media_item.year,
+                candidate_source=media_item.media_source,
+                candidate_media_id=media_item.media_id,
+                title=title,
+                year=year,
+                media_source=media_source,
+                media_id=media_id,
+            ):
                 continue
             movies.append(media_item)
         return movies
@@ -1272,36 +1352,77 @@ class Ugreen:
                 results.append(media_item)
         return results
 
-    def __search_media_service_tv_item(
+    def __search_media_service_tv_items(
         self,
         title: str,
         year: Optional[str] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-    ) -> Optional[_SchemaMediaServerItem]:
+    ) -> Optional[list[_SchemaMediaServerItem]]:
         """
-        通过媒体库服务用户条目接口查找电视剧。
+        通过媒体库服务用户条目接口查找全部匹配的电视剧条目。
+
+        :return: 匹配列表，空列表表示已确认未找到；请求失败或响应结构异常时返回 None
         """
         if not self.is_authenticated() or not self._media_api or not title:
             return None
         data = self._media_api.items(
             include_item_types="Series",
             search_term=title,
-            limit=10,
+            limit=20,
             fields="ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
         )
-        if not data:
+        if not isinstance(data, Mapping) or not isinstance(data.get("Items"), list):
             return None
-        for item in data.get("Items") or []:
+        matched: list[_SchemaMediaServerItem] = []
+        for item in data["Items"]:
             media_item = self.__format_media_service_item(item)
-            if not media_item or not MediaServerIdentityHelper.is_compatible(media_item, media_source, media_id):
+            if not media_item or not media_item.item_id:
                 continue
-            if title not in [media_item.title, media_item.original_title]:
+            if not _matches_media_candidate(
+                candidate_titles=(media_item.title, media_item.original_title),
+                candidate_year=media_item.year,
+                candidate_source=media_item.media_source,
+                candidate_media_id=media_item.media_id,
+                title=title,
+                year=year,
+                media_source=media_source,
+                media_id=media_id,
+            ):
                 continue
-            if year and str(media_item.year) != str(year):
-                continue
-            return media_item
-        return None
+            matched.append(media_item)
+        return matched
+
+    def __collect_media_service_episodes(
+        self,
+        item_ids: list[str],
+        season: Optional[int] = None,
+    ) -> Optional[Dict[int, List[int]]]:
+        """
+        汇总一个或多个媒体库服务剧集条目的已入库季集映射。
+
+        :param item_ids: 已确认身份兼容的剧集条目 ID 列表
+        :param season: 可选季号过滤
+        :return: 季号到去重升序集号列表的映射；任一分集接口调用失败时返回 None
+        """
+        if not self._media_api:
+            return None
+        season_episodes: Dict[int, List[int]] = {}
+        for series_id in item_ids:
+            episodes = self._media_api.episodes(series_id, season=season)
+            if episodes is None:
+                return None
+            for episode in episodes:
+                season_number = episode.get("ParentIndexNumber")
+                episode_number = episode.get("IndexNumber")
+                if not isinstance(season_number, int) or not isinstance(episode_number, int):
+                    continue
+                if season is not None and season_number != season:
+                    continue
+                season_episodes.setdefault(season_number, []).append(episode_number)
+        for season_number in list(season_episodes):
+            season_episodes[season_number] = sorted(set(season_episodes[season_number]))
+        return season_episodes
 
     def __get_media_service_tv_episodes(
         self,
@@ -1314,45 +1435,50 @@ class Ugreen:
     ) -> tuple[Optional[str], Optional[Dict[int, List[int]]]]:
         """
         通过媒体库服务的 Shows/Episodes 接口查询已入库剧集。
+
+        查询失败返回两项 None；确认未入库或身份冲突时返回 None 与空字典。
         """
         if not self.is_authenticated() or not self._media_api:
             return None, None
-        cached_item_id = item_id
         if not item_id:
             if not title:
                 return None, None
-            tv_item = self.__search_media_service_tv_item(title, year, media_source, media_id)
-            if not tv_item or not tv_item.item_id:
+            matched_items = self.__search_media_service_tv_items(title, year, media_source, media_id)
+            if matched_items is None:
                 return None, None
-            item_id = tv_item.item_id
-        item_id = str(item_id)
-
-        item_info = self.get_iteminfo(item_id)
-        if not item_info and cached_item_id and title:
-            logger.warning(f"绿联媒体库服务缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
-            tv_item = self.__search_media_service_tv_item(title, year, media_source, media_id)
-            if not tv_item or not tv_item.item_id:
+            if not matched_items:
                 return None, {}
-            item_id = str(tv_item.item_id)
-            item_info = self.get_iteminfo(item_id)
+            matched_ids = [str(item.item_id) for item in matched_items if item.item_id]
+            season_episodes = self.__collect_media_service_episodes(matched_ids, season=season)
+            if season_episodes is None:
+                return None, None
+            return matched_ids[0], season_episodes
+
+        cached_id = str(item_id)
+        item_info = self.get_iteminfo(cached_id)
         if not item_info:
-            return None, {}
+            if hasattr(self._media_api, "last_status_code") and self._media_api.last_status_code != 404:
+                return None, None
+            if not title:
+                return None, {}
+            logger.warning(f"绿联媒体库服务缓存的电视剧媒体ID {cached_id} 已失效，尝试按标题重新搜索：{title}")
+            matched_items = self.__search_media_service_tv_items(title, year, media_source, media_id)
+            if matched_items is None:
+                return None, None
+            if not matched_items:
+                return None, {}
+            matched_ids = [str(item.item_id) for item in matched_items if item.item_id]
+            season_episodes = self.__collect_media_service_episodes(matched_ids, season=season)
+            if season_episodes is None:
+                return None, None
+            return matched_ids[0], season_episodes
+
         if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
             return None, {}
-
-        episodes = self._media_api.episodes(item_id, season=season)
-        if episodes is None:
+        season_episodes = self.__collect_media_service_episodes([cached_id], season=season)
+        if season_episodes is None:
             return None, None
-        season_episodes: Dict[int, List[int]] = {}
-        for episode in episodes:
-            season_number = episode.get("ParentIndexNumber")
-            episode_number = episode.get("IndexNumber")
-            if not isinstance(season_number, int) or not isinstance(episode_number, int):
-                continue
-            season_episodes.setdefault(season_number, []).append(episode_number)
-        for season_number in list(season_episodes):
-            season_episodes[season_number] = sorted(set(season_episodes[season_number]))
-        return item_id, season_episodes
+        return cached_id, season_episodes
 
     def __get_media_service_latest_items(self, num: int = 20) -> Optional[List[dict[str, Any]]]:
         """
@@ -1395,23 +1521,22 @@ class Ugreen:
             return None
 
         data = self._api.search(title)
-        if not data:
-            return []
+        if data is None:
+            return None
 
         movies = []
         for info in self.__extract_video_info_list(data.get("movies_list")):
             info_tmdb = info.get("tmdb_id")
-            if not MediaServerIdentityHelper.are_compatible(
-                    MediaSource.TMDB if info_tmdb else None,
-                    str(info_tmdb) if info_tmdb else None,
-                    media_source,
-                    media_id,
+            if not _matches_media_candidate(
+                candidate_titles=(info.get("name"), info.get("original_name")),
+                candidate_year=self.__parse_year(info),
+                candidate_source=MediaSource.TMDB if info_tmdb else None,
+                candidate_media_id=str(info_tmdb) if info_tmdb else None,
+                title=title,
+                year=year,
+                media_source=media_source,
+                media_id=media_id,
             ):
-                continue
-            if title not in [info.get("name"), info.get("original_name")]:
-                continue
-            item_year = info.get("year")
-            if year and str(item_year) != str(year):
                 continue
             media_item = self.__build_media_server_item(info)
             if media_item:
@@ -1455,36 +1580,82 @@ class Ugreen:
                     results.append(media_item)
         return results
 
-    def __search_tv_item(
-            self, title: str, year: Optional[str] = None,
-            media_source: Optional[MediaSource] = None,
-            media_id: Optional[str] = None,
-    ) -> Optional[dict[str, Any]]:
+    def __search_tv_items(
+        self,
+        title: str,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+    ) -> Optional[list[dict[str, Any]]]:
         """
-        按标题、年份与统一媒体身份查找电视剧条目。
+        按标题、年份与统一媒体身份查找内部接口中全部匹配的电视剧条目。
+
+        :return: 匹配的 video_info 列表，空列表表示确认未找到；搜索接口失败时返回 None
         """
         if not self._api:
             return None
         data = self._api.search(title)
-        if not data:
+        if data is None:
             return None
 
+        matched: list[dict[str, Any]] = []
         for info in self.__extract_video_info_list(data.get("tv_list")):
             info_tmdb = info.get("tmdb_id")
-            if not MediaServerIdentityHelper.are_compatible(
-                    MediaSource.TMDB if info_tmdb else None,
-                    str(info_tmdb) if info_tmdb else None,
-                    media_source,
-                    media_id,
+            if not _matches_media_candidate(
+                candidate_titles=(info.get("name"), info.get("original_name")),
+                candidate_year=self.__parse_year(info),
+                candidate_source=MediaSource.TMDB if info_tmdb else None,
+                candidate_media_id=str(info_tmdb) if info_tmdb else None,
+                title=title,
+                year=year,
+                media_source=media_source,
+                media_id=media_id,
             ):
                 continue
-            if title not in [info.get("name"), info.get("original_name")]:
-                continue
-            item_year = info.get("year")
-            if year and str(item_year) != str(year):
-                continue
-            return info
-        return None
+            if info.get("ug_video_info_id") is not None:
+                matched.append(info)
+        return matched
+
+    def __collect_internal_tv_episodes(
+        self,
+        item_ids: list[str],
+        season: Optional[int] = None,
+    ) -> Optional[Dict[int, list[int]]]:
+        """
+        汇总内部接口一个或多个剧集条目的已入库季集映射。
+
+        :param item_ids: 已确认匹配的绿联剧集 ID 列表
+        :param season: 可选季号过滤
+        :return: 季号到去重升序集号列表的映射；任一详情查询失败时返回 None
+        """
+        if not self._api:
+            return None
+        season_episodes: Dict[int, list[int]] = {}
+        for series_id in item_ids:
+            tv_detail = self._api.get_tv(series_id, folder_path="ALL")
+            if tv_detail is None:
+                return None
+            season_map: dict[str, int] = {}
+            for info in tv_detail.get("season_info") or []:
+                if not isinstance(info, dict):
+                    continue
+                category_id = info.get("category_id")
+                season_num = info.get("season_num")
+                if category_id and isinstance(season_num, int):
+                    season_map[str(category_id)] = season_num
+            for ep in tv_detail.get("tv_info") or []:
+                if not isinstance(ep, dict):
+                    continue
+                episode = ep.get("episode")
+                if not isinstance(episode, int):
+                    continue
+                season_num = season_map.get(str(ep.get("category_id")), 1)
+                if season is not None and season_num != season:
+                    continue
+                season_episodes.setdefault(season_num, []).append(episode)
+        for season_num in list(season_episodes.keys()):
+            season_episodes[season_num] = sorted(set(season_episodes[season_num]))
+        return season_episodes
 
     def get_tv_episodes(
         self,
@@ -1497,6 +1668,8 @@ class Ugreen:
     ) -> tuple[Optional[str], Optional[Dict[int, list[int]]]]:
         """
         根据标题、年份、媒体身份和季号查询绿联媒体库中的电视剧已入库集数。
+
+        查询失败返回两项 None；确认未入库或身份冲突时返回 None 与空字典。
 
         :param item_id: 绿联媒体库中的剧集ID，存在缓存ID时优先使用
         :param title: 标题
@@ -1518,68 +1691,45 @@ class Ugreen:
         if not self.is_authenticated() or not self._api:
             return None, None
 
-        cached_item_id = item_id
         if not item_id:
             if not title:
                 return None, None
-            if not (tv_info := self.__search_tv_item(
-                    title, year, media_source, media_id
-            )):
+            matched_infos = self.__search_tv_items(title, year, media_source, media_id)
+            if matched_infos is None:
                 return None, None
-            found_item_id = tv_info.get("ug_video_info_id")
-            if found_item_id is None:
+            if not matched_infos:
+                return None, {}
+            matched_ids = [str(info["ug_video_info_id"]) for info in matched_infos]
+            season_episodes = self.__collect_internal_tv_episodes(matched_ids, season=season)
+            if season_episodes is None:
                 return None, None
-            item_id = str(found_item_id)
-        else:
-            item_id = str(item_id)
+            return matched_ids[0], season_episodes
 
-        item_info = self.get_iteminfo(item_id)
-        if not item_info and cached_item_id and title:
-            # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
-            logger.warning(f"绿联缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
-            if not (tv_info := self.__search_tv_item(
-                    title, year, media_source, media_id
-            )):
-                return None, {}
-            found_item_id = tv_info.get("ug_video_info_id")
-            if found_item_id is None:
-                return None, {}
-            item_id = str(found_item_id)
-            item_info = self.get_iteminfo(item_id)
+        cached_id = str(item_id)
+        item_info = self.get_iteminfo(cached_id)
         if not item_info:
-            return None, {}
+            if not title:
+                return None, {}
+            # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
+            logger.warning(f"绿联缓存的电视剧媒体ID {cached_id} 已失效，尝试按标题重新搜索：{title}")
+            matched_infos = self.__search_tv_items(title, year, media_source, media_id)
+            if matched_infos is None:
+                return None, None
+            if not matched_infos:
+                return None, {}
+            matched_ids = [str(info["ug_video_info_id"]) for info in matched_infos]
+            season_episodes = self.__collect_internal_tv_episodes(matched_ids, season=season)
+            if season_episodes is None:
+                return None, None
+            return matched_ids[0], season_episodes
+
         if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
             return None, {}
 
-        tv_detail = self._api.get_tv(item_id, folder_path="ALL")
-        if not tv_detail:
-            return None, {}
-
-        season_map = {}
-        for info in tv_detail.get("season_info") or []:
-            if not isinstance(info, dict):
-                continue
-            category_id = info.get("category_id")
-            season_num = info.get("season_num")
-            if category_id and isinstance(season_num, int):
-                season_map[str(category_id)] = season_num
-
-        season_episodes: Dict[int, list[int]] = {}
-        for ep in tv_detail.get("tv_info") or []:
-            if not isinstance(ep, dict):
-                continue
-            episode = ep.get("episode")
-            if not isinstance(episode, int):
-                continue
-            season_num = season_map.get(str(ep.get("category_id")), 1)
-            if season is not None and season_num != season:
-                continue
-            season_episodes.setdefault(season_num, []).append(episode)
-
-        for season_num in list(season_episodes.keys()):
-            season_episodes[season_num] = sorted(set(season_episodes[season_num]))
-
-        return item_id, season_episodes
+        season_episodes = self.__collect_internal_tv_episodes([cached_id], season=season)
+        if season_episodes is None:
+            return None, None
+        return cached_id, season_episodes
 
     def refresh_root_library(self, scan_mode: Optional[Union[str, int]] = None) -> Optional[bool]:
         """
@@ -1982,7 +2132,14 @@ class Ugreen:
             self.get_librarys()
 
         root_path = self._library_paths.get(library_id)
+        if not root_path and library_id not in self._libraries:
+            self.get_librarys()
+            root_path = self._library_paths.get(library_id)
         if not root_path:
+            # 绿联海报墙目录列表不包含空媒体库，已确认条目数为 0 时按空库正常结束遍历。
+            library = self._libraries.get(library_id)
+            if library is not None and int(library.get("video_count") or 0) == 0:
+                return None
             raise ConnectionError("绿联媒体库路径不可用")
 
         skip = max(0, start_index or 0)
