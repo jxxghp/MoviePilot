@@ -23,6 +23,7 @@ from app.modules.themoviedb.category import CategoryHelper as CategoryHelper
 from app.modules.themoviedb.scraper import TmdbScraper
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
+from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.category import (
@@ -1617,21 +1618,43 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     @staticmethod
-    def _pick_best_tmdb_image(images: Optional[_TmdbDataList]) -> Optional[str]:
+    def _pick_best_tmdb_image(
+        images: Optional[_TmdbDataList],
+        preferred_locale: Optional[str] = None,
+    ) -> Optional[str]:
         """
-        从 TMDB 图片候选中选出评分最高的文件路径。
+        从 TMDB 图片候选中优先按当前语言选出评分最高的文件路径，无匹配语言时回退默认候选。
         """
         if not images:
             return None
-        images = sorted(
-            images,
-            key=lambda x: (
-                x.get("vote_average") or 0,
-                x.get("vote_count") or 0,
-            ),
-            reverse=True,
-        )
-        return images[0].get("file_path")
+
+        pref_lang = ""
+        pref_region = ""
+        if preferred_locale:
+            parts = preferred_locale.replace("_", "-").split("-")
+            pref_lang = parts[0].strip().lower()
+            if len(parts) > 1:
+                pref_region = parts[1].strip().upper()
+
+        def _score(item: _TmdbData) -> tuple[int, float, int]:
+            lang_rank = 0
+            if pref_lang:
+                iso_lang = str(item.get("iso_639_1") or "").strip().lower()
+                iso_region = str(item.get("iso_3166_1") or "").strip().upper()
+                if iso_lang == pref_lang and pref_region and iso_region == pref_region:
+                    lang_rank = 3
+                elif iso_lang == pref_lang:
+                    lang_rank = 2
+                elif iso_lang in ("en", ""):
+                    lang_rank = 1
+            return (
+                lang_rank,
+                float(item.get("vote_average") or 0),
+                int(item.get("vote_count") or 0),
+            )
+
+        ranked = sorted(images, key=_score, reverse=True)
+        return ranked[0].get("file_path")
 
     @classmethod
     def _process_tmdb_images(cls, mediainfo: MediaInfo, images: _TmdbData) -> MediaInfo:
@@ -1644,14 +1667,21 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if isinstance(images, list):
             images = images[0]
+        preferred_locale = LocaleHelper.get_current_locale() or str(
+            get_runtime_setting("TMDB_LOCALE") or ""
+        ).strip() or None
         if not mediainfo.backdrop_path:
             if image_path := cls._pick_best_tmdb_image(images.get("backdrops")):
                 mediainfo.backdrop_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         if not mediainfo.logo_path:
-            if image_path := cls._pick_best_tmdb_image(images.get("logos")):
+            if image_path := cls._pick_best_tmdb_image(
+                images.get("logos"), preferred_locale=preferred_locale
+            ):
                 mediainfo.logo_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         if not mediainfo.poster_path:
-            if image_path := cls._pick_best_tmdb_image(images.get("posters")):
+            if image_path := cls._pick_best_tmdb_image(
+                images.get("posters"), preferred_locale=preferred_locale
+            ):
                 mediainfo.poster_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         return mediainfo
 

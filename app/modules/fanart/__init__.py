@@ -277,23 +277,26 @@ class FanartModule(_ModuleBase):
         :param _images: 非空图片列表，候选需提供可转为整数的 likes 值
         :return: 选中的原始图片记录
         """
+        from app.runtime.localization import LocaleHelper
+
         lang_env = get_runtime_setting('FANART_LANG')
+        preferred_langs: list[str] = []
+        current_lang = LocaleHelper.get_current_locale().split("-")[0].strip().lower()
+        if current_lang:
+            preferred_langs.append(current_lang)
         if lang_env:
-            langs = [lang.strip() for lang in lang_env.split(",") if lang.strip()]
-            for lang in langs:
-                lang_images = [img for img in _images if img.get("lang") == lang]
-                if lang_images:
-                    lang_images.sort(key=lambda x: int(x.get("likes", 0)), reverse=True)
-                    return lang_images[0]
-        # 自定义语言没有命中时，依次尝试中文、英文和点赞数最高的图片。
-        zh_images = [img for img in _images if img.get("lang") == "zh"]
-        if zh_images:
-            zh_images.sort(key=lambda x: int(x.get("likes", 0)), reverse=True)
-            return zh_images[0]
-        en_images = [img for img in _images if img.get("lang") == "en"]
-        if en_images:
-            en_images.sort(key=lambda x: int(x.get("likes", 0)), reverse=True)
-            return en_images[0]
+            for lang in (item.strip() for item in lang_env.split(",") if item.strip()):
+                if lang not in preferred_langs:
+                    preferred_langs.append(lang)
+        for fallback in ("zh", "en"):
+            if fallback not in preferred_langs:
+                preferred_langs.append(fallback)
+
+        for lang in preferred_langs:
+            lang_images = [img for img in _images if img.get("lang") == lang]
+            if lang_images:
+                lang_images.sort(key=lambda x: int(x.get("likes", 0)), reverse=True)
+                return lang_images[0]
         _images.sort(key=lambda x: int(x.get("likes", 0)), reverse=True)
         return _images[0]
 

@@ -402,6 +402,29 @@ def test_obtain_images_sync_async_share_query_and_mapping(
     getattr(module.tmdb, f"async_{method}").assert_awaited_once_with(40, original_language="ja")
 
 
+def test_pick_best_tmdb_logo_prefers_current_locale_then_falls_back() -> None:
+    """
+    Logo 选取应优先命中当前语言（精确地区 > 同语言码），缺失时回退英文或默认高分候选。
+    """
+    logos = [
+        {"file_path": "/en-logo.png", "iso_639_1": "en", "vote_average": 9.5, "vote_count": 120},
+        {"file_path": "/zh-tw-logo.png", "iso_639_1": "zh", "iso_3166_1": "TW", "vote_average": 6.0, "vote_count": 5},
+        {"file_path": "/zh-cn-logo.png", "iso_639_1": "zh", "iso_3166_1": "CN", "vote_average": 5.0, "vote_count": 3},
+        {"file_path": "/ja-logo.png", "iso_639_1": "ja", "vote_average": 8.0, "vote_count": 40},
+    ]
+
+    assert TheMovieDbModule._pick_best_tmdb_image(logos, preferred_locale="zh-CN") == "/zh-cn-logo.png"
+    assert TheMovieDbModule._pick_best_tmdb_image(logos, preferred_locale="zh-TW") == "/zh-tw-logo.png"
+    assert TheMovieDbModule._pick_best_tmdb_image(logos, preferred_locale="en-US") == "/en-logo.png"
+    assert TheMovieDbModule._pick_best_tmdb_image(
+        [
+            {"file_path": "/en-logo.png", "iso_639_1": "en", "vote_average": 6.0, "vote_count": 10},
+            {"file_path": "/ja-logo.png", "iso_639_1": "ja", "vote_average": 8.0, "vote_count": 50},
+        ],
+        preferred_locale="zh-CN",
+    ) == "/en-logo.png"
+
+
 @pytest.mark.parametrize("media_source,recognize_source,tmdb_id,complete_images", [
     ("douban", "douban", None, False),
     ("douban", "douban", 40, False),

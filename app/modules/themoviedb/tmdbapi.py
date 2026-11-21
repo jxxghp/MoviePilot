@@ -1411,18 +1411,29 @@ class TmdbApi:
     @staticmethod
     def _build_include_image_language(original_language: Optional[str] = None) -> str:
         """
-        构造图片接口语言回退列表，避免当前语言没有图片时返回空列表。
+        构造图片接口语言回退列表，优先当前语言及其基础语言码，避免当前语言没有图片时返回空列表。
         """
-        languages = []
-        for language in (
-                get_runtime_setting('TMDB_LOCALE'),
-                "en",
-                None,
-                original_language,
+        from app.runtime.localization import LocaleHelper
+
+        candidates: list[Optional[str]] = []
+        for raw_locale in (
+            LocaleHelper.get_current_locale(),
+            get_runtime_setting("TMDB_LOCALE"),
         ):
-            language = "null" if language is None else str(language).strip()
-            if language and language not in languages:
-                languages.append(language)
+            text = str(raw_locale or "").strip()
+            if not text:
+                continue
+            candidates.append(text)
+            base = text.split("-")[0].split("_")[0].strip().lower()
+            if base and base != text.lower():
+                candidates.append(base)
+        candidates.extend(["en", None, original_language])
+
+        languages: list[str] = []
+        for language in candidates:
+            normalized = "null" if language is None else str(language).strip()
+            if normalized and normalized not in languages:
+                languages.append(normalized)
         return ",".join(languages)
 
     def get_movie_images(self, tmdbid: int, original_language: Optional[str] = None) -> _MediaRecord:
