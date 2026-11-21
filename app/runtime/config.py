@@ -594,6 +594,14 @@ class ConfigModel(BaseModel):
         ),
     )
     TRANSFER_TASK_TIMEOUT: int = Field(default=120, description='外部接管的运行中整理任务无状态心跳超时（分钟），0 表示禁用')
+    TRANSFER_SCRAPE_BATCH_AGGREGATION: bool = Field(
+        default=False,
+        description=(
+            '是否把同一批次整理的元数据刮削事件聚合到批次结束后再统一发送。默认关闭：每个主媒体文件整理成功即按自身文件列表发送，'
+            '避免整季一次整理时首集的海报/NFO 要等整批结束、比视频文件晚数十秒出现，实时监听媒体库的媒体服务器此时读不到海报。'
+            '开启后恢复 V3 早期“整批结束后统一发送”的行为。'
+        ),
+    )
     MOVIE_RENAME_FORMAT: str = Field(
         default=(
             '{{title}}{% if year %} ({{year}}){% endif %}/{{title}}{% if year %} ({{year}}){% endif %}{% '

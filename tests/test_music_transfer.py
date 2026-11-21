@@ -194,6 +194,9 @@ def test_music_scrape_batch_event_preserves_each_track_context():
     chain._audio_exts = settings.RMT_AUDIOEXT
     chain._media_exts = settings.RMT_MEDIAEXT
     chain._scrape_batches = {}
+    chain.runtime_config = replace(
+        chain.runtime_config, transfer_scrape_batch_aggregation=True
+    )
     chain.eventmanager = Mock()
     batch_id = "music-scrape-batch"
     target_dir = FileItem(storage="local", path="/library/Album", type="dir")

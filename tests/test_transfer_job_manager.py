@@ -1702,6 +1702,9 @@ class TestTransferJobManager:
         同批次跨季整理应聚合为一次刮削事件。
         """
         chain = make_transfer_chain()
+        chain.runtime_config = replace(
+            chain.runtime_config, transfer_scrape_batch_aggregation=True
+        )
         chain.eventmanager = MagicMock()
         chain.transfer_completed = lambda *args, **kwargs: None
 

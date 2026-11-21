@@ -592,7 +592,7 @@ class Plex:
                 videos = self.__fetch_item(
                     item_id, **({"query": query.with_fields(MediaServerField.IDENTITY)} if query is not None else {})
                 )
-            except NotFound, RequestException:
+            except (NotFound, RequestException):
                 # Plex 删除并重新入库后元数据标识会变化，缓存的旧item_id失效时回退到搜索路径。
                 logger.warning(f"Plex缓存的电视剧媒体ID {item_id} 已失效，尝试按标题重新搜索：{title}")
                 videos = self.__search_show(

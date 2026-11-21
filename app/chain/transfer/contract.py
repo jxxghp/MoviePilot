@@ -124,6 +124,7 @@ if TYPE_CHECKING:
         _selected_music_task_context: Callable[..., Any]
         _selected_music_track_map: Callable[..., Any]
         _should_delete_empty_source_directories: Callable[..., Any]
+        _should_scrape_immediately: Callable[..., Any]
         _transfer_storage_chain: Callable[..., Any]
         _transfer_media_chain: Callable[..., Any]
         _transfer_subscribe_chain: Callable[..., Any]

@@ -4,6 +4,7 @@
 
 import os
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -186,6 +187,9 @@ def test_music_scrape_waits_for_cover_transfer_completion():
     音轨先完成时仍等待封面任务，图片就绪后才发出只含音轨的刮削事件。
     """
     chain = make_transfer_chain()
+    chain.runtime_config = replace(
+        chain.runtime_config, transfer_scrape_batch_aggregation=True
+    )
     chain.eventmanager = Mock()
     info = MusicInfo(title="Song", album="Album", artists=["Artist"])
     audio = TransferTask(fileitem=make_fileitem("/source/01.flac"), mediainfo=info,

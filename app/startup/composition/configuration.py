@@ -313,6 +313,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
             settings.TRANSFER_SUCCESS_NOTIFICATION_AGGREGATION
         ),
         transfer_task_timeout=settings.TRANSFER_TASK_TIMEOUT,
+        transfer_scrape_batch_aggregation=settings.TRANSFER_SCRAPE_BATCH_AGGREGATION,
         scrape_follow_tmdb=settings.SCRAP_FOLLOW_TMDB,
         metadata_cache_ttl=settings.CONF.meta,
         auto_download_user=settings.AUTO_DOWNLOAD_USER,

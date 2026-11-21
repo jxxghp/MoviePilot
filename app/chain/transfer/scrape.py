@@ -18,10 +18,38 @@ from app.schemas.types import (
 
 class ScrapeBatchMixin(_TransferOwnerBase):
     """
-    聚合同批整理结果并仅在批次完成后发送刮削事件。
+    聚合同批整理结果；默认逐任务立即发送，开启批次聚合时改为整批完成后统一发送。
     """
 
     __mixin_host_protocol__ = TransferMixinHost
+
+    def _scrape_batch_aggregation_enabled(self) -> bool:
+        """
+        从注入的运行时配置读取批次聚合开关。
+
+        TRANSFER_SCRAPE_BATCH_AGGREGATION 已登记在统一配置模型中，因此一并支持
+        环境变量与部署环境文件两种来源，不在此另建环境变量解析通道。
+
+        :return: True 表示仍把同一批次的刮削事件聚合到批次结束
+        """
+        return bool(self.runtime_config.transfer_scrape_batch_aggregation)
+
+    def _should_scrape_immediately(self, task: TransferTask) -> bool:
+        """
+        判断任务完成后是否立即发送刮削事件。
+
+        非批次任务始终立即发送；批次任务仅在关闭批次聚合
+        （TRANSFER_SCRAPE_BATCH_AGGREGATION 未开启）时立即发送，
+        避免实时监听媒体库的媒体服务器长时间读不到海报。
+
+        :param task: 整理任务
+        :return: True 表示应在任务完成时立即发送刮削事件
+        """
+        return (
+                not task
+                or not task.transfer_batch_id
+                or not self._scrape_batch_aggregation_enabled()
+        )
 
     def _send_metadata_scrape_event(
             self, task: TransferTask, transferinfo: TransferInfo
@@ -126,6 +154,10 @@ class ScrapeBatchMixin(_TransferOwnerBase):
                 or not transferinfo.need_scrape
                 or not self._is_primary_media_file(task.fileitem, task.mediainfo)
         ):
+            return
+
+        # 默认逐文件立即发送，不再登记批次汇总目标，避免同一目录的后续文件被吞掉。
+        if not self._scrape_batch_aggregation_enabled():
             return
 
         target_diritem = transferinfo.target_diritem
