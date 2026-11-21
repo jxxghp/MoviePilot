@@ -278,6 +278,127 @@ def test_recognize_captcha_tool_passes_raw_image_data_to_ocr():
     )
 
 
+def test_recognize_captcha_tool_decodes_base64_image_data_to_ocr():
+    """
+    模型传入的 Base64 图片内容应在执行层解码为原始字节后提交 OCR。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    image_b64 = base64.b64encode(b"captcha-image").decode()
+
+    async def _run_tool():
+        """
+        执行一次带 Base64 图片内容的工具调用。
+        """
+        with patch(
+            "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+            return_value="x7p9",
+        ) as recognize_mock:
+            result = await tool.run(image_data=image_b64)
+            return result, recognize_mock
+
+    result, recognize_mock = asyncio.run(_run_tool())
+    assert json.loads(result)["captcha_text"] == "x7p9"
+    recognize_mock.assert_called_once_with(
+        image_data=b"captcha-image",
+        cookie=None,
+        ua=None,
+    )
+
+
+def test_recognize_captcha_tool_decodes_data_url_image_data_to_ocr():
+    """
+    data:image/...;base64,... 形式的 image_data 应解码后提交 OCR。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    image_b64 = base64.b64encode(b"captcha-image").decode()
+    image_data = f"data:image/png;base64,{image_b64}"
+
+    async def _run_tool():
+        """
+        执行一次带 data URL 图片内容的工具调用。
+        """
+        with patch(
+            "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+            return_value="x7p9",
+        ) as recognize_mock:
+            result = await tool.run(image_data=image_data)
+            return result, recognize_mock
+
+    result, recognize_mock = asyncio.run(_run_tool())
+    assert json.loads(result)["captcha_text"] == "x7p9"
+    recognize_mock.assert_called_once_with(
+        image_data=b"captcha-image",
+        cookie=None,
+        ua=None,
+    )
+
+
+def test_recognize_captcha_tool_accepts_unpadded_base64_image_data():
+    """
+    缺少 padding 的 Base64 图片内容应补齐后解码，不应直接失败。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    image_b64 = base64.b64encode(b"captcha-image").decode().rstrip("=")
+
+    async def _run_tool():
+        """
+        执行一次缺少 padding 的 Base64 工具调用。
+        """
+        with patch(
+            "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+            return_value="x7p9",
+        ) as recognize_mock:
+            result = await tool.run(image_data=image_b64)
+            return result, recognize_mock
+
+    result, recognize_mock = asyncio.run(_run_tool())
+    assert json.loads(result)["captcha_text"] == "x7p9"
+    recognize_mock.assert_called_once_with(
+        image_data=b"captcha-image",
+        cookie=None,
+        ua=None,
+    )
+
+
+def test_recognize_captcha_tool_rejects_invalid_base64_image_data():
+    """
+    无效的 Base64 图片内容不得当作原始字节提交 OCR，应返回明确失败。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+        return_value="x7p9",
+    ) as recognize_mock:
+        result = asyncio.run(tool.run(image_data="!!!not-base64!!!"))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["captcha_text"] == ""
+    assert "Base64" in payload["message"]
+    assert "image_url" in payload["recovery"]
+    recognize_mock.assert_not_called()
+
+
+def test_recognize_captcha_tool_rejects_oversized_base64_image_data():
+    """
+    超过大小上限的 Base64 图片内容不得提交 OCR，应返回明确失败。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+        return_value="x7p9",
+    ) as recognize_mock:
+        result = asyncio.run(tool.run(image_data="A" * (1024 * 1024 + 1)))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["captcha_text"] == ""
+    assert "大小上限" in payload["message"]
+    recognize_mock.assert_not_called()
+
+
 def test_recognize_captcha_tool_blocks_private_network_by_default():
     """
     验证码工具默认应拒绝本机和私网图片地址。
