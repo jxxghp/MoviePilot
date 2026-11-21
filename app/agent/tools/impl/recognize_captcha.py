@@ -2,8 +2,10 @@
 识别图形验证码工具。
 """
 
+import base64
+import binascii
 import json
-from typing import Any, Optional, Type
+from typing import Any, Optional, Type, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -12,6 +14,8 @@ from app.adapters.network.browser import BrowserSessionHelper
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
+
+IMAGE_MAX_BASE64_CHARS = 1024 * 1024
 
 
 class CaptchaUrlError(ValueError):
@@ -29,9 +33,9 @@ class RecognizeCaptchaInput(BaseModel):
         None,
         description="从浏览器页面获得的验证码图片地址，通常为 img.src；支持 HTTP(S) 和 data:image/...;base64,...",
     )
-    image_data: Optional[bytes] = Field(
+    image_data: Optional[str] = Field(
         None,
-        description="调用方已取得的原始图片字节；浏览器或其他工具已返回二进制数据时优先使用，直接提交 OCR 而不先转 Base64",
+        description="Base64 图片内容或 data:image/...;base64,...；调用方已取得图片内容时使用，执行层显式解码后提交 OCR",
     )
     cookie: Optional[str] = Field(
         None,
@@ -50,7 +54,7 @@ class RecognizeCaptchaInput(BaseModel):
     @model_validator(mode="after")
     def require_image_source(self) -> "RecognizeCaptchaInput":
         """
-        确保验证码工具至少收到图片地址或原始图片字节。
+        确保验证码工具至少收到图片地址或图片内容。
         """
         if not self.image_url and not self.image_data:
             raise ValueError("image_url or image_data is required")
@@ -74,7 +78,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
         default=(
             "识别图片验证码并返回文字。"
             "浏览器取得页面验证码 img.src 后可调用；"
-            "也接受原始 image_data 字节，直接提交 OCR 而不转为 Base64。"
+            "也接受 image_data 提供的 Base64 图片内容，执行层解码后提交 OCR。"
             "图片地址依赖当前浏览器会话时应传 cookie 和 user_agent。"
             "支持 HTTP(S) 及 data:image/...;base64,... 地址。"
             "使用已配置的 OCR 服务，不使用多模态模型。"
@@ -94,11 +98,47 @@ class RecognizeCaptchaTool(MoviePilotTool):
         """
         image_url = str(kwargs.get("image_url") or "")
         image_data = kwargs.get("image_data")
-        if image_data:
+        if isinstance(image_data, bytes):
             return f"识别图形验证码: raw image ({len(image_data)} bytes)"
+        if image_data:
+            return f"识别图形验证码: image content ({len(image_data)} chars)"
         if image_url.lower().startswith("data:image/"):
             return "识别图形验证码: data image"
         return f"识别图形验证码: {image_url}"
+
+    @staticmethod
+    def _decode_image_data(image_data: Optional[Union[str, bytes]]) -> Optional[bytes]:
+        """
+        把模型传入的 Base64 图片内容解码为原始字节；内部直接传入的字节原样保留。
+
+        :param image_data: Base64 图片内容、data:image/...;base64,... 或原始图片字节
+        :return: 解码后的原始图片字节，未提供时返回 None
+        """
+        if image_data is None:
+            return None
+        if isinstance(image_data, bytes):
+            return image_data
+        value = image_data.strip()
+        if not value:
+            return None
+        if value.lower().startswith("data:image/"):
+            header, separator, encoded = value.partition(",")
+            if not separator or "base64" not in header.lower():
+                raise ValueError("image_data 不是有效的 data:image/...;base64,... 内容")
+            value = encoded.strip()
+        if len(value) > IMAGE_MAX_BASE64_CHARS:
+            raise ValueError("image_data 图片内容超过大小上限")
+        normalized = "".join(value.split())
+        padding_size = len(normalized) % 4
+        if padding_size:
+            normalized = f"{normalized}{'=' * (4 - padding_size)}"
+        try:
+            image_bytes = base64.b64decode(normalized, validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise ValueError("image_data 不是有效的 Base64 图片内容") from error
+        if not image_bytes:
+            raise ValueError("image_data 图片内容为空")
+        return image_bytes
 
     @staticmethod
     def _format_image_url_for_log(image_url: str) -> str:
@@ -178,29 +218,47 @@ class RecognizeCaptchaTool(MoviePilotTool):
             ensure_ascii=False,
         )
 
-    async def run(  # type: ignore[override]
+    async def run(
         self,
+        *args: Any,
         image_url: Optional[str] = None,
         cookie: Optional[str] = None,
         user_agent: Optional[str] = None,
         allow_private_network: bool = False,
-        image_data: Optional[bytes] = None,
-        **kwargs: object,
+        image_data: Optional[Union[str, bytes]] = None,
+        **kwargs: Any,
     ) -> str:
         """
         识别指定图片地址中的图形验证码文本。
 
+        调用方只按关键字传参；位置参数由基类 `run(*args, **kwargs)` 合同接收后忽略。
+
         :param image_url: 验证码图片地址
-        :param image_data: 已取得的原始验证码图片字节
+        :param image_data: Base64 图片内容、data:image/...;base64,... 或原始图片字节
         :param cookie: 下载图片时使用的 Cookie
         :param user_agent: 下载图片时使用的 User-Agent
         :param allow_private_network: 是否允许访问本机或私网地址
         :return: JSON 格式的识别结果
         """
+        del args
+        try:
+            image_bytes = self._decode_image_data(image_data)
+        except ValueError as err:
+            logger.warning(f"验证码图片内容无效: {str(err)}")
+            return json.dumps(
+                {
+                    "success": False,
+                    "captcha_text": "",
+                    "message": str(err),
+                    "recovery": "请提供有效的 Base64 图片内容或 data:image/...;base64,...，或改用 image_url 传入图片地址。",
+                },
+                ensure_ascii=False,
+            )
+
         logger.info(
             f"执行工具: {self.name}, "
             f"参数: image_url={self._format_image_url_for_log(image_url or '')}, "
-            f"image_data={'%s bytes' % len(image_data) if image_data else 'none'}"
+            f"image_data={'%s bytes' % len(image_bytes) if image_bytes else 'none'}"
         )
 
         if allow_private_network and not await self.is_admin_user():
@@ -223,7 +281,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
                 cookie,
                 user_agent,
                 allow_private_network,
-                image_data,
+                image_bytes,
             )
             if captcha_text:
                 return json.dumps(
