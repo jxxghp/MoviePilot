@@ -1247,8 +1247,8 @@ class Discord:
 
     @staticmethod
     def _limit_embed_content(
-        title: str, description: str, fields: List[Dict[str, str]]
-    ) -> Tuple[str, str, List[Dict[str, str]]]:
+        title: Optional[str], description: str, fields: List[Dict[str, str]]
+    ) -> Tuple[Optional[str], str, List[Dict[str, str]]]:
         """
         截断 Discord 嵌入消息内容，保证各文本字段及总长度均不超限。
 
@@ -1272,8 +1272,8 @@ class Discord:
             计算嵌入消息中计入总长度上限的字符数。
             """
             return (
-                len(title)
-                + len(description)
+                len(title or "")
+                + len(description or "")
                 + sum(len(field["name"]) + len(field["value"]) for field in fields)
             )
 
@@ -1288,7 +1288,7 @@ class Discord:
 
     @staticmethod
     def _build_embed(
-        title: str,
+        title: Optional[str],
         text: Optional[str],
         image: Optional[str],
         link: Optional[str],

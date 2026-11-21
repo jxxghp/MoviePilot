@@ -81,3 +81,13 @@ def test_short_content_is_unchanged():
     assert embed.title == "标题"
     assert embed.description == "说明"
     assert [(f.name, f.value) for f in embed.fields] == [("名称", "值")]
+
+
+def test_text_only_notification_without_title():
+    """
+    仅有正文、标题为空（None）的通知也应能构建嵌入消息，而不是抛出异常。
+    """
+    embed = Discord._build_embed(title=None, text="仅正文通知", image=None, link=None)
+
+    assert not embed.title
+    assert embed.description == "仅正文通知"
