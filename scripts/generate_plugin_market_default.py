@@ -72,9 +72,25 @@ def _extract_plugin_market_repos_from_wiki(markdown: str) -> list[str]:
     return repos
 
 
-def _find_plugin_market_assignment(source: str) -> tuple[int, int, str]:
+def _extract_field_meta(value: Optional[ast.expr]) -> Optional[tuple[str, str]]:
     """
-    定位 ConfigModel 中插件市场默认值对应的源码范围。
+    从现有的 Field(...) / pydantic.Field(...) 声明中提取调用表达式与 description 文本，普通字面量声明返回 None。
+    """
+    if not isinstance(value, ast.Call):
+        return None
+    func = value.func
+    func_name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+    if func_name != "Field":
+        return None
+    for kw in value.keywords:
+        if kw.arg == "description" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+            return ast.unparse(func), kw.value.value
+    return None
+
+
+def _find_plugin_market_assignment(source: str) -> tuple[int, int, str, Optional[tuple[str, str]]]:
+    """
+    定位 ConfigModel 中插件市场默认值对应的源码范围与既有 Field 调用信息。
     """
     tree = ast.parse(source)
     source_lines = source.splitlines(keepends=True)
@@ -91,14 +107,31 @@ def _find_plugin_market_assignment(source: str) -> tuple[int, int, str]:
             start = item.lineno - 1
             indent_size = len(source_lines[start]) - len(source_lines[start].lstrip())
             indent = source_lines[start][:indent_size]
-            return start, item.end_lineno, indent
+            return start, item.end_lineno, indent, _extract_field_meta(item.value)
     raise ValueError("未在 ConfigModel 中找到 PLUGIN_MARKET 默认值")
 
 
-def _format_plugin_market_assignment(repos: list[str], indent: str) -> str:
+def _format_plugin_market_assignment(
+    repos: list[str],
+    indent: str,
+    field_meta: Optional[tuple[str, str]] = None,
+) -> str:
     """
-    按配置文件现有缩进格式生成插件市场默认值源码。
+    按配置文件现有缩进格式生成插件市场默认值源码；原有 Field description 时保留原调用形式与描述。
     """
+    if field_meta is not None:
+        field_callable, description = field_meta
+        lines = [
+            f"{indent}PLUGIN_MARKET: str = {field_callable}(\n",
+            f"{indent}    default=(\n",
+        ]
+        for index, repo in enumerate(repos):
+            suffix = "," if index < len(repos) - 1 else ""
+            lines.append(f'{indent}        "{repo}{suffix}"\n')
+        lines.append(f"{indent}    ),\n")
+        lines.append(f"{indent}    description={description!r},\n")
+        lines.append(f"{indent})\n")
+        return "".join(lines)
     lines = [f"{indent}PLUGIN_MARKET: str = (\n"]
     for index, repo in enumerate(repos):
         suffix = "," if index < len(repos) - 1 else ""
@@ -119,9 +152,9 @@ def _generate_plugin_market_default(wiki_file: Path, config_file: Path) -> list[
         raise ValueError("Wiki 插件仓库清单缺少 MoviePilot 官方插件仓库")
 
     source = config_file.read_text(encoding="utf-8")
-    start, end, indent = _find_plugin_market_assignment(source)
+    start, end, indent, field_meta = _find_plugin_market_assignment(source)
     source_lines = source.splitlines(keepends=True)
-    replacement = _format_plugin_market_assignment(repos, indent)
+    replacement = _format_plugin_market_assignment(repos, indent, field_meta=field_meta)
     updated_source = (
         "".join(source_lines[:start])
         + replacement
