@@ -584,6 +584,65 @@ def test_strip_track_prefix_keeps_normal_title():
     assert MetaMusic.split_track_prefix("2002") == (None, None, None)
 
 
+@pytest.mark.parametrize(
+    ("stem", "expected"),
+    [
+        ("艺人 - 专辑 - 02 - 曲名", ("艺人 - 专辑", 2)),
+        ("艺人 - 曲名", None),
+        (" - 02 - 曲名", None),
+        ("艺人 - 专辑 - xx - 曲名", None),
+        ("艺人 - 专辑 - 00 - 曲名", None),
+    ],
+)
+def test_split_trailing_track_validates_four_part_filename(stem, expected):
+    """
+    四段式文件名只接受有效的两位曲序，并拒绝缺段、非数字和零序号。
+    """
+    assert MetaMusic._split_trailing_track(stem) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected", "disc", "track"),
+    [
+        ("0101.曲名.strm", ("曲名", None), 1, 1),
+        ("0100.曲名.strm", ("0100.曲名", None), None, None),
+    ],
+)
+def test_prepare_filename_input_handles_strm_disc_track(value, expected, disc, track):
+    """
+    STRM 文件名支持补零碟号曲序，并保留普通四位数字曲名的原文。
+    """
+    meta = MetaMusic()
+
+    assert meta._prepare_filename_input(value) == expected
+    assert meta.disc_number == disc
+    assert meta.track_number == track
+
+
+def test_prepare_filename_input_restores_leading_credit_for_trailing_track():
+    """
+    艺人和专辑位于曲序之前时仍应回填字段并返回末段曲名。
+    """
+    meta = MetaMusic()
+
+    assert meta._prepare_filename_input("周杰伦《七里香》 - 02 - 曲名.strm") == ("曲名", None)
+    assert meta.artists == ["周杰伦"]
+    assert meta.album == "七里香"
+    assert meta.track_number == 2
+
+
+def test_apply_leading_credit_preserves_existing_artists():
+    """
+    已有艺术家标签时不应被文件名前缀覆盖。
+    """
+    meta = MetaMusic(artists=["标签艺人"])
+
+    meta._apply_leading_credit("周杰伦《七里香》")
+
+    assert meta.artists == ["标签艺人"]
+    assert meta.album is None
+
+
 def test_split_artist_title():
     """
     歌手 - 曲名结构应拆分，无分隔符时原文作为标题。
@@ -1068,10 +1127,11 @@ def test_apply_title_album_marker():
     assert meta.year == 2006
 
 
-def test_apply_title_bilingual_album_marker_prefix():
+def test_apply_title_bilingual_album_marker_prefix(monkeypatch):
     """
     双语原声命名应保留英文艺术家/标题，不把整段前缀当成艺术家。
     """
+    monkeypatch.setattr("app.adapters.system.rust.parse_metamusic", lambda *_args, **_kwargs: None)
     meta = parse_title(
         "Max Richter - Ad Astra Original Motion Picture Soundtrack "
         "马克斯·里希特 - 《星际探索》电影原声带 2019 FLAC-SeedPool"

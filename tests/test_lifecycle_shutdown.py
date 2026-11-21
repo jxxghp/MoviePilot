@@ -5,11 +5,12 @@
 import asyncio
 import signal
 import threading
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI
 
 from app.adapters.network import http as http_utils
@@ -17,8 +18,9 @@ from app.application.configuration import (
     get_configured_system_config,
     get_runtime_settings,
 )
+from app.runtime import tasks as runtime_tasks
 from app.runtime.config import settings as runtime_settings
-from app.runtime.tasks import configure_task_registry, get_task_registry
+from app.runtime.tasks import get_task_registry
 from app.startup import lifecycle
 from app.startup.composition.cache import CacheComposition
 from app.startup.composition.system import compose_system_service
@@ -26,13 +28,37 @@ from app.startup.initializers import modules as modules_initializer
 
 
 @pytest.fixture(autouse=True)
-def _isolate_task_registry():
+def _isolate_task_registry(monkeypatch):
     """
-    生命周期用例结束后恢复未启动宿主时的默认任务登记器。
+    隔离生命周期发布的任务登记器，用例结束后恢复进入前的宿主状态。
+
+    :param monkeypatch: 自动恢复进程级登记器引用的测试夹具
     """
-    configure_task_registry(None)
-    yield
-    configure_task_registry(None)
+    monkeypatch.setattr(runtime_tasks, "_runtime_registry", None)
+
+
+@pytest_asyncio.fixture
+async def _isolated_browser_reaper(monkeypatch):
+    """
+    隔离回收任务句柄与关闭队列，保留真实扫描协程但禁止触碰浏览器。
+
+    :param monkeypatch: 用例结束后恢复进程级浏览器状态和方法
+    :yields: 使用隔离状态的浏览器会话辅助类
+    """
+    from app.adapters.network.browser import BrowserSessionHelper
+
+    monkeypatch.setattr(BrowserSessionHelper, "_reaper_task", None)
+    monkeypatch.setattr(BrowserSessionHelper, "_idle_closures", {})
+    monkeypatch.setattr(BrowserSessionHelper, "_prune_sessions", MagicMock())
+    monkeypatch.setattr(BrowserSessionHelper, "close_all_sessions", MagicMock())
+    try:
+        yield BrowserSessionHelper
+    finally:
+        task = BrowserSessionHelper._reaper_task
+        if task is not None:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 def _assert_completed_once(mock: MagicMock) -> None:
@@ -86,6 +112,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "init_command",
         "init_workflow",
         "initialize_community_medals",
+        "start_browser_session_reaper",
     ):
         monkeypatch.setattr(lifecycle, name, MagicMock())
     monkeypatch.setattr(lifecycle, "configure_plugin_runtime_services", MagicMock())
@@ -281,6 +308,105 @@ def test_lifespan_normal_mode_starts_full_runtime(monkeypatch):
         getattr(lifecycle, name).assert_called_once_with()
     for step in shutdown_steps.values():
         _assert_completed_once(step)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("safe_mode", [False, True], ids=["normal", "safe"])
+@pytest.mark.parametrize("startup_fails", [False, True], ids=["shutdown", "rollback"])
+async def test_lifespan_reaps_browser_task_before_releasing_modules(
+    monkeypatch,
+    _isolated_browser_reaper,
+    safe_mode,
+    startup_fails,
+) -> None:
+    """
+    两种启动模式均登记真实回收任务，正常关闭及启动回滚须先取消它再释放模块。
+
+    :param monkeypatch: 隔离生命周期依赖并注入后段启动故障
+    :param _isolated_browser_reaper: 不会访问真实浏览器的回收任务辅助类
+    :param safe_mode: 是否启用安全模式
+    :param startup_fails: 是否在回收任务注册后的消息队列阶段使启动失败
+    """
+    shutdown_steps = _patch_lifespan(monkeypatch)
+    monkeypatch.setattr(runtime_settings, "MOVIEPILOT_SAFE_MODE", safe_mode)
+    helper = _isolated_browser_reaper
+    app = FastAPI()
+    startup_error = RuntimeError("message startup failed")
+
+    def start_reaper(registry) -> None:
+        """
+        经真实初始化入口注册扫描任务，并检查其归属和依赖准备状态。
+
+        :param registry: 生命周期回调传入的当前应用登记器
+        """
+        lifecycle.init_modules.assert_awaited_once_with()
+        assert registry is app.state.task_registry
+        assert registry is get_task_registry()
+        modules_initializer.start_browser_session_reaper(registry)
+        records = [
+            record
+            for record in registry.records
+            if record.owner == "browser.sessions.idle_reaper"
+        ]
+        assert len(records) == 1
+        assert records[0].task is helper._reaper_task
+        assert records[0].cancel_on_shutdown is True
+        assert not records[0].task.done()
+
+    start = MagicMock(side_effect=start_reaper)
+    monkeypatch.setattr(lifecycle, "start_browser_session_reaper", start)
+
+    async def fail_message_start(_app) -> None:
+        """
+        让扫描协程进入等待后触发后段启动失败，避免只测试尚未运行的任务。
+
+        :param _app: 当前正在启动的应用
+        """
+        await asyncio.sleep(0)
+        raise startup_error
+
+    if startup_fails:
+        lifecycle.initialize_message_runtime.side_effect = fail_message_start
+
+    module_release_state = []
+
+    def stop_modules() -> bool:
+        """
+        在依赖释放边界记录扫描取消与登记器收口状态，供关闭结束后断言。
+
+        :return: 隔离模块资源已完成关闭
+        """
+        module_release_state.append((
+            helper._reaper_task is not None and helper._reaper_task.cancelled(),
+            not app.state.task_registry.records,
+            helper.close_all_sessions.call_count,
+        ))
+        return True
+
+    shutdown_steps["stop_modules"].side_effect = stop_modules
+    expectation = (
+        pytest.raises(RuntimeError, match="message startup failed")
+        if startup_fails
+        else nullcontext()
+    )
+    with expectation as raised:
+        async with lifecycle.lifespan(app):
+            assert not startup_fails, "后段启动失败时不能发布运行态"
+            assert helper._reaper_task is not None
+            assert not helper._reaper_task.done()
+            await asyncio.sleep(0)
+
+    if startup_fails:
+        assert raised.value is startup_error
+        assert app.state.moviepilot_health.phase.value == "failed"
+    start.assert_called_once_with(app.state.task_registry)
+    assert helper._reaper_task is not None
+    assert helper._reaper_task.cancelled()
+    assert not app.state.task_registry.records
+    helper._prune_sessions.assert_not_called()
+    helper.close_all_sessions.assert_not_called()
+    shutdown_steps["stop_modules"].assert_awaited_once_with()
+    assert module_release_state == [(True, True, 0)]
 
 
 def test_lifespan_can_start_and_stop_resource_owners_twice(monkeypatch) -> None:
@@ -786,6 +912,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "模块服务",
         "社区勋章缓存",
         "插件服务装配",
+        "浏览器空闲回收",
         "消息队列",
         "插件备份恢复",
         "插件",
@@ -836,6 +963,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "模块服务",
         "社区勋章缓存",
         "插件服务装配",
+        "浏览器空闲回收",
         "消息队列",
         "AI智能体会话",
         "整理后台服务",
@@ -843,6 +971,28 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "停止信号",
         "插件同步与启动收尾",
     }
+    reaper_manifest = {
+        "name": "浏览器空闲回收",
+        "dependencies": ("模块服务", "后台任务登记器"),
+        "mode": "always",
+        "start_order": 73,
+        "stop_order": None,
+        "start_timeout_seconds": 30,
+        "stop_timeout_seconds": None,
+        "start_failure": "fail_fast",
+        "stop_failure": "continue",
+    }
+    for manifest in (normal, safe):
+        assert next(
+            item for item in manifest if item["name"] == "浏览器空闲回收"
+        ) == reaper_manifest
+    reaper_component = next(
+        item
+        for item in lifecycle.build_lifecycle_components(app)
+        if item.name == "浏览器空闲回收"
+    )
+    assert reaper_component.start is not None
+    assert reaper_component.stop is None
     assert all(item["start_failure"] == "fail_fast" for item in normal)
     assert {
         item["name"]

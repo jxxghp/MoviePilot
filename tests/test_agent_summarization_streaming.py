@@ -410,6 +410,7 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invoc
         "PatchToolCallsMiddleware",
         "_FakeToolSelectorMiddleware",
         "CodeCaptureMiddleware",
+        "EphemeralEvidenceMiddleware",
         "FinalRequestCompactionMiddleware",
         "VisionMiddleware",
         "UsageMiddleware",

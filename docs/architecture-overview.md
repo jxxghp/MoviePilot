@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *最后更新：2026-11-03*
+> *最后更新：2026-11-12*
 
 ---
 
@@ -214,7 +214,7 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 | `app/db/` | SQLAlchemy 模型、表级 Oper、会话/UoW 与 Application 持久化适配器；Model 只接受显式 Session，不拥有事务提交 | `models/`、`oper/`、`adapters/`、`uow.py` |
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
 | `app/api/` | FastAPI 主端点、鉴权依赖、统一 `Response` 响应封装；动态插件端点不走此统一包装 | `apiv1.py`、`endpoints/`、`response.py` |
-| `app/agent/` | AI Agent：稳定 Manager 门面、会话/生命周期/后台任务 owner、单 Agent 编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `manager.py`、`session.py`、`lifecycle.py`、`tasks.py`、`orchestrator.py` |
+| `app/agent/` | AI Agent：稳定 Manager 门面、会话/生命周期/后台任务 owner、单 Agent 编排器、运行时、工具、中间件、LLM、记忆、技能、策略及单轮临时证据 | `manager.py`、`session.py`、`lifecycle.py`、`tasks.py`、`orchestrator.py`、`evidence/` |
 | `app/startup/` | 唯一组合根：跨层装配、领域初始化、声明式生命周期排序与重启策略 | `composition/`、`initializers/`、`lifecycle/` |
 | `app/sdk/` | 面向新插件的稳定导入面（网络、缓存、日志、浏览器等）；`_legacy/` 只承载旧插件行为适配薄门面 | `network.py`、`browser.py`、`cache.py`、`_legacy/` |
 | `app/monitor/` | 源目录监控 → 触发整理 | `watcher.py`、`dispatcher.py` |
@@ -412,12 +412,13 @@ flowchart TB
 
 架构基线中的 consumer 表示宿主源码中可静态证明的注册点，不是运行时 listener 实例数。
 collector 只接受 canonical `eventmanager`、`EventManager()` 及其有限别名，忽略其他对象的同名
-`register`/`add_event_listener`；当前宿主有 17 个静态注册点，另保留 1 个由工作流配置驱动的
+`register`/`add_event_listener`；当前宿主有 18 个静态注册点，另保留 1 个由工作流配置驱动的
 真实动态注册。`app/plugins/**` 插件副本不进入宿主事实。
 
-生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 86 个
-生产调用，其中 85 个静态解析为 87 个事件引用，只有 `Command.send_plugin_event` 的插件事件类型
-保持动态；18 个消费注册中 17 个静态、1 个动态。生成的
+生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 76 个
+生产调用，其中 74 个静态解析为 76 个事件引用，`Command.send_plugin_event` 的插件事件类型和
+`dispatch_event_handler` 的持久事件恢复类型保持动态；后者只接受 `DURABLE_EVENT_TOPICS`
+登记的事件。19 个消费注册中 18 个静态、1 个动态。生成的
 `runtime-contract-baseline.json` 保存 line-free 事实、数量和枚举索引；人工维护的
 `runtime-contract-policy.json` 只批准 consumer 的精确 fingerprint、owner 和理由，任何新增、替换、
 重复或陈旧项都会失败，`--write-host` 不会改写该 policy。
@@ -488,7 +489,10 @@ flowchart LR
   `sdk/_legacy/subscribe.py` + Compat 门面保留插件 ABI，不进入 canonical `__all__`。
 - **Outbox 可靠副作用**：业务行与 durable intent 在同一 Session/UoW 中提交；提交后由
   Outbox dispatcher 依据 topic、claim/lease、有限重试和 dead-letter 执行。完成通知、事件和统计
-  的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。终态历史随统一
+  的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。持久广播先
+  冻结接收方并写入逐处理器子消息；父消息完成表示展开已持久化，实际结果由 `event.handler.*`
+  子消息结算。每个处理器独立串行恢复，复用总计最多 20 个 worker、续租与关闭屏障，慢插件
+  只积压自身投递，失败不会重放已成功的其他处理器。终态历史随统一
   数据维护任务分批清理，默认成功记录保留 30 天、dead letter 保留 90 天；总开关和两项保留期由
   高级设置维护，待投递和 lease 中记录不参与清理。
 - **统一历史保留期**：所有可安全按时间回收的追加型数据均受 `DATA_CLEANUP_ENABLE` 控制，包括消息、
@@ -554,6 +558,10 @@ flowchart TB
     I -->|是| J["标记完成 / 发送完成通知"]
 ```
 
+自动订阅刷新使用逐站时间片：Scheduler 每分钟唤醒到期检查，
+`application/subscription/refresh.py` 保存可恢复的排程事实，`chain/subscribe/poll.py` 持有有限在途工作，
+`chain/torrents.py` 在网络与识别完成后以短锁合并缓存。完整规则见[自动订阅刷新排程](subscription-refresh.md)。
+
 ### 6.3 文件整理（Transfer）与监控
 
 ```mermaid
@@ -613,6 +621,28 @@ flowchart LR
   来源 Port 有界回退，`observation.py` 记录本次来源结果和共享预算。Domain 不持有来源客户端。
   `chain/transfer/music.py` 负责批次准入与目录共识，`chain/subscribe/music.py` 使用下载/整理历史
   对账专辑入库事实；匹配不到唯一身份时保留歧义保护。
+
+### 6.6 站点协议分发
+
+- **连接检测**：`SiteChain` 通过 `run_module("test_site", ...)` 委托索引 Module。域名绑定、
+  协议别名、认证和下载权限由站点适配器解释；公共链不保留专站方法或路由表。
+  `SiteConnectionResult` 只有明确“不支持”时才允许通用网页检测，真实失败与模块缺失不会回退误报成功。
+- **RSS 和下载**：Application 持有 `RssSitePort` / `SiteProtocolPort`，启动组合根通过
+  `ModuleInvocationDispatcher` 注入实现。专站 RSS 页面、表单和过期响应归 `modules/indexer/rss.py`，
+  新旧换票配方、首次下载确认及旧站点加密包装归索引 Module；公共用例保留传输、限流、重试和来源安全策略。
+- **RSS 补全和续期**：`application/rss.py` 的 `ensure_site_rss` 统一服务站点更新事件、
+  CookieCloud、登录更新和订阅抓取。只为启用的私有站点补全空地址；已有手工地址保留，
+  只有完整的明确过期响应才续期，HTTP 错误、登录页和普通网络失败不会触发换票。
+  `domain/site.py` 合并生成地址与原筛选，整体替换认证值及生成页更新的有效期，支持相对链接。
+  候选经过真实 RSS 解析后，仓储以原主键、认证、访问配置和原 RSS 做单条条件更新，
+  在独立短事务中提交，防止覆盖并发修改；验证结果供本轮抓取复用。
+  同站点的生成请求互斥，网络与数据库操作在锁外；失败从五分钟退避至一小时，
+  同配置的过期失败通知每天最多一次。状态仅在进程内保存一天且最多 1024 份配置摘要，
+  修改 Cookie 或链接即获得新预算，重启会重置预算。公开站点、停用站点、缺少 Cookie 或
+  不支持生成的站点保留人工配置入口；这些机制不代表所有专站及账号已经实测。
+- **身份和兼容**：Domain 只解释通用身份字段与查询签名；专站路径和短时票据由 Module 解释，
+  缺少公开资源 ID 的旧检查点继续重取原页。旧站点地址、CookieCloud 和 DB Oper 使用独立的精确 Legacy SDK 门面，
+  不把一种兼容入口的符号混入另一种导出面。
 
 ---
 
@@ -815,19 +845,19 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-11-04 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-11-21 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1151 |
-| 内部导入边 | 9,972 |
+| Python 模块 | 1191 |
+| 内部导入边 | 10,450 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
-| Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |
-| Module Contract V2 spec | 224（其中 220 个方法进入 `run_module` 观察面） |
+| Direct egress | 52（精确 policy 准入，Application / Chain 均为 0；本知识 Adapter 仍复用宿主 HTTP 层） |
+| Module Contract V2 spec | 237（其中 223 个方法进入 `run_module` 观察面） |
 | Event Contract | 53 |
-| Event producer / consumer | 86（85 静态、1 动态）/ 18（17 静态、1 动态） |
+| Event producer / consumer | 76（74 静态、2 动态）/ 19（18 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
@@ -866,5 +896,6 @@ Pylint 分别提供对应证据。验证结论应绑定实际源码提交，不�
 | [数据与持久化](rules/10-data-and-persistent.md) | 数据模型、事务、迁移与缓存 |
 | [开发环境设置](development-setup.md) | 锁定依赖、环境映射与治理检查 |
 | [测试规范](testing.md) | 隔离、测试范围与 CI 证据 |
+| [订阅生命周期](subscribe-lifecycle.md) | 订阅模式、字段所有权与生命周期阶段 |
 | [MCP 接入](mcp-api.md) | 外部 Agent 连接、认证、工具发现和调用 |
 | [CLI](cli.md) / [Doctor](doctor.md) | 本地管理与故障诊断 |

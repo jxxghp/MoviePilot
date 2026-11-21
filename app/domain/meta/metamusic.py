@@ -321,8 +321,14 @@ _MUSIC_RIP_METHOD_RE = re.compile(r"(?:分轨|分軌|整轨|整軌|原抓|自抓
 _MUSIC_AUDIO_RELEASE_TAIL_RE = re.compile(
     rf"(?<!\d)(?P<year>(?:19|20)\d{{2}})\s*[-–—−－]\s*"
     rf"(?:{_MUSIC_FORMAT_TOKEN_ALT})(?:\s*(?:分[轨軌]|整[轨軌]|原抓|自抓|自扫|自掃))*"
+    r"(?:\s+multi[\s_-]*file)?"
     r"(?:\s*[-–—−－]\s*[^\s\-–—−－]+){0,4}\s*$",
     re.IGNORECASE,
+)
+# OpenCD 等站点用 ``格式 Multi File`` 表示分轨资源；保留格式词，去掉文件形态尾标。
+_MUSIC_MULTI_FILE_SUFFIX_RE = re.compile(
+    rf"\s+(?P<format>{_MUSIC_FORMAT_TOKEN_ALT})\s+multi[\s_-]*file"
+    r"(?:\s*[-–—−－]\s*[A-Za-z0-9][A-Za-z0-9@._-]{1,20})?\s*$", re.IGNORECASE,
 )
 # 圆括号中的联合位深声明（24/48bit）及规格剔除后留下的空括号。
 _MUSIC_PAREN_SPEC_RE = re.compile(
@@ -353,7 +359,12 @@ _MUSIC_EDITION_BRACKET_RE = re.compile(
     r"\[([^\[\]]*\b(?:deluxe|expanded|special|limited|anniversary|remaster(?:ed)?)\b[^\[\]]*)\]",
     re.IGNORECASE,
 )
-_MUSIC_AUDIO_EXTENSION_RE = re.compile(r"\.(?:flac|mp3|m4a|aac|wav|ape|ogg|opus|wma|aiff?|dsf|dff)$", re.I)
+_MUSIC_AUDIO_EXTENSION_RE = re.compile(r"\.(?:flac|mp3|m4a|aac|wav|ape|ogg|opus|wma|aiff?|dsf|dff|strm)$", re.I)
+# 合并书写的「碟号+曲号」4 位前缀，如 `0101`、`0203`。
+# 只接受补零写法（首位固定 0），从而排除 `1812`、`1999` 这类作品名与年份。
+_MUSIC_COMBINED_DISC_TRACK_RE = re.compile(r"^0(?P<disc>[1-9])(?P<num>[0-9][1-9]|[1-9][0-9])$")
+# 4 位补零「碟号+曲号」前缀后接曲名，如 `0101 - 曲名`。
+_MUSIC_COMBINED_TRACK_PREFIX_RE = re.compile(r"^\s*(?P<num>0[1-9][0-9]{2})\s*[-–—.。、) ]+\s*(?P<rest>.*\S)\s*$")
 _MUSIC_CLASSICAL_WORK_RE = re.compile(
     r"\b(?:No\.|Op\.?|BWV|KV|Hob\.)\s*\d|"
     r"\b(?:symphony|concerto|sonata|quartet|quintet|suite)\b.*(?:\d|\bin\b|\bfor\b)|"
@@ -463,6 +474,25 @@ _MUSIC_NUMBER_ONLY_RE = re.compile(
     r"^\s*(?:(?:track|cd|disc|disk)\s*)?(?P<num>\d{1,3})\s*$",
     re.IGNORECASE,
 )
+
+
+def _split_combined_disc_track(number: str) -> Optional[tuple[int, int]]:
+    """
+    把 4 位「碟号+曲号」前缀拆为 (碟号, 曲号)。
+
+    只识别补零写法 `0<碟><曲号>`：`0101` → 碟 1 曲 1，`0203` → 碟 2 曲 3。
+    四位数并不都是碟号曲号，`1812`（作品名）、`1999`（年份）、`2001` 等
+    真实曲名/编号必须排除，因此要求首位固定为 0 且末两位非 00。
+
+    :param number: 4 位数字前缀文本
+    :return: (碟号, 曲号)；不符合补零碟号曲号格式时返回 None
+    """
+    match = _MUSIC_COMBINED_DISC_TRACK_RE.match(number or "")
+    if not match:
+        return None
+    return int(match.group("disc")), int(match.group("num"))
+
+
 # 碟片目录名：CD1、Disc 2、Disk01
 _MUSIC_DISC_DIR_RE = re.compile(
     r"^\s*(?:cd|disc|disk)\s*(?P<num>\d{1,2})\s*$",
@@ -1499,7 +1529,8 @@ class MetaMusic(MetaBase):
         为两种解析引擎统一清理有格式证据的发行尾标与音频文件曲序。
 
         点分发行类型只在音频规格前生效；版本括号保留语义，介质和目录编号
-        不进入检索。斜杠规格尾链整段剥离并保留年份，正文中的斜杠仍保留。
+        不进入检索。斜杠规格尾链和 ``FLAC Multi File`` 分轨尾标整段剥离并保留年份，
+        正文中的斜杠仍保留。
         文件曲序先于艺人拆分，避免 ``01. Artist`` 成为艺人名。
 
         :param value: 原始音乐资源标题或文件名
@@ -1507,6 +1538,8 @@ class MetaMusic(MetaBase):
         """
         text, file_title = self._prepare_filename_input(value)
         text = _MUSIC_SLASH_SPEC_TAIL_RE.sub(r" \g<year>", text)
+        text = _MUSIC_AUDIO_RELEASE_TAIL_RE.sub(r" \g<year>", text)
+        text = _MUSIC_MULTI_FILE_SUFFIX_RE.sub(r" \g<format>", text)
         text = _MUSIC_EDITION_BRACKET_RE.sub(r"(\1)", text)
         text = _MUSIC_CATALOG_SPEC_RE.sub("", text)
         if re.search(r"(?:19|20)\d{2}", text) and len(_SCENE_DOT_RE.findall(value)) >= 3:
@@ -1520,6 +1553,69 @@ class MetaMusic(MetaBase):
             text = _SCENE_DOT_RE.sub(" ", text)
         return text, file_title
 
+    @staticmethod
+    def _split_trailing_track(stem: str) -> Optional[tuple[str, int]]:
+        """
+        从右往左剥离「序号 - 曲名」尾部，处理「艺人 - 专辑 - 序号 - 曲名」四段式命名。
+
+        转码工具常把曲序放在专辑名之后（如 `周杰倫 - 某专辑 - 02 - 曲名`），
+        曲序不在开头，开头的曲序正则匹配不到。这里按最后一个 ` - ` 切出曲名，
+        再取前一段为序号，专辑名本身含 ` - ` 时也能正确切分。
+
+        :param stem: 不含扩展名的文件名
+        :return: (剩余前缀, 曲序)；尾部不是「序号 - 曲名」时返回 None
+        """
+        parts = stem.rsplit(" - ", 2)
+        if len(parts) != 3:
+            return None
+        prefix, sequence, title = parts
+        if not prefix.strip() or not title.strip():
+            return None
+        # 只接受纯数字序号，避免把「曲名 - 副标题」误当成序号段
+        if not re.fullmatch(r"\d{1,2}", sequence):
+            return None
+        number = int(sequence)
+        if not 1 <= number <= 99:
+            return None
+        return prefix, number
+
+    def _apply_leading_credit(self, lead: str) -> None:
+        """
+        从「艺人 - 专辑」前缀中回填艺人或专辑字段。
+
+        四段式命名的前缀既可能是「艺人 - 专辑」，也可能只有艺人，
+        仍需复用常规拆分逻辑，避免曲名被剥离后艺人字段丢失。
+
+        :param lead: 曲序之前的前缀文本
+        """
+        if self.artists:
+            return
+        parsed = type(self).parse_resource(lead)
+        if parsed.artists and not self.artists:
+            self.artists = parsed.artists
+        if parsed.album and not self.album:
+            self.album = parsed.album
+
+    @staticmethod
+    def _is_real_audio_filename(value: str) -> bool:
+        """
+        判断传入文本更像真实音频文件名，而非种子标题。
+
+        真实文件名通常用 ` - ` 分段（`艺人 - 曲名`），或整段就是一个曲名；
+        种子标题则用点号堆叠字段（`Artist.2017.Album.FLAC`）。
+        后者需要保留扩展名让后续解析器识别格式，不能提前剥离。
+
+        :param value: 待判定的文本
+        :return: 是真实音频文件名时返回 True
+        """
+        if " - " in value:
+            return True
+        # 点分种子标题：至少 3 段且含常见发布标签，交由原流程处理
+        segments = value.rsplit(".", 1)[0].split(".")
+        if len(segments) >= 3 and any(seg.isdigit() and len(seg) == 4 for seg in segments):
+            return False
+        return True
+
     def _prepare_filename_input(self, value: str) -> tuple[str, Optional[str]]:
         """
         先按真实扩展名识别文件，再取曲序；数字开头的曲名不能被当作碟号。
@@ -1530,13 +1626,32 @@ class MetaMusic(MetaBase):
         track: Optional[int]
         disc: Optional[int]
         prefix = re.match(r"^(\d{1,3})(?:\.\s+|\.(?=[^\d\s])|\s+-\s+)(.+)$", stem)
-        if prefix:
+        # 4 位只在补零「碟号+曲号」写法下才拆分，避免 `1812`、`2023` 被当曲序
+        combined_prefix = re.match(r"^(0[1-9][0-9]{2})(?:\.\s+|\.(?=[^\d\s])|\s+-\s+)(.+)$", stem)
+        trailing = None if (prefix or combined_prefix) else self._split_trailing_track(stem)
+        combined = _split_combined_disc_track(combined_prefix.group(1)) if combined_prefix else None
+        if combined is not None and combined_prefix is not None:
+            disc, track = combined
+            remainder = combined_prefix.group(2)
+        elif prefix:
             track, disc, remainder = int(prefix.group(1)), None, prefix.group(2)
+        elif trailing:
+            # 「艺人 - 专辑 - 序号 - 曲名」：曲序在中间。曲名只保留末段，
+            # 前缀（艺人 - 专辑）单独解析，否则艺人会随之丢失。
+            lead, track = trailing
+            disc = None
+            remainder = stem.rsplit(" - ", 2)[2]
+            self._apply_leading_credit(lead)
         else:
             track, disc, remainder = self.split_track_prefix(stem)
         if track is None and disc is None:
-            # M4A 是容器，扩展名不能使底层解析器猜成 AAC；其他尾标仍参与场景识别。
-            return (stem if value.lower().endswith(".m4a") else value), None
+            # M4A 是容器，扩展名不能使底层解析器猜成 AAC。
+            # 真实文件名的扩展名不应带进曲名，否则命名模板会写出 xxx.strm.strm；
+            # 而 `Artist.2017.Album.FLAC` 这类点分种子标题需要保留 .FLAC
+            # 作为格式标签参与后续识别，不能提前剥离。
+            if value.lower().endswith(".m4a") or self._is_real_audio_filename(value):
+                return stem, None
+            return value, None
         self.track_number = self.track_number or track
         self.disc_number = self.disc_number or disc
         file_title = None
@@ -2160,6 +2275,12 @@ class MetaMusic(MetaBase):
                 int(match.group("disc")),
                 cls._clean_text(match.group("rest")),
             )
+        match = _MUSIC_COMBINED_TRACK_PREFIX_RE.match(text)
+        if match:
+            combined = _split_combined_disc_track(match.group("num"))
+            if combined:
+                disc, track = combined
+                return track, disc, cls._clean_text(match.group("rest"))
         match = _MUSIC_TRACK_PREFIX_RE.match(text)
         if match:
             return int(match.group("num")), None, cls._clean_text(match.group("rest"))

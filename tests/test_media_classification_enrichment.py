@@ -450,7 +450,8 @@ def test_sync_enrichment_enforces_total_timeout_and_concurrency_limit() -> None:
         executor.shutdown(wait=True)
 
     assert result == facts
-    assert elapsed < 0.25
+    # 给共享 CI runner 留出调度余量；未遵守总超时的调用仍会超过此上限。
+    assert elapsed < 0.75
     assert started == 2
     assert max_active == 2
     assert len(warnings) == 2

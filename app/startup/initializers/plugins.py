@@ -465,7 +465,12 @@ def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
     """
     在执行旧插件顶层代码前准备其静态导入所需的宿主资源。
     """
-    for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
+    capabilities = scan_plugin_resource_imports(plugin_id, plugin_dir)
+    if "host.display" in capabilities:
+        from app.adapters.network.browser import configure_browser_queue
+
+        configure_browser_queue()
+    for capability_id in capabilities:
         acquire_managed_resource(
             capability_id,
             reason="legacy_plugin_import",
@@ -609,6 +614,7 @@ def configure_plugin_services() -> None:
             local_plugins=plugin_manager.get_local_plugins,
             local_repo_plugins=plugin_manager.get_local_repo_plugins,
             online_candidates=plugin_manager.async_get_online_plugin_candidates,
+            source_candidates=lambda repo_url: plugin_manager.async_get_online_plugin_candidates(repo_url=repo_url),
             process_plugins=plugin_manager.process_plugins_list,
             identities=persistence.list_identities,
             free_threaded=is_free_threaded_runtime,
@@ -625,6 +631,11 @@ def configure_plugin_services() -> None:
             ratings=MoviePilotServerHelper.async_get_plugin_ratings,
             rating=MoviePilotServerHelper.async_get_plugin_rating,
             submit=MoviePilotServerHelper.async_submit_plugin_rating,
+            cache_scope=lambda: (
+                get_runtime_setting("MP_SERVER_HOST"),
+                MoviePilotServerHelper.get_user_uid(),
+                bool(get_runtime_setting("PLUGIN_STATISTIC_SHARE")),
+            ),
         )
     )
 
@@ -962,8 +973,8 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
 
     client = get_composed_plugin_market_client()
     return PluginCatalogService(
-        market_loader=client.get_plugins,
-        async_market_loader=client.async_get_plugins,
+        market_loader=client.get_plugin_index_result,
+        async_market_loader=client.async_get_plugin_index_result,
         installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
@@ -972,6 +983,7 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
         version_compare=version_matches,
         warning=logger.warning,
         error=logger.error,
+        info=logger.info,
     )
 
 

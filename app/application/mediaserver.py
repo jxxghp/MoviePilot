@@ -30,6 +30,16 @@ MEDIA_SERVER_EXISTENCE_QUERY = MediaServerQueryOptions(fields=frozenset({
 }))
 
 
+class MediaServerQueryError(RuntimeError):
+    """
+    媒体服务器存在性查询失败，未能确认媒体是否已入库。
+
+    与“未找到”不同：查询失败时调用方不得把目标当作缺失处理。订阅入口遇到
+    该异常应跳过本轮，不更新缺集、不触发补下；异常消息携带失败的服务器名
+    称与媒体标题，供日志定位。
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class MediaServerSyncItem:
     """
@@ -102,6 +112,21 @@ class MediaServerSyncItem:
             ),
             lst_mod_date=sync_time,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class MediaServerItemRef:
+    """
+    本地媒体库缓存命中的条目及其所属服务器。
+
+    条目标识只在所属服务器内唯一，多台服务器之间可能重号，因此两者必须取自同一条缓存记录。
+
+    :param server: 媒体服务器配置名称；旧缓存缺少服务器名称时为空字符串
+    :param item_id: 该服务器分配的条目标识
+    """
+
+    server: str
+    item_id: str
 
 
 class MediaServerRepository(Protocol):
@@ -193,6 +218,30 @@ class AsyncMediaServerQueryRepository(Protocol):
         """
         ...
 
+    async def async_get_item_ref(
+        self,
+        *,
+        title: Optional[str] = None,
+        year: Optional[Union[str, int]] = None,
+        mtype: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+    ) -> Optional[tuple[str, str]]:
+        """
+        按与 async_get_item_id 相同的匹配规则，返回命中记录的服务器名称与条目标识。
+
+        :param title: 匹配的媒体标题，也用于来源身份未命中时的跨来源回退
+        :param year: 媒体发行年份，None 表示未提供年份条件
+        :param mtype: 媒体条目类型，None 表示不限定类型
+        :param media_source: 统一媒体身份的数据来源，需与 media_id 配合使用
+        :param media_id: 对应来源的原生媒体标识，缺少完整身份时按标题查询
+        :param season: 要求本地缓存包含的季号，None 表示不限定季
+        :return: 同一条记录的（服务器配置名称, 条目标识），服务器名称缺失时为空字符串；
+            不存在、来源匹配歧义或所需季不存在时为 None
+        """
+        ...
+
 
 class MediaServerQueryService:
     """
@@ -237,6 +286,40 @@ class MediaServerQueryService:
             media_id=media_id,
             season=season,
         )
+
+    async def find_item(
+            self,
+            *,
+            title: Optional[str] = None,
+            year: Optional[Union[str, int]] = None,
+            mtype: Optional[str] = None,
+            media_source: Optional[MediaSource] = None,
+            media_id: Optional[str] = None,
+            season: Optional[int] = None,
+    ) -> Optional[MediaServerItemRef]:
+        """
+        返回匹配条目及其所属服务器，匹配规则与 find_item_id 不限定服务器时相同。
+
+        :param title: 匹配的媒体标题，也用于来源身份未命中时的跨来源回退
+        :param year: 媒体发行年份，None 表示未提供年份条件
+        :param mtype: 媒体条目类型，None 表示不限定类型
+        :param media_source: 统一媒体身份的数据来源，需与 media_id 配合使用
+        :param media_id: 对应来源的原生媒体标识，缺少完整身份时按标题查询
+        :param season: 要求本地缓存包含的季号，None 表示不限定季
+        :return: 取自同一条缓存记录的服务器名称与条目标识；未命中时为 None
+        """
+        found = await self._repository.async_get_item_ref(
+            title=title,
+            year=year,
+            mtype=mtype,
+            media_source=media_source,
+            media_id=media_id,
+            season=season,
+        )
+        if found is None:
+            return None
+        server, item_id = found
+        return MediaServerItemRef(server=server, item_id=item_id)
 
 
 class MediaServerIdentityHelper:
@@ -473,6 +556,10 @@ class MusicMediaServerHelper:
             return False
 
         if not is_album:
+            target_album = getattr(mediainfo, "album", None)
+            actual_album = note.get("album")
+            if target_album and actual_album and not cls.same_name(actual_album, target_album):
+                return False
             return True
         try:
             expected_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)

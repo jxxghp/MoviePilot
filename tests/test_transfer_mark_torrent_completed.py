@@ -11,7 +11,9 @@ from app.chain.transfer.facade import TransferChain
 from app.domain.meta.metabase import MetaBase
 from app.runtime.config import settings
 from app.schemas.file import FileItem
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
+from tests.test_transfer_sync_extra_files import bind_empty_history_repositories, make_fileitem, make_transfer_chain
 
 
 class _FakeMeta(MetaBase):
@@ -88,12 +90,14 @@ def _make_chain() -> TransferChain:
     chain.jobview = JobManager()
     chain._media_exts = settings.RMT_MEDIAEXT
     chain._subtitle_exts = settings.RMT_SUBEXT
+    chain._lyrics_exts = settings.RMT_LYRICSEXT
     chain._audio_exts = settings.RMT_AUDIOEXT
     chain._allowed_exts = (
-        chain._media_exts + chain._audio_exts + chain._subtitle_exts
+        chain._media_exts + chain._audio_exts + chain._subtitle_exts + chain._lyrics_exts
     )
     chain._success_target_files = {}
     chain._scrape_batches = {}
+    chain._transfer_scan_sizes = {}
     return chain
 
 
@@ -264,4 +268,177 @@ def test_multi_episode_torrent_tags_only_after_last_episode():
     progress["value"] = 100
     _finish_task(chain, _make_task(2, "hash1", "qbittorrent"))
     _mark(chain, "hash1", "qbittorrent")
+    assert completed == [{"hashs": "hash1", "downloader": "qbittorrent"}]
+
+
+def test_mark_skips_tag_when_files_were_appended_since_scan():
+    """
+    E05 交给整理后同一任务又追加了 E06，且 E06 在整理期间就下载完成：任务仍是"已完成"，但选中大小
+    变了，不能打"已整理"，否则 E06 永远不会再进入下载器整理；下一轮整理会重新扫描。
+
+    扫描记录要保留：同一轮之后的整理回调（同一种子其他文件稍后完成、"补打已整理"）也必须看到
+    "已变化"，删掉记录会让它们退回原有判断，把没整理过的 E06 标成已整理。
+    """
+    chain = _make_chain()
+    completed = []
+    chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
+    chain.list_torrents = lambda **kwargs: [SimpleNamespace(progress=100, selected_size=150)]
+    chain._transfer_scan_sizes[("qbittorrent", "hash1")] = 100
+    _finish_task(chain, _make_task(1, "hash1", "qbittorrent"))
+
+    _mark(chain, "hash1", "qbittorrent")
+    _mark(chain, "hash1", "qbittorrent")
+
+    assert completed == []
+    assert chain._transfer_scan_sizes == {("qbittorrent", "hash1"): 100}
+
+
+def test_mark_tags_when_selection_unchanged_and_forgets_snapshot():
+    """
+    选中大小与扫描时一致时照常打标签，并清理扫描记录。
+    """
+    chain = _make_chain()
+    completed = []
+    chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
+    chain.list_torrents = lambda **kwargs: [SimpleNamespace(progress=100, selected_size=100)]
+    chain._transfer_scan_sizes[("qbittorrent", "hash1")] = 100
+    _finish_task(chain, _make_task(1, "hash1", "qbittorrent"))
+
+    _mark(chain, "hash1", "qbittorrent")
+
+    assert completed == [{"hashs": "hash1", "downloader": "qbittorrent"}]
+    assert chain._transfer_scan_sizes == {}
+
+
+def test_mark_without_comparable_sizes_keeps_original_behavior():
+    """
+    没有扫描记录（例如重启后）或下载器给不出选中大小时无法比较，沿用原有判断照常打标签。
+    """
+    chain = _make_chain()
+    completed = []
+    chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
+    chain.list_torrents = lambda **kwargs: [SimpleNamespace(progress=100, selected_size=None)]
+    chain._transfer_scan_sizes[("qbittorrent", "hash1")] = 100
+    _finish_task(chain, _make_task(1, "hash1", "qbittorrent"))
+
+    _mark(chain, "hash1", "qbittorrent")
+
+    assert completed == [{"hashs": "hash1", "downloader": "qbittorrent"}]
+
+
+def test_mark_checks_completion_and_tags_under_task_lock():
+    """
+    "确认已完成"与"写入已整理标签"必须在同一把任务锁内：否则刚确认完成，下载链就在同一任务上追加了
+    数据已齐的文件，随后写入的标签会让追加的文件再也不进入下载器整理。
+    """
+    from app.chain.transfer import settlement as settlement_module
+
+    chain = _make_chain()
+    locks = settlement_module.downloader_task_locks
+    stripe = locks._locks[locks._stripe("hash1")]
+    held = []
+    chain.list_torrents = lambda **kwargs: held.append(stripe.locked()) or [SimpleNamespace(progress=100)]
+    chain.transfer_completed = lambda **kwargs: held.append(stripe.locked())
+    _finish_task(chain, _make_task(1, "hash1", "qbittorrent"))
+
+    _mark(chain, "hash1", "qbittorrent")
+
+    assert held == [True, True]
+    assert not stripe.locked()
+
+
+def test_mark_without_scan_record_defers_polled_torrents_to_next_scan():
+    """
+    重启后回放的整理任务没有扫描记录，无法核实整理的是哪批文件：任务在下载器整理轮询范围内时不打标签，
+    下一轮轮询会重新扫描、记录选中大小后再打；不在轮询范围内时标签不影响轮询，照常打标签。
+    """
+    for covered, expected in ((True, []), (False, [{"hashs": "hash1", "downloader": "qbittorrent"}])):
+        chain = _make_chain()
+        completed = []
+        chain.transfer_completed = lambda completed=completed, **kwargs: completed.append(kwargs)
+        chain.list_torrents = lambda **kwargs: [SimpleNamespace(progress=100, selected_size=150)]
+        chain._covered_by_downloader_polling = lambda _torrent, covered=covered: covered
+        _finish_task(chain, _make_task(1, "hash1", "qbittorrent"))
+
+        _mark(chain, "hash1", "qbittorrent")
+
+        assert completed == expected
+
+
+def test_downloader_polling_coverage_follows_monitor_directories(monkeypatch):
+    """
+    只看任务路径是否位于"下载器监控"类型的下载目录内（存储一致），不访问存储；没有路径不在范围内。
+    """
+    from pathlib import Path
+
+    from app.chain.transfer import workflow as workflow_module
+
+    dirs = [
+        SimpleNamespace(monitor_type="downloader", storage="local", download_path="/downloads/tv"),
+        SimpleNamespace(monitor_type="monitor", storage="local", download_path="/downloads/movie"),
+    ]
+    monkeypatch.setattr(workflow_module, "DirectoryHelper", lambda: SimpleNamespace(get_download_dirs=lambda: dirs))
+
+    assert TransferChain._covered_by_downloader_polling(SimpleNamespace(path=Path("/downloads/tv/Show"))) is True
+    assert TransferChain._covered_by_downloader_polling(SimpleNamespace(path=Path("/downloads/movie/Film"))) is False
+    assert TransferChain._covered_by_downloader_polling(SimpleNamespace(path=None)) is False
+
+
+def test_mark_uses_selected_completion_when_downloader_reports_it():
+    """
+    rTorrent 的完成百分比按全部数据计算：只选了部分文件的任务，选中部分下完后进度不到 100，由 ``selected_completed``
+    表示选中部分已下完，照常打标签；选中部分没下完（例如追加的新集还在下载）时不打。没有该字段时按完成百分比判断。
+    """
+    for torrent, expected in (
+            (DownloaderTorrent(progress=25.0, selected_completed=True), True),
+            (DownloaderTorrent(progress=100, selected_completed=False), False),
+            (DownloaderTorrent(progress=100), True),
+            (DownloaderTorrent(progress=25.0), False),
+    ):
+        chain = _make_chain()
+        completed = []
+        chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
+        chain.list_torrents = lambda _torrent=torrent, **kwargs: [_torrent]
+        _finish_task(chain, _make_task(1, "hash1", "rtorrent"))
+
+        _mark(chain, "hash1", "rtorrent")
+
+        assert bool(completed) is expected, torrent
+
+
+def test_reused_task_whose_files_are_all_transferred_gets_tag_back_next_round(monkeypatch):
+    """
+    重复提交同一种子按原样复用受理时会移除"已整理"（用户删了媒体文件和整理记录后再下载同一种子，不移除就永远不会
+    重新整理）。文件都已整理过的任务因此回到下载器整理轮询，下一轮整理链发现全部文件都有整理记录，不新建整理任务，
+    并补打"已整理"，任务退出轮询，只多扫这一轮。
+    """
+    owner = make_transfer_chain()
+    bind_empty_history_repositories(owner)
+    owner.eventmanager = SimpleNamespace(send_event=lambda *_args, **_kwargs: None)
+    root = FileItem(storage="local", path="/downloads/Test.Show.S01", type="dir", name="Test.Show.S01")
+    episodes = [make_fileitem(f"/downloads/Test.Show.S01/Test.Show.S01E0{number}.mkv") for number in (1, 2)]
+    owner.transfer_history_repository = SimpleNamespace(
+        get_by_src=lambda src, storage=None: SimpleNamespace(
+            id=1, status=True, src=src, src_storage="local", download_hash="hash1", downloader="qbittorrent",
+        ),
+    )
+    monkeypatch.setattr(
+        owner, "_TransferChain__get_trans_fileitems", lambda *_args, **_kwargs: [(item, False) for item in episodes],
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.get_configured_system_config", lambda: SimpleNamespace(get=lambda _key: None),
+    )
+    planned = []
+    monkeypatch.setattr(owner, "_plan_checkpoint_and_execute", lambda task, **_kwargs: planned.append(task))
+    completed = []
+    owner.transfer_completed = lambda **kwargs: completed.append(kwargs)
+    owner.list_torrents = lambda **_kwargs: [DownloaderTorrent(hash="hash1", progress=100, selected_size=100)]
+    # 整理轮询交给整理时记录的选中大小，与当前一致，说明期间没有追加文件。
+    owner._transfer_scan_size_records()[("qbittorrent", "hash1")] = 100
+
+    owner.do_transfer(
+        fileitem=root, mtype=MediaType.TV, downloader="qbittorrent", download_hash="hash1", background=False,
+    )
+
+    assert planned == []
     assert completed == [{"hashs": "hash1", "downloader": "qbittorrent"}]

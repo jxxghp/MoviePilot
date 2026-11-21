@@ -71,8 +71,9 @@ class TransferDispatcher:
             return self._all_exts_override
         media_extensions = cast(List[str], get_runtime_setting('RMT_MEDIAEXT'))
         subtitle_extensions = cast(List[str], get_runtime_setting('RMT_SUBEXT'))
+        lyrics_extensions = cast(List[str], get_runtime_setting('RMT_LYRICSEXT'))
         audio_extensions = cast(List[str], get_runtime_setting('RMT_AUDIOEXT'))
-        return media_extensions + subtitle_extensions + audio_extensions
+        return media_extensions + subtitle_extensions + lyrics_extensions + audio_extensions
 
     @all_exts.setter
     def all_exts(self, value: Optional[List[str]]) -> None:

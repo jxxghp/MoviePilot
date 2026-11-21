@@ -385,8 +385,9 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
         monkeypatch.setattr(
             EventManager,
             "send_event_strict",
-            lambda _self, _etype, data: calls.append(data["idempotency_key"]),
+            lambda _self, _etype, data, *, handler_id: calls.append((data["idempotency_key"], handler_id)),
         )
+        monkeypatch.setattr(EventManager, "broadcast_handler_ids", lambda _self, _etype: ("test.handler",))
     elif handler_kind in {"notification", "download_notification"}:
         topic = (
             "subscribe.complete.notification"
@@ -420,6 +421,10 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
+    if handler_kind == "event":
+        from app.startup.composition import outbox as composition
+
+        monkeypatch.setattr(composition, "SessionFactory", factory)
     now = datetime(2026, 8, 28, tzinfo=timezone.utc)
     event_key = f"startup:{handler_kind}:v1"
     with factory() as session:
@@ -439,7 +444,18 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
         clock=lambda: now + timedelta(seconds=2),
     )
     assert dispatcher.dispatch_one() is True
-    assert calls == [event_key, event_key]
+    if handler_kind == "event":
+        from app.startup.composition.outbox import dispatch_event_handler
+
+        current = datetime.now(timezone.utc)
+        child = store.claim(current, current + timedelta(seconds=60))
+        assert child is not None
+        dispatch_event_handler(child)
+        assert calls == [(event_key, "test.handler")]
+        assert store.complete(child.message_id, child.attempt, current)
+        assert store.claim(current, current + timedelta(seconds=60)) is None
+    else:
+        assert calls == [event_key, event_key]
 
 
 def test_download_writer_contract_has_no_anonymous_after_commit_path() -> None:

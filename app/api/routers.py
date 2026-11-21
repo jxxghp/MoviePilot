@@ -11,6 +11,7 @@ from app.api.endpoints import (
     anilist,
     anthropic,
     auth,
+    authorization,
     bangumi,
     classification,
     dashboard,
@@ -68,6 +69,7 @@ class RouterSpec(NamedTuple):
 
 API_V1_ROUTER_SPECS: tuple[RouterSpec, ...] = (
     RouterSpec(auth.router, "/auth", ("auth",)),
+    RouterSpec(authorization.router, "/authorization", ("authorization",)),
     RouterSpec(login.router, "/login", ("login",)),
     RouterSpec(user.router, "/user", ("user",)),
     RouterSpec(mfa.router, "/mfa", ("mfa",)),

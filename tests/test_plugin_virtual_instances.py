@@ -546,6 +546,67 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
     assert plugin_package.demoplugin is source_module
 
 
+def test_loader_keeps_instance_package_for_delayed_relative_imports(
+    tmp_path,
+    monkeypatch,
+):
+    """
+    分身的 ``__package__`` 必须保持实例命名空间，方法内延迟相对导入才能解析。
+
+    旧式自身绝对导入兼容会把实例模块临时登记到源插件名下，身份重定向随后会处理
+    这条登记项。重定向若用裸前缀匹配源命名空间，已处于实例命名空间的
+    ``__package__``（如 ``app.plugins.demopluginwork``）会被误判成源包并把残余
+    后缀再拼一次（``app.plugins.demopluginwork2``），插件方法里的延迟相对导入
+    随之报 ``No module named 'app.plugins.demopluginwork2'``。
+    """
+    source_dir = tmp_path / "demoplugin"
+    source_dir.mkdir()
+    (source_dir / "helper.py").write_text("value = 'clone-relative-ok'\n", encoding="utf-8")
+    (source_dir / "__init__.py").write_text(
+        "class DemoPlugin:\n"
+        "    plugin_name = 'Demo'\n"
+        "    plugin_desc = 'Source'\n"
+        "    plugin_icon = 'source.svg'\n"
+        "    plugin_config_prefix = 'demo_'\n"
+        "    def build_form(self):\n"
+        "        from .helper import value\n"
+        "        return value\n",
+        encoding="utf-8",
+    )
+    loader = PluginLoader(
+        plugins_root=tmp_path,
+        import_preparer=lambda **_kwargs: None,
+        import_scanner=lambda **_kwargs: None,
+        log=_logger(),
+    )
+
+    def _validator(candidate) -> bool:
+        """
+        只接受带延迟相对导入入口的插件类。
+        """
+        return hasattr(candidate, "build_form")
+
+    import app.plugins as plugin_package
+
+    source_module = ModuleType("app.plugins.demoplugin")
+    source_module.__path__ = [str(source_dir)]
+    monkeypatch.setitem(sys.modules, "app.plugins.demoplugin", source_module)
+    monkeypatch.setattr(plugin_package, "demoplugin", source_module, raising=False)
+
+    work_class = loader.load_instance(
+        PluginInstance(
+            instance_id="DemoPluginWork",
+            source_plugin_id="DemoPlugin",
+            plugin_name="工作实例",
+        ),
+        _validator,
+    )[0]
+
+    instance_module = sys.modules["app.plugins.demopluginwork"]
+    assert instance_module.__package__ == "app.plugins.demopluginwork"
+    assert work_class().build_form() == "clone-relative-ok"
+
+
 def test_loader_handles_missing_pickle_module_and_instance_icon_metadata():
     """
     插件类型模块已卸载时应安全跳过，并保留分身图标元数据。

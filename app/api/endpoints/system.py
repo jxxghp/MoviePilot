@@ -15,7 +15,7 @@ import anyio
 
 # 导入时注册 AVIF 解码器，因此保留未直接引用的依赖。
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import
-from fastapi import Body, Depends, Header, HTTPException, Request, Response
+from fastapi import Body, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
@@ -249,9 +249,14 @@ async def fetch_image(
     if_none_match: Optional[str] = None,
     cookies: Optional[str | dict[str, str]] = None,
     allowed_domains: Optional[set[str]] = None,
+    max_width: Optional[int] = None,
+    quality: Optional[int] = None,
 ) -> Optional[Response]:
     """
-    处理图片缓存逻辑，支持HTTP缓存和磁盘缓存
+    校验原始图片目标后获取图片，支持 HTTP 缓存、磁盘缓存与上游媒体服务器缩略。
+
+    :param max_width: 媒体服务器图片的最大宽度，单位为像素；不传时保留原图语义
+    :param quality: 上游编码质量，0 至 100；不传时沿用原图参数
     """
     if not url:
         return None
@@ -283,7 +288,8 @@ async def fetch_image(
         )
 
     image_result = await ImageHelper().async_fetch_image_with_mime_type(
-        url=fetch_url,
+        url=(ImageHelper.thumbnail_url(fetch_url, max_width, quality)
+             if max_width is not None or quality is not None else fetch_url),
         proxy=proxy,
         use_cache=use_cache,
         cookies=cookies,
@@ -297,7 +303,8 @@ async def fetch_image(
         etag = HashUtils.md5(content)
         headers = {
             "ETag": etag,
-            "Cache-Control": f"public, max-age={86400 * 7}",
+            "Cache-Control": f"private, max-age={86400 * 7}",
+            "Vary": "Cookie, Authorization",
         }
         headers["Content-Type"] = media_type
         headers["X-Content-Type-Options"] = "nosniff"
@@ -336,9 +343,15 @@ async def proxy_img(
     use_cookies: bool = False,
     if_none_match: Annotated[str | None, Header()] = None,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
+    max_width: Annotated[
+        Optional[int], Query(alias="maxWidth", ge=1, le=2048, description="媒体服务器图片最大宽度，单位为像素")
+    ] = None,
+    quality: Annotated[
+        Optional[int], Query(ge=0, le=100, description="媒体服务器图片编码质量")
+    ] = None,
 ) -> Optional[Response]:
     """
-    图片代理，可选是否使用代理服务器，支持 HTTP 缓存
+    代理图片并保留资源鉴权，可显式请求媒体服务器的缩略版本。
     """
     allowed_domains = await _get_image_proxy_allowed_domains()
     cookies = MediaServerChain().get_image_cookies(server=None, image_url=imgurl) if use_cookies else None
@@ -349,6 +362,8 @@ async def proxy_img(
         cookies=cookies,
         if_none_match=if_none_match,
         allowed_domains=allowed_domains,
+        max_width=max_width,
+        quality=quality,
     )
 
 

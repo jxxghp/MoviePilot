@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 from lxml import etree
 
 from app.adapters.network.http import RequestUtils
+from app.application.site.protocol import get_site_protocol_port
 from app.application.site.query import get_configured_site_query_service
 
 # 站点资源在安装时提供，静态源码树不包含运行时生成的目录。
@@ -91,11 +92,13 @@ class SubtitleModule(_ModuleBase):
         """
         pass
 
-    def test(self) -> Optional[Tuple[bool, str]]:
+    def test(self) -> Tuple[bool, str]:
         """
-        字幕能力依赖具体资源详情页，不提供独立连接测试。
+        字幕能力依赖具体资源详情页，不提供独立连接测试；模块运行即表示可用。
+
+        :return: 成功结果与无需探测的说明
         """
-        pass
+        return True, "模块无需探测"
 
     @classmethod
     def __normalize_subtitle_link(cls, page_url: str, sublink: str) -> Optional[str]:
@@ -173,7 +176,7 @@ class SubtitleModule(_ModuleBase):
         if torrent.site is not None:
             site = get_configured_site_query_service().get_sync(torrent.site)
             if site and site.domain and (indexer := SitesHelper().get_indexer(site.domain)):
-                if indexer.get("parser") == "mTorrent":
+                if get_site_protocol_port().has_site_subtitle_api(indexer):
                     return None
         request = RequestUtils(
             cookies=torrent.site_cookie,

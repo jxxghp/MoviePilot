@@ -342,9 +342,11 @@ def test_sync_browser_facade_activates_display_only_for_headed_mode(monkeypatch)
     同步启动仅在明确有界面模式获取 host.display，参数原样交给浏览器。
     """
     provider = ModuleType("cloakbrowser")
-    launch_context = MagicMock(return_value=object())
+    contexts = [MagicMock(), MagicMock()]
+    launch_context = MagicMock(side_effect=contexts)
     provider.launch_context = launch_context
     monkeypatch.setitem(sys.modules, "cloakbrowser", provider)
+    monkeypatch.setattr("app.adapters.network.browser._require_browser_license", lambda *_args: None)
     activate = MagicMock()
     monkeypatch.setattr(
         "app.adapters.network.browser.acquire_managed_resource",
@@ -352,10 +354,12 @@ def test_sync_browser_facade_activates_display_only_for_headed_mode(monkeypatch)
     )
 
     headless_context = launch_browser_context(headless=True, locale="zh-CN")
+    headless_context.close()
     headed_context = launch_browser_context(headless=False, locale="zh-CN")
+    headed_context.close()
 
-    assert headless_context is launch_context.return_value
-    assert headed_context is launch_context.return_value
+    assert headless_context is contexts[0]
+    assert headed_context is contexts[1]
     activate.assert_called_once_with(
         "host.display",
         reason="headed_browser_launch",
@@ -375,13 +379,22 @@ def test_async_browser_facade_waits_for_display_before_provider(monkeypatch):
     provider = ModuleType("cloakbrowser")
 
     async def provider_launch(**_kwargs):
+        """
+        返回可以关闭的异步上下文，不启动实际浏览器。
+        """
         events.append("provider")
-        return object()
+        context = MagicMock()
+        context.close = AsyncMock()
+        return context
 
     provider.launch_context_async = provider_launch
     monkeypatch.setitem(sys.modules, "cloakbrowser", provider)
+    monkeypatch.setattr("app.adapters.network.browser._require_browser_license", lambda *_args: None)
 
     async def activate(*_args, **_kwargs):
+        """
+        记录显示资源已经就绪的时序。
+        """
         events.append("display")
 
     monkeypatch.setattr(
@@ -389,7 +402,14 @@ def test_async_browser_facade_waits_for_display_before_provider(monkeypatch):
         AsyncMock(side_effect=activate),
     )
 
-    asyncio.run(launch_browser_context_async(headless=False, timezone="Asia/Shanghai"))
+    async def run():
+        """
+        启动后释放上下文，不让测试持有进程级浏览器名额。
+        """
+        context = await launch_browser_context_async(headless=False, timezone="Asia/Shanghai")
+        await context.close()
+
+    asyncio.run(run())
 
     assert events == ["display", "provider"]
 
@@ -754,7 +774,7 @@ async def test_browse_webpage_private_network_is_admin_only(monkeypatch: pytest.
     tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
     monkeypatch.setattr(BrowseWebpageTool, "is_admin_user", AsyncMock(return_value=False))
     run_blocking = AsyncMock(return_value="{}")
-    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", run_blocking)
+    monkeypatch.setattr(BrowseWebpageTool, "_run_browser_action", run_blocking)
 
     payload = json.loads(
         await tool.run(action="goto", url="http://qbittorrent:8080/", allow_private_network=True)
@@ -774,7 +794,7 @@ async def test_browse_webpage_admin_can_allow_private_network(monkeypatch: pytes
     tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
     monkeypatch.setattr(BrowseWebpageTool, "is_admin_user", AsyncMock(return_value=True))
     run_blocking = AsyncMock(return_value=json.dumps({"success": True}))
-    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", run_blocking)
+    monkeypatch.setattr(BrowseWebpageTool, "_run_browser_action", run_blocking)
 
     await tool.run(action="goto", url="http://qbittorrent:8080/", allow_private_network=True)
 

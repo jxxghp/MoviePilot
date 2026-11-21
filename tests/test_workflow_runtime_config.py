@@ -28,6 +28,7 @@ def _runtime_config(**overrides):
     values = {
         "media_extensions": (".mkv",),
         "subtitle_extensions": (".srt",),
+        "lyrics_extensions": (".lrc",),
         "audio_extensions": (".flac",),
         "superuser": "snapshot-admin",
         "proxy": {"https": "http://snapshot-proxy:7890"},
@@ -71,13 +72,14 @@ def test_fetch_rss_reads_proxy_from_chain_snapshot(monkeypatch):
     )
     monkeypatch.setattr(fetch_rss_module.runtime_stop_state, "is_workflow_stopped", lambda _: False)
 
-    FetchRssAction("rss").execute(
+    context = FetchRssAction("rss").execute(
         workflow_id=1,
         params={"url": "https://example.com/rss.xml", "proxy": True},
         context=ActionContext(),
     )
 
     assert captured["proxy"] == {"https": "http://snapshot-proxy:7890"}
+    assert context.torrents[0].torrent_info.site_proxy is True
 
 
 def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
@@ -98,10 +100,11 @@ def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
 
         def list_files(self, fileitem, recursion=True):
             """
-            返回视频、文本和字幕文件，供工作流扩展名过滤检查。
+            返回视频、歌词、文本和字幕文件，供工作流扩展名过滤检查。
             """
             return [
                 SimpleNamespace(extension="mkv"),
+                SimpleNamespace(extension="lrc"),
                 SimpleNamespace(extension="txt"),
                 SimpleNamespace(extension="srt"),
             ]
@@ -120,7 +123,7 @@ def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
         context=ActionContext(),
     )
 
-    assert [item.extension for item in context.fileitems] == ["mkv", "srt"]
+    assert [item.extension for item in context.fileitems] == ["mkv", "lrc", "srt"]
 
 
 def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):

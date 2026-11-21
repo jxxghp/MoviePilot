@@ -74,6 +74,14 @@ def _normalize_configs(value: list[NotificationConf], *, validate_identities: bo
         data = config.model_dump()
         data["id"] = identity
         data["name"] = name
+        from app.domain.authorization import LEGACY_CHANNELS
+
+        definition = LEGACY_CHANNELS.get(data.get("type") or "")
+        if definition:
+            values = dict(data.get("config") or {})
+            values.pop(definition[1], None)
+            values.pop(definition[2], None)
+            data["config"] = values
         normalized.append(data)
     return normalized
 

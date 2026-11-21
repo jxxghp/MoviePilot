@@ -19,8 +19,8 @@ def test_catalog_version_comparison_accepts_only_explicit_success(
     :param monkeypatch: 用无网络客户端隔离市场读取
     """
     client = SimpleNamespace(
-        get_plugins=lambda *_args, **_kwargs: [],
-        async_get_plugins=AsyncMock(return_value=[]),
+        get_plugin_index_result=lambda *_args, **_kwargs: {},
+        async_get_plugin_index_result=AsyncMock(return_value={}),
     )
     monkeypatch.setattr(
         plugins_initializer, "get_composed_plugin_market_client", lambda: client

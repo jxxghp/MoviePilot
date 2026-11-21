@@ -75,6 +75,7 @@ class TransferChain(
         "TRANSFER_THREADS",
         "RMT_MEDIAEXT",
         "RMT_SUBEXT",
+        "RMT_LYRICSEXT",
         "RMT_AUDIOEXT",
     }
 

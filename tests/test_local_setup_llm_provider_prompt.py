@@ -328,3 +328,12 @@ def test_collect_agent_config_accepts_google_default_and_keeps_saved_model(saved
 
     assert config["LLM_PROVIDER"] == "google"
     assert config["LLM_MODEL"] == (saved_model or "gemini-3.8-flash")
+
+
+def test_local_setup_deepseek_default_model_is_not_retired_alias() -> None:
+    """
+    DeepSeek 默认模型不应使用已下线的 deepseek-chat / deepseek-reasoner。
+    """
+    module = load_local_setup_module()
+
+    assert module.LLM_PROVIDER_DEFAULTS["deepseek"]["model"] == "deepseek-v4-flash"

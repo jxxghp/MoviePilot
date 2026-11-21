@@ -74,9 +74,7 @@ class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
         """
         向所有匹配消息范围的钉钉配置发送普通通知。
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             client = self.get_instance(conf.name)
             if client:
                 texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.DingTalk) or [message.text]

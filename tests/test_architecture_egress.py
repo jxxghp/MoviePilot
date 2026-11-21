@@ -51,6 +51,7 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
     },
     "streaming_protocol": {
         ("app.startup.composition.network", "websocket"),
+        ("app.adapters.mediastream", "socket.getaddrinfo"),
         ("app.adapters.network.feishu", "websocket"),
         ("app.modules.qqbot.gateway", "websocket"),
         ("app.modules.rtorrent.rtorrent", "socket.create_connection"),
@@ -90,12 +91,13 @@ FROZEN_EGRESS_REASON_BY_EDGE = {
 }
 FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     # Redis 客户端局部化后，扫描器保留了完整调用面；传输边界未增加。
-    ("app.adapters.cache.redis", "redis"): "81a91a371296446093a9796421f72fb76ea54a040a3c288c469c6c5b4dfd6c39",
+    ("app.adapters.cache.redis", "redis"): "c39973a0350bec6e946370e2bc465fd19c670206f3f09b85589ff95d9df23413",
     ("app.adapters.external.server", "httpx2"): "e9aeb562213af38c644c457850853bba9f3043c56e710c3adde98adc6a4b9dba",
     ("app.adapters.external.server", "requests"): "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037",
     ("app.adapters.external.plugin.client", "httpx2"): "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d",
     ("app.adapters.external.plugin.client", "requests"): "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09",
-    ("app.adapters.network.browser", "cloakbrowser"): "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173",
+    # 同一浏览器 Adapter 保留 key 解析与六入口包装，未向上层扩展 SDK 直连。
+    ("app.adapters.network.browser", "cloakbrowser"): "42efc4434e0c8c55b6527356bc1f712efd6905fcb8c80b856a893745377f1f81",
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",
     ("app.adapters.network.http", "httpx"): "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3",
@@ -105,6 +107,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.network.http", "urllib3"): "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
     ("app.adapters.network.ip", "socket.gethostbyname"): "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
     ("app.adapters.network.resolver", "socket.getaddrinfo"): "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306",
+    ("app.adapters.mediastream", "socket.getaddrinfo"): "7d2dacd96e8845f7d346d6afe0af16e80db9020f60c65643632011a928627537",
     ("app.agent.llm.capability", "openai"): "60160ab01b60be2c9794b9724a50b90f8875c6a10748ff9392a1e4bc7d48c334",
     ("app.agent.llm.helper", "httpx"): "caeccd432f48d9a23948dd5b9220ddbebc57d2b2936bfa499fc7d4876e935ea8",
     ("app.agent.llm.helper", "langchain_anthropic"): "c8d2c3166c4d42d61e7ef38a25080cac0f93422f47393df6dc19b329a7f72265",
@@ -130,7 +133,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
     # 补充现有 SDK 返回类型导入；未增加客户端或请求路径。
     # 新增 LibrarySection 类型绑定以描述音乐查询；SDK 外连操作集合保持一致。
-    ("app.modules.plex.plex", "plexapi"): "6109de36f963b5c6193ed60941a88856cbee9c37303dedf13da3a3be94478543",
+    # 搜索新增音乐/媒体库条目时仍只经由已持有的 Plex SDK。
+    ("app.modules.plex.plex", "plexapi"): "f56b4be76061f6041f381acc5db5577c86de42bf50ada7dfa4b79d2ddb2ce0be",
     ("app.modules.plex.plex", "requests"): "e49c0856fd6c99a3409850898aac7e6e3fa611d4e91546634c178fbfd244e8da",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",
@@ -142,7 +146,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
     # Session 类型使扫描器识别原有的两处 close；未新增发送或会话关闭路径。
     ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c",
-    ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
+    # 区分添加与重复响应时只新增 Torrent 值对象构造，仍复用原 SDK 传输与会话握手。
+    ("app.modules.transmission.transmission", "transmission_rpc"): "43c697821ba063624f01a2c75f77f0ec9fe08a8e72a7ec991845c83c805bbc2b",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
     ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",

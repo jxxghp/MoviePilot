@@ -60,6 +60,7 @@ class AgentTaskSnapshot:
     :param updated_at: 任务最近更新时间字符串
     :param execution_user_id: 固定的真实执行账号主键；旧任务为 None，须显式更新绑定
     :param execution_user_identity: 账号不可变身份，防止删除账号后的主键复用
+    :param execution_authorization_id: 渠道授权的固定身份；普通网页登录任务为空
     """
 
     id: int
@@ -84,6 +85,7 @@ class AgentTaskSnapshot:
     updated_at: str
     execution_user_id: int | None = None
     execution_user_identity: str | None = None
+    execution_authorization_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +113,7 @@ class AgentTaskRunSnapshot:
     :param result: 本次运行的结果摘要，尚未产生时为 None
     :param execution_user_id: 认领时冻结的真实执行账号主键；旧记录为 None
     :param execution_user_identity: 认领时冻结的账号不可变身份
+    :param execution_authorization_id: 本次认领时冻结的渠道授权身份
     """
 
     run_id: str
@@ -133,6 +136,7 @@ class AgentTaskRunSnapshot:
     result: str | None
     execution_user_id: int | None = None
     execution_user_identity: str | None = None
+    execution_authorization_id: str | None = None
 
 
 class AgentTaskRepository(Protocol):

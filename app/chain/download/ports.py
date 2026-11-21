@@ -84,6 +84,8 @@ class DownloadHttpPort(Protocol):
         proxies: Optional[dict[str, str]] = None,
         timeout: Optional[int] = None,
         params: Optional[dict[str, Any]] = None,
+        json_body: Optional[dict[str, Any]] = None,
+        allow_redirects: bool = True,
     ) -> Optional[DownloadResponsePort]:
         """
         发送 POST 请求并保留无响应、失败响应与成功响应三态。
@@ -95,6 +97,8 @@ class DownloadHttpPort(Protocol):
         :param proxies: 协议到代理地址的映射，None 时沿用客户端默认策略
         :param timeout: 请求超时秒数，None 时沿用客户端默认值
         :param params: 附加到 URL 的查询参数，None 表示不附加
+        :param json_body: JSON 请求体，None 表示不发送，空字典仍发送空 JSON 对象
+        :param allow_redirects: 是否允许重定向；认证 API 可关闭以限制凭据用途
         :return: 原始 HTTP 响应，包括非成功状态；未取得响应时为 None，调用方负责关闭
         """
         ...

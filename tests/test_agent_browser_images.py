@@ -238,7 +238,7 @@ async def test_large_screenshot_survives_real_tool_node_and_output_middleware(
     """
     payload = _payload(large_jpeg)
     tool = BrowseWebpageTool(session_id="browser-image-test", user_id="browser-image-owner")
-    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", AsyncMock(return_value=json.dumps(payload)))
+    monkeypatch.setattr(BrowseWebpageTool, "_run_browser_action", AsyncMock(return_value=json.dumps(payload)))
     model = _ImageModel(responses=[
         AIMessage(content="", tool_calls=[{"id": "screenshot-1", "name": tool.name, "args": {"action": "screenshot"}}]),
         AIMessage(content="截图回执已收到。"),
@@ -372,7 +372,7 @@ async def test_external_run_and_tool_manager_keep_json_without_agent_projection(
     """
     payload = _payload(_image_bytes())
     raw = json.dumps(payload)
-    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", AsyncMock(return_value=raw))
+    monkeypatch.setattr(BrowseWebpageTool, "_run_browser_action", AsyncMock(return_value=raw))
 
     def forbidden_projection(*_args: Any, **_kwargs: Any) -> str:
         """
@@ -394,7 +394,7 @@ async def test_screenshot_runtime_and_browser_session_errors_are_structured(monk
     启动或执行浏览器时的截图异常在两层边界都转为可判定失败。
     """
     tool = BrowseWebpageTool(session_id="browser-image-test", user_id="owner")
-    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", AsyncMock(side_effect=RuntimeError("session failed")))
+    monkeypatch.setattr(BrowseWebpageTool, "_run_browser_action", AsyncMock(side_effect=RuntimeError("session failed")))
     assert inspect_tool_result(await tool.run(action="screenshot")) is ExecutionOutcome.FAILED
 
     def fail_session(*_args: Any, **_kwargs: Any) -> str:
@@ -450,7 +450,7 @@ async def test_agent_formatter_runs_before_result_summary_and_failure_is_protect
     日志摘要收到格式化后的结果；格式化异常与工具异常一样进入失败边界。
     """
     payload = _payload(_image_bytes())
-    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", AsyncMock(return_value=json.dumps(payload)))
+    monkeypatch.setattr(BrowseWebpageTool, "_run_browser_action", AsyncMock(return_value=json.dumps(payload)))
     summarized: list[Any] = []
 
     def summarize(result: Any) -> str:

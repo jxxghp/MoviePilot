@@ -4,15 +4,14 @@
 
 import asyncio
 import mimetypes
-from collections.abc import AsyncIterator
 from typing import Annotated, Any, Dict, List, Mapping, Optional, cast
 from urllib.parse import urlsplit
 
-import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import Depends, Header, HTTPException, Query, Response, Security
+from fastapi import Depends, Header, HTTPException, Query, Request, Response, Security
 from starlette import status
-from starlette.responses import StreamingResponse
+from starlette.responses import FileResponse
+from starlette.staticfiles import StaticFiles
 
 from app.adapters.web.security.access import (
     resource_token_cookie,
@@ -41,7 +40,10 @@ from app.api.response import (
 )
 from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
-from app.application.plugin.catalog import get_plugin_catalog_query
+from app.application.plugin.catalog import (
+    PluginMarketUnavailableError,
+    get_plugin_catalog_query,
+)
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.data import PluginDataQueryService, PluginDataSummaryService
 from app.application.plugin.folders import remove_plugin_from_folders
@@ -197,7 +199,10 @@ def _verify_plugin_static_file_access(
 
 
 @router.get(
-    "/", summary="所有插件", response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True}
+    "/",
+    summary="所有插件",
+    response_model=List[_SchemaPlugin],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def all_plugins(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
@@ -207,12 +212,34 @@ async def all_plugins(
     max_results: Annotated[Optional[int], Query(ge=1, le=200)] = None,
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-    response: Response = None,  # type: ignore[assignment]
+    response: Response = cast(Response, None),
 ) -> List[_SchemaPlugin]:
     """
     查询插件清单；未指定分页或限量时返回完整清单。
+
+    市场视图没有在线候选且有索引读取失败时返回依赖失败。
+
+    :param _: 已认证的超级管理员
+    :param state: 插件范围，支持 installed、market 或 all
+    :param force: 是否强制刷新插件市场
+    :param query: 可选的插件名称或描述检索词
+    :param max_results: 旧版调用可选的结果数上限
+    :param page: 可选的页码
+    :param count: 可选的每页数量
+    :param response: 用于写入完整结果数量的 HTTP 响应
+    :return: 按范围、检索条件和分页参数筛选后的插件列表
+    :raises HTTPException: 市场依赖读取失败且无在线候选时返回 HTTP 424
     """
-    plugins = await get_plugin_catalog_query().query(state=state or "all", force=force)
+    try:
+        plugins = await get_plugin_catalog_query().query(
+            state=state or "all",
+            force=force,
+        )
+    except PluginMarketUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_424_FAILED_DEPENDENCY,
+            detail=str(error),
+        ) from error
     if query:
         plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
     if response is not None:
@@ -761,7 +788,7 @@ def reset_plugin(
     "/file/{plugin_id}/{filepath:path}",
     summary="获取插件静态文件",
     response_model=None,
-    response_class=StreamingResponse,
+    response_class=FileResponse,
     responses={
         200: {
             "description": "插件静态资源",
@@ -770,23 +797,31 @@ def reset_plugin(
                 "application/javascript": {"schema": {"type": "string"}},
                 "text/css": {"schema": {"type": "string"}},
             },
-        }
+        },
+        304: {"description": "插件静态资源未修改，复用浏览器缓存"},
     },
 )
 async def plugin_static_file(
     plugin_id: str,
     filepath: str,
+    request: Request,
     _: None = Depends(_verify_plugin_static_file_access),
-) -> StreamingResponse:
+) -> Response:
     """
-    获取插件静态文件
+    在访问校验后返回插件文件，支持私有缓存及 ETag、修改时间条件请求。
+
+    当前插件版本的入口可长期复用；其余文件每次校验，
+    避免无版本入口或同名文件更新后继续使用旧内容。
     """
     # 基础安全检查
     if ".." in filepath or ".." in plugin_id:
         logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    source_plugin_id = get_plugin_manager().get_plugin_source_id(plugin_id)
+    manager = get_plugin_manager()
+    # 联邦入口使用小写 URL，运行时注册表保留插件 ID 原有大小写。
+    runtime_id = next((pid for pid in manager.get_plugin_ids() if pid.lower() == plugin_id.lower()), plugin_id)
+    source_plugin_id = manager.get_plugin_source_id(runtime_id)
     plugin_base_dir = (
         AsyncPath(get_api_runtime_config_snapshot().root_path) / "app" / "plugins" / source_plugin_id.lower()
     )
@@ -818,31 +853,23 @@ async def plugin_static_file(
     elif suffix == ".css" and not guessed_response_type:
         response_type = "text/css"
 
-    try:
-        # 异步生成器函数，用于流式读取文件
-        async def file_generator() -> AsyncIterator[bytes]:
-            """
-            分块异步读取插件文件供下载响应使用。
-            """
-            async with aiofiles.open(plugin_file_path, mode="rb") as file:
-                # 8KB 块大小
-                while chunk := await file.read(8192):
-                    yield chunk
-
-        return StreamingResponse(
-            file_generator(),
-            media_type=response_type,
-            headers={
-                "Content-Disposition": f"inline; filename={plugin_file_path.name}",
-                "Cache-Control": "no-cache, must-revalidate",
-            },
-        )
-    except Exception as e:
-        logger.error(
-            f"Error creating/sending StreamingResponse for {plugin_file_path}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    version = request.query_params.get("v")
+    current_version = manager.get_plugin_attr(runtime_id, "plugin_version")
+    versioned = bool(version and current_version and version == str(current_version))
+    cache_control = "private, max-age=31536000, immutable" if versioned else "private, no-cache"
+    response = FileResponse(
+        str(plugin_file_path),
+        stat_result=await plugin_file_path.stat(),
+        media_type=response_type,
+        headers={"Cache-Control": cache_control},
+        filename=plugin_file_path.name,
+        content_disposition_type="inline",
+    )
+    if StaticFiles().is_not_modified(response.headers, request.headers):
+        return Response(status_code=304, headers={
+            key: response.headers[key] for key in ("cache-control", "etag", "last-modified")
+        })
+    return response
 
 
 @router.get(

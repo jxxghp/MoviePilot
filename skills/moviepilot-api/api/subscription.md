@@ -63,10 +63,10 @@ Identity scope: `bound_user`; required role: `user`.
 
 ### `subscription.find`
 `GET /api/v1/subscribe/media/{media_id}`; policy effect: `safe_read`.
-Purpose: 按规范媒体身份和可选季查找一个可访问订阅。 For movies and TV, if exact identity misses and mtype/title are supplied, match across sources by type, normalized title, optional season, and year. An exact year ranks first; a subscription with no year may match when the card has a year, while a card with no year only matches a subscription with no year. Music uses exact identity only.
+Purpose: 按规范媒体身份和可选季查找一个可访问订阅。 For movies and TV, if exact identity misses and mtype is supplied, first confirm cross-source subscriptions through a shared TMDB identity, preserving season, episode group and owner boundaries. If projection fails and title is supplied, retain the type/title/year fallback as a display hint. An exact year ranks first; a subscription with no year may match when the card has a year, while a card with no year only matches a subscription with no year. Music uses exact identity only.
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: `media_id*` (string): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。
-- `query`: `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `mtype` (MediaType|null): 操作要求的媒体类型或订阅历史分类。; `music_type` (string|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `season` (integer|null): 媒体、搜索、订阅或整理操作使用的季号。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。; `year` (string|null): 用于区分同名媒体的发行或首映年份。
+- `query`: `episode_group` (string|null): 用于其他剧集排序方式的 TMDB 剧集组标识。; `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `mtype` (MediaType|null): 操作要求的媒体类型或订阅历史分类。; `music_type` (string|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `season` (integer|null): 媒体、搜索、订阅或整理操作使用的季号。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。; `year` (string|null): 用于区分同名媒体的发行或首映年份。
 - `body`: none
 
 ### `subscription.follow.add`

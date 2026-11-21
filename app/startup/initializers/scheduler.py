@@ -76,7 +76,7 @@ def configure_scheduler_services() -> None:
             check_subscribe=subscribe_chain.check_and_reconcile,
             search_subscribe=subscribe_chain.search,
             resume_subscribe_search=subscribe_chain.async_resume_search_queue,
-            refresh_subscribe=subscribe_chain.refresh,
+            refresh_subscribe=subscribe_chain.async_refresh,
             follow_subscribe=subscribe_chain.follow,
             process_transfer=transfer_chain.process,
             clear_cache=scheduler_chain.clear_cache,

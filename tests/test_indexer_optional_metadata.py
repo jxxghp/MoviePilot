@@ -60,16 +60,16 @@ def test_subtitle_page_without_site_domain_still_handles_empty_page(monkeypatch)
     helper.assert_not_called()
 
 
-def test_rss_link_without_site_configuration_is_a_readable_error(monkeypatch):
+def test_rss_link_without_site_module_is_a_readable_error(monkeypatch):
     """
-    没有站点及默认 RSS 配置时明确失败，不发送无法确定目标的请求。
+    没有 RSS 协议 Module 时明确失败，不发送无法确定目标的请求。
     """
     helper = RssHelper()
-    monkeypatch.setattr(helper, "rss_link_conf", {})
+    monkeypatch.setattr("app.startup.composition.site._SiteModuleCatalog.get_running_modules", staticmethod(lambda _method: []))
     http = Mock()
     browser = Mock()
     monkeypatch.setattr("app.application.rss._require_rss_ports", Mock(return_value=(http, browser, Mock())))
-    assert helper.get_rss_link("https://site.test", "cookie", "ua") == ("", "获取RSS链接失败：未找到站点配置 https://site.test")
+    assert helper.get_rss_link("https://site.test", "cookie", "ua") == ("", "获取 https://site.test RSS链接失败：RSS 站点协议 Module 不可用")
     assert http.mock_calls == []
     assert browser.mock_calls == []
 

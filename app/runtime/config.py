@@ -447,6 +447,7 @@ class ConfigModel(BaseModel):
                 ".f4v",
             ], description='支持的视频文件后缀格式')
     RMT_SUBEXT: list[str] = Field(default_factory=lambda: [".srt", ".ass", ".ssa", ".sup"], description='支持的字幕文件后缀格式')
+    RMT_LYRICSEXT: list[str] = Field(default_factory=lambda: [".lrc"], description='支持的歌词文件后缀格式')
     RMT_AUDIOEXT: list[str] = Field(
             default_factory=lambda: [
                 ".aac",
@@ -511,6 +512,18 @@ class ConfigModel(BaseModel):
     )
     CLOAKBROWSER_HUMANIZE: bool = Field(default=True, description='CloakBrowser 是否启用拟人化输入')
     CLOAKBROWSER_HUMAN_PRESET: str = Field(default="default", description='CloakBrowser 拟人化输入预设：default 或 careful')
+    CLOAKBROWSER_MAX_CONCURRENCY: int = Field(
+        default=3, ge=1, description="同时存活的 CloakBrowser 实例上限，默认 3；提高前需确认授权并发额度",
+    )
+    CLOAKBROWSER_QUEUE_TIMEOUT: int = Field(
+        default=60, ge=1, description="等待 CloakBrowser 实例名额的最长秒数，默认 60 秒",
+    )
+    CLOAKBROWSER_OPERATION_TIMEOUT: int = Field(
+        default=120, ge=1, description="CloakBrowser 启动及单次原生操作的最长秒数，超时回收实例，默认 120 秒",
+    )
+    CLOAKBROWSER_CLOSE_TIMEOUT: int = Field(
+        default=5, ge=1, description="CloakBrowser 关闭宽限秒数，超时强制回收本次进程树，默认 5 秒",
+    )
     FLARESOLVERR_URL: Optional[str] = Field(default=None, description='FlareSolverr 服务地址，例如 http://127.0.0.1:8191')
 
     # 搜索配置
@@ -699,6 +712,7 @@ class ConfigModel(BaseModel):
                 "bangumi.lol",
                 "raw.githubusercontent.com",
                 "github.com",
+                "avatars.githubusercontent.com",
                 "thetvdb.com",
                 "cctvpic.com",
                 "iqiyipic.com",
@@ -740,6 +754,7 @@ class ConfigModel(BaseModel):
 
     # AI智能体配置
     AI_AGENT_ENABLE: bool = Field(default=False, description='AI智能体开关')
+    AI_AGENT_KNOWLEDGE_ENABLE: bool = Field(default=True, description='是否允许 Agent 使用 MoviePilot Server 的中心知识工具')
     AGENT_INTERACTIVE_PRIORITY: bool = Field(default=True, description='为交互式智能助手隔离执行容量，并让新启动的非关键后台服务有限避让')
     AGENT_BACKGROUND_DEFER_SECONDS: int = Field(default=30, ge=0, description='交互活跃时非关键后台服务最多避让的秒数，0为不避让；不暂停已开始的任务')
     AGENT_LLM_TIMEOUT: int = Field(default=180, ge=0, description='Agent单次模型请求的总超时秒数，包含供应商重试；0为不限制')
@@ -749,7 +764,7 @@ class ConfigModel(BaseModel):
     AI_AGENT_PET: str = Field(default="", description='默认助手形象，格式为 插件ID:形象key，留空使用内置机器人；用户个人选择优先')
     AI_AGENT_OUTPUT_LANGUAGE: str = Field(default="zh-CN", description='内置智能助手输出语言，默认使用简体中文')
     LLM_PROVIDER: str = Field(default="deepseek", description='LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）')
-    LLM_MODEL: str = Field(default="deepseek-chat", description='LLM模型名称')
+    LLM_MODEL: str = Field(default="deepseek-v4-flash", description='LLM模型名称')
     LLM_THINKING_LEVEL: Optional[str] = Field(
         default="off",
         description='思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh；OpenAI兼容接口保留max/xhigh，仅按已知模型能力降级',

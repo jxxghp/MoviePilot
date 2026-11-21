@@ -39,6 +39,7 @@ def compose_domain_dependencies() -> None:
         media_extensions_provider=lambda: (
             *get_runtime_setting("RMT_MEDIAEXT"),
             *get_runtime_setting("RMT_SUBEXT"),
+            *get_runtime_setting("RMT_LYRICSEXT", []),
             *get_runtime_setting("RMT_AUDIOEXT"),
         ),
         audio_extensions_provider=lambda: get_runtime_setting("RMT_AUDIOEXT"),

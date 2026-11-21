@@ -396,7 +396,7 @@ def test_yemapt_download_generates_and_urlencodes_temporary_key(monkeypatch):
         site_proxy=False,
     )
 
-    content, folder, files = object.__new__(DownloadChain).download_torrent(torrent)
+    content, folder, files = DownloadChain().download_torrent(torrent)
 
     assert content == b"torrent-content"
     assert folder == "Movie"

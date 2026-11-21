@@ -156,7 +156,7 @@ class MigrationState(str, Enum):
 
 class ExecutionOutcome(str, Enum):
     """
-    工具实际回执状态；提交未完成和结果未知不能视为业务成功。
+    工具实际回执状态；提交未完成、结果未知和历史回执不能视为本次成功。
     """
 
     # 业务操作已确认成功
@@ -167,6 +167,8 @@ class ExecutionOutcome(str, Enum):
     PENDING = "pending"
     # 无法确认真实执行结果
     UNKNOWN = "unknown"
+    # 命中已结束的历史回执，本次没有执行写入
+    REPLAYED = "replayed"
 
 
 @dataclass(frozen=True)
@@ -304,7 +306,7 @@ class ExecutionReceipt:
     :param tool_name: 实际执行的工具名称
     :param origin: 工具调用的可信入口
     :param decision: 执行前作出的宿主策略决定
-    :param outcome: 实际执行状态，待完成和未知结果不等同于成功
+    :param outcome: 实际执行状态，待完成、未知或历史回执不等同于本次成功
     :param input_summary: 脱敏后的输入摘要
     :param result_summary: 脱敏后的结果摘要；没有可用结果时为 None
     :param error_summary: 脱敏后的错误摘要；没有错误时为 None

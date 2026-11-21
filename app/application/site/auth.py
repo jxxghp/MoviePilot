@@ -31,8 +31,8 @@ def normalize_site_auth_params(
     把站点字段名规范化为认证资源使用的站点前缀键名。
 
     认证资源的公共认证入口按 ``SITE_PARAMETER`` 读取参数，但旧版 API、
-    CLI 配置和外部调用方可能提交资源清单中的原始字段名。保留未知字段，
-    只将已知站点字段转换为资源契约键名。
+    CLI 配置和外部调用方可能提交资源清单中的原始字段名。移除其他认证站点的
+    前缀字段，避免切换表单后继续保存旧凭据；未知扩展字段仍保持兼容。
     """
     normalized = dict(params or {})
     if not site or not params or not isinstance(auth_sites, Mapping):
@@ -45,6 +45,13 @@ def normalize_site_auth_params(
     if not isinstance(param_definitions, Mapping):
         return normalized
 
+    other_prefixes = tuple(
+        f"{auth_site.upper()}_" for auth_site in auth_sites if auth_site != site
+    )
+    normalized = {
+        key: value for key, value in normalized.items()
+        if not key.startswith(other_prefixes)
+    }
     for raw_key in param_definitions:
         if not isinstance(raw_key, str):
             continue

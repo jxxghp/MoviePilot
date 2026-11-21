@@ -1433,11 +1433,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     async def async_get_online_plugin_candidates(
             self,
             force: bool = False,
+            *,
+            repo_url: Optional[str] = None,
     ) -> List[_SchemaPlugin]:
         """
-        获取按仓库保留的在线插件候选，供来源准入和更新选择。
+        获取按仓库保留的在线插件候选，按需限制为一个已配置来源。
+
+        :param force: 是否忽略索引缓存
+        :param repo_url: 可选的目标仓库，未指定时读取全部市场
+        :return: 保留来源信息的插件候选
         """
-        return await self._plugin_catalog_view.async_online_candidates(force)
+        return await self._plugin_catalog_view.async_online_candidates(force, repo_url=repo_url)
 
     async def async_get_plugins_from_market(self, market: str,
                                             package_version: Optional[str] = None,

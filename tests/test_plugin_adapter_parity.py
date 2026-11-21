@@ -8,9 +8,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.adapters.external.plugin.client import PluginMarketTransport
+from app.adapters.external.plugin.client import PluginIndex, PluginMarketTransport
 from app.adapters.system.plugin.dependency import PluginDependencyInstaller
 from app.adapters.system.plugin.package import PluginPackageManager
+from app.runtime import cache as cache_module
 
 REPO_URL = "https://github.com/example/moviepilot-plugins"
 SYNC_INDEX_REQUEST = "_PluginMarketTransport__request_plugin_index_with_fallback"
@@ -40,15 +41,23 @@ async def test_plugin_index_sync_async_result_contract_is_identical(
     """
     同步与异步索引传输必须经过同一响应分类和错误语义。
     """
+    # 每种响应是独立仓库状态，不能沿用前一参数用例的短时失败缓存。
+    monkeypatch.setattr(cache_module.MemoryBackend, "_region_caches", {})
     transport = PluginMarketTransport()
 
-    def request(_url: str, *, headers: dict) -> tuple[int, str] | None:
-        return response
+    def request(_url: str, *, headers: dict) -> PluginIndex | None:
+        """
+        返回本参数用例的固定同步传输结果。
+        """
+        return transport._resolve_plugin_index_result(response)
 
     async def async_request(
         _url: str, *, headers: dict
-    ) -> tuple[int, str] | None:
-        return response
+    ) -> PluginIndex | None:
+        """
+        返回与同步入口相同的异步传输结果。
+        """
+        return transport._resolve_plugin_index_result(response)
 
     monkeypatch.setattr(transport, SYNC_INDEX_REQUEST, request)
     monkeypatch.setattr(transport, ASYNC_INDEX_REQUEST, async_request)

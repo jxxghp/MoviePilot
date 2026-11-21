@@ -194,7 +194,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                     NotificationChannel.QQ,
                     client_config.config,
                     user_openid,
-                ),
+                 source=client_config.name),
                 text=content,
                 images=images,
                 audio_refs=audio_refs,
@@ -225,7 +225,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                     NotificationChannel.QQ,
                     client_config.config,
                     member_openid,
-                ),
+                 source=client_config.name),
                 text=content,
                 images=images,
                 audio_refs=audio_refs,
@@ -397,9 +397,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         """
         按通知路由发送 QQ 消息，并保留原正文作为权限不足时的回退。
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets:

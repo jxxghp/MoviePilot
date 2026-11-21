@@ -63,7 +63,7 @@ from app.runtime.log import logger
 from app.runtime.settings import (
     get_runtime_setting,
 )
-from app.runtime.tasks import get_task_registry
+from app.runtime.tasks import TaskRegistry, get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
 from app.schemas.message import Message
@@ -558,13 +558,28 @@ def update_resources() -> None:
     return
 
 
+def start_browser_session_reaper(tasks: TaskRegistry) -> None:
+    """
+    启动空闲浏览器回收，任务取消由当前宿主登记器负责。
+
+    :param tasks: 当前应用生命周期的后台任务登记器
+    """
+    from app.adapters.network.browser import BrowserSessionHelper
+
+    BrowserSessionHelper.start_idle_reaper(tasks)
+
+
 def close_browser_sessions() -> None:
     """
     在托管资源关闭前释放所有浏览器上下文及其工作线程。
     """
-    from app.adapters.network.browser import BrowserSessionHelper
+    from app.adapters.network.browser import BrowserSessionHelper, close_browser_instances
 
-    BrowserSessionHelper.close_all_sessions()
+    try:
+        BrowserSessionHelper.close_all_sessions()
+    finally:
+        if not close_browser_instances():
+            raise RuntimeError("部分浏览器进程或监控线程尚未退出")
 
 
 async def drain_events() -> bool:

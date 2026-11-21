@@ -25,7 +25,7 @@ def test_site_without_interval_does_not_wait(monkeypatch):
     未配置请求间隔的站点不需要等待。
     """
     monkeypatch.setattr(throttle.time, "sleep", lambda _delay: pytest.fail("未配置流控不应等待"))
-    assert provider._wait_for_site_request({"id": 1, "name": "普通站点"}) is None
+    assert throttle.wait_for_site_request({"id": 1, "name": "普通站点"}) is None
 
 
 def test_configured_requests_are_reserved_twenty_seconds_apart(monkeypatch):
@@ -45,7 +45,7 @@ def test_configured_requests_are_reserved_twenty_seconds_apart(monkeypatch):
     site = {"id": 6, "name": "观众", "limit_seconds": 20}
 
     for _ in range(3):
-        assert provider._wait_for_site_request(site) is None
+        assert throttle.wait_for_site_request(site) is None
         clock.starts.append(clock.now)
     assert clock.starts == [100, 120, 140]
 
@@ -57,7 +57,7 @@ def test_invalid_interval_does_not_throttle(monkeypatch):
     monkeypatch.setattr(provider.time, "monotonic", lambda: 100.0)
     site = {"id": 6, "name": "观众", "limit_seconds": "invalid"}
 
-    assert provider._wait_for_site_request(site) is None
+    assert throttle.wait_for_site_request(site) is None
 
 
 @pytest.mark.parametrize("interval, reason, elapsed, expected", [
@@ -128,8 +128,8 @@ async def test_async_wait_only_sleeps_for_throttled_site(monkeypatch):
     monkeypatch.setattr(throttle.asyncio, "sleep", fake_sleep)
     site = {"id": 6, "name": "观众", "limit_seconds": 20}
 
-    await provider._async_wait_for_site_request({"id": 1, "name": "普通站点"})
-    await provider._async_wait_for_site_request(site)
-    await provider._async_wait_for_site_request(site)
+    await throttle.async_wait_for_site_request({"id": 1, "name": "普通站点"})
+    await throttle.async_wait_for_site_request(site)
+    await throttle.async_wait_for_site_request(site)
 
     assert delays == [20]

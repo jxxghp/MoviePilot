@@ -16,6 +16,7 @@ from app.modules.filemanager.storages.u115 import U115Pan
 from app.modules.filemanager.transhandler import TransHandler
 from app.monitor.poller import RemotePoller
 from app.monitor.snapshot import SnapshotStore
+from app.schemas.exception import StorageOperationUncertainError
 from app.schemas.file import FileItem
 
 
@@ -72,6 +73,7 @@ class _FakeBucket:
     """
 
     complete_payload = {"state": True}
+    complete_status = 200
 
     def __init__(self, *_args, **_kwargs):
         """
@@ -96,7 +98,7 @@ class _FakeBucket:
         返回可配置的 115 回调结果。
         """
         response = SimpleNamespace(json=lambda: self.complete_payload)
-        return SimpleNamespace(status=200, resp=SimpleNamespace(response=response))
+        return SimpleNamespace(status=self.complete_status, resp=SimpleNamespace(response=response))
 
 
 def _build_storage() -> U115Pan:
@@ -211,9 +213,9 @@ def test_instant_upload_move_uses_exact_bytes_before_deleting_source(
         assert not local_file.exists()
 
 
-def test_upload_returns_none_when_complete_callback_reports_failure(tmp_path):
+def test_upload_requires_review_when_complete_callback_reports_failure(tmp_path):
     """
-    115 完成回调失败时，不应把文件视为上传成功。
+    115 完成回调失败且目标未确认时，应保留源文件并禁止自动重传。
     """
     local_file = tmp_path / "Test.Show.S01E02.mkv"
     local_file.write_bytes(b"movie")
@@ -224,9 +226,216 @@ def test_upload_returns_none_when_complete_callback_reports_failure(tmp_path):
         "complete_payload",
         {"state": False, "message": "callback failed"},
     ):
-        uploaded_item = _upload_with_fakes(storage, _target_dir(), local_file)
+        with pytest.raises(StorageOperationUncertainError, match="禁止自动重传"):
+            _upload_with_fakes(storage, _target_dir(), local_file)
+    assert local_file.read_bytes() == b"movie"
 
-    assert uploaded_item is None
+
+@pytest.mark.parametrize("callback_payload", [
+    {"state": False}, {"state": True, "data": {"file_id": "200"}}, None, [],
+])
+@pytest.mark.parametrize("remote_hash", [None, "SHA1"])
+def test_callback_203_requires_matching_remote_identity(
+    tmp_path, monkeypatch, callback_payload, remote_hash,
+):
+    """
+    203 只能在目标路径、名称、类型、精确字节数及可用的标识和哈希一致时成功。
+    """
+    local_file = tmp_path / "episode.mkv"
+    local_file.write_bytes(b"movie")
+    target_dir = _target_dir()
+    target_path = Path(target_dir.path) / local_file.name
+    info = {
+        "file_id": "200", "file_category": "1", "file_name": local_file.name,
+        "size_byte": "5", "size": "0.00 KB", "sha1": remote_hash,
+    }
+    calls = []
+
+    def request_api(method, endpoint, *args, **kwargs):
+        """
+        在开放接口边界返回可核验的目标，保留真实上传及元数据解析。
+        """
+        calls.append(endpoint)
+        if endpoint == "/open/folder/get_info":
+            assert method == "POST" and kwargs["data"] == {"path": target_path.as_posix()}
+            return {"state": True, "data": info}
+        return _fake_request_api(method, endpoint, *args, **kwargs)
+
+    storage = _build_storage()
+    storage._request_api = request_api
+    monkeypatch.setattr(_FakeBucket, "complete_status", 203)
+    monkeypatch.setattr(_FakeBucket, "complete_payload", callback_payload)
+    item = _upload_with_fakes(storage, target_dir, local_file)
+
+    assert item.fileid == "200" and item.path == target_path.as_posix()
+    assert item.size == 5 and local_file.read_bytes() == b"movie"
+    assert calls.count("/open/upload/init") == 1
+    assert calls.count("/open/folder/get_info") == 1
+
+
+@pytest.mark.parametrize("remote_data", [
+    None, {}, {"file_id": None}, {"file_id": "201"}, {"file_category": "0"},
+    {"file_name": "other.mkv"}, {"size_byte": 6}, {"size_byte": None},
+    {"size_byte": 5.9}, {"sha1": "different"},
+])
+def test_callback_203_rejects_incomplete_or_conflicting_metadata(tmp_path, monkeypatch, remote_data):
+    """
+    203 后目标暂不可见、身份缺失或冲突时不得伪造成功回执，也不能删除本地源。
+    """
+    local_file = tmp_path / "episode.mkv"
+    local_file.write_bytes(b"movie")
+    info = {
+        "file_id": "200", "file_category": "1", "file_name": local_file.name,
+        "size_byte": 5, "sha1": "sha1",
+    }
+
+    def request_api(method, endpoint, *args, **kwargs):
+        """
+        模拟 203 后目标元数据仍不可用或已与上传身份冲突。
+        """
+        if endpoint == "/open/folder/get_info":
+            data = {**info, **remote_data} if remote_data else remote_data
+            return {"state": True, "data": data}
+        return _fake_request_api(method, endpoint, *args, **kwargs)
+
+    storage = _build_storage()
+    storage._request_api = request_api
+    monkeypatch.setattr(_FakeBucket, "complete_status", 203)
+    monkeypatch.setattr(_FakeBucket, "complete_payload", {"state": False, "data": {"file_id": "200"}})
+    with pytest.raises(StorageOperationUncertainError, match="禁止自动重传"):
+        _upload_with_fakes(storage, _target_dir(), local_file)
+    assert local_file.read_bytes() == b"movie"
+
+
+@pytest.mark.parametrize("callback_payload", [{"state": False}, None])
+def test_callback_200_failure_also_verifies_remote_file(tmp_path, monkeypatch, callback_payload):
+    """
+    HTTP 200 的业务失败或缺失回调也先核验远端，避免误触发第二次上传。
+    """
+    local_file = tmp_path / "episode.mkv"
+    local_file.write_bytes(b"movie")
+
+    def request_api(method, endpoint, *args, **kwargs):
+        """
+        回调未确认时提供完整的目标身份。
+        """
+        if endpoint == "/open/folder/get_info":
+            return {"state": True, "data": {
+                "file_id": "200", "file_category": "1", "file_name": local_file.name,
+                "size_byte": 5, "sha1": "sha1",
+            }}
+        return _fake_request_api(method, endpoint, *args, **kwargs)
+
+    storage = _build_storage()
+    storage._request_api = request_api
+    monkeypatch.setattr(_FakeBucket, "complete_payload", callback_payload)
+    assert _upload_with_fakes(storage, _target_dir(), local_file).fileid == "200"
+
+
+@pytest.mark.parametrize("response_kind", ["xml", "exception", "query_error"])
+def test_callback_203_handles_xml_sdk_errors_and_failed_verification(tmp_path, monkeypatch, response_kind):
+    """
+    兼容 OSS 的 XML 错误体和异常形式；核验接口失败时仍保留不确定性。
+    """
+    from oss2.exceptions import ServerError
+
+    local_file = tmp_path / "episode.mkv"
+    local_file.write_bytes(b"movie")
+
+    def request_api(method, endpoint, *args, **kwargs):
+        """
+        仅在目标详情接口模拟不可用，其余请求复用正常上传响应。
+        """
+        if endpoint == "/open/folder/get_info":
+            if response_kind == "query_error":
+                raise ConnectionError("verification unavailable")
+            return {"state": True, "data": {
+                "file_id": "200", "file_category": "1", "file_name": local_file.name,
+                "size_byte": 5, "sha1": "sha1",
+            }}
+        return _fake_request_api(method, endpoint, *args, **kwargs)
+
+    storage = _build_storage()
+    storage._request_api = request_api
+    complete = Mock()
+    if response_kind == "exception":
+        complete.side_effect = ServerError(203, {}, b"", details={"Code": "CallbackFailed"})
+    else:
+        response = SimpleNamespace(json=Mock(side_effect=ValueError("XML CallbackFailed")))
+        complete.return_value = SimpleNamespace(status=203, resp=SimpleNamespace(response=response))
+    monkeypatch.setattr(_FakeBucket, "complete_multipart_upload", complete)
+
+    if response_kind == "query_error":
+        with pytest.raises(StorageOperationUncertainError, match="verification unavailable"):
+            _upload_with_fakes(storage, _target_dir(), local_file)
+    else:
+        assert _upload_with_fakes(storage, _target_dir(), local_file).fileid == "200"
+    complete.assert_called_once()
+    assert local_file.read_bytes() == b"movie"
+
+
+@pytest.mark.parametrize("complete_status", [201, 202, 204, 500])
+def test_upload_does_not_accept_arbitrary_completion_status(tmp_path, monkeypatch, complete_status):
+    """
+    未约定的 OSS 完成状态不能按通用 2xx 规则视为上传成功。
+    """
+    local_file = tmp_path / "episode.mkv"
+    local_file.write_bytes(b"movie")
+    monkeypatch.setattr(_FakeBucket, "complete_status", complete_status)
+    assert _upload_with_fakes(_build_storage(), _target_dir(), local_file) is None
+    assert local_file.exists()
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_callback_203_move_deletes_source_only_after_identity_verification(tmp_path, monkeypatch, confirmed):
+    """
+    真实跨存储移动编排必须等 203 的远端身份核验成功后才删除源文件。
+    """
+    local_file = tmp_path / "episode.mkv"
+    local_file.write_bytes(b"movie")
+    target_dir = _target_dir()
+    target_path = Path(target_dir.path) / local_file.name
+    info = {
+        "file_id": "200", "file_category": "1", "file_name": local_file.name,
+        "size_byte": 5, "sha1": "sha1", "pick_code": "pickcode", "utime": 1,
+    }
+    calls = []
+
+    def request_api(method, endpoint, *args, **kwargs):
+        """
+        在真实 115 API 边界分别模拟目标可核验与仍不可见。
+        """
+        calls.append(endpoint)
+        if endpoint == "/open/folder/get_info":
+            return {"state": True, "data": info if confirmed else None}
+        return _fake_request_api(method, endpoint, *args, **kwargs)
+
+    storage = _build_storage()
+    storage._request_api = request_api
+    storage.get_folder = lambda _path: target_dir
+    local = object.__new__(LocalStorage)
+    source = local.get_item_strict(local_file)
+    monkeypatch.setattr(_FakeBucket, "complete_status", 203)
+    with patch("oss2.StsAuth", return_value=object()), patch("oss2.Bucket", _FakeBucket), patch(
+        "app.modules.filemanager.storages.u115.transfer_process", return_value=lambda _progress: None,
+    ):
+        if not confirmed:
+            with pytest.raises(StorageOperationUncertainError, match="禁止自动重传"):
+                TransHandler._TransHandler__execute_transfer_with_steps(
+                    step_runner=None, source_fileitem=source.model_dump(mode="json"),
+                    target_storage="u115", source_oper=local, target_oper=storage,
+                    target_file=target_path, transfer_type="move",
+                )
+            assert local_file.read_bytes() == b"movie"
+        else:
+            item, error = TransHandler._TransHandler__execute_transfer_with_steps(
+                step_runner=None, source_fileitem=source.model_dump(mode="json"),
+                target_storage="u115", source_oper=local, target_oper=storage,
+                target_file=target_path, transfer_type="move",
+            )
+            assert error == "" and item.fileid == "200"
+            assert not local_file.exists()
+    assert calls.count("/open/upload/init") == 1
 
 
 def test_upload_uses_dynamic_part_size(tmp_path):

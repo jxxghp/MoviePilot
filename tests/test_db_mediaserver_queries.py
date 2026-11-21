@@ -432,6 +432,36 @@ def test_oper_season_lookup_accepts_json_string_keys(db):
     asyncio.run(check())
 
 
+def test_item_ref_reads_server_from_the_matched_row(db):
+    """
+    两台服务器条目标识重号时，返回的服务器名称必须来自命中的那一行。
+
+    先取标识再按标识反查归属，会把另一台服务器上同号的条目当成目标。
+    """
+    db.add(
+        _item("Emby 4K", "100", media_id="2001"),
+        _item("Emby 普通", "100", media_id="2002"),
+    )
+    legacy = _item("emby", "legacy-1", media_id="2003")
+    legacy.server = None
+    db.add(legacy)
+
+    def lookup(media_id: str):
+        """
+        按 TMDB 身份查询本地缓存命中的服务器与条目标识。
+        """
+        return db.run_async_session(
+            lambda session: MediaServerOper(session).async_get_item_ref(
+                media_source=MediaSource.TMDB, media_id=media_id, mtype="电影"
+            )
+        )
+
+    assert lookup("2002") == ("Emby 普通", "100")
+    assert lookup("2001") == ("Emby 4K", "100")
+    assert lookup("2003") == ("", "legacy-1")
+    assert lookup("2999") is None
+
+
 def test_empty_clears_only_the_given_server(db):
     """
     指定服务器时只清空该服务器的条目，不给则清空全表。

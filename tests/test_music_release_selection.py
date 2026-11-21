@@ -5,12 +5,14 @@
 import asyncio
 from copy import deepcopy
 from hashlib import sha256
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from mutagen.flac import FLAC
 from pydantic import ValidationError
 
 from app.adapters.web.security.access import verify_token
@@ -21,9 +23,13 @@ from app.chain.musicbrainz import MusicBrainzChain
 from app.chain.theaudiodb import TheAudioDbChain
 from app.chain.transfer.facade import TransferChain
 from app.domain.context import MusicAlbumInfo, MusicInfo
+from app.modules.filemanager.module import FileManagerModule
 from app.modules.musicbrainz import MusicBrainzModule
+from app.schemas.file import FileItem
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import ManualTransferItem, TransferInfo
 from app.schemas.types import MediaSource, MediaType
+from tests.test_filemanager_planning import ReadOnlyTreeStorage
 from tests.test_music_resource_context import _audio_files
 from tests.test_transfer_music_album_selection import _directory_item, _prepare_chain
 from tests.test_transfer_sync_extra_files import make_fileitem, make_transfer_chain
@@ -174,7 +180,8 @@ async def test_album_http_preserves_edition_and_rejects_wrong_source(monkeypatch
 
 
 @pytest.mark.parametrize("selected_files", [False, True])
-def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, monkeypatch, selected_files):
+@pytest.mark.parametrize("track_match", ["strict", "ignore_duration", "sequential"])
+def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, monkeypatch, selected_files, track_match):
     """
     真实FLAC经API到曲目规划，预览与执行同版；冻结任务重放不另选标准版或改源文件。
     """
@@ -184,6 +191,12 @@ def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, 
     chain = _prepare_chain(monkeypatch, items)
     monkeypatch.setattr("app.chain.transfer.workflow.StorageChain.get_item", lambda _self, item: item)
     group, release = _payloads()
+    if track_match != "strict":
+        for index, track in enumerate(release["media"][0]["tracks"]):
+            track["length"] = 180000 + index * 60000
+            if track_match == "sequential":
+                track["title"] = f"Chosen Song {index + 1}"
+        items.reverse()
     module, _calls = _module(monkeypatch, group, release)
     metadata = MediaChain()
     source = MusicBrainzChain()
@@ -206,12 +219,17 @@ def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, 
     for preview in (True, False):
         request = ManualTransferItem(fileitem=_directory_item(paths[0].parent), fileitems=items if selected_files else None,
                                      media_source="musicbrainz", media_id=GROUP, music_type="album", type_name="音乐",
-                                     musicbrainz_release_id=DELUXE.upper(), preview=preview)
+                                     musicbrainz_release_id=DELUXE.upper(), preview=preview,
+                                     music_track_match=track_match, music_target_path=str(tmp_path / "chosen-library"))
         response = manual_transfer(request, background=False, history_query=SimpleNamespace(), _="test")
         assert response.success, response.message
     assert len(planned) == 4
-    assert [entry[1]["title"] for entry in planned] == ["First Song", "Second Song"] * 2
+    titles = [entry[1]["title"] for entry in planned]
+    expected = ["Chosen Song 1", "Chosen Song 2"] if track_match == "sequential" else ["First Song", "Second Song"]
+    assert sorted(titles[:2]) == sorted(titles[2:]) == expected
     assert all(entry[1]["musicbrainz_release_id"] == DELUXE for entry in planned)
+    assert all(entry[1]["duration"] == 3 for entry in planned)
+    assert all(entry[2].options["music_target_path"] == str(tmp_path / "chosen-library") for entry in planned)
     restored = []
     replay_owner = make_transfer_chain()
     monkeypatch.setattr(replay_owner, "_TransferChain__bind_claimed_admission", lambda *_args: None)
@@ -219,9 +237,89 @@ def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, 
     for item, (_preview, info, planning) in zip(items, planned[2:]):
         admission = SimpleNamespace(planning_input=planning, task_id="replay-selected")
         assert replay_owner._TransferChain__queue_accepted_replay(item, admission)
+        assert restored[-1].planning_input.options["music_target_path"] == str(tmp_path / "chosen-library")
         assert restored[-1].mediainfo.musicbrainz_release_id == info["musicbrainz_release_id"]
         assert restored[-1].mediainfo.media_id == info["media_id"]
     assert [sha256(path.read_bytes()).hexdigest() for path in paths] == original
+
+
+@pytest.mark.parametrize("changes", [
+    {"music_track_match": "invalid"},
+    {"music_track_match": "sequential", "music_type": "recording"},
+    {"music_track_match": "ignore_duration", "type_name": "电影"},
+    {"music_target_path": "relative/album"},
+    {"music_target_path": "/library/../album"},
+])
+def test_manual_music_options_reject_invalid_namespace_or_directory(changes):
+    """
+    新选项默认关闭，错误模式、影视类型或不安全目录在请求边界被拒绝。
+    """
+    assert ManualTransferItem().music_track_match == "strict"
+    with pytest.raises(ValidationError):
+        ManualTransferItem(**({"music_type": "album"} | changes))
+
+
+@pytest.mark.parametrize("configured", [False, True])
+@pytest.mark.parametrize("selected_files", [False, True])
+def test_music_final_directory_auto_defaults_reach_real_planner(tmp_path, monkeypatch, configured, selected_files):
+    """
+    真实标签从手动 API 经目录选择与分类校验到命名规划，自动方式继承源目录或使用复制。
+    """
+    paths = _audio_files(tmp_path / "Artist - Album")
+    for index, path in enumerate(paths, 1):
+        tags = FLAC(path)
+        tags.update(title=[f"Song {index}"], artist=["Artist"], albumartist=["Artist"], album=["Album"],
+                    date=["2004"], tracknumber=[str(index)])
+        tags.save()
+    before = [path.read_bytes() for path in paths]
+    items = [make_fileitem(str(path)) for path in paths]
+    chain = _prepare_chain(monkeypatch, items)
+    monkeypatch.setattr("app.chain.transfer.workflow.StorageChain.get_item", lambda _self, item: item)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+    monkeypatch.setattr(chain, "_finalize_recognition_result", lambda info, **_kwargs: info)
+    lookup = Mock(return_value=TransferDirectoryConf(
+        library_path=str(tmp_path / "configured"), library_storage="local", transfer_type="reflink",
+        library_category_folder=True, renaming=True,
+    ) if configured else None)
+    monkeypatch.setattr("app.chain.transfer.execution.DirectoryHelper.get_dir", lookup)
+    network = Mock(side_effect=AssertionError("完整本地标签不应请求在线识别"))
+    monkeypatch.setattr(chain, "_match_music_album_context", network)
+    monkeypatch.setattr(chain, "_match_music_recording_context", network)
+    monkeypatch.setattr(chain, "_TransferChain__select_storage_oper", lambda _storage: None)
+    planned = []
+
+    def plan(task, **_kwargs):
+        """
+        在文件执行边界使用真实文件管理规划器，记录目录和方式后返回零写副作用的预览。
+        """
+        assert task.target_path is None
+        checkpoint = FileManagerModule().plan_transfer(
+            fileitem=task.fileitem, meta=task.meta, mediainfo=task.mediainfo, target_directory=task.target_directory,
+            target_storage=task.target_storage, target_path=task.target_path, transfer_type=task.transfer_type,
+            library_category_folder=task.library_category_folder, planning_input=task.planning_input,
+            source_oper=ReadOnlyTreeStorage({}), preview=True,
+        )
+        planned.append(checkpoint)
+        target = Path(checkpoint.final_target_path)
+        return TransferInfo(success=True, fileitem=task.fileitem, target_item=FileItem(
+            storage=checkpoint.target_storage, path=target.as_posix(), name=target.name, type="file",
+        ))
+
+    monkeypatch.setattr(chain, "_plan_checkpoint_and_execute", plan)
+    target = tmp_path / "chosen"
+    request = ManualTransferItem(fileitem=_directory_item(paths[0].parent), fileitems=items if selected_files else None,
+                                 type_name="音乐", music_type="album", music_target_path=str(target), preview=True)
+    response = manual_transfer(request, background=False, history_query=SimpleNamespace(), _="test")
+    assert response.success, response.message
+    assert response.model_dump()["data"]["summary"]["failed"] == 0
+    assert len(planned) == 2
+    assert all(Path(item.final_target_path).parent == target for item in planned)
+    assert all(item.resolved_transfer_type == ("reflink" if configured else "copy") for item in planned)
+    assert lookup.call_count == 2
+    assert all("src_path" in call.kwargs and "dest_path" not in call.kwargs for call in lookup.call_args_list)
+    assert not target.exists()
+    assert [path.read_bytes() for path in paths] == before
+    network.assert_not_called()
 
 
 def test_invalid_manual_release_cannot_enqueue_or_fall_back(monkeypatch):
@@ -241,6 +339,26 @@ def test_invalid_manual_release_cannot_enqueue_or_fall_back(monkeypatch):
     execute.assert_not_called()
 
 
+@pytest.mark.parametrize("options", [
+    {"music_target_path": Path("/library"), "mtype": MediaType.MOVIE},
+    {"music_target_path": Path("relative")},
+    {"music_target_path": Path("/library/../album")},
+    {"music_track_match": "invalid"},
+    {"music_track_match": "sequential", "music_type": "recording"},
+    {"music_track_match": "sequential", "music_type": "album"},
+])
+def test_invalid_manual_music_options_do_not_start_transfer(monkeypatch, options):
+    """
+    直接调用旧链入口同样拒绝跨类型、相对目录、非法模式和未选专辑的顺序套用。
+    """
+    owner = make_transfer_chain()
+    execute = Mock()
+    monkeypatch.setattr(owner, "_execute_transfer", execute)
+    state, message = owner.manual_transfer(make_fileitem("/music/song.flac"), **options)
+    assert not state and message
+    execute.assert_not_called()
+
+
 def test_explicit_release_remote_storage_fails_before_lookup(monkeypatch):
     """
     远端无法读取曲目证据时明确拒绝指定发行，防止退回逐文件默认识别。
@@ -255,7 +373,8 @@ def test_explicit_release_remote_storage_fails_before_lookup(monkeypatch):
     lookup.assert_not_called()
 
 
-def test_explicit_release_cue_keeps_album_identity_and_companion(tmp_path, monkeypatch):
+@pytest.mark.parametrize("track_match", ["strict", "ignore_duration", "sequential"])
+def test_explicit_release_cue_keeps_album_identity_and_companion(tmp_path, monkeypatch, track_match):
     """
     整轨按CUE逻辑曲目核验所选版，音频和索引仍作为同一专辑，不伪造单曲身份。
     """
@@ -270,6 +389,8 @@ def test_explicit_release_cue_keeps_album_identity_and_companion(tmp_path, monke
     group, release = _payloads()
     tracks = release["media"][0]["tracks"]
     tracks[0]["length"], tracks[1]["length"] = 1000, 2000
+    if track_match != "strict":
+        tracks[0]["length"], tracks[1]["length"] = 180000, 240000
     module, _calls = _module(monkeypatch, group, release)
     metadata = MediaChain()
     source = MusicBrainzChain()
@@ -289,6 +410,7 @@ def test_explicit_release_cue_keeps_album_identity_and_companion(tmp_path, monke
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", capture)
     state, result = TransferChain.manual_transfer(chain, _directory_item(audio.parent), media_source=MediaSource.MusicBrainz,
                                                   media_id=GROUP, music_type="album", musicbrainz_release_id=DELUXE,
+                                                  music_track_match=track_match,
                                                   preview=True, background=False)
     assert state, result
     assert len(planned) == 2

@@ -20,7 +20,7 @@ from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, Movie
 from app.agent.identity import AgentIdentityError, require_execution_user, resolve_channel_user
 from app.agent.policy.api import API_UNBOUND_READ_OPERATIONS, resolve_api_operation
 from app.agent.policy.contracts import ExecutionOutcome, PrincipalRole
-from app.agent.policy.sanitizer import summarize_input
+from app.agent.policy.sanitizer import contains_redacted_placeholder, summarize_input
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.result import inspect_tool_result
 from app.agent.tools.tags import ToolTag
@@ -220,8 +220,20 @@ class MoviePilotApiTool(MoviePilotTool):
     def canonical_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         用缓存的 operation 合同生成实际执行与持久指纹共用的参数。
+
+        插件配置是整份替换；宿主脱敏占位不能作为原始凭据写入。
+
+        :param arguments: 待规范化的原始网关参数
+        :return: 与执行语义一致的参数副本
+        :raises ValueError: 参数不符合合同或插件配置包含脱敏占位
         """
-        return canonical_api_arguments(arguments, _load_api_mcp_input_schema())
+        normalized = canonical_api_arguments(arguments, _load_api_mcp_input_schema())
+        if (
+            normalized.get("operation_id") == "plugin.config.update"
+            and contains_redacted_placeholder(normalized.get("body"))
+        ):
+            raise ValueError("插件配置包含脱敏占位符，不能写回；请在插件配置界面修改")
+        return normalized
 
     def get_operation_input_contract(self, operation_id: str) -> dict[str, Any]:
         """
@@ -273,6 +285,21 @@ class MoviePilotApiTool(MoviePilotTool):
         把 Web、渠道或集成身份解析为真实 MoviePilot API 用户身份。
         """
         raw_user_id = str(self._user_id or "")
+        from app.application.security.authorization import get_channel_authorization
+
+        authorization = get_channel_authorization()
+        authorization_id = self._agent_context.get("authorization_id")
+        if authorization is not None and (authorization_id or (self._channel and self._source and self._channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value})):
+            try:
+                if isinstance(authorization_id, str) and authorization_id:
+                    user = await self.run_blocking("db", authorization.principal, authorization_id)
+                else:
+                    user = await self.run_blocking("db", authorization.resolve, self._channel, self._source, raw_user_id)
+                self._agent_context["authorization_id"] = user.authorization_id
+                return str(user.id), user.name, user.is_superuser
+            except PermissionError as error:
+                self._record_identity_error(str(error))
+                raise ApiExecutionError(str(error)) from error
         execution_user_id = self._agent_context.get("execution_user_id")
         if isinstance(execution_user_id, int):
             try:
@@ -390,6 +417,7 @@ class MoviePilotApiTool(MoviePilotTool):
                     channel_user_id=(
                         str(self._user_id) if self._channel and self._user_id and not public_read_only else None
                     ),
+                        authorization_id=str(self._agent_context.get("authorization_id") or "") or None,
                 )
             ),
             is_admin,

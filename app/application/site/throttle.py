@@ -6,15 +6,19 @@ import asyncio
 import math
 import time
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 from typing import Optional
 
+from app.application.site.protocol import site_domain
 from app.application.site.query import get_configured_site_query_service
-from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.runtime.rate import RequestRateLimiter
 from app.schemas.exception import RateLimitExceededException
 
 _site_requests = RequestRateLimiter()
+# 本地额度最多原地等待的秒数；更长的间隔或计数窗口交还调用方延后，
+# 避免订阅搜索消费者等串行执行者在单个请求上休眠到下一个额度。
+_MAX_LOCAL_WAIT_SECONDS = 60.0
 
 
 def site_request_config(url: str, site_id: Optional[int] = None) -> dict[str, object]:
@@ -26,7 +30,7 @@ def site_request_config(url: str, site_id: Optional[int] = None) -> dict[str, ob
     :return: 不含认证凭据的站点流控快照；未保存的地址只使用域名隔离冷却
     """
     query = get_configured_site_query_service()
-    domain = site_rules.extract_domain(url)
+    domain = site_domain(url)
     site = query.get_sync(site_id) if site_id is not None else query.get_by_domain_sync(domain)
     if site is None:
         return {"id": site_id, "domain": domain}
@@ -56,15 +60,30 @@ def _positive_number(value: object) -> float:
 
 def _request_delay(site: Mapping[str, object]) -> float:
     """
-    原子申请一次站点请求，远端冷却期间直接返回原始原因。
+    原子申请一次站点请求，远端冷却或本地等待超过上限时直接抛出原因，不消耗额度。
     """
+    interval = _positive_number(site.get("limit_seconds"))
     delay, reason = _site_requests.acquire(
-        _site_key(site), interval=_positive_number(site.get("limit_seconds")),
+        _site_key(site), interval=interval,
         window=_positive_number(site.get("limit_interval")), count=int(_positive_number(site.get("limit_count"))),
     )
     if reason:
         raise RateLimitExceededException(reason)
+    if delay > _MAX_LOCAL_WAIT_SECONDS:
+        raise RateLimitExceededException(_local_limit_reason(delay))
     return delay
+
+
+def _local_limit_reason(delay: float) -> str:
+    """
+    描述超过原地等待上限的本地额度，保留限流语义和剩余秒数供下载冷却识别。
+
+    :param delay: 距离下一次本地许可的秒数
+    :return: 给用户看的限流说明
+    """
+    seconds = math.ceil(delay)
+    ready_at = (datetime.now() + timedelta(seconds=seconds)).strftime("%H:%M")
+    return f"站点限流：站点设置的访问间隔或次数未到，还需等待 {seconds} 秒（约 {ready_at} 后可再访问）"
 
 
 def wait_for_site_request(site: Mapping[str, object]) -> None:
@@ -72,7 +91,7 @@ def wait_for_site_request(site: Mapping[str, object]) -> None:
     在同步请求前等待配置的间隔和次数窗口，唤醒后重新检查许可。
 
     :param site: 本次请求所属站点的流控配置
-    :raises RateLimitExceededException: 站点仍处于远端明确要求的冷却期
+    :raises RateLimitExceededException: 站点仍处于远端明确要求的冷却期，或本地额度需等待超过上限
     """
     while delay := _request_delay(site):
         time.sleep(delay)
@@ -83,7 +102,7 @@ async def async_wait_for_site_request(site: Mapping[str, object]) -> None:
     异步等待同一站点额度，取消等待不会提前消耗请求次数。
 
     :param site: 本次请求所属站点的流控配置
-    :raises RateLimitExceededException: 站点仍处于远端明确要求的冷却期
+    :raises RateLimitExceededException: 站点仍处于远端明确要求的冷却期，或本地额度需等待超过上限
     """
     while delay := _request_delay(site):
         await asyncio.sleep(delay)

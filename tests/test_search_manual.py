@@ -6,7 +6,7 @@ import asyncio
 import threading
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -630,12 +630,31 @@ async def test_search_rounds_do_not_share_previous_page(manual_owner, monkeypatc
 @pytest.mark.asyncio
 async def test_recovery_requests_both_pages_through_existing_site_interval(manual_owner, monkeypatch, page_clock):
     """
-    恢复前页与请求目标页共用已有站点请求间隔。
+    恢复前页与目标页通过真实索引模块共用站点间隔，编排层不能重复计费。
     """
     import app.application.site.throttle as site_throttle
+    import app.modules.indexer as indexer_module
     import app.runtime.rate as rate
+    from app.modules.indexer import IndexerModule
 
     owner, calls, _ = manual_owner
+    original_request = owner.search_site_torrents
+    module = object.__new__(IndexerModule)
+    monkeypatch.setattr(IndexerModule, "_IndexerModule__search_check", staticmethod(lambda *_args: True))
+    monkeypatch.setattr(indexer_module, "get_configured_site_health_service", Mock())
+
+    def spider_request(indexer, search_word=None, mtype=None, cat=None, page=0):
+        """
+        仅替换爬虫传输边界，保留索引请求准入、流控、观察与结果投影。
+        """
+        del cat
+        items = original_request(site=indexer, keyword=search_word, mtype=mtype, page=page)
+        return False, [{"title": item.title, "description": item.description, "enclosure": item.enclosure}
+                       for item in items], None
+
+    monkeypatch.setattr(IndexerModule, "_IndexerModule__spider_search", staticmethod(spider_request))
+    monkeypatch.setattr(owner, "search_site_torrents", module.search_torrents)
+    monkeypatch.setattr(site_throttle, "_site_requests", rate.RequestRateLimiter())
     monkeypatch.setattr(owner, "_sync_indexers", lambda _ids: [{"id": 1, "name": "A", "limit_seconds": 10}])
     waits = []
     def sleep(delay):

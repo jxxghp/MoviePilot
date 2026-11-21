@@ -70,6 +70,34 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 尚未声明无 GIL 支持，不能直接替换 free-threaded 的源码依赖。
 发布审计脚本会将这个已核实修复提交按 1.2.1 版本匹配漏洞公告，安装仍使用锁文件中的源码地址。
 
+#### Beautiful Soup 的 CSS 选择器
+
+锁文件将 Soup Sieve 更新到 4.0.1，覆盖 `CVE-2026-126192` 与 `CVE-2026-126190` 的修复。[兄弟选择器公告](https://github.com/facelessuser/soupsieve/security/advisories/GHSA-4j63-6c4x-wfg4)、[后代选择器公告](https://github.com/facelessuser/soupsieve/security/advisories/GHSA-mmhr-3c5m-f64f)
+
+更新时按锁文件同步环境，并运行完整解析回归及标准、free-threaded 两套依赖审计。
+4.x 的选择器将 `template` 内容作为独立作用域，查询其内容需在对应节点上执行。
+`iframe` 内容沿用所属文档作用域。来源 HTML 解析升级时需同时核对这些边界。[上游变更说明](https://github.com/facelessuser/soupsieve/releases/tag/4.0)
+
+#### CloakBrowser 内核、授权与排队
+
+项目固定使用 `cloakbrowser==0.6.5`，这是上游从 `0.7.0` 开始要求授权 key 之前的最后一个版本。
+未配置 key 时，SDK 会使用旧版免费内核；配置 `CLOAKBROWSER_LICENSE_KEY` 或显式传入 key
+时，仍可按上游规则选择最新或 Pro 内核。key 不应提交到仓库或写入公开日志。
+
+宿主 Agent、站点浏览器仿真、`app.sdk.browser` 与宿主加载的旧 CloakBrowser 插件共用实例队列：
+
+- `CLOAKBROWSER_MAX_CONCURRENCY` 默认 `3`，表示同时存活的独立浏览器实例数；多个独立进程仍需自行协调。
+- `CLOAKBROWSER_QUEUE_TIMEOUT` 默认 `60` 秒，超过等待上限会返回明确错误，不会终止其它任务。
+- `CLOAKBROWSER_OPERATION_TIMEOUT` 默认 `120` 秒，限制启动和单次原生浏览器操作；`CLOAKBROWSER_CLOSE_TIMEOUT` 默认 `5` 秒，限制关闭宽限。
+- 同一 Agent 浏览器会话的页面、标签及登录状态继续复用；实例未关闭时，包括等待模型响应期间，仍占用名额。
+  网页任务完成后应调用 `close_session`；确需跨轮保留页面时，可等待用户继续操作，连续空闲 15 分钟后兜底回收。
+- 插件使用完成后必须在 `finally` 中关闭返回对象。关闭成功或底层 Browser 断开后归还名额；
+  关闭失败继续保留真实占用，Agent 会保留原线程与句柄供任务回收或全局关闭重试。
+- 原生操作或关闭无响应时，owner 监控线程只回收本次 Playwright 驱动及带有本次唯一标记的后代进程；
+  确认进程树退出后才归还名额。点击、提交或脚本在超时前可能已经执行时，工具返回 `execution_outcome=unknown`，应先核验页面再决定是否继续。
+- 队列协调当前宿主进程内的调用。多个独立 MoviePilot 进程或外部程序共用同一个 key 时，
+  各进程队列不能合并计算授权额度，应另行协调浏览器服务和授权容量。
+
 ### 2.1 本地启动脚本
 
 不需要打开 IDE 时，可以直接使用仓库内的启动脚本。脚本会自动定位项目根目录和虚拟环境，并以模块方式启动后端，避免 `ModuleNotFoundError: No module named 'app'`。
@@ -308,6 +336,21 @@ uv run --locked --no-sync python scripts/architecture/mypy_policy.py --write
 新增兼容边界必须说明真实运行合同与无法直接使用供应方声明的原因，补充行为验证，
 人工复核登记和配置差异；不能用写入命令自动接收。CI 执行同一门禁，并测试新文件报错、
 例外转移、类型桩遮蔽和写入拒绝行为。发布前以最终提交的全量检查结果为准。
+
+### 6.3 容器原生崩溃诊断
+
+容器后端通过 `-X faulthandler` 启动 Python，在导入应用和原生扩展前启用诊断，
+覆盖默认降权启动和 `START_NOGOSU=true` 两种方式。发生 `SIGSEGV`、`SIGABRT` 等致命信号时，
+Python 会尝试将线程栈写入标准错误，由 supervisor 转发到容器日志。
+Python 3.14 还会在平台支持时输出 C 栈；关闭 GIL 时只转储当前线程，避免数据竞争。
+这项诊断用于收集崩溃现场，不会阻止崩溃或代替根因修复。
+
+仍使用旧启动脚本的镜像可在容器环境中设置 `PYTHONFAULTHANDLER=1`，重建容器后生效；
+只在 MoviePilot 的 `app.env` 中设置会晚于解释器初始化，不会自动启用该功能。
+出现异常后，保留容器日志中从 `Fatal Python error` 开始的线程栈、扩展模块列表及前后日志，
+一并记录镜像 digest、revision、Python 和 `moviepilot-rust` 版本。
+标准 GIL 镜像可单独设置 `RUST_ACCEL=false` 对比观察；这只关闭 Rust 业务快路径，
+不保证卸载已导入的扩展，也不能仅凭一次未复现就排除问题。
 
 ### 7. 参考资源
 

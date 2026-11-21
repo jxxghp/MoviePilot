@@ -331,21 +331,22 @@ class DownloadHistoryOper(DbOper):
         self,
         page: int = 1,
         count: int = 30,
+        *, username: str | None = None,
     ) -> List[DownloadHistory]:
         """
         异步分页查询下载历史。
         """
         return await self._execute_async_query(
             lambda session: DownloadHistory.async_list_by_page(
-                session, page, count
+                session, page, count, username=username,
             )
         )
 
-    async def async_count(self) -> int:
+    async def async_count(self, *, username: str | None = None) -> int:
         """
         异步统计全部下载历史记录。
         """
-        count = await self._execute_async_query(DownloadHistory.async_count)
+        count = await self._execute_async_query(lambda session: DownloadHistory.async_count(session, username=username))
         return int(count or 0)
 
     async def async_delete_history(self, historyid: int) -> None:

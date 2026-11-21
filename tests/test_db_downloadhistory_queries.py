@@ -88,6 +88,21 @@ def test_get_by_hashes_keeps_request_order_and_dedupes(db):
 # DownloadHistory：身份与列表查询
 # --------------------------------------------------------------------------- #
 
+def test_same_second_records_resolve_to_the_last_written(db):
+    """
+    登记时间只精确到秒：同一秒内对同一任务的两次登记（同一季包连续追加两集），单条与批量查询都要
+    取最后写入的一条，否则已有任务的确认选中记录会读到过期的那条。
+
+    SQLite 的 (download_hash, date) 索引隐含 rowid，倒序扫描时恰好按主键倒序；PostgreSQL 不保证
+    并列行的顺序，因此查询显式以主键作第二排序键。这里锁定的是"取最后写入"的约定本身。
+    """
+    db.add(_history("先写 E05", download_hash="h-s", date="2026-08-13 10:00:00"),
+           _history("后写 E05、E06", download_hash="h-s", date="2026-08-13 10:00:00"))
+
+    assert DownloadHistory.get_by_hash(db.session, "h-s").title == "后写 E05、E06"
+    assert [h.title for h in DownloadHistory.get_by_hashes(db.session, ["h-s"])] == ["后写 E05、E06"]
+
+
 def test_get_by_media_identity_optionally_narrows_by_music_type(db):
     """
     按媒体身份查询时音乐实体类型可选，给出即须生效；空身份短路成空列表。

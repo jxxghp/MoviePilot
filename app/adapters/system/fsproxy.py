@@ -28,6 +28,8 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, cast
 
+import psutil
+
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
@@ -117,6 +119,26 @@ class FileSystemProxy:
         在可超时的文件系统边界解析符号链接，并允许目标末段尚不存在。
         """
         return Path(self._call("realpath", path=str(path)))
+
+    def is_fuse_path(self, path: Path) -> bool:
+        """
+        按实际路径所属的最深挂载点识别 FUSE 文件系统。
+
+        符号链接解析沿用代理超时边界。挂载表包含容器绑定挂载和虚拟文件系统，
+        不缓存结果，避免重挂载后沿用旧类型。查询失败由调用方保留文件并复核。
+
+        :param path: 待核对的本地文件路径
+        :return: 所属挂载类型为 fuse、fuseblk 或极空间 zfuse（含子类型）时返回 True
+        :raises OSError: 路径解析超时或挂载表读取失败
+        """
+        resolved = self.realpath(path)
+        partition = max(
+            (entry for entry in psutil.disk_partitions(all=True)
+             if resolved.is_relative_to(Path(entry.mountpoint))),
+            key=lambda entry: len(Path(entry.mountpoint).parts),
+            default=None,
+        )
+        return partition is not None and partition.fstype.split(".", 1)[0] in {"fuse", "fuseblk", "zfuse"}
 
     def listdir(self, path: Path) -> List[str]:
         """

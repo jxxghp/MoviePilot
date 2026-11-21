@@ -151,7 +151,7 @@ def _contract_node(
         result["default"] = deepcopy(resolved["default"])
     if isinstance(resolved.get("type"), str):
         result["type"] = resolved["type"]
-    for key in ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength"):
+    for key in ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength", "minProperties"):
         if key in resolved:
             result[key] = resolved[key]
 
@@ -236,6 +236,11 @@ def _normalize_union(value: Any, schema: dict[str, Any], definitions: dict[str, 
     exact = [item for item in alternatives if item.get("type") == _value_type(value)]
     if len(exact) == 1:
         return _normalize_value(value, exact[0], definitions, depth + 1)
+    # 空字符串表示模型未提供该值；仅在没有精确类型分支且联合含 null 时归一为 None，
+    # 保留 anyOf[string, null] 等以空字符串为合法值的语义。
+    if not exact and isinstance(value, str) and not value.strip():
+        if any(item.get("type") == "null" for item in alternatives):
+            return None
     candidates = []
     for option in exact or alternatives:
         try:
@@ -293,7 +298,12 @@ def _normalize_value(value: Any, declaration: dict[str, Any], definitions: dict[
     if kind == "object":
         if not isinstance(value, dict):
             raise ValueError("API 参数必须是对象")
-        return _normalize_object(value, schema, definitions, depth)
+        normalized = _normalize_object(value, schema, definitions, depth)
+        # 约束最终写入对象，避免空配置绕过公开的 minProperties 合同。
+        minimum = schema.get("minProperties")
+        if isinstance(minimum, int) and len(normalized) < minimum:
+            raise ValueError(f"API 对象至少需要 {minimum} 个字段")
+        return normalized
     if kind == "array":
         if not isinstance(value, list):
             raise ValueError("API 参数必须是数组")

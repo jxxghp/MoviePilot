@@ -171,6 +171,7 @@ def test_music_lyrics_sidecars_match_only_same_stem_audio() -> None:
 
     transfer_chain = object.__new__(TransferChain)
     transfer_chain._subtitle_exts = ()
+    transfer_chain._lyrics_exts = (".lrc",)
     transfer_chain._audio_exts = (".flac",)
     assert transfer_chain._get_related_main_file_key(lrc, [audio]) == ("local", "/music/Track.flac")
     assert transfer_chain._get_related_main_file_key(lyricsfile, [audio]) == ("local", "/music/Track.flac")

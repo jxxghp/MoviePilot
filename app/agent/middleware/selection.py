@@ -57,6 +57,7 @@ TOOL_DISCOVERY_ALIASES = {
     ToolTag.Media.value: ("media", "movie", "movies", "tv", "电影", "电视剧", "剧集"),
     ToolTag.Resource.value: ("resource", "torrent", "种子", "资源"),
     ToolTag.Site.value: ("site", "sites", "tracker", "站点"),
+    ToolTag.Knowledge.value: ("knowledge", "manual", "documentation", "知识", "文档", "站规", "规则"),
     ToolTag.Subscription.value: ("subscription", "subscriptions", "subscribe", "订阅", "追剧"),
     ToolTag.Download.value: ("download", "downloads", "downloader", "下载"),
     ToolTag.Library.value: ("library", "mediaserver", "媒体库", "媒体服务器"),

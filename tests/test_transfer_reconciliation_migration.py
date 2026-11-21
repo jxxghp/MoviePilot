@@ -53,6 +53,7 @@ PLANNING_MIGRATION = "database.versions.c2f8a4d6e1b3_3_0_14"
 LEASE_MIGRATION = "database.versions.d3a9e5f7b2c4_3_0_15"
 EXECUTION_MIGRATION = "database.versions.e5c7a9b1d3f6_3_0_16"
 RECONCILIATION_MIGRATION = "database.versions.f6d8b0c2e4a7_3_0_17"
+MANUAL_GRANT_MIGRATION = "database.versions.b7c1e3d5f9a2_transfer_manual_grant"
 
 
 def _bind_migration(monkeypatch, connection, module_name: str):
@@ -391,6 +392,12 @@ def test_upgrade_reconciles_invalid_execution_combinations(monkeypatch) -> None:
         )
         reconciliation.upgrade()
         reconciliation.upgrade()
+        manual_grant = _bind_migration(
+            monkeypatch,
+            connection,
+            MANUAL_GRANT_MIGRATION,
+        )
+        manual_grant.upgrade()
 
         rows = {
             row["task_id"]: dict(row)
@@ -622,7 +629,7 @@ def _create_history_table(connection) -> None:
 
 def _run_upgrade_chain(monkeypatch, connection) -> list[object]:
     """
-    从 3.0.13 顺序升级到 3.0.17 并返回迁移模块。
+    从 3.0.13 顺序升级到当前迁移 head 并返回迁移模块。
     """
     migrations = [
         _bind_migration(monkeypatch, connection, module_name)
@@ -632,6 +639,7 @@ def _run_upgrade_chain(monkeypatch, connection) -> list[object]:
             LEASE_MIGRATION,
             EXECUTION_MIGRATION,
             RECONCILIATION_MIGRATION,
+            MANUAL_GRANT_MIGRATION,
         )
     ]
     for migration in migrations:
@@ -677,6 +685,11 @@ def test_full_legacy_chain_projects_after_downgrade_and_reupgrade(
             connection,
             RECONCILIATION_MIGRATION,
         )
+        manual_grant = _bind_migration(
+            monkeypatch,
+            connection,
+            MANUAL_GRANT_MIGRATION,
+        )
         admission.upgrade()
         planning.upgrade()
         lease.upgrade()
@@ -717,6 +730,7 @@ def test_full_legacy_chain_projects_after_downgrade_and_reupgrade(
         ))
         execution.upgrade()
         reconciliation.upgrade()
+        manual_grant.upgrade()
         normalized = dict(connection.execute(sa.text(
             "SELECT src_path, state FROM transferpending ORDER BY id"
         )).all())
@@ -776,6 +790,7 @@ def test_full_legacy_chain_projects_after_downgrade_and_reupgrade(
 
     with engine.begin() as connection:
         for migration in (
+                manual_grant,
                 reconciliation,
                 execution,
                 lease,

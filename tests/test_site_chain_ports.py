@@ -213,7 +213,7 @@ def test_unconfigured_site_port_fails_without_implicit_adapter() -> None:
     [
         (None, (False, "无法打开网站！")),
         (_FakeResponse(429, reason="rate"), (False, "错误：429 rate！")),
-        (_FakeResponse(200, text="ok"), (True, "连接成功")),
+        (_FakeResponse(200, text="ok"), (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")),
     ],
 )
 def test_http_port_preserves_failure_tristate_and_closes_response(
@@ -230,6 +230,7 @@ def test_http_port_preserves_failure_tristate_and_closes_response(
     assert result == expected
     assert http.closed == 1
     assert http.calls[0]["url"] == "https://port.test/"
+    assert http.calls[0]["timeout"] == 60
 
 
 def test_browser_and_challenge_ports_keep_render_failure_semantics() -> None:
@@ -253,6 +254,44 @@ def test_browser_and_challenge_ports_keep_render_failure_semantics() -> None:
     assert result == (False, "无法通过Cloudflare！")
     assert challenge.calls == ["<title>Just a moment...</title>"]
     assert browser.calls[0]["url"] == "https://protected.test/"
+
+
+@pytest.mark.parametrize("status_code", [403, 500])
+def test_private_site_error_response_cannot_pass_with_login_markers(status_code: int) -> None:
+    """
+    HTTP 失败页即使带有退出链接，也不能记录为站点连接成功。
+    """
+    http = _FakeHttpPort(_FakeResponse(status_code, text='<a href="logout.php">退出</a>'))
+    _configure(http)
+    site = SiteSnapshot(id=2, name="测试站点", domain="port.test", url="https://port.test/")
+
+    assert _chain()._SiteChain__test(site) == (False, f"错误：{status_code} OK！")
+    assert http.closed == 1
+
+
+def test_falsey_http_403_response_keeps_cloudflare_diagnosis() -> None:
+    """
+    requests 的错误响应为假值时，仍能从 403 正文识别 Cloudflare。
+    """
+    challenge = _FakeChallengePort(True)
+    http = _FakeHttpPort(_FakeResponse(403, text="challenge"))
+    _configure(http, challenge=challenge)
+    site = SiteSnapshot(id=2, name="测试站点", domain="port.test", url="https://port.test/")
+
+    assert _chain()._SiteChain__test(site) == (False, "站点被Cloudflare防护，请打开站点浏览器仿真！")
+    assert challenge.calls == ["challenge"]
+    assert http.closed == 1
+
+
+@pytest.mark.parametrize("source", [None, ""])
+def test_empty_browser_result_cannot_pass_for_a_public_site(source: Optional[str]) -> None:
+    """
+    公开站点未取得浏览器页面时应失败，不能跳过登录判断后直接报成功。
+    """
+    browser = _FakeBrowserPort(source)
+    _configure(_FakeHttpPort(), browser=browser)
+
+    assert _chain()._SiteChain__test(_public_site(render=True)) == (False, "无法打开网站！")
 
 
 def test_cookiecloud_failure_uses_fake_port_without_network() -> None:
@@ -399,6 +438,7 @@ def test_cookiecloud_adapter_closes_remote_response(monkeypatch) -> None:
     helper._key = "key"
     helper._password = "password"
     helper._enable_local = False
+    helper._domain_resolver = cookiecloud_module.site_rules.extract_domain
     monkeypatch.setattr(helper, "_CookieCloudHelper__sync_setting", lambda: None)
     monkeypatch.setattr(cookiecloud_module, "RequestUtils", FakeRequest)
     monkeypatch.setattr(
@@ -478,6 +518,103 @@ def _scripted_request(monkeypatch, responses: list) -> list[dict]:
 
     monkeypatch.setattr(site_composition, "RequestUtils", ScriptedRequest)
     return hops
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize("source,destination", [
+    ("http://hdwing.org/", "https://hdwing.org/"),
+    ("http://hdwing.org:80/", "https://hdwing.org:443/index.php"),
+    ("http://HDWING.org/index.php", "https://hdwing.org/"),
+    ("http://hdwing.org/", "http://hdwing.org/index.php"),
+    ("https://hdwing.org/", "https://hdwing.org/index.php"),
+])
+def test_site_adapter_keeps_credentials_on_same_origin_or_https_upgrade(
+    monkeypatch, status: int, source: str, destination: str,
+) -> None:
+    """
+    同源跳转与同主机默认端口的 HTTPS 升级应保留 Cookie 和认证头。
+    """
+    final = _FakeResponse(200, text="ok")
+    hops = _scripted_request(monkeypatch, [
+        SimpleNamespace(status_code=status, headers={"Location": destination}), final,
+    ])
+    headers = {"Cookie": "sid=header", "Authorization": "Bearer test", "Referer": source}
+
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url=source, cookie="uid=1", headers=headers,
+    ) as response:
+        assert response is final
+
+    assert [hop["url"] for hop in hops] == [source, destination]
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
+    assert [hop["headers"] for hop in hops] == [headers, headers]
+    assert all(hop["allow_redirects"] is False for hop in hops)
+
+
+@pytest.mark.parametrize("source,destination", [
+    ("http://hdwing.org/", "https://other.test/"),
+    ("http://hdwing.org/", "https://www.hdwing.org/"),
+    ("http://hdwing.org:8080/", "https://hdwing.org/"),
+    ("http://hdwing.org/", "https://hdwing.org:8443/"),
+    ("http://hdwing.org:443/", "https://hdwing.org/"),
+    ("http://hdwing.org/", "https://hdwing.org:80/"),
+    ("https://hdwing.org/", "http://hdwing.org/"),
+    ("https://hdwing.org/", "https://hdwing.org:8443/"),
+])
+def test_site_adapter_strips_credentials_when_redirect_changes_trust(
+    monkeypatch, source: str, destination: str,
+) -> None:
+    """
+    跨主机、非默认端口升级与 HTTPS 降级仍应清除全部敏感请求头。
+    """
+    hops = _scripted_request(monkeypatch, [_redirect(destination), _FakeResponse(200)])
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url=source, cookie="uid=1",
+        headers={
+            "cOoKiE": "sid=header", "aUtHoRiZaTiOn": "Bearer test",
+            "Proxy-Authorization": "Basic test", "rEfErEr": source, "Accept": "text/html",
+        },
+    ) as response:
+        assert response.status_code == 200
+
+    assert [hop["cookies"] for hop in hops] == ["uid=1", ""]
+    assert hops[1]["headers"] == {"Accept": "text/html"}
+
+
+def test_site_adapter_does_not_restore_credentials_after_downgrade_then_upgrade(monkeypatch) -> None:
+    """
+    HTTPS 降级清除的凭据，在后续同主机升级回 HTTPS 时不能重新出现。
+    """
+    hops = _scripted_request(monkeypatch, [
+        _redirect("http://hdwing.org/next"),
+        _redirect("https://hdwing.org/final"),
+        _FakeResponse(200),
+    ])
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url="https://hdwing.org/", cookie="uid=1",
+        headers={"Authorization": "Bearer test"},
+    ) as response:
+        assert response.status_code == 200
+
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "", ""]
+    assert [hop["headers"] for hop in hops] == [{"Authorization": "Bearer test"}, {}, {}]
+
+
+def test_site_connection_keeps_cookie_when_hdwing_redirects_to_https(monkeypatch) -> None:
+    """
+    HDWing 的 HTTP 入口升级到 HTTPS 后，连接测试应携带原 Cookie 并识别已登录页面。
+    """
+    hops = _scripted_request(monkeypatch, [
+        _redirect("https://hdwing.org/"),
+        _FakeResponse(200, text='<html><body><a href="logout.php">退出</a></body></html>'),
+    ])
+    _configure(site_composition._SiteHttpAdapter())
+    site = SiteSnapshot(
+        id=1, name="瓷器", domain="hdwing.org", url="http://hdwing.org/", cookie="uid=1",
+    )
+
+    assert _chain()._SiteChain__test(site) == (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
 
 
 @pytest.mark.parametrize("responses,reason", [

@@ -811,6 +811,19 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         :return: 当前调用者是系统管理员、渠道管理员或显式管理员上下文时返回 True
         """
+        authorization_id = self._agent_context.get("authorization_id")
+        if isinstance(authorization_id, str) and authorization_id:
+            from app.application.security.authorization import get_channel_authorization
+
+            service = get_channel_authorization()
+            if service is None:
+                return False
+            try:
+                user = await self.run_blocking("db", service.principal, authorization_id,
+                                              capability="schedule" if isinstance(self._agent_context.get("execution_user_id"), int) else None)
+                return bool(user.is_superuser)
+            except PermissionError:
+                return False
         if "is_admin" in self._agent_context:
             return self._agent_context.get("is_admin") is True
 
@@ -894,7 +907,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         runtime_root = agent_root / "runtime"
         for protected in (runtime_root / 'learning' / 'users', runtime_root / 'history' / 'users', runtime_root / 'code' / 'users'):
             if self._is_path_relative_to(resolved_path, protected):
-                user_key = build_user_memory_key(self._user_id)
+                user_key = build_user_memory_key(str(self._agent_context.get("memory_owner_id") or self._user_id))
                 if not user_key or not self._is_path_relative_to(resolved_path, protected / user_key):
                     return resolved_path, '抱歉，不能读取或修改其他用户的 Agent 消息和个人技能。'
         if self._is_path_relative_to(resolved_path, runtime_root) and operation != "读取":
@@ -911,7 +924,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         user_memory_root = memory_root / "users"
         if self._is_path_relative_to(resolved_path, user_memory_root):
-            user_key = build_user_memory_key(self._user_id)
+            user_key = build_user_memory_key(str(self._agent_context.get("memory_owner_id") or self._user_id))
             own_memory_root = user_memory_root / user_key if user_key else None
             if not own_memory_root or not self._is_path_relative_to(resolved_path, own_memory_root):
                 return (
@@ -971,6 +984,19 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         Agent 共享上下文中的显式管理员事实优先；没有该事实的旧调用才按渠道
         管理员名单回查，并保留无消息渠道内部调用的兼容行为。
         """
+        authorization_id = self._agent_context.get("authorization_id")
+        if isinstance(authorization_id, str) and authorization_id:
+            from app.application.security.authorization import get_channel_authorization
+
+            service = get_channel_authorization()
+            if service is None:
+                return "渠道授权服务不可用"
+            try:
+                user = await self.run_blocking("db", service.principal, authorization_id,
+                                              capability="schedule" if isinstance(self._agent_context.get("execution_user_id"), int) else None)
+                self._agent_context["is_admin"] = user.is_superuser
+            except PermissionError as error:
+                return str(error)
         if not self._require_admin:
             return None
 
@@ -988,8 +1014,8 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         return (
             "抱歉，您没有执行此工具的权限。"
             "只有渠道管理员或系统管理员才能执行工具操作。"
-            "如需执行工具，请联系管理员将您的用户ID添加到渠道管理员列表中（设定 -> 通知 -> 对应渠道配置 -> 管理员名单），"
-            "或联系系统管理员为您设置管理员权限。"
+            "如需执行工具，请联系系统管理员在「用户管理 -> 渠道授权」中，按您的通知实例和渠道用户ID将您设为渠道管理员，"
+            "或为您的网页账号开通系统管理员权限。"
         )
 
     async def _has_channel_admin_permission(self) -> bool:

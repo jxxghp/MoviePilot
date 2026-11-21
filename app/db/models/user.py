@@ -23,6 +23,8 @@ class User(Base):
     id = get_id_column()
     # 用户名，唯一值
     name: Mapped[str] = mapped_column(String, nullable=False)
+    # 渠道内部身份不接受任何网页登录或账号管理操作。
+    account_type: Mapped[str] = mapped_column(String(16), nullable=False, default="local", server_default="local")
     # 邮箱
     email: Mapped[Optional[str]] = mapped_column(String)
     # 加密后密码

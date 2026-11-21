@@ -229,6 +229,7 @@ class ApiRuntimeConfig:
     :param search_source: 媒体搜索来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic，多个用,分隔
     :param media_extensions: 受支持的媒体文件扩展名集合
     :param subtitle_extensions: 受支持的字幕文件扩展名集合
+    :param lyrics_extensions: 受支持的歌词文件扩展名集合
     :param audio_extensions: 受支持的音频文件扩展名集合
     :param movie_rename_format: 电影重命名格式
     :param television_rename_format: 电视剧文件的重命名模板
@@ -255,6 +256,7 @@ class ApiRuntimeConfig:
     search_source: str = ""
     media_extensions: tuple[str, ...] = ()
     subtitle_extensions: tuple[str, ...] = ()
+    lyrics_extensions: tuple[str, ...] = ()
     audio_extensions: tuple[str, ...] = ()
     movie_rename_format: str = ""
     television_rename_format: str = ""
@@ -351,6 +353,7 @@ class ChainRuntimeConfig:
     :param api_token: 宿主 API 认证密钥，None 表示快照未提供
     :param video_extensions: 受支持的视频文件扩展名集合
     :param subtitle_extensions: 受支持的字幕文件扩展名集合
+    :param lyrics_extensions: 受支持的歌词文件扩展名集合
     :param audio_extensions: 受支持的音频文件扩展名集合
     :param temporary_path: 应用运行时临时文件目录
     :param root_path: 项目源码或程序安装根目录
@@ -416,6 +419,7 @@ class ChainRuntimeConfig:
     :param proxy_server: 供浏览器使用的代理连接参数，None 表示不配置代理
     :param proxy_host: 网络代理服务器地址
     :param github_headers: 访问 GitHub 时使用的请求头，可能包含授权凭据
+    :param github_proxy: GitHub 公开资源镜像前缀，空值时使用原始地址
     :param cookiecloud_blacklist: CookieCloud同步黑名单，多个域名,分割
     :param subscribe_mode: 订阅刷新模式：spider 使用站点搜索，rss 使用 RSS 订阅
     :param no_cache_site_key: 不缓存站点资源的域名关键字，多个使用,分隔；留空时所有站点使用缓存
@@ -442,6 +446,7 @@ class ChainRuntimeConfig:
     api_token: str | None = None
     video_extensions: tuple[str, ...] = ()
     subtitle_extensions: tuple[str, ...] = ()
+    lyrics_extensions: tuple[str, ...] = ()
     audio_extensions: tuple[str, ...] = ()
     temporary_path: Path = Path(".")
     root_path: Path = Path(".")
@@ -507,6 +512,7 @@ class ChainRuntimeConfig:
     proxy_server: Any = None
     proxy_host: Optional[str] = None
     github_headers: Any = None
+    github_proxy: Optional[str] = None
     cookiecloud_blacklist: Any = None
     subscribe_mode: str = "spider"
     no_cache_site_key: str = ""

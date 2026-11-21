@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -175,6 +176,31 @@ async def test_code_cannot_bypass_unloaded_skill(environment):
     payload = json.loads(message.content)
     assert not payload['success'] and payload['tool_errors']
     assert 'skill_operation_denied' in str(payload['tool_errors'])
+    assert executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_python_rpc_rejects_plugin_config_writes(environment: Any) -> None:
+    """
+    Python 内的 API 助手仍是只读入口，不能提交插件配置写操作。
+
+    :param environment: 包含真实 Agent 图和内存 API 端口的测试环境
+    """
+    scope, executor, api, tool, _, _, _, middlewares = environment
+    program = (
+        'from moviepilot_tools import moviepilot_api\n'
+        'print(moviepilot_api("plugin.config.update", path_params={"plugin_id": "DemoPlugin"}, '
+        'body={"enabled": True}))'
+    )
+    model = CodeModel(responses=[_call('code', 'execute_code', {'code': program}), AIMessage(content='写入被拒绝')])
+    graph = create_agent(model=model, tools=[api, tool], middleware=middlewares)
+    with bind_terminal_scope(scope):
+        result = await graph.ainvoke({'messages': [HumanMessage(content='更新插件')]},
+                                     config={'configurable': {'thread_id': 'code'}})
+    message = next(item for item in result['messages'] if isinstance(item, ToolMessage) and item.name == 'execute_code')
+    payload = json.loads(message.content)
+    assert not payload['success'] and payload['tool_errors']
+    assert '只允许安全只读操作' in str(payload['tool_errors'])
     assert executor.calls == []
 
 

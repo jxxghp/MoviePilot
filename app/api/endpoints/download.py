@@ -8,7 +8,11 @@ import anyio
 from fastapi import Body, Depends
 
 from app.adapters.web.security.access import verify_token
-from app.api.dependencies.auth import get_current_active_manage_user, get_current_active_user
+from app.api.dependencies.auth import (
+    get_current_active_manage_user,
+    get_current_active_user,
+    get_current_download_viewer,
+)
 from app.api.dependencies.site import get_site_sync_query_service
 from app.api.principal import ApiPrincipal
 from app.api.response import (
@@ -221,11 +225,14 @@ def _resolve_add_media(
 
 
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
-def current(name: Optional[str] = None, _: ApiPrincipal = Depends(get_current_active_manage_user), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
+def current(name: Optional[str] = None, _: ApiPrincipal = Depends(get_current_download_viewer), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
-    查询全局下载任务，仅向具有管理权限的用户开放。
+    管理员查询全局下载任务，获授权渠道成员仅查询自己发起的任务。
     """
-    return DownloadChain().downloading(name)
+    tasks = DownloadChain().downloading(name)
+    if getattr(_, "authorization_id", None) and not _.is_superuser:
+        return [task for task in tasks if task.username == _.name]
+    return tasks
 
 
 @router.post(
@@ -262,6 +269,7 @@ def download(
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
@@ -327,6 +335,7 @@ def download_artist_collection(
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="艺术家合集任务添加失败")
@@ -375,6 +384,7 @@ def add(
         downloader=downloader,
         save_path=save_path,
         source="Manual",
+        user_specified=True,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")

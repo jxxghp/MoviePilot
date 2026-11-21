@@ -19,6 +19,7 @@ from app.agent.terminal.ownership import current_terminal_scope
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.result import inspect_tool_result
 from app.agent.tools.tags import ToolTag
+from app.runtime.browser import BrowserOperationTimeoutError
 from app.runtime.log import logger
 
 # 页面内容最大长度；保留在全局工具结果兜底上限以内。
@@ -179,6 +180,7 @@ class BrowseWebpageTool(MoviePilotTool):
             "JavaScript、等待元素和管理标签页。"
             "需要操作动态页面、填表、点击或提取 JavaScript 渲染内容时使用。"
             "同一对话内多次调用共享浏览器会话；"
+            "当前网页任务结束后请调用 close_session 释放实例名额；确需等待用户继续操作时保留会话。"
             "先用 goto 打开页面，查看 interactive_elements，再优先使用 *_ref 动作。"
             "验证码依赖会话或 OCR 失败时，先用 screenshot 和已观察到的图片选择器查看当前验证码，再决定刷新。"
             "默认禁止本机与私网 URL，只有管理员可将 allow_private_network 设为 true。"
@@ -361,9 +363,7 @@ class BrowseWebpageTool(MoviePilotTool):
 
             effective_session_key = session_key or self._session_id
 
-            result = await self.run_blocking(
-                "web",
-                self._execute_browser_action,
+            result = await self._run_browser_action(
                 browser_action=browser_action,
                 url=url,
                 selector=selector,
@@ -386,6 +386,19 @@ class BrowseWebpageTool(MoviePilotTool):
             if action == BrowserAction.SCREENSHOT:
                 return self._screenshot_failure("screenshot_failed", "浏览器截图执行失败")
             return self._error_response("browser_operation_failed", f"浏览器操作失败: {error_summary}", "检查当前会话和页面状态后再重试。")
+
+    async def _run_browser_action(self, **arguments: Any) -> Any:
+        """
+        将调用取消传递给排队线程，防止工具已取消后仍新建浏览器。
+
+        :param arguments: 已通过工具 schema 校验的浏览器动作参数
+        :return: 同步浏览器操作的原始返回值
+        """
+        return await BrowserSessionHelper.run_action_async(
+            session_key=arguments["session_key"],
+            callback=lambda: self._execute_browser_action(**arguments),
+            owner=current_terminal_scope(),
+        )
 
     async def _admin_required_error(
         self, browser_action: BrowserAction, allow_private_network: bool
@@ -479,6 +492,13 @@ class BrowseWebpageTool(MoviePilotTool):
         except Exception as e:
             error_summary = summarize_error(e)
             logger.error(f"CloakBrowser 执行失败: {error_summary}", exc_info=True)
+            if isinstance(e, BrowserOperationTimeoutError):
+                return self._json_response({
+                    "success": False,
+                    "execution_outcome": "unknown",
+                    "error": "浏览器操作超时或中断，实例已撤销，实际执行结果未知。",
+                    "recovery": "重新打开页面核验结果；不要直接重试可能已经提交的点击、表单或脚本动作。",
+                })
             if isinstance(e, BrowserNavigationUncertainError):
                 return self._json_response({
                     "success": False,

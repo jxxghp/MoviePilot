@@ -9,7 +9,14 @@ from enum import Enum
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from app.domain.torrent import download_hashes
+from app.domain.torrent import (
+    ConfirmedSelection,
+    ExistingTaskFile,
+    ExistingTaskState,
+    download_hashes,
+    select_torrent_files,
+)
+from app.modules._base.downloader import _DownloaderModuleBase as ProductionDownloaderBase
 
 
 def _load_qbittorrent_modules():
@@ -55,6 +62,10 @@ def _load_qbittorrent_modules():
     qbittorrentapi_transfer_module = types.ModuleType("qbittorrentapi.transfer")
 
     class _Logger:
+        """
+        接收兼容测试日志，隔离真实日志设施。
+        """
+
         def info(self, *_args, **_kwargs):
             """
             吞掉普通日志，避免兼容性测试依赖真实日志系统。
@@ -112,6 +123,10 @@ def _load_qbittorrent_modules():
         return str(value)
 
     class _FileCache:
+        """
+        仅模拟未命中结果，不访问真实缓存文件。
+        """
+
         def get(self, *_args, **_kwargs):
             """
             固定模拟缓存未命中，避免测试读取真实文件缓存。
@@ -134,14 +149,38 @@ def _load_qbittorrent_modules():
             self.episode_list = []
 
     class _ModuleBase:
+        """
+        隔离下载器模块的宿主基类依赖。
+        """
+
         pass
 
     class _DownloaderBase:
+        """
+        接受客户端类型参数的最小下载器基类。
+        """
+
         def __class_getitem__(cls, _item):
+            """
+            忽略泛型参数并返回当前测试基类。
+            """
             return cls
 
     # 隔离环境下的下载器业务样板基类，镜像 app.modules._base.downloader 的行为
     class _DownloaderModuleBase(_ModuleBase, _DownloaderBase):
+        """
+        镜像下载器通用入口，不注册真实实例或后台任务。
+        """
+
+        _discard_failed_selection = staticmethod(ProductionDownloaderBase._discard_failed_selection)
+        # 已有任务的统一核验流程直接复用生产实现，文件、状态与标签钩子由被测模块提供。
+        _accept_existing_task = ProductionDownloaderBase._accept_existing_task
+        _apply_existing_task_decision = ProductionDownloaderBase._apply_existing_task_decision
+        _confirm_required_files_selected = ProductionDownloaderBase._confirm_required_files_selected
+        _refresh_accepted_task_tags = ProductionDownloaderBase._refresh_accepted_task_tags
+        _refresh_existing_priorities = ProductionDownloaderBase._refresh_existing_priorities
+        _has_pending_wanted_files = ProductionDownloaderBase._has_pending_wanted_files
+
         def test(self):
             """
             固定返回下载器连通成功，供模块兼容入口测试使用。
@@ -165,6 +204,9 @@ def _load_qbittorrent_modules():
             return [item_factory(item) for item in source]
 
         def _get_torrent_info(self, content):
+            """
+            从测试路径或内存内容构造种子信息，磁力链接不解析为文件。
+            """
             torrent_info, torrent_content = None, None
             if isinstance(content, Path):
                 torrent_content = content.read_bytes() if content.exists() else None
@@ -178,6 +220,9 @@ def _load_qbittorrent_modules():
 
         @staticmethod
         def _normalize_query_status(status):
+            """
+            将兼容状态别名归一为模块使用的查询枚举。
+            """
             status_value = getattr(status, "value", status)
             status_text = str(status_value or "").strip().lower()
             if status_text in {"transfer", TorrentStatus.TRANSFER.value}:
@@ -191,6 +236,10 @@ def _load_qbittorrent_modules():
             return TorrentQueryStatus.ALL
 
     class _Torrent:
+        """
+        为模块添加入口提供不访问网络的种子解析边界。
+        """
+
         @staticmethod
         def from_string(content):
             """
@@ -199,7 +248,14 @@ def _load_qbittorrent_modules():
             return types.SimpleNamespace(name="test", total_size=len(content))
 
     class _DownloaderTorrent:
+        """
+        保存任务投影字段，便于验证客户端字段兼容。
+        """
+
         def __init__(self, **kwargs):
+            """
+            保留模块传入的原始任务字段。
+            """
             self.__dict__.update(kwargs)
 
     class _DownloaderFile:
@@ -273,7 +329,7 @@ def _load_qbittorrent_modules():
 
     log_module.logger = _Logger()
     cache_module.FileCache = _FileCache
-    config_module.settings = types.SimpleNamespace(TORRENT_TAG="moviepilot-tag")
+    config_module.settings = types.SimpleNamespace(TORRENT_TAG="moviepilot-tag", RMT_MEDIAEXT=[".mkv"])
     runtime_settings_module.get_runtime_setting = lambda key, default=None: getattr(
         config_module.settings, key, default
     )
@@ -290,6 +346,11 @@ def _load_qbittorrent_modules():
     schema_types_module.DownloaderType = DownloaderType
     torrent_rules_module.is_magnet_link = _is_magnet_link
     torrent_rules_module.download_hashes = download_hashes
+    torrent_rules_module.select_torrent_files = select_torrent_files
+    # 被测模块的已有任务状态与确认记录类型直接使用生产定义。
+    torrent_rules_module.ExistingTaskState = ExistingTaskState
+    torrent_rules_module.ExistingTaskFile = ExistingTaskFile
+    torrent_rules_module.ConfirmedSelection = ConfirmedSelection
     url_tools_module.parse_address = _parse_address
     text_tools_module.random_string = _random_string
     size_tools_module.format_compact_size = _format_size
@@ -824,12 +885,24 @@ def test_download_removes_temporary_tag_from_existing_torrent():
     fake_server = MagicMock()
     fake_server.add_torrent.return_value = (False, [])
     fake_server.get_content_layout.return_value = "Original"
-    fake_server.get_torrents.return_value = ([{
+    tags: list[str] = []
+    # 每次查询返回新列表：模块读完会清空列表释放内存，共用同一个列表会让后续回读读到空结果。
+    fake_server.get_torrents.side_effect = lambda *_args, **_kwargs: ([{
         "name": "test",
         "total_size": len(content),
         "hash": torrent_hash,
-        "tags": None,
+        "tags": ",".join(tags) or None,
+        "state": "uploading",
     }], None)
+    # 受理时会补写系统种子标签并回读确认，写入要反映到后续查询里。
+    fake_server.set_torrents_tag.side_effect = lambda *_args, **kwargs: (
+        tags.extend(item for item in kwargs.get("tags", ()) if item not in tags) or True
+    )
+    # 已有任务受理需要读到实时文件列表；文件已选中且下载完成，按原样复用处理。
+    # 每次读取返回新列表：受理前还会回读一次确认目标仍处于选中状态，模块读完会清空列表释放内存。
+    fake_server.get_files.side_effect = lambda *_args, **_kwargs: [
+        {"id": 0, "name": "test.mkv", "priority": 1, "progress": 1, "size": 15},
+    ]
 
     module = _build_module(fake_server)
     result = module.download(

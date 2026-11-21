@@ -125,7 +125,8 @@ def test_scheduler_initializer_retains_bindings_when_async_stop_fails(monkeypatc
     reset_bindings.assert_not_called()
 
 
-def test_clear_cache_is_manual_only(monkeypatch):
+@pytest.mark.parametrize("mode", ["spider", "rss"])
+def test_clear_cache_is_manual_only(monkeypatch, mode):
     """
     缓存清理任务应仅手动执行，不注册到调度器自动运行。
     """
@@ -152,7 +153,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
         "get_scheduler_runtime_config",
         lambda: SchedulerRuntimeConfig(
             False, "Asia/Shanghai", 1, False, "", 0, None, False, 24,
-            "rss", 30, False, 0, 0, True, 1, False, None,
+            mode, 30, False, 0, 0, True, 1, False, None,
         ),
     )
 
@@ -182,6 +183,33 @@ def test_clear_cache_is_manual_only(monkeypatch):
     heartbeat = next(job for job in background_scheduler.jobs if job["id"] == "agent_heartbeat")
     assert heartbeat["executor"] == "agent"
     assert scheduler._jobs["agent_heartbeat"]["execution_group"] == "agent"
+    refresh_jobs = [job for job in background_scheduler.jobs if job["id"].startswith("subscribe_refresh")]
+    assert len(refresh_jobs) == 1
+    refresh_job = refresh_jobs[0]
+    assert refresh_job["trigger"] == "interval"
+    if mode == "spider":
+        assert refresh_job["minutes"] == 1
+        assert refresh_job["func"] == scheduler._poll_subscription_refresh
+        assert "kwargs" not in refresh_job
+    else:
+        assert refresh_job["minutes"] == 30
+        assert refresh_job["func"] == scheduler.start
+        assert refresh_job["kwargs"] == {"job_id": "subscribe_refresh"}
+    assert scheduler._jobs["subscribe_refresh"]["timeout_seconds"] is None
+
+
+def test_auto_refresh_poll_skips_active_owner_and_only_auto_uses_due_plan():
+    """
+    分钟扫描在空闲时传入到期标识；已有真实任务时不重入，也不改人工任务的参数。
+    """
+    scheduler = object.__new__(Scheduler)
+    scheduler._is_job_active = Mock(return_value=True)
+    scheduler.start = Mock()
+    scheduler._poll_subscription_refresh()
+    scheduler.start.assert_not_called()
+    scheduler._is_job_active.return_value = False
+    scheduler._poll_subscription_refresh()
+    scheduler.start.assert_called_once_with("subscribe_refresh", scheduled=True)
 
 
 def test_user_auth_refreshes_plugin_routes_after_runtime_reinitialization(monkeypatch):

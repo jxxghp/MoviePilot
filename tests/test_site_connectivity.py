@@ -2,15 +2,59 @@
 站点连通性的协议路由、认证响应与统计持久化回归测试。
 """
 
+from typing import Optional
 from unittest.mock import ANY, MagicMock, Mock
 
 import pytest
 
+import app.modules.indexer as indexer_module
 from app.application.site.contract import SiteSnapshot
 from app.chain.site import SiteChain
 from app.db.models.site import Site
 from app.db.models.sitestatistic import SiteStatistic
 from app.schemas.site import SiteUserData
+
+
+def _open_probe_response(**_kwargs):
+    """
+    拒绝用例未声明的适配器 HTTP 请求。
+    """
+    raise AssertionError("未配置连接检测响应")
+
+
+@pytest.fixture(autouse=True)
+def adapter_http_boundary(monkeypatch):
+    """
+    在各适配器 RequestUtils 出口回放响应，保留真实 Module 分发和认证构造。
+    """
+    class ProbeRequest:
+        """
+        记录适配器选择的凭据和接口，不使用站点链的旧协议实现。
+        """
+
+        def __init__(self, **kwargs):
+            """
+            保存当前请求构造参数，不建立网络连接。
+            """
+            self.options = kwargs
+
+        def response_manager(self, *, method, url, **kwargs):
+            """
+            将认证请求交给用例响应，并确认不会跟随认证接口重定向。
+            """
+            assert kwargs.pop("allow_redirects") is False
+            request = {"method": method, "url": url, "proxies": self.options["proxies"],
+                       "timeout": self.options["timeout"]}
+            if self.options.get("headers"):
+                request["headers"] = self.options["headers"]
+            if self.options.get("cookies"):
+                request["cookie"] = self.options["cookies"]
+            if "json" in kwargs:
+                request["json_body"] = kwargs["json"]
+            return _open_probe_response(**request)
+
+    for name in ("mtorrent", "hddolby", "rousi", "sunnypt", "yema", "milkie", "tnode"):
+        monkeypatch.setattr(f"app.modules.indexer.spider.{name}.RequestUtils", ProbeRequest)
 
 
 @pytest.mark.parametrize("render", [0, 1])
@@ -56,7 +100,7 @@ def test_mtorrent_schema_uses_profile_api(
     response_context = MagicMock()
     response_context.__enter__.return_value = response
     open_response = Mock(return_value=response_context)
-    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
 
     assert chain.test(site.url) == expected
 
@@ -83,23 +127,24 @@ def test_mtorrent_schema_uses_profile_api(
 
 
 @pytest.mark.parametrize("domain", ["m-team.cc", "milkie.cc", "sunnypt.top"])
-def test_special_site_test_precedes_schema_lookup(monkeypatch, domain):
+def test_domain_binding_precedes_conflicting_resource_protocol(monkeypatch, domain):
     """
-    已注册的专用站点保持优先，不加载资源或改走协议兜底。
+    Module 的域名绑定优先于冲突资源协议，公共站点链不保留域名路由表。
     """
     chain = SiteChain()
     handler = Mock(return_value=(True, "连接成功"))
-    monkeypatch.setitem(chain.special_site_test, domain, handler)
+    parser = indexer_module._DOMAIN_CONNECTION_PARSERS[domain]
+    monkeypatch.setattr(indexer_module.SPIDER_PARSER_CLASSES[parser], "test_connection", handler)
     site = SiteSnapshot(id=1, name="专用站点", domain=domain, url=f"https://{domain}/")
     chain.site_repository = Mock()
     chain.site_repository.get_by_domain.return_value = site
-    helper = Mock(side_effect=AssertionError("专用站点不应查询协议配置"))
+    helper = Mock(return_value=Mock(get_indexer=Mock(return_value={"schema": "ConflictingProtocol"})))
     monkeypatch.setattr("app.chain.site.SitesHelper", helper)
 
     assert chain.test(site.url) == (True, "连接成功")
 
-    handler.assert_called_once_with(site)
-    helper.assert_not_called()
+    handler.assert_called_once_with()
+    helper.return_value.get_indexer.assert_called_once_with(domain)
 
 
 @pytest.mark.parametrize("schema", [None, "NexusPhp"])
@@ -120,7 +165,7 @@ def test_other_schemas_keep_generic_connectivity_path(monkeypatch, schema, rende
     generic_test = Mock(return_value=(False, "Cookie已失效！"))
     monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
     api_test = Mock(side_effect=AssertionError("普通站点不应请求 MTorrent API"))
-    monkeypatch.setattr(SiteChain, "_SiteChain__mteam_test", api_test)
+    monkeypatch.setattr(indexer_module.MTorrentSpider, "test_connection", api_test)
 
     assert chain.test(site.url) == (False, "Cookie已失效！")
 
@@ -186,7 +231,7 @@ def test_api_protocols_use_their_own_authentication(
     context = MagicMock()
     context.__enter__.return_value = response
     open_response = Mock(return_value=context)
-    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
     generic_test = Mock(side_effect=AssertionError("API 协议不应检查首页 HTML"))
     monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
 
@@ -204,6 +249,163 @@ def test_api_protocols_use_their_own_authentication(
         assert request["json_body"] == {}
     generic_test.assert_not_called()
     context.__exit__.assert_called_once_with(None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("protocol", "status_code", "payload", "expected"),
+    [
+        ("Milkie", None, None, "无法打开网站！"),
+        ("Milkie", 401, None, "API Key 无效或已过期"),
+        ("Milkie", 403, None, "API Key 无效或已过期"),
+        ("Milkie", 500, None, "错误：500 Server Error"),
+        ("RousiPro", None, None, "无法打开网站！"),
+        ("RousiPro", 401, None, "个人 API Key 已失效或权限不足"),
+        ("RousiPro", 403, None, "个人 API Key 已失效或权限不足"),
+        ("RousiPro", 500, None, "错误：500 Server Error"),
+        ("RousiPro", 200, ValueError("invalid JSON"), "站点返回了无效的用户数据"),
+        ("RousiPro", 200, TypeError("invalid JSON"), "站点返回了无效的用户数据"),
+        ("RousiPro", 200, ["invalid profile"], "个人 API Key 已失效或权限不足"),
+        ("SunnyPT", None, None, "无法连接 SunnyPT API 服务"),
+        ("SunnyPT", 401, None, "错误：401 Server Error"),
+        ("SunnyPT", 403, None, "错误：403 Server Error"),
+        ("SunnyPT", 500, None, "错误：500 Server Error"),
+        ("SunnyPT", 200, ValueError("invalid JSON"), "SunnyPT API 响应不是有效 JSON"),
+        ("SunnyPT", 200, TypeError("invalid JSON"), "SunnyPT API 响应不是有效 JSON"),
+        ("SunnyPT", 200, ["invalid profile"], "SunnyPT API 响应不是有效 JSON"),
+        ("SunnyPT", 200, {"code": 0, "data": {"download_allowed": False}}, "当前账号没有下载权限"),
+        ("Yema", None, None, "无法打开网站！"),
+        ("Yema", 401, None, "错误：401 Server Error"),
+        ("Yema", 403, None, "错误：403 Server Error"),
+        ("Yema", 500, None, "错误：500 Server Error"),
+    ],
+)
+def test_api_probe_failures_do_not_fall_back_to_page_or_cookie(
+    monkeypatch: pytest.MonkeyPatch, protocol: str, status_code: Optional[int],
+    payload: object, expected: str,
+) -> None:
+    """
+    适配器保留连接、认证、解码和下载权限失败，网页成功不能掩盖真实失败。
+
+    Yema 使用已配置 AuthKey 的主站，验证认证失败后不会改用仍然存在的旧 Cookie。
+
+    :param monkeypatch: 隔离站点目录、HTTP 出口和通用网页检测
+    :param protocol: 待验证的已注册认证协议
+    :param status_code: 回放的 HTTP 状态；None 表示未建立连接
+    :param payload: JSON 正文或解码时抛出的异常
+    :param expected: 必须保留到连接回执的用户可见失败原因
+    """
+    domain = "yemapt.org" if protocol == "Yema" else "protocol.test"
+    site = SiteSnapshot(
+        id=1, name="协议失败测试", domain=domain, url=f"https://www.{domain}/",
+        apikey="synthetic-key", cookie="session=still-present", render=1,
+    )
+    chain = SiteChain()
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(
+        get_indexer=Mock(return_value={"schema": protocol}),
+    )))
+    response = None if status_code is None else Mock(status_code=status_code, reason="Server Error")
+    if response is not None:
+        if isinstance(payload, Exception):
+            response.json.side_effect = payload
+        else:
+            response.json.return_value = payload
+    context = MagicMock()
+    context.__enter__.return_value = response
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
+    generic_test = Mock(return_value=(True, "网页连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    assert chain.test(site.url) == (False, expected)
+
+    open_response.assert_called_once()
+    assert "cookie" not in open_response.call_args.kwargs
+    if response is not None:
+        if status_code == 200:
+            response.json.assert_called_once_with()
+        else:
+            response.json.assert_not_called()
+    context.__exit__.assert_called_once_with(None, None, None)
+    generic_test.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with(domain)
+    chain.site_repository.success.assert_not_called()
+
+
+def test_yema_compatible_site_without_authkey_does_not_use_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    仅声明 Yema 开放协议的兼容站缺少 AuthKey 时，不擅自改用主站旧 Cookie 协议。
+
+    :param monkeypatch: 隔离兼容站资源和禁止发生的 HTTP、网页探测
+    """
+    site = SiteSnapshot(
+        id=1, name="Yema 兼容站", domain="protocol.test", url="https://protocol.test/",
+        cookie="session=still-present",
+    )
+    chain = SiteChain()
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(
+        get_indexer=Mock(return_value={"schema": "Yema"}),
+    )))
+    open_response = Mock(side_effect=AssertionError("缺少 AuthKey 时不能发送 Cookie"))
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
+    generic_test = Mock(return_value=(True, "网页连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    assert chain.test(site.url) == (False, "未配置 AuthKey")
+
+    open_response.assert_not_called()
+    generic_test.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with("protocol.test")
+    chain.site_repository.success.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("status_code", "payload", "expected"),
+    [(None, None, "无法打开网站！"), (401, None, "错误：401 Unauthorized"),
+     (200, {"success": False}, "Cookie已过期"), (200, ["invalid profile"], "Cookie已过期")],
+)
+def test_yema_legacy_cookie_failure_is_not_generic_success(
+    monkeypatch: pytest.MonkeyPatch, status_code: Optional[int], payload: object, expected: str,
+) -> None:
+    """
+    主站旧 Cookie 兼容检测保留连接、HTTP 和会话失效结果，并释放响应。
+
+    :param monkeypatch: 隔离主站资源、HTTP 出口和通用网页检测
+    :param status_code: 回放的 HTTP 状态；None 表示未建立连接
+    :param payload: 旧用户接口的 JSON 正文
+    :param expected: 旧协议应返回的用户可见失败原因
+    """
+    site = SiteSnapshot(
+        id=1, name="YemaPT", domain="yemapt.org", url="https://www.yemapt.org/", cookie="session=expired",
+    )
+    chain = SiteChain()
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
+    response = None if status_code is None else Mock(
+        status_code=status_code, reason="Unauthorized", json=Mock(return_value=payload),
+    )
+    context = MagicMock()
+    context.__enter__.return_value = response
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
+    generic_test = Mock(return_value=(True, "网页连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    assert chain.test(site.url) == (False, expected)
+
+    open_response.assert_called_once()
+    request = open_response.call_args.kwargs
+    assert request["method"] == "GET"
+    assert request["url"] == "https://www.yemapt.org/api/consumer/fetchSelfDetail"
+    assert request["cookie"] == site.cookie
+    assert "Authorization" not in request["headers"]
+    if response is not None and status_code != 200:
+        response.json.assert_not_called()
+    context.__exit__.assert_called_once_with(None, None, None)
+    generic_test.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with("yemapt.org")
+    chain.site_repository.success.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -230,7 +432,7 @@ def test_api_probe_honors_resource_endpoint(monkeypatch, protocol, host_key, exp
         status_code=200, json=Mock(return_value={"code": "0", "status": 0, "data": {"id": "1"}}),
     )
     open_response = Mock(return_value=context)
-    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
 
     assert chain.test(site.url) == (True, "连接成功")
 
@@ -255,7 +457,7 @@ def test_hddolby_probe_uses_migrated_resource_for_both_domains(monkeypatch, doma
     context = MagicMock()
     context.__enter__.return_value = Mock(status_code=200, json=Mock(return_value={"status": 0}))
     open_response = Mock(return_value=context)
-    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
 
     assert chain.test(site.url) == (True, "连接成功")
 
@@ -292,7 +494,7 @@ def test_hddolby_api_failure_identifies_host_without_page_fallback(monkeypatch, 
     monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=indexer)))
     context = MagicMock()
     context.__enter__.return_value = None if status_code is None else Mock(status_code=405, reason="Not Allowed")
-    monkeypatch.setattr("app.chain.site._open_site_response", Mock(return_value=context))
+    monkeypatch.setattr(f"{__name__}._open_probe_response", Mock(return_value=context))
     generic_test = Mock(return_value=(True, "连接成功"))
     monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
 
@@ -327,7 +529,7 @@ def test_yema_registered_domain_prefers_authkey_and_preserves_legacy_cookie(monk
         status_code=200, json=Mock(return_value={"success": True, "data": {"id": "1"}}),
     )
     open_response = Mock(return_value=context)
-    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
 
     assert chain.test(site.url) == (True, "连接成功")
 
@@ -359,7 +561,7 @@ def test_tnode_probe_uses_cookie_and_csrf_api(monkeypatch, resource_key, resourc
     api = MagicMock()
     api.__enter__.return_value = Mock(status_code=200, json=Mock(return_value={"data": {"id": "1"}}))
     open_response = Mock(side_effect=[page, api])
-    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
 
     assert chain.test(site.url) == (True, "连接成功")
 

@@ -15,6 +15,7 @@ import socket
 import struct
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import uuid
@@ -51,6 +52,106 @@ _BTRFS_IOC_FS_INFO = 0x8400941F
 _BTRFS_FS_INFO_SIZE = 1024
 _BTRFS_FSID_OFFSET = 16
 _BTRFS_FSID_SIZE = 16
+
+
+class OwnedProcessTree:
+    """
+    以进程创建身份和唯一启动参数追踪专属子进程树，不按进程名结束其它浏览器。
+    """
+
+    def __init__(self, pid: int, marker: str) -> None:
+        """
+        仅接管本 Python 进程直接创建的驱动；保留创建身份以防 PID 被复用。
+
+        :param pid: 本次启动的直接子进程 PID
+        :param marker: 本次浏览器启动独有的完整命令行参数，用于找到已被重新托管的后代
+        """
+        root = psutil.Process(pid)
+        if root.ppid() != os.getpid():
+            raise RuntimeError("不能接管不属于当前进程的浏览器驱动")
+        self._root = root
+        self._marker = marker
+        self._known = {pid: root}
+        self._lock = threading.RLock()
+
+    def _refresh(self) -> None:
+        """
+        更新已知后代；驱动已经退出时仅按本次唯一参数找回浏览器根进程。
+        """
+        for process in tuple(self._known.values()):
+            try:
+                if process.is_running():
+                    for child in process.children(recursive=True):
+                        self._known.setdefault(child.pid, child)
+            except (psutil.Error, OSError):
+                continue
+        if not self._root.is_running():
+            for process in psutil.process_iter(["cmdline"]):
+                try:
+                    if self._marker in (process.info.get("cmdline") or []):
+                        self._known.setdefault(process.pid, process)
+                        for child in process.children(recursive=True):
+                            self._known.setdefault(child.pid, child)
+                except (psutil.Error, OSError):
+                    continue
+
+    def _alive(self) -> list[psutil.Process]:
+        """
+        无权限核实的已知进程仍算存活，不能据此误报名额已经释放。
+        """
+        alive = []
+        for process in self._known.values():
+            try:
+                if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
+                    alive.append(process)
+            except psutil.NoSuchProcess:
+                continue
+            except (psutil.Error, OSError):
+                alive.append(process)
+        return alive
+
+    @property
+    def stopped(self) -> bool:
+        """
+        只有驱动及已知后代均已退出才确认实例停止。
+        """
+        with self._lock:
+            self._refresh()
+            return not self._alive()
+
+    def terminate(self, timeout: float) -> bool:
+        """
+        冻结本次进程树以阻止退出期间继续派生，再强制结束并有界确认退出。
+
+        :param timeout: 最长确认秒数；不能确认时保留存活事实，不假报成功
+        :return: 本次驱动和浏览器后代全部退出时为 True
+        """
+        deadline = time.monotonic() + timeout
+        with self._lock:
+            suspended: set[int] = set()
+            for _ in range(4):
+                self._refresh()
+                pending = [process for process in self._alive() if process.pid not in suspended]
+                if not pending:
+                    break
+                for process in pending:
+                    try:
+                        process.suspend()
+                        suspended.add(process.pid)
+                    except (psutil.Error, OSError):
+                        continue
+            self._refresh()
+            SystemUtils._signal_process_tree(self._alive(), force=True)
+            while True:
+                self._refresh()
+                alive = self._alive()
+                if not alive:
+                    return True
+                if time.monotonic() >= deadline:
+                    return False
+                # 处理驱动退出时刚被重新托管的后代，且不重复触碰无关进程。
+                SystemUtils._signal_process_tree(alive, force=True)
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
 
 
 class SystemUtils:

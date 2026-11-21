@@ -333,9 +333,9 @@
       "app.helper.cookiecloud": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "adapters",
-        "replacement": "app.adapters.external.cookiecloud",
-        "target": "app.adapters.external.cookiecloud"
+        "owner": "sdk",
+        "replacement": "app.sdk._legacy.cookiecloud",
+        "target": "app.sdk._legacy.cookiecloud"
       },
       "app.helper.directory": {
         "introduced": "v3.0.0",
@@ -753,9 +753,9 @@
       "app.utils.site": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "domain",
+        "owner": "sdk",
         "replacement": "app.sdk.network",
-        "target": "app.domain.site"
+        "target": "app.sdk._legacy.domain"
       },
       "app.utils.stdio": {
         "introduced": "v3.0.0",
@@ -1381,8 +1381,8 @@
     ]
   },
   "event_facts": {
-    "consumer_event_reference_count": 17,
-    "consumer_registration_count": 18,
+    "consumer_event_reference_count": 18,
+    "consumer_registration_count": 19,
     "consumers": [
       {
         "caller": "app.chain.download.facade",
@@ -1467,6 +1467,21 @@
         ],
         "fingerprint": "c43b969848df947bc8e13d1777a08282cd45386867991786fba7f7ffe5027b47",
         "handler": "SiteChain.cache_site_userdata",
+        "invalid": false,
+        "method": "register",
+        "priority": "<default>",
+        "qualname": "SiteChain",
+        "receiver_kind": "canonical_singleton",
+        "registration_kind": "decorator"
+      },
+      {
+        "caller": "app.chain.site",
+        "dynamic": false,
+        "events": [
+          "EventType.SiteUpdated"
+        ],
+        "fingerprint": "d8f405fce4efc179dea6661d54b25b700b95eef996a93d1f2b4507d022e8ee8f",
+        "handler": "SiteChain.complete_site_rss",
         "invalid": false,
         "method": "register",
         "priority": "<default>",
@@ -1654,7 +1669,7 @@
       }
     ],
     "dynamic_consumer_count": 1,
-    "dynamic_producer_count": 1,
+    "dynamic_producer_count": 2,
     "event_count": 53,
     "event_index": {
       "ChainEventType.AgentLLMProvider": {
@@ -1809,15 +1824,13 @@
       "EventType.AudioTransferComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "75aa6118952ed941e778b0347b281cf07cff05858b658c811fdbead76a23341f",
           "93c221b3f8700f899d9613ba205f36d521c76ed5681048c0a754bcb73e6749bf"
         ]
       },
       "EventType.AudioTransferFailed": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "174dd87157d87d94e5656f4251b33005914e52e2c5fa1b53342188a4641b3225",
-          "57da97424ec6e2f81255d39105e0e4047226b47c05ecd5e9ab64b1164e79de53"
+          "174dd87157d87d94e5656f4251b33005914e52e2c5fa1b53342188a4641b3225"
         ]
       },
       "EventType.CommandExcute": {
@@ -1842,7 +1855,6 @@
       "EventType.DownloadAdded": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "35375727017385323cceeeb4db950615a604b51c6a4783171cc506256f3002d6",
           "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554",
           "6ab7645a6d0422f873242c8c9162c67904948890f429467a7f533e218aec1554"
         ]
@@ -1934,7 +1946,8 @@
         "consumer_fingerprints": [
           "1200b7097150958ec2003a597237ab746defe80a865b0efef30596dc3b503598",
           "6ca5d8f1adb42c94670be1125435387ea8b9f3f20b4505337b2adc090a4b5714",
-          "c43b969848df947bc8e13d1777a08282cd45386867991786fba7f7ffe5027b47"
+          "c43b969848df947bc8e13d1777a08282cd45386867991786fba7f7ffe5027b47",
+          "d8f405fce4efc179dea6661d54b25b700b95eef996a93d1f2b4507d022e8ee8f"
         ],
         "producer_fingerprints": [
           "7ccc7af8b1102056372e6450bf3ee6f9067aa984e3e655fd5061d16eec327097",
@@ -1945,14 +1958,12 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "019a094d2d0fd4fa84076bfab9263c2bf33ece199f4d5a9a5b57f68e07c4a9c0",
-          "97717bff58a8806d2696054f1a1c9865954d2f0218dab51fb27027f0d560fbea",
-          "cc7bd553745df756f0a69b1cf42852ab166c9fc6a58a546998b2956a0b5d7305"
+          "97717bff58a8806d2696054f1a1c9865954d2f0218dab51fb27027f0d560fbea"
         ]
       },
       "EventType.SubscribeComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "c86fcb5d64d2367e007f01ecdccf01de80f3e0a0dae625c77246d698e1ca9d4b",
           "eba9652f1bf1fab63b1ab459a1636e2167e03142099cfd2dd665dab6c88989f9"
         ]
       },
@@ -1961,7 +1972,6 @@
         "producer_fingerprints": [
           "7ee0ba0bfdba520a389d45c33d361120a0d710c3ea37b1e03532dd7364a52d47",
           "a08051c5da0861d7198f3f5aa1b4ce6ed054abfbeab35e06ecb64dea71ba8c5e",
-          "b0e58582f05faa7b8385a100589bcd724072a41cd3523615d7ac927e3272c7f8",
           "ea7538a3f2ad3ddbf8de6264e0525f065eec338d2ee003a501b725e3194d490a"
         ]
       },
@@ -1969,7 +1979,6 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "89165b03827d9801a260dd54dd03e77f903795b8872bd043a79e8283181c786f",
-          "b71e46714bd811b9c1703fecb112d0de83dd12e89ee70529702817958a9759a8",
           "ca9bf55c3886cd02fa31feade91fe333377fa8bf7bc9cc2d1bbdfb45214acfa3",
           "dbd5afd0aa1c2b449880ad3853e7e988dc29d799d40d2309780cf133a7e3c4a5"
         ]
@@ -1977,15 +1986,13 @@
       "EventType.SubtitleTransferComplete": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "b2bacfe7cc27d289b4744dc2f7b904fb8f20368e79c60adab6988188cc011eea",
           "f8ed3d63cdd6f007dd4f281c1e493b5fa5ffd7dc1591576a0224618315531fa7"
         ]
       },
       "EventType.SubtitleTransferFailed": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "45f2e225d176c9d7d49feedd0e9b3e7510760a286e89ec26b57d8173b6d4c002",
-          "7acfc1c2dd0ca50b8f9b72d55de769507e74851fb88381d66298f649078f5d9b"
+          "45f2e225d176c9d7d49feedd0e9b3e7510760a286e89ec26b57d8173b6d4c002"
         ]
       },
       "EventType.SystemError": {
@@ -2002,21 +2009,19 @@
           "ff208671796f8e35b6d88733b5038a1799f33f67db8e62e9f61189d4e91a4d8e"
         ],
         "producer_fingerprints": [
-          "6b3cb59b259d9ca82a52fe8376504ad848351c433d4427efd9b496874acdb1b2",
           "b9c576056cd1bea0a768eea4e927144e393e194c44a0f0b6f3fe1a86fe91ddd5"
         ]
       },
       "EventType.TransferFailed": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "8ac0a3e2e96daa1e00ed16560f57bbe1ad55263753b46d1f8f196c69d80e978f",
-          "d0fb23c410c6fda68c9e676f107666e31e0828886f5d9aeb4f5d3dcd9fc2bda7"
+          "8ac0a3e2e96daa1e00ed16560f57bbe1ad55263753b46d1f8f196c69d80e978f"
         ]
       },
       "EventType.UserMessage": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "6e4d8de098b200f04c1089fc9a5a67e1064a5fac50a1c0ce0a13ea0f6cece32f"
+          "9934766390c1470e31c1c04239785b21af3fcdba636898b752c920bee8143e11"
         ]
       },
       "EventType.WebhookMessage": {
@@ -2034,11 +2039,11 @@
         ]
       }
     },
-    "fact_count": 104,
+    "fact_count": 95,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
-    "producer_call_count": 86,
-    "producer_event_reference_count": 87,
+    "producer_call_count": 76,
+    "producer_event_reference_count": 76,
     "producers": [
       {
         "caller": "app.agent.orchestrator",
@@ -2406,18 +2411,6 @@
         "caller": "app.chain.message",
         "dynamic": false,
         "events": [
-          "EventType.UserMessage"
-        ],
-        "fingerprint": "6e4d8de098b200f04c1089fc9a5a67e1064a5fac50a1c0ce0a13ea0f6cece32f",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "MessageChain._handle_message_core",
-        "receiver_kind": "injected_event_manager"
-      },
-      {
-        "caller": "app.chain.message",
-        "dynamic": false,
-        "events": [
           "EventType.CommandExcute"
         ],
         "fingerprint": "f022ca0218b956cfd193695721ddc60343030bf15baa2d7bb0a2e9ccacce6bba",
@@ -2436,6 +2429,18 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "MessageChain._interaction_router._dispatch_plugin_callback",
+        "receiver_kind": "injected_event_manager"
+      },
+      {
+        "caller": "app.chain.message",
+        "dynamic": false,
+        "events": [
+          "EventType.UserMessage"
+        ],
+        "fingerprint": "9934766390c1470e31c1c04239785b21af3fcdba636898b752c920bee8143e11",
+        "invalid": false,
+        "method": "send_event",
+        "qualname": "MessageChain._publish_user_message",
         "receiver_kind": "injected_event_manager"
       },
       {
@@ -2834,134 +2839,12 @@
       },
       {
         "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.DownloadAdded"
-        ],
-        "fingerprint": "35375727017385323cceeeb4db950615a604b51c6a4783171cc506256f3002d6",
+        "dynamic": true,
+        "events": [],
+        "fingerprint": "cfb3f40492fabb5d57078f54ba5b72e5e104ee22f619e8105598dfcba8662619",
         "invalid": false,
         "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.AudioTransferFailed"
-        ],
-        "fingerprint": "57da97424ec6e2f81255d39105e0e4047226b47c05ecd5e9ab64b1164e79de53",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.TransferComplete"
-        ],
-        "fingerprint": "6b3cb59b259d9ca82a52fe8376504ad848351c433d4427efd9b496874acdb1b2",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.AudioTransferComplete"
-        ],
-        "fingerprint": "75aa6118952ed941e778b0347b281cf07cff05858b658c811fdbead76a23341f",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.SubtitleTransferFailed"
-        ],
-        "fingerprint": "7acfc1c2dd0ca50b8f9b72d55de769507e74851fb88381d66298f649078f5d9b",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeDeleted"
-        ],
-        "fingerprint": "b0e58582f05faa7b8385a100589bcd724072a41cd3523615d7ac927e3272c7f8",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.SubtitleTransferComplete"
-        ],
-        "fingerprint": "b2bacfe7cc27d289b4744dc2f7b904fb8f20368e79c60adab6988188cc011eea",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeModified"
-        ],
-        "fingerprint": "b71e46714bd811b9c1703fecb112d0de83dd12e89ee70529702817958a9759a8",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeComplete"
-        ],
-        "fingerprint": "c86fcb5d64d2367e007f01ecdccf01de80f3e0a0dae625c77246d698e1ca9d4b",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.SubscribeAdded"
-        ],
-        "fingerprint": "cc7bd553745df756f0a69b1cf42852ab166c9fc6a58a546998b2956a0b5d7305",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
-        "receiver_kind": "constructed_manager"
-      },
-      {
-        "caller": "app.startup.composition.outbox",
-        "dynamic": false,
-        "events": [
-          "EventType.TransferFailed"
-        ],
-        "fingerprint": "d0fb23c410c6fda68c9e676f107666e31e0828886f5d9aeb4f5d3dcd9fc2bda7",
-        "invalid": false,
-        "method": "send_event_strict",
-        "qualname": "build_outbox_handlers",
+        "qualname": "dispatch_event_handler",
         "receiver_kind": "constructed_manager"
       },
       {
@@ -3073,8 +2956,8 @@
         "receiver_kind": "canonical_singleton"
       }
     ],
-    "static_consumer_count": 17,
-    "static_producer_call_count": 85
+    "static_consumer_count": 18,
+    "static_producer_call_count": 74
   },
   "event_specs": {
     "ChainEventType.AgentLLMProvider": {
@@ -5804,7 +5687,10 @@
       "family": "downloader",
       "input_contract": "DownloadTaskRequest",
       "optional_parameters": [
-        "custom_words"
+        "confirmed_selection",
+        "custom_words",
+        "episode_selection",
+        "user_specified"
       ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
@@ -6170,6 +6056,26 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "encrypt_site_payload": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SitePayloadEncryptionRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "data_str",
+        "key"
+      ],
+      "result_contract": "str",
+      "result_shape": "string",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "execute_transfer_plan": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6372,6 +6278,44 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "get_site_domain": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteDomainRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "url"
+      ],
+      "result_contract": "str",
+      "result_shape": "string",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "get_site_rss_recipe": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteRssRecipeRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "url"
+      ],
+      "result_contract": "RssLinkRecipe",
+      "result_shape": "any",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "get_torrent_trackers": {
       "aggregation": "ordered_mapping_merge",
       "error_policy": "isolate_provider",
@@ -6392,6 +6336,25 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "has_site_subtitle_api": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteSubtitleCapabilityRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "site"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "identify_music_by_fingerprint": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6407,6 +6370,63 @@
       "result_contract": "str | None",
       "result_shape": "string",
       "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "is_expiring_download_url": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadUrlRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "url"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "is_site_rss_expired": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteRssResponseRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "text"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "is_torrent_download_confirmation": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadContentRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "content"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
       "version": 1
@@ -6595,7 +6615,8 @@
       "family": "media-server",
       "input_contract": "MediaExistsRequest",
       "optional_parameters": [
-        "query"
+        "query",
+        "raise_on_query_failure"
       ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
@@ -6848,6 +6869,27 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "mediaserver_search": {
+      "aggregation": "ordered_list_merge",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerLibrarySearchRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "keyword",
+        "limit",
+        "types"
+      ],
+      "result_contract": "list[MediaServerPlayItem]",
+      "result_shape": "list",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "mediaserver_season_episode_ids": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6866,6 +6908,27 @@
       ],
       "result_contract": "dict[int, str] | None",
       "result_shape": "mapping",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "mediaserver_stream_url": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerStreamRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "item_id",
+        "item_type",
+        "server"
+      ],
+      "result_contract": "str | None",
+      "result_shape": "string",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -7324,6 +7387,50 @@
       "result_contract": "str | None",
       "result_shape": "string",
       "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "parse_torrent_download_confirmation": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadConfirmationRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "text",
+        "url"
+      ],
+      "result_contract": "tuple[str, dict[str, Any]] | None",
+      "result_shape": "any",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "parse_torrent_download_response": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadResponseRequest",
+      "optional_parameters": [
+        "raise_exception",
+        "response_text"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "payload",
+        "request_params",
+        "status_code"
+      ],
+      "result_contract": "str | None",
+      "result_shape": "string",
+      "supports_async": false,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
       "version": 1
@@ -7846,6 +7953,27 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "test_site": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteConnectionTestRequest",
+      "optional_parameters": [
+        "raise_exception"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "site"
+      ],
+      "result_contract": "SiteConnectionResult",
+      "result_shape": "any",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "tmdb_cache_clear": {
       "aggregation": "fan_out",
       "error_policy": "isolate_provider",
@@ -8220,6 +8348,25 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "torrent_resource_identity": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentResourceIdentityRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "torrent"
+      ],
+      "result_contract": "tuple[str, str] | None",
+      "result_shape": "any",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "transfer": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -8500,10 +8647,10 @@
     }
   },
   "run_module": {
-    "call_count": 273,
+    "call_count": 279,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 221,
+    "method_count": 225,
     "methods": {
       "anilist_credits": [
         {
@@ -8522,6 +8669,11 @@
       "anilist_info": [
         {
           "caller": "app.chain.anilist",
+          "count": 1,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.media.projection",
           "count": 1,
           "mode": "sync"
         }
@@ -8585,6 +8737,11 @@
       "async_anilist_info": [
         {
           "caller": "app.chain.anilist",
+          "count": 1,
+          "mode": "async"
+        },
+        {
+          "caller": "app.chain.media.projection",
           "count": 1,
           "mode": "async"
         }
@@ -9598,7 +9755,21 @@
           "mode": "sync"
         }
       ],
+      "mediaserver_search": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "mediaserver_season_episode_ids": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_stream_url": [
         {
           "caller": "app.chain.mediaserver",
           "count": 1,
@@ -9809,6 +9980,13 @@
           "mode": "sync"
         }
       ],
+      "parse_torrent_download_response": [
+        {
+          "caller": "app.chain.download.submission",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "recognize_media": [
         {
           "caller": "app.chain._recognition",
@@ -9991,6 +10169,13 @@
       "storage_manage": [
         {
           "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "test_site": [
+        {
+          "caller": "app.chain.site",
           "count": 1,
           "mode": "sync"
         }
@@ -11101,7 +11286,7 @@
       {
         "kind": "import",
         "name": "nexusphp_encrypt",
-        "target": "app.application.security.token.nexusphp_encrypt"
+        "target": "app.application.site.protocol.nexusphp_encrypt"
       },
       {
         "kind": "import",

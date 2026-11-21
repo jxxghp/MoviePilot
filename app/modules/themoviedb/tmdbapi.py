@@ -54,10 +54,13 @@ class _CandidatePlan:
 
     :param direct: 无需额外详情即可命中的候选，未找到时为 None
     :param aliases: 需要补充详情后检查别名的候选，按尝试顺序保存
+    :param demoted: 标题直达但年份与软年份不符的候选，仅在没有年份相符的
+        候选时才返回，未设置时为 None
     """
 
     direct: Optional[_MediaRecord]
     aliases: tuple[_MediaRecord, ...]
+    demoted: Optional[_MediaRecord] = None
 
 
 @dataclass(frozen=True)
@@ -317,6 +320,7 @@ class TmdbApi:
         season_year: Optional[str],
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
+        soft_year: Optional[str] = None,
     ) -> Optional[_MediaRecord]:
         """
         通过同步客户端执行一条已冻结的匹配查询。
@@ -327,7 +331,7 @@ class TmdbApi:
             return self.__search_tv_by_season(name, step.year, season_number, group_seasons)
         self._log_match_debug(mtype, name, step.year)
         if step.target == _MatchTarget.TV_NAME:
-            return self.__search_tv_by_name(name, step.year)
+            return self.__search_tv_by_name(name, step.year, soft_year)
         return self.__search_movie_by_name(name, step.year)
 
     async def _execute_match_step_async(
@@ -338,6 +342,7 @@ class TmdbApi:
         season_year: Optional[str],
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
+        soft_year: Optional[str] = None,
     ) -> Optional[_MediaRecord]:
         """
         通过异步客户端执行一条已冻结的匹配查询。
@@ -348,7 +353,7 @@ class TmdbApi:
             return await self.__async_search_tv_by_season(name, step.year, season_number, group_seasons)
         self._log_match_debug(mtype, name, step.year)
         if step.target == _MatchTarget.TV_NAME:
-            return await self.__async_search_tv_by_name(name, step.year)
+            return await self.__async_search_tv_by_name(name, step.year, soft_year)
         return await self.__async_search_movie_by_name(name, step.year)
 
     def _run_match_sync(
@@ -359,6 +364,7 @@ class TmdbApi:
         season_year: Optional[str],
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
+        soft_year: Optional[str] = None,
     ) -> Optional[_MediaRecord]:
         """
         同步执行共享匹配状态机请求的真实 I/O。
@@ -368,7 +374,7 @@ class TmdbApi:
         except StopIteration as result:
             return cast(Optional[_MediaRecord], result.value)
         while True:
-            info = self._execute_match_step_sync(step, name, mtype, season_year, season_number, group_seasons)
+            info = self._execute_match_step_sync(step, name, mtype, season_year, season_number, group_seasons, soft_year)
             try:
                 step = resolution.send(info)
             except StopIteration as result:
@@ -382,6 +388,7 @@ class TmdbApi:
         season_year: Optional[str],
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
+        soft_year: Optional[str] = None,
     ) -> Optional[_MediaRecord]:
         """
         异步执行共享匹配状态机请求的真实 I/O。
@@ -392,7 +399,7 @@ class TmdbApi:
             return cast(Optional[_MediaRecord], result.value)
         while True:
             info = await self._execute_match_step_async(
-                step, name, mtype, season_year, season_number, group_seasons
+                step, name, mtype, season_year, season_number, group_seasons, soft_year
             )
             try:
                 step = resolution.send(info)
@@ -482,9 +489,21 @@ class TmdbApi:
         mtype: MediaType,
         items: List[_MediaRecord],
         year: Optional[str],
+        soft_year: Optional[str] = None,
     ) -> _CandidatePlan:
         """
         排序、过滤年份并冻结标题优先的候选匹配计划。
+
+        传入软年份时不按年份过滤（保持回退召回），而是把年份相符的候选
+        排在前面；年份不符的标题直达候选降级为最后才返回的备选，避免
+        同名不同年作品仅凭标题抢先胜出。
+
+        :param name: 待搜索或匹配的名称
+        :param mtype: 电影或电视剧类型
+        :param items: TMDB 搜索返回的候选列表
+        :param year: 硬过滤年份，指定时只保留该年候选
+        :param soft_year: 仅用于排序与降权的软年份，不过滤候选，可为空
+        :return: 标题直达、别名候选与降权备选的冻结计划
         """
         date_field = "release_date" if mtype == MediaType.MOVIE else "first_air_date"
         candidates = sorted(
@@ -494,6 +513,28 @@ class TmdbApi:
         )
         if year:
             candidates = [item for item in candidates if (item.get(date_field) or "")[:4] == year]
+            direct = next(
+                (item for item in candidates if cls._title_matches(name, item, mtype)),
+                None,
+            )
+            return _CandidatePlan(direct=direct, aliases=tuple(candidates))
+        if soft_year:
+            candidates.sort(key=lambda item: (item.get(date_field) or "")[:4] != soft_year)
+            year_matched = [item for item in candidates if (item.get(date_field) or "")[:4] == soft_year]
+            direct = next(
+                (item for item in year_matched if cls._title_matches(name, item, mtype)),
+                None,
+            )
+            demoted = next(
+                (
+                    item
+                    for item in candidates
+                    if (item.get(date_field) or "")[:4] != soft_year
+                    and cls._title_matches(name, item, mtype)
+                ),
+                None,
+            )
+            return _CandidatePlan(direct=direct, aliases=tuple(candidates), demoted=demoted)
         direct = next(
             (item for item in candidates if cls._title_matches(name, item, mtype)),
             None,
@@ -545,6 +586,8 @@ class TmdbApi:
                 resolved = yield _DetailRequest(mtype=mtype, tmdbid=tmdbid)
             if accepts(resolved):
                 return resolved or {}
+        if plan.demoted is not None:
+            return plan.demoted
         return {}
 
     @classmethod
@@ -652,11 +695,14 @@ class TmdbApi:
         season_year: Optional[str] = None,
         season_number: Optional[int] = None,
         group_seasons: Optional[List[_MediaRecord]] = None,
+        soft_year: Optional[str] = None,
     ) -> Optional[_MediaRecord]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息。
 
         按共享匹配计划依次尝试年份、季信息和别名回退，首个有效候选即返回。
+        传入软年份时不按年份过滤搜索结果，只把年份相符的候选排在前面、
+        把年份不符的标题直达候选降级为备选。
 
         :param name: 待搜索或匹配的名称
         :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
@@ -664,6 +710,7 @@ class TmdbApi:
         :param season_year: 目标季的首播年份，可为空
         :param season_number: 目标季编号，0 表示特别篇，None 表示未指定
         :param group_seasons: 已获取的剧集组季集信息，用于季年份匹配
+        :param soft_year: 仅用于候选排序与降权的软年份，不作为 TMDB 查询过滤条件，可为空
         :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
         if not self._validate_match_params(name, self.search):
@@ -676,6 +723,7 @@ class TmdbApi:
             season_year,
             season_number,
             group_seasons,
+            soft_year,
         )
 
     def __search_movie_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
@@ -704,12 +752,15 @@ class TmdbApi:
         plan = self._build_name_candidate_plan(name, MediaType.MOVIE, movies, year)
         return self._resolve_details_sync(self._name_resolution(name, MediaType.MOVIE, plan))
 
-    def __search_tv_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
+    def __search_tv_by_name(
+        self, name: str, year: Optional[str], soft_year: Optional[str] = None
+    ) -> Optional[_MediaRecord]:
         """
         根据名称查询电视剧TMDB匹配。
 
         :param name: 识别的文件名或者种子名
         :param year: 电视剧的首播年份
+        :param soft_year: 仅用于候选排序与降权的软年份，不作为 TMDB 查询过滤条件，可为空
         :return: 匹配的媒体信息
         """
         try:
@@ -727,7 +778,7 @@ class TmdbApi:
         if not tvs:
             logger.debug(f"{name} 未找到相关剧集信息!")
             return {}
-        plan = self._build_name_candidate_plan(name, MediaType.TV, tvs, year)
+        plan = self._build_name_candidate_plan(name, MediaType.TV, tvs, year, soft_year)
         return self._resolve_details_sync(self._name_resolution(name, MediaType.TV, plan))
 
     @staticmethod
@@ -1360,18 +1411,29 @@ class TmdbApi:
     @staticmethod
     def _build_include_image_language(original_language: Optional[str] = None) -> str:
         """
-        构造图片接口语言回退列表，避免当前语言没有图片时返回空列表。
+        构造图片接口语言回退列表，优先当前语言及其基础语言码，避免当前语言没有图片时返回空列表。
         """
-        languages = []
-        for language in (
-                get_runtime_setting('TMDB_LOCALE'),
-                "en",
-                None,
-                original_language,
+        from app.runtime.localization import LocaleHelper
+
+        candidates: list[Optional[str]] = []
+        for raw_locale in (
+            LocaleHelper.get_current_locale(),
+            get_runtime_setting("TMDB_LOCALE"),
         ):
-            language = "null" if language is None else str(language).strip()
-            if language and language not in languages:
-                languages.append(language)
+            text = str(raw_locale or "").strip()
+            if not text:
+                continue
+            candidates.append(text)
+            base = text.split("-")[0].split("_")[0].strip().lower()
+            if base and base != text.lower():
+                candidates.append(base)
+        candidates.extend(["en", None, original_language])
+
+        languages: list[str] = []
+        for language in candidates:
+            normalized = "null" if language is None else str(language).strip()
+            if normalized and normalized not in languages:
+                languages.append(normalized)
         return ",".join(languages)
 
     def get_movie_images(self, tmdbid: int, original_language: Optional[str] = None) -> _MediaRecord:
@@ -1652,12 +1714,15 @@ class TmdbApi:
         plan = self._build_name_candidate_plan(name, MediaType.MOVIE, movies, year)
         return await self._resolve_details_async(self._name_resolution(name, MediaType.MOVIE, plan))
 
-    async def __async_search_tv_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
+    async def __async_search_tv_by_name(
+        self, name: str, year: Optional[str], soft_year: Optional[str] = None
+    ) -> Optional[_MediaRecord]:
         """
         根据名称查询电视剧TMDB匹配（异步版本）。
 
         :param name: 识别的文件名或者种子名
         :param year: 电视剧的首播年份
+        :param soft_year: 仅用于候选排序与降权的软年份，不作为 TMDB 查询过滤条件，可为空
         :return: 匹配的媒体信息
         """
         try:
@@ -1675,7 +1740,7 @@ class TmdbApi:
         if not tvs:
             logger.debug(f"{name} 未找到相关剧集信息!")
             return {}
-        plan = self._build_name_candidate_plan(name, MediaType.TV, tvs, year)
+        plan = self._build_name_candidate_plan(name, MediaType.TV, tvs, year, soft_year)
         return await self._resolve_details_async(self._name_resolution(name, MediaType.TV, plan))
 
     async def __async_search_tv_by_season(
@@ -1927,11 +1992,14 @@ class TmdbApi:
         season_year: Optional[str] = None,
         season_number: Optional[int] = None,
         group_seasons: Optional[List[_MediaRecord]] = None,
+        soft_year: Optional[str] = None,
     ) -> Optional[_MediaRecord]:
         """
         搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息（异步版本）。
 
         按共享匹配计划依次尝试年份、季信息和别名回退，首个有效候选即返回。
+        传入软年份时不按年份过滤搜索结果，只把年份相符的候选排在前面、
+        把年份不符的标题直达候选降级为备选。
 
         :param name: 待搜索或匹配的名称
         :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
@@ -1939,6 +2007,7 @@ class TmdbApi:
         :param season_year: 目标季的首播年份，可为空
         :param season_number: 目标季编号，0 表示特别篇，None 表示未指定
         :param group_seasons: 已获取的剧集组季集信息，用于季年份匹配
+        :param soft_year: 仅用于候选排序与降权的软年份，不作为 TMDB 查询过滤条件，可为空
         :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
         if not self._validate_match_params(name, self.search):
@@ -1951,6 +2020,7 @@ class TmdbApi:
             season_year,
             season_number,
             group_seasons,
+            soft_year,
         )
 
     async def async_match_multi(self, name: str) -> Optional[_MediaRecord]:

@@ -4,8 +4,8 @@
 
 import re
 from copy import deepcopy
-from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union, cast
+from pathlib import Path, PurePosixPath
+from typing import Any, List, Literal, Optional, Tuple, Union, cast
 
 from app.application.audio import use_music_cue
 from app.application.transfer.models import TransferTask
@@ -20,7 +20,7 @@ from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
-from app.schemas.file import FileItem
+from app.schemas.file import FileItem, FileURI
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import EpisodeFormat, TransferInfo
@@ -32,6 +32,29 @@ from app.schemas.types import (
     MessageType,
     NotificationChannel,
 )
+
+
+def _manual_music_options_error(
+        files: list[FileItem], *, mtype: Optional[MediaType], music_type: Optional[str], media_id: Optional[str],
+        preview: Optional[bool], track_match: str, target_path: Optional[Path],
+) -> Optional[str]:
+    """
+    校验旧链调用方的音乐选项，避免绕过 HTTP Schema 后静默使用无效选择。
+    """
+    if track_match == "strict" and target_path is None:
+        return None
+    if mtype not in (None, MediaType.MUSIC):
+        return "音乐手动整理选项不能用于影视整理"
+    if target_path is not None and (not target_path.is_absolute() or ".." in target_path.parts):
+        return "音乐最终目录必须为不含上级跳转的绝对路径"
+    if track_match not in {"strict", "ignore_duration", "sequential"}:
+        return "不支持的音乐曲目对齐方式"
+    if track_match != "strict":
+        if music_type != MUSIC_ENTITY_ALBUM or (not preview and not media_id):
+            return "请先选择音乐专辑，再调整曲目对齐方式"
+        if any(item.storage != "local" for item in files):
+            return "调整曲目对齐方式需要读取本地音频，请先将所选音乐下载到本地"
+    return None
 
 
 def _recognize_manual_media(
@@ -66,6 +89,28 @@ def _recognize_manual_media(
     )
 
 
+def _content_file_locations(content_path: Path, name: str) -> List[Path]:
+    """
+    推算下载器任务里一个文件在 MP 侧的位置，供移动整理后判断任务里还有没有未整理的文件。
+
+    多文件任务的文件都在内容路径（MP 侧映射后的路径）之下，下载器文件名有两种相对基准：rTorrent 和 qBittorrent
+    不建子目录的任务相对内容路径本身；qBittorrent、Transmission 相对保存目录，多出一级顶层目录。这级目录名是下载器
+    侧的名字，路径映射整体替换了内容路径（例如映射成另一个目录名）时与 MP 侧的目录名不同，按保存目录拼就会找错位置，
+    把还没整理的文件（例如整理期间追加并下完的新集）当成不存在，连同任务一起删掉。前缀映射只会替换内容路径本身或它的
+    上级目录，所以按"内容路径 + 文件名"与"内容路径 + 去掉顶层目录的文件名"两处查即可，不按目录名猜是哪一种。
+    多出的位置只会让任务被保留，不会多删。单文件任务的内容路径就是文件本身，由调用方另行检查。
+
+    :param content_path: 任务内容路径（MP 侧）
+    :param name: 下载器返回的文件名（相对路径）
+    :return: 可能的位置
+    """
+    parts = PurePosixPath(name.replace("\\", "/")).parts
+    locations = [content_path.joinpath(*parts)]
+    if len(parts) > 1:
+        locations.append(content_path.joinpath(*parts[1:]))
+    return locations
+
+
 class TransferHistoryOwner(_TransferOwnerBase):
     """
     唯一持有手动历史、重整命令和通知公开入口。
@@ -83,7 +128,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
         隔离本次 CUE 策略，批次与普通请求均保持既有整理入口兼容。
         """
         with use_music_cue(music_cue_enable):
-            if selected_fileitems is not None or report_results or skip_success:
+            if (selected_fileitems is not None or report_results or skip_success
+                    or "music_track_match" in transfer_kwargs or "music_target_path" in transfer_kwargs):
                 return cast(
                     Tuple[bool, Union[str, dict[str, Any]]],
                     self._execute_transfer(
@@ -222,6 +268,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
             skip_success: bool = False,
             musicbrainz_release_id: Optional[str] = None,
             music_cue_enable: Optional[bool] = None,
+            music_track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
+            music_target_path: Optional[Path] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -256,8 +304,18 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param skip_success: 预览和执行均跳过成功记录，优先于强制整理和重整
         :param musicbrainz_release_id: 指定属于 media_id 发行组的具体 MusicBrainz 发行版
         :param music_cue_enable: 本次是否识别 CUE，空值继承系统设置，不修改全局开关
+        :param music_track_match: 本次手选专辑的曲目对齐方式，默认严格校验
+        :param music_target_path: 本次音乐最终目录，仅应用文件名模板
         """
         logger.info(f"手动整理：{fileitem.path} ...")
+        options_error = _manual_music_options_error(
+            selected_fileitems or [fileitem], mtype=mtype, music_type=music_type, media_id=media_id,
+            preview=preview, track_match=music_track_match, target_path=music_target_path,
+        )
+        if options_error:
+            return False, options_error
+        if music_track_match != "strict" or music_target_path is not None:
+            mtype = MediaType.MUSIC
         explicit_identity = media_source is not None or media_id is not None
         if explicit_identity and (not media_source or not media_id):
             return False, "手动整理需要同时提供 media_source 和 media_id"
@@ -293,6 +351,10 @@ class TransferHistoryOwner(_TransferOwnerBase):
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
         )
+        if music_track_match != "strict":
+            transfer_kwargs["music_track_match"] = music_track_match
+        if music_target_path is not None:
+            transfer_kwargs["music_target_path"] = music_target_path
         if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
             mediainfo = _recognize_manual_media(
@@ -456,6 +518,52 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 return True
         return False
 
+    def _untransferred_media_remains(
+            self, content_path: Path, names: List[str], transfer_exclude_words: list[str]
+    ) -> bool:
+        """
+        判断任务内容路径下是否还有未被屏蔽的媒体文件，即移动整理后没被移走、尚未整理的文件。
+
+        文件位置按内容路径推算，见 ``_content_file_locations``。本地路径直接检查文件系统；远程存储（如 SMB）的路径在
+        本地文件系统上永远不存在，按整理入口相同的存储查询确认，否则文件还在远程存储里也会被当成已移走，连同任务删掉。
+        查询失败时抛出 ``StorageQueryError``，由调用方按"无法核实"保留任务。
+
+        :param content_path: 任务内容路径（MP 侧，远程存储带存储前缀）
+        :param names: 下载器返回的文件名（相对路径）
+        :param transfer_exclude_words: 整理屏蔽词
+        :return: 还有未被屏蔽的媒体文件时返回 True
+        """
+        file_uri = FileURI.from_uri(content_path.as_posix())
+        if file_uri.storage == "local":
+            base = content_path
+
+            def file_type(path: Path) -> Optional[str]:
+                """
+                读取本地路径的类型，不存在时为 None。
+                """
+                return "file" if path.is_file() else ("dir" if path.exists() else None)
+        else:
+            base = Path(file_uri.path or "/")
+            storage_chain = self._transfer_storage_chain()
+
+            def file_type(path: Path) -> Optional[str]:
+                """
+                按存储查询远程路径的类型，确认不存在时为 None，查询失败时抛出异常。
+                """
+                item = storage_chain.get_file_item_strict(storage=file_uri.storage, path=path)
+                return (item.type or "file") if item else None
+
+        locations = [base] if file_type(base) == "file" else []
+        for name in names:
+            locations.extend(_content_file_locations(base, name))
+        # 扩展名不区分大小写，与整理收集候选时一致：E02.MKV 会被整理，也必须被认作未整理的媒体文件。
+        return any(
+            file_path.suffix.lower() in self._allowed_exts
+            and not self._is_blocked_by_exclude_words(file_path.as_posix(), transfer_exclude_words)
+            and file_type(file_path) is not None
+            for file_path in locations
+        )
+
     def _can_delete_torrent(
             self, download_hash: str, downloader: str, transfer_exclude_words: list[str]
     ) -> bool:
@@ -482,22 +590,10 @@ class TransferHistoryOwner(_TransferOwnerBase):
             if not isinstance(torrent_files, list):
                 torrent_files = torrent_files.data
 
-            # 检查是否有媒体文件未被屏蔽且存在
-            save_path = torrents[0].path.parent
-            for file in torrent_files:
-                file_path = save_path / file.name
-                # 如果存在未被屏蔽的媒体文件，则不删除种子
-                if (
-                        file_path.suffix in self._allowed_exts
-                        and not self._is_blocked_by_exclude_words(
-                            file_path.as_posix(), transfer_exclude_words
-                        )
-                        and file_path.exists()
-                ):
-                    return False
-
-            # 所有媒体文件都被屏蔽或不存在，可以删除种子
-            return True
+            # 如果存在未被屏蔽的媒体文件，则不删除种子；所有媒体文件都被屏蔽或不存在，可以删除种子
+            return not self._untransferred_media_remains(
+                torrents[0].path, [file.name for file in torrent_files], transfer_exclude_words
+            )
 
         except Exception as e:
             logger.error(f"检查种子 {download_hash} 是否需要删除失败：{e}")

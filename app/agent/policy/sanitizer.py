@@ -1058,6 +1058,59 @@ def sanitize_for_host(
         return _unavailable(value)
 
 
+def _redacted_text(value: str, *, secret_field: bool) -> bool:
+    """
+    区分凭据脱敏标识和普通文本中有意义的星号。
+
+    用无敏感内容的探针复用同一脱敏规则，识别 URL 或赋值中的局部遮蔽。
+
+    :param value: 待检查的文本
+    :param secret_field: 是否位于凭据字段或其子结构中
+    :return: 文本包含不可写回的脱敏占位时为 True
+    """
+    if REDACTED_VALUE not in value:
+        return False
+    if value == REDACTED_VALUE or secret_field:
+        return True
+    probe = "__moviepilot_redaction_probe__"
+    while probe in value:
+        probe += "_"
+    candidate = value.replace(REDACTED_VALUE, probe)
+    sanitized = sanitize_for_host(candidate)
+    return isinstance(sanitized, str) and sanitized.count(probe) < candidate.count(probe)
+
+
+def contains_redacted_placeholder(value: Any) -> bool:
+    """
+    检查 JSON 结构中是否包含不能作为原值写回的脱敏标识。
+
+    同时识别凭据字段内的局部遮蔽及文本中的凭据赋值或 URL 遮蔽；
+    不返回或恢复任何凭据。普通文本中的星号保持原有语义。
+
+    :param value: 待检查的请求参数，不会被修改
+    :return: 发现脱敏占位时为 True
+    """
+    pending = [(value, False)]
+    seen: set[tuple[int, bool]] = set()
+    while pending:
+        item, secret_field = pending.pop()
+        if isinstance(item, str):
+            if _redacted_text(item, secret_field=secret_field):
+                return True
+        elif isinstance(item, (dict, list, tuple)):
+            identity = (id(item), secret_field)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            if isinstance(item, dict):
+                for key, child in item.items():
+                    pending.append((key, False))
+                    pending.append((child, secret_field or _is_secret_key(key)))
+            else:
+                pending.extend((child, secret_field) for child in item)
+    return False
+
+
 def _bounded_summary(value: Any, *, max_chars: int) -> str:
     """
     把脱敏结构转换为不超过指定长度的稳定文本。
@@ -1108,6 +1161,7 @@ def summarize_error(error: BaseException, *, max_chars: int = 500) -> str:
 
 __all__ = [
     "REDACTED_VALUE",
+    "contains_redacted_placeholder",
     "sanitize_for_host",
     "stable_type_name",
     "summarize_error",

@@ -23,6 +23,7 @@ except ImportError:
     from telegramify_markdown.type import ContentTypes, File, Photo, Text
 
 from app.adapters.network.http import RequestUtils
+from app.adapters.system.attachment import load_image
 from app.application.image import ImageHelper
 from app.application.messaging.ingress import forward_message_to_host
 from app.domain.context import Context, MediaInfo
@@ -33,6 +34,7 @@ from app.modules.telegram.botapi import (
     JsonDict,
     TelegramApiError,
     TelegramBotApi,
+    TelegramNetworkError,
 )
 from app.runtime.execution import retry
 from app.runtime.log import logger
@@ -1264,6 +1266,44 @@ class Telegram:
             except Exception as cleanup_err:
                 logger.debug(f"清理语音临时文件失败: {cleanup_err}")
 
+    def send_image(self, image: str, title: Optional[str] = None, text: Optional[str] = None,
+                   userid: Optional[str] = None, original_chat_id: Optional[str] = None,
+                   parse_mode: Optional[str] = None, buttons: Optional[List[List[dict[str, Any]]]] = None,
+                   private_delivery: bool = False) -> Optional[JsonDict]:
+        """
+        上传统一来源的完整原图，复用长正文拆分并保留会话、话题、按钮和私聊约束。
+
+        :param image: HTTP(S)、Base64 或本地 JPG/PNG
+        :param title: 图片说明标题
+        :param text: 图片说明正文
+        :param userid: 接收用户标识
+        :param original_chat_id: 优先接收的原会话标识
+        :param parse_mode: 说明文字格式，沿用普通通知约定
+        :param buttons: 图片下方的统一交互按钮
+        :param private_delivery: 有用户标识时是否必须发送私聊
+        :return: 图片发送结果；读取失败时 success 为 False
+        """
+        if not self._telegram_token or not self._telegram_chat_id:
+            return None
+        chat_id = self._determine_target_chat_id(userid, original_chat_id, private_delivery=private_delivery)
+        if self._is_chat_rate_limited(chat_id, operation="发送"):
+            return {"success": False}
+        loaded = load_image(image)
+        if loaded is None:
+            return {"success": False}
+        mode = self._normalize_parse_mode(parse_mode)
+        caption = "\n".join(part for part in (self._format_title(title, mode), text) if part)
+        try:
+            sent = self.__send_request(
+                userid=chat_id, image=loaded[0], caption=caption, parse_mode=mode,
+                reply_markup=self._create_inline_keyboard(buttons) if buttons else None,
+            )
+            self._remember_sent_message(sent, chat_id)
+            return self._sent_result(sent, chat_id)
+        except Exception as error:
+            logger.error(f"Telegram 原图发送失败：{type(error).__name__}")
+            return {"success": False}
+
     def send_file(
             self,
             file_path: str,
@@ -1274,6 +1314,8 @@ class Telegram:
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
+            private_delivery: bool = False,
     ) -> Optional[JsonDict]:
         """
         根据后缀发送本地图片或普通附件，保留源文件。
@@ -1286,12 +1328,14 @@ class Telegram:
         :param original_chat_id: 显式原会话标识，优先于普通用户映射
         :param stop_typing: 是否在操作收尾时请求停止输入状态，默认 False
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
+        :param buttons: 图片或附件下方的统一按钮行
+        :param private_delivery: 有用户标识时是否绕过群聊映射直接投递私聊
         :return: 含 success、message_id 和 chat_id 的结果；失败为 success 为 False 的字典，未配置或无输入路径返回 None
         """
         if not self._bot or not file_path:
             return None
 
-        chat_id = self._determine_target_chat_id(userid, original_chat_id)
+        chat_id = self._determine_target_chat_id(userid, original_chat_id, private_delivery=private_delivery)
         parse_mode = self._normalize_parse_mode(parse_mode)
         local_file = Path(file_path)
         if not local_file.exists() or not local_file.is_file():
@@ -1313,13 +1357,16 @@ class Telegram:
                 caption = text or ""
 
             with local_file.open("rb") as fp:
+                options: dict[str, Any] = self._topic_kwargs(chat_id)
+                if buttons:
+                    options["reply_markup"] = self._create_inline_keyboard(buttons)
                 if is_image:
                     sent = self._api.send_photo(
                         chat_id=chat_id,
                         photo=fp,
                         caption=self._prepare_text(caption, parse_mode),
                         parse_mode=parse_mode if caption else None,
-                        **self._topic_kwargs(chat_id),
+                        **options,
                     )
                 else:
                     sent = self._api.send_document(
@@ -1327,7 +1374,7 @@ class Telegram:
                         document=(send_name, fp),
                         caption=self._prepare_text(caption, parse_mode),
                         parse_mode=parse_mode if caption else None,
-                        **self._topic_kwargs(chat_id),
+                        **options,
                     )
             self._stop_typing_if_needed(chat_id, stop_typing)
             return self._sent_result(sent, chat_id)
@@ -2076,7 +2123,7 @@ class Telegram:
     def __send_request(
             self,
             userid: Optional[str] = None,
-            image: Optional[str] = "",
+            image: Optional[Union[str, bytes]] = "",
             caption: str = "",
             reply_markup: Optional[JsonDict] = None,
             disable_web_page_preview: Optional[bool] = None,
@@ -2136,12 +2183,14 @@ class Telegram:
             return None
 
     @staticmethod
-    def __process_image(image_url: Optional[str]) -> Optional[bytes]:
+    def __process_image(image_url: Optional[Union[str, bytes]]) -> Optional[bytes]:
         """
         处理图片URL，获取图片内容。
         """
         if not image_url:
             return None
+        if isinstance(image_url, bytes):
+            return image_url
         image = ImageHelper().fetch_image(image_url)
         if not image:
             logger.warn(f"图片获取失败: {image_url}，仅发送文本消息")
@@ -2177,15 +2226,37 @@ class Telegram:
                 ) from err
             raise RetryException(f"发送{'图片' if image else '文本'}消息失败：{err}") from err
 
+    @retry(TelegramNetworkError, logger=logger)
+    def __send_photo(self, *, photo: Any, caption: Optional[str], **kwargs: Any) -> JsonDict:
+        """
+        海报上传遇到网络异常时最多尝试三次，沿用 3 秒、6 秒的退避间隔。
+
+        仅重试当前图片，成功后不补发文本；API 明确拒绝或限流时直接交给调用方处理。
+
+        :param photo: 已获取的图片字节或文件名与字节组成的二元组，重试时复用
+        :param caption: 已按目标格式处理的图片说明，可为空
+        :param kwargs: 目标会话、解析格式、话题、回复和键盘参数
+        :return: Telegram 确认发送的消息
+        :raises TelegramNetworkError: 三次上传均未获得响应
+        :raises TelegramApiError: Telegram 拒绝上传，不在此处重试
+        """
+        return self._api.send_photo(photo=photo, caption=caption, **kwargs)
+
     def __send_photo_or_text(
             self, *, photo: Any, caption: Optional[str],
             disable_web_page_preview: Optional[bool] = None, **kwargs: Any,
     ) -> Optional[JsonDict]:
         """
-        海报上传失败立即降级为同一正文，保留会话、话题和按钮；429 不追加请求。
+        海报网络重试耗尽或被拒绝时降级为同一正文；429 不追加请求。
+
+        :param photo: 可复用的图片字节或文件名与字节组成的二元组
+        :param caption: 图片说明，降级时作为正文；为空时上传失败直接向上抛出
+        :param disable_web_page_preview: 文本兜底时是否禁用链接预览
+        :param kwargs: 原样保留的目标会话、解析格式、话题、回复和键盘参数
+        :return: 成功上传图片或文本兜底的消息
         """
         try:
-            return self._api.send_photo(photo=photo, caption=caption, **kwargs)
+            return self.__send_photo(photo=photo, caption=caption, **kwargs)
         except Exception as error:
             if self._is_rate_limit_error(error) or not caption:
                 raise

@@ -331,6 +331,10 @@ def verify_token(
     if jwt_token:
         payload = _decode_or_http_error(jwt_token, "authentication")
         _validate_token_identity(payload)
+        if payload.agent_authorization_id:
+            if request.method != payload.agent_method or request.url.path != payload.agent_path:
+                raise HTTPException(status_code=403, detail="渠道凭据只能用于指定的业务操作")
+            return payload
         set_or_refresh_resource_token_cookie(request, response, payload)
         return payload
     if api_key:

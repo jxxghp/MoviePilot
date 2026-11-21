@@ -10,7 +10,7 @@ import pytest
 
 from app.chain.media import MediaChain
 from app.chain.transfer.facade import TransferChain
-from app.domain.context import MusicInfo
+from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import align_music_tracks
 from tests.test_transfer_sync_extra_files import make_fileitem
@@ -112,6 +112,45 @@ def test_duration_conflict_blocks_even_exact_title_and_position(manual):
     local = MetaMusic(title="First", track_number=1, duration=300)
 
     assert align_music_tracks([local], [_track("First", 1, 180)], allow_title_override=manual) == {}
+
+
+def test_ignoring_duration_keeps_unique_title_and_position_evidence():
+    """
+    手动忽略时长允许片段对位，同时保留重复曲目的歧义与原始时长。
+    """
+    local = MetaMusic(title="First", track_number=1, duration=30)
+    track = _track("First", 1, 240)
+    options = {"allow_title_override": True, "track_match": "ignore_duration"}
+    assert align_music_tracks([local], [track], **options) == {0: 0}
+    assert align_music_tracks([local, local], [track], **options) == {}
+    assert align_music_tracks([MetaMusic(title="Track", duration=30)], [track], **options) == {}
+    assert local.duration == 30 and track.duration == 240
+
+
+def test_sequential_alignment_requires_equal_counts_and_uses_input_order():
+    """
+    用户明确顺序套用时跳过曲名曲序时长证据，数量不一致时不生成部分映射。
+    """
+    metas = [MetaMusic(title="Unrelated", track_number=99, duration=30), MetaMusic(title="Other", duration=40)]
+    tracks = [_track("First", 1, 240), _track("Second", 2, 300)]
+    assert align_music_tracks(metas, tracks, track_match="sequential") == {0: 0, 1: 1}
+    assert align_music_tracks(metas[:1], tracks, track_match="sequential") == {}
+    assert align_music_tracks(metas, tracks[:1], track_match="sequential") == {}
+
+
+def test_selected_album_sequential_order_is_natural_and_independent_of_request_order(tmp_path, monkeypatch):
+    """
+    顺序套用按完整路径自然排序，目录扫描和倒序多选都将 2 放在 10 之前。
+    """
+    paths = [tmp_path / "10.flac", tmp_path / "2.flac"]
+    tracks = [_track("First", 1, 180), _track("Second", 2, 240)]
+    album = MusicAlbumInfo(media_source="musicbrainz", tracks=tracks)
+    monkeypatch.setattr("app.chain.media.album.AudioMetadataHelper.read_many",
+                        lambda files: [MetaMusic(title=path.stem, track_number=99, duration=30) for path in files])
+    for files in (paths, list(reversed(paths))):
+        matched = MediaChain._align_selected_music_album(files, album, track_match="sequential")
+        assert matched[str(paths[1].resolve())].title == "First"
+        assert matched[str(paths[0].resolve())].title == "Second"
 
 
 def test_conflicting_position_does_not_beat_exact_title_or_duration():

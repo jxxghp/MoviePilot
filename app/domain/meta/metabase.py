@@ -227,6 +227,8 @@ class MetaBase(object):
     total_episode: int = 0
     begin_episode: Optional[int] = None
     end_episode: Optional[int] = None
+    # 种子/文件解析出的离散集号；有值时 episode_list 不再按起止集连续填洞。
+    _explicit_episodes: Optional[List[int]] = None
     part: Optional[str] = None
     resource_type: Optional[str] = None
     resource_effect: Optional[str] = None
@@ -553,7 +555,12 @@ class MetaBase(object):
     def episode_list(self) -> List[int]:
         """
         返回集的数组。
+
+        若已通过 ``set_episode_list`` 写入离散集号，则原样返回并保留断档；
+        否则按 ``begin_episode``/``end_episode`` 生成连续区间。
         """
+        if self._explicit_episodes is not None:
+            return list(self._explicit_episodes)
         if self.begin_episode is None:
             return []
         elif self.end_episode is not None:
@@ -751,13 +758,17 @@ class MetaBase(object):
             return
         if isinstance(ep, list):
             if len(ep) == 1 and str(ep[0]).isdigit():
+                self._explicit_episodes = None
                 self.begin_episode = int(ep[0])
                 self.end_episode = None
             elif len(ep) > 1 and str(ep[0]).isdigit() and str(ep[-1]).isdigit():
+                # 列表两端视为连续区间；真实断档文件清单请走 set_episode_list。
+                self._explicit_episodes = None
                 self.begin_episode = int(ep[0])
                 self.end_episode = int(ep[-1])
                 self.total_episode = (self.end_episode - self.begin_episode) + 1
         elif str(ep).isdigit():
+            self._explicit_episodes = None
             self.begin_episode = int(ep)
             self.end_episode = None
 
@@ -765,15 +776,32 @@ class MetaBase(object):
         """
         设置集数起止范围，并在两端均有效时更新总集数。
 
+        连续区间会清除离散集号缓存，后续 ``episode_list`` 按起止集生成。
+
         :param begin: 起始集数；零不覆盖当前值
         :param end: 结束集数；零不覆盖当前值
         """
+        self._explicit_episodes = None
         if begin:
             self.begin_episode = begin
         if end:
             self.end_episode = end
         if self.begin_episode and self.end_episode:
             self.total_episode = (self.end_episode - self.begin_episode) + 1
+
+    def set_episode_list(self, episodes: List[int]) -> None:
+        """
+        按解析出的真实集号写入识别结果，保留断档而不填补中间集。
+
+        :param episodes: 种子或文件中实际存在的集号列表
+        """
+        normalized = sorted({int(episode) for episode in episodes if int(episode) > 0})
+        if not normalized:
+            return
+        self._explicit_episodes = normalized
+        self.begin_episode = normalized[0]
+        self.end_episode = normalized[-1] if len(normalized) > 1 else None
+        self.total_episode = len(normalized)
 
     def merge(self, meta: Self) -> None:
         """
@@ -802,6 +830,9 @@ class MetaBase(object):
             self.begin_episode = meta.begin_episode
             self.end_episode = meta.end_episode
             self.total_episode = meta.total_episode
+            self._explicit_episodes = (
+                list(meta._explicit_episodes) if meta._explicit_episodes is not None else None
+            )
         # 普通可选字段统一遵循文件优先、父目录补空，新增字段只维护一份策略。
         for field_name in _META_OPTIONAL_MERGE_FIELDS:
             if not getattr(self, field_name):

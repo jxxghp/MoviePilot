@@ -238,6 +238,8 @@ def test_download_endpoint_builds_music_context():
         )
 
     assert response.success is True
+    # 手动下载接口提交的是用户选中的种子，已暂停的已有任务会被恢复。
+    assert chain.download_single.call_args.kwargs["user_specified"] is True
     context = chain.download_single.call_args.kwargs["context"]
     assert isinstance(context.media_info, MusicInfo)
     assert context.media_info.media_id == "recording-1"
@@ -270,6 +272,7 @@ def test_artist_collection_download_keeps_artist_identity_and_source_category():
         )
 
     assert response.success is True
+    assert chain.download_single.call_args.kwargs["user_specified"] is True
     context = chain.download_single.call_args.kwargs["context"]
     assert context.media_info.music_type == "artist"
     assert context.media_info.media_id == "artist-1"
@@ -398,6 +401,7 @@ def test_download_add_forwards_album_namespace_to_media_chain():
     assert isinstance(recognize_kwargs["meta"], MetaMusic)
     assert recognize_kwargs["mtype"] == MediaType.MUSIC
     assert recognize_kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+    assert download_chain.download_single.call_args.kwargs["user_specified"] is True
     context = download_chain.download_single.call_args.kwargs["context"]
     assert context.media_info.music_type == MUSIC_ENTITY_ALBUM
 
@@ -436,4 +440,5 @@ def test_music_library_exists_uses_atomic_album_lookup():
         mediainfo=album,
         itemid="album-item-1",
         query=MEDIA_SERVER_EXISTENCE_QUERY,
+        raise_on_query_failure=False,
     )

@@ -3,6 +3,7 @@
 """
 
 import copy
+import inspect
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple, TypedDict, cast
 
 from app.application.download import selection as _selection
@@ -10,11 +11,13 @@ from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain import episode as episode_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
 )
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.download import ExistingTaskRejection
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import (
     MediaType,
@@ -32,6 +35,26 @@ def _new_torrent_helper() -> TorrentHelper:
     factory = cast(Callable[[], TorrentHelper], TorrentHelper)
     return factory()
 
+
+def _accepts_keyword(func: Callable[..., object], name: str) -> bool:
+    """
+    判断可调用对象能否接受指定的关键字参数，用于兼容插件替换的旧签名下载入口。
+
+    :param func: 待调用的对象
+    :param name: 关键字参数名
+    :return: 签名里有该参数或 ``**kwargs`` 时返回 True；读不到签名时返回 False，按旧签名调用
+    """
+    try:
+        parameters = inspect.signature(func).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        or (parameter.name == name and parameter.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY,
+        ))
+        for parameter in parameters
+    )
 
 class DownloadBatchOwner(_DownloadOwnerBase):
     """
@@ -161,6 +184,9 @@ class _BatchDownloadRun:
         self.allowed_episodes = set(allowed_episodes) if allowed_episodes is not None else None
         self.downloaded: List[Context] = []
         self.failures: Dict[str, Optional[DownloadFailureSnapshot]] = {}
+        # 本批内已被下载器以"只针对这几集"的原因拒绝的（候选, 目标集），见 _submit。候选按对象身份（id）区分：
+        # 本批始终持有这些 Context，身份在批内稳定；资源指纹在缺少媒体或资源身份时为空，不能作这里的键。
+        self.target_failures: Set[Tuple[int, frozenset[int]]] = set()
         words = options["custom_words"]
         self.custom_words = words.splitlines() if words else None
 
@@ -207,6 +233,41 @@ class _BatchDownloadRun:
         if fingerprint:
             self.failures[fingerprint] = None
 
+    def _submit(self, context: Context, *, by_keyword: bool = True, **submission: object) -> bool:
+        """
+        提交单个资源，失败时按下载器给出的拒绝范围记入本批失败。
+
+        下载器以"只针对这几集"的原因拒绝（同一任务上的目标集找不到、目标文件被取消）时，只记"这个候选 +
+        这几集"：后续阶段从同一个包里补别的集（例如备用种子补上被取消的 E03 后，拆包阶段只要 E04）仍可提交。
+        其余失败照旧记整个候选，本批内不再重复提交。
+
+        :param context: 待提交的候选
+        :param by_keyword: 是否以关键字参数传入候选；沿用各阶段原有的调用形状，插件替换的下载入口不受影响
+        :param submission: 透传给单资源下载的 ``episodes``、``torrent_content`` 等参数
+        :return: 下载器受理时返回 True
+        """
+        episodes = cast(Optional[Set[int]], submission.get("episodes"))
+        key = (id(context), frozenset(episodes or ()))
+        if key in self.target_failures:
+            logger.info(f"{context.torrent_info.title if context.torrent_info else '未知资源'} 本批已因同样的目标被拒绝，跳过")
+            return False
+        # 插件替换的下载入口可能是不接受 return_detail 的旧签名：不传，按旧方式只取任务 ID。
+        detail = {"return_detail": True} if _accepts_keyword(self.owner.download_single, "return_detail") else {}
+        if by_keyword:
+            result = self.owner.download_single(context=context, **submission, **self.options, **detail)
+        else:
+            result = self.owner.download_single(context, **submission, **self.options, **detail)
+        # 插件替换的下载入口可能仍只返回任务 ID。
+        download_id, message = result if isinstance(result, tuple) else (result, None)
+        if download_id:
+            return True
+        rejection = ExistingTaskRejection.from_message(message)
+        if rejection is not None and rejection.is_target_specific:
+            self.target_failures.add(key)
+        else:
+            self._remember_failure(context)
+        return False
+
     def _read_torrent(
             self, context: Context, *, partial: bool = False,
     ) -> Optional[Tuple[bytes, List[int]]]:
@@ -238,6 +299,7 @@ class _BatchDownloadRun:
             return None
         episodes = _new_torrent_helper().get_torrent_episodes(
             files, custom_words=self.custom_words,
+            episode_selection=torrent_rules.episode_selection_for_context(context),
         )
         if partial:
             logger.info(f"{torrent.site_name} - {meta.org_string} 解析种子文件集数：{episodes}")
@@ -300,9 +362,15 @@ class _BatchDownloadRun:
 
     def _inspect_whole_season(
             self, context: Context, media_key: str, season: int,
-    ) -> Optional[Tuple[bytes, bool]]:
+    ) -> Optional[Tuple[bytes, bool, Optional[Set[int]]]]:
         """
         整季不合格也保留识别集数，供后续完整集阶段继续判断该候选。
+
+        必须按种子内真实文件写入离散集号；若用起止集连续填洞，断档中间集会被
+        误记为已覆盖，后续阶段不再补下。
+
+        :return: 种子内容、是否完整覆盖目标范围及提交选集；种子含目标范围外的集时
+            只选目标集，否则选集为 None 并沿用整包提交
         """
         parsed = self._read_torrent(context)
         if parsed is None:
@@ -312,7 +380,7 @@ class _BatchDownloadRun:
             return None
         meta = context.meta_info
         assert meta is not None
-        meta.set_episodes(begin=min(episodes), end=max(episodes))
+        meta.set_episode_list(list(episodes))
         info = _selection.get_no_exist_media(self.no_exists, media_key, season)
         required = _selection.get_required_episodes(self.no_exists, media_key, season) \
             if _selection.requires_complete_coverage(info) else set()
@@ -331,7 +399,12 @@ class _BatchDownloadRun:
         if not required and total and len(episodes) < total:
             logger.info(f"{meta.org_string} 解析文件集数发现不是完整合集，先放弃这个种子")
             return None
-        return content, complete
+        # 完整覆盖范围来自订阅起止集；整包超出范围时只选目标集，不下载订阅外的剧集。
+        selected = required if complete and required != set(episodes) else None
+        if selected:
+            logger.info(f"{meta.org_string} 种子包含目标范围外的剧集，仅选择："
+                        f"{episode_rules.format_ranges(sorted(selected))}")
+        return content, complete, selected
 
     def _submit_whole_season(
             self, context: Context, media_key: str, seasons: List[int],
@@ -345,16 +418,13 @@ class _BatchDownloadRun:
             inspected = self._inspect_whole_season(context, media_key, seasons[0])
             if inspected is None:
                 return False
-            content, complete = inspected
+            content, complete, selected = inspected
             logger.info(f"开始下载 {context.torrent_info.title} ...")
-            download_id = self.owner.download_single(
-                context=context, torrent_content=content, **self.options,
-            )
+            accepted = self._submit(context, torrent_content=content, episodes=selected)
         else:
             logger.info(f"开始下载 {context.torrent_info.title} ...")
-            download_id = self.owner.download_single(context, **self.options)
-        if not download_id:
-            self._remember_failure(context)
+            accepted = self._submit(context, by_keyword=False)
+        if not accepted:
             return False
         if complete:
             context.confirmed_full_coverage = True
@@ -391,8 +461,7 @@ class _BatchDownloadRun:
             meta = context.meta_info
             assert meta is not None
             logger.info(f"开始下载 {meta.title} ...")
-            if not self.owner.download_single(context, **self.options):
-                self._remember_failure(context)
+            if not self._submit(context, by_keyword=False, episodes=episodes):
                 continue
             if _selection.requires_complete_coverage(info):
                 context.confirmed_full_coverage = True
@@ -408,7 +477,9 @@ class _BatchDownloadRun:
             needed: List[int], info: NotExistMediaInfo,
     ) -> Set[int]:
         """
-        区分完整覆盖与普通补集，返回符合本批集数限制的候选集数。
+        区分完整覆盖与普通补集，返回符合本批集数限制的待提交集数。
+
+        完整覆盖只返回目标范围内的集，标注集数超出订阅范围时不扩大下载。
         """
         media, meta = context.media_info, context.meta_info
         if media is None or meta is None or media.type != MediaType.TV:
@@ -429,9 +500,8 @@ class _BatchDownloadRun:
             required = _selection.get_required_episodes(self.no_exists, media_key, season)
             matches = bool(required) and required.issubset(episodes) \
                 and _selection.allows_full_pack(episodes, context)
-        else:
-            matches = episodes.issubset(effective)
-        return episodes if matches else set()
+            return required if matches else set()
+        return episodes if episodes.issubset(effective) else set()
 
     def _download_partial_packs(self) -> None:
         """
@@ -503,14 +573,12 @@ class _BatchDownloadRun:
             return set()
         logger.info(f"{torrent.site_name} - {torrent.title} 选中集数：{selected}")
         logger.info(f"开始下载 {torrent.title} ...")
-        if not self.owner.download_single(
-                context=context, torrent_content=content, episodes=selected, **self.options,
-        ):
-            self._remember_failure(context)
+        if not self._submit(context, torrent_content=content, episodes=selected):
             return set()
         logger.info(f"{torrent.title} 添加下载成功")
         self.downloaded.append(context)
         meta = context.meta_info
         assert meta is not None
-        meta.set_episodes(begin=min(episodes), end=max(episodes))
+        # 保留种子内真实文件集号，避免断档被连续区间吞掉。
+        meta.set_episode_list(list(episodes))
         return selected

@@ -568,9 +568,6 @@ def test_search_provider_defers_budget_for_local_rate_limit_window(monkeypatch, 
     """
     同步 provider 按实际限流原因持久化冷却，短间隔不扩大为小时窗口，且不算站点失败。
     """
-    from app.chain.search import provider
-
-    monkeypatch.setattr(provider, "_wait_for_site_request", lambda _site: None)
     captured = {}
 
     class _Repository(_WaitingRepository):

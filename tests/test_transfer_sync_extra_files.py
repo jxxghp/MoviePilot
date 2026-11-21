@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.chain.transfer.facade import TransferChain
 from app.domain.meta.metabase import MetaBase
 from app.schemas.file import FileItem
@@ -28,6 +30,9 @@ class FakeMeta(MetaBase):
     name = None
 
     def __init__(self, episode: int):
+        """
+        初始化附属文件归属测试使用的固定季集信息。
+        """
         super().__init__(title=f"Test Show S01E{episode:02d}")
         self.name = "Test Show"
         self.title = f"Test Show S01E{episode:02d}"
@@ -87,6 +92,61 @@ def make_fileitem(path: str) -> FileItem:
         extension=file_path.suffix.lstrip("."),
         size=1024,
     )
+
+
+@pytest.mark.parametrize("template", [None, "Test.Show.S01E{ep}.mkv"])
+@pytest.mark.parametrize("offset,expected", [("+1", [1, 2]), ("-1", [-1, 0])])
+def test_manual_batch_episode_offset_preserves_zero(monkeypatch, template, offset, expected) -> None:
+    """
+    手动批量整理经过真实文件识别、模板筛选和任务生成后，零集偏移只应用一次。
+    """
+    chain = make_transfer_chain()
+    source_files = [
+        make_fileitem("/downloads/Test.Show.S01E00.mkv"),
+        make_fileitem("/downloads/Test.Show.S01E01.mkv"),
+    ]
+    source_directory = FileItem(storage="local", path="/downloads/", type="dir", name="downloads")
+    planned_meta = []
+    monkeypatch.setattr(
+        chain, "_TransferChain__get_trans_fileitems",
+        lambda fileitem, predicate: [(item, False) for item in source_files],
+    )
+    monkeypatch.setattr(chain, "_TransferChain__put_to_jobview", lambda task: True)
+    monkeypatch.setattr(chain, "_register_scrape_batch_task", lambda task: None)
+    monkeypatch.setattr(chain, "_close_scrape_batch", lambda batch_id: None)
+
+    def capture_transfer(task, callback=None):
+        """
+        记录最终整理任务的元数据，隔离真实文件转移。
+        """
+        planned_meta.append(task.meta)
+        return True, ""
+
+    monkeypatch.setattr(chain, "_TransferChain__handle_transfer", capture_transfer)
+    bind_empty_history_repositories(chain)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: None),
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.format.get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: None),
+    )
+
+    state, message = chain.do_transfer(
+        fileitem=source_directory,
+        mtype=MediaType.TV,
+        manual=True,
+        background=False,
+        sync_extra_files=False,
+        epformat=EpisodeFormat(format=template, offset=offset),
+    )
+
+    assert state is True
+    assert message == ""
+    assert [meta.begin_episode for meta in planned_meta] == expected
+    assert [meta.episode_list for meta in planned_meta] == [[episode] for episode in expected]
+    assert [meta.episode for meta in planned_meta] == [f"E{episode:02d}" for episode in expected]
 
 
 def test_sync_extra_subtitle_inherits_matching_video_episode(monkeypatch):
@@ -176,6 +236,101 @@ def test_sync_extra_subtitle_inherits_matching_video_episode(monkeypatch):
         (main_ep2_fileitem.path, 2),
         (ep2_subtitle_fileitem.path, 2),
     ]
+
+
+def test_sync_extra_lrc_and_cover_follow_video_directory(monkeypatch):
+    """
+    影视目录中的 LRC 与标准封面应像字幕一样随主视频整理，封面只规划一次。
+    """
+    chain = make_transfer_chain()
+    planned = []
+    main_ep1_fileitem = make_fileitem(
+        "/downloads/Test Show (2026)/Test.Show.S01E01.2026.mkv"
+    )
+    main_ep2_fileitem = make_fileitem(
+        "/downloads/Test Show (2026)/Test.Show.S01E02.2026.mkv"
+    )
+    ep1_lyrics_fileitem = make_fileitem(
+        "/downloads/Test Show (2026)/Test.Show.S01E01.2026.lrc"
+    )
+    cover_fileitem = make_fileitem("/downloads/Test Show (2026)/folder.jpg")
+    parent_fileitem = FileItem(
+        storage="local",
+        path="/downloads/Test Show (2026)/",
+        type="dir",
+        name="Test Show (2026)",
+    )
+
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__get_trans_fileitems",
+        lambda fileitem, predicate: [
+            (main_ep1_fileitem, False),
+            (main_ep2_fileitem, False),
+            (ep1_lyrics_fileitem, False),
+            (cover_fileitem, False),
+        ],
+    )
+    monkeypatch.setattr(chain, "_TransferChain__put_to_jobview", lambda task: True)
+    monkeypatch.setattr(chain, "_register_scrape_batch_task", lambda task: None)
+    monkeypatch.setattr(chain, "_close_scrape_batch", lambda batch_id: None)
+
+    def fake_handle_transfer(task, callback=None):
+        """
+        记录影视目录附属文件的整理顺序和继承集数。
+        """
+        planned.append((task.fileitem.path, task.meta.begin_episode))
+        return True, ""
+
+    def fake_meta_info_path(path, custom_words=None, **kwargs):
+        """
+        模拟主视频集数识别，附属文件继承对应主视频结果。
+        """
+        return FakeMeta(2 if "S01E02" in Path(path).name else 1)
+
+    monkeypatch.setattr(chain, "_TransferChain__handle_transfer", fake_handle_transfer)
+    bind_empty_history_repositories(chain)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: None),
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.format.get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: None),
+    )
+    monkeypatch.setattr("app.chain.transfer.request.MetaInfoPath", fake_meta_info_path)
+
+    state, errmsg = TransferChain.do_transfer(
+        chain,
+        fileitem=parent_fileitem,
+        background=False,
+        sync_extra_files=True,
+    )
+
+    assert state is True
+    assert errmsg == ""
+    assert planned == [
+        (main_ep1_fileitem.path, 1),
+        (ep1_lyrics_fileitem.path, 1),
+        (cover_fileitem.path, 1),
+        (main_ep2_fileitem.path, 2),
+    ]
+
+
+def test_transfer_chain_uses_configured_lyrics_extension():
+    """
+    整理链应按运行时歌词后缀配置识别自定义歌词文件。
+    """
+    chain = make_transfer_chain()
+    chain._lyrics_exts = (".lyrics",)
+    lyrics_fileitem = make_fileitem(
+        "/downloads/Test Show (2026)/Test.Show.S01E01.2026.lyrics"
+    )
+
+    assert chain._is_configured_lyrics_file(lyrics_fileitem)
+    assert chain._is_subtitle_file(lyrics_fileitem)
+    assert chain._is_music_lyrics_file(lyrics_fileitem)
+    assert chain._is_allowed_file(lyrics_fileitem)
 
 
 def test_single_subtitle_transfer_reuses_same_name_video_episode(monkeypatch):

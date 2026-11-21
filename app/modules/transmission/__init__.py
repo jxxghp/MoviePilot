@@ -4,19 +4,19 @@ Transmission 下载模块，负责实例路由、任务投影与下载文件选�
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union, overload
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union, overload
 
 from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
-from app.modules._base.downloader import _DownloaderModuleBase
+from app.modules._base.downloader import TRANSFERRED_TAG, _DownloaderModuleBase
 from app.modules.transmission.transmission import Transmission
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
-from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloaderType,
@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 # 只描述 SDK 已公开的数值字段及旧版别名；不转换原始返回值。
 _IntTorrentAttribute = Literal[
+    "size_when_done", "sizeWhenDone",
     "total_size", "totalSize", "rate_download", "rateDownload", "rate_upload", "rateUpload",
     "left_until_done", "leftUntilDone", "seed_idle_limit", "seedIdleLimit",
     "download_limit", "downloadLimit", "upload_limit", "uploadLimit",
@@ -44,6 +45,15 @@ _TRANSMISSION_DOWNLOADING_STATES = {
 _TRANSMISSION_PAUSED_STATES = {
     "stopped",
 }
+# Transmission 任务 error 字段：3 为本地错误（例如数据文件缺失），1/2 为 Tracker 警告或错误。
+_TRANSMISSION_LOCAL_ERROR = 3
+# 撤回"已整理"前读取当前标签的最多次数与间隔秒数；读不到就不撤回，避免用旧列表整体覆盖掉别处新加的标签。
+_LABEL_REREAD_ATTEMPTS = 3
+_LABEL_REREAD_INTERVAL = 1
+# 暂停磁力取元数据时最多等待 10 秒（每秒查询一次），仍无文件列表则恢复暂停并报错。
+_TORRENT_METADATA_RETRY_TIMES = 10
+# 取元数据时文件索引查询之间的等待秒数。
+_TORRENT_METADATA_RETRY_INTERVAL = 1
 
 
 @overload
@@ -148,20 +158,34 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
     def download(self, content: Union[Path, str, bytes], download_dir: Path, cookie: str,
                  episodes: Optional[Set[int]] = None, category: Optional[str] = None, label: Optional[str] = None,
                  downloader: Optional[str] = None,
-                 custom_words: Optional[str] = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
+                 custom_words: Optional[str] = None,
+                 episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+                 confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+                 user_specified: bool = False,
+                 ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         读取种子内容并添加下载任务，按需选择剧集文件。
+
+        同一 hash 已存在时（包括 RPC 返回的重复添加结果）不新建任务，而是核验已有任务能否受理本次
+        请求并做最小追加，详见 ``_accept_existing_task``；只有目标确认受理才返回 hash。
 
         :param content: 本地种子路径、磁力链接或种子文件字节内容；普通 URL 不会由本方法下载
         :param download_dir: MoviePilot 侧的下载目录，会映射为下载器路径
         :param cookie: 传给下载器的站点 Cookie
-        :param episodes: 目标集数集合；非空时以暂停状态添加并执行文件选择
+        :param episodes: 目标集数集合；非空时新任务以暂停状态添加并执行文件选择，已有任务只追加
+            这些集的文件；为空时新任务整包下载，已有任务确保全部文件已选中
         :param category: 下载器任务分类，当前下载器不使用
         :param label: 逗号分隔的任务标签；省略时使用系统种子标签
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param custom_words: 来源识别词，按行参与文件名识别，使选集结果与订阅一致
+        :param episode_selection: 目标季与已确认的季集对应关系；选集失败清理本次新增任务并保留文件
+        :param confirmed_selection: 下载链从下载历史读出的"MP 此前在同一种子上确认选中过的文件"（按下载器分开），
+            只在同一 hash 已存在时使用；None 表示 MP 没有该 hash 的下载历史
+        :param user_specified: 用户明确指定了这个种子（Web、接口、智能助手、消息交互），只在同一 hash 已存在时
+            使用：重新选中之前被取消的目标，任务已暂停且目标未下完时恢复任务
         :return: 下载器名称、任务哈希、内容布局和结果说明；无适用实例时返回 None，
-            添加失败时前三项为空，说明包含失败原因
+            添加或已有任务核验失败时前三项为空，说明包含失败原因；已有任务的说明为
+            ``app.schemas.download`` 中约定的三个常量之一
         """
 
         if not content:
@@ -185,13 +209,14 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
 
+        # 逗号分隔的标签去掉空白再写入，与整理轮询、已有任务受理的标签解析一致
         if label:
-            labels = label.split(',')
+            labels = [item.strip() for item in label.split(',') if item.strip()] or None
         elif get_runtime_setting('TORRENT_TAG'):
-            labels = get_runtime_setting('TORRENT_TAG').split(',')
+            labels = [item.strip() for item in get_runtime_setting('TORRENT_TAG').split(',') if item.strip()] or None
         else:
             labels = None
-        added_torrent = server.add_torrent(
+        added_torrent, already_exists = server.add_torrent_with_status(
             content=torrent_content,
             download_dir=self.normalize_path(download_dir, downloader),
             is_paused=is_paused,
@@ -200,6 +225,14 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         )
         # TR 始终使用原始种子布局, 返回"Original"
         torrent_layout = "Original"
+
+        if added_torrent and already_exists:
+            torrent_hash = added_torrent.hashString
+            logger.warn(f"下载器中已存在该种子任务：{torrent_hash}")
+            return self._finish_existing_task(
+                server, torrent_hash, episodes, custom_words, downloader, episode_selection, confirmed_selection,
+                user_specified=user_specified,
+            )
 
         if not added_torrent:
             # 查询所有下载器的种子
@@ -216,23 +249,11 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                         if expected_hashes.intersection(candidate_hashes):
                             torrent_hash = torrent.hashString
                             logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.name}")
-                            if get_runtime_setting('TORRENT_TAG'):
-                                logger.info(f"给种子 {torrent_hash} 打上标签：{get_runtime_setting('TORRENT_TAG')}")
-                                labels = [str(tag).strip()
-                                          for tag in torrent.labels] if hasattr(torrent, "labels") else []
-                                if "已整理" in labels:
-                                    labels.remove("已整理")
-                                    server.set_torrent_tag(ids=torrent_hash, tags=labels)
-                                if get_runtime_setting('TORRENT_TAG') and get_runtime_setting('TORRENT_TAG') not in labels:
-                                    labels.append(get_runtime_setting('TORRENT_TAG'))
-                                    server.set_torrent_tag(ids=torrent_hash, tags=labels)
-                            if is_paused:
-                                selected, message = self._select_download_files(
-                                    server, torrent_hash, episodes or set(), custom_words,
-                                )
-                                if not selected:
-                                    return None, None, None, message
-                            return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, DOWNLOAD_TASK_ALREADY_EXISTS
+                            return self._finish_existing_task(
+                                server, torrent_hash,
+                                episodes, custom_words, downloader, episode_selection, confirmed_selection,
+                                user_specified=user_specified,
+                            )
                 finally:
                     torrents.clear()
                     del torrents
@@ -242,50 +263,192 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             if is_paused:
                 selected, message = self._select_download_files(
                     server, torrent_hash, episodes or set(), custom_words,
+                    episode_selection,
                 )
                 if not selected:
-                    return None, None, None, message
+                    return None, None, None, self._discard_failed_selection(server, torrent_hash, message)
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
             else:
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
 
+    def _finish_existing_task(
+            self, server: Transmission, torrent_hash: str, episodes: Optional[Set[int]],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+            user_specified: bool = False,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        核验已有任务能否受理本次请求，受理后返回任务信息，规则见 ``_accept_existing_task``。
+
+        拒绝时不改动任务（包括标签），并且不返回 hash，下载链会按失败处理并保留缺集。
+
+        :param server: 当前 Transmission 客户端
+        :param torrent_hash: 已有任务的 hash
+        :param episodes: 本次目标集号；为空表示整个种子
+        :param custom_words: 来源识别词
+        :param downloader: 下载器配置名称，省略时使用默认实例
+        :param episode_selection: 目标季与已确认的季集映射
+        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件（按下载器分开）；None 表示没有下载历史
+        :param user_specified: 用户明确指定了这个种子，见 ``_accept_existing_task``
+        :return: 下载器名称、任务哈希、内容布局和约定说明；失败时前三项为空
+        """
+        accepted, message = self._accept_existing_task(
+            server, torrent_hash, episodes, custom_words, episode_selection, confirmed_selection, downloader,
+            user_specified=user_specified,
+        )
+        if not accepted:
+            return None, None, None, message
+        # TR 始终使用原始种子布局, 返回"Original"
+        return downloader or self.get_default_config_name(), torrent_hash, "Original", message
+
+    def _existing_task_files(
+            self, server: Transmission, torrent_hash: str,
+    ) -> Optional[List[torrent_rules.ExistingTaskFile]]:
+        """
+        读取已有任务的文件选择与完成状态；selected 视为已选中，已完成字节数达到文件大小视为已完成。
+        """
+        torrent_files = server.get_files(torrent_hash)
+        if not torrent_files:
+            return None
+        return [
+            torrent_rules.ExistingTaskFile(
+                file_id=item.id, name=item.name, wanted=bool(item.selected), completed=item.completed >= item.size,
+            )
+            for item in torrent_files
+        ]
+
+    def _enable_existing_files(self, server: Transmission, torrent_hash: str, file_ids: List[int]) -> bool:
+        """
+        把指定文件设为需要下载；只发送 files-wanted，不发送 files-unwanted，也不改文件优先级。
+        """
+        return server.set_files(torrent_hash, file_ids)
+
+    def _resume_existing_task(self, server: Transmission, torrent_hash: str) -> bool:
+        """
+        恢复已暂停的任务，并确认任务已进入校验、下载、做种或对应的排队状态；与新建任务选集后的启动方式一致。
+        """
+        return server.ensure_torrent_state(torrent_hash, paused=False)
+
+    def _existing_task_state(
+            self, server: Transmission, torrent_hash: str,
+    ) -> torrent_rules.ExistingTaskState:
+        """
+        按 Transmission 原始状态归一：stopped 为暂停，本地错误（error=3）为错误，其余为运行。
+
+        Tracker 警告或错误（error=1/2）不影响本地下载，仍按运行处理。
+        """
+        torrents, error = server.get_torrents(ids=torrent_hash)
+        if error or not torrents:
+            return torrent_rules.ExistingTaskState.UNKNOWN
+        torrent = torrents[0]
+        if getattr(torrent, "error", 0) == _TRANSMISSION_LOCAL_ERROR:
+            return torrent_rules.ExistingTaskState.ERROR
+        if self.__normalize_torrent_state(getattr(torrent, "status", None)) == DownloadTaskState.PAUSED.value:
+            return torrent_rules.ExistingTaskState.PAUSED
+        return torrent_rules.ExistingTaskState.RUNNING
+
+    def _task_tags(self, server: Transmission, torrent_hash: str) -> Optional[List[str]]:
+        """
+        读取任务标签；不用 ``get_torrent_tags``，它在查询失败时返回空列表，无法与"没有标签"区分。
+        """
+        torrents, error = server.get_torrents(ids=torrent_hash)
+        if error or not torrents:
+            return None
+        return [str(tag).strip() for tag in (getattr(torrents[0], "labels", None) or []) if str(tag).strip()]
+
+    def _add_task_tags(self, server: Transmission, torrent_hash: str, tags: List[str], current: List[str]) -> bool:
+        """
+        Transmission 只能整体覆盖标签，用调用方刚读取的当前标签计算新值。
+        """
+        labels = current + [tag for tag in tags if tag not in current]
+        return server.replace_torrent_labels(ids=torrent_hash, labels=labels)
+
+    def _remove_task_tags(self, server: Transmission, torrent_hash: str, tags: List[str], current: List[str]) -> bool:
+        """
+        Transmission 只能整体覆盖标签，用调用方刚读取的当前标签计算新值；结果为空时会真正清空标签。
+        """
+        return server.replace_torrent_labels(ids=torrent_hash, labels=[tag for tag in current if tag not in tags])
+
+    @staticmethod
+    def _fetch_files_with_metadata(
+            server: Transmission, torrent_hash: str, failure: str,
+    ) -> Tuple[List[Any], bool, Optional[str]]:
+        """
+        暂停磁力取元数据：先启动任务再轮询文件列表，拿到后重新暂停。
+
+        暂停的磁力不建立 peer/DHT 连接，文件列表恒为空；先启动取元数据，
+        拿到后再重新暂停选集，超时仍恢复暂停，避免任务永久留在暂停状态。
+
+        :param server: 已配置的 Transmission 客户端
+        :param torrent_hash: 需要取元数据的任务哈希
+        :param failure: 任务保持暂停时的失败前缀
+        :return: 文件列表、取元数据后是否确认暂停、失败说明；失败说明非空时
+            文件列表为空列表，暂停状态无效
+        """
+        if not server.ensure_torrent_state(torrent_hash, paused=False):
+            return [], True, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+        torrent_files = server.get_files(
+            torrent_hash,
+            retry=_TORRENT_METADATA_RETRY_TIMES,
+            interval=_TORRENT_METADATA_RETRY_INTERVAL,
+        )
+        if not torrent_files:
+            if not server.ensure_torrent_state(torrent_hash, paused=True):
+                return [], False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+            return [], True, f"{failure}：获取种子文件失败"
+        paused = server.ensure_torrent_state(torrent_hash, paused=True)
+        if not paused:
+            logger.warning(f"种子 {torrent_hash} 获取元数据后无法确认暂停，继续选集")
+        return torrent_files, paused, None
+
     @staticmethod
     def _select_download_files(
             server: Transmission, torrent_hash: str, episodes: Set[int], custom_words: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
     ) -> Tuple[bool, str]:
         """
         先确认任务暂停再按来源集数映射选集，确认启动状态后才返回成功。
+
+        视频按目标集交集选择，保留无集号非视频附件；单集请求保留唯一视频兜底。
 
         :param server: 已配置的 Transmission 客户端
         :param torrent_hash: 需要暂停、选集并恢复的任务哈希
         :param episodes: 需要完整匹配的目标集数；空集合不启动任务
         :param custom_words: 来源识别词，按行参与物理文件名识别
+        :param episode_selection: 目标季与已确认的季集对应关系，跨季冲突不参与唯一视频兜底
         :return: 是否确认选集及启动成功，以及失败时的下载器核查说明
         """
         if not server.ensure_torrent_state(torrent_hash, paused=True):
             return False, f"选集失败，任务 {torrent_hash} 无法确认暂停，未执行选集，请在下载器核实"
         failure = f"选集失败，任务 {torrent_hash} 保持暂停，请在下载器检查"
+        paused = True
         torrent_files = server.get_files(torrent_hash)
         if not torrent_files:
-            return False, f"{failure}：获取种子文件失败"
-        wanted: list[int] = []
-        unwanted: list[int] = []
-        matched: set[int] = set()
+            torrent_files, paused, error = TransmissionModule._fetch_files_with_metadata(
+                server, torrent_hash, failure,
+            )
+            if error:
+                return False, error
+        # 取元数据后无法确认暂停时任务仍在运行，后续失败不得再称“保持暂停”。
+        state_failure = failure if paused else (
+            f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+        )
+        media_extensions = {
+            str(extension).lower()
+            for extension in get_runtime_setting("RMT_MEDIAEXT", [])
+        }
         try:
-            for item in torrent_files:
-                meta = MetaInfo(Path(item.name).name, custom_words=custom_words.splitlines() if custom_words else [])
-                file_episodes = set(meta.episode_list)
-                if file_episodes and file_episodes.issubset(episodes):
-                    wanted.append(item.id)
-                    matched.update(file_episodes)
-                else:
-                    unwanted.append(item.id)
+            wanted, unwanted, matched = torrent_rules.select_torrent_files(
+                ((item.id, item.name) for item in torrent_files),
+                episodes, media_extensions, custom_words, episode_selection,
+            )
         finally:
             torrent_files.clear()
-        if not wanted or not set(episodes).issubset(matched):
-            return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
+        if not episodes or not episodes.issubset(matched):
+            return False, f"{state_failure}：未找到目标集数 {sorted(set(episodes) - matched)}，请检查季集映射"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
-            return False, f"{failure}：文件选择设置未确认"
+            return False, f"{state_failure}：文件选择设置未确认"
         if not server.ensure_torrent_state(torrent_hash, paused=False):
             if server.ensure_torrent_state(torrent_hash, paused=True):
                 return False, f"{failure}：启动任务未确认，未记录成功"
@@ -368,6 +531,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                 content_path=self.normalize_return_path(torrent_path, downloader_name),
                 progress=_normalize_transmission_progress(torrent_data, _get_torrent_attr),
                 size=__get_torrent_size(torrent_data),
+                # sizeWhenDone 是选中文件全部下载后的数据量，随文件选择变化。
+                selected_size=_get_torrent_attr(torrent_data, "size_when_done", "sizeWhenDone"),
                 state=self.__normalize_torrent_state(torrent_data.status),
                 dlspeed=size_tools.format_compact_size(dlspeed),
                 upspeed=size_tools.format_compact_size(upspeed),
@@ -404,7 +569,10 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                         if not path:
                             logger.debug(f"未获取到 {torrent_info.name} 下载保存路径")
                             continue
-                        ret_torrents.append(__build_torrent(name, torrent_info))
+                        ret_torrents.extend(self._admit_transfer_torrent(
+                            server, __build_torrent(name, torrent_info),
+                            save_path=path, content_path=__get_torrent_path(torrent_info),
+                        ))
                 finally:
                     torrents.clear()
                     del torrents
@@ -458,7 +626,11 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         """
         为整理完成的种子添加“已整理”标签。
 
-        找不到适用实例时直接返回；标签写入失败不向调用方返回确认。
+        Transmission 只能整体覆盖标签，必须先读到当前标签：旧实现用 ``get_torrent_tags``，它在查询
+        失败时返回空列表，覆盖写会清掉 PT 站标签和系统种子标签，只剩"已整理"。现在读取失败就不写，
+        任务留在待整理列表，下一轮整理会跳过已整理过的文件并重试打标签。
+        写入后若发现期间有新文件被追加（见 ``_has_pending_wanted_files``），撤回标签，让追加的文件
+        下载完成后重新进入整理。
 
         :param hashs: 已完成整理的种子哈希
         :param downloader: 下载器配置名称，省略时使用默认实例
@@ -466,13 +638,44 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         server = self.get_instance(downloader)
         if not server:
             return None
-        org_tags = server.get_torrent_tags(ids=hashs)
-        if org_tags:
-            tags = org_tags + ['已整理']
-        else:
-            tags = ['已整理']
-        server.set_torrent_tag(ids=hashs, tags=tags)
+        labels = self._task_tags(server, hashs)
+        if labels is None:
+            logger.warning(f"读取种子 {hashs} 的标签失败，本次不写入已整理标签，下一轮整理会重试")
+            return None
+        tagged = labels if TRANSFERRED_TAG in labels else labels + [TRANSFERRED_TAG]
+        if tagged is not labels and not self._add_task_tags(server, hashs, [TRANSFERRED_TAG], labels):
+            return None
+        if self._has_pending_wanted_files(server, hashs):
+            logger.info(f"种子 {hashs} 在整理期间追加了新文件，撤回已整理标签")
+            self._withdraw_transferred_label(server, hashs)
         return None
+
+    def _withdraw_transferred_label(self, server: Transmission, torrent_hash: str) -> None:
+        """
+        撤回刚写入的"已整理"标签，必须基于重新读到的当前标签计算。
+
+        Transmission 只能整体覆盖标签，复核期间别处（PT 站工具、辅种插件）可能刚加了标签，用写入前的旧列表覆盖会
+        把它们清掉。读取或写入失败时短暂重试，每次重试都重新读取当前标签；仍不成功就不撤回、只记录：复核走到这里多半
+        是因为文件状态也读不到（下载器暂时不可用，"有待下载的文件"只是保守假设），此时标签多数本来就该留着；确实有新
+        选中的文件时，下一次对该任务的受理会移除"已整理"，或需要在下载器中手动移除。
+
+        :param server: 当前 Transmission 客户端
+        :param torrent_hash: 刚写入"已整理"的任务 hash
+        """
+        for attempt in range(_LABEL_REREAD_ATTEMPTS):
+            if attempt:
+                time.sleep(_LABEL_REREAD_INTERVAL)
+            current = self._task_tags(server, torrent_hash)
+            if current is None:
+                continue
+            if TRANSFERRED_TAG not in current:
+                return
+            if self._remove_task_tags(server, torrent_hash, [TRANSFERRED_TAG], current):
+                return
+        logger.warning(
+            f"读取或写入种子 {torrent_hash} 的标签失败，未撤回已整理标签（不用旧列表覆盖，以免清掉其他标签）；"
+            "如该任务有新选中的文件，下载完成后请在下载器中移除已整理标签"
+        )
 
     def remove_torrents(self, hashs: Union[str, list[str]], delete_file: Optional[bool] = True,
                         downloader: Optional[str] = None) -> Optional[bool]:

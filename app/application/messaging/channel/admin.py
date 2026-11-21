@@ -48,6 +48,7 @@ def matches_channel_admin(
     channel: Union[NotificationChannel, str],
     config: Optional[dict[str, Any]],
     *principal_ids: Optional[Union[str, int]],
+    source: str | None = None,
 ) -> bool:
     """
     判断任一稳定主体 ID 是否命中渠道登记的管理员集合。
@@ -56,6 +57,20 @@ def matches_channel_admin(
         channel.value if isinstance(channel, NotificationChannel) else str(channel)
     )
     resolver = _CHANNEL_ADMIN_RESOLVERS.get(channel_value)
+    # 已装配时统一授权是唯一事实源，不能通过旧名单或接收人绕过撤销。
+    from app.application.security.authorization import get_channel_authorization
+
+    service = get_channel_authorization()
+    if service is not None:
+        if not source:
+            from app.application.notification import get_notification_configs
+
+            matches = [item.name for item in get_notification_configs() if item.config == config]
+            source = matches[0] if len(matches) == 1 else None
+        return bool(source) and any(
+            service.is_admin(channel_value, source or "", str(principal_id).strip())
+            for principal_id in principal_ids if principal_id is not None
+        )
     if not resolver:
         return False
     authorized_ids = {

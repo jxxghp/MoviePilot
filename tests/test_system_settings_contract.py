@@ -79,6 +79,13 @@ def test_settings_contract_exposes_machine_readable_boundaries() -> None:
     assert SystemConfigKey.UserFilterRuleGroups.value in dependent.dependencies
 
 
+def test_security_image_domains_default_includes_github_avatars() -> None:
+    """
+    默认安全图片白名单允许 GitHub 头像域名。
+    """
+    assert "avatars.githubusercontent.com" in Settings.model_fields["SECURITY_IMAGE_DOMAINS"].default
+
+
 def test_settings_catalog_is_lightweight_and_value_free() -> None:
     """
     list 阶段只返回合同索引，不应读取当前配置值。

@@ -628,7 +628,6 @@ def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeyp
     """
     分页搜索按实际限流原因等待，短间隔不扩大为计数窗口，也不提前结束来源。
     """
-    monkeypatch.setattr(scan_module, "_wait_for_site_request", lambda _site: None)
     monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
         {"id": 1, "name": "test", "parser": "mTorrent",
          "limit_interval": 3600, "limit_count": 25, "limit_seconds": 20}

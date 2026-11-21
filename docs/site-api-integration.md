@@ -417,3 +417,60 @@ MP 已有 API Key 搜索及临时下载地址的实现案例，但不会自动�
 - [MTorrent 适配示例](https://github.com/jxxghp/MoviePilot/blob/52203041f7be117ddb3ec0ce8fcb7862ade26bda/app/modules/indexer/spider/mtorrent.py)：搜索结果转换与下载凭据生成。
 
 实现参考核对日期为 2026 年 11 月 4 日。本文的接口路径、字段设计和验收建议是供双方协商的接入需求，不代表每个现有站点都已实现全部能力。
+
+### 猪猪实验室适配
+
+猪猪改版后的正式接入使用[实验室 API](https://piggo.me/lab-api)，基础地址为 `https://api.piggo.me/v1/api`。
+需同时更新包含 `Piggo` 适配器的后端和 `3.0.30` 或更高的站点索引资源。
+用户在网页「实验室」生成**长期存取令牌**并填入站点 API Key；API Key 为空时兼容 Token，Cookie 不参与 API 鉴权。
+搜索、最新种子、目录和用户资料均使用 POST JSON；完整 IMDb ID 通过 `imdb_id` 精确搜索，其他关键词通过 `q` 搜索。
+
+- 目录按 API 地址和凭据摘要隔离缓存一小时，最多 128 份。按当前分区/分类名称和作品类型映射媒体类型，未知分区保持未知。
+- 分类 ID 可以在多个分区复用，按种子的实际分区解释分类成员关系，不把一个 ID 固定归属到单一分区。
+- 上游新增的 `tag_ids` 按 `/catalog` 的 `tags` 映射为真实站点标签；有标签的分区按 `section_id` 查询各自字典，未配置分区标签时由站点返回全站字典。标签字典与分类目录共用凭据隔离的一小时有界缓存，未知 ID 不从标题、分类或 `taxonomy_ids` 猜造名称。
+- 可见分区均能明确判型时，一个媒体类型涉及多个分区用完整分类并集保持全局分页；有未能判型的分区或所需分类不完整时不强行缩窄查询，避免漏掉纪录片、动漫、少儿等分区的资源。
+- 用户资料从 `data.user` 读取，上传/下载容量文本转换为字节并计算分享率；下载量为零时分享率为零，注册时间未知。做种和下载的所有分页成功后才保存统计。
+- 搜索、用户资料、连接检测、换票和种子请求共用站点配置的请求间隔与次数窗口，不按域名强制改写配置。按实验室最严格的每分钟 20 次接口限制，建议在站点设置中配置至少三秒访问间隔；远端限流仍使用既有共享冷却机制。
+- 仅在执行下载时签发短时 URL；最终 GET 不携带 Bearer 或 Cookie，也不把站点返回的下载主机改为 API 主机。
+- 必读公告必须由用户在网页端阅读，不自动确认公告或回退访问旧 PHP 页面。实验室未提供的促销、字幕、站内信接口不作推断。
+
+### 高清视界 REST API 适配
+
+高清视界使用[官方 API 文档](https://hdarea.club/api_docs.php)中的 `https://hdarea.club/api/v1`。
+需同时更新包含 `HDArea` 适配器的后端及 `3.0.32` 或更高的站点索引资源。
+在网页「控制面板 → 安全设定 → API Key 存取令牌管理」获取 API Key，填入 MoviePilot 站点 **API Key**。
+读取和搜索需 `read` 权限，下载需 `download` 权限，自动签到需额外的 `user` 权限；有 IP 白名单时须允许实例出口 IP。
+
+- 连接检测和用户统计使用 `GET /user/profile`，不使用 Cookie、网页会话或浏览器仿真。
+  用户等级取 `class_name`，流量取字节字段 `uploaded` / `downloaded`，分享率取 `share_ratio`，魔力取 `seedbonus`，
+  做种汇总取 `seeding_count` / `seeding_size`，未读数量取 `unread_messages_count`；不自动读取或标记私人消息。
+- 搜索和最新列表使用 `GET /torrents`，页码从 0 开始，每页 100 条，按 `added` 降序排列。
+  普通关键词使用 `keyword`，完整 IMDb ID 使用 `imdb`；分类以 `cat` 多选，显式分类优先于媒体类型。
+  末页依据 `pagination.has_more`，不把列表的估算 `total` 当成完整总数。
+- 直接读取服务端当前有效的 `download_volume_factor` / `upload_volume_factor` 和 `promotion_until`，
+  不用旧促销枚举覆盖实时倍率。缺失倍率保持未知；纪录片、动漫等共享分类保持未知，由后续媒体识别确定作品类型。
+- 搜索结果只保留下载配方，真正下载时才 `POST /torrents/genDlToken` 签发短效 URL。
+  换票携带 API Key 和 JSON 种子 ID，最终种子 GET 不携带 API Key 或 Cookie。
+  接口失败、权限不足、非 JSON 和 HTTP 429 不视为成功，限流沿用同站点共享冷却。
+- V3「站点自动签到」插件从 `3.0.8` 起使用 `POST /user/signin`；只配置 Cookie 的旧签到方式继续可用。
+  未配置 API Key 的搜索和用户统计不自动回退到 Cookie。
+- 既有字幕页面规则未删除，本次未接入字幕 REST API，字幕搜索仍使用 Cookie。
+  批量辅种接口接收的是 `info_hash`，不能将青蛙辅种插件的 `pieces_hash` 当成同一种指纹。
+
+离线回归只使用合成凭据并替换网络边界；实际 API 验收结果需另外记录，HTTP 200 本身不能证明种子文件有效。
+
+### 好学 FluxTorrent 兼容层适配
+
+好学使用 `/api/v1/compat/nexusphp` 只读 JSON 兼容层，站点索引资源从 `3.0.28` 起声明 `FluxTorrent` 搜索和用户数据协议。
+登录站点后，在安全设置页面的「开放 API 令牌」中签发包含 `read` 权限的 `fxo_` 开头令牌，填入 MoviePilot 站点 **API Key**。
+API Key 为空时使用 **Token**。这枚开放 API 令牌与站点 RSS 的 passkey 分别管理。[好学安全设置](https://www.hxpt.org/my?tab=security)
+
+- 连接检测和用户资料使用 `GET /user.json`，读取等级、上传下载量、分享率、魔力、做种数量、做种体积和注册时间。
+  老版本接口缺少做种和注册信息时，通过 `/api/v1/plugins/ptppUserInfo` 补齐。
+- 搜索和最新列表使用 `GET /torrents.json`，页码从 1 开始，每页 50 条，关键词使用 `keyword`。
+  分类和促销倍率取兼容层字段，详情链接指向 `/torrent/{id}`，种子文件通过 `GET /download.php?id=...&apikey=...` 获取。
+- 连接检测、用户资料及同步、异步搜索共用站点设置的请求间隔和次数窗口。
+  只读 API 遇到 HTTP 503 时分别等待三秒和六秒，最多重试两次；持续失败保留失败结果。
+  认证失败直接结束本次用户解析并保留接口错误。
+- 好学网关会对默认 MoviePilot User-Agent 返回 HTTP 503，适配器使用默认浏览器标识，
+  并将相同标识传递给种子下载；站点手工设置的其他 User-Agent 优先。

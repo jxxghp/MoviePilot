@@ -886,6 +886,72 @@ class ZSpace:
         """
         return format_emby_family_item(item, server="zspace")
 
+    def search_library(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """通过极影视 Emby 兼容接口搜索电视剧与音乐单曲。"""
+        if not self._host or not self._apikey or not self.user or not keyword.strip():
+            return []
+        server_types = []
+        if MediaType.TV.value in types:
+            server_types.append("Series")
+        if MediaType.MUSIC.value in types:
+            server_types.append("Audio")
+        if not server_types:
+            return []
+        url = f"{self._host}emby/Users/{self.user}/Items"
+        params = {
+            "api_key": self._apikey,
+            "IncludeItemTypes": ",".join(server_types),
+            "Fields": "ProductionYear,Album,Artists,AlbumArtist,ImageTags",
+            "Recursive": "true",
+            "SearchTerm": keyword.strip(),
+            "StartIndex": 0,
+            "Limit": max(1, min(limit, 50)),
+        }
+        try:
+            response = self.__request_utils().get_res(url, params)
+            if not response or response.status_code != 200:
+                return []
+            results: List[_SchemaMediaServerPlayItem] = []
+            for item in (response.json().get("Items") or []):
+                item_id = str(item.get("Id") or "")
+                title = item.get("Name")
+                item_type = item.get("Type")
+                if not item_id or not title or item_type not in server_types:
+                    continue
+                artists = item.get("Artists") or []
+                artist = next(
+                    (str(value.get("Name") if isinstance(value, dict) else value) for value in artists if value),
+                    None,
+                )
+                album = item.get("Album")
+                year = item.get("ProductionYear")
+                image = f"{self._host}Items/{item_id}/Images/Primary?api_key={self._apikey}"
+                image_tag = (item.get("ImageTags") or {}).get("Primary")
+                if image_tag:
+                    image += f"&tag={image_tag}"
+                results.append(
+                    _SchemaMediaServerPlayItem(
+                        id=item_id,
+                        item_id=item_id,
+                        title=title,
+                        subtitle=(f"{artist or ''}{f' · {album}' if album else ''}" or None)
+                        if item_type == "Audio"
+                        else str(year) if year else None,
+                        year=year,
+                        type=MediaType.TV.value if item_type == "Series" else MediaType.MUSIC.value,
+                        image=image,
+                        server_type="zspace",
+                    )
+                )
+                if len(results) >= limit:
+                    break
+            return results
+        except Exception as err:
+            logger.debug(f"搜索极影视媒体库出错：{err}")
+            return []
+
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
         查询当前用户可见的单条媒体详情。

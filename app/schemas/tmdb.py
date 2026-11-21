@@ -61,6 +61,10 @@ class TmdbEpisode(BaseModel):
     air_date: Optional[str] = Field(default=None, description="首次播出日期")
     episode_number: Optional[int] = Field(default=None, description="集号")
     episode_type: Optional[str] = Field(default=None, description="单集类型")
+    id: Optional[int] = Field(
+        default=None,
+        description="TMDB 单集标识；按剧集组返回时集号为组内序号，该标识仍指向原单集",
+    )
     name: Optional[str] = Field(default=None, description="显示名称")
     overview: Optional[str] = Field(default=None, description="简介")
     runtime: Optional[int] = Field(default=None, description="单集时长，单位为分钟")

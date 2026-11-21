@@ -77,7 +77,11 @@ def test_contract_v2_freezes_every_observed_host_method() -> None:
     contracts = list_explicit_module_contracts()
 
     assert len(contracts) >= 211
-    host_internal_methods = {"plan_transfer", "execute_transfer_plan", "restore_search_torrent", "link_file"}
+    host_internal_methods = {"plan_transfer", "execute_transfer_plan", "restore_search_torrent", "link_file",
+                             "test_site", "parse_torrent_download_response", "get_site_domain", "torrent_resource_identity",
+                             "is_expiring_download_url", "is_torrent_download_confirmation", "parse_torrent_download_confirmation",
+                             "mediaserver_stream_url",
+                             "get_site_rss_recipe", "is_site_rss_expired", "has_site_subtitle_api", "encrypt_site_payload"}
     for method_name, contract in contracts.items():
         assert contract.version == 1
         assert contract.input_contract != "legacy_args"

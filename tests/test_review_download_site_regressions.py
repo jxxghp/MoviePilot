@@ -78,7 +78,7 @@ def test_f036_transmission_requests_limit_fields():
 
 @pytest.mark.parametrize('files,set_ok,start_ok', [
     (None, True, True),
-    ([{'id': 0, 'name': 'Demo.S01E01.mkv'}], True, True),
+    ([{'id': 0, 'name': 'Demo.S01E03E04.mkv'}], True, True),
     ([{'id': 0, 'name': 'Demo.S01E01.mkv'}, {'id': 1, 'name': 'Demo.S01E02.mkv'}], False, True),
     ([{'id': 0, 'name': 'Demo.S01E02.mkv'}], True, False),
 ])
@@ -87,17 +87,21 @@ def test_f037_rtorrent_selection_failure_never_reports_hash(monkeypatch, files, 
     未确认选集及启动成功时不返回能被下载链结算的Hash。
     """
     content = _torrent()
-    server = SimpleNamespace(add_torrent=Mock(return_value=True),
+    # 下载器里还没有同一任务：rTorrent 添加前会先按 hash 查找（load.raw 异步判重）。
+    server = SimpleNamespace(add_torrent=Mock(return_value=True), get_torrents=Mock(return_value=([], False)),
         get_torrent_id_by_tag=Mock(return_value=Torrent.from_string(content).info_hash),
         get_files=Mock(return_value=files), set_files=Mock(return_value=set_ok),
-        start_torrents=Mock(return_value=start_ok), stop_torrents=Mock(return_value=True))
+        start_torrents=Mock(return_value=start_ok), stop_torrents=Mock(return_value=True),
+        delete_torrents=Mock(return_value=True))
     module = object.__new__(RtorrentModule)
     monkeypatch.setattr(module, 'get_instance', lambda name: server)
     monkeypatch.setattr(module, 'normalize_path', lambda path, name: str(path))
-    monkeypatch.setattr('app.modules.rtorrent.get_runtime_setting', lambda key: '')
+    monkeypatch.setattr('app.modules.rtorrent.get_runtime_setting',
+                        lambda key, default=None: ['.mkv'] if key == 'RMT_MEDIAEXT' else '')
     can_start = bool(files and set_ok and any('E02' in f['name'] for f in files))
     result = module.download(content, Path('/downloads'), '', episodes={2}, downloader='rt')
     assert result[1] is None
+    server.delete_torrents.assert_called_once_with(delete_file=False, ids=Torrent.from_string(content).info_hash)
     if not can_start:
         server.start_torrents.assert_not_called()
 

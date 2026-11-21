@@ -20,6 +20,7 @@ from app.application.messaging.interaction.agent import (
 from app.db.oper.agentchat import AgentChatOper
 from app.db.session import SessionFactory
 from app.domain.chat import merge_choice_state
+from app.schemas.agent import AgentChatMessage
 from app.schemas.types import NotificationChannel
 
 
@@ -75,6 +76,7 @@ async def test_choice_callback_persists_first_selection_and_replays_without_chan
         assert row.display_messages[0]["choices"][0]["selected_value"] == "选择电影"
         receipts = [message for message in row.display_messages if message.get("choice_selection")]
         assert len(receipts) == 1 and receipts[0]["content"] == ""
+        assert AgentChatMessage.model_validate(receipts[0]).createdAt > 0
 
 
 @pytest.mark.asyncio
@@ -148,6 +150,7 @@ def test_selected_card_survives_old_pending_snapshot_without_mutating_inputs(cho
     before_card = merge_choice_state(previous, [])
     assert before_card == [{
         "id": f"choice-selection-{request.request_id}", "role": "user", "content": "", "choice_selection": selected,
+        "createdAt": 0,
     }]
     result = merge_choice_state(before_card, original)
     assert result[0]["choices"][0]["status"] == "selected"

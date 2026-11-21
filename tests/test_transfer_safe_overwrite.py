@@ -9,7 +9,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional
+from typing import Callable, Optional
 from unittest.mock import Mock
 
 import pytest
@@ -17,8 +17,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer.execution import (
+    TransferExecutionCommand,
     TransferExecutionLeaseLostError,
     TransferExecutionState,
+    TransferStepResult,
     TransferStepState,
     build_transfer_overwrite_paths,
 )
@@ -28,6 +30,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
 )
 from app.chain.transfer import execution as execution_module
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
 from app.db.base import Base
 from app.db.models.transferexecutionstep import TransferExecutionStep
@@ -39,6 +42,7 @@ from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.storages.u115 import U115Pan
 from app.modules.filemanager.transhandler import TransHandler
+from app.schemas.exception import StorageQueryError
 from app.schemas.file import FileItem
 from app.schemas.types import MediaType
 
@@ -262,10 +266,12 @@ def test_u115_partial_native_copy_is_isolated_instead_of_repeated(
 
 
 @pytest.mark.parametrize("filename", ["美人余.S01E23.mkv", "Movie.MP4", "archive.tar.gz", "Movie"])
-@pytest.mark.parametrize("storage", ["u115", "local", "alist", "alipan", "smb", "rclone"])
+@pytest.mark.parametrize(
+    "storage", ["u115", "115网盘Plus", "plugin-storage", "local", "alist", "alipan", "smb", "rclone"],
+)
 def test_overwrite_paths_preserve_storage_filename_contract(filename: str, storage: str) -> None:
     """
-    115 临时名称保留扩展名且有主文件名，其他存储保持既有路径以兼容恢复。
+    本地临时名称保持隐藏且无扩展名，其他存储统一保留非空主文件名和目标扩展名。
     """
     arguments = {
         "source": {"storage": "local", "path": "/downloads/source.mkv"},
@@ -278,22 +284,23 @@ def test_overwrite_paths_preserve_storage_filename_contract(filename: str, stora
     for path, kind in zip(paths, ("stage", "backup")):
         item = Path(path)
         assert item.parent == Path("/library")
-        if storage == "u115":
-            assert item.name.startswith(f"mp-{kind}-")
-            assert item.suffix == Path(filename).suffix
-        else:
+        if storage == "local":
             assert item.name.startswith(f".mp-{kind}-")
             assert len(item.name) == len(f".mp-{kind}-") + 24
+        else:
+            assert item.name.startswith(f"mp-{kind}-")
+            assert item.suffix == Path(filename).suffix
 
 
+@pytest.mark.parametrize("storage", ["u115", "115网盘Plus", "plugin-storage"])
 @pytest.mark.parametrize("transfer_type", ["copy", "move"])
 @pytest.mark.parametrize("failed_rename", [None, "backup", "promote"])
-def test_u115_overwrite_obeys_rename_protocol(
+def test_remote_overwrite_obeys_rename_protocol(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-        transfer_type: str, failed_rename: Optional[str],
+        storage: str, transfer_type: str, failed_rename: Optional[str],
 ) -> None:
     """
-    在真实文件上回放 115 重命名协议，验证覆盖成功及失败时保留完整副本。
+    在真实文件上回放按主文件名和扩展名解析的远端重命名协议，验证覆盖成功及失败时保留完整副本。
     """
     source = tmp_path / "download.mkv"
     target = tmp_path / "美人余.S01E23.mkv"
@@ -313,7 +320,7 @@ def test_u115_overwrite_obeys_rename_protocol(
             return None
         identifier = str(path.stat().st_ino)
         identifiers[int(identifier)] = path
-        return item.model_copy(update={"storage": "u115", "fileid": identifier})
+        return item.model_copy(update={"storage": storage, "fileid": identifier})
 
     def upload(folder: FileItem, path: Path, name: str) -> Optional[FileItem]:
         """
@@ -349,7 +356,7 @@ def test_u115_overwrite_obeys_rename_protocol(
     source_item = local.get_item_strict(source).model_dump(mode="json")
     arguments = {
         "step_runner": _ImmediateStepRunner(), "source_fileitem": source_item,
-        "target_storage": "u115", "source_oper": local, "target_oper": remote,
+        "target_storage": storage, "source_oper": local, "target_oper": remote,
         "target_file": target, "transfer_type": transfer_type,
     }
     execute = TransHandler._TransHandler__replace_target_with_steps
@@ -496,6 +503,433 @@ def test_safe_overwrite_preserves_transfer_modes(tmp_path, monkeypatch, transfer
     if transfer_type == "link":
         assert source.samefile(target)
     assert target.is_symlink() is (transfer_type == "softlink")
+
+
+@pytest.mark.parametrize("mode", ["never", "size", "always", "latest"])
+@pytest.mark.parametrize("relative", [False, True])
+@pytest.mark.parametrize("durable", [False, True])
+def test_softlink_transfer_repairs_dangling_target_after_source_move(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        mode: str,
+        relative: bool,
+        durable: bool,
+) -> None:
+    """
+    下载文件移入存档目录后，重新整理应将悬空链接原子替换为指向新位置的链接。
+    """
+    original = tmp_path / "downloads" / "download.mkv"
+    source = tmp_path / "archive" / original.name
+    target = tmp_path / "library" / "Movie.2026.mkv"
+    for directory in (original.parent, source.parent, target.parent):
+        directory.mkdir()
+    original.write_bytes(b"archived-movie")
+    link_path = Path(os.path.relpath(original, target.parent)) if relative else original
+    target.symlink_to(link_path)
+    original.rename(source)
+    assert target.is_symlink() and not target.exists()
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode=mode)
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert result.target_item.path == target.as_posix()
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert target.read_bytes() == source.read_bytes() == b"archived-movie"
+    assert not list(target.parent.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("mode", ["never", "size"])
+@pytest.mark.parametrize("relative", [False, True])
+def test_valid_softlink_obeys_overwrite_policy(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, relative: bool,
+) -> None:
+    """
+    有效的绝对或相对链接仍按覆盖策略处理，不能因相对路径被误判而替换。
+    """
+    original, source = tmp_path / "original.mkv", tmp_path / "new.mkv"
+    target = tmp_path / "library" / "Movie.2026.mkv"
+    target.parent.mkdir()
+    original.write_bytes(b"complete-old-version")
+    source.write_bytes(b"new")
+    link_path = Path(os.path.relpath(original, target.parent)) if relative else original
+    target.symlink_to(link_path)
+
+    result = _execute(
+        _checkpoint(source, target, transfer_type="softlink", mode=mode), monkeypatch, None,
+    )
+
+    assert not result.success
+    assert result.overwrite_skipped
+    assert target.readlink() == link_path
+    assert target.read_bytes() == original.read_bytes() == b"complete-old-version"
+    assert source.read_bytes() == b"new"
+    assert not list(target.parent.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_dangling_softlink_repair_accepts_source_without_size_or_identity(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        durable: bool,
+) -> None:
+    """
+    旧源快照缺少大小和文件身份时，仍可按既有软链接语义修复悬空目标。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    target.symlink_to(tmp_path / "missing.mkv")
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    source_payload = {"storage": "local", "path": source.as_posix(), "type": "file"}
+    checkpoint = replace(
+        checkpoint,
+        planning_input=replace(checkpoint.planning_input, source_fileitem=source_payload),
+        items=(replace(checkpoint.items[0], source_fileitem=source_payload),),
+    )
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert source.read_bytes() == target.read_bytes() == b"movie"
+    assert not list(tmp_path.glob(".*.mp"))
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_failed_softlink_repair_preserves_dangling_target(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        durable: bool,
+) -> None:
+    """
+    新链接暂存失败时保留源文件和原悬空链接，便于再次重试。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    original_link = tmp_path / "missing.mkv"
+    target.symlink_to(original_link)
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+    monkeypatch.setattr(LocalStorage, "softlink", lambda *_args: False)
+
+    if durable:
+        with pytest.raises(RuntimeError):
+            _execute(checkpoint, monkeypatch, runner)
+    else:
+        assert not _execute(checkpoint, monkeypatch, runner).success
+
+    assert source.read_bytes() == b"movie"
+    assert target.is_symlink() and not target.exists()
+    assert target.readlink() == original_link
+    assert not list(tmp_path.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("after_promotion", [False, True])
+def test_dangling_softlink_repair_recovers_promotion_with_real_step_ledger(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        after_promotion: bool,
+) -> None:
+    """
+    替换悬空链接时在原子替换前后中断，持久步骤应按目标状态恢复并避免重复已完成操作。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    target.symlink_to(tmp_path / "missing.mkv")
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    repository = repository_factory(checkpoint)
+    real_replace = os.replace
+    softlink = Mock(wraps=LocalStorage.softlink)
+    monkeypatch.setattr(LocalStorage, "softlink", lambda self, *args: softlink(self, *args))
+    stopped = False
+
+    class ProcessStopped(BaseException):
+        """
+        在提升步骤记成功之前模拟进程退出。
+        """
+
+    def replace_link(staged: Path, destination: Path) -> None:
+        """
+        仅在首次替换之前或之后中断，恢复时允许真实替换。
+        """
+        nonlocal stopped
+        if stopped:
+            return real_replace(staged, destination)
+        stopped = True
+        if after_promotion:
+            real_replace(staged, destination)
+        raise ProcessStopped()
+
+    monkeypatch.setattr("app.modules.filemanager.storages.local.os.replace", replace_link)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+    assert target.is_symlink()
+    assert target.exists() is after_promotion
+
+    result = _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert result.success
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert source.read_bytes() == target.read_bytes() == b"movie"
+    assert softlink.call_count == (1 if after_promotion else 2)
+    assert not list(tmp_path.glob(".mp-*"))
+    assert not list(tmp_path.glob(".*.mp"))
+
+
+@pytest.mark.parametrize("legacy_state", ["started", "failed"])
+def test_dangling_softlink_repair_replays_legacy_missing_target_decision(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        legacy_state: str,
+) -> None:
+    """
+    升级前已持久化目标不存在判定的旧任务，恢复原落地步骤时也应修复悬空链接。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    target.symlink_to(tmp_path / "missing.mkv")
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    repository = repository_factory(checkpoint)
+
+    class ProcessStopped(BaseException):
+        """
+        保留旧覆盖裁决与尚未完成的原目标落地步骤。
+        """
+
+    def stop_materialization(*_args: object) -> bool:
+        """
+        在副作用前中断，恢复时沿用旧 materialize_target 步骤。
+        """
+        raise ProcessStopped()
+
+    with monkeypatch.context() as old_version:
+        old_version.setattr(
+            TransHandler, "_TransHandler__resolve_overwrite", lambda *_args, **_kwargs: (False, False, None),
+        )
+        old_version.setattr(LocalStorage, "softlink", stop_materialization)
+        with pytest.raises(ProcessStopped):
+            _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    runner = _durable_runner(repository, checkpoint)
+    if legacy_state == "failed":
+        step = repository.get_snapshot(task_id="safe-overwrite").steps[-1]
+        assert step.kind == "materialize_target"
+        command = TransferExecutionCommand(repository)
+        command.defer(
+            task_id="safe-overwrite", lease_token="lease", step=step,
+            error="File exists", evidence=TransferStepResult(payload={"target_exists": False}),
+            retry_due_at="2026-08-27 01:29:00.000000",
+        )
+        admissions = TransactionalTransferAdmissionRepository(repository._session_factory)
+        monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(2026, 8, 27, 1, 30, tzinfo=timezone.utc))
+        admission = admissions.claim_task(task_id="safe-overwrite", owner_id="retry-worker", lease_seconds=120)
+        assert admission is not None
+        runner = execution_module._DurableTransferStepRunner(
+            task_id="safe-overwrite", lease_token=admission.lease_token,
+            checkpoint_fingerprint=checkpoint.fingerprint, repository=repository,
+        )
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert source.read_bytes() == target.read_bytes() == b"movie"
+    steps = repository.get_snapshot(task_id="safe-overwrite").steps
+    decision = next(step for step in steps if step.kind == "resolve_overwrite")
+    assert decision.result.payload["over_flag"] is False
+    materialization = next(step for step in steps if step.kind == "materialize_target")
+    assert materialization.state is TransferStepState.SUCCEEDED
+    assert not list(tmp_path.glob(".*.mp"))
+
+
+@pytest.mark.parametrize("transfer_type", ["copy", "move", "link", "softlink"])
+@pytest.mark.parametrize("durable", [False, True])
+def test_overwrite_existing_hardlink_finishes_without_temporary_files(
+        tmp_path, monkeypatch, repository_factory, transfer_type, durable,
+):
+    """
+    已有目标与下载源为硬链接时，正常重整也须完成并清理暂存和备份。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type=transfer_type)
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert target.read_bytes() == b"new-version"
+    assert source.exists() is (transfer_type != "move")
+    assert target.is_symlink() is (transfer_type == "softlink")
+    if transfer_type == "link":
+        assert source.samefile(target)
+    assert not list(tmp_path.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("transfer_type", ["copy", "move", "link", "softlink"])
+@pytest.mark.parametrize("stop_before", ["backup_overwrite_target", "promote_overwrite_target", "delete_overwrite_backup"])
+def test_existing_hardlink_overwrite_resumes_committed_steps(
+        tmp_path, monkeypatch, repository_factory, transfer_type, stop_before,
+):
+    """
+    共享 inode 的前一步已落账时，恢复须继承该回执并最终清理全部临时文件。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type=transfer_type)
+    repository = repository_factory(checkpoint)
+    runner = _durable_runner(repository, checkpoint)
+    real_run = runner.run
+
+    class ProcessStopped(BaseException):
+        """
+        保留前驱步骤的真实成功回执，模拟下一步开始前停止。
+        """
+
+    def stop(**kwargs):
+        """
+        只在指定的持久步骤边界停止，不改写文件和已有账本。
+        """
+        if kwargs["kind"] == stop_before:
+            raise ProcessStopped()
+        return real_run(**kwargs)
+
+    monkeypatch.setattr(runner, "run", stop)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, runner)
+
+    result = _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert result.success
+    assert target.read_bytes() == b"new-version"
+    assert source.exists() is (transfer_type != "move")
+    assert target.is_symlink() is (transfer_type == "softlink")
+    if transfer_type == "link":
+        assert target.samefile(source)
+    assert not list(tmp_path.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("stop_before", ["backup_overwrite_target", "promote_overwrite_target", "delete_overwrite_backup"])
+def test_existing_hardlink_overwrite_rejects_restored_mtime_mutation(
+        tmp_path, monkeypatch, repository_factory, stop_before,
+):
+    """
+    合法链接操作的回执不能掩盖落账之后等长改写并还原修改时间的外部变更。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type="link")
+    repository = repository_factory(checkpoint)
+    runner = _durable_runner(repository, checkpoint)
+    real_run = runner.run
+
+    class ProcessStopped(BaseException):
+        """
+        让外部改写发生在两个已明确分开的步骤之间。
+        """
+
+    def stop(**kwargs):
+        """
+        在已知状态时间的下一次操作之前停止。
+        """
+        if kwargs["kind"] == stop_before:
+            raise ProcessStopped()
+        return real_run(**kwargs)
+
+    monkeypatch.setattr(runner, "run", stop)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, runner)
+    before = source.stat()
+    source.write_bytes(b"CORRUPTION!")
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    artifacts = {path: path.read_bytes() for path in tmp_path.iterdir()}
+
+    with pytest.raises(execution_module._TransferManualReviewRequired):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.MANUAL_REVIEW
+    assert {path: path.read_bytes() for path in tmp_path.iterdir()} == artifacts
+
+
+@pytest.mark.parametrize("boundary", ["backup", "source_delete"])
+def test_uncommitted_shared_inode_change_keeps_copies_for_manual_review(
+        tmp_path, monkeypatch, repository_factory, boundary,
+):
+    """
+    改名或删源已经生效但回执未落账时，不能猜测共享 inode 的新状态时间。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type="link" if boundary == "backup" else "move")
+    repository = repository_factory(checkpoint)
+    real_rename, real_delete = LocalStorage.rename, LocalStorage.delete
+
+    class ProcessStopped(BaseException):
+        """
+        在文件系统副作用与持久回执之间模拟退出。
+        """
+
+    def rename(self, item, name):
+        """
+        保留实际改名，只在备份操作后停止。
+        """
+        result = real_rename(self, item, name)
+        if boundary == "backup" and name.startswith(".mp-backup-"):
+            raise ProcessStopped()
+        return result
+
+    def delete(self, item):
+        """
+        保留实际源删除，随后在备份身份落账前停止。
+        """
+        result = real_delete(self, item)
+        if boundary == "source_delete" and Path(item.path) == source:
+            raise ProcessStopped()
+        return result
+
+    monkeypatch.setattr(LocalStorage, "rename", rename)
+    monkeypatch.setattr(LocalStorage, "delete", delete)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+    artifacts = {path: path.read_bytes() for path in tmp_path.iterdir()}
+
+    with pytest.raises(execution_module._TransferManualReviewRequired):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.MANUAL_REVIEW
+    assert {path: path.read_bytes() for path in tmp_path.iterdir()} == artifacts
+
+
+def test_shared_inode_receipt_without_change_time_cannot_weaken_identity(tmp_path):
+    """
+    旧操作回执缺少状态时间时，不能清空冻结身份中的有效校验凭据。
+    """
+    source, target = tmp_path / "source.mkv", tmp_path / "target.mkv"
+    source.write_bytes(b"movie")
+    target.hardlink_to(source)
+    storage = object.__new__(LocalStorage)
+    expected = storage.get_item_strict(source)
+    receipt = storage.get_item_strict(target).model_copy(update={"change_time_ns": None})
+
+    with pytest.raises(StorageQueryError, match="缺少状态时间身份凭据"):
+        TransHandler._TransHandler__inherit_shared_local_identity(expected, receipt)
+
+    assert source.read_bytes() == target.read_bytes() == b"movie"
 
 
 def test_overwrite_promotes_new_target_when_old_target_disappears_before_backup(
@@ -1069,7 +1503,7 @@ def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missin
         tmp_path, monkeypatch, repository_factory, missing_evidence,
 ):
     """
-    旧快照或适配器缺少大小时，禁止把当前查询结果当作原文件凭据。
+    旧快照缺少源大小时在暂存前拒绝，目标缺少大小时隔离并保留所有副本。
     """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
@@ -1092,8 +1526,16 @@ def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missin
 
         monkeypatch.setattr(LocalStorage, "get_item_strict", query_without_size)
     repository = repository_factory(checkpoint)
-    with pytest.raises(execution_module._TransferManualReviewRequired):
+    expected_error = (execution_module._TransferRetryDeferred if missing_evidence == "source"
+                      else execution_module._TransferManualReviewRequired)
+    with pytest.raises(expected_error):
         _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+    if missing_evidence == "source":
+        assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.RETRY_WAIT
+        assert source.read_bytes() == b"new-version"
+        assert target.read_bytes() == b"old-version"
+        assert not list(tmp_path.glob(".mp-*"))
+        return
     assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.MANUAL_REVIEW
     assert source.read_bytes() == target.read_bytes() == b"new-version"
     assert next(tmp_path.glob(".mp-backup-*")).read_bytes() == b"old-version"

@@ -251,7 +251,7 @@ def test_torrent_search_preserves_result_and_status_parity(
 
 def test_torrent_search_preserves_exception_fallback_parity(monkeypatch):
     """
-    解析器抛错后两种入口都沿用空结果与非解析错误统计语义
+    解析器抛错后两种入口均返回空结果并记录失败，不能把捕获的异常计为搜索成功。
     """
     events = []
     _install_search_observers(monkeypatch, events)
@@ -289,7 +289,7 @@ def test_torrent_search_preserves_exception_fallback_parity(monkeypatch):
 
     assert sync_result == async_result == []
     assert sync_events == events
-    assert events[-2][0:3] == ("statistic", "Parity", False)
+    assert events[-2][0:3] == ("statistic", "Parity", True)
     assert events[-1][0:3] == ("parse", "Parity", ())
 
 

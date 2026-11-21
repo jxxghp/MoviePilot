@@ -7,8 +7,10 @@ from copy import deepcopy
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
+from pyparsing import ParseBaseException
+
 from app.adapters.system import rust as rust_accel
-from app.application.rules import BUILTIN_RULE_SET, RuleHelper, RuleParser
+from app.application.rules import BUILTIN_RULE_SET, RuleHelper, RuleParser, describe_rule_string_error
 from app.domain.context import MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo, _rust_parse_options, clear_rust_parse_options_cache
 from app.foundation import size as size_tools
@@ -147,11 +149,13 @@ class FilterModule(_ModuleBase):
         """
         clear_rust_parse_options_cache()
 
-    def test(self) -> None:
+    def test(self) -> Tuple[bool, str]:
         """
-        保留模块自检入口；过滤器不依赖外部服务，无需执行探测。
+        过滤器不依赖外部服务，无需执行探测；模块运行即表示可用。
+
+        :return: 成功结果与无需探测的说明
         """
-        return None
+        return True, "模块无需探测"
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
@@ -289,18 +293,26 @@ class FilterModule(_ModuleBase):
         筛选命中任一优先级层级的种子，并保留输入顺序。
 
         每个种子的优先级由第一个命中的层级决定；解析结果复用调用方提供的缓存。
+
+        :raises ValueError: 实际执行的层级无法解析，说明中保留规则组及完整无效 ID
         """
         if not torrent_list:
             return []
         # 只拆分一次规则层级；具体层级仍延迟到真正需要匹配时解析。
         rule_groups = [rule_group.strip() for rule_group in rule_string.split('>')]
         ret_torrents = []
-        for torrent in torrent_list:
-            if not self.__get_order(torrent, rule_groups, mediainfo, parser, parsed_rule_cache):
-                logger.debug(f"种子 {torrent.site_name} - {torrent.title} {torrent.description or ''} "
-                             f"不匹配 {rule_name} 过滤规则")
-                continue
-            ret_torrents.append(torrent)
+        try:
+            for torrent in torrent_list:
+                if not self.__get_order(torrent, rule_groups, mediainfo, parser, parsed_rule_cache):
+                    logger.debug(f"种子 {torrent.site_name} - {torrent.title} {torrent.description or ''} "
+                                 f"不匹配 {rule_name} 过滤规则")
+                    continue
+                ret_torrents.append(torrent)
+        except ParseBaseException as error:
+            # 只在实际解析失败后补充定位，不能预解析未执行的低优先级层级。
+            issue = describe_rule_string_error(error.pstr, self.rule_set)
+            detail = str(issue) if issue is not None else "规则表达式语法错误"
+            raise ValueError(f"过滤规则组 {rule_name!r} 配置错误：{detail}") from error
 
         return ret_torrents
 

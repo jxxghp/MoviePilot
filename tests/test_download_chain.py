@@ -27,6 +27,7 @@ from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.config import settings
 from app.runtime.events import eventmanager
+from app.schemas.download import DownloadTaskAction
 from app.schemas.file import FileItem
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.system import TransferDirectoryConf
@@ -954,9 +955,9 @@ class _FakeBatchTorrentHelper:
             results.append(context)
         return results
 
-    def get_torrent_episodes(self, _files, custom_words=None):
+    def get_torrent_episodes(self, _files, custom_words=None, episode_selection=None):
         """
-        记录自定义识别词配置，并返回预设剧集编号的副本。
+        记录自定义识别词配置，接受冻结的季集依据并返回预设剧集编号的副本。
         """
         type(self).received_custom_words = custom_words
         return list(self.episodes)
@@ -966,7 +967,26 @@ def _build_tv_context(episode_list=None):
     """
     构造标题未显式标集数的单季电视剧候选。
     """
-    episodes = episode_list or []
+    meta = SimpleNamespace(
+        season_list=[1],
+        season_episode="S01E01",
+        episode_list=list(episode_list or []),
+        title="Test Show",
+        org_string="Test Show S01 2160p",
+        set_episodes=lambda begin, end: None,
+    )
+
+    def set_episode_list(episodes) -> None:
+        """
+        模拟 MetaBase.set_episode_list，供批量下载写回种子真实集号。
+
+        :param episodes: 解析得到的集号列表
+        """
+        normalized = sorted({int(episode) for episode in episodes if int(episode) > 0})
+        if normalized:
+            meta.episode_list = normalized
+
+    meta.set_episode_list = set_episode_list
     return SimpleNamespace(
         media_info=SimpleNamespace(
             type=MediaType.TV,
@@ -978,15 +998,8 @@ def _build_tv_context(episode_list=None):
             bangumi_id=None,
             anilist_id=None,
         ),
-        meta_info=SimpleNamespace(
-            season_list=[1],
-            season_episode="S01E01",
-            episode_list=episodes,
-            title="Test Show",
-            org_string="Test Show S01 2160p",
-            set_episodes=lambda begin, end: None,
-        ),
-        torrent_info=SimpleNamespace(title="Test Show S01 2160p", site_name="TestSite"),
+        meta_info=meta,
+        torrent_info=SimpleNamespace(title="Test Show S01 2160p", description=None, site_name="TestSite"),
         allowed_episodes=None,
         confirmed_full_coverage=False,
     )
@@ -1971,13 +1984,15 @@ def _prepared_download_for_settle(download_dir: Path) -> download_submission._Pr
     )
 
 
-def _settle_accepted_download(chain, download_dir: Path, already_exists: bool = False) -> None:
+def _settle_accepted_download(
+        chain, download_dir: Path, task_action: DownloadTaskAction = DownloadTaskAction.CREATED,
+) -> None:
     """
     以固定下载上下文调用一次成功结算。
 
     :param chain: 待结算的下载链实例
     :param download_dir: 提交前解析出的预期下载目录
-    :param already_exists: 是否按下载器已存在同一任务结算
+    :param task_action: 下载器对任务的实际动作
     """
     chain._settle_accepted_download(
         prepared=_prepared_download_for_settle(download_dir),
@@ -1991,7 +2006,7 @@ def _settle_accepted_download(chain, download_dir: Path, already_exists: bool = 
         actual_downloader="qb",
         download_hash="hash123",
         layout="NoSubfolder",
-        already_exists=already_exists,
+        task_action=task_action,
     )
 
 
@@ -2054,17 +2069,18 @@ def test_settle_accepted_download_skips_lookup_for_remote_dir():
     chain.list_torrents.assert_not_called()
 
 
-def test_settle_accepted_download_marks_reuse_when_task_exists():
+@pytest.mark.parametrize("task_action", list(DownloadTaskAction))
+def test_settle_accepted_download_passes_task_action(task_action):
     """
-    下载器已存在同一任务时，复用事实须传递到结算，供历史跳过重复通知。
+    下载器对任务的实际动作须原样传递到结算，供历史区分通知、文件明细去重与重复退避。
     """
     chain = DownloadChain.__new__(DownloadChain)
     chain.list_torrents = MagicMock(return_value=[])
     chain._settle_download_success = MagicMock()
 
-    _settle_accepted_download(chain, Path("/downloads/TV"), already_exists=True)
+    _settle_accepted_download(chain, Path("/downloads/TV"), task_action=task_action)
 
-    assert chain._settle_download_success.call_args.kwargs["already_exists"] is True
+    assert chain._settle_download_success.call_args.kwargs["task_action"] is task_action
 
 
 def test_settle_accepted_download_records_actual_path_for_existing_torrent():
@@ -2072,7 +2088,7 @@ def test_settle_accepted_download_records_actual_path_for_existing_torrent():
     复现刷流先下载场景：下载历史与文件明细须记录下载器实际路径。
     """
     chain = DownloadChain.__new__(DownloadChain)
-    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",))
+    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",), video_extensions=(".mkv",))
     chain.durable_event_writer = None
     chain.download_history_repository = MagicMock()
     chain._build_download_notification = MagicMock(return_value=None)

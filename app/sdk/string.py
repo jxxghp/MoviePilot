@@ -6,8 +6,9 @@ from functools import wraps
 from inspect import signature
 from typing import Callable, TypeVar
 
+from app.application.site.protocol import site_domain
 from app.domain.episode import compact_numbers, format_ranges
-from app.domain.site import extract_domain, urls_match
+from app.domain.site import urls_match
 from app.domain.title import is_media_title_like, parse_search_keyword
 from app.domain.torrent import is_magnet_link
 from app.foundation.crypto import HashUtils
@@ -147,7 +148,7 @@ class StringUtils:
     format_size = staticmethod(format_size)
     url_equal = staticmethod(_legacy_alias(urls_match, url1="first", url2="second"))
     get_url_netloc = staticmethod(split_netloc)
-    get_url_domain = staticmethod(extract_domain)
+    get_url_domain = staticmethod(site_domain)
     get_url_sld = staticmethod(second_level_label)
     get_url_host = staticmethod(host_label)
     get_base_url = staticmethod(base_url)

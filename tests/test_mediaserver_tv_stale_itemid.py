@@ -26,12 +26,18 @@ class _FakeResponse:
         保存模拟接口的响应内容与状态，避免实际网络请求。
         """
         self._payload = payload
+        self.status_code = 200
 
     def json(self):
         """
         返回测试预置的响应体。
         """
         return self._payload
+
+    def close(self):
+        """
+        保留响应释放接缝，测试替身不持有网络资源。
+        """
 
 
 def _build_plex():
@@ -271,7 +277,9 @@ def test_trime_media_tv_episodes_fallback_when_cached_item_id_missing() -> None:
             SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
         ]
     )
-    client._TrimeMedia__get_series_id_by_name = Mock(return_value="new-series-id")
+    client._TrimeMedia__get_series_id_by_name = Mock(
+        return_value=(True, "new-series-id")
+    )
     client._api.season_list.return_value = [SimpleNamespace(season_number=1, guid="season-1")]
     client._api.episode_list.return_value = [SimpleNamespace(season_number=1, episode_number=1)]
 

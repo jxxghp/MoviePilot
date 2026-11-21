@@ -44,6 +44,19 @@ def telegram():
         telegram.stop()
 
 
+@pytest.fixture
+def telegram_retry_sleep(monkeypatch) -> Mock:
+    """
+    记录发送重试的退避秒数，避免网络故障用例真实等待。
+
+    :param monkeypatch: 用例结束后恢复真实等待函数的隔离夹具
+    :return: 可断言等待次数与顺序的替身
+    """
+    sleep = Mock()
+    monkeypatch.setattr("app.runtime.execution.time.sleep", sleep)
+    return sleep
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("partial_answer, trailing_tool", [(False, False), (True, False), (True, True)])
 async def test_agent_final_edit_waits_during_telegram_edit_interval(
@@ -509,13 +522,15 @@ def test_send_msg_markdown_escaping(telegram):
     assert send_kwargs["text"].startswith("*测试标题*\n")
 
 
-@pytest.mark.parametrize("error", [
-    TelegramApiError("sendPhoto", "invalid photo", 400),
-    TelegramNetworkError("sendPhoto", "timeout"),
+@pytest.mark.parametrize("error, attempts", [
+    (TelegramApiError("sendPhoto", "invalid photo", 400), 1),
+    (TelegramNetworkError("sendPhoto", "timeout"), 3),
 ])
-def test_photo_failure_falls_back_without_losing_notification_context(telegram, error):
+def test_photo_failure_falls_back_without_losing_notification_context(
+    telegram, telegram_retry_sleep, error, attempts,
+):
     """
-    图片被拒绝或网络失败时立即发正文，保留格式、链接、话题与按钮。
+    图片被拒绝或网络重试耗尽时发正文，保留格式、链接、话题与按钮。
     """
     telegram.bot.send_photo.side_effect = error
     telegram.bot.send_message.return_value = {"message_id": 18, "chat": {"id": "fake_chat_id"}}
@@ -526,7 +541,8 @@ def test_photo_failure_falls_back_without_losing_notification_context(telegram, 
         buttons=[[{"text": "查看", "url": "https://example.com"}]],
     )
     assert result == {"success": True, "message_id": 18, "chat_id": "fake_chat_id"}
-    telegram.bot.send_photo.assert_called_once()
+    assert telegram.bot.send_photo.call_count == attempts
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6][:attempts - 1]
     telegram.bot.send_message.assert_called_once()
     photo = telegram.bot.send_photo.call_args.kwargs
     text = telegram.bot.send_message.call_args.kwargs
@@ -537,21 +553,83 @@ def test_photo_failure_falls_back_without_losing_notification_context(telegram, 
     assert text["message_thread_id"] == 101 and text["disable_web_page_preview"] is True
 
 
-def test_photo_rate_limit_does_not_send_fallback_or_retry(telegram):
+@pytest.mark.parametrize("failures", [1, 2])
+@pytest.mark.parametrize("parse_mode", ["", "HTML", "MarkdownV2"])
+@pytest.mark.parametrize("long_message", [False, True])
+def test_photo_network_retry_recovers_before_sending_text(
+    telegram, telegram_retry_sleep, failures, parse_mode, long_message,
+):
+    """
+    短通知和三种格式的长通知只重试失败图片，成功后继续发送尚未发送的正文。
+    """
+    message = {"message_id": 18, "chat": {"id": "fake_chat_id"}}
+    telegram.bot.send_photo.side_effect = [
+        TelegramNetworkError("sendPhoto", "Connection reset by peer")
+    ] * failures + [message]
+    telegram.bot.send_message.return_value = message
+    telegram._telegram_topic_id = 101
+    timeline = Mock()
+    timeline.attach_mock(telegram.bot.send_photo, "photo")
+    timeline.attach_mock(telegram_retry_sleep, "wait")
+    timeline.attach_mock(telegram.bot.send_message, "text")
+    body = "完整通知内容" * (800 if long_message else 1)
+
+    result = telegram.send_msg(
+        title="", text=body, parse_mode=parse_mode, image="https://example.com/poster.jpg",
+        buttons=[[{"text": "查看", "url": "https://example.com"}]],
+    )
+
+    assert result == {"success": True, "message_id": 18, "chat_id": "fake_chat_id"}
+    assert telegram.bot.send_photo.call_count == failures + 1
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6][:failures]
+    assert [call[0] for call in timeline.mock_calls] == (
+        ["photo", "wait"] * failures + ["photo"] + ["text"] * telegram.bot.send_message.call_count
+    )
+    photo_calls = telegram.bot.send_photo.call_args_list
+    assert all(call == photo_calls[0] for call in photo_calls)
+    photo = photo_calls[0].kwargs
+    assert photo["chat_id"] == "fake_chat_id" and photo["message_thread_id"] == 101
+    assert photo["reply_markup"]["inline_keyboard"][0][0]["text"] == "查看"
+    chunks = [call.kwargs for call in telegram.bot.send_message.call_args_list]
+    assert "".join([photo["caption"]] + [chunk["text"] for chunk in chunks]).replace("\n", "") == body
+    assert bool(chunks) is long_message
+    assert all(chunk["reply_markup"] is None for chunk in chunks)
+
+
+def test_photo_retry_stops_when_telegram_rejects_image(telegram, telegram_retry_sleep):
+    """
+    网络重试中遇到明确图片拒绝时立即改发正文，不继续上传同一坏图片。
+    """
+    telegram.bot.send_photo.side_effect = [
+        TelegramNetworkError("sendPhoto", "timeout"),
+        TelegramApiError("sendPhoto", "invalid photo", 400),
+    ]
+    result = telegram.send_msg(title="通知", image="https://example.com/poster.jpg")
+    assert result["success"] is True
+    assert telegram.bot.send_photo.call_count == 2
+    telegram_retry_sleep.assert_called_once_with(3)
+    telegram.bot.send_message.assert_called_once()
+
+
+@pytest.mark.parametrize("failures", [0, 1, 2])
+def test_photo_rate_limit_does_not_send_fallback_or_retry(telegram, telegram_retry_sleep, failures):
     """
     429 必须尊重冷却期，不再用文本请求加重限流。
     """
-    telegram.bot.send_photo.side_effect = TelegramApiError(
+    rate_limit = TelegramApiError(
         "sendPhoto", "Too Many Requests", 429, {"retry_after": 17},
     )
+    telegram.bot.send_photo.side_effect = [TelegramNetworkError("sendPhoto", "timeout")] * failures + [rate_limit]
     result = telegram.send_msg(title="通知", image="https://example.com/poster.jpg")
     assert result["success"] is False
-    telegram.bot.send_photo.assert_called_once()
+    assert telegram.send_msg(title="冷却期间通知")["success"] is False
+    assert telegram.bot.send_photo.call_count == failures + 1
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6][:failures]
     telegram.bot.send_message.assert_not_called()
 
 
-@pytest.mark.parametrize("parse_mode", ["", "MarkdownV2"])
-def test_long_photo_notification_preserves_all_text_after_fallback(telegram, parse_mode):
+@pytest.mark.parametrize("parse_mode", ["", "HTML", "MarkdownV2"])
+def test_long_photo_notification_preserves_all_text_after_fallback(telegram, telegram_retry_sleep, parse_mode):
     """
     长正文首段图片失败时改发文本，其余分段与首段按钮保持完整。
     """
@@ -562,7 +640,8 @@ def test_long_photo_notification_preserves_all_text_after_fallback(telegram, par
         buttons=[[{"text": "查看", "url": "https://example.com"}]],
     )
     assert result["success"] is True
-    telegram.bot.send_photo.assert_called_once()
+    assert telegram.bot.send_photo.call_count == 3
+    assert [call.args[0] for call in telegram_retry_sleep.call_args_list] == [3, 6]
     chunks = [call.kwargs for call in telegram.bot.send_message.call_args_list]
     assert len(chunks) > 1
     assert "".join(chunk["text"] for chunk in chunks).replace("\n", "") == body

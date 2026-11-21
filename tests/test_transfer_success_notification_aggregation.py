@@ -106,13 +106,18 @@ def chain():
     构造没有线程、数据库和真实消息通道的通知宿主。
     """
     owner = object.__new__(TransferChain)
-    owner.runtime_config = ChainRuntimeConfig(media_extensions=(".flac", ".mkv"), history_url="https://example.test/history")
+    owner.runtime_config = ChainRuntimeConfig(
+        media_extensions=(".flac", ".mkv"),
+        lyrics_extensions=(".lrc",),
+        history_url="https://example.test/history",
+    )
     owner.success_notification_aggregator = TransferNotificationAggregator[TransferSuccessNotification]()
     owner.post_message = Mock()
     owner._scrape_batches = {}
     owner._audio_exts = [".flac"]
     owner._media_exts = [".mkv"]
     owner._subtitle_exts = [".srt"]
+    owner._lyrics_exts = [".lrc"]
     owner.eventmanager = Mock()
     yield owner
     owner.success_notification_aggregator.close()

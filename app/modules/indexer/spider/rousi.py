@@ -331,3 +331,31 @@ class RousiSpider:
         }
         base64_str = base64.b64encode(json.dumps(params).encode('utf-8')).decode('utf-8')
         return f"[{base64_str}]{url}"
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        用 PeerGo 个人 API Key 验证用户接口，不把网页成功当作 API 可用。
+
+        :return: 当前账号是否可用及认证或连接失败原因
+        """
+        if not self._apikey:
+            return False, "未配置个人 API Key"
+        with RequestUtils(headers={
+            "Content-Type": "application/json", "Accept": "application/json", "Authorization": f"Bearer {self._apikey}",
+        }, ua=self._ua or get_runtime_setting("USER_AGENT"), proxies=self._proxy or {},
+            timeout=self._timeout).response_manager(
+            method="GET", url=f"https://{self._domain}/api/v1/profile", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code == 200:
+                try:
+                    payload = response.json()
+                except (TypeError, ValueError):
+                    return False, "站点返回了无效的用户数据"
+                if isinstance(payload, dict) and payload.get("code") == 0:
+                    return True, "连接成功"
+                return False, "个人 API Key 已失效或权限不足"
+            if response.status_code in (401, 403):
+                return False, "个人 API Key 已失效或权限不足"
+            return False, f"错误：{response.status_code} {response.reason}"

@@ -44,6 +44,7 @@ def _to_snapshot(model: User) -> UserSnapshot:
         permissions=model.permissions,
         settings=model.settings,
         notification_identity=model.notification_identity or "",
+        account_type=model.account_type,
     )
 
 
@@ -114,7 +115,7 @@ class SqlAlchemyUserRepository(UserRepository):
         在异步请求会话中按可选窗口读取冻结用户快照。
         """
         session = self._require_async_session()
-        statement = select(User).order_by(User.id)
+        statement = select(User).where(User.account_type == "local").order_by(User.id)
         if page is not None and count is not None:
             statement = statement.offset((page - 1) * count).limit(count)
         result = await session.execute(statement)
@@ -125,7 +126,7 @@ class SqlAlchemyUserRepository(UserRepository):
         在异步请求会话中返回用户精确总数。
         """
         session = self._require_async_session()
-        result = await session.execute(select(func.count()).select_from(User))
+        result = await session.execute(select(func.count()).select_from(User).where(User.account_type == "local"))
         return int(result.scalar_one())
 
     async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
@@ -180,6 +181,8 @@ class SqlAlchemyUserRepository(UserRepository):
         model = await self._locked_user(session, user_id, payload)
         if model is None:
             return None
+        if model.account_type != "local":
+            raise ValueError("渠道身份请在渠道授权中管理")
         old_name = model.name
         new_name = str(payload.get("name", old_name))
         values = {key: value for key, value in payload.items() if key != "id"}
@@ -202,6 +205,8 @@ class SqlAlchemyUserRepository(UserRepository):
         model = await self._locked_user(session, user_id, None)
         if model is None:
             return None
+        if model.account_type != "local":
+            raise ValueError("渠道身份请在渠道授权中管理")
         username: str = model.name
         await session.delete(model)
         await session.flush()
@@ -318,7 +323,7 @@ class TransactionalUserRepository(ChainUserRepository):
         """
         with self._sync_session() as session:
             model = UserOper(db=session).get_by_name(name)
-            return _to_auth_snapshot(model) if model else None
+            return _to_auth_snapshot(model) if model and model.account_type == "local" else None
 
     async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """

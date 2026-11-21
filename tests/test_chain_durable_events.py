@@ -37,7 +37,7 @@ from app.application.outbox import (
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
-    TRANSFER_COMPLETED_TOPIC,
+    EVENT_HANDLER_TOPIC_PREFIX,
     ClaimedOutboxMessage,
     OutboxDispatcher,
     PostCommitEffectError,
@@ -357,7 +357,7 @@ def test_durable_music_snapshots_keep_explicit_music_type(media_type, title):
 
 def test_transfer_outbox_dispatches_video_release_ending_in_aac(monkeypatch):
     """
-    真实整理 handler 恢复 AAC 尾缀影视快照后应派发事件并完成消息结算。
+    真实处理器子投递恢复 AAC 尾缀影视快照后应派发事件并完成自身结算。
     """
     from app.startup.composition import outbox as outbox_composition
 
@@ -374,13 +374,17 @@ def test_transfer_outbox_dispatches_video_release_ending_in_aac(monkeypatch):
         "idempotency_key": "transfer.completed:7023:v1",
     })))
     message = ClaimedOutboxMessage(
-        7023, "transfer.completed:7023:v1", TRANSFER_COMPLETED_TOPIC, payload, 1, 1,
+        7023, "event.handler:7023:v1", f"{EVENT_HANDLER_TOPIC_PREFIX}test",
+        {"event_type": EventType.TransferComplete.value,
+         "event_key": payload["idempotency_key"], "handler_id": "test.video_handler",
+         "event_payload": payload}, 1, 1,
     )
     repository = Mock()
     repository.claim.return_value = message
     event_manager = Mock()
     monkeypatch.setattr(outbox_composition, "EventManager", lambda: event_manager)
-    dispatcher = OutboxDispatcher(repository, outbox_composition.build_outbox_handlers())
+    dispatcher = OutboxDispatcher(repository, outbox_composition.build_outbox_handlers(),
+                                 fallback_handler=outbox_composition.dispatch_event_handler)
 
     assert dispatcher.dispatch_one() is True
 
@@ -390,7 +394,8 @@ def test_transfer_outbox_dispatches_video_release_ending_in_aac(monkeypatch):
     assert restored["meta"].type == MediaType.TV
     assert restored["meta"].to_dict() == meta.to_dict()
     assert restored["fileitem"] == fileitem
-    assert restored["idempotency_key"] == message.event_key
+    assert restored["idempotency_key"] == payload["idempotency_key"]
+    assert event_manager.send_event_strict.call_args.kwargs == {"handler_id": "test.video_handler"}
     repository.complete.assert_called_once()
     assert repository.complete.call_args.args[:2] == (message.message_id, message.attempt)
     repository.retry.assert_not_called()

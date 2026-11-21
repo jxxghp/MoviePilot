@@ -81,6 +81,32 @@ def test_music_cover_enters_directory_and_single_transfer_only_when_sync_enabled
         assert context.related_main_keys[chain._get_file_key(cover)] == chain._get_file_key(audio)
 
 
+def test_music_directory_plans_lyrics_and_cover_with_audio(tmp_path):
+    """
+    整目录音乐规划应让同名歌词和封面随主音轨进入同一批次。
+    """
+    audio_path = _tagged_audio(tmp_path / "source")
+    lyrics_path = audio_path.with_suffix(".lrc")
+    lyrics_path.write_text("[00:01.00]测试歌词", encoding="utf-8")
+    cover_path = audio_path.parent / "folder.jpg"
+    Image.new("RGB", (2, 2)).save(cover_path)
+
+    audio = make_fileitem(str(audio_path))
+    lyrics = make_fileitem(str(lyrics_path))
+    cover = make_fileitem(str(cover_path))
+    chain = make_transfer_chain()
+    bind_empty_history_repositories(chain)
+    chain._resolve_download_history = lambda **_kwargs: None
+
+    planned, inherited = _planner(
+        chain, audio, sync=True, mtype=MediaType.MUSIC
+    )._plan_file_items([(audio, False), (lyrics, False), (cover, False)])
+
+    assert [item.path for item, _ in planned] == [audio.path, lyrics.path, cover.path]
+    assert chain._get_file_key(lyrics) in inherited
+    assert chain._get_file_key(cover) in inherited
+
+
 @pytest.mark.parametrize("automatic", [False, True])
 def test_music_cover_does_not_borrow_identity_from_different_albums_or_video(tmp_path, automatic):
     """

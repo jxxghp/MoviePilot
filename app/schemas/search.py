@@ -73,6 +73,8 @@ class SearchDiagnosticWarning(BaseModel):
 
     code: str = Field(description="稳定警告代码；客户端应兼容未知代码")
     rule_group: Optional[str] = Field(default=None, description="相关规则组名称；来源警告为 None")
+    rule_ids: list[str] = Field(default_factory=list, exclude_if=lambda value: not value,
+                               description="规则配置错误涉及的完整 ID；保留旧 ID 空白，没有相关 ID 时省略")
 
 
 class SearchDiagnostics(BaseModel):

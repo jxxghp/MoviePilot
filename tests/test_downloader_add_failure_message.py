@@ -41,6 +41,7 @@ def _rejecting_server(module_cls):
         server.add_torrent.return_value = (False, [])
     elif module_cls is TransmissionModule:
         server.add_torrent.return_value = None
+        server.add_torrent_with_status.return_value = (None, False)
     else:
         server.add_torrent.return_value = False
     server.get_torrents.return_value = ([], False)
@@ -79,6 +80,8 @@ def test_added_download_without_hash_reports_torrent_name(module_cls, expected):
     server = MagicMock()
     server.add_torrent.return_value = (True, []) if module_cls is QbittorrentModule else True
     server.get_torrent_id_by_tag.return_value = None
+    # 下载器里查不到同一 hash 的任务（rTorrent 添加前后都会按 hash 查找）。
+    server.get_torrents.return_value = ([], False)
     module = _build_module(module_cls, server)
 
     result = module.download(content=_TORRENT, download_dir=Path("/downloads"), cookie="")

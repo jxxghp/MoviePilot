@@ -303,7 +303,7 @@ def test_missing_current_user_is_unauthorized():
     with pytest.raises(HTTPException) as exc_info:
         auth_dependencies.get_current_user(
             db=object(),
-            token_data=SimpleNamespace(sub=7),
+            token_data=TokenPayload(sub=7),
             runtime=runtime,
         )
 
@@ -761,6 +761,10 @@ def test_auth_exchange_sets_resource_cookie():
         # 资源令牌不携带宿主 Agent 的渠道声明
         "agent_channel": None,
         "agent_channel_user": None,
+        "agent_authorization_id": None,
+        "agent_operation": None,
+        "agent_method": None,
+        "agent_path": None,
     }
 
 

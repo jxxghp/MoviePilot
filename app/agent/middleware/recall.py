@@ -60,7 +60,7 @@ class SearchHistoryInput(BaseModel):
     around_message_id: int = Field(default=0, ge=0, description="精确的 match_message_id 或上一窗口中的消息标识；0 表示未指定锚点")
     window: int = Field(default=5, ge=1, le=20, description="滚动锚点两侧各返回的消息数，默认 5，范围为 1 至 20")
     limit: int = Field(default=3, ge=1, le=10, description="发现阶段最多返回的会话数，默认 3，范围为 1 至 10")
-    sort: Literal['', 'newest', 'oldest'] = Field(default='', description="省略或空值按 BM25 相关性排序；newest 和 oldest 按时间定位最近进展或起点")
+    sort: Literal['relevance', 'newest', 'oldest'] = Field(default='relevance', description="省略或 relevance 按 BM25 相关性排序；newest 和 oldest 按时间定位最近进展或起点")
     detail: Literal['adaptive', 'full'] = Field(default='adaptive', description="adaptive 只展开最相关结果，full 展开全部结果")
     role_filter: str = Field(default='user,assistant', max_length=64, description="逗号分隔的消息角色，默认 user,assistant；加入 tool 可检索完整工具结果")
     after: str = Field(default='', max_length=40, description="会话开始时间下界，接受 ISO 日期、时间或 7d、24h、2w 等相对时间")
@@ -192,7 +192,8 @@ class RecallMiddleware(AgentMiddleware):
         """
         args = SearchHistoryInput(**kwargs)
         query = RecallQuery(query=args.query, session_id=args.session_id, around_message_id=args.around_message_id,
-                            window=args.window, limit=args.limit, sort=args.sort, detail=args.detail,
+                            window=args.window, limit=args.limit,
+                            sort='' if args.sort == 'relevance' else args.sort, detail=args.detail,
                             role_filter=tuple(role.strip() for role in args.role_filter.split(',') if role.strip()),
                             after=_time_bound(args.after), before=_time_bound(args.before),
                             exclude_session_ids=tuple(dict.fromkeys(args.exclude_session_ids)),

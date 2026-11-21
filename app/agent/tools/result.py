@@ -10,6 +10,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import ToolException
 from langgraph.types import Command
 
+from app.agent.evidence.scope import redact_evidence_message
 from app.agent.policy.contracts import ExecutionOutcome
 
 EXECUTION_OUTCOME_KEY = "moviepilot_execution_outcome"
@@ -53,10 +54,10 @@ def sanitize_tool_image_message(message: BaseMessage) -> BaseMessage:
 
 def messages_for_persistence(messages: list[BaseMessage]) -> list[BaseMessage]:
     """
-    仅过滤宿主明确标记的临时观察消息，再移除工具图像；真实用户消息原样保留。
+    过滤宿主临时观察，并移除临时知识与工具图像；真实用户消息原样保留。
     """
     return [
-        sanitize_tool_image_message(message)
+        sanitize_tool_image_message(redact_evidence_message(message))
         for message in messages
         if not (isinstance(message, HumanMessage) and message.additional_kwargs.get(TOOL_OBSERVATION_MARKER) is True)
     ]
@@ -64,9 +65,9 @@ def messages_for_persistence(messages: list[BaseMessage]) -> list[BaseMessage]:
 
 def _aggregate_outcomes(outcomes: list[ExecutionOutcome]) -> ExecutionOutcome:
     """
-    未知副作用优先于失败，未完成任务优先于纯成功回执。
+    未知副作用优先于失败，未完成任务和历史回执均不能聚合为本次成功。
     """
-    for outcome in (ExecutionOutcome.UNKNOWN, ExecutionOutcome.FAILED, ExecutionOutcome.PENDING):
+    for outcome in (ExecutionOutcome.UNKNOWN, ExecutionOutcome.FAILED, ExecutionOutcome.PENDING, ExecutionOutcome.REPLAYED):
         if outcome in outcomes:
             return outcome
     return ExecutionOutcome.SUCCEEDED
@@ -126,6 +127,8 @@ def inspect_tool_result(result: Any) -> ExecutionOutcome:
         if isinstance(explicit, str) and explicit in ExecutionOutcome._value2member_map_:
             return ExecutionOutcome(explicit)
         if result.status == "error":
+            if inspect_tool_result(result.content) is ExecutionOutcome.REPLAYED:
+                return ExecutionOutcome.REPLAYED
             return ExecutionOutcome.FAILED
         return inspect_tool_result(result.content)
     if isinstance(result, Command):
@@ -158,7 +161,7 @@ def annotate_tool_result(result: Any) -> Any:
     if isinstance(result, ToolMessage):
         outcome = inspect_tool_result(result)
         result.additional_kwargs[EXECUTION_OUTCOME_KEY] = outcome.value
-        if outcome in {ExecutionOutcome.FAILED, ExecutionOutcome.UNKNOWN}:
+        if outcome in {ExecutionOutcome.FAILED, ExecutionOutcome.UNKNOWN, ExecutionOutcome.REPLAYED}:
             result.status = "error"
     elif isinstance(result, Command) and isinstance(result.update, dict):
         for message in result.update.get("messages", []):

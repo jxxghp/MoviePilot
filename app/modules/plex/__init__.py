@@ -173,6 +173,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         server: Optional[str] = None,
         *,
         query: Optional[MediaServerQueryOptions] = None,
+        raise_on_query_failure: bool = False,
     ) -> Optional[_SchemaExistMediaInfo]:
         """
         按媒体类型查询首个匹配的入库记录。
@@ -181,6 +182,8 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param itemid: 缓存条目标识；电影优先直接查详情，剧集失效后可回退搜索
         :param server: 指定实例名称，省略时依次查询全部实例
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
+        :param raise_on_query_failure: 仅为兼容链路严格口径保留，Plex 查询失败与未找到
+            均返回空结果，无法区分，故该参数不改变本方法的行为
         :return: 存在信息，电视剧结果包含季集映射；没有匹配记录时返回 None
         """
         servers: Iterable[tuple[Optional[str], Optional[Plex]]]
@@ -298,6 +301,24 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         if server_obj:
             return server_obj.get_librarys(hidden, **MediaServerQueryOptions.as_kwargs(query))
         return None
+
+    def mediaserver_search(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """
+        在所有已启用 Plex 实例中搜索媒体库，并保留条目所属配置。
+
+        :param keyword: 搜索关键词
+        :param types: 需要搜索的业务类型
+        :param limit: 每个实例返回的最大条目数
+        :return: 带 Plex 配置名的搜索结果
+        """
+        items: list[_SchemaMediaServerPlayItem] = []
+        for server_name, server_obj in self.get_instances().items():
+            for item in server_obj.search_library_items(keyword, types, limit):
+                item.server = server_name
+                items.append(item)
+        return items
 
     def mediaserver_items(
         self,
@@ -471,6 +492,22 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         if not server_obj:
             return None
         return server_obj.get_play_url(str(item_id))
+
+    def mediaserver_stream_url(
+        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+    ) -> Optional[str]:
+        """
+        返回 Plex 原始音视频文件流地址。
+
+        :param server: Plex 配置名称
+        :param item_id: Plex 条目标识
+        :param item_type: 媒体服务器返回的条目类型，只接受具体音视频
+        :return: 原始媒体流地址；实例不可用或条目不是音视频时返回 None
+        """
+        if (item_type or "").casefold() not in {"movie", "episode", "audio", "music", "track"}:
+            return None
+        server_obj = self.get_instance(server)
+        return server_obj.get_stream_url(str(item_id)) if server_obj else None
 
     def mediaserver_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None

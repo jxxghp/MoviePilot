@@ -151,26 +151,29 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户流量信息。
+        解析用户流量信息，优先读取修道院概览指标，缺失字段沿用传统页面规则。
         """
         html_text = self._prepare_html_text(html_text)
-        upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
-                                 re.IGNORECASE)
-        self.upload = self.num_filesize(upload_match.group(1).strip()) if upload_match else 0
-        download_match = re.search(r"[^总子影力]下[载載]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
-                                   re.IGNORECASE)
-        self.download = self.num_filesize(download_match.group(1).strip()) if download_match else 0
-        ratio_match = re.search(r"分享率[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+)", html_text)
-        # 计算分享率
-        calc_ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
-        # 优先使用页面上的分享率
-        self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
-            ratio_match and ratio_match.group(1).strip()) else calc_ratio
-        leeching_match = re.search(r"(Torrents leeching|下载中)[\u4E00-\u9FA5\D\s]+(\d+)[\s\S]+<", html_text)
-        self.leeching = text_tools.parse_int(leeching_match.group(2)) if leeching_match and leeching_match.group(
-            2).strip() else 0
         html = etree.HTML(html_text)
         try:
+            metrics = self._traffic_metric_values(html)
+            upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
+                                     re.IGNORECASE)
+            upload_text = metrics.get("上传量") or (upload_match.group(1).strip() if upload_match else "")
+            self.upload = self.num_filesize(upload_text)
+            download_match = re.search(r"[^总子影力]下[载載]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
+                                       re.IGNORECASE)
+            download_text = metrics.get("下载量") or (download_match.group(1).strip() if download_match else "")
+            self.download = self.num_filesize(download_text)
+            ratio_match = re.search(r"分享率[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+)", html_text)
+            ratio_text = metrics.get("分享率") or (ratio_match.group(1).strip() if ratio_match else "")
+            # 优先使用页面上的分享率，否则按最终解析到的流量计算。
+            calc_ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
+            self.ratio = text_tools.parse_float(ratio_text) if ratio_text else calc_ratio
+            leeching_match = re.search(r"(Torrents leeching|下载中)[\u4E00-\u9FA5\D\s]+(\d+)[\s\S]+<", html_text)
+            self.leeching = text_tools.parse_int(leeching_match.group(2)) if leeching_match and leeching_match.group(
+                2).strip() else 0
+
             has_ucoin, self.bonus = self._parse_ucoin(html)
             if has_ucoin:
                 return
@@ -220,6 +223,25 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         finally:
             if html is not None:
                 del html
+
+    @staticmethod
+    def _traffic_metric_values(html: Any) -> dict[str, str]:
+        """
+        读取修道院概览中的账户流量指标，忽略字段名下的中文副标题。
+
+        :param html: 首页节点；响应为空时可为 None
+        :return: 指标名称到显示值的映射；缺失字段不加入结果
+        """
+        metrics: dict[str, str] = {}
+        if not DomUtils.has_child_elements(html):
+            return metrics
+        for metric in html.xpath(
+            '//dl[contains(concat(" ", normalize-space(@class), " "), " cultivation-metrics ")]/div[dt and dd]'
+        ):
+            label = metric.xpath('normalize-space(dt/text()[1])')
+            if label in {"上传量", "下载量", "分享率"}:
+                metrics[label] = metric.xpath('normalize-space(dd)')
+        return metrics
 
     @staticmethod
     def _parse_ucoin(html: etree._Element) -> tuple[bool, float]:

@@ -37,6 +37,8 @@ class SiteSchema(Enum):
     NexusPhp = "NexusPhp"
     # 采用 NexusProject 页面结构的站点。
     NexusProject = "NexusProject"
+    # 星空的 FireFly 定制页面。
+    StarSpace = "StarSpace"
     # 采用 NexusRabbit JSON 接口的站点。
     NexusRabbit = "NexusRabbit"
     # 憨憨的 NexusPHP 定制页面。
@@ -59,6 +61,8 @@ class SiteSchema(Enum):
     Yema = "Yema"
     # HDDolby API 与兼容消息页面。
     HDDolby = "HDDolby"
+    # 高清视界的 REST API。
+    HDArea = "HDArea"
     # 知行站点的页面结构。
     Zhixing = "Zhixing"
     # 极速之星站点的页面结构。
@@ -67,6 +71,10 @@ class SiteSchema(Enum):
     RousiPro = "RousiPro"
     # SunnyPT 的 MoviePilot API。
     SunnyPT = "SunnyPT"
+    # 猪猪的实验室长期存取令牌 API。
+    Piggo = "Piggo"
+    # FluxTorrent 兼容层站点。
+    FluxTorrent = "FluxTorrent"
 
 
 class SiteParserBase(metaclass=ABCMeta):
@@ -78,6 +86,8 @@ class SiteParserBase(metaclass=ABCMeta):
     schema: ClassVar[Optional[SiteSchema]] = None
     # 请求模式 cookie/apikey
     request_mode = "cookie"
+    # 专用 API 可关闭页面模型探测，避免鉴权或公告失败后访问已移除的旧页面。
+    allow_schema_fallback = True
     # 详情页默认依赖用户 ID；当前会话接口可在配置页面时关闭此前置校验。
     _user_detail_requires_userid = True
 

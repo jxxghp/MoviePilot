@@ -6,14 +6,15 @@ from types import SimpleNamespace
 
 from app.adapters.network.http import RequestUtils
 from app.application.rss import RssHelper, configure_rss_ports, reset_rss_ports
+from app.application.site.protocol import site_domain
 
 
 def test_rss_site_domain_prefers_configured_multilevel_domain():
     """
     RSS 站点域名匹配应保留配置中的多级域名，并为普通域名回退。
     """
-    assert RssHelper._get_site_domain("https://u2.dmhy.org/getrss.php") == "u2.dmhy.org"
-    assert RssHelper._get_site_domain("https://tracker.example.com/rss") == "example.com"
+    assert site_domain("https://u2.dmhy.org/getrss.php") == "u2.dmhy.org"
+    assert site_domain("https://tracker.example.com/rss") == "example.com"
 
 
 def test_rss_helper_decodes_utf8_xml_before_python_parser():

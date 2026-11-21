@@ -14,6 +14,7 @@ from app.agent.middleware.jobs import filter_active_jobs, load_jobs_metadata
 from app.agent.orchestrator import AGENT_EXECUTION_ERROR_PREFIX, HEARTBEAT_SESSION_PREFIX
 from app.agent.prompt import prompt_manager
 from app.agent.runtime import agent_runtime_manager
+from app.agent.tools.base import run_agent_blocking
 from app.application.agenttask import get_agent_task_execution_service
 from app.chain.agent import AgentChain
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
@@ -106,18 +107,36 @@ class AgentTaskOwner(AgentLifecycleOwner):
         success = True
         result = ""
         notification_username = None
+        sender_id = run.user_id
+        delivery = None
         try:
+            if run.execution_authorization_id:
+                from app.application.security.authorization import get_channel_authorization
+
+                authorization = get_channel_authorization()
+                if authorization:
+                    delivery = await run_agent_blocking("db", authorization.delivery, run.execution_authorization_id)
+                    if delivery:
+                        sender_id = delivery[2]
+            if run.channel and not run.execution_authorization_id:
+                from app.application.security.authorization import get_channel_authorization
+                from app.domain.authorization import LEGACY_CHANNELS
+
+                if get_channel_authorization() is not None and run.channel in {item[0] for item in LEGACY_CHANNELS.values()}:
+                    raise AgentIdentityError("此旧任务尚未确认渠道授权，请从原会话删除后重新创建；不会回退其它账号。")
             user = await require_execution_user(
                 self._data.users if self._data is not None else None, run.execution_user_id,
                 run.execution_user_identity or "",
+                run.execution_authorization_id,
+                "schedule",
             )
             notification_username = user.name
             result = await self.process_message(
                 session_id=run.session_id,
-                user_id=run.user_id,
+                user_id=sender_id,
                 message=task_message,
-                channel=None,
-                source=None,
+                channel=delivery[0] if delivery else None,
+                source=delivery[1] if delivery else None,
                 username=notification_username,
                 original_chat_id=None,
                 reply_mode=ReplyMode.DISPATCH,
@@ -126,6 +145,7 @@ class AgentTaskOwner(AgentLifecycleOwner):
                 scheduled_run_id=run.run_id,
                 execution_user_id=user.id,
                 execution_user_identity=user.notification_identity,
+                authorization_id=run.execution_authorization_id,
             )
             result_text = str(result or "").strip()
             success = not result_text.startswith(
@@ -151,9 +171,9 @@ class AgentTaskOwner(AgentLifecycleOwner):
                     Message.model_validate({
                         "mtype": MessageType.Agent,
                         "username": notification_username,
-                        "channel": run.channel if isinstance(err, AgentIdentityError) else None,
-                        "source": run.message_source if isinstance(err, AgentIdentityError) else None,
-                        "userid": run.user_id if isinstance(err, AgentIdentityError) else None,
+                        "channel": delivery[0] if delivery else run.channel if isinstance(err, AgentIdentityError) else None,
+                        "source": delivery[1] if delivery else run.message_source if isinstance(err, AgentIdentityError) else None,
+                        "userid": sender_id if delivery or isinstance(err, AgentIdentityError) else None,
                         "original_chat_id": run.original_chat_id if isinstance(err, AgentIdentityError) else None,
                         "title": f"定时任务执行失败：{run.name}",
                         "text": result,

@@ -221,6 +221,15 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "item_id"),
     ),
+    "mediaserver_stream_url": ModuleMethodContract(
+        family="media-server",
+        input_contract="MediaServerStreamRequest",
+        result_contract="str | None",
+        result_shape=ModuleResultShape.STRING,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("server", "item_id", "item_type"),
+        public_to_plugins=False,
+    ),
     "mediaserver_tv_episodes": ModuleMethodContract(
         family="media-server",
         input_contract="MediaServerEpisodesRequest",
@@ -235,7 +244,7 @@ _METHOD_CONTRACTS = {
         result_contract="ExistMediaInfo | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("mediainfo", "itemid", "server"),
-        optional_parameters=("query",),
+        optional_parameters=("query", "raise_on_query_failure"),
     ),
     "media_statistic": ModuleMethodContract(
         family="media-server",
@@ -285,6 +294,14 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "username", "hidden"),
         optional_parameters=("query",),
+    ),
+    "mediaserver_search": ModuleMethodContract(
+        family="media-server",
+        input_contract="MediaServerLibrarySearchRequest",
+        result_contract="list[MediaServerPlayItem]",
+        result_shape=ModuleResultShape.LIST,
+        aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
+        required_parameters=("keyword", "types", "limit"),
     ),
     "mediaserver_playing": ModuleMethodContract(
         family="media-server",
@@ -496,6 +513,73 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("site", "record"),
         public_to_plugins=False,
+    ),
+    "test_site": ModuleMethodContract(
+        family="site",
+        input_contract="SiteConnectionTestRequest",
+        result_contract="SiteConnectionResult",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("site",),
+        optional_parameters=("raise_exception",),
+        public_to_plugins=False,
+        supports_async=False,
+    ),
+    "parse_torrent_download_response": ModuleMethodContract(
+        family="site",
+        input_contract="TorrentDownloadResponseRequest",
+        result_contract="str | None",
+        result_shape=ModuleResultShape.STRING,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("request_params", "status_code", "payload"),
+        # 错误策略读取此控制参数；不接受它的响应解析器由兼容调用层移除，避免业务拒绝触发系统告警。
+        optional_parameters=("raise_exception", "response_text"),
+        public_to_plugins=False,
+        supports_async=False,
+    ),
+    "get_site_domain": ModuleMethodContract(
+        family="site", input_contract="SiteDomainRequest", result_contract="str",
+        result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("url",), public_to_plugins=False, supports_async=False,
+    ),
+    "torrent_resource_identity": ModuleMethodContract(
+        family="site", input_contract="TorrentResourceIdentityRequest", result_contract="tuple[str, str] | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("torrent",),
+        public_to_plugins=False, supports_async=False,
+    ),
+    "is_expiring_download_url": ModuleMethodContract(
+        family="site", input_contract="TorrentDownloadUrlRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("url",), public_to_plugins=False, supports_async=False,
+    ),
+    "is_torrent_download_confirmation": ModuleMethodContract(
+        family="site", input_contract="TorrentDownloadContentRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("content",), public_to_plugins=False, supports_async=False,
+    ),
+    "parse_torrent_download_confirmation": ModuleMethodContract(
+        family="site", input_contract="TorrentDownloadConfirmationRequest", result_contract="tuple[str, dict[str, Any]] | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("text", "url"),
+        public_to_plugins=False, supports_async=False,
+    ),
+    "get_site_rss_recipe": ModuleMethodContract(
+        family="site", input_contract="SiteRssRecipeRequest", result_contract="RssLinkRecipe",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY, required_parameters=("url",),
+        public_to_plugins=False, supports_async=False,
+    ),
+    "is_site_rss_expired": ModuleMethodContract(
+        family="site", input_contract="SiteRssResponseRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("text",), public_to_plugins=False, supports_async=False,
+    ),
+    "has_site_subtitle_api": ModuleMethodContract(
+        family="site", input_contract="SiteSubtitleCapabilityRequest", result_contract="bool",
+        result_shape=ModuleResultShape.BOOLEAN, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("site",), public_to_plugins=False, supports_async=False,
+    ),
+    "encrypt_site_payload": ModuleMethodContract(
+        family="site", input_contract="SitePayloadEncryptionRequest", result_contract="str",
+        result_shape=ModuleResultShape.STRING, aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("data_str", "key"), public_to_plugins=False, supports_async=False,
     ),
     "refresh_userdata": ModuleMethodContract(
         family="site",
@@ -1373,7 +1457,7 @@ _METHOD_CONTRACTS = {
         result_contract="DownloadTaskResult | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader"),
-        optional_parameters=("custom_words",),
+        optional_parameters=("custom_words", "episode_selection", "confirmed_selection", "user_specified"),
     ),
     "download_added": ModuleMethodContract(
         family="downloader",

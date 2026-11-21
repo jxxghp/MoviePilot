@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -94,7 +94,9 @@ def test_single_ai_redo_starts_agent_without_retrying_frozen_plan(monkeypatch):
     started = Mock()
     monkeypatch.setattr(history_endpoint, "_start_ai_redo_task", started)
     response = asyncio.run(history_endpoint.ai_redo_transfer_history(
-        11, query=_HistoryQuery([TransferHistory(id=11, transfer_task_id="task-11")]),
+        11, query=_HistoryQuery([TransferHistory(
+            id=11, transfer_task_id="task-11", transfer_settlement_revision=1,
+        )]),
         runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
     ))
     assert response.success
@@ -104,6 +106,9 @@ def test_single_ai_redo_starts_agent_without_retrying_frozen_plan(monkeypatch):
     assert "task-11" in prompt and "transfer.history.replan" in prompt
     repository.request_retry.assert_not_called()
     repository.request_replan.assert_not_called()
+    repository.grant_manual_identity_authorization.assert_called_once_with(
+        history_id=11, task_id="task-11", settlement_revision=1,
+    )
 
 
 @pytest.mark.parametrize("batch", [False, True])
@@ -156,8 +161,12 @@ def test_batch_ai_redo_sends_all_eligible_records_to_agent(monkeypatch, mixed):
     monkeypatch.setattr(history_endpoint, "_start_batch_ai_redo_task", started)
     response = asyncio.run(history_endpoint.batch_ai_redo_transfer_history(
         BatchTransferHistoryRedoRequest(history_ids=[18, 19, 18]),
-        query=_HistoryQuery([TransferHistory(id=18, transfer_task_id="task-18"),
-                             TransferHistory(id=19, transfer_task_id=None if mixed else "task-19")]),
+        query=_HistoryQuery([TransferHistory(
+            id=18, transfer_task_id="task-18", transfer_settlement_revision=1,
+        ), TransferHistory(
+            id=19, transfer_task_id=None if mixed else "task-19",
+            transfer_settlement_revision=None if mixed else 1,
+        )]),
         runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
     ))
     assert response.success
@@ -166,6 +175,10 @@ def test_batch_ai_redo_sends_all_eligible_records_to_agent(monkeypatch, mixed):
     assert started.call_args.kwargs["history_ids"] == [18, 19]
     assert "task-18" in started.call_args.kwargs["prompt"]
     repository.request_retry.assert_not_called()
+    expected_grants = [call(history_id=18, task_id="task-18", settlement_revision=1)]
+    if not mixed:
+        expected_grants.append(call(history_id=19, task_id="task-19", settlement_revision=1))
+    assert repository.grant_manual_identity_authorization.call_args_list == expected_grants
 
 
 def test_batch_rejection_has_no_partial_retry_side_effects(monkeypatch):

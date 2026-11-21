@@ -154,7 +154,7 @@ def _capture_tool_selector(captured, **kwargs):
 
 def _assert_internal_tool_registration(created, captured):
     """
-    核实内部计划、续读和发现工具的目录身份、常驻筛选及外层顺序。
+    核实内部工具的目录身份、常驻筛选，以及临时资料进入压缩前的位置。
     """
     middlewares = created["middleware"]
     plan = next(item for item in middlewares if isinstance(item, PlanMiddleware))
@@ -172,8 +172,9 @@ def _assert_internal_tool_registration(created, captured):
         assert policy.catalog.resolve_unique(tool.name).tool is tool
         assert tool in selector.selection_tools
     assert middlewares.index(plan) < middlewares.index(selector)
-    assert middlewares.index(selector) == len(middlewares) - 5
-    assert middlewares[-4].name == "CodeCaptureMiddleware"
+    assert middlewares.index(selector) == len(middlewares) - 6
+    assert middlewares[-5].name == "CodeCaptureMiddleware"
+    assert middlewares[-4].name == "EphemeralEvidenceMiddleware"
     assert middlewares[-3].name == "FinalRequestCompactionMiddleware"
     assert middlewares[-2].name == "VisionMiddleware"
     assert middlewares[-1] == "usage"
@@ -558,6 +559,7 @@ class TestAgentBackgroundOutput:
             "ToolGuardrailsMiddleware",
             "patch",
             "CodeCaptureMiddleware",
+            "EphemeralEvidenceMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",
@@ -675,6 +677,7 @@ class TestAgentBackgroundOutput:
             "ToolGuardrailsMiddleware",
             "patch",
             "CodeCaptureMiddleware",
+            "EphemeralEvidenceMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",
@@ -887,6 +890,7 @@ class TestAgentBackgroundOutput:
             "ToolGuardrailsMiddleware",
             "patch",
             "CodeCaptureMiddleware",
+            "EphemeralEvidenceMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",

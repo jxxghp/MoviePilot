@@ -265,3 +265,17 @@ class MediaServerOper(DbOper):
         if not item:
             return None
         return str(item.item_id)
+
+    async def async_get_item_ref(self, **kwargs: Any) -> Optional[tuple[str, str]]:
+        """
+        异步获取命中记录的服务器名称与条目标识。
+
+        条目标识只在所属服务器内唯一，两者从同一行读取，不能先取标识再反查归属。
+
+        :param kwargs: 与 async_exists 相同的匹配条件
+        :return: （服务器配置名称, 条目标识），服务器名称缺失时为空字符串；未命中时为 None
+        """
+        item = await self.async_exists(**kwargs)
+        if not item:
+            return None
+        return str(item.server or ""), str(item.item_id)

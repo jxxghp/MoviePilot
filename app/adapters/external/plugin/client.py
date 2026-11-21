@@ -45,7 +45,7 @@ from app.foundation.environment import is_free_threaded_runtime
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 from app.foundation.version import compare_version
-from app.runtime.cache import AsyncCacheControls, async_fresh, cached, fresh, is_fresh
+from app.runtime.cache import AsyncCache, AsyncCacheControls, Cache, async_fresh, cached, fresh, is_fresh
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
@@ -64,6 +64,10 @@ PLUGIN_INDEX_MAX_HISTORY_ENTRIES = 512
 PLUGIN_INDEX_MAX_NESTING = 64
 PLUGIN_INDEX_READ_CHUNK_SIZE = 64 * 1024
 PLUGIN_INDEX_REQUEST_TIMEOUT = 15
+# 索引不存在或暂时不可达时五分钟后重试，不沿用成功索引的半小时有效期。
+PLUGIN_INDEX_FAILURE_TTL = 300
+# 失败日志中的索引来源标识上限，避免异常仓库地址放大日志体积。
+PLUGIN_INDEX_LOG_SOURCE_LIMIT = 512
 # 文档探测只在打开详情时执行，失败结果也缓存五分钟。
 PLUGIN_README_REQUEST_TIMEOUT = 5
 DEFAULT_PLUGIN_INDEX_FETCH_CONCURRENCY = 5
@@ -88,9 +92,21 @@ _PLUGIN_INDEX_FETCH_GATE = threading.BoundedSemaphore(
 )
 
 
-class _PluginIndexTooLargeError(RuntimeError):
+class _PluginIndexReadError(RuntimeError):
+    """
+    传输或解析未能确认索引存在状态。
+    """
+
+
+class _PluginIndexTooLargeError(_PluginIndexReadError):
     """
     插件索引的声明长度或实际读取字节超过资源边界。
+    """
+
+
+class _PluginIndexUnavailableError(_PluginIndexReadError):
+    """
+    插件索引连接或 HTTP 状态暂时失败，可短暂缓存并保留库存不完整语义。
     """
 
 
@@ -251,6 +267,12 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     """
 
     _base_url = "https://raw.githubusercontent.com/{user}/{repo}/main/"
+    _index_failures = Cache(
+        cache_type="ttl", maxsize=1024, ttl=PLUGIN_INDEX_FAILURE_TTL, local_only=True,
+    )
+    _async_index_failures = AsyncCache(
+        cache_type="ttl", maxsize=1024, ttl=PLUGIN_INDEX_FAILURE_TTL, local_only=True,
+    )
     _index_future_lock = threading.Lock()
     _index_futures: dict[tuple[str, str], Future[Optional[PluginIndex]]] = {}
     _index_task_lock = threading.Lock()
@@ -556,7 +578,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             content = raw_content.decode("utf-8", errors="replace")
         except OSError as error:
             raise RuntimeError(f"读取本地插件包 {package_file} 失败：{error}") from error
-        payload = cls.__parse_plugin_index_response(content)
+        payload = cls.__parse_plugin_index_response(
+            content,
+            source=f"本地插件包 {package_file}",
+        )
         if payload is None:
             raise RuntimeError(f"本地插件包 {package_file} 格式无效")
         return payload
@@ -857,25 +882,73 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
         return normalized, None, dropped_fields
 
+    @staticmethod
+    def __plugin_index_log_source(source: Optional[str]) -> str:
+        """
+        生成索引日志使用的有界来源标识，去掉凭据和缓存穿透参数。
+        """
+        if not isinstance(source, str):
+            return ""
+        label = source.strip()
+        if not label:
+            return ""
+        try:
+            parts = urlsplit(label)
+        except ValueError:
+            return ""
+        if "@" in parts.netloc:
+            parts = parts._replace(netloc=parts.netloc.rsplit("@", 1)[-1])
+        if parts.query:
+            query = "&".join(
+                item
+                for item in parts.query.split("&")
+                if not item.startswith("_refresh=")
+            )
+            parts = parts._replace(query=query)
+        label = parts.geturl()
+        if len(label) > PLUGIN_INDEX_LOG_SOURCE_LIMIT:
+            label = f"{label[:PLUGIN_INDEX_LOG_SOURCE_LIMIT]}..."
+        return label
+
     @classmethod
-    def __parse_plugin_index_response(cls, content: str) -> Optional[PluginIndex]:
+    def __plugin_index_log_suffix(cls, source: Optional[str]) -> str:
+        """
+        把索引来源追加到诊断文案；没有来源时保持原有日志不变。
+        """
+        label = cls.__plugin_index_log_source(source)
+        return f"（来源：{label}）" if label else ""
+
+    @classmethod
+    def __parse_plugin_index_response(
+            cls,
+            content: str,
+            source: Optional[str] = None,
+            *,
+            remote_probe: bool = False,
+    ) -> Optional[PluginIndex]:
         """
         解析并规范化插件索引，兼容 BOM 与 plugins 列表包装格式。
+
+        :param content: 已限长的索引响应文本
+        :param source: 可选索引来源，仅用于日志定位仓库或本地文件
+        :param remote_probe: 远程探测的读取失败只记录调试明细，交由上层汇总
         """
+        suffix = cls.__plugin_index_log_suffix(source)
+        log_failure = logger.debug if remote_probe else logger.warning
         try:
             payload = json.loads(content.lstrip("\ufeff"))
         except (ValueError, RecursionError):
-            logger.warning("插件包数据解析失败：响应不是有效 JSON")
+            log_failure(f"插件包数据解析失败：响应不是有效 JSON{suffix}")
             return None
 
         if not isinstance(payload, dict):
-            logger.warning(
-                f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}"
+            log_failure(
+                f"插件包数据格式不正确，期望 dict，实际为 {type(payload).__name__}{suffix}"
             )
             return None
         if not cls.__plugin_index_nesting_is_valid(payload):
-            logger.warning(
-                f"插件包 JSON 嵌套超过上限：{PLUGIN_INDEX_MAX_NESTING} 层"
+            log_failure(
+                f"插件包 JSON 嵌套超过上限：{PLUGIN_INDEX_MAX_NESTING} 层{suffix}"
             )
             return None
         plugin_entries: list[tuple[object, object]]
@@ -894,9 +967,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             plugin_entries = list(payload.items())
 
         if len(plugin_entries) > PLUGIN_INDEX_MAX_ENTRIES:
-            logger.warning(
+            log_failure(
                 f"插件包条目超过上限：{len(plugin_entries)} > "
-                f"{PLUGIN_INDEX_MAX_ENTRIES}"
+                f"{PLUGIN_INDEX_MAX_ENTRIES}{suffix}"
             )
             return None
 
@@ -935,7 +1008,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             )
             summaries.append(f"丢弃异常展示字段（{fields}）")
         if summaries:
-            logger.warning(f"插件包数据已隔离异常内容：{'；'.join(summaries)}")
+            logger.warning(
+                f"插件包数据已隔离异常内容：{'；'.join(summaries)}{suffix}"
+            )
 
         return normalized
 
@@ -954,6 +1029,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def __read_plugin_index_response(cls, response: Response) -> tuple[int, str]:
         """
         从同步流式响应读取有界的解压后索引文本。
+
+        :param response: 当前出口返回的开放响应流
+        :return: 状态码与正文；非 200 响应不读取正文
+        :raises _PluginIndexTooLargeError: 声明长度或已读取字节数超过上限
         """
         status_code = response.status_code
         if status_code != 200:
@@ -980,6 +1059,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     ) -> tuple[int, str]:
         """
         从异步流式响应读取有界的解压后索引文本。
+
+        :param response: 当前出口返回的开放异步流
+        :return: 状态码与正文；非 200 响应不读取正文
+        :raises _PluginIndexTooLargeError: 声明长度或已读取字节数超过上限
         """
         status_code = response.status_code
         if status_code != 200:
@@ -1035,9 +1118,17 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         url: str,
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
-    ) -> Optional[tuple[int, str]]:
+    ) -> Optional[PluginIndex]:
         """
-        按 GitHub 降级顺序流式读取同步插件索引，并限制解压后字节数。
+        按 GitHub 降级顺序流式读取并验证同步插件索引。
+
+        逐出口明细保留在调试日志，索引结果由调用方按仓库汇总。
+
+        :param url: GitHub 原始索引地址
+        :param headers: 仓库请求头
+        :param timeout: 单出口请求超时秒数
+        :return: 有效索引，或以 None 表示原始出口确认索引不存在
+        :raises _PluginIndexReadError: 所有出口均未返回可判定结果
         """
         strategies = cls._build_github_request_strategies(
             url=url,
@@ -1045,8 +1136,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             timeout=timeout,
         )
         for strategy_name, target_url, request_params in strategies:
+            from_mirror = strategy_name == "镜像站"
+            log_source = cls.__plugin_index_log_source(target_url)
             logger.debug(
-                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
+                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{log_source}"
             )
             try:
                 request = RequestUtils(**request_params)
@@ -1054,19 +1147,26 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     url=target_url,
                     raise_exception=True,
                 ) as response:
-                    if response is None:
-                        continue
-                    return cls.__read_plugin_index_response(response)
-            except _PluginIndexTooLargeError:
-                raise
+                    raw = cls.__read_plugin_index_response(response) if response is not None else None
+                return cls._resolve_plugin_index_result(
+                    raw,
+                    from_mirror=from_mirror,
+                    source=target_url,
+                )
+            except _PluginIndexReadError as error:
+                if not from_mirror:
+                    raise
+                logger.debug(
+                    f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}（{log_source}）"
+                )
             # 失败后尝试下一传输策略
             except Exception as error:  # noqa: BLE001
-                logger.error(
+                detail = _format_request_error(error).replace(target_url, log_source)
+                logger.debug(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
-                    f"URL：{target_url}，错误：{_format_request_error(error)}"
+                    f"URL：{log_source}，错误：{detail}"
                 )
-        logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
-        return None
+        raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
 
     @classmethod
     async def __async_request_plugin_index_with_fallback(
@@ -1074,9 +1174,17 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         url: str,
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
-    ) -> Optional[tuple[int, str]]:
+    ) -> Optional[PluginIndex]:
         """
-        按 GitHub 降级顺序流式读取异步插件索引，并限制解压后字节数。
+        按 GitHub 降级顺序流式读取并验证异步插件索引。
+
+        逐出口明细保留在调试日志，索引结果由调用方按仓库汇总。
+
+        :param url: GitHub 原始索引地址
+        :param headers: 仓库请求头
+        :param timeout: 单出口请求超时秒数
+        :return: 有效索引，或以 None 表示原始出口确认索引不存在
+        :raises _PluginIndexReadError: 所有出口均未返回可判定结果
         """
         strategies = cls._build_github_request_strategies(
             url=url,
@@ -1084,8 +1192,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             timeout=timeout,
         )
         for strategy_name, target_url, request_params in strategies:
+            from_mirror = strategy_name == "镜像站"
+            log_source = cls.__plugin_index_log_source(target_url)
             logger.debug(
-                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{target_url}"
+                f"[GitHub] 尝试使用策略：{strategy_name} 请求插件索引：{log_source}"
             )
             try:
                 request = AsyncRequestUtils(**request_params)
@@ -1093,31 +1203,47 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     url=target_url,
                     raise_exception=True,
                 ) as response:
-                    if response is None:
-                        continue
-                    return await cls.__async_read_plugin_index_response(response)
-            except _PluginIndexTooLargeError:
-                raise
+                    raw = (
+                        await cls.__async_read_plugin_index_response(response)
+                        if response is not None else None
+                    )
+                return cls._resolve_plugin_index_result(
+                    raw,
+                    from_mirror=from_mirror,
+                    source=target_url,
+                )
+            except _PluginIndexReadError as error:
+                if not from_mirror:
+                    raise
+                logger.debug(
+                    f"[GitHub] 镜像站未返回有效插件索引，将使用原始出口：{error}（{log_source}）"
+                )
             # 失败后尝试下一传输策略
             except Exception as error:  # noqa: BLE001
-                logger.error(
+                detail = _format_request_error(error).replace(target_url, log_source)
+                logger.debug(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
-                    f"URL：{target_url}，错误：{_format_request_error(error)}"
+                    f"URL：{log_source}，错误：{detail}"
                 )
-        logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
-        return None
+        raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
 
     @classmethod
     def _resolve_plugin_index_response(
             cls,
             status_code: int,
             content: str,
+            source: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
         统一解释插件索引 HTTP 响应，保留不存在、失败和有效索引三态。
+
+        :param source: 可选索引来源，仅用于失败日志定位仓库或本地文件
         """
         try:
-            payload = cls._resolve_plugin_index_result((status_code, content))
+            payload = cls._resolve_plugin_index_result(
+                (status_code, content),
+                source=source,
+            )
         except RuntimeError:
             return None
         return payload if payload is not None else {}
@@ -1126,24 +1252,29 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def _resolve_plugin_index_result(
             cls,
             response: Optional[tuple[int, str]],
+            *,
+            from_mirror: bool = False,
+            source: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
         把传输结果统一映射为索引读取合同。
 
         :param response: 传输层返回的状态码和已受限响应文本；None 表示连接失败
+        :param from_mirror: 是否由镜像站返回；镜像 404 无法证明原始索引不存在
+        :param source: 可选索引来源，仅用于失败日志定位仓库或本地文件
         :return: 有效索引，或以 None 表示仓库明确不存在该索引
-        :raises RuntimeError: 连接失败、非成功状态或响应格式无效
+        :raises _PluginIndexReadError: 连接失败、非成功状态或响应格式无效
         """
         if response is None:
-            raise RuntimeError("插件索引请求失败：连接失败")
+            raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
         status_code, content = response
-        if status_code == 404:
+        if status_code == 404 and not from_mirror:
             return None
         if status_code != 200:
-            raise RuntimeError(f"插件索引请求失败：HTTP {status_code}")
-        payload = cls.__parse_plugin_index_response(content)
+            raise _PluginIndexUnavailableError(f"插件索引请求失败：HTTP {status_code}")
+        payload = cls.__parse_plugin_index_response(content, source=source, remote_probe=True)
         if payload is None:
-            raise RuntimeError("插件索引响应格式无效")
+            raise _PluginIndexReadError("插件索引响应格式无效")
         return payload
 
     @staticmethod
@@ -1339,11 +1470,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         在共享进程级闸门内完成一次同步索引读取。
         """
         with _PLUGIN_INDEX_FETCH_GATE:
-            response = self.__request_plugin_index_with_fallback(
+            return self.__request_plugin_index_with_fallback(
                 package_url,
                 headers=headers,
             )
-        return self._resolve_plugin_index_result(response)
 
     async def _fetch_plugin_index_async(
         self,
@@ -1355,13 +1485,12 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         await self._acquire_index_fetch_slot()
         try:
-            response = await self.__async_request_plugin_index_with_fallback(
+            return await self.__async_request_plugin_index_with_fallback(
                 package_url,
                 headers=headers,
             )
         finally:
             _PLUGIN_INDEX_FETCH_GATE.release()
-        return self._resolve_plugin_index_result(response)
 
     async def _fetch_plugin_index_async_task(
         self,
@@ -1377,20 +1506,28 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         except Exception as error:  # noqa: BLE001
             return None, error
 
-    @cached(maxsize=1024, ttl=1800, skip_none=False)
+    @cached(
+        maxsize=1024, ttl=1800, skip_none=False,
+        empty_ttl=PLUGIN_INDEX_FAILURE_TTL, empty_if=lambda value: value is None,
+    )
     def get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
-        读取插件索引；404 返回 None，读取失败由调用方记录。
+        读取插件索引；404 和读取失败短暂缓存，失败仍由调用方记录。
         """
         request = self._build_plugin_index_request(repo_url, package_version)
         if request is None:
             raise ValueError("插件仓库地址无效")
         package_url, headers = request
         key = self._plugin_index_key(repo_url, package_version)
+        failure_key = repr(key)
+        if not is_fresh():
+            failure = self._index_failures.get(failure_key, region="plugin.index.failures")
+            if failure is not None:
+                raise _PluginIndexUnavailableError(failure)
         with self._index_future_lock:
             future = self._index_futures.get(key)
             if future is None:
@@ -1409,10 +1546,13 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             result = self._fetch_plugin_index_sync(package_url, headers)
         # 共享结果必须传播原始异常
         except BaseException as error:  # noqa: BLE001
+            if isinstance(error, _PluginIndexUnavailableError):
+                self._index_failures.set(failure_key, str(error), region="plugin.index.failures")
             future.set_exception(error)
             future.exception()
             raise
         else:
+            self._index_failures.delete(failure_key, region="plugin.index.failures")
             future.set_result(result)
             return result
         finally:
@@ -1834,14 +1974,17 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             logger.warning(f"获取插件 {pid} 元数据失败：{error}")
             return {}
 
-    @cached(maxsize=1024, ttl=1800, skip_none=False)
+    @cached(
+        maxsize=1024, ttl=1800, skip_none=False,
+        empty_ttl=PLUGIN_INDEX_FAILURE_TTL, empty_if=lambda value: value is None,
+    )
     async def async_get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
-        异步读取插件索引；404 返回 None，读取失败由调用方记录。
+        异步读取插件索引；短暂缓存失败，但不把失败伪装成空的成功库存。
         """
         request = self._build_plugin_index_request(repo_url, package_version)
         if request is None:
@@ -1851,6 +1994,11 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             repo_url,
             package_version,
         )
+        failure_key = repr((repo_key, generation_key))
+        if not is_fresh():
+            failure = await self._async_index_failures.get(failure_key, region="plugin.index.failures")
+            if failure is not None:
+                raise _PluginIndexUnavailableError(failure)
         loop = asyncio.get_running_loop()
         task_key = (loop, repo_key, generation_key)
         with self._index_task_lock:
@@ -1881,7 +2029,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         # 单个调用方取消等待时不能连带取消共享请求。
         result, error = await asyncio.shield(task)
         if error is not None:
+            if isinstance(error, _PluginIndexUnavailableError):
+                await self._async_index_failures.set(failure_key, str(error), region="plugin.index.failures")
             raise error
+        await self._async_index_failures.delete(failure_key, region="plugin.index.failures")
         return result
 
     async def async_get_plugins(self, repo_url: str,

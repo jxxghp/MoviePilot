@@ -76,6 +76,8 @@ METRIC_SPECS = {
         MetricSpec("scheduler.job.overlap_skip", MetricKind.COUNTER, frozenset({"owner"})),
         MetricSpec("scheduler.job.retry", MetricKind.COUNTER, frozenset({"owner"})),
         MetricSpec("scheduler.job.dead_letter", MetricKind.COUNTER, frozenset({"owner"})),
+        MetricSpec("subscription.refresh.site", MetricKind.COUNTER, frozenset({"owner", "outcome"})),
+        MetricSpec("subscription.refresh.site.duration", MetricKind.HISTOGRAM, frozenset({"owner"})),
         MetricSpec("plugin.lifecycle.duration", MetricKind.HISTOGRAM, frozenset({"operation", "outcome"})),
         MetricSpec("agent.active_tasks", MetricKind.GAUGE, frozenset({"task_type"})),
         MetricSpec("agent.chat.persistence.pending", MetricKind.GAUGE, frozenset()),

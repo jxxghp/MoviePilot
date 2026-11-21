@@ -21,7 +21,7 @@ from app.application.site.contract import (
     SiteRepository,
     SiteSnapshot,
 )
-from app.domain import site as site_rules
+from app.application.site.protocol import site_domain
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel
@@ -499,7 +499,7 @@ class SiteInteractionHandler:
                     "启用" if site.is_active else "禁用",
                     "已配置" if site.cookie else "未配置",
                     "是" if site.render else "否",
-                    site.domain or site_rules.extract_domain(site.url or ""),
+                    site.domain or site_domain(site.url or ""),
                 ]
                 for site in site_list
             ]
@@ -514,7 +514,7 @@ class SiteInteractionHandler:
                 f"{site.id}. {site.name} | 状态：{'启用' if site.is_active else '禁用'}"
                 f" | Cookie：{'已配置' if site.cookie else '未配置'}"
                 f" | 渲染：{'是' if site.render else '否'}"
-                f" | 域名：{site.domain or site_rules.extract_domain(site.url or '')}"
+                f" | 域名：{site.domain or site_domain(site.url or '')}"
             )
         return "\n".join(lines)
 

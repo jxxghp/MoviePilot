@@ -7,7 +7,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from plexapi.audio import Album, Artist, Track
 from plexapi.base import PlexPartialObject
@@ -482,6 +482,80 @@ class Plex:
                     )
         except Exception as e:
             logger.debug(f"查询Plex音乐出错：{e}")
+        return results
+
+    def search_library_items(
+        self, keyword: str, types: list[str], limit: int
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """
+        通过 Plex Library 搜索接口查询电视剧和音乐单曲。
+
+        :param keyword: 搜索关键词
+        :param types: 需要搜索的业务类型
+        :param limit: 最多返回的条目数量
+        :return: 带封面、年份或音乐副标题的 Plex 条目
+        """
+        if not self._plex or not keyword.strip():
+            return []
+        results: list[_SchemaMediaServerPlayItem] = []
+        seen: set[str] = set()
+        if MediaType.TV.value in types:
+            for item in self._plex.library.search(title=keyword.strip(), libtype="show"):
+                item_id = str(getattr(item, "key", "") or "")
+                title = getattr(item, "title", None)
+                if not item_id or not title or item_id in seen:
+                    continue
+                seen.add(item_id)
+                self._disable_auto_reload(item, MediaServerQueryOptions(fields=frozenset({MediaServerField.IMAGES})))
+                results.append(
+                    _SchemaMediaServerPlayItem(
+                        id=item_id,
+                        item_id=item_id,
+                        title=title,
+                        subtitle=str(item.year) if getattr(item, "year", None) else None,
+                        year=getattr(item, "year", None),
+                        type=MediaType.TV.value,
+                        image=getattr(item, "posterUrl", None),
+                        server_type="plex",
+                    )
+                )
+                if len(results) >= limit:
+                    return results
+        if MediaType.MUSIC.value in types:
+            image_query = MediaServerQueryOptions(
+                fields=frozenset({MediaServerField.IMAGES, MediaServerField.MUSIC})
+            )
+            for library in self._plex.library.sections():
+                if library.type not in ("artist", "music"):
+                    continue
+                for item in self._search_music_library(library, keyword.strip(), image_query):
+                    if getattr(item, "type", None) != "track":
+                        continue
+                    item_id = str(getattr(item, "ratingKey", None) or getattr(item, "key", "") or "")
+                    title = getattr(item, "title", None)
+                    if not item_id or not title or item_id in seen:
+                        continue
+                    seen.add(item_id)
+                    self._disable_auto_reload(item, image_query)
+                    artist = getattr(item, "grandparentTitle", None)
+                    album = getattr(item, "parentTitle", None)
+                    image = getattr(item, "thumbUrl", None) or getattr(item, "parentThumb", None)
+                    if image and not str(image).startswith(("http://", "https://")):
+                        image = f"{self._host.rstrip('/')}/{str(image).lstrip('/')}?X-Plex-Token={self._token}"
+                    results.append(
+                        _SchemaMediaServerPlayItem(
+                            id=item_id,
+                            item_id=item_id,
+                            title=title,
+                            subtitle=" · ".join(str(value) for value in (artist, album) if value) or None,
+                            year=getattr(item, "year", None),
+                            type=MediaType.MUSIC.value,
+                            image=image,
+                            server_type="plex",
+                        )
+                    )
+                    if len(results) >= limit:
+                        return results
         return results
 
     def get_tv_episodes(
@@ -1209,6 +1283,33 @@ class Plex:
         if self._plex is None:
             raise AttributeError("'NoneType' object has no attribute 'machineIdentifier'")
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
+
+    def get_stream_url(self, item_id: str) -> Optional[str]:
+        """
+        从 Plex 条目解析单个原始媒体文件的服务端读取地址。
+
+        不使用网页链接或转码地址；多段媒体无法用一个原始流表达时保留本地回退。
+
+        :param item_id: Plex 条目标识，可以是数字或 /library/metadata/ 路径
+        :return: 包含服务端鉴权参数的原始文件流地址；未连接或无法解析时返回 None
+        """
+        if self._plex is None or not self._host or not self._token or not item_id:
+            return None
+        try:
+            item = self.__fetch_item(item_id)
+            if not isinstance(item, (Movie, Episode, Track)):
+                return None
+            parts = list(item.iterParts())
+            if len(parts) != 1 or not isinstance(parts[0].key, str):
+                return None
+            part_key = parts[0].key
+            if not part_key.startswith("/library/parts/"):
+                return None
+            separator = "&" if "?" in part_key else "?"
+            return f"{self._host.rstrip('/')}{part_key}{separator}{urlencode({'X-Plex-Token': self._token})}"
+        except Exception:
+            logger.warning("Plex 原始媒体流信息读取失败，尝试本地文件播放")
+            return None
 
     def get_resume(
         self, num: Optional[int] = 12, *, query: Optional[MediaServerQueryOptions] = None

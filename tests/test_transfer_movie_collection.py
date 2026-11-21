@@ -25,9 +25,10 @@ def _make_chain() -> TransferChain:
     chain._scrape_batches = {}
     chain._media_exts = settings.RMT_MEDIAEXT
     chain._subtitle_exts = settings.RMT_SUBEXT
+    chain._lyrics_exts = settings.RMT_LYRICSEXT
     chain._audio_exts = settings.RMT_AUDIOEXT
     chain._allowed_exts = (
-        chain._media_exts + chain._subtitle_exts + chain._audio_exts
+        chain._media_exts + chain._subtitle_exts + chain._lyrics_exts + chain._audio_exts
     )
     chain.jobview = SimpleNamespace(
         finish_task=lambda task: None,

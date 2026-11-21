@@ -18,6 +18,7 @@ from app.domain.context import Context, MediaInfo, MusicAlbumInfo, MusicArtistIn
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation.singleton import Singleton
+from app.schemas.mapping import MediaMapping
 from app.schemas.types import MediaSource
 
 _PUBLIC_MODULE = "app.chain.media"
@@ -37,6 +38,7 @@ _ContextCall = Callable[..., Optional[Context]]
 _AsyncContextCall = Callable[..., Awaitable[Optional[Context]]]
 _ProjectionCall = Callable[..., Optional[dict[str, Any]]]
 _AsyncProjectionCall = Callable[..., Awaitable[Optional[dict[str, Any]]]]
+_AsyncMappingCall = Callable[..., Awaitable[Optional[MediaMapping]]]
 _SearchCall = Callable[..., tuple[Optional[MetaBase], list[MediaInfo]]]
 _AsyncSearchCall = Callable[
     ..., Awaitable[tuple[Optional[MetaBase], list[MediaInfo]]]
@@ -261,6 +263,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
     )
     _async_dispatch_projection_event = (
         MediaProjectionOwner._async_dispatch_projection_event
+    )
+    async_match_media_mapping = cast(
+        _AsyncMappingCall, MediaProjectionOwner.async_match_media_mapping
     )
     _run_native_media_recognize = MediaRecognitionOwner._run_native_media_recognize
     _async_run_native_media_recognize = MediaRecognitionOwner._async_run_native_media_recognize

@@ -22,8 +22,6 @@ TRANSFER_EXECUTION_VERSION = 1
 TRANSFER_STEP_INTENT_VERSION = 1
 # 单步执行结果与探测证据的当前持久格式版本
 TRANSFER_STEP_RESULT_VERSION = 1
-
-
 class TransferExecutionState(StrEnum):
     """
     描述与规划阶段相互独立的持久执行状态。
@@ -159,8 +157,9 @@ def build_transfer_overwrite_paths(
     """
     从冻结叶操作推导同目录暂存和备份路径，保证执行与账本验证使用相同身份。
 
-    115 重命名会分割主文件名与扩展名，不能使用仅含点号前缀的无扩展名临时文件；
-    其临时名保留目标扩展名，其他存储沿用原路径以保持已有步骤的恢复身份。
+    本地目录的临时名使用点号前缀且不带扩展名，避免进程中断后的残留被媒体扫描；
+    其他存储统一使用非空主文件名并保留目标扩展名，兼容按主文件名和扩展名解析
+    重命名的远端接口。存储类型可以由插件动态注册，不能在宿主中维护插件名称名单。
     """
     identity = _canonical_json({
         "source": dict(source), "storage": target_storage,
@@ -168,8 +167,9 @@ def build_transfer_overwrite_paths(
     })
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
     target = Path(target_path)
-    prefix = "mp" if target_storage == "u115" else ".mp"
-    suffix = target.suffix if target_storage == "u115" else ""
+    is_local_storage = target_storage == "local"
+    prefix = ".mp" if is_local_storage else "mp"
+    suffix = "" if is_local_storage else target.suffix
     return (
         target.with_name(f"{prefix}-stage-{digest}{suffix}").as_posix(),
         target.with_name(f"{prefix}-backup-{digest}{suffix}").as_posix(),
@@ -981,6 +981,18 @@ class TransferExecutionRepository(Protocol):
         :return: 是否接纳重新规划及持久调度状态
         """
 
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+    ) -> bool:
+        """
+        为失败历史登记一份短期身份修正授权，后续由重新规划事务一次性消费。
+
+        :param history_id: 当前失败终态关联的历史标识
+        :param task_id: 当前失败任务标识
+        :param settlement_revision: 当前失败回执的结算版本
+        :return: 授权已登记时为 True；历史或任务已变化时为 False
+        """
+
     def discard_corrupt_task(
             self,
             *,
@@ -1347,6 +1359,25 @@ class TransferExecutionCommand:
             history_id=history_id, task_id=task_id, settlement_revision=settlement_revision,
             media_source=MediaSource(media_source).value, media_id=media_id.strip(),
             media_type=normalized_type.value, season=season, episode=episode, requested_by=requested_by,
+        )
+
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+    ) -> bool:
+        """
+        为一次人工身份修正保存单个可覆盖授权，不创建授权历史。
+
+        :param history_id: 当前失败终态关联的历史标识
+        :param task_id: 当前失败任务标识
+        :param settlement_revision: 当前失败回执的结算版本
+        :return: 授权已登记时为 True；历史或任务已变化时为 False
+        :raises ValueError: 缺少历史、任务或结算版本
+        """
+        normalized_task_id = task_id.strip()
+        if history_id <= 0 or settlement_revision <= 0 or not normalized_task_id:
+            raise ValueError("人工授权缺少历史、结算版本或任务")
+        return self._repository.grant_manual_identity_authorization(
+            history_id=history_id, task_id=normalized_task_id, settlement_revision=settlement_revision,
         )
 
     def resolve_manual_review(

@@ -31,9 +31,9 @@ from app.application.security.token import (
     encrypt_message,
     get_password_hash,
     hash_sha256,
-    nexusphp_encrypt,
     verify_password,
 )
+from app.application.site.protocol import nexusphp_encrypt
 
 __all__ = [
     "ALGORITHM",

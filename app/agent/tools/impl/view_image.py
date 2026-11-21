@@ -64,9 +64,9 @@ class ViewImageInput(BaseModel):
         None,
         description="本地图片路径；非管理员仅可读取 Agent 配置目录内文件",
     )
-    image_data: Optional[Union[str, bytes]] = Field(
+    image_data: Optional[str] = Field(
         None,
-        description="Base64 图片内容、data:image/...;base64,... 或原始图片字节；只能选择一种图片来源",
+        description="Base64 图片内容或 data:image/...;base64,...；只能选择一种图片来源",
     )
     detail: Literal['auto', 'low', 'high'] = Field(
         "auto",
@@ -104,7 +104,7 @@ class ViewImageTool(MoviePilotTool):
         default=(
             "将图片的实际像素提供给多模态模型查看。"
             "url、file_path 和 image_data 必须且只能提供一项。"
-            "支持公网 HTTP(S) 图片地址、data:image/...;base64,... 地址、Base64 或原始图片内容以及本地路径。"
+            "支持公网 HTTP(S) 图片地址、data:image/...;base64,... 地址、Base64 图片内容以及本地路径。"
             "本地读取遵守 Agent 文件权限边界，禁止私网 URL。"
             "需要视觉检查时使用；"
             "只有工具返回图片观察结果后才能声称已查看图片。"
