@@ -10,7 +10,12 @@ import httpx2
 import pytest
 from pydantic import ValidationError
 
-from app.adapters.external.knowledge import MAX_RESPONSE_BYTES, KnowledgeClient
+from app.adapters.external.knowledge import (
+    MAX_RESPONSE_BYTES,
+    QUERY_ATTEMPT_SECONDS,
+    QUERY_MAX_RETRIES,
+    KnowledgeClient,
+)
 from app.adapters.network.http import AsyncRequestUtils
 from app.application.knowledge import KnowledgeService
 from app.runtime.config import Settings
@@ -245,9 +250,9 @@ async def test_invalid_encoding_type_or_buffered_size_is_rejected(response):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ["connect", "timeout"])
-async def test_transport_failures_are_sanitized_and_not_retried(kind):
+async def test_transport_failures_are_sanitized_and_retried_within_a_bound(kind):
     """
-    传输异常不回显可能含凭据的异常文本，POST 失败也不自动重放。
+    只读请求在传输异常后有限重试，最终失败不回显可能含凭据的异常文本。
     """
     calls = []
 
@@ -265,7 +270,76 @@ async def test_transport_failures_are_sanitized_and_not_retried(kind):
     async with httpx2.AsyncClient(transport=httpx2.MockTransport(handle)) as http:
         result = await KnowledgeClient(_requester(http)).query(AgentKnowledgeConfig(**_config()), KnowledgeSearch(query="规则"))
     assert result == KnowledgeOutcome("unavailable")
-    assert len(calls) == 1 and SENTINEL not in repr(result)
+    assert len(calls) == QUERY_MAX_RETRIES + 1 and SENTINEL not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_transient_transport_failure_retries_and_success_uses_fresh_connection(monkeypatch):
+    """
+    短暂连接故障后重试成功，并关闭连接复用以便新请求重新解析 DNS。
+    """
+    calls = []
+    options = []
+
+    class SyntheticTransport:
+        """
+        模拟一次连接失败后返回有效中心响应的宿主请求器。
+        """
+
+        async def post_res(self, *_args, **_kwargs):
+            """
+            首次抛出连接错误，第二次返回合成协议响应。
+
+            :param _args: 请求端口的未使用位置参数
+            :param _kwargs: 请求端口的未使用关键字参数
+            :return: 合成的成功 HTTP 响应
+            """
+            calls.append(None)
+            if len(calls) == 1:
+                raise httpx2.ConnectError(SENTINEL)
+            return httpx2.Response(200, json=_reply())
+
+    def create_transport(**kwargs):
+        """
+        捕获生产请求器选项并返回离线合成传输。
+
+        :param kwargs: 请求器生产配置
+        :return: 用于合成响应的传输
+        """
+        options.append(kwargs)
+        return SyntheticTransport()
+
+    monkeypatch.setattr("app.adapters.external.knowledge.AsyncRequestUtils", create_transport)
+    result = await KnowledgeClient().query(
+        AgentKnowledgeConfig(**_config()), KnowledgeSearch(query="规则"),
+    )
+    assert result.status == "matched"
+    assert len(calls) == 2
+    assert len(options) == 2
+    assert all(option["timeout"] == QUERY_ATTEMPT_SECONDS for option in options)
+    assert all(option["max_keepalive_connections"] == 0 for option in options)
+
+
+@pytest.mark.asyncio
+async def test_service_accepts_slow_response_within_total_budget():
+    """
+    旧 3 秒上限以外但仍在中心总预算内的有效响应不会被误判超时。
+    """
+
+    async def query(_config, _request):
+        """
+        模拟较慢但在服务总预算内成功的中心响应。
+
+        :param _config: 本轮合成中心配置
+        :param _request: 已校验的查询
+        :return: 合成的未命中状态
+        """
+        await asyncio.sleep(3.2)
+        return KnowledgeOutcome("no_match")
+
+    port = MagicMock(query=AsyncMock(side_effect=query))
+    service = KnowledgeService(lambda: AgentKnowledgeConfig(**_config()), port, lambda: "3.2.9")
+    assert await service.search("慢响应测试") == KnowledgeOutcome("no_match")
 
 
 @pytest.mark.asyncio
