@@ -128,7 +128,8 @@ async def test_large_raw_pty_input_retries_short_writes_without_losing_tail(
     """
     control_read, control_write = os.pipe()
     os.set_inheritable(control_read, True)
-    text = "0123456789abcdef" * 4096
+    # 256 KiB 足以填满 Linux 与 gVisor 等常见实现的 PTY 输入缓冲，确保触发真实短写与回压。
+    text = "0123456789abcdef" * 16384
     data = text.encode()
     loop = asyncio.get_running_loop()
     blocked = asyncio.Event()
