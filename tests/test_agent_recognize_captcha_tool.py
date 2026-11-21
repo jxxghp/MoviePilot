@@ -8,11 +8,12 @@ import json
 from unittest.mock import AsyncMock, call, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.adapters.external.ocr import OcrHelper
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaTool
+from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaInput, RecognizeCaptchaTool
 from app.agent.tools.manager import MoviePilotToolsManager
 
 
@@ -397,6 +398,150 @@ def test_recognize_captcha_tool_rejects_oversized_base64_image_data():
     assert payload["captcha_text"] == ""
     assert "大小上限" in payload["message"]
     recognize_mock.assert_not_called()
+
+
+def test_recognize_captcha_input_requires_image_source():
+    """
+    既无图片地址又无图片内容时，输入模型应拒绝构造。
+    """
+    with pytest.raises(ValidationError):
+        RecognizeCaptchaInput()
+
+
+def test_recognize_captcha_tool_message_for_raw_image_bytes():
+    """
+    工具提示应按原始字节描述内部传入的图片。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    assert tool.get_tool_message(image_data=b"captcha-image") == "识别图形验证码: raw image (13 bytes)"
+
+
+def test_recognize_captcha_tool_message_for_base64_image_content():
+    """
+    工具提示应按字符数描述模型传入的 Base64 图片内容。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    image_b64 = base64.b64encode(b"captcha-image").decode()
+
+    assert tool.get_tool_message(image_data=image_b64) == (
+        f"识别图形验证码: image content ({len(image_b64)} chars)"
+    )
+
+
+def test_recognize_captcha_tool_message_for_data_image_url():
+    """
+    工具提示应隐藏 data:image 地址的图片内容。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    assert tool.get_tool_message(image_url="data:image/png;base64,aGVsbG8=") == (
+        "识别图形验证码: data image"
+    )
+
+
+def test_recognize_captcha_tool_treats_blank_image_data_as_missing_source():
+    """
+    仅空白字符的图片内容应视作未提供图片，不提交 OCR。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+        return_value="x7p9",
+    ) as recognize_mock:
+        result = asyncio.run(tool.run(image_data="   "))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["captcha_text"] == ""
+    recognize_mock.assert_not_called()
+
+
+def test_recognize_captcha_tool_rejects_data_url_image_data_without_base64_marker():
+    """
+    未标注 base64 的 data:image 内容不得提交 OCR，应返回明确失败。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+        return_value="x7p9",
+    ) as recognize_mock:
+        result = asyncio.run(tool.run(image_data="data:image/png,xxxx"))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["captcha_text"] == ""
+    assert "data:image" in payload["message"]
+    recognize_mock.assert_not_called()
+
+
+def test_recognize_captcha_tool_rejects_empty_data_url_image_data():
+    """
+    Base64 载荷为空的 data:image 内容不得提交 OCR，应返回明确失败。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    with patch(
+        "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+        return_value="x7p9",
+    ) as recognize_mock:
+        result = asyncio.run(tool.run(image_data="data:image/png;base64,"))
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["captcha_text"] == ""
+    assert "为空" in payload["message"]
+    recognize_mock.assert_not_called()
+
+
+def test_recognize_captcha_tool_recognizes_data_url_image_without_validation():
+    """
+    data:image 图片地址应直接提交 OCR，不经过私网地址校验。
+    """
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    image_b64 = base64.b64encode(b"captcha-image").decode()
+    image_url = f"data:image/png;base64,{image_b64}"
+
+    async def _run_tool():
+        """
+        执行一次带 data:image 地址的工具调用。
+        """
+        with patch(
+            "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+            return_value="x7p9",
+        ) as recognize_mock:
+            result = await tool.run(image_url=image_url)
+            return result, recognize_mock
+
+    result, recognize_mock = asyncio.run(_run_tool())
+    assert json.loads(result)["captcha_text"] == "x7p9"
+    recognize_mock.assert_called_once_with(
+        image_url=image_url,
+        cookie=None,
+        ua=None,
+    )
+
+
+def test_recognize_captcha_tool_formats_invalid_data_url_for_log():
+    """
+    缺少逗号的 data:image 地址应按无效地址摘要记录，不泄露内容。
+    """
+    result = RecognizeCaptchaTool._format_image_url_for_log("data:image/png")
+
+    assert result == "data:image,<invalid:14 chars>"
+
+
+def test_recognize_captcha_tool_truncates_long_image_url_for_log():
+    """
+    超长图片地址应截断后记录，并保留原始总长度。
+    """
+    image_url = "https://example.com/" + "a" * 300
+
+    result = RecognizeCaptchaTool._format_image_url_for_log(image_url)
+
+    assert result == f"{image_url[:300]}...(已截断，总长度: {len(image_url)})"
 
 
 def test_recognize_captcha_tool_blocks_private_network_by_default():

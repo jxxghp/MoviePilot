@@ -299,16 +299,6 @@
       "reason": "async-tool-run"
     },
     {
-      "path": "app/agent/tools/impl/recognize_captcha.py",
-      "owner": "RecognizeCaptchaTool.run",
-      "codes": [
-        "override"
-      ],
-      "fingerprint": "6475ed9eea3e63c5692b594a98eba7940c24f56c5ec715703194b7a07312e989",
-      "statement": "async def run(self, image_url: Optional[str]=None, cookie: Optional[str]=None, user_agent: Optional[str]=None, allow_private_network: bool=False, image_data: Optional[bytes]=None, **kwargs: object) -> str:",
-      "reason": "async-tool-run"
-    },
-    {
       "path": "app/agent/tools/impl/search_web.py",
       "owner": "SearchWebTool.run",
       "codes": [

@@ -16,7 +16,6 @@ from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 
 IMAGE_MAX_BASE64_CHARS = 1024 * 1024
-IMAGE_MAX_BYTES = 768 * 1024
 
 
 class CaptchaUrlError(ValueError):
@@ -137,8 +136,8 @@ class RecognizeCaptchaTool(MoviePilotTool):
             image_bytes = base64.b64decode(normalized, validate=True)
         except (ValueError, binascii.Error) as error:
             raise ValueError("image_data 不是有效的 Base64 图片内容") from error
-        if not image_bytes or len(image_bytes) > IMAGE_MAX_BYTES:
-            raise ValueError("image_data 图片内容为空或超过大小上限")
+        if not image_bytes:
+            raise ValueError("image_data 图片内容为空")
         return image_bytes
 
     @staticmethod
@@ -219,17 +218,20 @@ class RecognizeCaptchaTool(MoviePilotTool):
             ensure_ascii=False,
         )
 
-    async def run(  # type: ignore[override]
+    async def run(
         self,
+        *args: Any,
         image_url: Optional[str] = None,
         cookie: Optional[str] = None,
         user_agent: Optional[str] = None,
         allow_private_network: bool = False,
         image_data: Optional[Union[str, bytes]] = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> str:
         """
         识别指定图片地址中的图形验证码文本。
+
+        调用方只按关键字传参；位置参数由基类 `run(*args, **kwargs)` 合同接收后忽略。
 
         :param image_url: 验证码图片地址
         :param image_data: Base64 图片内容、data:image/...;base64,... 或原始图片字节
@@ -238,6 +240,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
         :param allow_private_network: 是否允许访问本机或私网地址
         :return: JSON 格式的识别结果
         """
+        del args
         try:
             image_bytes = self._decode_image_data(image_data)
         except ValueError as err:
