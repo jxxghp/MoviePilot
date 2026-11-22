@@ -187,3 +187,48 @@ def test_gazelle_slash_specs_preserve_music_identity(title: str, expected: str, 
     assert meta.artists == [title.partition(" - ")[0]]
     assert meta.audio_format == "FLAC"
     assert meta.audio_lossless is True
+
+
+@pytest.mark.parametrize("title,expected,year,audio_format", [
+    (
+        "薛之谦 (Joker Xue) - 尘 (Dust) [2019] [专辑] "
+        "FLAC / Lossless / Log (100%) / Cue / CD / 自抓 / 禁转 / 2019",
+        "尘 (Dust)", 2019, "FLAC",
+    ),
+    (
+        "薛之谦 (Joker Xue) - 尘 (Dust) [2019] [专辑] FLAC / Lossless / WEB / 自购 / 禁转 / 2019",
+        "尘 (Dust)", 2019, "FLAC",
+    ),
+    (
+        "老狼 (Lao Lang) - 恋恋风尘 [1995] [专辑] "
+        "WAV / Lossless / Log (78%) / Cue / CD / 1995 / 可替代",
+        "恋恋风尘", 1995, "WAV",
+    ),
+    (
+        "夏曰入侵企画 (Summer Warz) - 尘星 [2024] [单曲专辑] FLAC / 24bit Lossless / WEB / 2024",
+        "尘星", 2024, "FLAC",
+    ),
+])
+def test_hddolby_transfer_spec_tails_preserve_music_identity(
+        title: str, expected: str, year: int, audio_format: str,
+) -> None:
+    """
+    海豚（HDDolby）音乐区的转让声明（禁转/限转/自购/可替代）和位深前缀（24bit Lossless）
+    不改变规格尾链的剥离，年份允许出现在链中任意位置；否则作品名会残留
+    ``// Log (100%) // CD // 禁转 /`` 一类残片，导致搜索结果与目标专辑不匹配。
+
+    仅运行 Python 参考实现；Rust 镜像待 moviepilot-rust 同步后对齐。
+
+    :param title: 海豚站点报告的资源标题
+    :param expected: 应保留的真实作品名
+    :param year: 应提取的发行年份
+    :param audio_format: 应识别的音频格式
+    """
+    meta = MetaInfo(title, mtype=MediaType.MUSIC)
+
+    assert meta.title == expected
+    assert meta.year == year
+    assert meta.org_string == title
+    assert meta.artists == [title.partition(" - ")[0]]
+    assert meta.audio_format == audio_format
+    assert meta.audio_lossless is True
