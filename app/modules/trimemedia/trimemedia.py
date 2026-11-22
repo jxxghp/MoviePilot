@@ -12,7 +12,19 @@ from app.application.security.url import SecurityUtils
 from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -643,17 +655,236 @@ class TrimeMedia:
             return self.__build_media_server_item(item)
         return None
 
+    def _resolve_fn_image(self, path: Optional[str]) -> Optional[str]:
+        """将飞牛相对图片路径拼接为可代理的完整 URL。"""
+        if not path or not self._api:
+            return None
+        if str(path).startswith(("http://", "https://")):
+            return str(path)
+        return f"{self._api.host.rstrip('/')}/{str(path).lstrip('/')}"
+
+    def _build_browse_item(self, item: fnapi.Item) -> Optional[_SchemaMediaServerBrowseItem]:
+        """将飞牛条目转换为统一浏览卡片模型。"""
+        if not item or not item.guid or not item.title:
+            return None
+        item_type = "Series" if item.type == fnapi.Type.TV else (item.type.value if item.type else "Movie")
+        is_tv = item.type in {fnapi.Type.TV, fnapi.Type.SEASON, fnapi.Type.EPISODE}
+        date_str = item.air_date if item.type == fnapi.Type.TV else item.release_date
+        year = date_str[:4] if date_str else None
+        duration_ms = int(item.duration * 1000) if item.duration and item.duration > 0 else None
+        resume_ms = int(item.ts * 1000) if item.ts and item.ts > 0 else None
+        percentage = round(min(100.0, item.ts / item.duration * 100.0), 1) if item.duration and item.ts else None
+        rating: Optional[float] = None
+        if item.vote_average:
+            try:
+                rating = round(float(item.vote_average), 1)
+            except (TypeError, ValueError):
+                rating = None
+        subtitle = (
+            f"S{int(item.season_number):02d}E{int(item.episode_number):02d}"
+            if item.type == fnapi.Type.EPISODE and item.season_number is not None and item.episode_number is not None
+            else year
+        )
+        poster = self._resolve_fn_image(item.poster or item.posters)
+        backdrop = self._resolve_fn_image(item.backdrops)
+        return _SchemaMediaServerBrowseItem(
+            item_id=item.guid,
+            server_type="trimemedia",
+            item_type=item_type,
+            media_type=MediaType.TV.value if is_tv else MediaType.MOVIE.value,
+            title=item.title,
+            original_title=item.original_title,
+            subtitle=subtitle,
+            overview=item.overview,
+            year=year,
+            premiere_date=date_str,
+            rating=rating,
+            duration_ms=duration_ms,
+            poster=poster,
+            backdrop=backdrop,
+            thumb=backdrop or poster,
+            series_name=item.tv_title,
+            season_number=item.season_number,
+            episode_number=item.episode_number,
+            played=bool(item.watched == 1) if item.watched is not None else None,
+            played_percentage=percentage,
+            resume_position_ms=resume_ms,
+            use_cookies=True,
+        )
+
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """分页浏览飞牛媒体库条目。"""
+        _ = genre, played_filter, sort_by, sort_order, username
+        if not self.is_authenticated() or not self._api:
+            return None
+        safe_start = max(0, int(start_index))
+        safe_limit = max(1, min(int(limit), 100))
+        if keyword and keyword.strip():
+            raw_items = self._api.search_list(keywords=keyword.strip()) or []
+            total = len(raw_items)
+            raw_items = raw_items[safe_start : safe_start + safe_limit]
+        else:
+            target_guid = parent_id or library_id or ""
+            if not target_guid:
+                return _SchemaMediaServerBrowsePage(items=[], total_count=0, start_index=safe_start, limit=safe_limit, has_more=False)
+            page = (safe_start // safe_limit) + 1
+            res = self._api.item_list(guid=target_guid, page=page, page_size=safe_limit)
+            if res is None:
+                return None
+            raw_items = res
+            total = safe_start + len(raw_items) + (1 if len(raw_items) == safe_limit else 0)
+        items: list[_SchemaMediaServerBrowseItem] = []
+        for raw in raw_items:
+            built = self._build_browse_item(raw)
+            if not built:
+                continue
+            if item_type and built.item_type.casefold() != item_type.casefold() and built.media_type != item_type:
+                continue
+            if year and built.year and str(built.year) != str(year):
+                continue
+            items.append(built)
+        return _SchemaMediaServerBrowsePage(
+            items=items,
+            total_count=total,
+            start_index=safe_start,
+            limit=safe_limit,
+            has_more=(safe_start + len(raw_items)) < total,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> _SchemaMediaServerFilterOptions:
+        """返回飞牛媒体库可用筛选与排序选项。"""
+        _ = library_id, username
+        return _SchemaMediaServerFilterOptions(
+            genres=[],
+            years=[],
+            item_types=["Movie", "Series"],
+            sort_options=["date_created", "premiere_date", "rating", "name"],
+        )
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """获取飞牛单个条目完整详情。"""
+        _ = username
+        if not self.is_authenticated() or not self._api or not item_id:
+            return None
+        raw = self._api.item(guid=item_id)
+        if not raw:
+            return None
+        base = self._build_browse_item(raw)
+        if not base:
+            return None
+        media_source, media_id = MediaServerIdentityHelper.from_provider_ids({
+            "tmdb_id": raw.tmdb_id,
+            "imdb_id": raw.imdb_id,
+            "douban_id": raw.douban_id,
+        })
+        host = (self._playhost or self._host or "").rstrip("/")
+        return _SchemaMediaServerItemDetail(
+            **base.model_dump(),
+            media_source=media_source,
+            media_id=media_id,
+            tmdb_id=str(raw.tmdb_id) if raw.tmdb_id else None,
+            imdb_id=raw.imdb_id,
+            douban_id=str(raw.douban_id) if raw.douban_id else None,
+            parent_id=raw.ancestor_guid or None,
+            season_name=raw.parent_title if raw.type == fnapi.Type.EPISODE else None,
+            play_url=self.__build_play_url(host, raw) if host else None,
+            can_play=raw.type in {fnapi.Type.MOVIE, fnapi.Type.EPISODE, fnapi.Type.VIDEO},
+        )
+
+    def get_seasons(
+        self, series_id: str, username: Optional[str] = None
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取飞牛电视剧的全部季卡片。"""
+        _ = username
+        if not self.is_authenticated() or not self._api or not series_id:
+            return None
+        raw_seasons = self._api.season_list(series_id)
+        if raw_seasons is None:
+            return None
+        seasons = [built for s in raw_seasons if (built := self._build_browse_item(s))]
+        for season_item in seasons:
+            season_item.series_id = series_id
+            season_item.item_type = "Season"
+        seasons.sort(key=lambda item: (item.season_number is None, item.season_number or 0))
+        return seasons
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取飞牛指定季的全部单集详情卡片。"""
+        _ = username
+        if not self.is_authenticated() or not self._api:
+            return None
+        target_season_id = season_id
+        if not target_season_id and series_id and season is not None:
+            for s in self._api.season_list(series_id) or []:
+                if s.season_number == season and s.guid:
+                    target_season_id = s.guid
+                    break
+        if not target_season_id:
+            return []
+        raw_eps = self._api.episode_list(target_season_id)
+        if raw_eps is None:
+            return None
+        episodes = [built for ep in raw_eps if (built := self._build_browse_item(ep))]
+        for ep in episodes:
+            ep.series_id = series_id
+            ep.season_id = target_season_id
+            ep.item_type = "Episode"
+        episodes.sort(key=lambda item: (item.season_number or 0, item.episode_number or 0))
+        return episodes
+
     def search_library(
-        self, keyword: str, types: list[str], limit: int
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        library_id: Optional[str] = None,
     ) -> List[_SchemaMediaServerPlayItem]:
-        """通过飞牛搜索接口返回可播放的已入库电视剧。"""
-        if MediaType.TV.value not in types or not keyword.strip() or not self.is_authenticated() or not self._api:
+        """通过飞牛搜索接口返回已入库电影和电视剧。"""
+        _ = library_id
+        if not keyword.strip() or not self.is_authenticated() or not self._api:
+            return []
+        want_movie = MediaType.MOVIE.value in types
+        want_tv = MediaType.TV.value in types
+        if not (want_movie or want_tv):
             return []
         results: List[_SchemaMediaServerPlayItem] = []
         for item in self._api.search_list(keywords=keyword.strip()) or []:
-            if item.type != fnapi.Type.TV or not item.guid or not item.title:
+            if not item.guid or not item.title:
                 continue
-            year = item.air_date[:4] if item.air_date else None
+            if item.type == fnapi.Type.TV and want_tv:
+                media_type = MediaType.TV.value
+                year = item.air_date[:4] if item.air_date else None
+            elif item.type == fnapi.Type.MOVIE and want_movie:
+                media_type = MediaType.MOVIE.value
+                year = item.release_date[:4] if item.release_date else None
+            else:
+                continue
             results.append(
                 _SchemaMediaServerPlayItem(
                     id=item.guid,
@@ -661,9 +892,10 @@ class TrimeMedia:
                     title=item.title,
                     subtitle=year,
                     year=year,
-                    type=MediaType.TV.value,
-                    image=item.poster,
+                    type=media_type,
+                    image=self._resolve_fn_image(item.poster or item.posters),
                     server_type="trimemedia",
+                    use_cookies=True,
                 )
             )
             if len(results) >= max(1, limit):

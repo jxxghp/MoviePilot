@@ -52,17 +52,23 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.media import build_media_key, resolve_media_identity
+from app.schemas.mediaserver import MediaServerBrowseItem as _SchemaMediaServerBrowseItem
+from app.schemas.mediaserver import MediaServerBrowsePage as _SchemaMediaServerBrowsePage
 from app.schemas.mediaserver import MediaServerExistingEpisodes as _SchemaMediaServerExistingEpisodes
 from app.schemas.mediaserver import MediaServerExistsData as _SchemaMediaServerExistsData
 from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions, NotExistMediaInfo
 from app.schemas.mediaserver import MediaServerFileStreamTicket as _SchemaMediaServerFileStreamTicket
 from app.schemas.mediaserver import MediaServerFileStreamTicketRequest as _SchemaMediaServerFileStreamTicketRequest
+from app.schemas.mediaserver import MediaServerFilterOptions as _SchemaMediaServerFilterOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import MediaServerItemDetail as _SchemaMediaServerItemDetail
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerMusicStreamRequest as _SchemaMediaServerMusicStreamRequest
 from app.schemas.mediaserver import MediaServerPlayData as _SchemaMediaServerPlayData
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import MediaServerProgressReportRequest as _SchemaMediaServerProgressReportRequest
 from app.schemas.mediaserver import MediaServerStreamInfo as _SchemaMediaServerStreamInfo
+from app.schemas.mediaserver import MediaServerSubtitleTrack as _SchemaMediaServerSubtitleTrack
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
@@ -172,7 +178,11 @@ def _find_music_stream_item(
 
 
 def _playback_source(
-    server: Optional[str], itemid: str, item: _SchemaMediaServerItem, path: Optional[Path]
+    server: Optional[str],
+    itemid: str,
+    item: _SchemaMediaServerItem,
+    path: Optional[Path],
+    media_source_id: Optional[str] = None,
 ) -> tuple[str, Path | str, set[str]]:
     """
     优先选择媒体服务器原始流，适配器不支持时才解析本地文件或 STRM。
@@ -183,11 +193,17 @@ def _playback_source(
     :param itemid: 已授权的条目标识或单文件票据
     :param item: 已授权的媒体服务器条目
     :param path: 可选的本机媒体文件路径
+    :param media_source_id: 可选指定多版本媒体源标识
     :return: 流来源类型、文件路径或上游 URL，以及允许的已配置主机名
     :raises HTTPException: 媒体服务器不支持原始流且本地文件不可读取时
     """
     if server:
-        upstream = MediaServerChain().get_stream_url(server, itemid, item.item_type)
+        chain = MediaServerChain()
+        upstream = (
+            chain.get_stream_url(server, itemid, item.item_type, media_source_id=media_source_id)
+            if media_source_id
+            else chain.get_stream_url(server, itemid, item.item_type)
+        )
         if upstream:
             hosts = _configured_stream_hosts(path, include_media_servers=True)
             return "server", _validate_stream_url(upstream, configured_hosts=hosts), hosts
@@ -196,6 +212,48 @@ def _playback_source(
     hosts = _configured_stream_hosts(path)
     source_type, source = _stream_source(path, hosts)
     return source_type, source, hosts
+
+
+def _server_subtitle_tracks(
+    detail: Optional[_SchemaMediaServerItemDetail],
+    itemid: str,
+    request: Request,
+    server: Optional[str],
+    media_source_id: Optional[str],
+) -> list[_SchemaMediaServerSubtitleTrack]:
+    """
+    从媒体服务器详情的媒体源轨道中收集可代理的外挂字幕清单。
+
+    :param detail: 可选媒体服务器详情模型
+    :param itemid: 条目标识
+    :param request: 当前请求，用于构造本实例字幕代理地址
+    :param server: 媒体服务器配置名
+    :param media_source_id: 可选目标媒体源标识；省略时采用首个媒体源
+    :return: 代理后的服务端外挂字幕列表
+    """
+    if not detail or not detail.media_sources:
+        return []
+    target_source = next(
+        (src for src in detail.media_sources if media_source_id and src.id == media_source_id),
+        detail.media_sources[0],
+    )
+    tracks: list[_SchemaMediaServerSubtitleTrack] = []
+    for stream in target_source.streams:
+        if stream.type != "subtitle" or not stream.subtitle_id:
+            continue
+        query = {"itemid": itemid, "subtitle_id": stream.subtitle_id}
+        if server:
+            query["server"] = server
+        url = str(request.url_for("stream_item_subtitle").include_query_params(**query))
+        tracks.append(
+            _SchemaMediaServerSubtitleTrack(
+                subtitle_id=stream.subtitle_id,
+                title=stream.display_title or stream.title or stream.language or "外挂字幕",
+                language=stream.language,
+                url=url,
+            )
+        )
+    return tracks
 
 
 def _stream_item_note(item: _SchemaMediaServerItem, key: str) -> Optional[str]:
@@ -282,60 +340,93 @@ def create_file_stream_ticket(
 
 @router.get(
     "/search",
-    summary="搜索已配置媒体服务器中的电视剧和音乐单曲",
+    summary="搜索已配置媒体服务器中的电影、电视剧和音乐单曲",
     response_model=_SchemaResponse[List[_SchemaMediaServerPlayItem]],
 )
 def search_library(
     keyword: str = Query(min_length=1, max_length=120),
     type_filter: Optional[List[str]] = Query(default=None, alias="type"),
     limit: int = Query(default=30, ge=1, le=50),
+    server: Optional[str] = None,
+    library_id: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[List[_SchemaMediaServerPlayItem]]:
     """
-    使用已配置媒体服务器自身的搜索接口查找电视剧和音乐单曲。
+    使用已配置媒体服务器自身的搜索接口查找电影、电视剧和音乐单曲。
 
     :param keyword: 搜索关键词
-    :param type_filter: 可选业务类型，省略时搜索电视剧和音乐
+    :param type_filter: 可选业务类型，省略时搜索电影、电视剧和音乐
     :param limit: 最多返回的结果数
+    :param server: 可选媒体服务器配置名，限定单一服务器搜索
+    :param library_id: 可选媒体库标识，限定单一媒体库内搜索
     :param _: 已验证的访问令牌
     :return: 带海报、服务器来源和本地播放标识的媒体列表
     """
-    allowed_types = {MediaType.TV.value, MediaType.MUSIC.value}
+    allowed_types = {MediaType.MOVIE.value, MediaType.TV.value, MediaType.MUSIC.value}
+    default_types = [MediaType.MOVIE.value, MediaType.TV.value, MediaType.MUSIC.value]
     selected_types = list(
-        dict.fromkeys(value for value in (type_filter or [MediaType.TV.value, MediaType.MUSIC.value]) if value in allowed_types)
+        dict.fromkeys(value for value in (type_filter or default_types) if value in allowed_types)
     )
     if not selected_types:
         return _SchemaResponse(success=True, data=[])
-    results = MediaServerChain().search_library(keyword, selected_types, limit)
+    search_kwargs: dict[str, Any] = {}
+    if server:
+        search_kwargs["server"] = server
+    if library_id:
+        search_kwargs["library_id"] = library_id
+    results = MediaServerChain().search_library(keyword, selected_types, limit, **search_kwargs)
     return _SchemaResponse(success=True, data=results)
 
 
 @router.get(
     "/stream-info",
-    summary="查询媒体流与同名字幕",
+    summary="查询媒体流与外挂字幕",
     response_model=_SchemaResponse[_SchemaMediaServerStreamInfo],
 )
 def stream_info(
     itemid: str,
     request: Request,
     server: Optional[str] = None,
+    media_source_id: Optional[str] = None,
     userinfo: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaMediaServerStreamInfo]:
     """
-    返回当前实例代理的媒体流地址；媒体服务器条目优先通过服务器原始流播放。
+    返回当前实例代理的媒体流地址；媒体服务器条目优先通过服务器原始流播放并合并外挂字幕。
 
     :param itemid: 媒体服务器条目标识
     :param request: 当前请求，用于构造本实例流地址
     :param server: 可选媒体服务器配置名，精确绑定搜索结果来源
+    :param media_source_id: 可选多版本媒体源标识
     :param userinfo: 已验证的访问令牌
     :return: 可供原生播放器读取的媒体流清单
     """
     server_name, item, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
-    _playback_source(server_name, itemid, item, path)
+    _playback_source(server_name, itemid, item, path, media_source_id=media_source_id)
     stream_query = {"itemid": itemid}
     if server_name:
         stream_query["server"] = server_name
+    if media_source_id:
+        stream_query["media_source_id"] = media_source_id
     content_url = request.url_for("stream_item_content").include_query_params(**stream_query)
+    is_audio = _is_audio_item(item, path)
+    subtitles: list[_SchemaMediaServerSubtitleTrack] = (
+        [] if not path or is_audio else _subtitle_tracks(itemid, path, request, server_name)
+    )
+    detail: Optional[_SchemaMediaServerItemDetail] = None
+    if server_name and not is_audio:
+        raw_detail = MediaServerChain().item_detail(
+            server=server_name, item_id=item.item_id or itemid, username=userinfo.username
+        )
+        if isinstance(raw_detail, _SchemaMediaServerItemDetail):
+            detail = raw_detail
+            seen_ids = {track.subtitle_id for track in subtitles}
+            for track in _server_subtitle_tracks(detail, itemid, request, server_name, media_source_id):
+                if track.subtitle_id not in seen_ids:
+                    seen_ids.add(track.subtitle_id)
+                    subtitles.append(track)
+    resolved_source_id = media_source_id or (
+        detail.media_sources[0].id if detail and detail.media_sources else None
+    )
     return _SchemaResponse(
         success=True,
         data=_SchemaMediaServerStreamInfo(
@@ -343,11 +434,14 @@ def stream_info(
             server=server_name,
             title=item.title or (path.stem if path else itemid),
             content_url=str(content_url),
-            media_type="audio" if _is_audio_item(item, path) else "video",
+            media_type="audio" if is_audio else "video",
             artist=_stream_item_note(item, "artist"),
             album=_stream_item_note(item, "album"),
-            subtitles=[] if not path or _is_audio_item(item, path) else _subtitle_tracks(itemid, path, request, server),
-            lyrics_url=_lyrics_url(itemid, path, request, server) if path and _is_audio_item(item, path) else None,
+            subtitles=subtitles,
+            lyrics_url=_lyrics_url(itemid, path, request, server_name) if path and is_audio else None,
+            media_source_id=resolved_source_id,
+            resume_position_ms=detail.resume_position_ms if detail else None,
+            duration_ms=detail.duration_ms if detail else None,
         ),
     )
 
@@ -404,6 +498,7 @@ def stream_item_content(
     itemid: str,
     request: Request,
     server: Optional[str] = None,
+    media_source_id: Optional[str] = None,
     userinfo: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> StreamingResponse:
     """
@@ -412,11 +507,14 @@ def stream_item_content(
     :param itemid: 媒体服务器条目标识
     :param request: 当前请求，包含可选 Range 头
     :param server: 可选媒体服务器配置名，精确绑定搜索结果来源
+    :param media_source_id: 可选指定的多版本媒体源标识
     :param userinfo: 已验证的访问令牌
     :return: 本地文件或受控 STRM 上游流式响应
     """
     server_name, item, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
-    source_type, source, configured_hosts = _playback_source(server_name, itemid, item, path)
+    source_type, source, configured_hosts = _playback_source(
+        server_name, itemid, item, path, media_source_id=media_source_id
+    )
     range_header = request.headers.get("range")
     if source_type == "server":
         try:
@@ -450,17 +548,26 @@ def stream_item_subtitle(
     server: Optional[str] = None,
 ) -> StreamingResponse:
     """
-    只读取当前影片同目录且名称匹配的字幕文件。
+    读取影片同目录外挂字幕或代理媒体服务器托管的外挂字幕流。
 
     :param itemid: 媒体服务器条目标识
-    :param subtitle_id: 字幕文件名，不接受目录片段
+    :param subtitle_id: 字幕文件名或 `ms:` 前缀的服务端字幕标识
     :param request: 当前请求，包含可选 Range 头
     :param server: 可选媒体服务器配置名，精确绑定搜索结果来源
     :param userinfo: 已验证的访问令牌
     :return: 字幕文件流式响应
     :raises HTTPException: 字幕不存在或不属于当前影片时返回 404
     """
-    _, _, video_path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    server_name, item, video_path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    if subtitle_id.startswith("ms:") and server_name:
+        upstream = MediaServerChain().get_subtitle_url(
+            server=server_name, item_id=item.item_id or itemid, subtitle_id=subtitle_id
+        )
+        if not upstream:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到媒体服务器字幕")
+        hosts = _configured_stream_hosts(video_path, include_media_servers=True)
+        validated = _validate_stream_url(upstream, configured_hosts=hosts)
+        return _remote_stream_response(validated, request.headers.get("range"), hosts)
     if not video_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到同名字幕")
     subtitle_path = _find_subtitle_path(video_path, subtitle_id)
@@ -862,6 +969,213 @@ def library(
             query=_LIBRARY_QUERY,
         )
     )
+
+
+@router.get(
+    "/browse",
+    summary="分页浏览媒体服务器媒体库内容",
+    response_model=_SchemaResponse[_SchemaMediaServerBrowsePage],
+)
+def browse_library(
+    server: str,
+    library_id: Optional[str] = None,
+    parent_id: Optional[str] = None,
+    item_type: Optional[str] = None,
+    genre: Optional[str] = None,
+    year: Optional[int] = None,
+    played_filter: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: Optional[str] = None,
+    keyword: Optional[str] = None,
+    start_index: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=100),
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaMediaServerBrowsePage]:
+    """
+    按统一契约分页浏览媒体服务器媒体库，支持筛选、排序和库内搜索。
+
+    :param server: 媒体服务器配置名称
+    :param library_id: 可选媒体库标识
+    :param parent_id: 可选父目录标识
+    :param item_type: 可选维度或媒体类型过滤
+    :param genre: 可选风格过滤
+    :param year: 可选年份过滤
+    :param played_filter: 可选观看状态过滤（played / unplayed）
+    :param sort_by: 排序字段（date_created / premiere_date / rating / name / random）
+    :param sort_order: 排序方向（asc / desc）
+    :param keyword: 可选关键词搜索
+    :param start_index: 零基分页偏移
+    :param limit: 单页数量上限
+    :param userinfo: 已验证的访问令牌
+    :return: 分页浏览结果
+    """
+    page = MediaServerChain().browse_items(
+        server=server,
+        library_id=library_id,
+        parent_id=parent_id,
+        item_type=item_type,
+        genre=genre,
+        year=year,
+        played_filter=played_filter,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        keyword=keyword,
+        start_index=start_index,
+        limit=limit,
+        username=userinfo.username,
+    )
+    if page is None:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="媒体服务器浏览请求失败")
+    return _SchemaResponse(success=True, data=page)
+
+
+@router.get(
+    "/filters",
+    summary="查询媒体库可用的筛选与排序选项",
+    response_model=_SchemaResponse[_SchemaMediaServerFilterOptions],
+)
+def library_filters(
+    server: str,
+    library_id: Optional[str] = None,
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaMediaServerFilterOptions]:
+    """
+    返回指定媒体服务器媒体库支持的风格、年份和排序键列表。
+
+    :param server: 媒体服务器配置名称
+    :param library_id: 可选媒体库标识
+    :param userinfo: 已验证的访问令牌
+    :return: 可用筛选项模型
+    """
+    options = MediaServerChain().filter_options(
+        server=server, library_id=library_id, username=userinfo.username
+    )
+    return _SchemaResponse(
+        success=True,
+        data=options
+        or _SchemaMediaServerFilterOptions(
+            sort_options=["date_created", "premiere_date", "rating", "name"]
+        ),
+    )
+
+
+@router.get(
+    "/detail",
+    summary="查询媒体服务器单个条目完整详情",
+    response_model=_SchemaResponse[_SchemaMediaServerItemDetail],
+)
+def item_detail(
+    itemid: str,
+    server: Optional[str] = None,
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaMediaServerItemDetail]:
+    """
+    返回电影、剧集、季、集或音乐条目的完整详情（含多版本与音轨字幕轨道）。
+
+    :param itemid: 媒体服务器条目标识
+    :param server: 可选媒体服务器配置名称；省略时依次查询已启用服务器
+    :param userinfo: 已验证的访问令牌
+    :return: 条目完整详情
+    :raises HTTPException: 未找到条目时返回 404
+    """
+    chain = MediaServerChain()
+    servers = [server] if server else [c.name for c in get_mediaserver_configs() if c.name]
+    for server_name in servers:
+        if not server_name:
+            continue
+        detail = chain.item_detail(server=server_name, item_id=itemid, username=userinfo.username)
+        if detail:
+            return _SchemaResponse(success=True, data=detail)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到媒体服务器条目详情")
+
+
+@router.get(
+    "/seasons",
+    summary="查询电视剧全部季卡片信息",
+    response_model=_SchemaResponse[List[_SchemaMediaServerBrowseItem]],
+)
+def item_seasons(
+    itemid: str,
+    server: str,
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[List[_SchemaMediaServerBrowseItem]]:
+    """
+    按季号升序返回媒体服务器中指定电视剧的全部季信息。
+
+    :param itemid: 电视剧在媒体服务器中的条目标识
+    :param server: 媒体服务器配置名称
+    :param userinfo: 已验证的访问令牌
+    :return: 季卡片列表
+    """
+    seasons = MediaServerChain().seasons(
+        server=server, item_id=itemid, username=userinfo.username
+    )
+    if seasons is None:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="媒体服务器季列表查询失败")
+    return _SchemaResponse(success=True, data=seasons)
+
+
+@router.get(
+    "/season-episodes",
+    summary="查询指定季的全部单集详情卡片",
+    response_model=_SchemaResponse[List[_SchemaMediaServerBrowseItem]],
+)
+def item_season_episodes(
+    itemid: str,
+    server: str,
+    season_id: Optional[str] = None,
+    season: Optional[int] = Query(default=None, ge=0),
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[List[_SchemaMediaServerBrowseItem]]:
+    """
+    返回媒体服务器中指定电视剧单季的全部单集详情卡片（含剧照、时长、简介与播放状态）。
+
+    :param itemid: 电视剧或专辑条目标识
+    :param server: 媒体服务器配置名称
+    :param season_id: 可选季条目标识，优先级高于 season
+    :param season: 可选季号，0 表示特别篇
+    :param userinfo: 已验证的访问令牌
+    :return: 单集卡片列表
+    """
+    episodes = MediaServerChain().season_episodes(
+        server=server,
+        item_id=itemid,
+        season_id=season_id,
+        season=season,
+        username=userinfo.username,
+    )
+    if episodes is None:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="媒体服务器分集列表查询失败")
+    return _SchemaResponse(success=True, data=episodes)
+
+
+@router.post(
+    "/progress",
+    summary="回传原生播放器播放进度到媒体服务器",
+    response_model=_SchemaResponse[None],
+)
+def report_progress(
+    payload: _SchemaMediaServerProgressReportRequest,
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[None]:
+    """
+    将客户端当前播放位置与状态同步回源媒体服务器，更新继续观看与已看标记。
+
+    :param payload: 播放进度回传请求体
+    :param userinfo: 已验证的访问令牌
+    :return: 回传是否成功的响应包装
+    """
+    reported = MediaServerChain().report_progress(
+        server=payload.server,
+        item_id=payload.item_id,
+        position_ms=payload.position_ms,
+        media_source_id=payload.media_source_id,
+        duration_ms=payload.duration_ms,
+        is_paused=payload.is_paused,
+        state=payload.state,
+        username=userinfo.username,
+    )
+    return _SchemaResponse(success=reported, message="" if reported else "当前媒体服务器未记录播放进度")
 
 
 @router.get(

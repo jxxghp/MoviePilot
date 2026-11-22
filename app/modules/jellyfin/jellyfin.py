@@ -13,6 +13,18 @@ from requests import Response
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
+from app.modules._base.emby_browse import (
+    EmbyBrowseConfig,
+    emby_browse_items,
+    emby_filter_options,
+    emby_item_detail,
+    emby_report_progress,
+    emby_search_library,
+    emby_season_episodes,
+    emby_seasons,
+    emby_stream_url,
+    emby_subtitle_url,
+)
 from app.modules._base.mediaserver import (
     emby_episode_numbers,
     emby_query_params,
@@ -23,8 +35,20 @@ from app.runtime.cache import MemoryBackend
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
 from app.schemas.mediaserver import MediaServerField, MediaServerItem, MediaServerQueryOptions
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
@@ -657,74 +681,167 @@ class Jellyfin:
             logger.debug(f"查询Jellyfin音乐出错：{e}")
             return []
 
+    def _browse_config(
+        self, username: Optional[str] = None, *, require_user: bool = True
+    ) -> Optional[EmbyBrowseConfig]:
+        """
+        构造当前 Jellyfin 实例的统一浏览协议配置。
+
+        :param username: 可选用户名
+        :param require_user: 是否要求存在有效用户标识
+        :return: 协议配置；未完成初始化或缺少所需用户时返回 None
+        """
+        if not self._host or not self._apikey:
+            return None
+        user_id = self.get_user(username) if username else self.user
+        if require_user and not user_id:
+            return None
+        return EmbyBrowseConfig(
+            host=self._host,
+            api_key=self._apikey,
+            user_id=str(user_id or ""),
+            server_type="jellyfin",
+            api_prefix="",
+            play_host=self._playhost,
+            server_id=getattr(self, "serverid", None),
+            request_factory=lambda: self._request(timeout=15),
+            include_api_key_param=True,
+            image_api_key=True,
+            play_url_builder=self.get_play_url,
+        )
+
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """
+        分页浏览 Jellyfin 媒体库并支持筛选、排序和搜索。
+        """
+        cfg = self._browse_config(username)
+        if not cfg:
+            return None
+        return emby_browse_items(
+            cfg,
+            library_id=library_id,
+            parent_id=parent_id,
+            item_type=item_type,
+            genre=genre,
+            year=year,
+            played_filter=played_filter,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            keyword=keyword,
+            start_index=start_index,
+            limit=limit,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerFilterOptions]:
+        """
+        获取 Jellyfin 指定媒体库的风格、年份与排序筛选选项。
+        """
+        cfg = self._browse_config(username)
+        return emby_filter_options(cfg, library_id=library_id) if cfg else None
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """
+        获取 Jellyfin 单个条目的完整详情（含多版本及音轨字幕轨道）。
+        """
+        cfg = self._browse_config(username)
+        return emby_item_detail(cfg, item_id) if cfg else None
+
+    def get_seasons(
+        self, series_id: str, username: Optional[str] = None
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """
+        获取 Jellyfin 电视剧的全部季卡片信息。
+        """
+        cfg = self._browse_config(username)
+        return emby_seasons(cfg, series_id) if cfg else None
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """
+        获取 Jellyfin 电视剧指定季的全部单集详情卡片。
+        """
+        cfg = self._browse_config(username)
+        return emby_season_episodes(cfg, series_id, season_id=season_id, season=season) if cfg else None
+
+    def get_subtitle_url(self, item_id: str, subtitle_id: str) -> Optional[str]:
+        """
+        解析 Jellyfin 服务端外挂或可提取字幕的上游流地址。
+        """
+        cfg = self._browse_config(require_user=False)
+        return emby_subtitle_url(cfg, item_id, subtitle_id) if cfg else None
+
+    def report_progress(
+        self,
+        item_id: str,
+        *,
+        position_ms: int,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+    ) -> bool:
+        """
+        将客户端播放进度回传给 Jellyfin 服务器。
+        """
+        _ = duration_ms
+        cfg = self._browse_config(username)
+        if not cfg:
+            return False
+        return emby_report_progress(
+            cfg,
+            item_id,
+            position_ms,
+            media_source_id=media_source_id,
+            is_paused=is_paused,
+            state=state,
+        )
+
     def search_library(
-        self, keyword: str, types: list[str], limit: int
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        library_id: Optional[str] = None,
     ) -> List[_SchemaMediaServerPlayItem]:
         """
-        通过 Jellyfin Items 搜索接口查询电视剧和可播放音乐单曲。
+        通过 Jellyfin Items 搜索接口查询电影、电视剧和可播放音乐单曲。
 
         :param keyword: 搜索关键词
         :param types: 需要搜索的业务类型
         :param limit: 最多返回的条目数量
+        :param library_id: 可选媒体库标识限定
         :return: 带封面、年份或音乐副标题的媒体服务器条目
         """
-        if not self._host or not self._apikey or not self.user or not keyword.strip():
+        cfg = self._browse_config()
+        if not cfg:
             return []
-        server_types = []
-        if MediaType.TV.value in types:
-            server_types.append("Series")
-        if MediaType.MUSIC.value in types:
-            server_types.append("Audio")
-        if not server_types:
-            return []
-        url = f"{self._host}Users/{self.user}/Items"
-        params = {
-            "api_key": self._apikey,
-            "IncludeItemTypes": ",".join(server_types),
-            "Fields": "ProductionYear,Album,Artists,AlbumArtist,ImageTags",
-            "Recursive": "true",
-            "searchTerm": keyword.strip(),
-            "StartIndex": 0,
-            "Limit": max(1, min(limit, 50)),
-        }
-        try:
-            response = self._request().get_res(url, params)
-            if not response or response.status_code != 200:
-                return []
-            results: list[_SchemaMediaServerPlayItem] = []
-            for item in (response.json().get("Items") or []):
-                item_id = _optional_text(item.get("Id"))
-                title = _optional_text(item.get("Name"))
-                item_type = item.get("Type")
-                if not item_id or not title or item_type not in server_types:
-                    continue
-                artists = item.get("Artists") or []
-                artist = next((str(value) for value in artists if value), None)
-                album = _optional_text(item.get("Album"))
-                image_url = f"{self._host}Items/{item_id}/Images/Primary?api_key={self._apikey}"
-                image_tag = (item.get("ImageTags") or {}).get("Primary")
-                if image_tag:
-                    image_url += f"&tag={image_tag}"
-                results.append(
-                    _SchemaMediaServerPlayItem(
-                        id=item_id,
-                        item_id=item_id,
-                        title=title,
-                        subtitle=(str(artist or "") + (f" · {album}" if album else "")) or None
-                        if item_type == "Audio"
-                        else str(item.get("ProductionYear")) if item.get("ProductionYear") else None,
-                        year=item.get("ProductionYear"),
-                        type=MediaType.TV.value if item_type == "Series" else MediaType.MUSIC.value,
-                        image=image_url,
-                        server_type="jellyfin",
-                    )
-                )
-                if len(results) >= limit:
-                    break
-            return results
-        except Exception as e:
-            logger.debug(f"搜索 Jellyfin 媒体库出错：{e}")
-            return []
+        return emby_search_library(cfg, keyword, types, limit, library_id=library_id)
 
     def get_tv_episodes(
         self,
@@ -908,47 +1025,24 @@ class Jellyfin:
             return None
         return None
 
-    def get_stream_url(self, item_id: str, item_type: Optional[str]) -> Optional[str]:
+    def get_stream_url(
+        self,
+        item_id: str,
+        item_type: Optional[str],
+        media_source_id: Optional[str] = None,
+    ) -> Optional[str]:
         """
-        为原生播放器构造支持 Range 的 Jellyfin 静态文件流地址。
-
-        PlaySessionId 按服务器、用户与条目稳定派生，确保多个 Range 请求继续读取同一媒体源。
+        为原生播放器构造支持 Range 的 Jellyfin 静态文件流地址，支持指定多版本媒体源。
 
         :param item_id: Jellyfin 条目标识
         :param item_type: 媒体服务器返回的条目类型
+        :param media_source_id: 可选指定媒体源标识
         :return: Jellyfin 原始媒体流地址；实例配置或条目标识缺失时返回 None
         """
-        if not self._host or not self._apikey or not item_id:
+        cfg = self._browse_config(require_user=False)
+        if not cfg:
             return None
-        try:
-            response = self._request(timeout=10).get_res(
-                f"{self._host}Items/{quote(str(item_id), safe='')}/PlaybackInfo",
-                params={"api_key": self._apikey, "UserId": self.user},
-            )
-            if response is None or response.status_code != 200:
-                return None
-            sources = response.json().get("MediaSources") or []
-            source = next(
-                (value for value in sources if isinstance(value, dict) and value.get("Id")
-                 and not value.get("RequiresOpening")),
-                None,
-            )
-            if not source:
-                return None
-        except Exception:
-            logger.warning("Jellyfin 原始媒体流信息读取失败，尝试本地文件播放")
-            return None
-        route = "Audio" if (item_type or "").casefold() in {"audio", "music", MediaType.MUSIC.value.casefold()} else "Videos"
-        play_session_id = hashlib.sha256(
-            f"{self._host}:{self.user or ''}:{item_id}".encode("utf-8")
-        ).hexdigest()[:32]
-        query = urlencode({
-            "static": "true",
-            "MediaSourceId": str(source["Id"]),
-            "PlaySessionId": play_session_id,
-            "api_key": self._apikey,
-        })
-        return f"{self._host}{route}/{quote(str(item_id), safe='')}/stream?{query}"
+        return emby_stream_url(cfg, item_id, item_type, media_source_id=media_source_id)
 
     def _get_webhook_item_path(self, message: dict[str, Any]) -> Optional[str]:
         """

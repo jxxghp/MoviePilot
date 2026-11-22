@@ -10,7 +10,22 @@ from app.foundation.url import UrlUtils
 from app.modules.vyo.api import Api
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
+from app.schemas.mediaserver import (
+    MediaServerMediaSource as _SchemaMediaServerMediaSource,
+)
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -384,20 +399,222 @@ class Vyo:
             movies.append(item)
         return movies
 
-    def search_library(
-        self, keyword: str, types: list[str], limit: int
-    ) -> List[_SchemaMediaServerPlayItem]:
-        """调用 Vyo 的剧集搜索接口并生成带海报的原生播放目标。"""
-        if MediaType.TV.value not in types or not keyword.strip() or not self.is_configured():
+    def _build_browse_item(self, row: Dict[str, Any]) -> Optional[_SchemaMediaServerBrowseItem]:
+        """将 Vyo 条目行转换为统一浏览卡片模型。"""
+        row_id = str(row.get("id") or "")
+        title = str(row.get("title") or "").strip()
+        if not row_id or not title:
+            return None
+        kind = str(row.get("kind") or "Movie")
+        is_tv = kind in {"Series", "Season", "Episode"}
+        user_data = row.get("user_data") or {}
+        duration_ticks = row.get("duration_ticks") or 0
+        position_ticks = user_data.get("position_ticks") or 0
+        duration_ms = int(duration_ticks // 10_000) if duration_ticks > 0 else None
+        resume_ms = int(position_ticks // 10_000) if position_ticks > 0 else None
+        percentage = round(min(100.0, position_ticks / duration_ticks * 100.0), 1) if duration_ticks and position_ticks else None
+        season_num = row.get("season") if isinstance(row.get("season"), int) else None
+        ep_num = row.get("episode") if isinstance(row.get("episode"), int) else None
+        subtitle = (
+            f"S{season_num:02d}E{ep_num:02d}"
+            if kind == "Episode" and season_num is not None and ep_num is not None
+            else (str(row["year"]) if row.get("year") else None)
+        )
+        metadata = row.get("metadata_info") or {}
+        return _SchemaMediaServerBrowseItem(
+            item_id=row_id,
+            server_type="mediavault",
+            item_type=kind,
+            media_type=MediaType.TV.value if is_tv else MediaType.MOVIE.value,
+            title=title,
+            original_title=metadata.get("original_title"),
+            subtitle=subtitle,
+            overview=metadata.get("overview") or row.get("overview"),
+            year=row.get("year"),
+            rating=float(metadata["rating"]) if isinstance(metadata.get("rating"), (int, float)) else None,
+            duration_ms=duration_ms,
+            poster=self._api.image_url(str(row.get("series_id") or row_id), "primary") if kind == "Episode" else self._api.image_url(row_id, "primary"),
+            backdrop=self._api.image_url(row_id, "backdrop") if row.get("has_backdrop") else None,
+            thumb=self._api.image_url(row_id, "primary"),
+            series_id=str(row["series_id"]) if row.get("series_id") else None,
+            series_name=row.get("series_name"),
+            season_id=str(row["season_id"]) if row.get("season_id") else None,
+            season_number=season_num,
+            episode_number=ep_num,
+            played=user_data.get("played") if "played" in user_data else None,
+            played_percentage=percentage,
+            resume_position_ms=resume_ms,
+        )
+
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """分页浏览 Vyo 媒体库条目。"""
+        _ = genre, year, username
+        if not self.is_configured():
+            return None
+        safe_start = max(0, int(start_index))
+        safe_limit = max(1, min(int(limit), self.PAGE_LIMIT))
+        page = (safe_start // safe_limit) + 1
+        sort_map = {"date_created": "added", "premiere_date": "year", "rating": "rating", "name": "title"}
+        kinds = {"movie": "Movie", "series": "Series", "电影": "Movie", "电视剧": "Series"}.get(
+            str(item_type or "").casefold(), "Movie,Series"
+        )
+        result = self.__query_items(
+            library_id="" if parent_id else (library_id or ""),
+            parent_id=parent_id or "",
+            keyword=keyword.strip() if keyword and keyword.strip() else "",
+            kinds=kinds,
+            filter_by=played_filter or "",
+            sort_by=sort_map.get((sort_by or "date_created").casefold(), "added"),
+            sort_order=(sort_order or "desc").casefold(),
+            page=page,
+            page_size=safe_limit,
+        )
+        if result is None:
+            return None
+        items = [built for row in (result.get("items") or []) if isinstance(row, dict) and (built := self._build_browse_item(row))]
+        total = int(result.get("total") or (safe_start + len(items)))
+        return _SchemaMediaServerBrowsePage(
+            items=items,
+            total_count=total,
+            start_index=safe_start,
+            limit=safe_limit,
+            has_more=(safe_start + len(items)) < total,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> _SchemaMediaServerFilterOptions:
+        """返回 Vyo 支持的筛选与排序选项。"""
+        _ = library_id, username
+        return _SchemaMediaServerFilterOptions(
+            genres=[],
+            years=[],
+            item_types=["Movie", "Series"],
+            sort_options=["date_created", "premiere_date", "rating", "name"],
+        )
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """获取 Vyo 单个条目完整详情。"""
+        _ = username
+        if not item_id or not self.is_configured():
+            return None
+        result = self._api.request(f"/items/{item_id}", suppress_log=True)
+        if not result or not result.success or not isinstance(result.data, dict):
+            return None
+        row = result.data
+        base = self._build_browse_item(row)
+        if not base:
+            return None
+        metadata = row.get("metadata_info") or {}
+        ext_ids = metadata.get("external_ids") or {}
+        provider_ids: dict[str, Any] = {}
+        if row.get("tmdb_id"):
+            provider_ids["Tmdb"] = str(row["tmdb_id"])
+        if ext_ids.get("imdb_id"):
+            provider_ids["Imdb"] = str(ext_ids["imdb_id"])
+        if ext_ids.get("tvdb_id"):
+            provider_ids["Tvdb"] = str(ext_ids["tvdb_id"])
+        media_source, media_id = MediaServerIdentityHelper.from_provider_ids(provider_ids)
+        sources = [
+            _SchemaMediaServerMediaSource(
+                id=str(src.get("id") or idx),
+                name=src.get("name") or Path(str(src.get("path") or "")).name or None,
+                size=src.get("size") if isinstance(src.get("size"), int) else None,
+            )
+            for idx, src in enumerate(row.get("sources") or [])
+            if isinstance(src, dict)
+        ]
+        return _SchemaMediaServerItemDetail(
+            **base.model_dump(),
+            genres=[str(g) for g in (metadata.get("genres") or []) if g],
+            media_source=media_source,
+            media_id=media_id,
+            tmdb_id=str(row["tmdb_id"]) if row.get("tmdb_id") else None,
+            imdb_id=str(ext_ids["imdb_id"]) if ext_ids.get("imdb_id") else None,
+            tvdb_id=str(ext_ids["tvdb_id"]) if ext_ids.get("tvdb_id") else None,
+            parent_id=str(row["parent_id"]) if row.get("parent_id") else None,
+            media_sources=sources,
+            play_url=self.get_play_url(base.item_id),
+            can_play=base.item_type in {"Movie", "Episode"},
+        )
+
+    def get_seasons(
+        self, series_id: str, username: Optional[str] = None
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取 Vyo 电视剧的全部季卡片。"""
+        _ = username
+        if not series_id or not self.is_configured():
+            return None
+        result = self.__query_items(parent_id=series_id, kinds="Season", page=1, page_size=self.PAGE_LIMIT)
+        if result is None:
+            return None
+        seasons = [built for row in (result.get("items") or []) if isinstance(row, dict) and (built := self._build_browse_item(row))]
+        seasons.sort(key=lambda item: (item.season_number is None, item.season_number or 0))
+        return seasons
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取 Vyo 指定季的全部单集卡片。"""
+        _ = username
+        if not self.is_configured():
+            return None
+        target_parent = season_id or (self.__find_season_id(series_id, season) if season is not None else "")
+        if not target_parent:
             return []
-        rows = self.__search_rows(keyword=keyword.strip(), kinds="Series")
+        result = self.__query_items(parent_id=target_parent, kinds="Episode", page=1, page_size=self.PAGE_LIMIT)
+        if result is None:
+            return None
+        episodes = [built for row in (result.get("items") or []) if isinstance(row, dict) and (built := self._build_browse_item(row))]
+        episodes.sort(key=lambda item: (item.season_number or 0, item.episode_number or 0))
+        return episodes
+
+    def search_library(
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        library_id: Optional[str] = None,
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """调用 Vyo 搜索接口返回电影与电视剧。"""
+        _ = library_id
+        kinds_list = []
+        if MediaType.MOVIE.value in types:
+            kinds_list.append("Movie")
+        if MediaType.TV.value in types:
+            kinds_list.append("Series")
+        if not kinds_list or not keyword.strip() or not self.is_configured():
+            return []
+        rows = self.__search_rows(keyword=keyword.strip(), kinds=",".join(kinds_list))
         if rows is None:
             return []
         results: List[_SchemaMediaServerPlayItem] = []
         try:
             for row in rows:
                 item = self.__format_item_info(row)
-                if not item or not item.item_id or not item.title or item.item_type != "Series":
+                if not item or not item.item_id or not item.title or item.item_type not in kinds_list:
                     continue
                 results.append(
                     _SchemaMediaServerPlayItem(
@@ -406,7 +623,7 @@ class Vyo:
                         title=item.title,
                         subtitle=str(item.year) if item.year else None,
                         year=item.year,
-                        type=MediaType.TV.value,
+                        type=MediaType.TV.value if item.item_type == "Series" else MediaType.MOVIE.value,
                         image=self._api.image_url(item.item_id, "primary"),
                         server_type="vyo",
                     )

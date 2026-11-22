@@ -16,8 +16,12 @@ from app.chain.base import ChainBase
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.mediaserver import (
+    MediaServerBrowseItem,
+    MediaServerBrowsePage,
     MediaServerField,
+    MediaServerFilterOptions,
     MediaServerItem,
+    MediaServerItemDetail,
     MediaServerLibrary,
     MediaServerPlayItem,
     MediaServerQueryOptions,
@@ -93,17 +97,42 @@ class MediaServerChain(ChainBase):
         return libraries
 
     def _sign_play_item_images(
-        self, items: Optional[List[MediaServerPlayItem]]
+        self, items: Optional[List[MediaServerPlayItem]], *, server: Optional[str] = None
     ) -> Optional[List[MediaServerPlayItem]]:
         """
-        给媒体服务器播放条目中的图片 URL 添加代理签名，并保留提供方失败状态。
+        给媒体服务器播放条目中的图片 URL 添加代理签名，并补充服务器配置名。
+
+        :param items: 媒体服务器播放条目列表
+        :param server: 可选服务器配置名称，补全缺失的 `item.server`
+        :return: 签名后的条目列表，输入为 None 时原样返回
         """
         if items is None:
             return None
         for item in items:
+            if server and not item.server:
+                item.server = server
             if item.image:
                 item.image = self._sign_image_url(item.image)
         return items
+
+    def _sign_browse_item_images(self, item: MediaServerBrowseItem) -> MediaServerBrowseItem:
+        """
+        为媒体服务器浏览卡片或详情条目中的图片 URL 添加代理签名。
+
+        :param item: 浏览卡片或详情对象
+        :return: 原地签名后的对象
+        """
+        if item.poster:
+            item.poster = self._sign_image_url(item.poster)
+        if item.backdrop:
+            item.backdrop = self._sign_image_url(item.backdrop)
+        if item.thumb:
+            item.thumb = self._sign_image_url(item.thumb)
+        if isinstance(item, MediaServerItemDetail):
+            for person in item.people:
+                if person.image:
+                    person.image = self._sign_image_url(person.image)
+        return item
 
     def librarys(
         self,
@@ -231,19 +260,30 @@ class MediaServerChain(ChainBase):
         keyword: str,
         types: Optional[List[str]] = None,
         limit: int = 30,
+        *,
+        server: Optional[str] = None,
+        library_id: Optional[str] = None,
     ) -> List[MediaServerPlayItem]:
         """
-        在已配置媒体服务器中搜索电视剧和音乐单曲，并代理签名海报地址。
+        在已配置媒体服务器中搜索电影、电视剧和音乐单曲，并代理签名海报地址。
 
         :param keyword: 用户输入的搜索词
-        :param types: 允许的业务类型；省略时搜索电视剧和音乐
+        :param types: 允许的业务类型；省略时搜索电影、电视剧和音乐
         :param limit: 返回的最大结果数，服务端适配器也会按此限制请求
+        :param server: 可选媒体服务器配置名，省略时跨所有已启用实例搜索
+        :param library_id: 可选媒体库标识，仅在指定媒体库内检索
         :return: 带媒体服务器配置名的海报结果
         """
         query = keyword.strip()
         if not query:
             return []
-        selected_types = [value for value in (types or [MediaType.TV.value, MediaType.MUSIC.value]) if value]
+        default_types = [MediaType.MOVIE.value, MediaType.TV.value, MediaType.MUSIC.value]
+        selected_types = [value for value in (types or default_types) if value]
+        extra_kwargs: Dict[str, Any] = {}
+        if server:
+            extra_kwargs["server"] = server
+        if library_id:
+            extra_kwargs["library_id"] = library_id
         items = cast(
             List[MediaServerPlayItem],
             self.run_module(
@@ -251,6 +291,7 @@ class MediaServerChain(ChainBase):
                 keyword=query,
                 types=selected_types,
                 limit=max(1, min(limit, 50)),
+                **extra_kwargs,
             ),
         )
         filtered = [item for item in items or [] if item.type in selected_types and item.item_id]
@@ -265,6 +306,247 @@ class MediaServerChain(ChainBase):
                 item.image = self._sign_image_url(item.image)
             results.append(item)
         return results[:max(1, min(limit, 50))]
+
+    def browse_items(
+        self,
+        server: str,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[MediaServerBrowsePage]:
+        """
+        分页浏览指定媒体服务器媒体库，并签名返回图片地址。
+
+        :param server: 媒体服务器配置名称
+        :param library_id: 可选媒体库标识
+        :param parent_id: 可选父目录标识
+        :param item_type: 可选条目维度过滤
+        :param genre: 可选风格过滤
+        :param year: 可选年份过滤
+        :param played_filter: 可选观看状态过滤
+        :param sort_by: 排序键
+        :param sort_order: 排序方向
+        :param keyword: 库内关键词搜索
+        :param start_index: 零基分页偏移
+        :param limit: 单页数量上限
+        :param username: 当前请求用户名
+        :return: 分页浏览结果；服务器不可用时返回 None
+        """
+        page = cast(
+            Optional[MediaServerBrowsePage],
+            self.run_module(
+                "mediaserver_browse_items",
+                server=server,
+                library_id=library_id,
+                parent_id=parent_id,
+                item_type=item_type,
+                genre=genre,
+                year=year,
+                played_filter=played_filter,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                keyword=keyword,
+                start_index=start_index,
+                limit=limit,
+                username=username,
+            ),
+        )
+        if page:
+            for item in page.items:
+                if not item.server:
+                    item.server = server
+                self._sign_browse_item_images(item)
+        return page
+
+    def filter_options(
+        self,
+        server: str,
+        *,
+        library_id: Optional[str] = None,
+        username: Optional[str] = None,
+    ) -> Optional[MediaServerFilterOptions]:
+        """
+        查询指定媒体服务器媒体库可用的风格、年份与排序选项。
+
+        :param server: 媒体服务器配置名称
+        :param library_id: 可选媒体库标识
+        :param username: 当前请求用户名
+        :return: 筛选项模型；不支持时返回 None
+        """
+        return cast(
+            Optional[MediaServerFilterOptions],
+            self.run_module(
+                "mediaserver_filter_options",
+                server=server,
+                library_id=library_id,
+                username=username,
+            ),
+        )
+
+    def item_detail(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        *,
+        username: Optional[str] = None,
+    ) -> Optional[MediaServerItemDetail]:
+        """
+        获取单个媒体服务器条目的完整详情并签名图片。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体服务器条目标识
+        :param username: 当前请求用户名
+        :return: 完整详情模型；未找到时返回 None
+        """
+        detail = cast(
+            Optional[MediaServerItemDetail],
+            self.run_module(
+                "mediaserver_item_detail",
+                server=server,
+                item_id=str(item_id),
+                username=username,
+            ),
+        )
+        if detail:
+            if not detail.server:
+                detail.server = server
+            self._sign_browse_item_images(detail)
+        return detail
+
+    def seasons(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        *,
+        username: Optional[str] = None,
+    ) -> Optional[List[MediaServerBrowseItem]]:
+        """
+        查询电视剧的全部季卡片信息并签名图片。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 电视剧条目标识
+        :param username: 当前请求用户名
+        :return: 季卡片列表；失败时返回 None
+        """
+        items = cast(
+            Optional[List[MediaServerBrowseItem]],
+            self.run_module(
+                "mediaserver_seasons",
+                server=server,
+                item_id=str(item_id),
+                username=username,
+            ),
+        )
+        if items is not None:
+            for item in items:
+                if not item.server:
+                    item.server = server
+                self._sign_browse_item_images(item)
+        return items
+
+    def season_episodes(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[MediaServerBrowseItem]]:
+        """
+        查询指定季的全部单集详情卡片并签名图片。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 电视剧或专辑条目标识
+        :param season_id: 可选季条目标识
+        :param season: 可选季号
+        :param username: 当前请求用户名
+        :return: 单集卡片列表；失败时返回 None
+        """
+        items = cast(
+            Optional[List[MediaServerBrowseItem]],
+            self.run_module(
+                "mediaserver_season_episodes",
+                server=server,
+                item_id=str(item_id),
+                season_id=season_id,
+                season=season,
+                username=username,
+            ),
+        )
+        if items is not None:
+            for item in items:
+                if not item.server:
+                    item.server = server
+                self._sign_browse_item_images(item)
+        return items
+
+    def get_subtitle_url(self, server: str, item_id: Union[str, int], subtitle_id: str) -> Optional[str]:
+        """
+        获取媒体服务器托管的外挂或可提取字幕上游流地址。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体条目标识
+        :param subtitle_id: 代理字幕标识
+        :return: 上游字幕流地址；不支持或未匹配时返回 None
+        """
+        return cast(
+            Optional[str],
+            self.run_module(
+                "mediaserver_subtitle_url",
+                server=server,
+                item_id=str(item_id),
+                subtitle_id=subtitle_id,
+            ),
+        )
+
+    def report_progress(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        position_ms: int,
+        *,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+    ) -> bool:
+        """
+        将客户端播放进度回传给媒体服务器。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体条目标识
+        :param position_ms: 当前播放位置（毫秒）
+        :param media_source_id: 可选媒体源标识
+        :param duration_ms: 可选总时长（毫秒）
+        :param is_paused: 是否暂停
+        :param state: 播放状态
+        :param username: 当前用户名
+        :return: 回传成功返回 True
+        """
+        result = self.run_module(
+            "mediaserver_report_progress",
+            server=server,
+            item_id=str(item_id),
+            position_ms=position_ms,
+            media_source_id=media_source_id,
+            duration_ms=duration_ms,
+            is_paused=is_paused,
+            state=state,
+            username=username,
+        )
+        return bool(result)
 
     def episodes(
         self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
@@ -298,7 +580,8 @@ class MediaServerChain(ChainBase):
                 server=server,
                 username=username,
                 **({"query": query} if query is not None else {}),
-            )
+            ),
+            server=server,
         )
 
     def latest(
@@ -321,7 +604,8 @@ class MediaServerChain(ChainBase):
                 server=server,
                 username=username,
                 **({"query": query} if query is not None else {}),
-            )
+            ),
+            server=server,
         )
 
     def get_latest_wallpapers(
@@ -382,20 +666,30 @@ class MediaServerChain(ChainBase):
         return cast(Optional[str], self.run_module("mediaserver_play_url", server=server, item_id=item_id))
 
     def get_stream_url(
-        self, server: str, item_id: Union[str, int], item_type: Optional[str]
+        self,
+        server: str,
+        item_id: Union[str, int],
+        item_type: Optional[str],
+        media_source_id: Optional[str] = None,
     ) -> Optional[str]:
         """
-        获取媒体服务器支持 HTTP Range 的原始媒体流地址。
+        获取媒体服务器支持 HTTP Range 的原始媒体流地址，支持指定多版本媒体源。
 
         :param server: 媒体服务器配置名称
         :param item_id: 媒体服务器条目标识
         :param item_type: 媒体服务器返回的条目类型
+        :param media_source_id: 可选指定的多版本媒体源标识
         :return: 原始媒体流地址；当前适配器不支持时返回 None
         """
+        extra = {"media_source_id": media_source_id} if media_source_id else {}
         return cast(
             Optional[str],
             self.run_module(
-                "mediaserver_stream_url", server=server, item_id=item_id, item_type=item_type
+                "mediaserver_stream_url",
+                server=server,
+                item_id=item_id,
+                item_type=item_type,
+                **extra,
             ),
         )
 

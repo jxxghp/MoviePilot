@@ -13,10 +13,34 @@ from requests import Response
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
+from app.modules._base.emby_browse import (
+    EmbyBrowseConfig,
+    emby_browse_items,
+    emby_filter_options,
+    emby_item_detail,
+    emby_report_progress,
+    emby_search_library,
+    emby_season_episodes,
+    emby_seasons,
+    emby_stream_url,
+    emby_subtitle_url,
+)
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
@@ -886,71 +910,140 @@ class ZSpace:
         """
         return format_emby_family_item(item, server="zspace")
 
+    def _browse_config(self, username: Optional[str] = None) -> Optional[EmbyBrowseConfig]:
+        """
+        构造极影视的 Emby 兼容浏览协议配置。
+        """
+        _ = username
+        if not self._host or not self._apikey or not self.user:
+            return None
+        return EmbyBrowseConfig(
+            host=self._host,
+            api_key=self._apikey,
+            user_id=str(self.user),
+            server_type="zspace",
+            api_prefix="emby/",
+            play_host=self._playhost,
+            server_id=getattr(self, "serverid", None),
+            request_factory=lambda: self.__request_utils(),
+            include_api_key_param=True,
+            image_api_key=True,
+            play_url_builder=self.get_play_url,
+        )
+
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """分页浏览极影视媒体库并支持筛选、排序和搜索。"""
+        cfg = self._browse_config(username)
+        if not cfg:
+            return None
+        return emby_browse_items(
+            cfg,
+            library_id=library_id,
+            parent_id=parent_id,
+            item_type=item_type,
+            genre=genre,
+            year=year,
+            played_filter=played_filter,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            keyword=keyword,
+            start_index=start_index,
+            limit=limit,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerFilterOptions]:
+        """获取极影视媒体库可用筛选选项。"""
+        cfg = self._browse_config(username)
+        return emby_filter_options(cfg, library_id=library_id) if cfg else None
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """获取极影视条目完整详情。"""
+        cfg = self._browse_config(username)
+        return emby_item_detail(cfg, item_id) if cfg else None
+
+    def get_seasons(
+        self, series_id: str, username: Optional[str] = None
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取极影视电视剧的全部季卡片。"""
+        cfg = self._browse_config(username)
+        return emby_seasons(cfg, series_id) if cfg else None
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取极影视指定季的全部单集卡片。"""
+        cfg = self._browse_config(username)
+        return emby_season_episodes(cfg, series_id, season_id=season_id, season=season) if cfg else None
+
+    def get_stream_url(
+        self,
+        item_id: str,
+        item_type: Optional[str],
+        media_source_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """获取极影视 Emby 兼容静态媒体流地址。"""
+        cfg = self._browse_config()
+        return emby_stream_url(cfg, item_id, item_type, media_source_id=media_source_id) if cfg else None
+
+    def get_subtitle_url(self, item_id: str, subtitle_id: str) -> Optional[str]:
+        """解析极影视服务端字幕下载流地址。"""
+        cfg = self._browse_config()
+        return emby_subtitle_url(cfg, item_id, subtitle_id) if cfg else None
+
+    def report_progress(
+        self,
+        item_id: str,
+        *,
+        position_ms: int,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+    ) -> bool:
+        """回传极影视播放进度。"""
+        _ = duration_ms
+        cfg = self._browse_config(username)
+        if not cfg:
+            return False
+        return emby_report_progress(
+            cfg, item_id, position_ms, media_source_id=media_source_id, is_paused=is_paused, state=state
+        )
+
     def search_library(
-        self, keyword: str, types: list[str], limit: int
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        library_id: Optional[str] = None,
     ) -> List[_SchemaMediaServerPlayItem]:
-        """通过极影视 Emby 兼容接口搜索电视剧与音乐单曲。"""
-        if not self._host or not self._apikey or not self.user or not keyword.strip():
-            return []
-        server_types = []
-        if MediaType.TV.value in types:
-            server_types.append("Series")
-        if MediaType.MUSIC.value in types:
-            server_types.append("Audio")
-        if not server_types:
-            return []
-        url = f"{self._host}emby/Users/{self.user}/Items"
-        params = {
-            "api_key": self._apikey,
-            "IncludeItemTypes": ",".join(server_types),
-            "Fields": "ProductionYear,Album,Artists,AlbumArtist,ImageTags",
-            "Recursive": "true",
-            "SearchTerm": keyword.strip(),
-            "StartIndex": 0,
-            "Limit": max(1, min(limit, 50)),
-        }
-        try:
-            response = self.__request_utils().get_res(url, params)
-            if not response or response.status_code != 200:
-                return []
-            results: List[_SchemaMediaServerPlayItem] = []
-            for item in (response.json().get("Items") or []):
-                item_id = str(item.get("Id") or "")
-                title = item.get("Name")
-                item_type = item.get("Type")
-                if not item_id or not title or item_type not in server_types:
-                    continue
-                artists = item.get("Artists") or []
-                artist = next(
-                    (str(value.get("Name") if isinstance(value, dict) else value) for value in artists if value),
-                    None,
-                )
-                album = item.get("Album")
-                year = item.get("ProductionYear")
-                image = f"{self._host}Items/{item_id}/Images/Primary?api_key={self._apikey}"
-                image_tag = (item.get("ImageTags") or {}).get("Primary")
-                if image_tag:
-                    image += f"&tag={image_tag}"
-                results.append(
-                    _SchemaMediaServerPlayItem(
-                        id=item_id,
-                        item_id=item_id,
-                        title=title,
-                        subtitle=(f"{artist or ''}{f' · {album}' if album else ''}" or None)
-                        if item_type == "Audio"
-                        else str(year) if year else None,
-                        year=year,
-                        type=MediaType.TV.value if item_type == "Series" else MediaType.MUSIC.value,
-                        image=image,
-                        server_type="zspace",
-                    )
-                )
-                if len(results) >= limit:
-                    break
-            return results
-        except Exception as err:
-            logger.debug(f"搜索极影视媒体库出错：{err}")
-            return []
+        """通过极影视 Emby 兼容接口搜索电影、电视剧与音乐单曲。"""
+        cfg = self._browse_config()
+        return emby_search_library(cfg, keyword, types, limit, library_id=library_id) if cfg else []
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """

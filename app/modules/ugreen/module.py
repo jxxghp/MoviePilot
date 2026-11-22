@@ -221,12 +221,27 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         return None
 
     def mediaserver_search(
-        self, keyword: str, types: List[str], limit: int
+        self,
+        keyword: str,
+        types: List[str],
+        limit: int,
+        server: Optional[str] = None,
+        library_id: Optional[str] = None,
     ) -> List[_SchemaMediaServerPlayItem]:
-        """搜索所有已启用绿联实例，并保留每条结果的配置名称。"""
+        """搜索指定或所有已启用绿联实例，并保留每条结果的配置名称。"""
         items: List[_SchemaMediaServerPlayItem] = []
-        for server_name, server_obj in self.get_instances().items():
-            for item in server_obj.search_library(keyword, types, limit):
+        target_instances = (
+            {server: inst}
+            if server and (inst := self.get_instance(server))
+            else ({} if server else self.get_instances())
+        )
+        for server_name, server_obj in target_instances.items():
+            matched = (
+                server_obj.search_library(keyword, types, limit, library_id=library_id)
+                if library_id
+                else server_obj.search_library(keyword, types, limit)
+            )
+            for item in matched:
                 item.server = server_name
                 items.append(item)
         return items

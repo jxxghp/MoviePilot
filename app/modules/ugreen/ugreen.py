@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Generator, Iterable, List, Mapping, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
+from app.adapters.network.http import RequestUtils
 from app.application.configuration import get_configured_system_config
 from app.application.mediaserver import (
     MediaServerIdentityHelper,
@@ -17,10 +18,34 @@ from app.application.mediaserver import (
     format_emby_family_item,
 )
 from app.foundation.url import UrlUtils
+from app.modules._base.emby_browse import (
+    EmbyBrowseConfig,
+    emby_browse_items,
+    emby_filter_options,
+    emby_item_detail,
+    emby_report_progress,
+    emby_search_library,
+    emby_season_episodes,
+    emby_seasons,
+    emby_stream_url,
+    emby_subtitle_url,
+)
 from app.modules.ugreen.api import Api, UgreenMediaApi
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -1863,83 +1888,280 @@ class Ugreen:
 
         return self.__build_media_server_item(video_info, info.get("play_status"))
 
+    def _media_service_browse_config(self) -> Optional[EmbyBrowseConfig]:
+        """
+        为绿联媒体库服务（Emby 兼容）构造统一浏览协议配置。
+        """
+        if not self.__is_media_service_mode() or not self._media_api:
+            return None
+        if not self._media_api.host or not self._media_api.token or not self._media_api.user_id:
+            return None
+        verify_ssl = getattr(self, "_verify_ssl", True)
+        return EmbyBrowseConfig(
+            host=f"{self._media_api.host.rstrip('/')}/",
+            api_key=self._media_api.token,
+            user_id=self._media_api.user_id,
+            server_type="ugreen",
+            api_prefix="",
+            play_host=self._playhost,
+            server_id=self._media_api.server_id,
+            request_factory=lambda: RequestUtils(timeout=15, verify=verify_ssl),
+            include_api_key_param=True,
+            image_api_key=True,
+            play_url_builder=lambda _: self.__build_root_url(),
+        )
+
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """分页浏览绿联媒体库（优先走 Emby 兼容媒体库服务，内部模式回退列表接口）。"""
+        _ = username
+        cfg = self._media_service_browse_config()
+        if cfg:
+            return emby_browse_items(
+                cfg,
+                library_id=library_id,
+                parent_id=parent_id,
+                item_type=item_type,
+                genre=genre,
+                year=year,
+                played_filter=played_filter,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                keyword=keyword,
+                start_index=start_index,
+                limit=limit,
+            )
+        if not self.is_authenticated() or not self._api:
+            return None
+        safe_start = max(0, int(start_index))
+        safe_limit = max(1, min(int(limit), 100))
+        page_num = (safe_start // safe_limit) + 1
+        classification = -103 if (item_type or "").casefold() in {"series", "tv", "电视剧"} else -102
+        data = (
+            self._api.search(keyword.strip())
+            if keyword and keyword.strip()
+            else self._api.video_all(
+                classification=classification,
+                page=page_num,
+                page_size=safe_limit,
+            )
+        )
+        if not isinstance(data, Mapping):
+            return None
+        raw_list = data.get("video_arr") or (
+            list(data.get("movie_list") or []) + list(data.get("tv_list") or [])
+        )
+        items: list[_SchemaMediaServerBrowseItem] = []
+        for entry in raw_list:
+            info = entry.get("video_info") if isinstance(entry, Mapping) and isinstance(entry.get("video_info"), Mapping) else entry
+            if not isinstance(info, Mapping) or not info.get("ug_video_info_id"):
+                continue
+            item_t = self.__map_item_type(info.get("type")) or "Movie"
+            item_year = self.__parse_year(dict(info))
+            if year and item_year and int(item_year) != int(year):
+                continue
+            poster = self.__resolve_image(info.get("poster_path"))
+            backdrop = self.__resolve_image(info.get("backdrop_path"))
+            items.append(
+                _SchemaMediaServerBrowseItem(
+                    item_id=str(info["ug_video_info_id"]),
+                    server_type="ugreen",
+                    item_type=item_t,
+                    media_type=MediaType.TV.value if item_t == "Series" else MediaType.MOVIE.value,
+                    title=str(info.get("name") or ""),
+                    original_title=info.get("original_name"),
+                    subtitle=str(item_year) if item_year else None,
+                    overview=info.get("overview"),
+                    year=item_year,
+                    rating=float(info["vote_average"]) if isinstance(info.get("vote_average"), (int, float)) else None,
+                    poster=poster,
+                    backdrop=backdrop,
+                    thumb=backdrop or poster,
+                )
+            )
+        total = int(data.get("total") or (safe_start + len(items)))
+        return _SchemaMediaServerBrowsePage(
+            items=items[:safe_limit],
+            total_count=total,
+            start_index=safe_start,
+            limit=safe_limit,
+            has_more=(safe_start + len(items)) < total,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> _SchemaMediaServerFilterOptions:
+        """获取绿联媒体库可用筛选选项。"""
+        _ = username
+        cfg = self._media_service_browse_config()
+        if cfg:
+            return emby_filter_options(cfg, library_id=library_id)
+        return _SchemaMediaServerFilterOptions(
+            genres=[],
+            years=[],
+            item_types=["Movie", "Series"],
+            sort_options=["date_created", "premiere_date", "rating", "name"],
+        )
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """获取绿联条目完整详情。"""
+        _ = username
+        cfg = self._media_service_browse_config()
+        if cfg:
+            return emby_item_detail(cfg, item_id)
+        item = self.get_iteminfo(item_id)
+        if not item or not item.item_id:
+            return None
+        return _SchemaMediaServerItemDetail(
+            item_id=item.item_id,
+            server_type="ugreen",
+            item_type=item.item_type or "Movie",
+            media_type=MediaType.TV.value if item.item_type == "Series" else MediaType.MOVIE.value,
+            title=item.title or item.item_id,
+            original_title=item.original_title,
+            year=item.year,
+            media_source=item.media_source,
+            media_id=item.media_id,
+            tmdb_id=item.media_id if item.media_source == MediaSource.TMDB else None,
+            play_url=self.get_play_url(item.item_id),
+            can_play=item.item_type in {"Movie", "Episode"},
+        )
+
+    def get_seasons(
+        self, series_id: str, username: Optional[str] = None
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取绿联电视剧的全部季卡片。"""
+        _ = username
+        cfg = self._media_service_browse_config()
+        if cfg:
+            return emby_seasons(cfg, series_id)
+        _, season_map = self.get_tv_episodes(item_id=series_id)
+        if season_map is None:
+            return None
+        return [
+            _SchemaMediaServerBrowseItem(
+                item_id=f"{series_id}:season:{season_num}",
+                server_type="ugreen",
+                item_type="Season",
+                media_type=MediaType.TV.value,
+                title=f"第 {season_num} 季" if season_num > 0 else "特别篇",
+                series_id=series_id,
+                season_number=season_num,
+                child_count=len(eps),
+            )
+            for season_num, eps in sorted(season_map.items())
+        ]
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取绿联指定季的全部单集详情卡片。"""
+        _ = username
+        cfg = self._media_service_browse_config()
+        if cfg:
+            return emby_season_episodes(cfg, series_id, season_id=season_id, season=season)
+        return []
+
+    def get_stream_url(
+        self,
+        item_id: str,
+        item_type: Optional[str],
+        media_source_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """获取绿联媒体库服务的静态原始流地址。"""
+        cfg = self._media_service_browse_config()
+        return emby_stream_url(cfg, item_id, item_type, media_source_id=media_source_id) if cfg else None
+
+    def get_subtitle_url(self, item_id: str, subtitle_id: str) -> Optional[str]:
+        """解析绿联媒体库服务外挂字幕流地址。"""
+        cfg = self._media_service_browse_config()
+        return emby_subtitle_url(cfg, item_id, subtitle_id) if cfg else None
+
+    def report_progress(
+        self,
+        item_id: str,
+        *,
+        position_ms: int,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+    ) -> bool:
+        """回传绿联媒体库服务的播放进度。"""
+        _ = duration_ms, username
+        cfg = self._media_service_browse_config()
+        if not cfg:
+            return False
+        return emby_report_progress(
+            cfg, item_id, position_ms, media_source_id=media_source_id, is_paused=is_paused, state=state
+        )
+
     def search_library(
-        self, keyword: str, types: list[str], limit: int
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        library_id: Optional[str] = None,
     ) -> List[_SchemaMediaServerPlayItem]:
-        """通过绿联搜索接口返回可播放的电视剧与音乐库单曲。"""
+        """通过绿联搜索接口返回电影、电视剧与音乐库单曲。"""
         if not self.is_authenticated() or not keyword.strip():
             return []
+        cfg = self._media_service_browse_config()
+        if cfg:
+            return emby_search_library(cfg, keyword, types, limit, library_id=library_id)
+        if not self._api:
+            return []
         results: List[_SchemaMediaServerPlayItem] = []
-        if self.__is_media_service_mode() and self._media_api:
-            item_types = []
-            if MediaType.TV.value in types:
-                item_types.append("Series")
-            if MediaType.MUSIC.value in types:
-                item_types.append("Audio")
-            if not item_types:
-                return []
-            data = self._media_api.items(
-                include_item_types=",".join(item_types),
-                search_term=keyword.strip(),
-                limit=max(1, min(limit, 50)),
-                fields="ProductionYear,Album,Artists,AlbumArtist,ImageTags,Path,ParentId,ServerId",
-            )
-            for raw_item in (data or {}).get("Items") or []:
-                raw_type = raw_item.get("Type")
-                media_type = MediaType.TV.value if raw_type == "Series" else MediaType.MUSIC.value
-                item = self.__format_media_service_item(raw_item)
-                if media_type not in types or not item or not item.item_id or not item.title:
+        data = self._api.search(keyword.strip()) or {}
+        buckets = []
+        if MediaType.MOVIE.value in types:
+            buckets.append((MediaType.MOVIE.value, data.get("movie_list")))
+        if MediaType.TV.value in types:
+            buckets.append((MediaType.TV.value, data.get("tv_list")))
+        for media_type, raw_bucket in buckets:
+            for info in self.__extract_video_info_list(raw_bucket):
+                item = self.__build_media_server_item(info)
+                if not item or not item.item_id or not item.title:
                     continue
-                artists = raw_item.get("Artists") or []
-                artist = next(
-                    (str(value.get("Name") if isinstance(value, Mapping) else value) for value in artists if value),
-                    None,
+                image = self.__resolve_image(info.get("poster_path")) or self.__resolve_image(
+                    info.get("backdrop_path")
                 )
-                album = raw_item.get("Album")
-                year = raw_item.get("ProductionYear")
                 results.append(
                     _SchemaMediaServerPlayItem(
                         id=item.item_id,
                         item_id=item.item_id,
-                        server_id=item.server_id,
                         title=item.title,
-                        subtitle=(f"{artist or ''}{f' · {album}' if album else ''}" or None)
-                        if media_type == MediaType.MUSIC.value
-                        else str(year) if year else None,
-                        year=year,
+                        subtitle=str(item.year) if item.year else None,
+                        year=item.year,
                         type=media_type,
-                        image=self.__build_media_service_image_url(item.item_id, remote=True),
+                        image=image,
                         server_type="ugreen",
                     )
                 )
                 if len(results) >= limit:
-                    break
-            return results
-
-        if MediaType.TV.value not in types or not self._api:
-            return []
-        data = self._api.search(keyword.strip()) or {}
-        for info in self.__extract_video_info_list(data.get("tv_list")):
-            item = self.__build_media_server_item(info)
-            if not item or not item.item_id or not item.title:
-                continue
-            image = self.__resolve_image(info.get("poster_path")) or self.__resolve_image(
-                info.get("backdrop_path")
-            )
-            results.append(
-                _SchemaMediaServerPlayItem(
-                    id=item.item_id,
-                    item_id=item.item_id,
-                    title=item.title,
-                    subtitle=str(item.year) if item.year else None,
-                    year=item.year,
-                    type=MediaType.TV.value,
-                    image=image,
-                    server_type="ugreen",
-                )
-            )
-            if len(results) >= limit:
-                break
+                    return results
         return results
 
     def _iter_library_videos(

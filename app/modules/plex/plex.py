@@ -22,10 +22,31 @@ from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper
 from app.foundation.url import UrlUtils
 from app.runtime.cache import cached
+from app.modules._base.plex_browse import (
+    plex_browse_items,
+    plex_filter_options,
+    plex_item_detail,
+    plex_report_progress,
+    plex_season_episodes,
+    plex_seasons,
+    plex_subtitle_url,
+)
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
 from app.schemas.mediaserver import MediaServerField, MediaServerItem, MediaServerQueryOptions
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -484,23 +505,132 @@ class Plex:
             logger.debug(f"查询Plex音乐出错：{e}")
         return results
 
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """分页浏览 Plex 媒体库并支持筛选、排序和搜索。"""
+        _ = username
+        return plex_browse_items(
+            self._plex,
+            self._host or "",
+            self._token or "",
+            library_id=parent_id or library_id,
+            item_type=item_type,
+            genre=genre,
+            year=year,
+            played_filter=played_filter,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            keyword=keyword,
+            start_index=start_index,
+            limit=limit,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> _SchemaMediaServerFilterOptions:
+        """获取 Plex 指定媒体库可用筛选选项。"""
+        _ = username
+        return plex_filter_options(self._plex, library_id=library_id)
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """获取 Plex 条目完整详情（含多版本及音轨字幕轨道）。"""
+        _ = username
+        return plex_item_detail(self._plex, self._host or "", self._token or "", item_id, self.get_play_url)
+
+    def get_seasons(
+        self, series_id: str, username: Optional[str] = None
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取 Plex 电视剧的全部季卡片。"""
+        _ = username
+        return plex_seasons(self._plex, self._host or "", self._token or "", series_id)
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取 Plex 指定季的全部单集详情卡片。"""
+        _ = username
+        return plex_season_episodes(
+            self._plex, self._host or "", self._token or "", series_id, season_id=season_id, season=season
+        )
+
+    def get_subtitle_url(self, item_id: str, subtitle_id: str) -> Optional[str]:
+        """解析 Plex 外挂字幕代理标识为原始字幕流地址。"""
+        _ = item_id
+        return plex_subtitle_url(self._host or "", self._token or "", subtitle_id)
+
+    def report_progress(
+        self,
+        item_id: str,
+        *,
+        position_ms: int,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+    ) -> bool:
+        """向 Plex 回传客户端播放进度。"""
+        _ = media_source_id, username
+        return plex_report_progress(
+            self._plex,
+            item_id,
+            position_ms,
+            duration_ms=duration_ms,
+            is_paused=is_paused,
+            state=state,
+        )
+
     def search_library_items(
-        self, keyword: str, types: list[str], limit: int
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        library_id: Optional[str] = None,
     ) -> List[_SchemaMediaServerPlayItem]:
         """
-        通过 Plex Library 搜索接口查询电视剧和音乐单曲。
+        通过 Plex Library 搜索接口查询电影、电视剧和音乐单曲。
 
         :param keyword: 搜索关键词
         :param types: 需要搜索的业务类型
         :param limit: 最多返回的条目数量
+        :param library_id: 可选限定媒体库数字标识
         :return: 带封面、年份或音乐副标题的 Plex 条目
         """
         if not self._plex or not keyword.strip():
             return []
         results: list[_SchemaMediaServerPlayItem] = []
         seen: set[str] = set()
-        if MediaType.TV.value in types:
-            for item in self._plex.library.search(title=keyword.strip(), libtype="show"):
+        search_target: Any = self._plex.library
+        if library_id and str(library_id).isdigit():
+            try:
+                search_target = self._plex.library.sectionByID(int(library_id))
+            except Exception:
+                return []
+        for media_type, libtype in ((MediaType.MOVIE.value, "movie"), (MediaType.TV.value, "show")):
+            if media_type not in types:
+                continue
+            for item in search_target.search(title=keyword.strip(), libtype=libtype):
                 item_id = str(getattr(item, "key", "") or "")
                 title = getattr(item, "title", None)
                 if not item_id or not title or item_id in seen:
@@ -514,7 +644,7 @@ class Plex:
                         title=title,
                         subtitle=str(item.year) if getattr(item, "year", None) else None,
                         year=getattr(item, "year", None),
-                        type=MediaType.TV.value,
+                        type=media_type,
                         image=getattr(item, "posterUrl", None),
                         server_type="plex",
                     )
@@ -1284,13 +1414,12 @@ class Plex:
             raise AttributeError("'NoneType' object has no attribute 'machineIdentifier'")
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
 
-    def get_stream_url(self, item_id: str) -> Optional[str]:
+    def get_stream_url(self, item_id: str, media_source_id: Optional[str] = None) -> Optional[str]:
         """
-        从 Plex 条目解析单个原始媒体文件的服务端读取地址。
-
-        不使用网页链接或转码地址；多段媒体无法用一个原始流表达时保留本地回退。
+        从 Plex 条目解析单个原始媒体文件的服务端读取地址，支持按 part ID 选择版本。
 
         :param item_id: Plex 条目标识，可以是数字或 /library/metadata/ 路径
+        :param media_source_id: 可选指定 MediaPart ID（多版本场景）
         :return: 包含服务端鉴权参数的原始文件流地址；未连接或无法解析时返回 None
         """
         if self._plex is None or not self._host or not self._token or not item_id:
@@ -1300,9 +1429,13 @@ class Plex:
             if not isinstance(item, (Movie, Episode, Track)):
                 return None
             parts = list(item.iterParts())
-            if len(parts) != 1 or not isinstance(parts[0].key, str):
+            selected = next(
+                (p for p in parts if media_source_id and str(getattr(p, "id", "")) == str(media_source_id)),
+                parts[0] if len(parts) == 1 else (parts[0] if media_source_id and parts else None),
+            )
+            if not selected or not isinstance(selected.key, str):
                 return None
-            part_key = parts[0].key
+            part_key = selected.key
             if not part_key.startswith("/library/parts/"):
                 return None
             separator = "&" if "?" in part_key else "?"

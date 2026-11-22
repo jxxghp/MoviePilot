@@ -106,7 +106,7 @@ def test_search_library_handles_empty_results_defaults_and_limit_bounds(monkeypa
     assert chain.search_library("keyword", types=[MediaType.TV.value], limit=100) == []
 
     assert [call.kwargs for call in run_module.call_args_list] == [
-        {"keyword": "keyword", "types": [MediaType.TV.value, MediaType.MUSIC.value], "limit": 1},
+        {"keyword": "keyword", "types": [MediaType.MOVIE.value, MediaType.TV.value, MediaType.MUSIC.value], "limit": 1},
         {"keyword": "keyword", "types": [MediaType.TV.value], "limit": 50},
     ]
     assert all(call.args == ("mediaserver_search",) for call in run_module.call_args_list)
@@ -129,7 +129,7 @@ def test_search_library_signs_deduplicates_and_limits_results(monkeypatch):
     )
     invalid_id_item = MediaServerPlayItem(type=MediaType.TV.value)
     invalid_type_item = MediaServerPlayItem(
-        item_id="movie", server="Server A", type=MediaType.MOVIE.value
+        item_id="unknown", server="Server A", type="未知"
     )
     run_module = Mock(
         return_value=[
@@ -157,7 +157,7 @@ def test_search_library_signs_deduplicates_and_limits_results(monkeypatch):
     run_module.assert_called_once_with(
         "mediaserver_search",
         keyword="keyword",
-        types=[MediaType.TV.value, MediaType.MUSIC.value],
+        types=[MediaType.MOVIE.value, MediaType.TV.value, MediaType.MUSIC.value],
         limit=2,
     )
 
