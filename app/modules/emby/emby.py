@@ -2,20 +2,18 @@
 Emby 媒体服务器客户端，负责内容查询、图片、刷新及 Webhook 转换。
 """
 
-import hashlib
 import json
 import re
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
-from urllib.parse import quote, urlencode
 
 from requests import Response
 
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
-from app.modules._base.emby_browse import (
+from app.modules._base.embybrowse import (
     EmbyBrowseConfig,
     emby_browse_items,
     emby_filter_options,
@@ -262,6 +260,8 @@ class Emby:
                 library_type = MediaType.MUSIC.value
             elif library.get("CollectionType") == "tvshows":
                 library_type = MediaType.TV.value
+            elif library.get("CollectionType") == "boxsets":
+                library_type = "合集"
             else:
                 library_type = MediaType.UNKNOWN.value
             image = (
@@ -285,7 +285,9 @@ class Emby:
                     type=library_type,
                     item_count=self.get_items_count(
                         library.get("Id"),
-                        "MusicAlbum" if library_type == MediaType.MUSIC.value else "Movie,Series",
+                        "MusicAlbum"
+                        if library_type == MediaType.MUSIC.value
+                        else ("BoxSet" if library_type == "合集" else "Movie,Series"),
                     )
                     if options.includes(MediaServerField.COUNTS)
                     else None,

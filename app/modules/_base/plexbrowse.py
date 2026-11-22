@@ -34,6 +34,7 @@ _PLEX_TYPE_MAP = {
     "show": "Series",
     "season": "Season",
     "episode": "Episode",
+    "collection": "BoxSet",
     "album": "MusicAlbum",
     "track": "Audio",
 }
@@ -62,12 +63,14 @@ def _plex_media_type(plex_type: str) -> str:
     将 Plex 原始类型映射为 MoviePilot 业务媒体类型。
 
     :param plex_type: Plex 条目 type 字段
-    :return: `电影`、`电视剧` 或 `音乐`
+    :return: `电影`、`电视剧`、`音乐` 或 `合集`
     """
     if plex_type in {"show", "season", "episode"}:
         return MediaType.TV.value
     if plex_type in {"artist", "album", "track"}:
         return MediaType.MUSIC.value
+    if plex_type == "collection":
+        return "合集"
     return MediaType.MOVIE.value
 
 
@@ -229,6 +232,7 @@ def plex_browse_items(
     token: str,
     *,
     library_id: Optional[str] = None,
+    parent_id: Optional[str] = None,
     item_type: Optional[str] = None,
     genre: Optional[str] = None,
     year: Optional[int] = None,
@@ -240,12 +244,13 @@ def plex_browse_items(
     limit: int = 30,
 ) -> Optional[MediaServerBrowsePage]:
     """
-    使用 Plex Section 搜索接口实现分页浏览、筛选、排序与关键词搜索。
+    使用 Plex Section 搜索接口实现分页浏览、筛选、排序与关键词搜索（含合集下钻）。
 
     :param plex: 已连接的 PlexServer 实例
     :param host: Plex 服务根地址
     :param token: Plex 访问令牌
     :param library_id: 目标媒体库数字标识
+    :param parent_id: 可选父合集（Collection）标识
     :param item_type: 可选维度过滤
     :param genre: 可选风格过滤
     :param year: 可选年份过滤
@@ -261,6 +266,22 @@ def plex_browse_items(
         return None
     safe_start = max(0, int(start_index))
     safe_limit = max(1, min(int(limit), 100))
+    if parent_id and str(parent_id).isdigit():
+        try:
+            parent_item = plex.fetchItem(int(parent_id))
+            if parent_item is not None and str(getattr(parent_item, "type", "")).casefold() == "collection":
+                children = list(parent_item.items() or [])
+                sliced = children[safe_start : safe_start + safe_limit]
+                items = [built for obj in sliced if (built := _build_plex_browse_item(host, token, obj))]
+                return MediaServerBrowsePage(
+                    items=items,
+                    total_count=len(children),
+                    start_index=safe_start,
+                    limit=safe_limit,
+                    has_more=(safe_start + len(items)) < len(children),
+                )
+        except Exception as err:
+            logger.debug(f"读取 Plex 合集子项失败：{err}")
     sort_key = (sort_by or "date_created").strip().casefold()
     plex_sort = _PLEX_SORT_MAP.get(sort_key, "addedAt")
     default_order = "asc" if sort_key == "name" else "desc"
@@ -283,7 +304,15 @@ def plex_browse_items(
             return MediaServerBrowsePage(items=[], total_count=0, start_index=safe_start, limit=safe_limit, has_more=False)
         libtype = section.TYPE
         if item_type:
-            mapped = {"movie": "movie", "series": "show", "musicalbum": "album", "audio": "track"}.get(item_type.casefold())
+            mapped = {
+                "movie": "movie",
+                "series": "show",
+                "musicalbum": "album",
+                "audio": "track",
+                "boxset": "collection",
+                "collection": "collection",
+                "合集": "collection",
+            }.get(item_type.casefold())
             if mapped:
                 libtype = mapped
         results = section.search(

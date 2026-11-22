@@ -1,5 +1,5 @@
 """
-Fanart 模块缓存清理生命周期测试。
+Fanart 模块查询、缓存与缺图告警行为测试。
 """
 
 import asyncio
@@ -327,5 +327,290 @@ def test_fanart_missing_warning_resets_on_key_change_cache_clear_and_recovery(
             assert valid == {"poster.jpg": "https://artwork.invalid/poster.jpg"}
             assert module._FanartModule__extract_images(mediainfo, {}) is None
             assert warning_log.call_count == 4
+    finally:
+        module.clear_cache()
+
+
+def test_fanart_tv_falls_back_to_tmdb_id_with_explicit_source(monkeypatch) -> None:
+    """
+    电视剧缺失 TVDB 标识时应回退使用 TMDB 标识并携带 ``source=tmdb``，同时保留 TVDB 优先顺序。
+    """
+    from app.schemas.types import MediaType
+
+    requested_urls: list[str] = []
+    async_requested_urls: list[str] = []
+
+    class _PayloadResponse:
+        """
+        返回固定图集字典的同步 HTTP 响应替身。
+        """
+
+        def __init__(self, payload: dict) -> None:
+            """
+            保存模拟响应载荷。
+
+            :param payload: 模拟 Fanart 返回的 JSON 图集字典
+            """
+            self._payload = payload
+
+        def json(self) -> dict:
+            """
+            返回预置图集字典。
+            """
+            return self._payload
+
+    class _RoutingRequestUtils:
+        """
+        按请求 URL 返回不同图集的同步 HTTP 替身。
+        """
+
+        def __init__(self, **_kwargs) -> None:
+            """
+            忽略网络配置参数，不创建真实连接。
+            """
+
+        def get_res(self, url: str, **_kwargs) -> _PayloadResponse:
+            """
+            记录请求地址并返回对应剧集的模拟图集。
+
+            :param url: Fanart 请求地址
+            :return: 模拟的 HTTP 响应对象
+            """
+            requested_urls.append(url)
+            if "/v3/tv/95842?" in url and "source=tmdb" in url:
+                return _PayloadResponse(
+                    {
+                        "hdtvlogo": [
+                            {"url": "https://artwork.invalid/joy-logo.png", "lang": "zh", "likes": "5"}
+                        ],
+                        "seasonposter": [
+                            {"url": "https://artwork.invalid/joy-s1.jpg", "season": "1"}
+                        ],
+                    }
+                )
+            if "/v3/tv/81189?" in url and "source=tmdb" not in url:
+                return _PayloadResponse(
+                    {
+                        "tvposter": [
+                            {"url": "https://artwork.invalid/bb-tvdb-poster.jpg", "lang": "en", "likes": "3"}
+                        ]
+                    }
+                )
+            return _PayloadResponse({})
+
+    class _RoutingAsyncRequestUtils:
+        """
+        记录异步请求并返回模拟图集的异步 HTTP 替身。
+        """
+
+        def __init__(self, **_kwargs) -> None:
+            """
+            忽略网络配置参数，不创建真实连接。
+            """
+
+        async def get_json(self, url: str) -> dict:
+            """
+            记录异步请求地址并返回模拟图集。
+
+            :param url: Fanart 请求地址
+            :return: 模拟的 JSON 图集字典
+            """
+            async_requested_urls.append(url)
+            if "/v3/tv/1396?" in url and "source=tmdb" in url:
+                return {
+                    "hdtvlogo": [
+                        {"url": "https://artwork.invalid/bb-tmdb-logo.png", "lang": "en", "likes": "9"}
+                    ]
+                }
+            return {}
+
+    monkeypatch.setattr("app.modules.fanart.RequestUtils", _RoutingRequestUtils)
+    monkeypatch.setattr("app.modules.fanart.AsyncRequestUtils", _RoutingAsyncRequestUtils)
+    monkeypatch.setattr(settings, "FANART_ENABLE", True)
+    monkeypatch.setattr(settings, "FANART_API_KEY", "tv-fallback-key")
+
+    module = FanartModule()
+    module.clear_cache()
+
+    tmdb_only_tv = MediaInfo(type=MediaType.TV, tmdb_id=95842, title="庆余年", year="2019")
+    async_tmdb_only_tv = MediaInfo(type=MediaType.TV, tmdb_id=1396, title="绝命毒师", year="2008")
+    both_ids_tv = MediaInfo(
+        type=MediaType.TV, tvdb_id=81189, tmdb_id=1396, title="绝命毒师", year="2008"
+    )
+
+    try:
+        # 仅含 TMDB 标识的剧集同步查询应附带 source=tmdb 并共享缓存到季图查询。
+        assert module.obtain_images(tmdb_only_tv) is tmdb_only_tv
+        assert tmdb_only_tv.logo_path == "https://artwork.invalid/joy-logo.png"
+        assert module.metadata_img(tmdb_only_tv, season=1) == {
+            "season01-poster.jpg": "https://artwork.invalid/joy-s1.jpg"
+        }
+
+        # 同时具备 TVDB 与 TMDB 标识时优先使用 TVDB 标识且不附带 source=tmdb。
+        assert module.obtain_images(both_ids_tv) is both_ids_tv
+        assert both_ids_tv.poster_path == "https://artwork.invalid/bb-tvdb-poster.jpg"
+
+        # 异步入口同样在缺失 TVDB 标识时回退使用 TMDB 标识。
+        assert asyncio.run(module.async_obtain_images(async_tmdb_only_tv)) is async_tmdb_only_tv
+        assert async_tmdb_only_tv.logo_path == "https://artwork.invalid/bb-tmdb-logo.png"
+
+        assert requested_urls == [
+            "https://webservice.fanart.tv/v3/tv/95842?api_key=tv-fallback-key&source=tmdb",
+            "https://webservice.fanart.tv/v3/tv/81189?api_key=tv-fallback-key",
+        ]
+        assert async_requested_urls == [
+            "https://webservice.fanart.tv/v3/tv/1396?api_key=tv-fallback-key&source=tmdb",
+        ]
+    finally:
+        module.clear_cache()
+
+
+def test_fanart_tv_same_numeric_id_isolates_tvdb_and_tmdb_cache_and_warnings(
+    monkeypatch,
+) -> None:
+    """
+    同号 TVDB 与 TMDB 剧集必须隔离请求缓存和缺图告警，避免跨命名空间串图或吞告警。
+    """
+    from app.schemas.types import MediaType
+
+    requested_urls: list[str] = []
+
+    class _PayloadResponse:
+        """
+        返回模拟图集的同步 HTTP 响应替身。
+        """
+
+        def __init__(self, payload: dict) -> None:
+            """
+            保存模拟图集载荷。
+
+            :param payload: 模拟 Fanart 返回的 JSON 图集字典
+            """
+            self._payload = payload
+
+        def json(self) -> dict:
+            """
+            返回预置图集字典。
+            """
+            return self._payload
+
+    class _CollisionRequestUtils:
+        """
+        模拟 TVDB 与 TMDB 同号冲突剧集响应的同步 HTTP 替身。
+        """
+
+        def __init__(self, **_kwargs) -> None:
+            """
+            忽略网络配置参数，不创建真实连接。
+            """
+
+        def get_res(self, url: str, **_kwargs) -> _PayloadResponse:
+            """
+            根据是否携带 ``source=tmdb`` 返回不同剧集的图集或空响应。
+
+            :param url: Fanart 请求地址
+            :return: 模拟的 HTTP 响应对象
+            """
+            requested_urls.append(url)
+            if "/v3/tv/82856?" in url and "source=tmdb" in url:
+                return _PayloadResponse(
+                    {
+                        "tvposter": [
+                            {"url": "https://artwork.invalid/mandalorian.jpg", "lang": "en", "likes": "8"}
+                        ]
+                    }
+                )
+            if "/v3/tv/82856?" in url:
+                return _PayloadResponse(
+                    {
+                        "tvposter": [
+                            {"url": "https://artwork.invalid/ninja-nonsense.jpg", "lang": "en", "likes": "2"}
+                        ]
+                    }
+                )
+            return _PayloadResponse({})
+
+    monkeypatch.setattr("app.modules.fanart.RequestUtils", _CollisionRequestUtils)
+    monkeypatch.setattr(settings, "FANART_ENABLE", True)
+    monkeypatch.setattr(settings, "FANART_API_KEY", "collision-key")
+
+    module = FanartModule()
+    module.clear_cache()
+
+    tvdb_show = MediaInfo(type=MediaType.TV, tvdb_id=82856, title="Ninja Nonsense", year="2004")
+    tmdb_show = MediaInfo(type=MediaType.TV, tmdb_id=82856, title="The Mandalorian", year="2019")
+    empty_tvdb_show = MediaInfo(type=MediaType.TV, tvdb_id=70327, title="同号缺图剧", year="2026")
+    empty_tmdb_show = MediaInfo(type=MediaType.TV, tmdb_id=70327, title="同号缺图剧", year="2026")
+
+    try:
+        assert module.obtain_images(tvdb_show) is tvdb_show
+        assert module.obtain_images(tmdb_show) is tmdb_show
+        assert tvdb_show.poster_path == "https://artwork.invalid/ninja-nonsense.jpg"
+        assert tmdb_show.poster_path == "https://artwork.invalid/mandalorian.jpg"
+
+        with patch("app.modules.fanart.logger.warning") as warning_log:
+            # 同号同名的 TVDB 与 TMDB 缺图应分别告警一次，且重复调用各自去重。
+            assert module.obtain_images(empty_tvdb_show) is None
+            assert module.obtain_images(empty_tvdb_show) is None
+            assert module.obtain_images(empty_tmdb_show) is None
+            assert module.obtain_images(empty_tmdb_show) is None
+            # 直接调用内部提取方法时，推导出的去重键应与正常请求一致。
+            assert module._FanartModule__extract_images(empty_tvdb_show, {}) is None
+            assert module._FanartModule__extract_images(empty_tmdb_show, {}) is None
+            assert warning_log.call_count == 2
+
+        assert requested_urls == [
+            "https://webservice.fanart.tv/v3/tv/82856?api_key=collision-key",
+            "https://webservice.fanart.tv/v3/tv/82856?api_key=collision-key&source=tmdb",
+            "https://webservice.fanart.tv/v3/tv/70327?api_key=collision-key",
+            "https://webservice.fanart.tv/v3/tv/70327?api_key=collision-key&source=tmdb",
+        ]
+    finally:
+        module.clear_cache()
+
+
+def test_fanart_non_tv_with_only_tmdb_id_does_not_fallback_to_tv_endpoint(
+    monkeypatch,
+) -> None:
+    """
+    非电影且非电视剧类型（如合集）仅有 TMDB 标识时，不得误查 TV 端点。
+    """
+    from app.schemas.types import MediaType
+
+    requested_urls: list[str] = []
+
+    class _UnexpectedRequestUtils:
+        """
+        记录意外 HTTP 请求的同步替身。
+        """
+
+        def __init__(self, **_kwargs) -> None:
+            """
+            忽略网络配置参数，不创建真实连接。
+            """
+
+        def get_res(self, url: str, **_kwargs) -> None:
+            """
+            记录请求地址并返回空响应。
+
+            :param url: Fanart 请求地址
+            """
+            requested_urls.append(url)
+            return None
+
+    monkeypatch.setattr("app.modules.fanart.RequestUtils", _UnexpectedRequestUtils)
+    monkeypatch.setattr(settings, "FANART_ENABLE", True)
+    monkeypatch.setattr(settings, "FANART_API_KEY", "collection-key")
+
+    module = FanartModule()
+    module.clear_cache()
+    collection = MediaInfo(type=MediaType.COLLECTION, tmdb_id=10, title="测试系列")
+
+    try:
+        with patch("app.modules.fanart.logger.info") as info_log:
+            assert module.obtain_images(collection) is None
+
+        assert requested_urls == []
+        info_log.assert_called_once()
     finally:
         module.clear_cache()
