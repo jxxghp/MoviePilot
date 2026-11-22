@@ -63,6 +63,8 @@ class SiteSchema(Enum):
     HDDolby = "HDDolby"
     # 高清视界的 REST API。
     HDArea = "HDArea"
+    # 可乐（ReelCore）的开放 API。
+    ColaPT = "ColaPT"
     # 知行站点的页面结构。
     Zhixing = "Zhixing"
     # 极速之星站点的页面结构。

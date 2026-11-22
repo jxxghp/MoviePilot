@@ -283,7 +283,7 @@ async def test_unissued_search_is_deferred_without_failure_statistics(monkeypatc
     "app/application/site/throttle.py", "app/domain/site.py", "app/chain/site.py",
     "app/chain/search/provider.py", "app/chain/download/submission.py", "app/modules/indexer/__init__.py",
 ])
-@pytest.mark.parametrize("site_name", ["piggo", "hdarea"])
+@pytest.mark.parametrize("site_name", ["piggo", "hdarea", "colapt"])
 def test_main_workflows_do_not_branch_on_site_name(relative, site_name):
     """
     主流程不按站点名分支，连通性与适配器的键值注册属于正常协议声明。
