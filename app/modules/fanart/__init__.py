@@ -4,9 +4,12 @@ Fanart 图片查询、语言选择和媒体刮削清单生成。
 
 import asyncio
 import hashlib
+import threading
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union, cast
 from urllib.parse import urlsplit
+
+from cachetools import TTLCache
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import MediaInfo
@@ -25,6 +28,14 @@ class FanartModule(_ModuleBase):
     电影使用 TMDB 标识，电视剧使用 TVDB 标识。普通图片按语言偏好和点赞数选择，
     季图片按季号取服务端首次提供的同名资源，不支持分集图片。
     """
+
+    # 保护缺图告警去重缓存的并发读写：`cachetools.TTLCache` 非线程安全，
+    # 容量与过期时间对齐 Fanart 请求缓存，避免长驻进程内存无限增长。
+    _missing_warning_lock = threading.Lock()
+    _missing_warning_cache: TTLCache[Tuple[str, str, str, str], bool] = TTLCache(
+        maxsize=max(get_runtime_setting("CONF").fanart, 1),
+        ttl=max(get_runtime_setting("CONF").meta, 1),
+    )
 
     def init_module(self) -> None:
         """
@@ -156,8 +167,15 @@ class FanartModule(_ModuleBase):
         query = self.__fanart_query(mediainfo=mediainfo)
         if not query:
             return None
-        result = self.__request_fanart(*query, _key_token=self.__key_token())
-        return self.__extract_images(mediainfo=mediainfo, result=result, season=season)
+        key_token = self.__key_token()
+        result = self.__request_fanart(*query, _key_token=key_token)
+        return self.__extract_images(
+            mediainfo=mediainfo,
+            result=result,
+            season=season,
+            query=query,
+            key_token=key_token,
+        )
 
     async def __async_obtain_fanart_images(
         self,
@@ -170,8 +188,15 @@ class FanartModule(_ModuleBase):
         query = self.__fanart_query(mediainfo=mediainfo)
         if not query:
             return None
-        result = await self.__async_request_fanart(*query, _key_token=self.__key_token())
-        return self.__extract_images(mediainfo=mediainfo, result=result, season=season)
+        key_token = self.__key_token()
+        result = await self.__async_request_fanart(*query, _key_token=key_token)
+        return self.__extract_images(
+            mediainfo=mediainfo,
+            result=result,
+            season=season,
+            query=query,
+            key_token=key_token,
+        )
 
     @staticmethod
     def __fanart_query(
@@ -191,25 +216,105 @@ class FanartModule(_ModuleBase):
         logger.info(f"{mediainfo.title_year} 没有tvdbid，无法获取fanart图片")
         return None
 
+    @classmethod
+    def __missing_warning_key(
+        cls,
+        mediainfo: MediaInfo,
+        query: Optional[Tuple[MediaType, Union[str, int]]] = None,
+        key_token: Optional[str] = None,
+    ) -> Tuple[str, str, str, str]:
+        """
+        构造 Fanart 缺图告警的去重键。
+
+        结合媒体类型、查询标识、标题年份与当前 API Key 指纹去重；更换 API Key
+        后指纹随之变化，避免旧配置吞掉新配置下的首次告警。
+
+        :param mediainfo: 待提取图片的媒体对象
+        :param query: 已解析的 ``(media_type, queryid)`` 查询参数；直接调用提取方法时可缺省
+        :param key_token: API Key 指纹；缺省时按当前运行时配置计算
+        :return: 用于缺图告警去重的稳定四元组键
+        """
+        if query is not None:
+            media_type, queryid = query
+            media_type_key = media_type.value
+            query_key = str(queryid)
+        elif mediainfo.type == MediaType.MOVIE and mediainfo.tmdb_id is not None:
+            media_type_key = MediaType.MOVIE.value
+            query_key = str(mediainfo.tmdb_id)
+        elif mediainfo.tvdb_id:
+            media_type_key = MediaType.TV.value
+            query_key = str(mediainfo.tvdb_id)
+        else:
+            media_type_key = mediainfo.type.value if mediainfo.type else ""
+            query_key = str(mediainfo.tmdb_id or mediainfo.tvdb_id or "")
+        title_year = mediainfo.title_year or ""
+        token = cls.__key_token() if key_token is None else key_token
+        return media_type_key, query_key, title_year, token
+
+    @classmethod
+    def __should_warn_missing(cls, warning_key: Tuple[str, str, str, str]) -> bool:
+        """
+        判断是否应为指定媒体输出 Fanart 缺图告警，并原子登记已告警状态。
+
+        :param warning_key: 由 ``__missing_warning_key`` 生成的去重键
+        :return: 缓存有效期内首次命中返回 True，重复命中返回 False
+        """
+        with cls._missing_warning_lock:
+            if warning_key in cls._missing_warning_cache:
+                return False
+            cls._missing_warning_cache[warning_key] = True
+            return True
+
+    @classmethod
+    def __clear_missing_warning(cls, warning_key: Tuple[str, str, str, str]) -> None:
+        """
+        在获取到有效 Fanart 响应后移除对应媒体的缺图告警记录。
+
+        :param warning_key: 由 ``__missing_warning_key`` 生成的去重键
+        """
+        with cls._missing_warning_lock:
+            cls._missing_warning_cache.pop(warning_key, None)
+
+    @classmethod
+    def __clear_missing_warnings(cls) -> None:
+        """
+        清空全部 Fanart 缺图告警去重记录。
+        """
+        with cls._missing_warning_lock:
+            cls._missing_warning_cache.clear()
+
     def __extract_images(
         self,
         mediainfo: MediaInfo,
         result: Optional[dict[str, Any]],
         season: Optional[int] = None,
+        *,
+        query: Optional[Tuple[MediaType, Union[str, int]]] = None,
+        key_token: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """
         把服务端图片类型转换为刮削文件名，并筛选所需季号。
 
         季图片中同名文件只保留首次出现的地址，特别篇使用 season-specials 前缀。
+        同一媒体在缺图缓存有效期内仅输出一次告警，避免逐集整理或刮削时重复刷屏。
 
-        :param mediainfo: 用于失败日志的媒体信息
+        :param mediainfo: 用于失败日志与去重键的媒体信息
         :param result: Fanart 原始响应
         :param season: 指定季号；None 同时保留媒体级与所有季图片
+        :param query: 已解析的 ``(media_type, queryid)`` 查询参数，缺省时从 ``mediainfo`` 推导
+        :param key_token: API Key 指纹，缺省时按当前运行时配置计算
         :return: 文件名到 URL 的映射；响应失败或没有可用图片时为 None
         """
+        warning_key = self.__missing_warning_key(
+            mediainfo=mediainfo,
+            query=query,
+            key_token=key_token,
+        )
         if not result or result.get("status") == "error":
-            logger.warn(f"没有获取到 {mediainfo.title_year} 的fanart图片数据")
+            if self.__should_warn_missing(warning_key):
+                logger.warning(f"没有获取到 {mediainfo.title_year} 的fanart图片数据")
             return None
+        self.__clear_missing_warning(warning_key)
 
         ret: dict[str, Any] = {}
         for name, images in result.items():
@@ -428,9 +533,10 @@ class FanartModule(_ModuleBase):
 
     def clear_cache(self) -> None:
         """
-        清理同步缓存，并由宿主登记运行中事件循环的异步清理。
+        清理同步缓存与缺图告警去重记录，并由宿主登记运行中事件循环的异步清理。
         """
         logger.info(f"开始清除{self.get_name()}缓存 ...")
+        self.__clear_missing_warnings()
         cast(CacheControls, self.__request_fanart).cache_clear()
         async_cache_clear = cast(AsyncCacheControls, self.__async_request_fanart).cache_clear()
         try:

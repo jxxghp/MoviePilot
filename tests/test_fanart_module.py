@@ -168,3 +168,164 @@ def test_fanart_season_image_suffix_is_normalized(season, prefix) -> None:
     )
 
     assert images == {f"{prefix}-poster.jpg": "https://artwork.invalid/season.JPEG?key=value"}
+
+
+def test_fanart_missing_warning_is_deduplicated_across_repeated_calls(monkeypatch) -> None:
+    """
+    同一剧集在逐集整理与刮削重复命中缺图缓存时，只通过 warning 输出一次告警。
+    """
+    from app.schemas.types import MediaType
+
+    requested_urls: list[str] = []
+
+    class _EmptyRequestUtils:
+        """
+        返回空响应的同步 HTTP 替身，模拟 Fanart 无图集场景。
+        """
+
+        def __init__(self, **_kwargs) -> None:
+            """
+            忽略网络配置参数，不创建真实连接。
+            """
+
+        def get_res(self, url: str, **_kwargs) -> None:
+            """
+            记录请求地址并模拟无有效响应返回。
+            """
+            requested_urls.append(url)
+            return None
+
+    class _EmptyAsyncRequestUtils:
+        """
+        返回空响应的异步 HTTP 替身，验证同步与异步共享缺图去重状态。
+        """
+
+        def __init__(self, **_kwargs) -> None:
+            """
+            忽略网络配置参数，不创建真实连接。
+            """
+
+        async def get_json(self, url: str) -> None:
+            """
+            记录请求地址并模拟无有效 JSON 载荷。
+            """
+            requested_urls.append(url)
+            return None
+
+    monkeypatch.setattr("app.modules.fanart.RequestUtils", _EmptyRequestUtils)
+    monkeypatch.setattr("app.modules.fanart.AsyncRequestUtils", _EmptyAsyncRequestUtils)
+    monkeypatch.setattr(settings, "FANART_ENABLE", True)
+    monkeypatch.setattr(settings, "FANART_API_KEY", "dedup-key-a")
+
+    module = FanartModule()
+    module.clear_cache()
+    mediainfo = MediaInfo(type=MediaType.TV, tvdb_id=7531001, title="走马上任", year="2026")
+    other_media = MediaInfo(type=MediaType.TV, tvdb_id=7531002, title="另一部剧", year="2026")
+
+    try:
+        with (
+            patch("app.modules.fanart.logger.warning") as warning_log,
+            patch("app.modules.fanart.logger.warn") as warn_log,
+        ):
+            assert module.obtain_images(mediainfo) is None
+            assert module.obtain_images(mediainfo) is None
+            assert module.metadata_img(mediainfo) is None
+            assert module.metadata_img(mediainfo, season=1) is None
+            assert asyncio.run(module.async_obtain_images(mediainfo)) is None
+            assert module.obtain_images(other_media) is None
+
+        warn_log.assert_not_called()
+        assert [call.args[0] for call in warning_log.call_args_list] == [
+            "没有获取到 走马上任 (2026) 的fanart图片数据",
+            "没有获取到 另一部剧 (2026) 的fanart图片数据",
+        ]
+        assert len(requested_urls) == 2
+    finally:
+        module.clear_cache()
+
+
+def test_fanart_missing_warning_resets_on_key_change_cache_clear_and_recovery(
+    monkeypatch,
+) -> None:
+    """
+    更换 API Key、清理缓存或后续恢复出图后，再次缺图应重新允许告警一次。
+    """
+    from app.schemas.types import MediaType
+
+    responses = iter([
+        {"status": "error", "error message": "Not found"},
+        {"status": "error", "error message": "Not found"},
+        {"status": "error", "error message": "Not found"},
+    ])
+
+    class _ErrorFanartResponse:
+        """
+        返回 Fanart 错误 JSON 载荷的 HTTP 响应替身。
+        """
+
+        def __init__(self, payload: dict) -> None:
+            """
+            保存本轮响应载荷。
+
+            :param payload: 模拟 Fanart 返回的 JSON 字典
+            """
+            self._payload = payload
+
+        def json(self) -> dict:
+            """
+            返回预置的错误载荷。
+            """
+            return self._payload
+
+    class _SequencedRequestUtils:
+        """
+        按顺序消费错误响应的同步 HTTP 替身。
+        """
+
+        def __init__(self, **_kwargs) -> None:
+            """
+            忽略网络配置参数，不创建真实连接。
+            """
+
+        def get_res(self, _url: str, **_kwargs) -> _ErrorFanartResponse:
+            """
+            返回队列中的下一条错误响应。
+            """
+            return _ErrorFanartResponse(next(responses))
+
+    monkeypatch.setattr("app.modules.fanart.RequestUtils", _SequencedRequestUtils)
+    monkeypatch.setattr(settings, "FANART_ENABLE", True)
+    monkeypatch.setattr(settings, "FANART_API_KEY", "reset-key-a")
+
+    module = FanartModule()
+    module.clear_cache()
+    mediainfo = MediaInfo(type=MediaType.MOVIE, tmdb_id=7531003, title="测试电影", year="2026")
+
+    try:
+        with patch("app.modules.fanart.logger.warning") as warning_log:
+            # 首次缺图告警，重复调用去重。
+            assert module.obtain_images(mediainfo) is None
+            assert module.obtain_images(mediainfo) is None
+            assert warning_log.call_count == 1
+
+            # 更换 API Key 后指纹变化，新 Key 下再次缺图告警一次。
+            monkeypatch.setattr(settings, "FANART_API_KEY", "reset-key-b")
+            assert module.obtain_images(mediainfo) is None
+            assert module.obtain_images(mediainfo) is None
+            assert warning_log.call_count == 2
+
+            # 清理缓存后清空去重记录，再次缺图重新告警一次。
+            module.clear_cache()
+            assert module.obtain_images(mediainfo) is None
+            assert warning_log.call_count == 3
+
+            # 获取到有效图集后清除该媒体缺图状态，后续再缺图时允许重新告警。
+            valid = module._FanartModule__extract_images(
+                mediainfo,
+                {"movieposter": [{"url": "https://artwork.invalid/poster.jpg", "lang": "zh"}]},
+            )
+            assert valid == {"poster.jpg": "https://artwork.invalid/poster.jpg"}
+            assert module._FanartModule__extract_images(mediainfo, {}) is None
+            assert warning_log.call_count == 4
+    finally:
+        module.clear_cache()
