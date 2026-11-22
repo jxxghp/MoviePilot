@@ -10,7 +10,9 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import AsyncIterator, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import Context, ContextVar, copy_context
 from dataclasses import dataclass, field
 from functools import partial, wraps
@@ -26,6 +28,7 @@ from app.runtime.browser import (
     browser_capacity,
     browser_request,
     check_browser_request,
+    resolve_browser_queue_timeout,
 )
 from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
@@ -514,7 +517,7 @@ def _browser_queue_timeout() -> float:
     读取部署侧浏览器容量和排队秒数，降容不会中断正在使用的实例。
     """
     browser_capacity.configure(int(get_runtime_setting("CLOAKBROWSER_MAX_CONCURRENCY", 3)))
-    return float(get_runtime_setting("CLOAKBROWSER_QUEUE_TIMEOUT", 60))
+    return resolve_browser_queue_timeout(float(get_runtime_setting("CLOAKBROWSER_QUEUE_TIMEOUT", 60)))
 
 
 def _require_browser_license(license_key: Optional[str] = None) -> None:
@@ -1022,12 +1025,14 @@ def launch_browser_context(headless: bool = True, **kwargs: Any) -> BrowserConte
     :param kwargs: 浏览器实现接受的其余启动参数
     :return: 浏览器上下文
     """
+    check_browser_request()
     if not headless:
         acquire_managed_resource(
             "host.display",
             reason="headed_browser_launch",
             retry=True,
         )
+        check_browser_request()
     configure_browser_queue()
     from cloakbrowser import launch_context
 
@@ -1045,16 +1050,82 @@ async def launch_browser_context_async(
     :param kwargs: 浏览器实现接受的其余启动参数
     :return: 浏览器上下文
     """
+    check_browser_request()
     if not headless:
         await acquire_managed_resource_async(
             "host.display",
             reason="headed_browser_launch",
             retry=True,
         )
+        check_browser_request()
     configure_browser_queue()
     from cloakbrowser import launch_context_async
 
     return await launch_context_async(headless=headless, **kwargs)
+
+
+@contextmanager
+def browser_context(
+    headless: bool = True,
+    *,
+    cancelled: Optional[Callable[[], bool]] = None,
+    queue_timeout: Optional[float] = None,
+    **kwargs: Any,
+) -> Iterator[BrowserContext]:
+    """
+    在取消与排队超时边界内启动同步浏览器上下文，并在退出时关闭归还名额。
+
+    在排队等待、启动与页面操作期间，``cancelled()`` 返回 ``True`` 或进程进入停机状态时，
+    正在排队的调用会立即撤销票据并抛出 :class:`BrowserQueueCancelledError`，不影响其他实例持有者。
+
+    :param headless: 是否使用无头模式
+    :param cancelled: 返回当前任务是否已取消的线程安全无参可调用对象
+    :param queue_timeout: 本次调用允许的最长排队秒数，必须为有限正数；超过宿主上限时按宿主上限生效
+    :param kwargs: 浏览器实现接受的其余启动参数
+    :yields: 已获取名额并完成启动的同步浏览器上下文
+    :raises BrowserQueueCancelledError: 排队或启动前任务已取消，或宿主正在停止
+    :raises TimeoutError: 等待浏览器名额超过有效排队上限
+    :raises TypeError: ``cancelled`` 非空且不可调用
+    :raises ValueError: ``queue_timeout`` 不是有限正数
+    """
+    with browser_request(cancelled, queue_timeout=queue_timeout):
+        context = launch_browser_context(headless=headless, **kwargs)
+        try:
+            yield context
+        finally:
+            context.close()
+
+
+@asynccontextmanager
+async def browser_context_async(
+    headless: bool = True,
+    *,
+    cancelled: Optional[Callable[[], bool]] = None,
+    queue_timeout: Optional[float] = None,
+    **kwargs: Any,
+) -> AsyncIterator[Any]:
+    """
+    在取消与排队超时边界内启动异步浏览器上下文，并在退出时关闭归还名额。
+
+    除响应 ``cancelled()`` 回调外，取消当前异步任务也会在排队阶段立即撤销等待票据，
+    或在启动与退出阶段等待受控关闭完成后归还名额。
+
+    :param headless: 是否使用无头模式
+    :param cancelled: 返回当前任务是否已取消的线程安全无参可调用对象
+    :param queue_timeout: 本次调用允许的最长排队秒数，必须为有限正数；超过宿主上限时按宿主上限生效
+    :param kwargs: 浏览器实现接受的其余启动参数
+    :yields: 已获取名额并完成启动的异步浏览器上下文
+    :raises BrowserQueueCancelledError: 排队或启动前任务已取消，或宿主正在停止
+    :raises TimeoutError: 等待浏览器名额超过有效排队上限
+    :raises TypeError: ``cancelled`` 非空且不可调用
+    :raises ValueError: ``queue_timeout`` 不是有限正数
+    """
+    with browser_request(cancelled, queue_timeout=queue_timeout):
+        context = await launch_browser_context_async(headless=headless, **kwargs)
+        try:
+            yield context
+        finally:
+            await context.close()
 
 
 @dataclass

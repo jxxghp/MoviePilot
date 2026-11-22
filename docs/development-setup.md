@@ -91,8 +91,12 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 - `CLOAKBROWSER_OPERATION_TIMEOUT` 默认 `120` 秒，限制启动和单次原生浏览器操作；`CLOAKBROWSER_CLOSE_TIMEOUT` 默认 `5` 秒，限制关闭宽限。
 - 同一 Agent 浏览器会话的页面、标签及登录状态继续复用；实例未关闭时，包括等待模型响应期间，仍占用名额。
   网页任务完成后应调用 `close_session`；确需跨轮保留页面时，可等待用户继续操作，连续空闲 15 分钟后兜底回收。
-- 插件使用完成后必须在 `finally` 中关闭返回对象。关闭成功或底层 Browser 断开后归还名额；
+- 插件使用完成后必须在 `finally` 中关闭返回对象，或直接使用 `app.sdk.browser` 提供的 `browser_context` / `browser_context_async`
+  上下文管理器自动关闭并归还名额。关闭成功或底层 Browser 断开后归还名额；
   关闭失败继续保留真实占用，Agent 会保留原线程与句柄供任务回收或全局关闭重试。
+- 插件可通过 `app.sdk.browser` 的 `get_browser_queue_status()` 只读查看当前队列活跃数、排队深度与并发上限，
+  并通过 `browser_request(cancelled=..., queue_timeout=...)` 或 `browser_context` / `browser_context_async` 的
+  `cancelled` 与 `queue_timeout` 参数主动取消排队中的请求或收紧单次等待上限（取消时抛出 `BrowserQueueCancelledError`）。
 - 原生操作或关闭无响应时，owner 监控线程只回收本次 Playwright 驱动及带有本次唯一标记的后代进程；
   确认进程树退出后才归还名额。点击、提交或脚本在超时前可能已经执行时，工具返回 `execution_outcome=unknown`，应先核验页面再决定是否继续。
 - 队列协调当前宿主进程内的调用。多个独立 MoviePilot 进程或外部程序共用同一个 key 时，

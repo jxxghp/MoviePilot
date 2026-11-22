@@ -977,8 +977,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10438,
-  "edge_sha256": "60cb463434156efc7e471c10fcec030c28da809dd913e74a4e00477f6aa3796e",
+  "edge_count": 10441,
+  "edge_sha256": "14d7e9bec8178952423bf39bcf611a42fb53352dbae57963700216903c19ab2a",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -9552,6 +9552,7 @@
     "app.monitor.watcher -> app.runtime.log",
     "app.monitor.watcher -> app.runtime.settings",
     "app.runtime.browser -> app.runtime",
+    "app.runtime.browser -> app.runtime.settings",
     "app.runtime.browser -> app.runtime.stop",
     "app.runtime.capabilities.registry -> app.runtime",
     "app.runtime.capabilities.registry -> app.runtime.capabilities",
@@ -10203,6 +10204,8 @@
     "app.sdk.browser -> app.adapters",
     "app.sdk.browser -> app.adapters.network",
     "app.sdk.browser -> app.adapters.network.browser",
+    "app.sdk.browser -> app.runtime",
+    "app.sdk.browser -> app.runtime.browser",
     "app.sdk.cache -> app.adapters",
     "app.sdk.cache -> app.adapters.cache",
     "app.sdk.cache -> app.adapters.cache.backends",
