@@ -28,6 +28,7 @@ from app.foundation.url import split_netloc
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import JsonList, SiteSpider
+from app.modules.indexer.spider.colapt import ColaPTSpider
 from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hdarea import HDAreaSpider
@@ -203,6 +204,7 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "Haidan": HaiDanSpider,
     "HDDolby": HddolbySpider,
     "HDArea": HDAreaSpider,
+    "ColaPT": ColaPTSpider,
     "HDWing": HDWingSpider,
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
@@ -221,7 +223,7 @@ _DOMAIN_CONNECTION_PARSERS = {
 _DOMAIN_CONNECTION_SETTINGS = {"yemapt.org": {"legacy_cookie_test": True}}
 _CONNECTION_PROTOCOL_NAMES = frozenset(_DOMAIN_CONNECTION_PARSERS.values())
 _SPECIAL_SITE_DOMAINS = ("u2.dmhy.org", "pt.ecust.pp.ua", "pt.gtkpw.xyz", "pt.gtk.pw")
-_TORRENT_PATH_ADAPTERS = (MTorrentSpider, TTGDownloadAdapter)
+_TORRENT_PATH_ADAPTERS = (MTorrentSpider, TTGDownloadAdapter, ColaPTSpider)
 
 # 仅传递各专站搜索入口支持的参数，避免同步与异步调用契约分叉。
 _SPECIALIZED_SEARCH_ARGUMENTS = {
@@ -234,6 +236,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "Haidan": ("keyword", "mtype"),
     "HDDolby": ("keyword", "mtype", "cat", "page"),
     "HDArea": ("keyword", "mtype", "cat", "page"),
+    "ColaPT": ("keyword", "mtype", "cat", "page"),
     "HDWing": ("keyword", "mtype", "cat", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
     "Milkie": ("keyword", "mtype", "page"),
