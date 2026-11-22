@@ -61,6 +61,9 @@ _ITEM_TYPE_MAP = {
     "电视剧": "Series",
     "season": "Season",
     "episode": "Episode",
+    "boxset": "BoxSet",
+    "collection": "BoxSet",
+    "合集": "BoxSet",
     "musicalbum": "MusicAlbum",
     "album": "MusicAlbum",
     "audio": "Audio",
@@ -202,13 +205,15 @@ def _media_type_for_item(item_type: str) -> str:
     将 Emby 条目维度映射到 MoviePilot 业务媒体类型。
 
     :param item_type: Emby 原始 Type 字段
-    :return: `电影`、`电视剧` 或 `音乐`
+    :return: `电影`、`电视剧`、`音乐` 或 `合集`
     """
     lowered = item_type.casefold()
     if lowered in {"series", "season", "episode"}:
         return MediaType.TV.value
     if lowered in {"audio", "musicalbum", "musicartist"}:
         return MediaType.MUSIC.value
+    if lowered == "boxset":
+        return "合集"
     return MediaType.MOVIE.value
 
 
@@ -236,6 +241,9 @@ def _subtitle_for_browse_item(raw: Mapping[str, Any]) -> Optional[str]:
         return " · ".join(parts) if parts else None
     if item_type == "MusicAlbum":
         return raw.get("AlbumArtist") or (str(raw.get("ProductionYear")) if raw.get("ProductionYear") else None)
+    if item_type == "BoxSet":
+        count = raw.get("ChildCount") or raw.get("RecursiveItemCount")
+        return f"共 {int(count)} 部" if isinstance(count, int) and count > 0 else "合集"
     year = raw.get("ProductionYear")
     return str(year) if year else None
 
@@ -447,8 +455,9 @@ def emby_browse_items(
     """
     if not cfg.host or not cfg.user_id:
         return None
+    default_types = "Movie,Series,MusicAlbum,BoxSet,Episode" if parent_id else "Movie,Series,MusicAlbum,BoxSet"
     resolved_types = _ITEM_TYPE_MAP.get(str(item_type or "").strip().casefold()) or (
-        item_type if item_type else "Movie,Series,MusicAlbum"
+        item_type if item_type else default_types
     )
     sort_key = (sort_by or "date_created").strip().casefold()
     emby_sort = _SORT_BY_MAP.get(sort_key, _SORT_BY_MAP["date_created"])
@@ -463,7 +472,7 @@ def emby_browse_items(
         cfg,
         {
             "ParentId": parent_id or library_id,
-            "Recursive": "true",
+            "Recursive": "false" if parent_id else "true",
             "IncludeItemTypes": resolved_types,
             "Genres": genre,
             "Years": str(year) if year else None,

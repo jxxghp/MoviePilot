@@ -262,6 +262,8 @@ class Emby:
                 library_type = MediaType.MUSIC.value
             elif library.get("CollectionType") == "tvshows":
                 library_type = MediaType.TV.value
+            elif library.get("CollectionType") == "boxsets":
+                library_type = "合集"
             else:
                 library_type = MediaType.UNKNOWN.value
             image = (
@@ -285,7 +287,9 @@ class Emby:
                     type=library_type,
                     item_count=self.get_items_count(
                         library.get("Id"),
-                        "MusicAlbum" if library_type == MediaType.MUSIC.value else "Movie,Series",
+                        "MusicAlbum"
+                        if library_type == MediaType.MUSIC.value
+                        else ("BoxSet" if library_type == "合集" else "Movie,Series"),
                     )
                     if options.includes(MediaServerField.COUNTS)
                     else None,

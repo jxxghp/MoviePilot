@@ -374,3 +374,75 @@ def test_mediaserver_browse_detail_and_server_subtitle_endpoints(monkeypatch: py
         assert manifest["resume_position_ms"] == 30000
         assert len(manifest["subtitles"]) == 1
         assert manifest["subtitles"][0]["subtitle_id"] == "ms:src-1:3.srt"
+
+
+def test_emby_and_plex_boxset_collections() -> None:
+    """验证 Emby 与 Plex 合集（BoxSet / Collection）列表浏览及按 parent_id 下钻合集子作品。"""
+    captured_params: list[dict[str, Any]] = []
+
+    def fake_get_res(_url: str, params: dict[str, Any]) -> Any:
+        captured_params.append(dict(params))
+        if params.get("ParentId") == "box-1":
+            return _mock_response(
+                {
+                    "Items": [
+                        {"Id": "m-1", "Name": "哈利·波特与魔法石", "Type": "Movie", "ProductionYear": 2001}
+                    ],
+                    "TotalRecordCount": 1,
+                }
+            )
+        return _mock_response(
+            {
+                "Items": [
+                    {"Id": "box-1", "Name": "哈利·波特合集", "Type": "BoxSet", "ChildCount": 8}
+                ],
+                "TotalRecordCount": 1,
+            }
+        )
+
+    http = Mock()
+    http.get_res.side_effect = fake_get_res
+    cfg = _emby_config(http)
+
+    boxset_page = emby_browse_items(
+        cfg,
+        library_id="lib-box",
+        item_type="BoxSet",
+    )
+    assert boxset_page is not None and len(boxset_page.items) == 1
+    assert boxset_page.items[0].item_type == "BoxSet"
+    assert boxset_page.items[0].media_type == "合集"
+    assert boxset_page.items[0].subtitle == "共 8 部"
+    assert captured_params[0]["IncludeItemTypes"] == "BoxSet"
+
+    children_page = emby_browse_items(
+        cfg,
+        parent_id="box-1",
+    )
+    assert children_page is not None and len(children_page.items) == 1
+    assert children_page.items[0].item_id == "m-1"
+    assert captured_params[1]["Recursive"] == "false"
+
+    plex_movie = SimpleNamespace(
+        ratingKey="501",
+        type="movie",
+        title="指环王：护戒使者",
+        year=2001,
+        thumb="/t/501",
+    )
+    plex_collection = SimpleNamespace(
+        ratingKey="900",
+        type="collection",
+        title="指环王合集",
+        childCount=3,
+        thumb="/t/900",
+        items=Mock(return_value=[plex_movie]),
+    )
+    plex = SimpleNamespace(
+        fetchItem=Mock(return_value=plex_collection),
+        library=SimpleNamespace(sections=Mock(return_value=[])),
+    )
+    plex_children = plex_browse_items(plex, "http://plex.test", "tok", parent_id="900")
+    assert plex_children is not None and len(plex_children.items) == 1
+    assert plex_children.items[0].item_id == "501"
+

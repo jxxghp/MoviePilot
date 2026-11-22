@@ -286,6 +286,9 @@ class Jellyfin:
                     f"{self._playhost or self._host}web/index.html#!/{collection_type}"
                     f"?topParentId={library.get('Id')}&collectionType={collection_type}"
                 )
+            elif library.get("CollectionType") == "boxsets":
+                library_type = "合集"
+                link = f"{self._playhost or self._host}web/index.html#!/library.html?topParentId={library.get('Id')}"
             elif library.get("CollectionType") in ("homevideos", "livetv"):
                 library_type = MediaType.UNKNOWN.value
                 link = (
@@ -314,7 +317,11 @@ class Jellyfin:
                     type=library_type,
                     item_count=self.get_items_count(
                         library.get("Id"),
-                        include_item_types="MusicAlbum" if library_type == MediaType.MUSIC.value else "Movie,Series",
+                        include_item_types=(
+                            "MusicAlbum"
+                            if library_type == MediaType.MUSIC.value
+                            else ("BoxSet" if library_type == "合集" else "Movie,Series")
+                        ),
                     )
                     if options.includes(MediaServerField.COUNTS)
                     else None,
