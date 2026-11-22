@@ -10,11 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.context import get_async_session, get_host_runtime
 from app.application.site.contract import SiteQueryPort, SiteStagingPort
 from app.application.site.mutation import SiteMutationCommand
+from app.application.site.protocol import site_domain
 from app.application.site.query import SiteQueryService
 
 # 站点目录由外部资源加载，静态检查无法解析其动态导出。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.domain import site as site_rules
 from app.foundation import url as url_tools
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
@@ -56,7 +56,7 @@ def get_site_mutation_command(
         unit_of_work=runtime.persistence.async_transaction(db),
         auth_level_provider=lambda: sites_helper.auth_level,
         indexer_loader=sites_helper.async_get_indexer,
-        domain_extractor=site_rules.extract_domain,
+        domain_extractor=site_domain,
         url_normalizer=normalize_url,
         publish_updated=_publish_site_updated,
         publish_deleted=_publish_site_deleted,
