@@ -318,3 +318,35 @@ def test_rule_applicability_explains_missing_untyped_and_wrong_media_groups(monk
     movie = MediaInfo(type=MediaType.MOVIE, title="Example")
     assert helper.explain_rule_groups(media=movie, group_names=["movie"])[0].status == "effective"
     assert helper.explain_rule_groups(media=movie, group_names=["all", "all"])[0].name == "all"
+
+
+@pytest.mark.parametrize("use_rust", [False, True], ids=["python", "rust"])
+def test_rule_group_by_media_preserves_caller_group_order(named_classification, monkeypatch, use_rust) -> None:
+    """
+    调用方传入的规则组顺序（如订阅/洗版规则组顺序）决定后置组覆盖优先级，不得被规则定义存储顺序覆盖。
+    """
+    media = ClassificationExecutionService(named_classification).finalize(
+        MediaInfo(type=MediaType.MOVIE, title="Example", media_source="themoviedb", media_id="1"),
+        allow_enrichment=False,
+    )
+    helper = RuleHelper()
+    # 存储顺序故意把无 '>' 的全局前置过滤放后面、把分档规则放前面
+    tiered_movie = FilterRuleGroup(name="tiered-movie", rule_string="4K & CNSUB > 1080P & CNSUB", media_type="电影")
+    global_pre = FilterRuleGroup(name="global-pre", rule_string="!CAM", media_type="")
+    monkeypatch.setattr(helper, "get_rule_groups", lambda: [tiered_movie, global_pre])
+
+    selected = helper.get_rule_group_by_media(media=media, group_names=["global-pre", "tiered-movie"])
+    assert [g.name for g in selected] == ["global-pre", "tiered-movie"]
+
+    module = FilterModule()
+    module.rulehelper = helper
+    module.rule_set = BUILTIN_RULE_SET
+    monkeypatch.setattr("app.modules.filter.rust_accel.is_enabled", lambda: use_rust)
+
+    t_4k = TorrentInfo(title="Example.2025.2160p.WEB-DL.H265-GRP", description="中字")
+    t_1080p = TorrentInfo(title="Example.2025.1080p.WEB-DL.H264-GRP", description="中字")
+    result = module.filter_torrents(["global-pre", "tiered-movie"], [t_4k, t_1080p], media)
+
+    assert len(result) == 2
+    assert t_4k.pri_order == 100
+    assert t_1080p.pri_order == 99

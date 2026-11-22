@@ -560,12 +560,15 @@ class RuleHelper:
 
         :param media: 已识别并应用最终分类的媒体；未提供时仅匹配无类型限制的规则组
         :param group_names: 限定规则组名称；为空时检查全部配置规则组
-        :return: 保持配置顺序的适用规则组，分类不跨主媒体类型匹配
+        :return: 按传入 group_names 顺序（未传时按配置顺序）返回的适用规则组，分类不跨主媒体类型匹配
         """
         rule_groups = self.get_rule_groups()
         if group_names:
+            groups_by_name = {group.name: group for group in rule_groups}
             rule_groups = [
-                group for group in rule_groups if group.name in group_names
+                groups_by_name[name]
+                for name in dict.fromkeys(group_names)
+                if name in groups_by_name
             ]
         category_resolver = classification_category_resolver_snapshot()
         return [
