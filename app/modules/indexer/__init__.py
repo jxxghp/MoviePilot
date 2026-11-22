@@ -488,11 +488,13 @@ class IndexerModule(_ModuleBase):
         :param site: 包含搜索协议和当前用户配置的站点上下文
         :return: 专站规则处理后的 User-Agent，普通站点保留当前配置值
         """
+        raw_ua = site.get("ua")
+        normalized_ua = raw_ua.strip() if isinstance(raw_ua, str) else raw_ua
         parser_class = SPIDER_PARSER_CLASSES.get(str(site.get("parser") or ""))
         get_user_agent = getattr(parser_class, "get_user_agent", None)
         if callable(get_user_agent):
-            return cast(str, get_user_agent(site.get("ua")))
-        return cast(Optional[str], site.get("ua"))
+            return cast(str, get_user_agent(normalized_ua))
+        return cast(Optional[str], normalized_ua)
 
     @staticmethod
     def __parse_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[TorrentInfo]:
@@ -1316,13 +1318,15 @@ class IndexerModule(_ModuleBase):
                                 f"{str(site_url).rstrip('/')}/",
                                 userdata_path.lstrip("/"),
                             )
+                    raw_ua = site.get("ua")
+                    site_ua = raw_ua.strip() if isinstance(raw_ua, str) else ""
                     return site_schema(
                         site_name=site.get("name"),
                         url=site_url,
                         site_cookie=site.get("cookie"),
                         apikey=site.get("apikey"),
                         token=site.get("token"),
-                        ua=site.get("ua") or get_runtime_setting("USER_AGENT"),
+                        ua=site_ua or get_runtime_setting("USER_AGENT"),
                         proxy=site.get("proxy"),
                         api_url=site.get("api_url"))
             return None

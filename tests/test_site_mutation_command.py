@@ -205,3 +205,67 @@ async def test_update_priorities_uses_one_transaction():
         )
     )
     dependencies["unit_of_work"].commit.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_site_mutations_trim_header_and_credential_whitespace():
+    """
+    新增、更新与浏览器 Cookie 保存应裁剪 UA、Cookie、RSS、API Key 和 Token 首尾空白，并保留过滤规则原样。
+    """
+    site = SimpleNamespace(
+        domain="demo.example",
+        name="Demo",
+        url="https://demo.example/",
+    )
+    repository = Mock()
+    repository.get_by_id = AsyncMock(return_value=site)
+    repository.async_get_by_domain = AsyncMock(return_value=None)
+    repository.stage_create = AsyncMock()
+    repository.stage_update = AsyncMock(return_value=True)
+    command, _ = _command(
+        repository=repository,
+        domain_extractor=lambda value: value.split("://", 1)[1].split("/", 1)[0],
+        url_normalizer=lambda value: f"{value.rstrip('/')}/",
+    )
+
+    create_result = await command.create(
+        {
+            "url": " https://demo.example/path ",
+            "ua": " Mozilla/5.0 Edg/158.0.0.0 ",
+            "cookie": " sid=1; uid=2 ",
+            "rss": " https://demo.example/rss ",
+            "apikey": " secret-key ",
+            "token": " secret-token ",
+            "filter": " 1080p ",
+        }
+    )
+    assert create_result.success is True
+    created = repository.stage_create.await_args.args[0]
+    assert created.values["url"] == "https://demo.example/path/"
+    assert created.values["ua"] == "Mozilla/5.0 Edg/158.0.0.0"
+    assert created.values["cookie"] == "sid=1; uid=2"
+    assert created.values["rss"] == "https://demo.example/rss"
+    assert created.values["apikey"] == "secret-key"
+    assert created.values["token"] == "secret-token"
+    assert created.values["filter"] == " 1080p "
+
+    update_result = await command.update(
+        {
+            "id": 7,
+            "url": " https://demo.example ",
+            "ua": "\tMozilla/5.0 Chrome/130.0\n",
+            "cookie": " sid=updated ",
+            "filter": " REMUX ",
+        }
+    )
+    assert update_result.success is True
+    updated = repository.stage_update.await_args_list[0].args[1]
+    assert updated.values["url"] == "https://demo.example/"
+    assert updated.values["ua"] == "Mozilla/5.0 Chrome/130.0"
+    assert updated.values["cookie"] == "sid=updated"
+    assert updated.values["filter"] == " REMUX "
+
+    cookie_result = await command.set_cookie(7, " sid=browser ", " Browser UA ")
+    assert cookie_result.success is True
+    cookie_mutation = repository.stage_update.await_args_list[1].args[1]
+    assert cookie_mutation.values == {"cookie": "sid=browser", "ua": "Browser UA"}

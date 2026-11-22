@@ -36,6 +36,9 @@ _SITE_MUTATION_FIELDS = frozenset(
     }
 )
 
+# 复制粘贴站点配置时容易带入首尾空白，直接参与请求头或地址构造的字段在入库前统一裁剪。
+_SITE_TRIMMED_STRING_FIELDS = frozenset({"ua", "cookie", "rss", "apikey", "token"})
+
 _SITE_USERDATA_MUTATION_FIELDS = frozenset(
     {
         "domain",
@@ -350,12 +353,18 @@ class SiteMutation:
 
     def __post_init__(self) -> None:
         """
-        拒绝模型外字段并冻结嵌套 JSON。
+        拒绝模型外字段、裁剪易受复制空白影响的请求字段并冻结嵌套 JSON。
         """
+        normalized = {
+            key: value.strip()
+            if key in _SITE_TRIMMED_STRING_FIELDS and isinstance(value, str)
+            else value
+            for key, value in self.values.items()
+        }
         object.__setattr__(
             self,
             "values",
-            _freeze_mapping(self.values, allowed_fields=_SITE_MUTATION_FIELDS),
+            _freeze_mapping(normalized, allowed_fields=_SITE_MUTATION_FIELDS),
         )
 
     def to_payload(self) -> dict[str, JsonData]:
