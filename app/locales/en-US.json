@@ -465,6 +465,7 @@
     "搜索失败，请稍后重试": "Search failed. Try again later",
     "MCP 服务测试失败，请检查服务配置后重试": "The MCP service test failed. Check the service configuration and try again",
     "没有可发送的浏览器通知": "No browser notification subscriptions are available",
+    "未配置有效的 WebPush VAPID 公钥": "No valid WebPush VAPID public key is configured",
     "消息发送失败，请检查浏览器通知权限后重试": "Message delivery failed. Check browser notification permissions and try again",
     "缺少目录参数": "Directory parameter is missing",
     "目录不存在": "Directory does not exist",
