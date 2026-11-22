@@ -3,6 +3,7 @@
 """
 
 import asyncio
+import warnings
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Optional
@@ -364,3 +365,24 @@ async def test_readme_probe_falls_back_after_proxy_error(monkeypatch: pytest.Mon
         assert len(calls) == 2
     finally:
         await transport.async_get_plugin_readme_url.cache_clear()
+
+
+def test_nested_history_is_normalized_to_text() -> None:
+    """
+    第三方索引把 history 值写成嵌套对象时，应归一化为字符串且不触发序列化警告。
+    """
+    info = {
+        "name": "Demo",
+        "version": "1.7.3",
+        "history": {
+            "v1.7.3": {"version": "1.7.3", "date": "2026-01-01", "content": ["修复A", "修复B"]},
+            "v1.18.4": {"version": "1.18.4"},
+            "v1.0.0": "初始版本",
+        },
+    }
+    plugin = _mapper().map("Demo", info, REPO, [], 0, "v3")
+    assert plugin is not None
+    assert plugin.history == {"v1.7.3": "修复A\n修复B", "v1.0.0": "初始版本"}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        plugin.model_dump_json()
