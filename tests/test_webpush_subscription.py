@@ -97,7 +97,11 @@ def test_send_notification_reports_all_delivery_failures(monkeypatch):
     monkeypatch.setattr(
         message_endpoint,
         "get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(vapid_private_key="private", vapid_subject="mailto:test@example.com"),
+        lambda: SimpleNamespace(
+            vapid_public_key="public-key",
+            vapid_private_key="private",
+            vapid_subject="mailto:test@example.com",
+        ),
     )
 
     from app.adapters.network.webpush import WebPushDeliveryError
@@ -125,7 +129,11 @@ def test_send_notification_reports_partial_delivery(monkeypatch):
     monkeypatch.setattr(
         message_endpoint,
         "get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(vapid_private_key="private", vapid_subject="mailto:test@example.com"),
+        lambda: SimpleNamespace(
+            vapid_public_key="public-key",
+            vapid_private_key="private",
+            vapid_subject="mailto:test@example.com",
+        ),
     )
 
     from app.adapters.network.webpush import WebPushDeliveryError
@@ -159,7 +167,11 @@ def _webpush_send_client(monkeypatch, user) -> tuple[TestClient, list[dict]]:
     monkeypatch.setattr(
         message_endpoint,
         "get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(vapid_private_key="private", vapid_subject="mailto:test@example.com"),
+        lambda: SimpleNamespace(
+            vapid_public_key="public-key",
+            vapid_private_key="private",
+            vapid_subject="mailto:test@example.com",
+        ),
     )
     monkeypatch.setattr(
         "app.adapters.network.webpush.send_webpush",
@@ -255,3 +267,98 @@ def test_send_notification_allows_api_token(monkeypatch):
     assert response.status_code == 200
     assert response.json()["success"] is True
     assert len(deliveries) == 1
+
+
+def test_webpush_public_key_returns_active_key_for_logged_in_user(monkeypatch):
+    """
+    已登录用户应能通过专用接口获取当前实例的 VAPID 公钥，匿名请求则被拒绝。
+    """
+    user = _user(superuser=False)
+    client, _deliveries = _webpush_send_client(monkeypatch, user)
+
+    with client:
+        unauthenticated = client.get("/message/webpush/public-key")
+        authenticated = client.get(
+            "/message/webpush/public-key",
+            headers=_bearer(user),
+        )
+
+    assert unauthenticated.status_code in {401, 403}
+    assert authenticated.status_code == 200
+    assert authenticated.json() == {
+        "success": True,
+        "message": "",
+        "data": {"public_key": "public-key"},
+    }
+
+
+def test_webpush_public_key_reports_unavailable_when_missing(monkeypatch):
+    """
+    当前实例未获得有效 VAPID 公钥时，接口应返回明确的失败响应。
+    """
+    user = _user(superuser=True)
+    client, _deliveries = _webpush_send_client(monkeypatch, user)
+    monkeypatch.setattr(
+        message_endpoint,
+        "get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(
+            vapid_public_key="",
+            vapid_private_key="",
+            vapid_subject="mailto:test@example.com",
+        ),
+    )
+
+    with client:
+        response = client.get(
+            "/message/webpush/public-key",
+            headers=_bearer(user),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is False
+    assert body["data"] is None
+
+
+def test_vapid_private_key_is_excluded_from_env_and_cli_defaults(monkeypatch):
+    """
+    VAPID 私钥必须被系统环境接口排除、被安全识别为凭据并在 CLI 中默认脱敏。
+    """
+    import asyncio
+    from unittest.mock import Mock
+
+    from app import cli as cli_module
+    from app.api.endpoints import system as system_endpoint
+    from app.application.security.secrets import is_secret_setting_key
+
+    assert is_secret_setting_key("VAPID_PRIVATE_KEY") is True
+    assert "VAPID_PRIVATE_KEY" in cli_module.MASKED_FIELDS
+
+    captured_excludes: list[set[str]] = []
+
+    def fake_snapshot(*, exclude=None):
+        """
+        记录 /system/env 排除的敏感配置键集合。
+        """
+        captured_excludes.append(set(exclude or ()))
+        return {"VAPID_PUBLIC_KEY": "pub"}
+
+    monkeypatch.setattr(
+        system_endpoint,
+        "get_runtime_settings",
+        lambda: SimpleNamespace(snapshot=fake_snapshot),
+    )
+    monkeypatch.setattr(system_endpoint, "get_app_version", lambda: "test")
+    monkeypatch.setattr(system_endpoint, "get_frontend_version", lambda: "frontend-test")
+    monkeypatch.setattr(
+        system_endpoint,
+        "SitesHelper",
+        Mock(return_value=SimpleNamespace(auth_version="auth", indexer_version="indexer")),
+    )
+    runtime = SimpleNamespace(system=SimpleNamespace(runtime_features=lambda: {}))
+
+    resp = asyncio.run(system_endpoint.get_env_setting(_="token", runtime=runtime))
+
+    assert resp.success is True
+    assert captured_excludes and "VAPID_PRIVATE_KEY" in captured_excludes[0]
+    assert "VAPID_PRIVATE_KEY" not in resp.data

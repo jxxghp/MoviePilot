@@ -603,6 +603,7 @@ SCHEMA_EXPORTS = {
     'ValueData': ('app.schemas.common', 'ValueData'),
     'WINDOWS_DRIVE_PATTERN': ('app.schemas.file', 'WINDOWS_DRIVE_PATTERN'),
     'WebMessageItem': ('app.schemas.message', 'WebMessageItem'),
+    'WebPushPublicKeyData': ('app.schemas.message', 'WebPushPublicKeyData'),
     'WebhookEventInfo': ('app.schemas.mediaserver', 'WebhookEventInfo'),
     'WechatClawBotData': ('app.schemas.notification', 'WechatClawBotData'),
     'WechatClawBotKnownTarget': ('app.schemas.notification', 'WechatClawBotKnownTarget'),

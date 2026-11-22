@@ -169,12 +169,36 @@ def test_no_response_is_reported(browser, vapid):
             send_webpush(browser.subscription, "x", vapid.private_key, "mailto:a@b.c")
 
 
-def test_host_configured_vapid_key_signs(browser):
+def test_host_configured_vapid_key_signs(browser, vapid, monkeypatch):
     """
-    宿主内置的 VAPID 私钥（base64url 原始格式）可以签出有效的 Authorization 头。
+    运行期注入的默认 VAPID 密钥对可以签出有效的 Authorization 头，且宿主源码不内置明文密钥。
     """
+    from app.runtime.config import settings
     from app.runtime.settings import get_runtime_setting
 
+    public_b64 = _b64url(
+        vapid.public_key.public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint,
+        )
+    )
+    monkeypatch.setattr(settings, "VAPID_PUBLIC_KEY", None)
+    monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", None)
+    monkeypatch.setattr(settings, "VAPID_SUBJECT", None)
+    monkeypatch.setattr(settings, "_runtime_defaults", {})
+
+    empty_vapid = get_runtime_setting("VAPID")
+    assert empty_vapid["publicKey"] == ""
+    assert empty_vapid["privateKey"] == ""
+
+    monkeypatch.setattr(
+        settings,
+        "_runtime_defaults",
+        {
+            "VAPID_PUBLIC_KEY": public_b64,
+            "VAPID_PRIVATE_KEY": vapid.private_key,
+        },
+    )
     vapid_config = get_runtime_setting("VAPID")
     captured, patcher = _post()
     with patcher:
@@ -184,3 +208,65 @@ def test_host_configured_vapid_key_signs(browser):
         for item in captured["headers"]["Authorization"].partition(" ")[2].split(",")
     )
     assert _b64url(base64.urlsafe_b64decode(fields["k"] + "==")) == vapid_config["publicKey"]
+
+
+def test_custom_vapid_settings_override_runtime_defaults_and_reject_partial_pair(browser, vapid, monkeypatch):
+    """
+    显式成对配置的 VAPID 密钥与主体应优先于运行期默认值；仅配置单边密钥时不得混用默认值。
+    """
+    from app.runtime.config import settings
+
+    other = Vapid()
+    other.generate_keys()
+    other_private = _b64url(other.private_key.private_numbers().private_value.to_bytes(32, "big"))
+    other_public = _b64url(
+        other.public_key.public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint,
+        )
+    )
+    default_public = _b64url(
+        vapid.public_key.public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint,
+        )
+    )
+
+    monkeypatch.setattr(
+        settings,
+        "_runtime_defaults",
+        {
+            "VAPID_PUBLIC_KEY": default_public,
+            "VAPID_PRIVATE_KEY": vapid.private_key,
+        },
+    )
+    monkeypatch.setattr(settings, "VAPID_PUBLIC_KEY", other_public)
+    monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", other_private)
+    monkeypatch.setattr(settings, "VAPID_SUBJECT", "mailto:custom@example.com")
+
+    vapid_config = settings.VAPID
+    assert vapid_config == {
+        "subject": "mailto:custom@example.com",
+        "publicKey": other_public,
+        "privateKey": other_private,
+    }
+    captured, patcher = _post()
+    with patcher:
+        send_webpush(browser.subscription, "x", vapid_config["privateKey"], vapid_config["subject"])
+    fields = dict(
+        item.strip().split("=", 1)
+        for item in captured["headers"]["Authorization"].partition(" ")[2].split(",")
+    )
+    assert _b64url(base64.urlsafe_b64decode(fields["k"] + "==")) == other_public
+
+    # 仅配置公钥或仅配置私钥时必须失效，避免公私钥错配。
+    monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", None)
+    partial_public = settings.VAPID
+    assert partial_public["publicKey"] == ""
+    assert partial_public["privateKey"] == ""
+
+    monkeypatch.setattr(settings, "VAPID_PUBLIC_KEY", None)
+    monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", other_private)
+    partial_private = settings.VAPID
+    assert partial_private["publicKey"] == ""
+    assert partial_private["privateKey"] == ""

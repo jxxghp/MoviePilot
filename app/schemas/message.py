@@ -391,6 +391,14 @@ class Subscription(BaseModel):
     keys: Optional[dict[str, str]] = Field(default_factory=dict, description="推送订阅的加密公钥与认证密钥")
 
 
+class WebPushPublicKeyData(BaseModel):
+    """
+    浏览器 Web Push 订阅使用的 VAPID 公钥响应数据。
+    """
+
+    public_key: str = Field(description="base64url 编码的未压缩 P-256 VAPID 公钥")
+
+
 class SubscriptionMessage(BaseModel):
     """
     客户端订阅消息体。
