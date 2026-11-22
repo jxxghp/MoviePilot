@@ -239,13 +239,14 @@ _MUSIC_FORMAT_TOKEN_ALT = (
     r"DSD(?:64|128|256|512)?|DSF|DFF|SACD|FLAC|ALAC|APE|CUE|WAV|WAVE|AIFF?|PCM|"
     r"MP3|AAC|M4A|OGG|VORBIS|OPUS|WMA|WEB-?DL|WEBRip|WEB"
 )
-# Gazelle 将音质、抓轨日志、介质与年份串成斜杠尾链。只匹配完整规格尾链，
-# 避免删除作品正文中的斜杠、CD 或 Log；末尾年份仍交由解析器提取。
+# Gazelle 将音质、抓轨日志、介质、转让声明与年份串成斜杠尾链。只匹配完整规格尾链，
+# 避免删除作品正文中的斜杠、CD 或 Log；年份可出现在链中任意位置，仍交由解析器提取。
+# 海豚（HDDolby）音乐区常用 自购/禁转/限转/可替代 与 24bit Lossless 一类的位深前缀。
 _MUSIC_SLASH_SPEC_TAIL_RE = re.compile(
     rf"\s+(?:{_MUSIC_FORMAT_TOKEN_ALT})"
-    rf"(?:\s*/\s*(?:{_MUSIC_FORMAT_TOKEN_ALT}|lossless|Log(?:\s*\(\d{{1,3}}%\))?|"
-    r"CD|Vinyl|分[轨軌]|整[轨軌]|原抓|自抓|自扫|自掃))+"
-    r"(?:\s*/\s*(?P<year>(?:19|20)\d{2}))?\s*$",
+    rf"(?:\s*/\s*(?:{_MUSIC_FORMAT_TOKEN_ALT}|(?:\d{{1,2}}\s*-?\s*bits?\s+)?lossless|"
+    r"Log(?:\s*\(\d{1,3}%\))?|CD|Vinyl|无损音质|无损|分[轨軌]|整[轨軌]|"
+    r"原抓|自抓|自扫|自掃|自购|禁转|限转|可替代|(?P<year>(?:19|20)\d{2})))+\s*$",
     re.IGNORECASE,
 )
 _MUSIC_VIDEO_TOKEN_ALT = (
