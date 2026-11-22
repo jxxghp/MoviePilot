@@ -1,6 +1,9 @@
-"""覆盖媒体服务器统一浏览、筛选、三层详情、播前音轨字幕与进度回传链路。"""
+"""
+覆盖媒体服务器统一浏览、筛选、三层详情、播前音轨字幕与进度回传链路。
+"""
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -9,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.api.endpoints import mediaserver
 from app.chain.mediaserver import MediaServerChain
-from app.modules._base.emby_browse import (
+from app.modules._base.embybrowse import (
     EmbyBrowseConfig,
     emby_browse_items,
     emby_filter_options,
@@ -21,7 +24,7 @@ from app.modules._base.emby_browse import (
     emby_stream_url,
     emby_subtitle_url,
 )
-from app.modules._base.plex_browse import (
+from app.modules._base.plexbrowse import (
     plex_browse_items,
     plex_filter_options,
     plex_item_detail,
@@ -374,3 +377,371 @@ def test_mediaserver_browse_detail_and_server_subtitle_endpoints(monkeypatch: py
         assert manifest["resume_position_ms"] == 30000
         assert len(manifest["subtitles"]) == 1
         assert manifest["subtitles"][0]["subtitle_id"] == "ms:src-1:3.srt"
+
+
+def test_emby_and_plex_boxset_collections() -> None:
+    """验证 Emby 与 Plex 合集（BoxSet / Collection）列表浏览及按 parent_id 下钻合集子作品。"""
+    captured_params: list[dict[str, Any]] = []
+
+    def fake_get_res(_url: str, params: dict[str, Any]) -> Any:
+        captured_params.append(dict(params))
+        if params.get("ParentId") == "box-1":
+            return _mock_response(
+                {
+                    "Items": [
+                        {"Id": "m-1", "Name": "哈利·波特与魔法石", "Type": "Movie", "ProductionYear": 2001}
+                    ],
+                    "TotalRecordCount": 1,
+                }
+            )
+        return _mock_response(
+            {
+                "Items": [
+                    {"Id": "box-1", "Name": "哈利·波特合集", "Type": "BoxSet", "ChildCount": 8}
+                ],
+                "TotalRecordCount": 1,
+            }
+        )
+
+    http = Mock()
+    http.get_res.side_effect = fake_get_res
+    cfg = _emby_config(http)
+
+    boxset_page = emby_browse_items(
+        cfg,
+        library_id="lib-box",
+        item_type="BoxSet",
+    )
+    assert boxset_page is not None and len(boxset_page.items) == 1
+    assert boxset_page.items[0].item_type == "BoxSet"
+    assert boxset_page.items[0].media_type == "合集"
+    assert boxset_page.items[0].subtitle == "共 8 部"
+    assert captured_params[0]["IncludeItemTypes"] == "BoxSet"
+
+    children_page = emby_browse_items(
+        cfg,
+        parent_id="box-1",
+    )
+    assert children_page is not None and len(children_page.items) == 1
+    assert children_page.items[0].item_id == "m-1"
+    assert captured_params[1]["Recursive"] == "false"
+
+    plex_movie = SimpleNamespace(
+        ratingKey="501",
+        type="movie",
+        title="指环王：护戒使者",
+        year=2001,
+        thumb="/t/501",
+    )
+    plex_collection = SimpleNamespace(
+        ratingKey="900",
+        type="collection",
+        title="指环王合集",
+        childCount=3,
+        thumb="/t/900",
+        items=Mock(return_value=[plex_movie]),
+    )
+    plex = SimpleNamespace(
+        fetchItem=Mock(return_value=plex_collection),
+        library=SimpleNamespace(sections=Mock(return_value=[])),
+    )
+    plex_children = plex_browse_items(plex, "http://plex.test", "tok", parent_id="900")
+    assert plex_children is not None and len(plex_children.items) == 1
+    assert plex_children.items[0].item_id == "501"
+
+
+def test_vyo_browse_detail_seasons_episodes_and_search() -> None:
+    """
+    验证 Vyo 媒体服务器浏览、筛选、详情、季集展开与库内搜索转换行为。
+    """
+    from app.modules.vyo.vyo import Vyo
+    from app.schemas.types import MediaType
+
+    vyo = Vyo.__new__(Vyo)
+    vyo._host = "http://vyo.test"
+    vyo._apikey = "secret"
+    fake_api = SimpleNamespace(
+        is_configured=Mock(return_value=True),
+        image_url=lambda item_id, kind: f"http://vyo.test/img/{item_id}/{kind}",
+        play_url=lambda item_id: f"http://vyo.test/play/{item_id}",
+        request=Mock(),
+    )
+    vyo._api = fake_api
+
+    movie_row = {
+        "id": "v-1",
+        "title": "沙丘",
+        "kind": "Movie",
+        "year": 2021,
+        "has_backdrop": True,
+        "duration_ticks": 9_300_000_000,
+        "user_data": {"played": False, "position_ticks": 3_000_000_000},
+        "tmdb_id": 438631,
+        "parent_id": "lib-1",
+        "metadata_info": {
+            "original_title": "Dune",
+            "overview": "沙漠星球史诗",
+            "rating": 8.0,
+            "genres": ["科幻"],
+            "external_ids": {"imdb_id": "tt1160419", "tvdb_id": "999"},
+        },
+        "sources": [{"id": "src-1", "path": "/media/dune.mkv", "size": 1024}],
+    }
+    season_row = {"id": "vs-1", "title": "第 1 季", "kind": "Season", "season": 1}
+    episode_row = {
+        "id": "ve-1",
+        "title": "第 1 集",
+        "kind": "Episode",
+        "season": 1,
+        "episode": 1,
+        "series_id": "v-show",
+        "series_name": "测试剧",
+        "season_id": "vs-1",
+    }
+
+    def fake_request(path: str, **_kwargs: Any) -> Any:
+        """
+        按接口路径返回模拟的 Vyo 响应。
+        """
+        if path == "/items/v-1":
+            return SimpleNamespace(success=True, data=movie_row)
+        return SimpleNamespace(success=False, data=None)
+
+    fake_api.request.side_effect = fake_request
+
+    vyo._Vyo__query_items = Mock(
+        side_effect=[
+            {"items": [movie_row], "total": 2},
+            {"items": [season_row]},
+            {"items": [episode_row]},
+        ]
+    )
+    vyo._Vyo__find_season_id = Mock(return_value="vs-1")
+    vyo._Vyo__search_rows = Mock(return_value=[movie_row])
+    vyo._Vyo__format_item_info = Mock(
+        return_value=SimpleNamespace(item_id="v-1", title="沙丘", year=2021, item_type="Movie")
+    )
+    vyo.get_play_url = Mock(return_value="http://vyo.test/play/v-1")
+
+    page = vyo.browse_items(library_id="lib-1", item_type="movie", sort_by="rating", limit=10)
+    assert page is not None and page.has_more is True and page.items[0].title == "沙丘"
+
+    opts = vyo.get_filter_options(library_id="lib-1")
+    assert "Movie" in opts.item_types
+
+    detail = vyo.get_item_detail("v-1")
+    assert detail is not None and detail.can_play is True and detail.tmdb_id == "438631"
+    assert len(detail.media_sources) == 1 and detail.media_sources[0].name == "dune.mkv"
+
+    seasons = vyo.get_seasons("v-show")
+    assert seasons is not None and seasons[0].season_number == 1
+
+    episodes = vyo.get_season_episodes("v-show", season=1)
+    assert episodes is not None and episodes[0].subtitle == "S01E01"
+
+    search_results = vyo.search_library("沙丘", [MediaType.MOVIE.value, MediaType.TV.value], 5)
+    assert len(search_results) == 1 and search_results[0].item_id == "v-1"
+
+
+def test_module_wrappers_chain_and_webhook_schema_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    验证 Navidrome、Plex、TrimeMedia 模块封装、MediaServerChain 调度及 WebhookEventInfo 身份迁移。
+    """
+    from app.modules.navidrome import NavidromeModule
+    from app.modules.plex import PlexModule
+    from app.modules.plex.plex import Plex
+    from app.modules.trimemedia.module import TrimeMediaModule
+    from app.schemas.mediaserver import MediaServerPlayItem, WebhookEventInfo
+    from app.schemas.types import MediaSource, MediaType
+
+    # NavidromeModule 浏览、筛选项、详情、曲目与定向搜索
+    nav_item = MediaServerBrowseItem(item_id="al-1", title="专辑A", item_type="MusicAlbum")
+    nav_page = MediaServerBrowsePage(items=[nav_item], total_count=1, start_index=0, limit=10, has_more=False)
+    nav_detail = MediaServerItemDetail(item_id="al-1", title="专辑A", item_type="MusicAlbum")
+    nav_play = MediaServerPlayItem(id="tr-1", item_id="tr-1", title="歌曲A", type=MediaType.MUSIC.value)
+    nav_service = SimpleNamespace(
+        browse_items=Mock(return_value=nav_page),
+        get_filter_options=Mock(return_value=MediaServerFilterOptions(genres=["Pop"])),
+        get_item_detail=Mock(return_value=nav_detail),
+        get_season_episodes=Mock(return_value=[nav_item]),
+        search_library=Mock(return_value=[nav_play]),
+    )
+    nav_mod = NavidromeModule()
+    monkeypatch.setattr(nav_mod, "get_instance", lambda name=None: nav_service if name == "nav" else None)
+    monkeypatch.setattr(nav_mod, "get_instances", lambda: {"nav": nav_service})
+
+    assert nav_mod.mediaserver_browse_items("missing") is None
+    assert nav_mod.mediaserver_browse_items("nav").items[0].server == "nav"
+    assert nav_mod.mediaserver_filter_options("nav").genres == ["Pop"]
+    assert nav_mod.mediaserver_item_detail("missing", "al-1") is None
+    assert nav_mod.mediaserver_item_detail("nav", "al-1").server == "nav"
+    assert nav_mod.mediaserver_season_episodes("missing", "al-1") is None
+    assert nav_mod.mediaserver_season_episodes("nav", "al-1")[0].server == "nav"
+    assert nav_mod.mediaserver_search("歌", [MediaType.MOVIE.value], 5) == []
+    assert nav_mod.mediaserver_search("歌", [MediaType.MUSIC.value], 5, server="nav", library_id="1")[0].server == "nav"
+
+    # PlexModule / Plex 按库搜索、流媒体源透传与音乐轨道搜索
+    plex_play = MediaServerPlayItem(id="10", item_id="10", title="电影A", type=MediaType.MOVIE.value)
+    plex_service = SimpleNamespace(
+        search_library_items=Mock(return_value=[plex_play]),
+        get_stream_url=Mock(return_value="http://plex.test/part/1"),
+    )
+    plex_mod = PlexModule()
+    monkeypatch.setattr(plex_mod, "get_instance", lambda name=None: plex_service if name == "plex" else None)
+    monkeypatch.setattr(plex_mod, "get_instances", lambda: {"plex": plex_service})
+    assert plex_mod.mediaserver_search("电", [MediaType.MOVIE.value], 5, server="plex", library_id="2")[0].server == "plex"
+    assert plex_mod.mediaserver_stream_url("plex", "10", "series") is None
+    assert plex_mod.mediaserver_stream_url("plex", "10", "movie", media_source_id="p1") == "http://plex.test/part/1"
+
+    plex_client = Plex.__new__(Plex)
+    plex_client._host = "http://plex.test"
+    plex_client._token = "tok"
+    track_obj = SimpleNamespace(
+        type="track",
+        ratingKey="t-1",
+        title="曲目一",
+        grandparentTitle="歌手",
+        parentTitle="专辑",
+        thumbUrl="/thumb/1",
+        year=2022,
+    )
+    music_lib = SimpleNamespace(type="artist")
+    plex_client._plex = SimpleNamespace(
+        library=SimpleNamespace(
+            sectionByID=Mock(return_value=SimpleNamespace(search=Mock(return_value=[]))),
+            sections=Mock(return_value=[music_lib]),
+        )
+    )
+    plex_client._disable_auto_reload = Mock()
+    plex_client._search_music_library = Mock(return_value=[track_obj])
+    music_found = plex_client.search_library_items("曲", [MediaType.MOVIE.value, MediaType.MUSIC.value], 5, library_id="2")
+    assert len(music_found) == 1 and "X-Plex-Token=tok" in (music_found[0].image or "")
+
+    # TrimeMediaModule 定向实例搜索
+    trime_service = SimpleNamespace(search_library=Mock(return_value=[plex_play]))
+    trime_mod = TrimeMediaModule()
+    monkeypatch.setattr(trime_mod, "get_instance", lambda name=None: trime_service if name == "fn" else None)
+    monkeypatch.setattr(trime_mod, "get_instances", lambda: {"fn": trime_service})
+    assert trime_mod.mediaserver_search("电", [MediaType.MOVIE.value], 5, server="fn", library_id="3")[0].server == "fn"
+
+    # MediaServerChain 新增调度与 WebhookEventInfo 兼容身份验证
+    chain = MediaServerChain()
+    called: list[str] = []
+
+    def fake_run_module(method: str, **_kwargs: Any) -> Any:
+        """
+        记录被调度的模块方法名并返回对应最小结果。
+        """
+        called.append(method)
+        if method == "mediaserver_report_progress":
+            return True
+        if method == "mediaserver_subtitle_url":
+            return "http://emby.test/sub.vtt"
+        return []
+
+    monkeypatch.setattr(chain, "run_module", fake_run_module)
+    assert chain.browse_items(server="emby") == []
+    assert chain.filter_options(server="emby") == []
+    assert chain.item_detail(server="emby", item_id="1") == []
+    assert chain.seasons(server="emby", item_id="1") == []
+    assert chain.season_episodes(server="emby", item_id="1") == []
+    assert chain.report_progress(server="emby", item_id="1", position_ms=1000) is True
+    assert chain.get_subtitle_url(server="emby", item_id="1", subtitle_id="ms:1") == "http://emby.test/sub.vtt"
+    assert "mediaserver_browse_items" in called and "mediaserver_subtitle_url" in called
+
+    legacy_evt = WebhookEventInfo.model_validate({"tmdb_id": 12345})
+    assert legacy_evt.media_source == MediaSource.TMDB and legacy_evt.tmdb_id == "12345"
+    legacy_evt.tmdb_id = 67890
+    assert legacy_evt.media_id == "67890"
+    legacy_evt.tmdb_id = None
+    assert legacy_evt.media_source is None and legacy_evt.tmdb_id is None
+    with pytest.raises(ValueError):
+        WebhookEventInfo.model_validate({"media_source": MediaSource.TMDB})
+    with pytest.raises(ValueError):
+        WebhookEventInfo.model_validate({"media_source": MediaSource.TMDB, "media_id": "0"})
+
+
+def test_mediaserver_browse_endpoints_error_and_subtitle_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    验证媒体服务器浏览、详情、季集与服务端字幕代理接口的异常状态码处理。
+    """
+    app = FastAPI()
+    app.include_router(mediaserver.router, prefix="/mediaserver")
+    app.dependency_overrides[mediaserver.verify_token] = lambda: SimpleNamespace(sub="1", username="alice")
+    client = TestClient(app)
+
+    monkeypatch.setattr(MediaServerChain, "browse_items", lambda self, **kwargs: None)
+    monkeypatch.setattr(MediaServerChain, "item_detail", lambda self, **kwargs: None)
+    monkeypatch.setattr(MediaServerChain, "seasons", lambda self, **kwargs: None)
+    monkeypatch.setattr(MediaServerChain, "season_episodes", lambda self, **kwargs: None)
+    monkeypatch.setattr(MediaServerChain, "get_subtitle_url", lambda self, **kwargs: None)
+    monkeypatch.setattr(
+        mediaserver,
+        "_resolve_stream_item",
+        lambda itemid, user_id, server=None: ("emby", SimpleNamespace(item_id=itemid), None),
+    )
+
+    assert client.get("/mediaserver/browse", params={"server": "emby"}).status_code == 502
+    assert client.get("/mediaserver/detail", params={"itemid": "missing", "server": "emby"}).status_code == 404
+    assert client.get("/mediaserver/seasons", params={"itemid": "s1", "server": "emby"}).status_code == 502
+    assert client.get("/mediaserver/season-episodes", params={"itemid": "s1", "server": "emby"}).status_code == 502
+    assert client.get(
+        "/mediaserver/stream-subtitle",
+        params={"itemid": "m1", "subtitle_id": "ms:1", "server": "emby"},
+    ).status_code == 404
+    assert client.get(
+        "/mediaserver/stream-subtitle",
+        params={"itemid": "m1", "subtitle_id": "local.srt", "server": "emby"},
+    ).status_code == 404
+
+    # 覆盖服务端托管字幕代理成功路径、省略 server 的详情遍历与无配置播放返回
+    from fastapi.responses import StreamingResponse
+
+    monkeypatch.setattr(
+        MediaServerChain,
+        "get_subtitle_url",
+        lambda self, **kwargs: "http://emby.test/sub.vtt",
+    )
+    monkeypatch.setattr(mediaserver, "_configured_stream_hosts", lambda *_a, **_kw: {"emby.test"})
+    monkeypatch.setattr(mediaserver, "_validate_stream_url", lambda url, **_kw: url)
+    monkeypatch.setattr(
+        mediaserver,
+        "_remote_stream_response",
+        lambda *_a, **_kw: StreamingResponse(iter([b"WEBVTT"]), media_type="text/vtt"),
+    )
+    sub_resp = client.get(
+        "/mediaserver/stream-subtitle",
+        params={"itemid": "m1", "subtitle_id": "ms:1", "server": "emby"},
+    )
+    assert sub_resp.status_code == 200 and sub_resp.text == "WEBVTT"
+
+    monkeypatch.setattr(mediaserver, "get_mediaserver_configs", lambda: [])
+    play_empty = client.get("/mediaserver/play/m1")
+    assert play_empty.status_code == 200 and play_empty.json()["success"] is False
+
+    monkeypatch.setattr(
+        mediaserver,
+        "get_mediaserver_configs",
+        lambda: [SimpleNamespace(name=""), SimpleNamespace(name="emby")],
+    )
+    monkeypatch.setattr(
+        MediaServerChain,
+        "iteminfo",
+        lambda self, **kwargs: SimpleNamespace(item_id="m1", server_id="s1", server="emby"),
+    )
+    monkeypatch.setattr(MediaServerChain, "get_play_url", lambda self, **kwargs: "http://emby.test/web/m1")
+    play_ok = client.get("/mediaserver/play/m1")
+    assert play_ok.status_code == 200 and play_ok.json()["data"]["url"] == "http://emby.test/web/m1"
+
+    monkeypatch.setattr(MediaServerChain, "get_play_url", lambda self, **kwargs: None)
+    play_miss = client.get("/mediaserver/play/m1")
+    assert play_miss.status_code == 200 and play_miss.json()["success"] is False
+
+    monkeypatch.setattr(
+        MediaServerChain,
+        "item_detail",
+        lambda self, **kwargs: MediaServerItemDetail(item_id="m1", title="详情", item_type="Movie"),
+    )
+    detail_auto = client.get("/mediaserver/detail", params={"itemid": "m1"})
+    assert detail_auto.status_code == 200 and detail_auto.json()["data"]["item_id"] == "m1"
+

@@ -18,7 +18,7 @@ from app.application.mediaserver import (
     format_emby_family_item,
 )
 from app.foundation.url import UrlUtils
-from app.modules._base.emby_browse import (
+from app.modules._base.embybrowse import (
     EmbyBrowseConfig,
     emby_browse_items,
     emby_filter_options,

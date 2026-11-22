@@ -2,18 +2,16 @@
 Jellyfin 媒体服务器客户端，负责内容查询、图片、刷新及 Webhook 转换。
 """
 
-import hashlib
 import json
 import posixpath
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
-from urllib.parse import quote, urlencode
 
 from requests import Response
 
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
-from app.modules._base.emby_browse import (
+from app.modules._base.embybrowse import (
     EmbyBrowseConfig,
     emby_browse_items,
     emby_filter_options,
@@ -286,6 +284,9 @@ class Jellyfin:
                     f"{self._playhost or self._host}web/index.html#!/{collection_type}"
                     f"?topParentId={library.get('Id')}&collectionType={collection_type}"
                 )
+            elif library.get("CollectionType") == "boxsets":
+                library_type = "合集"
+                link = f"{self._playhost or self._host}web/index.html#!/library.html?topParentId={library.get('Id')}"
             elif library.get("CollectionType") in ("homevideos", "livetv"):
                 library_type = MediaType.UNKNOWN.value
                 link = (
@@ -314,7 +315,11 @@ class Jellyfin:
                     type=library_type,
                     item_count=self.get_items_count(
                         library.get("Id"),
-                        include_item_types="MusicAlbum" if library_type == MediaType.MUSIC.value else "Movie,Series",
+                        include_item_types=(
+                            "MusicAlbum"
+                            if library_type == MediaType.MUSIC.value
+                            else ("BoxSet" if library_type == "合集" else "Movie,Series")
+                        ),
                     )
                     if options.includes(MediaServerField.COUNTS)
                     else None,

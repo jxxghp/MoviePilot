@@ -25,14 +25,14 @@ class FanartModule(_ModuleBase):
     """
     从 Fanart 补充媒体展示图片，并生成媒体服务器兼容的刮削图片清单。
 
-    电影使用 TMDB 标识，电视剧使用 TVDB 标识。普通图片按语言偏好和点赞数选择，
-    季图片按季号取服务端首次提供的同名资源，不支持分集图片。
+    电影使用 TMDB 标识，电视剧优先使用 TVDB 标识，缺失时回退使用 TMDB 标识。
+    普通图片按语言偏好和点赞数选择，季图片按季号取服务端首次提供的同名资源，不支持分集图片。
     """
 
     # 保护缺图告警去重缓存的并发读写：`cachetools.TTLCache` 非线程安全，
     # 容量与过期时间对齐 Fanart 请求缓存，避免长驻进程内存无限增长。
     _missing_warning_lock = threading.Lock()
-    _missing_warning_cache: TTLCache[Tuple[str, str, str, str], bool] = TTLCache(
+    _missing_warning_cache: TTLCache[Tuple[str, str, str, str, str], bool] = TTLCache(
         maxsize=max(get_runtime_setting("CONF").fanart, 1),
         ttl=max(get_runtime_setting("CONF").meta, 1),
     )
@@ -201,18 +201,26 @@ class FanartModule(_ModuleBase):
     @staticmethod
     def __fanart_query(
         mediainfo: MediaInfo,
-    ) -> Optional[Tuple[MediaType, Union[str, int]]]:
+    ) -> Optional[Tuple[MediaType, Union[str, int], str]]:
         """
         获取 Fanart 查询参数。
+
+        电影使用 TMDB 标识；电视剧优先使用 TVDB 标识，缺失 TVDB 标识时回退使用
+        TMDB 标识并标记 ``tmdb`` 来源，避免服务端按默认 TVDB 命名空间返回错误剧集。
+
+        :param mediainfo: 包含媒体类型与外部标识的媒体对象
+        :return: ``(media_type, queryid, source)`` 三元组；模块关闭或缺少可用标识时返回 None
         """
         if not get_runtime_setting('FANART_ENABLE'):
             return None
         if not mediainfo.tmdb_id and not mediainfo.tvdb_id:
             return None
         if mediainfo.type == MediaType.MOVIE and mediainfo.tmdb_id is not None:
-            return MediaType.MOVIE, mediainfo.tmdb_id
+            return MediaType.MOVIE, mediainfo.tmdb_id, "tmdb"
         if mediainfo.tvdb_id:
-            return MediaType.TV, mediainfo.tvdb_id
+            return MediaType.TV, mediainfo.tvdb_id, "tvdb"
+        if mediainfo.type == MediaType.TV and mediainfo.tmdb_id:
+            return MediaType.TV, mediainfo.tmdb_id, "tmdb"
         logger.info(f"{mediainfo.title_year} 没有tvdbid，无法获取fanart图片")
         return None
 
@@ -220,39 +228,46 @@ class FanartModule(_ModuleBase):
     def __missing_warning_key(
         cls,
         mediainfo: MediaInfo,
-        query: Optional[Tuple[MediaType, Union[str, int]]] = None,
+        query: Optional[Tuple[MediaType, Union[str, int], str]] = None,
         key_token: Optional[str] = None,
-    ) -> Tuple[str, str, str, str]:
+    ) -> Tuple[str, str, str, str, str]:
         """
         构造 Fanart 缺图告警的去重键。
 
-        结合媒体类型、查询标识、标题年份与当前 API Key 指纹去重；更换 API Key
-        后指纹随之变化，避免旧配置吞掉新配置下的首次告警。
+        结合媒体类型、标识来源、查询标识、标题年份与当前 API Key 指纹去重；
+        区分 TVDB 与 TMDB 来源避免同号碰撞，更换 API Key 后指纹随之变化。
 
         :param mediainfo: 待提取图片的媒体对象
-        :param query: 已解析的 ``(media_type, queryid)`` 查询参数；直接调用提取方法时可缺省
+        :param query: 已解析的 ``(media_type, queryid, source)`` 查询参数；直接调用提取方法时可缺省
         :param key_token: API Key 指纹；缺省时按当前运行时配置计算
-        :return: 用于缺图告警去重的稳定四元组键
+        :return: 用于缺图告警去重的稳定五元组键
         """
         if query is not None:
-            media_type, queryid = query
+            media_type, queryid, source_key = query
             media_type_key = media_type.value
             query_key = str(queryid)
         elif mediainfo.type == MediaType.MOVIE and mediainfo.tmdb_id is not None:
             media_type_key = MediaType.MOVIE.value
+            source_key = "tmdb"
             query_key = str(mediainfo.tmdb_id)
         elif mediainfo.tvdb_id:
             media_type_key = MediaType.TV.value
+            source_key = "tvdb"
             query_key = str(mediainfo.tvdb_id)
+        elif mediainfo.type == MediaType.TV and mediainfo.tmdb_id:
+            media_type_key = MediaType.TV.value
+            source_key = "tmdb"
+            query_key = str(mediainfo.tmdb_id)
         else:
             media_type_key = mediainfo.type.value if mediainfo.type else ""
+            source_key = ""
             query_key = str(mediainfo.tmdb_id or mediainfo.tvdb_id or "")
         title_year = mediainfo.title_year or ""
         token = cls.__key_token() if key_token is None else key_token
-        return media_type_key, query_key, title_year, token
+        return media_type_key, source_key, query_key, title_year, token
 
     @classmethod
-    def __should_warn_missing(cls, warning_key: Tuple[str, str, str, str]) -> bool:
+    def __should_warn_missing(cls, warning_key: Tuple[str, str, str, str, str]) -> bool:
         """
         判断是否应为指定媒体输出 Fanart 缺图告警，并原子登记已告警状态。
 
@@ -266,7 +281,7 @@ class FanartModule(_ModuleBase):
             return True
 
     @classmethod
-    def __clear_missing_warning(cls, warning_key: Tuple[str, str, str, str]) -> None:
+    def __clear_missing_warning(cls, warning_key: Tuple[str, str, str, str, str]) -> None:
         """
         在获取到有效 Fanart 响应后移除对应媒体的缺图告警记录。
 
@@ -289,7 +304,7 @@ class FanartModule(_ModuleBase):
         result: Optional[dict[str, Any]],
         season: Optional[int] = None,
         *,
-        query: Optional[Tuple[MediaType, Union[str, int]]] = None,
+        query: Optional[Tuple[MediaType, Union[str, int], str]] = None,
         key_token: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """
@@ -301,7 +316,7 @@ class FanartModule(_ModuleBase):
         :param mediainfo: 用于失败日志与去重键的媒体信息
         :param result: Fanart 原始响应
         :param season: 指定季号；None 同时保留媒体级与所有季图片
-        :param query: 已解析的 ``(media_type, queryid)`` 查询参数，缺省时从 ``mediainfo`` 推导
+        :param query: 已解析的 ``(media_type, queryid, source)`` 查询参数，缺省时从 ``mediainfo`` 推导
         :param key_token: API Key 指纹，缺省时按当前运行时配置计算
         :return: 文件名到 URL 的映射；响应失败或没有可用图片时为 None
         """
@@ -458,17 +473,24 @@ class FanartModule(_ModuleBase):
     @classmethod
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     def __request_fanart(
-        cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
+        cls,
+        media_type: MediaType,
+        queryid: Union[str, int],
+        source: str = "",
+        _key_token: str = "",
     ) -> Optional[dict[str, Any]]:
         """
-        查询 Fanart 图集并使用密钥指纹隔离缓存。
+        查询 Fanart 图集并使用标识来源与密钥指纹隔离缓存。
 
         :param media_type: 电影使用 movies 端点，其他类型使用 tv 端点
-        :param queryid: 电影的 TMDB 标识或电视剧的 TVDB 标识
+        :param queryid: 电影的 TMDB 标识，或电视剧的 TVDB / TMDB 标识
+        :param source: 标识来源，电视剧回退使用 TMDB 标识时为 ``tmdb``
         :param _key_token: API 密钥摘要，仅参与缓存身份，不作为接口参数
         :return: 原始图集；无有效响应时为空映射，捕获请求异常时为 None
         """
-        image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
+        image_url = cls.__fanart_url(
+            media_type=media_type, queryid=queryid, source=source
+        )
         try:
             ret = RequestUtils(proxies=get_runtime_setting("PROXY"), timeout=10).get_res(
                 image_url, raise_exception=True
@@ -486,17 +508,24 @@ class FanartModule(_ModuleBase):
     @classmethod
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     async def __async_request_fanart(
-        cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
+        cls,
+        media_type: MediaType,
+        queryid: Union[str, int],
+        source: str = "",
+        _key_token: str = "",
     ) -> Optional[dict[str, Any]]:
         """
-        异步查询 Fanart 图集并使用密钥指纹隔离缓存。
+        异步查询 Fanart 图集并使用标识来源与密钥指纹隔离缓存。
 
         :param media_type: 电影使用 movies 端点，其他类型使用 tv 端点
-        :param queryid: 电影的 TMDB 标识或电视剧的 TVDB 标识
+        :param queryid: 电影的 TMDB 标识，或电视剧的 TVDB / TMDB 标识
+        :param source: 标识来源，电视剧回退使用 TMDB 标识时为 ``tmdb``
         :param _key_token: API 密钥摘要，仅参与缓存身份，不作为接口参数
         :return: 原始图集；无有效响应时为空映射，捕获请求异常时为 None
         """
-        image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
+        image_url = cls.__fanart_url(
+            media_type=media_type, queryid=queryid, source=source
+        )
         try:
             ret = await AsyncRequestUtils(
                 proxies=get_runtime_setting("PROXY"), timeout=10
@@ -522,14 +551,29 @@ class FanartModule(_ModuleBase):
         return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
 
     @classmethod
-    def __fanart_url(cls, media_type: MediaType, queryid: Union[str, int]) -> str:
+    def __fanart_url(
+        cls,
+        media_type: MediaType,
+        queryid: Union[str, int],
+        source: str = "",
+    ) -> str:
         """
         生成 Fanart 请求地址。
+
+        电视剧回退使用 TMDB 标识时附带 ``source=tmdb``，避免与同号 TVDB 剧集冲突。
+
+        :param media_type: 媒体类型，电影使用 movies 端点，其他类型使用 tv 端点
+        :param queryid: 对应来源的媒体标识
+        :param source: 标识来源，电视剧使用 TMDB 标识时为 ``tmdb``
+        :return: 完整的 Fanart 请求 URL
         """
         api_key = get_runtime_setting("FANART_API_KEY")
         if media_type == MediaType.MOVIE:
             return f"https://webservice.fanart.tv/v3/movies/{queryid}?api_key={api_key}"
-        return f"https://webservice.fanart.tv/v3/tv/{queryid}?api_key={api_key}"
+        url = f"https://webservice.fanart.tv/v3/tv/{queryid}?api_key={api_key}"
+        if source == "tmdb":
+            return f"{url}&source=tmdb"
+        return url
 
     def clear_cache(self) -> None:
         """
