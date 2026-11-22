@@ -107,7 +107,7 @@ class PluginMetadataMapper:
             ),
             None,
         )
-        plugin.history = info.get("history") or {}
+        plugin.history = self.normalize_history(info.get("history"))
         plugin.release = bool(info.get("release"))
         plugin.repo_url = market
         plugin.package_version = package_version
@@ -127,6 +127,29 @@ class PluginMetadataMapper:
         except Exception as error:  # noqa: BLE001
             self._logger.error(f"获取插件 {plugin_id} 状态出错：{error}")
             return False
+
+    @staticmethod
+    def normalize_history(history: Any) -> dict[str, str]:
+        """
+        把市场索引的更新记录归一化为版本到文本的映射。
+
+        第三方索引可能把版本说明写成含 ``content`` 的嵌套对象，这里取其正文拼接为文本，
+        无法得到正文的条目直接丢弃，避免错误类型进入响应模型。
+
+        :param history: 索引中的原始 history 字段
+        :return: 仅包含字符串值的更新记录
+        """
+        if not isinstance(history, dict):
+            return {}
+        normalized: dict[str, str] = {}
+        for version, note in history.items():
+            if isinstance(note, dict):
+                note = note.get("content")
+                if isinstance(note, list):
+                    note = "\n".join(str(item) for item in note)
+            if isinstance(note, str):
+                normalized[str(version)] = note
+        return normalized
 
     @staticmethod
     def normalize_label(labels: Any) -> Optional[str]:
