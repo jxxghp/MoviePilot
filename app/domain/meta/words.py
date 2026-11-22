@@ -251,9 +251,6 @@ class WordsMatcher(metaclass=Singleton):
                 return title, "", False
             if front and not _compile_custom_word_regex(r'%s' % front).search(title):
                 return title, "", False
-            offset_word_info_re = _compile_custom_word_regex(
-                r'(?<=%s.*?)[0-9一二三四五六七八九十]+(?=.*?%s)' % (front, back)
-            )
             def replace_episode(match: re.Match[str]) -> str:
                 """
                 仅按原始匹配文本计算偏移，已生成数字不再参加后续匹配。
@@ -262,6 +259,32 @@ class WordsMatcher(metaclass=Singleton):
                 episode_num_int = int(cn2an.cn2an(episode_num_str, "smart"))
                 episode_num_offset_int = calculate_episode_offset(offset, episode_num_int)
                 return _format_episode_offset(episode_num_str, episode_num_offset_int)
+
+            num_re = _compile_custom_word_regex(r'[0-9一二三四五六七八九十]+')
+            if front and back:
+                span_re = _compile_custom_word_regex(r'(?:%s)(?P<mid>.*?)(?:%s)' % (front, back))
+                matched_spans = list(span_re.finditer(title))
+                if not matched_spans:
+                    return title, "", False
+                # 仅在每个非贪婪 front...back 区间内替换数字，防止后锚点匹配后文时误伤 2160p / 2.0 等数值
+                pieces: list[str] = []
+                cursor = 0
+                total_count = 0
+                for span_match in matched_spans:
+                    mid_start, mid_end = span_match.span("mid")
+                    pieces.append(title[cursor:mid_start])
+                    replaced_mid, sub_count = num_re.subn(replace_episode, title[mid_start:mid_end])
+                    pieces.append(replaced_mid)
+                    total_count += sub_count
+                    cursor = mid_end
+                pieces.append(title[cursor:])
+                if total_count == 0:
+                    return title, "", False
+                return "".join(pieces), "", True
+
+            offset_word_info_re = _compile_custom_word_regex(
+                r'(?<=%s.*?)[0-9一二三四五六七八九十]+(?=.*?%s)' % (front, back)
+            )
             result, count = offset_word_info_re.subn(replace_episode, title)
             return result, "", count > 0
         except Exception as err:
