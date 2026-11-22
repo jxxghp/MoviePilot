@@ -980,6 +980,7 @@ class UgreenMediaApi:
         "_token",
         "_user_id",
         "_server_id",
+        "_device_id",
         "_timeout",
         "_verify_ssl",
         "_last_status_code",
@@ -1004,6 +1005,8 @@ class UgreenMediaApi:
         self._token: Optional[str] = None
         self._user_id: Optional[str] = None
         self._server_id: Optional[str] = None
+        # 为每个客户端实例分配独立 DeviceId，避免临时认证或并发连接相互踢掉 AccessToken。
+        self._device_id = f"moviepilot-ugreen-{uuid.uuid4().hex[:12]}"
         self._timeout = timeout
         self._verify_ssl = bool(verify_ssl)
         self._last_status_code: Optional[int] = None
@@ -1057,7 +1060,7 @@ class UgreenMediaApi:
         return {
             "X-Emby-Authorization": (
                 'MediaBrowser Client="MoviePilot", Device="requests", '
-                f'DeviceId="moviepilot-ugreen", Version="1.0.0"{token}'
+                f'DeviceId="{self._device_id}", Version="1.0.0"{token}'
             ),
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -1243,17 +1246,36 @@ class UgreenMediaApi:
 
     def item(self, item_id: Union[str, int]) -> Optional[dict[str, Any]]:
         """
-        通过当前用户的条目查询接口读取单个媒体详情。
+        读取当前用户视角下的单个媒体详情。
+
+        优先调用 `emby/Users/{user_id}/Items/{item_id}`；绿联媒体库服务的 `Items?Ids=...`
+        过滤在部分版本返回空列表，因此仅在详情路径不被支持（HTTP 405/501）时回退该查询。
+        条目不存在（HTTP 404）时静默返回 None 并保留状态码。
 
         :param item_id: 媒体库服务条目标识
-        :return: 首个匹配条目的字典；标识为空、未登录、无匹配或查询失败时返回 None
+        :return: 匹配条目的原始字典；标识为空、未登录、不存在或查询失败时返回 None
         """
         if not self._user_id or not item_id:
             return None
-        payload = self.items(ids=str(item_id), limit=1)
-        if not payload:
+        path = f"emby/Users/{self._user_id}/Items/{item_id}"
+        payload = self._request(path, log_http_failure=False)
+        if isinstance(payload, Mapping) and payload.get("Id"):
+            return dict(payload)
+        if self._last_status_code == 404:
             return None
-        items = payload.get("Items")
+        if self._last_status_code is None:
+            return None
+        if 200 <= self._last_status_code < 300:
+            return None
+        if self._last_status_code not in {405, 501}:
+            logger.error(
+                f"请求绿联媒体库接口失败：{self._host}/{path} HTTP {self._last_status_code}"
+            )
+            return None
+        fallback = self.items(ids=str(item_id), limit=1)
+        if not fallback:
+            return None
+        items = fallback.get("Items")
         return dict(items[0]) if isinstance(items, list) and items else None
 
     def counts(self) -> Optional[dict[str, Any]]:
