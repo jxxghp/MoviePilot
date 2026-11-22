@@ -1265,6 +1265,8 @@ class UgreenMediaApi:
             return None
         if self._last_status_code is None:
             return None
+        if 200 <= self._last_status_code < 300:
+            return None
         if self._last_status_code not in {405, 501}:
             logger.error(
                 f"请求绿联媒体库接口失败：{self._host}/{path} HTTP {self._last_status_code}"

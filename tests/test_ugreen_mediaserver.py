@@ -545,6 +545,40 @@ def test_media_service_tv_episodes_distinguishes_not_found_from_query_failure():
     assert seasons == {1: [1], 2: [3]}
 
 
+def test_media_service_tv_episodes_stale_item_id_fallback_and_error_handling():
+    """
+    媒体库服务缓存 ID 失效时（404 或回退查询 200 空结果）应回退搜索，服务异常则返回查询失败。
+    """
+    ugreen, media_api = _build_media_service()
+
+    media_api.last_status_code = 404
+    assert ugreen.get_tv_episodes(
+        item_id="stale-id",
+        title="示例剧集",
+        year="2026",
+        media_source=MediaSource.TMDB,
+        media_id="200",
+    ) == ("series-id", {1: [2]})
+
+    media_api.last_status_code = 200
+    assert ugreen.get_tv_episodes(
+        item_id="stale-id",
+        title="示例剧集",
+        year="2026",
+        media_source=MediaSource.TMDB,
+        media_id="200",
+    ) == ("series-id", {1: [2]})
+
+    media_api.last_status_code = 500
+    assert ugreen.get_tv_episodes(
+        item_id="stale-id",
+        title="示例剧集",
+        year="2026",
+        media_source=MediaSource.TMDB,
+        media_id="200",
+    ) == (None, None)
+
+
 def test_internal_tv_episodes_and_empty_library_handling():
     """
     内部模式未命中剧集应返回空映射而非失败，空媒体库遍历不应抛出路径异常。

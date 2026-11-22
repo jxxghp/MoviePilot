@@ -1457,7 +1457,9 @@ class Ugreen:
         cached_id = str(item_id)
         item_info = self.get_iteminfo(cached_id)
         if not item_info:
-            if hasattr(self._media_api, "last_status_code") and self._media_api.last_status_code != 404:
+            # 直接详情 404 或回退 Ids 查询返回 200 空列表均表示缓存条目已失效，其余状态视为查询失败。
+            status_code = getattr(self._media_api, "last_status_code", 404)
+            if status_code not in {200, 404}:
                 return None, None
             if not title:
                 return None, {}
