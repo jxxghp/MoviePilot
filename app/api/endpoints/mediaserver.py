@@ -1098,6 +1098,8 @@ def item_seasons(
     itemid: str,
     server: str,
     userinfo: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> _SchemaResponse[List[_SchemaMediaServerBrowseItem]]:
     """
     按季号升序返回媒体服务器中指定电视剧的全部季信息。
@@ -1105,8 +1107,11 @@ def item_seasons(
     :param itemid: 电视剧在媒体服务器中的条目标识
     :param server: 媒体服务器配置名称
     :param userinfo: 已验证的访问令牌
+    :param page: 兼容客户端的分页页码，由统一响应路由按需切片
+    :param count: 兼容客户端的每页数量，由统一响应路由按需切片
     :return: 季卡片列表
     """
+    _ = page, count
     seasons = MediaServerChain().seasons(
         server=server, item_id=itemid, username=userinfo.username
     )
@@ -1126,6 +1131,8 @@ def item_season_episodes(
     season_id: Optional[str] = None,
     season: Optional[int] = Query(default=None, ge=0),
     userinfo: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> _SchemaResponse[List[_SchemaMediaServerBrowseItem]]:
     """
     返回媒体服务器中指定电视剧单季的全部单集详情卡片（含剧照、时长、简介与播放状态）。
@@ -1135,8 +1142,11 @@ def item_season_episodes(
     :param season_id: 可选季条目标识，优先级高于 season
     :param season: 可选季号，0 表示特别篇
     :param userinfo: 已验证的访问令牌
+    :param page: 兼容客户端的分页页码，由统一响应路由按需切片
+    :param count: 兼容客户端的每页数量，由统一响应路由按需切片
     :return: 单集卡片列表
     """
+    _ = page, count
     episodes = MediaServerChain().season_episodes(
         server=server,
         item_id=itemid,

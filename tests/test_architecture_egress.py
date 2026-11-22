@@ -133,8 +133,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
     # 补充现有 SDK 返回类型导入；未增加客户端或请求路径。
     # 新增 LibrarySection 类型绑定以描述音乐查询；SDK 外连操作集合保持一致。
-    # 搜索新增音乐/媒体库条目时仍只经由已持有的 Plex SDK。
-    ("app.modules.plex.plex", "plexapi"): "f56b4be76061f6041f381acc5db5577c86de42bf50ada7dfa4b79d2ddb2ce0be",
+    # 搜索新增音乐/媒体库条目及按库筛选时仍只经由已持有的 Plex SDK。
+    ("app.modules.plex.plex", "plexapi"): "27343fdd0761e0be7090b4dbf3b2f39cab07116f5c9435d2e2454e5f4af7a976",
     ("app.modules.plex.plex", "requests"): "e49c0856fd6c99a3409850898aac7e6e3fa611d4e91546634c178fbfd244e8da",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",

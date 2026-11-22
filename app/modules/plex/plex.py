@@ -21,8 +21,7 @@ from requests import RequestException
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper
 from app.foundation.url import UrlUtils
-from app.runtime.cache import cached
-from app.modules._base.plex_browse import (
+from app.modules._base.plexbrowse import (
     plex_browse_items,
     plex_filter_options,
     plex_item_detail,
@@ -31,6 +30,7 @@ from app.modules._base.plex_browse import (
     plex_seasons,
     plex_subtitle_url,
 )
+from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.mediaserver import (
@@ -653,41 +653,65 @@ class Plex:
                 if len(results) >= limit:
                     return results
         if MediaType.MUSIC.value in types:
-            image_query = MediaServerQueryOptions(
-                fields=frozenset({MediaServerField.IMAGES, MediaServerField.MUSIC})
+            self._append_music_search_items(
+                keyword=keyword.strip(),
+                limit=limit,
+                seen=seen,
+                results=results,
             )
-            for library in self._plex.library.sections():
-                if library.type not in ("artist", "music"):
-                    continue
-                for item in self._search_music_library(library, keyword.strip(), image_query):
-                    if getattr(item, "type", None) != "track":
-                        continue
-                    item_id = str(getattr(item, "ratingKey", None) or getattr(item, "key", "") or "")
-                    title = getattr(item, "title", None)
-                    if not item_id or not title or item_id in seen:
-                        continue
-                    seen.add(item_id)
-                    self._disable_auto_reload(item, image_query)
-                    artist = getattr(item, "grandparentTitle", None)
-                    album = getattr(item, "parentTitle", None)
-                    image = getattr(item, "thumbUrl", None) or getattr(item, "parentThumb", None)
-                    if image and not str(image).startswith(("http://", "https://")):
-                        image = f"{self._host.rstrip('/')}/{str(image).lstrip('/')}?X-Plex-Token={self._token}"
-                    results.append(
-                        _SchemaMediaServerPlayItem(
-                            id=item_id,
-                            item_id=item_id,
-                            title=title,
-                            subtitle=" · ".join(str(value) for value in (artist, album) if value) or None,
-                            year=getattr(item, "year", None),
-                            type=MediaType.MUSIC.value,
-                            image=image,
-                            server_type="plex",
-                        )
-                    )
-                    if len(results) >= limit:
-                        return results
         return results
+
+    def _append_music_search_items(
+        self,
+        keyword: str,
+        limit: int,
+        seen: set[str],
+        results: list[_SchemaMediaServerPlayItem],
+    ) -> None:
+        """
+        从 Plex 音乐媒体库检索单曲并追加到统一搜索结果。
+
+        :param keyword: 已去空白的搜索关键词
+        :param limit: 结果总数上限，达到后提前结束
+        :param seen: 已收录条目标识集合，用于去重
+        :param results: 待追加的统一可播放条目列表
+        """
+        if not self._plex:
+            return
+        image_query = MediaServerQueryOptions(
+            fields=frozenset({MediaServerField.IMAGES, MediaServerField.MUSIC})
+        )
+        for library in self._plex.library.sections():
+            if library.type not in ("artist", "music"):
+                continue
+            for item in self._search_music_library(library, keyword, image_query):
+                if getattr(item, "type", None) != "track":
+                    continue
+                item_id = str(getattr(item, "ratingKey", None) or getattr(item, "key", "") or "")
+                title = getattr(item, "title", None)
+                if not item_id or not title or item_id in seen:
+                    continue
+                seen.add(item_id)
+                self._disable_auto_reload(item, image_query)
+                artist = getattr(item, "grandparentTitle", None)
+                album = getattr(item, "parentTitle", None)
+                image = getattr(item, "thumbUrl", None) or getattr(item, "parentThumb", None)
+                if image and not str(image).startswith(("http://", "https://")):
+                    image = f"{self._host.rstrip('/')}/{str(image).lstrip('/')}?X-Plex-Token={self._token}"
+                results.append(
+                    _SchemaMediaServerPlayItem(
+                        id=item_id,
+                        item_id=item_id,
+                        title=title,
+                        subtitle=" · ".join(str(value) for value in (artist, album) if value) or None,
+                        year=getattr(item, "year", None),
+                        type=MediaType.MUSIC.value,
+                        image=image,
+                        server_type="plex",
+                    )
+                )
+                if len(results) >= limit:
+                    return
 
     def get_tv_episodes(
         self,
