@@ -77,6 +77,16 @@ def test_episode_offset_never_rewrites_its_output(title, expected) -> None:
     assert prepared == expected
 
 
+def test_episode_offset_stays_within_nearest_locator_span() -> None:
+    """
+    后定位词仅界定最近的区间，不得越界修改后面的分辨率或声道数字（如 2160p / 2.0）。
+    """
+    title = "罗小黑战记 S02E42 2160p.WEB-DL.x264.AAC 2.0.mp4"
+    prepared, applied = WordsMatcher().prepare(title, [r"(?i)S02E <> (?=[\W_]) >> EP-40"])
+    assert prepared == "罗小黑战记 S02E2 2160p.WEB-DL.x264.AAC 2.0.mp4"
+    assert applied == [r"(?i)S02E <> (?=[\W_]) >> EP-40"]
+
+
 def test_wallpaper_without_any_backdrop_is_bounded(monkeypatch) -> None:
     """
     全部候选缺少背景图时不再无限抽取同一批结果。
