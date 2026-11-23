@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -37,6 +38,8 @@ class _ProjectionRule(Enum):
     BANGUMI_TO_TMDB = auto()
     # 根据 AniList 的多语言标题、年份和季信息匹配 TMDB 身份。
     ANILIST_TO_TMDB = auto()
+    # 根据 IMDb 标识直接通过 TMDB 外部标识接口精确匹配 TMDB 身份。
+    IMDB_TO_TMDB = auto()
     # 根据 TMDB 详情匹配豆瓣身份。
     TMDB_TO_DOUBAN = auto()
     # 根据 Bangumi 详情匹配豆瓣身份。
@@ -49,6 +52,7 @@ _PROJECTION_RULES: Final = {
     (MediaSource.Douban, MediaSource.TMDB): _ProjectionRule.DOUBAN_TO_TMDB,
     (MediaSource.Bangumi, MediaSource.TMDB): _ProjectionRule.BANGUMI_TO_TMDB,
     (MediaSource.AniList, MediaSource.TMDB): _ProjectionRule.ANILIST_TO_TMDB,
+    (MediaSource.IMDb, MediaSource.TMDB): _ProjectionRule.IMDB_TO_TMDB,
     (MediaSource.TMDB, MediaSource.Douban): _ProjectionRule.TMDB_TO_DOUBAN,
     (MediaSource.Bangumi, MediaSource.Douban): _ProjectionRule.BANGUMI_TO_DOUBAN,
 }
@@ -58,6 +62,8 @@ _NUMERIC_SOURCE_RULES: Final = {
     _ProjectionRule.TMDB_TO_DOUBAN,
     _ProjectionRule.BANGUMI_TO_DOUBAN,
 }
+# IMDb 原生条目标识必须为 tt 加数字，统一转小写后再用于查询与共享缓存键。
+_IMDB_ID_PATTERN: Final = re.compile(r"^tt\d+$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -167,6 +173,10 @@ def _build_projection_plan(
     rule = _PROJECTION_RULES.get((source, target), _ProjectionRule.EVENT)
     if rule in _NUMERIC_SOURCE_RULES and not normalized_id.isdigit():
         return None
+    if rule == _ProjectionRule.IMDB_TO_TMDB:
+        if not _IMDB_ID_PATTERN.fullmatch(normalized_id):
+            return None
+        normalized_id = normalized_id.lower()
     return _ProjectionPlan(
         rule=rule,
         source=source,
@@ -425,8 +435,15 @@ def _convert_builtin_projection(
     plan: _ProjectionPlan,
 ) -> Optional[_ProjectionPayload]:
     """
-    同步执行来源读取、纯投影和目标匹配三阶段流程。
+    同步执行来源读取、纯投影和目标匹配流程；IMDb 直连 TMDB 外部标识匹配。
     """
+    if plan.rule == _ProjectionRule.IMDB_TO_TMDB:
+        return owner.match_tmdbinfo(
+            name="",
+            mtype=plan.media_type,
+            season=plan.season,
+            imdbid=plan.media_id,
+        )
     source_info = _load_projection_source(owner, plan)
     match = _build_projection_match(plan, source_info) if source_info else None
     return _apply_projection_match(owner, match) if match else None
@@ -437,8 +454,15 @@ async def _async_convert_builtin_projection(
     plan: _ProjectionPlan,
 ) -> Optional[_ProjectionPayload]:
     """
-    异步执行来源读取、纯投影和目标匹配三阶段流程。
+    异步执行来源读取、纯投影和目标匹配流程；IMDb 直连 TMDB 外部标识匹配。
     """
+    if plan.rule == _ProjectionRule.IMDB_TO_TMDB:
+        return await owner.async_match_tmdbinfo(
+            name="",
+            mtype=plan.media_type,
+            season=plan.season,
+            imdbid=plan.media_id,
+        )
     source_info = await _async_load_projection_source(owner, plan)
     match = _build_projection_match(plan, source_info) if source_info else None
     return await _async_apply_projection_match(owner, match) if match else None

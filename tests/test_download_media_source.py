@@ -220,3 +220,333 @@ def test_subtitle_download_passes_generic_media_source(monkeypatch) -> None:
     assert response.success is True
     assert captured["media_source"] == "anilist"
     assert captured["media_id"] == "154587"
+
+
+def _patch_recognize_source(monkeypatch, source: str) -> None:
+    """
+    在当前用例中隔离替换 RECOGNIZE_SOURCE 配置值。
+    """
+    monkeypatch.setattr(
+        download_endpoint,
+        "get_runtime_settings",
+        lambda: SimpleNamespace(get=lambda key, default=None: source if key == "RECOGNIZE_SOURCE" else default),
+    )
+
+
+def test_download_add_converts_imdb_site_resource_to_tmdb_when_recognize_source_is_tmdb(
+    monkeypatch,
+) -> None:
+    """
+    RECOGNIZE_SOURCE=themoviedb 时，站点资源携带的 IMDb 身份应转为 TMDB 主身份并保留中文标题。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    captured: dict = {"recognize": []}
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 1101383,
+            "media_type": MediaType.MOVIE,
+            "title": "逃出绝命街",
+            "original_title": "The End of Oak Street",
+            "release_date": "2026-01-01",
+        }
+    )
+
+    class FakeMediaChain:
+        """
+        模拟 IMDb 到 TMDB 的身份投影和本地化识别。
+        """
+
+        def convert_media_identity(self, **kwargs):
+            """
+            记录投影调用并返回对应的 TMDB 电影详情。
+            """
+            captured["convert"] = kwargs
+            return {"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+
+        def recognize_media(self, **kwargs):
+            """
+            记录每次识别参数并按 TMDB 身份返回中文电影信息。
+            """
+            captured["recognize"].append(kwargs)
+            assert kwargs["media_source"] == MediaSource.TMDB
+            assert kwargs["media_id"] == "1101383"
+            return tmdb_media
+
+    class FakeDownloadChain:
+        """
+        记录最终提交到下载链的上下文。
+        """
+
+        def download_single(self, **kwargs):
+            """
+            保存下载上下文并返回任务 ID。
+            """
+            captured["download"] = kwargs
+            return "download-tmdb"
+
+    monkeypatch.setattr(download_endpoint, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", FakeDownloadChain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="The.End.of.Oak.Street.2026.1080p.WEB-DL",
+            category=MediaType.MOVIE.value,
+            media_source=MediaSource.IMDb,
+            media_id="tt27165187",
+        ),
+        media_source=MediaSource.IMDb,
+        media_id="tt27165187",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    assert captured["convert"] == {
+        "target_source": MediaSource.TMDB,
+        "media_source": MediaSource.IMDb,
+        "media_id": "tt27165187",
+        "season": None,
+    }
+    assert len(captured["recognize"]) == 1
+    assert captured["recognize"][0]["mtype"] == MediaType.MOVIE
+    context = captured["download"]["context"]
+    assert context.media_info is tmdb_media
+    assert context.media_info.media_source == MediaSource.TMDB
+    assert context.media_info.media_id == "1101383"
+    assert context.media_info.title == "逃出绝命街"
+
+
+def test_download_add_converts_manual_imdb_id_and_fills_projected_tv_season(monkeypatch) -> None:
+    """
+    手动提交 IMDb 剧集/单集标识时，应转为 TMDB 剧集身份并在标题缺季号时补齐投影季号。
+    """
+    _patch_recognize_source(monkeypatch, "tmdb")
+    captured: dict = {}
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 209867,
+            "media_type": MediaType.TV,
+            "name": "葬送的芙莉莲",
+            "first_air_date": "2023-09-29",
+        }
+    )
+
+    class FakeMediaChain:
+        """
+        模拟返回带季号的 TMDB 剧集投影与识别。
+        """
+
+        def convert_media_identity(self, **kwargs):
+            """
+            返回带第二季信息的剧集投影结果。
+            """
+            captured["convert"] = kwargs
+            return {"id": 209867, "media_type": MediaType.TV, "season": 2}
+
+        def recognize_media(self, **kwargs):
+            """
+            保存传给 TMDB 识别的元数据与参数。
+            """
+            captured["recognize"] = kwargs
+            return tmdb_media
+
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-tv"
+    monkeypatch.setattr(download_endpoint, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(title="Frieren Special"),
+        media_source="imdb",
+        media_id="tt29000001",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    assert captured["recognize"]["media_source"] == MediaSource.TMDB
+    assert captured["recognize"]["media_id"] == "209867"
+    assert captured["recognize"]["mtype"] == MediaType.TV
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.meta_info.begin_season == 2
+    assert context.media_info is tmdb_media
+
+
+def test_download_add_converts_torrent_embedded_douban_identity_to_tmdb(monkeypatch) -> None:
+    """
+    站点资源自带豆瓣身份且默认识别源为 TMDB 时，同样优先转换为 TMDB 整剧身份。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 124101,
+            "media_type": MediaType.TV,
+            "name": "绝望写手",
+            "first_air_date": "2021-05-13",
+        }
+    )
+    media_chain = Mock()
+    media_chain.convert_media_identity.return_value = {
+        "id": 124101,
+        "media_type": MediaType.TV,
+        "season": 3,
+    }
+    media_chain.recognize_media.return_value = tmdb_media
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-douban-to-tmdb"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="Hacks.S03E01.1080p.WEB-DL",
+            media_source=MediaSource.Douban,
+            media_id="35932853",
+        ),
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    media_chain.convert_media_identity.assert_called_once_with(
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        season=3,
+    )
+    assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource.TMDB
+    assert media_chain.recognize_media.call_args.kwargs["media_id"] == "124101"
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info is tmdb_media
+
+
+def test_download_add_falls_back_to_imdb_without_polluting_meta_when_tmdb_fails(monkeypatch) -> None:
+    """
+    TMDB 投影失败或 TMDB 识别失败时，应保留未污染的原元数据并回退 IMDb 识别结果。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    imdb_media = MediaInfo(
+        media_source=MediaSource.IMDb,
+        media_id="tt27165187",
+        type=MediaType.MOVIE,
+        title="The End of Oak Street",
+    )
+    recognize_calls: list[dict] = []
+
+    class FakeMediaChain:
+        """
+        模拟 TMDB 识别先修改元数据后失败，再回退 IMDb 识别成功。
+        """
+
+        @staticmethod
+        def convert_media_identity(**_kwargs):
+            """
+            返回 TMDB 候选以触发 TMDB 识别路径。
+            """
+            return {"id": 1101383, "media_type": MediaType.MOVIE}
+
+        @staticmethod
+        def recognize_media(**kwargs):
+            """
+            TMDB 识别模拟写入元数据后失败，IMDb 识别返回英文媒体信息。
+            """
+            recognize_calls.append(kwargs)
+            if kwargs["media_source"] == MediaSource.TMDB:
+                kwargs["meta"].media_source = MediaSource.TMDB
+                kwargs["meta"].media_id = "1101383"
+                return None
+            return imdb_media
+
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-fallback"
+    monkeypatch.setattr(download_endpoint, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="The.End.of.Oak.Street.2026.1080p.WEB-DL",
+            media_source=MediaSource.IMDb,
+            media_id="tt27165187",
+        ),
+        media_source=MediaSource.IMDb,
+        media_id="tt27165187",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    assert [call["media_source"] for call in recognize_calls] == [
+        MediaSource.TMDB,
+        MediaSource.IMDb,
+    ]
+    fallback_meta = recognize_calls[1]["meta"]
+    assert fallback_meta.media_source is None
+    assert fallback_meta.media_id is None
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info is imdb_media
+
+
+def test_download_add_keeps_imdb_when_recognize_source_is_not_tmdb(monkeypatch) -> None:
+    """
+    当系统 RECOGNIZE_SOURCE 不是 TMDB 时，下载接口不应强制转换 IMDb 身份。
+    """
+    _patch_recognize_source(monkeypatch, "imdb")
+    imdb_media = MediaInfo(
+        media_source=MediaSource.IMDb,
+        media_id="tt27165187",
+        type=MediaType.MOVIE,
+        title="The End of Oak Street",
+    )
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = imdb_media
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-imdb"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="The.End.of.Oak.Street.2026.1080p.WEB-DL",
+            media_source=MediaSource.IMDb,
+            media_id="tt27165187",
+        ),
+        media_source=MediaSource.IMDb,
+        media_id="tt27165187",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    media_chain.convert_media_identity.assert_not_called()
+    assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource.IMDb
+    assert media_chain.recognize_media.call_args.kwargs["media_id"] == "tt27165187"
+    assert download_chain.download_single.call_args.kwargs["context"].media_info is imdb_media
+
+
+def test_download_add_skips_conversion_when_source_is_already_tmdb(monkeypatch) -> None:
+    """
+    已是 TMDB 身份的下载请求直接识别，不重复触发跨来源投影。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    tmdb_media = MediaInfo(
+        tmdb_info={"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+    )
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = tmdb_media
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-already-tmdb"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="The.End.of.Oak.Street.2026.1080p.WEB-DL",
+            media_source=MediaSource.TMDB,
+            media_id="1101383",
+        ),
+        media_source=MediaSource.TMDB,
+        media_id="1101383",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    media_chain.convert_media_identity.assert_not_called()
+    assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource.TMDB
+    assert media_chain.recognize_media.call_args.kwargs["media_id"] == "1101383"

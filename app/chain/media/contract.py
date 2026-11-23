@@ -500,10 +500,11 @@ if TYPE_CHECKING:
 
         def match_tmdbinfo(
             self,
-            name: str,
+            name: str = "",
             mtype: Optional[MediaType] = None,
             year: Optional[str] = None,
             season: Optional[int] = None,
+            imdbid: Optional[str] = None,
         ) -> Optional[_MediaPayload]:
             """
             同步匹配 TMDB 详情。
@@ -512,10 +513,11 @@ if TYPE_CHECKING:
 
         async def async_match_tmdbinfo(
             self,
-            name: str,
+            name: str = "",
             mtype: Optional[MediaType] = None,
             year: Optional[str] = None,
             season: Optional[int] = None,
+            imdbid: Optional[str] = None,
         ) -> Optional[_MediaPayload]:
             """
             异步匹配 TMDB 详情。

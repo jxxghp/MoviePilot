@@ -978,8 +978,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10524,
-  "edge_sha256": "51067d3a051ddd91b2c89819b815f71a4e9dbeb95e2572a3fa6315263ca2e39e",
+  "edge_count": 10525,
+  "edge_sha256": "013377dfdc2a13d76045e0d071283ecd4e3225fa7c1e3a609ee573e6bb44bdb4",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2697,6 +2697,7 @@
     "app.api.endpoints.download -> app.schemas.context",
     "app.api.endpoints.download -> app.schemas.download",
     "app.api.endpoints.download -> app.schemas.file",
+    "app.api.endpoints.download -> app.schemas.media",
     "app.api.endpoints.download -> app.schemas.music",
     "app.api.endpoints.download -> app.schemas.response",
     "app.api.endpoints.download -> app.schemas.token",

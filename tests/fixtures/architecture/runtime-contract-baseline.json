@@ -4564,7 +4564,9 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "TmdbMatchRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "imdbid"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6592,7 +6594,9 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "TmdbMatchRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "imdbid"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [

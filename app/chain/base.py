@@ -362,37 +362,61 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
 
     def match_tmdbinfo(
         self,
-        name: str,
+        name: str = "",
         mtype: Optional[MediaType] = None,
         year: Optional[str] = None,
         season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """
         搜索和匹配TMDB信息
 
-        :param name: 标题
+        :param name: 标题，仅按 IMDb 标识精确匹配时可为空字符串
         :param mtype: 类型
         :param year: 年份
         :param season: 季
+        :param imdbid: IMDb 媒体标识，旧模块可不接收
         """
-        return cast(Optional[dict[str, Any]], self.run_module("match_tmdbinfo", name=name, mtype=mtype, year=year, season=season))
+        return cast(
+            Optional[dict[str, Any]],
+            self.run_module(
+                "match_tmdbinfo",
+                name=name,
+                mtype=mtype,
+                year=year,
+                season=season,
+                imdbid=imdbid,
+            ),
+        )
 
     async def async_match_tmdbinfo(
         self,
-        name: str,
+        name: str = "",
         mtype: Optional[MediaType] = None,
         year: Optional[str] = None,
         season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """
         搜索和匹配TMDB信息（异步版本）
 
-        :param name: 标题
+        :param name: 标题，仅按 IMDb 标识精确匹配时可为空字符串
         :param mtype: 类型
         :param year: 年份
         :param season: 季
+        :param imdbid: IMDb 媒体标识，旧模块可不接收
         """
-        return cast(Optional[dict[str, Any]], await self.async_run_module("async_match_tmdbinfo", name=name, mtype=mtype, year=year, season=season))
+        return cast(
+            Optional[dict[str, Any]],
+            await self.async_run_module(
+                "async_match_tmdbinfo",
+                name=name,
+                mtype=mtype,
+                year=year,
+                season=season,
+                imdbid=imdbid,
+            ),
+        )
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """

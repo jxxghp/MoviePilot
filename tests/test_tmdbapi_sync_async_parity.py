@@ -35,6 +35,7 @@ def _api() -> TmdbApi:
         collections=Mock(),
         async_collections=AsyncMock(),
     )
+    api.find = SimpleNamespace(find_by_imdb_id=Mock(), async_find_by_imdb_id=AsyncMock())
     api.movie = SimpleNamespace(details=Mock(), async_details=AsyncMock())
     api.tv = SimpleNamespace(details=Mock(), async_details=AsyncMock())
     return api
@@ -395,3 +396,148 @@ def test_get_info_sync_async_propagate_connection_error_at_same_boundary() -> No
         api.get_info(MediaType.MOVIE, 50, raise_on_connection_error=True)
     with pytest.raises(TMDbConnectionError):
         asyncio.run(api.async_get_info(MediaType.MOVIE, 50, raise_on_connection_error=True))
+
+
+@pytest.mark.parametrize(
+    ("found", "mtype", "season", "expected_type", "expected_id", "expected_season"),
+    [
+        (
+            {"movie_results": [{"id": 1101383}], "tv_results": []},
+            None,
+            None,
+            MediaType.MOVIE,
+            1101383,
+            None,
+        ),
+        (
+            {"movie_results": [{"id": 1101383}], "tv_results": []},
+            None,
+            1,
+            MediaType.MOVIE,
+            1101383,
+            None,
+        ),
+        (
+            {"movie_results": [], "tv_results": [{"id": 209867}]},
+            None,
+            0,
+            MediaType.TV,
+            209867,
+            0,
+        ),
+        (
+            {"movie_results": [], "tv_results": [], "tv_season_results": [{"show_id": 209867, "season_number": 2}]},
+            None,
+            None,
+            MediaType.TV,
+            209867,
+            2,
+        ),
+        (
+            {"movie_results": [], "tv_results": [], "tv_episode_results": [{"show_id": 209867, "season_number": 3}]},
+            MediaType.TV,
+            None,
+            MediaType.TV,
+            209867,
+            3,
+        ),
+        (
+            {"movie_results": [], "tv_results": [], "tv_episode_results": [{"show_id": 209867, "season_number": 3}]},
+            MediaType.TV,
+            1,
+            MediaType.TV,
+            209867,
+            1,
+        ),
+        (
+            {"movie_results": [{"id": 1101383}], "tv_results": [{"id": 209867}]},
+            MediaType.MOVIE,
+            None,
+            MediaType.MOVIE,
+            1101383,
+            None,
+        ),
+        (
+            {"movie_results": [{"id": 1101383}], "tv_results": [{"id": 209867}]},
+            None,
+            2,
+            MediaType.TV,
+            209867,
+            2,
+        ),
+    ],
+)
+def test_match_by_imdb_id_sync_async_resolve_target_and_details(
+    found: dict,
+    mtype: Optional[MediaType],
+    season: Optional[int],
+    expected_type: MediaType,
+    expected_id: int,
+    expected_season: Optional[int],
+) -> None:
+    """
+    IMDb 外部标识查找在同步与异步入口应共享目标选取、完整详情补全和季号语义。
+    """
+    api = _api()
+    api.find.find_by_imdb_id.return_value = found
+    api.find.async_find_by_imdb_id.return_value = found
+    api.movie.details.return_value = _movie_detail(expected_id, "逃出绝命街")
+    api.movie.async_details.return_value = _movie_detail(expected_id, "逃出绝命街")
+    api.tv.details.return_value = _tv_detail(expected_id, "示例剧")
+    api.tv.async_details.return_value = _tv_detail(expected_id, "示例剧")
+
+    sync_result = api.match_by_imdb_id(" TT27165187 ", mtype=mtype, season_number=season)
+    async_result = asyncio.run(api.async_match_by_imdb_id(" TT27165187 ", mtype=mtype, season_number=season))
+
+    assert sync_result == async_result
+    assert sync_result is not None
+    assert sync_result["id"] == expected_id
+    assert sync_result["media_type"] == expected_type
+    if expected_season is None:
+        assert "season" not in sync_result
+    else:
+        assert sync_result["season"] == expected_season
+    api.find.find_by_imdb_id.assert_called_once_with("tt27165187")
+    api.find.async_find_by_imdb_id.assert_awaited_once_with("tt27165187")
+
+
+@pytest.mark.parametrize(
+    ("imdb_id", "found", "mtype"),
+    [
+        ("12345", {"movie_results": [{"id": 1}]}, None),
+        ("tt", {"movie_results": [{"id": 1}]}, None),
+        ("tt27165187", {"movie_results": [{"id": 1}]}, MediaType.MUSIC),
+        ("tt27165187", {"movie_results": [{"id": 1}], "tv_results": [{"id": 2}]}, None),
+        ("tt27165187", {"movie_results": [], "tv_results": [{"id": 2}]}, MediaType.MOVIE),
+        ("tt27165187", {"movie_results": [{"id": 1}], "tv_results": []}, MediaType.TV),
+        ("tt27165187", None, None),
+    ],
+)
+def test_match_by_imdb_id_sync_async_reject_invalid_mismatched_and_ambiguous_results(
+    imdb_id: str,
+    found: Optional[dict],
+    mtype: Optional[MediaType],
+) -> None:
+    """
+    无效 IMDb 标识、类型冲突及无季号歧义在同步与异步入口均应返回空值。
+    """
+    api = _api()
+    api.find.find_by_imdb_id.return_value = found
+    api.find.async_find_by_imdb_id.return_value = found
+
+    assert api.match_by_imdb_id(imdb_id, mtype=mtype) is None
+    assert asyncio.run(api.async_match_by_imdb_id(imdb_id, mtype=mtype)) is None
+    api.movie.details.assert_not_called()
+    api.tv.details.assert_not_called()
+
+
+def test_match_by_imdb_id_sync_async_handle_client_errors() -> None:
+    """
+    TMDB /find 接口异常时双入口均安全返回空值。
+    """
+    api = _api()
+    api.find.find_by_imdb_id.side_effect = TMDbException("boom")
+    api.find.async_find_by_imdb_id.side_effect = RuntimeError("network")
+
+    assert api.match_by_imdb_id("tt27165187") is None
+    assert asyncio.run(api.async_match_by_imdb_id("tt27165187")) is None

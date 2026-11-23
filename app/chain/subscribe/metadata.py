@@ -119,7 +119,7 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         media_chain_factory: Callable[[], Any],
     ) -> Optional[SubscriptionSnapshot]:
         """
-        在元数据巡检中重试豆瓣、Bangumi 或 AniList 到 TMDB 的订阅身份转换。
+        在元数据巡检中重试豆瓣、Bangumi、AniList 或 IMDb 到 TMDB 的订阅身份转换。
 
         该补偿复用既有的 TMDB 元数据巡检周期。没有匹配结果、外部识别失败或目标身份
         已被其他订阅占用时保留原订阅，避免转换失败影响当前订阅的后续搜索。
@@ -135,7 +135,7 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         if is_tmdb_recognize_source is None or not is_tmdb_recognize_source():
             return None
         source, media_id = resolve_media_identity(media=subscribe)
-        if source not in (MediaSource.Douban, MediaSource.Bangumi, MediaSource.AniList) or not media_id:
+        if source not in (MediaSource.Douban, MediaSource.Bangumi, MediaSource.AniList, MediaSource.IMDb) or not media_id:
             return None
 
         media_chain = media_chain_factory()

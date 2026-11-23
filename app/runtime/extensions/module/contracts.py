@@ -153,6 +153,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.MAPPING,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("name", "mtype", "year", "season"),
+        optional_parameters=("imdbid",),
     ),
     "update_recognize_cache": ModuleMethodContract(
         family="media-recognition",
