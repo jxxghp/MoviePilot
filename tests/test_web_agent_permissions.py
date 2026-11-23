@@ -283,6 +283,59 @@ def test_non_admin_prompt_omits_host_details_and_subagent_principal_stays_user()
     subagent_context = context.for_subagent()
     assert subagent_context.principal.role is PrincipalRole.USER
 
+    background_context = ToolPolicyContext(
+        session_id="background:1",
+        user_id="system",
+        origin=ToolOrigin.BACKGROUND,
+        principal_type=PrincipalType.BACKGROUND,
+        auth_source=AuthSource.INTERNAL,
+        agent_context={"is_admin": False},
+    )
+    assert background_context.principal.role is PrincipalRole.SYSTEM_INTERNAL
+
+
+def test_web_agent_api_context_permissions_and_inactive_guard() -> None:
+    """
+    注入执行器与停用状态时，WebAgent API 仍应按上下文权限、媒体类型与激活状态校验。
+    """
+    executor = SimpleNamespace(execute=AsyncMock(return_value='{"success":true}'))
+    gateway = MoviePilotApiTool(session_id="web-agent:20:s1", user_id="20", executor=executor)
+    gateway.set_message_attr(channel=NotificationChannel.WebAgent.value, source="web-agent", username="carol")
+
+    # 停用状态直接拦截
+    gateway.set_agent_context({"is_admin": False, "web_user_active": False})
+    inactive_payload = json.loads(asyncio.run(gateway.run("config.user.get")))
+    assert inactive_payload["error"] == "permission_denied"
+    assert "已停用" in inactive_payload["message"]
+
+    # 未注入权限上下文时按 fail-closed 拒绝
+    gateway.set_agent_context({"is_admin": False, "web_user_active": True})
+    denied_no_perm = json.loads(asyncio.run(gateway.run("subscription.list")))
+    assert denied_no_perm["error"] == "permission_denied"
+
+    # 结合 query / body 媒体类型做订阅子功能校验
+    gateway.set_agent_context(
+        {
+            "is_admin": False,
+            "web_user_active": True,
+            "web_user_permissions": {
+                "subscribe": True,
+                "features": {"subscribe.movie": False, "subscribe.tv": True},
+            },
+        }
+    )
+    denied_movie = json.loads(
+        asyncio.run(gateway.run("subscription.add", body={"name": "Test", "type": "电影"}))
+    )
+    assert denied_movie["error"] == "permission_denied"
+    assert gateway._extract_request_media_type(query={"mtype": "tv"}, body=None) == "tv"
+    assert gateway._extract_request_media_type(query={}, body=None) is None
+    allowed_tv = json.loads(
+        asyncio.run(gateway.run("subscription.add", body={"name": "Show", "type": "电视剧"}))
+    )
+    assert allowed_tv["success"] is True
+    executor.execute.assert_awaited_once()
+
 
 def test_policy_middleware_blocks_plugin_and_inactive_web_user() -> None:
     """
