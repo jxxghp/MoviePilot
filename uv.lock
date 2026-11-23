@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
@@ -534,7 +534,7 @@ name = "cffi"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pycparser", marker = "implementation_name != 'PyPy' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "pycparser", marker = "implementation_name != 'PyPy'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz", hash = "sha256:dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be", size = 530807, upload-time = "2026-08-03T21:21:18.939Z" }
 wheels = [
@@ -646,7 +646,7 @@ name = "click"
 version = "8.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/d4/81420972a676e8ffea40450d8c8c92943e7218a78fe9b64359836cc9876b/click-8.4.2.tar.gz", hash = "sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6", size = 338000, upload-time = "2026-06-24T17:45:15.148Z" }
 wheels = [
@@ -752,7 +752,7 @@ name = "cryptography"
 version = "50.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "platform_python_implementation != 'PyPy' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "cffi", marker = "platform_python_implementation != 'PyPy'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/de/41/6cbdcf9142d00fe82836fbb51e503e58088575cf7a0fe1dbff6695bf0840/cryptography-50.0.0.tar.gz", hash = "sha256:eeac2acb5a20ed25e0ad6d1df9891a520b78b404266b6d11778f25d5d691a6c9", size = 880201, upload-time = "2026-07-31T14:25:10.11Z" }
 wheels = [
@@ -1137,7 +1137,7 @@ wheels = [
 brotli = [
     { name = "brotli", version = "1.2.0", source = { url = "https://github.com/google/brotli/archive/0ed4268a4401abcb4472096340477cf4af7d1a2b.tar.gz" }, marker = "(platform_python_implementation == 'CPython' and extra == 'group-10-moviepilot-runtime-free-threaded') or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
     { name = "brotli", version = "1.2.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_python_implementation == 'CPython' and extra != 'group-10-moviepilot-runtime-free-threaded') or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
-    { name = "brotlicffi", marker = "platform_python_implementation != 'CPython' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'" },
 ]
 http2 = [
     { name = "h2" },
@@ -1515,7 +1515,7 @@ dependencies = [
     { name = "anyio" },
     { name = "distro" },
     { name = "httpx" },
-    { name = "orjson", marker = "platform_python_implementation != 'PyPy' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "orjson", marker = "platform_python_implementation != 'PyPy'" },
     { name = "packaging" },
     { name = "pydantic" },
     { name = "requests" },
@@ -1683,6 +1683,7 @@ wheels = [
 [[package]]
 name = "moviepilot"
 source = { virtual = "." }
+default-groups = ["dev", "runtime-standard"]
 dependencies = [
     { name = "aiofiles" },
     { name = "aioshutil" },
@@ -1852,7 +1853,7 @@ requires-dist = [
     { name = "langgraph", specifier = "~=1.2.14" },
     { name = "langgraph-checkpoint", specifier = "~=4.2.0" },
     { name = "lark-oapi", specifier = "~=1.6.8" },
-    { name = "moviepilot-rust", specifier = "~=0.3.14" },
+    { name = "moviepilot-rust", specifier = "~=0.3.15" },
     { name = "mutagen", specifier = "~=1.47.0" },
     { name = "openai", specifier = "~=2.41.1" },
     { name = "orjson", specifier = "==3.12.0" },
@@ -1942,23 +1943,23 @@ runtime-standard = [
 
 [[package]]
 name = "moviepilot-rust"
-version = "0.3.14"
+version = "0.3.15"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/88/b6210a112ed50266c41f1ea9defdec0002e97945d64ff28f795f23f1ec2a/moviepilot_rust-0.3.14-cp314-abi3-macosx_10_12_x86_64.whl", hash = "sha256:273640c526f37446ebb8c3b9bb632488aa7b2773ebcb079344d8b8eb41e7b549", size = 5597997, upload-time = "2026-11-22T16:53:12.515Z" },
-    { url = "https://files.pythonhosted.org/packages/e0/b1/6f5a78b1c576d13a8552d0d2b8b1e5ddacee30d1c5cbceb205ea2797526c/moviepilot_rust-0.3.14-cp314-abi3-macosx_11_0_arm64.whl", hash = "sha256:9c5d0468871fdae4f5d7db939a27df3be333f1a395517d270171c9a2368b7921", size = 5512154, upload-time = "2026-11-22T16:53:14.598Z" },
-    { url = "https://files.pythonhosted.org/packages/14/c2/4cdad907748b7bd94b566ecde5bc39a6400814f3da190d5494ce42083e4e/moviepilot_rust-0.3.14-cp314-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:338110c80dfb95fed10680166b634b5d33eb2e30975a28d740459f69f78aa81c", size = 5615137, upload-time = "2026-11-22T16:53:16.083Z" },
-    { url = "https://files.pythonhosted.org/packages/e7/d3/b7065b0990ebb37e33606226e88d548836ebf4b9e9272e54e6542aca34a0/moviepilot_rust-0.3.14-cp314-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:387a3d7f76e5aff16fcafb785ade318aa3c00ffe5f81697e819d54c22bf86070", size = 5807159, upload-time = "2026-11-22T16:53:17.578Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/51/b725e1881e6f252c5a1209ad65d95ff9c6121851f728d4aeeb3fb1fc39a1/moviepilot_rust-0.3.14-cp314-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:d98edfc12399e6f29a4ed3beb5c68ab5259877a7f9a817614d77144045314ba8", size = 5823866, upload-time = "2026-11-22T16:53:19.026Z" },
-    { url = "https://files.pythonhosted.org/packages/48/e7/b1b0ea8131d8bd54d17d41cd6d1ff085d14c7803a1b926990f3b56c93e82/moviepilot_rust-0.3.14-cp314-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:4dda29224cae7e2e37fe25caa01d3673c61c039d453d9a23165db77d7e56a0cd", size = 6043467, upload-time = "2026-11-22T16:53:20.674Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/d3/3916eb88eff643c4ba6f8f7007ef9e853339cdb30a0a1438989b67382f4f/moviepilot_rust-0.3.14-cp314-abi3-win_amd64.whl", hash = "sha256:3940e520873e8199863d8d74de6802ba542ec52531d270d3ec044a0ccc24f7c1", size = 5617527, upload-time = "2026-11-22T16:53:22.238Z" },
-    { url = "https://files.pythonhosted.org/packages/51/75/ffde7e0a0fe504fb11e94b685421fac853d00ce314a4c0061abf9287ee61/moviepilot_rust-0.3.14-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:040998979ffb7e1326d649130977799738a9342cb29f9beb73e833494231a10c", size = 5597189, upload-time = "2026-11-22T16:53:24.044Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/80/65e00ea36aaec9efd04c0a1fb8cc204ac37c7e8f99ba2047ebe0f0173df2/moviepilot_rust-0.3.14-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:e2a46e613948ba19d7f78bf526c6ddc0fb692df4a3e2f1fc86df5e41b1afff9c", size = 5510497, upload-time = "2026-11-22T16:53:25.754Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/eb/28bb0144727044f5ef7889e0f371e5bbcdfc9179219703f0c866780dd88b/moviepilot_rust-0.3.14-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:f7697aaa079e59b96a13a02961d1e6e55fa815c3807cbfc210fb1076ef9049c4", size = 5615247, upload-time = "2026-11-22T16:53:27.246Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/39/b4a483b7af82d19a7c719751ac113746092e3d4eef7bf8a1b2ea790fe728/moviepilot_rust-0.3.14-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:6a1f6ba91d5e04f6d53affc256e27620a7d4ccecddfed8e24b9485489034805d", size = 5807322, upload-time = "2026-11-22T16:53:29.072Z" },
-    { url = "https://files.pythonhosted.org/packages/e5/c3/e261a75295cbcb26c7d78318682fba6b1fbe27134d9b333a1f3aae2568e2/moviepilot_rust-0.3.14-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:c7aabbd467a413b836bc216c2ed51c1e9c6d90dab56bb4d47ba52f06f3040011", size = 5822243, upload-time = "2026-11-22T16:53:30.637Z" },
-    { url = "https://files.pythonhosted.org/packages/47/c1/2689826d305958c56b9ab485362b4aebf4e1556a7d8d9094457173cbaf57/moviepilot_rust-0.3.14-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:ec2532663dc87b4776948095cac9aae3285b4ab529a5673cf4cff094809e4709", size = 6044028, upload-time = "2026-11-22T16:53:32.703Z" },
-    { url = "https://files.pythonhosted.org/packages/50/1d/5283eda09c079d72c394f66d78bad2527c487f0b3dc22e709cae31fa7d87/moviepilot_rust-0.3.14-cp314-cp314t-win_amd64.whl", hash = "sha256:b0cd943f65df00323529283200daed4dcbe847327e3c0f6330739feadcf5ca44", size = 5618985, upload-time = "2026-11-22T16:53:34.494Z" },
+    { url = "https://files.pythonhosted.org/packages/84/e5/cb794936a9ce1f46b5b3c5cbf1e74a52e6845af3217e9a5472c6058ebd7f/moviepilot_rust-0.3.15-cp314-abi3-macosx_10_12_x86_64.whl", hash = "sha256:1cb48b0a0fa62177f0e50af0121f9e948746109e0ba1841c2ce9097966896bf8", size = 5599825, upload-time = "2026-11-23T09:14:19.781Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/db/67a7039ddd02d43ea2dd142f6cc2955761f600e3980f37ba726b058c448a/moviepilot_rust-0.3.15-cp314-abi3-macosx_11_0_arm64.whl", hash = "sha256:dbcb3a000bccf635af22ed76052291e094384a7abc8dd9df2aab080f6c74cf20", size = 5512995, upload-time = "2026-11-23T09:14:21.521Z" },
+    { url = "https://files.pythonhosted.org/packages/94/f8/51854956dfa07989062c36e8fd8def755867dc2d12f449c98c5c0b77653d/moviepilot_rust-0.3.15-cp314-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9c356eca548d04aba093b047e3e9ce8a233a93845edc3902d13d8a6e77c5b8e4", size = 5615655, upload-time = "2026-11-23T09:14:23.35Z" },
+    { url = "https://files.pythonhosted.org/packages/30/ad/9ce2a9a0d5fad24dd4b02c93de2a155ff6bf4261e0f258bca3ddad663ef3/moviepilot_rust-0.3.15-cp314-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ceb5a0bc02c9c4edf5841ad4373f2de92ade9d4e8889a501ae855862dd648503", size = 5810135, upload-time = "2026-11-23T09:14:24.878Z" },
+    { url = "https://files.pythonhosted.org/packages/77/d0/c81aae4b61bab2d302bcd26834b5dd8ef763b1ff63b0b5f82443872f2a20/moviepilot_rust-0.3.15-cp314-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:447336f2524c3e411557c687630a1eca9fb02fe376f502bf53e8bc2c53f00917", size = 5823525, upload-time = "2026-11-23T09:14:26.272Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/12/30cb43e8f72ff8f749928f58e572c608b22634d92216566949f006e901a0/moviepilot_rust-0.3.15-cp314-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:6d7e2a20946e48d895f5f94862109d899f397abde1d81caf72f60b5c1473f0c3", size = 6046385, upload-time = "2026-11-23T09:14:27.588Z" },
+    { url = "https://files.pythonhosted.org/packages/02/aa/5a155dce39c2e72c59e15a4114a6633a48baeccafe9898ed7dde8cfd4cdc/moviepilot_rust-0.3.15-cp314-abi3-win_amd64.whl", hash = "sha256:625a1daeb8ce3fe84f2dd95d3cf521e66513b10ae4efcf5f6bb640393365987e", size = 5620503, upload-time = "2026-11-23T09:14:29.561Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/80/da4cc7d8230dd4b42fbd896c36ab558e7588265ff724770b57f545c8d23a/moviepilot_rust-0.3.15-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:8dc349c63e638c4c8d9bf123d631d635a7d6dd8923976bca8b976c223c8740f5", size = 5600232, upload-time = "2026-11-23T09:14:31.004Z" },
+    { url = "https://files.pythonhosted.org/packages/39/fb/fc426eac6e9d2ad51b45426c02616875b8d8f8515e9298469038a17ca1af/moviepilot_rust-0.3.15-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:fff3df419eb98d60383493b378f997d31fd71f954a5dc7fbd72b743289380512", size = 5511637, upload-time = "2026-11-23T09:14:32.824Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/2e/09dbaf4729d1fee37b0f065cd5ee476947522ef489cc6452694bff882eef/moviepilot_rust-0.3.15-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:421c3fe45a8186d71e0a72bae0a0aea1af6b9bfce6519ed948e850337f50be31", size = 5616474, upload-time = "2026-11-23T09:14:34.291Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/16/41888ea5437fb648bf057c0d46ad70dce8a9102a84cd92924dc5fdea8c7a/moviepilot_rust-0.3.15-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:d2e9ee3aafc3560038450ba4298673103c629f8ff27ed1721ec1352e5429f3a0", size = 5807847, upload-time = "2026-11-23T09:14:35.642Z" },
+    { url = "https://files.pythonhosted.org/packages/36/95/78b15e8275ef6e2d35dfc3fe240b28d79e2c330758e04b7b80718ce38265/moviepilot_rust-0.3.15-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:c81ec73fbc34aab0d562a88cceaf98dd4e8d265b1cf5830a8a1757e7168e60a8", size = 5824777, upload-time = "2026-11-23T09:14:37.145Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/90/dc586f72671534acc3e1fad596561f9bd645cdea63dc05e56ea0c9121393/moviepilot_rust-0.3.15-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:e24bb8317ae29a073cd6226e8a1d1dc133c245968a05ee9f80be081e0ab18e5f", size = 6045425, upload-time = "2026-11-23T09:14:38.655Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/8e/50d2fcc69dae8601ea78245d3758af5b0ad86a7307732c9fb9a7f4499fef/moviepilot_rust-0.3.15-cp314-cp314t-win_amd64.whl", hash = "sha256:3d5e55d09022fdccc5aef2ba26343857096133167c2eb0240b886c4b8a2f4770", size = 5618266, upload-time = "2026-11-23T09:14:40.132Z" },
 ]
 
 [[package]]
@@ -2568,7 +2569,7 @@ version = "4.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astroid" },
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "dill" },
     { name = "isort" },
     { name = "mccabe" },
@@ -2597,7 +2598,7 @@ name = "pyobjc-framework-cocoa"
 version = "12.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyobjc-core", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard') or (sys_platform == 'win32' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "pyobjc-core" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/75/76/49c6da2c6a831020b4854ba20079d5a1030474bffc776b7b73c2eeff8c15/pyobjc_framework_cocoa-12.2.2.tar.gz", hash = "sha256:c96c0ef69a71afbbb0e6a7d594b455c5fe47d62e0db376ee7a2b4b828c16ace9", size = 3132831, upload-time = "2026-08-11T19:44:02.288Z" }
 wheels = [
@@ -2612,8 +2613,8 @@ name = "pyobjc-framework-quartz"
 version = "12.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyobjc-core", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard') or (sys_platform == 'win32' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
-    { name = "pyobjc-framework-cocoa", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard') or (sys_platform == 'win32' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "pyobjc-core" },
+    { name = "pyobjc-framework-cocoa" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/35/b1/426a37c7ae37280b3ffca2571fb48f211946aee2f4ca31a603ed1943c4a7/pyobjc_framework_quartz-12.2.2.tar.gz", hash = "sha256:810f97b210cfd93704d240860286dfd6df09f9f1c52525fc5c2166723aea3f9e", size = 3218295, upload-time = "2026-08-11T19:45:15.189Z" }
 wheels = [
@@ -2711,7 +2712,7 @@ version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
-    { name = "sspilib", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "sspilib", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7d/84/58577bd1b14293650879de0579ec263a1d8350f1d6d227226cf776b5a6a6/pyspnego-0.12.1.tar.gz", hash = "sha256:ff4fb6df38202a012ea2a0f43091ae9680878443f0ea61c9ea0e2e8152a4b810", size = 226027, upload-time = "2026-03-02T20:16:09.74Z" }
 wheels = [
@@ -2724,8 +2725,8 @@ version = "0.19.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pillow" },
-    { name = "pyobjc-framework-quartz", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard') or (sys_platform == 'win32' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
-    { name = "python-xlib", marker = "sys_platform == 'linux' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "python-xlib", marker = "sys_platform == 'linux'" },
     { name = "six" },
 ]
 wheels = [
@@ -2750,7 +2751,7 @@ name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -2834,7 +2835,7 @@ name = "python-xlib"
 version = "0.33"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "six", marker = "sys_platform == 'linux' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "six" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/f5/8c0653e5bb54e0cbdfe27bf32d41f27bc4e12faa8742778c17f2a71be2c0/python-xlib-0.33.tar.gz", hash = "sha256:55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32", size = 269068, upload-time = "2022-12-25T18:53:00.824Z" }
 wheels = [
@@ -3139,7 +3140,7 @@ name = "sqlalchemy"
 version = "2.0.52"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "greenlet", marker = "platform_machine == 'x86_64' or (platform_machine != 'x86_64' and extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard') or sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "greenlet", marker = "platform_machine == 'x86_64' or sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3b/21/77b4c147963073040dc3c3a5cb7a8c3001a1893c0209432cb77f9df836aa/sqlalchemy-2.0.52.tar.gz", hash = "sha256:5e2d46356ac2ccb7d268ab6c2319ac6a2b42f1b8d5fd8bd3d46855cd82abee97", size = 9945637, upload-time = "2026-08-11T19:07:09.829Z" }
@@ -3160,15 +3161,7 @@ version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a7/e6/d0d74b18bed8c16949fddc0401005c072947ae7bf1bab982ed28f9ebc2d8/sspilib-0.5.0.tar.gz", hash = "sha256:b62f7f2602aa1add0505eee2417e2df24421224cb411e53bf3ae42a71b62fe98", size = 59920, upload-time = "2025-12-03T00:31:05.564Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/a9/4fa74151ebfb5f7c872a8d0c21efe142af2a879a5536065ffa8cdabbbb4c/sspilib-0.5.0-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:eaba0331997368ffbdedff5e95f4fec18b19c809637e8848a4c673130fb4dd9e", size = 6780966, upload-time = "2025-12-03T00:30:27.931Z" },
-    { url = "https://files.pythonhosted.org/packages/31/96/f9e2245f0b11915a350fe5fb8aac022824210bc38624f3a7d324350aa402/sspilib-0.5.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:3dbb80bfe0a17f272c68e9d86a0375d11f98157abe998272a540e635694c1540", size = 6304059, upload-time = "2025-12-03T00:30:29.554Z" },
-    { url = "https://files.pythonhosted.org/packages/a0/34/0d651c27d7b839a14547f67b02337052db78695cc1dd3e70a7fc0fe2dd98/sspilib-0.5.0-cp311-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:4266eda17b81f50e71a3f75cdddf424d76046de68d8014d289a895ec008df4e4", size = 10422422, upload-time = "2025-12-03T00:30:31.81Z" },
-    { url = "https://files.pythonhosted.org/packages/3d/e1/15718341947168258e7e6c6abe7941ebfc16121f44ba8ed7e54d2dbcda53/sspilib-0.5.0-cp311-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:57ea0ce644339bb71ee3eb226b22a121d011b0aea5e2f32d078d88f4a269359b", size = 10514133, upload-time = "2025-12-03T00:30:34.425Z" },
     { url = "https://files.pythonhosted.org/packages/17/6a/a11abf90172ff580ac2f9ade3496d868e05e851c4ecf487dd5baeb966b1d/sspilib-0.5.0-cp311-abi3-win_amd64.whl", hash = "sha256:ca2a21a4e90db563c2cec639c66b3a29ea53129a0c55ff1e4154a02937f6bd45", size = 540777, upload-time = "2025-12-03T00:30:38.44Z" },
-    { url = "https://files.pythonhosted.org/packages/ab/c8/09d8a7cf8ba10e060c62ff398ff48c733380e74f17c2a89ea4d2f5517673/sspilib-0.5.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:10018d475022643d11b1aeef08e674d8a3f8b03a597ad31fa8c8c302a58ee960", size = 6902087, upload-time = "2025-12-03T00:30:41.49Z" },
-    { url = "https://files.pythonhosted.org/packages/74/b6/44b395902d96379fdd7e133d3b38c530108fde6ce0c27250d119da85270a/sspilib-0.5.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:2124dece22406b71294311bcef7e0e3fae88e85fee77039a96771f6972c98377", size = 6407913, upload-time = "2025-12-03T00:30:43.008Z" },
-    { url = "https://files.pythonhosted.org/packages/14/1e/8e4f198071491c0757111771c11e991e18ea5d7c6a51e3f19b00739e8936/sspilib-0.5.0-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:963ca7d7158b19b46fcfd8c3bb5f94696ff6e9cf7b01911586717105f11336b0", size = 10975238, upload-time = "2025-12-03T00:30:45.001Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/af/bb7cb1f4df7ea77ab384bdc113dfd6087421ea441a5a014d5bc832b889c4/sspilib-0.5.0-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:13d9fbe9a2e0df6405cac39a2a5a93f0f04c67b8e8d5e4c6cd27f8f76a16ce9c", size = 10976954, upload-time = "2025-12-03T00:30:46.91Z" },
     { url = "https://files.pythonhosted.org/packages/c4/d8/8c4ba75f925fd9651cb855c47e0e67931a175d6fd41e569193a8d58133ac/sspilib-0.5.0-cp314-cp314t-win_amd64.whl", hash = "sha256:7d7724d5dbb31f68e62465863dfb862fe2793281ce40d0c8f2dc60c8f07998f2", size = 690291, upload-time = "2025-12-03T00:30:49.929Z" },
 ]
 
@@ -3268,7 +3261,7 @@ name = "tqdm"
 version = "4.68.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ae/5f/57ff8b434839e70dab45601284ea413e947a63799891b7553e5960a793a8/tqdm-4.68.4.tar.gz", hash = "sha256:19829c9673638f2a0b8617da4cdcb927e831cd88bcfcb6e78d42a4d1af131520", size = 792418, upload-time = "2026-07-07T09:58:18.369Z" }
 wheels = [
@@ -3404,7 +3397,7 @@ name = "tzlocal"
 version = "5.4.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "sys_platform == 'win32' or (extra == 'group-10-moviepilot-runtime-free-threaded' and extra == 'group-10-moviepilot-runtime-standard')" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/81/5b/879b2f932adfa7a053c360d50bc896c977fa6426109185f7c12ebdd0cb9d/tzlocal-5.4.4.tar.gz", hash = "sha256:8dbb8660838688a7b6ba4fed31d18dedf842afb4d47ca050d6d891c2c15f3be4", size = 31170, upload-time = "2026-06-29T08:03:40.026Z" }
 wheels = [
