@@ -12,6 +12,7 @@ from app.application.download.failures import (
     DownloadFailureSnapshot,
 )
 from app.application.torrent.download import TorrentHelper
+from app.chain.download.batch import _accepts_keyword
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
     Context,
@@ -21,6 +22,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.download import is_downloader_pending_confirmation
 from app.schemas.event import ResourceSelectionEventData
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.types import (
@@ -183,8 +185,13 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
         处理电影与音乐的直接候选下载。
 
         两类媒体都遵循成功后按身份去重、失败后继续尝试后续候选的规则，差异只在去重键。
+        下载器“已受理但未确认”时按身份停止后续候选，避免同一媒体被重复添加多个版本。
         """
         downloaded_keys: Dict[MediaType, Set[str]] = {
+            MediaType.MOVIE: set(),
+            MediaType.MUSIC: set(),
+        }
+        pending_keys: Dict[MediaType, Set[str]] = {
             MediaType.MOVIE: set(),
             MediaType.MUSIC: set(),
         }
@@ -211,10 +218,11 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                 media_source, media_id = resolve_media_identity(media=media)
                 download_key = build_media_key(media_source, media_id) or media.title_year
                 label = "音乐"
-            if download_key in downloaded_keys[media_type]:
+            if download_key in downloaded_keys[media_type] or download_key in pending_keys[media_type]:
                 continue
             logger.info(f"开始下载{label} {context.torrent_info.title} ...")
-            if self.download_single(
+            detail = {"return_detail": True} if _accepts_keyword(self.download_single, "return_detail") else {}
+            result = self.download_single(
                 context,
                 save_path=save_path,
                 channel=channel,
@@ -224,9 +232,18 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                 downloader=downloader,
                 custom_words=custom_words,
                 governance=governance,
-            ):
+                **detail,
+            )
+            download_id, message = result if isinstance(result, tuple) else (result, None)
+            if download_id:
                 logger.info(f"{context.torrent_info.title} 添加下载成功")
                 downloaded_list.append(context)
                 downloaded_keys[media_type].add(download_key)
+            elif is_downloader_pending_confirmation(message):
+                logger.warning(
+                    f"{context.torrent_info.title} 下载器已受理但未确认，"
+                    f"停止提交 {label} {download_key} 的其他版本，避免重复下载"
+                )
+                pending_keys[media_type].add(download_key)
             elif fingerprint:
                 active_failure_records[fingerprint] = None

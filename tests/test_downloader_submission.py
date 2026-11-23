@@ -1573,6 +1573,8 @@ def test_rejection_ledger_read_failure_counts_as_not_noted():
     ) is False
 
 
+
+
 @pytest.mark.parametrize(
     ("downloader_arg", "site_downloader", "user_specified", "expected_fragments"),
     [
@@ -1666,7 +1668,7 @@ def test_downloader_rejection_tuple_still_records_failure_cooldown():
         episodes=None,
         channel=None,
         source="Subscribe|1",
-        downloader="qb",
+        downloader=None,
         userid=None,
         username=None,
         label=None,
@@ -1678,3 +1680,96 @@ def test_downloader_rejection_tuple_still_records_failure_cooldown():
     assert error_msg == "添加种子任务失败：demo.torrent"
     assert len(chain.download_failure_repository.records) == 1
     assert chain.post_message.call_count == 1
+
+
+def test_qbittorrent_accepted_but_unconfirmed_returns_pending_marker(downloader):
+    """
+    添加请求已受理但确认不到任务哈希时，应返回“已受理但未确认”标记而不是普通失败文案。
+    """
+    module, server, content, _torrent_hash = downloader
+    if not isinstance(module, QbittorrentModule):
+        pytest.skip("仅 qbittorrent 存在该确认分支")
+    server.add_torrent.return_value = (True, [])
+    server.get_torrent_id_by_tag.return_value = None
+
+    result = module.download(
+        content, Path("/downloads"), "", episodes=None,
+        custom_words=None, downloader="test-downloader",
+    )
+
+    assert result[0] is None and result[1] is None
+    assert result[3].startswith("下载任务已受理但未能确认")
+
+
+def test_pending_confirmation_skips_failure_cooldown():
+    """
+    下载器已受理但未确认时，不应把正常种子写入资源级失败冷却台账。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain._record_download_failure = Mock()
+    chain.post_message = Mock()
+    prepared = SimpleNamespace(
+        torrent=SimpleNamespace(
+            site_downloader=None, site_name="站点", title="Show.2026.A", enclosure="https://example.invalid/t",
+        ),
+        media=SimpleNamespace(
+            title_year="Show (2026)",
+            get_message_image=Mock(return_value=None),
+            get_poster_image=Mock(return_value=None),
+        ),
+        meta=SimpleNamespace(season_episode="S01", org_string="Show.2026.A"),
+        site_downloader=None,
+    )
+
+    chain._record_rejected_download(
+        prepared=prepared,
+        context=Context(),
+        episodes=None,
+        channel=None,
+        source="Subscribe|1",
+        downloader="qb",
+        userid=None,
+        actual_downloader=None,
+        error_msg="下载任务已受理但未能确认：Show.2026.A",
+        user_specified=False,
+    )
+
+    chain._record_download_failure.assert_not_called()
+    assert chain.post_message.call_count == 1
+
+
+def test_movie_pending_confirmation_stops_other_versions():
+    """
+    电影候选已受理但未确认时，同一电影的其他版本不应继续提交，避免重复下载。
+    """
+    def movie_context(tag):
+        torrent = TorrentInfo(
+            title=f"Show.2026.{tag}", site=1, site_name="站点",
+            page_url=f"https://pt.example/details.php?id={tag}",
+        )
+        return Context(
+            meta_info=MetaInfo(f"Show.2026.{tag}"),
+            media_info=MediaInfo(type=MediaType.MOVIE, title="Show", year="2026"),
+            torrent_info=torrent,
+        )
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_single = Mock(return_value=(None, "下载任务已受理但未能确认：Show.2026.A"))
+    downloaded = []
+
+    chain._download_movie_music_candidates(
+        contexts=[movie_context("A"), movie_context("B")],
+        downloaded_list=downloaded,
+        active_failure_records={},
+        save_path=None,
+        channel=None,
+        source="Subscribe|1",
+        userid=None,
+        username=None,
+        downloader=None,
+        custom_words=None,
+        governance=None,
+    )
+
+    assert chain.download_single.call_count == 1
+    assert downloaded == []

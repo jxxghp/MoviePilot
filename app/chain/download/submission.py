@@ -45,7 +45,7 @@ from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
-from app.schemas.download import DownloadTaskAction, ExistingTaskRejection
+from app.schemas.download import DownloadTaskAction, ExistingTaskRejection, is_downloader_pending_confirmation
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
@@ -1176,7 +1176,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         重新勾选文件后下一轮就能接着用）。自动流程（订阅、工作流、插件）在同一原因的通知静默期内重复遇到时
         只记日志，不再通知、不顺延记录，见 ``_existing_task_rejection_noted``；用户手动指定种子时每次都通知。
         当失败源于下载器实例缺失而非资源本身问题时，调用方传入 ``record_failure=False``，避免把正常种子
-        写入资源级冷却台账，修正配置后即可立即重试。
+        写入资源级冷却台账，修正配置后即可立即重试。下载器“已受理但未确认”时只通知，不写入资源级失败冷却，
+        避免正常种子被 1 小时冷却挡住重试。
 
         :param user_specified: 用户明确指定了这个种子
         :param record_failure: 是否写入资源级失败冷却台账；下载器实例缺失等配置问题时为 False
@@ -1191,11 +1192,17 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 f"{prepared.torrent.title}，{error_msg}"
             )
             return
-        logger.error(
-            f"{prepared.media.title_year} 添加下载任务失败："
-            f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"
-        )
-        if record_failure:
+        if is_downloader_pending_confirmation(error_msg):
+            logger.warning(
+                f"{prepared.media.title_year} 下载任务已受理但未能确认，停止提交其他版本："
+                f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"
+            )
+        else:
+            logger.error(
+                f"{prepared.media.title_year} 添加下载任务失败："
+                f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"
+            )
+        if record_failure and not is_downloader_pending_confirmation(error_msg):
             self._record_download_failure(
                 context=context,
                 error_msg=error_msg,

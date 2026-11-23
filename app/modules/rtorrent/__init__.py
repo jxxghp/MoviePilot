@@ -15,6 +15,7 @@ from app.modules.rtorrent.rtorrent import Rtorrent, TorrentData
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
+from app.schemas.download import DOWNLOAD_TASK_ACCEPTED_UNCONFIRMED
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloaderType,
@@ -201,7 +202,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                     None,
                     None,
                     None,
-                    f"下载任务添加成功，但获取rTorrent任务信息失败：{torrent_desc_text}",
+                    f"{DOWNLOAD_TASK_ACCEPTED_UNCONFIRMED}：{torrent_desc_text}",
                 )
             else:
                 torrent_hash = added_torrent_hash

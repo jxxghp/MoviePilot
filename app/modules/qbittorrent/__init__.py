@@ -17,6 +17,7 @@ from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
+from app.schemas.download import DOWNLOAD_TASK_ACCEPTED_UNCONFIRMED
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloaderType,
@@ -218,7 +219,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                 if torrent_hash:
                     temporary_tag_cleaned = server.delete_torrents_tag(torrent_hash, tag)
                 if not torrent_hash:
-                    return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{torrent_desc}"
+                    return None, None, None, f"{DOWNLOAD_TASK_ACCEPTED_UNCONFIRMED}：{torrent_desc}"
                 else:
                     # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
                     torrent_layout = server.get_content_layout()

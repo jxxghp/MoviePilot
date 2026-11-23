@@ -22,6 +22,19 @@ DOWNLOAD_TASK_ALREADY_EXISTS = "下载任务已存在"
 DOWNLOAD_TASK_FILES_APPENDED = "下载任务已存在，已追加选择本次目标文件"
 # 用户手动指定种子，目标文件此前已选中但任务已暂停、目标未下完：恢复了该任务，下载链按新增下载发送通知。
 DOWNLOAD_TASK_RESUMED = "下载任务已存在，已恢复下载"
+# 下载器已受理添加请求，但未能在期限内确认任务哈希。下载链必须把该结果与"明确拒绝"区分开：
+# 不写入资源级失败冷却，并停止为同一媒体继续提交其它版本，避免产生不同 hash 的重复下载。
+DOWNLOAD_TASK_ACCEPTED_UNCONFIRMED = "下载任务已受理但未能确认"
+
+
+def is_downloader_pending_confirmation(message: Optional[str]) -> bool:
+    """
+    判断下载器返回的说明是否表示“已受理但未确认”，而不是明确拒绝。
+
+    :param message: 下载器 download() 返回的第四项说明
+    :return: 说明以 ``DOWNLOAD_TASK_ACCEPTED_UNCONFIRMED`` 开头时返回 True
+    """
+    return bool(message) and message.startswith(DOWNLOAD_TASK_ACCEPTED_UNCONFIRMED)
 
 
 class DownloadTaskAction(str, _Enum):
