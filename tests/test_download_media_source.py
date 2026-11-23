@@ -7,7 +7,9 @@ from unittest.mock import Mock
 
 from app import schemas
 from app.api.endpoints import download as download_endpoint
+from app.chain.download.submission import convert_download_identity_to_tmdb
 from app.domain.context import MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -888,3 +890,150 @@ def test_download_add_records_origin_media_and_preserves_imdb_field_on_conversio
         "media_source": "imdb",
         "media_id": "tt27165187",
     }
+
+
+def test_convert_download_identity_handles_multiseason_tmdb_seasons_and_auxiliary_ids() -> None:
+    """
+    多季包应保留完整季范围、回退读取投影季列表，并无损保留原媒体附带的外链标识。
+    """
+    source_media = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        type=MediaType.TV,
+        title="",
+        season=2,
+        imdb_id="tt11815682",
+        tvdb_id=399142,
+    )
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 124101,
+            "media_type": MediaType.TV,
+            "name": "绝望写手",
+        }
+    )
+    media_chain = Mock()
+    media_chain.convert_media_identity.return_value = {
+        "id": 124101,
+        "media_type": MediaType.TV,
+        "seasons": [
+            {"season_number": 1},
+            {"season_number": 2},
+        ],
+    }
+    media_chain.recognize_media.return_value = tmdb_media
+    meta = MetaInfo("Hacks.S01-S02.1080p.WEB-DL", mtype=MediaType.TV)
+
+    result = convert_download_identity_to_tmdb(
+        media_chain,
+        meta,
+        MediaSource.Douban,
+        "35932853",
+        source_media=source_media,
+    )
+
+    assert result is not None
+    converted_meta, converted_media, origin_media = result
+    assert media_chain.convert_media_identity.call_args.kwargs["season"] == 2
+    assert converted_meta.begin_season == 1
+    assert converted_meta.end_season == 2
+    assert converted_media is tmdb_media
+    assert converted_media.douban_id == "35932853"
+    assert converted_media.imdb_id == "tt11815682"
+    assert converted_media.tvdb_id == 399142
+    assert origin_media == {"media_source": "douban", "media_id": "35932853"}
+
+    # 无 source_media 且无标题季信息时，应安全跳过季号提取并正常回填投影季号。
+    no_source_meta = MetaInfo("Hacks.E01-E04.1080p", mtype=MediaType.TV)
+    media_chain.convert_media_identity.return_value = {
+        "id": 124101,
+        "media_type": MediaType.TV,
+    }
+    no_source_result = convert_download_identity_to_tmdb(
+        media_chain,
+        no_source_meta,
+        MediaSource.Douban,
+        "35932853",
+        source_media=None,
+    )
+    assert no_source_result is not None
+
+    # 原媒体既无 season 也无 title 时，查询季号保持 None 且不报错。
+    empty_title_media = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        type=MediaType.TV,
+        title="",
+    )
+    empty_title_result = convert_download_identity_to_tmdb(
+        media_chain,
+        MetaInfo("Hacks.E01-E04.1080p", mtype=MediaType.TV),
+        MediaSource.Douban,
+        "35932853",
+        source_media=empty_title_media,
+    )
+    assert empty_title_result is not None
+    assert media_chain.convert_media_identity.call_args.kwargs["season"] is None
+
+
+def test_convert_download_identity_falls_back_on_projection_or_recognition_errors() -> None:
+    """
+    源已是 TMDB、非影视类型，或投影/识别异常与结果失配时，均应返回 None 且不污染原元数据。
+    """
+    meta = MetaInfo("Possible.Love.2026.1080p")
+    media_chain = Mock()
+
+    # 已是 TMDB 来源或非影视类型直接跳过。
+    assert convert_download_identity_to_tmdb(media_chain, meta, MediaSource.TMDB, "1483525") is None
+    unknown_media = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="36847425",
+        type=MediaType.UNKNOWN,
+        title="未知类型",
+    )
+    assert (
+        convert_download_identity_to_tmdb(
+            media_chain,
+            meta,
+            MediaSource.Douban,
+            "36847425",
+            source_media=unknown_media,
+        )
+        is None
+    )
+
+    source_tv = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        type=MediaType.TV,
+        title="绝望写手",
+        season=3,
+    )
+
+    # 投影抛出异常、返回空值或非法布尔 ID 时回退。
+    media_chain.convert_media_identity.side_effect = RuntimeError("network error")
+    assert convert_download_identity_to_tmdb(media_chain, meta, MediaSource.Douban, "35932853", source_media=source_tv) is None
+
+    media_chain.convert_media_identity.side_effect = None
+    media_chain.convert_media_identity.return_value = None
+    assert convert_download_identity_to_tmdb(media_chain, meta, MediaSource.Douban, "35932853", source_media=source_tv) is None
+
+    media_chain.convert_media_identity.return_value = {"id": True}
+    assert convert_download_identity_to_tmdb(media_chain, meta, MediaSource.Douban, "35932853", source_media=source_tv) is None
+
+    # 二次识别抛出异常、返回错误 TMDB ID 或错误影视类型时回退。
+    media_chain.convert_media_identity.return_value = {"id": 124101}
+    media_chain.recognize_media.side_effect = RuntimeError("tmdb timeout")
+    assert convert_download_identity_to_tmdb(media_chain, meta, MediaSource.Douban, "35932853", source_media=source_tv) is None
+
+    media_chain.recognize_media.side_effect = None
+    media_chain.recognize_media.return_value = MediaInfo(
+        tmdb_info={"id": 999999, "media_type": MediaType.TV, "name": "错误剧集"}
+    )
+    assert convert_download_identity_to_tmdb(media_chain, meta, MediaSource.Douban, "35932853", source_media=source_tv) is None
+
+    media_chain.recognize_media.return_value = MediaInfo(
+        tmdb_info={"id": 124101, "media_type": MediaType.MOVIE, "title": "同名电影"}
+    )
+    assert convert_download_identity_to_tmdb(media_chain, meta, MediaSource.Douban, "35932853", source_media=source_tv) is None
+    assert meta.begin_season is None
