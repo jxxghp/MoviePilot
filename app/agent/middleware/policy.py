@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from app.agent.policy.api import resolve_api_operation
 from app.agent.policy.contracts import (
     ActionEffect,
+    AuthSource,
     ExecutionOutcome,
     ExecutionReceipt,
     ToolOrigin,
@@ -31,6 +32,7 @@ from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import McpExternalTool
 from app.agent.tools.result import EXECUTION_OUTCOME_KEY, ToolExecutionError, annotate_tool_result
 from app.agent.tools.tags import ToolTag
+from app.schemas.types import NotificationChannel
 
 if TYPE_CHECKING:
     from app.agent.middleware.guardrails import ToolGuardrailsMiddleware
@@ -227,6 +229,8 @@ class AgentPolicyMiddleware(AgentMiddleware):
         执行一次本地工具调用，并复用 ToolNode 的策略生命周期。
         """
         authorization_error = await self._channel_authorization_error(tool, arguments)
+        if not authorization_error:
+            authorization_error = self._web_authorization_error(tool)
         if authorization_error:
             return False, ToolMessage(content=authorization_error, tool_call_id=str(invocation_id or ""),
                                       name=str(getattr(tool, "name", "unknown")), status="error",
@@ -307,6 +311,31 @@ class AgentPolicyMiddleware(AgentMiddleware):
             if isinstance(state, dict):
                 state["message"] = str(error)
             return str(error)
+
+    def _web_authorization_error(self, tool: Any) -> str | None:
+        """
+        对直接登录的网页会话复核账号激活状态及插件/管理员工具边界。
+
+        :param tool: 即将执行的本地工具实例
+        :return: 拒绝原因；放行时返回 None
+        """
+        is_web_session = self.context.auth_source is AuthSource.WEB_SESSION or (
+            self.context.channel in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}
+            and self.context.source not in {"api", "openai", "openai.responses", "anthropic"}
+        )
+        if not is_web_session:
+            return None
+        if self.context.agent_context.get("web_user_active") is False:
+            return "当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。"
+        if bool(self.context.agent_context.get("is_admin")):
+            return None
+        tool_source = str(getattr(tool, "_agent_tool_source", "") or "")
+        tool_name = str(getattr(tool, "name", "") or "")
+        if tool_source.startswith("plugin:") or tool_name.startswith("plugin:"):
+            return "此插件工具仅允许系统管理员调用。"
+        if getattr(tool, "_require_admin", getattr(tool, "require_admin", False)):
+            return "抱歉，您没有权限执行此操作（仅限系统管理员）。"
+        return None
 
     @staticmethod
     def _subagent_read_allowed(tool: Any, arguments: dict[str, Any]) -> bool:

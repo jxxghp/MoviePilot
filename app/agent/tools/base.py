@@ -874,6 +874,30 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 resolved_roots.append(resolved_root)
         return resolved_roots
 
+    def _get_non_admin_upload_roots(self) -> list[Path]:
+        """
+        获取当前会话普通用户可只读访问的附件上传目录。
+
+        :return: 当前会话归属的临时附件目录列表
+        """
+        temp_path = get_runtime_setting("TEMP_PATH")
+        raw_session_id = str(self._session_id or "").strip()
+        if not temp_path or not raw_session_id:
+            return []
+        if "/" in raw_session_id or "\\" in raw_session_id or ".." in raw_session_id:
+            return []
+        upload_base = self._resolve_local_path(str(Path(temp_path) / "agent_uploads"))
+        candidates = {raw_session_id.replace(":", "_"), raw_session_id}
+        roots: list[Path] = []
+        for candidate in candidates:
+            if not candidate or candidate in {".", ".."}:
+                continue
+            resolved_dir = self._resolve_local_path(str(upload_base / candidate))
+            if self._is_path_relative_to(resolved_dir, upload_base) and resolved_dir != upload_base:
+                if resolved_dir not in roots:
+                    roots.append(resolved_dir)
+        return roots
+
     async def _check_local_file_access(
         self, path: str, operation: str = "访问"
     ) -> tuple[Optional[Path], Optional[str]]:
@@ -891,6 +915,12 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         if await self.is_admin_user():
             return resolved_path, None
 
+        if operation == "读取" and any(
+            self._is_path_relative_to(resolved_path, upload_root)
+            for upload_root in self._get_non_admin_upload_roots()
+        ):
+            return resolved_path, None
+
         allowed_roots = self._get_non_admin_local_file_roots()
         if not any(
             self._is_path_relative_to(resolved_path, root)
@@ -903,6 +933,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             )
 
         agent_root = allowed_roots[0]
+        if self._is_path_relative_to(resolved_path, agent_root / "jobs"):
+            return resolved_path, "抱歉，Agent 后台任务配置仅允许系统管理员访问。"
+
         memory_root = agent_root / "memory"
         runtime_root = agent_root / "runtime"
         for protected in (runtime_root / 'learning' / 'users', runtime_root / 'history' / 'users', runtime_root / 'code' / 'users'):
@@ -920,6 +953,11 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             return resolved_path, '抱歉，公共技能只有系统管理员才能修改；个人学习请使用 skill_manage。'
 
         if not self._is_path_relative_to(resolved_path, memory_root):
+            if operation != "读取":
+                return (
+                    resolved_path,
+                    "抱歉，普通用户只能修改自己的用户级记忆，不能修改 Agent 公共或系统文件。",
+                )
             return resolved_path, None
 
         user_memory_root = memory_root / "users"

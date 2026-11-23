@@ -357,7 +357,7 @@ class ToolPolicyContext:
         """
         根据当前宿主上下文生成本次调用主体。
         """
-        if self.principal_type in {PrincipalType.BACKGROUND, PrincipalType.SUBAGENT}:
+        if self.principal_type is PrincipalType.BACKGROUND:
             default_role = PrincipalRole.SYSTEM_INTERNAL
         else:
             default_role = PrincipalRole.USER

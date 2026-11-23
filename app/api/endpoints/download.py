@@ -31,6 +31,7 @@ from app.application.site.query import (
 )
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
+from app.domain.authorization import has_web_permission
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -227,10 +228,17 @@ def _resolve_add_media(
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
 def current(name: Optional[str] = None, _: ApiPrincipal = Depends(get_current_download_viewer), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
-    管理员查询全局下载任务，获授权渠道成员仅查询自己发起的任务。
+    管理员及下载管理权限用户查询全局下载任务，其余已授权用户仅查询自己发起的任务。
     """
     tasks = DownloadChain().downloading(name)
-    if getattr(_, "authorization_id", None) and not _.is_superuser:
+    can_view_all = bool(
+        _.is_superuser
+        or (
+            not getattr(_, "authorization_id", None)
+            and has_web_permission(False, getattr(_, "permissions", None), "manage", "manage.downloading")
+        )
+    )
+    if not can_view_all:
         return [task for task in tasks if task.username == _.name]
     return tasks
 

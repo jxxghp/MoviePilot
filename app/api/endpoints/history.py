@@ -292,6 +292,33 @@ async def download_history(
         if response is not None:
             response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download(username=username))
         return results
+    if isinstance(_, _SchemaTokenPayload) and not _.super_user:
+        from app.application.security.user import get_configured_user_id_lookup
+        from app.domain.authorization import has_web_permission
+        from app.runtime.execution import run_in_threadpool
+
+        web_username: Optional[str] = None
+        if _.sub is not None:
+            lookup = get_configured_user_id_lookup()
+            web_user = await run_in_threadpool(lookup, int(_.sub))
+            if web_user is None or not web_user.is_active:
+                raise HTTPException(status_code=401, detail="用户未激活")
+            if web_user.is_superuser or has_web_permission(False, web_user.permissions, "manage", "manage.downloading"):
+                web_username = None
+            elif has_web_permission(False, web_user.permissions, "search", "search.resource") or has_web_permission(
+                False, web_user.permissions, "subscribe"
+            ):
+                web_username = web_user.name
+            else:
+                raise HTTPException(status_code=403, detail="用户权限不足")
+        elif _.username:
+            web_username = _.username
+        else:
+            raise HTTPException(status_code=403, detail="用户权限不足")
+        results = await query.list_download(page=page, count=count, username=web_username)
+        if response is not None:
+            response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download(username=web_username))
+        return results
     results = await query.list_download(page=page, count=count)
     if response is not None:
         response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download())

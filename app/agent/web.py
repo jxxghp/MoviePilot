@@ -8,6 +8,7 @@ from threading import Lock
 from typing import Any, Awaitable, Callable, Optional
 
 from app.agent.loader import get_moviepilot_agent_type
+from app.agent.tools.base import run_agent_blocking
 from app.application.security.user import get_configured_user_id_lookup
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -364,24 +365,40 @@ class _WebAgentMoviePilotAgentMixin:
         if isinstance(self.stream_handler, _WebAgentStreamingHandlerMixin):
             self.stream_handler.set_tool_event_callback(tool_event_callback)
 
-    async def _is_system_admin_context(self) -> bool:
+    async def _resolve_web_user(self) -> Any:
         """
-        Web Agent 根据当前登录用户 ID 判断工具管理员上下文。
+        实时查询当前 Web Agent 登录用户快照，不阻塞事件循环。
+
+        :return: 当前登录用户对象；未找到或标识非法时返回 None
         """
         if not self.user_id:
-            return False
+            return None
         try:
-            user = get_configured_user_id_lookup()(int(self.user_id))
+            parsed_user_id = int(self.user_id)
         except (TypeError, ValueError):
-            return False
+            return None
+        try:
+            lookup = get_configured_user_id_lookup()
+            return await run_agent_blocking("db", lookup, parsed_user_id)
         except Exception as e:
-            logger.error(f"检查 Web Agent 用户管理员身份失败: {e}")
-            return False
-        return bool(user and user.is_superuser)
+            logger.error(f"检查 Web Agent 登录用户失败: {e}")
+            return None
+
+    async def _is_system_admin_context(self) -> bool:
+        """
+        Web Agent 根据当前激活登录用户 ID 判断工具管理员上下文。
+
+        :return: 当前登录用户处于激活状态且为超级管理员时返回 True
+        """
+        user = await self._resolve_web_user()
+        return bool(user and getattr(user, "is_active", True) is not False and user.is_superuser)
 
     async def _build_tool_context(self, should_dispatch_reply: bool) -> dict[str, object]:
         """
         向工具上下文注入 Web SSE 通知回调。
+
+        :param should_dispatch_reply: 本轮是否需要向渠道派发回复
+        :return: 包含回调和实时权限状态的工具上下文
         """
         # 该方法由运行时组合进 MRO 的 MoviePilotAgent 提供。
         context = await super()._build_tool_context(  # type: ignore[misc]

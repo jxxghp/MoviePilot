@@ -24,6 +24,7 @@ from app.agent.policy.sanitizer import contains_redacted_placeholder, summarize_
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.result import inspect_tool_result
 from app.agent.tools.tags import ToolTag
+from app.domain.authorization import authorize_web_operation, normalize_web_permissions
 from app.schemas.common import JsonData
 from app.schemas.types import NotificationChannel
 
@@ -144,6 +145,7 @@ class MoviePilotApiTool(MoviePilotTool):
     )
 
     _executor: Optional[MoviePilotApiExecutor] = PrivateAttr(default=None)
+    _resolved_web_permissions: Optional[dict[str, Any]] = PrivateAttr(default=None)
 
     def __init__(
         self,
@@ -158,6 +160,54 @@ class MoviePilotApiTool(MoviePilotTool):
         """
         super().__init__(session_id=session_id, user_id=user_id, **kwargs)
         self._executor = executor
+        self._resolved_web_permissions = None
+
+    def _is_direct_web_session(self) -> bool:
+        """
+        判断当前工具调用是否来自直接登录用户的网页或 WebAgent 会话。
+
+        :return: 排除 OpenAI/Anthropic/API 集成通道后的直接网页会话返回 True
+        """
+        return (
+            self._channel in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}
+            and self._source not in {"api", "openai", "openai.responses", "anthropic"}
+        )
+
+    def _get_resolved_web_permissions(self) -> dict[str, Any]:
+        """
+        读取当前直接网页会话的实时归一化权限。
+
+        :return: 归一化后的网页用户权限字典
+        """
+        if self._resolved_web_permissions is not None:
+            return self._resolved_web_permissions
+        context_permissions = self._agent_context.get("web_user_permissions")
+        if isinstance(context_permissions, dict):
+            return normalize_web_permissions(context_permissions)
+        return normalize_web_permissions(None)
+
+    @staticmethod
+    def _extract_request_media_type(
+        *,
+        query: Optional[Dict[str, Any]],
+        body: Any,
+    ) -> Optional[str]:
+        """
+        从订阅请求参数中提取媒体类型，用于细分订阅功能级权限校验。
+
+        :param query: 查询参数字典
+        :param body: 请求体对象
+        :return: 媒体类型字符串；未提供时返回 None
+        """
+        candidates: list[Any] = []
+        if isinstance(body, dict):
+            candidates.extend((body.get("type"), body.get("mtype")))
+        if isinstance(query, dict):
+            candidates.extend((query.get("type_name"), query.get("mtype"), query.get("type")))
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        return None
 
     def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
@@ -310,6 +360,7 @@ class MoviePilotApiTool(MoviePilotTool):
             except AgentIdentityError as error:
                 self._record_identity_error(str(error))
                 raise ApiExecutionError(str(error)) from error
+            self._resolved_web_permissions = normalize_web_permissions(getattr(execution_user, "permissions", None))
             return str(execution_user.id), execution_user.name, bool(execution_user.is_superuser)
         is_authenticated_integration = self._source == "api" or (
             self._channel == NotificationChannel.Web.value
@@ -346,7 +397,15 @@ class MoviePilotApiTool(MoviePilotTool):
         if user is None:
             raise ApiExecutionError(self._identity_unavailable_message())
         if not user.is_active:
+            if is_direct_user_channel:
+                self._agent_context["web_user_active"] = False
             raise ApiExecutionError("当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。重新绑定不能解除停用。")
+        if is_direct_user_channel:
+            normalized_permissions = normalize_web_permissions(getattr(user, "permissions", None))
+            self._resolved_web_permissions = normalized_permissions
+            self._agent_context["web_user_active"] = True
+            self._agent_context["web_user_permissions"] = normalized_permissions
+            self._agent_context["is_admin"] = bool(user.is_superuser)
         return str(user.id), user.name, bool(user.is_superuser)
 
     def _identity_unavailable_message(self) -> str:
@@ -393,11 +452,18 @@ class MoviePilotApiTool(MoviePilotTool):
         public_read_only: bool = False,
     ) -> tuple[MoviePilotApiExecutor, bool]:
         """
-        解析执行身份；公共资料使用只能执行白名单读取的宿主认证通道。
+        解析执行身份；非网页渠道的公共资料使用宿主只读通道，直接网页会话始终绑定真实登录用户。
+
+        :param require_system_admin: 当前操作在非网页渠道下是否要求系统管理员
+        :param public_read_only: 当前操作是否属于免绑定公共只读资料
+        :return: ``(API 执行器, 是否超级管理员)`` 二元组
         """
+        self._resolved_web_permissions = None
         if self._executor is not None:
             return self._executor, await self.is_admin_user()
-        if public_read_only and not isinstance(self._agent_context.get("execution_user_id"), int):
+        is_direct_web = self._is_direct_web_session()
+        effective_public_read_only = public_read_only and not is_direct_web
+        if effective_public_read_only and not isinstance(self._agent_context.get("execution_user_id"), int):
             user_id, username, is_admin = await self._resolve_superuser_integration_identity()
         else:
             user_id, username, is_admin = await self._resolve_api_identity(
@@ -412,12 +478,14 @@ class MoviePilotApiTool(MoviePilotTool):
                     session_id=self._session_id,
                     channel=self._channel,
                     source=self._source,
-                    public_read_only=public_read_only,
+                    public_read_only=effective_public_read_only,
                     # 公共资料使用宿主身份只读查询，不绑定渠道发起人
                     channel_user_id=(
-                        str(self._user_id) if self._channel and self._user_id and not public_read_only else None
+                        str(self._user_id)
+                        if self._channel and self._user_id and not effective_public_read_only
+                        else None
                     ),
-                        authorization_id=str(self._agent_context.get("authorization_id") or "") or None,
+                    authorization_id=str(self._agent_context.get("authorization_id") or "") or None,
                 )
             ),
             is_admin,
@@ -485,7 +553,34 @@ class MoviePilotApiTool(MoviePilotTool):
                 require_system_admin=requires_system_admin,
                 public_read_only=operation_id in API_UNBOUND_READ_OPERATIONS,
             )
-            if requires_system_admin and not is_admin:
+            if self._is_direct_web_session():
+                if self._agent_context.get("web_user_active") is False:
+                    self._record_identity_error("当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。")
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "error": "permission_denied",
+                            "message": "当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。",
+                        },
+                        ensure_ascii=False,
+                    )
+                allowed, denial_reason = authorize_web_operation(
+                    is_superuser=is_admin,
+                    permissions=self._get_resolved_web_permissions(),
+                    operation_id=operation_id,
+                    media_type=self._extract_request_media_type(query=query, body=body),
+                )
+                if not allowed:
+                    self._record_identity_error(denial_reason)
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "error": "permission_denied",
+                            "message": denial_reason,
+                        },
+                        ensure_ascii=False,
+                    )
+            elif requires_system_admin and not is_admin:
                 self._record_identity_error("任务执行账号不具备此操作需要的系统管理员权限。")
                 return json.dumps(
                     {

@@ -15,7 +15,7 @@ from app.adapters.external.wechat import WXBizMsgCrypt
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.context import get_background_task_registry, resolve_background_task_registry
 from app.api.dependencies.agent import get_message_query_service
-from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.auth import get_current_active_superuser, get_current_active_user
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import (
@@ -178,10 +178,10 @@ async def user_message(
 async def web_message(
     request: Request,
     text: Optional[str] = None,
-    current_user: ApiPrincipal = Depends(get_current_active_superuser),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse[None]:
     """
-    WEB消息响应
+    接收并处理当前登录用户的 WEB 消息，按真实登录用户身份绑定权限。
     """
     images = None
     content_type = request.headers.get("content-type") or ""
@@ -205,10 +205,11 @@ async def web_message(
     MessageChain().handle_message(
         channel=NotificationChannel.Web,
         source=current_user.name,
-        userid=current_user.name,
+        userid=str(current_user.id),
         username=current_user.name,
         text=text or "",
         images=images,
+        is_channel_admin=bool(current_user.is_superuser),
     )
     return _SchemaResponse(success=True)
 
