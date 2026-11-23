@@ -978,8 +978,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10598,
-  "edge_sha256": "993e3c59261342f22092792ee5c363c7f76552106841d3f3b26ce2f9239e4ad0",
+  "edge_count": 10600,
+  "edge_sha256": "bf9c5fc93ac33f001901804a5f11a39c5105bbe990bc09e2bddfbe646377e6c8",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7389,6 +7389,8 @@
     "app.doctor.checks -> app.adapters.system.backup.database",
     "app.doctor.checks -> app.adapters.system.backup.files",
     "app.doctor.checks -> app.adapters.system.host",
+    "app.doctor.checks -> app.application",
+    "app.doctor.checks -> app.application.module",
     "app.doctor.checks -> app.doctor",
     "app.doctor.checks -> app.doctor.models",
     "app.doctor.checks -> app.foundation",

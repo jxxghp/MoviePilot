@@ -196,7 +196,10 @@ def configure_runtime_data_providers() -> None:
     在启动组合层装配模块和配置目录的运行时读取能力。
     """
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
-    configure_module_runtime(lambda: cast(ModuleRuntime, ModuleManager()))
+    configure_module_runtime(
+        lambda: cast(ModuleRuntime, ModuleManager()),
+        existing=lambda: cast(ModuleRuntime | None, _existing_module_manager()),
+    )
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: list(

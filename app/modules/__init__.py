@@ -178,6 +178,7 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         self._configs: Optional[Dict[Optional[str], TConf]] = None
         self._instances: Optional[Dict[Optional[str], TService]] = None
         self._service_name: Optional[str] = None
+        self._init_errors: Dict[Optional[str], str] = {}
 
     def init_service(self, service_name: str,
                      service_type: Optional[Union[Type[TService], Callable[..., TService]]] = None) -> None:
@@ -185,12 +186,13 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         按服务类型读取配置并创建实例。
 
         传入类时按配置展开关键字参数；传入工厂时把整个配置对象作为参数。
-        重新初始化会替换本对象的实例映射，旧资源应由调用方提前停止。
+        先在临时映射中逐个构造实例再整体切换，避免热重载中途异常导致已运行映射被清空或停留在半初始化状态；
+        单条配置实例化失败时记录错误并隔离其余合法配置，仅当全部已启用配置均失败时抛出首个异常。
 
         :param service_name: 匹配配置中 type 的服务类型名称，不接受空值
         :param service_type: 服务类或接收配置对象的工厂；为空时只读取配置
-        :raises Exception: 服务名称为空
-        :raises TypeError: 通过类构造服务时配置参数为空
+        :raises Exception: 服务名称为空或全部已启用配置均实例化失败
+        :raises TypeError: 通过类构造服务时配置参数为空且无其他可用配置
         """
         if not service_name:
             raise Exception("service_name is null")
@@ -198,20 +200,67 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         configs = self.get_configs()
         if configs is None:
             return
-        self._configs = configs
-        self._instances = {}
         if not service_type:
+            self._configs = configs
+            self._instances = {}
+            self._init_errors = {}
             return
-        for conf in self._configs.values():
-            # 通过服务类型或工厂函数来创建实例
-            if isinstance(service_type, type):
-                # 如果传入的是类类型，调用构造函数实例化
-                self._instances[conf.name] = service_type(
-                    **self._service_kwargs(conf)
+        instances, init_errors, first_error = self._build_service_instances(
+            service_name=service_name,
+            service_type=service_type,
+            configs=configs,
+        )
+        self._configs = configs
+        self._instances = instances
+        self._init_errors = init_errors
+        if configs and not instances and first_error is not None:
+            raise first_error
+
+    def _build_service_instances(
+        self,
+        *,
+        service_name: str,
+        service_type: Union[Type[TService], Callable[..., TService]],
+        configs: Mapping[Optional[str], TConf],
+    ) -> Tuple[Dict[Optional[str], TService], Dict[Optional[str], str], Optional[Exception]]:
+        """
+        在独立临时映射中实例化全部已启用配置，并隔离单条配置的初始化异常。
+
+        :param service_name: 服务类型名称，用于错误日志标识
+        :param service_type: 服务类或接收配置对象的工厂
+        :param configs: 已启用的服务配置映射
+        :return: 成功实例映射、失败配置错误映射及首个异常对象
+        """
+        instances: Dict[Optional[str], TService] = {}
+        init_errors: Dict[Optional[str], str] = {}
+        first_error: Optional[Exception] = None
+        for conf in configs.values():
+            try:
+                # 通过服务类型或工厂函数来创建实例
+                if isinstance(service_type, type):
+                    # 如果传入的是类类型，调用构造函数实例化
+                    instances[conf.name] = service_type(
+                        **self._service_kwargs(conf)
+                    )
+                else:
+                    # 如果传入的是工厂函数，直接调用工厂函数
+                    instances[conf.name] = service_type(conf)
+            except Exception as err:
+                if first_error is None:
+                    first_error = err
+                init_errors[conf.name] = str(err)
+                logger.error(
+                    f"初始化 {service_name} 服务实例 {conf.name or '<未命名>'} 失败：{err}"
                 )
-            else:
-                # 如果传入的是工厂函数，直接调用工厂函数
-                self._instances[conf.name] = service_type(conf)
+        return instances, init_errors, first_error
+
+    def get_init_errors(self) -> Dict[Optional[str], str]:
+        """
+        读取最近一次初始化中失败的服务实例错误映射。
+
+        :return: 配置名称到错误说明的映射副本；全部成功或尚未初始化时返回空字典
+        """
+        return dict(getattr(self, "_init_errors", None) or {})
 
     def _service_kwargs(self, conf: TConf) -> Dict[str, Any]:
         """
@@ -483,14 +532,10 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         获取默认服务配置的名称。
 
         只从已启用的下载器配置中选择：已禁用配置不会被实例化，若命中已禁用项会导致所有走默认
-        下载器的请求找不到实例。
+        下载器的请求找不到实例。每次按最新内存配置快照实时解析，避免配置变更后沿用过期的默认名称缓存。
 
         :return: 优先从已启用的下载器中查找配置了默认的下载器，如果没有配置，则获取第一个已启用的下载器名称
         """
-        # 优先查找默认配置
-        if self._default_config_name:
-            return self._default_config_name
-
         configs = [
             conf for conf in ServiceConfigHelper.get_downloader_configs() if conf.enabled
         ]

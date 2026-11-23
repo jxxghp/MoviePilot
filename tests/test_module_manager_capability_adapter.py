@@ -605,6 +605,148 @@ def test_config_event_reloads_same_instance_and_tracks_selector_changes(
     assert running.events == ["create", "start", "stop", "start", "stop"]
 
 
+def test_failed_reload_surfaces_in_test_and_recovers_on_recover_event(
+    module_manager_harness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    模块热重载失败后应在 test() 和健康诊断中暴露原因，并在 recover 事件到来时只恢复故障模块。
+    """
+    from app.schemas.types import ModuleType
+
+    manager = module_manager_harness.manager
+    module_manager_harness.config_values["Notifications"] = [
+        {"name": "sample", "type": "sample", "config": {}, "switchs": [], "enabled": True},
+        {"name": "other", "type": "other", "config": {}, "switchs": [], "enabled": True},
+    ]
+    manager.load_modules()
+    sample = manager.get_running_module("SampleModule")
+    other = manager.get_running_module("OtherModule")
+    assert sample is not None and other is not None
+
+    should_fail = {"sample": True}
+    original_init = sample.init_module
+
+    def flaky_init() -> None:
+        """
+        在指定阶段抛出初始化异常，模拟热重载配置损坏。
+        """
+        if should_fail["sample"]:
+            raise RuntimeError("连接地址无效")
+        original_init()
+
+    monkeypatch.setattr(sample, "init_module", flaky_init)
+    manager.handle_config_changed(
+        Event(
+            EventType.ConfigChanged,
+            ConfigChangeEventData(key="Notifications", change_type="update"),
+        )
+    )
+
+    assert manager.get_running_module("SampleModule") is None
+    assert manager.get_running_module("OtherModule") is other
+    assert manager.test("SampleModule") == (False, "模块初始化或重载失败：连接地址无效")
+
+    issues = manager.get_unhealthy_module_issues()
+    assert len(issues) == 1
+    assert issues[0]["id"] == "SampleModule"
+    assert issues[0]["lifecycle"] == CapabilityLifecycleState.FAILED.value
+    assert issues[0]["error"] == "连接地址无效"
+    assert manager.get_unhealthy_module_issues(ModuleType.Notification) == issues
+    assert manager.get_unhealthy_module_issues(ModuleType.Downloader) == []
+
+    # 仅恢复故障模块，不打断已处于健康运行态的 OtherModule。
+    other_events_before_recover = list(other.events)
+    should_fail["sample"] = False
+    manager.handle_config_changed(
+        Event(
+            EventType.ConfigChanged,
+            ConfigChangeEventData(key="Notifications", change_type="recover"),
+        )
+    )
+
+    assert manager.get_running_module("SampleModule") is not None
+    assert manager.get_unhealthy_module_issues() == []
+    assert other.events == other_events_before_recover
+
+
+def test_degraded_module_surfaces_init_errors_and_recovers_without_reloading_healthy_siblings(
+    module_manager_harness,
+) -> None:
+    """
+    运行中模块存在部分实例初始化失败时应上报 degraded，recover 仅重载降级模块。
+    """
+    manager = module_manager_harness.manager
+    module_manager_harness.config_values["Notifications"] = [
+        {"name": "sample", "type": "sample", "config": {}, "switchs": [], "enabled": True},
+        {"name": "other", "type": "other", "config": {}, "switchs": [], "enabled": True},
+    ]
+    manager.load_modules()
+    sample = manager.get_running_module("SampleModule")
+    other = manager.get_running_module("OtherModule")
+    assert sample is not None and other is not None
+
+    errors = {"bad-instance": "认证失败"}
+    sample.get_init_errors = lambda: dict(errors)
+
+    issues = manager.get_unhealthy_module_issues()
+    assert len(issues) == 1
+    assert issues[0]["id"] == "SampleModule"
+    assert issues[0]["lifecycle"] == "degraded"
+    assert issues[0]["init_errors"] == {"bad-instance": "认证失败"}
+    assert "bad-instance：认证失败" in issues[0]["error"]
+
+    sample_events_before = list(sample.events)
+    other_events_before = list(other.events)
+    original_init = sample.init_module
+
+    def recovered_init() -> None:
+        """
+        模拟重载后部分实例错误恢复清空。
+        """
+        errors.clear()
+        original_init()
+
+    sample.init_module = recovered_init
+    manager.handle_config_changed(
+        Event(
+            EventType.ConfigChanged,
+            ConfigChangeEventData(key="Notifications", change_type="recover"),
+        )
+    )
+
+    assert sample.events == [*sample_events_before, "stop", "start"]
+    assert other.events == other_events_before
+    assert manager.get_unhealthy_module_issues() == []
+
+
+def test_get_existing_module_manager_does_not_materialize_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    只读查询已存在的模块管理器时不得触发懒加载 provider 构造新实例。
+    """
+    from app.application import module as module_app
+
+    provider = Mock(return_value="created-manager")
+    existing_value = {"manager": None}
+    monkeypatch.setattr(module_app, "_runtime_provider", module_app._unconfigured_runtime)
+    monkeypatch.setattr(module_app, "_existing_runtime_provider", None)
+
+    assert module_app.get_existing_module_manager() is None
+
+    module_app.configure_module_runtime(
+        provider,
+        existing=lambda: existing_value["manager"],
+    )
+    assert module_app.get_existing_module_manager() is None
+    provider.assert_not_called()
+
+    existing_value["manager"] = "live-manager"
+    assert module_app.get_existing_module_manager() == "live-manager"
+    provider.assert_not_called()
+
+
 def test_registered_config_event_activates_newly_enabled_module(
     module_manager_harness,
 ) -> None:

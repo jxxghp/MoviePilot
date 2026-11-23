@@ -204,6 +204,42 @@ async def test_runtime_settings_revision_is_optional_but_protects_conditional_wr
     assert state["value"] == "next"
 
 
+@pytest.mark.asyncio
+async def test_settings_update_recovers_unhealthy_modules_when_system_config_unchanged(
+    monkeypatch,
+) -> None:
+    """
+    新设置写入接口在系统配置值未变化时应调用定向模块恢复，不触发全量配置变更广播。
+    """
+    from app.application.configuration import SystemConfigWriteResult
+
+    runtime = MagicMock()
+    system = MagicMock()
+    current_value = [{"name": "qb", "type": "qbittorrent", "enabled": True, "config": {}}]
+    system.get.return_value = current_value
+    system.async_set_with_normalized_value = AsyncMock(
+        return_value=SystemConfigWriteResult(changed=None, normalized_value=current_value)
+    )
+    publish = AsyncMock()
+    recover = AsyncMock()
+    monkeypatch.setattr(settings_module, "plugin_system_config_mutation", lambda _key: nullcontext())
+    service = settings_module.SystemSettingsService(
+        runtime,
+        system,
+        publish,
+        recover_unhealthy_modules=recover,
+    )
+
+    result = await service.update(
+        setting_key=SystemConfigKey.Downloaders.value,
+        value=current_value,
+    )
+
+    assert result["changed"] is False
+    publish.assert_not_awaited()
+    recover.assert_awaited_once_with(SystemConfigKey.Downloaders.value)
+
+
 def test_setting_key_resolution_accepts_enum_names_and_values() -> None:
     """
     设置解析应同时支持 SystemConfigKey 的枚举名和值。

@@ -25,6 +25,7 @@ import psutil
 from app.adapters.system.backup.database import verify_database_backup
 from app.adapters.system.backup.files import BackupFiles
 from app.adapters.system.host import SystemUtils
+from app.application.module import get_existing_module_manager
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorReport, DoctorSeverity
 from app.foundation.url import URL_QUERY_CREDENTIAL_PATTERN, URL_USERINFO_CREDENTIAL_PATTERN
 from app.runtime.settings import get_runtime_setting, update_runtime_setting
@@ -157,7 +158,7 @@ class DoctorRunnerProtocol:
 
 def default_checks() -> list[CheckFunc]:
     """
-    返回按运行路径、配置、进程、依赖、数据及日志顺序排列的默认检查项。
+    返回按运行路径、配置、进程、依赖、数据、运行模块及日志顺序排列的默认检查项。
 
     :return: 检查函数列表；每个函数接收运行器并向其报告追加发现
     """
@@ -169,6 +170,7 @@ def default_checks() -> list[CheckFunc]:
         _check_dependencies,
         _check_database,
         _check_frontend_assets,
+        _check_runtime_modules,
         _check_logs,
         _check_docker,
         _check_safe_mode,
@@ -1103,6 +1105,46 @@ def _check_frontend_assets(runner: DoctorRunnerProtocol) -> None:
         detail=f"前端目录：{frontend_dir}；版本：{version or 'unknown'}。",
         recommendation="无需处理。",
         context={"frontend_dir": str(frontend_dir), "version": version},
+    )
+
+
+def _check_runtime_modules(runner: DoctorRunnerProtocol) -> None:
+    """
+    进程内存在已物化模块运行时时，检查应启用宿主模块的运行与初始化状态。
+
+    离线 CLI 诊断未装配宿主运行时，直接跳过而不触发模块初始化或外部网络请求。
+    """
+    manager = get_existing_module_manager()
+    get_issues = getattr(manager, "get_unhealthy_module_issues", None)
+    if not callable(get_issues):
+        return
+    issues = get_issues()
+    if not isinstance(issues, list):
+        return
+    if issues:
+        has_unavailable = any(issue.get("lifecycle") != "degraded" for issue in issues)
+        details = [
+            f"{issue.get('name') or issue.get('id')} ({issue.get('id')})："
+            f"{issue.get('error') or issue.get('lifecycle')}"
+            for issue in issues
+        ]
+        runner.add(
+            finding_id="modules.runtime_unhealthy",
+            severity=DoctorSeverity.Error if has_unavailable else DoctorSeverity.Warn,
+            status=DoctorFindingStatus.Failed if has_unavailable else DoctorFindingStatus.Degraded,
+            title="运行中宿主模块状态异常",
+            detail="\n".join(details),
+            recommendation="检查对应模块配置并在设置页重新保存以触发恢复，必要时结合运行日志排查初始化失败原因。",
+            context={"issues": issues},
+        )
+        return
+    runner.add(
+        finding_id="modules.runtime_healthy",
+        severity=DoctorSeverity.Info,
+        status=DoctorFindingStatus.Ok,
+        title="运行中宿主模块状态正常",
+        detail="已启用的宿主模块均处于运行态且无实例初始化错误。",
+        recommendation="无需处理。",
     )
 
 

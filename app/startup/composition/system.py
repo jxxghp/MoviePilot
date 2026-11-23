@@ -240,6 +240,10 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
     把已提交设置变更发布到宿主事件总线。
     """
 
+    _MODULE_CONFIG_HANDLER_ID = (
+        "app.runtime.extensions.module.manager.ModuleManager.handle_config_changed"
+    )
+
     async def publish(self, key: Any, value: Any = None) -> None:
         """
         同步失效派生缓存并等待全部配置重载处理器完成。
@@ -254,6 +258,19 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
         await eventmanager.async_send_event_strict(
             etype=EventType.ConfigChanged,
             data=payload,
+        )
+
+    async def recover_modules(self, key: Any) -> None:
+        """
+        配置值未变化时，仅定向触发模块管理器恢复关联的异常或未就绪宿主模块。
+
+        :param key: 本次保存涉及的配置键或键集合
+        """
+        payload = ConfigChangeEventData(key=key, value=None, change_type="recover")
+        await eventmanager.async_send_event_strict(
+            etype=EventType.ConfigChanged,
+            data=payload,
+            handler_id=self._MODULE_CONFIG_HANDLER_ID,
         )
 
 

@@ -625,8 +625,14 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         """
         检查已配置媒体服务器，遇到首个不可用实例即返回失败。
 
-        :return: 是否就绪与失败说明；没有实例时返回 None
+        存在初始化失败的服务器配置时优先返回具体错误，避免其余实例可用时掩盖故障。
+
+        :return: 是否就绪与失败说明；没有实例且无初始化错误时返回 None
         """
+        init_errors = self.get_init_errors()
+        if init_errors:
+            init_name, init_error = next(iter(init_errors.items()))
+            return False, f"初始化{self.get_name()}服务器失败：{init_name or '未命名'}（{init_error}）"
         if not self.get_instances():
             return None
         for name, server in self.get_instances().items():

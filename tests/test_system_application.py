@@ -302,6 +302,34 @@ async def test_update_setting_preserves_persistent_write_result(
 
 
 @pytest.mark.anyio
+async def test_update_setting_recovers_unhealthy_modules_when_value_unchanged() -> None:
+    """
+    系统配置值未变化时应抑制全量 ConfigChanged 广播，仅触发异常模块定向恢复。
+    """
+    service, dependencies = _build_service()
+    dependencies.settings.contains.return_value = False
+    dependencies.events.recover_modules = AsyncMock()
+    dependencies.system_config.async_set_with_normalized_value.side_effect = None
+    dependencies.system_config.async_set_with_normalized_value.return_value = (
+        SystemConfigWriteResult(
+            changed=None,
+            normalized_value=[{"name": "qb", "type": "qbittorrent", "enabled": True}],
+        )
+    )
+
+    result = await service.update_setting(
+        SystemConfigKey.Downloaders.value,
+        [{"name": "qb", "type": "qbittorrent", "enabled": True}],
+    )
+
+    assert result.success is True
+    dependencies.events.publish.assert_not_awaited()
+    dependencies.events.recover_modules.assert_awaited_once_with(
+        SystemConfigKey.Downloaders.value
+    )
+
+
+@pytest.mark.anyio
 async def test_update_setting_rejects_invalid_normalized_value() -> None:
     """
     旧设置入口必须把目录规范化错误作为可见失败返回且不写库。

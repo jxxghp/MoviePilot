@@ -28,6 +28,7 @@ from app.application.settings.contract import (
 from app.schemas.types import SystemConfigKey
 
 SystemSettingPublisher = Callable[[Any, Any], Awaitable[None]]
+SystemSettingModuleRecoverer = Callable[[Any], Awaitable[None]]
 
 
 class SystemSettingConflictError(ValueError):
@@ -340,13 +341,16 @@ class SystemSettingsService:
         runtime_settings: RuntimeSettingsService,
         system_config: SystemConfigService,
         publish_config_changed: SystemSettingPublisher,
+        *,
+        recover_unhealthy_modules: Optional[SystemSettingModuleRecoverer] = None,
     ) -> None:
         """
-        注入部署设置、持久化配置和配置事件发布端口。
+        注入部署设置、持久化配置、配置事件发布端口和可选的异常模块恢复回调。
         """
         self._runtime_settings = runtime_settings
         self._system_config = system_config
         self._publish_config_changed = publish_config_changed
+        self._recover_unhealthy_modules = recover_unhealthy_modules
 
     def _load(self, spec: SettingSpec) -> Any:
         """
@@ -796,6 +800,8 @@ class SystemSettingsService:
                 changed = bool(write_result.changed)
             if changed:
                 await self._publish_config_changed(spec.key, event_value)
+            elif self._recover_unhealthy_modules is not None:
+                await self._recover_unhealthy_modules(spec.key)
             saved_value = self._load(spec)
             previous_revision = build_setting_revision(previous_value)
             saved_revision = build_setting_revision(saved_value)

@@ -66,6 +66,7 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
     MessageType,
+    ModuleType,
     NotificationChannel,
 )
 
@@ -1371,6 +1372,10 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                         downloader,
                         prepared,
                         user_specified=user_specified,
+                        diagnostic=self._missing_downloader_diagnostic(
+                            downloader,
+                            prepared,
+                        ),
                     ),
                 )
             )
@@ -1424,12 +1429,57 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 )
         return download_hash, error_msg
 
+    def _missing_downloader_diagnostic(
+        self,
+        downloader: Optional[str],
+        prepared: _PreparedDownload,
+    ) -> Optional[str]:
+        """
+        读取本地下载器模块健康快照，为实例缺失错误补充初始化或热重载失败线索。
+
+        仅读取运行态缓存，不触发下载器网络请求或模块物化。
+
+        :param downloader: 调用方或订阅显式传入的下载器名称
+        :param prepared: 提交前已规范化的下载事实
+        :return: 可附加到错误提示后的诊断说明；模块状态正常或未装配管理器时返回 None
+        """
+        manager = getattr(self, "modulemanager", None)
+        get_issues = getattr(manager, "get_unhealthy_module_issues", None)
+        if not callable(get_issues):
+            return None
+        issues = get_issues(ModuleType.Downloader)
+        if not isinstance(issues, list) or not issues:
+            return None
+        target = downloader or prepared.site_downloader
+        if target:
+            for issue in issues:
+                init_errors = issue.get("init_errors")
+                if isinstance(init_errors, Mapping) and target in init_errors:
+                    return f"实例初始化失败：{init_errors[target]}"
+        unavailable = [
+            f"{issue.get('name') or issue.get('id')}（{issue.get('error') or issue.get('lifecycle')}）"
+            for issue in issues
+            if issue.get("lifecycle") != "degraded"
+        ]
+        if unavailable:
+            return f"下载器模块未就绪：{'；'.join(unavailable)}"
+        if not target:
+            degraded = [
+                str(issue.get("error"))
+                for issue in issues
+                if issue.get("error")
+            ]
+            if degraded:
+                return f"部分下载器实例初始化失败：{'；'.join(degraded)}"
+        return None
+
     @staticmethod
     def _missing_downloader_error(
         downloader: Optional[str],
         prepared: _PreparedDownload,
         *,
         user_specified: bool = False,
+        diagnostic: Optional[str] = None,
     ) -> str:
         """
         生成所有下载器模块均未匹配到可用实例时的诊断说明。
@@ -1440,21 +1490,23 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         :param downloader: 调用方或订阅显式传入的下载器名称
         :param prepared: 提交前已规范化的下载事实，用于读取站点绑定下载器与站点名
         :param user_specified: 是否为用户手动提交；手动下载接口会把用户选择的下载器写入 ``site_downloader``
+        :param diagnostic: 可选的运行态模块或实例初始化失败说明
         :return: 供日志与失败通知展示的具体错误说明
         """
+        suffix = f"（{diagnostic}）" if diagnostic else ""
         if downloader or (prepared.site_downloader and user_specified):
             target = downloader or prepared.site_downloader
             return (
                 f"未找到可用下载器实例：{target}，"
-                "请检查下载器是否已启用、改名或删除，以及订阅或下载配置中的下载器设置"
+                f"请检查下载器是否已启用、改名或删除，以及订阅或下载配置中的下载器设置{suffix}"
             )
         if prepared.site_downloader:
             site_name = prepared.torrent.site_name or "当前站点"
             return (
                 f"未找到站点 {site_name} 指定的下载器实例：{prepared.site_downloader}，"
-                "请检查下载器是否已启用、改名或删除，以及站点下载器配置"
+                f"请检查下载器是否已启用、改名或删除，以及站点下载器配置{suffix}"
             )
-        return "未找到可用的默认下载器实例，请检查下载器配置中是否存在已启用的下载器"
+        return f"未找到可用的默认下载器实例，请检查下载器配置中是否存在已启用的下载器{suffix}"
 
     def _existing_task_confirmed_selection(
         self, task_hashes: frozenset[str],

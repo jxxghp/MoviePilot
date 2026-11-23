@@ -97,7 +97,8 @@ class ModuleManager(metaclass=Singleton):
                 observation.error,
             )
         elif observation.outcome == "succeeded":
-            logger.debug(
+            log_fn = logger.info if observation.operation == "reload" else logger.debug
+            log_fn(
                 "Host Module %s %s 完成，generation=%s，耗时=%.2fms",
                 observation.capability_id,
                 observation.operation,
@@ -182,50 +183,87 @@ class ModuleManager(metaclass=Singleton):
             )
         return None
 
+    def _select_reconcile_specs(
+        self,
+        changed_keys: Optional[set[str]] = None,
+    ) -> tuple[CapabilitySpec, ...]:
+        """
+        按变更键筛选本轮需要协调的宿主模块声明。
+        """
+        return tuple(
+            spec
+            for spec in self._specs
+            if (
+                changed_keys is None
+                or changed_keys.intersection(spec.watch)
+                or (
+                    spec.activation is ActivationPolicy.BOOTSTRAP
+                    and MODULE_ENABLE_SETTING in changed_keys
+                )
+            )
+        )
+
+    @staticmethod
+    def _module_init_errors(instance: object) -> dict[Optional[str], str]:
+        """
+        读取服务模块已记录的实例初始化错误；未实现该接口的模块返回空字典。
+        """
+        getter = getattr(instance, "get_init_errors", None)
+        if not callable(getter):
+            return {}
+        errors = getter()
+        return dict(errors) if isinstance(errors, dict) else {}
+
     def _reconcile(
         self,
         *,
         reason: str,
         changed_keys: Optional[set[str]] = None,
         reload_running: bool = False,
-    ) -> None:
+        reload_degraded_only: bool = False,
+    ) -> bool:
         """
         以一次配置快照串行协调需要启动、重载或停止的能力。
+
+        :param reason: 触发协调的原因标识
+        :param changed_keys: 变更的配置键集合；为 None 时协调全部模块
+        :param reload_running: 是否对仍需运行的已运行模块执行热重载
+        :param reload_degraded_only: 为 True 时仅重试未运行或存在部分实例初始化失败的模块
+        :return: 本轮是否对任意模块发起了激活、重载或停止操作
         """
+        acted = False
         with self._lifecycle_lock:
-            selected = tuple(
-                spec
-                for spec in self._specs
-                if (
-                    changed_keys is None
-                    or changed_keys.intersection(spec.watch)
-                    or (
-                        spec.activation is ActivationPolicy.BOOTSTRAP
-                        and MODULE_ENABLE_SETTING in changed_keys
-                    )
-                )
-            )
+            selected = self._select_reconcile_specs(changed_keys)
             snapshot = capture_host_module_config(selected)
             for spec in selected:
                 desired = should_run_host_module(spec, snapshot)
                 running = self._runtime.get_running(spec.id)
+                should_reload = (
+                    reload_running
+                    or (reload_degraded_only and running is not None and bool(self._module_init_errors(running)))
+                )
                 try:
                     if desired and running is None:
+                        acted = True
                         instance = self._runtime.activate(
                             spec.id,
                             reason=reason,
                             retry=True,
                         )
                         self._remember_materialized(spec.id, type(instance))
-                    elif desired and running is not None and reload_running:
+                    elif desired and running is not None and should_reload:
+                        acted = True
                         instance = self._runtime.reload(spec.id, reason=reason)
                         self._remember_materialized(spec.id, type(instance))
                     elif not desired and running is not None:
+                        acted = True
                         self._runtime.stop(spec.id, reason=reason)
                 except Exception:
                     # 单能力失败由 Runtime 完整记录；其它无依赖能力继续 reconcile。
                     continue
-            self._refresh_running_projection()
+            if acted or not reload_degraded_only:
+                self._refresh_running_projection()
+        return acted
 
     def load_modules(self) -> None:
         """
@@ -240,10 +278,37 @@ class ModuleManager(metaclass=Singleton):
         changed_keys = self._event_changed_keys(event)
         if not changed_keys:
             return
+        event_data = event.event_data
+        change_type = (
+            event_data.get("change_type", "update")
+            if isinstance(event_data, dict)
+            else getattr(event_data, "change_type", "update")
+        )
+        if change_type == "recover":
+            self.reconcile_unhealthy_keys(changed_keys)
+            return
         self._reconcile(
             reason="config_changed",
             changed_keys=changed_keys,
             reload_running=True,
+        )
+
+    def reconcile_unhealthy_keys(self, changed_keys: set[str]) -> bool:
+        """
+        在用户重新保存未变化的配置时，仅对异常或未就绪的关联模块执行恢复协调。
+
+        健康运行中的模块不会被重载或重建连接。
+
+        :param changed_keys: 本次保存涉及的配置键集合
+        :return: 是否尝试协调了至少一个异常或状态不一致的模块
+        """
+        if not changed_keys:
+            return False
+        return self._reconcile(
+            reason="config_recovery",
+            changed_keys=changed_keys,
+            reload_running=False,
+            reload_degraded_only=True,
         )
 
     def stop(self) -> None:
@@ -296,15 +361,67 @@ class ModuleManager(metaclass=Singleton):
 
     def test(self, modleid: str) -> Tuple[bool, str]:
         """
-        测试已运行模块；未启用模块保持旧合同返回 `(False, "")`。
+        测试已运行模块；初始化或重载失败的模块返回具体错误，未启用模块保持旧合同返回 `(False, "")`。
         """
         module = self.get_running_module(modleid)
         if module is None:
+            if modleid and self._runtime.get_spec(modleid) is not None:
+                snapshot = self._runtime.snapshot(modleid)
+                if snapshot.lifecycle is CapabilityLifecycleState.FAILED:
+                    detail = f"：{snapshot.error}" if snapshot.error else ""
+                    return False, f"模块初始化或重载失败{detail}"
             return False, ""
         if hasattr(module, "test") and ObjectUtils.check_method(module.test):
             result = module.test()
             return result if result else (False, "")
         return True, "模块不支持测试"
+
+    def get_unhealthy_module_issues(
+        self,
+        module_type: Optional[ModuleType] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        返回当前配置要求启用但未正常运行或存在实例初始化失败的宿主模块诊断项。
+
+        仅读取本地生命周期快照与模块已记录的初始化错误，不触发模块物化、重载或网络探测。
+
+        :param module_type: 可选的模块类型过滤；为空时检查全部应启用模块
+        :return: 异常模块诊断字典列表，包含模块 ID、名称、类型、状态、错误说明和实例错误映射
+        """
+        issues: list[dict[str, Any]] = []
+        for spec in self.list_enabled_specs():
+            if module_type is not None and spec.metadata.get("type") != module_type.value:
+                continue
+            running = self._runtime.get_running(spec.id)
+            if running is None:
+                snapshot = self._runtime.snapshot(spec.id)
+                issues.append(
+                    {
+                        "id": spec.id,
+                        "name": str(spec.metadata.get("name") or spec.id),
+                        "type": str(spec.metadata.get("type") or ""),
+                        "lifecycle": snapshot.lifecycle.value,
+                        "error": snapshot.error,
+                        "init_errors": {},
+                    }
+                )
+                continue
+            init_errors = self._module_init_errors(running)
+            if init_errors:
+                issues.append(
+                    {
+                        "id": spec.id,
+                        "name": str(spec.metadata.get("name") or spec.id),
+                        "type": str(spec.metadata.get("type") or ""),
+                        "lifecycle": "degraded",
+                        "error": "；".join(
+                            f"{name or '未命名'}：{err}"
+                            for name, err in init_errors.items()
+                        ),
+                        "init_errors": init_errors,
+                    }
+                )
+        return issues
 
     @staticmethod
     def check_setting(setting: Optional[tuple[str, object]]) -> bool:

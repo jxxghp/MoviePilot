@@ -608,8 +608,14 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
         """
         检查全部已启用下载器的连接状态，必要时先尝试重连。
 
-        :return: 首个失败的说明或整体成功结果；没有实例时返回 None
+        存在初始化失败的下载器配置时优先返回具体错误，避免其余实例可用时掩盖故障。
+
+        :return: 首个失败的说明或整体成功结果；没有实例且无初始化错误时返回 None
         """
+        init_errors = self.get_init_errors()
+        if init_errors:
+            init_name, init_error = next(iter(init_errors.items()))
+            return False, f"初始化{self.get_name()}下载器失败：{init_name or '未命名'}（{init_error}）"
         if not self.get_instances():
             return None
         for name, server in self.get_instances().items():

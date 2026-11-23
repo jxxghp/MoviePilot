@@ -656,15 +656,25 @@ class EventManager(metaclass=Singleton):
         etype: EventType,
         data: Optional[Union[dict[str, object], BaseEventData]] = None,
         priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+        *,
+        handler_id: Optional[str] = None,
     ) -> Event:
         """
-        异步发送广播事件并等待全部处理器完成，保证配置写入返回时已完成重载。
+        异步发送广播事件并等待指定或全部处理器完成，保证配置写入返回时已完成重载。
+
+        :param etype: 广播事件类型
+        :param data: 可选事件载荷
+        :param priority: 事件优先级
+        :param handler_id: 可选的目标处理器稳定标识；为 None 时派发给全部已启用处理器
         """
         event = Event(etype, data, priority)
         with self.__lifecycle_lock:
             if self.__lifecycle_state != "running":
                 raise RuntimeError(f"事件处理处于 {self.__lifecycle_state} 状态")
-        await self.__dispatcher.dispatch_broadcast_async_strict(event)
+        await self.__dispatcher.dispatch_broadcast_async_strict(
+            event,
+            handler_id=handler_id,
+        )
         return event
 
     @staticmethod

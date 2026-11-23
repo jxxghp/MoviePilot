@@ -33,28 +33,49 @@ def _unconfigured_runtime() -> ModuleRuntime:
 
 
 _runtime_provider: ModuleRuntimeProvider = _unconfigured_runtime
+_existing_runtime_provider: Callable[[], ModuleRuntime | None] | None = None
 
 
-def configure_module_runtime(provider: ModuleRuntimeProvider) -> None:
+def configure_module_runtime(
+    provider: ModuleRuntimeProvider,
+    *,
+    existing: Callable[[], ModuleRuntime | None] | None = None,
+) -> None:
     """
     由启动组合根注册模块运行时实例提供器。
+
+    :param provider: 按需返回模块运行时的提供器
+    :param existing: 仅读取已物化模块运行时的提供器；省略时复用 ``provider``
     """
-    global _runtime_provider
+    global _runtime_provider, _existing_runtime_provider
     _runtime_provider = provider
+    _existing_runtime_provider = existing
 
 
 def reset_module_runtime() -> None:
     """
     恢复未装配模块运行时，禁止跨 lifespan 复用旧目录。
     """
-    global _runtime_provider
+    global _runtime_provider, _existing_runtime_provider
     _runtime_provider = _unconfigured_runtime
+    _existing_runtime_provider = None
 
 
 def get_module_manager() -> ModuleRuntime:
     """
     返回当前组合根提供的模块目录能力。
     """
+    return _runtime_provider()
+
+
+def get_existing_module_manager() -> ModuleRuntime | None:
+    """
+    返回当前已物化的模块目录能力；未装配或尚未创建时返回 None，不触发隐式初始化。
+    """
+    if _runtime_provider is _unconfigured_runtime:
+        return None
+    if _existing_runtime_provider is not None:
+        return _existing_runtime_provider()
     return _runtime_provider()
 
 
@@ -86,6 +107,7 @@ __all__ = [
     "ModuleManager",
     "ModuleRuntime",
     "configure_module_runtime",
+    "get_existing_module_manager",
     "get_module_manager",
     "reset_module_runtime",
 ]

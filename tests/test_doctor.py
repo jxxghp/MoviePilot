@@ -428,3 +428,73 @@ def test_doctor_masks_url_credentials_in_recent_log_findings(tmp_path, monkeypat
     assert "passkey=<REDACTED>" in finding.detail
     assert "id=1" in finding.detail
     assert "postgres://moviepilot:<REDACTED>@127.0.0.1:5432/moviepilot" in finding.detail
+
+
+def test_doctor_skips_runtime_modules_check_when_offline(monkeypatch):
+    """
+    离线诊断未装配进程内模块运行时时，不应初始化模块也不应生成异常项。
+    """
+    monkeypatch.setattr(checks, "get_existing_module_manager", lambda: None)
+
+    runner = DoctorRunner()
+    checks._check_runtime_modules(runner)
+
+    assert runner.report.find("modules.runtime_healthy") is None
+    assert runner.report.find("modules.runtime_unhealthy") is None
+    assert runner.report.status.value == "healthy"
+
+
+def test_doctor_reports_runtime_modules_healthy_degraded_and_failed(monkeypatch):
+    """
+    进程内存在运行中的模块管理器时，Doctor 应准确区分全部正常、部分降级与模块失效。
+    """
+    issues: list[dict] = []
+    stub_manager = SimpleNamespace(get_unhealthy_module_issues=lambda: list(issues))
+    monkeypatch.setattr(checks, "get_existing_module_manager", lambda: stub_manager)
+
+    healthy_runner = DoctorRunner()
+    checks._check_runtime_modules(healthy_runner)
+    ok_finding = healthy_runner.report.find("modules.runtime_healthy")
+    assert ok_finding is not None
+    assert ok_finding.status == DoctorFindingStatus.Ok
+    assert healthy_runner.report.status.value == "healthy"
+
+    issues[:] = [
+        {
+            "id": "QbittorrentModule",
+            "name": "Qbittorrent",
+            "type": "downloader",
+            "lifecycle": "degraded",
+            "error": "qb-2：认证失败",
+            "init_errors": {"qb-2": "认证失败"},
+        }
+    ]
+    degraded_runner = DoctorRunner()
+    checks._check_runtime_modules(degraded_runner)
+    degraded_finding = degraded_runner.report.find("modules.runtime_unhealthy")
+    assert degraded_finding is not None
+    assert degraded_finding.status == DoctorFindingStatus.Degraded
+    assert degraded_finding.severity == DoctorSeverity.Warn
+    assert "QbittorrentModule" in degraded_finding.detail
+    assert "qb-2：认证失败" in degraded_finding.detail
+    assert degraded_runner.report.status.value == "degraded"
+
+    issues[:] = [
+        {
+            "id": "QbittorrentModule",
+            "name": "Qbittorrent",
+            "type": "downloader",
+            "lifecycle": "failed",
+            "error": "主机配置无效",
+            "init_errors": {},
+        }
+    ]
+    failed_runner = DoctorRunner()
+    checks._check_runtime_modules(failed_runner)
+    failed_finding = failed_runner.report.find("modules.runtime_unhealthy")
+    assert failed_finding is not None
+    assert failed_finding.status == DoctorFindingStatus.Failed
+    assert failed_finding.severity == DoctorSeverity.Error
+    assert "QbittorrentModule" in failed_finding.detail
+    assert "主机配置无效" in failed_finding.detail
+    assert failed_runner.report.status.value == "failed"

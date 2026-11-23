@@ -147,3 +147,213 @@ def test_missing_module_metadata_retains_implicit_none():
     assert module.get_type() is None
     assert module.get_subtype() is None
     assert module.get_priority() is None
+
+
+def test_init_service_swaps_instances_atomically_after_rebuild():
+    """
+    重新初始化服务实例时应先在临时字典中完成构造，再整体替换现有实例映射。
+    """
+    existing = object()
+    service = _Service({"first": NotificationConf(name="first", config={})})
+    service.init_service("client", lambda _conf: existing)
+    assert service.get_instances() == {"first": existing}
+
+    observed_during_rebuild = []
+    replacement = object()
+    service.available_configs = {
+        "first": NotificationConf(name="first", config={}),
+    }
+
+    def factory(_conf):
+        """
+        记录构造期间外部可见的旧实例映射，确认未被提前清空。
+        """
+        observed_during_rebuild.append(dict(service.get_instances()))
+        return replacement
+
+    service.init_service("client", factory)
+    assert observed_during_rebuild == [{"first": existing}]
+    assert service.get_instances() == {"first": replacement}
+    assert service.get_init_errors() == {}
+
+
+def test_init_service_isolates_single_config_failure_and_logs_error(monkeypatch):
+    """
+    多条配置中单条实例化失败时应隔离故障并保留其余合法实例，且记录错误供健康检查与排障。
+    """
+    from app.modules import logger as module_logger
+
+    logged_errors = []
+    monkeypatch.setattr(module_logger, "error", logged_errors.append)
+
+    good_instance = object()
+    service = _Service(
+        {
+            "broken": NotificationConf(name="broken", config={"bad": True}),
+            "healthy": NotificationConf(name="healthy", config={"ok": True}),
+        }
+    )
+
+    def factory(conf):
+        """
+        仅对故障配置抛错，其余配置正常返回实例。
+        """
+        if conf.name == "broken":
+            raise RuntimeError("连接超时")
+        return good_instance
+
+    service.init_service("qbittorrent", factory)
+
+    assert service.get_instances() == {"healthy": good_instance}
+    assert service.get_init_errors() == {"broken": "连接超时"}
+    assert any("broken" in message and "连接超时" in message for message in logged_errors)
+
+    service.available_configs = {
+        "healthy": NotificationConf(name="healthy", config={"ok": True}),
+    }
+    service.init_service("qbittorrent", factory)
+    assert service.get_init_errors() == {}
+
+
+def test_init_service_raises_first_error_when_all_configs_fail():
+    """
+    所有已启用配置均实例化失败时应清空实例、保留全部错误并抛出首个异常。
+    """
+    service = _Service(
+        {
+            "first": NotificationConf(name="first", config={}),
+            "second": NotificationConf(name="second", config={}),
+        }
+    )
+
+    def factory(conf):
+        """
+        按配置名返回不同异常，用于验证抛出首个异常且完整记录错误。
+        """
+        raise ValueError(f"bad:{conf.name}")
+
+    with pytest.raises(ValueError, match="bad:first"):
+        service.init_service("qbittorrent", factory)
+
+    assert service.get_instances() == {}
+    assert service.get_init_errors() == {
+        "first": "bad:first",
+        "second": "bad:second",
+    }
+
+
+def test_service_module_bases_report_init_errors_before_healthy_siblings():
+    """
+    下载器、媒体服务器与消息渠道基类的 test() 在存在初始化失败实例时不得因其余实例正常而返回成功。
+    """
+    from unittest.mock import Mock
+
+    from app.modules._base.downloader import _DownloaderModuleBase
+    from app.modules._base.mediaserver import _MediaServerModuleBase
+    from app.modules._base.notification import _MessageChannelModuleBase
+
+    class _DummyDownloader(_DownloaderModuleBase[object]):
+        """
+        仅用于验证初始化错误暴露的下载器基类桩。
+        """
+
+        def init_module(self):
+            """
+            无外部初始化逻辑。
+            """
+
+        def init_setting(self):
+            """
+            无模块设置。
+            """
+
+        def stop(self):
+            """
+            无外部资源需要释放。
+            """
+
+        def get_name(self):
+            """
+            返回固定模块名。
+            """
+            return "Qbittorrent"
+
+    class _DummyMediaServer(_MediaServerModuleBase):
+        """
+        仅用于验证初始化错误暴露的媒体服务器基类桩。
+        """
+
+        def init_module(self):
+            """
+            无外部初始化逻辑。
+            """
+
+        def init_setting(self):
+            """
+            无模块设置。
+            """
+
+        def stop(self):
+            """
+            无外部资源需要释放。
+            """
+
+        def get_name(self):
+            """
+            返回固定模块名。
+            """
+            return "Emby"
+
+    class _DummyNotification(_MessageChannelModuleBase):
+        """
+        仅用于验证初始化错误暴露的消息渠道基类桩。
+        """
+
+        def init_module(self):
+            """
+            无外部初始化逻辑。
+            """
+
+        def init_setting(self):
+            """
+            无模块设置。
+            """
+
+        def stop(self):
+            """
+            无外部资源需要释放。
+            """
+
+        def get_name(self):
+            """
+            返回固定模块名。
+            """
+            return "Telegram"
+
+    healthy_downloader = Mock()
+    healthy_downloader.is_inactive.return_value = False
+    healthy_downloader.transfer_info.return_value = object()
+    downloader_mod = _DummyDownloader()
+    downloader_mod._instances = {"ok-qb": healthy_downloader}
+    downloader_mod._init_errors = {"bad-qb": "认证失败"}
+
+    healthy_server = Mock()
+    healthy_server.is_inactive.return_value = False
+    healthy_server.get_user.return_value = {"id": "1"}
+    mediaserver_mod = _DummyMediaServer()
+    mediaserver_mod._instances = {"ok-emby": healthy_server}
+    mediaserver_mod._init_errors = {"bad-emby": "地址无效"}
+
+    healthy_channel = Mock()
+    healthy_channel.get_state.return_value = True
+    notification_mod = _DummyNotification()
+    notification_mod._instances = {"ok-tg": healthy_channel}
+    notification_mod._init_errors = {"bad-tg": "令牌无效"}
+
+    dl_ok, dl_msg = downloader_mod.test()
+    ms_ok, ms_msg = mediaserver_mod.test()
+    nt_ok, nt_msg = notification_mod.test()
+
+    assert dl_ok is False and "bad-qb" in dl_msg and "认证失败" in dl_msg
+    assert ms_ok is False and "bad-emby" in ms_msg and "地址无效" in ms_msg
+    assert nt_ok is False and "bad-tg" in nt_msg and "令牌无效" in nt_msg

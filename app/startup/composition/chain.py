@@ -206,7 +206,11 @@ def configure_module_runtime_provider() -> None:
     """
     在组合层登记惰性宿主模块运行时，不在此阶段实例化具体模块管理器。
     """
-    configure_module_runtime(lambda: cast(ModuleRuntime, ModuleManager()))
+    getter = getattr(ModuleManager, "get_existing_instance", None)
+    configure_module_runtime(
+        lambda: cast(ModuleRuntime, ModuleManager()),
+        existing=lambda: cast(ModuleRuntime | None, getter() if callable(getter) else None),
+    )
 
 
 def reset_chain_services() -> None:

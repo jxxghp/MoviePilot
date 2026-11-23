@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
@@ -444,6 +445,14 @@ class SystemService:
             },
         )
 
+    async def recover_unhealthy_modules(self, key: Any) -> None:
+        """
+        配置值未变化时，若配置事件端口支持定向恢复，则仅尝试恢复关联的异常宿主模块。
+        """
+        recover = getattr(self._events, "recover_modules", None)
+        if inspect.iscoroutinefunction(recover):
+            await recover(key)
+
     async def update_setting(self, key: str, value: JsonData) -> SystemOperationResult:
         """
         按配置所有权更新运行设置或持久化系统配置。
@@ -481,6 +490,8 @@ class SystemService:
                     event_value = write_result.normalized_value
                 if success:
                     await self._events.publish(key, event_value)
+                elif success is None:
+                    await self.recover_unhealthy_modules(key)
                 # None 表示值未变化，仍是成功完成；只有明确 False 才代表持久化失败。
                 return SystemOperationResult(
                     success is not False,

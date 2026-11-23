@@ -1678,3 +1678,101 @@ def test_downloader_rejection_tuple_still_records_failure_cooldown():
     assert error_msg == "添加种子任务失败：demo.torrent"
     assert len(chain.download_failure_repository.records) == 1
     assert chain.post_message.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("downloader_arg", "issues", "expected_fragments"),
+    [
+        (
+            "qb-main",
+            [
+                {
+                    "id": "QbittorrentModule",
+                    "name": "Qbittorrent",
+                    "type": "downloader",
+                    "lifecycle": "degraded",
+                    "error": "qb-main：连接被拒绝",
+                    "init_errors": {"qb-main": "连接被拒绝"},
+                }
+            ],
+            ("未找到可用下载器实例", "qb-main", "实例初始化失败：连接被拒绝"),
+        ),
+        (
+            None,
+            [
+                {
+                    "id": "QbittorrentModule",
+                    "name": "Qbittorrent",
+                    "type": "downloader",
+                    "lifecycle": "failed",
+                    "error": "密码错误",
+                    "init_errors": {},
+                }
+            ],
+            ("未找到可用的默认下载器实例", "下载器模块未就绪：Qbittorrent（密码错误）"),
+        ),
+        (
+            None,
+            [
+                {
+                    "id": "QbittorrentModule",
+                    "name": "Qbittorrent",
+                    "type": "downloader",
+                    "lifecycle": "degraded",
+                    "error": "qb-default：端口无效",
+                    "init_errors": {"qb-default": "端口无效"},
+                }
+            ],
+            ("未找到可用的默认下载器实例", "部分下载器实例初始化失败：qb-default：端口无效"),
+        ),
+    ],
+    ids=["target-instance-init-error", "module-failed", "default-degraded"],
+)
+def test_missing_downloader_appends_runtime_failure_diagnostics(
+    downloader_arg,
+    issues,
+    expected_fragments,
+):
+    """
+    下载器模块初始化或热重载失败导致实例缺失时，错误提示必须附带本地运行态故障线索且仍不写资源冷却。
+    """
+    content, _hashes = _torrent()
+    context = _season_context()
+    prepared = SimpleNamespace(
+        torrent_content=content,
+        torrent=context.torrent_info,
+        media=context.media_info,
+        meta=context.meta_info,
+        download_dir=Path("/downloads"),
+        download_episodes=None,
+        folder_name="",
+        file_list=[],
+        site_downloader=None,
+    )
+    chain = _ledger_chain()
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    chain.download = Mock(return_value=None)
+    chain.post_message = Mock()
+    chain.modulemanager = Mock()
+    chain.modulemanager.get_unhealthy_module_issues.return_value = issues
+
+    download_hash, error_msg = chain._submit_prepared_download(
+        prepared=prepared,
+        context=context,
+        episodes=None,
+        channel=None,
+        source="Subscribe|1",
+        downloader=downloader_arg,
+        userid=None,
+        username=None,
+        label=None,
+        custom_words=None,
+        governance=None,
+    )
+
+    assert download_hash is None
+    for fragment in expected_fragments:
+        assert fragment in error_msg
+    assert chain.download_failure_repository.records == {}
+    chain.modulemanager.get_unhealthy_module_issues.assert_called_once()

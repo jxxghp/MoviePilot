@@ -56,6 +56,31 @@ async def test_unrelated_config_does_not_clear_rust_options(
 
 
 @pytest.mark.anyio
+async def test_recover_modules_dispatches_targeted_recover_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    配置值未变化时的恢复触发只定向投递给模块管理器的 recover 事件。
+    """
+    send_event = AsyncMock()
+    monkeypatch.setattr(system_composition.eventmanager, "async_send_event_strict", send_event)
+
+    await system_composition._ConfigurationEventAdapter().recover_modules(
+        SystemConfigKey.Downloaders
+    )
+
+    send_event.assert_awaited_once()
+    kwargs = send_event.await_args.kwargs
+    assert kwargs["etype"] is EventType.ConfigChanged
+    assert kwargs["data"].key == {SystemConfigKey.Downloaders.value}
+    assert kwargs["data"].change_type == "recover"
+    assert (
+        kwargs["handler_id"]
+        == "app.runtime.extensions.module.manager.ModuleManager.handle_config_changed"
+    )
+
+
+@pytest.mark.anyio
 async def test_recognition_config_rebuilds_cached_rust_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

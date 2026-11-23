@@ -258,6 +258,41 @@ async def test_async_strict_broadcast_waits_for_async_handler(isolated_eventmana
 
 
 @pytest.mark.anyio
+async def test_async_strict_broadcast_targets_single_handler_id(isolated_eventmanager):
+    """
+    指定 handler_id 的异步严格广播只执行目标处理器，不触发同事件的其他监听者。
+    """
+    from app.runtime.event.registry import EventRegistry
+
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    calls = []
+
+    async def target_handler(event):
+        """
+        记录定向投递的事件载荷。
+        """
+        calls.append(("target", event.event_data["key"]))
+
+    async def other_handler(event):
+        """
+        不应在定向投递其他 handler_id 时被唤醒。
+        """
+        calls.append(("other", event.event_data["key"]))
+
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, target_handler)
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, other_handler)
+
+    await isolated_eventmanager.async_send_event_strict(
+        EventType.ConfigChanged,
+        {"key": "Downloaders"},
+        handler_id=EventRegistry.handler_identifier(target_handler),
+    )
+
+    assert calls == [("target", "Downloaders")]
+    assert isolated_eventmanager._EventManager__event_queue.empty()
+
+
+@pytest.mark.anyio
 async def test_async_strict_broadcast_skips_unbound_optional_owner(isolated_eventmanager):
     """
     严格配置广播应跳过尚未创建的可选 owner，而不是阻断配置保存。

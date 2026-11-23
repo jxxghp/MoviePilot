@@ -220,11 +220,23 @@ class EventDispatcher:
             else:
                 self.invoke_sync_strict(handler, isolated)
 
-    async def dispatch_broadcast_async_strict(self, event: Any) -> None:
+    async def dispatch_broadcast_async_strict(
+        self,
+        event: Any,
+        *,
+        handler_id: Optional[str] = None,
+    ) -> None:
         """
-        异步串行等待广播处理器完成，供实时配置重载入口使用。
+        异步串行等待广播处理器完成，供实时配置重载或定向模块恢复入口使用。
+
+        :param event: 待分发的广播事件
+        :param handler_id: 可选的目标处理器稳定标识；指定时仅派发给该处理器
         """
         handlers = self._registry.broadcast_snapshot(event.event_type)
+        if handler_id is not None:
+            handlers = tuple(item for item in handlers if item[0] == handler_id)
+            if not handlers:
+                return
         target_plugin_id = None
         if event.event_type == EventType.MessageAction and isinstance(
             event.event_data,

@@ -35,6 +35,7 @@ def _settings_service(runtime: HostRuntime) -> SystemSettingsService:
         get_runtime_settings(),
         get_configured_system_config(),
         runtime.system.publish_config_changed,
+        recover_unhealthy_modules=runtime.system.recover_unhealthy_modules,
     )
 
 

@@ -220,3 +220,39 @@ def test_downloader_default_returns_none_when_all_disabled(monkeypatch: pytest.M
 
     assert service.get_default_config_name() is None
     assert service.get_instance() is None
+
+
+def test_downloader_default_tracks_live_config_changes_without_stale_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    下载器配置在运行中改名、切换默认项或全部禁用时，默认名称不得被旧实例缓存锁死。
+    """
+    live_configs = [
+        _conf("qb-old", default=True, enabled=True),
+        _conf("qb-new", default=False, enabled=True),
+    ]
+    monkeypatch.setattr(
+        ServiceConfigHelper,
+        "get_downloader_configs",
+        staticmethod(lambda: list(live_configs)),
+    )
+    service: _DownloaderBase[object] = _DownloaderBase()
+    service._service_name = "qbittorrent"
+    service._configs = {conf.name: conf for conf in live_configs}
+    service._instances = {conf.name: f"instance:{conf.name}" for conf in live_configs}
+
+    assert service.get_default_config_name() == "qb-old"
+    assert service.get_instance() == "instance:qb-old"
+
+    # 不调用 reset_default_config_name()，直接更新实时配置列表。
+    live_configs[:] = [
+        _conf("qb-old", default=False, enabled=False),
+        _conf("qb-new", default=True, enabled=True),
+    ]
+    assert service.get_default_config_name() == "qb-new"
+    assert service.get_instance() == "instance:qb-new"
+
+    live_configs[:] = [_conf("qb-new", default=True, enabled=False)]
+    assert service.get_default_config_name() is None
+    assert service.get_instance() is None
