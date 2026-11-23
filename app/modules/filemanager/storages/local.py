@@ -299,11 +299,44 @@ class LocalStorage(StorageBase):
         生成同目录、每次调用独立的中间写入路径。
 
         同目录便于完成后原子替换；随机标识隔离同进程和跨进程的同目标任务。
+        中间名按文件系统单文件名长度上限（PC_NAME_MAX，取不到时按 255 计）
+        做预算：目标名本身合法但接近上限时，旧实现在目标名后追加
+        “.” + uuid（32）+ “.mp-partial”（11）会使中间名超过上限而报
+        ENAMETOOLONG；此时按字节截断目标名部分（不在多字节字符中间切断），
+        仍保留隐藏名前缀、uuid 唯一性与专用后缀，原子替换语义不变。
 
         :param dest: 最终文件路径
         :return: 隐藏的 .mp-partial 文件路径
         """
-        return dest.parent / f".{dest.name}.{uuid.uuid4().hex}{cls.PARTIAL_SUFFIX}"
+        try:
+            name_max = os.pathconf(dest.parent, "PC_NAME_MAX")
+        except (OSError, ValueError):
+            name_max = 255
+        token = uuid.uuid4().hex
+        # 前导点 + 分隔点 + uuid hex + 专用后缀占用的固定字节数
+        overhead = 1 + 1 + len(token) + len(os.fsencode(cls.PARTIAL_SUFFIX))
+        budget = name_max - overhead
+        name = dest.name
+        if budget <= 0:
+            # 文件系统上限异常小：退化为不含目标名的中间名，并把随机标识
+            # 截短到仍能放进上限（仍以前导点 + 专用后缀收尾，便于清理识别）
+            keep = max(0, name_max - 1 - len(os.fsencode(cls.PARTIAL_SUFFIX)))
+            return dest.parent / f".{token[:keep]}{cls.PARTIAL_SUFFIX}"
+        # 用 os.fsencode 而不用 str.encode("utf-8") 度量：磁盘上可能存在
+        # 非 UTF-8 文件名（surrogateescape），后者会直接抛 UnicodeEncodeError，
+        # 而前者按原字节往返；逐字符累加也保证不在多字节字符中间切断。
+        if len(os.fsencode(name)) > budget:
+            # 按字节截断，且不在多字节字符中间切断
+            truncated = []
+            used = 0
+            for char in name:
+                size = len(os.fsencode(char))
+                if used + size > budget:
+                    break
+                truncated.append(char)
+                used += size
+            name = "".join(truncated)
+        return dest.parent / f".{name}.{token}{cls.PARTIAL_SUFFIX}"
 
     @classmethod
     def _cleanup_stale_partials(cls, directory: Path) -> None:

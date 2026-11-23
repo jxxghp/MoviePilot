@@ -101,6 +101,136 @@ def test_partial_file_is_hidden_and_suffixed(tmp_path, storage):
     assert partial.suffix != ".mkv"
 
 
+def _name_with_byte_length(total: int) -> str:
+    """
+    构造指定字节长度的文件名（多字节字符与 ASCII 混合）。
+
+    :param total: 文件名按 UTF-8 计的总字节数，含 “.nfo”
+    :return: 指定字节长度的文件名
+    """
+    stem_bytes = total - len(".nfo")
+    name = "测" * (stem_bytes // 3) + "a" * (stem_bytes % 3) + ".nfo"
+    assert len(name.encode("utf-8")) == total
+    return name
+
+
+def test_partial_path_keeps_short_dest_name_unchanged(tmp_path, storage):
+    """
+    目标名在预算内时中间名必须与旧格式完全一致。
+
+    218 字节以下的目标名不应被改动；恰好占满预算（210 字节目标名，
+    210 + 45 = 255）的边界名也不应被截断。
+    """
+    short = storage._partial_path(tmp_path / "Movie.2024.mkv")
+    assert f".Movie.2024.mkv." in short.name
+    assert short.name.endswith(LocalStorage.PARTIAL_SUFFIX)
+
+    boundary = _name_with_byte_length(210)
+    partial = storage._partial_path(tmp_path / boundary)
+    assert f".{boundary}." in partial.name
+    assert len(partial.name.encode("utf-8")) == 255
+
+
+def test_partial_path_truncates_long_dest_name(tmp_path, storage):
+    """
+    目标名 218 字节时中间名不得超过 255 字节（issue #7572）。
+
+    旧格式会生成 218 + 45 = 263 字节的中间名，写临时文件直接报
+    ENAMETOOLONG；截断后中间名必须合法，且保留的目标名前缀不得在
+    多字节字符中间被切断。
+    """
+    name = _name_with_byte_length(218)
+    partial = storage._partial_path(tmp_path / name)
+
+    assert partial.parent == tmp_path
+    assert partial.name.startswith(".")
+    assert partial.name.endswith(LocalStorage.PARTIAL_SUFFIX)
+    assert len(partial.name.encode("utf-8")) <= 255
+    # 去掉前导点与 “.uuid.mp-partial” 后，剩余部分必须是原目标名的前缀
+    core = partial.name[1: -len(LocalStorage.PARTIAL_SUFFIX)]
+    truncated, _token = core.rsplit(".", 1)
+    assert name.startswith(truncated)
+    assert len(truncated.encode("utf-8")) <= 210
+
+
+def test_copy_long_dest_name_succeeds(tmp_path, storage):
+    """
+    目标文件名 218 字节时复制必须成功（issue #7572 的端到端回归）。
+
+    目标名本身合法（≤ 255 字节），元数据写入就不应因中间名超长而失败。
+    """
+    src = tmp_path / "src" / "Episode.nfo"
+    src.parent.mkdir()
+    src.write_bytes(b"<episodedetails />")
+    dest_dir = tmp_path / "library"
+    dest_dir.mkdir()
+
+    name = _name_with_byte_length(218)
+    assert storage.copy(_fileitem(src), dest_dir, name) is True
+
+    assert (dest_dir / name).read_bytes() == b"<episodedetails />"
+    assert not list(dest_dir.glob(f"*{LocalStorage.PARTIAL_SUFFIX}"))
+
+
+def test_copy_non_utf8_long_dest_name_succeeds(tmp_path, storage):
+    """
+    非 UTF-8 长文件名复制必须成功（issue #7572 的跟进回归）。
+
+    磁盘上可能存在无法按 UTF-8 解码的文件名（surrogateescape）；度量与
+    截断必须用 os.fsencode 往返原字节，str.encode("utf-8") 会直接抛
+    UnicodeEncodeError，让本可复制的文件写不进去。
+    """
+    src = tmp_path / "src" / "Episode.nfo"
+    src.parent.mkdir()
+    src.write_bytes(b"<episodedetails />")
+    dest_dir = tmp_path / "library"
+    dest_dir.mkdir()
+
+    raw = b"\xff" * 10 + b"a" * 204 + b".nfo"
+    assert len(raw) == 218
+    name = os.fsdecode(raw)
+
+    partial = storage._partial_path(dest_dir / name)
+    assert len(os.fsencode(partial.name)) <= 255
+    assert storage.copy(_fileitem(src), dest_dir, name) is True
+    assert (dest_dir / name).read_bytes() == b"<episodedetails />"
+    assert not list(dest_dir.glob(f"*{LocalStorage.PARTIAL_SUFFIX}"))
+
+
+def test_partial_path_respects_tiny_name_max(tmp_path, storage, monkeypatch):
+    """
+    文件系统上限异常小时，退化的中间名仍不得超过该上限。
+    """
+    monkeypatch.setattr(os, "pathconf", lambda *_args: 40)
+
+    partial = storage._partial_path(tmp_path / "Movie.2024.mkv")
+
+    assert partial.parent == tmp_path
+    assert partial.name.startswith(".")
+    assert partial.name.endswith(LocalStorage.PARTIAL_SUFFIX)
+    assert len(os.fsencode(partial.name)) <= 40
+
+
+def test_cleanup_removes_stale_truncated_partial(tmp_path, storage):
+    """
+    截断后的临时名仍要能被陈旧清理认出并清理。
+
+    清理按 `*{PARTIAL_SUFFIX}` 匹配，与中间名是否含完整目标名无关。
+    """
+    stale = storage._partial_path(tmp_path / _name_with_byte_length(218))
+    fresh = storage._partial_path(tmp_path / _name_with_byte_length(218))
+    stale.write_bytes(b"x")
+    fresh.write_bytes(b"x")
+
+    old_time = os.stat(stale).st_mtime - LocalStorage.PARTIAL_STALE_SECONDS - 60
+    os.utime(stale, (old_time, old_time))
+
+    storage._cleanup_stale_partials(tmp_path)
+
+    assert not stale.exists(), "陈旧的截断临时文件没有被清理"
+    assert fresh.exists(), "正在写入的截断临时文件被误删了"
+
+
 def test_move_produces_complete_file_and_removes_source(tmp_path, storage, monkeypatch):
     """
     跨盘移动完成后目标完整、源被删除。
