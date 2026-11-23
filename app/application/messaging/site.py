@@ -114,7 +114,7 @@ class SiteInteractionHandler:
             return False
 
         request_id, action = parsed
-        request = site_interaction_manager.get_by_id(request_id, userid)
+        request = site_interaction_manager.get_by_id(request_id, userid, channel, source, original_chat_id)
         if not request:
             self._messenger.post_message(
                 Message(
@@ -127,8 +127,6 @@ class SiteInteractionHandler:
             )
             return True
 
-        request.channel = channel
-        request.source = source
         request.username = username
 
         if action == "close":
@@ -192,12 +190,10 @@ class SiteInteractionHandler:
         """
         处理 /sites 文本补充输入。
         """
-        request = site_interaction_manager.get_by_user(userid)
+        request = site_interaction_manager.get_by_user(userid, channel, source)
         if not request:
             return False
 
-        request.channel = channel
-        request.source = source
         request.username = username
 
         normalized = (text or "").strip()

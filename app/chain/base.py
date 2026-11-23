@@ -28,7 +28,7 @@ from app.schemas.download import PendingDownloadCheckResult
 from app.schemas.exception import BusinessRejectedError, RateLimitExceededException
 from app.schemas.file import FileItem
 from app.schemas.mediaserver import ExistMediaInfo, MediaServerQueryOptions, WebhookEventInfo
-from app.schemas.message import IncomingMessage
+from app.schemas.message import IncomingMessage, Message
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent, TransferInfo
@@ -284,6 +284,21 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         运行模块并传播 能力提供方 异常，供必须区分空结果与查询失败的能力使用。
         """
         return self._module_dispatcher.dispatch_strict(method, *args, **kwargs)
+
+    def prepare_notification_parts(self, message: Message) -> None:
+        """
+        在收集清单的上下文中调用宿主通知提供方，不调用插件通知回调。
+        """
+        self.deliver_host_notification(message)
+
+    def deliver_host_notification(self, message: Message) -> Any:
+        """
+        执行宿主通知提供方。旧插件回调由原派发单独触发。
+
+        :param message: 本次路由的通知
+        :return: 宿主提供方的聚合结果
+        """
+        return self._module_dispatcher.execute_system_modules("post_message", None, message=message, strict_errors=True)
 
     async def async_run_module(
         self,

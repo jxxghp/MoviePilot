@@ -5,7 +5,8 @@ VoceChat 机器人消息发送与文件下载客户端。
 import base64
 import re
 import threading
-from typing import List, Optional, Tuple, cast
+from functools import partial
+from typing import List, Optional, Tuple
 from urllib.parse import quote
 
 from app.adapters.network.http import RequestUtils
@@ -14,6 +15,7 @@ from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.runtime.execution import retry
 from app.runtime.log import logger
+from app.schemas.delivery import DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt, DeliveryStatus
 
 lock = threading.Lock()
 
@@ -43,7 +45,7 @@ class VoceChat:
         :param VOCECHAT_CHANNEL_ID: 默认接收频道标识
         :param kwargs: 兼容通知配置中的其他字段，当前忽略
         """
-        if not VOCECHAT_HOST or not VOCECHAT_API_KEY or not VOCECHAT_CHANNEL_ID:
+        if not VOCECHAT_HOST or not VOCECHAT_API_KEY:
             logger.error("VoceChat配置不完整！")
             return
         self._host = VOCECHAT_HOST.strip()
@@ -53,7 +55,7 @@ class VoceChat:
             self._host += "/"
         self._apikey = VOCECHAT_API_KEY
         self._channel_id = VOCECHAT_CHANNEL_ID
-        if self._apikey and self._host and self._channel_id:
+        if self._apikey and self._host:
             self._client = RequestUtils(headers={
                 "content-type": "text/markdown",
                 "x-api-key": self._apikey,
@@ -107,29 +109,94 @@ class VoceChat:
             return False
 
         try:
-            if title and text:
-                caption = f"**{title}**\n{text}"
-            elif title:
-                caption = f"**{title}**"
-            else:
-                caption = cast(str, text)
+            caption = self._notification_markdown(title, text, image, link)
 
-            if image:
-                caption = f"{caption}\n![]({image})"
-
-            if link:
-                caption = f"{caption}\n[查看详情]({link})"
-
-            if userid:
-                chat_id = userid
-            else:
-                chat_id = f"GID#{self._channel_id}"
-
+            chat_id = userid or (f"GID#{self._channel_id}" if self._channel_id else None)
+            if not chat_id:
+                return False
             return self.__send_request(userid=chat_id, caption=caption)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
             return False
+
+    @staticmethod
+    def _notification_markdown(title: str | None, text: str | None, image: str | None, link: str | None) -> str:
+        """
+        组合 VoceChat 消息标题、正文和链接。
+        """
+        caption = "\n".join(part for part in (f"**{title}**" if title else None, text) if part)
+        if image:
+            caption = f"{caption}\n![]({image})"
+        if link:
+            caption = f"{caption}\n[查看详情]({link})"
+        return caption
+
+    def send_tracked_chunks(
+        self, title: str | None, texts: list[str | None], image: str | None, link: str | None, userid: str | None,
+        *, receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        冻结用户或群地址和 Markdown 分段，保留未知响应。
+        """
+        target = self._message_target(userid or (f"GID#{self._channel_id}" if self._channel_id else ""))
+        if target is None:
+            receipt(None, 0, "skipped", "no_target")
+            return False
+        action, identifier = target
+        address = f"{action}:{identifier}"
+        chunks = [self._notification_markdown(title, text, image, link) for text in texts if title or text]
+        if not chunks:
+            receipt(address, 0, "skipped", "empty_content")
+            return False
+        plan(tuple((address, index, content) for index, content in enumerate(chunks)))
+        confirmed = True
+        for index, content in enumerate(chunks):
+            status, code = part_sender(
+                address, index, content, confirmed, partial(self._send_tracked_chunk, action, identifier, content),
+            )
+            receipt(address, index, status, code)
+            confirmed = confirmed and status == "confirmed"
+        return confirmed
+
+    @staticmethod
+    def _message_target(userid: str) -> tuple[str, str] | None:
+        """
+        将个人和群地址归一化，避免用裸数字重解释群。
+        """
+        prefix = userid.upper()
+        if prefix.startswith(("GID#", "UID#")):
+            action = "send_to_group" if prefix.startswith("GID#") else "send_to_user"
+            identifier = userid[4:]
+        else:
+            action = "send_to_user"
+            identifier = userid
+        if not identifier.isascii() or not identifier.isdecimal():
+            return None
+        return action, identifier
+
+    def _send_tracked_chunk(self, action: str, target: str, caption: str) -> tuple[DeliveryStatus, str | None]:
+        """
+        单次发送 VoceChat 分段，明确限流才能自动重试。
+        """
+        if not self._client:
+            return "retryable_failure", "client_unavailable"
+        with lock:
+            result = self._client.post_res(
+                f"{self._host}api/bot/{action}/{target}", data=caption.encode("utf-8"), allow_redirects=False,
+            )
+        if result is None:
+            return "unknown", "response_unconfirmed"
+        try:
+            if result.status_code == 200:
+                return "confirmed", None
+            if result.status_code == 429:
+                return "retryable_failure", "rate_limited"
+            if result.status_code in {400, 401, 403, 404}:
+                return "permanent_failure", "platform_rejected"
+            return "unknown", "platform_unconfirmed"
+        finally:
+            result.close()
 
     @staticmethod
     def _guess_mime_type(content: bytes, default: str = "image/jpeg") -> str:
@@ -220,11 +287,9 @@ class VoceChat:
             if link:
                 caption = f"{caption}\n[查看详情]({link})"
 
-            if userid:
-                chat_id = userid
-            else:
-                chat_id = f"GID#{self._channel_id}"
-
+            chat_id = userid or (f"GID#{self._channel_id}" if self._channel_id else None)
+            if not chat_id:
+                return False
             return self.__send_request(userid=chat_id, caption=caption)
 
         except Exception as msg_e:
@@ -273,11 +338,9 @@ class VoceChat:
             if link:
                 caption = f"{caption}\n[查看详情]({link})"
 
-            if userid:
-                chat_id = userid
-            else:
-                chat_id = f"GID#{self._channel_id}"
-
+            chat_id = userid or (f"GID#{self._channel_id}" if self._channel_id else None)
+            if not chat_id:
+                return False
             return self.__send_request(userid=chat_id, caption=caption)
 
         except Exception as msg_e:

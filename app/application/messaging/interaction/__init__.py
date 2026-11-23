@@ -4,15 +4,20 @@
 
 import math
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import wraps
+from inspect import signature
 from threading import Lock
 from typing import (
     Any,
+    Callable,
     Dict,
     Generic,
     List,
     Optional,
+    ParamSpec,
     Protocol,
     Sequence,
     Tuple,
@@ -42,9 +47,100 @@ class _UserInteractionEntry(Protocol):
 InteractionEntryT = TypeVar("InteractionEntryT", bound=_UserInteractionEntry)
 
 
+@dataclass(frozen=True, slots=True)
+class InteractionKey:
+    """
+    独立状态存储内的一条会话地址，每类交互使用自己的存储。
+
+    :param channel: 平台，未指定平台的旧式本地操作独占一个空间
+    :param instance: 宿主确认的实例 ID，未装配的兼容入口使用来源名称
+    :param actor: 发起人平台 ID
+    :param conversation: 会话地址；缺失只匹配同样缺失地址的入口
+    :param thread: 会话内话题或线程；缺失只匹配无话题的入口
+    """
+
+    channel: Optional[NotificationChannel]
+    instance: str
+    actor: str
+    conversation: str
+    thread: str = ""
+
+
+_interaction_scope: ContextVar[Optional[tuple[Optional[str], InteractionKey]]] = ContextVar("interaction_scope", default=None)
+_InteractionParams = ParamSpec("_InteractionParams")
+_InteractionResult = TypeVar("_InteractionResult")
+
+
+def scoped_interaction(function: Callable[_InteractionParams, _InteractionResult]) -> Callable[_InteractionParams, _InteractionResult]:
+    """
+    为宿主消息和命令入口设置交互地址，退出时恢复外层上下文。
+    """
+    parameters = signature(function)
+
+    @wraps(function)
+    def wrapped(*args: _InteractionParams.args, **kwargs: _InteractionParams.kwargs) -> _InteractionResult:
+        """
+        按可信渠道配置确定稳定实例 ID，并保存入站会话和线程地址。
+        """
+        values = parameters.bind(*args, **kwargs).arguments
+        channel, source, actor = values.get("channel"), values.get("source"), values.get("userid")
+        conversation, thread = values.get("original_chat_id"), values.get("thread_id")
+        key = _interaction_address(actor, channel, source, conversation, thread)
+        token = _interaction_scope.set((source, key))
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _interaction_scope.reset(token)
+
+    return wrapped
+
+
+def interaction_key(
+        user_id: Optional[Union[str, int]], channel: Optional[NotificationChannel],
+        source: Optional[str], chat_id: Optional[str] = None, *, thread_id: Optional[str] = None,
+) -> InteractionKey:
+    """
+    在有界的宿主路由作用域中继承已确认实例和线程，旧处理器无需改变位置参数。
+
+    仅继承同平台、同来源、同发送者的范围；显式会话和线程也必须一致。
+
+    :param thread_id: 后台操作显式保留的原线程 ID
+    """
+    actor = str(user_id) if user_id is not None else ""
+    scoped = _interaction_scope.get()
+    if scoped is not None:
+        scoped_source, key = scoped
+        if (scoped_source == source and key.channel == channel and key.actor == actor
+                and (chat_id is None or key.conversation == str(chat_id))
+                and (thread_id is None or key.thread == thread_id)):
+            return key
+    return _interaction_address(user_id, channel, source, chat_id, thread_id)
+
+
+def _interaction_address(
+        actor: Optional[Union[str, int]], channel: Optional[NotificationChannel], source: Optional[str],
+        conversation: Optional[str], thread: Optional[str] = None,
+) -> InteractionKey:
+    """
+    由当前配置确定实例 ID。未装配的本地和兼容入口按平台与来源隔离。
+    """
+    from app.application.security.authorization import get_channel_authorization
+
+    instance = f"source:{source or ''}"
+    authorization = get_channel_authorization()
+    if authorization and channel is not None and channel not in (NotificationChannel.Web, NotificationChannel.WebAgent) and source:
+        try:
+            instance = f"id:{authorization.notification(channel.value, source).id}"
+        except PermissionError:
+            # 兼容范围与已授权实例的键不同。消息入口仍会拒绝已停用的实例。
+            pass
+    return InteractionKey(channel, instance, str(actor) if actor is not None else "",
+                          str(conversation or ""), str(thread or ""))
+
+
 class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
     """
-    提供单用户单会话的过期状态存储和双向索引。
+    在当前交互类别内按完整会话地址存储状态并校验回调归属。
     """
 
     _ttl = timedelta(hours=24)
@@ -54,7 +150,9 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
         初始化按请求 ID、用户 ID 查询的线程安全状态表。
         """
         self._by_id: Dict[str, InteractionEntryT] = {}
-        self._by_user: Dict[str, str] = {}
+        self._by_key: Dict[InteractionKey, str] = {}
+        self._key_by_id: Dict[str, InteractionKey] = {}
+        self._used_callbacks: dict[str, set[tuple[str, Optional[int], str]]] = {}
         self._lock = Lock()
 
     def _cleanup_locked(self) -> None:
@@ -68,53 +166,89 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
             if request.created_at < expire_before
         ]
         for request_id in expired:
-            request = self._by_id.pop(request_id, None)
-            if request:
-                self._by_user.pop(str(request.user_id), None)
+            self._remove_locked(request_id)
 
-    def _replace_locked(self, request: InteractionEntryT) -> None:
+    def _replace_locked(self, request: InteractionEntryT, key: InteractionKey) -> None:
         """
         在持锁状态下替换用户旧状态并写入新的双向索引。
         """
-        user_key = str(request.user_id)
-        old_request_id = self._by_user.get(user_key)
+        old_request_id = self._by_key.get(key)
         if old_request_id:
-            self._by_id.pop(old_request_id, None)
+            self._remove_locked(old_request_id)
         self._by_id[request.request_id] = request
-        self._by_user[user_key] = request.request_id
+        self._by_key[key] = request.request_id
+        self._key_by_id[request.request_id] = key
 
-    def get_by_user(self, user_id: Optional[Union[str, int]]) -> Optional[InteractionEntryT]:
+    def get_by_user(
+            self, user_id: Optional[Union[str, int]], channel: Optional[NotificationChannel] = None,
+            source: Optional[str] = None, chat_id: Optional[str] = None,
+    ) -> Optional[InteractionEntryT]:
         """
-        按用户返回当前仍有效的交互状态。
+        按完整会话地址返回状态，裸用户参数只读取未指定渠道的本地空间。
         """
+        key = interaction_key(user_id, channel, source, chat_id)
         with self._lock:
             self._cleanup_locked()
-            request_id = self._by_user.get(str(user_id))
+            request_id = self._by_key.get(key)
             if not request_id:
                 return None
             return self._by_id.get(request_id)
 
     def get_by_id(
-            self, request_id: str, user_id: Union[str, int]
+            self, request_id: str, user_id: Union[str, int], channel: Optional[NotificationChannel] = None,
+            source: Optional[str] = None, chat_id: Optional[str] = None, *, thread_id: Optional[str] = None,
     ) -> Optional[InteractionEntryT]:
         """
-        按请求 ID 查询状态，并校验请求属于当前用户。
+        按请求 ID 和完整会话地址校验请求仍属于当前交互。
+
+        :param thread_id: 后台操作保留的原线程 ID
+        """
+        key = interaction_key(user_id, channel, source, chat_id, thread_id=thread_id)
+        with self._lock:
+            self._cleanup_locked()
+            if self._key_by_id.get(request_id) != key:
+                return None
+            return self._by_id.get(request_id)
+
+    def claim_callback(
+            self, request: InteractionEntryT, action: str, index: Optional[int] = None, version: str = "",
+    ) -> bool:
+        """
+        在已按完整地址取回请求之后，原子消费属于该请求的一个写按钮。
+
+        :param request: 当前授权请求，关闭或已被替换时不能消费
+        :param action: 已解析并验证的动作
+        :param index: 操作的列表索引，操作无索引时为 None
+        :param version: 渲染该按钮的快照标识，旧格式使用空字符串
+        :return: 仅首次消费且请求当前有效时为 True
         """
         with self._lock:
             self._cleanup_locked()
-            request = self._by_id.get(request_id)
-            if not request or str(request.user_id) != str(user_id):
-                return None
-            return request
+            if self._by_id.get(request.request_id) is not request:
+                return False
+            identity = (action, index, version)
+            used = self._used_callbacks.setdefault(request.request_id, set())
+            if identity in used:
+                return False
+            used.add(identity)
+            return True
+
+    def _remove_locked(self, request_id: str) -> None:
+        """
+        持锁移除请求和对应的两个方向索引。
+        """
+        self._by_id.pop(request_id, None)
+        self._used_callbacks.pop(request_id, None)
+        key = self._key_by_id.pop(request_id, None)
+        if key is not None:
+            self._by_key.pop(key, None)
 
     def remove(self, request_id: str) -> None:
         """
         删除指定交互状态及其用户索引。
         """
         with self._lock:
-            request = self._by_id.pop(request_id, None)
-            if request:
-                self._by_user.pop(str(request.user_id), None)
+            self._remove_locked(request_id)
 
     def clear(self) -> None:
         """
@@ -122,7 +256,9 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
         """
         with self._lock:
             self._by_id.clear()
-            self._by_user.clear()
+            self._by_key.clear()
+            self._key_by_id.clear()
+            self._used_callbacks.clear()
 
 
 @dataclass
@@ -139,6 +275,7 @@ class PendingSlashInteraction:
     :param page: 当前列表页索引，从 0 开始
     :param awaiting_input: 当前等待的文本输入用途，None 表示未等待补充输入
     :param created_at: 会话创建的本地时间，用于计算过期时间
+    :param write_version: 当前写按钮所在视图的版本，未出卡时为空
     """
 
     request_id: str
@@ -150,6 +287,7 @@ class PendingSlashInteraction:
     page: int = 0
     awaiting_input: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
+    write_version: str = ""
 
 
 class SlashInteractionManager(
@@ -166,6 +304,7 @@ class SlashInteractionManager(
             channel: Optional[NotificationChannel],
             source: Optional[str],
             username: Optional[str],
+            original_chat_id: Optional[str] = None,
     ) -> PendingSlashInteraction:
         """
         为用户创建 slash 会话并替换其上一条会话。
@@ -181,7 +320,7 @@ class SlashInteractionManager(
                 source=source,
                 username=username,
             )
-            self._replace_locked(request)
+            self._replace_locked(request, interaction_key(user_id, channel, source, original_chat_id))
             return request
 
 
@@ -338,9 +477,12 @@ def update_or_post_message(
         buttons: Optional[List[List[dict[str, str]]]] = None,
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
 ) -> None:
     """
     优先编辑原消息，失败时回退为发送新消息。
+
+    :param thread_id: 发送新消息时使用的原话题
     """
     if (
             original_message_id
@@ -377,6 +519,7 @@ def update_or_post_message(
             # 保证飞书等渠道能回复到原会话（如群聊），而不是发给私聊。
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            thread_id=thread_id,
             save_history=False,
         )
     )

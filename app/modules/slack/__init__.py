@@ -4,6 +4,7 @@ Slack 通知路由、入站消息解析、附件下载与处理状态反馈。
 
 import json
 import re
+from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import quote, unquote
 
@@ -12,12 +13,17 @@ from app.application.messaging.channel.admin import (
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
+from app.application.messaging.delivery import (
+    NotificationParts,
+    notification_preflight_active,
+)
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.slack.slack import Slack
 from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData
 from app.schemas.message import IncomingMessage, Message, MessageResponse
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
@@ -57,6 +63,12 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         """
         super().init_service(service_name=Slack.__name__.lower(), service_type=Slack)
         self._channel = NotificationChannel.Slack
+
+    def _service_kwargs(self, conf: NotificationConf) -> dict[str, Any]:
+        """
+        以通知模式运行时只创建 Slack Web API 客户端。
+        """
+        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_socket": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:
@@ -140,6 +152,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
             files = None
             message_id = None
             chat_id = None
+            thread_id = None
             if msg_json.get("type") == "message":
                 userid = msg_json.get("user")
                 text = msg_json.get("text")
@@ -151,6 +164,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     return None
                 message_id = msg_json.get("ts")
                 chat_id = msg_json.get("channel")
+                thread_id = msg_json.get("thread_ts")
                 images = self._extract_images(msg_json)
                 audio_refs = self._extract_audio_refs(msg_json)
                 files = self._extract_files(msg_json)
@@ -192,6 +206,8 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     callback_data=callback_data,
                     message_id=message_ts,
                     chat_id=channel_id,
+                    thread_id=(msg_json.get("message") or {}).get("thread_ts"),
+                    conversation_type="private" if str(channel_id or "").startswith("D") else "group" if channel_id else "unknown",
                 )
             elif msg_json.get("type") == "event_callback":
                 userid = msg_json.get("event", {}).get("user")
@@ -209,6 +225,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     return None
                 message_id = msg_json.get("event", {}).get("ts")
                 chat_id = msg_json.get("event", {}).get("channel")
+                thread_id = msg_json.get("event", {}).get("thread_ts")
                 images = self._extract_images(msg_json.get("event", {}))
                 audio_refs = self._extract_audio_refs(msg_json.get("event", {}))
                 files = self._extract_files(msg_json.get("event", {}))
@@ -247,6 +264,8 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 text=text,
                 message_id=message_id,
                 chat_id=chat_id,
+                thread_id=thread_id,
+                conversation_type="private" if str(chat_id or "").startswith("D") else "group" if chat_id else "unknown",
                 images=images,
                 audio_refs=audio_refs,
                 files=files,
@@ -395,15 +414,17 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
             return content
         return None
 
-    def post_message(self, message: Message, **kwargs: object) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> Optional[bool]:
         """
         向通过渠道范围筛选的 Slack 配置发送普通通知。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供通知范围、接收人、标题和原消息标识等信息的消息
         :param kwargs: 兼容统一接口的扩展参数，当前不使用
+        :return: 强制私聊实际发送并确认后返回 True；普通通知或平台不匹配返回 None
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
             targets = self.get_notification_targets(message)
             userid = message.userid
@@ -411,26 +432,35 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 userid = targets.get("slack_userid")
                 if not userid:
                     logger.warn("用户没有指定 Slack用户ID，消息无法发送")
-                    return
-            client = self.get_instance(conf.name)
-            if client:
+                    return None
+            client = self.get_message_client(conf.name, message)
+            if client is None:
+                self.record_delivery(message, conf, None, status="retryable_failure", code="client_unavailable")
+            elif isinstance(client, Slack):
+                self._post_tracked_notification(message, conf, client, str(userid) if userid is not None else None)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+            else:
+                if notification_preflight_active():
+                    continue
                 userid_text = str(userid) if userid is not None else None
                 if message.native_image and message.image:
-                    client.send_image(
+                    self.record_delivery(message, conf, client.send_image(
                         image=message.image, title=message.title, text=message.text,
-                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
-                        buttons=message.buttons,
-                    )
+                        userid=message.original_chat_id or userid_text, buttons=message.buttons,
+                    ))
                 elif message.file_path:
-                    client.send_file(
+                    self.record_delivery(message, conf, client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
-                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
-                    )
+                        userid=userid_text,
+                        original_chat_id=message.original_chat_id,
+                        thread_id=message.thread_id,
+                    ))
                 else:
-                    client.send_msg(
+                    self.record_delivery(message, conf, client.send_msg(
                         title=message.title,
                         text=message.text,
                         image=message.image,
@@ -448,7 +478,27 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                             else None
                         ),
                         formatted_text=message.channel_text(NotificationChannel.Slack),
-                    )
+                        thread_id=message.thread_id,
+                    ))
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+        return None
+
+    def _post_tracked_notification(
+        self, message: Message, conf: NotificationConf, client: Slack, userid: str | None,
+    ) -> None:
+        """
+        将 Slack 的实际频道和批次结果写入该连接的通知记录。
+        """
+        parts = NotificationParts(NotificationChannel.Slack, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+
+        if message.native_image and message.image:
+            send = client.send_tracked_image
+        else:
+            send = client.send_tracked_file if message.file_path else client.send_tracked_message
+        self.confirm_private_delivery(message, send(
+            message, userid, receipt=partial(parts.record, message), part_sender=parts.send, plan=parts.plan,
+        ))
 
     def post_medias_message(
         self, message: Message, medias: List[MediaInfo]
@@ -456,17 +506,18 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         """
         向通过渠道范围筛选的 Slack 配置发送媒体候选列表。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供通知范围、接收人、标题和原消息标识等信息的消息
         :param medias: 待展示的媒体列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_medias_msg(
+                self.record_delivery(message, conf, client.send_medias_msg(
                     title=message.title,
                     medias=medias,
                     userid=self.get_notification_userid(message, "slack_userid"),
@@ -481,7 +532,8 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                         if message.original_chat_id is not None
                         else None
                     ),
-                )
+                    thread_id=message.thread_id,
+                ))
 
     def post_torrents_message(
         self, message: Message, torrents: List[Context]
@@ -489,17 +541,18 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         """
         向通过渠道范围筛选的 Slack 配置发送种子候选列表。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供通知范围、接收人、标题和原消息标识等信息的消息
         :param torrents: 待展示的种子上下文列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_torrents_msg(
+                self.record_delivery(message, conf, client.send_torrents_msg(
                     title=message.title,
                     torrents=torrents,
                     userid=self.get_notification_userid(message, "slack_userid"),
@@ -514,7 +567,8 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                         if message.original_chat_id is not None
                         else None
                     ),
-                )
+                    thread_id=message.thread_id,
+                ))
 
     def delete_message(
         self,
@@ -690,6 +744,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         :param message: 包含接收人、文件或文本内容的通知消息
         :return: 首次发送成功的消息响应；没有可用目标或全部失败时返回 None
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -700,30 +755,33 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 if not userid:
                     logger.warn("用户没有指定 Slack 用户ID，消息无法发送")
                     return None
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
                 userid_text = str(userid) if userid is not None else None
                 if message.native_image and message.image:
-                    result = client.send_image(
+                    result = self.record_delivery(message, conf, client.send_image(
                         image=message.image, title=message.title, text=message.text,
-                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
-                        buttons=message.buttons,
-                    )
+                        userid=message.original_chat_id or userid_text, buttons=message.buttons,
+                    ))
                 elif message.file_path:
-                    result = client.send_file(
+                    result = self.record_delivery(message, conf, client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
-                        userid=userid_text if message.private_delivery else message.original_chat_id or userid_text,
-                    )
+                        userid=userid_text,
+                        original_chat_id=message.original_chat_id if message.thread_id else None,
+                        thread_id=message.thread_id,
+                    ))
                 else:
-                    result = client.send_msg(
+                    result = self.record_delivery(message, conf, client.send_msg(
                         title=message.title or "",
                         text=message.text,
                         userid=userid_text,
                         formatted_text=message.channel_text(NotificationChannel.Slack),
-                    )
+                        original_chat_id=message.original_chat_id if message.thread_id else None,
+                        thread_id=message.thread_id,
+                    ))
                 if result and result[0]:
                     return self._direct_message_response(result[1], conf.name)
         return None

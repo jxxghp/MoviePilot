@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.download.pending import pending_blocks_tv_seasons
+from app.application.history import scoped_download_owner
 from app.application.subscription import priority as _priority
 from app.application.subscription.activity import current_activity_run
 from app.application.subscription.contract import (
@@ -489,19 +490,20 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             if full_pack_result is not None:
                 return full_pack_result
 
-        result: Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = (
-            DownloadChain().batch_download(
-                contexts=contexts,
-                no_exists=no_exists,
-                username=username,
-                save_path=save_path,
-                downloader=downloader,
-                source=source,
-                custom_words=subscribe.custom_words,
-                governance=governance,
-                allowed_episodes=allowed_episodes,
+        with scoped_download_owner(getattr(subscribe, "owner_identity", None)):
+            result: Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = (
+                DownloadChain().batch_download(
+                    contexts=contexts,
+                    no_exists=no_exists,
+                    username=username,
+                    save_path=save_path,
+                    downloader=downloader,
+                    source=source,
+                    custom_words=subscribe.custom_words,
+                    governance=governance,
+                    allowed_episodes=allowed_episodes,
+                )
             )
-        )
         return result
 
     def _try_full_pack_download(
@@ -522,17 +524,18 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         优先尝试全集资源；下载成功或进入待确认保护期时直接返回结果，不再回退按集下载。
         """
         logger.info(f"{subscribe.name} 优先尝试全集资源，共匹配到 {len(full_pack_contexts)} 个候选")
-        downloads, lefts = DownloadChain().batch_download(
-            contexts=full_pack_contexts,
-            no_exists=full_pack_no_exists,
-            username=username,
-            save_path=save_path,
-            downloader=downloader,
-            source=source,
-            custom_words=subscribe.custom_words,
-            governance=governance,
-            allowed_episodes=allowed_episodes,
-        )
+        with scoped_download_owner(getattr(subscribe, "owner_identity", None)):
+            downloads, lefts = DownloadChain().batch_download(
+                contexts=full_pack_contexts,
+                no_exists=full_pack_no_exists,
+                username=username,
+                save_path=save_path,
+                downloader=downloader,
+                source=source,
+                custom_words=subscribe.custom_words,
+                governance=governance,
+                allowed_episodes=allowed_episodes,
+            )
         if downloads:
             return downloads, lefts
         if self._full_pack_target_is_pending(full_pack_contexts, subscribe):

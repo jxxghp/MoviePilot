@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+from app.application.messaging.interaction import InteractionKey, interaction_key
 from app.application.messaging.interaction.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
@@ -197,6 +198,10 @@ class AskUserChoiceTool(MoviePilotTool):
             )
             for option in options
         ]
+        address = self._agent_context.get("interaction_address")
+        if not isinstance(address, InteractionKey) or channel == NotificationChannel.WebAgent:
+            address = interaction_key(self._user_id, channel, self._source,
+                                      str(self._agent_context.get("original_chat_id") or ""))
         request = agent_interaction_manager.create_request(
             session_id=self._session_id,
             user_id=str(self._user_id),
@@ -206,6 +211,7 @@ class AskUserChoiceTool(MoviePilotTool):
             title=title,
             prompt=message.strip(),
             options=choice_options,
+            address=address,
         )
 
         buttons = []

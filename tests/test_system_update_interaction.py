@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from app.application.messaging import update as update_module
-from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.interaction import InteractionContext, scoped_interaction
 from app.application.messaging.router import has_pending_interaction
 from app.application.messaging.update import (
     SystemUpdateInteractionHandler,
@@ -206,7 +206,7 @@ def test_update_command_prompts_for_download_when_release_is_available() -> None
         source="telegram-main",
     )
 
-    request = update_interaction_manager.get_by_user("10001")
+    request = update_interaction_manager.get_by_user("10001", NotificationChannel.Telegram, "telegram-main")
     assert request is not None
     assert request.awaiting_input == "download"
     assert messenger.messages[-1].title == "发现 MoviePilot 主程序更新"
@@ -215,7 +215,7 @@ def test_update_command_prompts_for_download_when_release_is_available() -> None
         [
             {
                 "text": "确认升级",
-                "callback_data": f"update:{request.request_id}:download",
+                "callback_data": f"update:{request.request_id}:download:{request.write_version}",
             },
             {"text": "稍后", "callback_data": f"update:{request.request_id}:close"},
         ]
@@ -223,7 +223,8 @@ def test_update_command_prompts_for_download_when_release_is_available() -> None
     assert submitted == []
 
 
-def test_download_callback_edits_same_message_until_restart_confirmation() -> None:
+@pytest.mark.parametrize("thread_id", [None, "203"])
+def test_download_callback_edits_same_message_until_restart_confirmation(thread_id) -> None:
     """
     下载进度应持续编辑回调原消息，完成后在同一消息显示重启按钮。
     """
@@ -254,24 +255,22 @@ def test_download_callback_edits_same_message_until_restart_confirmation() -> No
     ]
     submitted: list[Coroutine[Any, Any, None]] = []
     handler = _handler(messenger, actions, submitted)
-    request = update_interaction_manager.create_or_replace(
-        user_id="10001",
-        command="/update",
-        channel=NotificationChannel.Telegram,
-        source="telegram-main",
-        username="tester",
-    )
+    @scoped_interaction
+    def start(channel, source, userid, original_chat_id, thread_id):
+        """
+        在回调作用域创建和启动进度监视，轮询另行在无入站作用域时执行。
+        """
+        request = update_interaction_manager.create_or_replace(
+            user_id=userid, command="/update", channel=channel, source=source,
+            username="tester", original_chat_id=original_chat_id,
+        )
+        return handler.handle_callback_interaction(
+            callback_data=f"update:{request.request_id}:download",
+            channel=channel, source=source, userid=userid, username="tester",
+            original_message_id="message-1", original_chat_id=original_chat_id,
+        ), request
 
-    handled = handler.handle_callback_interaction(
-        callback_data=f"update:{request.request_id}:download",
-        channel=NotificationChannel.Telegram,
-        source="telegram-main",
-        userid="10001",
-        username="tester",
-        original_message_id="message-1",
-        original_chat_id="chat-1",
-    )
-
+    handled, request = start(NotificationChannel.Telegram, "telegram-main", "10001", "chat-1", thread_id)
     assert handled is True
     assert actions.download_calls == ["application"]
     assert len(submitted) == 1
@@ -286,7 +285,9 @@ def test_download_callback_edits_same_message_until_restart_confirmation() -> No
     assert "[====......] 45%" in messenger.edits[1]["text"]
     assert messenger.edits[-1]["title"] == "MoviePilot 更新包已准备完成"
     assert messenger.edits[-1]["buttons"][0][0]["text"] == "确认重启"
-    pending = update_interaction_manager.get_by_user("10001")
+    pending = update_interaction_manager.get_by_id(
+        request.request_id, "10001", NotificationChannel.Telegram, "telegram-main", "chat-1", thread_id=thread_id,
+    )
     assert pending is not None
     assert pending.awaiting_input == "install"
 
@@ -377,6 +378,7 @@ def test_restart_confirmation_marks_receipt_and_recovers_failed_install(
         channel=NotificationChannel.Telegram,
         source="telegram-main",
         username="tester",
+        original_chat_id="chat-1",
     )
 
     assert (
@@ -401,12 +403,12 @@ def test_restart_confirmation_marks_receipt_and_recovers_failed_install(
     assert actions.install_calls == ["application"]
     if install_success:
         clear_restart_marker.assert_not_called()
-        assert update_interaction_manager.get_by_user("10001") is None
+        assert update_interaction_manager.get_by_user("10001", NotificationChannel.Telegram, "telegram-main", "chat-1") is None
     else:
         clear_restart_marker.assert_called_once_with()
         assert messenger.edits[-1]["title"] == "MoviePilot 升级操作失败"
         assert messenger.edits[-1]["buttons"][0][0]["text"] == "确认重启"
-        assert update_interaction_manager.get_by_user("10001") is not None
+        assert update_interaction_manager.get_by_user("10001", NotificationChannel.Telegram, "telegram-main", "chat-1") is not None
 
 
 def test_update_session_and_callback_are_registered_in_message_router(monkeypatch) -> None:
@@ -420,7 +422,7 @@ def test_update_session_and_callback_are_registered_in_message_router(monkeypatc
         source="telegram-main",
         username="tester",
     )
-    assert has_pending_interaction("10001") is True
+    assert has_pending_interaction("10001", NotificationChannel.Telegram, "telegram-main") is True
     callback = Mock(return_value=True)
     monkeypatch.setattr(
         SystemChain,

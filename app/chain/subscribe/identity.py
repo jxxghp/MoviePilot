@@ -37,7 +37,11 @@ def find_existing_subscription(
         return None
     media = MediaChain()
     lookup = SubscriptionIdentityLookup(media.convert_media_identity, media.async_convert_media_identity)
-    matches = lookup.find(create_subscription_identity(context), repository.list(), context.username)
+    records = repository.list()
+    owner = context.options.get("owner_identity")
+    if owner:
+        records = [record for record in records if record.owner_identity == owner]
+    matches = lookup.find(create_subscription_identity(context), records, None if owner else context.username)
     return matches[0] if matches else None
 
 
@@ -51,7 +55,11 @@ async def async_find_existing_subscription(
         return None
     media = MediaChain()
     lookup = SubscriptionIdentityLookup(media.convert_media_identity, media.async_convert_media_identity)
-    matches = await lookup.async_find(create_subscription_identity(context), await repository.async_list(), context.username)
+    records = await repository.async_list()
+    owner = context.options.get("owner_identity")
+    if owner:
+        records = [record for record in records if record.owner_identity == owner]
+    matches = await lookup.async_find(create_subscription_identity(context), records, None if owner else context.username)
     return matches[0] if matches else None
 
 

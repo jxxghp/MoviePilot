@@ -35,6 +35,7 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
     SubscriptionStagingPort,
 )
+from app.application.subscription.ownership import SubscriptionOwnerRepository
 from app.application.subscription.write import (
     AsyncSubscriptionOutboxStager,
     SubscriptionBatchWritePort,
@@ -462,6 +463,7 @@ class SubscriptionRuntime:
     site_reference_mutation_scope: Callable[[], AbstractContextManager[SyncSiteReferenceMutationService]]
     execution_status_repository: SubscriptionExecutionStatusRepositoryFactory | None = None
     search_repository: object | None = None
+    ownership_repository: Callable[[object], SubscriptionOwnerRepository] | None = None
     activity_repository: SubscriptionActivityRepository | None = None
 
 

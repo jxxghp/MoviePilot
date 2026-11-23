@@ -12,10 +12,12 @@ import re
 import socket
 import threading
 import time
-from contextvars import Context, copy_context
+from contextvars import Context, ContextVar, copy_context
+from dataclasses import dataclass
 from datetime import datetime
-from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union, cast, overload
+from functools import partial, wraps
+from inspect import signature
+from typing import Any, Callable, Dict, List, Literal, Optional, ParamSpec, Protocol, TypeVar, Union, cast, overload
 
 from jinja2 import Template
 
@@ -29,6 +31,7 @@ from app.foundation.singleton import Singleton, SingletonClass
 from app.foundation.text import convert as zhconv_convert
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
+from app.runtime.observability import record_metric
 from app.runtime.stop import runtime_stop_state
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
@@ -44,6 +47,101 @@ _MESSAGE_QUEUE_STOP_TIMEOUT_SECONDS = 10.0
 # SSE 实时消息队列上限：前端关闭或切到后台时没有消费者，超出后丢弃最旧消息，
 # 避免长时间无人打开页面时队列无界增长，重新打开后又逐条补弹积压消息
 _SSE_QUEUE_MAXSIZE = 100
+
+
+@dataclass(frozen=True, slots=True)
+class _MessageReply:
+    """
+    当前受信交互调用的不可变回复上下文，仅兼容尚未显式接受地址的业务入口。
+
+    :param channel: 当前平台渠道枚举
+    :param source: 当前渠道实例名称
+    :param actor: 实际发送者，不作为接收群地址
+    :param chat_id: 原会话地址，只适用于当前同平台、同实例、同人的普通回复
+    :param thread_id: 原会话内的可选话题或线程 ID
+    """
+
+    channel: object
+    source: str
+    actor: str
+    chat_id: Optional[str]
+    thread_id: Optional[str]
+
+
+_message_reply: ContextVar[Optional[_MessageReply]] = ContextVar("message_reply", default=None)
+_ReplyParams = ParamSpec("_ReplyParams")
+_ReplyResult = TypeVar("_ReplyResult")
+
+
+def scoped_message_reply(function: Callable[_ReplyParams, _ReplyResult]) -> Callable[_ReplyParams, _ReplyResult]:
+    """
+    为受信交互入口绑定回复地址，保持旧业务命令签名并在退出时恢复上下文。
+
+    使用宿主受管执行器时线程上下文随任务复制；持久化前必须把地址写进消息。
+    该上下文不参与身份认证或权限判断，不允许替代显式私聊目标。
+
+    :param function: 含 channel/source/userid/original_chat_id 参数的同步交互入口
+    :return: 保持签名的作用域包装函数
+    """
+    parameters = signature(function)
+
+    @wraps(function)
+    def wrapped(*args: _ReplyParams.args, **kwargs: _ReplyParams.kwargs) -> _ReplyResult:
+        """
+        仅为本次调用安装上下文，即使异常退出也不遗留给后续请求。
+
+        :param args: 原入口的位置参数
+        :param kwargs: 原入口的关键字参数
+        :return: 原入口的执行结果
+        """
+        values = parameters.bind(*args, **kwargs).arguments
+        channel, source = values.get("channel"), values.get("source")
+        actor, chat_id = values.get("userid"), values.get("original_chat_id")
+        thread_id = values.get("thread_id")
+        outer = _message_reply.get()
+        if (
+            outer is not None and outer.channel == channel and outer.source == source
+            and outer.actor == str(actor) and chat_id in (None, "", outer.chat_id)
+        ):
+            chat_id = outer.chat_id
+            thread_id = thread_id or outer.thread_id
+        reply = _MessageReply(channel, str(source), str(actor), str(chat_id) if chat_id else None, thread_id) if (
+            channel is not None and source and actor is not None
+        ) else None
+        token = _message_reply.set(reply)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _message_reply.reset(token)
+
+    return wrapped
+
+
+def apply_message_reply(message: Message) -> Message:
+    """
+    为同一交互的旧式消息补全原会话地址，结果可安全冻结到持久化通知。
+
+    仅补全与当前作用域匹配的地址，保留显式线程和强制私聊约束。
+
+    :param message: 即将模板渲染或派发的消息
+    :return: 补全地址的独立副本，或不需变更的原消息
+    """
+    reply = _message_reply.get()
+    if (
+        reply is not None
+        and message.channel == reply.channel and message.source == reply.source
+        and message.userid is not None and str(message.userid) == reply.actor
+        and message.delivery_kind in (None, "reply")
+    ):
+        if message.private_delivery:
+            return message.model_copy(update={"delivery_kind": "reply"})
+        if message.original_chat_id in (None, "", reply.chat_id):
+            return message.model_copy(update={
+                "delivery_kind": "reply",
+                "original_chat_id": reply.chat_id,
+                "thread_id": message.thread_id or reply.thread_id,
+            })
+    return message
 
 
 class AsyncMessageQueryRepository(Protocol):
@@ -819,6 +917,8 @@ class MessageTemplateHelper:
         """
         从媒体上下文补充独立海报并渲染模板，保留渠道原有图片和显式海报。
         """
+        if isinstance(message, Message):
+            message = apply_message_reply(message)
         mediainfo = kwargs.get("mediainfo")
         if isinstance(message, Message) and not message.poster and isinstance(mediainfo, (MediaInfo, MusicInfo)):
             message.poster = mediainfo.get_poster_image() or None
@@ -1217,8 +1317,25 @@ class MessageQueueManager(metaclass=SingletonClass):
         """
         if send_callback:
             try:
+                message = kwargs.get("message")
+                if isinstance(message, Message) and message.delivery_kind == "task_result":
+                    from app.application.security.authorization import get_channel_authorization
+
+                    service = get_channel_authorization()
+                    if service is None:
+                        raise PermissionError("渠道授权服务不可用")
+                    message = kwargs["message"] = service.revalidate_task_result(message)
                 logger.info(f"发送消息：{kwargs}")
-                send_callback(*args, **kwargs)
+                deliveries = message.collect_delivery_results() if isinstance(message, Message) else []
+                try:
+                    send_callback(*args, **kwargs)
+                finally:
+                    for delivery in deliveries:
+                        record_metric(
+                            "notification.delivery.result",
+                            platform=delivery.channel.value,
+                            status=delivery.status,
+                        )
             except Exception as e:
                 logger.error(f"发送消息错误：{str(e)}")
 

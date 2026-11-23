@@ -14,6 +14,7 @@ from app.application.configuration import (
     get_configured_system_config,
     get_runtime_settings,
 )
+from app.application.messaging.channel.settings import ChannelSettingsService
 from app.application.settings.service import (
     SystemSettingConflictError,
     SystemSettingsService,
@@ -22,6 +23,7 @@ from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.common import ValueData as _SchemaValueData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import SystemSettingsUpdateRequest as _SchemaSystemSettingsUpdateRequest
+from app.schemas.types import SystemConfigKey
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
@@ -51,6 +53,11 @@ async def get_setting(
     """
     查询系统设置（仅管理员）。
     """
+    if key == SystemConfigKey.ChannelSettings.value:
+        raise HTTPException(status_code=404, detail="配置项不存在")
+    if key == SystemConfigKey.Notifications.value:
+        config = get_configured_system_config()
+        return _SchemaResponse(success=True, data={"value": ChannelSettingsService(config).read_legacy()})
     runtime_settings = get_runtime_settings()
     if runtime_settings.contains(key):
         value = runtime_settings.get(key)

@@ -162,6 +162,25 @@ class DownloadHistoryOper(DbOper):
             if history and history.download_hash
         }
 
+    def get_owned_tasks(self, owner_identity: str, references: list[str]) -> dict[str, DownloadHistory]:
+        """
+        只查询带有本次提交标识的本人记录。
+        """
+        if not owner_identity or not references:
+            return {}
+
+        def read(session: Session) -> dict[str, DownloadHistory]:
+            """
+            用唯一索引读取本次下载队列对应的记录。
+            """
+            records = session.scalars(select(DownloadHistory).where(
+                DownloadHistory.owner_identity == owner_identity,
+                DownloadHistory.task_reference.in_(references),
+            ))
+            return {record.task_reference: record for record in records if record.task_reference}
+
+        return self._execute_sync_query(read)
+
     def get_by_media_identity(
             self, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
@@ -331,22 +350,24 @@ class DownloadHistoryOper(DbOper):
         self,
         page: int = 1,
         count: int = 30,
-        *, username: str | None = None,
+        *, username: str | None = None, owner_identity: str | None = None,
     ) -> List[DownloadHistory]:
         """
         异步分页查询下载历史。
         """
         return await self._execute_async_query(
             lambda session: DownloadHistory.async_list_by_page(
-                session, page, count, username=username,
+                session, page, count, username=username, owner_identity=owner_identity,
             )
         )
 
-    async def async_count(self, *, username: str | None = None) -> int:
+    async def async_count(self, *, username: str | None = None, owner_identity: str | None = None) -> int:
         """
         异步统计全部下载历史记录。
         """
-        count = await self._execute_async_query(lambda session: DownloadHistory.async_count(session, username=username))
+        count = await self._execute_async_query(
+            lambda session: DownloadHistory.async_count(session, username=username, owner_identity=owner_identity)
+        )
         return int(count or 0)
 
     async def async_delete_history(self, historyid: int) -> None:

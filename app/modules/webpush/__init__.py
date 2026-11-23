@@ -3,21 +3,62 @@
 """
 
 import json
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from functools import partial
+from hashlib import sha256
 from typing import Any, Dict, Optional, Tuple, Union
 
 from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
+from app.application.messaging.delivery import NotificationParts
+from app.application.webpush import WebPushRegistration, WebPushService, get_webpush_service
 from app.modules import _MessageBase, _ModuleBase
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.runtime.webpush import webpush_registry
+from app.schemas.delivery import DeliveryPartOutcome, DeliveryStatus
 from app.schemas.message import Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
+
+
+def _push_error_status(status_code: Any) -> DeliveryStatus:
+    """
+    HTTP 拒绝与没有可验证响应的发送分开记录。
+    """
+    if not isinstance(status_code, int) or status_code == 408 or status_code >= 500:
+        return "unknown"
+    if status_code == 429:
+        return "retryable_failure"
+    if status_code in {404, 410}:
+        return "skipped"
+    return "permanent_failure"
+
+
+def _push_retry_after(value: str | None) -> int | None:
+    """
+    读取秒数或 HTTP 日期；无有效提示时由重试调度采用自身退避。
+    """
+    if not value:
+        return None
+    try:
+        seconds = int(value)
+    except ValueError:
+        try:
+            deadline = parsedate_to_datetime(value)
+            seconds = int((deadline - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return max(0, seconds)
 
 
 class WebPushModule(_ModuleBase, _MessageBase[object]):
     """
     通过浏览器 Web Push 通道发送通知消息。
+
+    :cvar _notification_user_target_keys: 私人通知只接受服务器生成的浏览器推送账号身份
     """
+
+    _notification_user_target_keys = ("webpush",)
 
     def init_module(self) -> None:
         """
@@ -85,6 +126,7 @@ class WebPushModule(_ModuleBase, _MessageBase[object]):
         :param message: 待发送的标题、正文、目标用户与跳转链接
         :param kwargs: 为模块分发接口保留的扩展参数，本实现不使用
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
             webpush_users = (conf.config or {}).get("WEBPUSH_USERNAME") or ""
             if webpush_users:
@@ -94,47 +136,88 @@ class WebPushModule(_ModuleBase, _MessageBase[object]):
             if not message.title and not message.text:
                 logger.warn("标题和内容不能同时为空")
                 return
+            data = json.dumps({
+                "title": message.title or message.text,
+                "body": message.text if message.title else "",
+                "url": message.link or "/?shotcut=message",
+            })
+            owners = self._notification_owners(message)
+            if not owners:
+                self.record_delivery(message, conf, None, status="skipped", code="no_target")
+                continue
             try:
-                if message.title:
-                    caption: Optional[str] = message.title
-                    content = message.text
-                else:
-                    caption = message.text
-                    content = ""
-                vapid_config = get_runtime_setting("VAPID") or {}
-                vapid_private_key = str(vapid_config.get("privateKey") or "")
-                vapid_subject = str(vapid_config.get("subject") or "")
-                for sub in webpush_registry.list():
-                    logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
-                    try:
-                        endpoint = sub.get("endpoint")
-                        webpush_options: Dict[str, Any] = {}
-                        if endpoint and "notify.windows.com" in endpoint:
-                            webpush_options = {
-                                "ttl": 86400,
-                                "headers": {"X-WNS-Cache-Policy": "cache"},
-                            }
-                        send_webpush(
-                            subscription=sub,
-                            data=json.dumps({
-                                "title": caption,
-                                "body": content,
-                                "url": message.link or "/?shotcut=message"
-                            }),
-                            vapid_private_key=vapid_private_key,
-                            vapid_subject=vapid_subject,
-                            **webpush_options,
-                        )
-                    except WebPushDeliveryError as err:
-                        logger.error(f"WebPush发送失败: {str(err)}")
-                        response = getattr(err, "response", None)
-                        status_code = getattr(response, "status_code", None) or getattr(
-                            response,
-                            "status",
-                            None,
-                        )
-                        if status_code in {404, 410} and webpush_registry.remove(sub):
-                            logger.info(f"已移除失效WebPush订阅: {sub.get('endpoint')}")
+                service = get_webpush_service()
+            except RuntimeError:
+                self.record_delivery(message, conf, None, status="retryable_failure", code="client_unavailable")
+                continue
+            registrations = service.for_owners(owners)
+            if not registrations:
+                self.record_delivery(message, conf, None, status="skipped", code="no_device")
+                continue
+            self._post_tracked(message, conf, service, registrations, data)
 
-            except Exception as msg_e:
-                logger.error(f"发送消息失败：{msg_e}")
+    @staticmethod
+    def _post_tracked(
+        message: Message, conf: NotificationConf, service: WebPushService,
+        registrations: tuple[WebPushRegistration, ...], data: str,
+    ) -> None:
+        """
+        冻结设备版本，恢复时只提交仍然有效且已登记的分段。
+        """
+        parts = NotificationParts(NotificationChannel.WebPush, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+        devices = tuple(
+            (sha256(json.dumps((item.endpoint, item.owner, item.revision)).encode()).hexdigest(), item)
+            for item in registrations
+        )
+        parts.plan(tuple((target, 0, data) for target, _ in devices))
+        for target, registration in devices:
+            result = parts.send_result(target, 0, data, True, partial(
+                WebPushModule._send_registration, service, registration, data,
+            ))
+            message.record_delivery_result(result)
+
+    @staticmethod
+    def _send_registration(
+        service: WebPushService, registration: WebPushRegistration, data: str,
+    ) -> DeliveryPartOutcome:
+        """
+        提交单个订阅，记录推送服务的确认结果与限流等待时间。
+        """
+        if not service.is_current(registration):
+            return "skipped", "subscription_changed"
+        options: Dict[str, Any] = {}
+        if "notify.windows.com" in registration.endpoint:
+            options = {"ttl": 86400, "headers": {"X-WNS-Cache-Policy": "cache"}}
+        vapid = get_runtime_setting("VAPID") or {}
+        try:
+            send_webpush(
+                subscription=registration.subscription(), data=data,
+                vapid_private_key=str(vapid.get("privateKey") or ""), vapid_subject=str(vapid.get("subject") or ""), **options,
+            )
+        except WebPushDeliveryError as err:
+            logger.error(f"WebPush发送失败: {err}")
+            response = err.response
+            status_code = getattr(response, "status_code", None) or getattr(response, "status", None)
+            retry_after = _push_retry_after((getattr(response, "headers", None) or {}).get("Retry-After"))
+            if status_code in {404, 410} and service.remove_expired(registration):
+                logger.info("已移除当前版本的失效WebPush订阅")
+            code = f"http_{status_code}" if isinstance(status_code, int) else "push_unconfirmed"
+            return _push_error_status(status_code), code, None, retry_after
+        except Exception as error:
+            logger.error(f"WebPush发送结果未确认: {type(error).__name__}")
+            return "unknown", "push_unconfirmed"
+        return "confirmed", None
+
+    def _notification_owners(self, message: Message) -> tuple[str, ...]:
+        """
+        读取通知链注入的不可变账号集合，缺少目标时不隐式广播。
+
+        :param message: 带明确通知范围及服务器账号目标的消息
+        :return: 单账号身份，或显式全体路由的账号身份集合
+        """
+        target = (self.get_notification_targets(message) or {}).get("webpush")
+        if isinstance(target, str):
+            return (target,) if target else ()
+        if message.notification_route_scope == "all" and isinstance(target, tuple):
+            return tuple(dict.fromkeys(owner for owner in target if isinstance(owner, str) and owner))
+        return ()

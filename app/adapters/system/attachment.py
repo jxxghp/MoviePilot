@@ -83,7 +83,16 @@ def image_upload_file(image: str) -> Iterator[Optional[Path]]:
         logger.warning("通知原图不可用，仅支持不超过 10 MiB 的 JPG/PNG")
         yield None
         return
-    content, suffix = loaded
+    with image_upload_bytes(loaded) as path:
+        yield path
+
+
+@contextmanager
+def image_upload_bytes(image: tuple[bytes, str]) -> Iterator[Path]:
+    """
+    写入已校验的原图快照，保证摘要与实际上传使用相同的字节。
+    """
+    content, suffix = image
     temp_root = Path(get_runtime_setting("TEMP_PATH"))
     temp_root.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix="message-image-", dir=temp_root) as directory:

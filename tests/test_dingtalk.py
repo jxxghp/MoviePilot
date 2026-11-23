@@ -9,6 +9,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from urllib.parse import parse_qs, urlsplit
 
+from app.application.messaging.delivery import (
+    NotificationParts,
+    claim_notification_part,
+    freeze_notification_parts,
+    merge_notification_progress,
+    observe_notification_progress,
+)
 from app.modules.dingtalk import DingTalkModule
 from app.modules.dingtalk.dingtalk import DingTalk
 from app.schemas.message import Message
@@ -96,6 +103,57 @@ def test_send_msg_rejects_http_and_business_failures() -> None:
 
     assert client.send_msg(title="测试") is False
     assert client.send_msg(title="测试") is False
+
+
+def test_webhook_recovery_retries_only_confirmed_rate_limit() -> None:
+    """
+    已确认的首段保留，后台只重试被限流的后续分段。
+    """
+    client = DingTalk(DINGTALK_WEBHOOK="https://oapi.dingtalk.com/robot/send?access_token=fixture")
+    client._req = Mock()
+    client._req.post_res.side_effect = [_response({"errcode": 0}), _response({}, 429), _response({"errcode": 0})]
+    parts = NotificationParts(NotificationChannel.DingTalk, "fixture", "fixture-group")
+    progress = {}
+    initial = True
+
+    def plan(deliveries):
+        """
+        首次尝试保存该群的分段清单。
+        """
+        nonlocal progress
+        if initial:
+            progress = freeze_notification_parts(progress, deliveries)
+
+    def save(deliveries):
+        """
+        保存实际确认状态。
+        """
+        nonlocal progress
+        progress = merge_notification_progress(progress, deliveries)
+
+    def reserve(part, should_submit):
+        """
+        根据保存的状态取得当前分段发送资格。
+        """
+        nonlocal progress
+        recorded, progress = claim_notification_part(
+            progress, part, initial_attempt=initial, should_submit=should_submit,
+        )
+        return recorded
+
+    receipt = Mock()
+    with observe_notification_progress(save, reserve=reserve, plan=plan):
+        client.send_tracked_chunks(None, ["第一段", "第二段"], None, None, receipt=receipt,
+                                   part_sender=parts.send, plan=parts.plan)
+        initial = False
+        client.send_tracked_chunks(None, ["第一段", "第二段"], None, None, receipt=receipt,
+                                   part_sender=parts.send, plan=parts.plan)
+    assert [call.kwargs["json"]["markdown"]["text"] for call in client._req.post_res.call_args_list] == [
+        "第一段", "第二段", "第二段",
+    ]
+    assert [item.args[2] for item in receipt.call_args_list] == [
+        "confirmed", "retryable_failure", "confirmed", "confirmed",
+    ]
 
 
 def test_module_routes_matching_notifications_to_dingtalk_client(monkeypatch) -> None:

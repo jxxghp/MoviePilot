@@ -16,6 +16,7 @@ from app.modules.telegram.botapi import TelegramApiError, TelegramNetworkError
 from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.schemas.message import Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import MediaType, NotificationChannel
 
 
@@ -55,6 +56,78 @@ def telegram_retry_sleep(monkeypatch) -> Mock:
     sleep = Mock()
     monkeypatch.setattr("app.runtime.execution.time.sleep", sleep)
     return sleep
+
+
+@pytest.mark.parametrize("chat_id, expected", [(None, None), (123, True)])
+def test_delete_message_without_legacy_default_address(telegram, chat_id, expected):
+    """
+    连接不再保存默认接收对象时，删除消息须使用显式地址，不能提交空地址。
+    """
+    telegram._telegram_chat_id = None
+    telegram._api.delete_message.return_value = True
+
+    assert telegram.delete_msg(7, chat_id) is expected
+
+    if chat_id is None:
+        telegram._api.delete_message.assert_not_called()
+    else:
+        telegram._api.delete_message.assert_called_once_with(chat_id=chat_id, message_id=7)
+
+
+def test_notification_only_telegram_sends_without_starting_polling():
+    """
+    关闭交互时不启动入站线程，出站消息仍经 Bot API 发送。
+    """
+    with patch("app.modules.telegram.telegram.TelegramBotApi") as bot_factory:
+        client = bot_factory.return_value
+        client.send_message.return_value = {"message_id": 9}
+        client.stop_polling.return_value = True
+        telegram = Telegram(TELEGRAM_TOKEN="fixture-token", TELEGRAM_CHAT_ID="42", auto_start_polling=False)
+        try:
+            result = telegram.send_msg(title="订阅完成")
+            assert result and result["success"]
+            client.send_message.assert_called_once()
+            client.get_me.assert_not_called()
+            client.polling.assert_not_called()
+            assert telegram._polling_thread is None
+        finally:
+            assert telegram.stop()
+
+
+@pytest.mark.parametrize("kind", ["text", "file", "voice", "media", "torrent"])
+def test_private_delivery_ignores_group_mapping_and_edit_context(telegram, tmp_path, monkeypatch, kind):
+    """
+    真实客户端所有私聊发送入口忽略最近群、显式群及编辑目标，且返回明确确认。
+    """
+    telegram._user_chat_mapping["42"] = "-100-room"
+    sent = {"message_id": 9, "chat": {"id": 42}}
+    request = Mock(return_value=sent)
+    monkeypatch.setattr(telegram, "_Telegram__send_request", request)
+    edit = Mock(side_effect=AssertionError("强制私聊不能编辑群消息"))
+    monkeypatch.setattr(telegram, "_Telegram__edit_message", edit)
+    kwargs = {"userid": "42", "original_chat_id": "-100-room", "private_delivery": True}
+    if kind == "text":
+        result = telegram.send_msg(title="秘密", original_message_id=99, **kwargs)
+    elif kind in {"file", "voice"}:
+        path = tmp_path / "payload.bin"
+        path.write_bytes(b"synthetic")
+        api = telegram._api
+        api.send_document.return_value = sent
+        api.send_voice.return_value = sent
+        result = (telegram.send_file(str(path), **kwargs) if kind == "file"
+                  else telegram.send_voice(str(path), **kwargs))
+        method = api.send_document if kind == "file" else api.send_voice
+        assert str(method.call_args.kwargs["chat_id"]) == "42"
+    elif kind == "media":
+        result = telegram.send_medias_msg(medias=[], title="候选", original_message_id=99, **kwargs)
+    else:
+        media = MediaInfo(title="测试", media_source="themoviedb", media_id="1")
+        context = Context(media_info=media, torrent_info=TorrentInfo(title="测试"))
+        result = telegram.send_torrents_msg(torrents=[context], title="资源", original_message_id=99, **kwargs)
+    assert result["success"] is True
+    if request.called:
+        assert str(request.call_args.kwargs["userid"]) == "42"
+    edit.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -239,6 +312,89 @@ def test_topic_id_is_scoped_to_channel_and_default_chat(tmp_path):
         finally:
             for client in clients:
                 client.stop()
+
+
+def test_button_reply_round_trips_only_in_the_original_topic(telegram, monkeypatch):
+    """
+    候选按钮发往原话题，实际解析所得的另一话题回调无法读取该候选。
+    """
+    from app.application.messaging.interaction import SlashInteractionManager, scoped_interaction
+    from app.application.messaging.message import apply_message_reply, scoped_message_reply
+
+    module = TelegramModule()
+    conf = NotificationConf(id="bot", name="bot", type="telegram", enabled=True)
+    monkeypatch.setattr(module, "get_configs", lambda: {"bot": conf})
+    monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
+    monkeypatch.setattr(module, "check_message", lambda *_args: True)
+    telegram._telegram_chat_id = "-1001"
+    telegram._telegram_topic_id = 101
+    telegram.bot.send_message.return_value = {"message_id": 1}
+    store = SlashInteractionManager()
+
+    @scoped_message_reply
+    def post_candidate(channel, source, userid, request_id, original_chat_id=None):
+        """
+        传统处理器维持旧签名，嵌套调用继承相同发言人的会话和话题。
+        """
+        message = apply_message_reply(Message(
+            channel=channel, source=source, userid=userid, text="请选择",
+            buttons=[[{"text": "确认", "callback_data": request_id}]],
+        ))
+        module.post_message(Message.model_validate_json(message.model_dump_json()))
+
+    @scoped_message_reply
+    @scoped_interaction
+    def reply(channel, source, userid, original_chat_id, thread_id):
+        """
+        模拟宿主从入站上下文创建候选并通过消息边界发送按钮。
+        """
+        request = store.create_or_replace(userid, "/test", channel, source, None)
+        post_candidate(channel, source, userid, request.request_id)
+        return request
+
+    @scoped_interaction
+    def resolve(channel, source, userid, original_chat_id, thread_id, callback_data):
+        """
+        使用平台实际解析出的地址校验候选归属。
+        """
+        return store.get_by_id(callback_data, userid, channel, source)
+
+    request = reply(NotificationChannel.Telegram, "bot", "42", "-1001", "202")
+    sent = telegram.bot.send_message.call_args.kwargs
+    assert str(sent["chat_id"]) == "-1001"
+    assert sent["message_thread_id"] == 202
+    assert sent["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == request.request_id
+    for topic in (sent["message_thread_id"], 101):
+        parsed = module._handle_callback_query({
+            "callback_query": {
+                "from": {"id": 42},
+                "data": request.request_id,
+                "message": {
+                    "message_id": 1, "message_thread_id": topic,
+                    "chat": {"id": -1001, "type": "supergroup"},
+                },
+            },
+        }, conf, telegram)
+        assert parsed is not None
+        result = resolve(parsed.channel, parsed.source, parsed.userid, parsed.chat_id, parsed.thread_id, parsed.callback_data)
+        assert result is (request if topic == 202 else None)
+
+
+def test_telegram_unthreaded_reply_and_private_chat_ignore_default_topic(telegram):
+    """
+    配置默认话题时，原始无话题回复和强制私聊均不携带默认话题。
+    """
+    telegram._telegram_chat_id = "-1001"
+    telegram._telegram_topic_id = 101
+    assert telegram.send_msg(title="回复", original_chat_id="-1001")
+    assert "message_thread_id" not in telegram.bot.send_message.call_args.kwargs
+
+    telegram._telegram_chat_id = "42"
+    assert telegram.send_msg(
+        title="私信", userid="42", private_delivery=True,
+        original_chat_id="-1001", thread_id="202",
+    )
+    assert "message_thread_id" not in telegram.bot.send_message.call_args.kwargs
 
 
 def test_edit_msg_with_rich_message(telegram):
@@ -662,7 +818,8 @@ def test_notification_failure_is_not_acknowledged_by_outbox(telegram, monkeypatc
     # 只移除测试中的真实退避等待，保留完整重试与模块派发路径。
     monkeypatch.setattr("app.runtime.execution.time.sleep", lambda _seconds: None)
     module = TelegramModule()
-    monkeypatch.setattr(module, "get_configs", lambda: {"tg": SimpleNamespace(name="tg")})
+    config = NotificationConf(id="tg", name="tg", type="telegram", enabled=True)
+    monkeypatch.setattr(module, "get_configs", lambda: {"tg": config})
     monkeypatch.setattr(module, "check_message", lambda *_args: True)
     monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
     store = MagicMock()
@@ -677,6 +834,68 @@ def test_notification_failure_is_not_acknowledged_by_outbox(telegram, monkeypatc
     store.retry.assert_called_once()
     assert store.retry.call_args.kwargs["dead"] is False
     assert "Telegram 通知发送未确认" in store.retry.call_args.kwargs["last_error"]
+
+
+def test_ordinary_notification_reply_keeps_original_group_and_topic(telegram, monkeypatch):
+    """
+    带发言人 ID 的群内纯文本回复仍发到原话题，并记录平台确认。
+    """
+    module = TelegramModule()
+    module._channel = NotificationChannel.Telegram
+    config = NotificationConf(id="tg", name="tg", type="telegram", enabled=True)
+    monkeypatch.setattr(module, "get_configs", lambda: {"tg": config})
+    monkeypatch.setattr(module, "get_config", lambda _: config)
+    monkeypatch.setattr(module, "get_instance", lambda _: telegram)
+    telegram.bot.send_message.return_value = {"message_id": 31}
+    message = Message(channel=NotificationChannel.Telegram, source="tg", text="仅正文", userid="42",
+                      delivery_kind="reply", original_chat_id="-100", thread_id="7")
+    receipts = message.collect_delivery_results()
+    module.post_message(message)
+
+    params = telegram.bot.send_message.call_args.kwargs
+    assert (params["chat_id"], params["message_thread_id"], params["text"]) == ("-100", 7, "仅正文")
+    assert [(item.target_id, item.status, item.message_id) for item in receipts] == [
+        ("chat:-100:topic:7", "confirmed", "31"),
+    ]
+
+
+@pytest.mark.parametrize(("kind", "http_status", "expected", "retry_after"), [
+    ("file", 200, "confirmed", None), ("file", 401, "permanent_failure", None),
+    ("voice", 429, "retryable_failure", 17), ("voice", None, "unknown", None),
+])
+def test_ordinary_telegram_attachments_record_platform_status_and_manage_source(
+    telegram, monkeypatch, tmp_path, kind, http_status, expected, retry_after,
+):
+    """
+    普通文件和语音共用分段结果，文件由调用方持有，一次性语音仍在返回前清理。
+    """
+    path = tmp_path / ("record.ogg" if kind == "voice" else "report.txt")
+    path.write_bytes(b"synthetic")
+    api = telegram.bot.send_voice if kind == "voice" else telegram.bot.send_document
+    if http_status == 200:
+        api.return_value = {"message_id": 7}
+    elif http_status is None:
+        api.side_effect = TelegramNetworkError("sendVoice", "timeout")
+    else:
+        api.side_effect = TelegramApiError("fixture", "rejected", http_status, parameters={"retry_after": retry_after})
+    module = TelegramModule()
+    module._channel = NotificationChannel.Telegram
+    config = NotificationConf(id="tg", name="tg", type="telegram", enabled=True)
+    monkeypatch.setattr(module, "get_configs", lambda: {"tg": config})
+    monkeypatch.setattr(module, "get_config", lambda _: config)
+    monkeypatch.setattr(module, "get_instance", lambda _: telegram)
+    message = Message(channel=NotificationChannel.Telegram, source="tg", userid="42", original_chat_id="-100",
+                      thread_id="7", **{f"{kind}_path": str(path)})
+    receipts = message.collect_delivery_results()
+    if expected == "confirmed":
+        module.post_message(message)
+    else:
+        with pytest.raises(RuntimeError, match="Telegram 通知发送未确认"):
+            module.post_message(message)
+
+    assert [(item.status, item.retry_after) for item in receipts] == [(expected, retry_after)]
+    assert api.call_args.kwargs["chat_id"] == "-100" and api.call_args.kwargs["message_thread_id"] == 7
+    assert path.exists() is (kind == "file")
 
 
 def test_photo_success_does_not_send_duplicate_text(telegram):
@@ -1403,7 +1622,8 @@ def test_handle_callback_query_answers_then_forwards(telegram):
     telegram.bot.answer_callback_query.assert_called_once_with("cb-1")
     payload = forward.call_args.args[0]["callback_query"]
     assert payload["from"]["id"] == 42
-    assert payload["message"] == {"message_id": 9, "chat": {"id": -1001}}
+    assert payload["message"]["message_id"] == 9
+    assert payload["message"]["chat"] == {"id": -1001, "type": "supergroup"}
     assert payload["data"] == "page:2"
     assert telegram._get_user_chat_id("42") == "-1001"
 

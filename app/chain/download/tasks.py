@@ -65,16 +65,19 @@ class DownloadTaskOwner(_DownloadOwnerBase):
             save_history=False,
         ))
 
-    def downloading(self, name: Optional[str] = None, *, require_source: bool = False) -> List[DownloaderTorrent]:
+    def downloading(
+        self, name: Optional[str] = None, *, require_source: bool = False, owner_identity: str | None = None,
+    ) -> List[DownloaderTorrent]:
         """
         查询下载中任务并补全历史归属，小组件可要求来源报告明确结果。
 
         :param name: 指定下载器；为空时沿用原选择规则
         :param require_source: 拒绝来源返回 None，普通页面仍保留原空列表兼容行为
+        :param owner_identity: 限制到已授权账号实际提交的任务
         :return: 当前下载任务与原历史用户归属信息
         :raises ValueError: 严格读取未取得有效来源结果
         """
-        return self._download_task_service(require_source=require_source).downloading(name)
+        return self._download_task_service(require_source=require_source).downloading(name, owner_identity=owner_identity)
 
     def set_downloading(self, hash_str: str, oper: str, name: Optional[str] = None) -> bool:
         """
@@ -114,6 +117,7 @@ class DownloadTaskOwner(_DownloadOwnerBase):
             start_torrents=self.start_torrents,
             stop_torrents=self.stop_torrents,
             remove_torrents=self.remove_torrents,
+            get_owned_tasks=getattr(self.download_history_repository, "get_owned_tasks", None),
         )
 
     def _download_file_deleted(self, event: Event) -> None:

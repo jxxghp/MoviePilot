@@ -387,7 +387,13 @@ def test_tv_batch_blocks_same_season_and_episodes_on_unconfirmed_without_blockin
     assert set(remaining["tmdb:1399"]) == {1}
 
 
-def test_unconfirmed_submission_persists_sanitized_pending_and_reconciles_to_history_and_subscription():
+@pytest.mark.parametrize("confirmation_message, expected_owner", [
+    ("添加下载成功", "owner-alice"),
+    (DOWNLOAD_TASK_ALREADY_EXISTS, None),
+])
+def test_unconfirmed_submission_persists_sanitized_pending_and_reconciles_to_history_and_subscription(
+    confirmation_message, expected_owner,
+):
     """
     端到端闭环：qB 超时写入脱敏待确认记录 -> 下一轮拦住替代版本 -> 延迟落地后核对补记历史并完成订阅。
     """
@@ -433,6 +439,7 @@ def test_unconfirmed_submission_persists_sanitized_pending_and_reconciles_to_his
         label=None,
         custom_words=None,
         governance=governance,
+        owner_identity="owner-alice",
     )
     assert download_hash is None
     assert is_unconfirmed_download_message(error_msg)
@@ -445,6 +452,9 @@ def test_unconfirmed_submission_persists_sanitized_pending_and_reconciles_to_his
     assert record.subscription_id == 42
     assert record.downloader == "qb"
     assert record.payload is not None
+    assert record.payload["owner_identity"] == "owner-alice"
+    task_reference = str(record.payload["task_reference"])
+    assert task_reference in chain.download.call_args.kwargs["label"]
     serialized_text = str(record.payload)
     assert "passkey=secret" not in serialized_text
     assert "pass=secret" not in serialized_text
@@ -475,7 +485,7 @@ def test_unconfirmed_submission_persists_sanitized_pending_and_reconciles_to_his
             downloader="qb",
             download_hash=hash_a,
             layout="Original",
-            message="添加下载成功",
+            message=confirmation_message,
         )
     )
     chain._resolve_actual_download_dir = MagicMock(return_value=Path("/downloads/movies"))
@@ -490,6 +500,8 @@ def test_unconfirmed_submission_persists_sanitized_pending_and_reconciles_to_his
     assert len(settled_calls) == 1
     assert settled_calls[0]["download_hash"] == hash_a
     assert settled_calls[0]["downloader"] == "qb"
+    assert settled_calls[0]["owner_identity"] == expected_owner
+    assert settled_calls[0]["task_reference"] == (task_reference if expected_owner else None)
 
     # 验证 SubscribeChain 接到回执后能够完成对应电影订阅。
     subscribe = SubscriptionSnapshot(

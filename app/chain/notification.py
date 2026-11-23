@@ -4,6 +4,7 @@
 
 from typing import Any, Dict
 
+from app.application.notification import manage_inactive_channel
 from app.chain.base import ChainBase
 
 
@@ -30,4 +31,6 @@ class NotificationChain(ChainBase):
         :return: 统一结构 {"success": bool, "message": ..., ...}
         """
         result = self.run_module("channel_manage", channel=channel, action=action, **params)
+        if result is None:
+            result = manage_inactive_channel(channel, action, params)
         return result or {"success": False, "message": "该通知渠道未启用或不支持此管理动作"}

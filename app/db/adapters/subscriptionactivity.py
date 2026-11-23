@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.application.subscription.activity import SubscriptionActivity
+from app.db.models.subscribe import Subscribe
 from app.db.models.subscribeactivity import SubscribeActivity
+from app.db.models.subscribehistory import SubscribeHistory
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribeactivity import SubscribeActivityOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
@@ -60,14 +62,15 @@ class TransactionalSubscriptionActivityRepository:
 
     async def list_accessible(self, subscription_id: int, username: str, superuser: bool, *,
                               history: bool, kind: str | None, since: str | None,
-                              before: str | None, limit: int) -> tuple[list[SubscriptionActivity], str | None] | None:
+                              before: str | None, limit: int,
+                              owner_identity: str | None = None) -> tuple[list[SubscriptionActivity], str | None] | None:
         """
         仅 owner 或管理员可读取，历史与活动整数 ID 分开解释。
         """
         async with self._async_session() as session:
             repository = SubscribeHistoryOper(session) if history else SubscribeOper(session)
             subscribe = await repository.async_get(subscription_id)
-            if subscribe is None or (not superuser and subscribe.username != username):
+            if subscribe is None or not self._can_view(subscribe, username, superuser, owner_identity):
                 return None
             if not subscribe.activity_key:
                 return [], None
@@ -77,14 +80,27 @@ class TransactionalSubscriptionActivityRepository:
             return [project_activity(row) for row in rows[:limit]], rows[limit - 1].event_id if len(rows) > limit else None
 
     async def get_accessible(self, subscription_id: int, event_id: str, username: str,
-                             superuser: bool, *, history: bool) -> SubscriptionActivity | None:
+                             superuser: bool, *, history: bool, owner_identity: str | None = None) -> SubscriptionActivity | None:
         """
         事件 ID 不能绕过活动或历史订阅的当前归属检查。
         """
         async with self._async_session() as session:
             repository = SubscribeHistoryOper(session) if history else SubscribeOper(session)
             subscribe = await repository.async_get(subscription_id)
-            if subscribe is None or not subscribe.activity_key or (not superuser and subscribe.username != username):
+            if subscribe is None or not subscribe.activity_key or not self._can_view(subscribe, username, superuser, owner_identity):
                 return None
             row = await SubscribeActivityOper(session).async_get(subscribe.activity_key, event_id)
             return project_activity(row) if row is not None else None
+
+    @staticmethod
+    def _can_view(
+        record: Subscribe | SubscribeHistory, username: str, superuser: bool, owner_identity: str | None,
+    ) -> bool:
+        """
+        确认归属后按不可变账号身份读取活动。
+        """
+        if superuser:
+            return True
+        if owner_identity is not None:
+            return bool(owner_identity) and record.owner_identity == owner_identity
+        return not record.owner_identity and bool(username) and record.username == username

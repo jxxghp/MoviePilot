@@ -5,6 +5,7 @@ QQ 通知渠道路由、入站解析与附件下载入口。
 """
 
 import json
+from functools import partial
 from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote
 
@@ -14,11 +15,16 @@ from app.application.messaging.channel.admin import (
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
+from app.application.messaging.delivery import (
+    NotificationParts,
+    notification_preflight_active,
+)
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.qqbot.qqbot import QQBot
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
@@ -75,6 +81,12 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         """
         super().init_service(service_name=QQBot.__name__.lower(), service_type=QQBot)
         self._channel = NotificationChannel.QQ
+
+    def _service_kwargs(self, conf: NotificationConf) -> dict[str, Any]:
+        """
+        通知可以独立发送，网关只在启用机器人交互时启动。
+        """
+        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_gateway": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:
@@ -189,6 +201,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                 channel=NotificationChannel.QQ,
                 source=client_config.name,
                 userid=user_openid,
+                conversation_type="private",
                 username=user_openid,
                 is_channel_admin=matches_channel_admin(
                     NotificationChannel.QQ,
@@ -204,12 +217,13 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
             author = msg_body.get("author", {})
             member_openid = author.get("member_openid", "")
             group_openid = msg_body.get("group_openid", "")
-            # 群聊用 group:group_openid 作为 userid，便于回复时识别
-            userid = f"group:{group_openid}" if group_openid else member_openid
+            if not member_openid or not group_openid:
+                return None
+            reply_target = f"group:{group_openid}"
             if content.startswith("/") and self._should_reject_admin_command(
                     client_config.config, member_openid
             ):
-                self._send_admin_denied(client, userid)
+                self._send_admin_denied(client, reply_target)
                 return None
             logger.info(
                 f"收到 QQ 群消息: group={group_openid}, userid={member_openid}, "
@@ -219,8 +233,10 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
             return IncomingMessage(
                 channel=NotificationChannel.QQ,
                 source=client_config.name,
-                userid=userid,
-                username=member_openid or group_openid,
+                userid=member_openid,
+                username=member_openid,
+                chat_id=reply_target,
+                conversation_type="group",
                 is_channel_admin=matches_channel_admin(
                     NotificationChannel.QQ,
                     client_config.config,
@@ -393,56 +409,86 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
             return resp.content
         return None
 
-    def post_message(self, message: Message, **kwargs: Any) -> None:
+    def post_message(self, message: Message, **kwargs: Any) -> Optional[bool]:
         """
         按通知路由发送 QQ 消息，并保留原正文作为权限不足时的回退。
+        :return: 强制私聊实际发送并确认后返回 True；普通通知或平台不匹配返回 None
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
             targets = self.get_notification_targets(message)
-            userid = message.userid
+            userid = message.original_chat_id if not message.private_delivery and message.original_chat_id else message.userid
             if not userid and targets:
                 userid = targets.get("qq_userid") or targets.get("qq_openid")
                 if not userid:
                     userid = targets.get("qq_group_openid") or targets.get("qq_group")
                     if userid:
                         userid = f"group:{userid}"
-            # 无 userid 且无默认配置时，由 client 向曾发过消息的用户/群广播
-            client = self.get_instance(conf.name)
-            if client:
-                client.send_msg(
+            address = str(userid).strip() if userid is not None else None
+            if not address and not self._has_admin_default(conf):
+                self.record_delivery(message, conf, None, status="skipped", code="no_target")
+                continue
+            client = self.get_message_client(conf.name, message)
+            if client is None:
+                self.record_delivery(message, conf, None, target=address, status="retryable_failure", code="client_unavailable")
+            elif isinstance(client, QQBot):
+                self._post_tracked_notification(message, conf, client, address)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+            else:
+                if notification_preflight_active():
+                    continue
+                self.record_delivery(message, conf, client.send_msg(
                     title=message.title or "",
                     text=message.text,
                     image=message.image,
                     link=message.link,
-                    userid=str(userid) if userid is not None else None,
+                    userid=address,
                     targets=targets,
                     formatted_texts=message.channel_text_chunks(NotificationChannel.QQ),
-                )
+                ), target=address)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+        return None
+
+    def _post_tracked_notification(
+        self, message: Message, conf: NotificationConf, client: QQBot, address: str | None,
+    ) -> None:
+        """
+        绑定 QQ 分段回执与当前通知连接。
+        """
+        parts = NotificationParts(NotificationChannel.QQ, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+        self.confirm_private_delivery(message, client.send_tracked_message(
+            message.title or "", message.text, message.image, message.link, address,
+            message.channel_text_chunks(NotificationChannel.QQ),
+            receipt=partial(parts.record, message), part_sender=parts.send, plan=parts.plan,
+        ))
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
         按实例和用户路由发送 QQ 媒体候选列表。
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = self.get_notification_targets(message)
-            userid = message.userid
+            userid = message.original_chat_id if not message.private_delivery and message.original_chat_id else message.userid
             if not userid and targets:
                 userid = targets.get("qq_userid") or targets.get("qq_openid")
                 if not userid:
                     g = targets.get("qq_group_openid") or targets.get("qq_group")
                     if g:
                         userid = f"group:{g}"
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_medias_msg(
+                self.record_delivery(message, conf, client.send_medias_msg(
                     medias=medias,
                     userid=str(userid) if userid is not None else None,
                     title=message.title,
                     link=message.link,
                     targets=targets,
-                )
+                ))
 
     def post_torrents_message(
         self, message: Message, torrents: List[Context]
@@ -450,23 +496,24 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         """
         按实例和用户路由发送 QQ 种子候选列表。
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             targets = self.get_notification_targets(message)
-            userid = message.userid
+            userid = message.original_chat_id if not message.private_delivery and message.original_chat_id else message.userid
             if not userid and targets:
                 userid = targets.get("qq_userid") or targets.get("qq_openid")
                 if not userid:
                     g = targets.get("qq_group_openid") or targets.get("qq_group")
                     if g:
                         userid = f"group:{g}"
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_torrents_msg(
+                self.record_delivery(message, conf, client.send_torrents_msg(
                     torrents=torrents,
                     userid=str(userid) if userid is not None else None,
                     title=message.title,
                     link=message.link,
                     targets=targets,
-                )
+                ))

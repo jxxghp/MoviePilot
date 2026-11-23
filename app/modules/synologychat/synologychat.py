@@ -4,8 +4,9 @@
 
 import json
 import re
+from functools import partial
 from threading import Lock
-from typing import List, Optional, cast
+from typing import List, Optional
 from urllib.parse import quote
 
 from app.adapters.network.http import RequestUtils
@@ -14,6 +15,7 @@ from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.foundation import url as url_tools
 from app.runtime.log import logger
+from app.schemas.delivery import DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt, DeliveryStatus
 
 lock = Lock()
 
@@ -82,29 +84,7 @@ class SynologyChat:
         if not self._webhook_url or not self._token:
             return False
         try:
-            # 拼装消息内容
-            titles = (title or '').split('\n')
-            if len(titles) > 1:
-                title = titles[0]
-                if not text:
-                    text = "\n".join(titles[1:])
-                else:
-                    text = "%s\n%s" % ("\n".join(titles[1:]), text)
-
-            if text and title:
-                caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
-            elif text:
-                caption = text.replace("\n\n", "\n")
-            else:
-                # 正文为空时，上方检查已保证标题存在。
-                caption = cast(str, title)
-
-            if link:
-                caption = f"{caption}\n[查看详情]({link})"
-
-            payload_data: dict[str, object] = {'text': quote(caption)}
-            if image:
-                payload_data['file_url'] = quote(image)
+            payload_data = self._message_payload(title, text, image, link)
             if userid:
                 payload_data['user_ids'] = [int(userid)]
             else:
@@ -119,6 +99,85 @@ class SynologyChat:
         except Exception as msg_e:
             logger.error(f"SynologyChat发送消息错误：{str(msg_e)}")
             return False
+
+    @staticmethod
+    def _message_payload(
+        title: str | None, text: str | None, image: str | None, link: str | None,
+    ) -> dict[str, object]:
+        """
+        渲染统一消息为群晖 Chat Webhook 请求体。
+        """
+        if title and "\n" in title:
+            title, continuation = title.split("\n", 1)
+            text = "\n".join(part for part in (continuation, text) if part)
+        caption = f"*{title}*\n{text}" if title and text else (title or text or "")
+        caption = caption.replace("\n\n", "\n")
+        if link:
+            caption = f"{caption}\n[查看详情]({link})"
+        payload: dict[str, object] = {"text": quote(caption)}
+        if image:
+            payload["file_url"] = quote(image)
+        return payload
+
+    def send_tracked_chunks(
+        self, title: str | None, texts: list[str | None], image: str | None, link: str | None, userid: str | None,
+        *, broadcast: bool, receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        保存群晖 Chat 的明确接收人和内容分段，再逐人投递。
+        """
+        if not self._webhook_url or not self._token:
+            receipt(None, 0, "retryable_failure", "client_unavailable")
+            return False
+        target_ids = [userid] if userid else (self.__get_bot_users() if broadcast else [])
+        targets = tuple(dict.fromkeys(int(item) for item in map(str, target_ids) if item.isascii() and item.isdecimal()))
+        chunks = [self._message_payload(title, text, image, link) for text in texts if title or text]
+        if not targets or not chunks:
+            receipt(None, 0, "skipped", "no_target" if not targets else "empty_content")
+            return False
+        parts = [(f"user:{target}", index, {**payload, "user_ids": [target]})
+                 for target in targets for index, payload in enumerate(chunks)]
+        prepared = [(target, index, json.dumps(payload, sort_keys=True), payload) for target, index, payload in parts]
+        plan(tuple((target, index, content) for target, index, content, _ in prepared))
+        confirmed_targets: dict[str, bool] = {}
+        for target, index, content, payload in prepared:
+            confirmed = confirmed_targets.get(target, True)
+            status, code = part_sender(target, index, content, confirmed, partial(self._post_tracked_chunk, payload))
+            confirmed_targets[target] = confirmed and status == "confirmed"
+            receipt(target, index, status, code)
+        return all(confirmed_targets.values())
+
+    def _post_tracked_chunk(self, payload: dict[str, object]) -> tuple[DeliveryStatus, str | None]:
+        """
+        按 HTTP 和业务响应判断当前群晖分段的确认状态。
+        """
+        response = self._req.post_res(
+            url=self._webhook_url, data=f"payload={json.dumps(payload)}", allow_redirects=False,
+        )
+        if response is None:
+            return "unknown", "response_unconfirmed"
+        try:
+            if response.status_code == 429:
+                return "retryable_failure", "rate_limited"
+            if response.status_code in {400, 401, 403, 404}:
+                return "permanent_failure", "platform_rejected"
+            if response.status_code != 200:
+                return "unknown", "platform_unconfirmed"
+            body = response.json()
+            if not isinstance(body, dict):
+                return "unknown", "response_unconfirmed"
+            error = body.get("error")
+            if isinstance(error, dict) and error.get("code"):
+                return "permanent_failure", "platform_rejected"
+            if body.get("success") is True:
+                return "confirmed", None
+            if body.get("success") is False:
+                return "permanent_failure", "platform_rejected"
+            return "unknown", "response_unconfirmed"
+        except ValueError:
+            return "unknown", "response_unconfirmed"
+        finally:
+            response.close()
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None) -> Optional[bool]:
         """

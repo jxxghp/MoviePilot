@@ -325,6 +325,12 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/application/messaging/channel/settings.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "ChannelSettingsService.rotate_credential": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
   "app/application/messaging/message.py:threading.Thread": {
     "owners": {
       "MessageQueueManager.start": 1
@@ -464,7 +470,7 @@
   },
   "app/modules/discord/discord.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
-      "Discord._send_file": 1
+      "_is_regular_file_async": 1
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },
@@ -715,6 +721,8 @@
   },
   "app/startup/initializers/modules.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
+      "_probe_channel_identity": 1,
+      "_reconcile_channel_connections": 1,
       "stop_modules.run_step": 1
     },
     "target": "app.runtime.execution.run_in_threadpool_to_completion"

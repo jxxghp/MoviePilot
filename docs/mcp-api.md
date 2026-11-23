@@ -2,6 +2,15 @@
 
 本文面向通过 MCP 调用 MoviePilot 的外部 Agent 和工具开发者。接入后，客户端通过工具目录发现能力，按 JSON Schema 构造参数，并根据业务结果判断操作是否完成。
 
+### 浏览器通知登记与取消
+
+`POST /api/v1/message/webpush/subscribe` 和 `/unsubscribe` 使用当前启用本地账号，
+请求包含浏览器 `endpoint` 与 `keys.p256dh`、`keys.auth`，兼容可选 `expirationTime`。
+客户端指定 owner 返回 `422`；
+跨账号换绑须持有原订阅两个密钥，否则返回 `409`。取消须在退出登录前完成且仅影响本人设备。
+超级管理员的 `/message/webpush/send` 只发送给持久化且归属有效的设备；旧无归属登记不参与投递。
+这些是浏览器 REST 入口，不增加 MCP/Agent operation。完整合同见 [浏览器通知账号归属](webpush.md)。
+
 ### 已有的跨来源 TMDB 对应关系
 
 登录用户可通过 `GET /api/v1/media/mapping` 查询非 TMDB 影视来源已有的对应关系，
@@ -318,10 +327,17 @@ Web 影视精确与标题 SSE 的 `manual_paging=true` 模式在最终 `done` �
 
 ### 通知配置与交互身份
 
-渠道用户和管理员统一在用户管理右下角“渠道授权”弹窗管理。`GET /api/v1/authorization/`
+渠道用户和管理员统一在“消息 & 交互 → 消息渠道”右侧的“渠道授权”弹窗管理。`GET /api/v1/authorization/`
 返回成员和脱敏渠道目录；`POST /api/v1/authorization/` 直接添加授权，
 `PUT /api/v1/authorization/{member_id}` 批准、拒绝、调整或停用。仅网页登录系统管理员可管理。
 `POST /api/v1/authorization/binding` 为当前已登录账号生成五分钟一次性关联码，由本人在原渠道私聊提交。
+`DELETE /api/v1/authorization/{member_id}` 使用 JSON `{expected_updated_at, confirm_approved}` 删除当前授权记录；已授权记录须 `confirm_approved=true`。
+`POST /api/v1/authorization/batch` 接受 `action`（`approve/reject/disable/delete`）、
+`members: [{id, expected_updated_at}]`（1—100 个不同成员）、可选 `scopes` 和 `confirm_approved`。
+批量通过仅处理待审批并授予普通成员与明确能力；拒绝仅处理待审批，停用仅处理已授权，删除支持全部状态。
+整批任一版本或状态冲突返回 409 且全部回滚，未确认删除已授权记录返回 400；非法或重复请求返回 422。
+成功结果为 `{members, deleted_ids}`。批量管理与单条删除均仅允许网页登录系统管理员。
+删除只移除授权及派生权限，保留业务归属和历史，旧授权与旧任务不能被同一用户重新申请恢复。
 成员无需网页登录账号，普通成员 API 只开放明确的搜索、订阅、下载能力，定时任务另行授权。
 渠道内部令牌限定 operation、HTTP 方法与路径，并实时校验授权，不可用于其它路由或网页登录。
 旧白名单按通知实例迁移，投递接收人不再隐含授权。详见[通知渠道授权](channel-authorization.md)。
@@ -341,8 +357,46 @@ Web 会话沿用当前用户；无渠道调用不携带收件人，插件回执�
 宿主按渠道选择上传图片、发送文件或行内图片；不支持的本地附件会明确提示，不能伪装为发送成功或泄露本地路径。
 省略 `native_image` 时保留现有封面通知。详见[统一图片与附件协议](message-attachments.md)。
 
-`POST /api/v1/notification/config` 保存通知渠道时要求名称和稳定 `id` 各自唯一。
-改名应保留原 `id`；复制为新的渠道实例应使用新的 `id`，避免共享登录凭据。
+说明文字和媒体分别记录投递结果。已确认的说明保留回执，平台明确未接受附件时只重试未完成分段。
+
+管理员通过 `GET /api/v1/notification/channels` 读取通知投递、机器人交互和共享连接摘要。已删除连接不再保留名称。名称只与当前连接比较；同名重建获得新身份，历史连接、授权和在途投递仍绑定原稳定身份。
+`POST /api/v1/notification/channels/connections` 创建连接，两个功能均从关闭状态开始。
+`PUT /api/v1/notification/channels/{connection_id}/{resource}` 使用对应资源的
+`expected_revision` 保存 `connection`、`notification` 或 `interaction`。
+同一资源的过期写入返回 HTTP 409。连接响应只返回摘要，名称变更保留稳定 ID。
+创建或重命名时，若名称与另一个连接重复（忽略大小写），请求返回 HTTP 422。
+插件自定义通知类型可以创建连接和通知路由，交互入口由宿主支持的渠道决定。
+读取接口通过 `can_delete_connections` 声明是否支持移除。管理员用
+`GET /api/v1/notification/channels/{connection_id}/references` 读取确认时的成员及定时任务数量，再用
+`DELETE /api/v1/notification/channels/{connection_id}/connection` 提交 `expected_revision`、
+`notification_revision` 和 `interaction_revision`。没有对应功能配置时传 `null`。
+任一版本变化时返回 HTTP 409。删除后连接、通知、交互及排序配置完整移除，名称释放。
+历史成员、任务及在途消息保留原稳定 ID，后续写入或同名重建不能重新启用旧身份。
+微信 ClawBot 保存连接后从「连接设置」进入「登录状态」。
+`POST /api/v1/notification/manage` 中 ClawBot 的 `params.saved_connection=true` 要求 `params.source`
+使用已保存的连接 ID。二维码和登录状态绑定该连接，关闭连接时管理登录不会启动入站轮询。
+支持官方身份核验的连接在摘要中提供 `can_rotate_credential`。管理员通过
+`PUT /api/v1/notification/channels/{connection_id}/credential` 提交 `secret` 和 `expected_revision`。
+账号不一致时响应 HTTP 409。无法核验时，响应包含 `credential_status=verification_required`，
+连接已暂停实际收发。核验成功后使用原连接 ID 和身份空间。
+读取结果中的 `admission_modes` 和 `rule_kinds` 按连接 ID 列出可选首次使用模式与匹配条件。
+交互配置可更新 `admission`、`admission_rules`、`auto_download` 和 `auto_download_rules`。
+`admission` 可选 `manual`、`manual_rules`、`rules`、`open`。
+`auto_download` 可选 `off`、`specified`、`all`，只用于有下载权限用户的传统搜索。
+规则含 `kind`（`user`、`group` 或 `private`）和 `target`（私聊为空）。首次使用规则还含
+`scopes`（从 `search`、`subscribe`、`download`、`schedule` 选取）。两种规则支持布尔值 `enabled`。QQ 支持 `group` 和 `user`。
+对 VoceChat，可用连接编辑端点设置只写的 `inbound_token`，连接摘要仅公布是否已配置。
+
+`GET /api/v1/notification/channels/{connection_id}/connection` 可读取二次编辑的版本、非敏感值和可写字段名称。
+`PUT` 使用同一路径提交带 `expected_revision` 的 `provider_config` 局部更新。
+`PUT /api/v1/notification/channels/order/{feature}` 接收 `expected_order` 和 `order`，分别保存通知或交互的卡片顺序。
+
+旧客户端通过 `GET /api/v1/system/setting/Notifications` 读取兼容投影，
+`POST /api/v1/notification/config` 仅接收旧格式能安全表达的写入。无法表达的变更返回 HTTP 409。
+用新版修改过的连接名称或总开关需要通过带版本号的连接接口继续编辑。
+关闭机器人交互后，授权列表将对应渠道标为停用，直接授权接口拒绝对该渠道创建成员。
+渠道审批回执与审批结果在同一事务中保存，由后台向原连接私聊投递。
+审批接口成功表示授权结果已提交。后台会核对成员的审批版本和连接身份，失效的回执直接结算。
 通过消息渠道发起普通重启时，完成回执保留发起时的 `source` 配置。
 
 `POST /api/v1/notification/app` 使用当前激活用户的既有 Bearer 登录态管理 AppPush，
@@ -749,7 +803,7 @@ Agent 仅在回答 MoviePilot 使用、配置、开发、故障或 PT 站点规�
 - 参数省略、空字符串与 `null` 的含义由具体操作决定。例如更新订阅时，省略字段通常保留原值，允许清空的字段可使用空值；不要把整份读取结果不加筛选地回写。
 - `agent_task` 更新的 `enabled:null` 保留原启用状态，仅重命名暂停任务不会恢复调度。MCP 工具发现和 Google 模型发现会读取全部分页；重复游标或超过分页上限时报告失败。
 - `agent_task` 创建时固定真实执行账号；渠道入口须唯一绑定启用账号。后台查询与管理员操作沿用同一账号权限，身份失效记录为失败。升级前的任务须从原会话 `update` 确认绑定或重新创建，详见[自主任务执行账号](agent-execution.md#自主任务执行账号)。
-- 传统消息会话按渠道、配置接入源与原始用户 ID 隔离，停止、清除、状态和确认操作使用同一范围。WebAgent 后台完成追加本轮展示历史，前端完整快照仍按原合同替换。
+- 传统消息会话按渠道、稳定连接、真实发言人、群组和线程隔离，停止、清除、状态和确认操作使用同一范围。WebAgent 后台完成追加本轮展示历史，前端完整快照仍按原合同替换。
 - Web 智能助手的临时附件按创建者账号隔离；下载、语音转写和附件事件只接受同一账号登记的引用，跨账号访问按不存在处理。
 - Agent 文件工具的禁止覆盖创建使用排他提交；同目标并发版本修改只允许仍匹配原 SHA 的请求提交。冲突后重新读取当前文件再编辑。`view_image` 使用只读权限，普通用户可读取允许范围内的公共技能图片。
 - 安装市场技能保留用户明确选择的 GitHub 分支，该分支不可用时不改装默认分支。Agent 运行时人格文件变化使缓存失效；关闭 Agent 配置会通过能力 owner 停止服务。
@@ -844,3 +898,10 @@ REST 调用示例：
 - [下载器操作参考](../skills/downloader-operation/SKILL.md)、[媒体服务器操作参考](../skills/mediaserver-operation/SKILL.md)、[数据库操作参考](../skills/database-operation/SKILL.md)：原生服务与 SQL 操作合同。
 
 本文维护连接方式、发现流程、调用结构和结果处理。字段清单、操作全集、提供方差异由运行时 Schema 及对应参考维护；新增业务能力时不应继续向本文追加 REST 路由表、前端展示契约或版本变更记录。
+
+
+### 通知范围多选与个人通知回退
+
+`PUT /api/v1/notification/channels/{id}/notification` 的每条规则支持 `audiences` 数组，成员仅为 `admin/user/all`，空数组沿用全局，旧 `audience` 单选可继续读取。多选仅筛选宿主通知类别；个人类别仍只能发绑定地址/允许账号，平台全体目标必须限定 `audiences=["all"]`。规则分享使用第二版，并兼容第一版导入。
+
+`POST /api/v1/system/setting/NotificationSwitchs` 的每个场景对象支持 `missing_user`：`admin`（默认）或 `skip`。只影响无法确定操作用户的个人分支，不取消明确选中的管理员分支。系统设置合同拒绝其他值，旧场景缺省该字段时保留原管理员回退行为。

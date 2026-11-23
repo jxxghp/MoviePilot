@@ -5,7 +5,7 @@ Application outbox 暂存与派发端口的 SQLAlchemy 适配器。
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TypeVar
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,9 @@ from app.application.outbox import (
 )
 from app.db.base import execute_dml
 from app.db.models.outbox import OutboxMessage
+from app.schemas.common import JsonData
+
+_T = TypeVar("_T")
 
 
 def _iso(value: datetime) -> str:
@@ -147,6 +150,33 @@ class SqlAlchemyOutboxDispatchStore:
         保存每次操作创建独立 Session 的工厂。
         """
         self._session_factory = session_factory
+
+    def update_notification_progress(
+        self, message: ClaimedOutboxMessage,
+        mutate: Callable[[dict[str, JsonData]], tuple[_T, dict[str, JsonData]]],
+    ) -> _T:
+        """
+        在持有当前 Outbox 认领版本时更新通知进度，关联业务快照保持独立。
+        """
+        with self._session_factory() as session:
+            locked = execute_dml(
+                session,
+                update(OutboxMessage).where(
+                    OutboxMessage.id == message.message_id,
+                    OutboxMessage.event_key == message.event_key,
+                    OutboxMessage.status == "processing",
+                    OutboxMessage.attempt == message.attempt,
+                ).values(lease_until=OutboxMessage.lease_until),
+            )
+            if not locked:
+                raise OutboxLeaseLostError("Outbox 通知进度凭证已失效")
+            row = session.get(OutboxMessage, message.message_id)
+            if row is None:
+                raise OutboxLeaseLostError("Outbox 通知已不存在")
+            result, snapshot = mutate(row.notification_progress or {})
+            row.notification_progress = snapshot
+            session.commit()
+            return result
 
     def claim(
         self,

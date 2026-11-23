@@ -15,6 +15,7 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
 )
 from app.application.subscription.lookup import SubscriptionIdentityLookup
+from app.application.subscription.ownership import subscription_owner_revision
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.common import JsonData
@@ -73,20 +74,32 @@ class SubscriptionQueryService:
         payload = record.to_dict()
         payload["completed_tracks"] = compute_subscribe_completed_tracks(record)
         payload.pop("downloaded_tracks", None)
-        return SubscribeView.model_validate(payload)
+        owner = payload.pop("owner_identity", None)
+        view = SubscribeView.model_validate(payload)
+        view._owner_identity = owner if isinstance(owner, str) else None
+        view.ownership_pending = not view._owner_identity
+        if view.ownership_pending:
+            view.ownership_revision = subscription_owner_revision(record)
+        return view
 
     async def list_public(
         self,
         username: Optional[str] = None,
         page: Optional[int] = None,
         count: Optional[int] = None,
+        *,
+        owner_identity: str | None = None,
     ) -> list[SubscribeView]:
         """
         按 owner 和可选数据库窗口读取公开订阅 DTO。
         """
         if self._async_repository is None:
             raise RuntimeError("异步订阅查询端口未注册")
-        if username:
+        if owner_identity is not None:
+            records = await self._async_repository.async_list_by_username(
+                username or "", page=page, count=count, owner_identity=owner_identity,
+            )
+        elif username:
             if page is None and count is None:
                 records = await self._async_repository.async_list_by_username(
                     username=username
@@ -107,12 +120,14 @@ class SubscriptionQueryService:
                 )
         return [self._to_public_view(record) for record in records]
 
-    async def count_public(self, username: Optional[str] = None) -> int:
+    async def count_public(self, username: Optional[str] = None, *, owner_identity: str | None = None) -> int:
         """
         按 owner 范围返回公开订阅精确总数。
         """
         if self._async_repository is None:
             raise RuntimeError("异步订阅查询端口未注册")
+        if owner_identity is not None:
+            return await self._async_repository.async_count(owner_identity=owner_identity)
         return await self._async_repository.async_count(username=username)
 
     async def get_public(self, subscribe_id: int) -> Optional[SubscribeView]:
@@ -200,13 +215,18 @@ class SubscriptionQueryService:
         page: int = 1,
         count: int = 30,
         username: Optional[str] = None,
+        owner_identity: str | None = None,
     ) -> list[SubscribeView]:
         """
         分页读取订阅历史 DTO。
         """
         if self._history_repository is None:
             raise RuntimeError("订阅历史查询端口未注册")
-        if username:
+        if owner_identity is not None:
+            records = await self._history_repository.async_list_by_type_and_username(
+                mtype, username or "", page, count, owner_identity=owner_identity,
+            )
+        elif username:
             records = await self._history_repository.async_list_by_type_and_username(
                 mtype,
                 username,
@@ -233,12 +253,17 @@ class SubscriptionQueryService:
         mtype: str,
         *,
         username: Optional[str] = None,
+        owner_identity: str | None = None,
     ) -> int:
         """
         按与历史列表相同的 owner 范围返回精确总数。
         """
         if self._history_repository is None:
             raise RuntimeError("订阅历史查询端口未注册")
+        if owner_identity is not None:
+            return await self._history_repository.async_count_by_type_and_username(
+                mtype, username or "", owner_identity=owner_identity,
+            )
         if username:
             return await self._history_repository.async_count_by_type_and_username(
                 mtype,

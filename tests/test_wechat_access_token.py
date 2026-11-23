@@ -137,3 +137,26 @@ def test_other_errors_do_not_refresh_token() -> None:
 
     assert request_utils.return_value.post.call_count == 1
     assert request_utils.return_value.get_res.call_count == 1
+
+
+@pytest.mark.parametrize(("returned_app", "expected"), [(1000002, "fixture-corp:1000002"), (1000010, None)])
+def test_credential_probe_confirms_enterprise_and_application(returned_app, expected) -> None:
+    """
+    凭据核验只接受官方接口返回与目标一致的应用 ID，两个 HTTP 响应均及时关闭。
+    """
+    token = _token_response("fixture-token")
+    application = Mock(status_code=200)
+    application.json.return_value = {"errcode": 0, "agentid": returned_app}
+    with patch("app.modules.wechat.wechat.RequestUtils") as http:
+        get = http.return_value.get_res
+        get.side_effect = [token, application]
+        assert WeChat.probe_app_identity("fixture-corp", "1000002", "fixture-secret") == expected
+
+    assert tuple(call.args[0] for call in get.call_args_list) == (
+        "https://qyapi.weixin.qq.com/cgi-bin/gettoken", "https://qyapi.weixin.qq.com/cgi-bin/agent/get",
+    )
+    assert all(not call.kwargs["allow_redirects"] for call in get.call_args_list)
+    assert all(call.kwargs["verify"] is True for call in http.call_args_list)
+    assert get.call_args.kwargs["params"] == {"access_token": "fixture-token", "agentid": "1000002"}
+    token.close.assert_called_once()
+    application.close.assert_called_once()

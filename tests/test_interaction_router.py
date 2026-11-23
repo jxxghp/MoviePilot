@@ -74,7 +74,7 @@ def test_latest_session_prefers_newest_created_at() -> None:
     new_route, _ = _session_route("media", pending=SimpleNamespace(created_at=now))
     router = InteractionRouter(session_routes=[old_route, new_route], callback_routes=[])
 
-    assert router.latest_session("10001") == new_route
+    assert router.latest_session(_context()) == new_route
 
 
 def test_latest_session_missing_timestamp_treated_as_oldest() -> None:
@@ -85,7 +85,7 @@ def test_latest_session_missing_timestamp_treated_as_oldest() -> None:
     stamped_route, _ = _session_route("media", pending=SimpleNamespace(created_at=datetime.now()))
     router = InteractionRouter(session_routes=[plain_route, stamped_route], callback_routes=[])
 
-    assert router.latest_session("10001") == stamped_route
+    assert router.latest_session(_context()) == stamped_route
 
 
 def test_dispatch_active_text_consumed_by_latest_session() -> None:
@@ -122,9 +122,9 @@ def test_has_pending_checks_all_routes() -> None:
         callback_routes=[],
     )
 
-    assert router.has_pending("10001")
+    assert router.has_pending(_context())
     empty_router = InteractionRouter(session_routes=[_session_route("sites", pending=None)[0]], callback_routes=[])
-    assert not empty_router.has_pending("10001")
+    assert not empty_router.has_pending(_context())
 
 
 def test_dispatch_callback_respects_registration_order() -> None:
@@ -191,7 +191,7 @@ def test_has_pending_interaction_detects_real_sessions() -> None:
     """
     WebAgent 判断应覆盖真实交互会话管理器。
     """
-    assert not has_pending_interaction("10001")
+    assert not has_pending_interaction("10001", NotificationChannel.Telegram, "telegram-test")
 
     site_interaction_manager.create_or_replace(
         user_id="10001",
@@ -200,5 +200,5 @@ def test_has_pending_interaction_detects_real_sessions() -> None:
         source="telegram-test",
         username="tester",
     )
-    assert has_pending_interaction("10001")
-    assert not has_pending_interaction("10002")
+    assert has_pending_interaction("10001", NotificationChannel.Telegram, "telegram-test")
+    assert not has_pending_interaction("10002", NotificationChannel.Telegram, "telegram-test")

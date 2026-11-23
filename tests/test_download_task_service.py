@@ -92,3 +92,45 @@ def test_chain_task_mutations_hold_task_lock(method, args):
 
     assert held == [True]
     assert not stripe._is_owned()
+
+
+def test_owned_tasks_require_current_reference_and_exact_downloader():
+    """
+    同 Hash 只能匹配本次提交，改名和其他下载器的记录都不会改变可见范围。
+    """
+    reference = "mp-task-" + "a" * 32
+    other_reference = "mp-task-" + "b" * 32
+    torrents = [
+        DownloaderTorrent(downloader="first", hash="shared", tags=f"moviepilot,{reference}"),
+        DownloaderTorrent(downloader="second", hash="shared", tags=reference),
+        DownloaderTorrent(downloader="first", hash="shared"),
+        DownloaderTorrent(downloader="first", hash="other", tags=reference),
+        DownloaderTorrent(downloader="first", hash="shared", tags=f"{reference},{other_reference}"),
+    ]
+    history = DownloadHistorySnapshot(
+        id=1, path="/downloads/test", type="电影", title="自己的电影",
+        downloader="first", download_hash="shared", username="旧账号名",
+    )
+    seen = []
+
+    def lookup(owner, references):
+        """
+        记录按当前账号提交的查询范围。
+        """
+        seen.append((owner, references))
+        return {reference: history} if owner == "account-before-rename" else {}
+
+    service = DownloadTaskService(
+        list_torrents=lambda **_kwargs: torrents,
+        get_history_by_hashes=lambda _hashes: {},
+        start_torrents=lambda **_kwargs: True,
+        stop_torrents=lambda **_kwargs: True,
+        remove_torrents=lambda **_kwargs: True,
+        get_owned_tasks=lookup,
+    )
+    (result,) = service.downloading(owner_identity="account-before-rename")
+    assert result.media and result.media.title == "自己的电影"
+    assert result.tags == "moviepilot"
+    assert torrents[0].tags == f"moviepilot,{reference}"
+    assert service.downloading(owner_identity="different-account") == []
+    assert seen == [("account-before-rename", [reference]), ("different-account", [reference])]

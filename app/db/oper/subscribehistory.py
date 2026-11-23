@@ -187,6 +187,7 @@ class SubscribeHistoryOper(DbOper):
         username: str,
         page: int = 1,
         count: int = 30,
+        *, owner_identity: str | None = None,
     ) -> List[SubscribeHistory]:
         """
         异步按媒体类型和用户分页查询订阅历史。
@@ -198,6 +199,7 @@ class SubscribeHistoryOper(DbOper):
                 username=username,
                 page=page,
                 count=count,
+                owner_identity=owner_identity,
             )
         )
 
@@ -213,6 +215,7 @@ class SubscribeHistoryOper(DbOper):
         self,
         mtype: str,
         username: str,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         异步统计指定媒体类型和 owner 的订阅历史。
@@ -222,6 +225,7 @@ class SubscribeHistoryOper(DbOper):
                 session,
                 mtype,
                 username,
+                owner_identity=owner_identity,
             )
         )
 

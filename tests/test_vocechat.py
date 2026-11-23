@@ -97,9 +97,10 @@ def test_message_parser_routes_reply_to_origin(
         message = module.message_parser("vocechat-test", body, {}, {})
 
     assert message is not None
-    assert message.userid == expected_userid
+    assert message.userid == "UID#7"
+    assert message.chat_id == expected_userid
     assert message.text == content
-    assert vocechat.send_msg(title="搜索结果", userid=message.userid) is True
+    assert vocechat.send_msg(title="搜索结果", userid=message.chat_id) is True
     assert client.post_res.call_args.args[0] == (
         f"https://voce.example.com/api/bot/{endpoint}"
     )

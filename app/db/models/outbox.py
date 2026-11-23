@@ -20,6 +20,7 @@ class OutboxMessage(Base):
     topic: Mapped[str] = mapped_column(String(100), nullable=False)
     payload_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    notification_progress: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     next_retry_at: Mapped[str] = mapped_column(String(40), nullable=False)

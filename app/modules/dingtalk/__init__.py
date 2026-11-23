@@ -2,12 +2,15 @@
 钉钉自定义机器人通知模块。
 """
 
-from typing import List, Optional, Sequence, Tuple, Union
+from functools import partial
+from typing import List, Optional, Tuple, Union
 
+from app.application.messaging.delivery import NotificationParts, notification_preflight_active
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.dingtalk.dingtalk import DingTalk
 from app.schemas.message import Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
 
 
@@ -74,23 +77,45 @@ class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
         """
         向所有匹配消息范围的钉钉配置发送普通通知。
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
-            client = self.get_instance(conf.name)
-            if client:
-                texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.DingTalk) or [message.text]
-                for text in texts:
-                    client.send_msg(
+            client = self.get_message_client(conf.name, message)
+            if client is None:
+                self.record_delivery(message, conf, None, status="retryable_failure", code="client_unavailable")
+            elif isinstance(client, DingTalk):
+                self._post_tracked_notification(message, conf, client)
+            else:
+                if notification_preflight_active():
+                    continue
+                texts = message.channel_text_chunks(NotificationChannel.DingTalk) or [message.text]
+                for index, text in enumerate(texts):
+                    self.record_delivery(message, conf, client.send_msg(
                         title=message.title,
                         text=text,
                         image=message.image,
                         userid=str(message.userid) if message.userid else None,
                         link=message.link,
-                    )
+                    ), part=index)
+
+    def _post_tracked_notification(self, message: Message, conf: NotificationConf, client: DingTalk) -> None:
+        """
+        绑定钉钉 Webhook 的投递分段并收集返回结果。
+        """
+        if message.userid or message.notification_route_scope == "user":
+            self.record_delivery(message, conf, None, status="skipped", code="unsupported_personal_target")
+            return
+        parts = NotificationParts(NotificationChannel.DingTalk, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+
+        chunks: list[str | None] = list(message.channel_text_chunks(NotificationChannel.DingTalk)) or [message.text]
+        client.send_tracked_chunks(
+            message.title, chunks, message.image, message.link, receipt=partial(parts.record, message), part_sender=parts.send, plan=parts.plan,
+        )
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
         把媒体候选列表降级为可点击的 Markdown 列表后发送。
         """
+        message = self.prepare_message(message)
         if not medias:
             return
         lines = []
@@ -105,6 +130,7 @@ class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
         """
         把资源候选列表降级为可点击的 Markdown 列表后发送。
         """
+        message = self.prepare_message(message)
         if not torrents:
             return
         lines = []

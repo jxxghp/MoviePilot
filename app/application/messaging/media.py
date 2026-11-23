@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from app.application.messaging.interaction import _ExpiringUserInteractionStore
+from app.application.messaging.interaction import _ExpiringUserInteractionStore, interaction_key
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import NotificationChannel
@@ -25,6 +25,7 @@ class PendingMediaInteraction:
     :param username: 用户显示名称，未知时为 None
     :param action: 本次媒体交互的业务动作，如搜索、下载或订阅
     :param keyword: 用户输入的媒体检索关键词
+    :param original_chat_id: 与个人身份分离的原会话回复地址
     :param phase: 当前阶段：media 选择媒体、torrent 选择资源、download-dir 选择目录
     :param page: 当前候选列表页索引，从 0 开始
     :param title: 当前交互视图的展示标题
@@ -36,6 +37,7 @@ class PendingMediaInteraction:
     :param pending_download_context: 等待目录选择的资源下载上下文，未暂存时为 None
     :param pending_no_exists: 待下载媒体的缺失集数映射，未提供时为 None
     :param pending_torrent_page: 进入目录选择前的种子列表页索引，返回时恢复此页
+    :param callback_versions: 每个选择阶段最后一次出卡的标识，用于拒绝旧列表上的写操作
     :param created_at: 会话创建的本地时间，用于计算过期时间
     """
 
@@ -46,6 +48,7 @@ class PendingMediaInteraction:
     username: Optional[str]
     action: str
     keyword: str
+    original_chat_id: Optional[str] = None
     phase: str = "media"
     page: int = 0
     title: str = ""
@@ -57,6 +60,7 @@ class PendingMediaInteraction:
     pending_download_context: Optional[Any] = None
     pending_no_exists: Optional[Dict[Any, Any]] = None
     pending_torrent_page: int = 0
+    callback_versions: dict[str, str] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
 
 
@@ -80,6 +84,7 @@ class MediaInteractionManager(
             title: str = "",
             meta: Optional[MetaBase] = None,
             items: Optional[List[Any]] = None,
+            original_chat_id: Optional[str] = None,
     ) -> PendingMediaInteraction:
         """
         为用户创建新的交互状态，并替换旧会话。
@@ -95,11 +100,12 @@ class MediaInteractionManager(
                 username=username,
                 action=action,
                 keyword=keyword,
+                original_chat_id=original_chat_id,
                 title=title,
                 meta=meta,
                 items=list(items or []),
             )
-            self._replace_locked(request)
+            self._replace_locked(request, interaction_key(user_id, channel, source, original_chat_id))
             return request
 
 

@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -22,13 +23,38 @@ from Crypto.Util.Padding import pad
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.attachment import load_image
-from app.application.messaging.ingress import forward_message_to_host
+from app.application.messaging.ingress import forward_message_to_host, submit_platform_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.runtime.thread import ThreadHelper
+from app.schemas.delivery import DeliveryPartOutcome, DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt
+from app.schemas.message import Message
+from app.schemas.types import NotificationChannel
+
+
+@dataclass(frozen=True, slots=True)
+class _TrackedMedia:
+    """
+    持有一次派发准备好的附件。
+
+    :param content: 文件字节
+    :param name: 发送文件名
+    :param mime: 文件类型
+    """
+
+    content: bytes = field(repr=False)
+    name: str
+    mime: str
+
+    def signature(self) -> str:
+        """
+        绑定附件内容和显示元数据。
+        """
+        return json.dumps((self.name, self.mime, hashlib.sha256(self.content).hexdigest()))
 
 
 @dataclass
@@ -927,6 +953,69 @@ class ILinkClient:
         ]
         return self._send_payload_candidates(to_user=to_user, payload_candidates=payload_candidates)
 
+    def send_tracked_text(self, target: str, text: str, context_token: str | None) -> DeliveryPartOutcome:
+        """
+        按已登记的地址提交一个标准文本分段。
+        """
+        return self._submit_tracked(self._build_protocol_text_payload(target, text, context_token))
+
+    def send_tracked_media(
+        self, target: str, payload: bytes, filename: str, mime: str, context_token: str | None,
+    ) -> DeliveryPartOutcome:
+        """
+        准备该设备的媒体上传，取得文件引用后才提交消息。
+        """
+        if not self.bot_token:
+            return "retryable_failure", "ilink_client_unavailable"
+        image = mime.startswith("image/")
+        upload_param, full_url, aeskey, _, filekey = self._request_upload_param(
+            target, payload, media_types=[1] if image else [2, 6, 1],
+        )
+        if (not upload_param and not full_url) or not aeskey or not filekey:
+            return "retryable_failure", "ilink_upload_unavailable"
+        download_param, cipher_size = self._upload_encrypted_to_cdn(
+            upload_param=upload_param, upload_full_url=full_url, filekey=filekey, plaintext=payload, aeskey=aeskey,
+        )
+        if not download_param or not cipher_size:
+            return "retryable_failure", "ilink_upload_unavailable"
+        aeskey_b64 = self._encode_media_aes_key(aeskey)
+        if image:
+            body = self._build_protocol_image_payload(target, context_token, download_param, aeskey_b64, cipher_size)
+        else:
+            body = self._build_protocol_file_payloads(
+                target, context_token, download_param, aeskey_b64, cipher_size,
+                len(payload), filename, mime, hashlib.md5(payload).hexdigest(),
+            )[0]
+        return self._submit_tracked(body)
+
+    def _submit_tracked(self, body: dict[str, Any]) -> DeliveryPartOutcome:
+        """
+        发送一次标准 iLink 报文，响应未知时不尝试替代地址或报文。
+        """
+        if not self.bot_token:
+            return "retryable_failure", "ilink_client_unavailable"
+        try:
+            response = RequestUtils(headers=self._headers(auth_required=True), timeout=self.timeout).post_res(
+                f"{self.base_url}/ilink/bot/sendmessage", json=self._with_base_info(body), allow_redirects=False,
+            )
+        except Exception:
+            return "unknown", "ilink_submission_unconfirmed"
+        if response is None:
+            return "unknown", "ilink_submission_unconfirmed"
+        status = response.status_code
+        if status == 429:
+            return "retryable_failure", "ilink_rate_limited"
+        if status in {400, 401, 403, 404}:
+            return "permanent_failure", "ilink_request_rejected"
+        if not 200 <= status < 300:
+            return "unknown", "ilink_submission_unconfirmed"
+        payload = self._json(response)
+        if self._is_send_explicit_failure(payload):
+            return "permanent_failure", "ilink_message_rejected"
+        if self._is_send_success(payload) or not response.content:
+            return "confirmed", None
+        return "unknown", "ilink_submission_unconfirmed"
+
     def send_image_text_png(
         self,
         to_user: str,
@@ -1771,13 +1860,12 @@ class WechatClawBot:
 
     def _clear_login_state(self) -> None:
         """
-        清除令牌、账号、轮询游标和用户上下文令牌并持久化。
+        清除令牌、轮询游标和用户上下文令牌，并保留已绑定的平台账号。
 
         保留二维码和已知互动目标；轮询循环会因令牌缺失而退出。
         """
         with self._lock:
             self._state["bot_token"] = None
-            self._state["account_id"] = None
             self._state["sync_buf"] = None
             self._state["user_context_tokens"] = {}
             self._save_state()
@@ -2022,11 +2110,15 @@ class WechatClawBot:
                 messages, sync_buf, result = client.poll_updates(
                     timeout_seconds=self._poll_timeout
                 )
+                if self._stop_event.is_set():
+                    return
                 if sync_buf is not None and sync_buf != self._state.get("sync_buf"):
                     self._update_state(sync_buf=sync_buf)
                 if not result.get("success"):
                     raise RuntimeError(result.get("message") or "poll failed")
                 for message in messages:
+                    if self._stop_event.is_set():
+                        return
                     self._remember_target(
                         user_id=message.user_id,
                         username=message.username,
@@ -2059,6 +2151,12 @@ class WechatClawBot:
         """
         把 WeChatClawBot 轮询消息同步转交统一消息入口。
         """
+        forwarded = submit_platform_payload(
+            payload, self._config_name, NotificationChannel.WechatClawBot,
+            self._identity if getattr(self, "_base_url", None) == self._default_base_url else None, submit=ThreadHelper().submit,
+        )
+        if forwarded is not None:
+            return forwarded
         return forward_message_to_host(payload, self._config_name)
 
     def _build_known_targets(self) -> List[Dict[str, Any]]:
@@ -2138,10 +2236,15 @@ class WechatClawBot:
                 updated_qrcode["qrcode_url"] = result.get("qrcode_url")
             update_payload: Dict[str, Any] = {"qrcode": updated_qrcode}
             if result.get("token"):
+                account_id = str(result.get("account_id") or "").strip()
+                bound_account = self._state.get("account_id")
+                if not account_id or (bound_account and account_id != bound_account):
+                    self._update_state(qrcode={})
+                    return {"success": False, "message": "扫码账号无法核验或与已绑定账号不同，切换账号请新建连接"}
                 update_payload.update(
                     {
                         "bot_token": result.get("token"),
-                        "account_id": str(result.get("account_id") or "") or None,
+                        "account_id": account_id,
                         "sync_buf": None,
                         "base_url": (result.get("base_url") or self._base_url).rstrip("/"),
                     }
@@ -2170,14 +2273,13 @@ class WechatClawBot:
         """
         请求停止轮询并清空本地登录、二维码及上下文令牌。
 
-        保留已知互动目标；不向远端发送账号注销请求。
+        保留已绑定的平台账号与互动目标；不向远端发送账号注销请求。
 
         :return: 本地状态清理成功的结果字典；不保证停止请求返回时轮询线程已退出
         """
         self.stop()
         with self._lock:
             self._state["bot_token"] = None
-            self._state["account_id"] = None
             self._state["sync_buf"] = None
             self._state["qrcode"] = {}
             self._state["user_context_tokens"] = {}
@@ -2451,6 +2553,91 @@ class WechatClawBot:
             return None
         result = self._download_ref_bytes(ref=media_ref, kind=kind)
         return result[0] if result else None
+
+    def send_tracked_notification(
+        self, message: Message, userid: str | None, *, receipt: DeliveryReceipt,
+        part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        在首次提交前登记明确收件人、文本分段与附件摘要。
+
+        :param message: 当前通知内容及可选附件
+        :param userid: 显式用户或空值，空值沿用已配置的默认收件人
+        :param receipt: 收集各段的发送结果
+        :param part_sender: 校验当前认领及历史分段后提交
+        :param plan: 保存目标与分段清单
+        :return: 全部分段确认后为真
+        """
+        target = userid or self._default_target
+        if not target:
+            receipt(None, 0, "skipped", "no_target")
+            return False
+        try:
+            texts, media = self._tracked_content(message)
+        except OSError:
+            return self._record_missing_tracked_attachment(target, receipt, part_sender, plan)
+        if not texts and not media:
+            receipt(target, 0, "skipped", "empty_message")
+            return False
+        chunks = [json.dumps(("text", text), ensure_ascii=False) for text in texts]
+        if media:
+            chunks.append(media.signature())
+        plan(tuple((target, index, value) for index, value in enumerate(chunks)))
+        client = self._build_client()
+        context_token = self._get_context_token(target)
+        confirmed = True
+        for index, text in enumerate(texts):
+            status, code = part_sender(
+                target, index, chunks[index], confirmed, partial(client.send_tracked_text, target, text, context_token),
+            )
+            receipt(target, index, status, code)
+            confirmed = confirmed and status == "confirmed"
+        if media:
+            status, code = part_sender(target, len(texts), chunks[-1], confirmed, partial(
+                client.send_tracked_media, target, media.content, media.name, media.mime, context_token,
+            ))
+            receipt(target, len(texts), status, code)
+            confirmed = confirmed and status == "confirmed"
+        return confirmed
+
+    @staticmethod
+    def _record_missing_tracked_attachment(
+        target: str, receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        在原收件人的附件位置结算缺失的文件，沿用已有平台确认。
+        """
+        content = '["missing_attachment"]'
+        plan(((target, 0, content),))
+        status, code = part_sender(target, 0, content, True, lambda: ("permanent_failure", "attachment_unavailable"))
+        receipt(target, 0, status, code)
+        return status == "confirmed"
+
+    def _tracked_content(self, message: Message) -> tuple[list[str], _TrackedMedia | None]:
+        """
+        保留原有正文优先与语音作为附件的规则。
+        """
+        file_path = message.file_path or message.voice_path
+        if message.native_image and message.image:
+            loaded = load_image(message.image)
+            if loaded is None:
+                raise OSError("原图不可用")
+            content, suffix = loaded
+            mime = "image/png" if suffix == ".png" else "image/jpeg"
+            text = self._compose_text(title=message.title or "", text=message.text, link=None)
+            return self._split_content(text), _TrackedMedia(content, f"image{suffix}", mime)
+        if file_path:
+            path = Path(file_path)
+            if not path.is_file():
+                raise FileNotFoundError(file_path)
+            content = path.read_bytes()
+            if not content:
+                raise OSError("附件为空")
+            filename = (message.file_name if message.file_path else None) or path.name
+            return [], _TrackedMedia(content, filename, self._guess_mime_type(path, content))
+        text = self._compose_text(title=message.title or "", text=message.text, link=message.link)
+        image = self._load_remote_image(message.image) if message.image and not (message.text or message.link) else None
+        return self._split_content(text), _TrackedMedia(image, "image.png", "image/png") if image else None
 
     def send_msg(
         self,

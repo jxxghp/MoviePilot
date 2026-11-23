@@ -2,10 +2,13 @@
 通知渠道稳定身份与缓存同步契约。
 """
 
+from unittest.mock import Mock
+
 import pytest
 
 from app.api.endpoints.notification import _normalize_configs, save_config
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
+from app.schemas.channel import ChannelConnectionInfo
 from app.schemas.system import NotificationConf
 
 
@@ -103,6 +106,23 @@ def test_cache_key_is_stable_for_same_identity(identity):
 
 
 @pytest.mark.asyncio
+async def test_archiving_disabled_clawbot_clears_credentials_without_running_module(monkeypatch):
+    """
+    停用连接没有运行模块，移除时仍须清理稳定 ID 和旧名称下的登录缓存。
+    """
+    from app.startup.initializers.modules import _reconcile_channel_connections
+
+    cache = Mock()
+    monkeypatch.setattr("app.modules.wechatclawbot.wechatclawbot.FileCache", lambda: cache)
+    old = ChannelConnectionInfo(id="claw", identity_namespace="claw", name="旧连接", provider="wechatclawbot",
+                                mode="standard", enabled=False, revision=1)
+    await _reconcile_channel_connections((old,), ())
+    assert [call.args[0] for call in cache.delete.call_args_list] == [
+        WechatClawBot._build_cache_key("claw"), WechatClawBot._build_cache_key("旧连接"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_save_config_does_not_touch_cache_when_persistence_fails(monkeypatch):
     """
     配置持久化失败时不提前迁移或清理渠道会话缓存。
@@ -117,13 +137,13 @@ async def test_save_config_does_not_touch_cache_when_persistence_fails(monkeypat
             """
             返回空的既有渠道配置。
             """
-            return []
+            return None
 
-        async def async_set(self, _key, _value):
+        async def async_update_atomically(self, _key, _change):
             """
-            模拟配置写入失败，验证缓存不会提前更新。
+            模拟数据库拒绝提交，验证缓存不会提前更新。
             """
-            return False
+            raise ValueError("写入失败")
 
     monkeypatch.setattr(
         "app.api.endpoints.notification.get_configured_system_config",
@@ -138,7 +158,7 @@ async def test_save_config_does_not_touch_cache_when_persistence_fails(monkeypat
     response = await save_config([NotificationConf(name="Alpha", type="telegram")], None)
 
     assert response.success is False
-    assert response.message == "通知配置保存失败"
+    assert response.message.startswith("通知配置保存失败")
     assert calls["reconcile"] == 0
 
 
@@ -157,14 +177,20 @@ async def test_save_config_saves_channels_without_loaded_clawbot_module(monkeypa
             """
             返回空的既有渠道配置。
             """
-            return []
+            return None
 
-        async def async_set(self, _key, value):
+        async def async_update_atomically(self, _key, change):
             """
-            记录本次渠道配置写入并返回成功。
+            保存此次原子迁移，把事务内结果返回给旧设置页。
             """
-            calls.append(value)
-            return True
+            result, config = change(None)
+            calls.append(config)
+            return result
+
+        async def async_publish_committed_change(self, _key):
+            """
+            无活动模块时完成配置变更通知。
+            """
 
     monkeypatch.setattr(
         "app.api.endpoints.notification.get_configured_system_config",

@@ -14,11 +14,43 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from py_vapid import Vapid
 
-from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
+from app.adapters.network.webpush import WebPushDeliveryError, configure_webpush_endpoint_validator, send_webpush
+from app.application.security.url import configure_dns_resolver, reset_dns_resolver
+
+
+@pytest.fixture(autouse=True)
+def public_push_dns():
+    """
+    将公网策略的 DNS 端口装配为离线地址，退出时恢复解析器和缓存。
+
+    :yields: 可由用例调整返回地址的独立解析器
+    """
+    from app.startup.composition.webpush import validate_webpush_origin
+
+    resolver = SimpleNamespace(resolve=lambda _hostname: ["8.8.8.8"])
+    previous = configure_dns_resolver(resolver)
+    previous_validator = configure_webpush_endpoint_validator(validate_webpush_origin)
+    try:
+        yield resolver
+    finally:
+        reset_dns_resolver(previous)
+        configure_webpush_endpoint_validator(previous_validator)
 
 
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def test_webpush_rejects_malformed_origin_before_transport(browser, vapid):
+    """
+    无效的 HTTPS 源站不会到达传输层，也不会在错误中暴露端点路径。
+    """
+    browser.subscription["endpoint"] = "https://[invalid/send/private-token"
+    with patch("app.adapters.network.webpush.RequestUtils") as client:
+        with pytest.raises(WebPushDeliveryError, match="完整 HTTPS 地址") as exc:
+            send_webpush(browser.subscription, "{}", vapid.private_key, "mailto:push@example.test")
+    client.assert_not_called()
+    assert "private-token" not in str(exc.value)
 
 
 @pytest.fixture
@@ -56,14 +88,26 @@ def _post(status_code=201):
     captured = {}
 
     class _Utils:
+        """
+        捕获协议发送器的 HTTP 参数，不创建网络连接。
+        """
+
         def __init__(self, headers=None, timeout=None, verify=None, **_):
+            """
+            保存构造时的 TLS、超时和请求头配置。
+
+            :param headers: Web Push 请求头
+            :param timeout: 本次请求超时
+            :param verify: 是否验证 TLS
+            :param _: 不参与本用例的其它构造参数
+            """
             captured.update(headers=headers, timeout=timeout, verify=verify)
 
-        def post_res(self, url, data=None, **_):
+        def post_res(self, url, data=None, allow_redirects=True, **_):
             """
             记录推送地址与加密请求体，并返回指定 HTTP 状态的离线响应。
             """
-            captured.update(url=url, body=data)
+            captured.update(url=url, body=data, allow_redirects=allow_redirects)
             return SimpleNamespace(status_code=status_code, reason="R", text="detail")
 
     return captured, patch("app.adapters.network.webpush.RequestUtils", _Utils)
@@ -91,6 +135,7 @@ def test_payload_decrypts_with_browser_keys_and_vapid_verifies(browser, vapid):
     assert headers["TTL"] == "0"
     assert captured["url"] == browser.subscription["endpoint"]
     assert captured["verify"] is True
+    assert captured["allow_redirects"] is False
 
     scheme, _, params = headers["Authorization"].partition(" ")
     assert scheme == "vapid"
@@ -270,3 +315,69 @@ def test_custom_vapid_settings_override_runtime_defaults_and_reject_partial_pair
     partial_private = settings.VAPID
     assert partial_private["publicKey"] == ""
     assert partial_private["privateKey"] == ""
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://push.example.com/secret", "https://user:secret@push.example.com/token",
+    "https://127.0.0.1/private-token", "https://169.254.169.254/metadata-token",
+    "https://[::1]/private-token", "https://push.example.com/token#fragment",
+])
+def test_invalid_or_private_push_urls_are_rejected_before_http(browser, vapid, endpoint):
+    """
+    非 HTTPS、URL 凭据、片段和私网字面量在创建 HTTP 客户端前拒绝。
+
+    :param browser: 离线浏览器密钥
+    :param vapid: 离线服务端签名密钥
+    :param endpoint: 待拒绝的完整推送端点
+    """
+    captured, patcher = _post()
+    with patcher, pytest.raises(WebPushDeliveryError) as error:
+        send_webpush({**browser.subscription, "endpoint": endpoint}, "x", vapid.private_key, "mailto:a@b.c")
+    assert captured == {}
+    assert endpoint not in str(error.value)
+
+
+@pytest.mark.parametrize("addresses", [["127.0.0.1"], ["169.254.169.254"], ["8.8.8.8", "10.0.0.1"], []])
+def test_push_dns_policy_rejects_private_mixed_or_missing_results(browser, vapid, public_push_dns, addresses):
+    """
+    宿主 DNS 策略拒绝私网、混合地址和空结果，不建立 HTTP 请求。
+
+    :param browser: 离线浏览器密钥
+    :param vapid: 离线服务端签名密钥
+    :param public_push_dns: 可配置的离线 DNS 解析端口
+    :param addresses: DNS 本次返回的地址集合
+    """
+    public_push_dns.resolve = lambda _hostname: addresses
+    captured, patcher = _post()
+    with patcher, pytest.raises(WebPushDeliveryError, match="公网安全检查"):
+        send_webpush(browser.subscription, "x", vapid.private_key, "mailto:a@b.c")
+    assert captured == {}
+
+
+def test_push_redirect_is_rejected_and_response_body_never_leaks(browser, vapid):
+    """
+    推送不追踪任何重定向，远端响应正文不会进入可被日志记录的错误消息。
+
+    :param browser: 离线浏览器密钥
+    :param vapid: 离线服务端签名密钥
+    """
+    captured, patcher = _post(302)
+    with patcher, pytest.raises(WebPushDeliveryError) as error:
+        send_webpush(browser.subscription, "x", vapid.private_key, "mailto:a@b.c")
+    assert captured["allow_redirects"] is False
+    assert str(error.value) == "推送服务拒收：HTTP 302"
+    assert "detail" not in str(error.value)
+
+
+def test_transport_exception_does_not_expose_subscription_url_or_keys(browser, vapid):
+    """
+    底层网络异常可能包含完整能力 URL，协议适配器只暴露异常类别。
+
+    :param browser: 离线浏览器密钥
+    :param vapid: 离线服务端签名密钥
+    """
+    with patch("app.adapters.network.webpush.RequestUtils") as utils:
+        utils.return_value.post_res.side_effect = RuntimeError(str(browser.subscription))
+        with pytest.raises(WebPushDeliveryError) as error:
+            send_webpush(browser.subscription, "x", vapid.private_key, "mailto:a@b.c")
+    assert str(error.value) == "推送请求失败：RuntimeError"

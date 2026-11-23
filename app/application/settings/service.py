@@ -358,6 +358,9 @@ class SystemSettingsService:
         """
         if spec.source == "settings":
             return self._runtime_settings.get(spec.key)
+        if spec.systemconfig_key is SystemConfigKey.ChannelSettings:
+            # 连接凭据由专用接口写入，通用设置合同不提供其持久化内容。
+            return None
         return self._system_config.get(spec.systemconfig_key)
 
     @staticmethod

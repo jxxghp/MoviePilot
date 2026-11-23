@@ -426,6 +426,8 @@ class SystemConfigKey(Enum):
     MediaServers = "MediaServers"
     # 消息通知配置
     Notifications = "Notifications"
+    # 共享渠道连接、通知路由和交互策略的原子配置快照。
+    ChannelSettings = "ChannelSettings"
     # App 中心推送自动接入的内部凭据状态；按服务地址隔离，不通过通知渠道配置下发
     AppPushCredentials = "AppPushCredentials"
     # 通知场景开关设置

@@ -106,7 +106,7 @@ class SubscriptionActivityRepository(Protocol):
 
     async def list_accessible(
         self, subscription_id: int, username: str, superuser: bool, *,
-        history: bool, kind: str | None, since: str | None, before: str | None, limit: int,
+        history: bool, kind: str | None, since: str | None, before: str | None, limit: int, owner_identity: str | None = None,
     ) -> tuple[list[SubscriptionActivity], str | None] | None:
         """
         先确认活动或历史订阅归属，再返回稳定游标分页。
@@ -124,7 +124,7 @@ class SubscriptionActivityRepository(Protocol):
         ...
 
     async def get_accessible(
-        self, subscription_id: int, event_id: str, username: str, superuser: bool, *, history: bool,
+        self, subscription_id: int, event_id: str, username: str, superuser: bool, *, history: bool, owner_identity: str | None = None,
     ) -> SubscriptionActivity | None:
         """
         按订阅归属和事件身份读取单条完整详情。

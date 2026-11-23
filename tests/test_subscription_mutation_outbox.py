@@ -166,6 +166,24 @@ def _service(calls: list, *, event_error: Exception | None = None, outbox=None):
 
 
 @pytest.mark.asyncio
+async def test_subscription_edit_rejects_snapshot_of_different_owner():
+    """
+    上游持有同名用户的订阅快照时，仍需匹配不可变归属才能写入。
+    """
+    calls = []
+    service = _service(calls)
+    snapshot = SubscriptionSnapshot(id=7, username="alice", name="旧标题", owner_identity="previous")
+
+    change = await service.update(
+        7, {"name": "新标题"},
+        SubscriptionActor(name="alice", is_superuser=False, owner_identity="current"),
+        existing=snapshot,
+    )
+    assert change is None
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_modified_event_is_staged_with_update_and_completed_after_publish():
     """
     订阅修改与 intent 同事务提交，事件成功后才标记完成。

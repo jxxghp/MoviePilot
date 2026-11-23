@@ -13,6 +13,7 @@ from app.application.subscription.write import (
     add_subscribe,
     async_add_subscribe,
     build_subscription_create_request,
+    verify_subscription_authorization,
 )
 from app.chain.media import MediaChain
 from app.chain.subscribe.context import _SubscribeCreateContext, _SubscribePostCommitContext
@@ -612,7 +613,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             notification=notification,
         )
 
-    def _SubscribeChain__persist_subscribe_create(self, context: _SubscribeCreateContext) -> Tuple[Optional[int], str]:
+    def _SubscribeChain__persist_subscribe_create(
+        self, context: _SubscribeCreateContext, authorize: Callable[[], None] | None = None,
+    ) -> Tuple[Optional[int], str]:
         """
         同步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。
         """
@@ -620,6 +623,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             return None, "未识别到媒体信息"
         existing = find_existing_subscription(context, self.subscription_repository)
         if existing:
+            if authorize is not None:
+                verify_subscription_authorization(authorize)
             return existing.id, "订阅已存在"
         mediainfo = context.mediainfo
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
@@ -627,6 +632,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             self._SubscribeChain__build_subscribe_notification(context),
         )
         try:
+            if authorize is not None:
+                verify_subscription_authorization(authorize)
             sid, err_msg = add_subscribe(
                 mediainfo=mediainfo,
                 subscribe_oper=self.subscription_repository,
@@ -650,6 +657,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
     async def _SubscribeChain__async_persist_subscribe_create(
         self,
         context: _SubscribeCreateContext,
+        authorize: Callable[[], Awaitable[None]] | None = None,
     ) -> Tuple[Optional[int], str]:
         """
         异步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。
@@ -658,6 +666,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             return None, "未识别到媒体信息"
         existing = await async_find_existing_subscription(context, self.subscription_repository)
         if existing:
+            if authorize is not None:
+                await authorize()
             return existing.id, "订阅已存在"
         mediainfo = context.mediainfo
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
@@ -665,6 +675,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             self._SubscribeChain__build_subscribe_notification(context),
         )
         try:
+            if authorize is not None:
+                await authorize()
             sid, err_msg = await async_add_subscribe(
                 mediainfo=mediainfo,
                 subscribe_oper=self.subscription_repository,
@@ -703,10 +715,14 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         exist_ok: Optional[bool] = False,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
+        *,
+        _authorize: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> Tuple[Optional[int], str]:
         """
         识别媒体信息并添加订阅
+
+        :param _authorize: 渠道入口注入的订阅权限复核，仅对本次写入生效
         """
         logger.info(f"开始添加订阅，标题：{title} ...")
         context, error = self._SubscribeChain__build_subscribe_create_context(
@@ -736,7 +752,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         if error:
             return None, error
         self._SubscribeChain__finalize_subscribe_create_context(context)
-        return self._SubscribeChain__persist_subscribe_create(context)
+        return self._SubscribeChain__persist_subscribe_create(context, _authorize)
 
     async def async_add(
         self,
@@ -753,10 +769,14 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         exist_ok: Optional[bool] = False,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
+        *,
+        _authorize: Callable[[], Awaitable[None]] | None = None,
         **kwargs: Any,
     ) -> Tuple[Optional[int], str]:
         """
         异步识别媒体信息并添加订阅
+
+        :param _authorize: 渠道入口注入的订阅权限复核，仅对本次写入生效
         """
         logger.info(f"开始添加订阅，标题：{title} ...")
         context, error = await self._SubscribeChain__async_prepare_subscribe_create(
@@ -777,7 +797,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         )
         if error or context is None or context.mediainfo is None:
             return None, error or "订阅准备失败"
-        return await self._SubscribeChain__async_persist_subscribe_create(context)
+        return await self._SubscribeChain__async_persist_subscribe_create(context, _authorize)
 
     async def _SubscribeChain__async_prepare_subscribe_create(
         self,

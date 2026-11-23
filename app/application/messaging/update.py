@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from threading import Lock
@@ -14,6 +15,7 @@ from app.application.messaging.interaction import (
     MessageGateway,
     PendingSlashInteraction,
     SlashInteractionManager,
+    interaction_key,
     supports_interaction_buttons,
     update_or_post_message,
 )
@@ -183,9 +185,26 @@ class SystemUpdateInteractionHandler:
         if not str(callback_data or "").startswith("update:"):
             return None
         parts = str(callback_data).split(":")
-        if len(parts) != 3 or not parts[1] or not parts[2]:
+        if len(parts) not in (3, 4) or not parts[1] or not parts[2]:
             return None
         return parts[1], parts[2]
+
+    @staticmethod
+    def _claim_write_button(request: PendingSlashInteraction, action: str, callback_data: str) -> bool:
+        """
+        在当前更新视图只执行一次下载或安装按钮。
+
+        :param request: 当前更新交互记录
+        :param action: 按钮动作
+        :param callback_data: 含可选视图版本的回调数据
+        :return: 导航按钮或可以首次消费的写按钮时为 True
+        """
+        if action not in {"download", "install"}:
+            return True
+        suffix = callback_data.split(":")[3:]
+        if suffix != ([request.write_version] if request.write_version else []):
+            return False
+        return update_interaction_manager.claim_callback(request, action, version=request.write_version)
 
     def handle_callback_interaction(
         self,
@@ -204,7 +223,7 @@ class SystemUpdateInteractionHandler:
         if not parsed:
             return False
         request_id, action = parsed
-        request = update_interaction_manager.get_by_id(request_id, userid)
+        request = update_interaction_manager.get_by_id(request_id, userid, channel, source, original_chat_id)
         if request is None:
             self._messenger.post_message(
                 Message(
@@ -218,8 +237,9 @@ class SystemUpdateInteractionHandler:
             )
             return True
 
-        request.channel = channel
-        request.source = source
+        if not self._claim_write_button(request, action, callback_data):
+            return True
+
         request.username = username
         if action == "close":
             update_interaction_manager.remove(request.request_id)
@@ -281,11 +301,9 @@ class SystemUpdateInteractionHandler:
         """
         消费不支持按钮渠道或用户主动输入的升级确认文本。
         """
-        request = update_interaction_manager.get_by_user(userid)
+        request = update_interaction_manager.get_by_user(userid, channel, source)
         if request is None:
             return False
-        request.channel = channel
-        request.source = source
         request.username = username
         normalized = str(text or "").strip().lower()
 
@@ -589,6 +607,7 @@ class _SystemUpdateProgressMonitor:
             if request.request_id in _monitored_requests:
                 return
             _monitored_requests.add(request.request_id)
+        address = interaction_key(userid, channel, source, original_chat_id)
         monitor = self._monitor_download(
             request_id=request.request_id,
             channel=channel,
@@ -598,6 +617,7 @@ class _SystemUpdateProgressMonitor:
             initial_item=initial_item,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            thread_id=address.thread or None,
         )
         try:
             self._submit_monitor(monitor)
@@ -622,9 +642,12 @@ class _SystemUpdateProgressMonitor:
         source: Optional[str], userid: Union[str, int], username: Optional[str],
         initial_item: SystemUpdateItemStatus,
         original_message_id: Optional[Union[str, int]], original_chat_id: Optional[str],
+        thread_id: Optional[str],
     ) -> None:
         """
         按 Web 端三秒节奏轮询状态，并持续编辑原消息直到下载终态。
+
+        :param thread_id: 创建进度任务时保存的原线程
         """
         last_fingerprint = self._renderer.item_fingerprint(initial_item)
         last_progress_bucket = initial_item.progress // 10
@@ -632,7 +655,9 @@ class _SystemUpdateProgressMonitor:
         try:
             while True:
                 await asyncio.sleep(self._poll_interval_seconds)
-                request = update_interaction_manager.get_by_id(request_id, userid)
+                request = update_interaction_manager.get_by_id(
+                    request_id, userid, channel, source, original_chat_id, thread_id=thread_id,
+                )
                 if request is None:
                     return
                 status = await self._run_sync(self._actions.update_status)
@@ -663,8 +688,8 @@ class _SystemUpdateProgressMonitor:
                                 source=source,
                                 userid=userid,
                                 username=username,
-                                original_message_id=original_message_id,
                                 original_chat_id=original_chat_id,
+                                thread_id=thread_id,
                             )
                             edit_fallback_sent = True
                     else:
@@ -677,6 +702,8 @@ class _SystemUpdateProgressMonitor:
                                 source=source,
                                 userid=userid,
                                 username=username,
+                                original_chat_id=original_chat_id,
+                                thread_id=thread_id,
                             )
                             last_progress_bucket = progress_bucket
                     last_fingerprint = fingerprint
@@ -688,7 +715,9 @@ class _SystemUpdateProgressMonitor:
         # 监视错误不能影响实际下载
         except Exception as error:  # noqa: BLE001
             logger.warning(f"监视 MoviePilot 更新下载进度失败：{error}")
-            request = update_interaction_manager.get_by_id(request_id, userid)
+            request = update_interaction_manager.get_by_id(
+                request_id, userid, channel, source, original_chat_id, thread_id=thread_id,
+            )
             if request is not None:
                 await self._run_sync(
                     self._renderer.render_operation_failure,
@@ -700,6 +729,7 @@ class _SystemUpdateProgressMonitor:
                     error=f"读取下载进度失败：{error}",
                     original_message_id=original_message_id,
                     original_chat_id=original_chat_id,
+                    thread_id=thread_id,
                 )
         finally:
             with _monitor_lock:
@@ -726,9 +756,12 @@ class _SystemUpdateRenderer:
         userid: Union[str, int], username: Optional[str],
         operation_error: Optional[str] = None,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         从聚合更新快照提取主程序状态并更新交互消息。
+
+        :param thread_id: 后台更新监视的原会话线程
         """
         item = self.application_item(status)
         self.render_item(
@@ -741,6 +774,7 @@ class _SystemUpdateRenderer:
             operation_error=operation_error,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            thread_id=thread_id,
         )
         if item.state == "idle" and not item.error and not operation_error:
             update_interaction_manager.remove(request.request_id)
@@ -751,9 +785,12 @@ class _SystemUpdateRenderer:
         userid: Union[str, int], username: Optional[str],
         operation_error: Optional[str] = None,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         更新会话阶段并优先编辑原消息展示指定主程序状态。
+
+        :param thread_id: 后台更新监视的原会话线程
         """
         request.awaiting_input = self.awaiting_input(item)
         view = self.build_view(
@@ -773,15 +810,19 @@ class _SystemUpdateRenderer:
             buttons=view.buttons,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            thread_id=thread_id,
         )
 
     def render_check_failure(
         self, *, request: PendingSlashInteraction, channel: NotificationChannel,
         source: Optional[str], userid: Union[str, int], username: Optional[str], error: str,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         展示版本检查失败并保留刷新入口。
+
+        :param thread_id: 后台更新监视的原会话线程
         """
         request.awaiting_input = "refresh"
         buttons = self._buttons(
@@ -803,15 +844,19 @@ class _SystemUpdateRenderer:
             buttons=buttons,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            thread_id=thread_id,
         )
 
     def render_operation_failure(
         self, *, request: PendingSlashInteraction, channel: NotificationChannel,
         source: Optional[str], userid: Union[str, int], username: Optional[str], error: str,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         读取最新状态后展示下载或安装动作失败。
+
+        :param thread_id: 后台更新监视的原会话线程
         """
         try:
             status = self._actions.update_status()
@@ -826,6 +871,7 @@ class _SystemUpdateRenderer:
                 error=error,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                thread_id=thread_id,
             )
             return
         self.render_status(
@@ -838,6 +884,7 @@ class _SystemUpdateRenderer:
             operation_error=error,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            thread_id=thread_id,
         )
 
     def build_view(
@@ -1012,13 +1059,16 @@ class _SystemUpdateRenderer:
         """
         为支持按钮回调的渠道构造单行操作按钮。
         """
+        request.write_version = uuid.uuid4().hex[:10]
         if not actions or not supports_interaction_buttons(channel):
             return None
         return [
             [
                 {
                     "text": text,
-                    "callback_data": f"update:{request.request_id}:{action}",
+                    "callback_data": f"update:{request.request_id}:{action}" + (
+                        f":{request.write_version}" if action in {"download", "install"} else ""
+                    ),
                 }
                 for text, action in actions
             ]
@@ -1053,9 +1103,12 @@ class _SystemUpdateRenderer:
         self, *, view: SystemUpdateInteractionView, channel: NotificationChannel,
         source: Optional[str], userid: Union[str, int], username: Optional[str],
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         在无法编辑时发送一次进度或终态消息。
+
+        :param thread_id: 后台更新监视的原会话线程
         """
         self._messenger.post_message(
             Message(
@@ -1068,6 +1121,7 @@ class _SystemUpdateRenderer:
                 buttons=view.buttons,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                thread_id=thread_id,
                 save_history=False,
             )
         )

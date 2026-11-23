@@ -9,6 +9,8 @@ from unittest.mock import Mock
 import pytest
 
 from app.modules.qqbot import gateway, qqbot
+from app.modules.qqbot.module import QQBotModule
+from app.schemas.system import NotificationConf
 
 
 @pytest.mark.parametrize("opcode", [7, 9])
@@ -95,19 +97,25 @@ def test_gateway_reconnect_restores_dispatch_and_resets_backoff(
 
 
 @pytest.mark.parametrize("is_group", [False, True])
+@pytest.mark.parametrize("interaction_enabled", [False, True])
 def test_proactive_notification_does_not_depend_on_gateway(
-    monkeypatch: pytest.MonkeyPatch, is_group: bool,
+    monkeypatch: pytest.MonkeyPatch, is_group: bool, interaction_enabled: bool,
 ) -> None:
     """
-    Gateway 已断开时仍通过 HTTP 向配置的用户或群发送主动通知。
+    通过模块配置控制网关启动，两个模式均能通过 HTTP 向用户或群主动通知。
     """
-    client = qqbot.QQBot.__new__(qqbot.QQBot)
-    client._ready = True
-    client._app_id = "app"
-    client._app_secret = "secret"
-    client._default_openid = None if is_group else "user"
-    client._default_group_openid = "group" if is_group else None
-    client._gateway_ws_holder = []
+    start_gateway = Mock()
+    monkeypatch.setattr(qqbot.QQBot, "_start_gateway", start_gateway)
+    monkeypatch.setattr(qqbot.QQBot, "_load_known_targets", Mock())
+    conf = NotificationConf(name="qq", type="qqbot", interaction_enabled=interaction_enabled, config={
+        "QQ_APP_ID": "app", "QQ_APP_SECRET": "secret",
+        "QQ_OPENID": None if is_group else "user", "QQ_GROUP_OPENID": "group" if is_group else None,
+    })
+    module = QQBotModule()
+    monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
+    module.init_module()
+    client = module.get_instance(conf.name)
+    assert client is not None
     send = Mock(return_value={"id": "sent"})
     monkeypatch.setattr(qqbot, "get_access_token", Mock(return_value="token"))
     monkeypatch.setattr(
@@ -118,3 +126,5 @@ def test_proactive_notification_does_not_depend_on_gateway(
 
     assert client.send_msg(title="入库通知", text="整理完成") is True
     assert send.call_args.args[:2] == ("token", "group" if is_group else "user")
+    assert start_gateway.call_count == int(interaction_enabled)
+    assert module.stop() is True

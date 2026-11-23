@@ -1086,6 +1086,27 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         return False
 
+    async def _send_scheduled_channel_message(self, message: Message, authorization_id: str) -> None:
+        """
+        复核本轮任务的执行身份，把工具消息限定为原连接私聊。
+        """
+        from app.application.security.authorization import get_channel_authorization
+
+        service = get_channel_authorization()
+        user_id = self._agent_context.get("execution_user_id")
+        identity = self._agent_context.get("execution_user_identity")
+        try:
+            if service is None:
+                raise PermissionError("渠道授权服务不可用")
+            outgoing = await run_agent_blocking(
+                "db", service.prepare_task_result, message, authorization_id,
+                user_id if isinstance(user_id, int) else None, identity if isinstance(identity, str) else None,
+            )
+        except PermissionError as error:
+            self._record_identity_error(str(error))
+            raise
+        await ToolChain().async_post_message(outgoing)
+
     async def send_message(self, message: Message) -> None:
         """
         发送工具消息。
@@ -1094,6 +1115,10 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         回调直接接收消息；无渠道的后台任务清空渠道侧定位信息后交由消息链广播，
         其它渠道继续走统一消息链。
         """
+        scheduled_authorization = self._agent_context.get("scheduled_authorization_id")
+        if isinstance(scheduled_authorization, str) and scheduled_authorization:
+            await self._send_scheduled_channel_message(message, scheduled_authorization)
+            return
         callback = self._agent_context.get("message_callback")
         if (
             self._channel == NotificationChannel.WebAgent.value
@@ -1115,19 +1140,24 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                     or get_runtime_setting('SUPERUSER'),
                     "original_message_id": None,
                     "original_chat_id": None,
+                    "thread_id": None,
                 }
             )
-        elif not message.original_chat_id:
+        elif not message.private_delivery:
             # 工具回调消息默认回填当前会话的原会话 ID，
             # 保证群聊 @ 机器人时按钮选择、消息发送等交互消息回复到原群，而不是私聊窗口。
             original_chat_id = str(
                 self._agent_context.get("original_chat_id") or ""
             ).strip() or None
-            if original_chat_id:
-                message = message.model_copy(
-                    update={"original_chat_id": original_chat_id}
-                )
+            if original_chat_id and message.original_chat_id in (None, "", original_chat_id):
+                address = self._agent_context.get("interaction_address")
+                message = message.model_copy(update={
+                    "original_chat_id": original_chat_id,
+                    "thread_id": message.thread_id or getattr(address, "thread", None) or None,
+                })
 
+        if self._channel and self._source and message.delivery_kind is None:
+            message = message.model_copy(update={"delivery_kind": "reply"})
         await ToolChain().async_post_message(message)
 
     async def send_tool_message(

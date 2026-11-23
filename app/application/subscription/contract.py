@@ -61,6 +61,7 @@ _SUBSCRIPTION_FIELDS = frozenset(
         "last_update",
         "date",
         "username",
+        "owner_identity",
         "sites",
         "downloader",
         "best_version",
@@ -211,6 +212,7 @@ class SubscriptionSnapshot:
     :param last_search: 最近一次主动搜索开始时间，仅供读取
     :param date: 订阅创建时的时间文本
     :param username: 订阅所属的本地用户名；None 表示未绑定用户
+    :param owner_identity: 已认证或经管理员核对的不可变账号身份
     :param sites: 允许搜索和匹配的站点标识列表
     :param downloader: 下载所使用的下载器名称
     :param best_version: 是否启用更高质量版本替换
@@ -268,6 +270,7 @@ class SubscriptionSnapshot:
     last_search: Optional[str] = None
     date: Optional[str] = None
     username: Optional[str] = None
+    owner_identity: str | None = None
     sites: Optional[builtins.list[int]] = None
     downloader: Optional[str] = None
     best_version: Optional[int] = None
@@ -337,6 +340,7 @@ class SubscriptionHistorySnapshot:
     :param start_episode: 开始集数
     :param date: 订阅创建时的时间文本
     :param username: 订阅所属的本地用户名；None 表示未绑定用户
+    :param owner_identity: 订阅完成时保存的不可变账号身份
     :param sites: 允许搜索和匹配的站点标识列表
     :param best_version: 是否启用更高质量版本替换
     :param best_version_full: 洗版时是否只接受全集整包
@@ -389,6 +393,7 @@ class SubscriptionHistorySnapshot:
     start_episode: Optional[int] = None
     date: Optional[str] = None
     username: Optional[str] = None
+    owner_identity: str | None = None
     sites: Optional[builtins.list[int]] = None
     best_version: Optional[int] = None
     best_version_full: Optional[int] = None
@@ -549,11 +554,13 @@ class SubscribeDeletionCandidate:
     :param subscribe_id: 订阅记录的数据库主键
     :param username: 订阅所属的本地用户名；None 表示未绑定用户
     :param event_payload: 用于发布订阅业务事件的字段快照
+    :param owner_identity: 记录上的已确认账号身份
     """
 
     subscribe_id: int
     username: Optional[str]
     event_payload: Mapping[str, JsonData]
+    owner_identity: str | None = None
 
     def __post_init__(self) -> None:
         """
@@ -694,6 +701,7 @@ class SubscriptionQueryPort(Protocol):
         mtype: Optional[str] = None,
         page: Optional[int] = None,
         count: Optional[int] = None,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[SubscriptionSnapshot]:
         """
         异步按用户、状态、类型和窗口读取订阅快照。
@@ -712,6 +720,7 @@ class SubscriptionQueryPort(Protocol):
         state: Optional[str] = None,
         username: Optional[str] = None,
         mtype: Optional[str] = None,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         按与公开列表相同的筛选范围返回订阅总数。
@@ -799,6 +808,7 @@ class SubscriptionHistoryQueryPort(Protocol):
         username: str,
         page: int = 1,
         count: int = 30,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[SubscriptionHistorySnapshot]:
         """
         异步按类型和用户分页读取订阅历史快照。
@@ -824,6 +834,7 @@ class SubscriptionHistoryQueryPort(Protocol):
         self,
         mtype: str,
         username: str,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         异步统计指定媒体类型和用户的订阅历史。
@@ -957,6 +968,7 @@ class SubscriptionStagingPort(Protocol):
         username: Optional[str],
         state: str,
         mtype: Optional[str] = None,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[int]:
         """
         异步读取用户或管理员指定媒体类型范围内可搜索的订阅主键。

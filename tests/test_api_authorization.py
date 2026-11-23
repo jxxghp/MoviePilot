@@ -192,7 +192,8 @@ def test_webpush_send_requires_superuser_and_subscribe_accepts_login_user():
     主动推送到全部浏览器订阅只允许管理员，订阅与读取公钥保持登录用户可用。
     """
     assert _dependency_of(message_endpoint.send_notification, "_") is get_current_active_superuser
-    assert _dependency_of(message_endpoint.subscribe, "_") is verify_token
+    assert _dependency_of(message_endpoint.subscribe, "user") is get_current_active_user
+    assert _dependency_of(message_endpoint.unsubscribe, "user") is get_current_active_user
     assert _dependency_of(message_endpoint.get_webpush_public_key, "_") is verify_token
 
 

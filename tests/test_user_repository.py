@@ -591,26 +591,32 @@ async def test_notification_targets_use_immutable_identity_and_ignore_user_setti
     通知目标只取 ORM 身份；改名保留、删除重建更新、停用用户不能注入他人目标。
     """
     repository, sync_factory = user_repository
-    user_id = _insert_user(sync_factory, settings={"apppush": "injected-owner"})
+    user_id = _insert_user(sync_factory, settings={"apppush": "injected-owner", "webpush": "injected-owner"})
     first = repository.get_notification_settings("alice")["apppush"]
     assert first != "injected-owner" and len(first) == 32
     assert (await repository.async_get_notification_settings("alice"))["apppush"] == first
+    assert repository.get_notification_settings("alice")["webpush"] == first
+    assert (await repository.async_get_notification_settings("alice"))["webpush"] == first
     with sync_factory() as session:
         model = session.get(User, user_id)
         model.name = "renamed"
         session.commit()
     assert repository.get_notification_settings("renamed")["apppush"] == first
+    assert repository.get_notification_settings("renamed")["webpush"] == first
     with sync_factory() as session:
         model = session.get(User, user_id)
         model.is_active = False
         session.commit()
     assert "apppush" not in repository.get_notification_settings("renamed")
     assert "apppush" not in await repository.async_get_notification_settings("renamed")
+    assert "webpush" not in repository.get_notification_settings("renamed")
+    assert "webpush" not in await repository.async_get_notification_settings("renamed")
     with sync_factory() as session:
         session.delete(session.get(User, user_id))
         session.commit()
     _insert_user(sync_factory, id=user_id, name="renamed")
     assert repository.get_notification_settings("renamed")["apppush"] != first
+    assert repository.get_notification_settings("renamed")["webpush"] != first
 
 
 @pytest.mark.asyncio
@@ -619,22 +625,22 @@ async def test_notification_broadcast_targets_only_include_active_immutable_iden
     所有用户目标由数据库身份生成，过滤停用和空身份账号，不接受个人设置注入。
     """
     repository, sync_factory = user_repository
-    first_id = _insert_user(sync_factory, settings={"apppush": "injected-owner"})
+    first_id = _insert_user(sync_factory, settings={"apppush": "injected-owner", "webpush": "injected-owner"})
     second_id = _insert_user(sync_factory, name="bob", is_superuser=False)
     _insert_user(sync_factory, name="disabled", is_active=False)
     _insert_user(sync_factory, name="empty", notification_identity="")
     with sync_factory() as session:
         expected = tuple(session.get(User, user_id).notification_identity for user_id in (first_id, second_id))
-    assert repository.get_notification_broadcast_targets() == {"apppush": expected}
-    assert await repository.async_get_notification_broadcast_targets() == {"apppush": expected}
+    assert repository.get_notification_broadcast_targets() == {"apppush": expected, "webpush": expected}
+    assert await repository.async_get_notification_broadcast_targets() == {"apppush": expected, "webpush": expected}
     assert "injected-owner" not in expected
 
     with sync_factory() as session:
         session.get(User, first_id).name = "renamed"
         session.get(User, second_id).is_active = False
         session.commit()
-    assert repository.get_notification_broadcast_targets() == {"apppush": expected[:1]}
-    assert await repository.async_get_notification_broadcast_targets() == {"apppush": expected[:1]}
+    assert repository.get_notification_broadcast_targets() == {"apppush": expected[:1], "webpush": expected[:1]}
+    assert await repository.async_get_notification_broadcast_targets() == {"apppush": expected[:1], "webpush": expected[:1]}
     with sync_factory() as session:
         session.get(User, first_id).is_active = False
         session.commit()

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -21,7 +22,15 @@ from app.application.directory import (
     specified_download_save_path,
     validate_download_save_path,
 )
-from app.application.download.admission import SubscriptionDownloadGovernance, subscription_download_label
+from app.application.download.admission import (
+    SubscriptionDownloadGovernance,
+    get_download_authorization,
+    scoped_download_authorization,
+    subscription_download_label,
+    verify_download_authorization,
+)
+from app.application.download.tasks import TASK_REFERENCE_PREFIX
+from app.application.history import get_download_owner, scoped_download_owner
 from app.application.site.protocol import is_expiring_download_url, torrent_resource_identity
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
@@ -50,6 +59,7 @@ from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.common import JsonData
 from app.schemas.download import (
     DownloadTaskAction,
@@ -1014,23 +1024,29 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             同一种子已在下载器中、本次目标文件之前被取消选择时，按用户这次的明确要求重新选中；
             自动流程（订阅、工作流、插件）保持默认值 False，尊重之前的取消
         """
-        return self._execute_download_single(
-            context=context,
-            torrent_file=torrent_file,
-            torrent_content=torrent_content,
-            episodes=episodes,
-            channel=channel,
-            source=source,
-            downloader=downloader,
-            save_path=save_path,
-            userid=userid,
-            username=username,
-            label=label,
-            return_detail=return_detail,
-            custom_words=custom_words,
-            governance=governance,
-            user_specified=user_specified,
-        )
+        owner_identity = get_download_owner()
+        authorization = get_download_authorization()
+        # 下载处理中的回调不能继承本次任务的归属或授权复核。
+        with scoped_download_owner(None), scoped_download_authorization(None):
+            return self._execute_download_single(
+                context=context,
+                torrent_file=torrent_file,
+                torrent_content=torrent_content,
+                episodes=episodes,
+                channel=channel,
+                source=source,
+                downloader=downloader,
+                save_path=save_path,
+                userid=userid,
+                username=username,
+                label=label,
+                return_detail=return_detail,
+                custom_words=custom_words,
+                governance=governance,
+                user_specified=user_specified,
+                owner_identity=owner_identity,
+                authorization=authorization,
+            )
 
     def _execute_download_single(
         self,
@@ -1049,12 +1065,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         custom_words: Optional[str] = None,
         governance: Optional[SubscriptionDownloadGovernance] = None,
         user_specified: bool = False,
+        owner_identity: str | None = None,
+        authorization: Callable[[], None] | None = None,
     ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
         """
         准备下载事实，提交下载器并按订阅治理合同结算结果。
 
         :param user_specified: 用户明确指定了这个种子，见 ``download_single``
         """
+        verify_download_authorization(authorization)
         prepared, error_msg = self._prepare_download_single(
             context=context,
             torrent_file=torrent_file,
@@ -1077,6 +1096,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             if governance:
                 governance.report(context, "rejected", reason)
             return (None, reason) if return_detail else None
+        verify_download_authorization(authorization)
         download_hash, error_msg = self._submit_prepared_download(
             prepared=prepared,
             context=context,
@@ -1090,6 +1110,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             custom_words=custom_words,
             governance=governance,
             user_specified=user_specified,
+            owner_identity=owner_identity,
+            authorization=authorization,
         )
         if governance:
             if download_hash:
@@ -1304,6 +1326,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         custom_words: Optional[str],
         governance: Optional[SubscriptionDownloadGovernance],
         user_specified: bool = False,
+        owner_identity: str | None = None,
+        authorization: Callable[[], None] | None = None,
     ) -> tuple[Optional[str], Optional[str]]:
         """
         在可取消边界后调用下载器，并分派成功或拒绝结算。
@@ -1328,6 +1352,11 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         # 音乐尚无目录分类时仍提供稳定的下载器分类，不回写媒体的目录或元数据分类。
         if not category and prepared.media.type == MediaType.MUSIC:
             category = MediaType.MUSIC.value
+        task_reference = None
+        if owner_identity:
+            task_reference = f"{TASK_REFERENCE_PREFIX}{uuid4().hex}"
+            existing_label = label or get_runtime_setting("TORRENT_TAG")
+            label = ",".join(value for value in (existing_label, task_reference) if value)
         task_hashes = torrent_rules.download_hashes(prepared.torrent_content)
         # 读取确认记录 → 下载器受理 → 写入下载历史整段持有任务锁，见 downloader_task_locks：
         # 已有任务上的追加与整理链回写、删除、暂停开始互斥，确认记录的读取、合并与写回也不会被并发提交打断。
@@ -1345,6 +1374,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             else:
                 if self._subscription_download_cancelled(governance):
                     return None, "订阅下载在提交前已取消"
+                verify_download_authorization(authorization)
                 if governance and governance.mark_started:
                     governance.mark_started()
                 result = self.download(
@@ -1396,6 +1426,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     previous_selection=previous_selection,
                     accepted_files=self._accepted_task_files(download_hash, actual_downloader),
                     downloader_scope=self._download_scope(downloader, prepared.torrent),
+                    owner_identity=owner_identity,
+                    task_reference=task_reference,
                 )
         if not download_hash:
             if is_unconfirmed_download_message(error_msg):
@@ -1412,6 +1444,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     actual_downloader=actual_downloader,
                     error_msg=error_msg,
                     user_specified=user_specified,
+                    owner_identity=owner_identity,
+                    task_reference=task_reference,
                 )
             else:
                 self._record_rejected_download(
@@ -1586,6 +1620,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         previous_selection: Optional[torrent_rules.ConfirmedSelection] = None,
         accepted_files: Optional[list[tuple[int, str]]] = None,
         downloader_scope: str = "",
+        owner_identity: str | None = None,
+        task_reference: str | None = None,
     ) -> None:
         """
         按普通下载合同结算下载器明确返回的成功结果。
@@ -1629,6 +1665,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             previous_selection=previous_selection,
             accepted_files=accepted_files,
             downloader_scope=downloader_scope,
+            owner_identity=None if task_action.is_existing_task else owner_identity,
+            task_reference=None if task_action.is_existing_task or not actual_downloader else task_reference,
         )
 
     def _resolve_actual_download_dir(

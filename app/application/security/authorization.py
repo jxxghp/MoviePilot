@@ -7,21 +7,39 @@
 import hashlib
 import secrets
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from functools import partial
+from json import dumps
 from types import MappingProxyType
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
+from app.application.messaging.channel.catalog import interaction_channel
 from app.application.notification import get_notification_configs
+from app.application.outbox import CHANNEL_AUTHORIZATION_RECEIPT_TOPIC, OutboxIntent
 from app.application.security.user import UserSnapshot
+from app.domain.admission import AdmissionProof, allowed_context_scopes, matches_auto_download
 from app.domain.authorization import (
     AUTHORIZATION_SCOPES,
     CHANNEL_OPERATION_SCOPES,
     CHANNEL_PUBLIC_OPERATIONS,
-    LEGACY_CHANNELS,
+    channel_actor_ids,
 )
+from app.schemas.message import Message
 from app.schemas.system import NotificationConf
+from app.schemas.types import NotificationChannel
+
+if TYPE_CHECKING:
+    from app.application.database import AsyncDatabaseExecutor
+
+
+class ChannelAuthorizationConflict(ValueError):
+    """
+    界面版本或选中成员状态发生变化，整批操作需要重新读取后确认。
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +81,25 @@ class ChannelMember:
     reviewed_by: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class RuleTaskGrant:
+    """
+    由一次已验证的规则命中派生的任务授权，保留发起范围与审批版本。
+
+    :param id: 规则任务授权的不可变标识
+    :param member_id: 创建任务时所对应的渠道成员
+    :param member_version: 创建任务时的成员更新时间，撤权或审批变更后失效
+    :param policy_revision: 命中规则所属的交互策略版本
+    :param scopes: 本次规则命中明确允许的操作范围
+    """
+
+    id: str
+    member_id: str
+    member_version: float
+    policy_revision: int
+    scopes: tuple[str, ...]
+
+
 class AuthorizationUnitOfWork(Protocol):
     """
     单次授权操作的独占事务端口，不向用例暴露 ORM。
@@ -76,12 +113,33 @@ class AuthorizationUnitOfWork(Protocol):
         """
         ...
 
+    def connection_reference_counts(self, connection_id: str) -> tuple[int, int]:
+        """
+        读取此连接保留的成员和定时任务记录数量。
+
+        :param connection_id: 不可变的连接 ID
+        :return: 成员记录、以成员授权为主体的任务记录数量
+        """
+        ...
+
     def get(self, member_id: str) -> ChannelMember | None:
         """
         按随机身份读取成员。
 
         :param member_id: 不可变成员 ID
         :return: 成员快照；不存在时为空
+        """
+        ...
+
+    def get_rule_task_grant(self, grant_id: str) -> RuleTaskGrant | None:
+        """
+        读取冻结的任务授权。
+        """
+        ...
+
+    def stage_rule_task_grant(self, grant: RuleTaskGrant) -> None:
+        """
+        幂等保存同一成员、规则版本和事件范围的授权。
         """
         ...
 
@@ -108,7 +166,8 @@ class AuthorizationUnitOfWork(Protocol):
         ...
 
     def update(
-        self, member_id: str, *, status: str, role: str, scopes: tuple[str, ...], reviewer_id: int
+        self, member_id: str, *, status: str, role: str, scopes: tuple[str, ...], reviewer_id: int,
+        expected_updated_at: float | None = None,
     ) -> ChannelMember:
         """
         暂存管理端确认的权限与状态，不更换业务归属。
@@ -118,7 +177,18 @@ class AuthorizationUnitOfWork(Protocol):
         :param role: 成员或管理员角色
         :param scopes: 经用例校验的能力集合
         :param reviewer_id: 已通过系统管理员认证的操作人主键
+        :param expected_updated_at: 批量操作读取的版本；为空时沿用原单条更新合同
         :return: 更新后快照；不存在时抛出 ValueError
+        """
+        ...
+
+    def delete(self, member_id: str, expected_updated_at: float) -> None:
+        """
+        按版本暂存删除成员及派生规则任务授权，保留业务账号和历史数据。
+
+        :param member_id: 不可变成员身份
+        :param expected_updated_at: 经管理用例核对的授权版本
+        :raises ChannelAuthorizationConflict: 成员已经变动或删除
         """
         ...
 
@@ -138,6 +208,15 @@ class AuthorizationUnitOfWork(Protocol):
         :param code_hash: 高熵随机码摘要，不保存原文
         :param user: 当前已认证、启用的网页登录账号
         :param expires_at: UTC Unix 秒，到期后不得消费
+        """
+        ...
+
+    def stage_receipt(self, intent: OutboxIntent, now: datetime) -> None:
+        """
+        将授权变更的回执写入当前事务。
+
+        :param intent: 与已核对成员和连接绑定的回执意图
+        :param now: 持久化意图的 UTC 时间
         """
         ...
 
@@ -172,16 +251,46 @@ class AuthorizationUnitOfWork(Protocol):
 AuthorizationScope = Callable[[], AbstractContextManager[AuthorizationUnitOfWork]]
 
 
+_admission_proof: ContextVar[AdmissionProof | None] = ContextVar("channel_admission_proof", default=None)
+
+
+@contextmanager
+def scoped_admission(proof: AdmissionProof | None) -> Iterator[None]:
+    """
+    限定本次处理的来源证明，作用域退出后不保留上下文授权。
+    """
+    token = _admission_proof.set(proof)
+    try:
+        yield
+    finally:
+        _admission_proof.reset(token)
+
+
+def channel_search_auto_download(channel: str, source: str, sender_id: str) -> bool:
+    """
+    按平台和连接重新读取偏好，选中下载仍需调用独立的下载授权。
+    """
+    try:
+        config = ChannelAuthorizationService.notification(channel, source)
+    except PermissionError:
+        return False
+    return matches_auto_download(config.interaction_policy, _admission_proof.get(), sender_id, time.time())
+
+
 class ChannelAuthorizationService:
     """
     在通知实例与发送者范围内管理成员，并向执行边界提供实时身份。
     """
 
-    def __init__(self, scope: AuthorizationScope) -> None:
+    def __init__(self, scope: AuthorizationScope, *, executor: "AsyncDatabaseExecutor | None" = None) -> None:
         """
-        保存启动组合根提供的短事务工厂。
+        保存启动组合根提供的短事务工厂和异步入口使用的数据库执行器。
+
+        :param scope: 每次权限检查独立开启的短事务
+        :param executor: 异步调用共享的受管数据库执行器
         """
         self._scope = scope
+        self._executor = executor
 
     @staticmethod
     def notification(channel: str, source: str) -> NotificationConf:
@@ -189,8 +298,10 @@ class ChannelAuthorizationService:
         按渠道类型和来源名称定位当前启用实例，改名不改变成员归属。
         """
         for config in get_notification_configs():
-            definition = LEGACY_CHANNELS.get(config.type or "")
-            if definition and definition[0] == channel and config.name == source:
+            platform = interaction_channel(config.type)
+            if config.interaction_enabled is False:
+                continue
+            if platform == channel and config.name == source:
                 return config
         raise PermissionError("通知渠道不存在或已停用")
 
@@ -205,6 +316,7 @@ class ChannelAuthorizationService:
         """
         查询当前启用实例中的稳定发送者，不根据显示名或群 ID 授权。
         """
+        sender_id = channel_actor_ids(channel, sender_id)[0]
         notification = self.notification(channel, source)
         with self._scope() as transaction:
             return transaction.find(notification.id, sender_id)
@@ -214,11 +326,11 @@ class ChannelAuthorizationService:
         按稳定配置身份解析当前私聊投递目标，不把任务结果广播到其它实例。
         """
         with self._scope() as transaction:
-            member = transaction.get(member_id)
+            member, _ = self._task_member(transaction, member_id)
             if member is None:
                 return None
             config = next((item for item in get_notification_configs() if item.id == member.notification_id), None)
-            if config is None or LEGACY_CHANNELS.get(config.type or "", (None,))[0] != member.channel:
+            if config is None or interaction_channel(config.type) != member.channel:
                 return None
             return member.channel, config.name or "", member.sender_id
 
@@ -232,12 +344,72 @@ class ChannelAuthorizationService:
             user = transaction.user(member.linked_user_id)
             return user.name if user and user.notification_identity == member.user_identity else None
 
+    def prepare_task_result(
+        self, message: Message, member_id: str, user_id: int | None, user_identity: str | None,
+    ) -> Message:
+        """
+        每次发送任务结果前核对原执行者和定时权限，并限定原连接私聊。
+
+        :param message: 已生成的结果或工具消息
+        :param member_id: 任务冻结的渠道授权
+        :param user_id: 任务冻结的账号主键
+        :param user_identity: 任务冻结的不可变账号身份
+        :return: 已绑定投递连接的私聊消息
+        :raises PermissionError: 执行账号失效、权限撤销或连接不可用
+        """
+        user = self.principal(member_id, capability="schedule")
+        if not user_identity or user.id != user_id or user.notification_identity != user_identity:
+            raise PermissionError("任务执行主体已改变，请从原会话重新创建任务")
+        with self._scope() as transaction:
+            member, grant = self._task_member(transaction, member_id)
+            config = self._receipt_connection(member) if member is not None else None
+            if (
+                member is None or member.user_identity != user_identity
+                or (member.status != "approved" and grant is None)
+                or config is None or config.interaction_enabled is False or not config.name
+            ):
+                raise PermissionError("定时任务的渠道身份或连接已停用")
+            if grant is not None:
+                self._validate_rule_task_grant(config, member, grant)
+            sender = member.sender_id
+        outgoing = message.model_copy(update={
+            "channel": NotificationChannel(member.channel), "source": config.name,
+            "userid": sender, "username": user.name, "targets": None,
+            "original_message_id": None, "original_chat_id": None, "thread_id": None,
+            "private_delivery": True, "delivery_kind": "task_result",
+        })
+        outgoing.bind_delivery_connection(config.id, config.identity_namespace or config.id)
+        outgoing.bind_task_recipient(member_id, user.id, user_identity)
+        return outgoing
+
+    def revalidate_task_result(self, message: Message) -> Message:
+        """
+        出队派发前从当前授权重建私聊地址，拒绝已经失效的账号或连接绑定。
+        """
+        recipient = message.task_recipient
+        if recipient is None or message.delivery_connection is None:
+            raise PermissionError("任务结果缺少有效的执行主体或连接")
+        refreshed = self.prepare_task_result(message, *recipient)
+        if refreshed.delivery_connection != message.delivery_connection or refreshed.userid != message.userid:
+            raise PermissionError("任务结果的连接或接收人已改变")
+        return refreshed
+
     def list_members(self) -> list[ChannelMember]:
         """
         列出管理弹窗所需的成员及待审批申请。
         """
         with self._scope() as transaction:
             return transaction.list_members()
+
+    def connection_reference_counts(self, connection_id: str) -> tuple[int, int]:
+        """
+        使用只读授权事务取得指定连接的引用数量。
+
+        :param connection_id: 要检查影响的连接 ID
+        :return: 成员记录及成员任务的数量
+        """
+        with self._scope() as transaction:
+            return transaction.connection_reference_counts(connection_id)
 
     def is_admin(self, channel: str, source: str, sender_id: str) -> bool:
         """
@@ -250,15 +422,14 @@ class ChannelAuthorizationService:
         """
         try:
             return self.resolve(channel, source, sender_id).is_superuser
-        except PermissionError:
+        except (PermissionError, ValueError):
             return False
 
     def request(self, channel: str, source: str, sender_id: str, display_name: str) -> ChannelMember:
         """
         原子登记申请；重复消息不会增加记录或解除管理员停用。
         """
-        if not sender_id:
-            raise ValueError("缺少渠道发送者 ID")
+        sender_id = channel_actor_ids(channel, sender_id)[0]
         notification = self.notification(channel, source)
         with self._scope() as transaction:
             member = transaction.request(notification.id, channel, sender_id, display_name)
@@ -266,21 +437,199 @@ class ChannelAuthorizationService:
             return member
 
     def update(
-        self, member_id: str, *, status: str, role: str, scopes: tuple[str, ...], reviewer_id: int
+        self, member_id: str, *, status: str, role: str, scopes: tuple[str, ...], reviewer_id: int,
+        queue_receipt: bool = False,
     ) -> ChannelMember:
         """
-        校验审批结果并提交；仅由已认证的系统管理员端点调用。
+        校验审批结果并提交，管理端可同时暂存私聊回执。
+
+        :param member_id: 持久化成员 ID
+        :param status: 新审批状态
+        :param role: 新成员角色
+        :param scopes: 新业务权限范围
+        :param reviewer_id: 系统管理员 ID
+        :param queue_receipt: 是否在同一事务中登记回执
+        :return: 当前审批结果
         """
         if status not in {"approved", "rejected", "disabled"} or role not in {"member", "admin"}:
             raise ValueError("授权状态或角色不正确")
         if not set(scopes).issubset(AUTHORIZATION_SCOPES):
             raise ValueError("包含未知的授权能力")
         with self._scope() as transaction:
+            current = transaction.get(member_id)
+            if current is None:
+                raise ValueError("渠道成员不存在")
+            if status == "approved":
+                sender_id = channel_actor_ids(current.channel, current.sender_id)[0]
+                unique = transaction.find(current.notification_id, sender_id)
+                if unique is None or unique.id != member_id:
+                    raise ValueError("同一发送者存在冲突授权，请联系管理员核对")
+            normalized = tuple(sorted(set(scopes)))
+            if queue_receipt and (current.status, current.role, current.scopes) == (status, role, normalized):
+                return current
             member = transaction.update(
-                member_id, status=status, role=role, scopes=tuple(sorted(set(scopes))), reviewer_id=reviewer_id
+                member_id, status=status, role=role, scopes=normalized, reviewer_id=reviewer_id
             )
+            if queue_receipt:
+                self._stage_review_receipt(transaction, member)
             transaction.commit()
             return member
+
+    def manage_members(
+        self, action: str, targets: tuple[tuple[str, float], ...], *, reviewer_id: int,
+        scopes: tuple[str, ...] = ("search", "subscribe", "download"), confirm_approved: bool = False,
+    ) -> tuple[ChannelMember, ...]:
+        """
+        核对整组选中版本后原子变更，任一冲突时不提交整批操作。
+
+        :param action: approve、reject、disable 或 delete
+        :param targets: 被显式选择的成员 ID 和读取版本，最多一百条
+        :param reviewer_id: 已认证的网页系统管理员
+        :param scopes: 批量通过时明确授予的普通成员能力
+        :param confirm_approved: 删除已授权成员的二次确认
+        :return: 已提交成员快照；删除时返回删除前快照
+        :raises ValueError: 动作、权限或确认不合法
+        :raises ChannelAuthorizationConflict: 版本或状态变化，整批未提交
+        """
+        if action not in {"approve", "reject", "disable", "delete"}:
+            raise ValueError("未知的渠道授权操作")
+        if not 1 <= len(targets) <= 100 or len({key for key, _ in targets}) != len(targets):
+            raise ValueError("请选择一至一百个不重复成员")
+        if not set(scopes).issubset(AUTHORIZATION_SCOPES):
+            raise ValueError("包含未知的授权能力")
+        with self._scope() as transaction:
+            selected = []
+            for member_id, version in sorted(targets):
+                member = transaction.get(member_id)
+                if member is None or member.updated_at != version:
+                    raise ChannelAuthorizationConflict("成员已更新或删除，请刷新列表后重新选择")
+                required = {"approve": "pending", "reject": "pending", "disable": "approved"}.get(action)
+                if required is not None and member.status != required:
+                    raise ChannelAuthorizationConflict("选中成员状态已变化，请刷新列表后重新选择")
+                if action == "delete" and member.status == "approved" and not confirm_approved:
+                    raise ValueError("删除已授权成员需要再次确认")
+                if action == "approve":
+                    sender = channel_actor_ids(member.channel, member.sender_id)[0]
+                    unique = transaction.find(member.notification_id, sender)
+                    if unique is None or unique.id != member.id:
+                        raise ChannelAuthorizationConflict("同一发送者存在冲突授权，请先逐条核对")
+                selected.append(member)
+            changed = []
+            for member in selected:
+                if action == "delete":
+                    transaction.delete(member.id, member.updated_at)
+                    changed.append(member)
+                    continue
+                updated = transaction.update(
+                    member.id, status={"approve": "approved", "reject": "rejected", "disable": "disabled"}[action],
+                    role="member" if action == "approve" else member.role,
+                    scopes=tuple(sorted(set(scopes))) if action == "approve" else member.scopes,
+                    reviewer_id=reviewer_id, expected_updated_at=member.updated_at,
+                )
+                self._stage_review_receipt(transaction, updated)
+                changed.append(updated)
+            transaction.commit()
+            return tuple(changed)
+
+    @staticmethod
+    def _receipt_connection(member: ChannelMember) -> NotificationConf | None:
+        """
+        查找当前仍可投递回执的原连接。
+        """
+        return next((item for item in get_notification_configs()
+                     if item.id == member.notification_id and interaction_channel(item.type) == member.channel), None)
+
+    def _stage_review_receipt(self, transaction: AuthorizationUnitOfWork, member: ChannelMember) -> None:
+        """
+        冻结回执对应的审批版本和连接身份，避免恢复时向新配置发送陈旧结果。
+        """
+        config = self._receipt_connection(member)
+        if config is None:
+            return
+        now = datetime.now(timezone.utc)
+        transaction.stage_receipt(OutboxIntent(
+            event_key=f"channel.authorization.receipt:{member.id}:{member.updated_at.hex()}",
+            topic=CHANNEL_AUTHORIZATION_RECEIPT_TOPIC,
+            payload={
+                "member_id": member.id, "version": member.updated_at,
+                "connection_id": config.id, "identity_namespace": config.identity_namespace or config.id,
+            },
+        ), now)
+
+    def receipt_target(
+        self, member_id: str, version: float, connection_id: str, identity_namespace: str,
+    ) -> tuple[ChannelMember, str] | None:
+        """
+        仅解析仍有效的审批回执，连接改名时使用当前名称。
+
+        :param member_id: 产生回执的授权记录
+        :param version: 审批变动时的 UTC 秒
+        :param connection_id: 回执原连接 ID
+        :param identity_namespace: 回执原连接身份空间
+        :return: 当前成员和连接名称，过期或无法定位时为空
+        """
+        with self._scope() as transaction:
+            member = transaction.get(member_id)
+            if member is None or member.updated_at != version or member.notification_id != connection_id:
+                return None
+            config = self._receipt_connection(member)
+            if config is None or (config.identity_namespace or config.id) != identity_namespace or not config.name:
+                return None
+            channel_actor_ids(member.channel, member.sender_id)
+            return member, config.name
+
+    @staticmethod
+    def _task_member(
+        transaction: AuthorizationUnitOfWork, authorization_id: str,
+    ) -> tuple[ChannelMember | None, RuleTaskGrant | None]:
+        """
+        任务引用真实成员或规则派生授权，后者不替代成员的审批记录。
+        """
+        if authorization_id.startswith("g"):
+            grant = transaction.get_rule_task_grant(authorization_id)
+            return (transaction.get(grant.member_id), grant) if grant else (None, None)
+        return transaction.get(authorization_id), None
+
+    @staticmethod
+    def _validate_rule_task_grant(config: NotificationConf, member: ChannelMember, grant: RuleTaskGrant) -> None:
+        """
+        策略变化、人工审查或成员归属变化后，旧规则授权停止执行。
+        """
+        policy = config.interaction_policy
+        if (
+            member.status != "pending" or member.updated_at != grant.member_version
+            or policy is None or not policy.enabled or policy.admission not in {"manual_rules", "rules"}
+            or policy.revision != grant.policy_revision or "schedule" not in grant.scopes
+        ):
+            raise PermissionError("渠道规则或成员授权已变更，请从符合规则的会话重新创建定时任务")
+
+    def rule_task_principal(self, channel: str, source: str, sender_id: str) -> UserSnapshot | None:
+        """
+        只为当前可信消息中明确获得定时任务权限的待审批成员建立受限身份。
+        """
+        proof = _admission_proof.get()
+        if proof is None:
+            return None
+        config = self.notification(channel, source)
+        policy = config.interaction_policy
+        scopes = self.context_scopes(config, sender_id)
+        if policy is None or "schedule" not in scopes:
+            return None
+        sender_id = channel_actor_ids(channel, sender_id)[0]
+        with self._scope() as transaction:
+            member = transaction.request(config.id, channel, sender_id, sender_id)
+            if member.status != "pending":
+                return None
+            # 同规则版本和来源复用任务列表。群、私聊与不同平台发送者的入口互相隔离。
+            signature = dumps([
+                member.id, member.updated_at, proof.sender, proof.conversation, proof.private,
+                policy.revision, sorted(scopes),
+            ], ensure_ascii=True)
+            grant_id = "g" + hashlib.sha256(signature.encode()).hexdigest()[:31]
+            grant = RuleTaskGrant(grant_id, member.id, member.updated_at, policy.revision, tuple(sorted(scopes)))
+            transaction.stage_rule_task_grant(grant)
+            transaction.commit()
+        return self.principal(grant_id, capability="schedule")
 
     def principal(self, member_id: str, *, capability: str | None = None) -> UserSnapshot:
         """
@@ -292,13 +641,25 @@ class ChannelAuthorizationService:
         :raises PermissionError: 渠道被删停、成员失权或关联账号不可用
         """
         with self._scope() as transaction:
-            member = transaction.get(member_id)
-            if member is None or member.status != "approved":
+            member, grant = self._task_member(transaction, member_id)
+            if member is None or (grant is None and member.status != "approved"):
                 raise PermissionError("渠道成员尚未授权或已停用，请联系管理员")
+            try:
+                sender_id = channel_actor_ids(member.channel, member.sender_id)[0]
+                unique = transaction.find(member.notification_id, sender_id)
+            except ValueError as error:
+                raise PermissionError("历史群身份或冲突授权需要重新核对实际发送者") from error
+            if unique is None or unique.id != member.id:
+                raise PermissionError("同一发送者存在冲突授权，请联系管理员核对")
             configs = {config.id: config for config in get_notification_configs()}
             config = configs.get(member.notification_id)
-            if config is None or LEGACY_CHANNELS.get(config.type or "", (None,))[0] != member.channel:
+            if (
+                config is None or config.interaction_enabled is False
+                or interaction_channel(config.type) != member.channel
+            ):
                 raise PermissionError("通知渠道不存在、已停用或类型已改变")
+            if grant is not None:
+                self._validate_rule_task_grant(config, member, grant)
             user = transaction.user(member.user_id)
             linked = transaction.user(member.linked_user_id) if member.linked_user_id is not None else None
             if (
@@ -308,8 +669,8 @@ class ChannelAuthorizationService:
                 or (member.linked_user_id is not None and (linked is None or not linked.is_active))
             ):
                 raise PermissionError("渠道成员关联的账号不存在或已停用")
-            admin = member.role == "admin" and (linked is None or linked.is_superuser)
-            scopes = set(AUTHORIZATION_SCOPES if admin else member.scopes)
+            admin = grant is None and member.role == "admin" and (linked is None or linked.is_superuser)
+            scopes = set(grant.scopes if grant else AUTHORIZATION_SCOPES if admin else member.scopes)
             if linked is not None and not linked.is_superuser:
                 scopes = {
                     scope
@@ -319,12 +680,14 @@ class ChannelAuthorizationService:
                     )
                     is True
                 }
+            if grant is not None and "schedule" not in scopes:
+                raise PermissionError("关联账号没有定时任务权限")
             if capability and not admin and capability not in scopes:
                 raise PermissionError(f"当前渠道成员未获授权使用此能力：{capability}")
             permissions: dict[str, Any] = {scope: scope in scopes for scope in AUTHORIZATION_SCOPES}
             permissions.update(discovery=True, manage=False)
             return replace(
-                user, is_superuser=admin, permissions=MappingProxyType(permissions), authorization_id=member.id
+                user, is_superuser=admin, permissions=MappingProxyType(permissions), authorization_id=member_id
             )
 
     def authorize_operation(self, member_id: str, operation_id: str) -> UserSnapshot:
@@ -339,6 +702,18 @@ class ChannelAuthorizationService:
             raise PermissionError("当前渠道成员没有此操作的授权，请联系管理员调整权限")
         return user
 
+    async def async_authorize_operation(self, member_id: str, operation_id: str) -> UserSnapshot:
+        """
+        在受管数据库线程复核当前成员权限，等待短事务完全结束。
+
+        :param member_id: 本次业务请求绑定的渠道授权 ID
+        :param operation_id: 本次操作的权限名称
+        :return: 按当前权限和账号归属解析的操作主体
+        """
+        if self._executor is None:
+            raise RuntimeError("渠道授权的数据库执行器尚未装配")
+        return await self._executor.run(partial(self.authorize_operation, member_id, operation_id))
+
     def resolve(self, channel: str, source: str, sender_id: str, *, capability: str | None = None) -> UserSnapshot:
         """
         将消息入口身份转换为当前可执行的统一渠道主体。
@@ -347,6 +722,65 @@ class ChannelAuthorizationService:
         if member is None:
             raise PermissionError("此操作需要授权，请发送“申请使用”，由管理员批准后重试；已有账号可先完成账号绑定")
         return self.principal(member.id, capability=capability)
+
+    def context_scopes(self, config: NotificationConf, sender_id: str) -> frozenset[str]:
+        """
+        使用当前连接策略复核宿主附加的事件证明。
+        """
+        proof = _admission_proof.get()
+        if config.interaction_enabled is False:
+            return frozenset()
+        return allowed_context_scopes(config.interaction_policy, proof, sender_id, time.time())
+
+    def resolve_operation(
+        self, channel: str, source: str, sender_id: str, operation_id: str,
+    ) -> UserSnapshot:
+        """
+        对当前发言人执行与业务 API 共用的操作授权，或采用本次事件的有限授权。
+        """
+        member = self.find(channel, source, sender_id)
+        if member is not None and member.status == "approved":
+            return self.authorize_operation(member.id, operation_id)
+        config = self.notification(channel, source)
+        scopes = self.context_scopes(config, sender_id)
+        capability = CHANNEL_OPERATION_SCOPES.get(operation_id)
+        if not scopes or capability not in scopes or (member and member.status != "pending"):
+            raise PermissionError("此操作需要管理员授权")
+        return self._contextual_user(config, channel, sender_id, capability)
+
+    @staticmethod
+    def verify_operation_owner(actor: UserSnapshot, owner_identity: str | None) -> None:
+        """
+        核对当前授权解析出的账号仍是请求发起时的账号。
+
+        :param actor: 使用当前授权重新解析的操作主体
+        :param owner_identity: 已绑定到当前业务请求的不可变账号身份
+        """
+        if not owner_identity or actor.notification_identity != owner_identity:
+            raise PermissionError("渠道账号归属已改变，请重新发起操作")
+
+    def _contextual_user(
+        self, config: NotificationConf, channel: str, sender_id: str, capability: str,
+    ) -> UserSnapshot:
+        """
+        为已准入的本次操作取得独立业务归属，保留成员原审批状态。
+        """
+        with self._scope() as transaction:
+            member = transaction.request(config.id, channel, sender_id, sender_id)
+            if member.status != "pending":
+                raise PermissionError("此操作需要管理员授权")
+            user = transaction.user(member.user_id)
+            if not user or not user.is_active or user.notification_identity != member.user_identity:
+                raise PermissionError("渠道成员关联的账号不存在或已停用")
+            if member.linked_user_id is not None:
+                permission = {"search": "search", "subscribe": "subscribe", "download": "manage"}[capability]
+                linked = transaction.user(member.linked_user_id)
+                if not linked or not linked.is_active or not (linked.is_superuser or linked.permissions.get(permission) is True):
+                    raise PermissionError("关联账号没有此操作的授权")
+            transaction.commit()
+            return replace(
+                user, is_superuser=False, permissions=MappingProxyType({capability: True}), authorization_id=None,
+            )
 
     def create_binding(self, user_id: int) -> tuple[str, float]:
         """

@@ -8,8 +8,11 @@ import re
 import subprocess
 import threading
 from datetime import datetime
+from functools import partial
+from hashlib import file_digest, sha256
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from tempfile import TemporaryDirectory
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.application.messaging.image import build_wechat_image_url
@@ -19,6 +22,13 @@ from app.foundation import size as size_tools
 from app.foundation.url import UrlUtils
 from app.runtime.execution import retry
 from app.runtime.log import logger
+from app.schemas.delivery import (
+    DeliveryPartPlanner,
+    DeliveryPartSender,
+    DeliveryPartSubmitter,
+    DeliveryReceipt,
+    DeliveryStatus,
+)
 
 lock = threading.Lock()
 
@@ -66,6 +76,50 @@ class WeChat:
     _download_media_url = "cgi-bin/media/get?access_token={access_token}&media_id={media_id}"
     # 企业微信临时素材上传地址模板
     _upload_media_url = "cgi-bin/media/upload?access_token={access_token}&type={media_type}"
+
+    @classmethod
+    def probe_app_identity(cls, corp_id: str, app_id: str, secret: str) -> str | None:
+        """
+        使用官方接口验证自建应用密钥是否属于指定企业和应用。
+
+        :param corp_id: 已存在连接的企业标识
+        :param app_id: 已存在连接的应用数字标识
+        :param secret: 待核验的应用密钥
+        :return: 经官方响应确认的企业和应用标识
+        """
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", corp_id) or not re.fullmatch(r"[1-9][0-9]*", app_id) or not secret:
+            return None
+        token_response = cls._read_identity_result("gettoken", {"corpid": corp_id, "corpsecret": secret})
+        token = token_response.get("access_token")
+        if not isinstance(token, str) or not token:
+            return None
+        detail = cls._read_identity_result("agent/get", {"access_token": token, "agentid": app_id})
+        returned_id = detail.get("agentid")
+        return f"{corp_id}:{app_id}" if type(returned_id) in (int, str) and str(returned_id) == app_id else None
+
+    @staticmethod
+    def _read_identity_result(method: str, params: dict[str, str]) -> dict[str, Any]:
+        """
+        从平台固定地址读取身份凭证，不跟随跳转或输出平台原始响应。
+
+        :param method: 受支持的企业微信身份 API 相对路径
+        :param params: 调用官方接口所需的查询参数
+        :return: 明确成功的对象响应
+        """
+        response = RequestUtils(verify=True, timeout=8).get_res(
+            f"https://qyapi.weixin.qq.com/cgi-bin/{method}", params=params, allow_redirects=False,
+        )
+        if response is None:
+            return {}
+        try:
+            payload = response.json() if response.status_code == 200 else None
+        except ValueError:
+            return {}
+        finally:
+            response.close()
+        if not isinstance(payload, dict) or type(payload.get("errcode")) is not int or payload["errcode"] != 0:
+            return {}
+        return payload
 
     def __init__(self, WECHAT_CORPID: Optional[str] = None, WECHAT_APP_SECRET: Optional[str] = None,
                  WECHAT_APP_ID: Optional[str] = None, WECHAT_PROXY: Optional[str] = None,
@@ -205,20 +259,17 @@ class WeChat:
 
         return content_chunks
 
-    def __send_message(self, title: Optional[str], text: Optional[str] = None,
-                       userid: Optional[str] = None, link: Optional[str] = None) -> bool:
+    def _text_parts(self, title: str | None, text: str | None, link: str | None) -> list[str]:
         """
-        分块发送文本，任一分块失败即终止后续发送。
+        渲染原生文本，并按平台字节限制分段。
 
-        :param title: 消息标题；与正文不能同时为空
-        :param text: 正文，连续两个换行会合并为一个
-        :param userid: 企业微信用户标识；为空时发送给全体应用成员
+        :param title: 消息标题
+        :param text: 消息正文
         :param link: 追加在正文后的跳转地址
-        :return: 所有分块均发送成功时返回 True，否则返回 False
+        :return: 有序文本分段
         """
         if not title and not text:
-            logger.error("消息标题和内容不能都为空")
-            return False
+            return []
         if text:
             formatted_text = text.replace("\n\n", "\n")
             content = f"{title}\n{formatted_text}" if title else formatted_text
@@ -227,29 +278,64 @@ class WeChat:
             content = title
         if link:
             content = f"{content}\n点击查看：{link}"
-        if not userid:
-            userid = "@all"
-        content_chunks = self.__split_content(content)
-        for chunk in content_chunks:
-            req_json = {
-                "touser": userid,
-                "msgtype": "text",
-                "agentid": self._appid,
-                "text": {
-                    "content": chunk
-                },
-                "safe": 0,
-                "enable_id_trans": 0,
-                "enable_duplicate_check": 0
-            }
+        return self.__split_content(content)
+
+    def _text_payload(self, target: str, text: str) -> dict[str, Any]:
+        """
+        构造单段文本的发送载荷。
+
+        :param target: 接收用户或显式全员地址
+        :param text: 渲染后的单段正文
+        :return: 不含访问令牌的请求体
+        """
+        return {
+            "touser": target, "msgtype": "text", "agentid": self._appid,
+            "text": {"content": text}, "safe": 0, "enable_id_trans": 0, "enable_duplicate_check": 0,
+        }
+
+    def __send_message(self, title: Optional[str], text: Optional[str] = None,
+                       userid: Optional[str] = None, link: Optional[str] = None) -> bool:
+        """
+        按顺序发送传统客户端的文本分段。
+
+        :param title: 消息标题
+        :param text: 正文
+        :param userid: 企业微信用户标识，缺省沿用传统客户端的全员目标
+        :param link: 追加在正文后的跳转地址
+        :return: 所有分段均发送成功时返回 True
+        """
+        parts = self._text_parts(title, text, link)
+        for chunk in parts:
             try:
                 # 任一分块失败即停止后续发送；已发出的分块不会撤回
-                if not self.__post_request(self._send_msg_url, req_json):
+                if not self.__post_request(self._send_msg_url, self._text_payload(userid or "@all", chunk)):
                     return False
             except Exception as e:
                 logger.error(f"发送消息块失败：{e}")
                 return False
-        return True
+        return bool(parts)
+
+    def _news_payload(
+        self, title: str | None, text: str | None, image_url: str, target: str, link: str | None,
+    ) -> dict[str, Any]:
+        """
+        构造包含封面的一篇图文通知。
+
+        :param title: 图文标题
+        :param text: 图文摘要
+        :param image_url: 封面地址
+        :param target: 接收用户或显式全员地址
+        :param link: 图文跳转链接
+        :return: 不含访问令牌的请求体
+        """
+        title = title or next((line.strip() for line in (text or "").splitlines() if line.strip()), "MoviePilot")
+        return {
+            "touser": target, "msgtype": "news", "agentid": self._appid,
+            "news": {"articles": [{
+                "title": title, "description": text.replace("\n\n", "\n") if text else text,
+                "picurl": build_wechat_image_url(image_url), "url": link,
+            }]},
+        }
 
     def __send_image_message(self, title: Optional[str], text: Optional[str], image_url: str,
                              userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
@@ -263,30 +349,8 @@ class WeChat:
         :param link: 点击图文时打开的地址
         :return: 接口接受消息时返回 True，否则返回 False
         """
-        if text:
-            text = text.replace("\n\n", "\n")
-        if not title:
-            # 企业微信图文消息要求标题非空，缺省时取正文首行，仍为空则用应用名
-            title = next((line.strip() for line in (text or "").splitlines() if line.strip()), "MoviePilot")
-        if not userid:
-            userid = "@all"
-        req_json = {
-            "touser": userid,
-            "msgtype": "news",
-            "agentid": self._appid,
-            "news": {
-                "articles": [
-                    {
-                        "title": title,
-                        "description": text,
-                        "picurl": build_wechat_image_url(image_url),
-                        "url": link
-                    }
-                ]
-            }
-        }
         try:
-            return self.__post_request(self._send_msg_url, req_json)
+            return self.__post_request(self._send_msg_url, self._news_payload(title, text, image_url, userid or "@all", link))
         except Exception as e:
             logger.error(f"发送图文消息失败：{e}")
             return False
@@ -321,6 +385,207 @@ class WeChat:
         except Exception as e:
             logger.error(f"发送消息失败：{e}")
             return False
+
+    def send_tracked_message(
+        self, title: str | None, text: str | None, image: str | None, userid: str | None, link: str | None,
+        *, receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner | None = None,
+    ) -> bool:
+        """
+        向明确目标发送图文或分段文本，并逐段收集平台确认。
+
+        :param title: 消息标题
+        :param text: 消息正文
+        :param image: 可选封面地址
+        :param userid: 显式用户地址列表，或显式全员地址
+        :param link: 消息跳转地址
+        :param receipt: 宿主记录逐段结果的回调
+        :param part_sender: 宿主发送前确认投递进度的回调
+        :param plan: 在首次发送前登记当前连接的投递清单
+        :return: 全部目标的所有分段均得到确认时返回 True
+        """
+        targets = self._notification_targets(userid, receipt)
+        if not targets:
+            return False
+        chunks = self._text_parts(title, text, link) if not image else []
+        if not chunks and not image:
+            receipt(None, 0, "skipped", "empty_content")
+            return False
+        rendered: dict[str, list[tuple[str, DeliveryPartSubmitter]]] = {}
+        for target in targets:
+            payloads = ([self._news_payload(title, text, image, target, link)] if image else
+                        [self._text_payload(target, chunk) for chunk in chunks])
+            rendered[target] = [self._tracked_text_or_news(payload) for payload in payloads]
+        if plan is not None:
+            plan(tuple(
+                (target, part, content)
+                for target, payloads in rendered.items()
+                for part, (content, _) in enumerate(payloads)
+            ))
+        success = True
+        for target, content_parts in rendered.items():
+            success = self._send_tracked_target(target, content_parts, receipt, part_sender) and success
+        return success
+
+    def _tracked_text_or_news(self, payload: dict[str, Any]) -> tuple[str, DeliveryPartSubmitter]:
+        """
+        将冻结清单用的内容与实际平台提交绑定。
+        """
+        content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return content, partial(self._send_tracked_part, payload)
+
+    def send_tracked_media(
+        self, source: str, name: str | None, *, media_type: Literal["file", "image"],
+        title: str | None, text: str | None, userid: str | None, receipt: DeliveryReceipt,
+        part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        将说明文字与原图或文件分别记录为有顺序的企业微信投递分段。
+
+        :param source: 本地附件路径或原生图片地址
+        :param name: 普通文件的可见文件名
+        :param media_type: 平台素材类别
+        :param title: 可选说明标题
+        :param text: 可选说明正文
+        :param userid: 宿主解析出的明确目标
+        :param receipt: 记录逐段平台结果的回调
+        :param part_sender: 根据已保存的结果认领分段的回调
+        :param plan: 首次发送前冻结全部目标与分段的回调
+        :return: 所有目标确认收到说明及附件
+        """
+        targets = self._notification_targets(userid, receipt)
+        if not targets:
+            return False
+        media = self._load_tracked_media(source, name, media_type)
+        if media is None:
+            receipt(None, 0, "permanent_failure", "attachment_unavailable")
+            return False
+        path, data = media
+        digest = json.dumps([media_type, self._appid, path.name, sha256(data).hexdigest()], ensure_ascii=False)
+        chunks = self._text_parts(title, text, None)
+        rendered = {}
+        for target in targets:
+            parts = [self._tracked_text_or_news(self._text_payload(target, chunk)) for chunk in chunks]
+            parts.append((digest, partial(self._send_media_part, target, path, data, media_type)))
+            rendered[target] = parts
+        plan(tuple((target, part, content)
+                   for target, payloads in rendered.items()
+                   for part, (content, _) in enumerate(payloads)))
+        success = True
+        for target, parts in rendered.items():
+            success = self._send_tracked_target(target, parts, receipt, part_sender) and success
+        return success
+
+    def _load_tracked_media(
+        self, source: str, name: str | None, media_type: Literal["file", "image"],
+    ) -> tuple[Path, bytes] | None:
+        """
+        有界读取原始媒体，保存平台可见的文件名及用于冻结清单的字节。
+        """
+        if media_type == "image":
+            data = self._load_native_image(source)
+            if data is None:
+                return None
+            suffix = ".png" if self._guess_mime_type(data) == "image/png" else ".jpg"
+            return Path(f"image{suffix}"), data
+        path = Path(source).expanduser()
+        try:
+            with path.open("rb") as stream:
+                data = stream.read(_FILE_MAX_BYTES + 1)
+        except OSError:
+            return None
+        if not 5 < len(data) <= _FILE_MAX_BYTES:
+            return None
+        return Path(name or path.name), data
+
+    def _send_media_part(
+        self, target: str, path: Path, data: bytes, media_type: Literal["file", "image"],
+    ) -> tuple[DeliveryStatus, str | None]:
+        """
+        认领分段后上传素材，按同一个明确目标记录平台发送结果。
+        """
+        try:
+            media_id = self._upload_temp_media(path, media_type=media_type, content=data)
+        except RetryException:
+            media_id = None
+        if media_id is None:
+            return "retryable_failure", "attachment_upload_failed"
+        return self._send_tracked_part({
+            "touser": target, "msgtype": media_type, "agentid": self._appid,
+            media_type: {"media_id": media_id},
+        })
+
+    @staticmethod
+    def _notification_targets(userid: str | None, receipt: DeliveryReceipt) -> tuple[str, ...]:
+        """
+        拆出显式用户目标，拒绝把全员地址与个人地址混用。
+
+        :param userid: 宿主选定的发送目标
+        :param receipt: 缺少目标或地址无效时报告诊断
+        :return: 去重后的目标；不可投递时为空
+        """
+        targets = tuple(dict.fromkeys(target.strip() for target in (userid or "").split("|") if target.strip()))
+        if not targets:
+            receipt(None, 0, "skipped", "no_target")
+        elif targets != ("@all",) and any(
+            target.casefold() == "@all" or not re.fullmatch(r"[A-Za-z0-9_@.-]+", target)
+            for target in targets
+        ):
+            receipt(None, 0, "permanent_failure", "invalid_target")
+            return ()
+        return targets
+
+    def _send_tracked_target(
+        self, target: str, payloads: list[tuple[str, DeliveryPartSubmitter]], receipt: DeliveryReceipt,
+        part_sender: DeliveryPartSender,
+    ) -> bool:
+        """
+        在同一目标内保持分段顺序，未确认的分段暂停后续提交。
+
+        :param target: 已选定的单一平台目标
+        :param payloads: 有序的分段内容描述和提交回调
+        :param receipt: 回传实际确认状态的回调
+        :param part_sender: 根据已有投递记录控制网络请求的回调
+        :return: 当前目标的所有分段均得到确认时返回 True
+        """
+        confirmed = True
+        for part, (content, submit) in enumerate(payloads):
+            outcome, code = part_sender(target, part, content, confirmed, submit)
+            receipt(target, part, outcome, code)
+            confirmed = confirmed and outcome == "confirmed"
+        return confirmed
+
+    def _send_tracked_part(self, payload: dict[str, Any]) -> tuple[DeliveryStatus, str | None]:
+        """
+        仅在获得明确平台响应时确认发送状态。
+
+        :param payload: 渲染后的单段载荷
+        :return: 平台确认状态与脱敏分类
+        """
+        try:
+            token = self.__get_access_token()
+        except RetryException:
+            token = None
+        if not token:
+            return "retryable_failure", "token_unavailable"
+        try:
+            result = self._read_post_result(self._send_msg_url, payload, token)
+        except (ValueError, RuntimeError, OSError):
+            return "unknown", "response_unconfirmed"
+        code = result.get("errcode")
+        if code == 0:
+            if any(result.get(field) for field in ("invaliduser", "unlicenseduser", "invalidparty", "invalidtag")):
+                return "permanent_failure", "target_rejected"
+            return "confirmed", None
+        if code in (40014, 41001, 42001):
+            # 清空当前令牌，让 Outbox 的下一次认领取得新令牌。
+            if self._access_token == token:
+                self._access_token = None
+            return "retryable_failure", "token_expired"
+        if code in (-1, 45009, 45011):
+            return "retryable_failure", "platform_unavailable"
+        if code in (40003, 81013):
+            return "permanent_failure", "target_rejected"
+        return "unknown", "platform_unconfirmed"
 
     @staticmethod
     def _load_native_image(image: str) -> Optional[bytes]:
@@ -503,13 +768,14 @@ class WeChat:
         return content if isinstance(content, bytes) else None
 
     @staticmethod
-    def _convert_voice_to_amr(voice_path: str) -> Optional[Path]:
+    def _convert_voice_to_amr(voice_path: str, destination: Path | None = None) -> Optional[Path]:
         """
         调用 ffmpeg 生成最多 60 秒的单声道 AMR 文件。
 
         输出采样率为 8000 Hz；这里只生成文件，后续发送流程负责清理。
 
-        :param voice_path: 源语音路径；输出为同目录同名 .amr 文件，允许覆盖
+        :param voice_path: 源语音路径
+        :param destination: 调用方独占的输出路径；旧调用缺省为同目录同名文件
         :return: 转换后文件路径；转换失败返回 None，超过 2 MiB 的输出会被删除
         """
         src_path = Path(voice_path)
@@ -517,7 +783,7 @@ class WeChat:
             logger.error(f"语音文件不存在：{src_path}")
             return None
 
-        dst_path = src_path.with_suffix(".amr")
+        dst_path = destination or src_path.with_suffix(".amr")
         cmd = [
             "ffmpeg",
             "-y",
@@ -696,6 +962,68 @@ class WeChat:
             converted_path.unlink(missing_ok=True)
             source_path.unlink(missing_ok=True)
 
+    def send_tracked_voice(
+        self, voice_path: str, userid: str | None, *,
+        receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+        fallback: Callable[[], bool | None] | None = None,
+    ) -> bool:
+        """
+        在受管投递中用源附件的摘要识别语音，保留调用方持有的源文件供恢复使用。
+
+        :param voice_path: 调用方提供的语音文件
+        :param userid: 已选定的目标
+        :param receipt: 宿主记录逐目标结果的回调
+        :param part_sender: 根据已有投递结果控制发送的回调
+        :param plan: 首次发送前冻结目标与附件摘要
+        :param fallback: 本地转换失败时按原目标和投递策略发送正文
+        :return: 所有目标确认收到语音或降级后的正文
+        """
+        targets = self._notification_targets(userid, receipt)
+        if not targets:
+            return False
+        try:
+            with Path(voice_path).open("rb") as stream:
+                digest = file_digest(stream, "sha256").hexdigest()
+        except OSError:
+            digest = None
+        with TemporaryDirectory(prefix="moviepilot-wechat-voice-") as folder:
+            converted = self._convert_voice_to_amr(voice_path, Path(folder) / "voice.amr") if digest is not None else None
+            if digest is not None and converted is None and fallback is not None:
+                return fallback() is True
+            content = f"voice:{self._appid}:{digest or 'missing'}"
+            error = "attachment_unavailable" if digest is None else "attachment_conversion_failed"
+            plan(tuple((target, 0, content) for target in targets))
+            success = True
+            for target in targets:
+                outcome, code = part_sender(
+                    target, 0, content, True, partial(self._send_voice_part, converted, target, error),
+                )
+                receipt(target, 0, outcome, code)
+                success = success and outcome == "confirmed"
+            return success
+
+    def _send_voice_part(
+        self, converted: Path | None, target: str, conversion_error: str,
+    ) -> tuple[DeliveryStatus, str | None]:
+        """
+        在当前目标获准提交后上传语音，并返回独立的发送确认。
+
+        :param converted: 本次准备的语音附件，无法读取或转换时为空
+        :param target: 当前唯一投递目标
+        :param conversion_error: 附件不可用时的诊断
+        :return: 平台结果或可诊断的附件错误
+        """
+        if converted is None:
+            return "permanent_failure", conversion_error
+        media_id = self._upload_temp_media(converted, media_type="voice")
+        if media_id is None:
+            return "retryable_failure", "attachment_upload_failed"
+        return self._send_tracked_part({
+            "touser": target, "msgtype": "voice", "agentid": self._appid,
+            "voice": {"media_id": media_id}, "safe": 0,
+            "enable_id_trans": 0, "enable_duplicate_check": 0,
+        })
+
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None) -> Optional[bool]:
         """
         按传入顺序发送媒体候选图文列表。
@@ -803,6 +1131,33 @@ class WeChat:
             logger.error(f"发送消息失败：{e}")
             return False
 
+    @staticmethod
+    def _read_post_result(url: str, payload: dict[str, Any], token: str) -> dict[str, Any]:
+        """
+        提交请求并读取经校验的平台响应。
+
+        :param url: 发送接口的地址模板
+        :param payload: 要发送的请求体
+        :param token: 当前有效的访问令牌
+        :return: 含整数错误码的企业微信响应
+        :raises RuntimeError: 平台未返回可确认的响应
+        """
+        response = RequestUtils(content_type="application/json").post(
+            url=url.format(access_token=token), data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            allow_redirects=False,
+        )
+        if response is None:
+            raise RuntimeError("企业微信接口未返回响应")
+        try:
+            if response.status_code != 200:
+                raise RuntimeError(f"企业微信接口响应状态：{response.status_code}")
+            result = response.json()
+        finally:
+            response.close()
+        if not isinstance(result, dict) or type(result.get("errcode")) is not int:
+            raise RuntimeError("企业微信接口缺少有效错误码")
+        return result
+
     @retry(RetryException, logger=logger)
     def __post_request(self, url: str, req_json: Dict[str, Any]) -> bool:
         """
@@ -815,19 +1170,10 @@ class WeChat:
         :param req_json: 需要序列化为 JSON 的请求体
         :return: 接口错误码为 0 时返回 True，其他非令牌过期错误返回 False
         """
-        url = url.format(access_token=self.__get_access_token())
-        res = RequestUtils(content_type="application/json").post(
-            url=url,
-            data=json.dumps(req_json, ensure_ascii=False).encode("utf-8")
-        )
-        if res is None:
-            error_msg = "发送请求失败，未获取到返回信息"
-            raise Exception(error_msg)
-        if res.status_code != 200:
-            error_msg = f"发送请求失败，错误码：{res.status_code}，错误原因：{res.reason}"
-            raise Exception(error_msg)
-
-        ret_json = res.json()
+        token = self.__get_access_token()
+        if not token:
+            return False
+        ret_json = self._read_post_result(url, req_json, token)
         if ret_json.get("errcode") == 0:
             return True
         else:

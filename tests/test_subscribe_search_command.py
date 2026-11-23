@@ -31,6 +31,7 @@ class _Repository:
         self.subscribe_ids = subscribe_ids or []
         self.list_calls = []
         self.type_calls = []
+        self.owner_calls = []
 
     async def get_candidate(self, _subscribe_id):
         """
@@ -38,12 +39,13 @@ class _Repository:
         """
         return self.candidate
 
-    async def list_search_ids(self, username, state, mtype=None):
+    async def list_search_ids(self, username, state, mtype=None, *, owner_identity=None):
         """
         记录访问范围并返回预设编号。
         """
         self.list_calls.append((username, state))
         self.type_calls.append(mtype)
+        self.owner_calls.append(owner_identity)
         return self.subscribe_ids
 
 
@@ -202,6 +204,50 @@ async def test_targeted_search_schedules_accessible_subscription():
     assert result is not None
     assert result.single is True
     assert submitted == [((7,), True)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner,media_type,allowed", [
+    ("current", "电影", True),
+    ("deleted-user", "电影", False),
+    ("current", "电视剧", False),
+])
+async def test_subscription_search_requires_stable_owner_and_matching_media_type(owner, media_type, allowed):
+    """
+    同名账号无法按订阅 ID 搜索旧账号的记录，媒体入口也不能跨类型提交。
+    """
+    submitted = []
+    row = SubscribeDeletionCandidate(
+        subscribe_id=7, username="alice", owner_identity=owner, event_payload={"type": "电影"},
+    )
+    command = SearchSubscriptionsCommand(
+        repository=_Repository(candidate=row), submit_search=_submitter(submitted),
+    )
+    result = await command.execute(
+        SubscribeSearchActor(username="alice", is_superuser=False, owner_identity="current"),
+        subscribe_id=7, mtype=media_type,
+    )
+    assert (result is not None) is allowed
+    assert submitted == ([((7,), True)] if allowed else [])
+
+
+@pytest.mark.asyncio
+async def test_batch_search_keeps_stable_owner_when_display_name_changes():
+    """
+    批量搜索把稳定账号归属和媒体类型传给底层仓储。
+    """
+    submitted = []
+    repository = _Repository(subscribe_ids=[7])
+    command = SearchSubscriptionsCommand(repository=repository, submit_search=_submitter(submitted))
+
+    result = await command.execute(
+        SubscribeSearchActor(username="renamed", is_superuser=False, owner_identity="stable-owner"),
+        mtype="电影",
+    )
+    assert result is not None and result.target_count == 1
+    assert repository.list_calls == [("renamed", "R")]
+    assert repository.owner_calls == ["stable-owner"] and repository.type_calls == ["电影"]
+    assert submitted == [((7,), False)]
 
 
 def test_submitted_search_wakes_short_cycle_queue(monkeypatch):

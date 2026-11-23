@@ -170,7 +170,7 @@ class SubscribeInteractionHandler:
             return False
 
         request_id, action = parsed
-        request = subscribe_interaction_manager.get_by_id(request_id, userid)
+        request = subscribe_interaction_manager.get_by_id(request_id, userid, channel, source, original_chat_id)
         if not request:
             self._messenger.post_message(
                 Message(
@@ -183,8 +183,6 @@ class SubscribeInteractionHandler:
             )
             return True
 
-        request.channel = channel
-        request.source = source
         request.username = username
 
         if action == "close":
@@ -254,12 +252,10 @@ class SubscribeInteractionHandler:
         """
         处理 /subscribes 文本补充输入。
         """
-        request = subscribe_interaction_manager.get_by_user(userid)
+        request = subscribe_interaction_manager.get_by_user(userid, channel, source)
         if not request:
             return False
 
-        request.channel = channel
-        request.source = source
         request.username = username
 
         normalized = (text or "").strip()

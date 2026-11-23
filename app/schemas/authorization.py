@@ -4,7 +4,7 @@
 
 from typing import Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ChannelMember(BaseModel):
@@ -80,3 +80,60 @@ class ChannelBindingData(BaseModel):
 
     code: str = Field(description="只返回一次的高熵关联码，不应记录日志或发到群聊")
     expires_at: float = Field(description="关联码到期的 UTC Unix 秒")
+
+
+class ChannelMemberDelete(BaseModel):
+    """
+    按界面读取的版本删除，已授权成员必须明确再次确认。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: float = Field(allow_inf_nan=False, description="界面读取的授权版本 UTC Unix 秒")
+    confirm_approved: bool = Field(default=False, description="是否再次确认删除当前已授权成员")
+
+
+class ChannelMemberBatchTarget(BaseModel):
+    """
+    一个被显式选中的不可变成员及其授权版本。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=128, description="成员稳定 ID")
+    expected_updated_at: float = Field(allow_inf_nan=False, description="选择时读取的授权版本 UTC Unix 秒")
+
+
+class ChannelMemberBatch(BaseModel):
+    """
+    一次事务内处理明确选择的成员；批量审批只授予普通成员角色。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "reject", "disable", "delete"] = Field(description="批量通过、拒绝、停用或删除")
+    members: list[ChannelMemberBatchTarget] = Field(min_length=1, max_length=100, description="最多一百个不重复成员")
+    scopes: list[Literal["search", "subscribe", "download", "schedule"]] = Field(
+        default_factory=lambda: cast(
+            list[Literal["search", "subscribe", "download", "schedule"]], ["search", "subscribe", "download"]
+        ), description="批量审批明确授予的普通成员权限",
+    )
+    confirm_approved: bool = Field(default=False, description="是否再次确认删除所选已授权成员")
+
+    @model_validator(mode="after")
+    def validate_unique_members(self) -> "ChannelMemberBatch":
+        """
+        拒绝重复身份，防止在同一批次中二次变更或删除。
+        """
+        if len({member.id for member in self.members}) != len(self.members):
+            raise ValueError("同一批次不能重复选择成员")
+        return self
+
+
+class ChannelMemberBatchResult(BaseModel):
+    """
+    返回同一事务已提交的更新快照和删除身份，不报告未提交的成功。
+    """
+
+    members: list[ChannelMember] = Field(description="完成状态变更的成员")
+    deleted_ids: list[str] = Field(description="已经删除的成员 ID")

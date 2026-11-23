@@ -2,10 +2,12 @@
 提供下载任务查询、控制和手动添加接口，保留当前用户与媒体身份。
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated, Any, List, Optional, Union
 
 import anyio
-from fastapi import Body, Depends
+from fastapi import Body, Depends, HTTPException
 
 from app.adapters.web.security.access import verify_token
 from app.api.dependencies.auth import (
@@ -25,8 +27,11 @@ from app.application.configuration import (
     get_runtime_settings,
 )
 from app.application.directory import DirectoryHelper
+from app.application.download.admission import DownloadAuthorizationError, scoped_download_authorization
 from app.application.download.organization import organize_existing_source
 from app.application.download.tasks import DownloadTaskMutationService
+from app.application.history import scoped_download_owner
+from app.application.security.authorization import get_channel_authorization
 from app.application.security.url import SecurityUtils
 from app.application.site.query import (
     SiteQueryService,
@@ -398,7 +403,6 @@ def current(name: Optional[str] = None, _: ApiPrincipal = Depends(get_current_do
     """
     管理员及下载管理权限用户查询全局下载任务，其余已授权用户仅查询自己发起的任务。
     """
-    tasks = DownloadChain().downloading(name)
     can_view_all = bool(
         _.is_superuser
         or (
@@ -406,9 +410,12 @@ def current(name: Optional[str] = None, _: ApiPrincipal = Depends(get_current_do
             and has_web_permission(False, getattr(_, "permissions", None), "manage", "manage.downloading")
         )
     )
-    if not can_view_all:
-        return [task for task in tasks if task.username == _.name]
-    return tasks
+    if not can_view_all and getattr(_, "authorization_id", None):
+        if not _.notification_identity:
+            return []
+        return DownloadChain().downloading(name, owner_identity=_.notification_identity)
+    tasks = DownloadChain().downloading(name)
+    return tasks if can_view_all else [task for task in tasks if task.username == _.name]
 
 
 @router.post(
@@ -440,19 +447,15 @@ def download(
     # 手动下载始终使用选择的下载器
     torrentinfo.site_downloader = downloader
     # 上下文
-    context = Context(
-        meta_info=metainfo,
-        media_info=mediainfo,
-        torrent_info=torrentinfo,
-        origin_media=origin_media,
-    )
-    did = DownloadChain().download_single(
-        context=context,
-        username=current_user.name,
-        save_path=save_path,
-        source="Manual",
-        user_specified=True,
-    )
+    context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo, origin_media=origin_media)
+    with _download_request_scope(current_user, "download.add"):
+        did = DownloadChain().download_single(
+            context=context,
+            username=current_user.name,
+            save_path=save_path,
+            source="Manual",
+            user_specified=True,
+        )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
     return _SchemaResponse(success=True, data={"download_id": did})
@@ -512,13 +515,14 @@ def download_artist_collection(
     if downloader is not None:
         torrentinfo.site_downloader = downloader
     context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
-    did = DownloadChain().download_single(
-        context=context,
-        username=current_user.name,
-        save_path=save_path,
-        source="Manual",
-        user_specified=True,
-    )
+    with _download_request_scope(current_user, "download.artist_collection"):
+        did = DownloadChain().download_single(
+            context=context,
+            username=current_user.name,
+            save_path=save_path,
+            source="Manual",
+            user_specified=True,
+        )
     if not did:
         return _SchemaResponse(success=False, message="艺术家合集任务添加失败")
     return _SchemaResponse(success=True, data={"download_id": did})
@@ -565,17 +569,47 @@ def add(
         origin_media=_origin_media_for_converted_add(media_source, media_id, mediainfo),
     )
 
-    did = DownloadChain().download_single(
-        context=context,
-        username=current_user.name,
-        downloader=downloader,
-        save_path=save_path,
-        source="Manual",
-        user_specified=True,
-    )
+    with _download_request_scope(current_user, "download.add"):
+        did = DownloadChain().download_single(
+            context=context,
+            username=current_user.name,
+            downloader=downloader,
+            save_path=save_path,
+            source="Manual",
+            user_specified=True,
+        )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
     return _SchemaResponse(success=True, data={"download_id": did})
+
+
+@contextmanager
+def _download_request_scope(user: ApiPrincipal, operation: str) -> Iterator[None]:
+    """
+    保留本次下载的账号归属，并为渠道令牌安装提交前的权限复核。
+
+    :param user: 已认证的本次 API 请求主体
+    :param operation: 该路由对应的渠道操作标识
+    """
+    identity = getattr(user, "notification_identity", None)
+    member_id = getattr(user, "authorization_id", None)
+
+    def authorize() -> None:
+        """
+        核对授权当前仍允许原操作，且归属仍匹配本次 API 请求。
+        """
+        service = get_channel_authorization()
+        if service is None or not member_id:
+            raise PermissionError("当前渠道授权不可用，请重新发起下载")
+        actor = service.authorize_operation(member_id, operation)
+        if actor.notification_identity != identity:
+            raise PermissionError("渠道账号归属已改变，请重新发起下载")
+
+    with scoped_download_owner(identity), scoped_download_authorization(authorize if member_id else None):
+        try:
+            yield
+        except DownloadAuthorizationError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
 
 
 @router.post(

@@ -128,7 +128,7 @@ def test_message_routes_music_search_when_agent_is_disabled():
         limit=20,
         music_types=(MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM),
     )
-    request = media_interaction_manager.get_by_user("music-user")
+    request = media_interaction_manager.get_by_user("music-user", NotificationChannel.Wechat, "wechat-test")
     assert request is not None
     assert request.action == "MusicSearch"
     assert request.keyword == "周杰伦 晴天"
@@ -232,7 +232,7 @@ def test_music_torrents_show_original_titles_and_keep_selection(channel):
     assert "0: 自动选择" in notification.title or notification.buttons
     if notification.buttons:
         assert any(
-            button["callback_data"].endswith(":download:1")
+            chain.parse_callback(button["callback_data"]) == (request.request_id, "download", 1)
             for row in notification.buttons for button in row
         )
     post_torrents_message.assert_not_called()
@@ -267,7 +267,7 @@ def test_music_subscription_selection_preserves_selected_music_type():
             "app.chain.interaction.DownloadChain.get_no_exists_info",
             return_value=(False, None),
         ),
-        patch("app.chain.interaction.SubscribeChain.add") as add_subscribe,
+        patch("app.chain.subscribe.facade.SubscribeChain.add") as add_subscribe,
         patch.object(chain.user_repository, "find_name_by_bindings", return_value=None),
     ):
         chain.handle_text_interaction(
@@ -316,7 +316,7 @@ def test_auto_download_fallback_subscription_preserves_music_type():
             "app.chain.interaction.DownloadChain.batch_download",
             return_value=([], [object()]),
         ),
-        patch("app.chain.interaction.SubscribeChain.add") as add_subscribe,
+        patch("app.chain.subscribe.facade.SubscribeChain.add") as add_subscribe,
         patch.object(chain.user_repository, "find_name_by_bindings", return_value=None),
     ):
         chain._auto_download(
@@ -1946,7 +1946,7 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
     post_medias_message.assert_called_once()
     handle_ai.assert_not_called()
 
-    request = media_interaction_manager.get_by_user("10001")
+    request = media_interaction_manager.get_by_user("10001", NotificationChannel.Telegram, "telegram-test")
     assert request is not None
     assert request.action == "Search"
     assert request.keyword == "星际穿越"
@@ -2020,7 +2020,7 @@ def test_media_interaction_starts_search_and_posts_media_list():
     assert notification.buttons
     assert notification.buttons[0][0]["callback_data"].startswith("media:")
 
-    request = media_interaction_manager.get_by_user("10001")
+    request = media_interaction_manager.get_by_user("10001", NotificationChannel.Telegram, "telegram-test")
     assert request is not None
     assert request.action == "Search"
     assert len(request.items) == 2
@@ -2041,6 +2041,7 @@ def test_media_interaction_legacy_page_callback_updates_existing_request():
         title="星际穿越",
         meta=_build_meta("星际穿越"),
         items=[MediaInfo(title=f"资源 {index}", year="2024") for index in range(1, 11)],
+        original_chat_id="456",
     )
 
     with patch.object(chain, "post_medias_message") as post_medias_message:
@@ -2108,7 +2109,9 @@ def test_torrent_selection_prompts_download_dir_buttons_before_download():
     assert "2. 电影下载 (/downloads/movies)" in notification.text
     assert "3. 4K电影下载 (/downloads/uhd-movies)" in notification.text
     assert "动画下载" not in notification.text
-    assert notification.buttons[0][0]["callback_data"] == f"media:{request.request_id}:download-dir:1"
+    callback = notification.buttons[0][0]["callback_data"]
+    assert chain.parse_callback(callback) == (request.request_id, "download-dir", 1)
+    assert callback.endswith(request.callback_versions["download-dir"])
 
 
 def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
@@ -2248,6 +2251,63 @@ def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
     assert "2. 电影下载 (/downloads/movies)" in notification.text
     assert "3. 4K电影下载 (/downloads/uhd-movies)" in notification.text
     assert "动画下载" not in notification.text
+
+
+def test_rendered_download_button_is_single_use_and_stale_list_cannot_download():
+    """
+    原列表上的下载按钮重复点击一次执行，重新出卡后旧按钮不能操作新列表。
+    """
+    chain = MediaInteractionChain()
+    channel = NotificationChannel.Telegram
+    context = _build_context()
+    request = media_interaction_manager.create_or_replace(
+        user_id="10001", channel=channel, source="telegram-test", username="tester",
+        action="Search", keyword="星际穿越", title="星际穿越", items=[context], original_chat_id="room",
+    )
+    request.phase = "torrent"
+
+    def render_callback():
+        """
+        取本次真实渲染的第一条候选的下载按钮。
+        """
+        rows = chain._create_torrent_buttons(channel, request, request.items, 1, 1)
+        return next(
+            button["callback_data"] for row in rows for button in row
+            if chain.parse_callback(button["callback_data"]) == (request.request_id, "download", 1)
+        )
+
+    with (
+        patch.object(chain, "_get_download_dirs", return_value=[]),
+        patch("app.chain.interaction.DownloadChain.download_single") as download,
+    ):
+        def click(callback_data, *, source="telegram-test", actor="10001", room="room"):
+            """
+            用真实渲染出的按钮执行当前用户或其他会话的回调。
+            """
+            return chain.handle_callback_interaction(callback_data, channel, source, actor, "tester", original_chat_id=room)
+
+        first = render_callback()
+        assert click(first, source="another-bot")
+        assert click(first, actor="other-member")
+        assert click(first, room="another-room")
+        download.assert_not_called()
+        for _ in range(2):
+            assert click(first)
+        download.assert_called_once()
+        new_context = _build_context("新版")
+        request.items = [new_context]
+        second = render_callback()
+        assert click(first)
+        download.assert_called_once()
+        assert click(second)
+        assert download.call_count == 2
+        assert download.call_args.args[0] is new_context
+
+        request.items = [_build_context("即将过期")]
+        expired = render_callback()
+        request.created_at -= timedelta(hours=25)
+        assert click(expired)
+        assert download.call_count == 2
 
 
 def test_download_dir_callback_runs_pending_single_download_without_save_path_for_auto():

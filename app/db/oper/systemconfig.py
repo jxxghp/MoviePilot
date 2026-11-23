@@ -8,7 +8,7 @@ import threading
 from collections.abc import Callable, Mapping
 from typing import Any, Optional, TypeVar, Union
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -171,6 +171,14 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                 """
                 锁定配置行，把关联写入与最终配置值放入同一事务。
                 """
+                if db.get_bind().dialect.name == "sqlite" and key == SystemConfigKey.ChannelSettings.value:
+                    # SQLite 不支持行级 FOR UPDATE，先取得写锁再加载最新快照。
+                    db.execute(
+                        update(SystemConfig)
+                        .where(SystemConfig.key == key)
+                        .values(id=SystemConfig.id)
+                        .execution_options(synchronize_session=False)
+                    )
                 conf = db.execute(
                     select(SystemConfig)
                     .where(SystemConfig.key == key)

@@ -36,10 +36,12 @@ class SubscribeDeletionActor:
 
     :param username: 发起操作的已认证本地用户名
     :param is_superuser: 操作人是否具有超级管理员权限
+    :param owner_identity: 认证得到的账号身份
     """
 
     username: str
     is_superuser: bool
+    owner_identity: str | None = None
 
 
 SubscribeDeletionStatus = Literal["deleted", "not_found", "forbidden"]
@@ -283,7 +285,9 @@ def can_delete_subscribe(
         return False
     if actor.is_superuser:
         return True
-    return bool(candidate.username) and candidate.username == actor.username
+    if actor.owner_identity is not None:
+        return bool(actor.owner_identity) and candidate.owner_identity == actor.owner_identity
+    return not candidate.owner_identity and bool(candidate.username) and candidate.username == actor.username
 
 
 def _build_deletion_effects(

@@ -28,7 +28,15 @@ def notification_parts(message: Message, channel: NotificationChannel) -> list[M
         ]
     else:
         parts = [message]
-    return [_channel_part(part, channel) for part in parts]
+    if channel == NotificationChannel.Slack and message.native_image and message.image and message.buttons:
+        caption = parts[0].model_copy(update={"image": None, "native_image": False, "link": None})
+        image = parts[0].model_copy(update={"title": None, "text": None, "buttons": None, "link": None})
+        parts = [caption, image, *parts[1:]]
+    adapted = [_channel_part(part, channel) for part in parts]
+    if len(adapted) > 1:
+        for index, part in enumerate(adapted):
+            part.set_attachment_part(index, final=index == len(adapted) - 1)
+    return adapted
 
 
 def _channel_part(message: Message, channel: NotificationChannel) -> Message:

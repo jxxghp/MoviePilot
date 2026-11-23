@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from functools import partial
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from app.adapters.web.security.access import (
     reset_superuser_token_payload_provider,
@@ -46,6 +46,10 @@ from app.startup.composition.context import (
     StandaloneRepositoryFactory,
 )
 from app.startup.composition.database import build_transactional_user_repository
+from app.startup.composition.webpush import configure_webpush_services, reset_webpush_services
+
+if TYPE_CHECKING:
+    from app.application.database import AsyncDatabaseExecutor
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,12 +92,17 @@ def _backfill_superuser_setting(users: AuthUserRepository) -> None:
     logger.info(f"已根据数据库超级管理员自动补全 SUPERUSER：{user.name}")
 
 
-def configure_security_services() -> SecurityComposition:
+def configure_security_services(executor: "AsyncDatabaseExecutor") -> SecurityComposition:
     """
     构造并登记认证、用户查询和 PassKey 服务。
+
+    :param executor: 当前进程共享的受管数据库执行器
     """
     users = build_transactional_user_repository()
-    configure_channel_authorization(ChannelAuthorizationService(partial(authorization_scope, SessionFactory)))
+    configure_webpush_services()
+    configure_channel_authorization(ChannelAuthorizationService(
+        partial(authorization_scope, SessionFactory), executor=executor,
+    ))
     _backfill_superuser_setting(users)
     configure_user_lookups(
         by_id=lambda user_id: build_transactional_user_repository().get_by_id(user_id),
@@ -137,6 +146,7 @@ def reset_security_services() -> None:
     """
     按发布逆序撤销认证、用户查询和 PassKey 服务。
     """
+    reset_webpush_services()
     configure_channel_authorization(None)
     reset_passkey_service()
     reset_passkey_challenge_cache()

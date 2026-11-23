@@ -1908,7 +1908,7 @@
           "043b1451d0995070b782b4c0e78186cbb1c019c9cfd23500cd9c84c0d1992218"
         ],
         "producer_fingerprints": [
-          "268702e19e01537b7e5c13981506cd3d75696d5da749ca0bd4c32eea1d7905a8",
+          "0f6fde13b1b74677cb30a3826e84e7cfe841f05248068e75cdc85a3aeafc49c8",
           "42f78d867c3555fe7ce92874c84226a6cd420535cb8addaf7d9f6c97d8b58a1d"
         ]
       },
@@ -2219,10 +2219,10 @@
         "events": [
           "EventType.NoticeMessage"
         ],
-        "fingerprint": "268702e19e01537b7e5c13981506cd3d75696d5da749ca0bd4c32eea1d7905a8",
+        "fingerprint": "0f6fde13b1b74677cb30a3826e84e7cfe841f05248068e75cdc85a3aeafc49c8",
         "invalid": false,
         "method": "send_event",
-        "qualname": "NotificationMixin._dispatch_notification_steps",
+        "qualname": "NotificationMixin._deliver_notification_step",
         "receiver_kind": "injected_event_manager"
       },
       {

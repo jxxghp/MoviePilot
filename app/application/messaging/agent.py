@@ -1399,14 +1399,16 @@ def is_web_agent_traditional_message(text: str) -> bool:
     return not agent_interaction.is_agent_learning_command(normalized) and (normalized.startswith("/") or normalized.startswith("CALLBACK:"))
 
 
-def has_web_agent_traditional_interaction(user_id: str) -> bool:
+def has_web_agent_traditional_interaction(user_id: str, chat_id: Optional[Union[str, int]] = None) -> bool:
     """
     判断当前用户是否存在待继续的传统交互会话。
 
     :param user_id: 当前登录用户 ID
     :return: 存在传统交互上下文时返回 True
     """
-    return bool(has_pending_interaction(user_id))
+    return has_pending_interaction(
+        user_id, NotificationChannel.WebAgent, WEB_AGENT_SOURCE, str(chat_id) if chat_id is not None else None,
+    )
 
 
 def build_web_agent_command_items() -> list[dict[str, Any]]:
@@ -1738,7 +1740,7 @@ async def build_web_agent_stream(
         )
 
     is_traditional_message = not command.choice_selection and not agent_interaction.is_agent_learning_command(prompt) and (
-        is_web_agent_traditional_message(prompt) or has_web_agent_traditional_interaction(str(current_user.id))
+        is_web_agent_traditional_message(prompt) or has_web_agent_traditional_interaction(str(current_user.id), command.original_chat_id)
     )
     if is_traditional_message:
         denied_message = ensure_web_agent_command_allowed(current_user)

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from app.application.classification.execution import ClassificationExecutionPort
     from app.application.history import TransferHistoryRepository
     from app.application.transfer.execution import TransferExecutionRepository
+    from app.schemas.message import Message
 
 
 class ChainRuntimeMixinHost(Protocol):
@@ -46,6 +47,18 @@ class ChainRuntimeMixinHost(Protocol):
         :param method: 需要分发的模块方法名称
         :param kwargs: 交给模块方法的命名参数，保留调度器支持的控制参数
         :return: 按模块方法契约聚合的调用结果；没有有效结果时可为 None
+        """
+        ...
+
+    def prepare_notification_parts(self, message: Message) -> None:
+        """
+        仅调用宿主通知模块，收集当前路由的投递分段。
+        """
+        ...
+
+    def deliver_host_notification(self, message: Message) -> Any:
+        """
+        只调用宿主通知模块，供后续分段恢复。
         """
         ...
 

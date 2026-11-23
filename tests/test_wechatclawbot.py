@@ -13,6 +13,20 @@ from app.modules.wechatclawbot.wechatclawbot import ILinkClient, WechatClawBot
 CLIENT_BASE_URL = "https://ilinkai.weixin.qq.com"
 
 
+def test_notification_only_clawbot_keeps_stable_identity_without_polling():
+    """
+    仅投递时不启动入站轮询，适配器配置不能覆盖宿主的身份或开关。
+    """
+    module = WechatClawBotModule()
+    config = SimpleNamespace(id="stable-connection", name="ClawBot", interaction_enabled=False,
+                             config={"identity": "stale-name", "auto_start_polling": True})
+    assert module._service_kwargs(config) == {
+        "name": "ClawBot", "identity": "stable-connection", "auto_start_polling": False,
+    }
+    config.interaction_enabled = True
+    assert module._service_kwargs(config)["auto_start_polling"] is True
+
+
 def _create_client(**kwargs) -> ILinkClient:
     """
     构造指向 iLink 服务端的客户端实例。
@@ -48,6 +62,53 @@ def _module_config() -> SimpleNamespace:
     构造消息解析所需的渠道配置。
     """
     return SimpleNamespace(name="wechatclawbot-test", config={})
+
+
+def test_clawbot_discards_poll_results_arriving_after_stop(monkeypatch):
+    """
+    连接刷新或移除请求停止轮询后，迟到响应不再更新缓存或提交入站消息。
+    """
+    bot = _create_bot()
+    bot._state["bot_token"] = "fixture"
+    update = MagicMock()
+    forward = MagicMock()
+    monkeypatch.setattr(bot, "_update_state", update)
+    monkeypatch.setattr(bot, "_forward_to_message_chain", forward)
+
+    def poll_updates(**_kwargs):
+        """
+        模拟关闭期间完成的已经在途的远程请求。
+        """
+        assert bot.stop()
+        return [MagicMock()], "late-cursor", {"success": True}
+
+    monkeypatch.setattr(bot, "_build_client", lambda: SimpleNamespace(poll_updates=poll_updates))
+    bot._poll_loop()
+    update.assert_not_called()
+    forward.assert_not_called()
+
+
+def test_clawbot_login_does_not_transfer_connection_to_another_account(monkeypatch):
+    """
+    退出后仍保留绑定账号，只有原账号可以恢复同一连接。
+    """
+    bot = _create_bot()
+    monkeypatch.setattr(bot, "_save_state", lambda: None)
+    monkeypatch.setattr(ILinkClient, "get_qrcode", lambda _client: {"success": True, "qrcode": "fixture"})
+    account = "first-account"
+    monkeypatch.setattr(ILinkClient, "get_qrcode_status", lambda _client, _code: {
+        "success": True, "token": "fixture-token", "account_id": account,
+    })
+    assert bot.get_status(auto_generate_qrcode=True)["connected"]
+    assert bot.logout()["success"]
+    for account in ("other-account", ""):
+        rejected = bot.get_status(auto_generate_qrcode=True)
+        assert not rejected["success"]
+        assert "切换账号请新建连接" in rejected["message"]
+        assert not bot._state["bot_token"]
+        assert bot._state["account_id"] == "first-account"
+    account = "first-account"
+    assert bot.get_status(auto_generate_qrcode=True)["connected"]
 
 
 def test_ilink_parse_incoming_uses_seq_as_message_id_fallback():

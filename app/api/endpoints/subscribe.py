@@ -3,13 +3,15 @@
 """
 
 from datetime import date
-from typing import Annotated, Any, List, Optional
+from functools import partial
+from typing import Annotated, Any, List, Optional, TypedDict
 
 import cn2an
-from fastapi import Depends, Header, HTTPException, Query, Request, Response
+from fastapi import Depends, Header, HTTPException, Query, Request, Response, Security
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.security.access import (
+    oauth2_scheme_manual_error,
     validate_api_credential_identity,
     verify_apitoken,
     verify_token,
@@ -21,6 +23,7 @@ from app.api.context import (
 )
 from app.api.dependencies.auth import (
     get_current_active_manage_user_async,
+    get_current_active_superuser_async,
     get_current_active_user,
     get_current_active_user_async,
 )
@@ -29,6 +32,7 @@ from app.api.dependencies.subscription import (
     get_delete_subscriptions_by_identity_command,
     get_subscription_execution_status_service,
     get_subscription_mutation_service,
+    get_subscription_ownership_command,
     get_subscription_query_service,
 )
 from app.api.endpoints.submaintenance import (
@@ -54,6 +58,7 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_configured_system_config,
 )
+from app.application.security.authorization import get_channel_authorization
 from app.application.subscription.contract import (
     SubscriptionIdentity,
     SubscriptionIdentityConflictError,
@@ -69,6 +74,11 @@ from app.application.subscription.identity import (
 from app.application.subscription.mutation import (
     SubscriptionActor,
     SubscriptionMutationService,
+)
+from app.application.subscription.ownership import (
+    ConfirmSubscriptionOwner,
+    SubscriptionOwnerAccount,
+    SubscriptionRecordKind,
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
@@ -90,6 +100,7 @@ from app.schemas.subscribe import SubscribeDeletionResult as _SchemaSubscribeDel
 from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
 from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
 from app.schemas.subscribe import SubscriptionExecutionStatus as _SchemaSubscriptionExecutionStatus
+from app.schemas.subscribe import SubscriptionOwnershipConfirmation as _SchemaSubscriptionOwnershipConfirmation
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -172,15 +183,35 @@ def can_access_subscribe(subscribe: Any, current_user: ApiPrincipal) -> bool:
     """
     判断当前用户是否可访问订阅及其历史记录。
 
-    超级用户拥有全局订阅管理能力；普通用户只能访问 username 精确匹配自己的订阅。
-    空 username 表示无法归属的 legacy 订阅，只能由超级用户管理。
+    超级用户可以管理全部订阅，普通用户只能访问已确认归属自己的订阅。
     """
     if not subscribe:
         return False
     if current_user.is_superuser:
         return True
-    username = subscribe.username
-    return bool(username) and username == current_user.name
+    identity = getattr(current_user, "notification_identity", None)
+    owner = getattr(subscribe, "owner_identity", None) or getattr(subscribe, "_owner_identity", None)
+    if identity is not None:
+        return bool(identity) and owner == identity
+    return not owner and bool(subscribe.username) and subscribe.username == current_user.name
+
+
+class _OwnerQuery(TypedDict, total=False):
+    """
+    范围由已认证账号确定。
+    """
+
+    owner_identity: str
+
+
+def _owner_query(current_user: ApiPrincipal) -> _OwnerQuery:
+    """
+    向本人列表和计数传递服务端账号身份。
+    """
+    identity = getattr(current_user, "notification_identity", None)
+    if current_user.is_superuser or identity is None:
+        return {}
+    return {"owner_identity": identity}
 
 
 def select_accessible_subscribe(subscribes: List[Any], current_user: ApiPrincipal) -> Any:
@@ -226,8 +257,8 @@ async def read_subscribes(
     username = None if current_user.is_superuser else current_user.name
     page, count = resolve_compatible_pagination(page, count)
     if response is not None:
-        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public(username))
-    subscribes = await query.list_public(username, page=page, count=count)
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public(username, **_owner_query(current_user)))
+    subscribes = await query.list_public(username, page=page, count=count, **_owner_query(current_user))
     return await _attach_execution_status(subscribes, status_service)
 
 
@@ -256,7 +287,7 @@ async def subscribe_calendar(
     if not 0 < (end - start).days <= 93:
         raise HTTPException(status_code=422, detail="日历日期窗口必须大于 0 且不超过 93 天")
     username = None if current_user.is_superuser else current_user.name
-    subscribes = await query.list_public(username)
+    subscribes = await query.list_public(username, **_owner_query(current_user))
     return await SubscribeCalendarChain().window(subscribes, start, end, page, count, request.is_disconnected)
 
 
@@ -335,6 +366,12 @@ async def create_subscribe(
                 message="新增订阅时必须同时提供有效的 media_source 和 media_id",
             )
     subscribe_dict["username"] = current_user.name
+    identity = getattr(current_user, "notification_identity", None)
+    if identity:
+        subscribe_dict["owner_identity"] = identity
+    member_id = getattr(current_user, "authorization_id", None)
+    if member_id:
+        subscribe_dict["_authorize"] = partial(_verify_subscription_actor, member_id, identity)
     sid, message = await SubscribeChain().async_add(
         mtype=mtype,
         title=title,
@@ -347,6 +384,23 @@ async def create_subscribe(
         message=(_public_subscription_message(message) if message else ""),
         data={"id": sid},
     )
+
+
+async def _verify_subscription_actor(member_id: str, identity: str | None) -> None:
+    """
+    复核渠道令牌对应的当前订阅权限及不可变账号归属。
+
+    :param member_id: 本次请求已认证的渠道授权 ID
+    :param identity: 请求认证时确定的账号归属
+    """
+    service = get_channel_authorization()
+    try:
+        if service is None:
+            raise PermissionError("当前渠道授权不可用，请重新发起订阅")
+        actor = await service.async_authorize_operation(member_id, "subscription.add")
+        service.verify_operation_owner(actor, identity)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
 
 @router.put("/", summary="更新订阅", response_model=_SchemaResponse[None])
@@ -362,6 +416,7 @@ async def update_subscribe(
     actor = SubscriptionActor(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
+        owner_identity=getattr(current_user, "notification_identity", None),
     )
     if subscribe_in.id is None:
         return _SchemaResponse(success=False, message="订阅不存在")
@@ -453,6 +508,7 @@ async def update_subscribe_status(
     actor = SubscriptionActor(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
+        owner_identity=getattr(current_user, "notification_identity", None),
     )
     change = await mutation.update_status(subid, state, actor)
     if not change:
@@ -494,7 +550,7 @@ async def subscribe_media_identity(
                 media_source=media_source, media_id=media_id, type=mtype.value,
                 season=season, episode_group=episode_group,
             ),
-            username=None if current_user.is_superuser else current_user.name,
+            username=None if current_user.is_superuser or _owner_query(current_user) else current_user.name,
         )
         result = select_accessible_subscribe(subscribes, current_user)
     if (
@@ -534,6 +590,7 @@ async def delete_subscribe_by_media_identity(
         SubscribeDeletionActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
+            owner_identity=getattr(current_user, "notification_identity", None),
         ),
     )
     return _SchemaResponse(success=True)
@@ -631,9 +688,12 @@ async def subscribe_history(
         page=page,
         count=count,
         username=username,
+        **_owner_query(current_user),
     )
     if response is not None:
-        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_history(mtype, username=username))
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_history(
+            mtype, username=username, **_owner_query(current_user),
+        ))
     return results
 
 
@@ -653,6 +713,7 @@ async def delete_subscribe_history(
     actor = SubscriptionActor(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
+        owner_identity=getattr(current_user, "notification_identity", None),
     )
     status = await mutation.delete_history_with_status(history_id, actor)
     if status == "not_found":
@@ -774,8 +835,8 @@ async def user_subscribes(
         return []
     page, count = resolve_compatible_pagination(page, count)
     if response is not None:
-        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public(username))
-    subscribes = await query.list_public(username, page=page, count=count)
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public(username, **_owner_query(current_user)))
+    subscribes = await query.list_public(username, page=page, count=count, **_owner_query(current_user))
     return await _attach_execution_status(subscribes, status_service)
 
 
@@ -795,6 +856,7 @@ def subscribe_files(
     actor = SubscriptionActor(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
+        owner_identity=getattr(current_user, "notification_identity", None),
     )
     subscribe = repository.get(subscribe_id)
     if subscribe is not None and SubscriptionMutationService.can_access(subscribe, actor):
@@ -814,6 +876,7 @@ async def subscribe_share(
     actor = SubscriptionActor(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
+        owner_identity=getattr(current_user, "notification_identity", None),
     )
     if sub.subscribe_id is None or sub.share_title is None or sub.share_comment is None or sub.share_user is None:
         return _SchemaResponse(success=False, message="订阅分享参数不完整")
@@ -950,6 +1013,65 @@ async def subscribe_share_statistics(
     return await MoviePilotServerHelper.async_get_subscribe_share_statistics()
 
 
+
+async def _subscription_ownership_admin(
+    administrator: ApiPrincipal = Depends(get_current_active_superuser_async),
+    bearer: str | None = Security(oauth2_scheme_manual_error),
+) -> ApiPrincipal:
+    """
+    只允许有效的本地管理员处理旧订阅归属。
+    """
+    if not bearer or getattr(administrator, "authorization_id", None) or getattr(administrator, "account_type", "") != "local":
+        raise HTTPException(status_code=403, detail="需要使用网页登录的管理员账号")
+    return administrator
+
+
+@router.get(
+    "/ownership/accounts",
+    summary="查询订阅归属可选账号",
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
+async def subscription_ownership_accounts(
+    response: Response,
+    _administrator: ApiPrincipal = Depends(_subscription_ownership_admin),
+    command: ConfirmSubscriptionOwner = Depends(get_subscription_ownership_command),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+) -> list[SubscriptionOwnerAccount]:
+    """
+    提供有效账号、复核版本及可选分页。
+    """
+    accounts = await command.list_accounts()
+    response.headers[COLLECTION_TOTAL_HEADER] = str(len(accounts))
+    page, count = resolve_compatible_pagination(page, count)
+    if page is None or count is None:
+        return accounts
+    start = (page - 1) * count
+    return accounts[start:start + count]
+
+
+@router.put("/ownership/{kind}/{record_id}", summary="确认旧媒体订阅归属", response_model=_SchemaResponse[None])
+async def confirm_subscription_ownership(
+    kind: SubscriptionRecordKind,
+    record_id: int,
+    confirmation: _SchemaSubscriptionOwnershipConfirmation,
+    administrator: ApiPrincipal = Depends(_subscription_ownership_admin),
+    command: ConfirmSubscriptionOwner = Depends(get_subscription_ownership_command),
+) -> _SchemaResponse[None]:
+    """
+    确认当前仍待处理的归属。
+    """
+    result = await command.execute(
+        kind, record_id, confirmation.revision,
+        confirmation.account_id, confirmation.account_revision, administrator.id,
+    )
+    if result != "confirmed":
+        message = "目标账号已变化或停用，请刷新后重试" if result == "invalid_account" else (
+            "记录已变化、已确认归属或目标账号已有相同订阅，请刷新后核对"
+        )
+        raise HTTPException(status_code=409, detail=message)
+    return _SchemaResponse(success=True)
+
 @router.get("/{subscribe_id}", summary="订阅详情", response_model=_SchemaSubscribe)
 async def read_subscribe(
     subscribe_id: int,
@@ -983,6 +1105,7 @@ async def delete_subscribe(
         SubscribeDeletionActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
+            owner_identity=getattr(current_user, "notification_identity", None),
         ),
     )
     if status == "not_found":

@@ -163,6 +163,22 @@ def reset_server_application_services() -> None:
     _server_sharing_service = None
 
 
+class PushRelayError(ValueError):
+    """
+    将通知中转的拒绝状态交给调用方，保留现有 ValueError 接口。
+    """
+
+    def __init__(self, message: str, status: int, retry_after: int | None = None) -> None:
+        """
+        :param message: 可以安全展示的错误说明
+        :param status: 实际收到的 HTTP 状态；无响应时为零
+        :param retry_after: 中转提供的等待秒数
+        """
+        super().__init__(message)
+        self.status = status
+        self.retry_after = retry_after
+
+
 @observe_compat_facade("MoviePilotServerHelper")
 class MoviePilotServerHelper:
     """
@@ -239,12 +255,16 @@ class MoviePilotServerHelper:
         if response is None or response.status_code != 200:
             code = response.status_code if response is not None else 0
             if code == 403 and path == "instances":
-                raise ValueError("消息中心尚未开放自动接入，请联系中心运营者")
+                raise PushRelayError("消息中心尚未开放自动接入，请联系中心运营者", code)
             if code == 401:
-                raise ValueError("通知接入凭据无效或已停用，请联系中心运营者")
-            if code == 429:
-                raise ValueError("消息中心请求过于频繁，请稍后重试")
-            raise ValueError(f"私有通知服务请求失败（{code}）")
+                raise PushRelayError("通知接入凭据无效或已停用，请联系中心运营者", code)
+            if response is not None and code == 429:
+                retry_header = response.headers.get("Retry-After", "")
+                retry_after = None
+                if len(retry_header) <= 9 and retry_header.isascii() and retry_header.isdecimal():
+                    retry_after = int(retry_header)
+                raise PushRelayError("消息中心请求过于频繁，请稍后重试", code, retry_after)
+            raise PushRelayError(f"私有通知服务请求失败（{code}）", code)
         try:
             return _response_mapping(response)
         except ValueError as error:

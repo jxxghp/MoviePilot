@@ -67,6 +67,13 @@ Entrypoints (app/api, app/command, app/monitor, app/scheduler, app/agent, app/wo
 7. Concrete cache, network, browser, web transport, observability, OS/process, filesystem or Rust bridge I/O -> matching technical package under `app/adapters` (`external/` for named third-party ecosystems)
 8. Public plugin contract or legacy import preservation -> curate in `app/sdk` or map lazily in `app/runtime/compat/manifest.py`
 
+Browser subscription ownership belongs to `app/application/webpush.py`, with
+table access in `app/db/oper/webpush.py`, short transactions in
+`app/db/adapters/webpush.py`, and explicit composition in
+`app/startup/composition/webpush.py`. `app/runtime/webpush.py` retains only the
+ownerless legacy process ABI; canonical personal and management delivery must
+not read it or infer persistent owners from it.
+
 ### Naming and Package Root Discipline
 
 - Do not create generic `common`, `helper` or `utils` buckets, and never recreate
@@ -92,6 +99,14 @@ Entrypoints (app/api, app/command, app/monitor, app/scheduler, app/agent, app/wo
 ## Existing Chain, Module and DB Layers
 
 ### Chain and Scheduler Layer
+
+- Legacy interactive commands that cannot yet accept a separate reply address
+  use the bounded reply scope owned by `app/application/messaging/message.py`.
+  Message and media ingress bind the trusted channel, source, actual actor and
+  conversation; rendering freezes the address before persistence. This scope
+  never authorizes a user, never rewrites explicit/private targets, and never
+  follows a user's most recent conversation. New contracts should carry an
+  explicit address; compatibility scopes must not become a second identity store.
 
 - Runtime shutdown state is owned by `StopState` in `app/runtime/stop.py`
   (`global_vars` stop properties on `app/runtime/config.py` remain a legacy
@@ -313,3 +328,5 @@ Event producer and consumer facts are collected solely by
 
 Run `tests/test_architecture_dependencies.py` after any ownership, package-root
 or import change.
+
+消息渠道投递规则的校验、旧地址迁移与目标匹配由 `app/application/messaging/channel/rules.py` 承担，连接资源管理由同包 `settings.py` 承担。宿主直接导入对应职责 owner，连接资源与投递规则不重复导出或维护第二份实现。

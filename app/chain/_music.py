@@ -11,6 +11,7 @@ from app.application.classification.reference import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.history import scoped_download_owner
 from app.application.subscription.activity import current_activity_run
 from app.application.subscription.contract import (
     SubscriptionRepository,
@@ -572,15 +573,16 @@ class MusicSubscribeMixin:
         if execution_context:
             execution_context.report_phase("preparing")
         self._ensure_music_execution_active(execution_context)
-        downloads, _ = DownloadChain().batch_download(
-            contexts=contexts,
-            username=subscribe.username,
-            save_path=subscribe.save_path,
-            downloader=subscribe.downloader,
-            source=cast(MusicSubscribeMixinHost, self).get_subscribe_source_keyword(subscribe),
-            custom_words=subscribe.custom_words,
-            governance=governance,
-        )
+        with scoped_download_owner(getattr(subscribe, "owner_identity", None)):
+            downloads, _ = DownloadChain().batch_download(
+                contexts=contexts,
+                username=subscribe.username,
+                save_path=subscribe.save_path,
+                downloader=subscribe.downloader,
+                source=cast(MusicSubscribeMixinHost, self).get_subscribe_source_keyword(subscribe),
+                custom_words=subscribe.custom_words,
+                governance=governance,
+            )
         successful = [
             context for context in downloads or []
             if context and context.meta_info and context.torrent_info

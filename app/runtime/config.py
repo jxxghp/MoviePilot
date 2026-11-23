@@ -584,7 +584,6 @@ class ConfigModel(BaseModel):
     # 下载配置
     TORRENT_TAG: str = Field(default="MOVIEPILOT", description='种子标签')
     DOWNLOAD_SUBTITLE: bool = Field(default=True, description='下载站点字幕')
-    AUTO_DOWNLOAD_USER: Optional[str] = Field(default=None, description='交互搜索自动下载用户ID，使用,分割')
     DOWNLOAD_TMPEXT: list[str] = Field(default_factory=lambda: [".!qb", ".part"], description='下载器临时文件后缀')
 
     # 目录监控配置

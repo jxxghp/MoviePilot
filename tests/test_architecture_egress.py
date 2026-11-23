@@ -123,8 +123,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.cli", "urllib.request"): "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
     ("app.doctor.checks", "socket.create_connection"): "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
-    # 删除用户历史频道回落的get_channel/fetch_channel各一次；未新增网络能力或其它SDK调用。
-    ("app.modules.discord.discord", "discord"): "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5",
+    # 仅通知模式通过同一 SDK 登录 REST，受管附件复用该 SDK 的文件对象。
+    ("app.modules.discord.discord", "discord"): "5088f05246c869de00b5b05d11b387bf08d528aca2a4b62c975000faff047bae",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
     ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
     ("app.modules.filemanager.storages.smb", "smbclient"): "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
@@ -143,7 +143,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"): "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85",
     # Slack 客户端守卫和返回类型收紧后，扫描器保留了完整调用面；传输边界未增加。
     ("app.modules.slack.slack", "slack_bolt"): "d970999c7c77ca5e93ec8a2773fa0b3db10df63ecce780b5fd52ca038734666a",
-    ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
+    # 受管发送使用无自动重试的 WebClient，直接检查 SDK 响应和异常。
+    ("app.modules.slack.slack", "slack_sdk"): "dcddba8ce09bfdae7f56f6e0b2de30d72478e606ee5d7c097ae1b3894042dc7c",
     # Session 类型使扫描器识别原有的两处 close；未新增发送或会话关闭路径。
     ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c",
     # 区分添加与重复响应时只新增 Torrent 值对象构造，仍复用原 SDK 传输与会话握手。

@@ -2,6 +2,7 @@
 下载任务查询与控制应用服务。
 """
 
+import re
 from typing import Any, Callable, List, Optional
 
 from app.application.directory import validate_download_save_path
@@ -9,6 +10,9 @@ from app.application.download.validation import validate_torrent_hash
 from app.application.history import DownloadHistorySnapshot
 from app.schemas.transfer import DownloaderTorrent, DownloadTaskMedia
 from app.schemas.types import TorrentStatus
+
+TASK_REFERENCE_PREFIX = "mp-task-"
+_TASK_REFERENCE = re.compile(r"mp-task-[0-9a-f]{32}")
 
 
 class DownloadTaskService:
@@ -26,6 +30,8 @@ class DownloadTaskService:
         start_torrents: Callable[..., bool],
         stop_torrents: Callable[..., bool],
         remove_torrents: Callable[..., bool],
+        *,
+        get_owned_tasks: Callable[[str, list[str]], dict[str, DownloadHistorySnapshot]] | None = None,
     ) -> None:
         """
         注入下载器操作和历史读取端口。
@@ -35,8 +41,9 @@ class DownloadTaskService:
         self._start_torrents = start_torrents
         self._stop_torrents = stop_torrents
         self._remove_torrents = remove_torrents
+        self._get_owned_tasks = get_owned_tasks
 
-    def downloading(self, name: Optional[str] = None) -> List[DownloaderTorrent]:
+    def downloading(self, name: Optional[str] = None, *, owner_identity: str | None = None) -> List[DownloaderTorrent]:
         """
         查询下载中任务，并附加对应下载历史的媒体与用户信息。
         """
@@ -46,6 +53,8 @@ class DownloadTaskService:
         )
         if not torrents:
             return []
+        if owner_identity is not None:
+            return self._owned_downloading(torrents, owner_identity)
         history_map = self._get_history_by_hashes([torrent.hash for torrent in torrents if torrent.hash])
         for torrent in torrents:
             if not torrent.hash:
@@ -53,21 +62,60 @@ class DownloadTaskService:
             history = history_map.get(torrent.hash)
             if not history:
                 continue
-            torrent.media = DownloadTaskMedia(
-                media_source=history.media_source,
-                media_id=history.media_id,
-                type=history.type,
-                title=history.title,
-                season=history.seasons,
-                episode=history.episodes,
-                image=history.poster,
-                poster=history.poster,
-                backdrop=history.image,
-            )
-            torrent.site_name = history.torrent_site
-            torrent.userid = history.userid
-            torrent.username = history.username
+            self._populate_history(torrent, history)
         return torrents
+
+    def _owned_downloading(
+        self, torrents: list[DownloaderTorrent], owner_identity: str,
+    ) -> list[DownloaderTorrent]:
+        """
+        只返回与该账户的提交记录、下载器和任务 Hash 同时匹配的当前任务。
+        """
+        lookup = self._get_owned_tasks
+        if not lookup or not owner_identity:
+            return []
+        tagged = [(torrent, self._read_reference(torrent.tags)) for torrent in torrents]
+        references = sorted({reference for _, reference in tagged if reference})
+        history_map = lookup(owner_identity, references)
+        owned = []
+        for torrent, reference in tagged:
+            history = history_map.get(reference) if reference else None
+            if (history and torrent.hash and torrent.downloader
+                    and torrent.hash == history.download_hash and torrent.downloader == history.downloader):
+                snapshot = torrent.model_copy(update={
+                    "tags": ",".join(tag for tag in (torrent.tags or "").split(",") if tag.strip() != reference),
+                })
+                self._populate_history(snapshot, history)
+                owned.append(snapshot)
+        return owned
+
+    @staticmethod
+    def _read_reference(tags: str | None) -> str | None:
+        """
+        取当前任务的唯一提交标识。无法区分的多标识任务不授予本人可见性。
+        """
+        references = {value for tag in (tags or "").split(",") if _TASK_REFERENCE.fullmatch(value := tag.strip())}
+        return references.pop() if len(references) == 1 else None
+
+    @staticmethod
+    def _populate_history(torrent: DownloaderTorrent, history: DownloadHistorySnapshot) -> None:
+        """
+        把已定位的下载历史展示信息填充到任务对象。
+        """
+        torrent.media = DownloadTaskMedia(
+            media_source=history.media_source,
+            media_id=history.media_id,
+            type=history.type,
+            title=history.title,
+            season=history.seasons,
+            episode=history.episodes,
+            image=history.poster,
+            poster=history.poster,
+            backdrop=history.image,
+        )
+        torrent.site_name = history.torrent_site
+        torrent.userid = history.userid
+        torrent.username = history.username
 
     def set_downloading(
         self,

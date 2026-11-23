@@ -466,6 +466,8 @@ class SystemService:
             return SystemOperationResult(bool(success), message)
         if key not in {item.value for item in SystemConfigKey}:
             return SystemOperationResult(False, f"配置项 '{key}' 不存在")
+        if key in {SystemConfigKey.Notifications.value, SystemConfigKey.ChannelSettings.value}:
+            return SystemOperationResult(False, "请通过通知投递或机器人交互设置保存渠道配置")
         if isinstance(value, list):
             value = list(filter(None, value)) or None
         try:

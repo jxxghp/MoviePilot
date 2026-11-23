@@ -176,6 +176,15 @@ class TransactionalDownloadHistoryRepository:
             )
         )
 
+    def get_owned_tasks(self, owner_identity: str, references: list[str]) -> dict[str, DownloadHistorySnapshot]:
+        """
+        在下载历史事务内读取已证明归属的任务快照。
+        """
+        return self._read(lambda repository: {
+            reference: _project_history(record)
+            for reference, record in repository.get_owned_tasks(owner_identity, references).items()
+        })
+
     def get_by_media_identity(
         self,
         media_source: MediaSource,
@@ -244,7 +253,7 @@ class TransactionalDownloadHistoryRepository:
         self,
         page: int = 1,
         count: int = 30,
-        *, username: str | None = None,
+        *, username: str | None = None, owner_identity: str | None = None,
     ) -> list[DownloadHistorySnapshot]:
         """
         在独立异步 Session 内分页读取并投影历史。
@@ -254,15 +263,16 @@ class TransactionalDownloadHistoryRepository:
                 page,
                 count,
                 username=username,
+                owner_identity=owner_identity,
             )
             return [_project_history(record) for record in records]
 
-    async def async_count(self, *, username: str | None = None) -> int:
+    async def async_count(self, *, username: str | None = None, owner_identity: str | None = None) -> int:
         """
         在独立异步 Session 内统计下载历史总数。
         """
         async with self._async_session() as session:
-            return await DownloadHistoryOper(session).async_count(username=username)
+            return await DownloadHistoryOper(session).async_count(username=username, owner_identity=owner_identity)
 
     def add(
         self,
@@ -317,7 +327,7 @@ class SessionDownloadHistoryRepository:
         self,
         page: int = 1,
         count: int = 30,
-        *, username: str | None = None,
+        *, username: str | None = None, owner_identity: str | None = None,
     ) -> list[DownloadHistorySnapshot]:
         """
         在请求异步 Session 内分页读取并投影历史。
@@ -328,16 +338,17 @@ class SessionDownloadHistoryRepository:
             page,
             count,
             username=username,
+            owner_identity=owner_identity,
         )
         return [_project_history(record) for record in records]
 
-    async def async_count(self, *, username: str | None = None) -> int:
+    async def async_count(self, *, username: str | None = None, owner_identity: str | None = None) -> int:
         """
         在请求异步 Session 内统计下载历史总数。
         """
         if not isinstance(self._session, AsyncSession):
             raise RuntimeError("下载历史异步统计需要 AsyncSession")
-        return await DownloadHistoryOper(self._session).async_count(username=username)
+        return await DownloadHistoryOper(self._session).async_count(username=username, owner_identity=owner_identity)
 
     def stage_delete_history(self, history_id: int) -> None:
         """

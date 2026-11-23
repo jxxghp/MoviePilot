@@ -4,27 +4,38 @@
 
 import asyncio
 import json
+import time
 from functools import partial
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from fastapi import HTTPException
-from sqlalchemy import delete, select
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+from sqlalchemy import delete, select, update
 
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
 from app.agent.identity import AgentIdentityError, require_execution_user, resolve_task_user
 from app.application.messaging.plugin import plugin_input_interaction_manager
 from app.application.security import authorization as authorization_module
 from app.application.security.auth import AuthService
-from app.application.security.authorization import ChannelAuthorizationService
+from app.application.security.authorization import ChannelAuthorizationService, scoped_admission
 from app.chain.message import MessageChain
+from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.adapters.authorization import authorization_scope
 from app.db.adapters.user import TransactionalUserRepository
-from app.db.models.authorization import ChannelAuthorization, ChannelBinding
+from app.db.models.agenttask import AgentTask
+from app.db.models.agenttaskrun import AgentTaskRun
+from app.db.models.authorization import ChannelAuthorization, ChannelBinding, ChannelRuleTaskGrant
+from app.db.models.downloadhistory import DownloadHistory
+from app.db.models.outbox import OutboxMessage
+from app.db.models.subscribe import Subscribe
+from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
 from app.db.session import SessionFactory, async_session_scope
-from app.schemas.message import IncomingMessage
+from app.domain.admission import AdmissionProof
+from app.schemas.channel import AdmissionRule, InteractionPolicy
+from app.schemas.message import IncomingMessage, Message
 from app.schemas.system import NotificationConf
 from app.schemas.token import TokenPayload
 from app.schemas.types import EventType, NotificationChannel
@@ -40,6 +51,7 @@ def channel_authorization(db, monkeypatch):
     :yields: 授权服务、启用渠道配置及真实用户仓储
     """
     db.watermark(User)
+    db.watermark(OutboxMessage)
     configs = [
         NotificationConf(id="telegram-a", name="机器人A", type="telegram", enabled=True),
         NotificationConf(id="telegram-b", name="机器人B", type="telegram", enabled=True),
@@ -60,6 +72,10 @@ def channel_authorization(db, monkeypatch):
         authorization_module.configure_channel_authorization(previous)
         with SessionFactory() as session:
             session.execute(delete(ChannelBinding))
+            new_member_ids = select(ChannelAuthorization.id)
+            if before:
+                new_member_ids = new_member_ids.where(ChannelAuthorization.id.not_in(before))
+            session.execute(delete(ChannelRuleTaskGrant).where(ChannelRuleTaskGrant.member_id.in_(new_member_ids)))
             statement = delete(ChannelAuthorization)
             if before:
                 statement = statement.where(ChannelAuthorization.id.not_in(before))
@@ -133,6 +149,176 @@ def test_role_and_scopes_are_rechecked_for_existing_api_executors(channel_author
         executor._build_headers("search.torrents", "GET", "/api/v1/search/media/1")
 
 
+@pytest.mark.parametrize("entry", ["selection", "automatic", "api", "trusted"])
+def test_download_revoked_during_preparation_is_never_submitted(channel_authorization, monkeypatch, entry):
+    """
+    使用真实成员仓储，在准备资源后、提交下载器前停用发起者。
+    """
+    from app.api.endpoints import download as download_api
+    from app.application.messaging.media import media_interaction_manager
+    from app.chain.download import DownloadChain
+    from app.chain.interaction import MediaInteractionChain
+    from app.domain.admission import AdmissionProof
+    from app.schemas.channel import InteractionPolicy
+    from app.schemas.context import TorrentInfo
+    from tests.test_media_interaction import _build_context
+
+    service, configs, _ = channel_authorization
+    channel, source, chat_id = NotificationChannel.Telegram, "机器人A", "-100"
+    member = None
+    proof = None
+    now = 1000.0
+    if entry == "trusted":
+        channel, source, chat_id = NotificationChannel.Wechat, "可信群", "group:test"
+        configs.append(NotificationConf(id="wechat-trusted", name=source, type="wechat", enabled=True,
+                                        interaction_policy=InteractionPolicy(
+                                            connection_id="wechat-trusted", identity_namespace="wechat-trusted",
+                                            enabled=True, revision=2,
+                                            admission="manual_rules",
+                                            admission_rules=(AdmissionRule(kind="group", target="test", scopes=("download",)),),
+                                        )))
+        proof = AdmissionProof("wechat-trusted", 2, "42", "test", 1060.0)
+        monkeypatch.setattr(authorization_module, "time", SimpleNamespace(time=lambda: now))
+    else:
+        member = _approve(service)
+    sample = _build_context()
+    assert sample.media_info and sample.torrent_info and sample.meta_info
+    submit = Mock(return_value=(None, None, None, "测试下载器"))
+    monkeypatch.setattr(DownloadChain, "download", submit)
+    monkeypatch.setattr(DownloadChain, "_record_rejected_download", Mock())
+    monkeypatch.setattr(DownloadChain, "_prepare_batch_download_contexts", lambda _, contexts, **kwargs: (contexts, {}))
+    monkeypatch.setattr(DownloadChain, "_build_download_failure_fingerprint", lambda *_: None)
+    monkeypatch.setattr(DownloadChain, "_has_completed_music_download", lambda *_: False)
+
+    def prepare(_chain, **_kwargs):
+        """
+        资源已经准备完成，发起者此时被停用或事件证明刚好过期。
+        """
+        nonlocal now
+        if member is None:
+            now = 1060.0
+        else:
+            service.update(member.id, status="disabled", role="member", scopes=(), reviewer_id=1)
+        return SimpleNamespace(media=sample.media_info, torrent=sample.torrent_info,
+                               torrent_content="magnet:fixture", download_dir=None, site_downloader=None), None
+
+    monkeypatch.setattr(DownloadChain, "_prepare_download_single", prepare)
+    if entry == "api":
+        assert member is not None
+        monkeypatch.setattr(download_api, "_resolve_add_media", lambda *_: (sample.meta_info, sample.media_info, None))
+        with pytest.raises(HTTPException, match="停用") as response:
+            download_api.add(
+                TorrentInfo.model_validate(sample.torrent_info.to_dict()),
+                current_user=service.authorize_operation(member.id, "download.add"),
+            )
+        assert response.value.status_code == 403
+    else:
+        chain = MediaInteractionChain()
+        replies = Mock()
+        monkeypatch.setattr(chain, "post_message", replies)
+        monkeypatch.setattr(chain, "_prompt_download_dir_selection", Mock(return_value=False))
+        request = media_interaction_manager.create_or_replace(
+            user_id="42", channel=channel, source=source, username="测试成员",
+            original_chat_id=chat_id, action="Search", keyword="星际穿越", title="星际穿越",
+            meta=sample.meta_info, items=[sample],
+        )
+        request.phase = "torrent"
+        request.current_media = sample.media_info
+        try:
+            with authorization_module.scoped_admission(proof):
+                if entry == "selection":
+                    chain._handle_torrent_selection(request, 1, channel, source, "42", "测试成员")
+                else:
+                    chain._auto_download(request, [sample], channel, source, "42", "测试成员", no_exists={})
+            reply = replies.call_args.args[0]
+            assert "授权" in reply.title and reply.original_chat_id == chat_id
+        finally:
+            media_interaction_manager.clear()
+    saved = service.find(channel.value, source, "42")
+    assert saved is not None and saved.status == ("pending" if entry == "trusted" else "disabled")
+    submit.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["traditional", "fallback", "agent_api"])
+async def test_subscription_revoked_during_recognition_is_not_written(channel_authorization, monkeypatch, entry):
+    """
+    在识别媒体时停用实际成员，覆盖传统订阅、自动择优补订阅及渠道 Agent API。
+    """
+    from app.api.endpoints.subscribe import create_subscribe
+    from app.chain.download import DownloadChain
+    from app.chain.interaction import MediaInteractionChain
+    from app.chain.subscribe import create
+    from app.chain.subscribe.facade import SubscribeChain
+    from app.db.worker import DatabaseWorker
+    from app.schemas.subscribe import Subscribe as SubscribeRequest
+    from tests.test_media_interaction import _build_context
+
+    service, _, _ = channel_authorization
+    member = _approve(service)
+    user = service.authorize_operation(member.id, "subscription.add")
+    sample = _build_context()
+    media = sample.media_info
+    assert media is not None and sample.meta_info is not None
+    chain = MediaInteractionChain()
+    reply = Mock()
+    monkeypatch.setattr(chain, "post_message", reply)
+
+    def recognize(_owner, context):
+        """
+        媒体识别完成时模拟审批状态的并发变化。
+        """
+        context.mediainfo = media
+        service.update(member.id, status="disabled", role="member", scopes=(), reviewer_id=1)
+
+    async def async_recognize(owner, context):
+        """
+        在异步 API 的媒体识别阶段触发同一状态变化。
+        """
+        await asyncio.to_thread(recognize, owner, context)
+
+    write = Mock(return_value=(987, ""))
+    async_write = AsyncMock(return_value=(987, ""))
+    monkeypatch.setattr(create, "find_existing_subscription", Mock(return_value=None))
+    monkeypatch.setattr(create, "async_find_existing_subscription", AsyncMock(return_value=None))
+    monkeypatch.setattr(create, "add_subscribe", write)
+    monkeypatch.setattr(create, "async_add_subscribe", async_write)
+    monkeypatch.setattr(SubscribeChain, "_SubscribeChain__build_subscribe_notification", Mock(return_value=None))
+    monkeypatch.setattr(SubscribeChain, "_SubscribeChain__recognize_subscribe_media", recognize)
+    monkeypatch.setattr(SubscribeChain, "_SubscribeChain__async_recognize_subscribe_media", async_recognize)
+    monkeypatch.setattr(SubscribeChain, "_SubscribeChain__prepare_subscribe_episodes", Mock(return_value=None))
+    monkeypatch.setattr(SubscribeChain, "_SubscribeChain__async_prepare_subscribe_episodes", AsyncMock(return_value=None))
+    monkeypatch.setattr(SubscribeChain, "_SubscribeChain__finalize_subscribe_create_context", Mock())
+    monkeypatch.setattr(SubscribeChain, "_SubscribeChain__async_finalize_subscribe_create_context", AsyncMock())
+    monkeypatch.setattr(DownloadChain, "get_no_exists_info", Mock(return_value=(False, {})))
+    monkeypatch.setattr(DownloadChain, "batch_download", Mock(return_value=([], {})))
+    if entry == "agent_api":
+        worker = DatabaseWorker(max_workers=1, capacity=1, reserve_interactive=False)
+        await worker.start()
+        monkeypatch.setattr(service, "_executor", worker)
+        try:
+            with pytest.raises(HTTPException, match="停用") as response:
+                await create_subscribe(subscribe_in=SubscribeRequest(name="星际穿越", year="2014", type="电影"),
+                                       current_user=user)
+        finally:
+            await worker.shutdown()
+        assert response.value.status_code == 403
+    else:
+        from app.chain.music_interaction.subscribe import subscribe_media
+
+        channel = NotificationChannel.Telegram
+        request = SimpleNamespace(action="Subscribe", current_media=media, meta=sample.meta_info,
+                                  original_chat_id="-100", keyword="星际穿越")
+        if entry == "fallback":
+            chain._auto_download(request, [sample], channel, "机器人A", "42", "测试成员", no_exists={})
+        else:
+            subscribe_media(chain, request, media, channel, "机器人A", "42", "测试成员")
+        assert reply.call_args.args[0].original_chat_id == "-100"
+    assert service.find("Telegram", "机器人A", "42").status == "disabled"
+    write.assert_not_called()
+    async_write.assert_not_awaited()
+
+
 def test_channel_token_has_fixed_route_and_cannot_issue_web_login(channel_authorization):
     """
     渠道令牌带固定路由声明，账号不能取得网页登录令牌，撤销后旧签名也被拒绝。
@@ -204,7 +390,9 @@ def test_apply_control_is_handled_without_model_and_does_not_run_old_request(cha
     service, _, _ = channel_authorization
     chain = MessageChain()
     post = Mock()
+    dispatch = Mock(return_value=False)
     monkeypatch.setattr(chain, "post_message", post)
+    monkeypatch.setattr(chain, "_handle_message_core", dispatch)
     assert chain._handle_channel_authorization(
         NotificationChannel.Telegram, "机器人A", "42", "成员", "订阅某部电影", None
     )
@@ -212,25 +400,55 @@ def test_apply_control_is_handled_without_model_and_does_not_run_old_request(cha
     assert chain._handle_channel_authorization(
         NotificationChannel.Telegram, "机器人A", "42", "成员", "", "authorization:apply"
     )
-    assert service.find("Telegram", "机器人A", "42").status == "pending"
+    member = service.find("Telegram", "机器人A", "42")
+    assert member.status == "pending"
+    assert post.call_count == 3
+    service.update(member.id, status="approved", role="member", scopes=("search",), reviewer_id=1)
+    dispatch.assert_not_called()
     assert post.call_count == 3
 
 
-def test_channel_admin_cannot_manage_public_authorizations():
+def test_channel_authorization_requires_web_login(monkeypatch):
     """
-    渠道管理员不等于网页登录系统管理员，不能从新管理端点继续转授权限。
+    固定 API 凭据和已关联的渠道令牌不能管理授权或领取网页账号关联码。
     """
-    from app.api.endpoints.authorization import _administrator
+    from app.api.dependencies.auth import get_current_user
+    from app.api.endpoints import authorization as endpoint
 
-    with pytest.raises(HTTPException) as error:
-        _administrator(SimpleNamespace(is_superuser=True, account_type="channel", authorization_id="member"))
-    assert error.value.status_code == 403
+    app = FastAPI()
+    app.include_router(endpoint.router, prefix="/authorization")
+    principal = SimpleNamespace(id=17, is_active=True, is_superuser=True, account_type="local", authorization_id=None)
+    app.dependency_overrides[get_current_user] = lambda: principal
+    service = Mock()
+    service.list_members.return_value = []
+    service.create_binding.return_value = ("fixture-code", 123456)
+    monkeypatch.setattr(endpoint, "_service", lambda: service)
+    monkeypatch.setattr(endpoint, "get_notification_configs", lambda **_: [])
+
+    with TestClient(app) as client:
+        web_login = {"Authorization": "Bearer fixture"}
+        assert client.get("/authorization/", headers={"X-API-Key": "fixture"}).status_code == 403
+        assert client.post("/authorization/binding", params={"token": "fixture"}).status_code == 403
+        principal.authorization_id = "linked-channel"
+        assert client.get("/authorization/", headers=web_login).status_code == 403
+        assert client.post("/authorization/binding", headers=web_login).status_code == 403
+        service.list_members.assert_not_called()
+        service.create_binding.assert_not_called()
+
+        principal.authorization_id = None
+        assert client.get("/authorization/", headers=web_login).status_code == 200
+        principal.is_superuser = False
+        assert client.get("/authorization/", headers=web_login).status_code == 403
+        assert client.post("/authorization/binding", headers=web_login).status_code == 200
+        service.create_binding.assert_called_once_with(principal.id)
+        service.create_binding.side_effect = ValueError("关联账号已失效，请重新登录后生成关联码")
+        assert client.post("/authorization/binding", headers=web_login).status_code == 403
 
 
 @pytest.mark.parametrize("status", ["pending", "approved"])
 def test_channel_member_text_cannot_reenter_legacy_admin_sessions(channel_authorization, monkeypatch, status):
     """
-    普通及待审批成员绕过旧插件输入会话，只把业务请求送到受控 Agent。
+    普通及待审批成员显式请求 Agent 时绕过旧插件输入会话。
     """
     from dataclasses import replace
 
@@ -249,7 +467,7 @@ def test_channel_member_text_cannot_reenter_legacy_admin_sessions(channel_author
     monkeypatch.setattr(chain, "_plugin_input_interaction_handler", plugin)
     monkeypatch.setattr(chain, "_handle_secret_confirmation_control", Mock(return_value=False))
     monkeypatch.setattr(chain, "_mark_message_processing_finished", Mock())
-    chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "昵称", "继续操作", is_channel_admin=True)
+    chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "昵称", "/ai 继续操作", is_channel_admin=True)
     assert agent.call_args.kwargs["is_channel_admin"] is False
     plugin.assert_not_called()
     if status == "approved":
@@ -467,6 +685,110 @@ def test_special_plugin_route_preserves_web_commands_and_attachments(
     core.assert_called_once()
 
 
+@pytest.mark.parametrize(("text", "callback"), [
+    ("1", None), ("", "sites:fixture:select:1"), ("", "subscribes:fixture:select:1"),
+    ("", "skills:fixture:select:1"), ("", "update:fixture:confirm"), ("", "[PLUGIN]fixture:select"),
+])
+def test_manual_revocation_stops_existing_admin_interactions_before_dispatch(
+    channel_authorization, monkeypatch, text, callback,
+):
+    """
+    实际授权仓储停用成员后，原群的旧数字输入和按钮不能进入传统交互或插件入口。
+    """
+    service, _, _ = channel_authorization
+    member = _approve(service, role="admin", scopes=("search",))
+    chain = MessageChain()
+    dispatch = Mock(return_value=False)
+    reply = Mock()
+    monkeypatch.setattr(chain, "_handle_message_core", dispatch)
+    monkeypatch.setattr(chain, "_mark_message_processing_started", Mock(return_value=None))
+    monkeypatch.setattr(chain, "_mark_message_processing_finished", Mock())
+    monkeypatch.setattr(chain, "post_message", reply)
+
+    def send_old_interaction():
+        """
+        保持原消息和调用上下文，只改变数据库中的当前授权。
+        """
+        chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "成员", text,
+                             callback_data=callback, original_chat_id="-100", is_channel_admin=True)
+
+    send_old_interaction()
+    dispatch.assert_called_once()
+    service.update(member.id, status="disabled", role="admin", scopes=(), reviewer_id=1)
+    send_old_interaction()
+    dispatch.assert_called_once()
+    assert reply.call_args.args[0].original_chat_id == "-100"
+
+
+def test_member_can_search_select_download_and_subscribe_without_ai(channel_authorization, monkeypatch):
+    """
+    已批准的普通成员可从原群进入传统业务，最终写入以实际授权主体为准。
+    """
+    from dataclasses import replace
+
+    from app.application.messaging.media import media_interaction_manager
+    from app.chain.interaction import MediaInteractionChain
+    from tests.test_media_interaction import _build_context
+
+    service, _, _ = channel_authorization
+    member = _approve(service)
+    owner = service.principal(member.id)
+    chain = MessageChain()
+    media = MediaInteractionChain()
+    monkeypatch.setattr(chain, "runtime_config", replace(chain.runtime_config, ai_agent_enable=False))
+    monkeypatch.setattr(chain, "_record_user_message", Mock())
+    monkeypatch.setattr(chain, "_mark_message_processing_started", Mock(return_value=None))
+    monkeypatch.setattr(chain, "_mark_message_processing_finished", Mock())
+    agent = Mock()
+    monkeypatch.setattr(chain, "_handle_ai_message", agent)
+    monkeypatch.setattr(chain, "post_message", Mock())
+    monkeypatch.setattr(MediaInteractionChain, "post_message", Mock())
+    medias = Mock()
+    torrents = Mock()
+    monkeypatch.setattr(MediaInteractionChain, "post_medias_message", medias)
+    monkeypatch.setattr(MediaInteractionChain, "post_torrents_message", torrents)
+    sample = _build_context()
+    monkeypatch.setattr("app.chain.media.MediaChain.search", Mock(return_value=(sample.meta_info, [sample.media_info])))
+    monkeypatch.setattr("app.chain.interaction.SearchChain.process", Mock(return_value=[sample]))
+    monkeypatch.setattr("app.chain.interaction.TorrentHelper.sort_torrents", lambda _, results: results)
+    monkeypatch.setattr("app.chain.interaction.DownloadChain.get_no_exists_info", Mock(return_value=(False, {})))
+    monkeypatch.setattr(MediaInteractionChain, "_get_download_dirs", Mock(return_value=[]))
+    download = Mock()
+    subscribe = Mock()
+    monkeypatch.setattr("app.chain.interaction.DownloadChain.download_single", download)
+    monkeypatch.setattr("app.chain.subscribe.facade.SubscribeChain.add", subscribe)
+    channel = NotificationChannel.Telegram
+
+    def send(text="", *, callback=None):
+        """
+        从普通成员的原群提交文本或由界面生成的回调。
+        """
+        chain.handle_message(channel, "机器人A", "42", "群昵称", text, original_chat_id="-100", callback_data=callback)
+
+    try:
+        send("搜索 星际穿越")
+        medias.assert_called_once()
+        assert medias.call_args.args[0].original_chat_id == "-100"
+        send("1")
+        torrents.assert_called_once()
+        callback = next(button["callback_data"] for row in torrents.call_args.args[0].buttons for button in row
+                        if media.parse_callback(button["callback_data"])[1:] == ("download", 1))
+        send(callback=callback)
+        download.assert_called_once()
+        assert download.call_args.kwargs["username"] == owner.name
+        send("订阅 星际穿越")
+        send("1")
+        subscribe.assert_called_once()
+        assert subscribe.call_args.kwargs["owner_identity"] == owner.notification_identity
+        assert subscribe.call_args.kwargs["username"] == owner.name
+        agent.assert_not_called()
+        assert not owner.is_superuser
+    finally:
+        request = media_interaction_manager.get_by_user("42", channel, "机器人A", "-100")
+        if request is not None:
+            media_interaction_manager.remove(request.request_id)
+
+
 def test_account_binding_requires_both_sides_and_never_approves_pending_member(channel_authorization, db):
     """
     网页账号生成的码只能消费一次，关联不会替代渠道审批或解除管理员停用。
@@ -507,6 +829,110 @@ def test_binding_expiry_and_replaced_account_fail_without_changing_member(channe
     with pytest.raises(ValueError, match="过期"):
         service.bind("Telegram", "机器人A", "42", "成员", code)
     assert service.find("Telegram", "机器人A", "42").user_id == member.user_id
+
+
+@pytest.mark.parametrize("conflict", [False, True])
+def test_binding_moves_exact_business_identity_atomically(channel_authorization, db, conflict):
+    """
+    关联只迁移该成员自己的稳定归属。目标已有相同订阅时保留旧记录和关联码。
+    """
+    service, _, users = channel_authorization
+    local = db.add(User(name="binding-owner-target", is_active=True))
+    member = service.request("Telegram", "机器人A", "42", "成员")
+    previous = users.get_by_id(member.user_id)
+    assert previous is not None
+    media = {"name": "旧订阅", "type": "电影", "media_source": "themoviedb", "media_id": "123"}
+    active = db.add(Subscribe(**media, username="更名后的显示名", owner_identity=previous.notification_identity))
+    history = db.add(SubscribeHistory(name="历史", username=previous.name, owner_identity=previous.notification_identity))
+    download = db.add(DownloadHistory(path="/synthetic/file", type="电影", title="下载", owner_identity=previous.notification_identity))
+    legacy = db.add(Subscribe(name="待人工核对", username=previous.name))
+    if conflict:
+        duplicate = db.add(Subscribe(**media, username=local.name, owner_identity=local.notification_identity))
+    code, _ = service.create_binding(local.id)
+
+    if conflict:
+        with pytest.raises(ValueError, match="业务归属冲突"):
+            service.bind("Telegram", "机器人A", "42", "成员", code)
+        with SessionFactory() as session:
+            assert session.get(ChannelAuthorization, member.id).user_identity == previous.notification_identity
+            assert session.get(Subscribe, active.id).owner_identity == previous.notification_identity
+            assert session.get(SubscribeHistory, history.id).owner_identity == previous.notification_identity
+            assert session.get(DownloadHistory, download.id).owner_identity == previous.notification_identity
+        with SessionFactory() as session, session.begin():
+            session.execute(delete(Subscribe).where(Subscribe.id == duplicate.id))
+
+    linked = service.bind("Telegram", "机器人A", "42", "成员", code)
+    assert linked.user_identity == local.notification_identity and linked.status == "pending"
+    with SessionFactory() as session:
+        for model, record in ((Subscribe, active), (SubscribeHistory, history), (DownloadHistory, download)):
+            row = session.get(model, record.id)
+            assert row.owner_identity == local.notification_identity and row.username == local.name
+        legacy_row = session.get(Subscribe, legacy.id)
+        assert legacy_row.username == previous.name and legacy_row.owner_identity is None
+
+
+def test_two_accounts_cannot_bind_the_same_member_concurrently(channel_authorization, db):
+    """
+    不同网页账号提交不同关联码时，只能有一个账号取得成员的数据归属。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    service, _, _ = channel_authorization
+    first, second = db.add(User(name="bind-race-first", is_active=True), User(name="bind-race-second", is_active=True))
+    member = service.request("Telegram", "机器人A", "42", "成员")
+    codes = [service.create_binding(user.id)[0] for user in (first, second)]
+    barrier = Barrier(2)
+
+    def bind(code):
+        """
+        同时提交两个不同账号各自的一次性码。
+        """
+        barrier.wait(timeout=5)
+        try:
+            return service.bind("Telegram", "机器人A", "42", "成员", code).user_id
+        except ValueError as error:
+            assert "已关联其它账号" in str(error)
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(bind, code) for code in codes]
+        results = [job.result(timeout=10) for job in jobs]
+    assert results.count(None) == 1
+    linked = service.find("Telegram", "机器人A", "42")
+    assert linked.id == member.id
+    assert linked.linked_user_id == linked.user_id == next(result for result in results if result is not None)
+
+
+def test_concurrent_binding_code_generation_leaves_one_valid_code(channel_authorization, db):
+    """
+    同一账号并行发起两次生成，数据库中只保留一个有效码。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from hashlib import sha256
+    from threading import Barrier
+
+    service, _, _ = channel_authorization
+    user = db.add(User(name="binding-code-race", is_active=True))
+    user_id = user.id
+    barrier = Barrier(2)
+
+    def create():
+        """
+        从两个独立事务同时生成网页关联码。
+        """
+        barrier.wait(timeout=5)
+        return service.create_binding(user_id)[0]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(create) for _ in range(2)]
+        codes = [job.result(timeout=10) for job in jobs]
+    with SessionFactory() as session:
+        stored = session.scalars(select(ChannelBinding.id).where(ChannelBinding.user_id == user_id)).one()
+    valid, revoked = sorted(codes, key=lambda code: sha256(code.encode()).hexdigest() != stored)
+    with pytest.raises(ValueError, match="已使用或已过期"):
+        service.bind("Telegram", "机器人A", "42", "成员", revoked)
+    assert service.bind("Telegram", "机器人A", "42", "成员", valid).user_id == user_id
 
 
 def test_channel_tokens_cannot_be_reused_for_other_paths(channel_authorization, monkeypatch):
@@ -612,13 +1038,12 @@ def test_approval_api_enforces_administrator_and_returns_sanitized_contract(chan
     service, configs, _ = channel_authorization
     member = service.request("Telegram", "机器人A", "42", "成员")
     monkeypatch.setattr(endpoint, "get_notification_configs", lambda **_: configs)
-    monkeypatch.setattr(endpoint, "_notify", Mock())
     app = FastAPI()
     app.include_router(endpoint.router, prefix="/authorization")
     app.dependency_overrides[get_current_active_superuser] = lambda: SimpleNamespace(
         id=1, account_type="local", authorization_id=None
     )
-    with TestClient(app) as client:
+    with TestClient(app, headers={"Authorization": "Bearer fixture"}) as client:
         response = client.get("/authorization/")
         assert response.status_code == 200
         assert response.json()["data"]["members"][0]["status"] == "pending"
@@ -728,34 +1153,58 @@ def test_channel_task_tool_accepts_schedule_grant_and_keeps_instance_ownership(c
 
 def test_channel_download_pagination_filters_before_count_and_page(channel_authorization, db):
     """
-    下载历史在数据库分页前按归属收窄，总数和页面都不泄露其它成员的记录。
+    下载历史按不可变账号在分页前过滤，改名后仍归本人，同名记录和旧无归属记录不会混入。
     """
+    from starlette.responses import Response
+
+    from app.api.endpoints.history import download_history
+    from app.application.history import HistoryQueryService
     from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
     from app.db.models.downloadhistory import DownloadHistory
 
     service, _, _ = channel_authorization
-    first = service.principal(_approve(service).id)
+    member = _approve(service)
+    first = service.principal(member.id)
     second = service.principal(_approve(service, source="机器人B").id)
     db.add(
         DownloadHistory(
             path="/synthetic/first.mkv",
             type="电影",
             title="自己的下载",
-            username=first.name,
+            username="旧用户名",
+            owner_identity=first.notification_identity,
+            task_reference="mp-task-" + "a" * 32,
             date="2026-11-16 10:00:00",
         ),
         DownloadHistory(
             path="/synthetic/second.mkv",
             type="电影",
             title="别人的下载",
-            username=second.name,
+            username=first.name,
+            owner_identity=second.notification_identity,
             date="2026-11-17 10:00:00",
+        ),
+        DownloadHistory(
+            path="/synthetic/legacy.mkv",
+            type="电影",
+            title="旧版记录",
+            username=first.name,
+            date="2026-11-18 10:00:00",
         ),
     )
     repository = TransactionalDownloadHistoryRepository(sync_session=SessionFactory, async_session=async_session_scope)
-    records = asyncio.run(repository.async_list_by_page(1, 1, username=first.name))
+    response = Response()
+    records = asyncio.run(download_history(
+        page=1, count=1,
+        query=HistoryQueryService(download_repository=repository, transfer_repository=Mock()),
+        response=response,
+        _=TokenPayload(agent_authorization_id=member.id, agent_operation="download.history.list"),
+    ))
     assert [record.title for record in records] == ["自己的下载"]
-    assert asyncio.run(repository.async_count(username=first.name)) == 1
+    assert response.headers["X-Total-Count"] == "1"
+    references = ["mp-task-" + "a" * 32]
+    assert list(repository.get_owned_tasks(first.notification_identity, references)) == references
+    assert repository.get_owned_tasks(second.notification_identity, references) == {}
 
 
 def test_scheduled_execution_uses_current_delivery_and_stops_after_revocation(channel_authorization, db, monkeypatch):
@@ -790,7 +1239,8 @@ def test_scheduled_execution_uses_current_delivery_and_stops_after_revocation(ch
     process = AsyncMock(return_value="执行完成")
     manager = SimpleNamespace(_accepting_tasks=True, _data=SimpleNamespace(users=users), process_message=process)
     monkeypatch.setattr(settings, "AI_AGENT_ENABLE", True)
-    monkeypatch.setattr(AgentChain, "async_post_message", AsyncMock())
+    notify = AsyncMock()
+    monkeypatch.setattr(AgentChain, "async_post_message", notify)
     configs[0].name = "已改名"
     assert asyncio.run(AgentManager.execute_scheduled_task(manager, task.id)) == (True, "执行完成")
     context = process.await_args.kwargs
@@ -807,6 +1257,72 @@ def test_scheduled_execution_uses_current_delivery_and_stops_after_revocation(ch
     success, result = asyncio.run(AgentManager.execute_scheduled_task(manager, task.id))
     assert success is False and "旧任务尚未确认渠道授权" in result
     process.assert_not_awaited()
+    notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_final_message_rechecks_current_grant_and_uses_private_target(channel_authorization, monkeypatch):
+    """
+    定时任务完成时重新核对权限，结果只私发给当前连接中的原执行者。
+    """
+    from app.agent.orchestrator import MoviePilotAgent
+    from app.agent.terminal.ownership import TerminalScope, bind_terminal_scope
+    from app.chain.agent import AgentChain
+
+    service, configs, _ = channel_authorization
+    member = _approve(service, scopes=("search", "schedule"))
+    agent = MoviePilotAgent(
+        session_id="scheduled-authorization", user_id=member.sender_id,
+        channel=member.channel, source="机器人A", original_chat_id="原群聊",
+    )
+    agent.authorization_id = member.id
+    agent.execution_user_id = member.user_id
+    agent.execution_user_identity = member.user_identity
+    notify = AsyncMock()
+    monkeypatch.setattr(AgentChain, "async_post_message", notify)
+    config = configs[0]
+    config.name = "新名称"
+    with bind_terminal_scope(TerminalScope(member.sender_id, "run", "scheduled")):
+        await agent.send_agent_message("任务完成")
+        outgoing = notify.await_args.args[0]
+        assert outgoing.delivery_kind == "task_result" and outgoing.private_delivery
+        assert outgoing.original_chat_id is None and outgoing.userid == member.sender_id
+        assert outgoing.source == config.name and outgoing.delivery_connection == (config.id, config.id)
+        notify.reset_mock()
+        service.update(member.id, status="approved", role="member", scopes=("search",), reviewer_id=1)
+        await agent.send_agent_message("撤销后的任务结果")
+    notify.assert_not_awaited()
+    assert agent._tool_context["execution_identity_error"]["message"]
+
+
+def test_queued_task_result_rechecks_current_grant_and_connection(channel_authorization):
+    """
+    队列等待期间改名仍可向原账号发送，换连接身份或撤权则丢弃已排队结果。
+    """
+    from app.application.messaging.message import MessageQueueManager
+    from app.schemas.message import Message
+
+    service, configs, _ = channel_authorization
+    member = _approve(service, scopes=("search", "schedule"))
+    result = service.prepare_task_result(Message(text="任务结果"), member.id, member.user_id, member.user_identity)
+    deliver = Mock()
+    configs[0].name = "新名称"
+    MessageQueueManager._send_with_callback(deliver, "post_message", message=result)
+    forwarded = deliver.call_args.kwargs["message"]
+    assert forwarded.source == "新名称" and forwarded.private_delivery
+    assert forwarded.userid == member.sender_id and forwarded.delivery_connection == result.delivery_connection
+    deliver.reset_mock()
+
+    configs[0].identity_namespace = "replacement-account"
+    MessageQueueManager._send_with_callback(deliver, "post_message", message=result)
+    deliver.assert_not_called()
+    configs[0].identity_namespace = None
+    serialized = Message.model_validate_json(result.model_dump_json())
+    MessageQueueManager._send_with_callback(deliver, "post_message", message=serialized)
+    deliver.assert_not_called()
+    service.update(member.id, status="disabled", role="member", scopes=(), reviewer_id=1)
+    MessageQueueManager._send_with_callback(deliver, "post_message", message=result)
+    deliver.assert_not_called()
 
 
 def test_authorization_public_operations_match_the_audited_gateway_contract():
@@ -835,13 +1351,107 @@ def _authorization_app(user):
     return app
 
 
+def test_approval_receipt_retries_without_reapplying_the_grant(channel_authorization, monkeypatch):
+    """
+    真实审批提交后只重试通知。成员停用后仍收到私聊回执，旧任务结果不发送。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.api.endpoints import authorization as endpoint
+    from app.application.messaging.message import MessageQueueManager
+    from app.application.outbox import CHANNEL_AUTHORIZATION_RECEIPT_TOPIC, OutboxDispatcher
+    from app.chain._messaging import NotificationMixin
+    from app.db.adapters.outbox import SqlAlchemyOutboxDispatchStore
+    from app.modules.telegram.botapi import TelegramApiError
+    from app.modules.telegram.module import TelegramModule
+    from app.modules.telegram.telegram import Telegram
+    from app.schemas.message import Message
+    from app.startup.composition import outbox
+
+    service, configs, _ = channel_authorization
+    config = configs[0]
+    config.identity_namespace = config.id
+    monkeypatch.setattr(endpoint, "get_notification_configs", lambda **_: configs)
+    api = Mock()
+    api.get_me.return_value = {"username": "fixture"}
+    api.send_message.side_effect = [TelegramApiError("sendMessage", "limited", 429), {"message_id": 1}, {"message_id": 2}]
+    monkeypatch.setattr("app.modules.telegram.telegram.TelegramBotApi", Mock(return_value=api))
+    telegram = Telegram(TELEGRAM_TOKEN="fixture", TELEGRAM_CHAT_ID="-100", auto_start_polling=False)
+    monkeypatch.setattr(telegram, "_mark_rate_limit", Mock())
+    module = TelegramModule()
+    module._channel = NotificationChannel.Telegram
+    monkeypatch.setattr(module, "get_configs", lambda: {config.name: config})
+    monkeypatch.setattr(module, "get_config", lambda _: config)
+    monkeypatch.setattr(module, "get_instance", lambda _: telegram)
+
+    def dispatch(_method, *, message):
+        """
+        使用实际通知模块处理原收件人及分段回执。
+        """
+        return module.post_message(message)
+
+    def strict(message, **_kwargs):
+        """
+        使用宿主严格派发的实际回执结算。
+        """
+        host = SimpleNamespace(run_module_strict=dispatch)
+        NotificationMixin._deliver_notification(host, message, strict_delivery=True, immediately=True, kwargs={})
+
+    monkeypatch.setattr(outbox, "CommandChain", lambda: SimpleNamespace(post_message_strict=strict))
+    original = service.request("Telegram", config.name, "42", "成员")
+    app = _authorization_app(SimpleNamespace(id=1, account_type="local", authorization_id=None))
+    store = SqlAlchemyOutboxDispatchStore(SessionFactory)
+    handler = outbox.build_outbox_handlers()[CHANNEL_AUTHORIZATION_RECEIPT_TOPIC]
+    wall_time = datetime.now(timezone.utc) + timedelta(seconds=1)
+    dispatcher = OutboxDispatcher(store, {CHANNEL_AUTHORIZATION_RECEIPT_TOPIC: handler}, clock=lambda: wall_time)
+
+    def dispatch_receipt(event_key):
+        """
+        只领取本次审批产生的意图，保持其他测试中的记录不变。
+        """
+        claimed = store.claim_by_event_key(event_key, wall_time, wall_time + timedelta(seconds=30))
+        assert claimed is not None
+        dispatcher.dispatch_claimed(claimed)
+
+    with TestClient(app, headers={"Authorization": "Bearer fixture"}) as browser:
+        decision = {"status": "approved", "role": "member", "scopes": ["search", "schedule"]}
+        assert browser.put(f"/authorization/{original.id}", json=decision).json()["success"]
+        approved = service.find("Telegram", config.name, "42")
+        assert approved.status == "approved"
+        key = f"{CHANNEL_AUTHORIZATION_RECEIPT_TOPIC}:{approved.id}:{approved.updated_at.hex()}"
+        dispatch_receipt(key)
+        api.send_message.assert_called_once()
+        assert service.find("Telegram", config.name, "42") == approved
+        assert browser.put(f"/authorization/{original.id}", json=decision).json()["success"]
+        assert service.find("Telegram", config.name, "42") == approved
+        wall_time += timedelta(minutes=5)
+        dispatch_receipt(key)
+        task_result = service.prepare_task_result(Message(text="旧任务结果"), approved.id, approved.user_id, approved.user_identity)
+
+        assert browser.put(f"/authorization/{original.id}", json={**decision, "status": "disabled"}).json()["success"]
+        disabled = service.find("Telegram", config.name, "42")
+        assert disabled.status == "disabled"
+        disabled_key = f"{CHANNEL_AUTHORIZATION_RECEIPT_TOPIC}:{disabled.id}:{disabled.updated_at.hex()}"
+        dispatch_receipt(disabled_key)
+        submit_task = Mock()
+        MessageQueueManager._send_with_callback(submit_task, "post_message", message=task_result)
+        submit_task.assert_not_called()
+
+    with SessionFactory() as session:
+        rows = session.scalars(select(OutboxMessage).where(OutboxMessage.event_key.in_((key, disabled_key)))).all()
+        assert {row.event_key: (row.status, row.attempt) for row in rows} == {key: ("completed", 2), disabled_key: ("completed", 1)}
+    assert [call.kwargs["chat_id"] for call in api.send_message.call_args_list] == ["42", "42", "42"]
+
+
 def test_direct_authorization_api_commits_then_replies_privately(channel_authorization, monkeypatch):
     """
-    直接授权写入真实数据库后私发回执；渠道停用与成员不存在时不误发成功通知。
+    直接授权同时写入回执，后台按原连接身份私发；重复审批不增加投递。
     """
     from fastapi.testclient import TestClient
 
     from app.api.endpoints import authorization as endpoint
+    from app.application.outbox import CHANNEL_AUTHORIZATION_RECEIPT_TOPIC, ClaimedOutboxMessage
+    from app.startup.composition import outbox
 
     service, configs, _ = channel_authorization
     monkeypatch.setattr(
@@ -849,27 +1459,52 @@ def test_direct_authorization_api_commits_then_replies_privately(channel_authori
         lambda **options: [item for item in configs if options.get("include_disabled") or item.enabled],
     )
     sent = Mock()
-    monkeypatch.setattr("app.chain.message.MessageChain", lambda: SimpleNamespace(post_message=sent))
+    monkeypatch.setattr(outbox, "_deliver_outbox_notification", sent)
     app = _authorization_app(SimpleNamespace(id=1, account_type="local", authorization_id=None))
     payload = {
         "notification_id": "telegram-a", "sender_id": " 42 ", "display_name": " 成员 ",
         "status": "approved", "role": "member", "scopes": ["search"],
     }
-    with TestClient(app) as client:
+    with TestClient(app, headers={"Authorization": "Bearer fixture"}) as client:
         response = client.post("/authorization/", json=payload)
         assert response.status_code == 200
         result = response.json()["data"]
         member = service.find("Telegram", "机器人A", "42")
         assert result["id"] == member.id and result["display_name"] == "成员"
         assert service.principal(member.id).permissions["search"] is True
-        message = sent.call_args.args[0]
-        assert message.channel == NotificationChannel.Telegram and message.source == "机器人A"
+        assert "回执" in response.json()["message"]
+        sent.assert_not_called()
+        assert client.post("/authorization/", json=payload).status_code == 200
+        with SessionFactory() as session:
+            row = session.scalars(select(OutboxMessage).where(
+                OutboxMessage.topic == CHANNEL_AUTHORIZATION_RECEIPT_TOPIC,
+                OutboxMessage.event_key.startswith(f"{CHANNEL_AUTHORIZATION_RECEIPT_TOPIC}:{member.id}:"),
+            )).one()
+            intent = ClaimedOutboxMessage(
+                row.id, row.event_key, row.topic, dict(row.payload), row.payload_version, 1,
+            )
+        handler = outbox.build_outbox_handlers()[CHANNEL_AUTHORIZATION_RECEIPT_TOPIC]
+        configs[0].name = "改名后的机器人"
+        handler(intent)
+        message = sent.call_args.args[1]
+        assert message.channel == NotificationChannel.Telegram and message.source == "改名后的机器人"
+        assert message.delivery_connection == ("telegram-a", "telegram-a")
         assert message.userid == "42" and message.private_delivery is True and message.save_history is False
         assert "重新发送" in message.title
         assert client.put(
             "/authorization/missing-member", json={"status": "approved", "scopes": []},
         ).status_code == 400
         sent.reset_mock()
+        configs[0].identity_namespace = "new-identity"
+        handler(intent)
+        sent.assert_not_called()
+        configs[0].identity_namespace = None
+        configs[0].interaction_enabled = False
+        # 主动投递继续工作时，审批界面也应报告交互已关闭。
+        listing = client.get("/authorization/").json()["data"]
+        assert next(item for item in listing["channels"] if item["id"] == "telegram-a")["enabled"] is False
+        assert next(item for item in listing["members"] if item["id"] == member.id)["channel_enabled"] is False
+        assert client.post("/authorization/", json=payload).status_code == 400
         configs[0].enabled = False
         assert client.post("/authorization/", json=payload).status_code == 400
         assert client.post(
@@ -878,6 +1513,8 @@ def test_direct_authorization_api_commits_then_replies_privately(channel_authori
         assert client.put(
             f"/authorization/{member.id}", json={"status": "disabled", "scopes": []},
         ).status_code == 200
+        configs[0].enabled = True
+        handler(intent)
         sent.assert_not_called()
         monkeypatch.setattr(endpoint, "get_channel_authorization", lambda: None)
         assert client.get("/authorization/").status_code == 503
@@ -892,7 +1529,7 @@ def test_binding_api_requires_local_account_and_does_not_approve_member(channel_
     service, _, _ = channel_authorization
     local = db.add(User(name="binding-api-account", is_active=True, is_superuser=False))
     user = SimpleNamespace(id=local.id, account_type="local", authorization_id=None)
-    with TestClient(_authorization_app(user)) as client:
+    with TestClient(_authorization_app(user), headers={"Authorization": "Bearer fixture"}) as client:
         response = client.post("/authorization/binding")
         assert response.status_code == 200
         data = response.json()["data"]
@@ -1346,3 +1983,210 @@ def test_traditional_media_interaction_enforces_member_scopes_and_owner_username
         assert subscribe_add.call_args.kwargs["username"] == "channel_owner"
     finally:
         media_interaction_manager.remove(sub_request.request_id)
+
+
+@pytest.mark.asyncio
+async def test_rule_approval_schedules_only_in_the_verified_scope(channel_authorization, db, monkeypatch):
+    """
+    创建后的任务复用受限身份，策略、成员和连接撤权约束执行与投递。
+    """
+    from app.agent.manager import AgentManager
+    from app.agent.tools.impl.agent_task import AgentTaskTool
+    from app.runtime.config import settings
+
+    db.watermark(AgentTask, AgentTaskRun)
+    service, configs, users = channel_authorization
+    policy = InteractionPolicy(
+        connection_id="telegram-a", identity_namespace="telegram-a", enabled=True, revision=5,
+        admission="rules", admission_rules=(AdmissionRule(kind="group", target="-100", scopes=("search", "schedule")),),
+    )
+    configs[0].interaction_policy = policy
+    proof = AdmissionProof("telegram-a", 5, "42", "-100", time.time() + 30)
+    assert service.rule_task_principal("Telegram", "机器人A", "42") is None
+    with scoped_admission(AdmissionProof("telegram-a", 5, "42", "-200", proof.expires_at)):
+        assert service.rule_task_principal("Telegram", "机器人A", "42") is None
+    with scoped_admission(proof):
+        user = service.rule_task_principal("Telegram", "机器人A", "42")
+        assert user is not None and user.authorization_id
+        assert service.rule_task_principal("Telegram", "机器人A", "42").authorization_id == user.authorization_id
+    member = service.find("Telegram", "机器人A", "42")
+    assert member.status == "pending" and not user.is_superuser
+    assert user.permissions["schedule"] and not user.permissions["download"]
+    with pytest.raises(PermissionError):
+        service.authorize_operation(user.authorization_id, "download.add")
+    assert service.authorize_operation(user.authorization_id, "search.torrents").id == user.id
+    monkeypatch.setattr(settings, "AI_AGENT_ENABLE", True)
+    monkeypatch.setattr("app.application.scheduling.update_agent_task_job", lambda _task_id: None)
+    data = SimpleNamespace(
+        users=users, tasks=TransactionalAgentTaskRepository(SessionFactory),
+        chat=SimpleNamespace(get_sync=lambda **_kwargs: None),
+    )
+    tool = AgentTaskTool(session_id="rule-task-session", user_id="42", data=data)
+    tool.set_message_attr(channel="Telegram", source="机器人A", username="42")
+    tool.set_agent_context({
+        "authorization_id": user.authorization_id, "execution_user_id": user.id,
+        "execution_user_identity": user.notification_identity,
+    })
+    result = await tool.run(
+        action="create", name="搜索新资源", content="搜索影片", trigger_type="cron", trigger="0 * * * *",
+    )
+    task_id = json.loads(result)["id"]
+    assert service.connection_reference_counts("telegram-a") == (1, 1)
+    assert data.tasks.get(task_id).execution_authorization_id == user.authorization_id
+    manager = AgentManager()
+    manager._data = data
+    manager.process_message = AsyncMock(return_value="完成")
+    assert await manager.execute_scheduled_task(task_id) == (True, "完成")
+    assert manager.process_message.await_args.kwargs["authorization_id"] == user.authorization_id
+
+    private = service.prepare_task_result(Message(title="完成"), user.authorization_id, user.id, user.notification_identity)
+    assert private.private_delivery and private.userid == "42" and private.original_chat_id is None
+    configs[0].interaction_policy = policy.model_copy(update={"revision": 6})
+    success, error = await manager.execute_scheduled_task(task_id)
+    assert not success and "规则或成员授权已变更" in error
+    manager.process_message.assert_awaited_once()
+    with pytest.raises(PermissionError):
+        service.revalidate_task_result(private)
+
+    configs[0].interaction_policy = policy
+    service.update(member.id, status="disabled", role="member", scopes=(), reviewer_id=1)
+    with pytest.raises(PermissionError):
+        service.principal(user.authorization_id, capability="schedule")
+
+
+@pytest.mark.parametrize("status", ["pending", "approved", "rejected", "disabled"])
+def test_delete_authorization_requires_confirmation_and_rotates_reapplication_identity(channel_authorization, status):
+    """
+    全部状态可删，已授权必须确认；旧身份立即失效，重申请不继承授权和账号关联。
+    """
+    from app.application.security.authorization import ChannelAuthorizationConflict
+
+    service, _, _ = channel_authorization
+    member = service.request("Telegram", "机器人A", "delete-42", "待删除成员")
+    if status != "pending":
+        member = service.update(member.id, status=status, role="member", scopes=("search",), reviewer_id=1)
+    if status == "approved":
+        with pytest.raises(ValueError, match="再次确认"):
+            service.manage_members("delete", ((member.id, member.updated_at),), reviewer_id=1)
+        assert service.find("Telegram", "机器人A", "delete-42") is not None
+    service.manage_members("delete", ((member.id, member.updated_at),), reviewer_id=1, confirm_approved=status == "approved")
+    assert service.find("Telegram", "机器人A", "delete-42") is None
+    with pytest.raises(PermissionError):
+        service.principal(member.id)
+    with SessionFactory() as session:
+        assert session.get(User, member.user_id) is not None
+    renewed = service.request("Telegram", "机器人A", "delete-42", "重新申请")
+    assert renewed.status == "pending" and renewed.id != member.id
+    assert renewed.user_identity != member.user_identity and renewed.linked_user_id is None
+    with pytest.raises(ChannelAuthorizationConflict):
+        service.manage_members("delete", ((member.id, member.updated_at),), reviewer_id=1, confirm_approved=True)
+    assert service.find("Telegram", "机器人A", "delete-42").id == renewed.id
+
+
+@pytest.mark.parametrize("action,status,result", [("approve", "pending", "approved"), ("reject", "pending", "rejected"), ("disable", "approved", "disabled")])
+def test_batch_authorization_uses_selected_versions_and_explicit_member_scopes(channel_authorization, action, status, result):
+    """
+    批量通过仅授予普通成员及明确权限，拒绝和停用保留原角色权限且不影响未选择成员。
+    """
+    service, _, _ = channel_authorization
+    records = [service.request("Telegram", "机器人A", f"batch-{i}", f"成员{i}") for i in range(3)]
+    if status == "approved":
+        records = [service.update(m.id, status=status, role="admin", scopes=("search",), reviewer_id=1) for m in records]
+    changed = service.manage_members(action, tuple((m.id, m.updated_at) for m in records[:2]), reviewer_id=1, scopes=("search", "schedule"))
+    assert {member.status for member in changed} == {result}
+    for member in changed:
+        assert member.role == ("admin" if action == "disable" else "member")
+        assert set(member.scopes) == ({"search", "schedule"} if action == "approve" else {"search"} if action == "disable" else {"search", "subscribe", "download"})
+    assert service.find("Telegram", "机器人A", "batch-2").status == status
+
+
+def test_batch_delete_stale_or_unconfirmed_record_rolls_back_all(channel_authorization):
+    """
+    批次包含过期版本或未确认的已授权成员时，不删除任何记录。
+    """
+    from app.application.security.authorization import ChannelAuthorizationConflict
+
+    service, _, _ = channel_authorization
+    pending = service.request("Telegram", "机器人A", "pending-delete", "待审批")
+    approved = _approve(service, sender_id="approved-delete")
+    with pytest.raises(ValueError, match="再次确认"):
+        service.manage_members("delete", ((pending.id, pending.updated_at), (approved.id, approved.updated_at)), reviewer_id=1)
+    changed = service.update(approved.id, status="disabled", role="member", scopes=("search",), reviewer_id=1)
+    with pytest.raises(ChannelAuthorizationConflict):
+        service.manage_members("delete", ((pending.id, pending.updated_at), (approved.id, approved.updated_at)), reviewer_id=1, confirm_approved=True)
+    assert service.find("Telegram", "机器人A", "pending-delete").id == pending.id
+    assert service.find("Telegram", "机器人A", "approved-delete").updated_at == changed.updated_at
+
+
+def test_batch_mutation_cas_conflict_rolls_back_prior_changes_and_receipts(channel_authorization, monkeypatch):
+    """
+    校验后的第二条记录在提交时发生版本冲突，前一条修改和回执均回滚。
+    """
+    from app.application.security.authorization import ChannelAuthorizationConflict
+    from app.db.oper.authorization import ChannelAuthorizationOper
+
+    service, _, _ = channel_authorization
+    records = sorted([service.request("Telegram", "机器人A", f"cas-{i}", "成员") for i in range(2)], key=lambda m: m.id)
+    original = ChannelAuthorizationOper.update
+    with SessionFactory() as session:
+        before = set(session.scalars(select(OutboxMessage.id)))
+
+    def race(oper, member_id, **kwargs):
+        """
+        在第二次比较更新前制造一次版本变化。
+        """
+        if member_id == records[1].id:
+            oper._session.execute(update(ChannelAuthorization).where(ChannelAuthorization.id == member_id).values(updated_at=records[1].updated_at + 1))
+        return original(oper, member_id, **kwargs)
+
+    monkeypatch.setattr(ChannelAuthorizationOper, "update", race)
+    with pytest.raises(ChannelAuthorizationConflict):
+        service.manage_members("approve", tuple((m.id, m.updated_at) for m in records), reviewer_id=1)
+    assert all(service.find("Telegram", "机器人A", f"cas-{i}").status == "pending" for i in range(2))
+    with SessionFactory() as session:
+        assert set(session.scalars(select(OutboxMessage.id))) == before
+
+
+def test_delete_removes_rule_grants_and_keeps_historical_business_owner(channel_authorization):
+    """
+    删除同时移除规则派生授权，旧任务主体停止生效，业务账号仍保留。
+    """
+    service, _, _ = channel_authorization
+    member = _approve(service, sender_id="rule-delete")
+    with SessionFactory() as session:
+        session.add(ChannelRuleTaskGrant(id="gdeleted", member_id=member.id, member_version=member.updated_at, policy_revision=1, scopes=["schedule"]))
+        session.commit()
+    service.manage_members("delete", ((member.id, member.updated_at),), reviewer_id=1, confirm_approved=True)
+    with SessionFactory() as session:
+        assert session.get(ChannelRuleTaskGrant, "gdeleted") is None
+        assert session.get(User, member.user_id) is not None
+    with pytest.raises(PermissionError):
+        service.principal("gdeleted", capability="schedule")
+
+
+def test_batch_and_delete_authorization_http_validate_versions_and_web_administrator(channel_authorization):
+    """
+    HTTP 强制网页系统管理员、唯一选中身份、合法动作及已授权删除确认。
+    """
+    from fastapi.testclient import TestClient
+
+    service, _, _ = channel_authorization
+    member = service.request("Telegram", "机器人A", "api-batch", "HTTP成员")
+    user = SimpleNamespace(id=1, account_type="local", authorization_id=None)
+    app = _authorization_app(user)
+    target = {"id": member.id, "expected_updated_at": member.updated_at}
+    with TestClient(app) as client:
+        assert client.post("/authorization/batch", json={"action": "approve", "members": [target]}).status_code == 403
+        client.headers["Authorization"] = "Bearer admin-fixture"
+        assert client.post("/authorization/batch", json={"action": "approve", "members": [target, target]}).status_code == 422
+        assert client.post("/authorization/batch", json={"action": "approve", "members": [target], "role": "admin"}).status_code == 422
+        response = client.post("/authorization/batch", json={"action": "approve", "members": [target], "scopes": ["search"]})
+        assert response.status_code == 200
+        current = response.json()["data"]["members"][0]
+        assert current["scopes"] == ["search"] and current["role"] == "member"
+        assert "user_identity" not in current
+        assert client.request("DELETE", f"/authorization/{member.id}", json={"expected_updated_at": current["updated_at"]}).status_code == 400
+        assert client.request("DELETE", f"/authorization/{member.id}", json={"expected_updated_at": member.updated_at, "confirm_approved": True}).status_code == 409
+        assert client.request("DELETE", f"/authorization/{member.id}", json={"expected_updated_at": current["updated_at"], "confirm_approved": True}).status_code == 200
+        user.account_type = "channel"
+        assert client.post("/authorization/batch", json={"action": "delete", "members": [target]}).status_code == 403

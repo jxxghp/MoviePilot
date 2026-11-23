@@ -877,7 +877,7 @@ def test_skills_chain_source_view_lists_custom_sources() -> None:
     assert "仓库来源 · acme/custom-skills" in text
     assert "删除自定义源" in text
     assert buttons
-    assert buttons[1][0]["callback_data"] == f"skills:{request.request_id}:source-remove:2"
+    assert buttons[1][0]["callback_data"] == f"skills:{request.request_id}:source-remove:2:{request.selection_id}"
 
 
 @pytest.mark.usefixtures("_clear_skill_interactions")

@@ -131,6 +131,7 @@ async def reset_subscribes(
     actor = SubscriptionActor(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
+        owner_identity=getattr(current_user, "notification_identity", None),
     )
     change = await mutation.reset(subid, actor)
     if change:
@@ -185,6 +186,7 @@ async def search_subscribes(
         SubscribeSearchActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
+            owner_identity=getattr(current_user, "notification_identity", None),
         ),
         mtype=subscription_type.value if subscription_type else None,
     )
@@ -222,6 +224,7 @@ async def search_subscribe(
         SubscribeSearchActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
+            owner_identity=getattr(current_user, "notification_identity", None),
         ),
         subscribe_id=subscribe_id,
         mtype=subscription_type.value if subscription_type else None,

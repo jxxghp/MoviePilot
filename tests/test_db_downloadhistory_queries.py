@@ -359,6 +359,34 @@ def test_count_and_title_search_match_async_twins(db):
     )] == ["Unique Title Here"]
 
 
+def test_async_download_page_and_count_scope_to_the_same_owner(db):
+    """
+    同名账号和未归属旧记录均不进入当前账号的分页及总数。
+    """
+    for title, identity in (("旧记录", None), ("已删除账号", "old"), ("我的下载", "current")):
+        row = _history(title, date="2026-08-13 10:00:00")
+        row.username = "same-name"
+        row.owner_identity = identity
+        db.add(row)
+
+    rows = db.run_async_session(lambda session: DownloadHistory.async_list_by_page(
+        session, page=1, count=1, owner_identity="current",
+    ))
+    assert [row.title for row in rows] == ["我的下载"]
+    assert db.run_async_session(lambda session: DownloadHistory.async_count(
+        session, owner_identity="current",
+    )) == 1
+    outsider = _history("其他用户", username="someone-else", date="2026-08-13 11:00:00")
+    db.add(outsider)
+    rows_by_name = db.run_async_session(lambda session: DownloadHistory.async_list_by_page(
+        session, username="same-name", page=1, count=10,
+    ))
+    assert {row.title for row in rows_by_name} == {"旧记录", "已删除账号", "我的下载"}
+    assert db.run_async_session(lambda session: DownloadHistory.async_count(
+        session, username="same-name",
+    )) == 3
+
+
 # --------------------------------------------------------------------------- #
 # DownloadFiles
 # --------------------------------------------------------------------------- #

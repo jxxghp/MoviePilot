@@ -618,6 +618,14 @@ def test_structured_text_fields_are_exact_and_text_search_is_explicit(db, query_
         )
     )
     assert [item.path for item in fuzzy_downloads.items] == ["/exact/extended.mkv"]
+    path_downloads = sdk.list_download_history(DownloadHistoryFilter(path="/exact/base.mkv"))
+    assert [item.path for item in path_downloads.items] == ["/exact/base.mkv"]
+    assert path_downloads.total == 1
+    matched_id = path_downloads.items[0].id
+    by_id = sdk.list_download_history(DownloadHistoryFilter(ids=(matched_id,), path="/exact/base.mkv"))
+    assert [item.id for item in by_id.items] == [matched_id]
+    incompatible = sdk.list_download_history(DownloadHistoryFilter(ids=(matched_id,), path="/exact/extended.mkv"))
+    assert incompatible.total == 0
 
     exact_transfers = sdk.list_transfer_history(
         TransferHistoryFilter(

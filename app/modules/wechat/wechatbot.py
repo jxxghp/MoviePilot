@@ -10,8 +10,9 @@ import re
 import threading
 import time
 import uuid
+from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import websocket
 from Crypto.Cipher import AES
@@ -20,13 +21,18 @@ from app.adapters.network.http import RequestUtils
 from app.adapters.system.attachment import load_image
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.image import build_wechat_image_url
-from app.application.messaging.ingress import submit_message_to_host
+from app.application.messaging.ingress import submit_message_to_host, submit_verified_message
+from app.domain.admission import AdmissionProof
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.runtime.thread import ThreadHelper
+from app.schemas.channel import InteractionPolicy
+from app.schemas.delivery import DeliveryPartOutcome, DeliveryPartPlanner, DeliveryStatus
+from app.schemas.delivery import DeliveryPartSender as _PartSender
+from app.schemas.delivery import DeliveryReceipt as _Receipt
 from app.schemas.message import IncomingMessage
 from app.schemas.types import NotificationChannel
 
@@ -54,6 +60,7 @@ class WeChatBot:
                  WECHAT_BOT_WS_URL: Optional[str] = None,
                  WECHAT_ADMINS: Optional[str] = None,
                  name: Optional[str] = None,
+                 interaction_policy: Optional[InteractionPolicy] = None,
                  **kwargs: Any) -> None:
         """
         加载互动用户并启动网关和心跳线程。
@@ -64,9 +71,11 @@ class WeChatBot:
         :param WECHAT_BOT_WS_URL: WebSocket 地址；为空时使用官方长连接地址
         :param WECHAT_ADMINS: 以逗号分隔的管理员用户标识
         :param name: 实例名称，用于日志和互动用户缓存隔离；为空时使用 wechat
+        :param interaction_policy: 该已装配连接本代的交互策略
         :param kwargs: 通知实例附加配置，当前不使用
         """
         self._config_name = name or "wechat"
+        self._interaction_policy = interaction_policy
         self._bot_id = WECHAT_BOT_ID
         self._bot_secret = WECHAT_BOT_SECRET
         self._default_chat_id = WECHAT_BOT_CHAT_ID.strip() if WECHAT_BOT_CHAT_ID else None
@@ -83,6 +92,7 @@ class WeChatBot:
         self._heartbeat_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._authenticated = threading.Event()
+        self._subscribe_req_id: str | None = None
         self._send_lock = threading.Lock()
         self._acks_lock = threading.Lock()
         self._pending_acks: Dict[str, Dict[str, Any]] = {}
@@ -247,6 +257,7 @@ class WeChatBot:
 
         while not self._stop_event.is_set():
             self._authenticated.clear()
+            self._subscribe_req_id = None
             try:
                 self._ws_app = websocket.WebSocketApp(
                     self._ws_url,
@@ -296,12 +307,16 @@ class WeChatBot:
         """
         连接建立后提交机器人订阅凭据。
 
-        :param ws: WebSocket 回调参数，发送时使用实例连接
+        :param ws: 当前 WebSocket 连接
         """
+        if ws is not self._ws_app or self._stop_event.is_set():
+            return
+        req_id = self._build_req_id("aibot_subscribe")
+        self._subscribe_req_id = req_id
         logger.info(f"企业微信智能机器人连接成功，开始订阅：{self._config_name}")
         self._send_raw({
             "cmd": "aibot_subscribe",
-            "headers": {"req_id": self._build_req_id("aibot_subscribe")},
+            "headers": {"req_id": req_id},
             "body": {
                 "bot_id": self._bot_id,
                 "secret": self._bot_secret,
@@ -312,9 +327,11 @@ class WeChatBot:
         """
         解析确认、订阅结果和回调事件，并更新认证状态。
 
-        :param ws: WebSocket 回调参数，当前不使用
+        :param ws: 当前 WebSocket 连接
         :param message: 服务器发送的 JSON 文本
         """
+        if ws is not self._ws_app or self._stop_event.is_set():
+            return
         try:
             payload = json.loads(message)
         except Exception as err:
@@ -327,7 +344,8 @@ class WeChatBot:
 
         cmd = payload.get("cmd")
         if not cmd:
-            if str(req_id).startswith("aibot_subscribe"):
+            if req_id and req_id == self._subscribe_req_id:
+                self._subscribe_req_id = None
                 if payload.get("errcode") == 0:
                     self._authenticated.set()
                     logger.info(f"企业微信智能机器人订阅成功：{self._config_name}")
@@ -347,21 +365,25 @@ class WeChatBot:
         """
         清除认证状态并记录连接错误。
 
-        :param ws: WebSocket 回调参数，当前不使用
+        :param ws: 产生错误的 WebSocket 连接
         :param error: 底层连接错误
         """
-        self._authenticated.clear()
+        if ws is self._ws_app:
+            self._authenticated.clear()
+            self._subscribe_req_id = None
         logger.error(f"企业微信智能机器人 WebSocket 错误：{error}")
 
     def _on_close(self, ws: Any, close_status_code: Any, close_msg: Any) -> None:
         """
         连接关闭时清除认证状态并记录关闭原因。
 
-        :param ws: WebSocket 回调参数，当前不使用
+        :param ws: 已关闭的 WebSocket 连接
         :param close_status_code: 服务器关闭状态码，可能为空
         :param close_msg: 服务器关闭说明，可能为空
         """
-        self._authenticated.clear()
+        if ws is self._ws_app:
+            self._authenticated.clear()
+            self._subscribe_req_id = None
         logger.info(f"企业微信智能机器人连接关闭：{close_status_code} {close_msg}")
 
     def _resolve_ack(self, req_id: str, payload: Dict[str, Any]) -> None:
@@ -390,23 +412,24 @@ class WeChatBot:
             raise RuntimeError("企业微信智能机器人未连接")
         self._ws_app.send(json.dumps(payload, ensure_ascii=False))
 
-    def _send_with_ack(self, payload: Dict[str, Any], *, response: Optional[Dict[str, Any]] = None) -> bool:
+    def _send_with_ack(self, payload: Dict[str, Any], *,
+                       response: Optional[Dict[str, Any]] = None) -> tuple[DeliveryStatus, str | None]:
         """
         等待认证后串行写入报文，并等待对应服务器确认。
 
-        认证和确认各最多等待 10 秒；等待记录在结束时清理，底层发送异常向上传播。
+        认证和确认各最多等待 10 秒。写入后未收到确认时，平台是否接收不可知。
 
         :param payload: 必须在 headers.req_id 中包含请求标识的协议报文
         :param response: 可选的确认结果容器，仅成功时填入，供临时素材上传读取服务端标识
-        :return: 收到错误码为 0 的确认时返回 True；缺少标识、认证或确认超时及服务端错误返回 False
+        :return: 投递结果和无敏感信息的固定错误类别
         """
         req_id = (payload.get("headers") or {}).get("req_id")
         if not req_id:
-            return False
+            return "permanent_failure", "missing_request_id"
 
         if not self._authenticated.wait(timeout=self._ack_timeout):
             logger.error("企业微信智能机器人未完成认证，无法发送消息")
-            return False
+            return "retryable_failure", "client_unavailable"
 
         pending: Dict[str, Any] = {"event": threading.Event(), "payload": None}
         with self._acks_lock:
@@ -418,17 +441,17 @@ class WeChatBot:
             event = pending["event"]
             if not isinstance(event, threading.Event) or not event.wait(timeout=self._ack_timeout):
                 logger.error(f"企业微信智能机器人消息发送超时：req_id={req_id}")
-                return False
+                return "unknown", "ack_timeout"
             ack_value = pending.get("payload")
             ack: Dict[str, Any] = ack_value if isinstance(ack_value, dict) else {}
             if ack.get("errcode") != 0:
                 logger.error(
                     f"企业微信智能机器人消息发送失败：{ack.get('errmsg')} ({ack.get('errcode')})"
                 )
-                return False
+                return "retryable_failure", "platform_rejected"
             if response is not None:
                 response.update(ack)
-            return True
+            return "confirmed", None
         finally:
             with self._acks_lock:
                 self._pending_acks.pop(req_id, None)
@@ -441,6 +464,8 @@ class WeChatBot:
         """
         event = ((payload.get("body") or {}).get("event") or {}).get("eventtype")
         if event == "disconnected_event":
+            self._authenticated.clear()
+            self._subscribe_req_id = None
             logger.info(f"企业微信智能机器人旧连接被踢下线：{self._config_name}")
 
     @staticmethod
@@ -636,11 +661,52 @@ class WeChatBot:
         mime_type = self._guess_mime_type(content, payload.get("mime_type") or "image/jpeg")
         return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
+    def _receive_verified_text(self, body: Dict[str, Any], sender: str) -> bool:
+        """
+        将当前官方长连接收到的群聊或单聊文本交给宿主判定。
+        """
+        policy = getattr(self, "_interaction_policy", None)
+        chat_type = body.get("chattype")
+        chat_id = str(body.get("chatid") or "").strip() if chat_type == "group" else None
+        if (
+            not policy or not policy.enabled or not self._is_verified_text_callback(body)
+            or chat_type not in {"group", "single"} or (chat_type == "group" and not chat_id)
+        ):
+            return False
+        text = re.sub(r"@\S+", "", self._extract_text_from_body(body) or "").strip()
+        event_id = body.get("msgid")
+        if not text or not isinstance(event_id, str) or not event_id.strip():
+            return False
+        if chat_id is None and not (policy.admission_rules or policy.auto_download_rules):
+            return False
+        if chat_id is None:
+            self._remember_target(sender)
+        info = IncomingMessage(
+            channel=NotificationChannel.Wechat, source=self._config_name, userid=sender,
+            text=text, chat_id=f"group:{chat_id}" if chat_id else None,
+            conversation_type="group" if chat_id else "private", message_id=event_id,
+        )
+        info._admission_proof = AdmissionProof(
+            policy.connection_id, policy.revision, sender, chat_id, time.time() + 60, private=chat_id is None,
+        )
+        submit_verified_message(info, ThreadHelper().submit)
+        return True
+
+    def _is_verified_text_callback(self, body: Dict[str, Any]) -> bool:
+        """
+        确认事件来自当前官方已认证连接并发给本机器人。
+        """
+        return (
+            self._authenticated.is_set() and not self._stop_event.is_set()
+            and self._ws_url == self._default_ws_url and body.get("aibotid") == self._bot_id
+            and body.get("msgtype") == "text" and "compat_info" not in body
+        )
+
     def _handle_callback_message(self, payload: Dict[str, Any]) -> None:
         """
         接收私聊文本、图片、语音或文件，记录互动用户并检查管理员命令权限。
 
-        群聊及无支持内容的消息会忽略；通过检查的原始报文交给统一消息入口。
+        可信群文本经过平台证明路径；私聊的兼容报文交给统一消息入口。
 
         :param payload: 完整机器人消息回调报文
         """
@@ -649,8 +715,7 @@ class WeChatBot:
         if not sender:
             return
 
-        if body.get("chattype") == "group":
-            logger.debug(f"企业微信智能机器人忽略群聊消息（groupPolicy=disabled）：{self._config_name}")
+        if self._receive_verified_text(body, sender) or body.get("chattype") == "group":
             return
 
         text = self._extract_text_from_body(body)
@@ -745,19 +810,25 @@ class WeChatBot:
             parts.append(f"[点击查看]({link})")
         return "\n\n".join(part for part in parts if part).strip()
 
-    def _resolve_targets(self, userid: Optional[str] = None) -> List[Tuple[str, int]]:
+    def _resolve_targets(self, userid: Optional[str] = None, *, include_known_users: bool = True) -> List[Tuple[str, int]]:
         """
         按显式目标、默认目标、已互动用户的顺序确定接收对象。
 
         :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
-        :return: 目标标识和会话类型的列表；已互动用户按标识排序
+        :param include_known_users: 旧客户端直发时是否保留已互动用户回退
+        :return: 目标标识和会话类型的列表；显式无效目标为空列表，不广播给已互动用户
         """
         target, chat_type = self._normalize_target(userid=userid, default_chat_id=self._default_chat_id)
         if target:
             return [(target, chat_type)]
+        if userid or not include_known_users:
+            return []
         return [(known_userid, 1) for known_userid in sorted(self._known_targets)]
 
-    def _send_markdown(self, content: str, userid: Optional[str] = None) -> Optional[bool]:
+    def _send_markdown(
+        self, content: str, userid: Optional[str] = None, *, receipt: _Receipt | None = None,
+        part_sender: _PartSender | None = None, plan: DeliveryPartPlanner | None = None,
+    ) -> Optional[bool]:
         """
         向每个目标分块发送 Markdown，并等待服务器确认。
 
@@ -765,43 +836,88 @@ class WeChatBot:
 
         :param content: 待发送正文
         :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
+        :param receipt: 宿主投递入口的逐目标、逐分段回执
+        :param part_sender: 宿主在提交前核对持久进度的执行边界
+        :param plan: 在首次发送前登记当前连接的投递清单
         :return: 至少一个目标的全部分块发送成功时返回 True；内容为空、无目标或全部目标失败返回 False
         """
         if not content:
+            if receipt:
+                receipt(userid, 0, "skipped", "empty_content")
             return False
 
-        targets = self._resolve_targets(userid=userid)
+        targets = self._resolve_targets(userid=userid, include_known_users=receipt is None)
         if not targets:
+            if receipt:
+                receipt(userid, 0, "skipped", "no_target")
             logger.warning(f"{self._config_name} 未配置默认发送目标，且暂无已互动用户")
             return False
 
         send_success = False
+        chunks = self._split_content(content)
+        if plan is not None:
+            plan(tuple(
+                (self._part_address(target, chat_type), part, chunk)
+                for target, chat_type in targets for part, chunk in enumerate(chunks)
+            ))
         for target, chat_type in targets:
-            target_success = True
-            for chunk in self._split_content(content):
-                req_id = self._build_req_id("aibot_send_msg")
-                payload = {
-                    "cmd": "aibot_send_msg",
-                    "headers": {"req_id": req_id},
-                    "body": {
-                        "chatid": target,
-                        "chat_type": chat_type,
-                        "msgtype": "markdown",
-                        "markdown": {
-                            "content": chunk
-                        }
-                    }
-                }
-                if not self._send_with_ack(payload):
-                    target_success = False
-                    logger.warning(f"{self._config_name} 向目标 {target} 发送通知失败")
-                    break
+            target_success = self._send_markdown_target(target, chat_type, chunks, receipt=receipt, part_sender=part_sender)
             send_success = send_success or target_success
         return send_success
 
+    @staticmethod
+    def _part_address(target: str, chat_type: int) -> str:
+        """
+        为群和个人分别标记持久化的投递地址。
+        """
+        return f"{'group' if chat_type == 2 else 'user'}:{target}"
+
+    def _send_markdown_target(
+        self, target: str, chat_type: int, chunks: list[str], *, receipt: _Receipt | None, part_sender: _PartSender | None,
+    ) -> bool:
+        """
+        按序提交同一会话的各段，失败后报告尚未提交的分段。
+        """
+        address = self._part_address(target, chat_type)
+        previous_confirmed = True
+        for part, chunk in enumerate(chunks):
+            if part_sender:
+                outcome, code = part_sender(
+                    address, part, chunk, previous_confirmed,
+                    partial(self._send_markdown_part, target, chat_type, chunk),
+                )
+            elif previous_confirmed:
+                outcome, code = self._send_markdown_part(target, chat_type, chunk)
+            else:
+                outcome, code = "retryable_failure", "previous_part_unconfirmed"
+            if receipt:
+                receipt(address, part, outcome, code)
+            previous_confirmed = previous_confirmed and outcome == "confirmed"
+        return previous_confirmed
+
+    def _send_markdown_part(self, target: str, chat_type: int, chunk: str) -> tuple[DeliveryStatus, str | None]:
+        """
+        向明确目标提交单段 Markdown，读写异常保留为未确认。
+        """
+        payload = {
+            "cmd": "aibot_send_msg",
+            "headers": {"req_id": self._build_req_id("aibot_send_msg")},
+            "body": {
+                "chatid": target, "chat_type": chat_type, "msgtype": "markdown",
+                "markdown": {"content": chunk},
+            },
+        }
+        try:
+            return self._send_with_ack(payload)
+        except (OSError, RuntimeError, websocket.WebSocketException):
+            logger.warning("企业微信智能机器人发送未确认：%s", self._config_name)
+            return "unknown", "transport_unconfirmed"
+
     def send_msg(self, title: Optional[str], text: Optional[str] = None, image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None, *,
-                 native_image: bool = False) -> Optional[bool]:
+                 native_image: bool = False,
+                 receipt: _Receipt | None = None, part_sender: _PartSender | None = None,
+                 plan: DeliveryPartPlanner | None = None) -> Optional[bool]:
         """
         将通知组合成 Markdown 并发送给目标会话。
 
@@ -811,6 +927,9 @@ class WeChatBot:
         :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
         :param link: 可选跳转链接
         :param native_image: 上传 image 并发送独立原图，支持 URL、Base64 和本地 JPG/PNG，忽略详情链接
+        :param receipt: 宿主逐目标、逐分段收集回执的回调
+        :param part_sender: 宿主在网络请求前后处理持久进度的回调
+        :param plan: 在首次发送前登记当前连接的投递清单
         :return: 至少一个目标的全部分块发送成功时返回 True；内容为空、无目标或全部目标失败返回 False
         """
         if native_image and image:
@@ -819,18 +938,24 @@ class WeChatBot:
                 logger.warning("企业微信机器人原图不可用")
                 return False
             image_bytes, suffix = loaded
-            return self._send_media(image_bytes, "image", f"image{suffix}", title, text, userid)
+            return self._send_media(
+                image_bytes, "image", f"image{suffix}", title, text, userid,
+                receipt=receipt, part_sender=part_sender, plan=plan,
+            )
         content = self._build_markdown(title=title, text=text, image=image, link=link)
-        return self._send_markdown(content=content, userid=userid)
+        if receipt is None and part_sender is None and plan is None:
+            return self._send_markdown(content=content, userid=userid)
+        return self._send_markdown(content=content, userid=userid, receipt=receipt, part_sender=part_sender, plan=plan)
 
     def _media_command(self, command: str, body: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         发送素材协议命令并读取成功回执的业务字段，不新增线程或绕过认证。
         """
         response: Dict[str, Any] = {}
-        if not self._send_with_ack({
+        status, _ = self._send_with_ack({
             "cmd": command, "headers": {"req_id": self._build_req_id(command)}, "body": body,
-        }, response=response):
+        }, response=response)
+        if status != "confirmed":
             return None
         value = response.get("body")
         return value if isinstance(value, dict) else {}
@@ -865,33 +990,102 @@ class WeChatBot:
         media_id = (completed or {}).get("media_id")
         return media_id if isinstance(media_id, str) and media_id else None
 
-    def _send_media(self, content: bytes, media_type: str, filename: str, title: Optional[str],
-                    text: Optional[str], userid: Optional[str]) -> bool:
+    def _send_media(
+        self, content: bytes, media_type: str, filename: str, title: Optional[str],
+        text: Optional[str], userid: Optional[str], *, receipt: _Receipt | None = None,
+        part_sender: _PartSender | None = None, plan: DeliveryPartPlanner | None = None,
+    ) -> bool:
         """
-        一次上传素材后按现有单聊、群聊目标发送，保留附带说明且不回退裁切图文。
+        说明及素材分别记账。新上传只发生在素材分段获准提交之后。
         """
-        targets = self._resolve_targets(userid)
+        targets = self._resolve_targets(userid, include_known_users=receipt is None)
         if not targets:
-            return False
-        media_id = self._upload_media(content, media_type, filename)
-        if not media_id:
+            if receipt:
+                receipt(userid, 0, "skipped", "no_target")
             return False
         caption = self._build_markdown(title=title, text=text)
-        success = False
+        if part_sender is None:
+            media_id = self._upload_media(content, media_type, filename)
+            if not media_id:
+                return False
+            return self._send_unmanaged_media(targets, media_id, media_type, caption)
+        chunks = self._split_content(caption) if caption else []
+        signature = json.dumps((media_type, filename, hashlib.sha256(content).hexdigest()))
+        if plan is not None:
+            plan(tuple(
+                (self._part_address(target, kind), index, value)
+                for target, kind in targets for index, value in enumerate([*chunks, signature])
+            ))
+        confirmed = False
+        for target, kind in targets:
+            status = self._send_tracked_media_target(
+                target, kind, chunks, signature, partial(self._upload_and_send_media, target, kind, content, media_type, filename),
+                part_sender, receipt,
+            )
+            confirmed = confirmed or status
+        return confirmed
+
+    def _send_unmanaged_media(
+        self, targets: list[tuple[str, int]], media_id: str, media_type: str, caption: str,
+    ) -> bool:
+        """
+        旧客户端直发共用已确认上传的素材地址。
+        """
+        confirmed = False
         for target, chat_type in targets:
-            qualified = f"{'group' if chat_type == 2 else 'user'}:{target}"
-            if caption and not self._send_markdown(caption, qualified):
+            if caption and not self._send_markdown(caption, self._part_address(target, chat_type)):
                 continue
-            sent = self._send_with_ack({
+            status = self._send_media_part(target, chat_type, media_type, media_id)[0]
+            confirmed = confirmed or status == "confirmed"
+        return confirmed
+
+    def _send_tracked_media_target(
+        self, target: str, chat_type: int, chunks: list[str], signature: str,
+        submit_media: Callable[[], DeliveryPartOutcome], part_sender: _PartSender, receipt: _Receipt | None,
+    ) -> bool:
+        """
+        各分段共用原目标，已确认说明不会再发送。
+        """
+        address = self._part_address(target, chat_type)
+        confirmed = True
+        submits: list[Callable[[], DeliveryPartOutcome]] = [
+            partial(self._send_markdown_part, target, chat_type, chunk) for chunk in chunks
+        ]
+        for index, (value, submit) in enumerate(zip([*chunks, signature], [*submits, submit_media])):
+            status, code = part_sender(address, index, value, confirmed, submit)
+            if receipt:
+                receipt(address, index, status, code)
+            confirmed = confirmed and status == "confirmed"
+        return confirmed
+
+    def _upload_and_send_media(
+        self, target: str, chat_type: int, content: bytes, media_type: str, filename: str,
+    ) -> DeliveryPartOutcome:
+        """
+        上传未完成时未产生对用户的投递，可报告重试。
+        """
+        media_id = self._upload_media(content, media_type, filename)
+        if not media_id:
+            return "retryable_failure", "attachment_upload_failed"
+        return self._send_media_part(target, chat_type, media_type, media_id)
+
+    def _send_media_part(self, target: str, chat_type: int, media_type: str, media_id: str) -> DeliveryPartOutcome:
+        """
+        写入后确认超时仍为未知态。
+        """
+        try:
+            return self._send_with_ack({
                 "cmd": "aibot_send_msg", "headers": {"req_id": self._build_req_id("aibot_send_msg")},
                 "body": {"chatid": target, "chat_type": chat_type, "msgtype": media_type,
                          media_type: {"media_id": media_id}},
             })
-            success = success or sent
-        return success
+        except (OSError, RuntimeError, websocket.WebSocketException):
+            return "unknown", "transport_unconfirmed"
 
     def send_file(self, file_path: str, file_name: Optional[str] = None, title: Optional[str] = None,
-                  text: Optional[str] = None, userid: Optional[str] = None) -> bool:
+                  text: Optional[str] = None, userid: Optional[str] = None, *,
+                  receipt: _Receipt | None = None, part_sender: _PartSender | None = None,
+                  plan: DeliveryPartPlanner | None = None) -> bool:
         """
         通过统一附件参数发送本地文件，限制为大于 5 字节且不超过 20 MiB，保留源文件。
 
@@ -910,9 +1104,14 @@ class WeChatBot:
             if not 5 < len(content) <= limit:
                 logger.warning("企业微信机器人文件须大于 5 字节且不超过 20 MiB")
                 return False
-            return self._send_media(content, "file", Path(file_name or path.name).name, title, text, userid)
+            return self._send_media(
+                content, "file", Path(file_name or path.name).name, title, text, userid,
+                receipt=receipt, part_sender=part_sender, plan=plan,
+            )
         except Exception as error:
             logger.error(f"企业微信机器人文件发送失败：{type(error).__name__}")
+            if receipt:
+                receipt(userid, 0, "permanent_failure", "attachment_unavailable")
             return False
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None) -> Optional[bool]:

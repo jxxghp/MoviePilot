@@ -602,7 +602,7 @@ flowchart LR
     IT --> Chain
 ```
 
-- `app/application/messaging/` 负责渠道回环入口（`ingress.py`）、消息渲染、模板、队列（`message.py`）、交互会话与视图；
+- `app/application/messaging/` 负责渠道回环入口（`ingress.py`）、消息渲染、模板、队列（`message.py`）、交互会话与视图；以实例、发送者、会话和线程定位交互状态，并在创建回复时保留来源话题；
   业务工作流仍由对应 Chain 执行（如媒体交互的业务部分在 `MediaInteractionChain`）。
 - 该包不作为推荐给插件直接使用的公开 SDK。
 
@@ -850,8 +850,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1203 |
-| 内部导入边 | 10,606 |
+| Python 模块 | 1213 |
+| 内部导入边 | 10,872 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 52（精确 policy 准入，Application / Chain 均为 0；本知识 Adapter 仍复用宿主 HTTP 层） |

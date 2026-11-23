@@ -593,7 +593,8 @@ docker compose start <service>
 - SQLite 使用在线备份 API，PostgreSQL 使用镜像内置的 `pg_dump` custom format
 - SQLite 插件自有数据库会在创建宿主备份时同步备份到 `database_backup/plugins/<插件ID>/`，文件名格式为 `<插件ID>_<插件版本>_sqlite_<时间>.db`
 - PostgreSQL 插件自有数据库使用独立 schema；插件建库会校验当前账号的 schema 使用和建表权限，权限不足时插件不会进入运行态
-- 源码部署使用 PostgreSQL 时，宿主机需安装 `pg_dump` 和 `pg_restore` 并加入 `PATH`；Docker 镜像已内置
+- PostgreSQL 备份和还原优先使用同主版本客户端。镜像提供 PostgreSQL 16 和 18 客户端。当默认客户端为 17 或以上且找不到同主版本工具时，PostgreSQL 12 至 15 使用镜像内的 16 客户端。源码部署需安装相应的 `pg_dump` 和 `pg_restore`，并让 MoviePilot 能从 `PATH` 或系统安装目录找到工具。
+- PostgreSQL 归档校验只检查归档目录。切换前应在隔离空库实际还原一次。升级后的库可能包含旧归档未记录的表，回退到旧结构应恢复到空库。
 - 默认目录为配置目录下的 `database_backup/`，可通过 `DB_BACKUP_PATH` 调整
 - 备份、列举和校验可独立通过 CLI 执行
 - 还原会覆盖当前数据库，执行前必须停止 MoviePilot；运行中的 Web API 和插件 SDK 不提供还原入口

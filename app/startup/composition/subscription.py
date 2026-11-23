@@ -206,8 +206,10 @@ def subscription_completion_scope() -> Iterator[CompleteSubscriptionCommand]:
     """
     session = SessionFactory()
     try:
+        repository = SessionSubscriptionRepository(session)
         yield CompleteSubscriptionCommand(
-            repository=SessionSubscriptionRepository(session),
+            repository=repository,
+            lock_record=repository.lock_for_completion,
             unit_of_work=SqlAlchemyUnitOfWork(session),
             outbox=SqlAlchemyOutboxStager(session),
             dispatch_store=SqlAlchemyOutboxDispatchStore(SessionFactory),

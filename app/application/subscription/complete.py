@@ -21,6 +21,7 @@ from app.application.outbox import (
 )
 from app.application.subscription.contract import (
     SubscriptionHistoryPatch,
+    SubscriptionSnapshot,
     SubscriptionStagingPort,
 )
 from app.runtime.log import logger
@@ -42,6 +43,7 @@ class CompleteSubscriptionCommand:
         outbox: Optional[OutboxStager],
         dispatch_store: Optional[OutboxDispatchStore],
         publish: Callable[[dict[str, JsonData]], None],
+        lock_record: Callable[[int, str | None], SubscriptionSnapshot | None] | None = None,
     ) -> None:
         """
         注入共享同步会话、事件发布端口和可选 durable outbox。
@@ -51,6 +53,7 @@ class CompleteSubscriptionCommand:
         self._outbox = outbox
         self._dispatch_store = dispatch_store
         self._publish = publish
+        self._lock_record = lock_record
 
     def execute(
         self,
@@ -61,11 +64,16 @@ class CompleteSubscriptionCommand:
         report: CompletionReporter,
         notification: Mapping[str, JsonData] | None = None,
         classification_snapshot: EffectiveClassificationSnapshot | None = None,
+        notify_owned: Callable[[str], None] | None = None,
     ) -> None:
         """
         在同一事务中写历史、删订阅并暂存完成事件、通知与统计意图。
         """
         info = dict(subscribe_info)
+        if not self._refresh_owner(subscribe_id, info):
+            return
+        if notify_owned is not None:
+            notification, notify = self._bind_owner_notification(info.get("owner_identity"), notification, notify_owned)
         if classification_snapshot is not None:
             info.update(
                 {
@@ -174,6 +182,44 @@ class CompleteSubscriptionCommand:
                 report(report_info)
             except Exception as error:
                 logger.warning(f"订阅完成统计上报失败：{error}")
+
+    def _refresh_owner(self, subscribe_id: int, info: dict[str, JsonData]) -> bool:
+        """
+        锁住当前记录，完成时保留可能迟到的归属确认。
+        """
+        if self._lock_record is None:
+            return True
+        activity_key = info.get("activity_key")
+        try:
+            record = self._lock_record(subscribe_id, activity_key if isinstance(activity_key, str) else None)
+        except Exception:
+            self._unit_of_work.rollback()
+            raise
+        if record is None:
+            self._unit_of_work.rollback()
+            return False
+        info["owner_identity"] = record.owner_identity
+        return True
+
+    @staticmethod
+    def _bind_owner_notification(
+        raw_owner: JsonData,
+        notification: Mapping[str, JsonData] | None,
+        notify_owned: Callable[[str], None],
+    ) -> tuple[Mapping[str, JsonData] | None, CompletionEffect]:
+        """
+        让即时投递和 outbox 使用同一个已核验的通知账号。
+        """
+        owner = raw_owner if isinstance(raw_owner, str) else ""
+        snapshot = {**notification, "subscription_owner_identity": owner} if notification else None
+
+        def send_owned_notification() -> None:
+            """
+            按完成事务冻结的账号投递。
+            """
+            notify_owned(owner)
+
+        return snapshot, send_owned_notification
 
 
 def completion_event_key(

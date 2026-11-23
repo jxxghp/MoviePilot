@@ -107,6 +107,7 @@ def _load_downloader_base():
         {
             "Downloaders": "Downloaders",
             "Notifications": "Notifications",
+            "ChannelSettings": "ChannelSettings",
             "MediaServers": "MediaServers",
         },
     )

@@ -58,3 +58,26 @@ class ChannelBinding(Base):
     user_identity: Mapped[str] = mapped_column(String(32), nullable=False)
     # UTC Unix 秒，到期或消费后不可再关联任何渠道。
     expires_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class ChannelInboundReceipt(Base):
+    """
+    主机已认领的可信入站事件，按短时窗口保留连接和事件 ID 的组合摘要。
+    """
+
+    __tablename__ = "channelinboundreceipt"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+
+
+class ChannelRuleTaskGrant(Base):
+    """
+    规则定时任务的权限快照，关联原成员并绑定审批和策略版本。
+    """
+
+    __tablename__ = "channelruletaskgrant"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    member_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    member_version: Mapped[float] = mapped_column(Float, nullable=False)
+    policy_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False)

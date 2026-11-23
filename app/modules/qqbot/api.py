@@ -9,12 +9,36 @@ from typing import Any, Literal, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.runtime.log import logger
+from app.schemas.delivery import DeliveryPartOutcome
 
 API_BASE = "https://api.sgroup.qq.com"
 TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"
 
 # 进程仅保留一个应用的访问令牌与毫秒级过期时间。
 _cached_token: Optional[dict[str, Any]] = None
+
+
+class QQRequestRejected(ValueError):
+    """
+    保存 QQ 请求明确被拒绝时的 HTTP 状态和平台错误码。
+    """
+
+    def __init__(self, status: int, code: object, detail: object) -> None:
+        """
+        :param status: QQ HTTP 响应状态码
+        :param code: QQ 响应对象中的错误码
+        :param detail: 向既有调用方报告的错误详情
+        """
+        super().__init__(str(detail))
+        self.status = status
+        self.code = str(code)
+
+    @property
+    def markdown_denied(self) -> bool:
+        """
+        只在 QQ 明确拒绝 Markdown 权限时允许纯文本回退。
+        """
+        return self.status in {400, 403} and self.code == "11244"
 
 
 def get_access_token(app_id: str, client_secret: str) -> str:
@@ -110,20 +134,53 @@ def _api_request(
             resp = RequestUtils(timeout=timeout).get_res(url, headers=headers)
         else:
             resp = RequestUtils(timeout=timeout).post_res(
-                url, json=body or {}, headers=headers
+                url, json=body or {}, headers=headers, allow_redirects=False,
             )
-        if not resp:
+        if resp is None:
             raise ValueError("Empty response")
         data = resp.json()
         if not isinstance(data, dict):
             raise ValueError(f"API Error [{path}]: invalid response {data!r}")
         status = getattr(resp, "status_code", 0)
+        if 400 <= status < 500 and status != 408:
+            raise QQRequestRejected(status, data.get("code"), data.get("message", data))
         if status and status >= 400:
             raise ValueError(f"API Error [{path}]: {data.get('message', data)}")
         return data
     except Exception as e:
         logger.error(f"QQ API: {method} {path} failed: {e}")
         raise
+
+
+def proactive_message_outcome(
+    token: str, target: str, is_group: bool, body: str, keyboard: Optional[dict[str, Any]], plain: bool,
+) -> DeliveryPartOutcome:
+    """
+    发送一个 QQ 主动消息分段，将平台确认与未确认结果区分开。
+
+    :param token: 机器人访问令牌
+    :param target: QQ 用户或群 openid
+    :param is_group: 是否使用群聊接口
+    :param body: 待发正文
+    :param keyboard: Markdown 按钮配置
+    :param plain: 是否作为纯文本回退发送
+    :return: 平台确认、明确拒绝或待核验的结果
+    """
+    send = send_proactive_group_message if is_group else send_proactive_c2c_message
+    try:
+        result = send(token, target, body, use_markdown=not plain, keyboard=keyboard)
+    except QQRequestRejected as exc:
+        if exc.markdown_denied and not plain:
+            return "permanent_failure", "markdown_denied"
+        if exc.status in {401, 429}:
+            return "retryable_failure", "qq_request_rejected"
+        return "permanent_failure", "qq_request_rejected"
+    except Exception:
+        return "unknown", "qq_submission_unconfirmed"
+    message_id = result.get("id")
+    if isinstance(message_id, str) and message_id:
+        return "confirmed", "plain_fallback" if plain else None, message_id
+    return "unknown", "qq_missing_message_id"
 
 
 def send_proactive_c2c_message(

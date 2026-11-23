@@ -15,6 +15,7 @@ from app.modules.wechat import wechat as wechat_client
 from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
 from app.schemas.message import Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import NotificationChannel
 from app.sdk.plugin import base as plugin_base
 from app.sdk.plugin.base import _PluginBase
@@ -280,7 +281,7 @@ def _route_to_client(monkeypatch: pytest.MonkeyPatch, client: WeChat | WeChatBot
     为单个实例装配通知路由，接收对象由现有宿主方法提供。
     """
     module = WechatModule()
-    conf = SimpleNamespace(name="wechat-test", config={})
+    conf = NotificationConf(id="wechat-test", name="wechat-test", type="wechat", config={})
     monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
     monkeypatch.setattr(module, "get_instance", lambda _: client)
     monkeypatch.setattr(module, "check_message", lambda *_: True)
@@ -327,11 +328,13 @@ def test_bot_mode_receives_same_native_image_request(
 
     module.post_message(message)
 
-    expected = {"title": "标题", "text": None, "image": _IMAGE_URL,
-                "userid": "member-1", "link": "https://detail.example"}
-    if native_image:
-        expected["native_image"] = True
-    send.assert_called_once_with(**expected)
+    send.assert_called_once()
+    kwargs = send.call_args.kwargs
+    assert {key: kwargs[key] for key in ("title", "text", "image", "userid", "link")} == {
+        "title": "标题", "text": None, "image": _IMAGE_URL,
+        "userid": "member-1", "link": "https://detail.example",
+    }
+    assert kwargs.get("native_image", False) is native_image and callable(kwargs["part_sender"])
 
 
 def test_native_image_respects_notification_filter(

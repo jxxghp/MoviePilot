@@ -3,6 +3,9 @@ VoceChat 通知渠道的消息解析、管理员校验与附件下载入口。
 """
 
 import json
+import time
+from functools import partial
+from secrets import compare_digest
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from urllib.parse import quote, unquote
 
@@ -11,11 +14,17 @@ from app.application.messaging.channel.admin import (
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
+from app.application.messaging.delivery import (
+    NotificationParts,
+    notification_preflight_active,
+)
+from app.domain.admission import AdmissionProof
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
@@ -134,11 +143,16 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             if not client_config:
                 return None
             client = self.get_instance(client_config.name)
+            token = (client_config.config or {}).get("VOCECHAT_INBOUND_TOKEN")
+            if isinstance(token, str) and not compare_digest(
+                token.encode(), str((args or {}).get("channel_token") or "").encode(),
+            ):
+                return None
             msg_body = json.loads(body)
             msg_type = msg_body.get("detail", {}).get("type")
             if msg_type not in ("normal", "reply"):
                 return None
-            logger.debug(f"收到VoceChat请求：{msg_body}")
+            logger.debug("收到 VoceChat 消息：source=%s", client_config.name)
             detail = msg_body.get("detail", {}) or {}
             content_type = detail.get("content_type") or ""
             content = detail.get("content")
@@ -148,35 +162,44 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             text = None
             if content_type in ("text/plain", "text/markdown") and isinstance(content, str):
                 text = content
-            gid = msg_body.get("target", {}).get("gid")
+            target = msg_body.get("target", {}) or {}
+            gid = target.get("gid")
             from_uid = msg_body.get("from_uid")
             if from_uid is None:
                 return None
             actor_userid = f"UID#{from_uid}"
-            channel_id = (client_config.config or {}).get("VOCECHAT_CHANNEL_ID")
-            if gid and str(gid) == str(channel_id):
-                userid = f"GID#{gid}"
-            else:
-                userid = f"UID#{msg_body.get('from_uid')}"
+            userid = actor_userid
+            reply_target = f"GID#{gid}" if gid is not None else actor_userid
 
             if (text or images or audio_refs or files) and userid:
                 if text and text.startswith("/") and self._should_reject_admin_command(
                         client_config.config, from_uid, actor_userid
                 ):
-                    self._send_admin_denied(client, userid)
+                    self._send_admin_denied(client, reply_target)
                     return None
                 logger.info(
                     f"收到来自 {client_config.name} 的VoceChat消息："
                     f"userid={userid}, text={text}, images={len(images) if images else 0}, "
                     f"audios={len(audio_refs) if audio_refs else 0}, files={len(files) if files else 0}"
                 )
-                return IncomingMessage(channel=NotificationChannel.VoceChat, source=client_config.name,
-                                       userid=userid, username=userid,
+                incoming = IncomingMessage(channel=NotificationChannel.VoceChat, source=client_config.name,
+                                       userid=userid, username=userid, chat_id=reply_target,
+                                       conversation_type=("group" if gid is not None else "private"
+                                                          if target.get("uid") is not None else "unknown"),
                                        is_channel_admin=matches_channel_admin(
                                            NotificationChannel.VoceChat, client_config.config,
                                            from_uid, actor_userid,
                                         source=client_config.name), text=text or "",
                                        images=images, audio_refs=audio_refs, files=files)
+                policy = getattr(client_config, "interaction_policy", None)
+                event_id = msg_body.get("mid")
+                if token and policy and isinstance(event_id, (str, int)) and event_id:
+                    incoming.message_id = event_id
+                    incoming._admission_proof = AdmissionProof(
+                        client_config.id, policy.revision, actor_userid, str(gid) if gid is not None else None,
+                        time.time() + 60, private=incoming.conversation_type == "private",
+                    )
+                return incoming
         except Exception as err:
             logger.error(f"VoceChat消息处理发生错误：{str(err)}")
         return None
@@ -320,60 +343,94 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             )
         ]
 
-    def post_message(self, message: Message, **kwargs: Any) -> None:
+    def post_message(self, message: Message, **kwargs: Any) -> Optional[bool]:
         """
         向通过渠道范围筛选的 VoceChat 配置发送普通通知。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param kwargs: 兼容统一通知入口的扩展参数，当前不使用
+        :return: 强制私聊实际发送并确认后返回 True；普通通知或平台不匹配返回 None
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
             userid = self.get_notification_userid(message, "vocechat_userid")
-            client = self.get_instance(conf.name)
-            if client:
+            if message.original_chat_id and not message.private_delivery:
+                userid = message.original_chat_id
+            client = self.get_message_client(conf.name, message)
+            if client is None:
+                self.record_delivery(message, conf, None, status="retryable_failure", code="client_unavailable")
+            elif isinstance(client, VoceChat):
+                self._post_tracked_notification(message, conf, client, userid)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+            else:
+                if notification_preflight_active():
+                    continue
                 texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.VoceChat) or [message.text]
-                for text in texts:
-                    client.send_msg(title=message.title, text=text,
-                                    image=message.image, userid=userid, link=message.link)
+                for index, text in enumerate(texts):
+                    self.record_delivery(message, conf, client.send_msg(title=message.title, text=text,
+                                    image=message.image, userid=userid, link=message.link), part=index)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+        return None
+
+    def _post_tracked_notification(
+        self, message: Message, conf: NotificationConf, client: VoceChat, userid: str | None,
+    ) -> None:
+        """
+        用实际 VoceChat 地址保存投递分段。
+        """
+        parts = NotificationParts(NotificationChannel.VoceChat, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+        texts: list[str | None] = list(message.channel_text_chunks(NotificationChannel.VoceChat)) or [message.text]
+        self.confirm_private_delivery(message, client.send_tracked_chunks(
+            message.title, texts, message.image, message.link, userid,
+            receipt=partial(parts.record, message), part_sender=parts.send, plan=parts.plan,
+        ))
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
         向通过渠道范围筛选的 VoceChat 配置发送媒体候选列表。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param medias: 待展示的媒体列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
                 userid = self.get_notification_userid(message, "vocechat_userid")
-                client.send_msg(title=message.title, userid=userid)
-                client.send_medias_msg(title=message.title, medias=medias,
-                                       userid=userid, link=message.link)
+                if message.original_chat_id and not message.private_delivery:
+                    userid = message.original_chat_id
+                self.record_delivery(message, conf, client.send_msg(title=message.title, userid=userid))
+                self.record_delivery(message, conf, client.send_medias_msg(title=message.title, medias=medias,
+                                       userid=userid, link=message.link))
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
         向通过渠道范围筛选的 VoceChat 配置发送种子候选列表。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param torrents: 待展示的种子上下文列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             userid = self.get_notification_userid(message, "vocechat_userid")
-            client = self.get_instance(conf.name)
+            if message.original_chat_id and not message.private_delivery:
+                userid = message.original_chat_id
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_torrents_msg(title=message.title, torrents=torrents,
-                                         userid=userid, link=message.link)
+                self.record_delivery(message, conf, client.send_torrents_msg(title=message.title, torrents=torrents,
+                                         userid=userid, link=message.link))
 
     def register_commands(self, commands: Dict[str, dict[str, Any]]) -> None:
         """

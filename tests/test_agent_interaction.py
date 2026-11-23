@@ -16,7 +16,7 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.interaction import InteractionContext, interaction_key
 from app.application.messaging.interaction.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
@@ -156,7 +156,10 @@ def test_choice_tool_sends_buttons_and_registers_pending_request() -> None:
 
     callback_data = notification.buttons[0][0]["callback_data"]
     _, _, request_id, option_index = callback_data.split(":")
-    resolved = agent_interaction_manager.resolve(request_id, int(option_index), "10001")
+    resolved = agent_interaction_manager.resolve(
+        request_id, int(option_index), "10001",
+        address=interaction_key("10001", NotificationChannel.Telegram, "telegram-test"),
+    )
     assert resolved is not None
     _, option = resolved
     assert option.value == "继续下载"
@@ -214,6 +217,7 @@ def test_agent_interaction_callback_routes_selected_value_back_to_agent() -> Non
         source="telegram-test",
         username="tester",
         title="需要你的选择",
+        address=interaction_key("10001", NotificationChannel.Telegram, "telegram-test", "456"),
         prompt="请选择",
         options=[
             AgentInteractionOption(label="电影", value="我选择电影"),
@@ -310,7 +314,7 @@ def test_secret_confirmation_preempts_plugin_interaction_on_message_channels() -
 
     try:
         for channel in (NotificationChannel.Telegram, NotificationChannel.Feishu):
-            key = chain._session_user_key("10001", channel, f"{channel.value}-test")
+            key = chain._session_user_key("10001", channel, f"{channel.value}-test", "chat-1")
             MessageChain._user_sessions[key] = ("session-secret", datetime.now())
             manager = Mock()
             manager.matches_secret_confirmation.return_value = True

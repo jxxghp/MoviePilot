@@ -8,6 +8,8 @@ import tempfile
 import threading
 import time
 import uuid
+from functools import partial
+from hashlib import file_digest, sha256
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import urlparse
@@ -15,18 +17,22 @@ from urllib.parse import urlparse
 from app.adapters.network.feishu import FeishuLongConnection
 from app.adapters.network.http import RequestUtils
 from app.adapters.network.ip import IpUtils
-from app.adapters.system.attachment import image_upload_file
+from app.adapters.system.attachment import image_upload_bytes, image_upload_file, load_image
 from app.application.messaging.channel.admin import matches_channel_admin
-from app.application.messaging.ingress import submit_message_to_host
+from app.application.messaging.ingress import submit_message_to_host, submit_platform_payload
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo
 from app.foundation import size as size_tools
-from app.modules.feishu.openapi import FEISHU_DOMAIN, FeishuOpenApi, FeishuResponse, JsonDict
+from app.modules.feishu.openapi import FEISHU_DOMAIN, NETWORK_ERROR_CODE, FeishuOpenApi, FeishuResponse, JsonDict
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
+from app.schemas.delivery import DeliveryPartOutcome, DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt
 from app.schemas.message import IncomingMessage, Message
 from app.schemas.types import MessageType, NotificationChannel
+
+type _NotificationPart = tuple[str, Callable[[str], DeliveryPartOutcome]]
+_TRACKED_IMAGE_PLACEHOLDER = "img_v3_moviepilot_notification"
 
 
 class Feishu:
@@ -61,6 +67,8 @@ class Feishu:
             FEISHU_VERIFICATION_TOKEN: Optional[str] = None,
             FEISHU_ENCRYPT_KEY: Optional[str] = None,
             name: Optional[str] = None,
+            *,
+            start_ws: bool = True,
             **kwargs: Any,
     ) -> None:
         """
@@ -74,9 +82,11 @@ class Feishu:
         :param FEISHU_VERIFICATION_TOKEN: 兼容配置中保留的校验令牌，长连接分发不使用
         :param FEISHU_ENCRYPT_KEY: 兼容配置中保留的加密密钥，长连接分发不使用
         :param name: 实例名称，未提供时使用 feishu
+        :param start_ws: 是否启动入站长连接，关闭时保留出站 OpenAPI 客户端
         :param kwargs: 通知实例传入的其他配置，当前忽略
         """
         self._name = name or "feishu"
+        self._connection_id = kwargs.get("connection_id")
         self._app_id = (FEISHU_APP_ID or "").strip()
         self._app_secret = (FEISHU_APP_SECRET or "").strip()
         self._default_open_id = (FEISHU_OPEN_ID or "").strip() or None
@@ -98,7 +108,10 @@ class Feishu:
             return
 
         self._api_client = self._build_api_client()
-        self._start_ws_client()
+        if start_ws:
+            self._start_ws_client()
+        else:
+            self._ready.set()
 
     def _should_reject_admin_command(
             self, *user_ids: Optional[Union[str, int]]
@@ -199,6 +212,12 @@ class Feishu:
         """
         将飞书入站消息转发到统一消息入口，复用现有交互主链。
         """
+        forwarded = submit_platform_payload(
+            payload, self._name, NotificationChannel.Feishu,
+            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
+        )
+        if forwarded is not None:
+            return forwarded
         return submit_message_to_host(
             payload,
             self._name,
@@ -700,6 +719,7 @@ class Feishu:
             text=text,
             message_id=message.get("message_id"),
             chat_id=message.get("chat_id"),
+            conversation_type="private" if message.get("chat_type") == "p2p" else "group" if message.get("chat_type") == "group" else "unknown",
             images=images,
             audio_refs=audio_refs,
             files=files,
@@ -1928,34 +1948,276 @@ class Feishu:
         )
         return result
 
+    def send_tracked_notification(
+        self, message: Message, target: tuple[str | None, str | None, str | None], *, nonce: str,
+        receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        保存明确的飞书地址类型及卡片分段，重试时复用平台去重标识。
+
+        :param message: 待投递的卡片内容
+        :param target: 显式用户、会话及接收标识类型
+        :param nonce: 业务事件与连接身份组成的稳定标识
+        :param receipt: 记录各卡片的确认结果
+        :param part_sender: 发送前核对当前分段
+        :param plan: 提交前保存解析后的完整清单
+        :return: 全部卡片得到确认时返回 True
+        """
+        original = str(message.original_message_id) if message.original_message_id and not message.private_delivery else None
+        address = (original, "reply") if original is not None else self._resolve_target(*target)
+        if address is None:
+            receipt(None, 0, "skipped", "no_target")
+            return False
+        receive_id, receive_type = address
+        typed_target = f"{receive_type}:{receive_id}"
+        parts = self._tracked_notification_parts(message, address)
+        plan(tuple((typed_target, part, content) for part, (content, _) in enumerate(parts)))
+        confirmed = True
+        for part, (content, submit) in enumerate(parts):
+            dedup = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{nonce}:{typed_target}:{message.attachment_part_offset + part}"))
+            status, code = part_sender(
+                typed_target, part, content, confirmed, partial(submit, dedup),
+            )
+            receipt(typed_target, part, status, code)
+            confirmed = confirmed and status == "confirmed"
+        return bool(parts) and confirmed
+
+    def _tracked_notification_parts(self, message: Message, address: tuple[str, str]) -> list[_NotificationPart]:
+        """
+        生成保留封面与附件说明的飞书分段清单。
+        """
+        if message.native_image and message.image:
+            return self._tracked_native_image(message, address)
+        local_path = message.file_path or message.voice_path
+        if not local_path:
+            return self._tracked_cards(message, address)
+        if message.file_path and message.image:
+            cards = self._tracked_cards(message, address)
+            attachment = message.model_copy(update={"title": None, "text": None})
+            return cards + self._tracked_attachment_parts(attachment, address, Path(local_path))
+        return self._tracked_attachment_parts(message, address, Path(local_path))
+
+    def _tracked_native_image(self, message: Message, address: tuple[str, str]) -> list[_NotificationPart]:
+        """
+        将原图与携带正文和按钮的说明分别登记，使用同一接收地址。
+        """
+        image = load_image(message.image or "")
+        parts = []
+        if message.title or message.text or message.buttons:
+            caption = message.model_copy(update={"image": None, "native_image": False, "link": None})
+            parts.extend(self._tracked_cards(caption, address))
+        signature = json.dumps(("native-image", sha256(image[0]).hexdigest() if image else None))
+        parts.append((signature, partial(self._submit_tracked_native_image, address, image)))
+        return parts
+
+    def _submit_tracked_native_image(
+        self, address: tuple[str, str], image: tuple[bytes, str] | None, dedup: str,
+    ) -> DeliveryPartOutcome:
+        """
+        在分段获准提交后上传已冻结的原图字节。
+        """
+        if image is None:
+            return "permanent_failure", "attachment_unavailable"
+        with image_upload_bytes(image) as path:
+            key = self._upload_image(path)
+        if not key:
+            return "retryable_failure", "attachment_upload_failed"
+        return self._submit_tracked_message(address, "image", json.dumps({"image_key": key}), dedup)
+
+    def _tracked_cards(self, message: Message, address: tuple[str, str]) -> list[_NotificationPart]:
+        """
+        将渲染后的卡片与原始封面绑定，不让临时图片标识改变投递身份。
+        """
+        image_key = _TRACKED_IMAGE_PLACEHOLDER if message.image else None
+        payloads = [json.dumps(payload, ensure_ascii=False, sort_keys=True)
+                    for payload in self._build_notification_cards(message, image_key)]
+        uploaded_key: str | None = None
+
+        def send_card(payload: str, dedup: str) -> DeliveryPartOutcome:
+            """
+            上传封面后只提交已获准发送的卡片。
+            """
+            nonlocal uploaded_key
+            if message.image:
+                if uploaded_key is None:
+                    uploaded_key = self._upload_remote_image(message.image)
+                if not uploaded_key:
+                    return "retryable_failure", "image_upload_failed"
+                payload = self._tracked_card_content(payload, uploaded_key, image_key)
+            return self._submit_tracked_message(address, "interactive", payload, dedup)
+
+        return [
+            (self._tracked_card_content(payload, message.image, image_key),
+             partial(send_card, payload))
+            for payload in payloads
+        ]
+
+    def _tracked_attachment_parts(
+        self, message: Message, address: tuple[str, str], source: Path,
+    ) -> list[_NotificationPart]:
+        """
+        为本地附件和附加正文分别创建同一地址上的有序分段。
+        """
+        if message.file_path:
+            is_image = source.suffix.lower() in self.IMAGE_SUFFIXES
+            kind = "interactive" if is_image else "file"
+            caption = message.text if is_image else (
+                self._build_message_text(message.title, message.text) if message.title or message.text else None
+            )
+        else:
+            kind = "audio"
+            caption = message.voice_caption
+        title = message.title if kind == "interactive" else None
+        name = message.file_name or source.name
+        try:
+            if not source.is_file():
+                raise FileNotFoundError
+            with source.open("rb") as stream:
+                digest = file_digest(stream, "sha256").hexdigest()
+        except OSError:
+            digest = None
+        content = json.dumps((kind, digest, name, title, caption), ensure_ascii=False)
+        parts: list[_NotificationPart] = [(
+            content,
+            partial(self._submit_tracked_attachment, address, source, name, kind, title, caption, digest),
+        )]
+        if kind != "interactive" and caption:
+            payload = json.dumps({"text": caption}, ensure_ascii=False)
+            parts.append((payload, partial(self._submit_tracked_message, address, "text", payload)))
+        return parts
+
+    def _submit_tracked_attachment(
+        self, address: tuple[str, str], source: Path, name: str, kind: str, title: str | None, caption: str | None,
+        digest: str | None, dedup: str,
+    ) -> DeliveryPartOutcome:
+        """
+        在附件获准提交后上传素材，并记录实际发送确认。
+        """
+        if digest is None or not source.is_file():
+            return "permanent_failure", "attachment_unavailable"
+        if kind == "interactive":
+            image_key = self._upload_image(source)
+            if not image_key:
+                return "retryable_failure", "attachment_upload_failed"
+            payload = self._build_card(title=title, text=caption, link=None, buttons=None, image_key=image_key)
+        else:
+            file_key = self._upload_file(source, file_name=name)
+            if not file_key:
+                return "retryable_failure", "attachment_upload_failed"
+            payload = {"file_key": file_key}
+        return self._submit_tracked_message(address, kind, json.dumps(payload, ensure_ascii=False), dedup)
+
+    @staticmethod
+    def _tracked_card_content(payload: str, image_reference: str | None, image_key: str | None) -> str:
+        """
+        用当前阶段的源地址或平台图片标识替换卡片的预留字段。
+        """
+        if not image_key:
+            return payload
+        return payload.replace(
+            f'"img_key": {json.dumps(image_key, ensure_ascii=False)}',
+            f'"img_key": {json.dumps(image_reference, ensure_ascii=False)}',
+        )
+
+    def _submit_tracked_message(
+        self, address: tuple[str, str], message_type: str, payload: str, dedup: str,
+    ) -> DeliveryPartOutcome:
+        """
+        在明确地址提交一个分段，并保留平台返回的消息引用。
+        """
+        if not self._api_client:
+            return "retryable_failure", "client_unavailable"
+        if address[1] == "reply":
+            response = self._api_client.reply_message(
+                message_id=address[0], msg_type=message_type, content=payload, reply_in_thread=False, uuid=dedup,
+            )
+        else:
+            response = self._api_client.create_message(
+                receive_id_type=address[1], receive_id=address[0], msg_type=message_type, content=payload, uuid=dedup,
+            )
+        message_id = response.data.get("message_id")
+        if response.success() and isinstance(message_id, str) and message_id:
+            return "confirmed", None, message_id
+        if response.code == 99991400:
+            return "retryable_failure", "rate_limited"
+        if response.code not in {0, NETWORK_ERROR_CODE}:
+            return "permanent_failure", "platform_rejected"
+        return "unknown", "response_unconfirmed"
+
     def _build_notification_cards(self, message: Message, image_key: Optional[str]) -> List[JsonDict]:
         """
-        按段落拆分渠道报告并添加分页标题。
+        按实际卡片字节拆分通知，优先保持段落完整并为分页标题留出空间。
 
-        目标为每张卡片不超过 24000 字节；单个不可再分段落可能超过该预算。
-
-        :param message: 原通知与渠道专用富文本；无专用文本时不拆分正文
+        :param message: 原通知与可选的渠道专用富文本
         :param image_key: 已上传的封面标识
         :return: 保留标题、链接和按钮的卡片列表
         """
-        rich_text = message.channel_text(NotificationChannel.Feishu)
-        texts: List[Optional[str]] = [message.text]
-        if rich_text:
-            texts = []
-            current: List[str] = []
-            for paragraph in rich_text.split("\n\n"):
-                candidate = "\n\n".join(current + [paragraph])
-                card = self._build_card(message.title, candidate, message.link, message.buttons, image_key)
-                if current and len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > self._NOTIFICATION_CARD_BYTES:
-                    texts.append("\n\n".join(current))
-                    current = []
-                current.append(paragraph)
-            texts.append("\n\n".join(current))
+        body = message.channel_text(NotificationChannel.Feishu) or message.text
+        original = self._build_card(message.title, body, message.link, message.buttons, image_key)
+        if not body or len(json.dumps(original, ensure_ascii=False).encode("utf-8")) <= self._NOTIFICATION_CARD_BYTES:
+            return [original]
+
+        heading = message.title or "MoviePilot"
+        digits = "9" * len(str(len(body)))
+
+        def fits(text: str) -> bool:
+            """
+            按含分页标题、图片、链接与按钮的实际 JSON 测量容量。
+            """
+            card = self._build_card(f"{heading}（{digits}/{digits}）", text, message.link, message.buttons, image_key)
+            return len(json.dumps(card, ensure_ascii=False).encode("utf-8")) <= self._NOTIFICATION_CARD_BYTES
+
+        texts = self._notification_card_texts(body, fits)
         total = len(texts)
         return [self._build_card(
-            title=f"{message.title or 'MoviePilot'}（{index + 1}/{total}）" if total > 1 else message.title,
+            title=f"{heading}（{index + 1}/{total}）" if total > 1 else message.title,
             text=text, link=message.link, buttons=message.buttons, image_key=image_key,
         ) for index, text in enumerate(texts)]
+
+    def _notification_card_texts(self, body: str, fits: Callable[[str], bool]) -> list[str]:
+        """
+        先按段落成组，单段超出容量时再按 Unicode 字符分片。
+        """
+        groups: list[str] = []
+        current: list[str] = []
+        for paragraph in body.split("\n\n"):
+            if current and not fits("\n\n".join([*current, paragraph])):
+                groups.append("\n\n".join(current))
+                current = []
+            if not fits(paragraph):
+                pieces = self._split_notification_paragraph(paragraph, fits)
+                if pieces is None:
+                    # 卡片固定字段过大，交给平台拒绝，不能静默丢掉正文或操作按钮。
+                    return [body]
+                groups.extend(pieces[:-1])
+                current.append(pieces[-1])
+            else:
+                current.append(paragraph)
+        if current:
+            groups.append("\n\n".join(current))
+        return groups
+
+    def _split_notification_paragraph(
+        self, paragraph: str, fits: Callable[[str], bool],
+    ) -> list[str] | None:
+        """
+        用二分查找找到每个分片的最长前缀，避免拆开单个多字节字符。
+        """
+        parts: list[str] = []
+        start = 0
+        while start < len(paragraph):
+            low, high = start, min(start + self._NOTIFICATION_CARD_BYTES, len(paragraph))
+            while low < high:
+                middle = (low + high + 1) // 2
+                if fits(paragraph[start:middle]):
+                    low = middle
+                else:
+                    high = middle - 1
+            if low == start:
+                return None
+            parts.append(paragraph[start:low])
+            start = low
+        return parts or None
 
     def edit_message(self, message_id: str, title: Optional[str] = None, text: Optional[str] = None,
                      buttons: Optional[List[List[JsonDict]]] = None, metadata: Optional[JsonDict] = None,

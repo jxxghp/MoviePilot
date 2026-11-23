@@ -19,7 +19,7 @@ from app.modules.discord.discord import Discord
 from app.modules.slack import SlackModule
 from app.modules.slack.slack import Slack
 from app.schemas.system import NotificationConf
-from app.schemas.types import NotificationChannel
+from app.schemas.types import NotificationChannel, SystemConfigKey
 
 
 @pytest.mark.parametrize("available", [True, False])
@@ -105,9 +105,23 @@ async def test_notification_config_can_repair_legacy_duplicate_ids(monkeypatch):
     """
     拒绝新重复身份的同时，允许管理员把旧重复数据修复为唯一身份。
     """
-    service = SimpleNamespace(get=lambda _key: [
+    legacy = [
         {"id": "legacy-duplicate", "name": "A", "type": "wechatclawbot"},
-        {"id": "legacy-duplicate", "name": "B", "type": "wechatclawbot"}], async_set=AsyncMock(return_value=True))
+        {"id": "legacy-duplicate", "name": "B", "type": "wechatclawbot"},
+    ]
+    state = {SystemConfigKey.Notifications: legacy}
+
+    async def update(key, change):
+        """
+        委托应用在当前快照上计算已提交的新值。
+        """
+        result, value = change(state.get(key))
+        state[key] = value
+        return result
+
+    service = SimpleNamespace(
+        get=state.get, async_update_atomically=update, async_publish_committed_change=AsyncMock(),
+    )
     monkeypatch.setattr(notification_endpoint, "get_configured_system_config", lambda: service)
     reconcile = Mock(return_value={"success": True})
     monkeypatch.setattr(notification_endpoint, "NotificationChain", lambda: SimpleNamespace(manage_channel=reconcile))
@@ -115,7 +129,16 @@ async def test_notification_config_can_repair_legacy_duplicate_ids(monkeypatch):
         NotificationConf(id="unique-A", name="A", type="wechatclawbot"),
         NotificationConf(id="unique-B", name="B", type="wechatclawbot")], None)
     assert response.success
-    service.async_set.assert_awaited_once()
+    service.async_publish_committed_change.assert_awaited_once_with(SystemConfigKey.ChannelSettings)
+    saved = state[SystemConfigKey.ChannelSettings]
+    identities = set(saved["connections"])
+    assert len(identities) == 2
+    assert identities.isdisjoint({"legacy-duplicate", "unique-A", "unique-B"})
+    assert {record["name"] for record in saved["connections"].values()} == {"A", "B"}
+    assert set(saved["notifications"]) == identities
+    assert set(saved["interactions"]) == identities
+    for identity, record in saved["connections"].items():
+        assert record["id"] == record["identity_namespace"] == identity
 
 
 def test_discord_invalid_explicit_chat_does_not_fall_back_to_broadcast():

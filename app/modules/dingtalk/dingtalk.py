@@ -7,12 +7,15 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import time
+from functools import partial
 from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.adapters.network.http import RequestUtils
 from app.runtime.log import logger
+from app.schemas.delivery import DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt, DeliveryStatus
 
 
 class DingTalk:
@@ -127,41 +130,75 @@ class DingTalk:
             logger.error("钉钉自定义机器人 Webhook 配置不完整")
             return False
 
-        markdown_title, markdown_text = self.build_markdown(
-            title=title,
-            text=text,
-            image=image,
-            link=link,
-        )
+        markdown = self.build_markdown(title, text, image, link)
+        status, _ = self._post_markdown(*markdown)
+        return status == "confirmed"
+
+    def send_tracked_chunks(
+        self, title: str | None, texts: list[str | None], image: str | None, link: str | None, *,
+        receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> None:
+        """
+        在提交钉钉消息前固定群 Webhook 和全部 Markdown 分段。
+
+        :param title: 消息标题
+        :param texts: 有序正文分段
+        :param image: 可选封面地址
+        :param link: 可选详情链接
+        :param receipt: 记录平台确认的回调
+        :param part_sender: 每段提交前核对进度的回调
+        :param plan: 首次提交前登记分段和目标的回调
+        """
+        target = "webhook:" + hashlib.sha256(self._webhook.encode()).hexdigest()
+        chunks = [self.build_markdown(title, text, image, link) for text in texts if title or text]
+        if not chunks:
+            receipt(target, 0, "skipped", "empty_content")
+            return
+        rendered = [json.dumps(chunk, ensure_ascii=False) for chunk in chunks]
+        plan(tuple((target, index, content) for index, content in enumerate(rendered)))
+        confirmed = True
+        for index, (content, markdown) in enumerate(zip(rendered, chunks)):
+            status, code = part_sender(target, index, content, confirmed, partial(self._post_markdown, *markdown))
+            receipt(target, index, status, code)
+            confirmed = confirmed and status == "confirmed"
+
+    def _post_markdown(self, title: str, text: str) -> tuple[DeliveryStatus, str | None]:
+        """
+        提交单段 Markdown，区分业务拒绝与结果未知。
+
+        :param title: 渲染后的平台标题
+        :param text: 渲染后的 Markdown 正文
+        :return: 平台实际确认状态及脱敏错误类别
+        """
+        if not self.get_state():
+            return "permanent_failure", "invalid_webhook"
         payload = {
             "msgtype": "markdown",
             "markdown": {
-                "title": markdown_title,
-                "text": markdown_text,
+                "title": title,
+                "text": text,
             },
         }
-        response = self._req.post_res(url=self.build_request_url(), json=payload)
+        response = self._req.post_res(url=self.build_request_url(), json=payload, allow_redirects=False)
         if response is None:
             logger.error("钉钉自定义机器人请求失败")
-            return False
+            return "unknown", "response_unconfirmed"
         try:
+            if response.status_code == 429:
+                return "retryable_failure", "rate_limited"
             if response.status_code != 200:
                 logger.error(f"钉钉自定义机器人返回 HTTP {response.status_code}")
-                return False
+                return "unknown", "response_unconfirmed"
             try:
                 result = response.json()
             except ValueError:
                 logger.error("钉钉自定义机器人返回了无法解析的响应")
-                return False
-            if not isinstance(result, dict):
-                logger.error("钉钉自定义机器人返回了非对象响应")
-                return False
-            if result.get("errcode") == 0:
-                return True
-            logger.error(
-                "钉钉自定义机器人返回错误："
-                f"{result.get('errcode')}-{result.get('errmsg') or '未知错误'}"
-            )
-            return False
+                return "unknown", "response_unconfirmed"
+            if not isinstance(result, dict) or type(result.get("errcode")) is not int:
+                return "unknown", "response_unconfirmed"
+            if result["errcode"] == 0:
+                return "confirmed", None
+            logger.error("钉钉自定义机器人返回错误码 %s", result["errcode"])
+            return "permanent_failure", "platform_rejected"
         finally:
             response.close()

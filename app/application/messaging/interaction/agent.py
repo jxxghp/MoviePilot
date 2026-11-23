@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 from threading import Lock
 from typing import Any, Optional
 
+from app.application.messaging.interaction import InteractionKey, interaction_key
+from app.schemas.types import NotificationChannel
+
 # Agent 选择按钮回调前缀，新旧两种格式都必须继续兼容。
 AGENT_CHOICE_PREFIX = "agent_interaction:choice:"
 LEGACY_AGENT_CHOICE_PREFIX = "agent_choice:"
@@ -96,6 +99,7 @@ class PendingAgentInteraction:
     :param title: 交互展示标题，None 表示不单独显示标题
     :param prompt: 向用户说明选择目的的提示正文
     :param options: 按展示顺序排列的可选项
+    :param address: 按钮创建时冻结的渠道会话地址
     :param created_at: 会话创建的本地时间，用于计算过期时间
     :ivar selected_index: 已确认的选项序号；未选择时为 None
     :ivar selection_persisted: Web 选择结果是否已完成持久化
@@ -111,6 +115,7 @@ class PendingAgentInteraction:
     title: Optional[str]
     prompt: str
     options: list[AgentInteractionOption]
+    address: Optional[InteractionKey] = None
     created_at: datetime = field(default_factory=datetime.now)
     selected_index: Optional[int] = field(default=None, init=False)
     selection_persisted: bool = field(default=False, init=False)
@@ -172,6 +177,7 @@ class AgentInteractionManager:
         title: Optional[str],
         prompt: str,
         options: list[AgentInteractionOption],
+        address: Optional[InteractionKey] = None,
     ) -> PendingAgentInteraction:
         """
         创建一条待用户确认的 Agent 交互请求。
@@ -191,6 +197,7 @@ class AgentInteractionManager:
                 title=title,
                 prompt=prompt,
                 options=options,
+                address=address or interaction_key(user_id, NotificationChannel(channel) if channel else None, source),
             )
             self._pending_interactions[request_id] = request
             return request
@@ -200,9 +207,10 @@ class AgentInteractionManager:
         request_id: str,
         option_index: int,
         user_id: Optional[str] = None,
+        *, address: Optional[InteractionKey] = None,
     ) -> Optional[tuple[PendingAgentInteraction, AgentInteractionOption]]:
         """
-        消费一条 Agent 交互请求，并返回选中的选项。
+        原子消费当前渠道和会话内的请求，异地点击不改变请求状态。
         """
         with self._lock:
             self._cleanup_locked()
@@ -210,6 +218,8 @@ class AgentInteractionManager:
             if not request:
                 return None
             if user_id is not None and str(request.user_id) != str(user_id):
+                return None
+            if request.address != address:
                 return None
             if option_index < 1 or option_index > len(request.options):
                 return None
@@ -242,7 +252,9 @@ class AgentInteractionManager:
         with self._lock:
             self._cleanup_locked()
             request = self._pending_interactions.get(request_id)
-            if not request or request.user_id != str(user_id) or not 1 <= option_index <= len(request.options):
+            if (not request or request.user_id != str(user_id)
+                    or request.channel != NotificationChannel.WebAgent.value
+                    or not 1 <= option_index <= len(request.options)):
                 return None
             repeated = request.execution_claimed
             if request.selected_index is None:

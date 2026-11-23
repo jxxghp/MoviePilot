@@ -23,6 +23,7 @@ from app.application.subscription.execution import (
 )
 from app.application.subscription.mutation import SubscriptionMutation
 from app.application.subscription.sitebudget import SubscriptionSearchCancelled
+from app.chain.music_interaction import subscribe as subscription_interaction
 from app.chain.search import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import (
@@ -35,7 +36,31 @@ from app.domain.context import (
 )
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.category import ClassificationSelection
-from app.schemas.types import MediaSource, MediaType
+from app.schemas.types import MediaSource, MediaType, NotificationChannel
+
+
+def test_revoked_member_cannot_submit_music_subscription(monkeypatch):
+    """
+    识别音乐之后、创建订阅之前撤权，原会话只收到拒绝提示。
+    """
+    authorization = Mock()
+    authorization.resolve_operation.side_effect = PermissionError("订阅权限已停用")
+    monkeypatch.setattr(subscription_interaction, "get_channel_authorization", lambda: authorization)
+    subscribe_chain = Mock()
+    monkeypatch.setattr(subscription_interaction, "SubscribeChain", subscribe_chain)
+    host = Mock()
+    request = SimpleNamespace(original_chat_id="group:music")
+
+    subscription_interaction.subscribe_media(
+        host, request, _music_info(), NotificationChannel.QQ, "fixture", "member", "username",
+    )
+
+    authorization.resolve_operation.assert_called_once_with(NotificationChannel.QQ.value, "fixture", "member",
+                                                            "subscription.add")
+    subscribe_chain.assert_not_called()
+    host.post_message.assert_called_once()
+    message = host.post_message.call_args.args[0]
+    assert message.title == "订阅权限已停用" and message.original_chat_id == "group:music"
 
 
 def _music_info() -> MusicInfo:

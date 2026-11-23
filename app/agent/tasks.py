@@ -15,7 +15,8 @@ from app.agent.orchestrator import AGENT_EXECUTION_ERROR_PREFIX, HEARTBEAT_SESSI
 from app.agent.prompt import prompt_manager
 from app.agent.runtime import agent_runtime_manager
 from app.agent.tools.base import run_agent_blocking
-from app.application.agenttask import get_agent_task_execution_service
+from app.application.agenttask import AgentTaskRunSnapshot, get_agent_task_execution_service
+from app.application.messaging.channel.catalog import is_managed_interaction_channel
 from app.chain.agent import AgentChain
 from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 from app.runtime.log import logger
@@ -109,27 +110,26 @@ class AgentTaskOwner(AgentLifecycleOwner):
         notification_username = None
         sender_id = run.user_id
         delivery = None
+        from app.application.security.authorization import get_channel_authorization
+
+        authorization = get_channel_authorization()
+        managed_channel = bool(authorization and run.channel and is_managed_interaction_channel(run.channel))
         try:
             if run.execution_authorization_id:
-                from app.application.security.authorization import get_channel_authorization
-
-                authorization = get_channel_authorization()
                 if authorization:
                     delivery = await run_agent_blocking("db", authorization.delivery, run.execution_authorization_id)
                     if delivery:
                         sender_id = delivery[2]
-            if run.channel and not run.execution_authorization_id:
-                from app.application.security.authorization import get_channel_authorization
-                from app.domain.authorization import LEGACY_CHANNELS
-
-                if get_channel_authorization() is not None and run.channel in {item[0] for item in LEGACY_CHANNELS.values()}:
-                    raise AgentIdentityError("此旧任务尚未确认渠道授权，请从原会话删除后重新创建；不会回退其它账号。")
+            elif managed_channel:
+                raise AgentIdentityError("此旧任务尚未确认渠道授权，请从原会话删除后重新创建；不会回退其它账号。")
             user = await require_execution_user(
                 self._data.users if self._data is not None else None, run.execution_user_id,
                 run.execution_user_identity or "",
                 run.execution_authorization_id,
                 "schedule",
             )
+            if run.execution_authorization_id and delivery is None:
+                raise AgentIdentityError("定时任务的原渠道连接已不可用。")
             notification_username = user.name
             result = await self.process_message(
                 session_id=run.session_id,
@@ -166,7 +166,9 @@ class AgentTaskOwner(AgentLifecycleOwner):
                 error_message = "AgentManager 已关闭"
             result = f"Agent 定时任务执行失败：{error_message}"
             logger.error(f"Agent 定时任务 {task_id} 执行失败: {str(err)}")
-            if notification_username or run.channel:
+            if run.execution_authorization_id:
+                await AgentTaskOwner._report_channel_task_failure(run, result)
+            elif notification_username or (run.channel and not managed_channel):
                 await AgentChain().async_post_message(
                     Message.model_validate({
                         "mtype": MessageType.Agent,
@@ -190,6 +192,26 @@ class AgentTaskOwner(AgentLifecycleOwner):
             )
 
         return success, str(result or "任务执行完成")
+
+    @staticmethod
+    async def _report_channel_task_failure(run: AgentTaskRunSnapshot, result: str) -> None:
+        """
+        仅向仍有定时权限的原执行者发送任务失败信息。
+        """
+        from app.application.security.authorization import get_channel_authorization
+
+        service = get_channel_authorization()
+        if service is None or not run.execution_authorization_id:
+            return
+        try:
+            message = await run_agent_blocking(
+                "db", service.prepare_task_result,
+                Message(mtype=MessageType.Agent, title=f"定时任务执行失败：{run.name}", text=result, save_history=False),
+                run.execution_authorization_id, run.execution_user_id, run.execution_user_identity,
+            )
+        except PermissionError:
+            return
+        await AgentChain().async_post_message(message)
 
     @staticmethod
     def _build_heartbeat_prompt() -> str:

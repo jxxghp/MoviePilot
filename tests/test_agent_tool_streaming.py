@@ -371,6 +371,46 @@ class AdminOnlyDummyTool(MoviePilotTool):
         return "ok"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["active", "revoked", "unavailable"])
+async def test_scheduled_tool_delivery_revalidates_execution_identity(state):
+    """
+    定时工具复核账号与授权，停用后不会把原消息改投其他受众。
+    """
+    tool = DummyTool(session_id="task", user_id="member")
+    tool.set_agent_context({
+        "scheduled_authorization_id": "approval",
+        "execution_user_id": 17,
+        "execution_user_identity": "stable-owner",
+    })
+    original = Message(text="定时结果", original_chat_id="group:old")
+    outgoing = Message(text="定时结果", userid="member", private_delivery=True)
+    service = SimpleNamespace(prepare_task_result=lambda *_: outgoing)
+    executor = AsyncMock(return_value=outgoing)
+    if state == "revoked":
+        executor.side_effect = PermissionError("权限已停用")
+    chain = SimpleNamespace(async_post_message=AsyncMock())
+    with (
+        patch("app.application.security.authorization.get_channel_authorization",
+              return_value=None if state == "unavailable" else service),
+        patch("app.agent.tools.base.run_agent_blocking", executor),
+        patch("app.agent.tools.base.ToolChain", return_value=chain),
+    ):
+        if state != "active":
+            diagnostic = "权限已停用" if state == "revoked" else "渠道授权服务不可用"
+            with pytest.raises(PermissionError, match=diagnostic):
+                await tool.send_message(original)
+            chain.async_post_message.assert_not_awaited()
+        else:
+            await tool.send_message(original)
+            chain.async_post_message.assert_awaited_once_with(outgoing)
+
+    if state == "unavailable":
+        executor.assert_not_awaited()
+    else:
+        executor.assert_awaited_once_with("db", service.prepare_task_result, original, "approval", 17, "stable-owner")
+
+
 class TestAgentToolStreaming:
     """
     Agent 工具流式输出测试。

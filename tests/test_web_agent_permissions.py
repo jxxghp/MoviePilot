@@ -527,3 +527,56 @@ def test_web_message_endpoint_binds_user_id_and_blocks_non_admin_commands(monkey
     )
     send_event.assert_not_called()
     assert posted and "只有管理员才有权限执行此命令" in str(getattr(posted[0], "title", ""))
+
+
+@pytest.mark.parametrize("identity", ["immutable-channel-account", None])
+def test_channel_download_tasks_keep_owner_boundary_with_web_manage_permissions(monkeypatch, identity):
+    """
+    渠道成员即使携带网页下载管理权限，也不能跨账号查询任务或退回同名过滤。
+    """
+    actor = SimpleNamespace(
+        authorization_id="channel-member", notification_identity=identity, name="reused-name",
+        is_superuser=False, permissions={"manage": True, "features": {"manage.downloading": True}},
+    )
+    listing = MagicMock(return_value=["owned-task"])
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: SimpleNamespace(downloading=listing))
+
+    result = download_endpoint.current(_=actor)
+
+    if identity:
+        assert result == ["owned-task"]
+        listing.assert_called_once_with(None, owner_identity=identity)
+    else:
+        assert result == []
+        listing.assert_not_called()
+
+
+@pytest.mark.parametrize("identity", ["immutable-channel-account", None])
+def test_channel_download_history_uses_current_owner_after_web_permission_merge(monkeypatch, identity):
+    """
+    下载历史与总数复核当前渠道授权并按不可变账号筛选，缺少归属时拒绝查询。
+    """
+    principal = SimpleNamespace(name="renamed-user", is_superuser=False, notification_identity=identity)
+    authorize = MagicMock(return_value=principal)
+    monkeypatch.setattr(
+        "app.application.security.authorization.get_channel_authorization",
+        lambda: SimpleNamespace(authorize_operation=authorize),
+    )
+    query = SimpleNamespace(list_download=AsyncMock(return_value=["owned-history"]), count_download=AsyncMock(return_value=1))
+    token = TokenPayload(sub=5, username="reused-name", super_user=False,
+                         agent_authorization_id="channel-member", agent_operation="download.history.list")
+    response = Response()
+
+    if identity:
+        result = asyncio.run(history_endpoint.download_history(page=1, count=10, query=query, _=token, response=response))
+        assert result == ["owned-history"]
+        query.list_download.assert_awaited_once_with(page=1, count=10, owner_identity=identity)
+        query.count_download.assert_awaited_once_with(owner_identity=identity)
+        assert response.headers["X-Total-Count"] == "1"
+    else:
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(history_endpoint.download_history(page=1, count=10, query=query, _=token, response=response))
+        assert error.value.status_code == 403
+        query.list_download.assert_not_awaited()
+        query.count_download.assert_not_awaited()
+    authorize.assert_called_once_with("channel-member", "download.history.list")

@@ -16,6 +16,7 @@ from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
+from app.schemas.types import NotificationChannel
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,12 +25,12 @@ class SessionRoute:
     描述一种可继续接收文本的交互会话。
 
     :param name: 会话路由名称，与对应斜杠命令保持一致
-    :param get_pending: 按用户标识取得含 created_at 的待处理会话，无会话时返回 None
+    :param get_pending: 按当前交互上下文取得含 created_at 的待处理会话，无会话时返回 None
     :param handle_text: 接收交互上下文和文本，返回是否已消费该文本
     """
 
     name: str
-    get_pending: Callable[[Union[str, int]], Optional[Any]]
+    get_pending: Callable[[InteractionContext], Optional[Any]]
     handle_text: Callable[[InteractionContext, str], bool]
 
 
@@ -50,9 +51,14 @@ class CallbackRoute:
 
 def adapt_session_text_handler(
     handle: Callable[..., Any],
+    *, include_reply_context: bool = False,
 ) -> Callable[[InteractionContext, str], bool]:
     """
     把传统关键字参数入口适配为文本会话路由处理器。
+
+    :param handle: 对应业务交互入口
+    :param include_reply_context: 入口支持时显式传入原会话地址；旧签名保留默认行为
+    :return: 接收统一上下文的文本处理器
     """
 
     def _handle(context: InteractionContext, text: str) -> bool:
@@ -66,6 +72,7 @@ def adapt_session_text_handler(
                 userid=context.user_id,
                 username=context.username,
                 text=text,
+                **({"original_chat_id": context.original_chat_id} if include_reply_context else {}),
             )
         )
 
@@ -119,14 +126,14 @@ class InteractionRouter:
         self._session_routes = list(session_routes)
         self._callback_routes = list(callback_routes)
 
-    def latest_session(self, user_id: Union[str, int]) -> Optional[SessionRoute]:
+    def latest_session(self, context: InteractionContext) -> Optional[SessionRoute]:
         """
         返回最近创建的待处理文本会话路由，无会话返回 None。
         """
         best_route: Optional[SessionRoute] = None
         best_created_at = None
         for route in self._session_routes:
-            pending = route.get_pending(user_id)
+            pending = route.get_pending(context)
             if pending is None:
                 continue
             created_at = getattr(pending, "created_at", None)
@@ -139,12 +146,12 @@ class InteractionRouter:
                 best_created_at = created_at
         return best_route
 
-    def has_pending(self, user_id: Union[str, int]) -> bool:
+    def has_pending(self, context: InteractionContext) -> bool:
         """
         判断用户是否存在任意待处理文本会话。
         """
         return any(
-            route.get_pending(user_id) is not None
+            route.get_pending(context) is not None
             for route in self._session_routes
         )
 
@@ -156,7 +163,7 @@ class InteractionRouter:
         """
         把文本派发给最近活动的会话，返回是否被消费。
         """
-        route = self.latest_session(context.user_id)
+        route = self.latest_session(context)
         if route is None:
             return False
         return route.handle_text(context, text)
@@ -180,14 +187,16 @@ class InteractionRouter:
         return InteractionDispatch(handled=False)
 
 
-def has_pending_interaction(user_id: Union[str, int]) -> bool:
+def has_pending_interaction(
+        user_id: Union[str, int], channel: NotificationChannel, source: str, chat_id: Optional[str] = None,
+) -> bool:
     """
     供 WebAgent 判断用户是否处于传统交互会话。
     """
     from app.application.messaging.update import update_interaction_manager
 
     return any(
-        manager.get_by_user(user_id) is not None
+        manager.get_by_user(user_id, channel, source, chat_id) is not None
         for manager in (
             site_interaction_manager,
             subscribe_interaction_manager,

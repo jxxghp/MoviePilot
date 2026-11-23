@@ -295,14 +295,23 @@ def test_log_permission_checks_release_session_before_streaming():
         """
         提供可投影的真实订阅快照。
         """
-        return SubscriptionSnapshot(id=1, name="测试", type="电影", username="alice")
-    runtime = SimpleNamespace(subscription=SimpleNamespace(
+        return SubscriptionSnapshot(id=1, name="测试", type="电影", username="original-name", owner_identity="owner-alice")
+    async def async_get_by_id(account_id):
+        """
+        模拟资源令牌校验后读取当前账号身份。
+        """
+        name = {1: "alice", 2: "bob"}[account_id]
+        return SimpleNamespace(name=name, is_active=True, is_superuser=False, notification_identity=f"owner-{name}")
+
+    runtime = SimpleNamespace(authentication=SimpleNamespace(
+        standalone_user=lambda: SimpleNamespace(async_get_by_id=async_get_by_id),
+    ), subscription=SimpleNamespace(
         async_session=sessions, repository=lambda _session: SimpleNamespace(async_get=async_get),
     ))
-    asyncio.run(subexecution._authorize_subscription_logs(1, SimpleNamespace(username="alice", super_user=False), runtime))
+    asyncio.run(subexecution._authorize_subscription_logs(1, SimpleNamespace(sub=1, username="alice", super_user=False), runtime))
     assert states == ["open", "close"]
     with pytest.raises(HTTPException):
-        asyncio.run(subexecution._authorize_subscription_logs(1, SimpleNamespace(username="bob", super_user=False), runtime))
+        asyncio.run(subexecution._authorize_subscription_logs(1, SimpleNamespace(sub=2, username="bob", super_user=False), runtime))
     assert states == ["open", "close", "open", "close"]
 
 

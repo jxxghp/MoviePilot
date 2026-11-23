@@ -69,14 +69,20 @@ async def terminal_manager() -> AsyncIterator[_TerminalSessionManager]:
 
 async def _start_ready(manager: _TerminalSessionManager, code: str = _INTERACTIVE) -> tuple[dict[str, Any], _TerminalSession]:
     """
-    等待明确的 READY 输出而非猜测进程启动耗时。
+    使用公开消费游标等到完整的 READY 行，允许标记和换行分批到达。
     """
-    payload = await asyncio.wait_for(manager.start(
-        command=_command(code), use_pty=False, yield_time_ms=10000, since_offset=0,
-        env={"PYTHONIOENCODING": "utf-8"},
-    ), timeout=_DEADLINE)
-    assert "READY" in payload["output"]
-    session = manager._sessions[payload["session_id"]]
+    async with asyncio.timeout(_DEADLINE):
+        payload = await manager.start(
+            command=_command(code), use_pty=False, yield_time_ms=10000, since_offset=0,
+            env={"PYTHONIOENCODING": "utf-8"},
+        )
+        assert payload["output"]
+        session = manager._sessions[payload["session_id"]]
+        output = payload["output"]
+        while not output.endswith(("READY\n", "READY\r\n")):
+            payload = await manager.wait(session_id=session.session_id, timeout_ms=10000, **_cursor(payload))
+            assert payload["output"]
+            output += payload["output"]
     assert session.process is not None and session.process.returncode is None
     return payload, session
 

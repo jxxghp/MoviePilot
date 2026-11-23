@@ -3,8 +3,11 @@ Discord 机器人连接、频道路由、消息卡片和输入状态生命周期
 """
 
 import asyncio
+import json
 import re
 import threading
+from functools import partial
+from hashlib import file_digest, sha256
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -13,14 +16,17 @@ import discord
 from discord import app_commands
 
 from app.adapters.system.attachment import load_image
-from app.application.messaging.ingress import async_forward_message_to_host
+from app.application.messaging.ingress import async_forward_message_to_host, submit_platform_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.types import MessageType
+from app.runtime.thread import ThreadHelper
+from app.schemas.delivery import DeliveryPartOutcome, DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt
+from app.schemas.message import Message
+from app.schemas.types import MessageType, NotificationChannel
 
 # Discord 嵌入消息长度上限：标题、描述、字段名、字段值、字段数和整条合计。
 EMBED_TITLE_LIMIT = 256
@@ -50,6 +56,13 @@ def _is_regular_file(path: Path) -> bool:
     return path.exists() and path.is_file()
 
 
+async def _is_regular_file_async(path: Path) -> bool:
+    """
+    通过统一线程执行器检查附件，避免在 Discord 事件循环读取文件系统。
+    """
+    return await run_in_threadpool(_is_regular_file, path)
+
+
 class Discord:
     """
     管理 Discord 机器人专用事件循环、交互命令和通知发送。
@@ -65,7 +78,10 @@ class Discord:
         self,
         DISCORD_BOT_TOKEN: Optional[str] = None,
         DISCORD_GUILD_ID: Optional[Union[str, int]] = None,
+        DISCORD_COMMAND_GUILD_ID: Optional[Union[str, int]] = None,
         DISCORD_CHANNEL_ID: Optional[Union[str, int]] = None,
+        *,
+        start_gateway: bool = True,
         **kwargs: Any,
     ) -> None:
         """
@@ -74,8 +90,10 @@ class Discord:
         完整配置会启动网络连接；stop 负责停止客户端、输入状态任务和事件循环线程。
 
         :param DISCORD_BOT_TOKEN: 机器人令牌；缺失时不初始化客户端
-        :param DISCORD_GUILD_ID: 可选服务器标识，限定命令同步与频道回退范围
+        :param DISCORD_GUILD_ID: 旧服务器标识，兼容尚未切换的连接
+        :param DISCORD_COMMAND_GUILD_ID: 独立的命令注册服务器标识
         :param DISCORD_CHANNEL_ID: 可选默认通知频道标识
+        :param start_gateway: 为启用交互的实例连接 Discord Gateway
         :param kwargs: name 指定通知配置名称，其他字段当前忽略
         """
         logger.debug(
@@ -88,9 +106,12 @@ class Discord:
             return
 
         self._token = DISCORD_BOT_TOKEN
+        self._gateway_enabled = start_gateway
         self._guild_id = self._to_int(DISCORD_GUILD_ID)
+        self._command_guild_id = self._to_int(DISCORD_COMMAND_GUILD_ID) or self._guild_id
         self._channel_id = self._to_int(DISCORD_CHANNEL_ID)
         self._config_name = kwargs.get("name")
+        self._connection_id = kwargs.get("connection_id")
         logger.debug(
             f"[Discord] 解析后的 ID: _guild_id={self._guild_id}, _channel_id={self._channel_id}"
         )
@@ -124,7 +145,8 @@ class Discord:
         self._typing_stop_timeout_seconds = 1
         self._registered_commands: Optional[Dict[str, dict[str, Any]]] = None
 
-        self._register_events()
+        if start_gateway:
+            self._register_events()
         self._start()
 
     @staticmethod
@@ -269,7 +291,8 @@ class Discord:
             start_task: Optional[asyncio.Task[None]] = None
             try:
                 if not self._stop_requested.is_set():
-                    start_task = loop.create_task(client.start(self._token))
+                    login = client.start(self._token) if self._gateway_enabled else self._run_notification_session()
+                    start_task = loop.create_task(login)
                     loop.run_until_complete(start_task)
             except asyncio.CancelledError:
                 if not self._stop_requested.is_set():
@@ -300,6 +323,15 @@ class Discord:
         self._thread = threading.Thread(target=runner, daemon=True)
         self._thread.start()
 
+    async def _run_notification_session(self) -> None:
+        """
+        仅登录 REST 接口，保持事件循环处理出站任务直到停止。
+        """
+        await self._client.login(self._token)
+        self._ready_event.set()
+        while not self._stop_requested.is_set():
+            await asyncio.sleep(0.25)
+
     def stop(self) -> bool:
         """
         停止 Discord 客户端，并返回事件循环线程是否已经终止。
@@ -309,7 +341,7 @@ class Discord:
         self._stop_requested.set()
         loop = self._loop
         thread = self._thread
-        if loop.is_running():
+        if loop.is_running() and getattr(self, "_gateway_enabled", True):
             try:
                 asyncio.run_coroutine_threadsafe(
                     self._stop_all_typing_tasks(), loop
@@ -391,7 +423,7 @@ class Discord:
         if not self._client.is_ready():
             await self._client.wait_until_ready()
 
-        guild = discord.Object(id=self._guild_id) if self._guild_id else None
+        guild = discord.Object(id=self._command_guild_id) if self._command_guild_id else None
         self._tree.clear_commands(guild=guild)
 
         commands = self._registered_commands or {}
@@ -616,6 +648,156 @@ class Discord:
         # 字节由发送协程持有，入口超时也不会提前删除仍在上传的临时文件。
         return self.send_file(f"image{suffix}", title=title, text=text, userid=userid,
                               original_chat_id=original_chat_id, file_content=content)
+
+    def send_tracked_notification(
+        self, message: Message, userid: str | None, *, event: str,
+        receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        在 Discord 实际频道保存全部分段，以同一 nonce 约束 SDK 内部重试。
+        """
+        if not self.get_state():
+            receipt(None, 0, "retryable_failure", "client_unavailable")
+            return False
+        chat_id = (None if message.private_delivery else message.original_chat_id) or (
+            str(self._channel_id) if not userid and self._channel_id and not message.private_delivery else None
+        )
+        if not chat_id and not userid:
+            receipt(None, 0, "skipped", "no_target")
+            return False
+        destination = asyncio.run_coroutine_threadsafe(self._resolve_channel(userid, chat_id), self._loop)
+        channel = destination.result(timeout=30)
+        channel_id = getattr(channel, "id", None)
+        if not isinstance(channel, discord.abc.Messageable) or type(channel_id) is not int:
+            receipt(None, 0, "retryable_failure", "target_unavailable")
+            return False
+        address = f"channel:{channel_id}"
+        image = load_image(message.image) if message.native_image and message.image else None
+        payloads = self._tracked_payloads(message, image)
+        original = self._tracked_edit_id(message)
+        addresses = [address] * len(payloads)
+        if addresses and original is not None:
+            if str(channel_id) != message.original_chat_id:
+                receipt(None, 0, "permanent_failure", "original_channel_changed")
+                return False
+            addresses[0] = f"{address}:edit:{original}"
+        plan(tuple((target, part, content) for part, (target, (_, content)) in enumerate(zip(addresses, payloads))))
+        confirmed = True
+        for part, (target, (text, content)) in enumerate(zip(addresses, payloads)):
+            nonce = sha256(f"{event}:{target}:{message.attachment_part_offset + part}".encode()).hexdigest()[:24]
+            submit = partial(
+                self._submit_tracked_part, channel, message, text, nonce, original if part == 0 else None, image,
+            )
+            outcome, code = part_sender(
+                target, part, content, confirmed, submit,
+            )
+            receipt(target, part, outcome, code)
+            confirmed = confirmed and outcome == "confirmed"
+        return bool(payloads) and confirmed
+
+    @staticmethod
+    def _tracked_edit_id(message: Message) -> str | None:
+        """
+        仅在原消息与原频道同时存在、且没有附件上传要求时允许编辑。
+        """
+        if not (message.file_path or message.native_image or message.private_delivery) and message.original_chat_id and message.original_message_id:
+            return str(message.original_message_id)
+        return None
+
+    @staticmethod
+    def _tracked_payloads(message: Message, loaded: tuple[bytes, str] | None = None) -> list[tuple[str | None, str]]:
+        """
+        由通知正文及附件摘要确定每个 Discord 分段的内容身份。
+        """
+        digest = None
+        if message.file_path:
+            path = Path(message.file_path)
+            try:
+                if not _is_regular_file(path):
+                    raise FileNotFoundError
+                with path.open("rb") as stream:
+                    digest = file_digest(stream, "sha256").hexdigest()
+            except OSError:
+                pass
+        image = message.image
+        if message.native_image and image:
+            image = sha256(loaded[0]).hexdigest() if loaded else None
+        chunks: list[str | None] = [message.text]
+        if not (message.file_path or message.native_image):
+            chunks = list(message.channel_text_chunks(NotificationChannel.Discord)) or chunks
+        return [(text, json.dumps((
+            message.title, text, image, message.link, message.buttons,
+            message.file_name, digest, message.mtype.value if message.mtype else None,
+        ), ensure_ascii=False, sort_keys=True)) for text in chunks]
+
+    def _submit_tracked_part(
+        self, channel: discord.abc.Messageable, message: Message, text: str | None, nonce: str, edit_id: str | None,
+        image: tuple[bytes, str] | None = None,
+    ) -> DeliveryPartOutcome:
+        """
+        等待一次 Discord SDK 消息提交，超时保留接收结果未知。
+        """
+        if message.native_image and message.image:
+            if image is None:
+                return "permanent_failure", "attachment_unavailable"
+            request = self._send_tracked_native_image(channel, message, text, nonce, image)
+        else:
+            request = self._send_tracked_part(channel, message, text, nonce, edit_id)
+        future = asyncio.run_coroutine_threadsafe(request, self._loop)
+        try:
+            sent = future.result(timeout=30)
+        except FileNotFoundError:
+            return "permanent_failure", "attachment_unavailable"
+        except ValueError:
+            return "permanent_failure", "invalid_message_id"
+        except discord.HTTPException as error:
+            if error.status == 429:
+                return "retryable_failure", "rate_limited"
+            if error.status in {400, 401, 403, 404}:
+                return "permanent_failure", "platform_rejected"
+            return "unknown", "platform_unconfirmed"
+        except (OSError, TimeoutError):
+            return "unknown", "response_unconfirmed"
+        return "confirmed", None, str(sent.id)
+
+    async def _send_tracked_part(
+        self, channel: discord.abc.Messageable, message: Message, text: str | None, nonce: str, edit_id: str | None,
+    ) -> discord.Message:
+        """
+        复用 Discord 嵌入消息与按钮渲染，发送已确认地址和去重标识的分段。
+        """
+        if message.file_path:
+            path = Path(message.file_path)
+            if not await _is_regular_file_async(path):
+                raise FileNotFoundError
+            caption = "\n".join(value for value in (message.title, text) if value)
+            file = discord.File(str(path), filename=message.file_name or path.name)
+            try:
+                return await channel.send(content=caption[:1900] or None, file=file, nonce=nonce)
+            finally:
+                file.close()
+        embed = self._build_embed(message.title or "", text, message.image, message.link, message.mtype)
+        view = self._build_view(message.buttons, message.link)
+        if edit_id is not None:
+            original = await channel.fetch_message(int(edit_id))
+            return await original.edit(content=None, embed=embed, view=view)
+        return await channel.send(embed=embed, view=view, nonce=nonce)
+
+    async def _send_tracked_native_image(
+        self, channel: discord.abc.Messageable, message: Message, text: str | None, nonce: str,
+        image: tuple[bytes, str],
+    ) -> discord.Message:
+        """
+        在同一平台请求发送原图、说明和按钮，保持原会话及去重标识。
+        """
+        content, suffix = image
+        caption = "\n".join(value for value in (message.title, text) if value)
+        attachment = discord.File(BytesIO(content), filename=f"image{suffix}")
+        try:
+            view = self._build_view(message.buttons, None)
+            return await channel.send(content=caption[:1900] or None, file=attachment, view=view, nonce=nonce)
+        finally:
+            attachment.close()
 
     def send_file(
         self,
@@ -1113,10 +1295,7 @@ class Discord:
             return False, None
 
         local_file = Path(file_path)
-        if file_content is None and not await run_in_threadpool(
-                _is_regular_file,
-                local_file,
-        ):
+        if not await _is_regular_file_async(local_file):
             logger.error(f"Discord发送文件失败，文件不存在: {local_file}")
             return False, None
 
@@ -1699,6 +1878,14 @@ class Discord:
         """
         把 Discord 事件异步转交统一消息入口。
         """
+        forwarded = submit_platform_payload(
+            payload, self._config_name, NotificationChannel.Discord,
+            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
+        )
+        if forwarded is not None:
+            if not forwarded:
+                logger.error("转发 Discord 消息失败")
+            return
         if not await async_forward_message_to_host(
             payload,
             self._config_name,

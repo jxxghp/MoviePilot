@@ -6,7 +6,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional
+from typing import Any, List, Optional, TypedDict, cast
 
 from fastapi import Depends, HTTPException, Path, Query, Request
 from starlette.responses import Response, StreamingResponse
@@ -22,6 +22,7 @@ from app.api.dependencies.subscription import (
 from app.api.endpoints.system import _build_log_zip_response
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
+from app.application.security.user import ChainUserRepository
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
 from app.application.system import LogNotFoundError
@@ -60,6 +61,7 @@ async def list_subscription_activity(
     result = await repository.list_accessible(
         subscription_id, current_user.name, current_user.is_superuser,
         history=history, kind=kind, since=since, before=before, limit=limit,
+        **_owner_scope(current_user),
     )
     if result is None:
         raise HTTPException(status_code=404, detail="订阅不存在或无权查看")
@@ -94,13 +96,29 @@ async def get_subscription_activity(
     if repository is None:
         raise HTTPException(status_code=503, detail="订阅活动暂时不可用")
     event = await repository.get_accessible(
-        subscription_id, event_id, current_user.name, current_user.is_superuser, history=history,
+        subscription_id, event_id, current_user.name, current_user.is_superuser, history=history, **_owner_scope(current_user),
     )
     if event is None:
         raise HTTPException(status_code=404, detail="活动不存在或无权查看")
     return _SchemaSubscriptionActivityEvent.model_validate({
         key: value for key, value in asdict(event).items() if key not in {"activity_key", "tracking"}
     })
+
+
+class _OwnerQuery(TypedDict, total=False):
+    """
+    范围由已认证账号确定。
+    """
+
+    owner_identity: str
+
+
+def _owner_scope(user: ApiPrincipal) -> _OwnerQuery:
+    """
+    兼容旧的仓储调用形态，并给当前账号传递稳定身份。
+    """
+    identity = getattr(user, "notification_identity", None)
+    return {"owner_identity": identity} if identity is not None else {}
 
 
 async def _accessible_subscription_ids(
@@ -112,7 +130,7 @@ async def _accessible_subscription_ids(
     """
     if current_user.is_superuser:
         return None
-    subscribes = await query.list_public(current_user.name)
+    subscribes = await query.list_public(current_user.name, **_owner_scope(current_user))
     return {item.id for item in subscribes if item.id is not None}
 
 
@@ -194,12 +212,20 @@ async def _require_subscription_log_access(
     subscription_id: int,
     query: SubscriptionQueryService,
     user: _SchemaTokenPayload,
+    *,
+    owner_identity: str | None = None,
 ) -> None:
     """
     日志仅对当前订阅 owner 或管理员开放，未知和越权 ID 均返回 404。
     """
     subscribe = await query.get_public(subscription_id)
-    if subscribe is None or (not user.super_user and subscribe.username != user.username):
+    owned = False
+    if subscribe is not None:
+        if owner_identity is None:
+            owned = not getattr(subscribe, "_owner_identity", None) and subscribe.username == user.username
+        else:
+            owned = bool(owner_identity) and getattr(subscribe, "_owner_identity", None) == owner_identity
+    if subscribe is None or (not user.super_user and not owned):
         raise HTTPException(status_code=404, detail="订阅不存在或无权查看")
 
 
@@ -207,8 +233,12 @@ async def _authorize_subscription_logs(subscription_id: int, user: _SchemaTokenP
     """
     在独立短会话中确认归属，返回后不持有数据库事务。
     """
+    accounts = cast(ChainUserRepository, runtime.authentication.standalone_user())
+    actor = await accounts.async_get_by_id(user.sub) if user.sub is not None else None
+    if not actor or not actor.is_active or actor.name != user.username or actor.is_superuser != user.super_user:
+        raise HTTPException(status_code=404, detail="订阅不存在或无权查看")
     async with subscription_log_query_scope(runtime) as query:
-        await _require_subscription_log_access(subscription_id, query, user)
+        await _require_subscription_log_access(subscription_id, query, user, owner_identity=actor.notification_identity)
 
 
 @router.get(

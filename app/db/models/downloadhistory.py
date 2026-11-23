@@ -63,6 +63,10 @@ class DownloadHistory(Base):
     userid: Mapped[Optional[str]] = mapped_column(String)
     # 下载用户名/插件名
     username: Mapped[Optional[str]] = mapped_column(String)
+    # 认证入口写入的账号归属，历史记录或系统下载可为空。
+    owner_identity: Mapped[Optional[str]] = mapped_column(String(32))
+    # 下载器中的标签可证明当前任务来自这次提交。
+    task_reference: Mapped[Optional[str]] = mapped_column(String(64), index=True, unique=True)
     # 下载渠道
     channel: Mapped[Optional[str]] = mapped_column(String)
     # 创建时间
@@ -88,6 +92,7 @@ class DownloadHistory(Base):
         media_identity_constraint("downloadhistory"),
         Index('ix_downloadhistory_download_hash_date', 'download_hash', 'date'),
         Index('ix_downloadhistory_date_id', 'date', 'id'),
+        Index('ix_downloadhistory_owner_date_id', 'owner_identity', 'date', 'id'),
         Index('ix_downloadhistory_media_identity', 'media_source', 'media_id'),
     )
 
@@ -173,7 +178,8 @@ class DownloadHistory(Base):
 
     @classmethod
     async def async_list_by_page(
-        cls, db: AsyncSession, page: int = 1, count: int = 30, *, username: str | None = None,
+        cls, db: AsyncSession, page: int = 1, count: int = 30,
+        *, username: str | None = None, owner_identity: str | None = None,
     ) -> list[Self]:
         """
         异步按时间和主键倒序分页读取下载历史。
@@ -181,6 +187,8 @@ class DownloadHistory(Base):
         statement = select(cls)
         if username is not None:
             statement = statement.where(cls.username == username)
+        if owner_identity is not None:
+            statement = statement.where(cls.owner_identity == owner_identity)
         result = await db.execute(
             statement
             .order_by(cls.date.desc(), cls.id.desc())
@@ -208,13 +216,17 @@ class DownloadHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    async def async_count(cls, db: AsyncSession, *, username: str | None = None) -> int:
+    async def async_count(
+        cls, db: AsyncSession, *, username: str | None = None, owner_identity: str | None = None,
+    ) -> int:
         """
         异步统计下载历史总数，空表返回零。
         """
         statement = select(func.count(cls.id))
         if username is not None:
             statement = statement.where(cls.username == username)
+        if owner_identity is not None:
+            statement = statement.where(cls.owner_identity == owner_identity)
         result = await db.execute(statement)
         count: int = result.scalar()
         return count

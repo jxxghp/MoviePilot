@@ -4,7 +4,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -17,8 +17,29 @@ from app.modules.slack import slack as slack_module
 from app.modules.telegram import telegram as telegram_module
 from app.modules.wechat import wechatbot as wechat_module
 from app.modules.wechatclawbot import wechatclawbot as clawbot_module
+from app.schemas.message import IncomingMessage
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize("submission", ["missing", "accepted", "rejected", "stopped"])
+def test_verified_message_submission_acknowledges_only_accepted_work(monkeypatch, submission):
+    """
+    已验证消息只在后台执行器接受后确认，停机和背压时保留平台重试机会。
+    """
+    receiver = Mock()
+    info = IncomingMessage()
+    submit = Mock(return_value=submission == "accepted")
+    if submission == "stopped":
+        submit.side_effect = RuntimeError("executor stopped")
+    monkeypatch.setattr(ingress, "_verified_receiver", None if submission == "missing" else receiver)
+
+    assert ingress.submit_verified_message(info, submit) is (submission == "accepted")
+    if submission == "missing":
+        submit.assert_not_called()
+    else:
+        submit.assert_called_once_with(receiver, info)
+    receiver.assert_not_called()
 
 
 class _FakeMessageIngressPort:
@@ -346,3 +367,49 @@ def test_message_modules_cannot_reimplement_loopback_endpoint():
             violations.append(path.relative_to(PROJECT_ROOT).as_posix())
 
     assert violations == []
+
+
+@pytest.mark.parametrize("outcome", ["accepted", "rejected", "stopped", "invalid_payload"])
+def test_platform_payload_submission_preserves_queue_acknowledgement(monkeypatch, outcome):
+    """
+    已认证平台载荷仅在执行器接受后确认；停机或无法序列化时拒绝，保留平台重试机会。
+    """
+    import json
+
+    from app.schemas.types import NotificationChannel
+
+    receiver = Mock()
+    submit = Mock(return_value=outcome == "accepted")
+    if outcome == "stopped":
+        submit.side_effect = RuntimeError("executor stopped")
+    monkeypatch.setattr(ingress, "_platform_payload_receiver", receiver)
+    payload = {"text": object() if outcome == "invalid_payload" else "hello"}
+
+    assert ingress.submit_platform_payload(
+        payload, "fixture", NotificationChannel.Telegram, "connection", submit=submit,
+    ) is (outcome == "accepted")
+    receiver.assert_not_called()
+    if outcome == "invalid_payload":
+        submit.assert_not_called()
+    else:
+        call = submit.call_args.args
+        assert call[0] is receiver
+        assert json.loads(call[1]) == payload
+        assert call[2:] == ("fixture", NotificationChannel.Telegram, "connection")
+
+
+def test_verified_event_claim_fails_closed_when_shared_store_is_unavailable(monkeypatch):
+    """
+    共享认领失败不得回退进程缓存，防止多 worker 重复执行已认证的业务事件。
+    """
+    from app.domain.admission import AdmissionProof
+
+    monkeypatch.setattr(ingress, "time", SimpleNamespace(time=lambda: 100))
+    claim = Mock(side_effect=RuntimeError("shared store unavailable"))
+    monkeypatch.setattr(ingress, "_verified_event_claim", claim)
+    proof = AdmissionProof("connection", 1, "member", "group", 200)
+
+    assert not ingress.claim_verified_event(proof, "event")
+    assert not ingress.claim_verified_event(proof, "event")
+    assert claim.call_count == 2
+    assert claim.call_args.args[1:] == (100, 220)

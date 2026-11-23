@@ -19,6 +19,7 @@ from app.command import Command
 from app.modules.telegram.module import TelegramModule
 from app.runtime.events import Event
 from app.schemas.message import Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import EventType, NotificationChannel
 
 
@@ -60,7 +61,9 @@ def test_agent_plugin_command_uses_real_telegram_target(
     telegram = TelegramModule()
     telegram._channel = NotificationChannel.Telegram
     client = SimpleNamespace(send_msg=Mock(return_value={"success": True}))
-    monkeypatch.setattr(telegram, "get_configs", lambda: {"bot": SimpleNamespace(name="bot")})
+    monkeypatch.setattr(telegram, "get_configs", lambda: {
+        "bot": NotificationConf(id="test-bot", name="bot", type="telegram"),
+    })
     monkeypatch.setattr(telegram, "get_instance", lambda _name: client)
     monkeypatch.setattr(telegram, "get_config", lambda _name: None)
     receipt_chain = _ReceiptChain(targets, telegram)

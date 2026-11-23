@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import importlib
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -16,7 +17,11 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine
 
 import app.chain.download.submission as download_submission
-from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.download.admission import (
+    DownloadAuthorizationError,
+    SubscriptionDownloadGovernance,
+    scoped_download_authorization,
+)
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.execution import (
     SubscriptionExecutionAdmission,
@@ -236,6 +241,43 @@ def test_download_chain_cancels_before_external_side_effect() -> None:
 
     assert result is None
     chain.download.assert_not_called()
+    chain._settle_download_success.assert_not_called()
+
+
+def test_download_rechecks_authorization_after_waiting_for_task_lock(monkeypatch) -> None:
+    """
+    等待任务锁期间撤权后，不得调用下载器或登记副作用起点。
+    """
+    chain = _download_chain()
+    chain.download = MagicMock()
+    active = True
+    mark_started = MagicMock()
+
+    def authorize():
+        """
+        模拟成员授权在取得任务锁之前被撤销。
+        """
+        if not active:
+            raise PermissionError("授权已撤销")
+
+    @contextmanager
+    def hold(_hashes):
+        """
+        通过确定性的锁边界模拟等待期间的授权变更。
+        """
+        nonlocal active
+        active = False
+        yield
+
+    monkeypatch.setattr(download_submission.downloader_task_locks, "hold", hold)
+    with scoped_download_authorization(authorize), pytest.raises(DownloadAuthorizationError, match="授权已撤销"):
+        chain.download_single(
+            context=_context(), torrent_content=b"torrent", episodes={1}, save_path="/downloads",
+            governance=SubscriptionDownloadGovernance(mark_started=mark_started),
+        )
+
+    chain.download.assert_not_called()
+    mark_started.assert_not_called()
     chain._settle_download_success.assert_not_called()
 
 

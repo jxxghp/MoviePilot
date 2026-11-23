@@ -14,7 +14,7 @@ from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
@@ -119,6 +119,9 @@ from app.schemas.event import AgentLLMProviderEventData, AgentTokensUsageEventDa
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import ChainEventType, EventType, MessageType, NotificationChannel
+
+if TYPE_CHECKING:
+    from app.application.messaging.interaction import InteractionKey
 
 
 def _get_plugin_tools_revision() -> int:
@@ -569,6 +572,7 @@ class MoviePilotAgent:
         self.authorization_id: str | None = None
         self.original_message_id = original_message_id
         self.original_chat_id = original_chat_id
+        self.interaction_address: Optional["InteractionKey"] = None
         self.reply_mode = replay_mode
         self.allow_message_tools = allow_message_tools
         self.output_callback = output_callback
@@ -1244,6 +1248,7 @@ class MoviePilotAgent:
                     else normalize_web_permissions(None)
                 )
 
+        terminal_scope = current_terminal_scope()
         return {
             "user_reply_sent": False,
             "reply_mode": None,
@@ -1254,6 +1259,7 @@ class MoviePilotAgent:
             "execution_user_id": self.execution_user_id,
             "execution_user_identity": self.execution_user_identity,
             "authorization_id": authorization_id,
+            "scheduled_authorization_id": self.authorization_id if terminal_scope and terminal_scope.kind == "scheduled" else None,
             "channel_authorization_required": authorization_required,
             "memory_owner_id": self._memory_owner_id,
             "execution_identity_error": {},
@@ -1262,6 +1268,7 @@ class MoviePilotAgent:
             # 工具回调消息需要发回原会话（群聊@机器人时按钮选择等卡片不能发到私聊），
             # 后台任务无渠道上下文时置空，交由通知链广播。
             "original_chat_id": None if self.is_background else self.original_chat_id,
+            "interaction_address": None if self.is_background else self.interaction_address,
         }
 
     async def _can_restore_cross_owner_history(self) -> bool:
@@ -1394,6 +1401,7 @@ class MoviePilotAgent:
                     "username": self.username,
                     "text": content,
                     "private_delivery": True,
+                    "delivery_kind": "reply",
                     "parse_mode": "plain",
                     "save_history": False,
                 }),
@@ -2960,6 +2968,7 @@ class MoviePilotAgent:
                     username=self.username,
                     original_message_id=self.original_message_id,
                     original_chat_id=self.original_chat_id,
+                    thread_id=self._interaction_thread_id(),
                 )
 
                 # 流式运行智能体，token 直接推送到 stream_handler
@@ -3068,6 +3077,14 @@ class MoviePilotAgent:
             if not streaming_stopped:
                 await self.stream_handler.stop_streaming()
 
+    def _interaction_thread_id(self) -> Optional[str]:
+        """
+        返回当前外部回复的话题，后台广播不携带会话线程。
+        """
+        if self.is_background or not self.interaction_address:
+            return None
+        return self.interaction_address.thread or None
+
     async def send_agent_message(self, message: str, title: str = "") -> None:
         """
         发送 Agent 消息；后台任务不绑定原渠道，交由通知链广播。
@@ -3075,8 +3092,7 @@ class MoviePilotAgent:
         broadcast = self.is_background
         rich_message = message if not broadcast and self.channel == NotificationChannel.Telegram.value else None
         await self._save_assistant_display_message_once(message)
-        await AgentChain().async_post_message(
-            Message.model_validate({
+        outgoing = Message.model_validate({
                 "channel": None if broadcast else self.channel,
                 "source": None if broadcast else self.source,
                 "mtype": MessageType.Agent,
@@ -3084,12 +3100,38 @@ class MoviePilotAgent:
                 "username": self.username or (get_runtime_setting("SUPERUSER") if broadcast else None),
                 "original_message_id": None if broadcast else self.original_message_id,
                 "original_chat_id": None if broadcast else self.original_chat_id,
+                "thread_id": self._interaction_thread_id(),
+                "delivery_kind": "event_notification" if broadcast else "reply",
                 "title": title,
                 "text": message,
                 "rich_message": rich_message,
                 "save_history": False,
-            })
-        )
+        })
+        scope = current_terminal_scope()
+        if self.authorization_id and scope is not None and scope.kind == "scheduled":
+            try:
+                outgoing = await self._prepare_scheduled_reply(outgoing)
+            except PermissionError as error:
+                self._tool_context.setdefault("execution_identity_error", {"message": str(error)})
+                identity_error = self._tool_context.get("execution_identity_error")
+                if isinstance(identity_error, dict):
+                    identity_error["message"] = str(error)
+                return
+        await AgentChain().async_post_message(outgoing)
+
+    async def _prepare_scheduled_reply(self, outgoing: Message) -> Message:
+        """
+        用当前审批记录约束最后一条自动回复的连接和个人地址。
+        """
+        from app.application.security.authorization import get_channel_authorization
+
+        service = get_channel_authorization()
+        if service is None or not self.authorization_id:
+            raise PermissionError("渠道授权服务不可用")
+        return cast(Message, await run_agent_blocking(
+            "db", service.prepare_task_result, outgoing, self.authorization_id,
+            self.execution_user_id, self.execution_user_identity,
+        ))
 
     async def cleanup(self) -> bool:
         """

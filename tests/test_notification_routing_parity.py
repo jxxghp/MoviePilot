@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.application.messaging.message import MessageQueueClient, MessageQueueManager
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.modules.apppush import AppPushModule
 from app.modules.discord import DiscordModule
@@ -191,6 +192,44 @@ def test_notification_routing_sync_async_parity(
     assert async_chain.messageoper.async_add.await_count == 1
 
 
+@pytest.mark.parametrize(
+    ("owner", "targets", "expected"),
+    [
+        ("", None, []),
+        ("deleted-identity", None, []),
+        ("original-identity", {"telegram": "confirmed-destination"}, [{"telegram": "confirmed-destination"}]),
+    ],
+)
+def test_subscription_notification_routes_by_confirmed_owner(monkeypatch, owner, targets, expected):
+    """
+    缺失、停用或同名重建的账号不能按旧用户名接收个人通知。
+    """
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: "user")
+    repository = _NotificationSettingsRepository({"reused-name": {"telegram": "other-destination"}})
+    sync_lookup = Mock(return_value=targets)
+    async_lookup = AsyncMock(return_value=targets)
+    monkeypatch.setattr(repository, "get_owner_notification_settings", sync_lookup, raising=False)
+    monkeypatch.setattr(repository, "async_get_owner_notification_settings", async_lookup, raising=False)
+    chain = _NotificationHarness(repository)
+    message = Message(
+        mtype=MessageType.Subscribe, title="订阅完成", username="reused-name", subscription_owner_identity=owner,
+    )
+
+    chain.post_message(message.model_copy(deep=True))
+    asyncio.run(chain.async_post_message(message.model_copy(deep=True)))
+
+    assert not repository.sync_calls
+    assert not repository.async_calls
+    assert [delivery[0]["targets"] for delivery in _delivery_snapshot(chain.messagequeue.send_message)] == expected
+    assert [delivery[0]["targets"] for delivery in _delivery_snapshot(chain.messagequeue.async_send_message)] == expected
+    if owner:
+        sync_lookup.assert_called_once_with(owner)
+        async_lookup.assert_awaited_once_with(owner)
+    else:
+        sync_lookup.assert_not_called()
+        async_lookup.assert_not_awaited()
+
+
 @pytest.mark.parametrize("mode", ["sync", "async", "strict"])
 @pytest.mark.parametrize("mtype", [MessageType.Download, MessageType.Organize, MessageType.Subscribe])
 @pytest.mark.parametrize(
@@ -244,6 +283,50 @@ def test_apppush_receives_business_notifications_through_real_routing(
     assert all(call.args[2] == "messages" for call in requests.call_args_list)
     assert message.targets is None
     assert message.notification_route_scope is None
+
+
+@pytest.mark.parametrize("mode", ["sync", "async", "strict"])
+def test_all_dispatch_paths_preserve_each_target_of_partial_delivery(monkeypatch, mode):
+    """
+    普通队列和严格派发都保留成功账号与部分失败账号，严格路径报告未完全投递。
+    """
+    alice, bob = "a" * 32, "b" * 32
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: "all")
+    chain = _NotificationHarness(_NotificationSettingsRepository({
+        "alice": {"apppush": alice}, "bob": {"apppush": bob},
+    }))
+    module = AppPushModule()
+    module._channel = NotificationChannel.AppPush
+    config = NotificationConf(id="app", name="app", type="apppush", enabled=True,
+                              switchs=[MessageType.Download.value])
+    monkeypatch.setattr(module, "get_configs", lambda: {config.name: config})
+    monkeypatch.setattr(module, "get_config", lambda _: config)
+    submit = Mock(side_effect=[{"total": 1, "accepted": 1}, {"total": 2, "accepted": 1}])
+    monkeypatch.setattr(module, "_request", submit)
+    outcomes = []
+
+    def dispatch(_method, *, message, **_kwargs):
+        """
+        从真实队列发送边界或严格入口进入宿主适配器。
+        """
+        module.post_message(message)
+        outcomes.extend((result.target_id, result.status) for result in message.collect_delivery_results())
+
+    queue = object.__new__(MessageQueueManager)
+    queue.schedule_periods = []
+    chain.messagequeue = MessageQueueClient(queue, dispatch)
+    chain.run_module_strict = dispatch
+    message = Message(channel=NotificationChannel.AppPush, mtype=MessageType.Download, text="仅正文", save_history=False)
+    if mode == "strict":
+        with pytest.raises(RuntimeError, match="部分通知投递尚未确认"):
+            chain.post_message_strict(message, event_key="download:fixture")
+    elif mode == "async":
+        asyncio.run(chain.async_post_message(message))
+    else:
+        chain.post_message(message)
+
+    assert [call.args[3]["owner"] for call in submit.call_args_list] == [alice, bob]
+    assert outcomes == [(alice, "confirmed"), (bob, "unknown")]
 
 
 @pytest.mark.parametrize(
@@ -501,3 +584,39 @@ def test_wechat_rejects_untyped_broadcast_without_explicit_targets(monkeypatch) 
     )
     client.send_msg.assert_called_once()
     assert client.send_msg.call_args.kwargs["userid"] == "admin-1"
+
+
+@pytest.mark.parametrize("username", [None, "missing-user"])
+@pytest.mark.parametrize("action,policy,expected", [
+    ("user", "skip", []), ("user", "admin", [{"telegram_userid": "admin-1"}]),
+    ("user,admin", "skip", [{"telegram_userid": "admin-1"}]),
+    ("admin,user", "skip", [{"telegram_userid": "admin-1"}]),
+])
+def test_missing_operation_user_policy_sync_async_parity(monkeypatch, username, action, policy, expected):
+    """
+    显式跳过只影响缺失操作用户的个人分支，同步和异步都保留明确选择的管理员通知。
+    """
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: action)
+    monkeypatch.setattr("app.chain._messaging.get_notification_missing_user_policy", lambda _mtype: policy)
+    repositories = [_NotificationSettingsRepository({"admin": {"telegram_userid": "admin-1"}}) for _ in range(2)]
+    sync, asynchronous = [_NotificationHarness(repository) for repository in repositories]
+    message = Message(mtype=MessageType.Download, title="完成", username=username)
+    sync.post_message(message.model_copy(deep=True))
+    asyncio.run(asynchronous.async_post_message(message.model_copy(deep=True)))
+    sync_results = _delivery_snapshot(sync.messagequeue.send_message)
+    async_results = _delivery_snapshot(asynchronous.messagequeue.async_send_message)
+    assert [item[0]["targets"] for item in sync_results] == expected
+    assert sync_results == async_results
+    assert repositories[0].sync_calls == repositories[1].async_calls
+
+
+@pytest.mark.parametrize("policy", ["skip", "admin"])
+def test_missing_user_policy_does_not_replace_existing_user_without_binding(monkeypatch, policy):
+    """
+    已有用户但未绑定地址仍跳过个人投递，不误当缺少用户而回退管理员。
+    """
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: "user")
+    monkeypatch.setattr("app.chain._messaging.get_notification_missing_user_policy", lambda _mtype: policy)
+    chain = _NotificationHarness(_NotificationSettingsRepository({"alice": {}}))
+    chain.post_message(Message(mtype=MessageType.Download, username="alice"))
+    assert not _delivery_snapshot(chain.messagequeue.send_message)

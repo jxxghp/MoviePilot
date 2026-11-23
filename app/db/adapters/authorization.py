@@ -4,15 +4,50 @@
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime
 
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.application.security.authorization import AuthorizationUnitOfWork, ChannelMember
+from app.application.outbox import OutboxIntent
+from app.application.security.authorization import (
+    AuthorizationUnitOfWork,
+    ChannelAuthorizationConflict,
+    ChannelMember,
+    RuleTaskGrant,
+)
 from app.application.security.user import UserSnapshot
+from app.db.adapters.outbox import SqlAlchemyOutboxStager
 from app.db.adapters.user import SqlAlchemyUserRepository
-from app.db.models.authorization import ChannelAuthorization
+from app.db.models.authorization import ChannelAuthorization, ChannelInboundReceipt
 from app.db.oper.authorization import ChannelAuthorizationOper
+
+
+def claim_inbound_event(
+    session_factory: Callable[[], Session], fingerprint: str, now: float, expires_at: float,
+) -> bool:
+    """
+    以一个短事务认领事件。仅清理有限批次的过期记录，兼容 SQLite 和 PostgreSQL。
+    """
+    with session_factory() as session, session.begin():
+        row = ChannelInboundReceipt
+        insert = postgres_insert if session.get_bind().dialect.name == "postgresql" else sqlite_insert
+        statement = insert(row).values(id=fingerprint, expires_at=expires_at)
+        claimed = session.scalar(
+            statement.on_conflict_do_update(
+                index_elements=[row.id], set_={"expires_at": statement.excluded.expires_at},
+                where=row.expires_at <= now,
+            ).returning(row.id)
+        )
+        # 跳过已被其它认领事务分批清理的行，过期记录最多每次清理 128 条。
+        expired = select(row.id).where(row.expires_at <= now).order_by(row.expires_at, row.id).limit(128)
+        if session.get_bind().dialect.name == "postgresql":
+            expired = expired.with_for_update(skip_locked=True)
+        session.execute(delete(row).where(row.id.in_(expired), row.expires_at <= now))
+        return claimed is not None
 
 
 def _snapshot(row: ChannelAuthorization) -> ChannelMember:
@@ -56,12 +91,35 @@ class SqlAlchemyAuthorizationUnitOfWork:
         """
         return [_snapshot(row) for row in self._members.list()]
 
+    def connection_reference_counts(self, connection_id: str) -> tuple[int, int]:
+        """
+        在当前会话读取成员与任务引用数量。
+        """
+        return self._members.reference_counts(connection_id)
+
     def get(self, member_id: str) -> ChannelMember | None:
         """
         返回指定成员快照，不保留 ORM 引用。
         """
         row = self._members.get(member_id)
         return _snapshot(row) if row else None
+
+    def get_rule_task_grant(self, grant_id: str) -> RuleTaskGrant | None:
+        """
+        按任务授权身份读取原规则权限。
+        """
+        row = self._members.get_rule_task_grant(grant_id)
+        if row is None:
+            return None
+        return RuleTaskGrant(row.id, row.member_id, row.member_version, row.policy_revision, tuple(row.scopes))
+
+    def stage_rule_task_grant(self, grant: RuleTaskGrant) -> None:
+        """
+        在当前事务中暂存推导出的任务授权。
+        """
+        self._members.stage_rule_task_grant(
+            grant.id, grant.member_id, grant.member_version, grant.policy_revision, grant.scopes,
+        )
 
     def find(self, notification_id: str, sender_id: str) -> ChannelMember | None:
         """
@@ -77,14 +135,26 @@ class SqlAlchemyAuthorizationUnitOfWork:
         return _snapshot(self._members.request(notification_id, channel, sender_id, display_name))
 
     def update(
-        self, member_id: str, *, status: str, role: str, scopes: tuple[str, ...], reviewer_id: int
+        self, member_id: str, *, status: str, role: str, scopes: tuple[str, ...], reviewer_id: int,
+        expected_updated_at: float | None = None,
     ) -> ChannelMember:
         """
         暂存权限变动后返回独立快照。
         """
-        return _snapshot(
-            self._members.update(member_id, status=status, role=role, scopes=scopes, reviewer_id=reviewer_id)
+        row = self._members.update(
+            member_id, status=status, role=role, scopes=scopes, reviewer_id=reviewer_id,
+            expected_updated_at=expected_updated_at,
         )
+        if row is None:
+            raise ChannelAuthorizationConflict("成员已更新或删除，请刷新列表后重新选择")
+        return _snapshot(row)
+
+    def delete(self, member_id: str, expected_updated_at: float) -> None:
+        """
+        暂存版本匹配的成员删除，冲突交给应用事务整体回滚。
+        """
+        if not self._members.delete(member_id, expected_updated_at):
+            raise ChannelAuthorizationConflict("成员已更新或删除，请刷新列表后重新选择")
 
     def user(self, user_id: int) -> UserSnapshot | None:
         """
@@ -97,6 +167,12 @@ class SqlAlchemyAuthorizationUnitOfWork:
         仅把随机码摘要、已认证账号和到期时间写入当前事务。
         """
         self._members.stage_binding(code_hash, user.id, user.notification_identity, expires_at)
+
+    def stage_receipt(self, intent: OutboxIntent, now: datetime) -> None:
+        """
+        与授权行一起暂存回执，复用 Outbox 已有的持久化边界。
+        """
+        SqlAlchemyOutboxStager(self._session).stage(intent, now)
 
     def consume_binding(self, member_id: str, code_hash: str, now: float) -> ChannelMember:
         """

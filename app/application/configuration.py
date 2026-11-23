@@ -409,7 +409,6 @@ class ChainRuntimeConfig:
     :param transfer_task_timeout: 外部接管的运行中整理任务无状态心跳超时（分钟），0 表示禁用
     :param scrape_follow_tmdb: 是否使用 TMDB 的季集编排刮削电视剧元数据
     :param metadata_cache_ttl: 识别元数据缓存的有效期，单位为秒
-    :param auto_download_user: 允许交互搜索后自动下载的用户标识，多个用逗号分隔，None 表示未配置
     :param resource_url: 资源搜索页面地址，未配置时为 None
     :param history_url: 整理历史页面地址，未配置时为 None
     :param downloading_url: 正在下载页面地址，未配置时为 None
@@ -503,7 +502,6 @@ class ChainRuntimeConfig:
     transfer_task_timeout: int = 120
     scrape_follow_tmdb: bool = True
     metadata_cache_ttl: int = 3600
-    auto_download_user: Optional[str] = None
     resource_url: Optional[str] = None
     history_url: Optional[str] = None
     downloading_url: Optional[str] = None
@@ -778,6 +776,14 @@ class SystemConfigService:
         if self._async_executor is None:
             raise RuntimeError("系统配置异步数据库执行端口尚未配置")
         return cast(T, await self._async_executor.run(partial(self.update_atomically, key, mutation)))
+
+    async def async_publish_committed_change(self, key: SystemConfigKey) -> None:
+        """
+        发布单个已提交配置键的失效信号，监听器按通知重读最新快照。
+
+        :param key: 已在调用方事务中写入的配置键，不随事件附带私有配置值
+        """
+        await self._publish_async_change(key, None, True)
 
     async def async_delete(self, key: Any) -> Any:
         """

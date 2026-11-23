@@ -8,6 +8,7 @@ import json
 import mimetypes
 import re
 import threading
+import time
 import unicodedata
 import uuid
 from collections.abc import Mapping
@@ -15,6 +16,8 @@ from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
+from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, Union, cast
 from urllib.parse import unquote, urlparse
@@ -26,25 +29,38 @@ from app.application.agent import (
     transcribe_audio,
 )
 from app.application.messaging import router as interaction_router
-from app.application.messaging.interaction import InteractionContext, InteractionDispatch
+from app.application.messaging.ingress import claim_verified_event
+from app.application.messaging.interaction import (
+    InteractionContext,
+    InteractionDispatch,
+    interaction_key,
+    scoped_interaction,
+)
 from app.application.messaging.interaction.agent import (
     agent_interaction_manager,
     is_agent_learning_command,
     parse_agent_choice_callback,
 )
 from app.application.messaging.media import media_interaction_manager
+from app.application.messaging.message import scoped_message_reply
 from app.application.messaging.plugin import PluginInputInteractionHandler
 from app.application.messaging.session import MessageSessionService
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
-from app.application.security.authorization import get_channel_authorization
+from app.application.notification import channel_interaction_is_enabled
+from app.application.security.authorization import (
+    ChannelAuthorizationService,
+    get_channel_authorization,
+    scoped_admission,
+)
 from app.chain.base import ChainBase
 from app.chain.interaction import MediaInteractionChain as _MediaInteractionChain
 from app.chain.site import SiteChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.system import SystemChain
 from app.chain.transfer.facade import TransferChain
+from app.domain.admission import AdmissionProof
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import get_task_registry
@@ -55,6 +71,15 @@ from app.schemas.types import EventType, MessageType, NotificationChannel
 if TYPE_CHECKING:
     from app.application.security.user import UserSnapshot
 
+
+def _agent_interaction_parameters(
+        userid: Union[str, int], channel: NotificationChannel, source: str, chat_id: Optional[str],
+) -> dict[str, Any]:
+    """
+    将有明确会话的交互地址传给 Agent 队列，兼容没有会话地址的老入口。
+    """
+    address = interaction_key(userid, channel, source, chat_id)
+    return {"interaction_address": address} if address.conversation or address.thread else {}
 
 class MessageResponsePort(Protocol):
     """
@@ -263,7 +288,42 @@ class MessageChain(ChainBase):
         if not info:
             logger.info("消息链路未识别到有效消息: source=%s", source)
             return
-        source = str(info.source or source or "")
+        self.process_incoming(info, source)
+
+    def process_platform_payload(
+        self, body: bytes, source: str, channel: NotificationChannel, connection_id: str,
+    ) -> None:
+        """
+        仅由宿主内已认证 SDK 调用，在普通解析结果上附加来源证明。
+        """
+        info = self.message_parser(source=source, body=body, form=None, args={})
+        if not info or info.channel != channel or info.source != source:
+            return
+        try:
+            config = ChannelAuthorizationService.notification(channel.value, source)
+        except PermissionError:
+            return
+        if config.id != connection_id:
+            return
+        policy = config.interaction_policy
+        if policy and info.userid is not None and (policy.admission_rules or policy.auto_download_rules):
+            group = str(info.chat_id).removeprefix("group:") if info.chat_id and info.conversation_type == "group" else None
+            proof = AdmissionProof(
+                config.id, policy.revision, str(info.userid), group,
+                time.time() + 60, private=info.conversation_type == "private",
+            )
+            info._admission_proof = proof
+            if not claim_verified_event(proof, sha256(body).hexdigest()):
+                return
+        self.process_incoming(info, verified_event_claimed=True)
+
+    def process_incoming(
+        self, info: IncomingMessage, fallback_source: Optional[str] = None, *, verified_event_claimed: bool = False,
+    ) -> None:
+        """
+        处理适配器解析结果，兼容 HTTP 入口及进程内受验证的 SDK 入口。
+        """
+        source = str(info.source or fallback_source or "")
         channel = info.channel
         if channel is None:
             logger.warning("消息缺少有效通知渠道：source=%s", source)
@@ -274,7 +334,7 @@ class MessageChain(ChainBase):
             str(info.username) if info.username not in (None, "") else str(userid)
         )
         if userid is None or userid == "":
-            logger.debug(f"未识别到用户ID：{body}{form}{args}")
+            logger.debug(f"未识别到用户ID：{source}")
             return
 
         text = str(info.text).strip() if info.text else ""
@@ -288,29 +348,37 @@ class MessageChain(ChainBase):
             else None
         )
         if not text and not callback_data and not images and not audio_refs and not files:
-            logger.debug(f"未识别到消息内容：：{body}{form}{args}")
+            logger.debug(f"未识别到消息内容：：{source}")
             return
 
         original_message_id = info.message_id
         original_chat_id = info.chat_id
         reply_to_message_id = info.reply_to_message_id
 
-        self.handle_message(
-            channel=channel,
-            source=source,
-            userid=userid,
-            username=username,
-            is_channel_admin=info.is_channel_admin,
-            text=text,
-            original_message_id=original_message_id,
-            original_chat_id=original_chat_id,
-            reply_to_message_id=reply_to_message_id,
-            images=images,
-            audio_refs=audio_refs,
-            files=files,
-            callback_data=callback_data,
-        )
+        proof = getattr(info, "_admission_proof", None)
+        if isinstance(proof, AdmissionProof) and not verified_event_claimed and not claim_verified_event(proof, original_message_id):
+            return
+        with scoped_admission(proof if isinstance(proof, AdmissionProof) else None):
+            self.handle_message(
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                is_channel_admin=info.is_channel_admin,
+                text=text,
+                original_message_id=original_message_id,
+                original_chat_id=original_chat_id,
+                reply_to_message_id=reply_to_message_id,
+                images=images,
+                audio_refs=audio_refs,
+                files=files,
+                callback_data=callback_data,
+                conversation_type=getattr(info, "conversation_type", "unknown"),
+                **({"thread_id": info.thread_id} if getattr(info, "thread_id", None) else {}),
+            )
 
+    @scoped_message_reply
+    @scoped_interaction
     def handle_message(
             self,
             channel: NotificationChannel,
@@ -326,6 +394,8 @@ class MessageChain(ChainBase):
             reply_to_message_id: Optional[Union[str, int]] = None,
             is_channel_admin: Optional[bool] = None,
             callback_data: Optional[str] = None,
+            conversation_type: str = "unknown",
+            thread_id: Optional[str] = None,
     ) -> None:
         """
         识别消息内容并执行对应操作。
@@ -333,23 +403,23 @@ class MessageChain(ChainBase):
         外部渠道中以标点或符号开头的纯文本优先交给插件，避免验证码等插件输入被
         智能体拦截或写入普通消息历史；斜杠命令和 Web 聊天仍按原路由处理。
         """
+        if not channel_interaction_is_enabled(channel, source):
+            return
         text = text or ""
         images = IncomingMessage.MessageImage.normalize_list(images)
         is_special_plugin_text = (
             channel not in {NotificationChannel.Web, NotificationChannel.WebAgent}
-            and not (images or audio_refs or files or callback_data)
+            and not any((images, audio_refs, files, callback_data))
             and self._is_special_plugin_text(text)
         )
         if self._handle_channel_authorization(
                 channel, source, userid, username, text, callback_data,
                 allow_plugin_input=is_special_plugin_text,
+                original_chat_id=original_chat_id, conversation_type=conversation_type,
         ):
             return
 
-        # 兼容归一化：结构化回调优先，CALLBACK: 文本前缀作为旧渠道和插件直接调用的兼容入口
-        normalized_callback = str(callback_data or "").strip() or None
-        if normalized_callback is None and str(text or "").startswith("CALLBACK:"):
-            normalized_callback = str(text)[9:].strip() or None
+        normalized_callback = self._normalize_callback_data(text, callback_data)
 
         processing_status = None
         processing_finish_deferred = False
@@ -375,7 +445,7 @@ class MessageChain(ChainBase):
                             userid=userid,
                             username=username,
                             title="语音识别失败，请稍后重试",
-                            save_history=False,
+                            save_history=False, original_chat_id=original_chat_id,
                         )
                     )
                     return
@@ -440,7 +510,7 @@ class MessageChain(ChainBase):
                 return
 
             is_agent_message = self._is_agent_message(
-                userid=userid,
+                context=interaction_context,
                 text=text,
                 callback_data=normalized_callback,
                 images=images,
@@ -484,6 +554,7 @@ class MessageChain(ChainBase):
                 has_audio_input=has_audio_input,
                 processing_status=processing_status,
                 callback_data=normalized_callback,
+                **({"thread_id": thread_id} if thread_id else {}),
             ) is True
         finally:
             if not processing_finish_deferred:
@@ -584,6 +655,7 @@ class MessageChain(ChainBase):
                 text=text,
                 allowed_scopes=principal.permissions,
                 owner_username=principal.name,
+                original_chat_id=context.original_chat_id,
             )
         finally:
             self._mark_message_processing_finished(
@@ -671,7 +743,9 @@ class MessageChain(ChainBase):
             )
 
         media_attempted = False
-        if media_interaction_manager.get_by_user(context.user_id) is not None:
+        if media_interaction_manager.get_by_user(
+            context.user_id, context.channel, context.source, context.original_chat_id,
+        ) is not None:
             media_attempted = True
             if self._dispatch_member_media_text(context, text, principal):
                 return False
@@ -743,12 +817,12 @@ class MessageChain(ChainBase):
 
         if not self.runtime_config.ai_agent_enable:
             self.post_message(Message(channel=context.channel, source=context.source, userid=context.user_id,
-                                      title="AI Agent 未启用，请联系管理员。", save_history=False))
+                                      title="AI Agent 未启用，请联系管理员。", save_history=False, original_chat_id=context.original_chat_id))
             return False
         if not (self.runtime_config.ai_agent_global or self._has_ai_prefix(text)
                 or is_agent_learning_command(text) or images or files or has_audio_input):
             self.post_message(Message(channel=context.channel, source=context.source, userid=context.user_id,
-                                      title="请使用 /ai 加上要执行的操作。", save_history=False))
+                                      title="请使用 /ai 加上要执行的操作。", save_history=False, original_chat_id=context.original_chat_id))
             return False
         return self._handle_ai_message(
             text=text, channel=context.channel, source=context.source or "", userid=context.user_id,
@@ -759,7 +833,9 @@ class MessageChain(ChainBase):
     def _handle_channel_authorization(
         self, channel: NotificationChannel, source: str, userid: Union[str, int],
         username: str, text: str, callback_data: Optional[str],
-        *, allow_plugin_input: bool = False,
+        *, original_chat_id: Optional[str] = None,
+        conversation_type: str = "unknown",
+        allow_plugin_input: bool = False,
     ) -> bool:
         """
         在语音、传统交互和 Agent 执行前处理申请并统一检查渠道成员状态。
@@ -778,18 +854,20 @@ class MessageChain(ChainBase):
             value = value[9:].strip()
         try:
             member = service.find(channel.value, source, str(userid))
+            config = service.notification(channel.value, source)
+            policy = config.interaction_policy
+            if policy and policy.admission in {"rules", "open"} and not (member and member.status == "approved"):
+                return self._handle_rule_admission(
+                    service, channel, source, userid, username, text, value, callback_data, original_chat_id,
+                    pending=member is None or member.status == "pending", admission=policy.admission,
+                )
             if (
                 member is None or member.status == "pending"
             ) and allow_plugin_input:
                 return False
-            if value.startswith("绑定账号 "):
-                member = service.bind(channel.value, source, str(userid), username, value[5:].strip())
-                self.post_message(Message(channel=channel, source=source, userid=userid,
-                                          title="账号已关联。" + ("请重新发送要执行的操作。" if member.status == "approved" else "渠道权限仍需管理员批准。"), save_history=False, private_delivery=True))
-                return True
-            if value in {"绑定账号", "authorization:bind"}:
-                self.post_message(Message(channel=channel, source=source, userid=userid,
-                                          title="请登录 MoviePilot，打开个人信息 → 账号绑定 → 生成关联码，在此私聊发送“绑定账号 关联码”。", save_history=False, private_delivery=True))
+            if self._handle_account_binding(
+                service, channel, source, userid, username, value, conversation_type, original_chat_id,
+            ):
                 return True
             if value.casefold() in {"申请使用", "/申请使用", "/apply", "authorization:apply"}:
                 first_request = member is None
@@ -797,18 +875,22 @@ class MessageChain(ChainBase):
                 labels = {"approved": "你已获得授权，请重新发送要执行的操作。", "pending": "申请已提交，请等待管理员审批。",
                           "disabled": "当前授权已停用，请联系管理员。", "rejected": "申请未通过，请联系管理员。"}
                 self.post_message(Message(channel=channel, source=source, userid=userid,
-                                          title=labels[member.status], save_history=False))
+                                          title=labels[member.status], original_chat_id=original_chat_id, save_history=False))
                 if member.status == "pending" and first_request:
                     self.post_message(Message(mtype=MessageType.Agent,
                                               title="有新的渠道授权申请", text=f"{username} · {source}\n请打开用户管理右下角的渠道授权处理。", save_history=False))
                 return True
             if member is None or member.status != "approved":
+                if (member is None or member.status == "pending") and self._handle_contextual_media(
+                    service, channel, source, userid, username, text, value, bool(callback_data), original_chat_id,
+                ):
+                    return True
                 if member is None or member.status == "pending":
-                    if self.runtime_config.ai_agent_enable and not text.startswith("/") and (self.runtime_config.ai_agent_global or self._has_ai_prefix(text)):
+                    if self._can_offer_public_agent_reply(text, callback_data):
                         # 公共资料继续允许查询，业务 API 仍在执行边界要求已批准授权。
                         return False
                 self.post_message(Message(
-                    channel=channel, source=source, userid=userid, title="此操作需要管理员授权",
+                    channel=channel, source=source, userid=userid, original_chat_id=original_chat_id, title="此操作需要管理员授权",
                     text="点击申请使用，或发送“申请使用”。批准后重新发送要执行的操作。",
                     buttons=[[{"text": "申请使用", "callback_data": "authorization:apply"}, {"text": "绑定已有账号", "callback_data": "authorization:bind"}]], save_history=False,
                 ))
@@ -827,12 +909,97 @@ class MessageChain(ChainBase):
                 and _MediaInteractionChain.parse_callback(value) is None
             )
             if (traditional_command or traditional_callback) and not principal.is_superuser:
-                self.post_message(Message(channel=channel, source=source, userid=userid, title="此命令需要管理员授权。", save_history=False))
+                self.post_message(Message(channel=channel, source=source, userid=userid, original_chat_id=original_chat_id, title="此命令需要管理员授权。", save_history=False))
                 return True
             return False
         except (PermissionError, ValueError) as error:
-            self.post_message(Message(channel=channel, source=source, userid=userid, title=str(error), save_history=False))
+            self.post_message(Message(channel=channel, source=source, userid=userid, original_chat_id=original_chat_id, title=str(error), save_history=False))
             return True
+
+    def _handle_account_binding(
+        self, service: ChannelAuthorizationService, channel: NotificationChannel, source: str,
+        userid: Union[str, int], username: str, value: str, conversation_type: str,
+        original_chat_id: Optional[str],
+    ) -> bool:
+        """
+        处理私聊账号关联及关联说明，未知或群组会话不得消费关联码。
+        """
+        if value.startswith("绑定账号 "):
+            if conversation_type != "private":
+                self.post_message(Message(
+                    channel=channel, source=source, userid=userid, original_chat_id=original_chat_id,
+                    title="请在机器人私聊中关联账号；当前消息未消费关联码。", save_history=False,
+                ))
+                return True
+            member = service.bind(channel.value, source, str(userid), username, value[5:].strip())
+            self.post_message(Message(channel=channel, source=source, userid=userid,
+                                      title="账号已关联。" + ("请重新发送要执行的操作。" if member.status == "approved" else "渠道权限仍需管理员批准。"), save_history=False, private_delivery=True))
+            return True
+        if value in {"绑定账号", "authorization:bind"}:
+            self.post_message(Message(channel=channel, source=source, userid=userid,
+                                      title="请登录 MoviePilot，打开个人信息 → 账号绑定 → 生成关联码，在此私聊发送“绑定账号 关联码”。", save_history=False, private_delivery=True))
+            return True
+        return False
+
+    def _handle_rule_admission(
+        self, service: ChannelAuthorizationService, channel: NotificationChannel, source: str,
+        userid: Union[str, int], username: str, text: str, value: str, callback_data: Optional[str],
+        original_chat_id: Optional[str], *, pending: bool, admission: str,
+    ) -> bool:
+        """
+        为尚未批准的成员执行规则或开放准入，拒绝与停用状态仍不获得临时权限。
+        """
+        config = service.notification(channel.value, source)
+        if pending:
+            if self._handle_contextual_media(
+                service, channel, source, userid, username, text, value, bool(callback_data), original_chat_id,
+            ):
+                return True
+            if (
+                self._can_offer_public_agent_reply(text, callback_data)
+                and "schedule" in service.context_scopes(config, str(userid))
+            ):
+                return False
+        self.post_message(Message(
+            channel=channel, source=source, userid=userid, original_chat_id=original_chat_id,
+            title=("此操作需要符合当前连接的审批规则。" if admission == "rules"
+                   else "此连接开放搜索、订阅和下载，其他操作需要相应授权。"),
+            save_history=False,
+        ))
+        return True
+
+    def _can_offer_public_agent_reply(self, text: str, callback_data: str | None) -> bool:
+        """
+        保留待审批成员可用的公共 Agent 查询入口，业务能力由 Agent 权限层检查。
+
+        :param text: 当前用户输入
+        :param callback_data: 平台结构化回调
+        :return: 当前输入是否可交给受控 Agent 路由
+        """
+        if not self.runtime_config.ai_agent_enable or callback_data or text.startswith("CALLBACK:"):
+            return False
+        return self._has_ai_prefix(text) or (self.runtime_config.ai_agent_global and not text.startswith("/"))
+
+    def _handle_contextual_media(
+        self, service: ChannelAuthorizationService, channel: NotificationChannel, source: str,
+        userid: Union[str, int], username: str, text: str, value: str, is_callback: bool,
+        chat_id: Optional[str],
+    ) -> bool:
+        """
+        有平台来源证明的普通成员可在当前会话执行有限业务操作。
+        """
+        config = service.notification(channel.value, source)
+        if not service.context_scopes(config, str(userid)):
+            return False
+        media = _MediaInteractionChain()
+        if is_callback or text.startswith("CALLBACK:"):
+            return media.handle_callback_interaction(
+                value, channel, source, userid, username, original_chat_id=chat_id,
+            ) if media.parse_callback(value) else False
+        _, plain = self._strip_no_ai_prefix(text)
+        if plain.startswith("/"):
+            return False
+        return media.handle_text_interaction(channel, source, userid, username, plain, original_chat_id=chat_id)
 
     def _handle_secret_confirmation_control(
             self,
@@ -859,7 +1026,7 @@ class MessageChain(ChainBase):
         if images or audio_refs or files or has_audio_input:
             return False
 
-        session_info = self._user_sessions.get(self._session_user_key(userid, channel, source))
+        session_info = self._user_sessions.get(self._session_user_key(userid, channel, source, original_chat_id))
         if not session_info:
             return False
         session_id, _ = session_info
@@ -903,6 +1070,7 @@ class MessageChain(ChainBase):
             reply_to_message_id: Optional[Union[str, int]] = None,
             is_channel_admin: Optional[bool] = None,
             callback_data: Optional[str] = None,
+            thread_id: Optional[str] = None,
     ) -> bool:
         """
         执行实际消息路由，便于统一包裹处理中状态。
@@ -960,7 +1128,7 @@ class MessageChain(ChainBase):
                         userid=userid,
                         username=username,
                         title="请输入要使用传统交互处理的内容",
-                        save_history=False,
+                        save_history=False, original_chat_id=original_chat_id,
                     )
                 )
                 return False
@@ -985,6 +1153,8 @@ class MessageChain(ChainBase):
                     "user": userid,
                     "channel": channel,
                     "source": source,
+                    "original_chat_id": original_chat_id,
+                    **({"thread_id": thread_id} if thread_id else {}),
                     "processing_status": processing_status.to_dict()
                     if processing_status
                     else None,
@@ -1042,6 +1212,7 @@ class MessageChain(ChainBase):
                 userid=userid,
                 username=username,
                 text=text,
+                original_chat_id=original_chat_id,
         ):
             return False
 
@@ -1068,6 +1239,16 @@ class MessageChain(ChainBase):
         return (text or "").lower().startswith(cls._ai_prefix)
 
     @staticmethod
+    def _normalize_callback_data(text: str, callback_data: str | None) -> str | None:
+        """
+        优先读取结构化回调，兼容旧插件的 CALLBACK: 文本。
+        """
+        callback = str(callback_data or "").strip()
+        if not callback and text.startswith("CALLBACK:"):
+            callback = text[9:].strip()
+        return callback or None
+
+    @staticmethod
     def _is_special_plugin_text(text: Optional[str]) -> bool:
         """
         判断纯文本是否以标点或符号开头，可作为插件消息输入。
@@ -1084,12 +1265,12 @@ class MessageChain(ChainBase):
 
     def _is_agent_message(
             self,
-            userid: Union[str, int],
             text: str,
             callback_data: Optional[str] = None,
             images: Optional[List[IncomingMessage.MessageImage]] = None,
             files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
+            context: Optional[InteractionContext] = None,
     ) -> bool:
         """
         判断本条消息是否会进入 Agent worker，由 Agent worker 管理 typing 生命周期。
@@ -1110,7 +1291,7 @@ class MessageChain(ChainBase):
                 )
         ):
             return False
-        if self._interaction_router().has_pending(userid):
+        if context is not None and self._interaction_router().has_pending(context):
             return False
         return True
 
@@ -1180,35 +1361,46 @@ class MessageChain(ChainBase):
         session_routes = [
             interaction_router.SessionRoute(
                 name="sites",
-                get_pending=site_interaction_manager.get_by_user,
+                get_pending=lambda context: site_interaction_manager.get_by_user(
+                    context.user_id, context.channel, context.source, context.original_chat_id,
+                ),
                 handle_text=interaction_router.adapt_session_text_handler(
                     lambda **kw: SiteChain().handle_text_interaction(**kw)
                 ),
             ),
             interaction_router.SessionRoute(
                 name="subscribes",
-                get_pending=subscribe_interaction_manager.get_by_user,
+                get_pending=lambda context: subscribe_interaction_manager.get_by_user(
+                    context.user_id, context.channel, context.source, context.original_chat_id,
+                ),
                 handle_text=interaction_router.adapt_session_text_handler(
                     lambda **kw: SubscribeChain().handle_text_interaction(**kw)
                 ),
             ),
             interaction_router.SessionRoute(
                 name="skills",
-                get_pending=skill_interaction_manager.get_by_user,
+                get_pending=lambda context: skill_interaction_manager.get_by_user(
+                    context.user_id, context.channel, context.source, context.original_chat_id,
+                ),
                 handle_text=interaction_router.adapt_session_text_handler(
                     lambda **kw: SkillInteractionHandler(messenger=self).handle_text_interaction(**kw)
                 ),
             ),
             interaction_router.SessionRoute(
                 name="media",
-                get_pending=media_interaction_manager.get_by_user,
+                get_pending=lambda context: media_interaction_manager.get_by_user(
+                    context.user_id, context.channel, context.source, context.original_chat_id,
+                ),
                 handle_text=interaction_router.adapt_session_text_handler(
-                    lambda **kw: _MediaInteractionChain().handle_text_interaction(**kw)
+                    lambda **kw: _MediaInteractionChain().handle_text_interaction(**kw),
+                    include_reply_context=True,
                 ),
             ),
             interaction_router.SessionRoute(
                 name="update",
-                get_pending=update_interaction_manager.get_by_user,
+                get_pending=lambda context: update_interaction_manager.get_by_user(
+                    context.user_id, context.channel, context.source, context.original_chat_id,
+                ),
                 handle_text=interaction_router.adapt_session_text_handler(lambda **kw: SystemChain().handle_update_text_interaction(**kw)),
             ),
         ]
@@ -1332,7 +1524,7 @@ class MessageChain(ChainBase):
                 userid=context.user_id,
                 username=context.username,
                 title="回调数据格式错误，请检查！",
-                save_history=False,
+                save_history=False, original_chat_id=context.original_chat_id,
             )
         )
         return False
@@ -1350,11 +1542,24 @@ class MessageChain(ChainBase):
         if not callback:
             return False
 
+        authorization = get_channel_authorization()
+        if authorization is not None and context.channel not in {NotificationChannel.Web, NotificationChannel.WebAgent}:
+            try:
+                authorization.resolve(context.channel.value, context.source or "", str(context.user_id))
+            except (PermissionError, ValueError):
+                self.post_message(Message(
+                    channel=context.channel, source=context.source, userid=context.user_id,
+                    original_chat_id=context.original_chat_id, title="当前渠道权限已变化，请重新发起操作",
+                    save_history=False,
+                ))
+                return False
+
         request_id, option_index = callback
         resolved = agent_interaction_manager.resolve(
             request_id=request_id,
             option_index=option_index,
             user_id=str(context.user_id),
+            address=interaction_key(context.user_id, context.channel, context.source, context.original_chat_id),
         )
         if not resolved:
             self.post_message(
@@ -1364,7 +1569,7 @@ class MessageChain(ChainBase):
                     userid=context.user_id,
                     username=context.username,
                     title="该选择已失效，请重新发起选择",
-                    save_history=False,
+                    save_history=False, original_chat_id=context.original_chat_id,
                 )
             )
             return False
@@ -1380,7 +1585,9 @@ class MessageChain(ChainBase):
             prompt=request.prompt,
             selected_label=option.label,
         )
-        self._bind_session_id(self._session_user_key(context.user_id, context.channel, context.source), request.session_id)
+        self._bind_session_id(self._session_user_key(
+            context.user_id, context.channel, context.source, context.original_chat_id,
+        ), request.session_id)
         return self._handle_ai_message(
             text=selected_text,
             channel=context.channel,
@@ -1389,6 +1596,7 @@ class MessageChain(ChainBase):
             username=context.username or str(context.user_id),
             is_channel_admin=context.is_channel_admin,
             session_id=request.session_id,
+            original_chat_id=context.original_chat_id,
         )
 
     def _update_interaction_message_feedback(
@@ -1421,16 +1629,25 @@ class MessageChain(ChainBase):
         )
 
     @staticmethod
-    def _session_user_key(userid: Union[str, int], channel: NotificationChannel, source: Optional[str]) -> str:
+    def _session_user_key(
+            userid: Union[str, int], channel: NotificationChannel, source: Optional[str],
+            original_chat_id: Optional[str] = None,
+    ) -> str:
         """
         以无歧义序列化生成渠道和接入源隔离的会话键，不回退读取旧裸用户绑定。
 
         :param userid: 渠道内原始用户标识
         :param channel: 接收消息的渠道
         :param source: 该渠道的配置实例，未提供时使用空标识
+        :param original_chat_id: 显式原会话，消息入口的作用域同时提供线程
         :return: 内部会话映射键，不作为发送消息的用户ID
         """
-        return "message:" + json.dumps([channel.value, source or "", str(userid)], ensure_ascii=False, separators=(",", ":"))
+        if channel in {NotificationChannel.Web, NotificationChannel.WebAgent}:
+            parts = [channel.value, source or "", str(userid)]
+        else:
+            address = interaction_key(userid, channel, source, original_chat_id)
+            parts = [channel.value, address.instance, address.actor, address.conversation, address.thread]
+        return "message:" + json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
 
     def _get_or_create_session_id(self, userid: Union[str, int]) -> str:
         """
@@ -1795,7 +2012,7 @@ class MessageChain(ChainBase):
                         userid=userid,
                         username=username,
                         title="MoviePilot智能助手未启用，请在系统设置中启用",
-                        save_history=False,
+                        save_history=False, original_chat_id=original_chat_id,
                     )
                 )
                 return False
@@ -1809,7 +2026,7 @@ class MessageChain(ChainBase):
                         userid=userid,
                         username=username,
                         title="MoviePilot智能助手服务尚未就绪，请稍后重试",
-                        save_history=False,
+                        save_history=False, original_chat_id=original_chat_id,
                     )
                 )
                 return False
@@ -1830,12 +2047,12 @@ class MessageChain(ChainBase):
                         userid=userid,
                         username=username,
                         title="请输入您的问题或需求",
-                        save_history=False,
+                        save_history=False, original_chat_id=original_chat_id,
                     )
                 )
                 return False
 
-            session_key = self._session_user_key(userid, channel, source)
+            session_key = self._session_user_key(userid, channel, source, original_chat_id)
             session_id = session_id or self._get_or_create_session_id(session_key)
             self._bind_session_id(session_key, session_id)
 
@@ -1858,18 +2075,13 @@ class MessageChain(ChainBase):
                             userid=userid,
                             username=username,
                             title="附件读取失败，请稍后重试",
-                            save_history=False,
+                            save_history=False, original_chat_id=original_chat_id,
                         )
                     )
                     return False
             elif images:
                 image_attachments = self._build_image_attachments(images)
-                if (
-                        original_images
-                        and not image_attachments
-                        and not user_message
-                        and not files
-                ):
+                if original_images and not image_attachments and not user_message and not files:
                     self.post_message(
                         Message(
                             channel=channel,
@@ -1877,7 +2089,7 @@ class MessageChain(ChainBase):
                             userid=userid,
                             username=username,
                             title="附件读取失败，请稍后重试",
-                            save_history=False,
+                            save_history=False, original_chat_id=original_chat_id,
                         )
                     )
                     return False
@@ -1898,12 +2110,12 @@ class MessageChain(ChainBase):
                         userid=userid,
                         username=username,
                         title="文件读取失败，请稍后重试",
-                        save_history=False,
+                        save_history=False, original_chat_id=original_chat_id,
                     )
                 )
                 return False
 
-            process_kwargs = {
+            process_kwargs: dict[str, Any] = {
                 "session_id": session_id,
                 "user_id": str(userid),
                 "message": user_message,
@@ -1920,56 +2132,73 @@ class MessageChain(ChainBase):
             }
             if has_audio_input:
                 process_kwargs["has_audio_input"] = True
+            process_kwargs.update(_agent_interaction_parameters(userid, channel, source, original_chat_id))
+            authorization = get_channel_authorization()
+            if authorization is not None and channel not in {NotificationChannel.Web, NotificationChannel.WebAgent}:
+                task_user = authorization.rule_task_principal(channel.value, source, str(userid))
+                if task_user is not None:
+                    process_kwargs.update(
+                        authorization_id=task_user.authorization_id, execution_user_id=task_user.id,
+                        execution_user_identity=task_user.notification_identity, is_channel_admin=False,
+                    )
             # 在事件循环中处理，并消费跨线程 Future 的失败，避免队列满时静默丢消息。
             submission_future = asyncio.run_coroutine_threadsafe(
                 manager.process_message(**process_kwargs),
                 main_loop_registry.require(),
             )
 
-            def _report_agent_submission_failure(completed: Future[Any]) -> None:
-                """
-                消费跨线程消息提交结果并反馈排队或服务错误。
-                """
-                try:
-                    completed.result()
-                except BaseException as error:
-                    if isinstance(
-                            error,
-                            (asyncio.CancelledError, FutureCancelledError),
-                    ):
-                        return
-                    error_code = getattr(error, "code", None)
-                    if error_code == "agent_manager_queue_full":
-                        title = "智能助手当前排队已满，请稍后重试"
-                    elif error_code == "agent_manager_unavailable":
-                        title = "智能助手服务暂不可用，请稍后重试"
-                    else:
-                        title = "智能助手处理失败，请查看日志"
-                    logger.warning(f"Agent 消息提交失败: {error}")
-                    try:
-                        self.post_message(
-                            Message(
-                                channel=channel,
-                                source=source,
-                                userid=userid,
-                                username=username,
-                                title=title,
-                                original_message_id=original_message_id,
-                                original_chat_id=original_chat_id,
-                                save_history=False,
-                            )
-                        )
-                    except Exception as report_error:
-                        logger.error(f"发送 Agent 提交失败提示失败: {report_error}")
-
             if submission_future is not None:
-                submission_future.add_done_callback(_report_agent_submission_failure)
+                submission_future.add_done_callback(partial(
+                    self._report_agent_submission_failure, channel=channel, source=source,
+                    userid=userid, username=username, original_message_id=original_message_id,
+                    original_chat_id=original_chat_id,
+                ))
             return True
 
         except Exception as e:
             logger.error(f"处理AI智能体消息失败: {e}", exc_info=True)
             self.messagehelper.put("智能助手执行失败，请稍后重试", role="system", title="MoviePilot助手", level="error")
             return False
+
+    def _report_agent_submission_failure(
+        self, completed: Future[Any], *, channel: NotificationChannel, source: str,
+        userid: Union[str, int], username: str, original_message_id: Optional[Union[str, int]],
+        original_chat_id: Optional[str],
+    ) -> None:
+        """
+        消费跨线程消息提交结果并反馈排队或服务错误。
+        """
+        try:
+            completed.result()
+        except BaseException as error:
+            if isinstance(
+                    error,
+                    (asyncio.CancelledError, FutureCancelledError),
+            ):
+                return
+            error_code = getattr(error, "code", None)
+            if error_code == "agent_manager_queue_full":
+                title = "智能助手当前排队已满，请稍后重试"
+            elif error_code == "agent_manager_unavailable":
+                title = "智能助手服务暂不可用，请稍后重试"
+            else:
+                title = "智能助手处理失败，请查看日志"
+            logger.warning(f"Agent 消息提交失败: {error}")
+            try:
+                self.post_message(
+                    Message(
+                        channel=channel,
+                        source=source,
+                        userid=userid,
+                        username=username,
+                        title=title,
+                        original_message_id=original_message_id,
+                        original_chat_id=original_chat_id,
+                        save_history=False,
+                    )
+                )
+            except Exception as report_error:
+                logger.error(f"发送 Agent 提交失败提示失败: {report_error}")
 
     def _transcribe_audio_refs(
             self, audio_refs: List[str], channel: NotificationChannel, source: str

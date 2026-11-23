@@ -12,7 +12,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar, cast
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import Select, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -43,6 +44,13 @@ from app.application.subscription.contract import (
     subscription_added_notification_key,
     subscription_added_report_key,
 )
+from app.application.subscription.ownership import (
+    SubscriptionOwnerAccount,
+    SubscriptionOwnerResult,
+    SubscriptionRecordKind,
+    account_review_revision,
+    subscription_owner_revision,
+)
 from app.application.subscription.write import (
     AsyncCreateSubscriptionBatchCommand,
     AsyncCreateSubscriptionCommand,
@@ -57,8 +65,9 @@ from app.db.adapters.outbox import (
     SqlAlchemyOutboxDispatchStore,
     SqlAlchemyOutboxStager,
 )
-from app.db.models.subscribe import Subscribe
+from app.db.models.subscribe import Subscribe, subscription_identity_key
 from app.db.models.subscribehistory import SubscribeHistory
+from app.db.models.user import User
 from app.db.oper.subscribe import SubscribeOper
 from app.db.oper.subscribeactivity import SubscribeActivityOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
@@ -118,6 +127,7 @@ def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
         last_search=record.last_search,
         date=record.date,
         username=record.username,
+        owner_identity=record.owner_identity,
         sites=cast(Optional[builtins.list[int]], record.sites),
         downloader=record.downloader,
         best_version=record.best_version,
@@ -175,6 +185,7 @@ def _project_history(record: SubscribeHistory) -> SubscriptionHistorySnapshot:
         start_episode=record.start_episode,
         date=record.date,
         username=record.username,
+        owner_identity=record.owner_identity,
         sites=cast(Optional[builtins.list[int]], record.sites),
         best_version=record.best_version,
         best_version_full=record.best_version_full,
@@ -507,6 +518,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         mtype: Optional[str] = None,
         page: Optional[int] = None,
         count: Optional[int] = None,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[SubscriptionSnapshot]:
         """
         异步按用户、状态、类型和窗口读取订阅快照。
@@ -523,7 +535,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
                 state,
                 mtype,
                 page=page,
-                count=count,
+                count=count, owner_identity=owner_identity,
             )
             return [_project_subscription(record) for record in records]
 
@@ -534,6 +546,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         state: Optional[str] = None,
         username: Optional[str] = None,
         mtype: Optional[str] = None,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         按公开列表筛选范围返回订阅精确总数。
@@ -542,7 +555,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
             lambda repository: repository.async_count(
                 state=state,
                 username=username,
-                mtype=mtype,
+                mtype=mtype, owner_identity=owner_identity,
             )
         )
 
@@ -636,6 +649,7 @@ class TransactionalSubscriptionHistoryRepository:
         username: str,
         page: int = 1,
         count: int = 30,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[SubscriptionHistorySnapshot]:
         """
         在短 Session 内按类型和用户分页读取并投影历史快照。
@@ -646,6 +660,7 @@ class TransactionalSubscriptionHistoryRepository:
                 username,
                 page,
                 count,
+                owner_identity=owner_identity,
             )
             return [_project_history(record) for record in records]
 
@@ -660,6 +675,7 @@ class TransactionalSubscriptionHistoryRepository:
         self,
         mtype: str,
         username: str,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         在短 Session 内统计指定媒体类型和 owner 的历史数量。
@@ -667,7 +683,7 @@ class TransactionalSubscriptionHistoryRepository:
         async with self._async_session() as session:
             return await SubscribeHistoryOper(
                 session
-            ).async_count_by_type_and_username(mtype, username)
+            ).async_count_by_type_and_username(mtype, username, owner_identity=owner_identity)
 
 
 class SessionSubscriptionRepository:
@@ -855,6 +871,7 @@ class SessionSubscriptionRepository:
         mtype: Optional[str] = None,
         page: Optional[int] = None,
         count: Optional[int] = None,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[SubscriptionSnapshot]:
         """
         异步按用户、状态、类型和窗口读取订阅快照。
@@ -864,7 +881,7 @@ class SessionSubscriptionRepository:
             state,
             mtype,
             page=page,
-            count=count,
+            count=count, owner_identity=owner_identity,
         )
         return [_project_subscription(record) for record in records]
 
@@ -873,6 +890,7 @@ class SessionSubscriptionRepository:
         state: Optional[str] = None,
         username: Optional[str] = None,
         mtype: Optional[str] = None,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         按公开列表筛选范围返回订阅精确总数。
@@ -880,7 +898,7 @@ class SessionSubscriptionRepository:
         return await self._async_repository().async_count(
             state=state,
             username=username,
-            mtype=mtype,
+            mtype=mtype, owner_identity=owner_identity,
         )
 
     async def async_list_by_media_identity(
@@ -995,6 +1013,7 @@ class SessionSubscriptionRepository:
         return SubscribeDeletionCandidate(
             subscribe_id=snapshot.id,
             username=snapshot.username,
+            owner_identity=snapshot.owner_identity,
             event_payload=snapshot.to_dict(),
         )
 
@@ -1020,12 +1039,13 @@ class SessionSubscriptionRepository:
         username: Optional[str],
         state: str,
         mtype: Optional[str] = None,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[int]:
         """
         异步读取用户或管理员指定媒体类型范围内的订阅主键。
         """
         snapshots = (
-            await self.async_list_by_username(username, state, mtype=mtype)
+            await self.async_list_by_username(username, state, mtype=mtype, owner_identity=owner_identity)
             if username is not None
             else await self.async_list(state)
         )
@@ -1046,6 +1066,21 @@ class SessionSubscriptionRepository:
         同步暂存删除订阅。
         """
         self._sync_repository().stage_delete_sync(subscribe_id)
+
+    def lock_for_completion(self, record_id: int, activity_key: str | None) -> SubscriptionSnapshot | None:
+        """
+        锁住当前记录再转历史，同时兼容 SQLite 的写事务锁。
+        """
+        session = self._session
+        if not isinstance(session, Session):
+            raise RuntimeError("订阅完成需要同步 Session")
+        statement = (
+            update(Subscribe)
+            .where(Subscribe.id == record_id, Subscribe.activity_key.is_not_distinct_from(activity_key))
+            .values(id=Subscribe.id).returning(Subscribe)
+        )
+        record = session.scalar(statement.execution_options(populate_existing=True))
+        return _project_subscription(record) if record is not None else None
 
     def stage_history(self, payload: SubscriptionHistoryPatch) -> None:
         """
@@ -1070,6 +1105,87 @@ class SessionSubscriptionRepository:
             event = lifecycle_activity(snapshot, kind, old=old)
             if event is not None:
                 SubscribeActivityOper(self._session).stage(asdict(event))
+
+
+class SessionSubscriptionOwnershipRepository:
+    """
+    在请求事务中确认旧订阅的账号归属。
+    """
+
+    def __init__(self, session: object) -> None:
+        if not isinstance(session, AsyncSession):
+            raise TypeError("订阅归属确认需要异步会话")
+        self._ownership_session = session
+
+    @staticmethod
+    def _eligible_users() -> Select[tuple[User]]:
+        return select(User).where(
+            User.account_type == "local", User.is_active.is_(True), User.notification_identity != "",
+        )
+
+    async def list_accounts(self) -> list[SubscriptionOwnerAccount]:
+        """
+        列出有效的网页登录账号和对应的复核版本。
+        """
+        users = await self._ownership_session.scalars(self._eligible_users().order_by(User.name))
+        return [
+            SubscriptionOwnerAccount(user.id, user.name, account_review_revision(
+                user.id, user.name, user.notification_identity,
+            ))
+            for user in users
+        ]
+
+    async def stage_owner(
+        self, kind: SubscriptionRecordKind, record_id: int, revision: str,
+        account_id: int, account_revision: str,
+    ) -> SubscriptionOwnerResult:
+        """
+        核对两侧的复核版本，原子认领仍为空的归属。
+        """
+        account = await self._ownership_session.scalar(
+            self._eligible_users().where(User.id == account_id).with_for_update(),
+        )
+        if account is None or account_review_revision(
+            account.id, account.name, account.notification_identity,
+        ) != account_revision:
+            return "invalid_account"
+
+        if kind == "active":
+            model = Subscribe
+        else:
+            model = SubscribeHistory
+        record = await self._ownership_session.scalar(
+            select(model).where(model.id == record_id, model.owner_identity.is_(None)).with_for_update(),
+        )
+        if record is None:
+            return "changed"
+        snapshot = _project_subscription(record) if isinstance(record, Subscribe) else _project_history(record)
+        if subscription_owner_revision(snapshot) != revision:
+            return "changed"
+        return await self._store_owner(record, account)
+
+    async def _store_owner(self, record: Subscribe | SubscribeHistory, account: User) -> SubscriptionOwnerResult:
+        """
+        在条件更新中防止并发确认及 SQLite 下记录更换。
+        """
+        model = type(record)
+        fields = ("activity_key", "name", "username", "date", "type", "media_source", "media_id",
+                  "season", "music_type", "episode_group")
+        account_matches = self._eligible_users().where(
+            User.id == account.id, User.name == account.name, User.notification_identity == account.notification_identity,
+        ).exists()
+        values: dict[str, str | None] = {"owner_identity": account.notification_identity}
+        if isinstance(record, Subscribe):
+            values["identity_key"] = subscription_identity_key({**record.__dict__, **values})
+        statement = update(model).where(
+            model.id == record.id, model.owner_identity.is_(None), account_matches,
+            *(getattr(model, field).is_not_distinct_from(getattr(record, field)) for field in fields),
+        ).values(**values).returning(model.id)
+        try:
+            result = await self._ownership_session.scalar(statement)
+        except IntegrityError:
+            return "changed"
+        return "confirmed" if result is not None else "changed"
 
 
 class SessionSubscriptionHistoryRepository:
@@ -1111,11 +1227,12 @@ class SessionSubscriptionHistoryRepository:
         username: str,
         page: int = 1,
         count: int = 30,
+        *, owner_identity: str | None = None,
     ) -> builtins.list[SubscriptionHistorySnapshot]:
         """
         异步按类型和用户分页读取订阅历史快照。
         """
-        records = await self._repository.async_list_by_type_and_username(mtype, username, page, count)
+        records = await self._repository.async_list_by_type_and_username(mtype, username, page, count, owner_identity=owner_identity)
         return [_project_history(record) for record in records]
 
     async def async_count_by_type(self, mtype: str) -> int:
@@ -1128,6 +1245,7 @@ class SessionSubscriptionHistoryRepository:
         self,
         mtype: str,
         username: str,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         在请求 Session 中统计指定类型和用户的订阅历史。
@@ -1135,6 +1253,7 @@ class SessionSubscriptionHistoryRepository:
         return await self._repository.async_count_by_type_and_username(
             mtype,
             username,
+            owner_identity=owner_identity,
         )
 
     async def stage_delete(self, history_id: int) -> None:

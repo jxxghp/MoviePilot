@@ -19,6 +19,7 @@ from app.api.context import (
     get_subscription_outbox,
     get_subscription_outbox_store,
     get_subscription_repository,
+    get_subscription_runtime,
     get_subscription_session,
     get_subscription_transaction,
     get_sync_session,
@@ -47,6 +48,7 @@ from app.application.subscription.lookup import SubscriptionIdentityLookup
 from app.application.subscription.mutation import (
     SubscriptionMutationService,
 )
+from app.application.subscription.ownership import ConfirmSubscriptionOwner
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.search import (
     SearchSubscriptionsCommand,
@@ -65,7 +67,7 @@ from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonData
 from app.schemas.types import EventType
-from app.startup.composition.context import HostRuntime
+from app.startup.composition.context import HostRuntime, SubscriptionRuntime
 
 
 async def _publish_subscribe_deleted(
@@ -329,3 +331,16 @@ async def subscription_log_query_scope(runtime: HostRuntime) -> AsyncIterator[Su
         yield SubscriptionQueryService(repository, async_repository=repository)
     finally:
         await sessions.aclose()
+
+
+def get_subscription_ownership_command(
+    session: object = Depends(get_subscription_session),
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+    unit_of_work: object = Depends(get_subscription_transaction),
+) -> ConfirmSubscriptionOwner:
+    """
+    构造使用请求级事务的订阅归属确认用例。
+    """
+    if runtime.ownership_repository is None:
+        raise RuntimeError("订阅归属确认仓储未注册")
+    return ConfirmSubscriptionOwner(runtime.ownership_repository(session), cast(DeleteUnitOfWork, unit_of_work))

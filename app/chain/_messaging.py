@@ -11,8 +11,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Union, cast
 
-from app.application.messaging.message import MessageTemplateHelper
-from app.application.notification import get_notification_switch
+from app.application.messaging.delivery import (
+    claim_legacy_notification_dispatch,
+    collect_notification_preflight,
+    managed_notification_dispatch,
+    notification_preflight_required,
+    publish_notification_progress,
+)
+from app.application.messaging.message import MessageTemplateHelper, apply_message_reply
+from app.application.notification import get_notification_missing_user_policy, get_notification_switch
 from app.application.security.user import ChainUserRepository
 from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
@@ -26,6 +33,12 @@ from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType, NotificationChannel
 
 
+class _IncompleteNotificationDelivery(RuntimeError):
+    """
+    本路由仍有未确认的投递分段。
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class _NotificationRouteLookup:
     """
@@ -37,6 +50,7 @@ class _NotificationRouteLookup:
 
     username: Optional[str]
     log_message: str
+    owner_identity: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,11 +110,60 @@ def _notification_broadcast_message(
     return routed
 
 
+def _notification_personal_route(
+    message: Message, superuser: str, admin_sent: bool, missing_user: str,
+) -> Generator[_NotificationRouteStep, Optional[Mapping[str, object]], bool | None]:
+    """
+    处理个人路由，返回本轮管理员投递状态，None 表示跳过该路由。
+    """
+    owner_identity = message.subscription_owner_identity
+    if owner_identity is not None:
+        if not owner_identity:
+            return None
+        settings = yield _NotificationRouteLookup(
+            username=None, log_message="按订阅归属读取用户通知地址", owner_identity=owner_identity,
+        )
+        if not settings:
+            return None
+        message.targets = dict(settings)
+        message.set_notification_route_scope("user")
+        return admin_sent
+
+    username = cast(Optional[str], message.username)
+    if username:
+        settings = yield _NotificationRouteLookup(
+            username=username, log_message=f"{message.mtype} 的消息已设置发送给用户 {username}",
+        )
+        if settings is not None:
+            if not any(str(value or "").strip() for value in settings.values()):
+                yield _NotificationRouteLog(message=f"用户 {username} 未绑定通知渠道，消息不会发送")
+                return None
+            message.targets = dict(settings)
+            identity = settings.get("webpush")
+            if isinstance(identity, str) and identity:
+                message.set_notification_owner_identity(identity)
+            message.set_notification_route_scope("user")
+            return admin_sent or username == superuser
+
+    if missing_user == "skip":
+        yield _NotificationRouteLog(message="通知没有可用的操作用户，已按策略跳过个人通知")
+        return None
+    if admin_sent:
+        detail = f"用户 {username} 不存在，消息无法发送到对应用户" if username else "消息未关联用户，且管理员已收到消息"
+        yield _NotificationRouteLog(message=detail)
+        return None
+    detail = f"用户 {username} 不存在，消息将发送给管理员" if username else "消息未关联用户，消息将发送给管理员"
+    settings = yield _NotificationRouteLookup(username=superuser, log_message=detail)
+    message.targets = dict(settings) if settings is not None else None
+    message.set_notification_route_scope("admin")
+    return True
+
 def _notification_route_steps(
     message: Message,
     *,
     action: Optional[str],
     superuser: str,
+    missing_user: str = "admin",
 ) -> Generator[
     _NotificationRouteStep,
     Optional[Mapping[str, object]],
@@ -135,55 +198,10 @@ def _notification_route_steps(
             routed_message.targets = dict(settings) if settings is not None else None
             routed_message.set_notification_route_scope("admin")
         elif route_action == "user":
-            if not routed_message.username:
-                if admin_sent:
-                    yield _NotificationRouteLog(
-                        message="消息未关联用户，且管理员已收到消息"
-                    )
-                    continue
-                settings = yield _NotificationRouteLookup(
-                    username=superuser,
-                    log_message="消息未关联用户，消息将发送给管理员",
-                )
-                admin_sent = True
-                routed_message.targets = dict(settings) if settings is not None else None
-                routed_message.set_notification_route_scope("admin")
-            else:
-                username = cast(str, routed_message.username)
-                settings = yield _NotificationRouteLookup(
-                    username=username,
-                    log_message=(
-                        f"{routed_message.mtype} 的消息已设置发送给用户 {username}"
-                    ),
-                )
-                if settings is None:
-                    if not admin_sent:
-                        settings = yield _NotificationRouteLookup(
-                            username=superuser,
-                            log_message=(
-                                f"用户 {username} 不存在，消息将发送给管理员"
-                            ),
-                        )
-                        admin_sent = True
-                        routed_message.targets = (
-                            dict(settings) if settings is not None else None
-                        )
-                        routed_message.set_notification_route_scope("admin")
-                    else:
-                        yield _NotificationRouteLog(
-                            message=f"用户 {username} 不存在，消息无法发送到对应用户"
-                        )
-                        continue
-                else:
-                    if not any(str(value or "").strip() for value in settings.values()):
-                        yield _NotificationRouteLog(
-                            message=f"用户 {username} 未绑定通知渠道，消息不会发送"
-                        )
-                        continue
-                    routed_message.targets = dict(settings)
-                    routed_message.set_notification_route_scope("user")
-                    if username == superuser:
-                        admin_sent = True
+            resolved_admin = yield from _notification_personal_route(routed_message, superuser, admin_sent, missing_user)
+            if resolved_admin is None:
+                continue
+            admin_sent = resolved_admin
         elif route_action == "all":
             broadcast_targets = yield _NotificationRouteLookup(
                 username=None,
@@ -343,7 +361,7 @@ class MessageProcessingMixin:
         后台任务会复用内部占位用户ID作为会话身份，这里在真正发送前清空，
         让消息重新走默认通知路由或基于 targets 的目标解析。
         """
-        dispatch_message = copy.deepcopy(message)
+        dispatch_message = copy.deepcopy(apply_message_reply(message))
         dispatch_message.userid = normalize_internal_user_id(
             dispatch_message.userid
         )
@@ -442,16 +460,25 @@ class NotificationMixin:
         strict_delivery: bool,
         immediately: bool,
         kwargs: dict[str, object],
+        legacy_handlers: bool = True,
     ) -> None:
         """
         普通通知使用调度队列；durable 恢复同步执行并传播 能力提供方 错误。
         """
         if strict_delivery:
             host = cast(ChainRuntimeMixinHost, self)
-            host.run_module_strict(
-                "post_message",
-                message=message,
-            )
+            deliveries = message.collect_delivery_results()
+            try:
+                if legacy_handlers:
+                    result = host.run_module_strict("post_message", message=message)
+                else:
+                    result = host.deliver_host_notification(message)
+            finally:
+                publish_notification_progress(deliveries)
+            if message.private_delivery and result is not True:
+                raise RuntimeError("私聊投递没有提供方确认，未回退其他目标")
+            if any(item.status not in {"confirmed", "skipped"} for item in deliveries):
+                raise _IncompleteNotificationDelivery("部分通知投递尚未确认")
             return
         self.messagequeue.send_message(
             "post_message",
@@ -474,8 +501,12 @@ class NotificationMixin:
             message,
             action=_notification_route_action(message),
             superuser=self.runtime_config.superuser,
+            missing_user=get_notification_missing_user_policy(message.mtype),
         )
         lookup_result: Optional[Mapping[str, object]] = None
+        planned_steps: list[_NotificationRouteDelivery] | None = (
+            [] if strict_delivery and managed_notification_dispatch() else None
+        )
         try:
             step = next(steps)
         except StopIteration:
@@ -484,28 +515,57 @@ class NotificationMixin:
             lookup_result = None
             if isinstance(step, _NotificationRouteLookup):
                 logger.info(step.log_message)
-                lookup_result = (
-                    self.user_repository.get_notification_broadcast_targets()
-                    if step.username is None
-                    else self.user_repository.get_notification_settings(step.username)
-                )
+                if step.owner_identity:
+                    lookup_result = self.user_repository.get_owner_notification_settings(step.owner_identity)
+                else:
+                    lookup_result = (
+                        self.user_repository.get_notification_broadcast_targets()
+                        if step.username is None
+                        else self.user_repository.get_notification_settings(step.username)
+                    )
             elif isinstance(step, _NotificationRouteLog):
                 logger.info(step.message)
+            elif planned_steps is not None:
+                planned_steps.append(step)
             else:
-                self.eventmanager.send_event(
-                    etype=EventType.NoticeMessage,
-                    data=self._build_notice_message_data(step.message),
-                )
-                self._deliver_notification(
-                    step.message,
-                    strict_delivery=strict_delivery,
-                    immediately=step.immediately,
-                    kwargs=kwargs,
-                )
+                self._deliver_notification_step(step, strict_delivery=strict_delivery, kwargs=kwargs)
             try:
                 step = steps.send(lookup_result)
             except StopIteration:
-                return
+                break
+        if planned_steps is None:
+            return
+        if notification_preflight_required():
+            host = cast(ChainRuntimeMixinHost, self)
+            with collect_notification_preflight():
+                for delivery in planned_steps:
+                    host.prepare_notification_parts(delivery.message.model_copy(deep=True))
+        failure = None
+        legacy_handlers = claim_legacy_notification_dispatch() if planned_steps else True
+        for delivery in planned_steps:
+            try:
+                self._deliver_notification_step(delivery, strict_delivery=True, kwargs=kwargs, legacy_handlers=legacy_handlers)
+            except _IncompleteNotificationDelivery as error:
+                failure = error
+        if failure is not None:
+            raise failure
+
+    def _deliver_notification_step(
+        self, step: _NotificationRouteDelivery, *, strict_delivery: bool, kwargs: dict[str, object],
+        legacy_handlers: bool = True,
+    ) -> None:
+        """
+        执行一个路由的通知事件和实际投递。
+        """
+        if legacy_handlers:
+            self.eventmanager.send_event(
+                etype=EventType.NoticeMessage,
+                data=self._build_notice_message_data(step.message),
+            )
+        self._deliver_notification(
+            step.message, strict_delivery=strict_delivery, immediately=step.immediately, kwargs=kwargs,
+            legacy_handlers=legacy_handlers,
+        )
 
     async def async_post_message(
             self,
@@ -558,6 +618,7 @@ class NotificationMixin:
             message,
             action=_notification_route_action(message),
             superuser=self.runtime_config.superuser,
+            missing_user=get_notification_missing_user_policy(message.mtype),
         )
         lookup_result: Optional[Mapping[str, object]] = None
         try:
@@ -568,11 +629,14 @@ class NotificationMixin:
             lookup_result = None
             if isinstance(step, _NotificationRouteLookup):
                 logger.info(step.log_message)
-                lookup_result = (
-                    await self.user_repository.async_get_notification_broadcast_targets()
-                    if step.username is None
-                    else await self.user_repository.async_get_notification_settings(step.username)
-                )
+                if step.owner_identity:
+                    lookup_result = await self.user_repository.async_get_owner_notification_settings(step.owner_identity)
+                else:
+                    lookup_result = (
+                        await self.user_repository.async_get_notification_broadcast_targets()
+                        if step.username is None
+                        else await self.user_repository.async_get_notification_settings(step.username)
+                    )
             elif isinstance(step, _NotificationRouteLog):
                 logger.info(step.message)
             else:

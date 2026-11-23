@@ -10,6 +10,7 @@ import pytest
 from app.modules.dingtalk import DingTalkModule
 from app.modules.discord import DiscordModule
 from app.modules.feishu.feishu import Feishu
+from app.modules.qqbot.api import QQRequestRejected
 from app.modules.qqbot.module import QQBotModule
 from app.modules.qqbot.qqbot import QQBot
 from app.modules.slack import SlackModule
@@ -18,8 +19,10 @@ from app.modules.synologychat import SynologyChatModule
 from app.modules.telegram.module import TelegramModule
 from app.modules.vocechat import VoceChatModule
 from app.modules.wechat import WechatModule
+from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
 from app.schemas.message import Message, NotificationBlock, NotificationContent
+from app.schemas.system import NotificationConf
 from app.schemas.types import NotificationChannel
 
 
@@ -173,6 +176,33 @@ def test_feishu_long_report_sends_every_site_in_bounded_cards():
     assert "\n\n".join(bodies) == expected
 
 
+@pytest.mark.parametrize("with_rich_text", [False, True])
+def test_feishu_splits_oversized_paragraph_within_card_budget(with_rich_text):
+    """
+    单个中文段落也需要拆分，附件封面和链接不挤占分页预留。
+    """
+    import json
+
+    client = object.__new__(Feishu)
+    text = '中文正文"内容"' * 2300
+    message = _message()
+    message.text = text
+    message.link = "https://example.com/details"
+    message.rich_content = NotificationContent(blocks=[NotificationBlock(text=text)]) if with_rich_text else None
+    cards = client._build_notification_cards(message, "fixture-cover")
+
+    assert len(cards) > 1
+    body = []
+    for card in cards:
+        assert len(json.dumps(card, ensure_ascii=False).encode("utf-8")) <= client._NOTIFICATION_CARD_BYTES
+        assert card["body"]["elements"][0]["img_key"] == "fixture-cover"
+        body_text = card["body"]["elements"][2]["content"]
+        text_part, link = body_text.split("\n\n[查看详情]")
+        assert link == "(https://example.com/details)"
+        body.append(text_part)
+    assert "".join(body) == text
+
+
 def test_plain_message_default_is_unchanged():
     """
     无专用正文时，所有普通消费者仍获取原 text。
@@ -246,17 +276,18 @@ def test_wechat_bot_and_application_mode_remain_independent():
     module = WechatModule()
     bot = object.__new__(WeChatBot)
     bot.send_msg = Mock()
-    application = SimpleNamespace(send_msg=Mock())
+    application = object.__new__(WeChat)
+    application.send_tracked_message = Mock()
     message = _message()
     message.rich_content = NotificationContent(blocks=[NotificationBlock(title="富文本结果")])
     with (patch.object(module, "get_configs", return_value={
-        "bot": SimpleNamespace(name="bot", config={"WECHAT_MODE": "bot"}),
-        "app": SimpleNamespace(name="app", config={"WECHAT_MODE": "app"})}),
+        "bot": NotificationConf(id="bot", type="wechat", name="bot", config={"WECHAT_MODE": "bot"}),
+        "app": NotificationConf(id="app", type="wechat", name="app", config={"WECHAT_MODE": "app"})}),
           patch.object(module, "check_message", return_value=True),
           patch.object(module, "get_instance", side_effect=[bot, application])):
         module.post_message(message)
     assert bot.send_msg.call_args.kwargs["text"] == "**富文本结果**"
-    assert application.send_msg.call_args.kwargs["text"] == "原有完整正文"
+    assert application.send_tracked_message.call_args.kwargs["text"] == "原有完整正文"
     assert message.text == "原有完整正文"
 
 
@@ -274,7 +305,7 @@ def test_qq_keeps_rich_text_and_falls_back_original_once(markdown_available):
           patch("app.modules.qqbot.qqbot.get_access_token", return_value="token"),
           patch("app.modules.qqbot.qqbot.send_proactive_c2c_message") as send):
         if not markdown_available:
-            send.side_effect = [RuntimeError("11244 markdown 权限不足"), None]
+            send.side_effect = [QQRequestRejected(403, 11244, "markdown 权限不足"), None]
         assert client.send_msg("签到", text="原有全部站点正文", formatted_texts=parts)
     assert send.call_count == 2
     if markdown_available:

@@ -19,6 +19,7 @@ from app.application.security.secrets import is_secret_setting_key
 from app.runtime.config import Settings
 from app.schemas.agent import AgentMcpServerConfig
 from app.schemas.category import ClassificationPolicyState
+from app.schemas.channel import ChannelSettings
 from app.schemas.common import JsonData
 from app.schemas.plugin import PluginFoldersData
 from app.schemas.rule import CustomRule, FilterRuleGroup
@@ -290,12 +291,12 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
         operations=_LIST_OBJECT_OPERATIONS,
         match_field="name",
     ),
-    SystemConfigKey.Notifications: _contract(
-        "notifications",
-        Optional[list[NotificationConf]],
-        operations=_LIST_OBJECT_OPERATIONS,
-        match_field="name",
-        sensitive=True,
+    SystemConfigKey.Notifications: _managed_contract(
+        "notifications", Optional[list[NotificationConf]],
+        "notification/config", sensitive=True,
+    ),
+    SystemConfigKey.ChannelSettings: _internal_contract(
+        "notifications", Optional[ChannelSettings], sensitive=True,
     ),
     SystemConfigKey.AppPushCredentials: _internal_contract(
         "notifications", Optional[dict[str, JsonData]], sensitive=True

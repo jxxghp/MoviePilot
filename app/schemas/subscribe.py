@@ -6,6 +6,7 @@ import json
 from typing import Any, ClassVar, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import PrivateAttr as _PrivateAttr
 
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
@@ -199,8 +200,11 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         "current_audio_format", "current_bitrate", "current_bit_depth", "current_sample_rate",
         "classification_rule_id", "classification_policy_revision", "classification_source",
         "execution_status", "last_search",
+        "ownership_pending",
+        "ownership_revision",
     })
 
+    _owner_identity: str | None = _PrivateAttr(default=None)
     id: Optional[int] = Field(default=None, description="记录标识")
     name: Optional[str] = Field(default=None, description="订阅名称")
     year: Optional[str] = Field(default=None, description="媒体发行年份")
@@ -237,6 +241,8 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     state: Optional[str] = Field(default=None, description="状态：N-新建， R-订阅中")
     last_update: Optional[str] = Field(default=None, description="最后更新时间")
     username: Optional[str] = Field(default=None, description="订阅用户")
+    ownership_revision: str | None = Field(default=None, description="旧记录的归属复核版本")
+    ownership_pending: bool = Field(default=False, description="该订阅的账号归属是否等待管理员确认")
     sites: Optional[List[int]] = Field(default_factory=list, description="订阅站点")
     downloader: Optional[str] = Field(default=None, description="下载器")
     best_version: Optional[int] = Field(default=None, description="是否洗版")
@@ -441,3 +447,14 @@ class SubscribeDeletionResult(BaseModel):
     """
 
     status: Literal["deleted"] = Field(description="deleted 表示数据库事务已提交；不存在或无权限由 HTTP 状态码表达")
+
+
+class SubscriptionOwnershipConfirmation(BaseModel):
+    """
+    管理员核对的旧订阅版本和目标账号版本。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    account_id: int = Field(gt=0)
+    account_revision: str = Field(pattern=r"^[0-9a-f]{64}$")

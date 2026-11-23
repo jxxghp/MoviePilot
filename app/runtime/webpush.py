@@ -1,5 +1,5 @@
 """
-进程内 Web Push 订阅登记表。
+旧 ABI 的进程内无归属 Web Push 登记表，不参与新个人或管理全体投递。
 """
 
 from __future__ import annotations

@@ -79,6 +79,7 @@ def load_all_models() -> None:
     显式导入全部 ORM 模型，供建表和 Alembic 元数据收集使用。
     """
     import_module("app.db.models.authorization")
+    import_module("app.db.models.webpush")
     for module_name, _ in dict.fromkeys(_MODEL_EXPORTS.values()):
         import_module(module_name)
 

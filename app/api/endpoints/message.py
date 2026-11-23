@@ -8,7 +8,7 @@ import json
 import time
 from typing import Annotated, Any, List, Optional, Protocol, Union
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from starlette.responses import PlainTextResponse
 
 from app.adapters.external.wechat import WXBizMsgCrypt
@@ -24,21 +24,21 @@ from app.application.configuration import (
 )
 from app.application.messaging.message import MessageQueryService
 from app.application.notification import get_notification_configs
+from app.application.webpush import WebPushConflictError, get_webpush_service
 from app.chain.message import MessageChain
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
-from app.runtime.webpush import webpush_registry
 from app.schemas.message import MessageClearBefore as _SchemaMessageClearBefore
 from app.schemas.message import MessageClearData as _SchemaMessageClearData
 from app.schemas.message import MessageClearScope as _SchemaMessageClearScope
 from app.schemas.message import MessageHistoryItem as _SchemaMessageHistoryItem
-from app.schemas.message import Subscription as _SchemaSubscription
 from app.schemas.message import SubscriptionMessage as _SchemaSubscriptionMessage
 from app.schemas.message import WebMessageItem as _SchemaWebMessageItem
 from app.schemas.message import WebPushPublicKeyData as _SchemaWebPushPublicKeyData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import NotificationChannel, SystemConfigKey
+from app.schemas.webpush import WebPushSubscription as _SchemaSubscription
 
 router = ResponseAPIRouter()
 
@@ -143,7 +143,10 @@ async def user_message(
     """
     body = await request.body()
     form = await request.form()
-    args = request.query_params
+    args = dict(request.query_params)
+    channel_token = request.headers.get("X-MoviePilot-Channel-Token")
+    if channel_token:
+        args["channel_token"] = channel_token
     source = args.get("source")
     content_type = request.headers.get("content-type") or ""
     body_text = body.decode("utf-8", errors="replace")
@@ -394,15 +397,44 @@ def get_webpush_public_key(
     summary="客户端webpush通知订阅",
     response_model=_SchemaResponse[None],
 )
-async def subscribe(
-    subscription: _SchemaSubscription, _: _SchemaTokenPayload = Depends(verify_token)
+def subscribe(
+    subscription: _SchemaSubscription, user: ApiPrincipal = Depends(get_current_active_user)
 ) -> _SchemaResponse[None]:
     """
-    客户端webpush通知订阅
+    使用当前启用本地账号登记订阅，owner 不能由客户端指定。
+
+    :param subscription: 当前浏览器的端点和密钥持有证明
+    :param user: 当前认证账号，服务内再次核验最新账号状态
+    :return: 不暴露账号归属和密钥的登记结果
     """
-    subinfo = subscription.model_dump()
-    webpush_registry.upsert(subinfo)
-    logger.debug(f"通知订阅成功: {subinfo}")
+    try:
+        get_webpush_service().register(user.id, subscription)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except WebPushConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return _SchemaResponse(success=True)
+
+
+@router.post(
+    "/webpush/unsubscribe",
+    summary="取消当前账号的浏览器通知订阅",
+    response_model=_SchemaResponse[None],
+)
+def unsubscribe(
+    subscription: _SchemaSubscription, user: ApiPrincipal = Depends(get_current_active_user)
+) -> _SchemaResponse[None]:
+    """
+    撤销本人仍持有的订阅，跨账号及旧版本请求保持幂等无副作用。
+
+    :param subscription: 浏览器取消前保存的完整订阅
+    :param user: 当前启用账号，必须在退出登录之前调用
+    :return: 不泄漏其它账号是否拥有该设备的统一结果
+    """
+    try:
+        get_webpush_service().unregister(user.id, subscription)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
     return _SchemaResponse(success=True)
 
 
@@ -418,14 +450,16 @@ def send_notification(
     """
     from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
 
-    subscriptions = webpush_registry.list()
+    service = get_webpush_service()
+    subscriptions = service.management_targets()
     if not subscriptions:
         return _SchemaResponse(success=True, message="没有可发送的浏览器通知")
 
     api_config = get_api_runtime_config_snapshot()
     success_count = 0
     failure_count = 0
-    for sub in subscriptions:
+    for registration in subscriptions:
+        sub = registration.subscription()
         try:
             send_webpush(
                 subscription=sub,
@@ -437,8 +471,8 @@ def send_notification(
             success_count += 1
         except WebPushDeliveryError as err:
             logger.error(f"WebPush发送失败: {str(err)}")
-            if is_webpush_subscription_gone(err) and webpush_registry.remove(sub):
-                logger.info(f"已移除失效WebPush订阅: {sub.get('endpoint')}")
+            if is_webpush_subscription_gone(err) and service.remove_expired(registration):
+                logger.info("已移除当前版本的失效WebPush订阅")
             failure_count += 1
         except Exception as err:
             logger.error(f"WebPush发送失败: {str(err)}", exc_info=True)

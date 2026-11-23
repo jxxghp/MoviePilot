@@ -3,8 +3,12 @@
 """
 
 import asyncio
+from importlib import import_module
 
 import pytest
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 
 from app.application.history import (
     DownloadFileSnapshot,
@@ -38,6 +42,30 @@ def _repository() -> TransactionalDownloadHistoryRepository:
         sync_session=SessionFactory,
         async_session=async_session_scope,
     )
+
+
+def test_download_owner_migration_keeps_old_rows_unclaimed(monkeypatch):
+    """
+    重复升级保留旧记录，只有实际写入归属后才要求通过备份回退。
+    """
+    migration = import_module("database.versions.62c91ad8b057_channel_resources")
+    with sa.create_engine("sqlite://").begin() as connection:
+        history = sa.Table(
+            "downloadhistory", sa.MetaData(), sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("username", sa.String), sa.Column("date", sa.String),
+        )
+        history.create(connection)
+        connection.execute(history.insert().values(id=1, username="old-name"))
+        monkeypatch.setattr(migration, "op", Operations(MigrationContext.configure(connection)))
+        migration._add_download_ownership()
+        migration._add_download_ownership()
+        current = sa.Table("downloadhistory", sa.MetaData(), autoload_with=connection)
+        assert connection.execute(sa.select(current.c.username, current.c.owner_identity)).one() == ("old-name", None)
+        assert any(index["name"] == "ix_downloadhistory_owner_date_id"
+                   for index in sa.inspect(connection).get_indexes("downloadhistory"))
+        connection.execute(current.update().values(owner_identity="a" * 32))
+        with pytest.raises(RuntimeError, match="备份"):
+            migration.downgrade()
 
 
 def _history_write(

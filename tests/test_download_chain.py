@@ -21,7 +21,7 @@ from app.application.download.failures import (
     DownloadFailureSnapshot,
     DownloadFailureWrite,
 )
-from app.application.history import DownloadHistorySnapshot
+from app.application.history import DownloadHistorySnapshot, get_download_owner, scoped_download_owner
 from app.chain.download import DownloadChain
 from app.domain.context import Context, MediaInfo, SubtitleInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
@@ -196,7 +196,7 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
     monkeypatch.setattr(download_submission, "TorrentHelper", _FakeTorrentHelper)
 
     chain = DownloadChain.__new__(DownloadChain)
-    chain.download_history_repository = _FakeDownloadHistoryOper()
+    chain.download_history_repository = MagicMock(spec=_FakeDownloadHistoryOper)
     chain.download = MagicMock(return_value=("qb", "hash123", "Original", "添加下载成功"))
     chain.download_added = MagicMock()
     chain.download_site_subtitles = MagicMock()
@@ -221,14 +221,20 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
         ),
     )
 
-    result = chain.download_single(
-        context=context,
-        torrent_content=b"torrent-content",
-        save_path="/downloads",
-        username="tester",
-    )
+    with scoped_download_owner("a" * 32):
+        result = chain.download_single(
+            context=context,
+            torrent_content=b"torrent-content",
+            save_path="/downloads",
+            username="tester",
+        )
+        assert get_download_owner() == "a" * 32
 
     assert result == "hash123"
+    history, _ = chain.download_history_repository.add.call_args.args
+    assert history.owner_identity == "a" * 32
+    assert history.task_reference in chain.download.call_args.kwargs["label"].split(",")
+    assert get_download_owner() is None
     chain.download_added.assert_not_called()
     assert len(_FakeThreadHelper.submitted) == 1
 

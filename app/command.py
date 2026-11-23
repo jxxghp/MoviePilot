@@ -8,7 +8,8 @@ import traceback
 from concurrent.futures import Future
 from typing import Any, Callable, Dict, Optional, Union
 
-from app.application.messaging.message import MessageHelper
+from app.application.messaging.interaction import scoped_interaction
+from app.application.messaging.message import MessageHelper, scoped_message_reply
 from app.application.messaging.skill import SkillInteractionHandler
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.scheduling import get_scheduler
@@ -406,6 +407,8 @@ class Command(metaclass=Singleton):
             "show": show,
         }
 
+    @scoped_message_reply
+    @scoped_interaction
     def execute(
         self,
         cmd: str,
@@ -413,6 +416,8 @@ class Command(metaclass=Singleton):
         channel: Optional[NotificationChannel] = None,
         source: Optional[str] = None,
         userid: Optional[Union[str, int]] = None,
+        original_chat_id: Optional[str] = None,
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         执行命令
@@ -484,6 +489,8 @@ class Command(metaclass=Singleton):
                         channel=event_channel,
                         source=event_source,
                         userid=event_user,
+                        original_chat_id=event.event_data.get("original_chat_id"),
+                        **({"thread_id": event.event_data["thread_id"]} if event.event_data.get("thread_id") else {}),
                     )
         finally:
             _finish_command_processing_status(

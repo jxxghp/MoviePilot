@@ -669,7 +669,8 @@ def test_qq_group_uses_only_member_openid_for_admin(admins, expected):
         },
     )
 
-    assert message.userid == "group:group-admin"
+    assert message.userid == "member-admin"
+    assert message.chat_id == "group:group-admin"
     assert message.username == "member-admin"
     assert message.is_channel_admin is expected
 
@@ -698,8 +699,9 @@ def test_vocechat_group_uses_only_sender_uid_for_admin(admins, expected):
         ),
     )
 
-    assert message.userid == "GID#2"
-    assert message.username == "GID#2"
+    assert message.userid == "UID#7"
+    assert message.username == "UID#7"
+    assert message.chat_id == "GID#2"
     assert message.is_channel_admin is expected
 
 

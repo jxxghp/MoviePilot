@@ -8,6 +8,7 @@ Web Push 协议发送（RFC 8030 投递、RFC 8291 aes128gcm 加密、RFC 8292 V
 
 import base64
 import time
+from collections.abc import Callable
 from typing import Any, Dict, Mapping, Optional, cast
 from urllib.parse import urlparse
 
@@ -22,6 +23,49 @@ _VAPID_EXPIRE_SECONDS = 12 * 60 * 60
 # 推送服务返回 2xx 中不超过 202 的状态码视为已接收。
 _MAX_ACCEPTED_STATUS = 202
 _DEFAULT_TIMEOUT_SECONDS = 20
+# 组合根注入公网源站策略；协议层不向上导入应用安全策略。
+_endpoint_validator: Optional[Callable[[str], bool]] = None
+
+
+def configure_webpush_endpoint_validator(
+    validator: Optional[Callable[[str], bool]],
+) -> Optional[Callable[[str], bool]]:
+    """
+    装配或撤销公网源站校验端口，并返回旧端口供隔离作用域恢复。
+
+    :param validator: 仅接收无路径和查询参数源站的安全策略；None 表示未装配
+    :return: 先前的策略，测试退出时必须恢复
+    """
+    global _endpoint_validator
+    previous = _endpoint_validator
+    _endpoint_validator = validator
+    return previous
+
+
+def _validate_endpoint(endpoint: str) -> None:
+    """
+    复用宿主公网 URL 策略检查推送源站，不把含能力令牌的完整端点交给诊断日志。
+
+    域名集合只指定当前请求源站以复用公网 DNS 判断，不建立平台域名白名单。
+    DNS 校验和 HTTP 连接尚未绑定同一解析结果，不能作为 DNS 重绑定的完整防护。
+
+    :param endpoint: 当前订阅的完整端点
+    :raises WebPushDeliveryError: 非 HTTPS、含凭据或公网校验不通过
+    """
+    try:
+        parsed = urlparse(endpoint)
+        valid = (
+            parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username
+            and not parsed.password and not parsed.fragment
+            and not any(ord(char) <= 32 or ord(char) == 127 for char in endpoint)
+        )
+    except ValueError:
+        valid = False
+    if not valid:
+        raise WebPushDeliveryError("推送端点必须是无凭据的完整 HTTPS 地址")
+    validator = _endpoint_validator
+    if validator is None or not validator(f"https://{parsed.netloc}/"):
+        raise WebPushDeliveryError("推送端点未通过公网安全检查")
 
 
 class WebPushDeliveryError(Exception):
@@ -101,6 +145,7 @@ def send_webpush(
     endpoint = subscription.get("endpoint")
     if not endpoint:
         raise WebPushDeliveryError("订阅缺少 endpoint")
+    _validate_endpoint(endpoint)
     if not vapid_private_key:
         raise WebPushDeliveryError("未配置 VAPID 私钥")
     request_headers = {
@@ -109,14 +154,18 @@ def send_webpush(
         "Content-Encoding": "aes128gcm",
         "TTL": str(ttl),
     }
-    response = RequestUtils(
-        headers=request_headers, timeout=timeout, verify=True
-    ).post_res(endpoint, data=_encrypt(subscription, data.encode("utf-8")))
+    encrypted = _encrypt(subscription, data.encode("utf-8"))
+    try:
+        response = RequestUtils(
+            headers=request_headers, timeout=timeout, verify=True
+        ).post_res(endpoint, data=encrypted, allow_redirects=False)
+    except Exception as error:
+        raise WebPushDeliveryError(f"推送请求失败：{type(error).__name__}") from None
     if response is None:
         raise WebPushDeliveryError("推送服务无响应")
     if response.status_code > _MAX_ACCEPTED_STATUS:
         raise WebPushDeliveryError(
-            f"推送服务拒收：{response.status_code} {response.reason}，{response.text[:200]}",
+            f"推送服务拒收：HTTP {response.status_code}",
             response=response,
         )
     return response

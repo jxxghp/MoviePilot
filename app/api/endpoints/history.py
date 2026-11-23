@@ -261,12 +261,12 @@ def _submit_batch_ai_redo(
     )
 
 
-def _resolve_download_history_username(token: _SchemaTokenPayload) -> Optional[str]:
+def _resolve_download_history_filters(token: _SchemaTokenPayload) -> dict[str, Optional[str]]:
     """
-    解析下载历史查询应限定的用户名；管理员和下载管理权限用户返回 None 以查看全局记录。
+    复核实时权限，生成渠道不可变归属或网页登录用户名的下载历史查询条件。
 
     :param token: 已校验的访问令牌载荷
-    :return: 限定查询的用户名；允许全局查询时返回 None
+    :return: 已授权的查询条件；管理员及网页下载管理用户允许全局查询
     """
     if token.agent_authorization_id:
         from app.application.security.authorization import get_channel_authorization
@@ -275,9 +275,12 @@ def _resolve_download_history_username(token: _SchemaTokenPayload) -> Optional[s
         if authorization is None:
             raise HTTPException(status_code=503, detail="渠道授权服务不可用")
         user = authorization.authorize_operation(token.agent_authorization_id, token.agent_operation or "")
-        return None if user.is_superuser else user.name
+        identity = None if user.is_superuser else user.notification_identity
+        if not user.is_superuser and not identity:
+            raise HTTPException(status_code=403, detail="渠道账号缺少下载归属标识")
+        return {"owner_identity": identity}
     if token.super_user:
-        return None
+        return {"username": None}
     if token.sub is not None:
         from app.application.security.user import get_configured_user_id_lookup
         from app.domain.authorization import has_web_permission
@@ -286,14 +289,14 @@ def _resolve_download_history_username(token: _SchemaTokenPayload) -> Optional[s
         if web_user is None or not web_user.is_active:
             raise HTTPException(status_code=401, detail="用户未激活")
         if web_user.is_superuser or has_web_permission(False, web_user.permissions, "manage", "manage.downloading"):
-            return None
+            return {"username": None}
         if has_web_permission(False, web_user.permissions, "search", "search.resource") or has_web_permission(
             False, web_user.permissions, "subscribe"
         ):
-            return web_user.name
+            return {"username": web_user.name}
         raise HTTPException(status_code=403, detail="用户权限不足")
     if token.username:
-        return token.username
+        return {"username": token.username}
     raise HTTPException(status_code=403, detail="用户权限不足")
 
 
@@ -318,10 +321,10 @@ async def download_history(
     if isinstance(_, _SchemaTokenPayload) and (_.agent_authorization_id or not _.super_user):
         from app.runtime.execution import run_in_threadpool
 
-        username = await run_in_threadpool(_resolve_download_history_username, _)
-        results = await query.list_download(page=page, count=count, username=username)
+        filters = await run_in_threadpool(_resolve_download_history_filters, _)
+        results = await query.list_download(page=page, count=count, **filters)
         if response is not None:
-            response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download(username=username))
+            response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download(**filters))
         return results
     results = await query.list_download(page=page, count=count)
     if response is not None:

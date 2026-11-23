@@ -45,6 +45,31 @@ CHANNEL_BINDINGS = {
     NotificationChannel.SynologyChat.value: ("synologychat_userid",),
 }
 
+def channel_actor_ids(channel: str, sender_id: str) -> tuple[str, ...]:
+    """
+    校验个人发送者，并返回平台确定性的 ID 表示，不把投递群地址当成用户。
+
+    VoceChat 的数字 ID 与 UID 前缀等价；不合并不同人的授权，也不使用昵称推断。
+
+    :param channel: 平台渠道显示值
+    :param sender_id: 受信平台事件或管理员核对的个人 ID
+    :return: 规范 ID 及同一平台的确定性历史表示
+    :raises ValueError: ID 为空或是该平台的群地址
+    """
+    value = sender_id.strip()
+    if not value:
+        raise ValueError("缺少渠道发送者 ID")
+    if channel == NotificationChannel.QQ.value and value.lower().startswith("group:"):
+        raise ValueError("群地址不能作为个人渠道授权身份，请核对实际发送者")
+    if channel == NotificationChannel.VoceChat.value:
+        if value.upper().startswith("GID#"):
+            raise ValueError("群地址不能作为个人渠道授权身份，请核对实际发送者")
+        numeric = value[4:] if value.startswith("UID#") else value
+        if numeric.isascii() and numeric.isdecimal():
+            return f"UID#{numeric}", numeric
+    return (value,)
+
+
 # 普通渠道成员仅开放明确审计过的数据归属操作，其余能力由管理员执行。
 CHANNEL_OPERATION_SCOPES = {
     "media.recognize": "search",

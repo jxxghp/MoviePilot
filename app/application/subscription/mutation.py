@@ -74,10 +74,12 @@ class SubscriptionActor:
 
     :param name: 发起订阅变更的本地用户名
     :param is_superuser: 操作人是否具有超级管理员权限
+    :param owner_identity: 请求认证得到的账号身份
     """
 
     name: str
     is_superuser: bool
+    owner_identity: str | None = None
 
 
 SubscribeHistoryDeletionStatus = Literal["deleted", "not_found", "forbidden"]
@@ -455,8 +457,9 @@ class SubscriptionMutationService:
             return False
         if actor.is_superuser:
             return True
-        username = subscribe.username
-        return bool(username) and username == actor.name
+        if actor.owner_identity is not None:
+            return bool(actor.owner_identity) and subscribe.owner_identity == actor.owner_identity
+        return not subscribe.owner_identity and bool(subscribe.username) and subscribe.username == actor.name
 
 
 def _modified_event_key(subscribe_id: int, scene: str) -> str:

@@ -283,7 +283,8 @@ class SubscribeOper(DbOper):
         if not isinstance(self._db, Session):
             raise RuntimeError("同步订阅新增需要调用方提供 Session")
         identity = {**identity, "type": identity.get("type") or payload.get("type")}
-        subscribe = self._exists(identity, username)
+        owner = payload.get("owner_identity")
+        subscribe = None if owner else self._exists(identity, username)
         if subscribe:
             return SubscribeStageResult(
                 subscribe_id=subscribe.id,
@@ -311,7 +312,8 @@ class SubscribeOper(DbOper):
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("异步订阅新增需要调用方提供 AsyncSession")
         identity = {**identity, "type": identity.get("type") or payload.get("type")}
-        subscribe = await self._async_exists(identity, username)
+        owner = payload.get("owner_identity")
+        subscribe = None if owner else await self._async_exists(identity, username)
         if subscribe:
             return SubscribeStageResult(
                 subscribe_id=subscribe.id,
@@ -590,6 +592,7 @@ class SubscribeOper(DbOper):
         return SubscribeDeletionCandidate(
             subscribe_id=subscribe_id,
             username=subscribe.username,
+            owner_identity=subscribe.owner_identity,
             event_payload={column.name: values.get(column.name) for column in subscribe.__table__.columns},
         )
 
@@ -622,6 +625,7 @@ class SubscribeOper(DbOper):
                 SubscribeDeletionCandidate(
                     subscribe_id=subscribe.id,
                     username=subscribe.username,
+                    owner_identity=subscribe.owner_identity,
                     event_payload={column.name: values.get(column.name) for column in subscribe.__table__.columns},
                 )
             )
@@ -632,12 +636,13 @@ class SubscribeOper(DbOper):
         username: Optional[str],
         state: str,
         mtype: Optional[str] = None,
+        *, owner_identity: str | None = None,
     ) -> List[int]:
         """
         返回用户或管理员指定媒体类型范围内的订阅编号。
         """
         subscribes = (
-            await self.async_list_by_username(username, state=state, mtype=mtype)
+            await self.async_list_by_username(username, state=state, mtype=mtype, owner_identity=owner_identity)
             if username is not None
             else await self.async_list(state=state)
         )
@@ -734,11 +739,15 @@ class SubscribeOper(DbOper):
         mtype: Optional[str] = None,
         page: Optional[int] = None,
         count: Optional[int] = None,
+        *,
+        owner_identity: str | None = None,
     ) -> List[Subscribe]:
         """
         按用户筛选和数据库窗口异步获取订阅。
         """
-        statement = select(Subscribe).where(Subscribe.username == username).order_by(Subscribe.id)
+        criterion = (Subscribe.owner_identity == owner_identity if owner_identity is not None
+                     else Subscribe.username == username)
+        statement = select(Subscribe).where(criterion).order_by(Subscribe.id)
         if state:
             statement = statement.where(Subscribe.state == state)
         if mtype:
@@ -757,6 +766,8 @@ class SubscribeOper(DbOper):
         state: Optional[str] = None,
         username: Optional[str] = None,
         mtype: Optional[str] = None,
+        *,
+        owner_identity: str | None = None,
     ) -> int:
         """
         按公开列表筛选条件返回订阅精确总数。
@@ -764,7 +775,9 @@ class SubscribeOper(DbOper):
         statement = select(func.count()).select_from(Subscribe)
         if state:
             statement = statement.where(Subscribe.state.in_(state.split(",")))
-        if username:
+        if owner_identity is not None:
+            statement = statement.where(Subscribe.owner_identity == owner_identity)
+        elif username:
             statement = statement.where(Subscribe.username == username)
         if mtype:
             statement = statement.where(Subscribe.type == mtype)

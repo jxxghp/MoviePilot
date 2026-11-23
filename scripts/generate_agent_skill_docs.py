@@ -19,10 +19,21 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # 与对应 SKILL.md 同步维护，重新生成不能回退用户同步所需的版本。
 MOVIEPILOT_API_SKILL_VERSION = "79"
-DATABASE_OPERATION_SKILL_VERSION = "20"
+DATABASE_OPERATION_SKILL_VERSION = "22"
 
 
 DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
+    "channelruletaskgrant": (
+        "Stores scheduled-task grants derived from channel rules, tied to member and policy revisions.",
+        "Inspecting which rule scopes and authorization revision granted an existing scheduled task.",
+        "Owned by channel authorization. Never forge grants, change scopes, or bypass current policy and revocation checks.",
+    ),
+    "webpushsubscription": (
+        "Stores browser push endpoints, keys, immutable account ownership, and registration revisions.",
+        "Checking account-specific delivery, device registration conflicts, and expired endpoint cleanup.",
+        "Owned by the browser notification service. Use authenticated registration or cancellation APIs; "
+        "never replace owners, copy keys, or bypass revision checks through direct writes.",
+    ),
     "channelauthorization": (
         "Stores per-instance channel authorization, approval state, scopes, and immutable business ownership.",
         "Inspecting requests, member capabilities, suspension, and legacy whitelist migration.",
@@ -32,6 +43,11 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Stores web-initiated one-time channel binding digests and their five-minute expiry.",
         "Checking expiry or consumption without reading or reconstructing the original binding code.",
         "Consumed atomically by two-sided identity verification; never extend expiry, forge digests, or replace owners directly.",
+    ),
+    "channelinboundreceipt": (
+        "Stores short-lived digests of verified inbound channel events and their expiry times.",
+        "Checking whether replay protection has recorded verified inbound events.",
+        "Owned by verified ingress. The host claims and expires these rows in short database transactions.",
     ),
     "alembic_version": (
         "Records the Alembic migration revision currently applied to the database.",

@@ -4,9 +4,12 @@ Telegram 消息投递、富文本回退、更新转发及输入状态生命周�
 
 import asyncio
 import html as html_utils
+import json
 import re
 import threading
 import time
+from functools import partial
+from hashlib import file_digest, sha256
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, cast
@@ -25,7 +28,7 @@ except ImportError:
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.attachment import load_image
 from app.application.image import ImageHelper
-from app.application.messaging.ingress import forward_message_to_host
+from app.application.messaging.ingress import forward_message_to_host, submit_platform_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -40,11 +43,21 @@ from app.runtime.execution import retry
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
+from app.schemas.delivery import (
+    DeliveryPartOutcome,
+    DeliveryPartPlanner,
+    DeliveryPartSender,
+    DeliveryReceipt,
+    DeliveryStatus,
+)
 from app.schemas.exception import ImmediateException
+from app.schemas.message import Message
+from app.schemas.types import NotificationChannel
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
 TELEGRAM_PARSE_MODE_HTML = "HTML"
 TELEGRAM_PARSE_MODE_PLAIN = ""
+_LOCAL_PHOTO_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
 # Telegram 对同一消息的编辑频率有独立限制；流式缓冲会在闸门后合并为最新内容。
 TELEGRAM_EDIT_MIN_INTERVAL_SECONDS = 2.0
 # 服务端未给出重试时间时使用的默认冷却秒数
@@ -212,6 +225,8 @@ class Telegram:
             TELEGRAM_TOKEN: Optional[str] = None,
             TELEGRAM_CHAT_ID: Optional[str] = None,
             TELEGRAM_TOPIC_ID: Optional[str] = None,
+            *,
+            auto_start_polling: bool = True,
             **kwargs: Any,
     ) -> None:
         """
@@ -220,6 +235,7 @@ class Telegram:
         :param TELEGRAM_TOKEN: 机器人令牌；令牌或默认会话缺失时不创建 API 客户端
         :param TELEGRAM_CHAT_ID: 默认消息接收会话标识
         :param TELEGRAM_TOPIC_ID: 默认会话的话题标识，必须为正十进制整数；无效时忽略
+        :param auto_start_polling: 是否查询用户名并启动入站轮询，关闭时只建立发送会话
         :param kwargs: 可选 API_URL 自建服务地址和 name 实例名称，其他配置当前不使用
         """
         # 即使配置不完整也保留基础属性，便于测试和未启用实例安全调用发送方法。
@@ -246,7 +262,7 @@ class Telegram:
         self._typing_lock = threading.RLock()
         self._typing_lifecycle_lock = threading.RLock()
         self._typing_accepting = True
-        if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        if not TELEGRAM_TOKEN:
             logger.error("Telegram配置不完整！")
             return
         # Bot API 服务基址；自建地址不使用全局代理。
@@ -257,6 +273,13 @@ class Telegram:
             parse_mode=TELEGRAM_PARSE_MODE_MARKDOWN,
         )
         self._config_name = kwargs.get("name")
+        self._connection_id = (
+            kwargs.get("connection_id") if kwargs.get("API_URL") in (
+                None, "", "https://api.telegram.org", "https://api.telegram.org/",
+            ) else None
+        )
+        if not auto_start_polling:
+            return
         # 获取并存储bot用户名用于@检测
         try:
             self._bot_username = self._api.get_me().get("username")
@@ -539,7 +562,9 @@ class Telegram:
                         "message_id": call["message"]["message_id"],
                         "chat": {
                             "id": chat_id,
+                            "type": call["message"]["chat"].get("type"),
                         },
+                        "message_thread_id": call["message"].get("message_thread_id"),
                     },
                     "data": callback_data,
                 }
@@ -559,6 +584,12 @@ class Telegram:
         """
         把 Telegram SDK 回调同步转交统一消息入口。
         """
+        forwarded = submit_platform_payload(
+            payload, self._config_name, NotificationChannel.Telegram,
+            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
+        )
+        if forwarded is not None:
+            return forwarded
         return forward_message_to_host(payload, self._config_name)
 
     @property
@@ -1015,6 +1046,7 @@ class Telegram:
             parse_mode: Optional[str] = None,
             rich_message: Optional[str] = None,
             private_delivery: bool = False,
+            thread_id: Optional[str] = None,
     ) -> Optional[JsonDict]:
         """
         发送文本、图文或富文本，并兼容原消息编辑和强制回复。
@@ -1033,11 +1065,16 @@ class Telegram:
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
         :param rich_message: 完整富文本正文；非空时替代普通图文内容
         :param private_delivery: 有用户标识时是否绕过最近会话映射直接投递私聊
+        :param thread_id: 仅随原会话使用的显式话题 ID
         :return: 含 success 和消息引用的结果；配置缺失返回 None，限流、空内容或发送失败返回 success 为 False 的字典
         """
-        if not self._telegram_token or not self._telegram_chat_id:
+        if not self._telegram_token:
             return None
 
+        if private_delivery:
+            original_chat_id = None
+            original_message_id = None
+            force_reply = False
         parse_mode = self._normalize_parse_mode(parse_mode)
         # 兼容原会话回复、最近互动会话及显式私聊投递
         chat_id = self._determine_target_chat_id(
@@ -1045,6 +1082,7 @@ class Telegram:
             original_chat_id,
             private_delivery=private_delivery,
         )
+        topic = self._topic_kwargs(chat_id, original_chat_id, thread_id, private_delivery)
         if self._is_chat_rate_limited(chat_id, operation="发送"):
             self._stop_typing_if_needed(chat_id, stop_typing)
             return {"success": False}
@@ -1084,6 +1122,7 @@ class Telegram:
                     stop_typing=stop_typing,
                     rich_message=rich_message,
                     reply_markup=reply_markup,
+                    topic=topic,
                 )
 
             if original_message_id and original_chat_id:
@@ -1096,6 +1135,7 @@ class Telegram:
                         disable_web_page_preview=disable_web_page_preview,
                         parse_mode=parse_mode,
                         reply_to_message_id=original_message_id,
+                        topic=topic,
                     )
                     self._remember_sent_message(sent, original_chat_id)
                     self._stop_typing_if_needed(chat_id, stop_typing)
@@ -1123,6 +1163,7 @@ class Telegram:
                     reply_markup=reply_markup,
                     disable_web_page_preview=disable_web_page_preview,
                     parse_mode=parse_mode,
+                    topic=topic,
                 )
                 self._remember_sent_message(sent, chat_id)
                 self._stop_typing_if_needed(chat_id, stop_typing)
@@ -1132,6 +1173,419 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             self._stop_typing_if_needed(chat_id, stop_typing)
             return {"success": False}
+
+    def send_tracked_message(
+        self, message: Message, userid: str | None, *,
+        receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+        rich_message: str | None = None,
+    ) -> bool:
+        """
+        使用已明确的聊天和话题地址发送持久通知的文本、封面或富文本分段。
+
+        :param message: 需要发送的文本通知
+        :param userid: 已选定的个人目标，缺省时采用已配置的默认会话
+        :param receipt: 宿主记录平台结果的回调
+        :param part_sender: 发送前确认投递进度的回调
+        :param plan: 登记目标及待发送分段
+        :param rich_message: 经渠道配置选出的完整富文本正文
+        :return: 每个分段都有平台确认时为 True
+        """
+        if not self._bot:
+            receipt(None, 0, "retryable_failure", "client_unavailable")
+            return False
+        chat_id, topic = self._tracked_address(message, userid)
+        if not chat_id:
+            receipt(None, 0, "skipped", "no_target")
+            return False
+        address = self._tracked_address_key(chat_id, topic)
+        try:
+            payloads = self._tracked_payloads(message, chat_id, topic, rich_message)
+        except ValueError:
+            receipt(address, 0, "permanent_failure", "invalid_interaction_message")
+            return False
+        if not payloads:
+            receipt(address, 0, "skipped", "empty_content")
+            return False
+        return self._dispatch_tracked_payloads(address, payloads, receipt, part_sender, plan)
+
+    def _dispatch_tracked_payloads(
+        self, address: str, payloads: list[tuple[str, dict[str, Any]]],
+        receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        保存每个请求及内容摘要，按顺序提交未确认的分段。
+        """
+        contents = [self._tracked_payload_content(method, payload) for method, payload in payloads]
+        plan(tuple((address, part, content) for part, content in enumerate(contents)))
+        confirmed = True
+        for part, (content, (method, payload)) in enumerate(zip(contents, payloads)):
+            result, code = part_sender(
+                address, part, content, confirmed, partial(self._send_tracked_payload, method, payload),
+            )
+            receipt(address, part, result, code)
+            confirmed = confirmed and result == "confirmed"
+        return confirmed
+
+    def _tracked_payloads(
+        self, message: Message, chat_id: str, topic: dict[str, int], rich_message: str | None,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """
+        保留平台原生格式，并把封面与超长正文拆成可独立确认的请求。
+
+        :param message: 需要渲染的通知
+        :param chat_id: 投递会话
+        :param topic: 受支持的话题字段
+        :param rich_message: 已选定的富文本正文
+        :return: 同一目标下按序发送的请求
+        """
+        base: dict[str, Any] = {"chat_id": chat_id, **topic}
+        force_reply = message.force_reply and not message.buttons and not message.private_delivery
+        markup = self._create_inline_keyboard(message.buttons) if message.buttons else None
+        if force_reply:
+            markup = self._create_force_reply_markup()
+        original_id = (
+            int(message.original_message_id)
+            if message.original_message_id and not message.private_delivery and message.original_chat_id == chat_id
+            else None
+        )
+        if original_id is not None and message.buttons:
+            return [self._tracked_edit_payload(message, chat_id, original_id, markup, rich_message)]
+        if rich_message:
+            payloads = self._tracked_rich_payloads(base, rich_message)
+        else:
+            payloads = self._tracked_plain_payloads(message, base)
+        if payloads:
+            method, first = payloads[0]
+            if markup:
+                first["reply_markup"] = markup
+            if force_reply and original_id is not None:
+                if method == "send_rich_message":
+                    first["reply_parameters"] = {"message_id": original_id}
+                else:
+                    first["reply_to_message_id"] = original_id
+        return payloads
+
+    def _tracked_plain_payloads(self, message: Message, base: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+        """
+        生成持久通知的普通文本及封面分段。
+        """
+        chunks, mode = self._tracked_text_content(message)
+        payloads: list[tuple[str, dict[str, Any]]] = []
+        photo = self.__process_image(message.image)
+        if photo:
+            caption = chunks.pop(0) if chunks and len(chunks[0]) < 1024 else None
+            payloads.append(("send_photo", {**base, "photo": photo, "caption": caption, "parse_mode": mode}))
+        payloads.extend(("send_message", {
+            **base, "text": chunk, "parse_mode": mode, "disable_web_page_preview": message.disable_web_page_preview,
+        }) for chunk in chunks)
+        return payloads
+
+    def _tracked_edit_payload(
+        self, message: Message, chat_id: str, message_id: int, markup: JsonDict | None, rich_message: str | None,
+    ) -> tuple[str, dict[str, Any]]:
+        """
+        编辑目标冻结为原会话中的一条消息，保留同一消息的格式降级。
+        """
+        base = {"chat_id": chat_id, "message_id": message_id, "reply_markup": markup}
+        if rich_message:
+            rich = self._build_rich_message_chunks(rich_message)
+            if len(rich) != 1:
+                raise ValueError("Telegram 富文本超出单条编辑限制")
+            return "edit_message_text", {
+                **base, "rich_message": rich[0],
+                "fallback_text": rich_message if len(rich_message) <= 4096 else None,
+            }
+        chunks, mode = self._tracked_text_content(message)
+        if len(chunks) > 1:
+            raise ValueError("Telegram 文本超出单条编辑限制")
+        text = chunks[0] if chunks else ""
+        if message.image:
+            return "edit_message_media", {
+                **base, "media": {"type": "photo", "media": message.image, "caption": text, "parse_mode": mode},
+                "fallback_text": text, "fallback_parse_mode": mode,
+            }
+        return "edit_message_text", {
+            **base, "text": text, "parse_mode": mode, "disable_web_page_preview": message.disable_web_page_preview,
+        }
+
+    def _tracked_rich_payloads(
+        self, base: dict[str, Any], rich_message: str,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """
+        给可完整降级的富文本保留同一目标下的纯文本载荷。
+
+        :param base: 已固定的聊天和话题参数
+        :param rich_message: 待渲染的 Markdown 正文
+        :return: 平台富文本分段和可选降级正文
+        """
+        chunks = self._build_rich_message_chunks(rich_message)
+        if len(chunks) == 1 and len(rich_message) <= 4096:
+            return [("send_rich_message", {**base, "rich_message": chunks[0], "fallback_text": rich_message})]
+        return [("send_rich_message", {**base, "rich_message": chunk}) for chunk in chunks]
+
+    @staticmethod
+    def _tracked_payload_content(method: str, payload: dict[str, Any]) -> str:
+        """
+        使用平台请求及图片内容摘要识别恢复时完全相同的分段。
+        """
+        stable_payload = {
+            key: sha256(value).hexdigest() if isinstance(value, bytes) else value
+            for key, value in payload.items()
+        }
+        return json.dumps((method, stable_payload), ensure_ascii=False, sort_keys=True)
+
+    def _tracked_address(self, message: Message, userid: str | None) -> tuple[str | None, dict[str, int]]:
+        """
+        持久通知使用已经明确的个人地址或会话，保留已选定的话题。
+        """
+        if message.private_delivery:
+            return self._determine_target_chat_id(userid, private_delivery=True), {}
+        chat_id = message.original_chat_id or userid or self._telegram_chat_id
+        return chat_id, self._topic_kwargs(chat_id, message.original_chat_id, message.thread_id, message.private_delivery)
+
+    @staticmethod
+    def _tracked_address_key(chat_id: str, topic: dict[str, int]) -> str:
+        """
+        为同一个聊天内的不同话题生成不同的投递键。
+        """
+        topic_id = topic.get("message_thread_id")
+        return f"chat:{chat_id}" if topic_id is None else f"chat:{chat_id}:topic:{topic_id}"
+
+    def _tracked_text_content(self, message: Message) -> tuple[list[str], str | None]:
+        """
+        使用常规标题、链接及格式规则构建 Telegram 文本分段。
+
+        :param message: 当前通知
+        :return: 正文分段和 Telegram 解析格式
+        """
+        mode = self._normalize_parse_mode(message.parse_mode)
+        title = self._format_title(message.title, mode)
+        caption = "\n".join(value for value in (title, message.text) if value)
+        if message.link:
+            caption = f"{caption}\n{self._format_detail_link(message.link, mode)}"
+        if not caption.strip():
+            return [], mode
+        if len(caption) < 4096:
+            return [self._prepare_text(caption, mode) or caption], mode
+        if self._is_html_parse_mode(mode):
+            splitter = _HtmlMessageSplitter(4096)
+            splitter.feed(caption)
+            return splitter.finish(), mode
+        if self._is_plain_parse_mode(mode):
+            return self._split_plain_text(caption, 4096), mode
+        items = ThreadHelper().submit(lambda text: asyncio.run(telegramify(text)), caption).result()
+        if all(item.content_type == ContentTypes.TEXT for item in items):
+            return [self._telegramify_item_text(item) for item in items], mode
+        return self._split_plain_text(caption, 4096), TELEGRAM_PARSE_MODE_PLAIN
+
+    def _send_tracked_payload(self, method: str, payload: dict[str, Any]) -> DeliveryPartOutcome:
+        """
+        只提交一次原生消息请求，在网络超时时保留未知状态。
+
+        :param method: 渲染步骤选定的 Bot API 客户端方法
+        :param payload: 目标和正文已固定的 Bot API 参数
+        :return: 平台状态与脱敏错误分类
+        """
+        submit = self._submit_tracked_edit if method.startswith("edit_") else self._submit_tracked_payload
+        return self._confirm_tracked_request(payload["chat_id"], partial(submit, method, payload))
+
+    def _submit_tracked_payload(self, method: str, payload: dict[str, Any]) -> JsonDict:
+        """
+        平台明确拒绝原格式时，可向同一会话降级发送正文。
+
+        :param method: 原生消息的发送方法
+        :param payload: 已冻结的发送参数及可选降级正文
+        :return: 平台实际返回的消息
+        """
+        arguments = dict(payload)
+        fallback = arguments.pop("fallback_text", None)
+        if method == "send_photo":
+            fallback = arguments.get("caption")
+        try:
+            request: Callable[..., JsonDict] = getattr(self._api, method)
+            return request(**arguments)
+        except TelegramApiError as error:
+            if not fallback or error.error_code not in {400, 404}:
+                raise
+        context = {key: arguments[key] for key in ("reply_markup", "reply_to_message_id") if key in arguments}
+        if reply_parameters := arguments.get("reply_parameters"):
+            context["reply_to_message_id"] = reply_parameters["message_id"]
+        return self._api.send_message(
+            chat_id=arguments["chat_id"], text=fallback,
+            parse_mode=TELEGRAM_PARSE_MODE_PLAIN if method == "send_rich_message" else arguments["parse_mode"],
+            message_thread_id=arguments.get("message_thread_id"),
+            **context,
+        )
+
+    def _submit_tracked_edit(self, method: str, payload: dict[str, Any]) -> JsonDict:
+        """
+        向原消息提交编辑。只有平台明确拒绝格式时才降级，网络异常直接交给回执分类。
+        """
+        arguments = dict(payload)
+        fallback = arguments.pop("fallback_text", None)
+        fallback_mode = arguments.pop("fallback_parse_mode", TELEGRAM_PARSE_MODE_PLAIN)
+        target = {key: arguments[key] for key in ("chat_id", "message_id", "reply_markup")}
+        try:
+            try:
+                result = getattr(self._api, method)(**arguments)
+            except TelegramApiError as error:
+                if error.error_code not in {400, 404}:
+                    raise
+                if method == "edit_message_media" and not self.__is_http_url_content_error(error):
+                    raise
+                if fallback is not None:
+                    result = self._submit_tracked_text_edit(target, fallback, fallback_mode)
+                elif method == "edit_message_text" and self.__is_no_text_edit_error(error):
+                    result = self._api.edit_message_caption(
+                        **target, caption=arguments.get("text"), parse_mode=arguments.get("parse_mode"),
+                    )
+                else:
+                    raise
+        except TelegramApiError as error:
+            if error.error_code == 400 and self.__is_message_not_modified_error(error):
+                return {"message_id": payload["message_id"]}
+            raise
+        if result is True:
+            return {"message_id": payload["message_id"]}
+        return result if isinstance(result, dict) else {}
+
+    def _submit_tracked_text_edit(self, target: dict[str, Any], text: str, mode: str | None) -> Any:
+        """
+        编辑既定消息的正文，平台明确说明没有文本时改用媒体说明。
+        """
+        try:
+            return self._api.edit_message_text(**target, text=text, parse_mode=mode)
+        except TelegramApiError as error:
+            if error.error_code != 400 or not self.__is_no_text_edit_error(error):
+                raise
+        return self._api.edit_message_caption(**target, caption=text, parse_mode=mode)
+
+    def _confirm_tracked_request(
+        self, chat_id: str, submit: Callable[[], JsonDict],
+    ) -> DeliveryPartOutcome:
+        """
+        根据一次 Telegram API 调用的确定结果分类，不重试未知提交。
+        """
+        if self._is_chat_rate_limited(chat_id, operation="发送"):
+            return "retryable_failure", "rate_limited"
+        try:
+            sent = submit()
+        except TelegramNetworkError:
+            return "unknown", "response_unconfirmed"
+        except TelegramApiError as error:
+            if error.error_code == 429:
+                self._mark_rate_limit(chat_id, error, operation="发送")
+                return "retryable_failure", "rate_limited", None, self._retry_after_seconds(error)
+            if error.error_code in {400, 401, 403, 404}:
+                return "permanent_failure", "platform_rejected"
+            return "unknown", "platform_unconfirmed"
+        message_id = sent.get("message_id")
+        if type(message_id) is int:
+            self._remember_sent_message(sent, chat_id)
+            return "confirmed", None, str(message_id)
+        return "unknown", "response_unconfirmed"
+
+    def send_tracked_image(
+        self, message: Message, userid: str | None, *, receipt: DeliveryReceipt,
+        part_sender: DeliveryPartSender, plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        在明确会话和话题上传原图，保存素材摘要及平台回执。
+        """
+        chat_id, topic = self._tracked_address(message, userid)
+        if not chat_id or not message.image:
+            receipt(None, 0, "skipped", "no_target" if not chat_id else "empty_content")
+            return False
+        if not self._bot:
+            receipt(None, 0, "retryable_failure", "client_unavailable")
+            return False
+        address = self._tracked_address_key(chat_id, topic)
+        loaded = load_image(message.image)
+        if loaded is None:
+            content = '["native-image-missing"]'
+            plan(((address, 0, content),))
+            status, code = part_sender(address, 0, content, True, self._missing_tracked_attachment)
+            receipt(address, 0, status, code)
+            return status == "confirmed"
+        chunks, mode = self._tracked_text_content(message.model_copy(update={"link": None}))
+        caption = chunks.pop(0) if chunks and len(chunks[0]) <= 1024 else None
+        base: dict[str, Any] = {"chat_id": chat_id, "parse_mode": mode, **topic}
+        payloads = [("send_photo", {
+            **base, "photo": loaded[0], "caption": caption,
+            "reply_markup": self._create_inline_keyboard(message.buttons) if message.buttons else None,
+        })]
+        payloads.extend(("send_message", {**base, "text": chunk}) for chunk in chunks)
+        return self._dispatch_tracked_payloads(address, payloads, receipt, part_sender, plan)
+
+    def send_tracked_attachment(
+        self, message: Message, userid: str | None, *,
+        receipt: DeliveryReceipt, part_sender: DeliveryPartSender, plan: DeliveryPartPlanner, discard_voice: bool = False,
+    ) -> bool:
+        """
+        把文件、语音或本地图片绑定到内容摘要，并保留源文件供已知失败的重试使用。
+
+        :param message: 含本地附件路径和说明的通知
+        :param userid: 已选定的个人目标
+        :param receipt: 记录实际结果的回调
+        :param part_sender: 发送前核对投递进度的回调
+        :param plan: 首次发送前登记目标和内容摘要
+        :param discard_voice: 普通发送在提交后清理一次性语音文件
+        :return: Telegram 已确认收到附件
+        """
+        if not self._bot:
+            receipt(None, 0, "retryable_failure", "client_unavailable")
+            return False
+        chat_id, topic = self._tracked_address(message, userid)
+        path = message.file_path or message.voice_path
+        if not chat_id or not path:
+            receipt(None, 0, "skipped", "no_target" if not chat_id else "empty_content")
+            return False
+        address = self._tracked_address_key(chat_id, topic)
+        local_file = Path(path)
+        mode = self._normalize_parse_mode(message.parse_mode)
+        if message.file_path:
+            caption = "\n".join(value for value in (self._format_title(message.title, mode), message.text) if value)
+            field = "photo" if local_file.suffix.lower() in _LOCAL_PHOTO_SUFFIXES else "document"
+        else:
+            caption = message.voice_caption or ""
+            field = "voice"
+        payload: dict[str, Any] = {
+            "chat_id": chat_id, "caption": self._prepare_text(caption, mode),
+            "parse_mode": mode if caption else None, **topic,
+        }
+        name = message.file_name or local_file.name
+        try:
+            if not local_file.is_file():
+                raise FileNotFoundError
+            stream = local_file.open("rb")
+        except OSError:
+            content = json.dumps((field, name, None, payload), ensure_ascii=False, sort_keys=True)
+            plan(((address, 0, content),))
+            outcome, code = part_sender(address, 0, content, True, self._missing_tracked_attachment)
+            receipt(address, 0, outcome, code)
+            return outcome == "confirmed"
+        try:
+            with stream:
+                digest = file_digest(stream, "sha256").hexdigest()
+                stream.seek(0)
+                content = json.dumps((field, name, digest, payload), ensure_ascii=False, sort_keys=True)
+                plan(((address, 0, content),))
+                media: Any = (name, stream) if field == "document" else stream
+                request = getattr(self._api, f"send_{field}")
+                submit = partial(request, **payload, **{field: media})
+                result, code = part_sender(address, 0, content, True, partial(self._confirm_tracked_request, chat_id, submit))
+        finally:
+            if discard_voice and field == "voice":
+                self._remove_voice_file(local_file)
+        receipt(address, 0, result, code)
+        return result == "confirmed"
+
+    @staticmethod
+    def _missing_tracked_attachment() -> tuple[DeliveryStatus, str]:
+        """
+        报告发送前发现的附件缺失。
+        """
+        return "permanent_failure", "attachment_unavailable"
 
     def _send_rich_message(
             self,
@@ -1145,9 +1599,12 @@ class Telegram:
             stop_typing: bool,
             rich_message: str,
             reply_markup: Optional[JsonDict],
+            topic: Optional[dict[str, int]] = None,
     ) -> JsonDict:
         """
         发送或编辑 Rich Message，并在限流时隔离后续输出请求。
+
+        :param topic: 原会话的话题参数，降级时沿用
         """
         if original_message_id and original_chat_id and not force_reply:
             result = self.edit_msg(
@@ -1171,6 +1628,7 @@ class Telegram:
                 rich_message=rich_message,
                 reply_markup=reply_markup,
                 reply_to_message_id=original_message_id if force_reply else None,
+                topic=topic,
             )
         except Exception as rich_err:
             if self._is_rate_limit_error(rich_err):
@@ -1185,6 +1643,7 @@ class Telegram:
                     chat_id=target_chat_id,
                     rich_message=rich_message,
                     reply_markup=reply_markup,
+                    topic=topic,
                 )
         self._remember_sent_message(sent, target_chat_id)
         self._stop_typing_if_needed(chat_id, stop_typing)
@@ -1222,6 +1681,8 @@ class Telegram:
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
+            private_delivery: bool = False,
+            thread_id: Optional[str] = None,
     ) -> Optional[JsonDict]:
         """
         发送本地语音，进入发送流程后清理源文件。
@@ -1232,12 +1693,14 @@ class Telegram:
         :param original_chat_id: 显式原会话标识，优先于普通用户映射
         :param stop_typing: 是否在操作收尾时请求停止输入状态，默认 False
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
+        :param private_delivery: 是否必须按个人用户 ID 私聊，禁止原群或最近会话回退
+        :param thread_id: 仅随原会话使用的显式话题 ID
         :return: 含 success、message_id 和 chat_id 的结果；失败为 success 为 False 的字典，未配置或无输入路径返回 None
         """
         if not self._bot or not voice_path:
             return None
 
-        chat_id = self._determine_target_chat_id(userid, original_chat_id)
+        chat_id = self._determine_target_chat_id(userid, original_chat_id, private_delivery=private_delivery)
         parse_mode = self._normalize_parse_mode(parse_mode)
         voice_file = Path(voice_path)
         if not voice_file.exists():
@@ -1252,7 +1715,7 @@ class Telegram:
                     voice=fp,
                     caption=self._prepare_text(caption, parse_mode),
                     parse_mode=parse_mode if caption else None,
-                    **self._topic_kwargs(chat_id),
+                    **self._topic_kwargs(chat_id, original_chat_id, thread_id, private_delivery),
                 )
             self._stop_typing_if_needed(chat_id, stop_typing)
             return self._sent_result(sent, chat_id)
@@ -1261,15 +1724,22 @@ class Telegram:
             self._stop_typing_if_needed(chat_id, stop_typing)
             return {"success": False}
         finally:
-            try:
-                voice_file.unlink(missing_ok=True)
-            except Exception as cleanup_err:
-                logger.debug(f"清理语音临时文件失败: {cleanup_err}")
+            self._remove_voice_file(voice_file)
+
+    @staticmethod
+    def _remove_voice_file(path: Path) -> None:
+        """
+        清理一次性语音文件，保留平台发送回执。
+        """
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            logger.debug(f"清理语音临时文件失败: {error}")
 
     def send_image(self, image: str, title: Optional[str] = None, text: Optional[str] = None,
                    userid: Optional[str] = None, original_chat_id: Optional[str] = None,
                    parse_mode: Optional[str] = None, buttons: Optional[List[List[dict[str, Any]]]] = None,
-                   private_delivery: bool = False) -> Optional[JsonDict]:
+                   private_delivery: bool = False, thread_id: Optional[str] = None) -> Optional[JsonDict]:
         """
         上传统一来源的完整原图，复用长正文拆分并保留会话、话题、按钮和私聊约束。
 
@@ -1281,9 +1751,10 @@ class Telegram:
         :param parse_mode: 说明文字格式，沿用普通通知约定
         :param buttons: 图片下方的统一交互按钮
         :param private_delivery: 有用户标识时是否必须发送私聊
+        :param thread_id: 原会话的话题 ID
         :return: 图片发送结果；读取失败时 success 为 False
         """
-        if not self._telegram_token or not self._telegram_chat_id:
+        if not self._telegram_token:
             return None
         chat_id = self._determine_target_chat_id(userid, original_chat_id, private_delivery=private_delivery)
         if self._is_chat_rate_limited(chat_id, operation="发送"):
@@ -1297,6 +1768,7 @@ class Telegram:
             sent = self.__send_request(
                 userid=chat_id, image=loaded[0], caption=caption, parse_mode=mode,
                 reply_markup=self._create_inline_keyboard(buttons) if buttons else None,
+                topic=self._topic_kwargs(chat_id, original_chat_id, thread_id, private_delivery),
             )
             self._remember_sent_message(sent, chat_id)
             return self._sent_result(sent, chat_id)
@@ -1316,6 +1788,7 @@ class Telegram:
             parse_mode: Optional[str] = None,
             buttons: Optional[List[List[dict[str, Any]]]] = None,
             private_delivery: bool = False,
+            thread_id: Optional[str] = None,
     ) -> Optional[JsonDict]:
         """
         根据后缀发送本地图片或普通附件，保留源文件。
@@ -1329,7 +1802,8 @@ class Telegram:
         :param stop_typing: 是否在操作收尾时请求停止输入状态，默认 False
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
         :param buttons: 图片或附件下方的统一按钮行
-        :param private_delivery: 有用户标识时是否绕过群聊映射直接投递私聊
+        :param private_delivery: 是否必须按个人用户 ID 私聊，禁止原群或最近会话回退
+        :param thread_id: 仅随原会话使用的显式话题 ID
         :return: 含 success、message_id 和 chat_id 的结果；失败为 success 为 False 的字典，未配置或无输入路径返回 None
         """
         if not self._bot or not file_path:
@@ -1345,7 +1819,7 @@ class Telegram:
 
         send_name = file_name or local_file.name
         suffix = local_file.suffix.lower()
-        is_image = suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+        is_image = suffix in _LOCAL_PHOTO_SUFFIXES
 
         try:
             bold_title = self._format_title(title, parse_mode)
@@ -1366,7 +1840,7 @@ class Telegram:
                         photo=fp,
                         caption=self._prepare_text(caption, parse_mode),
                         parse_mode=parse_mode if caption else None,
-                        **options,
+                        **{**options, **self._topic_kwargs(chat_id, original_chat_id, thread_id, private_delivery)},
                     )
                 else:
                     sent = self._api.send_document(
@@ -1374,7 +1848,7 @@ class Telegram:
                         document=(send_name, fp),
                         caption=self._prepare_text(caption, parse_mode),
                         parse_mode=parse_mode if caption else None,
-                        **options,
+                        **{**options, **self._topic_kwargs(chat_id, original_chat_id, thread_id, private_delivery)},
                     )
             self._stop_typing_if_needed(chat_id, stop_typing)
             return self._sent_result(sent, chat_id)
@@ -1398,7 +1872,9 @@ class Telegram:
         :return: 目标会话标识；无用户和原会话时使用配置中的默认值
         """
         # 私聊投递以渠道用户 ID 为目标，最近会话映射可能指向群聊，不能参与解析。
-        if private_delivery and userid:
+        if private_delivery:
+            if not userid or not str(userid).isascii() or not str(userid).isdecimal() or int(userid) <= 0:
+                raise PermissionError("Telegram 强制私聊缺少有效个人用户 ID")
             return str(userid)
 
         if original_chat_id:
@@ -1413,10 +1889,25 @@ class Telegram:
 
         return self._telegram_chat_id or ""
 
-    def _topic_kwargs(self, chat_id: Optional[Union[str, int]]) -> dict[str, int]:
+    def _topic_kwargs(
+            self, chat_id: Optional[Union[str, int]], original_chat_id: Optional[str] = None,
+            thread_id: Optional[str] = None, private_delivery: bool = False,
+    ) -> dict[str, int]:
         """
-        仅向本渠道配置的群组投递话题参数，避免影响私聊和其它会话。
+        交互回复使用原话题，主动通知使用已配置的默认话题。
+
+        :param chat_id: 最终投递会话
+        :param original_chat_id: 交互来源会话
+        :param thread_id: 平台提供的可选话题 ID
+        :param private_delivery: 强制私聊时不附带话题
+        :return: Bot API 的话题参数
         """
+        if private_delivery:
+            return {}
+        if original_chat_id is not None and str(chat_id) == str(original_chat_id):
+            if thread_id and thread_id.isascii() and thread_id.isdecimal() and int(thread_id) > 0:
+                return {"message_thread_id": int(thread_id)}
+            return {}
         topic_id = getattr(self, "_telegram_topic_id", None)
         if topic_id and chat_id is not None and str(chat_id) == str(self._telegram_chat_id):
             return {"message_thread_id": topic_id}
@@ -1433,6 +1924,8 @@ class Telegram:
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
+            private_delivery: bool = False,
+            thread_id: Optional[str] = None,
     ) -> Optional[Union[bool, JsonDict]]:
         """
         发送或编辑媒体候选列表。
@@ -1446,13 +1939,15 @@ class Telegram:
         :param original_chat_id: 显式原会话标识，优先于普通用户映射
         :param stop_typing: 是否在操作收尾时请求停止输入状态，默认 False
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
+        :param private_delivery: 是否必须按个人用户 ID 私聊，禁止原群或最近会话回退
+        :param thread_id: 仅随原会话使用的显式话题 ID
         :return: 编辑时返回成功布尔值，发送时返回最后一条 Bot API 消息字典；异常返回 False，配置缺失或发送无结果返回 None
         """
-        if not self._telegram_token or not self._telegram_chat_id:
+        if not self._telegram_token:
             return None
 
         # 列表发送结束后是否停止输入状态，由 stop_typing 明确控制。
-        chat_id = self._determine_target_chat_id(userid, original_chat_id)
+        chat_id = self._determine_target_chat_id(userid, original_chat_id, private_delivery=private_delivery)
         parse_mode = self._normalize_parse_mode(parse_mode)
         try:
             index, image = 1, ""
@@ -1484,7 +1979,7 @@ class Telegram:
             if buttons:
                 reply_markup = self._create_inline_keyboard(buttons)
 
-            if original_message_id and original_chat_id:
+            if original_message_id and original_chat_id and not private_delivery:
                 return self.__edit_message(
                     original_chat_id,
                     original_message_id,
@@ -1494,19 +1989,22 @@ class Telegram:
                     parse_mode=parse_mode,
                 )
             else:
-                return self.__send_request(
+                sent = self.__send_request(
                     userid=chat_id,
                     image=image,
                     caption=caption,
                     reply_markup=reply_markup,
                     parse_mode=parse_mode,
+                    topic=self._topic_kwargs(chat_id, original_chat_id, thread_id, private_delivery),
                 )
+                return self._sent_result(sent, chat_id) if private_delivery else sent
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
             return False
         finally:
             self._stop_typing_if_needed(chat_id, stop_typing)
+
 
     def send_torrents_msg(
             self,
@@ -1519,6 +2017,8 @@ class Telegram:
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
+            private_delivery: bool = False,
+            thread_id: Optional[str] = None,
     ) -> Optional[Union[bool, JsonDict]]:
         """
         发送或编辑种子候选列表。
@@ -1532,13 +2032,15 @@ class Telegram:
         :param original_chat_id: 显式原会话标识，优先于普通用户映射
         :param stop_typing: 是否在操作收尾时请求停止输入状态，默认 False
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
+        :param private_delivery: 是否必须按个人用户 ID 私聊，禁止原群或最近会话回退
+        :param thread_id: 仅随原会话使用的显式话题 ID
         :return: 编辑时返回成功布尔值，发送时返回最后一条 Bot API 消息字典；异常返回 False，配置缺失或发送无结果返回 None
         """
-        if not self._telegram_token or not self._telegram_chat_id:
+        if not self._telegram_token:
             return None
 
         # 资源列表发送结束后是否停止输入状态，由 stop_typing 明确控制。
-        chat_id = self._determine_target_chat_id(userid, original_chat_id)
+        chat_id = self._determine_target_chat_id(userid, original_chat_id, private_delivery=private_delivery)
         parse_mode = self._normalize_parse_mode(parse_mode)
         try:
             index = 1
@@ -1582,7 +2084,7 @@ class Telegram:
             if buttons:
                 reply_markup = self._create_inline_keyboard(buttons)
 
-            if original_message_id and original_chat_id:
+            if original_message_id and original_chat_id and not private_delivery:
                 # 原消息和会话同时存在时替换该消息内容
                 return self.__edit_message(
                     original_chat_id,
@@ -1593,19 +2095,22 @@ class Telegram:
                     parse_mode=parse_mode,
                 )
             else:
-                return self.__send_request(
+                sent = self.__send_request(
                     userid=chat_id,
                     image=image,
                     caption=caption,
                     reply_markup=reply_markup,
                     parse_mode=parse_mode,
+                    topic=self._topic_kwargs(chat_id, original_chat_id, thread_id, private_delivery),
                 )
+                return self._sent_result(sent, chat_id) if private_delivery else sent
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
             return False
         finally:
             self._stop_typing_if_needed(chat_id, stop_typing)
+
 
     @staticmethod
     def _create_inline_keyboard(buttons: List[List[dict[str, Any]]]) -> JsonDict:
@@ -1669,15 +2174,13 @@ class Telegram:
         :param chat_id: 目标会话；为空时使用默认会话
         :return: 删除成功返回 True，失败返回 False；配置缺失返回 None
         """
-        if not self._telegram_token or not self._telegram_chat_id:
+        if not self._telegram_token:
             return None
 
-        target_chat_id: Union[str, int]
         try:
-            if chat_id:
-                target_chat_id = chat_id
-            else:
-                target_chat_id = self._telegram_chat_id
+            target_chat_id = chat_id or self._telegram_chat_id
+            if not target_chat_id:
+                return None
 
             result = self._api.delete_message(
                 chat_id=target_chat_id, message_id=int(message_id)
@@ -2039,6 +2542,7 @@ class Telegram:
             rich_message: str,
             reply_markup: Optional[JsonDict] = None,
             reply_to_message_id: Optional[Union[str, int]] = None,
+            topic: Optional[dict[str, int]] = None,
     ) -> Any:
         """
         发送 Telegram Rich Message，超限内容自动拆分为多条。
@@ -2047,6 +2551,7 @@ class Telegram:
         :param rich_message: 完整的 Rich Markdown 正文
         :param reply_markup: 首条消息携带的键盘
         :param reply_to_message_id: 首条消息回复的原消息 ID
+        :param topic: 已在发送边界确定的话题参数，空字典表示不指定话题
         :return: 最后一条已发送的 Telegram 消息
         :raises NonRetryableTelegramError: Telegram 以 400 拒绝该内容，不做退避重试
         :raises RetryException: 网络异常或 5xx，可重试
@@ -2065,7 +2570,7 @@ class Telegram:
                     rich_message=chunk,
                     reply_markup=reply_markup if index == 0 else None,
                     reply_parameters=reply_parameters if index == 0 else None,
-                    **self._topic_kwargs(chat_id),
+                    **(self._topic_kwargs(chat_id) if topic is None else topic),
                 )
             return sent
         except Exception as err:
@@ -2086,6 +2591,7 @@ class Telegram:
             chat_id: Union[str, int],
             rich_message: str,
             reply_markup: Optional[JsonDict] = None,
+            topic: Optional[dict[str, int]] = None,
     ) -> Any:
         """
         Rich Message 发送失败后的降级出口，用纯文本重发同一条内容。
@@ -2100,12 +2606,13 @@ class Telegram:
         :param chat_id: 目标聊天 ID
         :param rich_message: 原始 Rich Markdown 正文
         :param reply_markup: 内联键盘
+        :param topic: 已在发送边界确定的话题参数，空字典表示不指定话题
         :return: 降级发送的结果，失败返回 None
         """
         # ``_topic_kwargs`` 只可能产出 message_thread_id，显式传参而不是 ** 展开：
         # ** 展开到 send_message 会被 mypy 匹配到第 5 个形参（disable_web_page_preview，
         # Optional[bool]），把 dict[str, int] 判为类型不兼容。
-        topic_kwargs = self._topic_kwargs(chat_id)
+        topic_kwargs = self._topic_kwargs(chat_id) if topic is None else topic
         try:
             return self._api.send_message(
                 chat_id=chat_id,
@@ -2129,6 +2636,7 @@ class Telegram:
             disable_web_page_preview: Optional[bool] = None,
             parse_mode: Optional[str] = None,
             reply_to_message_id: Optional[int] = None,
+            topic: Optional[dict[str, int]] = None,
     ) -> Optional[JsonDict]:
         """
         按内容长度和媒体类型拆分并发送普通消息。
@@ -2140,6 +2648,7 @@ class Telegram:
         :param disable_web_page_preview: 是否禁用文本链接预览
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
         :param reply_to_message_id: 发送消息回复的原消息标识
+        :param topic: 已在发送边界确定的话题参数，空字典表示不指定话题
         :return: 最后一条发送的 Bot API 消息；失败返回 None，已发送的分块不会撤回
         """
         parse_mode = self._normalize_parse_mode(parse_mode)
@@ -2148,7 +2657,7 @@ class Telegram:
             "parse_mode": parse_mode,
             "reply_markup": reply_markup,
         }
-        kwargs.update(self._topic_kwargs(kwargs["chat_id"]))
+        kwargs.update(self._topic_kwargs(kwargs["chat_id"]) if topic is None else topic)
         if reply_to_message_id:
             kwargs["reply_to_message_id"] = reply_to_message_id
         image_bytes = self.__process_image(image)

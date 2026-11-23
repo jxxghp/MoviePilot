@@ -253,6 +253,14 @@ frontmatter allowlist, and the matching gateway contract together.
 
 ## API Surface Scope
 
+Browser device registration at `POST /api/v1/message/webpush/subscribe` and `/unsubscribe`
+is a web-login REST contract, not an additional operation in this skill. The server supplies
+immutable active-account ownership; browsers provide the endpoint and complete keys. An
+explicit logout cancels the local subscription and requests owner-scoped removal. Account
+switches create a new endpoint, and stale browser tabs must not reclaim another account's
+registration. Legacy ownerless records are excluded from personal and management delivery.
+See `docs/webpush.md`; this guidance does not authorize raw HTTP outside the structured gateway.
+
 System widget endpoints under `/api/v1/widget/*` are outside this skill and the Agent tool catalog.
 Context, registration, and owner revocation use the existing main login. Snapshot reads and self
 revocation use a separate, expiring, read-only Bearer; never use it as an ordinary API/MCP login

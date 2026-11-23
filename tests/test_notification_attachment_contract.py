@@ -60,7 +60,8 @@ def _module(monkeypatch: pytest.MonkeyPatch, channel, module_class, client):
     """
     module = module_class()
     module._channel = channel
-    conf = SimpleNamespace(name="source", config={}, type=channel.name.lower(), enabled=True)
+    conf = SimpleNamespace(id="fixture", identity_namespace="owner", name="source", config={},
+                           type=channel.name.lower(), enabled=True)
     monkeypatch.setattr(module, "get_configs", lambda: {"source": conf})
     monkeypatch.setattr(module, "get_instance", lambda _: client)
     monkeypatch.setattr(module, "get_instances", lambda: {"source": client})
@@ -70,66 +71,51 @@ def _module(monkeypatch: pytest.MonkeyPatch, channel, module_class, client):
 
 
 @pytest.mark.parametrize("channel,module_class,client_class", _UPLOAD_CHANNELS)
-def test_same_plugin_image_payload_is_adapted_by_host(
-    monkeypatch: pytest.MonkeyPatch, channel, module_class, client_class,
+@pytest.mark.parametrize("native_image", [True, False])
+def test_same_plugin_media_payload_reaches_tracked_delivery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, channel, module_class, client_class, native_image,
 ) -> None:
     """
-    插件使用同一组参数，不判断渠道或企微模式，原图、说明及目标均由宿主转交。
+    统一插件参数经过实际模块路由，到达当前实例的持久化附件入口。
     """
     client = client_class.__new__(client_class)
-    send_image = Mock(return_value={"success": True})
-    send_msg = Mock(return_value=True)
-    monkeypatch.setattr(client, "send_image", send_image, raising=False)
-    monkeypatch.setattr(client, "send_msg", send_msg, raising=False)
+    attachment_path = tmp_path / "source.txt"
+    attachment_path.write_text("attachment-content")
+    method = {
+        Telegram: "send_tracked_image" if native_image else "send_tracked_attachment",
+        Slack: "send_tracked_image" if native_image else "send_tracked_file",
+        Discord: "send_tracked_notification",
+        Feishu: "send_tracked_notification",
+        WeChat: "send_tracked_media",
+        WeChatBot: "send_msg" if native_image else "send_file",
+        WechatClawBot: "send_tracked_notification",
+    }[client_class]
+    send = Mock(return_value=True)
+    monkeypatch.setattr(client, method, send)
     module = _module(monkeypatch, channel, module_class, client)
     monkeypatch.setattr(plugin_base, "settings", SimpleNamespace(MP_DOMAIN=lambda path: f"https://mp.example/{path}"))
     plugin = SimpleNamespace(chain=Mock())
-    _PluginBase.post_message(
-        plugin, channel=channel, userid="member", title="扫码", text="二维码说明",
-        image=_DATA_URL, native_image=True,
-    )
+    fields = ({"image": _DATA_URL, "native_image": True} if native_image else
+              {"file_path": str(attachment_path), "file_name": "report.txt"})
+    _PluginBase.post_message(plugin, channel=channel, userid="member", title="说明", text="正文", **fields)
     message = plugin.chain.post_message.call_args.args[0]
-
     module.post_message(message)
-
-    sent = send_msg if client_class in {WeChat, WeChatBot, WechatClawBot} else send_image
-    assert sent.call_count == 1
-    payload = sent.call_args.kwargs
-    assert payload["image"] == _DATA_URL
-    assert payload["title"] == "扫码"
-    assert payload["text"] == "二维码说明"
-    assert payload["userid"] == "member"
-    if sent is send_msg:
-        assert payload["native_image"] is True
+    send.assert_called_once()
+    args, kwargs = send.call_args
+    assert all(callable(kwargs[key]) for key in ("receipt", "part_sender", "plan"))
+    if client_class is WeChat:
+        assert args[0] == (_DATA_URL if native_image else str(attachment_path))
+        assert kwargs["media_type"] == ("image" if native_image else "file")
+        assert kwargs["userid"] == "member"
+    elif client_class is WeChatBot:
+        assert all(kwargs[key] == value for key, value in fields.items())
+        assert kwargs["userid"] == "member"
     else:
-        assert "link" not in payload
-    assert message.image == _DATA_URL
-    assert message.native_image is True
-
-
-@pytest.mark.parametrize("channel,module_class,client_class", _UPLOAD_CHANNELS)
-def test_same_plugin_file_payload_preserves_attachment_and_caption(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, channel, module_class, client_class,
-) -> None:
-    """
-    所有已声明文件能力的模块都转交相同附件字段，不再丢弃说明或要求插件识别模式。
-    """
-    path = tmp_path / "source.txt"
-    path.write_text("attachment-content")
-    client = client_class.__new__(client_class)
-    send_file = Mock(return_value={"success": True})
-    monkeypatch.setattr(client, "send_file", send_file)
-    module = _module(monkeypatch, channel, module_class, client)
-
-    module.post_message(Message(channel=channel, userid="member", title="附件", text="请下载",
-                                file_path=str(path), file_name="report.txt"))
-
-    assert send_file.call_count == 1
-    payload = send_file.call_args.kwargs
-    assert {key: payload[key] for key in ("file_path", "file_name", "title", "text", "userid")} == {
-        "file_path": str(path), "file_name": "report.txt", "title": "附件", "text": "请下载", "userid": "member",
-    }
-    assert path.read_text() == "attachment-content"
+        assert isinstance(args[0], Message)
+        assert all(getattr(args[0], key) == value for key, value in fields.items())
+        assert args[0].userid == "member"
+    assert message.title == "说明" and message.text == "正文"
+    assert attachment_path.read_text() == "attachment-content"
 
 
 @pytest.mark.parametrize("channel,module_class", _LINK_CHANNELS)

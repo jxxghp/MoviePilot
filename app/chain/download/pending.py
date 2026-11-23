@@ -341,6 +341,8 @@ class DownloadPendingOwner(_DownloadOwnerBase):
         custom_words: Optional[str],
         downloader: Optional[str],
         user_specified: bool,
+        owner_identity: str | None,
+        task_reference: str | None,
     ) -> dict[str, Any]:
         """
         构造确认转正结算所需的脱敏快照，排除 Cookie、Passkey 与下载地址。
@@ -408,6 +410,8 @@ class DownloadPendingOwner(_DownloadOwnerBase):
             "episode_selection": _serialize_episode_selection(episode_selection),
             "custom_words": custom_words,
             "username": username,
+            "owner_identity": owner_identity,
+            "task_reference": task_reference,
             "userid": userid,
             "channel": channel.value if channel else None,
             "subscription_download": context.subscription_download,
@@ -434,6 +438,8 @@ class DownloadPendingOwner(_DownloadOwnerBase):
         actual_downloader: Optional[str],
         error_msg: str,
         user_specified: bool = False,
+        owner_identity: str | None = None,
+        task_reference: str | None = None,
     ) -> Optional[DownloadPendingSnapshot]:
         """
         将“添加已受理但任务尚未确认”的提交记入待确认状态，并阻止同目标自动换源。
@@ -485,6 +491,8 @@ class DownloadPendingOwner(_DownloadOwnerBase):
                 custom_words=custom_words,
                 downloader=downloader,
                 user_specified=user_specified,
+                owner_identity=owner_identity,
+                task_reference=task_reference,
             )
             write = DownloadPendingWrite(
                 pending_key=pending_key,
@@ -915,6 +923,9 @@ class DownloadPendingOwner(_DownloadOwnerBase):
             previous_selection = None
         accepted_files = self._accepted_task_files(cast(str, check.download_hash), check.downloader)
         task_action = DownloadTaskAction.from_downloader_message(check.message)
+        # 已受理副作用只补记原始归属；确认是现有任务时沿用既有任务的所有者。
+        owner_identity = payload.get("owner_identity")
+        task_reference = payload.get("task_reference")
         self._settle_download_success(
             context=context,
             media=context.media_info,
@@ -938,6 +949,9 @@ class DownloadPendingOwner(_DownloadOwnerBase):
             previous_selection=previous_selection,
             accepted_files=accepted_files,
             downloader_scope=str(payload.get("downloader_scope") or record.downloader or ""),
+            owner_identity=owner_identity if isinstance(owner_identity, str) and not task_action.is_existing_task else None,
+            task_reference=(task_reference if isinstance(task_reference, str)
+                            and not task_action.is_existing_task and check.downloader else None),
         )
         self._delete_pending_record(record.pending_key)
         logger.info(

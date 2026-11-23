@@ -210,8 +210,13 @@ def test_torrent_buttons_skip_missing_resource():
     """
     空候选不生成下载按钮，自动选择按钮仍保留有效交互请求标识。
     """
+    from app.application.messaging.media import PendingMediaInteraction
+
     owner = object.__new__(MediaInteractionChain)
-    buttons = owner._create_torrent_buttons(NotificationChannel.Telegram,
-                                            SimpleNamespace(request_id="request"), [Context()], 1, 1)
+    request = PendingMediaInteraction(
+        request_id="request", user_id="42", channel=NotificationChannel.Telegram, source="bot",
+        username=None, action="Search", keyword="测试",
+    )
+    buttons = owner._create_torrent_buttons(NotificationChannel.Telegram, request, [Context()], 1, 1)
     assert len(buttons) == 1
-    assert buttons[0][0]["callback_data"] == "media:request:download:0"
+    assert owner.parse_callback(buttons[0][0]["callback_data"]) == ("request", "download", 0)

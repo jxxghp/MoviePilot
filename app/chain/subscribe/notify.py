@@ -260,6 +260,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             link=self._SubscribeChain__subscribe_added_link(context.mediainfo.type),
             userid=context.userid,
             username=context.username,
+            subscription_owner_identity=str(context.options.get("owner_identity") or ""),
         )
         rendered = (
             MessageTemplateHelper.render(

@@ -13,6 +13,7 @@ from app.application.messaging.interaction import (
     MessageGateway,
     _ExpiringUserInteractionStore,
     build_navigation_buttons,
+    interaction_key,
     page_items,
     supports_interaction_buttons,
     update_or_post_message,
@@ -142,7 +143,7 @@ class PendingSkillInteraction:
     :param awaiting_input: 等待的输入用途：market-search、source-add 或 None
     :param created_at: 会话创建的本地时间，用于计算过期时间
     :param selection_id: 最近一次列表展示的唯一标识，旧展示按钮不复用新列表序号
-    :param selection_view: 最近一次展示的列表类别，installed或market；尚未展示时为空
+    :param selection_view: 最近一次展示的列表类别，installed、market 或 sources；尚未展示时为空
     :param selection_items: 展示时条目的独立快照，操作仅按该快照定位身份
     """
 
@@ -192,7 +193,7 @@ class SkillInteractionManager(
                 source=source,
                 username=username,
             )
-            self._replace_locked(request)
+            self._replace_locked(request, interaction_key(user_id, channel, source))
             return request
 
 
@@ -313,7 +314,7 @@ class SkillInteractionHandler:
             return False
 
         request_id, action, index = parsed
-        request = skill_interaction_manager.get_by_id(request_id, userid)
+        request = skill_interaction_manager.get_by_id(request_id, userid, channel, source, original_chat_id)
         if not request:
             self._messenger.post_message(
                 Message(
@@ -326,13 +327,11 @@ class SkillInteractionHandler:
             )
             return True
 
-        if self._selection_callback_is_stale(request, action, callback_data):
+        if not self._claim_selection_callback(request, action, index, callback_data):
             self._messenger.post_message(Message(channel=channel, source=source, userid=userid,
                 username=username, title="技能列表已变化，请使用最新列表重新选择"))
             return True
 
-        request.channel = channel
-        request.source = source
         request.username = username
 
         if action == "close":
@@ -419,7 +418,7 @@ class SkillInteractionHandler:
         elif action == "source-remove" and index:
             request.view = "sources"
             request.awaiting_input = None
-            success, message = self._remove_market_source(index)
+            success, message = self._remove_market_source(index, request.selection_items)
             self._messenger.post_message(
                 Message(
                     channel=channel,
@@ -465,12 +464,10 @@ class SkillInteractionHandler:
         """
         处理不支持按钮渠道上的文本指令，也兼容用户直接回复文字操作。
         """
-        request = skill_interaction_manager.get_by_user(userid)
+        request = skill_interaction_manager.get_by_user(userid, channel, source)
         if not request:
             return False
 
-        request.channel = channel
-        request.source = source
         request.username = username
 
         normalized = (text or "").strip()
@@ -752,20 +749,28 @@ class SkillInteractionHandler:
         return True
 
     @staticmethod
-    def _selection_callback_is_stale(request: PendingSkillInteraction, action: str, callback_data: str) -> bool:
+    def _claim_selection_callback(
+            request: PendingSkillInteraction, action: str, index: Optional[int], callback_data: str,
+    ) -> bool:
         """
-        核对安装/删除按钮的展示标识及当前视图，旧列表不能沿用新序号。
+        核对写按钮的快照版本和视图，原子消费该版本的指定序号。
 
         :param request: 当前技能交互会话
         :param action: 解析后的按钮动作
+        :param index: 展示列表内序号
         :param callback_data: 包含展示标识的完整按钮数据
-        :return: 属于安装/删除且展示已失效时为True，其它导航动作不受影响
+        :return: 导航动作或首次消费有效写按钮时返回 True
         """
-        expected_view = {"install": "market", "remove": "installed"}.get(action)
-        return expected_view is not None and (
-            callback_data.split(":")[4:] != [request.selection_id]
+        expected_view = {"install": "market", "remove": "installed", "source-remove": "sources"}.get(action)
+        if expected_view is None:
+            return True
+        suffix = callback_data.split(":")[4:]
+        if (
+            not index or index > len(request.selection_items) or suffix != [request.selection_id]
             or request.selection_view != expected_view or request.view != expected_view
-        )
+        ):
+            return False
+        return skill_interaction_manager.claim_callback(request, action, index, suffix[0])
 
     def _install_market_skill(
             self,
@@ -798,11 +803,17 @@ class SkillInteractionHandler:
             return False, f"技能 {target.id} 是内置技能，不能删除"
         return self.skillhelper.remove_local_skill(target.id)
 
-    def _remove_market_source(self, page_index: int) -> Tuple[bool, str]:
+    def _remove_market_source(
+            self, page_index: int, displayed_sources: Optional[list[Any]] = None,
+    ) -> Tuple[bool, str]:
         """
-        按当前源列表序号删除自定义技能源，避免误删内置默认源。
+        删除经当前列表或展示快照定位的自定义技能源。
+
+        :param page_index: 从 1 开始的列表序号
+        :param displayed_sources: 按钮展示的源快照；文字交互使用当前列表
+        :return: 操作结果与用户可见的说明
         """
-        sources = self.skillhelper.list_market_source_entries()
+        sources = self.skillhelper.list_market_source_entries() if displayed_sources is None else displayed_sources
         if page_index < 1 or page_index > len(sources):
             return False, "删除源序号无效"
         target = sources[page_index - 1]
@@ -1081,6 +1092,9 @@ class SkillInteractionHandler:
         构建技能源管理视图，提供自定义 GitHub 源的增删入口。
         """
         sources = self.skillhelper.list_market_source_entries()
+        request.selection_id = uuid.uuid4().hex[:12]
+        request.selection_view = "sources"
+        request.selection_items = deepcopy(sources)
         custom_count = len([source for source in sources if not source.builtin])
         text_lines = [
             f"当前技能源：{len(sources)}",
@@ -1133,7 +1147,7 @@ class SkillInteractionHandler:
                     [
                         {
                             "text": f"删除 {index}",
-                            "callback_data": f"skills:{request.request_id}:source-remove:{index}",
+                            "callback_data": f"skills:{request.request_id}:source-remove:{index}:{request.selection_id}",
                         }
                     ]
                 )

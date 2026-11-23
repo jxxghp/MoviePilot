@@ -13,6 +13,7 @@ from app.agent.orchestrator import MoviePilotAgent, _SessionUsageSnapshot
 from app.agent.steering import SteeringInbox, SteeringMessage, SteeringStatusCallback
 from app.agent.terminal.ownership import TerminalScope, close_terminal_scope
 from app.application.agent import AgentDataContext
+from app.application.messaging.interaction import InteractionKey
 from app.chain.agent import AgentChain
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
@@ -107,6 +108,7 @@ class _MessageTask:
     :param is_channel_admin: 可信入口确认的渠道管理员身份；尚未给定时为 None
     :param original_message_id: 原始渠道消息标识，用于回复关联
     :param original_chat_id: 原始渠道会话标识，用于群组或线程回复
+    :param interaction_address: 按钮选择所用的原始入站会话地址
     :param processing_status: 已建立的渠道处理中状态，供任务结束时收口
     :param reply_mode: 回复投递方式，默认通过渠道派发
     :param allow_message_tools: 是否允许本次 Agent 使用消息发送工具
@@ -141,6 +143,7 @@ class _MessageTask:
     is_channel_admin: Optional[bool] = None
     original_message_id: Optional[str] = None
     original_chat_id: Optional[str] = None
+    interaction_address: Optional[InteractionKey] = None
     processing_status: Optional[dict[str, Any]] = None
     reply_mode: ReplyMode = ReplyMode.DISPATCH
     allow_message_tools: bool = True
@@ -377,6 +380,7 @@ class AgentSessionOwner:
             execution_user_id: Optional[int] = None,
             execution_user_identity: Optional[str] = None,
             authorization_id: Optional[str] = None,
+            interaction_address: Optional[InteractionKey] = None,
     ) -> str:
         """
         处理用户消息：同渠道的运行中补充输入进入当前上下文，其余消息按会话排队。
@@ -416,6 +420,7 @@ class AgentSessionOwner:
             execution_user_id=execution_user_id,
             execution_user_identity=execution_user_identity,
             authorization_id=authorization_id,
+            interaction_address=interaction_address,
         )
         async with self._lifecycle_lock:
             if not self._accepting_tasks:
@@ -507,8 +512,8 @@ class AgentSessionOwner:
         if active is None or inbox is None or active.scheduled_run_id is not None:
             return False
         identity_fields = (
-            "user_id", "channel", "source", "original_chat_id", "is_channel_admin",
-            "reply_mode", "allow_message_tools",
+            "user_id", "channel", "source", "original_chat_id", "is_channel_admin", "interaction_address",
+            "reply_mode", "allow_message_tools", "authorization_id", "execution_user_id", "execution_user_identity",
         )
         if any(getattr(active, name) != getattr(task, name) for name in identity_fields):
             return False
@@ -823,6 +828,7 @@ class AgentSessionOwner:
         agent.execution_user_id = task.execution_user_id
         agent.execution_user_identity = task.execution_user_identity
         agent.authorization_id = task.authorization_id
+        agent.interaction_address = task.interaction_address
         task.agent = agent
         inbox = self._session_steering_inboxes.get(session_id)
         if inbox is None:

@@ -153,3 +153,25 @@ def test_slack_plain_text_interaction_buttons_render_and_clear_on_edit():
     updated = client._client.chat_update.call_args.kwargs
     assert updated["text"] == "正在下载\n50%"
     assert updated["blocks"] == []
+
+def test_slack_new_reply_and_upload_use_original_channel_and_thread(tmp_path):
+    """
+    更新锚点前的新回复和新文件使用同一频道线程，普通独立通知可以仍发给个人。
+    """
+    client = Slack.__new__(Slack)
+    client._client = Mock()
+    client._client.chat_postMessage.return_value = {"ok": True}
+    client._client.files_upload_v2.return_value = {"ok": True}
+    file = tmp_path / "reply.txt"
+    file.write_text("内容", encoding="utf-8")
+
+    address = {"userid": "U42", "original_chat_id": "C1", "thread_id": "1710000000.001"}
+    assert client.send_msg(title="候选", **address)[0]
+    assert client.send_file(str(file), **address)[0]
+    for send in (client._client.chat_postMessage, client._client.files_upload_v2):
+        assert send.call_args.kwargs["channel"] == "C1"
+        assert send.call_args.kwargs["thread_ts"] == address["thread_id"]
+
+    assert client.send_msg(title="独立通知", userid="U42")[0]
+    assert client._client.chat_postMessage.call_args.kwargs["channel"] == "U42"
+    assert "thread_ts" not in client._client.chat_postMessage.call_args.kwargs

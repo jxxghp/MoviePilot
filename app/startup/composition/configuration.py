@@ -318,7 +318,6 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         transfer_task_timeout=settings.TRANSFER_TASK_TIMEOUT,
         scrape_follow_tmdb=settings.SCRAP_FOLLOW_TMDB,
         metadata_cache_ttl=settings.CONF.meta,
-        auto_download_user=settings.AUTO_DOWNLOAD_USER,
         resource_url=settings.MP_DOMAIN("#/resource"),
         history_url=settings.MP_DOMAIN("#/history"),
         downloading_url=settings.MP_DOMAIN("#/downloading"),

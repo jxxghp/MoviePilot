@@ -2,16 +2,25 @@
 飞书通知模块的实例管理、投递路由和统一消息接口。
 """
 
+from functools import partial
 from typing import Any, List, Optional, Tuple, Union
+from uuid import uuid4
 
 from app.application.messaging.channel.admin import (
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
+from app.application.messaging.delivery import (
+    NotificationParts,
+    managed_notification_dispatch,
+    notification_preflight_active,
+)
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.feishu.feishu import Feishu
+from app.runtime.correlation import get_correlation_id
 from app.schemas.message import IncomingMessage, Message, MessageResponse
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
@@ -39,6 +48,12 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         """
         super().init_service(service_name=Feishu.__name__.lower(), service_type=Feishu)
         self._channel = NotificationChannel.Feishu
+
+    def _service_kwargs(self, conf: NotificationConf) -> dict[str, Any]:
+        """
+        仅在交互启用时启动飞书事件长连接。
+        """
+        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_ws": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:
@@ -157,25 +172,39 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             return None
         return client.parse_message(body)
 
-    def post_message(self, message: Message, **kwargs: Any) -> None:
+    def post_message(self, message: Message, **kwargs: Any) -> Optional[bool]:
         """
         向符合通知规则的实例发送卡片、附件或语音。
 
         :param message: 通知内容和目标；同时有封面与文件时分别发送卡片和附件
         :param kwargs: 兼容模块分发的附加参数，当前不使用
+        :return: 强制私聊实际发送并确认后返回 True；普通通知或平台不匹配返回 None
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Optional[Feishu] = self.get_instance(conf.name)
-            if client:
+            if not self._has_resolved_notification_target(conf, userid, chat_id, message.original_message_id):
+                self.record_delivery(message, conf, None, status="skipped", code="no_target")
+                continue
+            target = chat_id or userid
+            client: Optional[Feishu] = self.get_message_client(conf.name, message)
+            if client is None:
+                self.record_delivery(message, conf, None, target=target, status="retryable_failure", code="client_unavailable")
+            elif isinstance(client, Feishu):
+                self._post_tracked_notification(message, conf, client, (userid, chat_id, receive_id_type))
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+            else:
+                if notification_preflight_active():
+                    continue
                 if message.native_image and message.image:
-                    client.send_image(
-                        image=message.image, title=message.title, text=message.text, userid=userid,
-                        chat_id=chat_id, receive_id_type=receive_id_type, buttons=message.buttons,
+                    self.record_delivery(message, conf, client.send_image(
+                        image=message.image, title=message.title, text=message.text,
+                        userid=userid, chat_id=chat_id, receive_id_type=receive_id_type, buttons=message.buttons,
                         original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                    )
+                    ), target=target)
                 elif message.file_path:
-                    client.send_file(
+                    self.record_delivery(message, conf, client.send_file(
                         file_path=message.file_path,
                         userid=userid,
                         chat_id=chat_id,
@@ -184,24 +213,51 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
                         file_name=message.file_name,
                         receive_id_type=receive_id_type,
                         original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                    )
+                    ), target=target)
                 elif message.voice_path:
-                    client.send_voice(
+                    self.record_delivery(message, conf, client.send_voice(
                         voice_path=message.voice_path,
                         userid=userid,
                         chat_id=chat_id,
                         caption=message.voice_caption,
                         receive_id_type=receive_id_type,
                         original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                    )
+                    ), target=target)
                 else:
-                    client.send_notification(
+                    self.record_delivery(message, conf, client.send_notification(
                         message=message,
                         userid=userid,
                         chat_id=chat_id,
                         receive_id_type=receive_id_type,
                         original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                    )
+                    ), target=target)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+        return None
+
+    def _post_tracked_notification(
+        self, message: Message, conf: NotificationConf, client: Feishu,
+        target: tuple[str | None, str | None, str | None],
+    ) -> None:
+        """
+        将飞书卡片和实际地址记录到当前连接的投递进度。
+        """
+        parts = NotificationParts(NotificationChannel.Feishu, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+
+        event = get_correlation_id() if managed_notification_dispatch() else None
+        nonce = f"{event or uuid4()}:{conf.id}:{conf.identity_namespace}"
+        self.confirm_private_delivery(message, client.send_tracked_notification(
+            message, target, nonce=nonce, receipt=partial(parts.record, message), part_sender=parts.send, plan=parts.plan,
+        ))
+
+    def _has_resolved_notification_target(
+        self, conf: NotificationConf, userid: str | None, chat_id: str | None,
+        reply_to: str | int | None,
+    ) -> bool:
+        """
+        宿主通知使用当前受众、回复目标或配置的默认地址。
+        """
+        return bool(userid or chat_id or reply_to or self._has_admin_default(conf))
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
@@ -210,19 +266,20 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         :param message: 标题、按钮和接收目标等通知信息
         :param medias: 媒体候选列表，客户端最多展示前 10 项
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Optional[Feishu] = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_message_client(conf.name, message)
             if client:
-                client.send_medias_message(
+                self.record_delivery(message, conf, client.send_medias_message(
                     message=message,
                     medias=medias,
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
-                )
+                ))
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
@@ -231,19 +288,20 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         :param message: 标题、按钮和接收目标等通知信息
         :param torrents: 种子候选列表，客户端最多展示前 10 项
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Optional[Feishu] = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_message_client(conf.name, message)
             if client:
-                client.send_torrents_message(
+                self.record_delivery(message, conf, client.send_torrents_message(
                     message=message,
                     torrents=torrents,
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
-                )
+                ))
 
     def edit_message(
             self,
@@ -299,21 +357,22 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         :param message: 待发送通知；plain 模式通过纯文本保留敏感字符，封面与文件分别发送
         :return: 成功主消息的引用与可选流式状态；没有成功实例时返回 None
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Optional[Feishu] = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_message_client(conf.name, message)
             if not client:
                 continue
             if message.native_image and message.image:
-                result = client.send_image(
-                    image=message.image, title=message.title, text=message.text, userid=userid,
-                    chat_id=chat_id, receive_id_type=receive_id_type, buttons=message.buttons,
+                result = self.record_delivery(message, conf, client.send_image(
+                    image=message.image, title=message.title, text=message.text,
+                    userid=userid, chat_id=chat_id, receive_id_type=receive_id_type, buttons=message.buttons,
                     original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                )
+                ))
             elif message.file_path:
-                result = client.send_file(
+                result = self.record_delivery(message, conf, client.send_file(
                     file_path=message.file_path,
                     userid=userid,
                     chat_id=chat_id,
@@ -322,16 +381,16 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
                     file_name=message.file_name,
                     receive_id_type=receive_id_type,
                     original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                )
+                ))
             elif message.voice_path:
-                result = client.send_voice(
+                result = self.record_delivery(message, conf, client.send_voice(
                     voice_path=message.voice_path,
                     userid=userid,
                     chat_id=chat_id,
                     caption=message.voice_caption,
                     receive_id_type=receive_id_type,
                     original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                )
+                ))
             elif str(message.parse_mode or "").strip().lower() == "plain":
                 # 受保护结果必须绕过 Markdown 卡片，避免密钥字符被解释或改写。
                 plain_text = "\n".join(
@@ -339,21 +398,21 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
                     for part in (message.title, message.text, message.link)
                     if part
                 )
-                result = client.send_text(
+                result = self.record_delivery(message, conf, client.send_text(
                     text=plain_text,
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
                     original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                )
+                ))
             else:
-                result = client.send_notification(
+                result = self.record_delivery(message, conf, client.send_notification(
                     message=message,
                     userid=userid,
                     chat_id=chat_id,
                     receive_id_type=receive_id_type,
                     original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                )
+                ))
             if result and result.get("success"):
                 return MessageResponse(
                     message_id=result.get("message_id"),

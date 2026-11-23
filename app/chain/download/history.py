@@ -82,6 +82,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             previous_selection: Optional[torrent_rules.ConfirmedSelection] = None,
             accepted_files: Optional[list[tuple[int, str]]] = None,
             downloader_scope: str = "",
+            owner_identity: str | None = None,
+            task_reference: str | None = None,
     ) -> None:
         """
         提交下载历史、文件明细和 durable 下载事件。
@@ -100,6 +102,9 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         :param previous_selection: 提交前在同一把任务锁内读到的确认记录；None 表示没有该 hash 的下载历史
         :param accepted_files: 受理后在同一把任务锁内读到的下载器文件索引与路径；None 表示读取失败，本次不记录确认文件
         :param downloader_scope: 请求指向的下载器范围，重复提交退避按它记录
+
+        :param owner_identity: 发起本次下载的已认证账号身份
+        :param task_reference: 交给下载器的本次提交标识
         """
         if layout == "NoSubfolder" or not folder_name:
             download_path = download_dir / file_list[0] if file_list else download_dir
@@ -129,6 +134,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             torrent_site=torrent.site_name,
             userid=userid,
             username=username,
+            owner_identity=owner_identity,
+            task_reference=task_reference,
             channel=channel.value if channel else None,
             date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
             media_category_id=classification.category_id,
@@ -197,6 +204,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             username=username,
             download_episodes=download_episodes,
         )
+        if notification and (owner_identity or context.subscription_download):
+            notification.subscription_owner_identity = owner_identity or ""
         notification_payload = snapshot_download_notification(notification)
         processing_payload = snapshot_download_processing(
             context=context,

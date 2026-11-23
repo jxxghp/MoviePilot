@@ -2,6 +2,7 @@
 模块生命周期、配置化服务实例和消息路由的公共基类。
 """
 
+import re
 import threading
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterator
@@ -9,9 +10,18 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Generic, Mapping, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from app.application.messaging.attachment import notification_parts
+from app.application.messaging.channel.rules import notification_rule_applies, routed_notification_messages
+from app.application.messaging.delivery import (
+    delivery_status,
+    legacy_attachment_layout_active,
+    notification_preflight_active,
+    notification_rules_for_dispatch,
+    platform_message_id,
+)
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
+from app.schemas.delivery import DeliveryResult, DeliveryStatus
 from app.schemas.message import Message, MessageResponse
 from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf
 from app.schemas.types import (
@@ -345,7 +355,7 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
     """
     消息基类。
     """
-    CONFIG_WATCH = {SystemConfigKey.Notifications.value}
+    CONFIG_WATCH = {SystemConfigKey.Notifications.value, SystemConfigKey.ChannelSettings.value}
     # 当前用户个人信息中允许用于定向投递的渠道绑定键。
     _notification_user_target_keys: tuple[str, ...] = ()
     # 管理员未绑定个人 ID 时可作为管理员默认目标的渠道配置键。
@@ -369,6 +379,117 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
             return {}
         return {conf.name: conf for conf in configs if conf.type == self._service_name and conf.enabled}
 
+    def prepare_message(self, message: Message) -> Message:
+        """
+        在发送边界验证强制私聊的实例和个人地址，清除群回复及编辑上下文。
+
+        :param message: 不在本方法中修改的原始通知
+        :return: 通过检查的私聊副本；普通或其他平台的消息保持原样
+        :raises PermissionError: 平台不支持、实例不明确、缺少用户或地址属于群
+        """
+        if not message.private_delivery:
+            return message
+        if message.channel is None:
+            raise PermissionError("强制私聊必须明确指定平台，不能按实例名称广播")
+        channel = self._channel or getattr(self, "get_subtype")()
+        if message.channel is not None and message.channel != channel:
+            return message
+        if channel not in {
+            NotificationChannel.Telegram, NotificationChannel.Wechat, NotificationChannel.WechatClawBot,
+            NotificationChannel.Feishu, NotificationChannel.QQ, NotificationChannel.Discord,
+            NotificationChannel.Slack, NotificationChannel.VoceChat, NotificationChannel.SynologyChat,
+        }:
+            raise PermissionError("该渠道不支持机器人个人私聊投递")
+        if not message.source or message.userid is None or not str(message.userid).strip():
+            raise PermissionError("强制私聊必须指定渠道实例和个人用户 ID")
+        if message.source not in self.get_configs():
+            raise RuntimeError("私聊渠道实例不存在或已停用")
+        userid = str(message.userid).strip()
+        if userid.lower().startswith(("group:", "gid#")) or userid.endswith("@chatroom"):
+            raise PermissionError("强制私聊不能使用群地址")
+        if channel == NotificationChannel.Telegram and (not userid.isascii() or not userid.isdecimal() or int(userid) <= 0):
+            raise PermissionError("Telegram 私聊必须使用正整数个人用户 ID")
+        if channel == NotificationChannel.Wechat and (
+                userid.lower() == "@all" or not re.fullmatch(r"[A-Za-z0-9_@.-]+", userid)
+        ):
+            raise PermissionError("企业微信私聊必须是单个个人用户，不能使用全体或多用户地址")
+        if channel == NotificationChannel.Slack and not re.fullmatch(r"[UW][A-Z0-9]+", userid):
+            raise PermissionError("Slack 私聊必须使用个人用户 ID，不能使用频道或频道名称")
+        if channel == NotificationChannel.Feishu and userid.startswith("oc_"):
+            raise PermissionError("飞书私聊不能使用群会话 ID")
+        return message.model_copy(update={
+            "channel": channel, "userid": userid, "targets": None,
+            "original_chat_id": None, "original_message_id": None, "thread_id": None, "force_reply": False,
+        })
+
+    @staticmethod
+    def confirm_private_delivery(message: Message, result: Any) -> Any:
+        """
+        私聊路径只接受平台明确确认，不将失败或未知结果解释成成功。
+
+        :param message: 待确认的通知；普通消息沿用原发送结果
+        :param result: 平台布尔、元组或带 success 字段的结果
+        :return: 原平台结果
+        :raises RuntimeError: 强制私聊没有明确成功确认
+        """
+        if message.private_delivery:
+            if isinstance(result, dict):
+                confirmed = result.get("success")
+            elif isinstance(result, tuple) and result:
+                confirmed = result[0]
+            else:
+                confirmed = result
+            if confirmed is not True:
+                raise RuntimeError("私聊投递未确认，未回退到群聊或默认目标")
+        return result
+
+    def record_delivery(
+        self, message: Message, config: NotificationConf, result: Any,
+        *, target: Optional[str] = None, part: int = 0, status: DeliveryStatus | None = None,
+        code: Optional[str] = None, retry_after: int | None = None,
+    ) -> Any:
+        """
+        收集平台回执并维持旧发送入口的返回值和私聊约束。
+
+        :param message: 当前派发，持有此次调用的回执记录
+        :param config: 当前命中的渠道连接配置
+        :param result: 平台直接返回的结果
+        :param target: 已经明确选定的目标，缺失时记录连接级回执
+        :param part: 该次传输在分段中的序号
+        :param status: 传输层能明确识别时提供更具体的失败类型
+        :param code: 脱敏的固定分类
+        :param retry_after: 平台明确建议的等待秒数
+        :return: 平台原始结果
+        """
+        connection_id = getattr(config, "id", None)
+        if notification_preflight_active() and code == "client_unavailable":
+            raise RuntimeError("通知渠道尚未就绪，尚未提交投递清单")
+        channel = self._channel or message.channel
+        if channel and connection_id:
+            outcome = status or delivery_status(result)
+            message.record_delivery_result(DeliveryResult(
+                channel=channel, connection_id=connection_id, target_id=target,
+                identity_namespace=getattr(config, "identity_namespace", None),
+                part=message.attachment_part_offset + part, status=outcome, code=code,
+                message_id=platform_message_id(result) if outcome == "confirmed" else None,
+                retry_after=retry_after,
+            ))
+        return self.confirm_private_delivery(message, result)
+
+    def get_message_client(self, source: Optional[str], message: Message) -> Optional[TService]:
+        """
+        读取指定实例的发送客户端，私聊实例未就绪时显式失败。
+
+        :param source: 已由消息范围选中的实例名称
+        :param message: 当前消息，决定是否需要私聊的严格失败语义
+        :return: 已存在的客户端；普通消息未就绪时为空
+        :raises RuntimeError: 私聊实例没有可用客户端
+        """
+        client = self.get_instance(source)
+        if client is None and message.private_delivery:
+            raise RuntimeError("私聊渠道客户端尚未就绪，未使用其他实例或默认目标")
+        return client
+
     def iter_message_configs(self, message: Message) -> Iterator[tuple[NotificationConf, Message]]:
         """
         先按原通知过滤实例，再为每个实例独立适配图片与附件。
@@ -383,9 +504,27 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
             if channel is None:
                 subtype = getattr(self, "get_subtype", lambda: None)()
                 channel = subtype if isinstance(subtype, NotificationChannel) else None
-            parts = notification_parts(message, channel) if channel is not None else [message]
-            for part in parts:
-                yield conf, part
+            messages = self._rule_messages(message, conf)
+            for routed in messages:
+                if legacy_attachment_layout_active():
+                    if channel != NotificationChannel.Wechat and routed.native_image:
+                        routed = routed.model_copy(update={"native_image": False})
+                    yield conf, routed
+                    continue
+                for part in notification_parts(routed, channel) if channel is not None else (routed,):
+                    yield conf, part
+
+    def _rule_messages(self, message: Message, config: NotificationConf) -> Iterator[Message]:
+        """
+        应用主动通知规则，保留兼容渠道及明确收件地址。
+        """
+        rules = notification_rules_for_dispatch(config) if notification_rule_applies(message) else None
+        if rules is None:
+            yield message
+            return
+        yield from routed_notification_messages(
+            message, config, rules, has_bound_target=self._has_notification_target(message),
+        )
 
     def _send_direct_parts(
         self, message: Message, sender: Callable[[Message], Optional[MessageResponse]],
@@ -393,6 +532,7 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         """
         直接发送接口也保留组合附件；后续部分绑定首条成功实例，任一失败不得当作完整成功。
         """
+        message = self.prepare_message(message)
         channel = getattr(self, "_channel", None) or getattr(self, "get_subtype", lambda: None)()
         parts = notification_parts(message, channel) if isinstance(channel, NotificationChannel) else [message]
         first = None
@@ -420,6 +560,12 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         # 检查消息来源
         if message.source and message.source != source:
             return False
+        if not self._feature_allows_delivery(message, source):
+            return False
+        conf = self.get_config(source)
+        if conf is not None and notification_rule_applies(message) and notification_rules_for_dispatch(conf) is not None:
+            # 规则负责事件和受众匹配，避免先按已经移走的适配器默认目标过滤。
+            return True
         route_scope = message.notification_route_scope
         if route_scope == "user":
             if not self._has_notification_target(message):
@@ -433,13 +579,40 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         if route_scope is None and not message.userid and not message.mtype:
             return bool(message.targets)
         # 不是定向发送时，检查消息类型开关
-        if not message.userid and message.mtype:
+        if not message.userid and message.mtype and message.delivery_kind not in {"reply", "task_result", "authorization_receipt"}:
             conf = self.get_config(source)
             if conf:
                 switchs = conf.switchs or []
                 if message.mtype.value not in switchs:
                     return False
         return True
+
+    def _feature_allows_delivery(self, message: Message, source: Optional[str]) -> bool:
+        """
+        按通知语义检查共享连接所启用的功能。
+
+        :param message: 已完成回复上下文归一化的发送请求
+        :param source: 待检查的连接名称
+        :return: 旧连接或该功能可用时为 True
+        """
+        config = self.get_config(source)
+        binding = message.delivery_connection
+        if binding is not None and (
+            config is None or (config.id, config.identity_namespace or config.id) != binding
+        ):
+            return False
+        connection_id = getattr(config, "id", None)
+        if not message.accepts_delivery_connection(
+            connection_id, getattr(config, "identity_namespace", None) or connection_id,
+        ):
+            return False
+        if config is None:
+            return True
+        if message.delivery_kind == "authorization_receipt":
+            return getattr(config, "enabled", True) is not False
+        if message.delivery_kind in {"reply", "task_result"}:
+            return getattr(config, "interaction_enabled", None) is not False
+        return getattr(config, "notification_enabled", None) is not False
 
     def _has_notification_target(self, message: Message) -> bool:
         """

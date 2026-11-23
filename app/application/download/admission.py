@@ -1,9 +1,12 @@
 """
-订阅下载提交前的可取消执行边界。
+下载提交前的授权复核与订阅取消边界。
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -12,6 +15,49 @@ from app.schemas.common import JsonData
 
 if TYPE_CHECKING:
     from app.domain.context import Context
+
+
+_download_authorization: ContextVar[Callable[[], None] | None] = ContextVar("download_authorization", default=None)
+
+
+class DownloadAuthorizationError(PermissionError):
+    """
+    媒体准备期间失去下载权限，当前提交应中止。
+    """
+
+
+@contextmanager
+def scoped_download_authorization(check: Callable[[], None] | None) -> Iterator[None]:
+    """
+    在当前下载请求内安装执行权限检查。
+
+    :param check: 权限失效时抛出 PermissionError 的检查，None 清除继承的检查
+    """
+    token = _download_authorization.set(check)
+    try:
+        yield
+    finally:
+        _download_authorization.reset(token)
+
+
+def get_download_authorization() -> Callable[[], None] | None:
+    """
+    读取本次下载提交的权限检查。
+    """
+    return _download_authorization.get()
+
+
+def verify_download_authorization(check: Callable[[], None] | None) -> None:
+    """
+    执行本次提交的权限检查，并把撤权与下载器故障区分。
+
+    :param check: 下载入口提供的实时校验，旧入口可以为空
+    """
+    if check is not None:
+        try:
+            check()
+        except PermissionError as error:
+            raise DownloadAuthorizationError(str(error)) from error
 
 
 @dataclass(frozen=True, slots=True)

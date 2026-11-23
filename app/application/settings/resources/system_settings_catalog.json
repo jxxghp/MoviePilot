@@ -206,11 +206,6 @@
       "group": "authentication",
       "source_file": "app/runtime/config.py"
     },
-    "AUTO_DOWNLOAD_USER": {
-      "description": "交互搜索自动下载用户ID，使用,分割",
-      "group": "downloads",
-      "source_file": "app/runtime/config.py"
-    },
     "AUTO_UPDATE_RESOURCE": {
       "description": "后台检查站点资源包，确认后由启动器在进程拉起前应用",
       "group": "system_update",
@@ -1416,6 +1411,11 @@
     "BestVersionFilterRuleGroups": {
       "description": "洗版默认过滤规则组",
       "enum_name": "BestVersionFilterRuleGroups",
+      "source_file": "app/schemas/types.py"
+    },
+    "ChannelSettings": {
+      "description": "共享渠道连接、通知路由和交互策略的原子配置快照。",
+      "enum_name": "ChannelSettings",
       "source_file": "app/schemas/types.py"
     },
     "CustomFilterRules": {

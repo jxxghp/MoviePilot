@@ -13,6 +13,7 @@ from app.api.context import get_host_runtime, get_sync_session
 from app.api.endpoints import message as message_endpoint
 from app.api.endpoints.message import is_webpush_subscription_gone
 from app.application.security.token import create_access_token
+from app.application.webpush import WebPushRegistration
 from app.runtime.config import global_vars, settings
 from app.runtime.webpush import webpush_registry
 from app.schemas.message import SubscriptionMessage
@@ -20,13 +21,19 @@ from app.schemas.token import TokenPayload
 
 
 @pytest.fixture(autouse=True)
-def clear_push_subscriptions():
+def clear_push_subscriptions(monkeypatch):
     """
-    在每个用例前后清理跨用例共享的 Web Push 订阅。
+    隔离旧 ABI 登记和新管理投递计划，二者不共享事实源。
+
+    :param monkeypatch: 仅为管理发送测试替换应用端口
+    :yields: 本次测试明确安排的管理投递快照列表
     """
     with global_vars.SUBSCRIPTIONS_LOCK:
         global_vars.SUBSCRIPTIONS.clear()
-    yield
+    registrations = []
+    service = SimpleNamespace(management_targets=lambda: tuple(registrations), remove_expired=lambda _item: True)
+    monkeypatch.setattr(message_endpoint, "get_webpush_service", lambda: service)
+    yield registrations
     with global_vars.SUBSCRIPTIONS_LOCK:
         global_vars.SUBSCRIPTIONS.clear()
 
@@ -87,13 +94,11 @@ def test_is_webpush_subscription_gone_matches_404_and_410():
     )
 
 
-def test_send_notification_reports_all_delivery_failures(monkeypatch):
+def test_send_notification_reports_all_delivery_failures(monkeypatch, clear_push_subscriptions):
     """
     所有浏览器通知发送失败时，接口应返回可执行的失败提示。
     """
-    webpush_registry.upsert(
-        {"endpoint": "https://push.example/a", "keys": {"p256dh": "key"}}
-    )
+    clear_push_subscriptions.append(_registration("a"))
     monkeypatch.setattr(
         message_endpoint,
         "get_api_runtime_config_snapshot",
@@ -120,12 +125,11 @@ def test_send_notification_reports_all_delivery_failures(monkeypatch):
     assert response.message == "消息发送失败，请检查浏览器通知权限后重试"
 
 
-def test_send_notification_reports_partial_delivery(monkeypatch):
+def test_send_notification_reports_partial_delivery(monkeypatch, clear_push_subscriptions):
     """
     部分设备发送成功时，接口应同时告知成功和失败数量。
     """
-    webpush_registry.upsert({"endpoint": "https://push.example/a", "keys": {}})
-    webpush_registry.upsert({"endpoint": "https://push.example/b", "keys": {}})
+    clear_push_subscriptions.extend([_registration("a"), _registration("b")])
     monkeypatch.setattr(
         message_endpoint,
         "get_api_runtime_config_snapshot",
@@ -157,12 +161,25 @@ def test_send_notification_reports_partial_delivery(monkeypatch):
     assert response.message == "消息已发送到 1 个设备，1 个设备发送失败"
 
 
-def _webpush_send_client(monkeypatch, user) -> tuple[TestClient, list[dict]]:
+def _registration(endpoint: str) -> WebPushRegistration:
+    """
+    构造应用服务已经完成账号筛选的管理目标快照。
+
+    :param endpoint: 离线端点尾部
+    :return: 不含 ORM 或进程内旧登记的投递记录
+    """
+    return WebPushRegistration(
+        endpoint=f"https://push.example/{endpoint}", p256dh="key", auth="secret",
+        user_id=7, owner="a" * 32, revision="b" * 32,
+    )
+
+
+def _webpush_send_client(monkeypatch, user, registrations) -> tuple[TestClient, list[dict]]:
     """
     构造挂载真实消息路由的客户端，并记录实际发出的浏览器通知。
     """
     deliveries = []
-    webpush_registry.upsert({"endpoint": "https://push.example/a", "keys": {}})
+    registrations.append(_registration("a"))
     monkeypatch.setattr(access, "_token_identity_validator", lambda _payload: None)
     monkeypatch.setattr(
         message_endpoint,
@@ -206,12 +223,12 @@ def _user(*, superuser: bool) -> SimpleNamespace:
     return SimpleNamespace(id=7, name="tester", is_active=True, is_superuser=superuser)
 
 
-def test_send_notification_rejects_regular_user_without_delivery(monkeypatch):
+def test_send_notification_rejects_regular_user_without_delivery(monkeypatch, clear_push_subscriptions):
     """
     普通用户调用 webpush/send 应返回 403，且不向任何订阅发送通知。
     """
     user = _user(superuser=False)
-    client, deliveries = _webpush_send_client(monkeypatch, user)
+    client, deliveries = _webpush_send_client(monkeypatch, user, clear_push_subscriptions)
 
     with client:
         response = client.post(
@@ -224,12 +241,12 @@ def test_send_notification_rejects_regular_user_without_delivery(monkeypatch):
     assert deliveries == []
 
 
-def test_send_notification_allows_superuser(monkeypatch):
+def test_send_notification_allows_superuser(monkeypatch, clear_push_subscriptions):
     """
     超级管理员登录后可以向已订阅浏览器发送通知。
     """
     user = _user(superuser=True)
-    client, deliveries = _webpush_send_client(monkeypatch, user)
+    client, deliveries = _webpush_send_client(monkeypatch, user, clear_push_subscriptions)
 
     with client:
         response = client.post(
@@ -244,12 +261,12 @@ def test_send_notification_allows_superuser(monkeypatch):
     assert deliveries[0]["subscription"]["endpoint"] == "https://push.example/a"
 
 
-def test_send_notification_allows_api_token(monkeypatch):
+def test_send_notification_allows_api_token(monkeypatch, clear_push_subscriptions):
     """
     使用 API_TOKEN 的外部集成按超级管理员身份继续可以发送通知。
     """
     user = _user(superuser=True)
-    client, deliveries = _webpush_send_client(monkeypatch, user)
+    client, deliveries = _webpush_send_client(monkeypatch, user, clear_push_subscriptions)
     monkeypatch.setattr(settings, "API_TOKEN", "webpush-test-api-token")
     monkeypatch.setattr(
         access,
@@ -269,12 +286,12 @@ def test_send_notification_allows_api_token(monkeypatch):
     assert len(deliveries) == 1
 
 
-def test_webpush_public_key_returns_active_key_for_logged_in_user(monkeypatch):
+def test_webpush_public_key_returns_active_key_for_logged_in_user(monkeypatch, clear_push_subscriptions):
     """
     已登录用户应能通过专用接口获取当前实例的 VAPID 公钥，匿名请求则被拒绝。
     """
     user = _user(superuser=False)
-    client, _deliveries = _webpush_send_client(monkeypatch, user)
+    client, _deliveries = _webpush_send_client(monkeypatch, user, clear_push_subscriptions)
 
     with client:
         unauthenticated = client.get("/message/webpush/public-key")
@@ -292,12 +309,12 @@ def test_webpush_public_key_returns_active_key_for_logged_in_user(monkeypatch):
     }
 
 
-def test_webpush_public_key_reports_unavailable_when_missing(monkeypatch):
+def test_webpush_public_key_reports_unavailable_when_missing(monkeypatch, clear_push_subscriptions):
     """
     当前实例未获得有效 VAPID 公钥时，接口应返回明确的失败响应。
     """
     user = _user(superuser=True)
-    client, _deliveries = _webpush_send_client(monkeypatch, user)
+    client, _deliveries = _webpush_send_client(monkeypatch, user, clear_push_subscriptions)
     monkeypatch.setattr(
         message_endpoint,
         "get_api_runtime_config_snapshot",

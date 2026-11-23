@@ -38,6 +38,24 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 INCOMPLETE_IDENTITY = (0, "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试")
 
 
+class SubscriptionAuthorizationError(PermissionError):
+    """
+    准备订阅期间渠道权限失效，拒绝返回或保存订阅。
+    """
+
+
+def verify_subscription_authorization(authorize: Callable[[], None]) -> None:
+    """
+    执行订阅权限复核，将撤权与存储故障区分。
+
+    :param authorize: 使用当前状态校验渠道操作及归属的回调
+    """
+    try:
+        authorize()
+    except PermissionError as error:
+        raise SubscriptionAuthorizationError(str(error)) from error
+
+
 class SubscriptionOutboxStager(Protocol):
     """
     同步订阅事务暂存持久投递意图 的最小端口。

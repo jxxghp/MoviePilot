@@ -23,6 +23,7 @@ class SubscribeSearchActor:
 
     username: str
     is_superuser: bool
+    owner_identity: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +93,11 @@ class SearchSubscriptionsCommand:
             return await self._submit_search((subscribe_id,), True)
 
         search_username = None if actor.is_superuser else actor.username
-        if mtype is None:
+        if not actor.is_superuser and actor.owner_identity is not None:
+            subscribe_ids = await self._repository.list_search_ids(
+                search_username, "R", mtype=mtype, owner_identity=actor.owner_identity,
+            )
+        elif mtype is None:
             # 保留旧调用形态，兼容仍只实现全量查询参数的外部端口测试替身。
             subscribe_ids = await self._repository.list_search_ids(search_username, "R")
         else:
@@ -123,4 +128,6 @@ class SearchSubscriptionsCommand:
             return False
         if actor.is_superuser:
             return True
-        return bool(candidate.username) and candidate.username == actor.username
+        if actor.owner_identity is not None:
+            return bool(actor.owner_identity) and candidate.owner_identity == actor.owner_identity
+        return not candidate.owner_identity and bool(candidate.username) and candidate.username == actor.username

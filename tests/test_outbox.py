@@ -5,7 +5,8 @@ durable side-effect outbox 原子性、认领、重试与稳定重放测试。
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from threading import Barrier
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock
 from uuid import UUID
 
 import pytest
@@ -13,7 +14,9 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.application.maintenance import CleanupPolicy, DataCleanupService
+from app.application.messaging.delivery import NotificationParts, merge_notification_progress
 from app.application.outbox import (
+    CHANNEL_AUTHORIZATION_RECEIPT_TOPIC,
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
@@ -28,14 +31,23 @@ from app.application.subscription.contract import (
     SubscriptionPatch,
 )
 from app.application.subscription.write import CreateSubscriptionCommand
+from app.chain._messaging import NotificationMixin
 from app.db.adapters.outbox import (
+    SqlAlchemyAsyncOutboxDispatchStore,
     SqlAlchemyOutboxDispatchStore,
     SqlAlchemyOutboxStager,
 )
 from app.db.base import Base
 from app.db.maintenance import DatabaseCleanupRepository
 from app.db.models.outbox import OutboxMessage
-from app.schemas.types import MediaSource
+from app.db.session import async_session_scope
+from app.modules.wechat import WechatModule
+from app.modules.wechat.wechat import WeChat
+from app.schemas.delivery import DeliveryResult
+from app.schemas.message import Message
+from app.schemas.system import NotificationConf
+from app.schemas.types import MediaSource, NotificationChannel
+from app.startup.composition import outbox as outbox_runtime
 
 
 class _Staged:
@@ -243,6 +255,259 @@ def test_sync_outbox_claim_is_exclusive_for_event_key() -> None:
     assert message.lease_until == lease_until.isoformat()
 
 
+@pytest.mark.asyncio
+async def test_async_outbox_does_not_claim_absent_event(db):
+    """
+    工作进程不能为尚未记录的通知分配可发送认领。
+    """
+    db.watermark(OutboxMessage)
+    store = SqlAlchemyAsyncOutboxDispatchStore(async_session_scope)
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    assert await store.claim_by_event_key("notification:absent-fixture", now, now + timedelta(seconds=5)) is None
+
+
+def test_notification_progress_is_fenced_by_claim_and_preserves_confirmed_part(tmp_path) -> None:
+    """
+    部分投递记录在恢复后可读取，旧认领不能覆盖当前进度。
+    """
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'notification.db'}")
+    OutboxMessage.__table__.create(engine)
+    factory = sessionmaker(engine)
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    event_key = "notification:fixture"
+    with factory.begin() as session:
+        SqlAlchemyOutboxStager(session).stage(OutboxIntent(
+            event_key=event_key, topic=DOWNLOAD_NOTIFICATION_TOPIC, payload={"message": {"title": "测试"}},
+        ), now)
+
+    store = SqlAlchemyOutboxDispatchStore(factory)
+    first = store.claim_by_event_key(event_key, now, now + timedelta(seconds=1))
+    assert first is not None
+    success = DeliveryResult(channel=NotificationChannel.Wechat, connection_id="corp",
+                             identity_namespace="bot", target_id="group:one", part=0, status="confirmed")
+    unknown = success.model_copy(update={"part": 1, "status": "unknown"})
+    store.update_notification_progress(first, lambda snapshot: (
+        None, merge_notification_progress(snapshot, (success, unknown)),
+    ))
+
+    later = now + timedelta(seconds=2)
+    second = store.claim_by_event_key(event_key, later, later + timedelta(seconds=10))
+    assert second is not None
+    with pytest.raises(OutboxLeaseLostError):
+        store.update_notification_progress(first, lambda _: (None, {}))
+    failure = success.model_copy(update={"status": "retryable_failure"})
+    store.update_notification_progress(second, lambda snapshot: (
+        None, merge_notification_progress(snapshot, (failure,)),
+    ))
+    with factory() as session:
+        row = session.scalars(select(OutboxMessage)).one()
+        assert row.payload == {"message": {"title": "测试"}, "idempotency_key": event_key}
+        assert row.notification_progress is not None
+        assert {(part["part"], part["status"]) for part in row.notification_progress.values()} == {
+            (0, "confirmed"), (1, "unknown"),
+        }
+    engine.dispose()
+
+
+def test_wechat_app_recovers_unsent_target_after_worker_interruption(tmp_path, monkeypatch) -> None:
+    """
+    首个连接发送时中断，恢复仍能发送其他原连接，且不加入新的连接。
+    """
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'notification-restart.db'}")
+    OutboxMessage.__table__.create(engine)
+    factory = sessionmaker(engine)
+    monkeypatch.setattr(outbox_runtime, "SessionFactory", factory)
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    event_key = "notification:restart"
+    payload = Message(channel=NotificationChannel.Wechat, userid="alice|bob", text="测试").model_dump(mode="json")
+    with factory.begin() as session:
+        SqlAlchemyOutboxStager(session).stage(OutboxIntent(
+            event_key=event_key, topic=DOWNLOAD_NOTIFICATION_TOPIC, payload={"message": payload},
+        ), now)
+
+    config = NotificationConf(id="app", name="app", type="wechat", enabled=True, identity_namespace="app-identity")
+    other = config.model_copy(update={"id": "other", "name": "other", "identity_namespace": "other-tenant"})
+    configs = {config.name: config, other.name: other}
+    monkeypatch.setattr(outbox_runtime, "get_notification_configs", lambda: list(configs.values()))
+    module = WechatModule()
+    module._channel = NotificationChannel.Wechat
+    client = WeChat.__new__(WeChat)
+    client._appid = "fixture-app"
+    monkeypatch.setattr(module, "get_configs", lambda: configs)
+    monkeypatch.setattr(module, "get_config", configs.get)
+    monkeypatch.setattr(module, "get_instance", lambda _: client)
+    send = Mock(side_effect=[KeyboardInterrupt, ("confirmed", None), ("confirmed", None), ("confirmed", None)])
+    monkeypatch.setattr(client, "_send_tracked_part", send)
+
+    def deliver_step(step, **_kwargs):
+        """
+        以渠道模块替代扩展派发器，保留部分失败时的严格结算语义。
+        """
+        results = step.message.collect_delivery_results()
+        module.post_message(step.message)
+        assert {part.connection_id for part in results} <= {"app", "other"}
+        if any(item.status != "confirmed" for item in results):
+            raise RuntimeError("存在未确认分段")
+
+    def dispatch(message, **_kwargs):
+        """
+        使用正常严格通知的路由过程，在任何发送前收集全部宿主连接。
+        """
+        host = SimpleNamespace(
+            runtime_config=SimpleNamespace(superuser="admin"),
+            prepare_notification_parts=module.post_message,
+            _deliver_notification_step=deliver_step,
+        )
+        NotificationMixin._dispatch_notification_steps(host, message, strict_delivery=True, kwargs={})
+
+    monkeypatch.setattr(outbox_runtime, "CommandChain", lambda: Mock(post_message_strict=dispatch))
+    store = SqlAlchemyOutboxDispatchStore(factory)
+    first = store.claim_by_event_key(event_key, now, now + timedelta(seconds=1))
+    assert first is not None
+    with pytest.raises(KeyboardInterrupt):
+        outbox_runtime._dispatch_notification(first)
+    configs["new"] = config.model_copy(update={"id": "new", "name": "new", "identity_namespace": "second-tenant"})
+    later = now + timedelta(seconds=2)
+    second = store.claim_by_event_key(event_key, later, later + timedelta(seconds=10))
+    assert second is not None
+    with pytest.raises(RuntimeError, match="未确认分段"):
+        outbox_runtime._dispatch_notification(second)
+
+    assert [call.args[0]["touser"] for call in send.call_args_list] == ["alice", "bob", "alice", "bob"]
+    with factory() as session:
+        progress = session.scalars(select(OutboxMessage)).one().notification_progress
+        assert progress is not None
+        assert progress["_frozen_connections"] == [["app", "app-identity"], ["other", "other-tenant"]]
+        assert progress["_frozen_delivery_plan"] is True
+        assert {(part["connection_id"], part["target_id"]): part["status"]
+                for part in progress.values() if isinstance(part, dict)} == {
+            ("app", "alice"): "unknown", ("app", "bob"): "confirmed",
+            ("other", "alice"): "confirmed", ("other", "bob"): "confirmed",
+        }
+    engine.dispose()
+
+
+def test_outbox_cancels_superseded_approval_before_network_submit(tmp_path, monkeypatch) -> None:
+    """
+    已出队回执在分段提交前复核审批，处理期间撤销旧审批时结算旧意图。
+    """
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'authorization-race.db'}")
+    OutboxMessage.__table__.create(engine)
+    factory = sessionmaker(engine)
+    monkeypatch.setattr(outbox_runtime, "SessionFactory", factory)
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    key = "receipt:fixture"
+    payload = {"member_id": "member", "version": 1.0, "connection_id": "app", "identity_namespace": "tenant"}
+    with factory.begin() as session:
+        SqlAlchemyOutboxStager(session).stage(OutboxIntent(
+            event_key=key, topic=CHANNEL_AUTHORIZATION_RECEIPT_TOPIC, payload=payload,
+        ), now)
+
+    conf = NotificationConf(id="app", name="app", type="wechat", enabled=True, identity_namespace="tenant")
+    member = SimpleNamespace(channel=NotificationChannel.Wechat.value, sender_id="alice", status="approved")
+    service = SimpleNamespace(receipt_target=Mock(side_effect=[(member, "app"), None]))
+    monkeypatch.setattr(outbox_runtime, "get_channel_authorization", lambda: service)
+    module = WechatModule()
+    module._channel = NotificationChannel.Wechat
+    client = WeChat.__new__(WeChat)
+    client._appid = "fixture-app"
+    submit = Mock(return_value=("confirmed", None))
+    monkeypatch.setattr(client, "_send_tracked_part", submit)
+    monkeypatch.setattr(module, "get_configs", lambda: {"app": conf})
+    monkeypatch.setattr(module, "get_config", lambda _: conf)
+    monkeypatch.setattr(module, "get_instance", lambda _: client)
+
+    def dispatch(message, **_kwargs):
+        """
+        经企业微信真实模块触发分段预留和回执复核。
+        """
+        module.post_message(message)
+
+    monkeypatch.setattr(outbox_runtime, "CommandChain", lambda: Mock(post_message_strict=dispatch))
+    store = SqlAlchemyOutboxDispatchStore(factory)
+    claimed = store.claim_by_event_key(key, now, now + timedelta(seconds=10))
+    assert claimed is not None
+    outbox_runtime._dispatch_authorization_receipt(claimed)
+    submit.assert_not_called()
+    assert service.receipt_target.call_count == 2
+    with factory() as session:
+        progress = session.scalars(select(OutboxMessage)).one().notification_progress or {}
+        assert all(part["code"] == "not_submitted" for part in progress.values() if isinstance(part, dict))
+    engine.dispose()
+
+
+def test_outbox_respects_platform_retry_after(tmp_path, monkeypatch) -> None:
+    """
+    推送服务明确限流后的等待时间到期前，同一意图不会再次进入发送。
+    """
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'webpush-retry.db'}")
+    OutboxMessage.__table__.create(engine)
+    factory = sessionmaker(engine)
+    monkeypatch.setattr(outbox_runtime, "SessionFactory", factory)
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    key = "notification:rate-limit"
+    payload = Message(channel=NotificationChannel.WebPush, title="完成").model_dump(mode="json")
+    with factory.begin() as session:
+        SqlAlchemyOutboxStager(session).stage(OutboxIntent(
+            event_key=key, topic=DOWNLOAD_NOTIFICATION_TOPIC, payload={"message": payload},
+        ), now)
+    monkeypatch.setattr(outbox_runtime, "get_notification_configs", lambda: [])
+
+    def dispatch(_message, **_kwargs):
+        """
+        使用实际分段进度登记一次平台拒绝与等待指示。
+        """
+        parts = NotificationParts(NotificationChannel.WebPush, "web", "tenant")
+        parts.plan((("device", 0, "notification"),))
+        parts.send_result("device", 0, "notification", True, lambda: ("retryable_failure", "http_429", None, 17))
+        raise RuntimeError("限流")
+
+    monkeypatch.setattr(outbox_runtime, "CommandChain", lambda: Mock(post_message_strict=dispatch))
+    store = SqlAlchemyOutboxDispatchStore(factory)
+    dispatcher = OutboxDispatcher(store, {DOWNLOAD_NOTIFICATION_TOPIC: outbox_runtime._dispatch_notification},
+                                  clock=lambda: now)
+    assert dispatcher.dispatch_one() is True
+    assert store.claim_by_event_key(key, now + timedelta(seconds=16), now + timedelta(seconds=26)) is None
+    claim = store.claim_by_event_key(key, now + timedelta(seconds=17), now + timedelta(seconds=27))
+    assert claim is not None and claim.attempt == 2
+    engine.dispose()
+
+
+def test_notification_progress_migration_preserves_legacy_intent_and_guards_downgrade(tmp_path) -> None:
+    """
+    已有业务通知迁移后保留，写入进度后需要用备份回退。
+    """
+    from importlib import import_module
+
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from pytest import MonkeyPatch
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'legacy-outbox.db'}")
+    migration = import_module("database.versions.62c91ad8b057_channel_resources")
+    legacy = sa.Table("outboxmessage", sa.MetaData(),
+                      sa.Column("id", sa.Integer, primary_key=True),
+                      sa.Column("event_key", sa.String, nullable=False))
+    try:
+        with engine.begin() as connection, MonkeyPatch.context() as patch:
+            legacy.create(connection)
+            connection.execute(legacy.insert().values(id=1, event_key="example-event"))
+            patch.setattr(migration, "op", Operations(MigrationContext.configure(connection)))
+            migration._add_notification_progress()
+            migration._add_notification_progress()
+            current = sa.Table("outboxmessage", sa.MetaData(), autoload_with=connection)
+            assert connection.execute(sa.select(current)).one() == (1, "example-event", None)
+            with pytest.raises(RuntimeError, match="备份"):
+                migration.downgrade()
+            migration._add_notification_progress()
+            connection.execute(current.update().values(notification_progress={"part": {"status": "confirmed"}}))
+            with pytest.raises(RuntimeError, match="备份"):
+                migration.downgrade()
+    finally:
+        engine.dispose()
+
+
 def test_concurrent_claim_allows_exactly_one_owner(tmp_path) -> None:
     """
     两个独立 dispatcher 并发竞争同一消息时只允许一个取得 lease。
@@ -421,7 +686,7 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
-    if handler_kind == "event":
+    if handler_kind in {"event", "notification", "download_notification"}:
         from app.startup.composition import outbox as composition
 
         monkeypatch.setattr(composition, "SessionFactory", factory)
@@ -536,6 +801,69 @@ def test_strict_notification_preserves_legacy_provider_signature(monkeypatch) ->
     assert len(received) == 1
     assert received[0][0].source is None
     assert received[0][1] == "subscribe.complete:7:notification"
+
+
+def test_managed_notification_retries_host_without_repeating_legacy_handlers(tmp_path, monkeypatch) -> None:
+    """
+    旧插件和通知事件只走一次，宿主失败分段仍能从数据库认领并重试。
+    """
+    from app.command import CommandChain
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'legacy-notice.db'}")
+    try:
+        OutboxMessage.__table__.create(engine)
+        factory = sessionmaker(engine)
+        monkeypatch.setattr(outbox_runtime, "SessionFactory", factory)
+        now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+        intent = OutboxIntent(
+            event_key="notifications:legacy-once", topic=DOWNLOAD_NOTIFICATION_TOPIC,
+            payload={"message": Message(title="完成", text="通知", save_history=False).model_dump(mode="json")},
+        )
+        with factory.begin() as session:
+            SqlAlchemyOutboxStager(session).stage(intent, now)
+
+        chain = CommandChain()
+        notices = Mock()
+        monkeypatch.setattr(chain.eventmanager, "send_event", notices)
+        monkeypatch.setattr(chain.user_repository, "get_notification_settings", lambda _username: {"telegram_userid": "42"})
+        config = NotificationConf(id="tg", name="tg", type="telegram", enabled=True, identity_namespace="tg")
+        monkeypatch.setattr(outbox_runtime, "get_notification_configs", lambda: [config])
+        monkeypatch.setattr(outbox_runtime, "CommandChain", lambda: chain)
+        parts = NotificationParts(NotificationChannel.Telegram, "tg", "tg")
+        target = "42"
+        monkeypatch.setattr(chain, "prepare_notification_parts", lambda _message: parts.plan(((target, 0, "正文"),)))
+        submit = Mock(side_effect=[("retryable_failure", "rate_limited"), ("confirmed", None)])
+
+        def host(message):
+            """
+            经过正常分段认领提交模拟平台请求，保留实际结果。
+            """
+            status, code = parts.send(target, 0, "正文", True, submit)
+            parts.record(message, target, 0, status, code)
+
+        combined = Mock(side_effect=lambda _method, message: host(message))
+        host_only = Mock(side_effect=host)
+        monkeypatch.setattr(chain, "run_module_strict", combined)
+        monkeypatch.setattr(chain, "deliver_host_notification", host_only)
+        store = SqlAlchemyOutboxDispatchStore(factory)
+        first = store.claim_by_event_key(intent.event_key, now, now + timedelta(seconds=1))
+        assert first is not None
+        with pytest.raises(RuntimeError, match="未确认"):
+            outbox_runtime._dispatch_notification(first)
+        later = now + timedelta(seconds=2)
+        second = store.claim_by_event_key(intent.event_key, later, later + timedelta(seconds=10))
+        assert second is not None
+        outbox_runtime._dispatch_notification(second)
+        combined.assert_called_once()
+        host_only.assert_called_once()
+        notices.assert_called_once()
+        assert submit.call_count == 2
+        with factory() as session:
+            progress = session.scalars(select(OutboxMessage)).one().notification_progress
+            assert progress["_legacy_notice_claimed"] is True
+            assert [part["status"] for part in progress.values() if isinstance(part, dict)] == ["confirmed"]
+    finally:
+        engine.dispose()
 
 
 def test_strict_notification_retry_writes_history_once(monkeypatch) -> None:

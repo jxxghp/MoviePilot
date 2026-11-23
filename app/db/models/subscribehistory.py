@@ -78,6 +78,7 @@ class SubscribeHistory(Base):
     date: Mapped[Optional[str]] = mapped_column(String)
     # 订阅用户
     username: Mapped[Optional[str]] = mapped_column(String)
+    owner_identity: Mapped[Optional[str]] = mapped_column(String(32), index=True)
     # 订阅站点
     sites: Mapped[Optional[Any]] = mapped_column(JSON)
     # 是否洗版
@@ -158,17 +159,18 @@ class SubscribeHistory(Base):
             mtype: str,
             username: str,
             page: int = 1,
-            count: int = 30
+            count: int = 30,
+            *, owner_identity: str | None = None,
     ) -> list[Self]:
         """
         按订阅 owner 查询指定类型的历史分页。
         """
-        if not username:
+        if owner_identity is None and not username:
             return []
         result = await db.execute(
             select(cls).filter(
                 cls.type == mtype,
-                cls.username == username
+                cls.owner_identity == owner_identity if owner_identity is not None else cls.username == username
             ).order_by(
                 cls.date.desc()
             ).offset((page - 1) * count).limit(count)
@@ -191,16 +193,17 @@ class SubscribeHistory(Base):
         db: AsyncSession,
         mtype: str,
         username: str,
+        *, owner_identity: str | None = None,
     ) -> int:
         """
         统计指定媒体类型和 owner 的订阅历史。
         """
-        if not username:
+        if owner_identity is None and not username:
             return 0
         result = await db.execute(
             select(func.count(cls.id)).where(
                 cls.type == mtype,
-                cls.username == username,
+                cls.owner_identity == owner_identity if owner_identity is not None else cls.username == username,
             )
         )
         return int(result.scalar() or 0)

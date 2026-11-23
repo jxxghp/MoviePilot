@@ -9,6 +9,8 @@ from uuid import uuid4 as _uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.channel import InteractionPolicy as _InteractionPolicy
+from app.schemas.channel import NotificationRule as _NotificationRule
 from app.schemas.context import MediaInfo, MetaInfo, TorrentInfo
 from app.schemas.rule import FilterRuleGroup
 
@@ -95,6 +97,11 @@ class NotificationConf(BaseModel):
         description="场景开关名称列表；NotificationSwitchConf 属于全局通知范围配置，不是渠道字段",
     )
     enabled: Optional[bool] = Field(default=False, description="是否启用")
+    notification_enabled: Optional[bool] = Field(default=None, description="运行时事件通知开关，旧配置使用总开关")
+    interaction_enabled: Optional[bool] = Field(default=None, description="运行时机器人交互开关，旧配置使用总开关")
+    notification_rules: tuple[_NotificationRule, ...] | None = Field(default=None, exclude_if=lambda value: value is None, description="宿主按连接检查的事件规则")
+    interaction_policy: Optional[_InteractionPolicy] = Field(default=None, description="宿主用于核对凭据范围的交互策略")
+    identity_namespace: Optional[str] = Field(default=None, description="宿主已确认的渠道连接身份空间")
 
 
 class NotificationSwitchConf(BaseModel):
@@ -103,7 +110,10 @@ class NotificationSwitchConf(BaseModel):
     """
 
     type: Optional[str] = Field(default=None, description="场景名称")
-    action: Optional[str] = Field(default="all", description="通知范围 all/user/admin")
+    action: Optional[str] = Field(default="all", description="通知范围 all/user/admin 或 user,admin")
+    missing_user: Literal["admin", "skip"] = Field(
+        default="admin", description="无法确定操作用户时回退管理员或跳过个人通知；不取消显式管理员通知",
+    )
 
 
 class PluginMarketSyncRequest(BaseModel):

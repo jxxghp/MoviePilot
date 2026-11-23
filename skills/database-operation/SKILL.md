@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 20
+version: 22
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -204,6 +204,18 @@ and pass the flag only for an explicitly authorized repair.
 - Write boundary: Consumed atomically by two-sided identity verification; never extend expiry, forge digests, or replace owners directly.
 - Columns: `id`, `user_id`, `user_identity`, `expires_at`
 
+### `channelinboundreceipt`
+- Purpose: Stores short-lived digests of verified inbound channel events and their expiry times.
+- Useful queries: Checking whether replay protection has recorded verified inbound events.
+- Write boundary: Owned by verified ingress. The host claims and expires these rows in short database transactions.
+- Columns: `id`, `expires_at`
+
+### `channelruletaskgrant`
+- Purpose: Stores scheduled-task grants derived from channel rules, tied to member and policy revisions.
+- Useful queries: Inspecting which rule scopes and authorization revision granted an existing scheduled task.
+- Write boundary: Owned by channel authorization. Never forge grants, change scopes, or bypass current policy and revocation checks.
+- Columns: `id`, `member_id`, `member_version`, `policy_revision`, `scopes`
+
 ### `downloadfailure`
 - Purpose: Stores stable fingerprints, media/torrent context, errors, and retry scheduling for failed downloads.
 - Useful queries: Analyzing failure causes, retry counts, next retry time, and affected media or sites.
@@ -220,7 +232,7 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores media identity, torrent, downloader, user, and recognition context for submitted downloads.
 - Useful queries: Reviewing download history or tracing a media identity or hash back to its source.
 - Write boundary: Written by the download use case; delete or correct records through the download-history API.
-- Columns: `id`, `path`, `type`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `image`, `poster`, `downloader`, `download_hash`, `torrent_name`, `torrent_description`, `torrent_site`, `userid`, `username`, `channel`, `date`, `note`, `media_category_id`, `media_category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `episode_group`, `custom_words`
+- Columns: `id`, `path`, `type`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `image`, `poster`, `downloader`, `download_hash`, `torrent_name`, `torrent_description`, `torrent_site`, `userid`, `username`, `owner_identity`, `task_reference`, `channel`, `date`, `note`, `media_category_id`, `media_category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `episode_group`, `custom_words`
 
 ### `downloadpending`
 - Purpose: Stores recovery state for download submissions accepted by a downloader but not yet confirmed as a visible task.
@@ -244,7 +256,7 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores externally visible side-effect intents committed atomically with business transactions.
 - Useful queries: Diagnosing pending/processing/failed state, leases, attempts, and the last error.
 - Write boundary: Owned by the Outbox Dispatcher state machine; never mark completion or delete undelivered events manually.
-- Columns: `id`, `event_key`, `topic`, `payload_version`, `payload`, `status`, `attempt`, `next_retry_at`, `lease_until`, `last_error`, `created_at`, `completed_at`
+- Columns: `id`, `event_key`, `topic`, `payload_version`, `payload`, `notification_progress`, `status`, `attempt`, `next_retry_at`, `lease_until`, `last_error`, `created_at`, `completed_at`
 
 ### `passkey`
 - Purpose: Stores WebAuthn/PassKey credentials, public keys, signature counters, and activation state.
@@ -310,7 +322,7 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores active movie, TV, or music subscriptions, filters, progress, and download targets.
 - Useful queries: Inspecting state, missing episodes/tracks, quality rules, site scope, and match progress.
 - Write boundary: Create, update, search, or delete through the subscription API to preserve state-machine consistency.
-- Columns: `id`, `activity_key`, `identity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `downloaded_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `lack_episode`, `note`, `state`, `last_search`, `last_update`, `date`, `username`, `sites`, `downloader`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `manual_total_episode`, `custom_words`, `media_category_id`, `media_category`, `filter_groups`, `episode_group`
+- Columns: `id`, `activity_key`, `identity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `downloaded_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `lack_episode`, `note`, `state`, `last_search`, `last_update`, `date`, `username`, `owner_identity`, `sites`, `downloader`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `manual_total_episode`, `custom_words`, `media_category_id`, `media_category`, `filter_groups`, `episode_group`
 
 ### `subscribeactivity`
 - Purpose: Structured subscription business events and resumable search-round progress, recorded after the feature upgrade.
@@ -323,7 +335,7 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores snapshots of completed or archived subscriptions and their final filter state.
 - Useful queries: Auditing historical subscriptions, media identity, completion criteria, and filter configuration.
 - Write boundary: Generated by subscription completion and archival; restore or delete through its business API.
-- Columns: `id`, `activity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `date`, `username`, `sites`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `custom_words`, `media_category_id`, `media_category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `filter_groups`, `episode_group`
+- Columns: `id`, `activity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `date`, `username`, `owner_identity`, `sites`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `custom_words`, `media_category_id`, `media_category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `filter_groups`, `episode_group`
 
 ### `subscriptionsearchbatch`
 - Purpose: Stores durable subscription search batches, source, aggregate state, counts, and cancellation requests.
@@ -384,6 +396,12 @@ and pass the flag only for an explicitly authorized repair.
 - Useful queries: Inspecting UI preferences, message clear cursors, or other personalized state.
 - Write boundary: Modify through the owning user or messaging API to preserve key semantics.
 - Columns: `id`, `username`, `key`, `value`
+
+### `webpushsubscription`
+- Purpose: Stores browser push endpoints, keys, immutable account ownership, and registration revisions.
+- Useful queries: Checking account-specific delivery, device registration conflicts, and expired endpoint cleanup.
+- Write boundary: Owned by the browser notification service. Use authenticated registration or cancellation APIs; never replace owners, copy keys, or bypass revision checks through direct writes.
+- Columns: `id`, `endpoint_digest`, `endpoint`, `p256dh`, `auth`, `user_id`, `owner`, `revision`
 
 ### `widgetregistration`
 - Purpose: Stores expiring, read-only widget grants per user and installation; only a digest of the dedicated Bearer is stored, never the raw secret or the main login token.

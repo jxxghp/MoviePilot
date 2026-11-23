@@ -19,6 +19,7 @@ class _DiscordClientStub:
 
     def __init__(self, *, start_error: Optional[Exception] = None) -> None:
         self.started = threading.Event()
+        self.logged_in = threading.Event()
         self._release: Optional[asyncio.Event] = None
         self._start_error = start_error
         self.close_calls = 0
@@ -40,6 +41,12 @@ class _DiscordClientStub:
         self.close_calls += 1
         if self._release:
             self._release.set()
+
+    async def login(self, _token: str) -> None:
+        """
+        记录独立的 REST 登录。
+        """
+        self.logged_in.set()
 
 
 class _YieldingCloseDiscordClientStub(_DiscordClientStub):
@@ -86,6 +93,7 @@ def _discord(client: _DiscordClientStub) -> Discord:
     """
     instance = Discord.__new__(Discord)
     instance._token = "test-token"
+    instance._gateway_enabled = True
     instance._client = client
     instance._loop = asyncio.new_event_loop()
     instance._thread = None
@@ -127,6 +135,26 @@ def _cleanup(instance: Discord) -> None:
         thread.join(timeout=1)
     if not loop.is_closed():
         loop.close()
+
+
+def test_notification_only_discord_does_not_start_gateway() -> None:
+    """
+    仅通知模式复用 REST 登录，停止后回收整个事件循环。
+    """
+    client = _DiscordClientStub()
+    instance = _discord(client)
+    instance._gateway_enabled = False
+    try:
+        instance._start()
+        assert client.logged_in.wait(timeout=1)
+        assert instance._ready_event.wait(timeout=1)
+        assert instance.get_state()
+        assert not client.started.is_set()
+        assert instance.stop()
+        assert instance._loop.is_closed()
+        assert client.close_calls == 1
+    finally:
+        _cleanup(instance)
 
 
 def test_stop_waits_for_discord_thread_and_closes_loop() -> None:

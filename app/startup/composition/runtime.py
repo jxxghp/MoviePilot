@@ -201,6 +201,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
     from app.db.adapters.site import SessionSiteRepository
     from app.db.adapters.subscription import (
         SessionSubscriptionHistoryRepository,
+        SessionSubscriptionOwnershipRepository,
         SessionSubscriptionRepository,
     )
     from app.db.adapters.subscriptionactivity import TransactionalSubscriptionActivityRepository
@@ -271,6 +272,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             async_session=get_async_db,
             repository=SessionSubscriptionRepository,
             history_repository=SessionSubscriptionHistoryRepository,
+            ownership_repository=SessionSubscriptionOwnershipRepository,
             execution_status_repository=SessionSubscriptionExecutionStatusRepository,
             search_repository=dependencies.subscription_search,
             activity_repository=TransactionalSubscriptionActivityRepository(SessionFactory, async_session_scope),

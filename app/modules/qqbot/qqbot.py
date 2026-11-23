@@ -4,20 +4,24 @@ QQ 主动通知发送、历史互动对象缓存和后台网关生命周期管�
 
 import hashlib
 import io
+import json
 import pickle
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from functools import partial
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image
 
 from app.adapters.network.http import RequestUtils
-from app.application.messaging.ingress import submit_message_to_host
+from app.application.messaging.ingress import submit_message_to_host, submit_platform_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.modules.qqbot.api import (
+    QQRequestRejected,
     get_access_token,
     get_gateway_url,
+    proactive_message_outcome,
     send_proactive_c2c_message,
     send_proactive_group_message,
 )
@@ -25,6 +29,8 @@ from app.modules.qqbot.gateway import run_gateway
 from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.runtime.thread import ThreadHelper
+from app.schemas.delivery import DeliveryPartOutcome, DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt
+from app.schemas.types import NotificationChannel
 
 # QQ Markdown 图片展示尺寸限制，单位像素，避免竖版海报被客户端拉伸变形
 _DEFAULT_IMAGE_SIZE: Tuple[int, int] = (208, 320)
@@ -46,18 +52,21 @@ class QQBot:
             QQ_OPENID: Optional[str] = None,
             QQ_GROUP_OPENID: Optional[str] = None,
             name: Optional[str] = None,
+            *,
+            start_gateway: bool = True,
             **kwargs: Any,
     ) -> None:
         """
         保存机器人配置、恢复已互动对象，并启动后台网关线程。
 
-        缺少应用凭据时保持未就绪状态；完整配置会读取文件缓存并开始网络连接。
+        缺少应用凭据时保持未就绪状态。通知模式仅初始化主动发送需要的客户端。
 
         :param QQ_APP_ID: 机器人应用标识，必填
         :param QQ_APP_SECRET: 机器人应用密钥，必填
         :param QQ_OPENID: 默认单聊接收人标识
         :param QQ_GROUP_OPENID: 默认群聊标识；同时配置单聊时优先使用群聊
         :param name: 通知配置名称，用于区分消息来源和持久化缓存
+        :param start_gateway: 启动接收机器人交互的后台网关
         :param kwargs: 兼容额外配置字段，当前不使用
         """
         self._gateway_stop = None
@@ -73,6 +82,7 @@ class QQBot:
         self._default_openid = QQ_OPENID
         self._default_group_openid = QQ_GROUP_OPENID
         self._config_name = name or "qqbot"
+        self._connection_id = kwargs.get("connection_id")
         self._ready = True
 
         # 曾发过消息的用户/群，用于无默认接收者时的广播 {(target_id, is_group), ...}
@@ -85,9 +95,9 @@ class QQBot:
         self._processed_msg_ids: set[object] = set()
         self._max_processed_ids = 1000
 
-        self._gateway_stop = threading.Event()
-        self._gateway_thread = None
-        self._start_gateway()
+        if start_gateway:
+            self._gateway_stop = threading.Event()
+            self._start_gateway()
 
         logger.info("QQ Bot 客户端初始化完成")
 
@@ -117,6 +127,12 @@ class QQBot:
         """
         通过受管线程池把 QQ Bot 入站载荷 转交统一消息入口。
         """
+        forwarded = submit_platform_payload(
+            payload, self._config_name, NotificationChannel.QQ,
+            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
+        )
+        if forwarded is not None:
+            return forwarded
         return submit_message_to_host(
             payload,
             self._config_name,
@@ -378,6 +394,8 @@ class QQBot:
         targets_to_send = []
         if target:
             targets_to_send = [(target, is_group)]
+        elif userid:
+            return False
         else:
             # 无默认接收者时，向曾发过消息的用户/群广播
             broadcast = self._get_broadcast_targets()
@@ -412,8 +430,7 @@ class QQBot:
                         success_count += 1
                         logger.debug(f"QQ Bot: 消息已发送到 {'群' if tgt_is_group else '用户'} {tgt}")
                     except Exception as e:
-                        err_msg = str(e)
-                        if use_markdown and ("markdown" in err_msg.lower() or "11244" in err_msg or "权限" in err_msg):
+                        if use_markdown and isinstance(e, QQRequestRejected) and e.markdown_denied:
                             plain_content = self._plain_content(title, text, image, link)
                             send_fn(token, tgt, plain_content, use_markdown=False, keyboard=None)
                             success_count += 1
@@ -425,6 +442,74 @@ class QQBot:
         except Exception as e:
             logger.error(f"QQ Bot 发送失败: {e}")
             return False
+
+    def send_tracked_message(
+        self, title: str, text: str | None, image: str | None, link: str | None, userid: str | None,
+        formatted_texts: list[str], *, receipt: DeliveryReceipt, part_sender: DeliveryPartSender,
+        plan: DeliveryPartPlanner,
+    ) -> bool:
+        """
+        保存 QQ 通知的实际地址和分段，在取得对应认领后提交。
+
+        :param title: 通知标题
+        :param text: 原始正文，也是首次明确拒绝后使用的纯文本正文
+        :param image: 通知图片地址
+        :param link: 通知链接
+        :param userid: 显式地址，空值走连接配置的默认目标
+        :param formatted_texts: 已渲染的 QQ Markdown 分段
+        :param receipt: 记录本次派发的分段结果
+        :param part_sender: 保存或恢复当前分段的提交状态
+        :param plan: 提交前保存目标和分段清单
+        :return: 全部分段已确认或由完整纯文本覆盖时返回 True
+        """
+        if not self._ready:
+            receipt(None, 0, "retryable_failure", "client_unavailable")
+            return False
+        target, is_group = self._get_target(userid)
+        if not target:
+            receipt(None, 0, "skipped", "no_target")
+            return False
+        address = f"group:{target}" if is_group else f"user:{target}"
+        texts: Sequence[str | None] = formatted_texts if formatted_texts else (None,)
+        bodies = [
+            self._format_message_markdown(title, text, image, link, formatted_text)[0]
+            for formatted_text in texts
+        ]
+        if not all(bodies):
+            receipt(address, 0, "skipped", "empty_message")
+            return False
+        plain = self._plain_content(title, text, image, link)
+        parts = tuple((address, i, json.dumps([body, plain if i == 0 else ""], ensure_ascii=False))
+                      for i, body in enumerate(bodies))
+        plan(parts)
+        confirmed = True
+        covered = False
+        for (_, index, signature), body in zip(parts, bodies):
+            outcome, code = part_sender(
+                address, index, signature, confirmed,
+                partial(self._submit_tracked_part, target, is_group, body, plain if index == 0 else "", covered),
+            )
+            receipt(address, index, outcome, code)
+            confirmed = confirmed and outcome == "confirmed"
+            covered = covered or (outcome == "confirmed" and code == "plain_fallback")
+        return confirmed
+
+    def _submit_tracked_part(
+        self, target: str, is_group: bool, body: str, plain: str, covered: bool,
+    ) -> DeliveryPartOutcome:
+        """
+        提交单个分段。第一段的完整纯文本回退成功后，余下分段无需再发。
+        """
+        if covered:
+            return "confirmed", "plain_fallback_covered"
+        try:
+            token = get_access_token(self._app_id, self._app_secret)
+        except Exception:
+            return "retryable_failure", "qq_token_unavailable"
+        result = proactive_message_outcome(token, target, is_group, body, None, False)
+        if plain and result[1] == "markdown_denied":
+            return proactive_message_outcome(token, target, is_group, plain, None, True)
+        return result
 
     @staticmethod
     def _build_keyboard(buttons: Optional[List[List[Dict[str, Any]]]]) -> Optional[Dict[str, Any]]:

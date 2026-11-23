@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Any, Optional, cast
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -374,8 +374,10 @@ class TransactionalUserRepository(ChainUserRepository):
             return None
         settings = dict(user.settings)
         settings.pop("apppush", None)
-        if user.is_active and user.notification_identity:
+        settings.pop("webpush", None)
+        if user.is_active and user.account_type == "local" and user.notification_identity:
             settings["apppush"] = user.notification_identity
+            settings["webpush"] = user.notification_identity
         return settings
 
     async def async_get_notification_settings(
@@ -390,23 +392,55 @@ class TransactionalUserRepository(ChainUserRepository):
             return None
         settings = dict(user.settings)
         settings.pop("apppush", None)
-        if user.is_active and user.notification_identity:
+        settings.pop("webpush", None)
+        if user.is_active and user.account_type == "local" and user.notification_identity:
             settings["apppush"] = user.notification_identity
+            settings["webpush"] = user.notification_identity
         return settings
+
+    @staticmethod
+    def _owner_notification_query(owner_identity: str) -> Select[tuple[User]]:
+        return select(User).where(
+            User.notification_identity == owner_identity, User.is_active.is_(True), User.account_type == "local",
+        )
+
+    @staticmethod
+    def _owner_notification_targets(user: User | None) -> Optional[Mapping[str, FrozenJson]]:
+        if user is None:
+            return None
+        return {
+            **_to_snapshot(user).settings,
+            "apppush": user.notification_identity,
+            "webpush": user.notification_identity,
+        }
+
+    def get_owner_notification_settings(self, owner_identity: str) -> Optional[Mapping[str, FrozenJson]]:
+        """
+        按已确认的账号身份读取当前通知目标。
+        """
+        with self._sync_session() as session:
+            return self._owner_notification_targets(session.scalar(self._owner_notification_query(owner_identity)))
+
+    async def async_get_owner_notification_settings(self, owner_identity: str) -> Optional[Mapping[str, FrozenJson]]:
+        """
+        按已确认的账号身份异步读取当前通知目标。
+        """
+        async with self._async_session() as session:
+            return self._owner_notification_targets(await session.scalar(self._owner_notification_query(owner_identity)))
 
     def get_notification_broadcast_targets(self) -> Mapping[str, tuple[str, ...]]:
         """
         在独立会话中读取启用账号的通知身份，不使用可编辑的个人设置。
 
-        :return: AppPush 的明确接收账号集合；没有可用账号时返回空字典
+        :return: AppPush 与 WebPush 的明确接收账号集合；没有可用账号时返回空字典
         """
         with self._sync_session() as session:
             owners = tuple(session.execute(
                 select(User.notification_identity)
-                .where(User.is_active.is_(True), User.notification_identity != "")
+                .where(User.is_active.is_(True), User.account_type == "local", User.notification_identity != "")
                 .order_by(User.id)
             ).scalars())
-        return {"apppush": owners} if owners else {}
+        return {"apppush": owners, "webpush": owners} if owners else {}
 
     async def async_get_notification_broadcast_targets(self) -> Mapping[str, tuple[str, ...]]:
         """
@@ -417,10 +451,10 @@ class TransactionalUserRepository(ChainUserRepository):
         async with self._async_session() as session:
             owners = tuple((await session.execute(
                 select(User.notification_identity)
-                .where(User.is_active.is_(True), User.notification_identity != "")
+                .where(User.is_active.is_(True), User.account_type == "local", User.notification_identity != "")
                 .order_by(User.id)
             )).scalars())
-        return {"apppush": owners} if owners else {}
+        return {"apppush": owners, "webpush": owners} if owners else {}
 
     def find_name_by_bindings(
         self,

@@ -2,18 +2,22 @@
 将现有 MoviePilot 通知经私有 Server 投递到 App 或主屏幕通知网页。
 """
 
+import json
 import re
 import secrets
 import threading
 from collections.abc import Callable
+from functools import partial
 from typing import Any, Optional, Union
 from urllib.parse import urlsplit
 
-from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.external.server import MoviePilotServerHelper, PushRelayError
 from app.application.configuration import get_configured_system_config
+from app.application.messaging.delivery import NotificationParts
 from app.modules import _MessageBase, _ModuleBase
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.delivery import DeliveryPartOutcome
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel, SystemConfigKey
@@ -249,19 +253,56 @@ class AppPushModule(_ModuleBase, _MessageBase[object]):
         """
         仅向路由确定的不可变账号身份投递；缺少绑定绝不退回全设备广播。
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
             link = message.link or "/?shotcut=message"
             # 外部下载或媒体链接留在消息列表中，系统通知点击始终交给本实例。
             route = link if link.startswith("/") and not link.startswith("//") and "\\" not in link else "/?shotcut=message"
             image = self._notification_image(message)
-            for owner in self._notification_owners(message):
-                try:
-                    result = self._request(conf, "POST", "messages", {
-                        "owner": owner, "title": (message.title or "MoviePilot")[:256],
-                        "body": message.text or "", "route": route,
-                        **({"image": image} if image else {}),
-                    })
-                    if result.get("failed"):
-                        logger.warning(f"AppPush 有 {len(result['failed'])} 个设备投递失败，请检查 Server 配置")
-                except ValueError as error:
-                    logger.warning(f"AppPush 投递失败：{error}")
+            payload = {
+                "title": (message.title or "MoviePilot")[:256], "body": message.text or "", "route": route,
+                **({"image": image} if image else {}),
+            }
+            self._post_tracked(message, conf, self._notification_owners(message), payload)
+
+    def _post_tracked(
+        self, message: Message, conf: NotificationConf, owners: tuple[str, ...], payload: dict[str, str],
+    ) -> None:
+        """
+        冻结中转 API 能够指定的账号范围，逐账号保存结果。
+        """
+        if not owners:
+            self.record_delivery(message, conf, None, status="skipped", code="no_target")
+            return
+        parts = NotificationParts(NotificationChannel.AppPush, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+        content = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        parts.plan(tuple((owner, 0, content) for owner in owners))
+        for owner in owners:
+            result = parts.send_result(
+                owner, 0, content, True, partial(self._submit_tracked, conf, {"owner": owner, **payload}),
+            )
+            message.record_delivery_result(result)
+
+    def _submit_tracked(self, conf: NotificationConf, payload: dict[str, str]) -> DeliveryPartOutcome:
+        """
+        依据中转设备汇总确认本次请求，部分确认时保留未知状态以免重复推送成功设备。
+        """
+        try:
+            result = self._request(conf, "POST", "messages", payload)
+        except ValueError as error:
+            if isinstance(error, PushRelayError):
+                if error.status == 429:
+                    return "retryable_failure", "rate_limited", None, error.retry_after
+                if error.status in {400, 401, 403, 404, 422}:
+                    return "permanent_failure", "relay_rejected"
+            logger.warning("AppPush 中转请求结果未确认")
+            return "unknown", "relay_unconfirmed"
+        total, accepted = result.get("total"), result.get("accepted")
+        if type(total) is not int or type(accepted) is not int or total != accepted or result.get("failed"):
+            logger.warning("AppPush 中转未确认所有设备的投递结果")
+            return "unknown", "relay_devices_unconfirmed"
+        if accepted > 0:
+            return "confirmed", None
+        if accepted == 0:
+            return "skipped", "no_device"
+        return "unknown", "relay_unconfirmed"

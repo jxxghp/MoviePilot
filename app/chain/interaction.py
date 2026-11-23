@@ -4,15 +4,20 @@
 
 import math
 import re
-from collections.abc import Mapping
+import uuid
+from collections.abc import Callable, Mapping
 from copy import copy, deepcopy
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 from app.application.directory import DirectoryHelper
+from app.application.download.admission import DownloadAuthorizationError, scoped_download_authorization
+from app.application.history import scoped_download_owner
 from app.application.messaging.media import (
     PendingMediaInteraction,
     media_interaction_manager,
 )
+from app.application.messaging.message import scoped_message_reply
+from app.application.security.authorization import channel_search_auto_download, get_channel_authorization
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
@@ -32,9 +37,8 @@ from app.chain.music_interaction.music import (
     search_music_candidates,
     selected_music_type,
 )
-from app.chain.music_interaction.subscribe import subscribe_media
+from app.chain.music_interaction.subscribe import submit_media_subscription, subscribe_media
 from app.chain.search.facade import SearchChain
-from app.chain.subscribe.facade import SubscribeChain
 from app.domain import episode as episode_rules
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
@@ -47,6 +51,8 @@ from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import MediaSource, MediaType, NotificationChannel
+
+_DownloadResult = TypeVar("_DownloadResult")
 
 
 class MediaInteractionChain(ChainBase):
@@ -207,6 +213,102 @@ class MediaInteractionChain(ChainBase):
             return None, "page-next", None
         return None
 
+    def _operation_username(
+        self, operation: str, channel: NotificationChannel, source: str,
+        userid: Union[str, int], username: str, *, explain: bool = True,
+    ) -> Optional[str]:
+        """
+        在业务调用前复核当前权限，使用服务端账号名记录业务归属。
+
+        :param operation: 与现有 API 共用的业务操作标识
+        :param channel: 平台来源
+        :param source: 消息所属实例名称
+        :param userid: 仅用于平台回复和授权查找的发言人 ID
+        :param username: 旧网页及兼容入口已校验的显示名称
+        :param explain: 拒绝时是否发送原因
+        :return: 可执行操作的账号名称；拒绝时为空
+        """
+        actor = self._operation_actor(operation, channel, source, userid, username, explain=explain)
+        return actor[0] if actor else None
+
+    def _operation_actor(
+        self, operation: str, channel: NotificationChannel, source: str,
+        userid: Union[str, int], username: str, *, explain: bool = True,
+    ) -> tuple[str, str | None] | None:
+        """
+        取得当前已授权的用户名及不可变账号身份。
+        """
+        service = get_channel_authorization()
+        if service is None or channel in {NotificationChannel.Web, NotificationChannel.WebAgent}:
+            return username, None
+        try:
+            actor = service.resolve_operation(channel.value, source, str(userid), operation)
+            return actor.name, actor.notification_identity
+        except PermissionError as error:
+            if explain:
+                self._post_invalid_input(channel, source, userid, username, title=str(error))
+            return None
+
+    def _submit_channel_download(
+        self, submit: Callable[[], _DownloadResult], channel: NotificationChannel, source: str,
+        userid: Union[str, int], username: str, identity: str | None, chat_id: str | None,
+    ) -> _DownloadResult | None:
+        """
+        在下载链复核原发言人和归属，权限失效时结束当前提交并回复原因。
+
+        :param submit: 当前交互选择的单资源或自动择优操作
+        :param channel: 当前交互平台
+        :param source: 原连接名称
+        :param userid: 实际发言人
+        :param username: 初次校验取得的业务账号名
+        :param identity: 初次校验取得的不可变业务归属
+        :param chat_id: 本次交互的回复地址
+        :return: 下载链的结果，权限失效时返回 None
+        """
+        def authorize() -> None:
+            """
+            核对提交时的成员状态及归属与本次操作一致。
+            """
+            service = get_channel_authorization()
+            if service is None:
+                raise PermissionError("当前渠道授权不可用，请重新发起下载")
+            actor = service.resolve_operation(channel.value, source, str(userid), "download.add")
+            if actor.notification_identity != identity:
+                raise PermissionError("渠道账号归属已改变，请重新发起下载")
+
+        try:
+            with scoped_download_owner(identity), scoped_download_authorization(authorize if identity is not None else None):
+                return submit()
+        except DownloadAuthorizationError as error:
+            self._post_invalid_input(channel, source, userid, username, title=str(error), original_chat_id=chat_id)
+            return None
+
+    def _claim_media_choice(
+            self, request: PendingMediaInteraction, action: str, index: Optional[int], callback_data: str,
+    ) -> bool:
+        """
+        绑定写按钮到同一份候选列表，原子消费已验证的序号。
+
+        :param request: 所属会话
+        :param action: 当前回调动作
+        :param index: 列表内序号，自动下载为零
+        :param callback_data: 原始回调，包括可选列表版本
+        :return: 导航或有效且尚未执行的选择返回 True
+        """
+        phase = {"select": "media", "download": "torrent", "download-dir": "download-dir"}.get(action)
+        if phase is None:
+            return True
+        version = request.callback_versions.get(phase, "")
+        suffix = callback_data.split(":")[4:]
+        if (version and suffix != [version]) or (not version and suffix):
+            return False
+        if request.phase != phase or index is None:
+            return False
+        if index < (0 if action == "download" else 1) or index > self._page_size(request.channel):
+            return False
+        return media_interaction_manager.claim_callback(request, action, index, version)
+
+    @scoped_message_reply
     def handle_callback_interaction(
             self,
             callback_data: str,
@@ -239,9 +341,9 @@ class MediaInteractionChain(ChainBase):
 
         request_id, action, index = parsed
         if request_id:
-            request = media_interaction_manager.get_by_id(request_id, userid)
+            request = media_interaction_manager.get_by_id(request_id, userid, channel, source, original_chat_id)
         else:
-            request = media_interaction_manager.get_by_user(userid)
+            request = media_interaction_manager.get_by_user(userid, channel, source, original_chat_id)
 
         if not request:
             self.post_message(
@@ -252,13 +354,20 @@ class MediaInteractionChain(ChainBase):
                     username=username,
                     title="交互已失效，请重新搜索或订阅",
                     save_history=False,
+                    original_chat_id=original_chat_id,
                 )
             )
             return True
 
-        request.channel = channel
-        request.source = source
+        # 先检查当前权限，再消费按钮。业务操作提交前仍会复核授权。
+        operation = self._media_choice_operation(request, action)
+        if operation and self._operation_actor(operation, channel, source, userid, username) is None:
+            return True
+        if not self._claim_media_choice(request, action, index, callback_data):
+            return True
+
         request.username = username
+        request.original_chat_id = original_chat_id
 
         if action == "page-prev":
             if request.page <= 0:
@@ -268,6 +377,7 @@ class MediaInteractionChain(ChainBase):
                     userid=userid,
                     username=username,
                     title="已经是第一页了！",
+                    original_chat_id=original_chat_id,
                 )
                 return True
             request.page -= 1
@@ -289,6 +399,7 @@ class MediaInteractionChain(ChainBase):
                     userid=userid,
                     username=username,
                     title="已经是最后一页了！",
+                    original_chat_id=original_chat_id,
                 )
                 return True
             request.page += 1
@@ -345,6 +456,24 @@ class MediaInteractionChain(ChainBase):
 
         return False
 
+    @staticmethod
+    def _media_choice_operation(request: PendingMediaInteraction, action: str) -> str | None:
+        """
+        获取写按钮消费前需要复核的操作权限。
+
+        :param request: 当前媒体交互请求
+        :param action: 已解析的按钮动作
+        :return: 下载、订阅或搜索的授权操作；翻页没有消费动作
+        """
+        if action in {"download", "download-dir"}:
+            return "download.add"
+        if action == "select":
+            if request.action in {"Subscribe", "ReSubscribe", "MusicSubscribe", "MusicReSubscribe"}:
+                return "subscription.add"
+            return "search.torrents"
+        return None
+
+    @scoped_message_reply
     def handle_text_interaction(
             self,
             channel: NotificationChannel,
@@ -354,6 +483,7 @@ class MediaInteractionChain(ChainBase):
             text: str,
             allowed_scopes: Optional[Mapping[str, Any]] = None,
             owner_username: Optional[str] = None,
+            original_chat_id: Optional[str] = None,
     ) -> bool:
         """
         处理文本式交互。
@@ -369,7 +499,9 @@ class MediaInteractionChain(ChainBase):
         :param owner_username: 统一渠道授权确定的业务归属用户名，None 时保留既有解析规则
         :return: 已消费该文本时返回 True
         """
-        request = media_interaction_manager.get_by_user(userid)
+        request = media_interaction_manager.get_by_user(userid, channel, source, original_chat_id)
+        if request is not None:
+            request.original_chat_id = original_chat_id
         normalized = (text or "").strip()
         lowered = normalized.lower()
 
@@ -383,6 +515,7 @@ class MediaInteractionChain(ChainBase):
                     username=username,
                     title="媒体交互已结束",
                     save_history=False,
+                    original_chat_id=original_chat_id,
                 )
             )
             return True
@@ -394,6 +527,7 @@ class MediaInteractionChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    original_chat_id=original_chat_id,
                 )
                 return True
             request.channel = channel
@@ -442,6 +576,7 @@ class MediaInteractionChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    original_chat_id=original_chat_id,
                 )
                 return True
             if request.page <= 0:
@@ -451,6 +586,7 @@ class MediaInteractionChain(ChainBase):
                     userid=userid,
                     username=username,
                     title="已经是第一页了！",
+                    original_chat_id=original_chat_id,
                 )
                 return True
             request.page -= 1
@@ -472,6 +608,7 @@ class MediaInteractionChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    original_chat_id=original_chat_id,
                 )
                 return True
             if not self._has_next_page(request):
@@ -481,6 +618,7 @@ class MediaInteractionChain(ChainBase):
                     userid=userid,
                     username=username,
                     title="已经是最后一页了！",
+                    original_chat_id=original_chat_id,
                 )
                 return True
             request.page += 1
@@ -507,6 +645,7 @@ class MediaInteractionChain(ChainBase):
             userid=userid,
             username=username,
             allowed_scopes=allowed_scopes,
+            original_chat_id=original_chat_id,
         )
         return True
 
@@ -526,6 +665,7 @@ class MediaInteractionChain(ChainBase):
             userid: Union[str, int],
             username: str,
             allowed_scopes: Optional[Mapping[str, Any]] = None,
+            original_chat_id: Optional[str] = None,
     ) -> None:
         """
         根据用户输入搜索影视或音乐，并进入对应候选选择阶段。
@@ -539,6 +679,10 @@ class MediaInteractionChain(ChainBase):
             username=username,
         ):
             return
+        owner = self._operation_username("subscription.add" if "Subscribe" in action else "search.torrents", channel, source, userid, username)
+        if owner is None:
+            return
+        username = owner
         meta: Optional[MetaBase]
         medias: List[MediaInfo | MusicInfo] = []
         if action.startswith("Music"):
@@ -556,6 +700,7 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
                 title="无法识别输入内容！",
+                original_chat_id=original_chat_id,
             )
             return
         if not medias:
@@ -567,6 +712,7 @@ class MediaInteractionChain(ChainBase):
                     username=username,
                     title=f"{title} 没有找到对应的媒体信息！",
                     save_history=False,
+                    original_chat_id=original_chat_id,
                 )
             )
             return
@@ -582,6 +728,7 @@ class MediaInteractionChain(ChainBase):
             title=title,
             meta=meta,
             items=medias,
+            original_chat_id=original_chat_id,
         )
         self._render_interaction(
             request=request,
@@ -606,9 +753,10 @@ class MediaInteractionChain(ChainBase):
         """
         处理媒体选择阶段的序号输入。
         """
+        original_chat_id = original_chat_id or request.original_chat_id
         if request.phase != "media":
             self._post_invalid_input(channel=channel, source=source, userid=userid, username=username,
-                                     title="媒体选择已结束，请使用当前资源列表")
+                                     title="媒体选择已结束，请使用当前资源列表", original_chat_id=original_chat_id)
             return
         page_items, page, _ = self._page_items(
             items=request.items,
@@ -622,6 +770,7 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                original_chat_id=original_chat_id,
             )
             return
 
@@ -694,6 +843,11 @@ class MediaInteractionChain(ChainBase):
         """
         根据已选媒体搜索资源，并切换到资源选择阶段。
         """
+        owner = self._operation_username("search.torrents", channel, source, userid, username)
+        if owner is None:
+            return
+        username = owner
+        original_chat_id = original_chat_id or request.original_chat_id
         meta = request.meta
         exist_flag, no_exists = DownloadChain().get_no_exists_info(
             meta=meta,
@@ -714,6 +868,7 @@ class MediaInteractionChain(ChainBase):
                     username=username,
                     title=f"【{media_label} 媒体库中已存在，如需重新下载请发送：{retry_hint}】",
                     save_history=False,
+                    original_chat_id=original_chat_id,
                 )
             )
             return
@@ -734,6 +889,7 @@ class MediaInteractionChain(ChainBase):
                     username=username,
                     title=f"{mediainfo.title_year}：\n" + "\n".join(messages),
                     save_history=False,
+                    original_chat_id=original_chat_id,
                 )
             )
 
@@ -746,6 +902,7 @@ class MediaInteractionChain(ChainBase):
                 username=username,
                     title=f"开始搜索 {(mediainfo.type or MediaType.UNKNOWN).value} {mediainfo.title_year} ...",
                 save_history=False,
+                original_chat_id=original_chat_id,
             )
         )
 
@@ -760,12 +917,16 @@ class MediaInteractionChain(ChainBase):
                     username=username,
                     title=f"{mediainfo.title}{season} 未搜索到需要的资源！",
                     save_history=False,
+                    original_chat_id=original_chat_id,
                 )
             )
             return
 
         contexts = TorrentHelper().sort_torrents(contexts)
-        if self._should_auto_download(userid) and self._has_scope(allowed_scopes, "download"):
+        if (self._should_auto_download(userid, source, channel)
+                and self._has_scope(allowed_scopes, "download")) and self._operation_username(
+            "download.add", channel, source, userid, username, explain=False,
+        ) is not None:
             logger.info("用户 %s 在自动下载用户中，开始自动择优下载 ...", userid)
             request.phase = "torrent"
             request.page = 0
@@ -823,12 +984,19 @@ class MediaInteractionChain(ChainBase):
         """
         处理资源选择阶段的下载操作。
         """
+        owner = self._operation_actor("download.add", channel, source, userid, username)
+        if owner is None:
+            return
+        username, identity = owner
+        if get_channel_authorization() is None:
+            username = owner_username or username
         if request.phase != "torrent":
             self._post_invalid_input(
                 channel=channel,
                 source=source,
                 userid=userid,
                 username=username,
+                original_chat_id=request.original_chat_id,
             )
             return
         if not self._require_scope(
@@ -875,6 +1043,7 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                original_chat_id=request.original_chat_id,
             )
             return
 
@@ -889,14 +1058,15 @@ class MediaInteractionChain(ChainBase):
                 context=context,
         ):
             return
-        # 用户在消息交互里选中了这个具体资源，属于明确指定种子。
-        DownloadChain().download_single(
-            context,
-            channel=channel,
-            source=source,
-            userid=userid,
-            username=owner_username or username,
-            user_specified=True,
+        self._submit_channel_download(
+            lambda: DownloadChain().download_single(
+                context,
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                user_specified=True,
+            ), channel, source, userid, username, identity, request.original_chat_id,
         )
 
     @staticmethod
@@ -952,6 +1122,7 @@ class MediaInteractionChain(ChainBase):
         """
         在下载前进入目录选择阶段；没有配置下载目录时保持原下载流程。
         """
+        original_chat_id = original_chat_id or request.original_chat_id
         media_info = context.media_info if context else request.current_media
         download_dirs = self._get_download_dirs(media_info)
         if not download_dirs:
@@ -996,6 +1167,7 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                original_chat_id=request.original_chat_id,
             )
             return
         if not self._require_scope(
@@ -1020,6 +1192,7 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                original_chat_id=request.original_chat_id,
             )
             return
 
@@ -1045,6 +1218,7 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
                 title="下载目录配置无效！",
+                original_chat_id=request.original_chat_id,
             )
             return
         self._execute_pending_download(
@@ -1072,18 +1246,26 @@ class MediaInteractionChain(ChainBase):
         """
         使用用户确认的下载目录执行单资源下载或自动择优下载。
         """
+        owner = self._operation_actor("download.add", channel, source, userid, username)
+        if owner is None:
+            return
+        username, identity = owner
+        if get_channel_authorization() is None:
+            username = owner_username or username
         download_mode = request.pending_download_mode
         if download_mode == "single" and request.pending_download_context:
             context = request.pending_download_context
             self._restore_torrent_phase(request)
-            DownloadChain().download_single(
-                context,
-                channel=channel,
-                source=source,
-                userid=userid,
-                username=owner_username or username,
-                save_path=save_path,
-                user_specified=True,
+            self._submit_channel_download(
+                lambda: DownloadChain().download_single(
+                    context,
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    user_specified=True,
+                    save_path=save_path,
+                ), channel, source, userid, username, identity, request.original_chat_id,
             )
             return
 
@@ -1112,6 +1294,7 @@ class MediaInteractionChain(ChainBase):
             userid=userid,
             username=username,
             title="下载操作已失效，请重新选择资源",
+            original_chat_id=request.original_chat_id,
         )
 
     @staticmethod
@@ -1260,6 +1443,12 @@ class MediaInteractionChain(ChainBase):
         """
         自动择优下载当前资源列表，并在未完成时补建订阅。
         """
+        owner = self._operation_actor("download.add", channel, source, userid, username)
+        if owner is None:
+            return
+        username, identity = owner
+        if get_channel_authorization() is None:
+            username = owner_username or username
         current_media = request.current_media
         meta = request.meta
         if not current_media or not meta:
@@ -1269,6 +1458,7 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
                 title="下载交互信息已失效，请重新搜索媒体",
+                original_chat_id=request.original_chat_id,
             )
             return
         current_media, meta, cache_list, no_exists = self._prepare_auto_download_batch(
@@ -1286,15 +1476,20 @@ class MediaInteractionChain(ChainBase):
             if exist_flag:
                 no_exists = self._get_noexits_info(meta, current_media)
 
-        downloads, lefts = downloadchain.batch_download(
-            contexts=cache_list,
-            no_exists=no_exists,
-            save_path=save_path,
-            channel=channel,
-            source=source,
-            userid=userid,
-            username=owner_username or username,
+        result = self._submit_channel_download(
+            lambda: downloadchain.batch_download(
+                contexts=cache_list,
+                no_exists=no_exists,
+                save_path=save_path,
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+            ), channel, source, userid, username, identity, request.original_chat_id,
         )
+        if result is None:
+            return
+        downloads, lefts = result
         if downloads and not lefts:
             logger.info("%s 下载完成", current_media.title_year)
             return
@@ -1321,27 +1516,25 @@ class MediaInteractionChain(ChainBase):
         else:
             note = None
 
-        mp_name = (
-            owner_username
-            or (
-                self.user_repository.find_name_by_bindings(
-                    {f"{channel.name.lower()}_userid": userid}
-                )
-                if channel
-                else None
+        subscription_owner = self._operation_actor("subscription.add", channel, source, userid, username, explain=False)
+        if subscription_owner is None:
+            return
+        mp_name, subscription_identity = subscription_owner
+        if get_channel_authorization() is None:
+            mp_name = owner_username or (
+                self.user_repository.find_name_by_bindings({f"{channel.name.lower()}_userid": userid}) or username
             )
-        )
-        SubscribeChain().add(
+        submit_media_subscription(
+            self, channel, source, userid, request.original_chat_id,
             title=current_media.title or "",
             year=str(current_media.year or ""),
             mtype=current_media.type,
             media_source=current_media.media_source,
             media_id=current_media.media_id,
             season=meta.begin_season,
-            channel=channel,
-            source=source,
-            userid=str(userid),
-            username=mp_name or username,
+            username=mp_name,
+            owner_identity=subscription_identity,
+            owner_scope=bool(subscription_identity),
             state="R",
             note=note,
             music_type=selected_music_type(current_media),
@@ -1359,6 +1552,7 @@ class MediaInteractionChain(ChainBase):
         """
         按当前阶段渲染媒体列表或资源列表。
         """
+        original_chat_id = original_chat_id or request.original_chat_id
         if request.phase == "download-dir":
             self._post_download_dirs_message(
                 request=request,
@@ -1399,6 +1593,7 @@ class MediaInteractionChain(ChainBase):
         """
         发送或更新媒体选择列表。
         """
+        original_chat_id = original_chat_id or request.original_chat_id
         if request.action.startswith("Music"):
             post_music_candidates(
                 host=self,
@@ -1459,6 +1654,7 @@ class MediaInteractionChain(ChainBase):
         """
         发送或更新资源选择列表。
         """
+        original_chat_id = original_chat_id or request.original_chat_id
         page_items, page, total_pages = self._page_items(
             items=request.items,
             page=request.page,
@@ -1508,6 +1704,7 @@ class MediaInteractionChain(ChainBase):
         """
         发送或更新下载目录选择列表。
         """
+        original_chat_id = original_chat_id or request.original_chat_id
         page_items, page, total_pages = self._page_items(
             items=request.download_dirs,
             page=request.page,
@@ -1560,6 +1757,7 @@ class MediaInteractionChain(ChainBase):
         """
         为媒体列表生成选择和翻页按钮。
         """
+        version = request.callback_versions["media"] = uuid.uuid4().hex[:10]
         buttons: List[List[Dict[str, str]]] = []
         max_text_length = ChannelCapabilityManager.get_max_button_text_length(channel)
         max_per_row = ChannelCapabilityManager.get_max_buttons_per_row(channel)
@@ -1578,7 +1776,7 @@ class MediaInteractionChain(ChainBase):
                     [
                         {
                             "text": button_text,
-                            "callback_data": f"media:{request.request_id}:select:{index}",
+                            "callback_data": f"media:{request.request_id}:select:{index}:{version}",
                         }
                     ]
                 )
@@ -1587,7 +1785,7 @@ class MediaInteractionChain(ChainBase):
             current_row.append(
                 {
                     "text": f"{index}",
-                    "callback_data": f"media:{request.request_id}:select:{index}",
+                    "callback_data": f"media:{request.request_id}:select:{index}:{version}",
                 }
             )
             if len(current_row) == max_per_row or index == len(items):
@@ -1609,11 +1807,12 @@ class MediaInteractionChain(ChainBase):
         """
         为资源列表生成下载和翻页按钮。
         """
+        version = request.callback_versions["torrent"] = uuid.uuid4().hex[:10]
         buttons: List[List[Dict[str, str]]] = [
             [
                 {
                     "text": "🤖 自动选择下载",
-                    "callback_data": f"media:{request.request_id}:download:0",
+                    "callback_data": f"media:{request.request_id}:download:0:{version}",
                 }
             ]
         ]
@@ -1633,7 +1832,7 @@ class MediaInteractionChain(ChainBase):
                     [
                         {
                             "text": button_text,
-                            "callback_data": f"media:{request.request_id}:download:{index}",
+                            "callback_data": f"media:{request.request_id}:download:{index}:{version}",
                         }
                     ]
                 )
@@ -1642,7 +1841,7 @@ class MediaInteractionChain(ChainBase):
             current_row.append(
                 {
                     "text": f"{index}",
-                    "callback_data": f"media:{request.request_id}:download:{index}",
+                    "callback_data": f"media:{request.request_id}:download:{index}:{version}",
                 }
             )
             if len(current_row) == max_per_row or index == len(items):
@@ -1664,6 +1863,7 @@ class MediaInteractionChain(ChainBase):
         """
         为下载目录列表生成选择和翻页按钮。
         """
+        version = request.callback_versions["download-dir"] = uuid.uuid4().hex[:10]
         buttons: List[List[Dict[str, str]]] = []
         max_text_length = ChannelCapabilityManager.get_max_button_text_length(channel)
         max_per_row = ChannelCapabilityManager.get_max_buttons_per_row(channel)
@@ -1678,7 +1878,7 @@ class MediaInteractionChain(ChainBase):
                     [
                         {
                             "text": button_text,
-                            "callback_data": f"media:{request.request_id}:download-dir:{index}",
+                            "callback_data": f"media:{request.request_id}:download-dir:{index}:{version}",
                         }
                     ]
                 )
@@ -1687,7 +1887,7 @@ class MediaInteractionChain(ChainBase):
             current_row.append(
                 {
                     "text": f"{index}",
-                    "callback_data": f"media:{request.request_id}:download-dir:{index}",
+                    "callback_data": f"media:{request.request_id}:download-dir:{index}:{version}",
                 }
             )
             if len(current_row) == max_per_row or index == len(items):
@@ -1884,18 +2084,12 @@ class MediaInteractionChain(ChainBase):
             for sea, no_exist in season_map.items()
         ]
 
-    def _should_auto_download(self, userid: Union[str, int]) -> bool:
+    @staticmethod
+    def _should_auto_download(userid: Union[str, int], source: str, channel: NotificationChannel) -> bool:
         """
-        判断当前用户是否命中自动下载名单。
+        检查当前连接的自动择优偏好，执行入口另行授权。
         """
-        auto_download_user = self.runtime_config.auto_download_user
-        return bool(
-            auto_download_user
-            and (
-                auto_download_user == "all"
-                or any(userid == user for user in auto_download_user.split(","))
-            )
-        )
+        return channel_search_auto_download(channel.value, source, str(userid))
 
     def _post_invalid_input(
             self,
@@ -1904,6 +2098,7 @@ class MediaInteractionChain(ChainBase):
             userid: Union[str, int],
             username: Optional[str],
             title: str = "输入有误！",
+            original_chat_id: Optional[str] = None,
     ) -> None:
         """
         发送统一的非法输入提示。
@@ -1916,5 +2111,6 @@ class MediaInteractionChain(ChainBase):
                 username=username,
                 title=title,
                 save_history=False,
+                original_chat_id=original_chat_id,
             )
         )

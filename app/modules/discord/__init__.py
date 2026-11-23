@@ -3,8 +3,10 @@ Discord 通知路由、入站解析、附件下载与输入状态反馈。
 """
 
 import json
+from functools import partial
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from urllib.parse import quote, unquote
+from uuid import uuid4
 
 from app.adapters.network.http import RequestUtils
 from app.application.messaging.channel.admin import (
@@ -12,11 +14,18 @@ from app.application.messaging.channel.admin import (
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
+from app.application.messaging.delivery import (
+    NotificationParts,
+    managed_notification_dispatch,
+    notification_preflight_active,
+)
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
+from app.runtime.correlation import get_correlation_id
 from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData
 from app.schemas.message import IncomingMessage, Message, MessageResponse
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
 
 # SDK 缺失或加载失败时保留其他通知渠道的可用性。
@@ -78,6 +87,12 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
             service_name=Discord.__name__.lower(), service_type=Discord
         )
         self._channel = NotificationChannel.Discord
+
+    def _service_kwargs(self, conf: NotificationConf) -> dict[str, Any]:
+        """
+        仅通知模式启动出站客户端，不连接 Gateway。
+        """
+        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_gateway": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:
@@ -193,6 +208,9 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                     callback_data=callback_data,
                     message_id=message_id,
                     chat_id=str(chat_id) if chat_id else None,
+                    conversation_type=("private" if msg_json.get("channel_type") == "dm"
+                                       else "group" if msg_json.get("channel_type") == "guild"
+                                       else "unknown"),
                 )
             return None
 
@@ -224,6 +242,9 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                     , source=client_config.name),
                     text=text,
                     chat_id=str(chat_id) if chat_id else None,
+                    conversation_type=("private" if msg_json.get("channel_type") == "dm"
+                                       else "group" if msg_json.get("channel_type") == "guild"
+                                       else "unknown"),
                     images=images,
                     audio_refs=audio_refs,
                     files=files,
@@ -338,15 +359,17 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
             return content if isinstance(content, bytes) else None
         return None
 
-    def post_message(self, message: Message, **kwargs: Any) -> None:
+    def post_message(self, message: Message, **kwargs: Any) -> Optional[bool]:
         """
         向匹配的 Discord 配置发送普通通知。
 
-        不汇总客户端发送结果；客户端负责记录失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供通知范围、接收人和原消息信息的通知对象
         :param kwargs: 兼容统一接口的扩展参数，当前不使用
+        :return: 强制私聊实际发送并确认后返回 True；普通通知或平台不匹配返回 None
         """
+        message = self.prepare_message(message)
         configs = self.get_configs()
         logger.debug(
             f"[Discord] post_message 被调用，message.source={message.source}, "
@@ -361,7 +384,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
 
         if not configs:
             logger.debug("[Discord] get_configs() 返回空，没有可用的 Discord 配置")
-            return
+            return None
 
         for conf, message in self.iter_message_configs(message):
             logger.debug(
@@ -374,33 +397,40 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 userid = targets.get("discord_userid")
                 if not userid:
                     logger.warn("用户没有指定 Discord 用户ID，消息无法发送")
-                    return
-            client: Optional[Discord] = self.get_instance(conf.name)
+                    return None
+            client: Optional[Discord] = self.get_message_client(conf.name, message)
             logger.debug(
                 f"[Discord] get_instance('{conf.name}') 返回: {client is not None}"
             )
+            if Discord and isinstance(client, Discord):
+                self._post_tracked_notification(message, conf, client, str(userid) if userid is not None else None)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+                continue
+            if notification_preflight_active():
+                continue
             if client:
                 logger.debug(
                     f"[Discord] 调用 client 发送, userid={userid}, title={message.title[:50] if message.title else None}..."
                 )
                 if message.native_image and message.image:
-                    result = client.send_image(
-                        image=message.image, title=message.title, text=message.text, userid=userid,
-                        original_chat_id=None if message.private_delivery else message.original_chat_id, buttons=message.buttons,
-                    )
+                    result = self.record_delivery(message, conf, client.send_image(
+                        image=message.image, title=message.title, text=message.text,
+                        userid=userid, original_chat_id=message.original_chat_id, buttons=message.buttons,
+                    ))
                 elif message.file_path:
-                    result = client.send_file(
+                    result = self.record_delivery(message, conf, client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
                         userid=userid,
                         original_chat_id=message.original_chat_id,
-                    )
+                    ))
                 else:
                     texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.Discord) or [message.text]
-                    for text in texts:
-                        result = client.send_msg(
+                    for index, text in enumerate(texts):
+                        result = self.record_delivery(message, conf, client.send_msg(
                             title=message.title,
                             text=text,
                             image=message.image,
@@ -410,12 +440,30 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                             original_message_id=message.original_message_id,
                             original_chat_id=message.original_chat_id,
                             mtype=message.mtype,
-                        )
+                        ), part=index)
                 logger.debug(f"[Discord] send_msg 返回结果: {result}")
+                if message.private_delivery and message.attachment_part_final:
+                    return True
             else:
+                self.record_delivery(message, conf, None, status="retryable_failure", code="client_unavailable")
                 logger.warning(
                     f"[Discord] 未找到配置 '{conf.name}' 对应的 Discord 客户端实例"
                 )
+        return None
+
+    def _post_tracked_notification(
+        self, message: Message, conf: NotificationConf, client: Discord, userid: str | None,
+    ) -> None:
+        """
+        记录 Discord 频道分段和确切交付状态。
+        """
+        parts = NotificationParts(NotificationChannel.Discord, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+        event = get_correlation_id() if managed_notification_dispatch() else None
+
+        self.confirm_private_delivery(message, client.send_tracked_notification(
+            message, userid, receipt=partial(parts.record, message), part_sender=parts.send, plan=parts.plan,
+            event=f"{event or uuid4()}:{conf.id}:{conf.identity_namespace}",
+        ))
 
     def post_medias_message(
         self, message: Message, medias: List[MediaInfo]
@@ -423,24 +471,25 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         """
         向匹配的 Discord 配置发送媒体候选列表。
 
-        不汇总客户端发送结果；客户端负责记录失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供通知范围、接收人和原消息信息的通知对象
         :param medias: 待展示的媒体列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Optional[Discord] = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_message_client(conf.name, message)
             if client:
-                client.send_medias_msg(
+                self.record_delivery(message, conf, client.send_medias_msg(
                     title=message.title,
                     medias=medias,
                     userid=self.get_notification_userid(message, "discord_userid"),
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
                     original_chat_id=message.original_chat_id,
-                )
+                ))
 
     def post_torrents_message(
         self, message: Message, torrents: List[Context]
@@ -448,24 +497,25 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         """
         向匹配的 Discord 配置发送种子候选列表。
 
-        不汇总客户端发送结果；客户端负责记录失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供通知范围、接收人和原消息信息的通知对象
         :param torrents: 待展示的种子上下文列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Optional[Discord] = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_message_client(conf.name, message)
             if client:
-                client.send_torrents_msg(
+                self.record_delivery(message, conf, client.send_torrents_msg(
                     title=message.title,
                     torrents=torrents,
                     userid=self.get_notification_userid(message, "discord_userid"),
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
                     original_chat_id=message.original_chat_id,
-                )
+                ))
 
     def delete_message(
         self,
@@ -633,6 +683,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         :param message: 提供接收对象、文件或文本内容的通知消息
         :return: 首次成功发送的消息响应；无可用接收人或全部失败时返回 None
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -643,28 +694,27 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 if not userid:
                     logger.warn("用户没有指定 Discord 用户ID，消息无法发送")
                     return None
-            client: Optional[Discord] = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_message_client(conf.name, message)
             if client:
                 if message.native_image and message.image:
-                    result = client.send_image(
-                        image=message.image, title=message.title, text=message.text, userid=userid,
-                        original_chat_id=None if message.private_delivery else message.original_chat_id, buttons=message.buttons,
-                    )
+                    result = self.record_delivery(message, conf, client.send_image(
+                        image=message.image, title=message.title, text=message.text,
+                        userid=userid, original_chat_id=message.original_chat_id, buttons=message.buttons,
+                    ))
                 elif message.file_path:
-                    result = client.send_file(
+                    result = self.record_delivery(message, conf, client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
                         userid=userid,
-                        original_chat_id=None if message.private_delivery else message.original_chat_id,
-                    )
+                    ))
                 else:
-                    result = client.send_msg(
+                    result = self.record_delivery(message, conf, client.send_msg(
                         title=message.title or "",
                         text=message.text,
                         userid=userid,
-                    )
+                    ))
                 if result:
                     success, response_data = (
                         (result[0], result[1])

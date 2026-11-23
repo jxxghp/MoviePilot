@@ -3,15 +3,115 @@
 """
 
 import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from hashlib import sha256
+from json import dumps
 from typing import Any, Optional, Protocol
 from urllib.parse import urlencode
 
+from cachetools import TTLCache
+
+from app.domain.admission import AdmissionProof
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.message import IncomingMessage
+from app.schemas.types import NotificationChannel
 
 BackgroundSubmitter = Callable[..., object]
+VerifiedEventClaim = Callable[[str, float, float], bool]
+
+
+_verified_receiver: Callable[[IncomingMessage], None] | None = None
+_verified_event_claim: VerifiedEventClaim | None = None
+_VERIFIED_EVENT_TTL = 120
+_verified_events: TTLCache[tuple[str, str], bool] = TTLCache(maxsize=4096, ttl=120)
+_verified_events_lock = threading.Lock()
+
+
+def claim_verified_event(proof: AdmissionProof, event_id: int | str | None) -> bool:
+    """
+    独占认领处于有效时间窗的已验证事件，宿主由共享数据库仲裁。
+    """
+    now = time.time()
+    if not event_id or proof.expires_at <= now:
+        return False
+    key = (proof.connection_id, str(event_id))
+    claim = _verified_event_claim
+    if claim is not None:
+        fingerprint = sha256(dumps(key, ensure_ascii=True).encode()).hexdigest()
+        try:
+            return claim(fingerprint, now, now + _VERIFIED_EVENT_TTL)
+        except Exception as error:
+            logger.warning("无法认领已验证渠道事件，已停止处理：%s", type(error).__name__)
+            return False
+    with _verified_events_lock:
+        if key in _verified_events or len(_verified_events) >= _verified_events.maxsize:
+            return False
+        _verified_events[key] = True
+        return True
+
+
+def configure_verified_event_claim(claim: VerifiedEventClaim | None) -> None:
+    """
+    登记宿主共享的事件认领端口，退出宿主时清除进程内验收缓存。
+    """
+    global _verified_event_claim
+    with _verified_events_lock:
+        _verified_event_claim = claim
+        _verified_events.clear()
+
+
+def configure_verified_message_receiver(receiver: Callable[[IncomingMessage], None] | None) -> None:
+    """
+    由组合根登记进程内的已验证平台消息消费入口。
+    """
+    global _verified_receiver
+    _verified_receiver = receiver
+
+
+def submit_verified_message(info: IncomingMessage, submit: BackgroundSubmitter) -> bool:
+    """
+    SDK 将已核验的消息直接交给受管执行器，来源证明无需经过公开 HTTP 入口。
+    """
+    receiver = _verified_receiver
+    if receiver is None:
+        return False
+    try:
+        return submit(receiver, info) is not False
+    except RuntimeError:
+        return False
+
+
+PlatformPayloadReceiver = Callable[[bytes, str, NotificationChannel, str], None]
+_platform_payload_receiver: PlatformPayloadReceiver | None = None
+
+
+def configure_platform_payload_receiver(receiver: PlatformPayloadReceiver | None) -> None:
+    """
+    装配仅供宿主内 SDK 使用的解析入口。
+    """
+    global _platform_payload_receiver
+    _platform_payload_receiver = receiver
+
+
+def submit_platform_payload(
+    payload: Mapping[str, Any], source: str | None, channel: NotificationChannel,
+    connection_id: str | None, *, submit: BackgroundSubmitter,
+) -> bool | None:
+    """
+    将已认证的 SDK 载荷直接交给宿主，未装配时允许兼容旧转发。
+    """
+    receiver = _platform_payload_receiver
+    if receiver is None or not source or not connection_id:
+        return None
+    try:
+        body = dumps(dict(payload), sort_keys=True).encode()
+        return submit(receiver, body, source, channel, connection_id) is not False
+    except (RuntimeError, TypeError, ValueError):
+        logger.warning("提交已认证的渠道消息失败：source=%s", source)
+        return False
 
 
 @dataclass(frozen=True, slots=True)

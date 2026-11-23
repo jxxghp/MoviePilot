@@ -4,6 +4,7 @@ Telegram 通知模块的权限检查、入站解析和实例投递路由。
 
 import json
 import re
+from functools import partial
 from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import quote
 
@@ -11,6 +12,11 @@ from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
+)
+from app.application.messaging.delivery import (
+    NotificationParts,
+    managed_notification_dispatch,
+    notification_preflight_active,
 )
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
@@ -46,6 +52,15 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             service_name=Telegram.__name__.lower(), service_type=Telegram
         )
         self._channel = NotificationChannel.Telegram
+
+    def _service_kwargs(self, conf: NotificationConf) -> dict[str, Any]:
+        """
+        给客户端传递实际交互状态，仅通知模式保持发送会话。
+
+        :param conf: 当前连接的运行投影
+        :return: 连接配置及是否启动入站轮询
+        """
+        return {**super()._service_kwargs(conf), "connection_id": conf.id, "auto_start_polling": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:
@@ -194,6 +209,13 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 chat_id=str(
                     callback_query.get("message", {}).get("chat", {}).get("id", "")
                 ),
+                conversation_type=(
+                    "private" if callback_query.get("message", {}).get("chat", {}).get("type") == "private"
+                    else "group" if callback_query.get("message", {}).get("chat", {}).get("type") in {"group", "supergroup", "channel"}
+                    else "unknown"
+                ),
+                thread_id=str(callback_query["message"]["message_thread_id"])
+                if callback_query.get("message", {}).get("message_thread_id") is not None else None,
                 callback_query=callback_query,
             )
         return None
@@ -282,6 +304,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 text=cleaned_text,
                 message_id=message_id,
                 chat_id=str(chat_id) if chat_id else None,
+                conversation_type=("private" if msg.get("chat", {}).get("type") == "private"
+                                   else "group" if msg.get("chat", {}).get("type") in {"group", "supergroup", "channel"}
+                                   else "unknown"),
+                thread_id=str(msg["message_thread_id"]) if msg.get("message_thread_id") is not None else None,
                 reply_to_message_id=reply_to_message_id,
                 images=images if images else None,
                 audio_refs=audio_refs if audio_refs else None,
@@ -461,7 +487,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             rich_text = f'{rich_text}\n\n[查看详情](<{link}>)'
         return rich_text
 
-    def post_message(self, message: Message, **kwargs: object) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> Optional[bool]:
         """
         向符合通知规则的实例发送文件、语音或文本图文。
 
@@ -471,7 +497,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :param message: 通知内容及目标；文件优先于语音，其次为普通消息
         :param kwargs: 兼容模块分发的附加参数，当前不使用
         :raises RuntimeError: 一个或多个匹配实例缺失客户端或未确认发送成功
+        :return: 强制私聊实际发送并确认后返回 True；普通通知或平台不匹配返回 None
         """
+        message = self.prepare_message(message)
         failures = []
         for conf, message in self.iter_message_configs(message):
             targets = self.get_notification_targets(message)
@@ -480,37 +508,46 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 userid = targets.get("telegram_userid")
                 if not userid:
                     logger.warn("用户没有指定 Telegram用户ID，消息无法发送")
-                    return
-            client = self.get_instance(conf.name)
+                    return None
+            client = self.get_message_client(conf.name, message)
+            if isinstance(client, Telegram):
+                confirmed = self._post_tracked_notification(client, conf, message, str(userid) if userid is not None else None)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+                if not confirmed and not managed_notification_dispatch():
+                    failures.append(conf.name or "Telegram")
+                continue
+            if notification_preflight_active():
+                continue
             result = None
             if client:
                 if message.native_image and message.image:
-                    result = client.send_image(
+                    result = self.record_delivery(message, conf, client.send_image(
                         image=message.image, title=message.title, text=message.text,
                         userid=str(userid) if userid is not None else None,
-                        original_chat_id=message.original_chat_id, parse_mode=message.parse_mode,
-                        buttons=message.buttons, private_delivery=message.private_delivery,
-                    )
+                        original_chat_id=message.original_chat_id, thread_id=message.thread_id,
+                        buttons=message.buttons, parse_mode=message.parse_mode, private_delivery=message.private_delivery,
+                    ))
                 elif message.file_path:
-                    file_options: dict[str, Any] = {"private_delivery": True} if message.private_delivery else {}
-                    result = client.send_file(
+                    result = self.record_delivery(message, conf, client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
                         userid=str(userid) if userid is not None else None,
                         original_chat_id=message.original_chat_id,
-                        parse_mode=message.parse_mode,
-                        **file_options,
-                    )
+                        thread_id=message.thread_id,
+                        parse_mode=message.parse_mode, private_delivery=message.private_delivery,
+                    ))
                 elif message.voice_path:
-                    result = client.send_voice(
+                    result = self.record_delivery(message, conf, client.send_voice(
                         voice_path=message.voice_path,
                         userid=str(userid) if userid is not None else None,
                         caption=message.voice_caption,
                         original_chat_id=message.original_chat_id,
-                        parse_mode=message.parse_mode,
-                    )
+                        thread_id=message.thread_id,
+                        parse_mode=message.parse_mode, private_delivery=message.private_delivery,
+                    ))
                 else:
                     # Telegram 的 reply_markup 不能同时承载 InlineKeyboard 和 ForceReply。
                     # 普通通知只清空可编辑消息 ID，仍保留原会话作为新消息目标。
@@ -518,7 +555,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     original_message_id = (
                         message.original_message_id if has_interaction_context else None
                     )
-                    result = client.send_msg(
+                    result = self.record_delivery(message, conf, client.send_msg(
                         title=message.title,
                         text=message.text,
                         image=message.image,
@@ -528,14 +565,43 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         force_reply=message.force_reply,
                         original_message_id=int(original_message_id) if original_message_id else None,
                         original_chat_id=message.original_chat_id,
+                        thread_id=message.thread_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
-                        rich_message=self._notification_rich_message(message),
-                    )
+                        rich_message=self._notification_rich_message(message), private_delivery=message.private_delivery,
+                    ))
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+            else:
+                self.record_delivery(message, conf, None, status="retryable_failure", code="client_unavailable")
             if not result or not result.get("success"):
                 failures.append(conf.name or "Telegram")
         if failures:
             raise RuntimeError(f"Telegram 通知发送未确认：{', '.join(failures)}")
+        return None
+
+    def _post_tracked_notification(
+        self, client: Telegram, conf: NotificationConf, message: Message, userid: str | None,
+    ) -> bool:
+        """
+        将 Telegram 的实际聊天和话题绑定到当前投递进度。
+        """
+        parts = NotificationParts(NotificationChannel.Telegram, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+        receipt = partial(parts.record, message)
+
+        if message.native_image and message.image:
+            result = client.send_tracked_image(message, userid, receipt=receipt, part_sender=parts.send, plan=parts.plan)
+        elif message.file_path or message.voice_path:
+            result = client.send_tracked_attachment(
+                message, userid, receipt=receipt, part_sender=parts.send, plan=parts.plan,
+                discard_voice=not managed_notification_dispatch(),
+            )
+        else:
+            result = client.send_tracked_message(
+                message, userid, receipt=receipt, part_sender=parts.send, plan=parts.plan,
+                rich_message=self._notification_rich_message(message),
+            )
+        return bool(self.confirm_private_delivery(message, result))
 
     def post_medias_message(
         self, message: Message, medias: List[MediaInfo]
@@ -546,12 +612,13 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :param message: 标题、按钮、接收目标及原消息上下文
         :param medias: 按原顺序展示的媒体候选项
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_medias_msg(
+                self.record_delivery(message, conf, client.send_medias_msg(
                     title=message.title,
                     medias=medias,
                     userid=self.get_notification_userid(message, "telegram_userid"),
@@ -559,8 +626,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     buttons=message.buttons,
                     original_message_id=int(message.original_message_id) if message.original_message_id else None,
                     original_chat_id=message.original_chat_id,
-                    parse_mode=message.parse_mode,
-                )
+                    thread_id=message.thread_id,
+                    parse_mode=message.parse_mode, private_delivery=message.private_delivery,
+                ))
 
     def post_torrents_message(
         self, message: Message, torrents: List[Context]
@@ -571,12 +639,13 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :param message: 标题、按钮、接收目标及原消息上下文
         :param torrents: 含种子和媒体信息的候选上下文
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_torrents_msg(
+                self.record_delivery(message, conf, client.send_torrents_msg(
                     title=message.title,
                     torrents=torrents,
                     userid=self.get_notification_userid(message, "telegram_userid"),
@@ -584,8 +653,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     buttons=message.buttons,
                     original_message_id=int(message.original_message_id) if message.original_message_id else None,
                     original_chat_id=message.original_chat_id,
-                    parse_mode=message.parse_mode,
-                )
+                    thread_id=message.thread_id,
+                    parse_mode=message.parse_mode, private_delivery=message.private_delivery,
+                ))
 
     def delete_message(
         self,
@@ -749,6 +819,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :param message: 待发送通知；语音单独处理，其他内容发送文本或图文，强制回复保留原消息关系
         :return: 成功消息的标识和来源；没有成功结果或指定用户无 Telegram 目标时返回 None
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -759,37 +830,41 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 if not userid:
                     logger.warn("用户没有指定 Telegram用户ID，消息无法发送")
                     return None
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
                 if message.native_image and message.image:
-                    result = client.send_image(
+                    result = self.record_delivery(message, conf, client.send_image(
                         image=message.image, title=message.title, text=message.text,
                         userid=str(userid) if userid is not None else None,
-                        original_chat_id=message.original_chat_id, parse_mode=message.parse_mode,
-                        buttons=message.buttons, private_delivery=message.private_delivery,
-                    )
+                        original_chat_id=message.original_chat_id, thread_id=message.thread_id,
+                        buttons=message.buttons, parse_mode=message.parse_mode, private_delivery=message.private_delivery,
+                    ))
                 elif message.file_path:
-                    result = client.send_file(
-                        file_path=message.file_path, file_name=message.file_name,
-                        title=message.title, text=message.text,
+                    result = self.record_delivery(message, conf, client.send_file(
+                        file_path=message.file_path,
+                        file_name=message.file_name,
+                        title=message.title,
+                        text=message.text,
                         userid=str(userid) if userid is not None else None,
-                        original_chat_id=message.original_chat_id, parse_mode=message.parse_mode,
+                        original_chat_id=message.original_chat_id,
+                        thread_id=message.thread_id,
+                        parse_mode=message.parse_mode,
                         private_delivery=message.private_delivery,
-                    )
+                    ))
                 elif message.voice_path:
-                    result = client.send_voice(
+                    result = self.record_delivery(message, conf, client.send_voice(
                         voice_path=message.voice_path,
                         userid=str(userid) if userid is not None else None,
                         caption=message.voice_caption,
                         original_chat_id=message.original_chat_id,
-                        parse_mode=message.parse_mode,
-                    )
+                        thread_id=message.thread_id,
+                        parse_mode=message.parse_mode, private_delivery=message.private_delivery,
+                    ))
                 else:
-                    # 直接发送不编辑旧消息；仅 ForceReply 使用 original_chat_id
-                    # 发回原会话，并保留 original_message_id 建立回复关系。
-                    original_chat_id = message.original_chat_id if message.force_reply else None
+                    # 带话题的直接消息回到原话题，旧私信仍沿用接收人。
+                    original_chat_id = message.original_chat_id if message.force_reply or message.thread_id else None
                     original_message_id = message.original_message_id if message.force_reply else None
-                    result = client.send_msg(
+                    result = self.record_delivery(message, conf, client.send_msg(
                         title=message.title,
                         text=message.text,
                         image=message.image,
@@ -798,11 +873,12 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         force_reply=message.force_reply,
                         original_message_id=int(original_message_id) if original_message_id else None,
                         original_chat_id=original_chat_id,
+                        thread_id=message.thread_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
                         rich_message=self._notification_rich_message(message),
                         private_delivery=message.private_delivery,
-                    )
+                    ))
                 if result and result.get("success"):
                     return MessageResponse(
                         message_id=result.get("message_id"),

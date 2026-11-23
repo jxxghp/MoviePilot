@@ -14,7 +14,7 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.interaction import InteractionContext, interaction_key
 from app.application.messaging.interaction.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
@@ -415,6 +415,7 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
         username="tester",
         title="需要你的选择",
         prompt="请选择",
+        address=interaction_key("10001", NotificationChannel.Telegram, "telegram-test", "456"),
         options=[
             AgentInteractionOption(label="电影", value="我选择电影"),
             AgentInteractionOption(label="电视剧", value="我选择电视剧"),

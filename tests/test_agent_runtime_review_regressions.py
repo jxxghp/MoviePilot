@@ -516,7 +516,8 @@ async def test_message_ingress_separates_channels_and_sources(monkeypatch):
         runtime_config=SimpleNamespace(ai_agent_enable=True),
         _schedule_agent_session_clear=lambda *_args: None, _has_ai_prefix=lambda text: text.startswith("/ai"),
         _prepare_agent_files=lambda **_kwargs: [], post_message=lambda *_args, **_kwargs: None)
-    for name in ("_message_session_service", "_get_or_create_session_id", "_bind_session_id", "_handle_ai_message"):
+    for name in ("_message_session_service", "_get_or_create_session_id", "_bind_session_id",
+                 "_handle_ai_message", "_report_agent_submission_failure"):
         setattr(ingress, name, MethodType(getattr(MessageChain, name), ingress))
     if hasattr(MessageChain, "_session_user_key"):
         ingress._session_user_key = MessageChain._session_user_key
@@ -566,7 +567,8 @@ async def test_message_namespace_separates_real_agent_memory(monkeypatch):
         _schedule_agent_session_clear=lambda *_args: None, _has_ai_prefix=lambda text: text.startswith("/ai"),
         _prepare_agent_files=lambda **_kwargs: [], post_message=lambda *_args, **_kwargs: None,
         _session_user_key=MessageChain._session_user_key)
-    for name in ("_message_session_service", "_get_or_create_session_id", "_bind_session_id", "_handle_ai_message"):
+    for name in ("_message_session_service", "_get_or_create_session_id", "_bind_session_id",
+                 "_handle_ai_message", "_report_agent_submission_failure"):
         setattr(ingress, name, MethodType(getattr(MessageChain, name), ingress))
 
     async def graph(agent, streaming=False):

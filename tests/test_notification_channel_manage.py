@@ -7,11 +7,14 @@
 3. 临时参数初始化封闭在模块内：无已保存配置时可基于表单参数构造临时客户端
 """
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from app.chain.notification import NotificationChain
 from app.modules.wechatclawbot import WechatClawBotModule
+from app.runtime.extensions.service import ServiceConfigHelper
+from app.schemas.system import NotificationConf
 from app.schemas.types import NotificationAction, NotificationChannel
 
 
@@ -75,6 +78,13 @@ def test_channel_manage_builds_temporary_client_from_form_params(module, monkeyp
             captured["called"] = True
             return False, "未登录，请先扫码完成绑定"
 
+        def stop(self):
+            """
+            记录管理请求退出后关闭临时客户端。
+            """
+            captured["stopped"] = True
+            return True
+
     monkeypatch.setattr(
         "app.modules.wechatclawbot.WechatClawBot",
         lambda **kwargs: (captured.update(kwargs=kwargs), _FakeClient())[1],
@@ -88,6 +98,7 @@ def test_channel_manage_builds_temporary_client_from_form_params(module, monkeyp
     )
 
     assert captured["called"] is True
+    assert captured["stopped"] is True
     assert captured["kwargs"]["name"] == "预览渠道"
     assert captured["kwargs"]["auto_start_polling"] is False
     assert result["success"] is False
@@ -113,6 +124,77 @@ def test_channel_manage_prefers_saved_instance(module, monkeypatch):
     )
     assert result["success"] is True
     assert result["data"]["connected"] is True
+
+
+def test_saved_clawbot_login_targets_stable_id_even_when_disabled(module, monkeypatch):
+    """
+    专用登录请求只读已保存配置，停用连接使用原凭据身份且不启动轮询。
+    """
+    config = NotificationConf(id="stored-id", name="已保存", type="wechatclawbot", enabled=False,
+                              config={"WECHATCLAWBOT_BASE_URL": "https://fixture.example"})
+    monkeypatch.setattr(ServiceConfigHelper, "get_notification_configs", lambda: [config])
+    status = Mock(return_value={"success": True, "connected": True})
+    close = Mock(return_value=True)
+    build = Mock(return_value=SimpleNamespace(get_status=status, stop=close))
+    monkeypatch.setattr("app.modules.wechatclawbot.WechatClawBot", build)
+    runtime = Mock()
+    monkeypatch.setattr(module, "get_instance", runtime)
+
+    for source in ("unknown", "已保存"):
+        assert module.channel_manage(channel="WechatClawBot", action="status", source=source,
+                                     fallback_source="stored-id", saved_connection=True)["success"] is False
+    build.assert_not_called()
+
+    resolved = module.channel_manage(channel="WechatClawBot", action="status", source="stored-id",
+                                     saved_connection=True, WECHATCLAWBOT_BASE_URL="https://other.example")
+    assert resolved["data"]["connected"] is True
+    assert build.call_args.kwargs == {"identity": "stored-id", "name": "stored-id",
+                                     "WECHATCLAWBOT_BASE_URL": "https://fixture.example", "auto_start_polling": False}
+    close.assert_called_once()
+    runtime.assert_not_called()
+
+    config.enabled = True
+    monkeypatch.setattr(module, "get_config", lambda name: config if name == config.name else None)
+    runtime.return_value = SimpleNamespace(get_status=status)
+    assert module.channel_manage(channel="WechatClawBot", action="status", source=config.id,
+                                 saved_connection=True)["data"]["connected"] is True
+    runtime.assert_called_once_with(config.name)
+    assert build.call_count == 1
+
+
+def test_management_chain_reaches_saved_clawbot_when_no_module_is_running(monkeypatch):
+    """
+    宿主管理入口在无运行模块时仍可查询保存的 ClawBot，异常时也关闭临时实例。
+    """
+    from app.application import notification
+    from app.startup.initializers.modules import _manage_inactive_notification
+
+    config = NotificationConf(id="saved", name="已停用", type="wechatclawbot", enabled=False)
+    monkeypatch.setattr(ServiceConfigHelper, "get_notification_configs", lambda: [config])
+    close = Mock(return_value=True)
+    client = SimpleNamespace(get_status=Mock(return_value={"success": True, "connected": True}), stop=close)
+    build = Mock(return_value=client)
+    monkeypatch.setattr("app.modules.wechatclawbot.WechatClawBot", build)
+    monkeypatch.setattr(notification, "_inactive_channel_manager", _manage_inactive_notification)
+    chain = object.__new__(NotificationChain)
+    monkeypatch.setattr(chain, "run_module", Mock(return_value=None))
+    params = {"channel": "WechatClawBot", "action": "status", "source": "saved", "saved_connection": True}
+    assert chain.manage_channel(**params)["data"]["connected"]
+    assert build.call_args.kwargs["auto_start_polling"] is False
+    close.assert_called_once()
+
+    client.get_status.side_effect = ValueError("诊断失败")
+    with pytest.raises(ValueError, match="诊断失败"):
+        chain.manage_channel(**params)
+    assert close.call_count == 2
+
+    monkeypatch.setattr(ServiceConfigHelper, "get_notification_configs", lambda: [])
+    assert not chain.manage_channel(**params)["success"]
+    assert build.call_count == 2
+
+    assert _manage_inactive_notification("WechatClawBot", "delete", params) is None
+    assert _manage_inactive_notification("WechatClawBot", "status", {**params, "saved_connection": False}) is None
+    assert build.call_count == 2
 
 
 def test_channel_manage_migrate_cache_dispatches_without_client(module, monkeypatch):

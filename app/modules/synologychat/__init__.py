@@ -3,7 +3,9 @@ SynologyChat 通知渠道的消息解析、管理员校验与附件下载入口�
 """
 
 import json
+import time
 from collections.abc import Buffer, Mapping
+from functools import partial
 from typing import Any, List, Optional, Sequence, SupportsIndex, SupportsInt, Union
 from urllib.parse import quote, unquote
 
@@ -13,11 +15,17 @@ from app.application.messaging.channel.admin import (
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
+from app.application.messaging.delivery import (
+    NotificationParts,
+    notification_preflight_active,
+)
+from app.domain.admission import AdmissionProof
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.synologychat.synologychat import SynologyChat
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
@@ -174,7 +182,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                     f"images={len(images) if images else 0}, audios={len(audio_refs) if audio_refs else 0}, "
                     f"files={len(files) if files else 0}"
                 )
-                return IncomingMessage(channel=NotificationChannel.SynologyChat, source=client_config.name,
+                incoming = IncomingMessage(channel=NotificationChannel.SynologyChat, source=client_config.name,
                                        userid=user_id,
                                        username=str(user_name) if user_name is not None else None,
                                        is_channel_admin=matches_channel_admin(
@@ -183,6 +191,14 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                                            user_id,
                                         source=client_config.name), text=text or "",
                                        images=images, audio_refs=audio_refs, files=files)
+                policy = getattr(client_config, "interaction_policy", None)
+                event_id = message.get("post_id")
+                if policy and isinstance(event_id, str) and event_id:
+                    incoming.message_id = event_id
+                    incoming._admission_proof = AdmissionProof(
+                        client_config.id, policy.revision, str(user_id), None, time.time() + 60,
+                    )
+                return incoming
         except Exception as err:
             logger.debug(f"解析SynologyChat消息失败：{str(err)}")
         return None
@@ -373,68 +389,95 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
             return content
         return None
 
-    def post_message(self, message: Message, **kwargs: object) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> Optional[bool]:
         """
         向通过渠道范围筛选的 SynologyChat 配置发送普通通知。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param kwargs: 兼容统一通知入口的扩展参数，当前不使用
+        :return: 强制私聊实际发送并确认后返回 True；普通通知或平台不匹配返回 None
         """
+        message = self.prepare_message(message)
         for conf, message in self.iter_message_configs(message):
-            client = self.get_instance(conf.name)
-            if client:
+            client = self.get_message_client(conf.name, message)
+            if client is None:
+                self.record_delivery(message, conf, None, status="retryable_failure", code="client_unavailable")
+            elif isinstance(client, SynologyChat):
+                self._post_tracked_notification(message, conf, client)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+            else:
+                if notification_preflight_active():
+                    continue
                 texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.SynologyChat) or [message.text]
-                for text in texts:
-                    client.send_msg(title=message.title, text=text,
+                for index, text in enumerate(texts):
+                    self.record_delivery(message, conf, client.send_msg(title=message.title, text=text,
                                     image=message.image,
                                     userid=self.get_notification_userid(
                                         message, "synologychat_userid"
                                     ),
-                                    link=message.link)
+                                    link=message.link), part=index)
+                if message.private_delivery and message.attachment_part_final:
+                    return True
+        return None
+
+    def _post_tracked_notification(self, message: Message, conf: NotificationConf, client: SynologyChat) -> None:
+        """
+        仅经明确广播范围或个人地址发送群晖通知，并记录逐人回执。
+        """
+        parts = NotificationParts(NotificationChannel.SynologyChat, conf.id, conf.identity_namespace, part_offset=message.attachment_part_offset)
+        texts: list[str | None] = list(message.channel_text_chunks(NotificationChannel.SynologyChat)) or [message.text]
+        self.confirm_private_delivery(message, client.send_tracked_chunks(
+            message.title, texts, message.image, message.link, self.get_notification_userid(message, "synologychat_userid"),
+            broadcast=message.notification_route_scope == "all", receipt=partial(parts.record, message),
+            part_sender=parts.send, plan=parts.plan,
+        ))
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
         向通过渠道范围筛选的 SynologyChat 配置发送媒体候选列表。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param medias: 待展示的媒体列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_medias_msg(
+                self.record_delivery(message, conf, client.send_medias_msg(
                     title=message.title,
                     medias=medias,
                     userid=self.get_notification_userid(
                         message, "synologychat_userid"
                     ),
-                )
+                ))
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
         向通过渠道范围筛选的 SynologyChat 配置发送种子候选列表。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        普通通知沿用既有发送结果；强制私聊会传播未确认失败。
 
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param torrents: 待展示的种子上下文列表
         """
+        message = self.prepare_message(message)
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client = self.get_instance(conf.name)
+            client = self.get_message_client(conf.name, message)
             if client:
-                client.send_torrents_msg(
+                self.record_delivery(message, conf, client.send_torrents_msg(
                     title=message.title,
                     torrents=torrents,
                     userid=self.get_notification_userid(
                         message, "synologychat_userid"
                     ),
                     link=message.link,
-                )
+                ))

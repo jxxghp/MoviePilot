@@ -89,6 +89,7 @@ class StreamingHandler:
         self._username: Optional[str] = None
         self._original_message_id: Optional[str] = None
         self._original_chat_id: Optional[str] = None
+        self._thread_id: Optional[str] = None
         self._title: str = ""
         self._allow_dispatch_without_context = False
         # 非啰嗦模式下尚未写入展示的工具统计。
@@ -408,9 +409,12 @@ class StreamingHandler:
         original_message_id: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         title: str = "",
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         串行启动流式输出，禁止新一轮覆盖尚未结束的刷新 owner。
+
+        :param thread_id: 新的流式消息应发送到的原话题
         """
         async with self._streaming_lifecycle_lock:
             await self._start_streaming(
@@ -421,6 +425,7 @@ class StreamingHandler:
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
                 title=title,
+                thread_id=thread_id,
             )
 
     async def _start_streaming(
@@ -432,6 +437,7 @@ class StreamingHandler:
         original_message_id: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         title: str = "",
+        thread_id: Optional[str] = None,
     ) -> None:
         """
         启动流式输出。
@@ -444,6 +450,7 @@ class StreamingHandler:
         :param title: 消息标题
         :param original_message_id: 原始消息ID（如果是回复消息）
         :param original_chat_id: 原始聊天ID（如果是回复消息）
+        :param thread_id: 原会话内的回复话题
         """
         if self._flush_task is not None:
             self._streaming_enabled = False
@@ -455,6 +462,7 @@ class StreamingHandler:
         self._username = username
         self._original_message_id = original_message_id
         self._original_chat_id = original_chat_id
+        self._thread_id = thread_id
         self._title = title
 
         self._streaming_enabled = True
@@ -1068,6 +1076,8 @@ class StreamingHandler:
                         "username": self._username,
                         "original_message_id": self._original_message_id,
                         "original_chat_id": self._original_chat_id,
+                        "thread_id": self._thread_id,
+                        "delivery_kind": "reply",
                         "title": self._title,
                         "text": current_text,
                         "rich_message": self._get_rich_message(current_text),
@@ -1107,6 +1117,8 @@ class StreamingHandler:
                                 "username": self._username,
                                 "original_message_id": self._original_message_id,
                                 "original_chat_id": self._original_chat_id,
+                                "thread_id": self._thread_id,
+                                "delivery_kind": "reply",
                                 "title": self._title,
                                 "text": current_text,
                                 "rich_message": self._get_rich_message(current_text),

@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from typing import Any, Optional, Protocol, Union
 
@@ -230,6 +233,8 @@ class DownloadHistoryWrite:
     :param classification_source: 当次最终分类的依据来源
     :param episode_group: 当前媒体使用的剧集组标识
     :param custom_words: 该任务专用的自定义识别词
+    :param owner_identity: 经认证的不可变账号身份
+    :param task_reference: 与本次下载器提交绑定的不透明标识
     """
 
     path: str
@@ -260,6 +265,8 @@ class DownloadHistoryWrite:
     classification_source: Optional[str] = None
     episode_group: Optional[str] = None
     custom_words: Optional[str] = None
+    owner_identity: str | None = None
+    task_reference: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         """
@@ -271,6 +278,37 @@ class DownloadHistoryWrite:
         if self.userid is not None:
             payload["userid"] = str(self.userid)
         return payload
+
+
+_download_owner: ContextVar[str | None] = ContextVar("download_owner", default=None)
+
+
+@contextmanager
+def scoped_download_owner(owner_identity: str | None) -> Iterator[None]:
+    """
+    在已经授权的下载调用期间传递记录归属。
+
+    :param owner_identity: 服务器认证的账号身份
+    """
+    token = _download_owner.set(owner_identity or None)
+    try:
+        yield
+    finally:
+        _download_owner.reset(token)
+
+
+def get_download_owner() -> str | None:
+    """
+    返回当前下载调用的账号身份。旧插件及没有用户主体的系统任务留空。
+    """
+    return _download_owner.get()
+
+
+def _download_filters(username: str | None, owner_identity: str | None) -> dict[str, str]:
+    """
+    仅向兼容查询端口传递调用方明确指定的归属条件。
+    """
+    return {key: value for key, value in (("username", username), ("owner_identity", owner_identity)) if value is not None}
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,6 +366,12 @@ class DownloadHistoryQueryPort(Protocol):
 
         :param download_hashes: 待批量查询的下载任务哈希标识
         :return: 以任务哈希为键的最新历史映射；未找到的哈希不写入映射
+        """
+        ...
+
+    def get_owned_tasks(self, owner_identity: str, references: list[str]) -> dict[str, DownloadHistorySnapshot]:
+        """
+        按已认证账号及下载器当前提交标识读取绑定的下载历史。
         """
         ...
 
@@ -447,22 +491,26 @@ class AsyncDownloadHistoryQueryRepository(Protocol):
     下载历史只读用例需要的最小异步持久化端口。
     """
 
-    async def async_list_by_page(self, page: int = 1, count: int = 30, *, username: str | None = None) -> list[DownloadHistorySnapshot]:
+    async def async_list_by_page(
+        self, page: int = 1, count: int = 30, *, username: str | None = None, owner_identity: str | None = None,
+    ) -> list[DownloadHistorySnapshot]:
         """
         按下载时间倒序分页读取历史记录。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的记录数
         :param username: 限定业务归属；为空时查询全部账号
+        :param owner_identity: 限定已记录的不可变账号身份
         :return: 按下载时间倒序排列的当前页历史快照
         """
         ...
 
-    async def async_count(self, *, username: str | None = None) -> int:
+    async def async_count(self, *, username: str | None = None, owner_identity: str | None = None) -> int:
         """
         返回下载历史记录总数。
 
         :param username: 限定业务归属；为空时统计全部账号
+        :param owner_identity: 限定已记录的不可变账号身份
         :return: 下载历史记录总数
         """
         ...
@@ -585,18 +633,20 @@ class HistoryQueryService:
         page: int = 1,
         count: int = 30,
         username: str | None = None,
+        owner_identity: str | None = None,
     ) -> list[DownloadHistory]:
         """
         分页读取下载历史并转换为稳定的接口 DTO。
         """
-        records = await self._download_repository.async_list_by_page(page, count, username=username) if username is not None else await self._download_repository.async_list_by_page(page, count)
+        filters = _download_filters(username, owner_identity)
+        records = await self._download_repository.async_list_by_page(page, count, **filters)
         return [DownloadHistory.model_validate(record) for record in records]
 
-    async def count_download(self, *, username: str | None = None) -> int:
+    async def count_download(self, *, username: str | None = None, owner_identity: str | None = None) -> int:
         """
         返回下载历史精确总数，供分页 API 通过附加元数据报告。
         """
-        return await self._download_repository.async_count(username=username) if username is not None else await self._download_repository.async_count()
+        return await self._download_repository.async_count(**_download_filters(username, owner_identity))
 
     async def list_transfer(
         self,

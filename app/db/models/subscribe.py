@@ -21,7 +21,7 @@ from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 def subscription_identity_key(values: dict[str, Any]) -> Optional[str]:
     """
-    为完整订阅身份生成数据库仲裁键，保留用户名大小写及空值区别。
+    为完整订阅身份生成数据库仲裁键，已确认的归属使用稳定账号身份。
 
     空字符串 owner 沿用显式跳过查重的兼容合同；旧单曲的空 music_type 按 recording 处理。
 
@@ -30,11 +30,14 @@ def subscription_identity_key(values: dict[str, Any]) -> Optional[str]:
     """
     if not values.get("media_source") or not values.get("media_id") or not values.get("type"):
         return None
-    if values.get("username") == "":
+    owner_identity = values.get("owner_identity")
+    if not owner_identity and values.get("username") == "":
         return None
     identity = [values.get(field) for field in (
         "username", "type", "media_source", "media_id", "season", "episode_group", "music_type",
     )]
+    if owner_identity:
+        identity[0] = {"account": owner_identity}
     if identity[1] == "音乐" and not identity[-1]:
         identity[-1] = MUSIC_ENTITY_RECORDING
     return hashlib.sha256(json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
@@ -118,6 +121,8 @@ class Subscribe(Base):
     date: Mapped[Optional[str]] = mapped_column(String)
     # 订阅用户
     username: Mapped[Optional[str]] = mapped_column(String, index=True)
+    # 只记录经过认证或管理员核对的账号归属。
+    owner_identity: Mapped[Optional[str]] = mapped_column(String(32), index=True)
     # 订阅站点
     sites: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     # 下载器
@@ -517,7 +522,7 @@ def _refresh_subscription_identity(_mapper: Any, _connection: Any, record: Subsc
     """
     state = inspect(record)
     if any(state.attrs[field].history.has_changes() for field in (
-        "username", "type", "media_source", "media_id", "season", "episode_group", "music_type",
+        "username", "owner_identity", "type", "media_source", "media_id", "season", "episode_group", "music_type",
     )):
         record.identity_key = subscription_identity_key(record.__dict__)
 

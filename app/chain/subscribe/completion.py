@@ -120,6 +120,12 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
             """
             self.post_message(completion_message)
 
+        def notify_owned(owner_identity: str) -> None:
+            """
+            按完成事务核验的归属投递。
+            """
+            self.post_message(completion_message.model_copy(update={"subscription_owner_identity": owner_identity}))
+
         with self.subscription_completion_scope() as command:
             command.execute(
                 subscribe_id=subscribe.id,
@@ -128,6 +134,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
                 notify=notify,
                 report=self._SubscribeChain__report_completed,
                 notification=completion_message.model_dump(mode="json"),
+                notify_owned=notify_owned,
                 classification_snapshot=effective_classification_snapshot(mediainfo),
             )
 
