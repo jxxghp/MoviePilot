@@ -395,12 +395,24 @@ class FanartModule(_ModuleBase):
                 if image_url := image_obj.get("url"):
                     filename = f"{image_name}{self.__image_suffix(image_url)}"
                     ret[filename] = image_url
-                    if image_languages is not None:
-                        lang = str(image_obj.get("lang") or "").strip().lower()
-                        if lang:
-                            image_languages[filename] = lang
+                    self.__record_image_language(image_languages, filename, image_obj)
 
         return ret or None
+
+    @staticmethod
+    def __record_image_language(
+        image_languages: Optional[dict[str, str]],
+        filename: str,
+        image_obj: dict[str, Any],
+    ) -> None:
+        """
+        记录已选中 Fanart 图片对应的语言代码，供 MediaInfo 回填 logo_language 使用。
+        """
+        if image_languages is None:
+            return
+        lang = str(image_obj.get("lang") or "").strip().lower()
+        if lang:
+            image_languages[filename] = lang
 
     @staticmethod
     def __mediainfo_image_attr(image_name: str) -> Optional[str]:
