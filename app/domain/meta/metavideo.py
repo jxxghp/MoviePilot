@@ -5,7 +5,7 @@
 import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 from Pinyin2Hanzi import is_pinyin
 
@@ -110,6 +110,7 @@ class _VideoParseState:
     :param pending_name: 等待下一词元确认用途的名称片段
     :param sources: 已识别的资源来源，按首次出现顺序去重
     :param effects: 已识别的画面或音效特征
+    :param bare_digit_episode: 当前起始集号是否仅由裸数字启发式猜测所得
     """
 
     token_index: int = 0
@@ -120,6 +121,7 @@ class _VideoParseState:
     pending_name: str = ""
     sources: list[str] = field(default_factory=list)
     effects: list[str] = field(default_factory=list)
+    bare_digit_episode: bool = False
 
     def advance(self) -> None:
         """
@@ -200,6 +202,9 @@ class MetaVideo(MetaBase):
     _video_encode_pattern = re.compile(r"(%s)" % _video_encode_re, re.IGNORECASE)
     _audio_encode_pattern = re.compile(r"(%s)" % _audio_encode_re, re.IGNORECASE)
     _fps_pattern = re.compile(r"(%s)" % _fps_re, re.IGNORECASE)
+    _explicit_episode_override_pattern = re.compile(
+        r"^(?:S\d{1,2})?EP?\d{1,4}(?:-?EP?\d{1,4})*$", re.IGNORECASE
+    )
 
     def __init__(self, title: str, subtitle: Optional[str] = None, isfile: bool = False):
         """
@@ -667,6 +672,35 @@ class MetaVideo(MetaBase):
             self.begin_season = 1
         return False
 
+    def _apply_explicit_episodes(
+        self, token: str, re_res: Sequence[Union[str, tuple[str, ...]]], state: _VideoParseState
+    ) -> None:
+        """
+        写入显式季集正则匹配结果，并在匹配完整 SxxEyy/Exx 格式时覆盖此前裸数字启发式猜测。
+        """
+        if state.bare_digit_episode and self._explicit_episode_override_pattern.fullmatch(token):
+            self.begin_episode = None
+            self.end_episode = None
+            self.total_episode = 0
+            state.bare_digit_episode = False
+        for se in re_res:
+            if isinstance(se, tuple):
+                se_t = next((se_i for se_i in se if se_i and str(se_i).isdigit()), None)
+                if not se_t:
+                    break
+                se_val = int(se_t)
+            else:
+                se_val = int(se)
+            if self.begin_episode is None:
+                self.begin_episode = se_val
+                self.total_episode = 1
+            elif se_val > self.begin_episode:
+                self.end_episode = se_val
+                self.total_episode = (self.end_episode - self.begin_episode) + 1
+                if self.isfile and self.total_episode > 2:
+                    self.end_episode = None
+                    self.total_episode = 1
+
     def __init_episode(self, token: str, state: _VideoParseState) -> bool:
         """
         识别集。
@@ -676,29 +710,7 @@ class MetaVideo(MetaBase):
             state.remember(_VideoTokenKind.EPISODE)
             state.stop_name = True
             self.type = MediaType.TV
-            for se in re_res:
-                if isinstance(se, tuple):
-                    se_t = None
-                    for se_i in se:
-                        if se_i and str(se_i).isdigit():
-                            se_t = se_i
-                            break
-                    if se_t:
-                        se = int(se_t)
-                    else:
-                        break
-                else:
-                    se = int(se)
-                if self.begin_episode is None:
-                    self.begin_episode = se
-                    self.total_episode = 1
-                else:
-                    if se > self.begin_episode:
-                        self.end_episode = se
-                        self.total_episode = (self.end_episode - self.begin_episode) + 1
-                        if self.isfile and self.total_episode > 2:
-                            self.end_episode = None
-                            self.total_episode = 1
+            self._apply_explicit_episodes(token, re_res, state)
             return True
         elif token.isdigit():
             try:
@@ -724,6 +736,7 @@ class MetaVideo(MetaBase):
                     and token != state.pending_name:
                 self.begin_episode = int(token)
                 self.total_episode = 1
+                state.bare_digit_episode = True
                 state.remember(_VideoTokenKind.EPISODE)
                 state.stop_name = True
                 self.type = MediaType.TV
@@ -733,6 +746,7 @@ class MetaVideo(MetaBase):
                     and len(token) < 5:
                 self.begin_episode = int(token)
                 self.total_episode = 1
+                state.bare_digit_episode = False
                 state.remember(_VideoTokenKind.EPISODE)
                 state.stop_name = True
                 self.type = MediaType.TV
