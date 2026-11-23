@@ -108,75 +108,14 @@ class _ProviderCatalog:
         """
         raise AttributeError(name)
 
-    _MODELS_DEV_DYNAMIC_SKIP_IDS = {
-        "aihubmix",
-        "amazon-bedrock",
-        "azure",
-        "azure-cognitive-services",
-        "cloudflare-ai-gateway",
-        "cohere",
-        "gitlab",
-        "google-vertex",
-        "google-vertex-anthropic",
-        "kiro",
-        "sap-ai-core",
-        "v0",
-        "vercel",
-    }
-
-    _PROVIDER_PATCHES = {
-        "bailing": {
-            "runtime": "openai_compatible",
-            "default_base_url": "https://api.tbox.cn/api/llm/v1",
-            "description": "Bailing OpenAI-compatible 端点。",
-        },
-        "cerebras": {
-            "runtime": "openai_compatible",
-            "default_base_url": "https://api.cerebras.ai/v1",
-            "description": "Cerebras 官方兼容端点。",
-        },
-        "deepinfra": {
-            "runtime": "openai_compatible",
-            "default_base_url": "https://api.deepinfra.com/v1/openai",
-            "description": "DeepInfra 官方兼容端点。",
-        },
-        "mistral": {
-            "runtime": "openai_compatible",
-            "default_base_url": "https://api.mistral.ai/v1",
-            "description": "Mistral 官方兼容端点。",
-        },
-        "perplexity": {
-            "runtime": "openai_compatible",
-            "default_base_url": "https://api.perplexity.ai/v1",
-            "description": "Perplexity 官方兼容端点。",
-        },
-        "togetherai": {
-            "runtime": "openai_compatible",
-            "default_base_url": "https://api.together.xyz/v1",
-            "description": "Together AI 官方兼容端点。",
-        },
-        "venice": {
-            "runtime": "openai_compatible",
-            "default_base_url": "https://api.venice.ai/api/v1",
-            "description": "Venice AI 官方兼容端点。",
-        },
-        "cloudflare-workers-ai": {
-            "api_key_hint": "填写 Cloudflare API Token，并将 Base URL 中的 ${CLOUDFLARE_ACCOUNT_ID} 替换为真实账户 ID。",
-            "description": "Cloudflare Workers AI OpenAI-compatible 端点，需要替换账户 ID。",
-        },
-        "privatemode-ai": {
-            "api_key_hint": "如未启用鉴权，可填写任意占位值。",
-            "description": "Privatemode AI 本地 OpenAI-compatible 端点。",
-        },
-    }
-
     @classmethod
     def _builtin_provider_specs(cls) -> tuple[ProviderSpec, ...]:
         """
-        返回受支持的 provider 定义。
+        返回受支持的内置 provider 定义。
 
-        OpenAI 保留为用户自定义 OpenAI-compatible 兜底入口，因此仍要求填写
-        Base URL；ChatGPT 则单独承接官方 API Key / ChatGPT 订阅鉴权。
+        OpenAI 兼容与 Anthropic 兼容分别保留为用户自定义 OpenAI-compatible 与
+        Anthropic-compatible 兜底入口，均要求填写 Base URL；ChatGPT 与 Anthropic
+        则单独承接官方端点与鉴权能力。
         """
         browser_auth = ProviderAuthMethod(
             id="browser_oauth",
@@ -191,7 +130,6 @@ class _ProviderCatalog:
             description="适合无回调环境，复制设备码到浏览器完成登录。",
         )
         url_preset = ProviderUrlPreset
-        provider_patches = cls._PROVIDER_PATCHES
 
         def openai_provider(
             provider_id: str,
@@ -269,20 +207,6 @@ class _ProviderCatalog:
                 sort_order=sort_order,
             )
 
-        catalog_openai_providers = (
-            {"id": "huggingface", "name": "Hugging Face", "base_url": "https://router.huggingface.co/v1"},
-            {"id": "jiekou", "name": "接口 AI", "base_url": "https://api.jiekou.ai/openai"},
-            {"id": "kilo", "name": "Kilo Gateway", "base_url": "https://api.kilo.ai/api/gateway"},
-            {"id": "llama", "name": "Llama", "base_url": "https://api.llama.com/compat/v1/"},
-            {"id": "llmgateway", "name": "LLM Gateway", "base_url": "https://api.llmgateway.io/v1"},
-            {"id": "modelscope", "name": "ModelScope", "base_url": "https://api-inference.modelscope.cn/v1"},
-            {"id": "nova", "name": "Nova", "base_url": "https://api.nova.amazon.com/v1"},
-            {"id": "fireworks-ai", "name": "Fireworks AI", "base_url": "https://api.fireworks.ai/inference/v1/"},
-            {"id": "poe", "name": "Poe", "base_url": "https://api.poe.com/v1"},
-            {"id": "qihang-ai", "name": "启航 AI", "base_url": "https://api.qhaigc.net/v1"},
-            {"id": "qiniu-ai", "name": "七牛", "base_url": "https://api.qnaigc.com/v1"},
-        )
-
         providers = [
             ProviderSpec(
                 id="openai",
@@ -295,6 +219,19 @@ class _ProviderCatalog:
                 api_key_hint="填写 OpenAI-compatible 服务的 API Key；如服务未启用鉴权，可填写任意占位值。",
                 description="通用 OpenAI-compatible 模型服务。",
                 sort_order=1,
+            ),
+            ProviderSpec(
+                id="anthropic-compatible",
+                name="Anthropic 兼容",
+                runtime="anthropic_compatible",
+                default_base_url="",
+                base_url_editable=True,
+                requires_base_url=True,
+                supports_api_key=True,
+                api_key_hint="填写 Anthropic-compatible 服务的 API Key。",
+                model_list_strategy="anthropic_endpoint",
+                description="通用 Anthropic / Claude-compatible 模型服务。",
+                sort_order=2,
             ),
             ProviderSpec(
                 id="chatgpt",
@@ -391,54 +328,6 @@ class _ProviderCatalog:
                 description="OpenRouter 聚合模型平台。",
                 sort_order=50,
             ),
-            openai_provider(
-                provider_id="atlascloud",
-                name="Atlas Cloud",
-                default_base_url="https://api.atlascloud.ai/v1",
-                sort_order=55,
-                api_key_hint="填写 Atlas Cloud API Key。",
-                description="Atlas Cloud 聚合模型平台，一个 Key 覆盖 DeepSeek、智谱、月之暗面、通义千问与 MiniMax 等开源权重模型。",
-            ),
-            openai_provider(
-                provider_id="api-route",
-                name="API Route",
-                default_base_url="https://global.api-route.com/v1",
-                sort_order=56,
-                api_key_hint="填写 API Route API Key，可在 https://api-route.com 获取。",
-                description="API Route OpenAI-compatible 聚合模型平台，支持刷新账户可用模型目录。",
-            ),
-            openai_provider(
-                provider_id="cheaperinference",
-                name="Cheaper Inference",
-                default_base_url="https://api.cheaperinference.com/v1",
-                sort_order=57,
-                api_key_hint="填写 Cheaper Inference API Key，可在 https://cheaperinference.com/signup 获取。",
-                description="Cheaper Inference OpenAI-compatible 聚合模型平台，一个 Key 覆盖多家厂商的模型。",
-            ),
-            openai_provider(
-                provider_id="runcrate",
-                name="Runcrate",
-                default_base_url="https://api.runcrate.ai/v1",
-                sort_order=58,
-                api_key_hint="填写 Runcrate API Key，可在 https://www.runcrate.ai/dashboard/api-keys?utm_source=MoviePilot&utm_medium=directory&utm_campaign=gpu_pricing 获取。",
-                description="Runcrate GPU 云的 OpenAI-compatible 推理端点，提供 DeepSeek、GLM、Qwen、Kimi 与 gpt-oss 等模型，用 GitHub 账号即可免费使用开源模型。",
-            ),
-            openai_provider(
-                provider_id="obscurify-ai",
-                name="Obscurify.ai",
-                default_base_url="https://obscurify.ai/v1",
-                sort_order=59,
-                api_key_hint="填写 Obscurify.ai API Key（sk-obs1_ 开头），在 https://obscurify.ai/?utm_source=moviepilot 创建账户后，于 Account 页面点击 Show API Key 获取。",
-                description="Obscurify.ai 注重隐私的 OpenAI-compatible 聚合模型平台：账户为随机 16 位账号，无需邮箱，服务端不保存提示词与回复。",
-            ),
-            openai_provider(
-                provider_id="cheapaimodel",
-                name="cheapaimodel",
-                default_base_url="https://api.cheapaimodel.ai/v1",
-                sort_order=60,
-                api_key_hint="填写 cheapaimodel API Key（sk- 开头），可在 https://console.cheapaimodel.ai/keys 创建。",
-                description="cheapaimodel OpenAI-compatible 模型网关，提供 DeepSeek、GLM、Kimi 与 Grok 等模型，按 token 从预充值美元余额扣费。kimi-k3 仅接受 temperature 1 或 0.6。",
-            ),
             ProviderSpec(
                 id="github-copilot",
                 name="GitHub Copilot",
@@ -456,31 +345,7 @@ class _ProviderCatalog:
                 ),
                 model_list_strategy="github_copilot",
                 description="通过 GitHub Copilot 订阅接入。",
-                sort_order=61,
-            ),
-            openai_provider(
-                provider_id="uberllm",
-                name="MartLLM",
-                default_base_url="https://api.martllm.com/v1",
-                sort_order=62,
-                api_key_hint="填写 MartLLM API Key（ull_ 开头），注册后在 https://martllm.com/dashboard/keys 创建。需预充值，无免费额度。",
-                description="MartLLM 按量付费的 OpenAI-compatible 聚合模型平台，一个 Key 覆盖 GPT、Claude、Gemini、DeepSeek、Qwen、Kimi 等模型。",
-            ),
-            openai_provider(
-                provider_id="trustedrouter",
-                name="TrustedRouter",
-                default_base_url="https://api.trustedrouter.com/v1",
-                sort_order=63,
-                api_key_hint="填写 TrustedRouter API Key，可在 https://trustedrouter.com 注册后获取。",
-                description="TrustedRouter OpenAI-compatible 模型网关，模型 ID 带厂商前缀（如 anthropic/claude-sonnet-4.5），trustedrouter/auto 为自动路由。",
-            ),
-            openai_provider(
-                provider_id="aigrow",
-                name="AIGROW",
-                default_base_url="https://aigrow.gg/v1",
-                sort_order=64,
-                api_key_hint="填写 AIGROW API Key，可在 https://aigrow.gg/dashboard/api 创建。需预充值。",
-                description="AIGROW 预充值的 OpenAI-compatible 模型平台，一个 Key 覆盖 Claude、GPT、Gemini、Grok、Qwen 与 Kimi 等模型，模型 ID 不带厂商前缀（如 claude-haiku-5.5）。",
+                sort_order=60,
             ),
             catalog_openai_provider(
                 provider_id="github-models",
@@ -858,6 +723,18 @@ class _ProviderCatalog:
                 description="天翼云 Token 服务（原模型推理服务）OpenAI-compatible 端点，支持通用与编码套餐地址预设。",
                 sort_order=176,
             ),
+            catalog_openai_provider(
+                provider_id="modelscope",
+                name="ModelScope",
+                default_base_url="https://api-inference.modelscope.cn/v1",
+                sort_order=178,
+            ),
+            catalog_openai_provider(
+                provider_id="qiniu-ai",
+                name="七牛",
+                default_base_url="https://api.qnaigc.com/v1",
+                sort_order=179,
+            ),
             ProviderSpec(
                 id="ollama-cloud",
                 name="Ollama Cloud",
@@ -939,23 +816,6 @@ class _ProviderCatalog:
                 description="Z.AI 官方端点。",
             ),
         ]
-
-        for sort_order, provider_entry in enumerate(
-            catalog_openai_providers,
-            start=1000,
-        ):
-            provider_id = provider_entry["id"]
-            overrides = provider_patches.get(provider_id, {})
-            providers.append(
-                catalog_openai_provider(
-                    provider_id=provider_id,
-                    name=provider_entry["name"],
-                    default_base_url=provider_entry["base_url"],
-                    sort_order=sort_order,
-                    api_key_hint=overrides.get("api_key_hint"),
-                    description=overrides.get("description"),
-                )
-            )
         return tuple(providers)
 
     def _cached_models_dev_payload(self) -> dict[str, Any]:
@@ -983,184 +843,11 @@ class _ProviderCatalog:
         self._models_dev_data = payload
         return payload
 
-    @staticmethod
-    def _models_dev_env_names(payload: dict[str, Any]) -> tuple[str, ...]:
-        """
-        从 models.dev 数据中提取支持的环境变量名。
-        """
-        raw_env_names = payload.get("env")
-        if not isinstance(raw_env_names, list):
-            return ()
-        env_names = []
-        for item in raw_env_names:
-            value = str(item or "").strip()
-            if value:
-                env_names.append(value)
-        return tuple(env_names)
-
-    @classmethod
-    def _models_dev_reserved_provider_ids(cls, specs: tuple[ProviderSpec, ...]) -> set[str]:
-        """
-        获取所有已保留的 models_dev_provider_id 集合。
-        """
-        reserved_ids: set[str] = set()
-        for spec in specs:
-            if spec.models_dev_provider_id:
-                reserved_ids.add(spec.models_dev_provider_id)
-            for preset in spec.base_url_presets:
-                if preset.models_dev_provider_id:
-                    reserved_ids.add(preset.models_dev_provider_id)
-        return reserved_ids
-
-    @staticmethod
-    def _dynamic_api_key_label(env_names: tuple[str, ...]) -> str:
-        """
-        根据环境变量名动态推断 API Key 标签名称。
-        """
-        first_env = env_names[0].upper() if env_names else ""
-        if "TOKEN" in first_env and "KEY" not in first_env:
-            return "API Token"
-        return "API Key"
-
-    @classmethod
-    def _normalize_models_dev_base_url(cls, runtime: str, base_url: Optional[str]) -> Optional[str]:
-        """
-        规范化从 models.dev 获取的 Base URL。
-        """
-        normalized = cls._sanitize_base_url(base_url)
-        if not normalized:
-            return None
-
-        suffixes = {
-            "openai_compatible": (
-                "/chat/completions",
-                "/completions",
-                "/responses",
-                "/embeddings",
-                "/audio/speech",
-                "/audio/transcriptions",
-            ),
-            "anthropic_compatible": ("/messages",),
-        }
-
-        for suffix in suffixes.get(runtime, ()):
-            if normalized.endswith(suffix):
-                normalized = normalized[: -len(suffix)]
-                break
-        return cls._sanitize_base_url(normalized)
-
-    @classmethod
-    def _models_dev_dynamic_provider_spec(
-        cls,
-        provider_id: str,
-        payload: dict[str, Any],
-        sort_order: int,
-    ) -> ProviderSpec | None:
-        """
-        根据 models.dev 数据动态生成 ProviderSpec 实例。
-        """
-        normalized_id = str(provider_id or "").strip().lower()
-        if not normalized_id or normalized_id in cls._MODELS_DEV_DYNAMIC_SKIP_IDS:
-            return None
-
-        override = cls._PROVIDER_PATCHES.get(normalized_id, {})
-        npm_package = str(payload.get("npm") or "").strip()
-        runtime = override.get("runtime")
-        if not runtime:
-            if npm_package == "@ai-sdk/openai-compatible":
-                runtime = "openai_compatible"
-            elif npm_package == "@ai-sdk/anthropic":
-                runtime = "anthropic_compatible"
-            else:
-                return None
-
-        model_list_strategy = override.get("model_list_strategy")
-        if not model_list_strategy:
-            model_list_strategy = "anthropic_compatible" if runtime == "anthropic_compatible" else "models_dev_only"
-
-        default_base_url = cls._normalize_models_dev_base_url(
-            runtime=runtime,
-            base_url=override.get("default_base_url") or payload.get("api"),
-        )
-        requires_base_url = not bool(default_base_url)
-        env_names = cls._models_dev_env_names(payload)
-        api_key_label = override.get("api_key_label") or cls._dynamic_api_key_label(env_names)
-        name = str(payload.get("name") or override.get("name") or normalized_id).strip()
-        description = override.get("description")
-        if not description:
-            transport_name = "Anthropic-compatible" if runtime == "anthropic_compatible" else "OpenAI-compatible"
-            description = f"{name} {transport_name} 端点（来自 models.dev 目录）。"
-
-        api_key_hint = override.get("api_key_hint")
-        if not api_key_hint:
-            api_key_hint = f"填写 {name} {api_key_label}。"
-            if requires_base_url:
-                api_key_hint = f"填写 {name} {api_key_label}，并手动填写 Base URL。"
-
-        return ProviderSpec(
-            id=normalized_id,
-            name=name,
-            runtime=runtime,
-            models_dev_provider_id=normalized_id,
-            default_base_url=default_base_url,
-            base_url_editable=True,
-            requires_base_url=requires_base_url,
-            api_key_label=api_key_label,
-            api_key_hint=api_key_hint,
-            model_list_strategy=model_list_strategy,
-            description=description,
-            sort_order=sort_order,
-        )
-
-    def _dynamic_provider_specs(self, builtin_specs: tuple[ProviderSpec, ...]) -> tuple[ProviderSpec, ...]:
-        """
-        获取从 models.dev 动态加载的所有 ProviderSpec 实例。
-        """
-        payload = self._cached_models_dev_payload()
-        if not payload:
-            return ()
-
-        explicit_ids = {spec.id for spec in builtin_specs}
-        reserved_ids = self._models_dev_reserved_provider_ids(builtin_specs)
-        candidates: list[tuple[str, str, dict[str, Any]]] = []
-
-        for provider_id, provider_payload in payload.items():
-            normalized_id = str(provider_id or "").strip().lower()
-            if not normalized_id or not isinstance(provider_payload, dict):
-                continue
-            if normalized_id in explicit_ids or normalized_id in reserved_ids:
-                continue
-
-            spec = self._models_dev_dynamic_provider_spec(
-                provider_id=normalized_id,
-                payload=provider_payload,
-                sort_order=0,
-            )
-            if not spec:
-                continue
-            candidates.append((spec.name.lower(), normalized_id, provider_payload))
-
-        dynamic_specs = []
-        for sort_order, (_, provider_id, provider_payload) in enumerate(
-            sorted(candidates),
-            start=700,
-        ):
-            spec = self._models_dev_dynamic_provider_spec(
-                provider_id=provider_id,
-                payload=provider_payload,
-                sort_order=sort_order,
-            )
-            if not spec:
-                continue
-            dynamic_specs.append(spec)
-        return tuple(dynamic_specs)
-
     def _provider_specs(self) -> tuple[ProviderSpec, ...]:
         """
-        获取所有支持的 ProviderSpec，包括内置和动态加载的。
+        获取所有受支持的内置 ProviderSpec。
         """
-        builtin_specs = self._builtin_provider_specs()
-        return builtin_specs + self._dynamic_provider_specs(builtin_specs)
+        return self._builtin_provider_specs()
 
     async def _get_provider_async(
         self,
@@ -1171,15 +858,9 @@ class _ProviderCatalog:
         """
         异步获取指定 provider 的 ProviderSpec 实例。
         """
+        del force_refresh, use_proxy
         normalized_provider_id = self._normalize_provider_id(provider_id)
-        try:
-            return self.get_provider(normalized_provider_id)
-        except LLMProviderError:
-            await self.get_models_dev_data(
-                force_refresh=force_refresh,
-                use_proxy=use_proxy,
-            )
-            return self.get_provider(normalized_provider_id)
+        return self.get_provider(normalized_provider_id)
 
     def _serialize_provider(self, spec: ProviderSpec) -> dict[str, Any]:
         """
@@ -1225,15 +906,9 @@ class _ProviderCatalog:
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
         """
-        返回前端可渲染的 provider 目录，并优先补齐 models.dev 动态平台。
+        返回前端可渲染的内置 provider 目录。
         """
-        try:
-            await self.get_models_dev_data(
-                force_refresh=force_refresh,
-                use_proxy=use_proxy,
-            )
-        except Exception as err:
-            logger.debug(f"加载 models.dev provider 目录失败，回退内置列表: {err}")
+        del force_refresh, use_proxy
         return self.list_providers()
 
     def list_providers(self) -> list[dict[str, Any]]:
@@ -1431,7 +1106,7 @@ class _ProviderCatalog:
         """
         判断模型目录上限是否与当前 provider 端点具有明确对应关系。
         """
-        if spec.id == "openai":
+        if spec.id in {"openai", "anthropic-compatible"}:
             return False
 
         preset = cls._resolve_provider_preset(spec, base_url, base_url_preset_id)
@@ -1611,6 +1286,11 @@ class _ProviderCatalog:
             models = provider_payload.get("models") if isinstance(provider_payload, dict) else None
             value = models.get(model_id) if isinstance(models, dict) else None
             return value if isinstance(value, dict) else None
+        if provider_id == "anthropic-compatible":
+            provider_payload = self._cached_models_dev_payload().get("anthropic", {})
+            models = provider_payload.get("models") if isinstance(provider_payload, dict) else None
+            value = models.get(model_id) if isinstance(models, dict) else None
+            return value if isinstance(value, dict) else None
         return None
 
     def _resolve_cached_model_record(
@@ -1743,6 +1423,12 @@ class _ProviderCatalog:
         if provider_id == "openai":
             models_dev = await self.get_models_dev_data(use_proxy=use_proxy)
             provider_payload = models_dev.get("openai", {})
+            models = provider_payload.get("models") if isinstance(provider_payload, dict) else None
+            value = models.get(model_id) if isinstance(models, dict) else None
+            return value if isinstance(value, dict) else None
+        if provider_id == "anthropic-compatible":
+            models_dev = await self.get_models_dev_data(use_proxy=use_proxy)
+            provider_payload = models_dev.get("anthropic", {})
             models = provider_payload.get("models") if isinstance(provider_payload, dict) else None
             value = models.get(model_id) if isinstance(models, dict) else None
             return value if isinstance(value, dict) else None

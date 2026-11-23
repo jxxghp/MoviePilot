@@ -518,6 +518,68 @@ class _ProviderDiscovery:
                 )
         return sorted(results, key=lambda item: item["name"].lower())
 
+    async def _list_models_from_anthropic_endpoint(
+        self,
+        provider_id: str,
+        api_key: str,
+        base_url: str,
+        default_headers: Optional[dict[str, str]] = None,
+        use_proxy: Optional[bool] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        通过 Anthropic 兼容端点的 `/v1/models` 接口实时获取模型列表。
+
+        优先按标准 Anthropic 协议头（`x-api-key`、`anthropic-version`）请求目标端点，
+        并用本地缓存的 models.dev 元数据按需补齐上下文与能力字段，不依赖远端公共目录可达。
+        """
+        normalized_base_url = self._normalize_base_url_for_anthropic(base_url)
+        if not normalized_base_url:
+            raise LLMProviderError(f"{provider_id} 缺少有效的 Base URL")
+
+        headers = dict(default_headers or {})
+        headers["x-api-key"] = api_key
+        headers.setdefault("anthropic-version", "2023-06-01")
+        response = await self._build_async_request(
+            use_proxy,
+            headers=headers,
+        ).get_res(
+            f"{normalized_base_url}/v1/models",
+            raise_exception=True,
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+        raw_models = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(raw_models, list):
+            raise LLMProviderError("Anthropic 兼容模型列表响应格式不正确")
+
+        results = []
+        for item in raw_models:
+            if not isinstance(item, dict):
+                continue
+            model_id = str(item.get("id") or "").strip()
+            if not model_id:
+                continue
+            metadata = (
+                self.resolve_cached_model_metadata(
+                    provider_id,
+                    model_id,
+                    base_url=base_url,
+                )
+                or {}
+            )
+            display_name = str(item.get("display_name") or "").strip() or metadata.get("name") or model_id
+            results.append(
+                self._normalize_model_record(
+                    model_id=model_id,
+                    display_name=display_name,
+                    metadata=metadata,
+                    transport="anthropic",
+                    source="provider",
+                )
+            )
+        return sorted(results, key=lambda item: item["name"].lower())
+
     async def _list_models_from_models_dev_only(
         self,
         provider_id: str,
@@ -996,6 +1058,23 @@ class _ProviderDiscovery:
             return await self._list_models_from_bedrock(
                 api_key=runtime["api_key"],
                 base_url=runtime.get("base_url"),
+                use_proxy=use_proxy,
+            )
+
+        if resolved_model_list_strategy == "anthropic_endpoint":
+            return await self._list_models_from_anthropic_endpoint(
+                provider_id=provider_id,
+                api_key=runtime["api_key"],
+                base_url=self._resolve_provider_model_list_base_url(
+                    spec,
+                    runtime["base_url"],
+                    base_url_preset_id=base_url_preset_id,
+                )
+                or "",
+                default_headers=self._merge_user_agent_header(
+                    runtime.get("default_headers"),
+                    user_agent,
+                ),
                 use_proxy=use_proxy,
             )
 

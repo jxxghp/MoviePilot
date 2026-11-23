@@ -392,7 +392,7 @@ class ChainRuntimeConfig:
     :param ai_agent_enable: 是否启用 AI 智能体
     :param ai_agent_global: 是否由 AI 智能体统一接管消息处理
     :param ai_agent_retry_transfer: AI智能体自动重试整理失败记录开关
-    :param llm_provider: LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）
+    :param llm_provider: LLM提供商（支持内置主流厂商及通用 OpenAI / Anthropic 兼容入口）
     :param llm_model: LLM模型名称
     :param search_resource_pages: 搜索资源获取页数
     :param ai_recommend_enabled: 是否启用AI推荐
