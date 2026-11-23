@@ -15,7 +15,6 @@ from starlette.responses import Response
 import app.agent.orchestrator as orchestrator_module
 from app.agent.middleware.jobs import JobsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
-from app.agent.orchestrator import MoviePilotAgent
 from app.agent.policy.contracts import (
     AuthSource,
     PrincipalRole,
