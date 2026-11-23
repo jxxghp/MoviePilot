@@ -482,6 +482,14 @@ class _ProviderCatalog:
                 api_key_hint="填写 AIGROW API Key，可在 https://aigrow.gg/dashboard/api 创建。需预充值。",
                 description="AIGROW 预充值的 OpenAI-compatible 模型平台，一个 Key 覆盖 Claude、GPT、Gemini、Grok、Qwen 与 Kimi 等模型，模型 ID 不带厂商前缀（如 claude-haiku-5.5）。",
             ),
+            openai_provider(
+                provider_id="worldrouter",
+                name="WorldRouter",
+                default_base_url="https://inference-api.worldrouter.ai/v1",
+                sort_order=65,
+                api_key_hint="填写 WorldRouter API Key（sk-worldrouter- 开头），可在 https://www.worldrouter.ai/dashboard/api-keys 创建。",
+                description="WorldRouter 按量付费的 OpenAI-compatible 模型网关，一个 Key 覆盖 Claude、GPT、Gemini、DeepSeek、Kimi 与 GLM 等模型，模型 ID 不带厂商前缀（如 deepseek-v4-flash）。",
+            ),
             catalog_openai_provider(
                 provider_id="github-models",
                 name="GitHub Models",
