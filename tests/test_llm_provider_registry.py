@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from app.agent.llm.provider import (
@@ -206,6 +207,128 @@ def test_generic_anthropic_compatible_lists_models_from_endpoint(
     assert [(item["id"], item["name"], item["transport"], item["source"]) for item in models] == [
         ("claude-sonnet-4-6", "Claude Sonnet 4.6", "anthropic", "provider"),
         ("custom-relay-model", "custom-relay-model", "anthropic", "provider"),
+    ]
+
+
+@pytest.mark.usefixtures("_isolate_provider_manager")
+def test_generic_anthropic_compatible_skips_invalid_items_and_rejects_bad_payload() -> None:
+    """
+    通用 Anthropic 兼容端点刷新模型时过滤畸形条目，并在非列表响应或空地址时报错。
+    """
+    manager = LLMProviderManager()
+    manager._models_dev_data = {}
+    payloads: list[dict[str, object]] = [
+        {"data": ["bad-item", {"id": ""}, {"id": "claude-haiku-4-5"}]},
+        {"data": "invalid"},
+    ]
+
+    class _FakeResponse:
+        """
+        依次返回预置响应体的最小 HTTP 响应替身。
+        """
+
+        def __init__(self, body: dict[str, object]) -> None:
+            """
+            记录本次响应体。
+            """
+            self._body = body
+
+        def raise_for_status(self) -> None:
+            """
+            模拟 HTTP 200 状态校验。
+            """
+
+        def json(self) -> dict[str, object]:
+            """
+            返回本次预置 JSON 载荷。
+            """
+            return self._body
+
+    class _FakeAsyncRequest:
+        """
+        顺序返回预置模型列表响应的异步请求替身。
+        """
+
+        async def get_res(self, url: str, raise_exception: bool = False) -> _FakeResponse:
+            """
+            消费下一份测试载荷。
+            """
+            del url, raise_exception
+            return _FakeResponse(payloads.pop(0))
+
+    with patch.object(manager, "_build_async_request", return_value=_FakeAsyncRequest()):
+        models = asyncio.run(
+            manager.list_models(
+                provider_id="anthropic-compatible",
+                api_key="sk-ant-test",
+                base_url="https://relay.example.com/v1",
+            )
+        )
+        assert [item["id"] for item in models] == ["claude-haiku-4-5"]
+
+        with pytest.raises(LLMProviderError, match="响应格式不正确"):
+            asyncio.run(
+                manager.list_models(
+                    provider_id="anthropic-compatible",
+                    api_key="sk-ant-test",
+                    base_url="https://relay.example.com/v1",
+                )
+            )
+
+    with pytest.raises(LLMProviderError, match="缺少有效的 Base URL"):
+        asyncio.run(
+            manager._list_models_from_anthropic_endpoint(
+                provider_id="anthropic-compatible",
+                api_key="sk-ant-test",
+                base_url="   ",
+            )
+        )
+
+
+@pytest.mark.usefixtures("_isolate_provider_manager")
+def test_generic_openai_compatible_lists_models_via_authenticated_endpoint() -> None:
+    """
+    通用 OpenAI 兼容入口通过目标 `/models` 端点携带密钥刷新模型列表。
+    """
+    manager = LLMProviderManager()
+    requests: list[httpx.Request] = []
+
+    def _respond(request: httpx.Request) -> httpx.Response:
+        """
+        记录发往兼容端点的模型目录请求并返回标准列表响应。
+        """
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "object": "list",
+                "data": [
+                    {"id": "gpt-5.4", "object": "model", "created": 0},
+                    {"id": "custom-openai-model", "object": "model", "created": 0},
+                ],
+            },
+        )
+
+    with patch.object(
+        manager,
+        "_build_sdk_http_client",
+        side_effect=lambda use_proxy=None: httpx.AsyncClient(transport=httpx.MockTransport(_respond)),
+    ):
+        models = asyncio.run(
+            manager.list_models(
+                provider_id="openai",
+                api_key="sk-openai-relay",
+                base_url="https://relay.example.com/v1",
+            )
+        )
+
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert str(requests[0].url) == "https://relay.example.com/v1/models"
+    assert requests[0].headers["Authorization"] == "Bearer sk-openai-relay"
+    assert [(item["id"], item["source"], item["context_tokens"]) for item in models] == [
+        ("custom-openai-model", "provider", None),
+        ("gpt-5.4", "provider", None),
     ]
 
 
