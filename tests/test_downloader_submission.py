@@ -1571,3 +1571,110 @@ def test_rejection_ledger_read_failure_counts_as_not_noted():
     assert chain._existing_task_rejection_noted(
         _season_context(), rejection=ExistingTaskRejection.PAUSED, downloader_scope="qb", episodes={3},
     ) is False
+
+
+@pytest.mark.parametrize(
+    ("downloader_arg", "site_downloader", "user_specified", "expected_fragments"),
+    [
+        ("stale-qb", None, False, ("未找到可用下载器实例", "stale-qb")),
+        (None, "site-qb", False, ("未找到站点", "站点", "site-qb")),
+        (None, "manual-qb", True, ("未找到可用下载器实例", "manual-qb")),
+        (None, None, False, ("未找到可用的默认下载器实例",)),
+    ],
+    ids=["explicit-downloader", "site-downloader", "manual-site-downloader", "default-downloader"],
+)
+def test_missing_downloader_reports_target_without_fallback_or_cooldown(
+    downloader_arg,
+    site_downloader,
+    user_specified,
+    expected_fragments,
+):
+    """
+    下载器模块均未匹配到可用实例时，必须明确指明请求的目标与来源，不静默回退默认下载器，
+    也不将正常种子写入资源级失败冷却台账。
+    """
+    content, _hashes = _torrent()
+    context = _season_context(site_downloader=site_downloader)
+    prepared = SimpleNamespace(
+        torrent_content=content,
+        torrent=context.torrent_info,
+        media=context.media_info,
+        meta=context.meta_info,
+        download_dir=Path("/downloads"),
+        download_episodes=None,
+        folder_name="",
+        file_list=[],
+        site_downloader=site_downloader,
+    )
+    chain = _ledger_chain()
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    chain.download = Mock(return_value=None)
+    chain.post_message = Mock()
+
+    download_hash, error_msg = chain._submit_prepared_download(
+        prepared=prepared,
+        context=context,
+        episodes=None,
+        channel=None,
+        source="Manual" if user_specified else "Subscribe|1",
+        downloader=downloader_arg,
+        userid=None,
+        username=None,
+        label=None,
+        custom_words=None,
+        governance=None,
+        user_specified=user_specified,
+    )
+
+    assert download_hash is None
+    assert chain.download.call_count == 1
+    assert chain.download.call_args.kwargs["downloader"] == (downloader_arg or site_downloader)
+    for fragment in expected_fragments:
+        assert fragment in error_msg
+    assert chain.post_message.call_count == 1
+    assert error_msg in chain.post_message.call_args.args[0].text
+    assert chain.download_failure_repository.records == {}
+
+
+def test_downloader_rejection_tuple_still_records_failure_cooldown():
+    """
+    下载器明确返回失败四元组时，应原样透出原因并照常写入资源失败冷却台账。
+    """
+    content, _hashes = _torrent()
+    context = _season_context()
+    prepared = SimpleNamespace(
+        torrent_content=content,
+        torrent=context.torrent_info,
+        media=context.media_info,
+        meta=context.meta_info,
+        download_dir=Path("/downloads"),
+        download_episodes=None,
+        folder_name="",
+        file_list=[],
+        site_downloader=None,
+    )
+    chain = _ledger_chain()
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    chain.download = Mock(return_value=(None, None, None, "添加种子任务失败：demo.torrent"))
+    chain.post_message = Mock()
+
+    download_hash, error_msg = chain._submit_prepared_download(
+        prepared=prepared,
+        context=context,
+        episodes=None,
+        channel=None,
+        source="Subscribe|1",
+        downloader="qb",
+        userid=None,
+        username=None,
+        label=None,
+        custom_words=None,
+        governance=None,
+    )
+
+    assert download_hash is None
+    assert error_msg == "添加种子任务失败：demo.torrent"
+    assert len(chain.download_failure_repository.records) == 1
+    assert chain.post_message.call_count == 1

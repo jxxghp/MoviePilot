@@ -188,6 +188,29 @@ def test_feishu_sdk_exports_host_long_connection():
     assert feishu_sdk.FEISHU_DOMAIN == "https://open.feishu.cn"
 
 
+def test_browser_sdk_exports_queue_status_and_cancellation_contracts():
+    """
+    浏览器 SDK 应复用 canonical 队列状态、取消边界与异常类型，不复制运行时状态。
+    """
+    from app.runtime import browser as runtime_browser
+    from app.sdk import browser as browser_sdk
+
+    assert browser_sdk.BrowserQueueStatus is runtime_browser.BrowserQueueStatus
+    assert (
+        browser_sdk.BrowserQueueCancelledError
+        is runtime_browser.BrowserQueueCancelledError
+    )
+    assert (
+        browser_sdk.BrowserOperationTimeoutError
+        is runtime_browser.BrowserOperationTimeoutError
+    )
+    assert browser_sdk.browser_request is runtime_browser.browser_request
+    assert (
+        browser_sdk.get_browser_queue_status
+        is runtime_browser.get_browser_queue_status
+    )
+
+
 def test_browser_sdk_delegates_sync_and_async_launch(monkeypatch):
     """
     SDK 只转发浏览器参数，不复制宿主生命周期实现。
@@ -218,3 +241,74 @@ def test_browser_sdk_delegates_sync_and_async_launch(monkeypatch):
         headless=True,
         timezone="Asia/Shanghai",
     )
+
+
+def test_browser_sdk_delegates_sync_and_async_context(monkeypatch):
+    """
+    SDK 浏览器任务上下文应转发取消条件、排队超时与其余参数，不复制生命周期逻辑。
+    """
+    import asyncio
+    from contextlib import asynccontextmanager, contextmanager
+
+    from app.adapters.network import browser as browser_adapter
+    from app.sdk import browser as browser_sdk
+
+    sync_context = object()
+    async_context = object()
+    sync_calls: list[dict] = []
+    async_calls: list[dict] = []
+
+    @contextmanager
+    def fake_browser_context(**kwargs):
+        sync_calls.append(kwargs)
+        yield sync_context
+
+    @asynccontextmanager
+    async def fake_browser_context_async(**kwargs):
+        async_calls.append(kwargs)
+        yield async_context
+
+    def cancel_check() -> bool:
+        return False
+
+    monkeypatch.setattr(browser_adapter, "browser_context", fake_browser_context)
+    monkeypatch.setattr(
+        browser_adapter,
+        "browser_context_async",
+        fake_browser_context_async,
+    )
+
+    with browser_sdk.browser_context(
+        headless=False,
+        cancelled=cancel_check,
+        queue_timeout=12.5,
+        locale="zh-CN",
+    ) as entered_sync:
+        assert entered_sync is sync_context
+
+    async def run_async():
+        async with browser_sdk.browser_context_async(
+            headless=True,
+            cancelled=cancel_check,
+            queue_timeout=8.0,
+            timezone="Asia/Shanghai",
+        ) as entered_async:
+            assert entered_async is async_context
+
+    asyncio.run(run_async())
+    assert sync_calls == [
+        {
+            "headless": False,
+            "cancelled": cancel_check,
+            "queue_timeout": 12.5,
+            "locale": "zh-CN",
+        }
+    ]
+    assert async_calls == [
+        {
+            "headless": True,
+            "cancelled": cancel_check,
+            "queue_timeout": 8.0,
+            "timezone": "Asia/Shanghai",
+        }
+    ]

@@ -23,6 +23,7 @@ from app.application.security.user import (
     UserService,
 )
 from app.application.security.userconfig import get_configured_user_configuration
+from app.domain.authorization import has_web_permission
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.startup.composition.context import HostRuntime
 
@@ -170,11 +171,21 @@ def _ensure_manage_user(current_user: Any) -> Any:
 
 def get_current_download_viewer(current_user: Any = Depends(get_current_active_user)) -> Any:
     """
-    渠道成员仅查看自己的下载；普通网页入口继续要求全局管理权限。
+    允许管理员、下载管理用户查看全局下载；渠道成员及具备搜索/订阅权限的普通网页用户仅可查看本人下载。
+
+    :param current_user: 当前已认证激活用户
+    :return: 通过校验的当前用户
     """
     if getattr(current_user, "authorization_id", None) and current_user.permissions.get("download") is True:
         return current_user
-    return _ensure_manage_user(current_user)
+    permissions = getattr(current_user, "permissions", None)
+    if current_user.is_superuser or has_web_permission(False, permissions, "manage", "manage.downloading"):
+        return current_user
+    if has_web_permission(False, permissions, "search", "search.resource") or has_web_permission(
+        False, permissions, "subscribe"
+    ):
+        return current_user
+    raise HTTPException(status_code=403, detail="用户权限不足")
 
 
 def get_current_active_manage_user(

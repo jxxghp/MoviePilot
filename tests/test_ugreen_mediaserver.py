@@ -476,7 +476,7 @@ def test_media_service_supports_library_query_and_core_media_operations():
     assert ugreen.get_items_count("movie-library") == 1
 
     play_url = ugreen.get_play_url("movie-id")
-    assert play_url == ("https://play.example/web/index.html#!/item?id=movie-id&context=home&serverId=server-id")
+    assert play_url == "https://play.example/"
     resume = ugreen.get_resume(num=2)
     assert resume is not None
     assert [item.item_id for item in resume] == ["movie-id", "episode-id"]
@@ -489,6 +489,131 @@ def test_media_service_supports_library_query_and_core_media_operations():
     ]
     assert ugreen.refresh_root_library() is False
     assert any(name == "items" for name, _ in media_api.calls)
+
+
+def test_media_service_tv_episodes_distinguishes_not_found_from_query_failure():
+    """
+    媒体库服务模式未命中剧集时返回空映射，仅请求失败时返回两项 None，并支持分季合并。
+    """
+    ugreen, media_api = _build_media_service()
+
+    assert ugreen.get_tv_episodes(title="不存在的剧集", year="2026") == (None, {})
+
+    def _search_failed(**_kwargs: object) -> None:
+        return None
+
+    with patch.object(media_api, "items", side_effect=_search_failed):
+        assert ugreen.get_tv_episodes(title="不存在的剧集", year="2026") == (None, None)
+
+    split_series = [
+        {
+            "Id": "s1-id",
+            "Type": "Series",
+            "Name": "示例剧集 第 1 季",
+            "ProductionYear": 2023,
+            "ProviderIds": {"Tmdb": "233076"},
+            "ParentId": "tv-library",
+        },
+        {
+            "Id": "s2-id",
+            "Type": "Series",
+            "Name": "示例剧集 ",
+            "ProductionYear": 2026,
+            "ProviderIds": {"Tmdb": "233076"},
+            "ParentId": "tv-library",
+        },
+    ]
+
+    def _split_episodes(series_id: str, season: int | None = None) -> list[dict]:
+        _ = season
+        if series_id == "s1-id":
+            return [{"ParentIndexNumber": 1, "IndexNumber": 1}]
+        return [{"ParentIndexNumber": 2, "IndexNumber": 3}]
+
+    with patch.object(
+        media_api,
+        "items",
+        return_value={"Items": split_series, "TotalRecordCount": 2},
+    ), patch.object(media_api, "episodes", side_effect=_split_episodes):
+        found_id, seasons = ugreen.get_tv_episodes(
+            title="示例剧集",
+            year="2023",
+            media_source=MediaSource.TMDB,
+            media_id="233076",
+        )
+    assert found_id == "s1-id"
+    assert seasons == {1: [1], 2: [3]}
+
+
+def test_media_service_tv_episodes_stale_item_id_fallback_and_error_handling():
+    """
+    媒体库服务缓存 ID 失效时（404 或回退查询 200 空结果）应回退搜索，服务异常则返回查询失败。
+    """
+    ugreen, media_api = _build_media_service()
+
+    media_api.last_status_code = 404
+    assert ugreen.get_tv_episodes(
+        item_id="stale-id",
+        title="示例剧集",
+        year="2026",
+        media_source=MediaSource.TMDB,
+        media_id="200",
+    ) == ("series-id", {1: [2]})
+
+    media_api.last_status_code = 200
+    assert ugreen.get_tv_episodes(
+        item_id="stale-id",
+        title="示例剧集",
+        year="2026",
+        media_source=MediaSource.TMDB,
+        media_id="200",
+    ) == ("series-id", {1: [2]})
+
+    media_api.last_status_code = 500
+    assert ugreen.get_tv_episodes(
+        item_id="stale-id",
+        title="示例剧集",
+        year="2026",
+        media_source=MediaSource.TMDB,
+        media_id="200",
+    ) == (None, None)
+
+
+def test_internal_tv_episodes_and_empty_library_handling():
+    """
+    内部模式未命中剧集应返回空映射而非失败，空媒体库遍历不应抛出路径异常。
+    """
+    ugreen = Ugreen.__new__(Ugreen)
+    ugreen._host = "https://nas.example:9443"
+    ugreen._username = "tester"
+    ugreen._password = "secret"
+    ugreen._userinfo = {"name": "tester"}
+    ugreen._connection_mode = Ugreen.INTERNAL_CONNECTION_MODE
+    ugreen._libraries = {"12": {"id": "12", "name": "电影（本地）", "video_count": 0}}
+    ugreen._library_paths = {"11": "/media/tv"}
+
+    class _InternalSearchApi:
+        """
+        模拟内部搜索接口返回空结果与失败结果。
+        """
+
+        token = "test-token"
+
+        def __init__(self, payload: dict | None) -> None:
+            self._payload = payload
+
+        def search(self, _keyword: str) -> dict | None:
+            """
+            返回预设搜索结果。
+            """
+            return self._payload
+
+    ugreen._api = _InternalSearchApi({"tv_list": {"total_num": 0, "video_arr": None}})
+    assert ugreen.get_tv_episodes(title="不存在的剧集", year="2026") == (None, {})
+    assert list(ugreen.get_items("12")) == []
+
+    ugreen._api = _InternalSearchApi(None)
+    assert ugreen.get_tv_episodes(title="不存在的剧集", year="2026") == (None, None)
 
 
 def test_get_medias_count_episode_is_none():

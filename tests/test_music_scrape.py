@@ -197,10 +197,14 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     )
 
 
-def test_music_cover_download_uses_bounded_external_response_cache() -> None:
+def test_music_cover_download_uses_bounded_external_response_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     重复刮削同一封面时应复用缓存内容，避免再次访问外部图片接口。
     """
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        monkeypatch.delenv(name, raising=False)
     response = SimpleNamespace(
         status_code=200,
         headers={"Content-Type": "image/webp"},

@@ -735,6 +735,21 @@ class ConfigModel(BaseModel):
         default=False,
         description='是否开放 API 文档；开放 /docs、/redoc 与 /api/v1/openapi.json，文档首次生成后常驻约 20–30MB 内存，修改后立即生效',
     )
+    VAPID_PUBLIC_KEY: Optional[str] = Field(
+        default=None,
+        description='Web Push VAPID 公钥（base64url 编码的未压缩 P-256 公钥），留空时使用运行期内置默认值；需与 VAPID_PRIVATE_KEY 成对配置',
+    )
+    VAPID_PRIVATE_KEY: Annotated[
+        Optional[str],
+        SettingPolicy(sensitive=True),
+    ] = Field(
+        default=None,
+        description='Web Push VAPID 私钥（base64url 编码的 P-256 私钥），留空时使用运行期内置默认值；需与 VAPID_PUBLIC_KEY 成对配置',
+    )
+    VAPID_SUBJECT: Optional[str] = Field(
+        default=None,
+        description='Web Push VAPID 联系主体（mailto: 或 https:// 地址），留空时默认使用超级管理员邮箱地址',
+    )
 
     # 工作流配置
     WORKFLOW_STATISTIC_SHARE: bool = Field(default=True, description='工作流数据共享')
@@ -902,6 +917,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
 
     :cvar model_config: 来源优先级为构造参数、环境变量、环境文件、secrets、默认值
     :ivar _secret_fields: 存在外部 secret 的字段名，包含被高优先级来源遮蔽或无效的文件
+    :ivar _runtime_defaults: 运行期注入的受保护默认键值，不参与持久化、环境变量导出或模型序列化
     """
 
     model_config = SettingsConfigDict(
@@ -911,6 +927,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         secrets_dir=_get_secrets_dir(),
     )
     _secret_fields: set[str] = PrivateAttr(default_factory=set)
+    _runtime_defaults: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     @classmethod
     def settings_customise_sources(
@@ -1521,11 +1538,32 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     def VAPID(self) -> dict[str, str]:
         """
         返回 Web Push 使用的 VAPID 配置。
+
+        优先使用显式成对配置的自定义密钥；均留空时回退到运行期注入的默认密钥对，
+        仅配置单边密钥时返回空密钥以避免公私钥错配。
         """
+        subject = (self.VAPID_SUBJECT or "").strip() or (
+            f"mailto:{self.SUPERUSER or 'moviepilot'}@movie-pilot.org"
+        )
+        custom_public = (self.VAPID_PUBLIC_KEY or "").strip()
+        custom_private = (self.VAPID_PRIVATE_KEY or "").strip()
+        if custom_public and custom_private:
+            return {
+                "subject": subject,
+                "publicKey": custom_public,
+                "privateKey": custom_private,
+            }
+        if custom_public or custom_private:
+            logger.warning("VAPID_PUBLIC_KEY 与 VAPID_PRIVATE_KEY 必须成对配置，当前仅配置了其中一项")
+            return {
+                "subject": subject,
+                "publicKey": "",
+                "privateKey": "",
+            }
         return {
-            "subject": f"mailto:{self.SUPERUSER or 'moviepilot'}@movie-pilot.org",
-            "publicKey": "BH3w49sZA6jXUnE-yt4jO6VKh73lsdsvwoJ6Hx7fmPIDKoqGiUl2GEoZzy-iJfn4SfQQcx7yQdHf9RknwrL_lSM",
-            "privateKey": "JTixnYY0vEw97t9uukfO3UWKfHKJdT5kCQDiv3gu894",
+            "subject": subject,
+            "publicKey": str(self._runtime_defaults.get("VAPID_PUBLIC_KEY") or "").strip(),
+            "privateKey": str(self._runtime_defaults.get("VAPID_PRIVATE_KEY") or "").strip(),
         }
 
     def MP_DOMAIN(self, url: Optional[str] = None) -> Optional[str]:

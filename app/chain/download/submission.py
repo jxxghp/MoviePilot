@@ -45,7 +45,11 @@ from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
-from app.schemas.download import DownloadTaskAction, ExistingTaskRejection
+from app.schemas.download import (
+    DownloadTaskAction,
+    ExistingTaskRejection,
+    is_unconfirmed_download_message,
+)
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
@@ -668,8 +672,16 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             user_specified=user_specified,
         )
         if governance:
-            governance.report(context, "submitted" if download_hash else "failed",
-                              None if download_hash else "下载器未接受该资源，未提交成功")
+            if download_hash:
+                governance.report(context, "submitted", None)
+            elif is_unconfirmed_download_message(error_msg):
+                governance.report(
+                    context,
+                    "failed",
+                    "下载器已受理但暂未确认任务信息，已保留待确认状态并暂停同目标换源",
+                )
+            else:
+                governance.report(context, "failed", "下载器未接受该资源，未提交成功")
         return (download_hash, error_msg) if return_detail else download_hash
 
     def _has_completed_music_download(self, prepared: _PreparedDownload, source: Optional[str]) -> bool:
@@ -906,8 +918,20 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     confirmed_selection=previous_selection,
                     user_specified=user_specified,
                 )
+            missing_downloader = not result
             actual_downloader, download_hash, layout, error_msg = (
-                result if result else (None, None, None, "未找到下载器")
+                result
+                if result
+                else (
+                    None,
+                    None,
+                    None,
+                    self._missing_downloader_error(
+                        downloader,
+                        prepared,
+                        user_specified=user_specified,
+                    ),
+                )
             )
             if download_hash:
                 self._settle_accepted_download(
@@ -928,19 +952,68 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     downloader_scope=self._download_scope(downloader, prepared.torrent),
                 )
         if not download_hash:
-            self._record_rejected_download(
-                prepared=prepared,
-                context=context,
-                episodes=episodes,
-                channel=channel,
-                source=source,
-                downloader=downloader,
-                userid=userid,
-                actual_downloader=actual_downloader,
-                error_msg=error_msg,
-                user_specified=user_specified,
-            )
+            if is_unconfirmed_download_message(error_msg):
+                self._record_unconfirmed_download(
+                    prepared=prepared,
+                    context=context,
+                    episodes=episodes,
+                    channel=channel,
+                    source=source,
+                    downloader=downloader,
+                    userid=userid,
+                    username=username,
+                    custom_words=custom_words,
+                    actual_downloader=actual_downloader,
+                    error_msg=error_msg,
+                    user_specified=user_specified,
+                )
+            else:
+                self._record_rejected_download(
+                    prepared=prepared,
+                    context=context,
+                    episodes=episodes,
+                    channel=channel,
+                    source=source,
+                    downloader=downloader,
+                    userid=userid,
+                    actual_downloader=actual_downloader,
+                    error_msg=error_msg,
+                    user_specified=user_specified,
+                    record_failure=not missing_downloader,
+                )
         return download_hash, error_msg
+
+    @staticmethod
+    def _missing_downloader_error(
+        downloader: Optional[str],
+        prepared: _PreparedDownload,
+        *,
+        user_specified: bool = False,
+    ) -> str:
+        """
+        生成所有下载器模块均未匹配到可用实例时的诊断说明。
+
+        区分调用方指定、站点绑定和默认下载器三种目标来源，避免只提示“未找到下载器”掩盖配置线索；
+        不会静默回退到其他下载器，以免破坏用户的下载器隔离与路径映射。
+
+        :param downloader: 调用方或订阅显式传入的下载器名称
+        :param prepared: 提交前已规范化的下载事实，用于读取站点绑定下载器与站点名
+        :param user_specified: 是否为用户手动提交；手动下载接口会把用户选择的下载器写入 ``site_downloader``
+        :return: 供日志与失败通知展示的具体错误说明
+        """
+        if downloader or (prepared.site_downloader and user_specified):
+            target = downloader or prepared.site_downloader
+            return (
+                f"未找到可用下载器实例：{target}，"
+                "请检查下载器是否已启用、改名或删除，以及订阅或下载配置中的下载器设置"
+            )
+        if prepared.site_downloader:
+            site_name = prepared.torrent.site_name or "当前站点"
+            return (
+                f"未找到站点 {site_name} 指定的下载器实例：{prepared.site_downloader}，"
+                "请检查下载器是否已启用、改名或删除，以及站点下载器配置"
+            )
+        return "未找到可用的默认下载器实例，请检查下载器配置中是否存在已启用的下载器"
 
     def _existing_task_confirmed_selection(
         self, task_hashes: frozenset[str],
@@ -1122,6 +1195,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         error_msg: str,
         user_specified: bool = False,
+        record_failure: bool = True,
     ) -> None:
         """
         按普通失败合同记录下载器明确拒绝并通知原调用渠道。
@@ -1129,8 +1203,11 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         已有任务的拒绝不会让订阅跳过候选，每一轮都交给下载器按实时状态重新判断（用户在下载器里恢复任务、
         重新勾选文件后下一轮就能接着用）。自动流程（订阅、工作流、插件）在同一原因的通知静默期内重复遇到时
         只记日志，不再通知、不顺延记录，见 ``_existing_task_rejection_noted``；用户手动指定种子时每次都通知。
+        当失败源于下载器实例缺失而非资源本身问题时，调用方传入 ``record_failure=False``，避免把正常种子
+        写入资源级冷却台账，修正配置后即可立即重试。
 
         :param user_specified: 用户明确指定了这个种子
+        :param record_failure: 是否写入资源级失败冷却台账；下载器实例缺失等配置问题时为 False
         """
         rejection = ExistingTaskRejection.from_message(error_msg)
         downloader_scope = self._download_scope(downloader, prepared.torrent)
@@ -1146,14 +1223,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             f"{prepared.media.title_year} 添加下载任务失败："
             f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"
         )
-        self._record_download_failure(
-            context=context,
-            error_msg=error_msg,
-            downloader=actual_downloader or downloader or prepared.site_downloader,
-            source=source,
-            episodes=episodes,
-            downloader_scope=downloader_scope,
-        )
+        if record_failure:
+            self._record_download_failure(
+                context=context,
+                error_msg=error_msg,
+                downloader=actual_downloader or downloader or prepared.site_downloader,
+                source=source,
+                episodes=episodes,
+                downloader_scope=downloader_scope,
+            )
         self.post_message(
             Message(
                 channel=channel,

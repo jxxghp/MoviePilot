@@ -1026,6 +1026,94 @@ def test_initialize_tv_directory_season(tv_context) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("season_name", "season_number"),
+    [("Season 5 (2026)", 5), ("S05 (2026)", 5), ("Season 12 (2024)", 12)],
+)
+def test_initialize_tv_directory_season_with_year(tv_context, season_name, season_number) -> None:
+    """
+    季目录名带年份时仍识别为对应季，不误判为剧集根目录。
+    """
+    tv_context.media_chain.runtime_config = replace(
+        tv_context.media_chain.runtime_config,
+        season_zero_names=("Specials", "SPs"),
+    )
+
+    fileitem = FileItem(path=f"/tv/Show/{season_name}", name=season_name, type="dir", storage="local")
+    meta = MetaInfo("Show")
+    mediainfo = MediaInfo(type=MediaType.TV)
+    filepath = Path(fileitem.path)
+
+    tv_context.media_chain._initialize_tv_directory_metadata(
+        fileitem=fileitem,
+        filepath=filepath,
+        meta=meta,
+        mediainfo=mediainfo,
+        parent=None,
+        overwrite=False,
+    )
+
+    tv_context.media_chain._scrape_nfo_generic.assert_called_once_with(
+        current_fileitem=fileitem,
+        meta=meta,
+        mediainfo=mediainfo,
+        item_type=ScrapingTarget.SEASON,
+        overwrite=False,
+        season_number=season_number,
+    )
+    tv_context.media_chain._scrape_images_generic.assert_called_once_with(
+        current_fileitem=fileitem,
+        mediainfo=mediainfo,
+        item_type=ScrapingTarget.SEASON,
+        parent_fileitem=None,
+        overwrite=False,
+        season_number=season_number,
+    )
+
+
+def test_initialize_tv_directory_root_with_year(tv_context) -> None:
+    """
+    剧集根目录名带年份时仍按剧集根目录刮削，不误判为季目录。
+    """
+    tv_context.media_chain.runtime_config = replace(
+        tv_context.media_chain.runtime_config,
+        season_zero_names=("Specials", "SPs"),
+    )
+
+    fileitem = FileItem(
+        path="/tv/克拉克森的农场 (2021)",
+        name="克拉克森的农场 (2021)",
+        type="dir",
+        storage="local",
+    )
+    meta = MetaInfo("克拉克森的农场 (2021)")
+    mediainfo = MediaInfo(type=MediaType.TV)
+    filepath = Path(fileitem.path)
+
+    tv_context.media_chain._initialize_tv_directory_metadata(
+        fileitem=fileitem,
+        filepath=filepath,
+        meta=meta,
+        mediainfo=mediainfo,
+        parent=None,
+        overwrite=False,
+    )
+
+    tv_context.media_chain._scrape_nfo_generic.assert_called_once_with(
+        current_fileitem=fileitem,
+        meta=meta,
+        mediainfo=mediainfo,
+        item_type=ScrapingTarget.TV,
+        overwrite=False,
+    )
+    tv_context.media_chain._scrape_images_generic.assert_called_once_with(
+        current_fileitem=fileitem,
+        mediainfo=mediainfo,
+        item_type=ScrapingTarget.TV,
+        overwrite=False,
+    )
+
+
 @patch("app.chain.scraping.ScrapingChain.scrape_metadata")
 def test_scrape_metadata_event_file(mock_scrape_metadata, event_context) -> None:
     """

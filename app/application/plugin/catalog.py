@@ -158,14 +158,23 @@ class PluginCatalogService:
             error: Callable[[str], Any],
             info: Callable[[str], Any],
             max_concurrency: int = DEFAULT_MARKET_FETCH_CONCURRENCY,
+            single_market_loader: Optional[MarketLoader] = None,
+            async_single_market_loader: Optional[AsyncMarketLoader] = None,
     ) -> None:
         """
         保存市场读取、插件映射和日志回调。索引不存在时读取端口返回 None，失败时抛出异常。
+
+        :param single_market_loader: 可选的单仓库同步读取端口；未提供时复用 ``market_loader``
+        :param async_single_market_loader: 可选的单仓库异步读取端口；未提供时复用 ``async_market_loader``
         """
         if max_concurrency < 1:
             raise ValueError("插件市场读取并发必须大于 0")
         self._market_loader = market_loader
         self._async_market_loader = async_market_loader
+        self._single_market_loader = single_market_loader or market_loader
+        self._async_single_market_loader = (
+            async_single_market_loader or async_market_loader
+        )
         self._installed_plugins_provider = installed_plugins_provider
         self._plugin_mapper = plugin_mapper
         self._is_local_repo = is_local_repo
@@ -194,12 +203,17 @@ class PluginCatalogService:
             market: str,
             package_version: Optional[str],
             force: bool,
+            *,
+            single_source: bool = False,
     ) -> _CatalogIndexRead:
         """
         同步读取单个索引，收集预期的传输或解析失败，不提前写日志。
+
+        :param single_source: 是否使用单仓库交互读取端口，避免与全量扫描争抢并发槽位
         """
+        loader = self._single_market_loader if single_source else self._market_loader
         try:
-            payload = self._market_loader(market, package_version, force)
+            payload = loader(market, package_version, force)
         except (ValueError, RuntimeError) as error:
             return _CatalogIndexRead.failed(market, package_version, error)
         return self._index_read(market, package_version, payload)
@@ -209,12 +223,21 @@ class PluginCatalogService:
             market: str,
             package_version: Optional[str],
             force: bool,
+            *,
+            single_source: bool = False,
     ) -> _CatalogIndexRead:
         """
         异步读取单个索引，保留成功、缺失和失败三种结果供目录使用。
+
+        :param single_source: 是否使用单仓库交互读取端口，避免与全量扫描争抢并发槽位
         """
+        loader = (
+            self._async_single_market_loader
+            if single_source
+            else self._async_market_loader
+        )
         try:
-            payload = await self._async_market_loader(market, package_version, force)
+            payload = await loader(market, package_version, force)
         except (ValueError, RuntimeError) as error:
             return _CatalogIndexRead.failed(market, package_version, error)
         return self._index_read(market, package_version, payload)
@@ -240,7 +263,9 @@ class PluginCatalogService:
         """
         if not market:
             return []
-        return self._single_index_plugins(self._read_index(market, package_version, force))
+        return self._single_index_plugins(
+            self._read_index(market, package_version, force, single_source=True)
+        )
 
     async def async_load(
             self,
@@ -258,7 +283,14 @@ class PluginCatalogService:
         """
         if not market:
             return []
-        return self._single_index_plugins(await self._async_read_index(market, package_version, force))
+        return self._single_index_plugins(
+            await self._async_read_index(
+                market,
+                package_version,
+                force,
+                single_source=True,
+            )
+        )
 
     def _log_index_refresh(
             self,
@@ -388,6 +420,7 @@ class PluginCatalogService:
             preserve_sources: bool = False,
             require_available: bool = False,
             progress_callback: Optional[ProgressCallback] = None,
+            single_source: bool = False,
     ) -> list[Any]:
         """
         异步读取多个市场和代际，并按调用方需要合并或保留仓库候选。
@@ -398,6 +431,7 @@ class PluginCatalogService:
         :param preserve_sources: 是否保留每个仓库的候选，不跨仓去重
         :param require_available: 是否在没有候选且有索引读取失败时报告市场不可用
         :param progress_callback: 可选的进度更新回调
+        :param single_source: 是否为单仓库定向读取，启用时使用单仓并发闸门
         :return: 合并或保留来源后的插件目录
         :raises PluginMarketUnavailableError: 要求确认市场可用，但存在失败且没有候选
         """
@@ -413,7 +447,12 @@ class PluginCatalogService:
             """
             async with semaphore:
                 try:
-                    read = await self._async_read_index(market, package_version, force)
+                    read = await self._async_read_index(
+                        market,
+                        package_version,
+                        force,
+                        single_source=single_source,
+                    )
                 # 投影等意外异常也不能中断整个刷新
                 except Exception as error:  # noqa: BLE001
                     read = _CatalogIndexRead.failed(market, package_version, error)

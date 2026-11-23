@@ -189,10 +189,11 @@ def test_transfer_history_clear_requires_superuser():
 
 def test_webpush_send_requires_superuser_and_subscribe_accepts_login_user():
     """
-    主动推送到全部浏览器订阅只允许管理员，订阅本身保持登录用户可用。
+    主动推送到全部浏览器订阅只允许管理员，订阅与读取公钥保持登录用户可用。
     """
     assert _dependency_of(message_endpoint.send_notification, "_") is get_current_active_superuser
     assert _dependency_of(message_endpoint.subscribe, "_") is verify_token
+    assert _dependency_of(message_endpoint.get_webpush_public_key, "_") is verify_token
 
 
 def test_global_mutations_and_agent_file_access_keep_privilege_boundaries():

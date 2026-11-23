@@ -323,6 +323,57 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         # rTorrent 始终使用原始种子布局
         return downloader or self.get_default_config_name(), torrent_hash, "Original", message
 
+    def _lookup_pending_task_hash(
+            self, server: Rtorrent, expected_hashes: frozenset[str],
+    ) -> Tuple[Optional[str], bool]:
+        """
+        按已知哈希集合严格查询 rTorrent 中是否已出现对应任务。
+        """
+        existing, error = self._find_existing_task(server, expected_hashes)
+        if error:
+            return None, True
+        matched_hash = existing.get("hash") if existing is not None else None
+        return (str(matched_hash) if matched_hash else None), False
+
+    def _finish_pending_whole_download(
+            self, server: Rtorrent, torrent_hash: str,
+            downloader: Optional[str], state: torrent_rules.ExistingTaskState,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        完成无需选集的待确认 rTorrent 任务收尾。
+        """
+        return downloader or self.get_default_config_name(), torrent_hash, "Original", "添加下载成功"
+
+    def _finish_pending_selected_download(
+            self, server: Rtorrent, torrent_hash: str, episodes: Set[int],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        为延迟落地的 rTorrent 暂停新任务补做选集并启动。
+        """
+        selected, message = self._select_episode_files(
+            server, torrent_hash, episodes, custom_words, episode_selection,
+        )
+        if not selected:
+            return None, None, None, self._discard_failed_selection(server, torrent_hash, message)
+        return downloader or self.get_default_config_name(), torrent_hash, "Original", message
+
+    def _finish_pending_existing_task(
+            self, server: Rtorrent, torrent_hash: str, episodes: Optional[Set[int]],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection],
+            user_specified: bool,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        将待确认任务转交 rTorrent 已有任务核验流程。
+        """
+        return self._finish_existing_task(
+            server, torrent_hash, episodes, custom_words, downloader,
+            episode_selection, confirmed_selection, user_specified=user_specified,
+        )
+
     def _existing_task_files(
             self, server: Rtorrent, torrent_hash: str,
     ) -> Optional[List[torrent_rules.ExistingTaskFile]]:

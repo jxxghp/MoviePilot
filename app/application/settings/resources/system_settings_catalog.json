@@ -1351,6 +1351,21 @@
       "group": "plugins",
       "source_file": "app/runtime/config.py"
     },
+    "VAPID_PRIVATE_KEY": {
+      "description": "Web Push VAPID 私钥（base64url 编码的 P-256 私钥），留空时使用运行期内置默认值；需与 VAPID_PUBLIC_KEY 成对配置",
+      "group": "security",
+      "source_file": "app/runtime/config.py"
+    },
+    "VAPID_PUBLIC_KEY": {
+      "description": "Web Push VAPID 公钥（base64url 编码的未压缩 P-256 公钥），留空时使用运行期内置默认值；需与 VAPID_PRIVATE_KEY 成对配置",
+      "group": "security",
+      "source_file": "app/runtime/config.py"
+    },
+    "VAPID_SUBJECT": {
+      "description": "Web Push VAPID 联系主体（mailto: 或 https:// 地址），留空时默认使用超级管理员邮箱地址",
+      "group": "security",
+      "source_file": "app/runtime/config.py"
+    },
     "WALLPAPER": {
       "description": "登录页面壁纸来源：空字符串表示无壁纸，另支持 tmdb/bing/mediaserver/customize/static",
       "group": "personalization",

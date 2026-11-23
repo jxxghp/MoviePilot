@@ -8,7 +8,7 @@ import hmac
 import json
 from importlib import import_module
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from Crypto.Cipher import AES
@@ -94,6 +94,37 @@ def test_legacy_site_and_cookiecloud_use_module_domain_rules(protocol_boundary):
     assert legacy_site.extract_domain("https://u2.dmhy.org/") == "u2.dmhy.org"
     helper = legacy_cookiecloud.CookieCloudHelper()
     assert helper._domain_resolver(".u2.dmhy.org") == "u2.dmhy.org"
+
+
+@pytest.mark.asyncio
+async def test_site_api_mutation_keeps_u2_and_dmhy_keys_apart(protocol_boundary, monkeypatch):
+    """
+    站点接口新增和保存时使用 Module 域名规则，幼儿园不能被写成公开站动漫花园的键。
+    """
+    site_dependencies = import_module("app.api.dependencies.site")
+    sites_helper = SimpleNamespace(auth_level=2, async_get_indexer=AsyncMock(return_value={"name": "站点"}))
+    monkeypatch.setattr(site_dependencies, "SitesHelper", lambda: sites_helper)
+    repository = Mock(
+        get_by_id=AsyncMock(return_value=object()),
+        async_get_by_domain=AsyncMock(return_value=None),
+        stage_create=AsyncMock(),
+        stage_update=AsyncMock(return_value=True),
+    )
+    runtime = Mock()
+    runtime.site.repository.return_value = repository
+    runtime.persistence.async_transaction.return_value = Mock(commit=AsyncMock(), rollback=AsyncMock())
+    monkeypatch.setattr(site_dependencies, "_publish_site_updated", AsyncMock())
+    command = site_dependencies.get_site_mutation_command(db=Mock(), runtime=runtime)
+
+    assert (await command.create({"url": "https://u2.dmhy.org/torrents.php"})).success is True
+    assert (await command.create({"url": "https://share.dmhy.org/"})).success is True
+    assert (await command.update({"id": 1, "url": "https://u2.dmhy.org/"})).success is True
+    assert (await command.update({"id": 2, "url": "https://share.dmhy.org/"})).success is True
+
+    created = [call.args[0].values["domain"] for call in repository.stage_create.await_args_list]
+    updated = [call.args[1].values["domain"] for call in repository.stage_update.await_args_list]
+    assert created == updated == ["u2.dmhy.org", "dmhy.org"]
+    assert [call.args[0] for call in sites_helper.async_get_indexer.await_args_list] == ["u2.dmhy.org", "dmhy.org"]
 
 
 @pytest.mark.parametrize("page_url,enclosure,expected", [

@@ -309,3 +309,61 @@ def test_cookie_parse_preserves_percent_encoded_signature_values(monkeypatch) ->
         {"name": "userid", "value": "123"},
     ]
     assert prepared_requests[0].headers["Cookie"] == raw_cookie
+
+
+def test_request_utils_trims_user_agent_for_sync_and_async_clients() -> None:
+    """
+    同步与异步客户端构造时应裁剪 UA 首尾空白，兼容历史脏数据。
+    """
+    sync_client = RequestUtils(ua=" Mozilla/5.0 Edg/158.0.0.0 ")
+    async_client = AsyncRequestUtils(ua=" Mozilla/5.0 Edg/158.0.0.0 ")
+
+    assert sync_client._headers["User-Agent"] == "Mozilla/5.0 Edg/158.0.0.0"
+    assert async_client._headers["User-Agent"] == "Mozilla/5.0 Edg/158.0.0.0"
+
+
+def test_request_utils_logs_invalid_header_field_without_leaking_values(monkeypatch) -> None:
+    """
+    请求头触发 InvalidHeader 时必须记录异常类型和出错字段，且不泄露凭据值或查询参数。
+    """
+    warnings: list[str] = []
+    monkeypatch.setattr(http_module.logger, "warning", warnings.append)
+
+    session = requests.Session()
+    result = RequestUtils(
+        session=session,
+        headers={
+            "User-Agent": " Mozilla/5.0 Edg/158.0.0.0",
+            "Authorization": "Bearer super-secret\nvalue",
+        },
+    ).get_res("https://site.example/index.php?passkey=secret-passkey")
+
+    assert result is None
+    assert len(warnings) == 1
+    assert "InvalidHeader" in warnings[0]
+    assert "User-Agent" in warnings[0]
+    assert "Authorization" in warnings[0]
+    assert "https://site.example" in warnings[0]
+    assert "super-secret" not in warnings[0]
+    assert "secret-passkey" not in warnings[0]
+
+
+def test_request_utils_invalid_header_raises_without_duplicate_warning(monkeypatch) -> None:
+    """
+    调用方显式要求抛出异常时应传播 InvalidHeader，不额外重复告警。
+    """
+    warnings: list[str] = []
+    monkeypatch.setattr(http_module.logger, "warning", warnings.append)
+
+    session = requests.Session()
+    try:
+        RequestUtils(
+            session=session,
+            headers={"User-Agent": " Mozilla/5.0"},
+        ).get_res("https://site.example/", raise_exception=True)
+    except requests.exceptions.InvalidHeader:
+        pass
+    else:
+        raise AssertionError("开启 raise_exception 时应抛出 InvalidHeader")
+
+    assert warnings == []

@@ -460,11 +460,11 @@ class _ProviderCatalog:
             ),
             openai_provider(
                 provider_id="uberllm",
-                name="UberLLM",
-                default_base_url="https://api.uberllm.dev/v1",
+                name="MartLLM",
+                default_base_url="https://api.martllm.com/v1",
                 sort_order=62,
-                api_key_hint="填写 UberLLM API Key（ull_ 开头），注册后在 https://uberllm.dev/dashboard/keys 创建。需预充值，无免费额度。",
-                description="UberLLM 按量付费的 OpenAI-compatible 聚合模型平台，一个 Key 覆盖 GPT、Claude、Gemini、DeepSeek、Qwen、Kimi 等模型。",
+                api_key_hint="填写 MartLLM API Key（ull_ 开头），注册后在 https://martllm.com/dashboard/keys 创建。需预充值，无免费额度。",
+                description="MartLLM 按量付费的 OpenAI-compatible 聚合模型平台，一个 Key 覆盖 GPT、Claude、Gemini、DeepSeek、Qwen、Kimi 等模型。",
             ),
             openai_provider(
                 provider_id="trustedrouter",
@@ -473,6 +473,14 @@ class _ProviderCatalog:
                 sort_order=63,
                 api_key_hint="填写 TrustedRouter API Key，可在 https://trustedrouter.com 注册后获取。",
                 description="TrustedRouter OpenAI-compatible 模型网关，模型 ID 带厂商前缀（如 anthropic/claude-sonnet-4.5），trustedrouter/auto 为自动路由。",
+            ),
+            openai_provider(
+                provider_id="aigrow",
+                name="AIGROW",
+                default_base_url="https://aigrow.gg/v1",
+                sort_order=64,
+                api_key_hint="填写 AIGROW API Key，可在 https://aigrow.gg/dashboard/api 创建。需预充值。",
+                description="AIGROW 预充值的 OpenAI-compatible 模型平台，一个 Key 覆盖 Claude、GPT、Gemini、Grok、Qwen 与 Kimi 等模型，模型 ID 不带厂商前缀（如 claude-haiku-5.5）。",
             ),
             catalog_openai_provider(
                 provider_id="github-models",

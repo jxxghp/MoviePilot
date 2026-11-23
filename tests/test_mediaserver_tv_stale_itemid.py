@@ -239,13 +239,8 @@ def test_ugreen_tv_episodes_fallback_when_cached_item_id_missing() -> None:
     client = Ugreen.__new__(Ugreen)
     client._api = Mock()
     client.is_authenticated = Mock(return_value=True)
-    client.get_iteminfo = Mock(
-        side_effect=[
-            None,
-            SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
-        ]
-    )
-    client._Ugreen__search_tv_item = Mock(return_value={"ug_video_info_id": "new-series-id"})
+    client.get_iteminfo = Mock(return_value=None)
+    client._Ugreen__search_tv_items = Mock(return_value=[{"ug_video_info_id": "new-series-id"}])
     client._api.get_tv.return_value = {
         "season_info": [{"category_id": "season-1", "season_num": 1}],
         "tv_info": [{"category_id": "season-1", "episode": 1}],
@@ -261,7 +256,7 @@ def test_ugreen_tv_episodes_fallback_when_cached_item_id_missing() -> None:
 
     assert item_id == "new-series-id"
     assert episodes == {1: [1]}
-    client._Ugreen__search_tv_item.assert_called_once_with("测试剧集", "2026", MediaSource.TMDB, "12345")
+    client._Ugreen__search_tv_items.assert_called_once_with("测试剧集", "2026", MediaSource.TMDB, "12345")
 
 
 def test_trime_media_tv_episodes_fallback_when_cached_item_id_missing() -> None:

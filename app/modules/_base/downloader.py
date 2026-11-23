@@ -23,6 +23,8 @@ from app.schemas.download import (
     DOWNLOAD_TASK_RESUMED,
     DownloadTaskAction,
     ExistingTaskRejection,
+    PendingDownloadCheckResult,
+    PendingDownloadCheckStatus,
 )
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import TorrentQueryStatus, TorrentStatus
@@ -343,6 +345,164 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
             except ValueError:
                 return None
         return relative
+
+    def confirm_pending_download(
+            self,
+            hashes: List[str],
+            downloader: Optional[str] = None,
+            episodes: Optional[Set[int]] = None,
+            custom_words: Optional[str] = None,
+            episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+            user_specified: bool = False,
+    ) -> Optional[PendingDownloadCheckResult]:
+        """
+        按已知种子哈希向当前下载器实例核对已受理但尚未确认的任务，并在出现后完成收尾。
+
+        找不到适用实例时返回 None，以便模块调度器继续路由到其他下载器类型。查询出错返回
+        ``QUERY_ERROR``，调用方据此保留待确认保护而不把连接异常误判为任务缺失。
+
+        :param hashes: 由种子内容解析出的已知小写 v1/v2 哈希列表
+        :param downloader: 受理或请求指向的下载器名称；省略时核对默认实例
+        :param episodes: 目标集数集合；非空时对延迟落地的暂停新任务补做选集，或按已有任务核验
+        :param custom_words: 来源识别词，用于与首次提交保持一致的选集解析
+        :param episode_selection: 冻结的目标季与季集映射
+        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件记录
+        :param user_specified: 是否为用户明确指定的种子
+        :return: 结构化核对结果；当前模块无适用实例时返回 None
+        """
+        server = self.get_instance(downloader)
+        if not server:
+            return None
+        actual_downloader = downloader or self.get_default_config_name()
+        expected_hashes = frozenset(str(item).strip().lower() for item in hashes if str(item).strip())
+        if not expected_hashes:
+            return PendingDownloadCheckResult(
+                status=PendingDownloadCheckStatus.NOT_FOUND,
+                downloader=actual_downloader,
+            )
+        torrent_hash, query_error = self._lookup_pending_task_hash(server, expected_hashes)
+        if query_error:
+            return PendingDownloadCheckResult(
+                status=PendingDownloadCheckStatus.QUERY_ERROR,
+                downloader=actual_downloader,
+                message=f"无法连接{self.get_name()}下载器",
+            )
+        if not torrent_hash:
+            return PendingDownloadCheckResult(
+                status=PendingDownloadCheckStatus.NOT_FOUND,
+                downloader=actual_downloader,
+            )
+        return self._finalize_pending_task(
+            server=server,
+            torrent_hash=torrent_hash,
+            actual_downloader=actual_downloader,
+            downloader=downloader,
+            episodes=episodes,
+            custom_words=custom_words,
+            episode_selection=episode_selection,
+            confirmed_selection=confirmed_selection,
+            user_specified=user_specified,
+        )
+
+    def _finalize_pending_task(
+            self,
+            *,
+            server: DownloaderServiceT,
+            torrent_hash: str,
+            actual_downloader: Optional[str],
+            downloader: Optional[str],
+            episodes: Optional[Set[int]],
+            custom_words: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection],
+            user_specified: bool,
+    ) -> PendingDownloadCheckResult:
+        """
+        为已在下载器中找到的待确认任务执行选集或整包收尾，并投影为统一核对结果。
+        """
+        state = self._existing_task_state(server, torrent_hash)
+        if episodes:
+            if state is torrent_rules.ExistingTaskState.UNKNOWN:
+                return PendingDownloadCheckResult(
+                    status=PendingDownloadCheckStatus.QUERY_ERROR,
+                    downloader=actual_downloader,
+                    message=f"读取{self.get_name()}待确认任务状态失败",
+                )
+            confirmed = None if confirmed_selection is None else confirmed_selection.files_for(actual_downloader or "")
+            if state is torrent_rules.ExistingTaskState.PAUSED and not confirmed:
+                result = self._finish_pending_selected_download(
+                    server, torrent_hash, episodes, custom_words, downloader, episode_selection,
+                )
+            else:
+                result = self._finish_pending_existing_task(
+                    server, torrent_hash, episodes, custom_words, downloader,
+                    episode_selection, confirmed_selection, user_specified,
+                )
+        elif state is torrent_rules.ExistingTaskState.ERROR:
+            result = self._finish_pending_existing_task(
+                server, torrent_hash, None, custom_words, downloader,
+                episode_selection, confirmed_selection, user_specified,
+            )
+        else:
+            result = self._finish_pending_whole_download(server, torrent_hash, downloader, state)
+        resolved_downloader, resolved_hash, layout, message = result
+        if resolved_hash:
+            return PendingDownloadCheckResult(
+                status=PendingDownloadCheckStatus.CONFIRMED,
+                downloader=resolved_downloader or actual_downloader,
+                download_hash=resolved_hash,
+                layout=layout,
+                message=message,
+            )
+        return PendingDownloadCheckResult(
+            status=PendingDownloadCheckStatus.REJECTED,
+            downloader=actual_downloader,
+            message=message,
+        )
+
+    def _lookup_pending_task_hash(
+            self, server: DownloaderServiceT, expected_hashes: frozenset[str],
+    ) -> Tuple[Optional[str], bool]:
+        """
+        按已知小写哈希集合向下载器严格查找任务，由各下载器模块实现。
+
+        :param server: 当前下载器客户端
+        :param expected_hashes: 已知小写 v1/v2 种子哈希集合
+        :return: 命中的下载器任务哈希（未命中为 None）以及查询是否失败
+        """
+        raise NotImplementedError
+
+    def _finish_pending_whole_download(
+            self, server: DownloaderServiceT, torrent_hash: str,
+            downloader: Optional[str], state: torrent_rules.ExistingTaskState,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        完成无需选集的待确认任务确认，由各下载器模块实现。
+        """
+        raise NotImplementedError
+
+    def _finish_pending_selected_download(
+            self, server: DownloaderServiceT, torrent_hash: str, episodes: Set[int],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        为延迟落地的暂停新任务补做选集并启动，由各下载器模块实现。
+        """
+        raise NotImplementedError
+
+    def _finish_pending_existing_task(
+            self, server: DownloaderServiceT, torrent_hash: str, episodes: Optional[Set[int]],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection],
+            user_specified: bool,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        将已非初始暂停态或出错的待确认任务转交既有任务核验，由各下载器模块实现。
+        """
+        raise NotImplementedError
 
     def _existing_task_files(
             self, server: DownloaderServiceT, torrent_hash: str,

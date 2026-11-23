@@ -635,7 +635,7 @@ def test_strm_rejects_upstream_without_range_support(monkeypatch: pytest.MonkeyP
 
 
 def test_media_server_search_endpoint_filters_types_and_caps_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证媒体库搜索只向服务模块分发电视剧和音乐类型。"""
+    """验证媒体库搜索向服务模块分发电影、电视剧和音乐类型并过滤无效类型。"""
     chain = Mock()
     chain.search_library.return_value = [
         MediaServerPlayItem(server="Emby-客厅", item_id="series-1", title="测试剧集", type="电视剧")
@@ -653,13 +653,14 @@ def test_media_server_search_endpoint_filters_types_and_caps_limit(monkeypatch: 
                 ("type", "电视剧"),
                 ("type", "电影"),
                 ("type", "音乐"),
+                ("type", "无效类型"),
                 ("limit", "45"),
             ],
         )
 
     assert response.status_code == 200
     assert response.json()["data"][0]["server"] == "Emby-客厅"
-    chain.search_library.assert_called_once_with("测试剧集", ["电视剧", "音乐"], 45)
+    chain.search_library.assert_called_once_with("测试剧集", ["电视剧", "电影", "音乐"], 45)
 
 
 def test_media_server_search_chain_deduplicates_per_server_and_signs_posters(monkeypatch: pytest.MonkeyPatch) -> None:

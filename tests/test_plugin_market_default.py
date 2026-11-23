@@ -192,3 +192,69 @@ def test_release_workflows_use_canonical_config_path() -> None:
     assert "--config-file app/runtime/config.py" in beta_workflow
     assert "app/core/config.py" not in build_workflow
     assert "app/core/config.py" not in beta_workflow
+
+
+def test_generate_plugin_market_default_preserves_field_description_and_settings_contract(
+    tmp_path: Path,
+) -> None:
+    """
+    ConfigModel 使用 Field(description=...) 声明时，生成默认值应保留 Field 描述并满足系统设置目录契约。
+    """
+    wiki_file = tmp_path / "plugin.md"
+    wiki_file.write_text(
+        f"""
+<!-- plugin-market-repos:start -->
+- {OFFICIAL_PLUGIN_MARKET}
+- https://github.com/demo/MoviePilot-Plugins
+<!-- plugin-market-repos:end -->
+""",
+        encoding="utf-8",
+    )
+    config_file = tmp_path / "config.py"
+    source_config = (ROOT_DIR / "app" / "runtime" / "config.py").read_text(encoding="utf-8")
+    config_file.write_text(source_config, encoding="utf-8")
+
+    repos = _generate_plugin_market_default(wiki_file, config_file)
+    first_result = config_file.read_text(encoding="utf-8")
+    _generate_plugin_market_default(wiki_file, config_file)
+    assert config_file.read_text(encoding="utf-8") == first_result
+
+    tree = ast.parse(first_result)
+    plugin_market_value = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "ConfigModel":
+            for item in node.body:
+                if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name) and item.target.id == "PLUGIN_MARKET":
+                    plugin_market_value = item.value
+                    break
+    assert isinstance(plugin_market_value, ast.Call)
+    kwargs = {kw.arg: ast.literal_eval(kw.value) for kw in plugin_market_value.keywords if kw.arg}
+    assert kwargs["default"] == ",".join(repos)
+    assert kwargs["description"] == "插件市场仓库地址，多个地址使用,分隔，地址以/结尾"
+
+
+def test_generate_plugin_market_default_preserves_qualified_field_callable(
+    tmp_path: Path,
+) -> None:
+    """
+    ConfigModel 使用 pydantic.Field(...) 限定调用时，生成结果应保留原限定调用形式。
+    """
+    wiki_file = tmp_path / "plugin.md"
+    wiki_file.write_text(
+        f"""
+<!-- plugin-market-repos:start -->
+- {OFFICIAL_PLUGIN_MARKET}
+<!-- plugin-market-repos:end -->
+""",
+        encoding="utf-8",
+    )
+    config_file = tmp_path / "config.py"
+    config_file.write_text(
+        'import pydantic\n\nclass ConfigModel:\n    PLUGIN_MARKET: str = pydantic.Field(default="old", description="插件市场")\n',
+        encoding="utf-8",
+    )
+
+    _generate_plugin_market_default(wiki_file, config_file)
+    rendered = config_file.read_text(encoding="utf-8")
+    assert "PLUGIN_MARKET: str = pydantic.Field(" in rendered
+    assert "description='插件市场'" in rendered

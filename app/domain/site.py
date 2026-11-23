@@ -3,7 +3,7 @@
 """
 
 from io import BytesIO
-from typing import Optional
+from typing import Mapping, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from lxml import etree
@@ -139,6 +139,47 @@ def resolve_page_url(site_url: str, page_path: Optional[str]) -> str:
     if page_path.startswith(("http://", "https://")):
         return page_path
     return urljoin(f"{str(site_url).rstrip('/')}/", page_path.lstrip("/"))
+
+
+def is_valid_http_header_value(value: str) -> bool:
+    """
+    校验字符串能否作为合法的 HTTP 请求头值发送。
+
+    拒绝首尾空白、控制字符（保留水平制表符）以及无法按 Latin-1 编码的字符，
+    避免底层 HTTP 客户端在组装请求头阶段直接抛出异常。
+
+    :param value: 待校验的请求头文本；空字符串视为合法
+    :return: 可安全写入 HTTP 请求头时返回 True，否则返回 False
+    """
+    if not value:
+        return True
+    if value != value.strip():
+        return False
+    if any((ord(ch) < 0x20 and ch != "\t") or ord(ch) == 0x7F for ch in value):
+        return False
+    try:
+        value.encode("latin-1")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def find_invalid_http_header_names(headers: Optional[Mapping[str, object]]) -> list[str]:
+    """
+    返回请求头映射中取值非法的字段名称，不暴露可能包含凭据的字段值。
+
+    :param headers: 待检查的请求头映射；None 或空映射返回空列表
+    :return: 取值不符合 HTTP 请求头规范的字段名称列表
+    """
+    if not headers:
+        return []
+    invalid_names: list[str] = []
+    for key, value in headers.items():
+        if value is None:
+            continue
+        if not isinstance(value, str) or not is_valid_http_header_value(value):
+            invalid_names.append(str(key))
+    return invalid_names
 
 
 class SiteUtils:

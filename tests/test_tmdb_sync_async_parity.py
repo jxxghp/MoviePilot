@@ -425,6 +425,40 @@ def test_pick_best_tmdb_logo_prefers_current_locale_then_falls_back() -> None:
     ) == "/en-logo.png"
 
 
+def test_process_tmdb_images_records_selected_logo_language(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    TMDB 选出 Logo 时应同步记录 logo_language，方便客户端区分中文 Logo 与外语回退 Logo。
+    """
+    monkeypatch.setattr(
+        "app.modules.themoviedb.get_runtime_setting",
+        lambda key: (lambda path: f"https://images.test{path}") if key == "TMDB_IMAGE_URL" else "zh-CN",
+    )
+    zh_media = MediaInfo(tmdb_info=_movie_info(41))
+    TheMovieDbModule._process_tmdb_images(
+        zh_media,
+        {
+            "logos": [
+                {"file_path": "/en-logo.png", "iso_639_1": "en", "vote_average": 9.0, "vote_count": 50},
+                {"file_path": "/zh-logo.png", "iso_639_1": "zh", "iso_3166_1": "CN", "vote_average": 5.0, "vote_count": 2},
+            ]
+        },
+    )
+    assert zh_media.logo_path == "https://images.test/zh-logo.png"
+    assert zh_media.logo_language == "zh-CN"
+
+    en_media = MediaInfo(tmdb_info=_movie_info(42))
+    TheMovieDbModule._process_tmdb_images(
+        en_media,
+        {
+            "logos": [
+                {"file_path": "/en-logo.png", "iso_639_1": "en", "vote_average": 9.0, "vote_count": 50},
+            ]
+        },
+    )
+    assert en_media.logo_path == "https://images.test/en-logo.png"
+    assert en_media.logo_language == "en"
+
+
 @pytest.mark.parametrize("media_source,recognize_source,tmdb_id,complete_images", [
     ("douban", "douban", None, False),
     ("douban", "douban", 40, False),
@@ -457,3 +491,33 @@ def test_obtain_images_sync_async_skip_ineligible_media(
     assert asyncio.run(module.async_obtain_images(media)) is media
     assert media.to_dict() == original
     assert module.tmdb.mock_calls == []
+
+
+def test_match_tmdbinfo_sync_async_prefer_imdb_and_fallback_only_with_name() -> None:
+    """
+    提供 IMDb 标识时优先精确查找；未命中仅在有名称时回退名称匹配。
+    """
+    module = _module_with_clients()
+    imdb_hit = _movie_info(1101383)
+    module.tmdb.match_by_imdb_id.return_value = imdb_hit
+    module.tmdb.async_match_by_imdb_id = AsyncMock(return_value=imdb_hit)
+
+    assert module.match_tmdbinfo(imdbid="tt27165187") == imdb_hit
+    assert asyncio.run(module.async_match_tmdbinfo(imdbid="tt27165187")) == imdb_hit
+    module.tmdb.match.assert_not_called()
+    module.tmdb.async_match.assert_not_called()
+
+    module.tmdb.match_by_imdb_id.return_value = None
+    module.tmdb.async_match_by_imdb_id = AsyncMock(return_value=None)
+    assert module.match_tmdbinfo(imdbid="tt27165187") is None
+    assert asyncio.run(module.async_match_tmdbinfo(imdbid="tt27165187")) is None
+    module.tmdb.match.assert_not_called()
+    module.tmdb.async_match.assert_not_called()
+
+    name_hit = _movie_info(42)
+    module.tmdb.match.return_value = name_hit
+    module.tmdb.async_match = AsyncMock(return_value=name_hit)
+    assert module.match_tmdbinfo(name="逃出绝命街", imdbid="tt27165187") == name_hit
+    assert asyncio.run(module.async_match_tmdbinfo(name="逃出绝命街", imdbid="tt27165187")) == name_hit
+    module.tmdb.match.assert_called_once()
+    module.tmdb.async_match.assert_awaited_once()

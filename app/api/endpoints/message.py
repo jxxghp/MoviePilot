@@ -15,7 +15,7 @@ from app.adapters.external.wechat import WXBizMsgCrypt
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.context import get_background_task_registry, resolve_background_task_registry
 from app.api.dependencies.agent import get_message_query_service
-from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.auth import get_current_active_superuser, get_current_active_user
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import (
@@ -35,6 +35,7 @@ from app.schemas.message import MessageHistoryItem as _SchemaMessageHistoryItem
 from app.schemas.message import Subscription as _SchemaSubscription
 from app.schemas.message import SubscriptionMessage as _SchemaSubscriptionMessage
 from app.schemas.message import WebMessageItem as _SchemaWebMessageItem
+from app.schemas.message import WebPushPublicKeyData as _SchemaWebPushPublicKeyData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import NotificationChannel, SystemConfigKey
@@ -177,10 +178,10 @@ async def user_message(
 async def web_message(
     request: Request,
     text: Optional[str] = None,
-    current_user: ApiPrincipal = Depends(get_current_active_superuser),
+    current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> _SchemaResponse[None]:
     """
-    WEB消息响应
+    接收并处理当前登录用户的 WEB 消息，按真实登录用户身份绑定权限。
     """
     images = None
     content_type = request.headers.get("content-type") or ""
@@ -204,10 +205,11 @@ async def web_message(
     MessageChain().handle_message(
         channel=NotificationChannel.Web,
         source=current_user.name,
-        userid=current_user.name,
+        userid=str(current_user.id),
         username=current_user.name,
         text=text or "",
         images=images,
+        is_channel_admin=bool(current_user.is_superuser),
     )
     return _SchemaResponse(success=True)
 
@@ -364,6 +366,29 @@ def incoming_verify(
     return vocechat_verify()
 
 
+@router.get(
+    "/webpush/public-key",
+    summary="获取客户端webpush公钥",
+    response_model=_SchemaResponse[_SchemaWebPushPublicKeyData],
+)
+def get_webpush_public_key(
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaWebPushPublicKeyData]:
+    """
+    返回当前实例用于浏览器 Web Push 订阅的 VAPID 公钥
+    """
+    public_key = get_api_runtime_config_snapshot().vapid_public_key
+    if not public_key:
+        return _SchemaResponse(
+            success=False,
+            message="未配置有效的 WebPush VAPID 公钥",
+        )
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaWebPushPublicKeyData(public_key=public_key),
+    )
+
+
 @router.post(
     "/webpush/subscribe",
     summary="客户端webpush通知订阅",
@@ -397,6 +422,7 @@ def send_notification(
     if not subscriptions:
         return _SchemaResponse(success=True, message="没有可发送的浏览器通知")
 
+    api_config = get_api_runtime_config_snapshot()
     success_count = 0
     failure_count = 0
     for sub in subscriptions:
@@ -404,8 +430,8 @@ def send_notification(
             send_webpush(
                 subscription=sub,
                 data=json.dumps(payload.model_dump()),
-                vapid_private_key=get_api_runtime_config_snapshot().vapid_private_key,
-                vapid_subject=get_api_runtime_config_snapshot().vapid_subject,
+                vapid_private_key=api_config.vapid_private_key,
+                vapid_subject=api_config.vapid_subject,
                 **webpush_options_for_endpoint(sub.get("endpoint")),
             )
             success_count += 1

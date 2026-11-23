@@ -975,6 +975,8 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
     return PluginCatalogService(
         market_loader=client.get_plugin_index_result,
         async_market_loader=client.async_get_plugin_index_result,
+        single_market_loader=client.get_single_plugin_index_result,
+        async_single_market_loader=client.async_get_single_plugin_index_result,
         installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],

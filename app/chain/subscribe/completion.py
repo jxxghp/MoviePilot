@@ -2,11 +2,16 @@
 订阅下载事实、缺失集与完成状态收敛
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.classification.reference import effective_classification_snapshot
+from app.application.download import selection as _download_selection
+from app.application.download.pending import (
+    ConfirmedPendingDownload,
+    PendingReconciliationResult,
+)
 from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
@@ -15,6 +20,7 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.mutation import SubscriptionActor
 from app.application.subscription.observability import subscription_log_scope
+from app.chain.download import DownloadChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.policy import SubscribePolicyOwner
 from app.domain.context import (
@@ -214,6 +220,141 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
             self._SubscribeChain__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
         elif not downloads:
             logger.info(f"{mediainfo.title_year} 继续洗版 ...")
+
+    def reconcile_pending_downloads(
+        self,
+        *,
+        target_keys: Optional[list[str]] = None,
+        subscription_id: Optional[int] = None,
+    ) -> PendingReconciliationResult:
+        """
+        核对待确认下载任务，并将刚在下载器确认的订阅提交收敛到订阅进度或完成状态。
+
+        :param target_keys: 可选的媒体目标键列表
+        :param subscription_id: 可选的订阅主键筛选条件
+        :return: 本轮待确认核对结果
+        """
+        download_chain = DownloadChain()
+        reconcile = getattr(download_chain, "reconcile_pending_downloads", None)
+        if not callable(reconcile):
+            return PendingReconciliationResult()
+        result: PendingReconciliationResult = reconcile(
+            target_keys=target_keys,
+            subscription_id=subscription_id,
+        )
+        if result.confirmed:
+            self.settle_confirmed_pending_downloads(result.confirmed)
+        return result
+
+    def settle_confirmed_pending_downloads(
+        self,
+        confirmed: Iterable[ConfirmedPendingDownload],
+    ) -> int:
+        """
+        根据核对确认的待确认下载回执更新对应订阅的下载事实、剩余缺集与完成状态。
+
+        :param confirmed: 已补齐下载历史的待确认核对回执集合
+        :return: 成功执行订阅结算的条数
+        """
+        settled = 0
+        for item in confirmed:
+            if self._settle_single_confirmed_pending(item):
+                settled += 1
+        return settled
+
+    def _settle_single_confirmed_pending(self, item: ConfirmedPendingDownload) -> bool:
+        """
+        对单条归属订阅的已确认待确认回执做身份核对并调用既有完成判断。
+        """
+        subscription_id = item.record.subscription_id
+        if subscription_id is None:
+            return False
+        subscribe = self.subscription_repository.get(subscription_id)
+        if subscribe is None:
+            return False
+        meta = item.context.meta_info
+        mediainfo = item.context.media_info
+        if meta is None or not isinstance(mediainfo, (MediaInfo, MusicInfo)):
+            return False
+        if not self._confirmed_pending_matches_subscribe(subscribe, mediainfo):
+            return False
+        if (
+            subscribe.type == MediaType.MOVIE.value
+            and subscribe.best_version
+            and item.context.torrent_info is not None
+            and (subscribe.current_priority or 0) >= (item.context.torrent_info.pri_order or 0)
+        ):
+            # 已有更高或同优先级洗版完成/推进时，不再用旧待确认任务覆写优先级。
+            return False
+        lefts = self._confirmed_pending_lefts(subscribe, meta, mediainfo, item)
+        self.finish_subscribe_or_not(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=cast(MediaInfo, mediainfo),
+            downloads=[item.context],
+            lefts=lefts,
+        )
+        return True
+
+    @staticmethod
+    def _confirmed_pending_matches_subscribe(
+        subscribe: SubscriptionSnapshot,
+        mediainfo: MediaInfo | MusicInfo,
+    ) -> bool:
+        """
+        确认待确认回执对应的媒体身份仍与当前订阅一致，防止订阅被修改为其他作品后误结算。
+        """
+        sub_source, sub_id = resolve_media_identity(media=subscribe)
+        media_source, media_id = resolve_media_identity(media=mediainfo)
+        if sub_id and media_id:
+            return (sub_source, sub_id) == (media_source, media_id)
+        return bool(subscribe.name and mediainfo.title and subscribe.name == mediainfo.title)
+
+    def _confirmed_pending_lefts(
+        self,
+        subscribe: SubscriptionSnapshot,
+        meta: MetaBase,
+        mediainfo: MediaInfo | MusicInfo,
+        item: ConfirmedPendingDownload,
+    ) -> Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
+        """
+        为延迟确认的电视剧提交计算扣减后的剩余缺集；媒体库查询失败时保留缺集不误完成。
+        """
+        if subscribe.type != MediaType.TV.value or not isinstance(mediainfo, MediaInfo):
+            return None
+        mediakey = subscribe_media_key(subscribe)
+        if mediakey is None:
+            return None
+        try:
+            _exists, raw_missing = self.resolve_subscribe_missing(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=mediakey,
+            )
+        except MediaServerQueryError as err:
+            logger.warning(f"核对待确认任务时查询订阅 {subscribe.name} 媒体库失败，暂不扣减完成状态：{err}")
+            return None
+        missing_by_str: Dict[str, Dict[int, _SchemaNotExistMediaInfo]] = {
+            str(key): value for key, value in raw_missing.items()
+        }
+        key_text = str(mediakey)
+        seasons = missing_by_str.get(key_text)
+        if not seasons:
+            return cast(Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]], missing_by_str)
+        covered_seasons = list(item.record.covered_seasons) or list(seasons)
+        if not item.record.episodes:
+            _download_selection.update_no_exists_seasons(missing_by_str, key_text, list(seasons), covered_seasons)
+            return cast(Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]], missing_by_str)
+        for season in covered_seasons:
+            info = seasons.get(season)
+            if info is None:
+                continue
+            needed = info.episodes or list(range(info.start_episode or 1, (info.total_episode or 0) + 1))
+            _download_selection.update_no_exists_episodes(
+                missing_by_str, key_text, season, needed, set(item.record.episodes),
+            )
+        return cast(Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]], missing_by_str)
 
     def reconcile_subscription_completion(
         self,

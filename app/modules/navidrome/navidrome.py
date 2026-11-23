@@ -12,8 +12,20 @@ from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
 from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.types import MediaType
@@ -369,8 +381,177 @@ class Navidrome:
         album = (payload or {}).get("album") or {}
         return self._album_to_item(album) if album else None
 
-    def search_library(self, keyword: str, limit: int) -> List[_SchemaMediaServerPlayItem]:
+    def _album_to_browse_item(self, album: dict[str, Any]) -> _SchemaMediaServerBrowseItem:
+        """将 Subsonic 专辑转换为统一浏览卡片模型。"""
+        album_id = str(album.get("id") or "")
+        cover = self._album_cover(album)
+        duration_sec = album.get("duration")
+        return _SchemaMediaServerBrowseItem(
+            item_id=album_id,
+            server_type="navidrome",
+            item_type="MusicAlbum",
+            media_type=MediaType.MUSIC.value,
+            title=self._album_name(album) or album_id,
+            subtitle=album.get("artist") or album.get("albumArtist"),
+            year=album.get("year"),
+            duration_ms=int(duration_sec * 1000) if isinstance(duration_sec, (int, float)) and duration_sec > 0 else None,
+            poster=cover,
+            backdrop=cover,
+            thumb=cover,
+            child_count=album.get("songCount") if isinstance(album.get("songCount"), int) else None,
+        )
+
+    def _song_to_browse_item(self, song: dict[str, Any]) -> _SchemaMediaServerBrowseItem:
+        """将 Subsonic 单曲转换为统一浏览卡片模型。"""
+        song_id = str(song.get("id") or "")
+        cover = self._album_cover(song)
+        duration_sec = song.get("duration")
+        parts = [str(p) for p in (song.get("artist"), song.get("album")) if p]
+        return _SchemaMediaServerBrowseItem(
+            item_id=song_id,
+            server_type="navidrome",
+            item_type="Audio",
+            media_type=MediaType.MUSIC.value,
+            title=str(song.get("title") or song.get("name") or song_id),
+            subtitle=" · ".join(parts) if parts else None,
+            year=song.get("year"),
+            duration_ms=int(duration_sec * 1000) if isinstance(duration_sec, (int, float)) and duration_sec > 0 else None,
+            poster=cover,
+            backdrop=cover,
+            thumb=cover,
+            episode_number=song.get("track") if isinstance(song.get("track"), int) else None,
+            season_number=song.get("discNumber") if isinstance(song.get("discNumber"), int) else 1,
+        )
+
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """分页浏览 Navidrome 音乐库（支持专辑列表、风格/年份筛选与关键词搜索）。"""
+        _ = library_id, parent_id, item_type, played_filter, sort_order, username
+        if not self.user:
+            return None
+        safe_start = max(0, int(start_index))
+        safe_limit = max(1, min(int(limit), 100))
+        if keyword and keyword.strip():
+            payload = self._call(
+                "search3", query=keyword.strip(), artistCount=0, albumCount=safe_limit, songCount=safe_limit
+            )
+            result = (payload or {}).get("searchResult3") or {}
+            albums = [self._album_to_browse_item(a) for a in (result.get("album") or []) if isinstance(a, dict)]
+            songs = [self._song_to_browse_item(s) for s in (result.get("song") or []) if isinstance(s, dict)]
+            combined = albums + songs
+            page_items = combined[safe_start : safe_start + safe_limit]
+            return _SchemaMediaServerBrowsePage(
+                items=page_items,
+                total_count=len(combined),
+                start_index=safe_start,
+                limit=safe_limit,
+                has_more=(safe_start + len(page_items)) < len(combined),
+            )
+        list_type = {
+            "date_created": "newest",
+            "premiere_date": "byYear",
+            "name": "alphabeticalByName",
+            "random": "random",
+        }.get((sort_by or "date_created").casefold(), "newest")
+        call_kwargs: dict[str, Any] = {"type": list_type, "size": safe_limit, "offset": safe_start}
+        if genre:
+            call_kwargs.update({"type": "byGenre", "genre": genre})
+        elif year:
+            call_kwargs.update({"type": "byYear", "fromYear": int(year), "toYear": int(year)})
+        payload = self._call("getAlbumList2", **call_kwargs)
+        raw_albums = ((payload or {}).get("albumList2") or {}).get("album") or []
+        items = [self._album_to_browse_item(a) for a in raw_albums if isinstance(a, dict)]
+        has_more = len(items) == safe_limit
+        return _SchemaMediaServerBrowsePage(
+            items=items,
+            total_count=safe_start + len(items) + (1 if has_more else 0),
+            start_index=safe_start,
+            limit=safe_limit,
+            has_more=has_more,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> _SchemaMediaServerFilterOptions:
+        """读取 Navidrome 音乐风格列表。"""
+        _ = library_id, username
+        genres: list[str] = []
+        if self.user:
+            payload = self._call("getGenres")
+            raw_genres = ((payload or {}).get("genres") or {}).get("genre") or []
+            genres = [str(g.get("value")) for g in raw_genres if isinstance(g, dict) and g.get("value")]
+        return _SchemaMediaServerFilterOptions(
+            genres=genres,
+            years=[],
+            item_types=["MusicAlbum", "Audio"],
+            sort_options=["date_created", "name", "random"],
+        )
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """获取 Navidrome 单曲或专辑的完整详情。"""
+        _ = username
+        if not self.user or not item_id:
+            return None
+        song_payload = self._call("getSong", id=item_id)
+        song = (song_payload or {}).get("song")
+        if isinstance(song, dict) and song:
+            base = self._song_to_browse_item(song)
+            return _SchemaMediaServerItemDetail(
+                **base.model_dump(),
+                genres=[str(song["genre"])] if song.get("genre") else [],
+                play_url=self.get_play_url(item_id),
+                can_play=True,
+            )
+        album_payload = self._call("getAlbum", id=item_id)
+        album = (album_payload or {}).get("album")
+        if isinstance(album, dict) and album:
+            base = self._album_to_browse_item(album)
+            return _SchemaMediaServerItemDetail(
+                **base.model_dump(),
+                genres=[str(album["genre"])] if album.get("genre") else [],
+                episode_count=album.get("songCount") if isinstance(album.get("songCount"), int) else None,
+                play_url=self._play_host,
+                can_play=False,
+            )
+        return None
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """获取 Navidrome 专辑内的全部曲目列表（复用分集端点便于统一展示与连播）。"""
+        _ = season_id, season, username
+        if not self.user or not series_id:
+            return None
+        album_payload = self._call("getAlbum", id=series_id)
+        songs = ((album_payload or {}).get("album") or {}).get("song") or []
+        return [self._song_to_browse_item(s) for s in songs if isinstance(s, dict)]
+
+    def search_library(
+        self, keyword: str, limit: int, library_id: Optional[str] = None
+    ) -> List[_SchemaMediaServerPlayItem]:
         """调用 Subsonic 搜索接口并返回可流式播放的单曲结果。"""
+        _ = library_id
         if not keyword.strip() or not self.user:
             return []
         payload = self._call(

@@ -14,8 +14,10 @@ import traceback
 import zipfile
 from collections import Counter
 from concurrent.futures import Future
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, cast
 from urllib.parse import urlsplit
 
 import httpx2
@@ -70,7 +72,11 @@ PLUGIN_INDEX_FAILURE_TTL = 300
 PLUGIN_INDEX_LOG_SOURCE_LIMIT = 512
 # 文档探测只在打开详情时执行，失败结果也缓存五分钟。
 PLUGIN_README_REQUEST_TIMEOUT = 5
+# 全量市场扫描与单仓库交互读取分用独立进程级闸门，避免全量刷新占满槽位后
+# 阻塞版本历史、Release 和说明等单仓库读取；进程级出站总上限为 5 + 2 = 7。
 DEFAULT_PLUGIN_INDEX_FETCH_CONCURRENCY = 5
+DEFAULT_PLUGIN_INDEX_SINGLE_FETCH_CONCURRENCY = 2
+PluginIndexFetchScope = Literal["scan", "single"]
 PLUGIN_INDEX_COMPATIBILITY_FLAG_PATTERN = re.compile(r"^v\d+t?$")
 PLUGIN_INDEX_TEXT_LIMITS = {
     "name": 256,
@@ -85,11 +91,38 @@ PLUGIN_INDEX_TEXT_LIMITS = {
     "repo_url": 2048,
 }
 
+# 默认走全量扫描闸门，单仓库交互读取通过上下文切换至独立分区。
+_PLUGIN_INDEX_FETCH_SCOPE: ContextVar[PluginIndexFetchScope] = ContextVar(
+    "plugin_index_fetch_scope",
+    default="scan",
+)
+
 # 目录服务和来源库存可能在同一进程内同时刷新；调用方各自创建的信号量
 # 只能限制单次刷新，不能限制真实出站请求总量。索引传输层统一持有闸门。
 _PLUGIN_INDEX_FETCH_GATE = threading.BoundedSemaphore(
     DEFAULT_PLUGIN_INDEX_FETCH_CONCURRENCY
 )
+_PLUGIN_INDEX_SINGLE_FETCH_GATE = threading.BoundedSemaphore(
+    DEFAULT_PLUGIN_INDEX_SINGLE_FETCH_CONCURRENCY
+)
+
+
+@contextmanager
+def _plugin_index_fetch_scope(scope: PluginIndexFetchScope) -> Iterator[None]:
+    """
+    在当前调用链内切换插件索引读取使用的进程级并发闸门分区。
+
+    不通过被缓存方法参数传递分区，确保全量扫描与单仓库读取共享同一份
+    1800 秒成功缓存、300 秒失败负缓存及同仓库同代际 single-flight 任务。
+
+    :param scope: 闸门分区，``scan`` 用于全量扫描，``single`` 用于单仓库交互读取
+    :yields: 切换分区后的执行上下文
+    """
+    token = _PLUGIN_INDEX_FETCH_SCOPE.set(scope)
+    try:
+        yield
+    finally:
+        _PLUGIN_INDEX_FETCH_SCOPE.reset(token)
 
 
 class _PluginIndexReadError(RuntimeError):
@@ -1454,22 +1487,44 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             pass
 
     @staticmethod
-    async def _acquire_index_fetch_slot() -> None:
+    def _current_index_fetch_gate() -> threading.BoundedSemaphore:
+        """
+        按当前调用链分区返回对应的进程级插件索引并发闸门。
+
+        :return: 单仓库交互读取或全量扫描对应的进程级信号量
+        """
+        if _PLUGIN_INDEX_FETCH_SCOPE.get() == "single":
+            return _PLUGIN_INDEX_SINGLE_FETCH_GATE
+        return _PLUGIN_INDEX_FETCH_GATE
+
+    @staticmethod
+    async def _acquire_index_fetch_slot(
+        gate: threading.BoundedSemaphore,
+    ) -> None:
         """
         以可取消方式等待跨同步/异步调用共享的索引请求闸门。
+
+        :param gate: 本次索引读取归属的进程级并发信号量
         """
-        while not _PLUGIN_INDEX_FETCH_GATE.acquire(blocking=False):
+        while not gate.acquire(blocking=False):
             await asyncio.sleep(0.01)
 
     def _fetch_plugin_index_sync(
         self,
         package_url: str,
         headers: Optional[dict[str, str]],
+        gate: Optional[threading.BoundedSemaphore] = None,
     ) -> Optional[PluginIndex]:
         """
-        在共享进程级闸门内完成一次同步索引读取。
+        在所属进程级闸门内完成一次同步索引读取。
+
+        :param package_url: 索引文件地址
+        :param headers: 请求头
+        :param gate: 可选的显式并发闸门；缺省按当前调用链分区选取
+        :return: 解析后的插件索引字典，不存在时返回 None
         """
-        with _PLUGIN_INDEX_FETCH_GATE:
+        active_gate = gate or self._current_index_fetch_gate()
+        with active_gate:
             return self.__request_plugin_index_with_fallback(
                 package_url,
                 headers=headers,
@@ -1479,29 +1534,46 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         self,
         package_url: str,
         headers: Optional[dict[str, str]],
+        gate: Optional[threading.BoundedSemaphore] = None,
     ) -> Optional[PluginIndex]:
         """
-        在共享进程级闸门内完成一次异步索引读取。
+        在所属进程级闸门内完成一次异步索引读取。
+
+        :param package_url: 索引文件地址
+        :param headers: 请求头
+        :param gate: 可选的显式并发闸门；缺省按当前调用链分区选取
+        :return: 解析后的插件索引字典，不存在时返回 None
         """
-        await self._acquire_index_fetch_slot()
+        active_gate = gate or self._current_index_fetch_gate()
+        await self._acquire_index_fetch_slot(active_gate)
         try:
             return await self.__async_request_plugin_index_with_fallback(
                 package_url,
                 headers=headers,
             )
         finally:
-            _PLUGIN_INDEX_FETCH_GATE.release()
+            active_gate.release()
 
     async def _fetch_plugin_index_async_task(
         self,
         package_url: str,
         headers: Optional[dict[str, str]],
+        gate: Optional[threading.BoundedSemaphore] = None,
     ) -> PluginIndexTaskResult:
         """
         把预期的索引读取失败转成共享任务结果，交由调用方记录仓库失败。
+
+        :param package_url: 索引文件地址
+        :param headers: 请求头
+        :param gate: 可选的显式并发闸门；缺省按当前调用链分区选取
+        :return: 索引结果与异常组成的二元组
         """
         try:
-            return await self._fetch_plugin_index_async(package_url, headers), None
+            return await self._fetch_plugin_index_async(
+                package_url,
+                headers,
+                gate,
+            ), None
         # 结果由读取调用方统一转换
         except Exception as error:  # noqa: BLE001
             return None, error
@@ -1543,7 +1615,11 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             return future.result()
 
         try:
-            result = self._fetch_plugin_index_sync(package_url, headers)
+            result = self._fetch_plugin_index_sync(
+                package_url,
+                headers,
+                self._current_index_fetch_gate(),
+            )
         # 共享结果必须传播原始异常
         except BaseException as error:  # noqa: BLE001
             if isinstance(error, _PluginIndexUnavailableError):
@@ -1627,14 +1703,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
         :return: 返回可用的插件版本号 (如 "v2"，如果指定版本不可用则返回空字符串表示 v1)，如果插件不可用则返回 None
         """
-        for candidate in self._package_version_candidates(package_version):
-            selected = self._select_compatible_package_version(
-                pid=pid,
-                package_version=candidate,
-                plugins=self.get_plugins(repo_url, candidate or None),
-            )
-            if selected is not None:
-                return selected
+        with _plugin_index_fetch_scope("single"):
+            for candidate in self._package_version_candidates(package_version):
+                selected = self._select_compatible_package_version(
+                    pid=pid,
+                    package_version=candidate,
+                    plugins=self.get_plugins(repo_url, candidate or None),
+                )
+                if selected is not None:
+                    return selected
 
         # 如果所有版本都不存在或插件不兼容，返回 None，表示插件不可用
         return None
@@ -1829,17 +1906,18 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         异步版本的获取插件版本方法，功能同 get_plugin_package_version
         """
-        for candidate in self._package_version_candidates(package_version):
-            selected = self._select_compatible_package_version(
-                pid=pid,
-                package_version=candidate,
-                plugins=await self.async_get_plugins(
-                    repo_url,
-                    candidate or None,
-                ),
-            )
-            if selected is not None:
-                return selected
+        with _plugin_index_fetch_scope("single"):
+            for candidate in self._package_version_candidates(package_version):
+                selected = self._select_compatible_package_version(
+                    pid=pid,
+                    package_version=candidate,
+                    plugins=await self.async_get_plugins(
+                        repo_url,
+                        candidate or None,
+                    ),
+                )
+                if selected is not None:
+                    return selected
 
         return None
 
@@ -1965,9 +2043,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         异步读取远端插件元数据，供兼容性查询保留旧私有入口。
         """
         try:
-            plugins = await self.async_get_plugins(
-                repo_url, package_version or None
-            ) or {}
+            with _plugin_index_fetch_scope("single"):
+                plugins = await self.async_get_plugins(
+                    repo_url, package_version or None
+                ) or {}
             meta = plugins.get(pid)
             return meta if isinstance(meta, dict) else {}
         except Exception as error:
@@ -1999,6 +2078,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             failure = await self._async_index_failures.get(failure_key, region="plugin.index.failures")
             if failure is not None:
                 raise _PluginIndexUnavailableError(failure)
+        gate = self._current_index_fetch_gate()
         loop = asyncio.get_running_loop()
         task_key = (loop, repo_key, generation_key)
         with self._index_task_lock:
@@ -2010,6 +2090,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                         self._fetch_plugin_index_async_task(
                             package_url,
                             headers,
+                            gate,
                         ),
                         owner="plugin.market.index",
                     ),
@@ -2234,6 +2315,48 @@ class PluginMarketClient:
         """
         async with async_fresh(force):
             return await self._transport.async_get_plugin_index_result(
+                    repo_url,
+                    package_version,
+                )
+
+    def get_single_plugin_index_result(
+        self,
+        repo_url: str,
+        package_version: Optional[str] = None,
+        force: bool = False,
+    ) -> Optional[PluginIndex]:
+        """
+        使用单仓库交互闸门同步读取单个插件仓库索引，避免排队阻塞在全量市场刷新之后。
+
+        与全量扫描共享相同的缓存和 single-flight 机制，仅在进程级出站并发上分槽。
+
+        :param repo_url: 插件仓库地址
+        :param package_version: 索引代际；None 表示基础索引
+        :param force: 是否跳过读取缓存
+        :return: 索引字典；确认缺失时返回 None
+        """
+        with fresh(force), _plugin_index_fetch_scope("single"):
+            return self._transport.get_plugin_index_result(repo_url, package_version)
+
+    async def async_get_single_plugin_index_result(
+        self,
+        repo_url: str,
+        package_version: Optional[str] = None,
+        force: bool = False,
+    ) -> Optional[PluginIndex]:
+        """
+        使用单仓库交互闸门异步读取单个插件仓库索引，避免排队阻塞在全量市场刷新之后。
+
+        与全量扫描共享相同的缓存和 single-flight 机制，仅在进程级出站并发上分槽。
+
+        :param repo_url: 插件仓库地址
+        :param package_version: 索引代际；None 表示基础索引
+        :param force: 是否跳过读取缓存
+        :return: 索引字典；确认缺失时返回 None
+        """
+        with _plugin_index_fetch_scope("single"):
+            async with async_fresh(force):
+                return await self._transport.async_get_plugin_index_result(
                     repo_url,
                     package_version,
                 )

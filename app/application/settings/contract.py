@@ -529,7 +529,9 @@ _RESTART_REQUIRED_GROUPS = {
     "system_update",
 }
 # 所在分组需要重启，但由调用方逐次读取、修改后立即生效的例外项。
-_IMMEDIATE_SETTINGS_IN_RESTART_GROUPS = frozenset({"API_DOCS_ENABLE"})
+_IMMEDIATE_SETTINGS_IN_RESTART_GROUPS = frozenset(
+    {"API_DOCS_ENABLE", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"}
+)
 
 
 def _load_source_catalog() -> dict[str, Any]:

@@ -5,6 +5,7 @@
 import errno
 import os
 import shutil
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -854,8 +855,16 @@ def test_existing_hardlink_overwrite_rejects_restored_mtime_mutation(
     with pytest.raises(ProcessStopped):
         _execute(checkpoint, monkeypatch, runner)
     before = source.stat()
-    source.write_bytes(b"CORRUPTION!")
-    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    # 粗粒度文件系统时钟可能将连续写入落在同一 ctime 刻度内，循环重试直到 ctime 推进。
+    deadline = time.monotonic() + 2.0
+    while True:
+        source.write_bytes(b"CORRUPTION!")
+        os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+        if source.stat().st_ctime_ns != before.st_ctime_ns:
+            break
+        if time.monotonic() >= deadline:
+            pytest.fail("等待 ctime 推进超时")
+        time.sleep(0.01)
     artifacts = {path: path.read_bytes() for path in tmp_path.iterdir()}
 
     with pytest.raises(execution_module._TransferManualReviewRequired):

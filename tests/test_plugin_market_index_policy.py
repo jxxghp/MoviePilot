@@ -1369,3 +1369,202 @@ def test_plugin_market_client_exposes_index_result_port() -> None:
     client = PluginMarketClient(FakeHelper())
 
     assert client.get_plugin_index_result("https://github.com/example/repo", "v3") is expected
+
+
+@pytest.mark.asyncio
+async def test_single_repo_index_read_bypasses_saturated_scan_gate_and_shares_cache(
+    monkeypatch,
+) -> None:
+    """
+    全量扫描占满扫描闸门时，单仓库交互读取必须经独立闸门立即完成，并与扫描共享缓存。
+    """
+    helper = PluginMarketTransport()
+    client = PluginMarketClient(helper)
+    monkeypatch.setattr(
+        plugin_client_module,
+        "_PLUGIN_INDEX_FETCH_GATE",
+        threading.BoundedSemaphore(2),
+    )
+    monkeypatch.setattr(
+        plugin_client_module,
+        "_PLUGIN_INDEX_SINGLE_FETCH_GATE",
+        threading.BoundedSemaphore(2),
+    )
+    scan_started = asyncio.Event()
+    release_scan = asyncio.Event()
+    active_scan = 0
+    requested_urls: list[str] = []
+
+    async def request(url: str, *, headers: dict):
+        nonlocal active_scan
+        requested_urls.append(url)
+        if "scan-repo-" in url:
+            active_scan += 1
+            if active_scan == 2:
+                scan_started.set()
+            await release_scan.wait()
+            active_scan -= 1
+            return {"ScanPlugin": {"version": "1.0.0"}}
+        return {"TargetPlugin": {"version": "2.0.0"}}
+
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    scan_tasks = [
+        asyncio.create_task(
+            client.async_get_plugin_index_result(
+                f"https://github.com/partition-owner/scan-repo-{index}",
+                "v3",
+                force=True,
+            )
+        )
+        for index in range(2)
+    ]
+    await asyncio.wait_for(scan_started.wait(), timeout=1)
+
+    target_repo = "https://github.com/partition-owner/single-target"
+    single_result = await asyncio.wait_for(
+        client.async_get_single_plugin_index_result(
+            target_repo,
+            "v3",
+            force=True,
+        ),
+        timeout=1,
+    )
+    assert single_result == {"TargetPlugin": {"version": "2.0.0"}}
+    assert active_scan == 2
+
+    release_scan.set()
+    await asyncio.gather(*scan_tasks)
+
+    # 非强制扫描再次读取同一仓库应命中单仓写入的缓存，不再发第二次出站请求。
+    cached_result = await client.async_get_plugin_index_result(
+        target_repo,
+        "v3",
+        force=False,
+    )
+    assert cached_result == {"TargetPlugin": {"version": "2.0.0"}}
+    assert sum("single-target" in url for url in requested_urls) == 1
+
+
+@pytest.mark.asyncio
+async def test_single_repo_index_reads_respect_single_process_gate(monkeypatch) -> None:
+    """
+    单仓库交互读取自身也受独立进程级并发闸门上限约束。
+    """
+    helper = PluginMarketTransport()
+    client = PluginMarketClient(helper)
+    monkeypatch.setattr(
+        plugin_client_module,
+        "_PLUGIN_INDEX_SINGLE_FETCH_GATE",
+        threading.BoundedSemaphore(2),
+    )
+    active = 0
+    peak = 0
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        if active == 2:
+            started.set()
+        await release.wait()
+        active -= 1
+        return {"DemoPlugin": {"version": "1.2.3"}}
+
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
+    await helper.async_get_plugin_index_result.cache_clear()
+    tasks = [
+        asyncio.create_task(
+            client.async_get_single_plugin_index_result(
+                f"https://github.com/single-gate-owner/repository-{index}",
+                "v3",
+                force=True,
+            )
+        )
+        for index in range(4)
+    ]
+
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert active == 2
+    release.set()
+    results = await asyncio.gather(*tasks)
+
+    assert peak == 2
+    assert len(results) == 4
+
+
+@pytest.mark.asyncio
+async def test_single_repo_and_scan_share_single_flight_for_same_repo(
+    monkeypatch,
+) -> None:
+    """
+    全量扫描与单仓库读取并发命中同一仓库和代际时仍共享一次出站请求。
+    """
+    helper = PluginMarketTransport()
+    client = PluginMarketClient(helper)
+    repo_url = "https://github.com/shared-flight-owner/shared-flight-repo"
+    started = asyncio.Event()
+    release = asyncio.Event()
+    requests = 0
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal requests
+        requests += 1
+        started.set()
+        await release.wait()
+        return {"SharedPlugin": {"version": "3.0.0"}}
+
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    scan_task = asyncio.create_task(
+        client.async_get_plugin_index_result(repo_url, "v3", force=True)
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+    single_task = asyncio.create_task(
+        client.async_get_single_plugin_index_result(repo_url, "v3", force=True)
+    )
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.gather(scan_task, single_task) == [
+        {"SharedPlugin": {"version": "3.0.0"}},
+        {"SharedPlugin": {"version": "3.0.0"}},
+    ]
+    assert requests == 1
+
+
+def test_sync_single_repo_index_read_bypasses_saturated_scan_gate(monkeypatch) -> None:
+    """
+    同步扫描闸门被占满时，同步单仓库索引读取仍可通过单仓闸门直接完成。
+    """
+    helper = PluginMarketTransport()
+    client = PluginMarketClient(helper)
+    scan_gate = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(plugin_client_module, "_PLUGIN_INDEX_FETCH_GATE", scan_gate)
+    monkeypatch.setattr(
+        plugin_client_module,
+        "_PLUGIN_INDEX_SINGLE_FETCH_GATE",
+        threading.BoundedSemaphore(1),
+    )
+    monkeypatch.setattr(
+        helper,
+        SYNC_INDEX_REQUEST,
+        lambda _url, *, headers: {"SyncTarget": {"version": "1.5.0"}},
+    )
+    helper.get_plugin_index_result.cache_clear()
+
+    assert scan_gate.acquire(blocking=False)
+    try:
+        result = client.get_single_plugin_index_result(
+            "https://github.com/sync-partition-owner/single-target",
+            "v3",
+            force=True,
+        )
+    finally:
+        scan_gate.release()
+
+    assert result == {"SyncTarget": {"version": "1.5.0"}}

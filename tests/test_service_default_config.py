@@ -9,7 +9,8 @@ from typing import Dict, Optional
 
 import pytest
 
-from app.modules import ServiceBase
+from app.modules import ServiceBase, _DownloaderBase
+from app.runtime.extensions.service import ServiceConfigHelper
 from app.schemas.system import DownloaderConf
 
 
@@ -37,18 +38,19 @@ class _StubService(ServiceBase[object, DownloaderConf]):
         return self._configs
 
 
-def _conf(name: str, *, default: bool = False) -> DownloaderConf:
+def _conf(name: str, *, default: bool = False, enabled: bool = True) -> DownloaderConf:
     """
-    构造一份已启用的下载器配置。
+    构造一份下载器配置。
 
     :param name: 配置名称
     :param default: 是否标记为默认
+    :param enabled: 是否启用该下载器
     :return: 下载器配置
     """
     return DownloaderConf(
         name=name,
         type="qbittorrent",
-        enabled=True,
+        enabled=enabled,
         default=default,
         config={},
     )
@@ -132,3 +134,89 @@ def test_get_config_without_name_follows_the_default(name: str) -> None:
 
     assert resolved is not None
     assert resolved.name == name
+
+
+def _downloader_service(
+    monkeypatch: pytest.MonkeyPatch,
+    configs: list[DownloaderConf],
+) -> _DownloaderBase[object]:
+    """
+    构造隔离了全局配置来源的下载器基类实例，只注入已启用配置的运行实例。
+
+    :param monkeypatch: pytest 补丁夹具
+    :param configs: 模拟的完整下载器配置列表（含已禁用项）
+    :return: 可调用默认名称与实例解析的下载器基类对象
+    """
+    monkeypatch.setattr(ServiceConfigHelper, "get_downloader_configs", staticmethod(lambda: configs))
+    service: _DownloaderBase[object] = _DownloaderBase()
+    service._service_name = "qbittorrent"
+    service._configs = {conf.name: conf for conf in configs if conf.enabled}
+    service._instances = {conf.name: f"instance:{conf.name}" for conf in configs if conf.enabled}
+    return service
+
+
+def test_downloader_default_skips_disabled_default_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    已禁用的下载器即使仍带有 default 标记，也不得盖过已启用的默认下载器。
+    """
+    service = _downloader_service(
+        monkeypatch,
+        [
+            _conf("disabled-default", default=True, enabled=False),
+            _conf("backup-qb", enabled=True),
+            _conf("active-qb", default=True, enabled=True),
+        ],
+    )
+
+    assert service.get_default_config_name() == "active-qb"
+    assert service.get_instance() == "instance:active-qb"
+
+
+def test_downloader_default_falls_back_to_first_enabled_when_only_disabled_is_marked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    仅已禁用的下载器带有 default 标记且其余已启用项均未标记时，默认下载器应落到首个已启用配置。
+    """
+    service = _downloader_service(
+        monkeypatch,
+        [
+            _conf("disabled-default", default=True, enabled=False),
+            _conf("first-enabled", enabled=True),
+            _conf("second-enabled", enabled=True),
+        ],
+    )
+
+    assert service.get_default_config_name() == "first-enabled"
+    assert service.get_instance() == "instance:first-enabled"
+
+
+def test_downloader_default_skips_disabled_first_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    没有默认标记且首个配置已禁用时，默认下载器应落到首个已启用配置。
+    """
+    service = _downloader_service(
+        monkeypatch,
+        [
+            _conf("disabled-first", enabled=False),
+            _conf("second-enabled", enabled=True),
+        ],
+    )
+
+    assert service.get_default_config_name() == "second-enabled"
+    assert service.get_instance() == "instance:second-enabled"
+
+
+def test_downloader_default_returns_none_when_all_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    所有下载器都已禁用时，默认配置名称与默认实例均应返回 None。
+    """
+    service = _downloader_service(
+        monkeypatch,
+        [
+            _conf("disabled-only", default=True, enabled=False),
+        ],
+    )
+
+    assert service.get_default_config_name() is None
+    assert service.get_instance() is None

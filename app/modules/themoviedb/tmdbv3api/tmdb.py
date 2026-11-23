@@ -97,13 +97,24 @@ def _is_business_failure_snapshot(snapshot: object) -> bool:
     return isinstance(json_data, dict) and json_data.get("success") is False
 
 
+# /find 外部标识查询接口返回的结果分组字段，全空时与空搜索结果同样走短 TTL 缓存。
+_FIND_RESULT_KEYS = (
+    "movie_results",
+    "person_results",
+    "tv_results",
+    "tv_episode_results",
+    "tv_season_results",
+)
+
+
 def _is_empty_result_snapshot(snapshot: object) -> bool:
     """
-    判断响应快照是否为空结果（列表/搜索类接口的 results 为空列表）。
+    判断响应快照是否为空结果（列表/搜索类接口的 results 或 /find 各结果列表均为空）。
 
-    这类快照结构合法但无业务内容，常由代理瞬时故障产生；不能靠 skip_none/skip_empty
-    识别（快照本身是非空字典），需单独谓词判定后按 get_runtime_setting('EMPTY_RESULT_CACHE_TTL')
-    短 TTL 缓存。详情类接口无 results 字段，不属于空结果。
+    这类快照结构合法但无业务内容，常由代理瞬时故障或上游尚未补录关联引起；不能靠
+    skip_none/skip_empty 识别（快照本身是非空字典），需单独谓词判定后按
+    get_runtime_setting('EMPTY_RESULT_CACHE_TTL') 短 TTL 缓存。详情类接口无这类字段，
+    不属于空结果。
     """
     if not isinstance(snapshot, dict):
         return False
@@ -111,7 +122,12 @@ def _is_empty_result_snapshot(snapshot: object) -> bool:
     if not isinstance(json_data, dict):
         return False
     results = json_data.get("results")
-    return isinstance(results, list) and not results
+    if isinstance(results, list):
+        return not results
+    if "movie_results" in json_data and "tv_results" in json_data:
+        present_keys = [key for key in _FIND_RESULT_KEYS if key in json_data]
+        return all(isinstance(json_data[key], list) and not json_data[key] for key in present_keys)
+    return False
 
 
 def _cache_request(function: _RequestFunction) -> _RequestFunction:

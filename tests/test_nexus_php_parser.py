@@ -687,3 +687,58 @@ def test_pterclub_headers_reach_http_transport_and_failures_are_visible(monkeypa
                         lambda *_args: "Forbidden")
     parser._get_page_content(url="https://pterclub.net/", headers=parser._torrent_seeding_headers)
     assert any("HTTP 403" in warning for warning in warnings)
+
+
+def test_site_parser_trims_ua_and_reports_invalid_header_without_fallback(monkeypatch):
+    """
+    站点解析器应裁剪历史 UA 首尾空格；若仍含非法字符，应明确告警、保留错误说明并停止模型回退。
+    """
+    from app.modules.indexer import IndexerModule
+    from app.modules.indexer.parser import SiteSchema
+    from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
+
+    trimmed_parser = NexusPhpSiteUserInfo(
+        site_name="憨憨",
+        url="https://hhan.test/",
+        site_cookie="sid=1",
+        apikey=None,
+        token=None,
+        ua=" Mozilla/5.0 Edg/158.0.0.0 ",
+    )
+    assert trimmed_parser._ua == "Mozilla/5.0 Edg/158.0.0.0"
+
+    warnings: list[str] = []
+    monkeypatch.setattr("app.modules.indexer.parser.logger.warning", warnings.append)
+    fallback_called: list[str] = []
+
+    class _FallbackParser(NexusPhpSiteUserInfo):
+        """
+        记录异常请求头场景下是否被错误触发的回退解析器。
+        """
+
+        schema = SiteSchema.Gazelle
+
+        def parse(self) -> None:
+            """
+            记录回退解析器的调用次数。
+            """
+            fallback_called.append("Gazelle")
+
+    monkeypatch.setattr(IndexerModule, "_site_schemas", [NexusPhpSiteUserInfo, _FallbackParser])
+    module = object.__new__(IndexerModule)
+    result = module.refresh_userdata(
+        {
+            "name": "憨憨",
+            "url": "https://hhan.test/",
+            "cookie": "sid=1",
+            "ua": "Mozilla/5.0\nBadUA",
+            "schema": SiteSchema.NexusPhp.value,
+            "public": False,
+        }
+    )
+
+    assert result is not None
+    assert result.userid is None
+    assert result.err_msg == "请求头包含非法字符（User-Agent），请检查站点 UA 或认证配置"
+    assert fallback_called == []
+    assert any("InvalidHeader" in warning and "User-Agent" in warning for warning in warnings)

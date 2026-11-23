@@ -408,7 +408,12 @@ class MessageChain(ChainBase):
                 is_channel_admin=is_channel_admin,
             )
 
-            if is_special_plugin_text:
+            is_non_admin_web = (
+                channel in {NotificationChannel.Web, NotificationChannel.WebAgent}
+                and is_channel_admin is False
+            )
+
+            if is_special_plugin_text and not is_non_admin_web:
                 # 插件验证码等专用输入不进入 Agent、普通历史或传统命令路由。
                 self._dispatch_plugin_text(interaction_context, text, reply_to_message_id)
                 return
@@ -420,7 +425,7 @@ class MessageChain(ChainBase):
                 processing_finish_deferred = member_result
                 return
 
-            if (not channel_managed or is_channel_admin) and self._plugin_input_interaction_handler().handle_text(
+            if (not channel_managed or is_channel_admin) and not is_non_admin_web and self._plugin_input_interaction_handler().handle_text(
                     context=interaction_context,
                     text=text,
                     reply_to_message_id=reply_to_message_id,
@@ -726,7 +731,12 @@ class MessageChain(ChainBase):
                 )
             return False
 
-        if self._plugin_input_interaction_handler().handle_text(
+        is_non_admin_web = (
+            channel in {NotificationChannel.Web, NotificationChannel.WebAgent}
+            and is_channel_admin is False
+        )
+
+        if not is_non_admin_web and self._plugin_input_interaction_handler().handle_text(
                 context=context,
                 text=text,
                 reply_to_message_id=reply_to_message_id,
@@ -754,6 +764,18 @@ class MessageChain(ChainBase):
                 return False
 
         if text.startswith("/") and not self._has_ai_prefix(text) and not is_agent_learning_command(text):
+            if is_non_admin_web:
+                self.post_message(
+                    Message(
+                        channel=channel,
+                        source=source,
+                        userid=userid,
+                        username=username,
+                        title="只有管理员才有权限执行此命令",
+                        save_history=False,
+                    )
+                )
+                return False
             self.eventmanager.send_event(
                 EventType.CommandExcute,
                 {

@@ -1934,6 +1934,7 @@ class MediaInfo:
     :param backdrop_path: 背景图片
     :param poster_path: 海报图片
     :param logo_path: 媒体标志图片地址
+    :param logo_language: 媒体标志语言代码（如 zh-CN、zh、en）
     :param vote_average: 评分
     :param overview: 描述
     :param genre_ids: 风格ID
@@ -2009,6 +2010,7 @@ class MediaInfo:
     backdrop_path: Optional[str] = None
     poster_path: Optional[str] = None
     logo_path: Optional[str] = None
+    logo_language: Optional[str] = None
     vote_average: Optional[float] = None
     overview: Optional[str] = None
     genre_ids: list[int] = field(default_factory=list)

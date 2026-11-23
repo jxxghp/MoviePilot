@@ -625,6 +625,18 @@ def test_hdarea_protocol_adapters_stay_in_indexer_packages() -> None:
     assert not (indexer / "hdarea_parser.py").exists()
 
 
+def test_colapt_protocol_adapters_stay_in_indexer_packages() -> None:
+    """
+    可乐开放 API 协议在索引器的搜索和资料包内使用单词文件名，不创建新的顶层能力或平级复合文件。
+    """
+    indexer = APP_ROOT / "modules" / "indexer"
+    assert (indexer / "spider" / "colapt.py").is_file()
+    assert (indexer / "parser" / "colapt.py").is_file()
+    assert not (APP_ROOT / "modules" / "colapt.py").exists()
+    assert not (indexer / "colapt_spider.py").exists()
+    assert not (indexer / "colapt_parser.py").exists()
+
+
 def test_application_torrent_uses_same_named_single_word_package() -> None:
     """
     种子应用能力必须归入同名包，包根不得重复导出内部实现。

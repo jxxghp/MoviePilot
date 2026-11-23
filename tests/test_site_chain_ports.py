@@ -701,3 +701,60 @@ def test_favicon_failure_logs_only_site_origin(monkeypatch) -> None:
     assert favicon_url == "https://site.test/icon.png?token=secret"
     assert content is None
     assert errors == ["获取站点图标失败：https://site.test"]
+
+
+def test_site_connectivity_trims_legacy_whitespace_ua_and_falls_back_when_blank() -> None:
+    """
+    历史配置中带首尾空格或全空白的站点 UA 在连通性测试时应自动裁剪或回退默认 UA。
+    """
+    http = _FakeHttpPort(_FakeResponse(200, text="ok"), _FakeResponse(200, text="ok"))
+    _configure(http)
+    padded_site = SiteSnapshot(
+        id=1,
+        name="空格UA站",
+        domain="padded.test",
+        url="https://padded.test/",
+        ua=" Mozilla/5.0 Edg/158.0.0.0 ",
+        public=True,
+    )
+    blank_site = SiteSnapshot(
+        id=2,
+        name="空白UA站",
+        domain="blank.test",
+        url="https://blank.test/",
+        ua="   ",
+        public=True,
+    )
+
+    assert _chain()._SiteChain__test(padded_site)[0] is True
+    assert _chain()._SiteChain__test(blank_site)[0] is True
+    assert http.calls[0]["ua"] == "Mozilla/5.0 Edg/158.0.0.0"
+    assert http.calls[1]["ua"] == "MoviePilot-Test"
+
+
+@pytest.mark.parametrize("bad_ua", ["Mozilla/5.0\nInjected", "Mozilla/5.0 中文"])
+def test_site_connectivity_reports_invalid_ua_instead_of_unreachable(
+    monkeypatch: pytest.MonkeyPatch, bad_ua: str,
+) -> None:
+    """
+    UA 含非法字符时应明确提示配置错误并告警，而不是误报无法打开网站。
+    """
+    http = _FakeHttpPort()
+    _configure(http)
+    warnings: list[str] = []
+    monkeypatch.setattr(site_module.logger, "warning", warnings.append)
+    site = SiteSnapshot(
+        id=3,
+        name="非法UA站",
+        domain="bad-ua.test",
+        url="https://bad-ua.test/",
+        ua=bad_ua,
+        public=True,
+    )
+
+    result = _chain()._SiteChain__test(site)
+
+    assert result == (False, "站点浏览器标识(UA)包含非法字符，请检查配置！")
+    assert http.calls == []
+    assert len(warnings) == 1
+    assert "User-Agent" in warnings[0]

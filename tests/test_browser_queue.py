@@ -834,3 +834,229 @@ def test_legacy_plugin_preparation_wraps_before_import(provider, tmp_path, monke
     namespace = {}
     exec((root / "__init__.py").read_text(), namespace)
     namespace["launch"]().close()
+
+
+def test_browser_queue_status_reads_configured_default_and_live_counts(monkeypatch):
+    """
+    队列状态查询在首次启动前应返回配置上限，且在活跃、排队与降容场景保持只读准确。
+    """
+    from app.runtime import browser as runtime_browser
+    from app.sdk.browser import BrowserQueueStatus, get_browser_queue_status
+
+    capacity = BrowserCapacity()
+    monkeypatch.setattr(runtime_browser, "browser_capacity", capacity)
+    monkeypatch.setattr(
+        runtime_browser,
+        "get_runtime_setting",
+        lambda key, default=None: 4 if key == "CLOAKBROWSER_MAX_CONCURRENCY" else default,
+    )
+
+    initial = get_browser_queue_status()
+    assert initial == BrowserQueueStatus(active=0, waiting=0, limit=4)
+    assert initial.available == 4
+    assert capacity.configured is False
+
+    capacity.configure(2)
+    lease_one = capacity.acquire(0.5)
+    lease_two = capacity.acquire(0.5)
+    try:
+        assert get_browser_queue_status() == BrowserQueueStatus(active=2, waiting=0, limit=2)
+        assert get_browser_queue_status().available == 0
+
+        # 降容不撤销运行中的实例，available 应收敛为 0 而非负数。
+        capacity.configure(1)
+        lowered = get_browser_queue_status()
+        assert lowered == BrowserQueueStatus(active=2, waiting=0, limit=1)
+        assert lowered.available == 0
+
+        cancelled = threading.Event()
+
+        def wait_in_queue() -> None:
+            with runtime_browser.browser_request(cancelled.is_set):
+                capacity.acquire(5.0)
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(wait_in_queue)
+            _until(lambda: capacity.waiting == 1)
+            queued = get_browser_queue_status()
+            assert queued == BrowserQueueStatus(active=2, waiting=1, limit=1)
+            assert queued.available == 0
+            cancelled.set()
+            with pytest.raises(BrowserQueueCancelledError):
+                pending.result(timeout=3)
+    finally:
+        lease_two.release()
+        lease_one.release()
+
+    final_status = get_browser_queue_status()
+    assert final_status == BrowserQueueStatus(active=0, waiting=0, limit=1)
+    assert final_status.available == 1
+
+
+def test_browser_request_validates_arguments_and_tightens_nested_timeout():
+    """
+    browser_request 应校验参数，并让嵌套超时只取更严格上限且不突破宿主配置。
+    """
+    from app.runtime.browser import resolve_browser_queue_timeout
+    from app.sdk.browser import browser_request as sdk_browser_request
+
+    with pytest.raises(TypeError, match="cancelled"):
+        with sdk_browser_request(threading.Event()):  # type: ignore[arg-type]
+            pass
+
+    for invalid_timeout in (0, -1, float("nan"), float("inf"), True):
+        with pytest.raises(ValueError, match="大于零"):
+            with sdk_browser_request(queue_timeout=invalid_timeout):
+                pass
+
+    assert resolve_browser_queue_timeout(60.0) == 60.0
+    with sdk_browser_request(queue_timeout=120.0):
+        assert resolve_browser_queue_timeout(60.0) == 60.0
+        with sdk_browser_request(queue_timeout=15.0):
+            assert resolve_browser_queue_timeout(60.0) == 15.0
+            with sdk_browser_request(queue_timeout=30.0):
+                assert resolve_browser_queue_timeout(60.0) == 15.0
+            assert resolve_browser_queue_timeout(60.0) == 15.0
+        assert resolve_browser_queue_timeout(60.0) == 60.0
+    assert resolve_browser_queue_timeout(60.0) == 60.0
+
+
+def test_sdk_browser_context_closes_on_exit_and_cancels_queued_waiter(provider, monkeypatch):
+    """
+    SDK 同步浏览器任务上下文应自动关闭归还名额，并在排队期间响应取消与独立排队超时。
+    """
+    from app.runtime import browser as runtime_browser
+    from app.sdk.browser import BrowserQueueCancelledError as SdkQueueCancelledError
+    from app.sdk.browser import browser_context, get_browser_queue_status
+
+    monkeypatch.setattr(runtime_browser, "browser_capacity", provider.capacity)
+
+    with browser_context(headless=True) as context:
+        assert provider.capacity.active == 1
+        assert get_browser_queue_status().active == 1
+        assert context is not None
+    assert provider.capacity.active == 0
+    assert provider.created[0].closed
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with browser_context(headless=True):
+            assert provider.capacity.active == 1
+            raise RuntimeError("boom")
+    assert provider.capacity.active == 0
+    assert provider.created[1].closed
+
+    holder = provider.module.launch()
+    provider.settings["CLOAKBROWSER_QUEUE_TIMEOUT"] = 5.0
+    cancelled = threading.Event()
+    try:
+        # 独立收紧排队超时时，应明显早于宿主 5 秒上限返回 TimeoutError 且不影响持有者。
+        start = time.monotonic()
+        with pytest.raises(TimeoutError, match="等待浏览器名额超时"):
+            with browser_context(headless=True, queue_timeout=0.05):
+                pass
+        assert time.monotonic() - start < 1.0
+        assert provider.capacity.active == 1
+        assert provider.capacity.waiting == 0
+
+        def queued_task() -> None:
+            with browser_context(headless=True, cancelled=cancelled.is_set, queue_timeout=5.0):
+                pass
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            waiting = executor.submit(queued_task)
+            _until(lambda: provider.capacity.waiting == 1)
+            assert get_browser_queue_status().waiting == 1
+            cancelled.set()
+            with pytest.raises(SdkQueueCancelledError):
+                waiting.result(timeout=3)
+        assert provider.capacity.waiting == 0
+        assert provider.capacity.active == 1
+        assert len(provider.created) == 3
+    finally:
+        holder.close()
+
+
+def test_cancelled_headed_browser_context_skips_display_acquisition(monkeypatch):
+    """
+    已取消的有头浏览器请求应在获取虚拟显示资源前立即退出。
+    """
+    from app.sdk.browser import BrowserQueueCancelledError as SdkQueueCancelledError
+    from app.sdk.browser import browser_context
+
+    acquire_display = MagicMock()
+    monkeypatch.setattr(browser, "acquire_managed_resource", acquire_display)
+
+    with pytest.raises(SdkQueueCancelledError):
+        with browser_context(headless=False, cancelled=lambda: True):
+            pass
+
+    acquire_display.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sdk_browser_context_async_closes_and_cancels_queued_waiters(provider, monkeypatch):
+    """
+    SDK 异步浏览器任务上下文应自动关闭归还名额，并支持取消回调、任务取消与独立排队超时。
+    """
+    from app.runtime import browser as runtime_browser
+    from app.sdk.browser import BrowserQueueCancelledError as SdkQueueCancelledError
+    from app.sdk.browser import browser_context_async, get_browser_queue_status
+
+    monkeypatch.setattr(runtime_browser, "browser_capacity", provider.capacity)
+
+    async with browser_context_async(headless=True) as context:
+        assert provider.capacity.active == 1
+        assert get_browser_queue_status().active == 1
+        assert context is not None
+    assert provider.capacity.active == 0
+    assert provider.created[0].closed
+
+    with pytest.raises(RuntimeError, match="async boom"):
+        async with browser_context_async(headless=True):
+            assert provider.capacity.active == 1
+            raise RuntimeError("async boom")
+    assert provider.capacity.active == 0
+    assert provider.created[1].closed
+
+    holder = provider.module.launch()
+    provider.settings["CLOAKBROWSER_QUEUE_TIMEOUT"] = 5.0
+    try:
+        start = time.monotonic()
+        with pytest.raises(TimeoutError, match="等待浏览器名额超时"):
+            async with browser_context_async(headless=True, queue_timeout=0.05):
+                pass
+        assert time.monotonic() - start < 1.0
+        assert provider.capacity.waiting == 0
+
+        cancelled = threading.Event()
+
+        async def wait_with_callback() -> None:
+            async with browser_context_async(
+                headless=True,
+                cancelled=cancelled.is_set,
+                queue_timeout=5.0,
+            ):
+                pass
+
+        callback_task = asyncio.create_task(wait_with_callback())
+        await _until_async(lambda: provider.capacity.waiting == 1)
+        assert get_browser_queue_status().waiting == 1
+        cancelled.set()
+        with pytest.raises(SdkQueueCancelledError):
+            await callback_task
+        assert provider.capacity.waiting == 0
+
+        async def wait_until_task_cancel() -> None:
+            async with browser_context_async(headless=True, queue_timeout=5.0):
+                pass
+
+        cancelled_task = asyncio.create_task(wait_until_task_cancel())
+        await _until_async(lambda: provider.capacity.waiting == 1)
+        cancelled_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled_task
+        assert provider.capacity.waiting == 0
+        assert provider.capacity.active == 1
+        assert len(provider.created) == 3
+    finally:
+        holder.close()

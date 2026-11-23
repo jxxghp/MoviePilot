@@ -1189,17 +1189,32 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return await self._async_run_recognize_steps(plan)
 
     def match_tmdbinfo(
-        self, name: str, mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None
+        self,
+        name: str = "",
+        mtype: Optional[MediaType] = None,
+        year: Optional[str] = None,
+        season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[_TmdbData]:
         """
         搜索和匹配TMDB信息。
 
-        :param name: 待搜索或匹配的名称
+        提供 IMDb 标识时优先按外部标识精确查询；未命中且提供名称时回退名称搜索。
+
+        :param name: 待搜索或匹配的名称；仅按 IMDb 标识查询时可为空字符串
         :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
         :param year: 作品上映或整剧首播年份，未指定时不按年份限制
         :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :param imdbid: 可选 IMDb 标识，提供时优先用于 TMDB 外部标识精确查找
         :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
+        if imdbid:
+            logger.info(f"开始使用 IMDBID：{imdbid} 匹配TMDB信息 ...")
+            info = self.tmdb.match_by_imdb_id(imdb_id=imdbid, mtype=mtype, season_number=season)
+            if info or not name:
+                return info
+        if not name:
+            return None
         logger.info(f"开始使用 名称：{name} 年份：{year} 匹配TMDB信息 ...")
         info = self.tmdb.match(name=name, year=year, mtype=mtype or MediaType.MOVIE, season_year=year, season_number=season)
         if info and not info.get("genres"):
@@ -1210,17 +1225,32 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return info
 
     async def async_match_tmdbinfo(
-        self, name: str, mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None
+        self,
+        name: str = "",
+        mtype: Optional[MediaType] = None,
+        year: Optional[str] = None,
+        season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[_TmdbData]:
         """
         异步搜索和匹配TMDB信息。
 
-        :param name: 待搜索或匹配的名称
+        提供 IMDb 标识时优先按外部标识精确查询；未命中且提供名称时回退名称搜索。
+
+        :param name: 待搜索或匹配的名称；仅按 IMDb 标识查询时可为空字符串
         :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
         :param year: 作品上映或整剧首播年份，未指定时不按年份限制
         :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :param imdbid: 可选 IMDb 标识，提供时优先用于 TMDB 外部标识精确查找
         :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
+        if imdbid:
+            logger.info(f"开始使用 IMDBID：{imdbid} 匹配TMDB信息 ...")
+            info = await self.tmdb.async_match_by_imdb_id(imdb_id=imdbid, mtype=mtype, season_number=season)
+            if info or not name:
+                return info
+        if not name:
+            return None
         logger.info(f"开始使用 名称：{name} 年份：{year} 匹配TMDB信息 ...")
         info = await self.tmdb.async_match(name=name, year=year, mtype=mtype or MediaType.MOVIE, season_year=year, season_number=season)
         if info and not info.get("genres"):
@@ -1618,12 +1648,12 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     @staticmethod
-    def _pick_best_tmdb_image(
+    def _pick_best_tmdb_image_item(
         images: Optional[_TmdbDataList],
         preferred_locale: Optional[str] = None,
-    ) -> Optional[str]:
+    ) -> Optional[_TmdbData]:
         """
-        从 TMDB 图片候选中优先按当前语言选出评分最高的文件路径，无匹配语言时回退默认候选。
+        从 TMDB 图片候选中优先按当前语言选出评分最高的完整候选记录，无匹配语言时回退默认候选。
         """
         if not images:
             return None
@@ -1654,7 +1684,19 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             )
 
         ranked = sorted(images, key=_score, reverse=True)
-        return ranked[0].get("file_path")
+        return ranked[0]
+
+    @classmethod
+    def _pick_best_tmdb_image(
+        cls,
+        images: Optional[_TmdbDataList],
+        preferred_locale: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        从 TMDB 图片候选中优先按当前语言选出评分最高的文件路径，无匹配语言时回退默认候选。
+        """
+        item = cls._pick_best_tmdb_image_item(images, preferred_locale=preferred_locale)
+        return item.get("file_path") if item else None
 
     @classmethod
     def _process_tmdb_images(cls, mediainfo: MediaInfo, images: _TmdbData) -> MediaInfo:
@@ -1667,17 +1709,27 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if isinstance(images, list):
             images = images[0]
-        preferred_locale = LocaleHelper.get_current_locale() or str(
-            get_runtime_setting("TMDB_LOCALE") or ""
-        ).strip() or None
+        preferred_locale = (
+            str(get_runtime_setting("TMDB_LOCALE") or "").strip()
+            or LocaleHelper.get_current_locale()
+            or None
+        )
         if not mediainfo.backdrop_path:
             if image_path := cls._pick_best_tmdb_image(images.get("backdrops")):
                 mediainfo.backdrop_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         if not mediainfo.logo_path:
-            if image_path := cls._pick_best_tmdb_image(
+            if logo_item := cls._pick_best_tmdb_image_item(
                 images.get("logos"), preferred_locale=preferred_locale
             ):
-                mediainfo.logo_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
+                if image_path := logo_item.get("file_path"):
+                    mediainfo.logo_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
+                    iso_lang = str(logo_item.get("iso_639_1") or "").strip().lower()
+                    iso_region = str(logo_item.get("iso_3166_1") or "").strip().upper()
+                    mediainfo.logo_language = (
+                        f"{iso_lang}-{iso_region}"
+                        if iso_lang and iso_region
+                        else (iso_lang or None)
+                    )
         if not mediainfo.poster_path:
             if image_path := cls._pick_best_tmdb_image(
                 images.get("posters"), preferred_locale=preferred_locale

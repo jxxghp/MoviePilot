@@ -87,6 +87,17 @@ def _unique_pending_torrents(
     return pending
 
 
+def _reconcile_pending_downloads_if_supported(owner: Any) -> None:
+    """
+    在支持待确认核对钩子的整理链上执行前置核对，兼容未绑定测试替身对象。
+
+    :param owner: 整理队列所有者或测试替身实例
+    """
+    reconcile = getattr(owner, "_reconcile_pending_downloads_before_transfer", None)
+    if callable(reconcile):
+        reconcile()
+
+
 class TransferQueueOwner(_TransferOwnerBase):
     """
     唯一持有整理工作线程、队列、租约和恢复调度。
@@ -1650,6 +1661,21 @@ class TransferQueueOwner(_TransferOwnerBase):
         else:
             self.do_transfer(**transfer_kwargs)
 
+    def _reconcile_pending_downloads_before_transfer(self) -> None:
+        """
+        扫描已完成种子前先核对待确认提交，使延迟落地的任务在整理前补齐下载历史与订阅状态。
+
+        待确认表为空时仅执行一次只读空查询，不访问下载器；异常仅记告警，不阻断整理主流程。
+        """
+        if getattr(self, "download_pending_repository", None) is None:
+            return
+        try:
+            subscribe_chain = getattr(self, "_transfer_subscribe_chain", None)
+            if callable(subscribe_chain):
+                cast(Any, subscribe_chain()).reconcile_pending_downloads()
+        except Exception as err:
+            logger.warning(f"整理前核对待确认下载任务失败，继续执行已完成任务扫描：{err}")
+
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
         """
         获取下载器中的种子列表，并执行整理
@@ -1672,6 +1698,8 @@ class TransferQueueOwner(_TransferOwnerBase):
             logger.info("开始整理下载器中已经完成下载的文件 ...")
             if progress_callback:
                 progress_callback(value=0, text="正在查询已完成下载任务 ...")
+
+            _reconcile_pending_downloads_if_supported(self)
 
             if torrents_list := self.list_torrents(status=TorrentStatus.TRANSFER):
                 existing_hashes = self.jobview.get_all_torrent_hashes()

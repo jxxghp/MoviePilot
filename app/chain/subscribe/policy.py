@@ -7,6 +7,7 @@ from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.download.pending import pending_blocks_tv_seasons
 from app.application.subscription import priority as _priority
 from app.application.subscription.activity import current_activity_run
 from app.application.subscription.contract import (
@@ -473,21 +474,20 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             logger.info(f"{subscribe.name} 全集候选优先级未高于全部目标集，回退到按集下载")
 
         if full_pack_contexts:
-            logger.info(f"{subscribe.name} 优先尝试全集资源，共匹配到 {len(full_pack_contexts)} 个候选")
-            downloads, lefts = DownloadChain().batch_download(
-                contexts=full_pack_contexts,
-                no_exists=full_pack_no_exists,
+            full_pack_result = self._try_full_pack_download(
+                full_pack_contexts=full_pack_contexts,
+                full_pack_no_exists=full_pack_no_exists,
+                no_exists=no_exists,
+                subscribe=subscribe,
                 username=username,
                 save_path=save_path,
                 downloader=downloader,
                 source=source,
-                custom_words=subscribe.custom_words,
                 governance=governance,
                 allowed_episodes=allowed_episodes,
             )
-            if downloads:
-                return downloads, lefts
-            logger.info(f"{subscribe.name} 未下载到全集资源，回退到按集下载")
+            if full_pack_result is not None:
+                return full_pack_result
 
         result: Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = (
             DownloadChain().batch_download(
@@ -503,6 +503,68 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             )
         )
         return result
+
+    def _try_full_pack_download(
+        self,
+        *,
+        full_pack_contexts: List[Context],
+        full_pack_no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]],
+        no_exists: Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]],
+        subscribe: SubscriptionSnapshot,
+        username: Optional[str],
+        save_path: Optional[str],
+        downloader: Optional[str],
+        source: Optional[str],
+        governance: Optional[SubscriptionDownloadGovernance],
+        allowed_episodes: Optional[set[int]],
+    ) -> Optional[Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]]:
+        """
+        优先尝试全集资源；下载成功或进入待确认保护期时直接返回结果，不再回退按集下载。
+        """
+        logger.info(f"{subscribe.name} 优先尝试全集资源，共匹配到 {len(full_pack_contexts)} 个候选")
+        downloads, lefts = DownloadChain().batch_download(
+            contexts=full_pack_contexts,
+            no_exists=full_pack_no_exists,
+            username=username,
+            save_path=save_path,
+            downloader=downloader,
+            source=source,
+            custom_words=subscribe.custom_words,
+            governance=governance,
+            allowed_episodes=allowed_episodes,
+        )
+        if downloads:
+            return downloads, lefts
+        if self._full_pack_target_is_pending(full_pack_contexts, subscribe):
+            logger.warning(f"{subscribe.name} 全集资源已被下载器受理但暂未确认，不回退到按集下载")
+            return [], no_exists
+        logger.info(f"{subscribe.name} 未下载到全集资源，回退到按集下载")
+        return None
+
+    @staticmethod
+    def _full_pack_target_is_pending(
+        full_pack_contexts: List[Context],
+        subscribe: SubscriptionSnapshot,
+    ) -> bool:
+        """
+        判断全集优先阶段是否已为当前订阅季产生待确认提交，若是则阻止回退按集下载。
+        """
+        media = next((ctx.media_info for ctx in full_pack_contexts if ctx.media_info is not None), None)
+        if media is None:
+            return False
+        download_chain = DownloadChain()
+        key_builder = getattr(download_chain, "_build_pending_target_key", None)
+        list_pending = getattr(download_chain, "list_pending_downloads", None)
+        if not callable(key_builder) or not callable(list_pending):
+            return False
+        target_key = key_builder(media)
+        if not target_key:
+            return False
+        pending = list_pending(target_keys=[target_key])
+        if not pending:
+            return False
+        target_seasons = [subscribe.season] if subscribe.season is not None else [1]
+        return pending_blocks_tv_seasons(pending, target_key, target_seasons)
 
     @staticmethod
     def _SubscribeChain__candidate_contract_changed(

@@ -50,7 +50,10 @@ from app.chain.transfer.filter import (
     reset_network_filesystem_port,
 )
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
-from app.db.adapters.download import TransactionalDownloadFailureRepository
+from app.db.adapters.download import (
+    TransactionalDownloadFailureRepository,
+    TransactionalDownloadPendingRepository,
+)
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository
 from app.db.adapters.subscriptionactivity import TransactionalSubscriptionActivityRepository
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
@@ -137,6 +140,7 @@ def build_chain_runtime_context(
         transfer_execution_repository=dependencies.transfer_execution,
         media_server_repository=TransactionalMediaServerRepository(SessionFactory),
         download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+        download_pending_repository=TransactionalDownloadPendingRepository(SessionFactory),
         user_repository=build_transactional_user_repository(),
         classification_service=classification_service,
         legacy_transfer_command=execute_legacy_transfer_command,

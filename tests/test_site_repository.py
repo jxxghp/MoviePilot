@@ -308,3 +308,17 @@ def test_rss_oper_leaves_transaction_to_caller(db) -> None:
 
     saved = _transactional_repository().get(record.id)
     assert saved is not None and saved.rss is None
+
+
+def test_update_cookie_trims_surrounding_whitespace(db) -> None:
+    """
+    通过站点仓储更新 Cookie 时应裁剪首尾空白，避免带入非法请求头空格。
+    """
+    db.add(Site(name="Cookie裁剪", domain="cookie-trim.example", url="https://cookie-trim.example/"))
+    repository = _transactional_repository()
+
+    result = repository.update_cookie("cookie-trim.example", " sid=abc; uid=1 \n")
+
+    assert result.success is True
+    saved = repository.get_by_domain("cookie-trim.example")
+    assert saved is not None and saved.cookie == "sid=abc; uid=1"

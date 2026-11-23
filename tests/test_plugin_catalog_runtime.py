@@ -73,6 +73,80 @@ async def test_source_candidates_only_load_selected_configured_repository(monkey
     else:
         assert collect.await_args.kwargs["markets"] == ["https://github.com/Example/Plugins"]
         assert collect.await_args.kwargs["compatible_flags"] == ["v3", "v2"]
+        assert collect.await_args.kwargs["single_source"] is True
+
+
+@pytest.mark.asyncio
+async def test_catalog_service_routes_single_repo_and_full_scan_to_separate_loaders():
+    """
+    单仓读取与单仓候选查询走单仓读取端口，全量市场扫描走扫描读取端口。
+    """
+    repo_a = "https://github.com/Example/RepoA"
+    repo_b = "https://github.com/Example/RepoB"
+    scan_sync_calls: list[tuple[str, str | None, bool]] = []
+    single_sync_calls: list[tuple[str, str | None, bool]] = []
+    scan_async_calls: list[tuple[str, str | None, bool]] = []
+    single_async_calls: list[tuple[str, str | None, bool]] = []
+
+    def scan_sync(market: str, package_version: str | None, force: bool):
+        scan_sync_calls.append((market, package_version, force))
+        return {}
+
+    def single_sync(market: str, package_version: str | None, force: bool):
+        single_sync_calls.append((market, package_version, force))
+        return {}
+
+    async def scan_async(market: str, package_version: str | None, force: bool):
+        scan_async_calls.append((market, package_version, force))
+        return {}
+
+    async def single_async(market: str, package_version: str | None, force: bool):
+        single_async_calls.append((market, package_version, force))
+        return {}
+
+    service = PluginCatalogService(
+        market_loader=scan_sync,
+        async_market_loader=scan_async,
+        single_market_loader=single_sync,
+        async_single_market_loader=single_async,
+        installed_plugins_provider=list,
+        plugin_mapper=lambda *_args: None,
+        is_local_repo=lambda _value: False,
+        version_compare=lambda *_args: False,
+        warning=lambda *_args: None,
+        error=lambda *_args: None,
+        info=lambda *_args: None,
+    )
+
+    service.load(repo_a, "v3", force=True)
+    await service.async_load(repo_a, "v3", force=True)
+    await service.async_collect(
+        markets=[repo_a],
+        compatible_flags=["v3"],
+        force=False,
+        single_source=True,
+    )
+    await service.async_collect(
+        markets=[repo_a, repo_b],
+        compatible_flags=["v3"],
+        force=True,
+    )
+
+    assert single_sync_calls == [(repo_a, "v3", True)]
+    assert scan_sync_calls == []
+    assert single_async_calls[0] == (repo_a, "v3", True)
+    assert set(single_async_calls[1:]) == {
+        (repo_a, None, False),
+        (repo_a, "v3", False),
+    }
+    assert len(single_async_calls) == 3
+    assert set(scan_async_calls) == {
+        (repo_a, None, True),
+        (repo_a, "v3", True),
+        (repo_b, None, True),
+        (repo_b, "v3", True),
+    }
+    assert len(scan_async_calls) == 4
 
 
 @pytest.mark.asyncio

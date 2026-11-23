@@ -4564,7 +4564,9 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "TmdbMatchRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "imdbid"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5371,6 +5373,32 @@
       "required_parameters": [],
       "result_contract": "None",
       "result_shape": "any",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "confirm_pending_download": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "downloader",
+      "input_contract": "PendingDownloadConfirmRequest",
+      "optional_parameters": [
+        "confirmed_selection",
+        "custom_words",
+        "downloader",
+        "episode_selection",
+        "episodes",
+        "user_specified"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "hashes"
+      ],
+      "result_contract": "PendingDownloadCheckResult | None",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -6592,7 +6620,9 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "TmdbMatchRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "imdbid"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6670,6 +6700,60 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "mediaserver_browse_items": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerBrowseRequest",
+      "optional_parameters": [
+        "genre",
+        "item_type",
+        "keyword",
+        "library_id",
+        "limit",
+        "parent_id",
+        "played_filter",
+        "sort_by",
+        "sort_order",
+        "start_index",
+        "username",
+        "year"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "server"
+      ],
+      "result_contract": "MediaServerBrowsePage | None",
+      "result_shape": "model",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "mediaserver_filter_options": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerFilterOptionsRequest",
+      "optional_parameters": [
+        "library_id",
+        "username"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "server"
+      ],
+      "result_contract": "MediaServerFilterOptions | None",
+      "result_shape": "model",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "mediaserver_image_cookies": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6685,6 +6769,28 @@
       ],
       "result_contract": "str | dict | None",
       "result_shape": "any",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "mediaserver_item_detail": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerItemDetailRequest",
+      "optional_parameters": [
+        "username"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "item_id",
+        "server"
+      ],
+      "result_contract": "MediaServerItemDetail | None",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -6869,13 +6975,43 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "mediaserver_report_progress": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerProgressReportRequest",
+      "optional_parameters": [
+        "duration_ms",
+        "is_paused",
+        "media_source_id",
+        "state",
+        "username"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "item_id",
+        "position_ms",
+        "server"
+      ],
+      "result_contract": "bool | None",
+      "result_shape": "boolean",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "mediaserver_search": {
       "aggregation": "ordered_list_merge",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerLibrarySearchRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "library_id",
+        "server"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6913,19 +7049,88 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "mediaserver_season_episodes": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerSeasonEpisodeListRequest",
+      "optional_parameters": [
+        "season",
+        "season_id",
+        "username"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "item_id",
+        "server"
+      ],
+      "result_contract": "list[MediaServerBrowseItem] | None",
+      "result_shape": "list",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "mediaserver_seasons": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerSeasonsRequest",
+      "optional_parameters": [
+        "username"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "item_id",
+        "server"
+      ],
+      "result_contract": "list[MediaServerBrowseItem] | None",
+      "result_shape": "list",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "mediaserver_stream_url": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerStreamRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "media_source_id"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": false,
       "required_parameters": [
         "item_id",
         "item_type",
         "server"
+      ],
+      "result_contract": "str | None",
+      "result_shape": "string",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "mediaserver_subtitle_url": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-server",
+      "input_contract": "MediaServerSubtitleUrlRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "item_id",
+        "server",
+        "subtitle_id"
       ],
       "result_contract": "str | None",
       "result_shape": "string",
@@ -8647,10 +8852,10 @@
     }
   },
   "run_module": {
-    "call_count": 279,
+    "call_count": 287,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 225,
+    "method_count": 233,
     "methods": {
       "anilist_credits": [
         {
@@ -9304,6 +9509,13 @@
           "mode": "sync"
         }
       ],
+      "confirm_pending_download": [
+        {
+          "caller": "app.chain.base",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "create_folder": [
         {
           "caller": "app.chain.storage",
@@ -9692,7 +9904,28 @@
           "mode": "sync"
         }
       ],
+      "mediaserver_browse_items": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_filter_options": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "mediaserver_image_cookies": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_item_detail": [
         {
           "caller": "app.chain.mediaserver",
           "count": 1,
@@ -9755,6 +9988,13 @@
           "mode": "sync"
         }
       ],
+      "mediaserver_report_progress": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "mediaserver_search": [
         {
           "caller": "app.chain.mediaserver",
@@ -9769,7 +10009,28 @@
           "mode": "sync"
         }
       ],
+      "mediaserver_season_episodes": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_seasons": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "mediaserver_stream_url": [
+        {
+          "caller": "app.chain.mediaserver",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "mediaserver_subtitle_url": [
         {
           "caller": "app.chain.mediaserver",
           "count": 1,
@@ -10417,6 +10678,41 @@
   "sdk_exports": {
     "app.sdk": [],
     "app.sdk.browser": [
+      {
+        "kind": "import",
+        "name": "BrowserOperationTimeoutError",
+        "target": "app.runtime.browser.BrowserOperationTimeoutError"
+      },
+      {
+        "kind": "import",
+        "name": "BrowserQueueCancelledError",
+        "target": "app.runtime.browser.BrowserQueueCancelledError"
+      },
+      {
+        "kind": "import",
+        "name": "BrowserQueueStatus",
+        "target": "app.runtime.browser.BrowserQueueStatus"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "browser_context",
+        "target": ""
+      },
+      {
+        "kind": "AsyncFunctionDef",
+        "name": "browser_context_async",
+        "target": ""
+      },
+      {
+        "kind": "import",
+        "name": "browser_request",
+        "target": "app.runtime.browser.browser_request"
+      },
+      {
+        "kind": "import",
+        "name": "get_browser_queue_status",
+        "target": "app.runtime.browser.get_browser_queue_status"
+      },
       {
         "kind": "FunctionDef",
         "name": "launch_browser_context",

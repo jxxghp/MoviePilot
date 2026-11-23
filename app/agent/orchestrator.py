@@ -103,6 +103,11 @@ from app.application.messaging.chat import (
 from app.application.messaging.recall import RecallSession
 from app.application.plugin.runtime import get_plugin_manager
 from app.chain.agent import AgentChain
+from app.domain.authorization import (
+    describe_web_permissions,
+    normalize_web_permissions,
+    web_permissions_signature,
+)
 from app.foundation.identity import build_user_memory_key
 from app.runtime.events import eventmanager
 from app.runtime.execution import run_in_threadpool
@@ -1114,6 +1119,39 @@ class MoviePilotAgent:
         """
         return bool(self.channel and self.source)
 
+    def _is_direct_web_session(self) -> bool:
+        """
+        判断当前会话是否为直接登录用户的网页或 WebAgent 交互会话。
+
+        :return: 排除 OpenAI/Anthropic 协议集成入口后的直接网页会话返回 True
+        """
+        return (
+            self.channel in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}
+            and self.source not in {"openai", "openai.responses", "anthropic"}
+        )
+
+    async def _resolve_web_user(self) -> Any:
+        """
+        按当前直接网页会话的用户标识实时查询用户记录。
+
+        优先按数字 user_id 查询；无法解析或缺失时兼容旧版按 username 查询。
+
+        :return: 实时用户对象；未找到或数据上下文不可用时返回 None
+        """
+        if self._data is None:
+            return None
+        parsed_user_id = self._coerce_int(self.user_id)
+        try:
+            if parsed_user_id is not None and hasattr(self._data.users, "async_get_by_id"):
+                user = await self._data.users.async_get_by_id(parsed_user_id)
+                if user is not None:
+                    return user
+            if self.username and hasattr(self._data.users, "async_get_by_name"):
+                return await self._data.users.async_get_by_name(self.username)
+        except Exception as e:
+            logger.error(f"查询网页会话用户信息失败: {e}")
+        return None
+
     async def _is_system_admin_context(self) -> bool:
         """
         判断当前 Agent 会话是否应按系统管理员上下文运行工具。
@@ -1152,22 +1190,17 @@ class MoviePilotAgent:
             "anthropic",
         }:
             return True
-        if self.channel and self.channel != NotificationChannel.Web.value:
+        if self.channel and self.channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}:
             return self.is_channel_admin is True
-        if not self.username:
-            return False
-        try:
-            if self._data is None:
-                return False
-            local_user = await self._data.users.async_get_by_name(self.username)
-        except Exception as e:
-            logger.error(f"检查 Agent 用户管理员身份失败: {e}")
-            return False
-        return bool(local_user and local_user.is_superuser)
+        local_user = await self._resolve_web_user()
+        return bool(local_user and getattr(local_user, "is_active", True) is not False and local_user.is_superuser)
 
     async def _build_tool_context(self, should_dispatch_reply: bool) -> Dict[str, object]:
         """
-        构造本轮工具共享上下文。
+        构造本轮工具共享上下文，并绑定当前登录用户的实时权限快照。
+
+        :param should_dispatch_reply: 本轮是否需要向渠道派发回复
+        :return: 本轮工具共享上下文
         """
         authorization_id = self.authorization_id
         authorization_required = bool(authorization_id)
@@ -1179,11 +1212,45 @@ class MoviePilotAgent:
                 authorization_required = True
                 member = await run_agent_blocking("db", authorization.find, self.channel, self.source, str(self.user_id or ""))
                 authorization_id = member.id if member and member.status == "approved" else None
+
+        web_user_active: Optional[bool] = None
+        web_user_permissions: Optional[dict[str, Any]] = None
+        if (
+            self._is_direct_web_session()
+            and not self.is_background
+            and not authorization_id
+            and self.execution_user_id is None
+        ):
+            web_user = await self._resolve_web_user()
+            web_user_active = bool(web_user and getattr(web_user, "is_active", True) is not False)
+            is_admin = bool(web_user_active and web_user.is_superuser)
+            web_user_permissions = (
+                normalize_web_permissions(getattr(web_user, "permissions", None))
+                if web_user_active
+                else normalize_web_permissions(None)
+            )
+        else:
+            is_admin = await self._is_system_admin_context()
+            if self.execution_user_id is not None and self._is_direct_web_session():
+                execution_user = await require_execution_user(
+                    self._data.users if self._data is not None else None,
+                    self.execution_user_id,
+                    self.execution_user_identity or "",
+                )
+                web_user_active = bool(getattr(execution_user, "is_active", True) is not False)
+                web_user_permissions = (
+                    normalize_web_permissions(getattr(execution_user, "permissions", None))
+                    if web_user_active
+                    else normalize_web_permissions(None)
+                )
+
         return {
             "user_reply_sent": False,
             "reply_mode": None,
             "should_dispatch_reply": should_dispatch_reply,
-            "is_admin": await self._is_system_admin_context(),
+            "is_admin": is_admin,
+            "web_user_active": web_user_active,
+            "web_user_permissions": web_user_permissions,
             "execution_user_id": self.execution_user_id,
             "execution_user_identity": self.execution_user_identity,
             "authorization_id": authorization_id,
@@ -1839,6 +1906,72 @@ class MoviePilotAgent:
             return tools
         return [tool for tool in tools if getattr(tool, "name", None) != "search_web"]
 
+    @staticmethod
+    def _is_plugin_tool(tool: Any) -> bool:
+        """
+        判断工具是否由插件动态注册。
+
+        :param tool: 待检查的工具实例
+        :return: 是否为插件来源工具
+        """
+        source = getattr(tool, "_agent_tool_source", None)
+        if isinstance(source, str) and source.startswith("plugin:"):
+            return True
+        name = getattr(tool, "name", None)
+        return isinstance(name, str) and name.startswith("plugin:")
+
+    @classmethod
+    def _filter_tools_for_principal(cls, tools: List[Any], *, is_admin: bool) -> List[Any]:
+        """
+        非管理员会话不向模型暴露管理员工具与插件工具，避免模型产生管理员错觉。
+
+        :param tools: 原始工具列表
+        :param is_admin: 当前会话主体是否为系统管理员
+        :return: 过滤后的工具列表
+        """
+        if is_admin:
+            return list(tools)
+        return [
+            tool
+            for tool in tools
+            if not getattr(tool, "_require_admin", getattr(tool, "require_admin", False))
+            and not cls._is_plugin_tool(tool)
+        ]
+
+    def _effective_is_admin(self) -> bool:
+        """
+        读取当前轮次是否处于管理员上下文；未显式构建上下文时仅内部后台与管理员协议入口视为管理员。
+
+        :return: 当前会话是否拥有管理员权限
+        """
+        if "is_admin" in self._tool_context:
+            return bool(self._tool_context.get("is_admin"))
+        if not self.has_message_context:
+            return True
+        return self.channel == NotificationChannel.Web.value and self.source in {
+            "openai",
+            "openai.responses",
+            "anthropic",
+        }
+
+    def _build_user_permissions_prompt(self) -> str:
+        """
+        为非管理员直接网页会话构造面向模型的真实权限说明。
+
+        :return: 权限边界文本；管理员或非网页会话返回空字符串
+        """
+        if not self._is_direct_web_session() or self.is_background:
+            return ""
+        if self._effective_is_admin():
+            return ""
+        if self._tool_context.get("web_user_active") is False:
+            return "- 当前会话账号已被停用，严禁执行任何业务或管理工具操作，请提示用户联系管理员。"
+        permissions = self._tool_context.get("web_user_permissions")
+        return describe_web_permissions(
+            is_superuser=False,
+            permissions=permissions if isinstance(permissions, dict) else None,
+        )
+
     def _refresh_tool_context(self, values: Dict[str, object]) -> None:
         """
         刷新本轮工具共享上下文。
@@ -1896,6 +2029,16 @@ class MoviePilotAgent:
         """
         runtime_config = await self._resolve_llm_runtime_config()
         scope = current_terminal_scope()
+        raw_web_permissions = self._tool_context.get("web_user_permissions")
+        web_perm_sig = (
+            web_permissions_signature(
+                self._effective_is_admin(),
+                raw_web_permissions if isinstance(raw_web_permissions, dict) else None,
+                is_active=self._tool_context.get("web_user_active") is not False,
+            )
+            if self._is_direct_web_session() and not self.is_background
+            else None
+        )
         return (
             scope.task_id if scope is not None and scope.kind == "scheduled" else None,
             streaming,
@@ -1904,7 +2047,8 @@ class MoviePilotAgent:
             self.user_id,
             self.username,
             self.allow_message_tools,
-            bool(self._tool_context.get("is_admin")),
+            self._effective_is_admin(),
+            web_perm_sig,
             self.has_message_context,
             self.is_background,
             get_runtime_setting("AI_AGENT_VERBOSE"),
@@ -1990,6 +2134,8 @@ class MoviePilotAgent:
                 "reply_mode": None,
                 "should_dispatch_reply": False,
                 "is_admin": bool(self._tool_context.get("is_admin")),
+                "web_user_active": self._tool_context.get("web_user_active"),
+                "web_user_permissions": self._tool_context.get("web_user_permissions"),
                 "execution_user_id": self.execution_user_id,
                 "execution_user_identity": self.execution_user_identity,
                 "authorization_id": self._tool_context.get("authorization_id"),
@@ -2033,6 +2179,8 @@ class MoviePilotAgent:
                 "reply_mode": None,
                 "should_dispatch_reply": False,
                 "is_admin": bool(self._tool_context.get("is_admin")),
+                "web_user_active": self._tool_context.get("web_user_active"),
+                "web_user_permissions": self._tool_context.get("web_user_permissions"),
                 "execution_user_id": self.execution_user_id,
                 "execution_user_identity": self.execution_user_identity,
                 "authorization_id": self._tool_context.get("authorization_id"),
@@ -2105,19 +2253,35 @@ class MoviePilotAgent:
                     api_protocol=runtime_config.get("api_protocol"),
                     base_url=runtime_config.get("base_url"),
                 )
+                is_admin = self._effective_is_admin()
                 base_tool_catalog, base_subagent_catalog = self._initialize_local_tool_catalogs()
                 mcp_specs = await agent_mcp_manager.list_enabled_tool_specs()
-                local_tools = self._filter_local_web_search_tools(
+                raw_local_tools = self._filter_local_web_search_tools(
                     base_tool_catalog.tools,
                     enabled=web_search_resolution.use_local_web_search,
                 )
-                mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
-                tools = [*local_tools, *mcp_tools]
-                local_subagent_tools = self._filter_local_web_search_tools(
+                raw_mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
+                raw_local_subagent_tools = self._filter_local_web_search_tools(
                     base_subagent_catalog.tools,
                     enabled=web_search_resolution.use_local_web_search,
                 )
-                subagent_mcp_tools = await self._initialize_subagent_mcp_tools(specs=mcp_specs)
+                raw_subagent_mcp_tools = await self._initialize_subagent_mcp_tools(specs=mcp_specs)
+                # 先对全量已装配工具校验命名唯一性，避免非管理员过滤掩盖配置或插件同名冲突。
+                ToolCatalogSnapshot.from_tools(
+                    [*raw_local_subagent_tools, *raw_subagent_mcp_tools],
+                    plugin_revision=base_subagent_catalog.plugin_revision,
+                    factory_revision=base_subagent_catalog.factory_revision,
+                ).require_unique()
+                ToolCatalogSnapshot.from_tools(
+                    [*raw_local_tools, *raw_mcp_tools],
+                    plugin_revision=base_tool_catalog.plugin_revision,
+                    factory_revision=base_tool_catalog.factory_revision,
+                ).require_unique()
+                local_tools = self._filter_tools_for_principal(raw_local_tools, is_admin=is_admin)
+                mcp_tools = self._filter_tools_for_principal(raw_mcp_tools, is_admin=is_admin)
+                tools = [*local_tools, *mcp_tools]
+                local_subagent_tools = self._filter_tools_for_principal(raw_local_subagent_tools, is_admin=is_admin)
+                subagent_mcp_tools = self._filter_tools_for_principal(raw_subagent_mcp_tools, is_admin=is_admin)
                 subagent_catalog = ToolCatalogSnapshot.from_tools(
                     [*local_subagent_tools, *subagent_mcp_tools],
                     plugin_revision=base_subagent_catalog.plugin_revision,
@@ -2125,7 +2289,11 @@ class MoviePilotAgent:
                 ).require_unique()
                 subagent_tools = [*local_subagent_tools, *subagent_mcp_tools]
                 # 系统提示词
-                system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
+                system_prompt = prompt_manager.get_agent_prompt(
+                    channel=self.channel,
+                    is_admin=is_admin,
+                    user_permissions_prompt=self._build_user_permissions_prompt(),
+                )
                 if any(tool.name == "knowledge_search" for tool in local_tools):
                     system_prompt = f"{system_prompt}\n\n{_private_knowledge_guidance()}"
 
@@ -2231,9 +2399,11 @@ class MoviePilotAgent:
                     output_middleware,
                     *invocation_middlewares,
                     skills_middleware,
-                    # Jobs 任务管理
-                    JobsMiddleware(
-                        sources=[str(agent_runtime_manager.jobs_dir)],
+                    # Jobs 任务管理仅对管理员暴露，避免向普通用户注入后台管理员任务定义。
+                    *(
+                        [JobsMiddleware(sources=[str(agent_runtime_manager.jobs_dir)])]
+                        if is_admin
+                        else []
                     ),
                     # 运行时人格与核心规则
                     RuntimeConfigMiddleware(),
