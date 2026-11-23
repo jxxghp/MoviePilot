@@ -3,7 +3,7 @@ MediaChain 各职责组件的静态组合契约。
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional, Protocol, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Literal, Optional, Protocol, TypeVar, Union
 
 from app.chain.base import ChainBase
 from app.chain.media.cache import AlbumDirectoryCache
@@ -231,6 +231,9 @@ if TYPE_CHECKING:
             files: list[Path],
             metas: list[MetaMusic],
             album: MusicAlbumInfo,
+            *,
+            allow_title_override: bool = False,
+            track_match: Literal["strict", "fallback_ignore_duration", "ignore_duration", "sequential"] = "strict",
         ) -> dict[str, MusicInfo]:
             """
             将专辑级分类上下文传递给对位曲目。

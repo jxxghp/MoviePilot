@@ -986,6 +986,11 @@
       "group": "transfer",
       "source_file": "app/runtime/config.py"
     },
+    "MUSIC_TRACK_MATCH": {
+      "description": "自动整理音乐专辑时的曲目对齐方式：strict 严格校验、fallback_ignore_duration 严格校验失败时回落忽略时长、ignore_duration 忽略时长校验",
+      "group": "music",
+      "source_file": "app/runtime/config.py"
+    },
     "NGINX_PORT": {
       "description": "前端监听端口",
       "group": "application",

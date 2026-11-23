@@ -36,10 +36,11 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.domain.music import (
-    align_music_tracks,
+    align_music_tracks_by_policy,
     music_album_has_consistent_tracks,
     music_cover_priority,
     music_isrc_conflicts,
+    normalize_auto_music_track_match,
 )
 from app.foundation.singleton import Singleton
 from app.foundation.text import convert
@@ -1822,10 +1823,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if len(eligible) != len(items):
                 # 不完整的本地证据无法证明整批文件与线上曲目之间的双向唯一性。
                 continue
-            aligned = align_music_tracks(
+            track_match = normalize_auto_music_track_match(
+                getattr(get_chain_runtime_config_snapshot(), "music_track_match", "strict")
+            )
+            aligned = align_music_tracks_by_policy(
                 [meta for _, meta in eligible],
                 tracks,
                 allow_title_override=allow_title_override or bool(key[2]),
+                track_match=track_match,
             )
             for index, remote in aligned.items():
                 item, meta = eligible[index]
@@ -2188,16 +2193,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return merged
 
     @classmethod
-    def _match_music_album_track(
+    def _rank_music_album_track(
             cls,
             local_meta: MetaMusic,
-            album_info: Optional[MusicAlbumInfo],
+            album_info: MusicAlbumInfo,
+            *,
+            ignore_duration: bool,
     ) -> Optional[MusicInfo]:
         """
-        按碟号、曲序、标题、艺术家和时长为本地文件匹配专辑中的单个音轨。
+        使用指定时长策略在专辑曲目表中寻找唯一高分音轨。
         """
-        if not album_info or not album_info.tracks:
-            return None
         local_title = cls._normalize_music_track_title(local_meta.title)
         local_artists = {
             cls._normalize_music_track_title(artist)
@@ -2226,7 +2231,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             }
             if local_artists and track_artists and local_artists.intersection(track_artists):
                 score += 3
-            if local_meta.duration and track.duration:
+            if not ignore_duration and local_meta.duration and track.duration:
                 duration_delta = abs(local_meta.duration - track.duration)
                 if duration_delta <= 2:
                     score += 4
@@ -2241,6 +2246,27 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return None
         matched = deepcopy(ranked[0][1])
         matched.duration = matched.duration or local_meta.duration
+        return matched
+
+    @classmethod
+    def _match_music_album_track(
+            cls,
+            local_meta: MetaMusic,
+            album_info: Optional[MusicAlbumInfo],
+    ) -> Optional[MusicInfo]:
+        """
+        按碟号、曲序、标题、艺术家和配置的时长策略为本地文件匹配专辑中的单个音轨。
+        """
+        if not album_info or not album_info.tracks:
+            return None
+        policy = normalize_auto_music_track_match(
+            getattr(get_chain_runtime_config_snapshot(), "music_track_match", "strict")
+        )
+        if policy == "ignore_duration":
+            return cls._rank_music_album_track(local_meta, album_info, ignore_duration=True)
+        matched = cls._rank_music_album_track(local_meta, album_info, ignore_duration=False)
+        if matched is None and policy == "fallback_ignore_duration":
+            return cls._rank_music_album_track(local_meta, album_info, ignore_duration=True)
         return matched
 
     @classmethod

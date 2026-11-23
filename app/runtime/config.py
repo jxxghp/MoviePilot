@@ -21,6 +21,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Tuple,
     Union,
@@ -149,6 +150,45 @@ def _validate_rust_accel(value: Any) -> Optional[str]:
     """
     if is_free_threaded_runtime() and value is not True:
         return "free-threaded 运行时必须启用 Rust 加速"
+    return None
+
+
+# 自动整理音乐专辑允许的曲目对齐策略集合。
+_AUTO_MUSIC_TRACK_MATCH_MODES = frozenset(
+    {"strict", "fallback_ignore_duration", "ignore_duration"}
+)
+
+
+def normalize_music_track_match_setting(
+    value: Any,
+) -> Literal["strict", "fallback_ignore_duration", "ignore_duration"]:
+    """
+    将部署配置中的自动整理音乐曲目对齐值归一化为合法策略，未知值安全回退为严格校验。
+    """
+    cleaned = str(value or "").strip().lower()
+    if cleaned == "ignore_duration":
+        return "ignore_duration"
+    if cleaned == "fallback_ignore_duration":
+        return "fallback_ignore_duration"
+    return "strict"
+
+
+def _normalize_music_track_match(value: Any) -> Any:
+    """
+    规范化自动整理音乐曲目对齐配置，去空白、转小写并将空值回退为严格校验。
+    """
+    if isinstance(value, str):
+        cleaned = value.strip().lower()
+        return cleaned or "strict"
+    return value
+
+
+def _validate_music_track_match(value: Any) -> Optional[str]:
+    """
+    校验自动整理音乐曲目对齐配置，拒绝顺序盲套或未知策略。
+    """
+    if value not in _AUTO_MUSIC_TRACK_MATCH_MODES:
+        return "自动整理音乐曲目对齐方式仅支持 strict、fallback_ignore_duration 或 ignore_duration"
     return None
 
 
@@ -382,6 +422,16 @@ class ConfigModel(BaseModel):
         description='是否将写入 LRC/TXT 的歌词正文转为简体中文；保留时间轴、LRC 标签和来源 Lyricsfile',
     )
     MUSIC_CUE_ENABLE: bool = Field(default=True, description='是否读取关联 CUE；已分轨音频可关闭以忽略错误索引，整轨专辑应保持开启')
+    MUSIC_TRACK_MATCH: Annotated[
+        str,
+        SettingPolicy(
+            before_convert=_normalize_music_track_match,
+            validate=_validate_music_track_match,
+        ),
+    ] = Field(
+        default="strict",
+        description='自动整理音乐专辑时的曲目对齐方式：strict 严格校验、fallback_ignore_duration 严格校验失败时回落忽略时长、ignore_duration 忽略时长校验',
+    )
     MUSIC_RELEASE_REGION_PRIORITY: str = Field(
         default="CN,TW,HK",
         description='MusicBrainz 发行地区优先级，按 ISO 3166-1 两位代码从高到低排列',

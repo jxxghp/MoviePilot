@@ -17,6 +17,31 @@ from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.foundation.text import convert as zhconv_convert
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
+# 自动整理音乐专辑允许的曲目对齐策略，禁止无人核对时按文件顺序盲套。
+AutoMusicTrackMatch = Literal["strict", "fallback_ignore_duration", "ignore_duration"]
+
+# 自动整理曲目对齐策略的有序合法值集合。
+AUTO_MUSIC_TRACK_MATCH_MODES: tuple[AutoMusicTrackMatch, ...] = (
+    "strict",
+    "fallback_ignore_duration",
+    "ignore_duration",
+)
+
+
+def normalize_auto_music_track_match(value: Optional[str]) -> AutoMusicTrackMatch:
+    """
+    规范化自动整理音乐专辑的曲目对齐策略，空值或未知取值安全回退为严格校验。
+
+    :param value: 原始配置字符串或空值
+    :return: 合法的自动整理曲目对齐策略
+    """
+    normalized = str(value or "").strip().lower()
+    if normalized == "ignore_duration":
+        return "ignore_duration"
+    if normalized == "fallback_ignore_duration":
+        return "fallback_ignore_duration"
+    return "strict"
+
 
 def music_cover_priority(path: str, patterns: str) -> Optional[int]:
     """
@@ -262,9 +287,21 @@ def music_completed_album_keys(metas: list[MetaMusic], target: MusicInfo) -> lis
     return keys
 
 
-def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks: list[MetaMusic]) -> bool:
+def music_album_candidate_matches(
+        album: MusicAlbumInfo,
+        meta: MetaMusic,
+        tracks: list[MetaMusic],
+        *,
+        track_match: Literal["strict", "ignore_duration"] = "strict",
+) -> bool:
     """
     核验名称、署名、版本与本地对位；普通年份可缺省，弱专辑名需要额外曲目证据。
+
+    :param album: 候选专辑详情及其曲目表
+    :param meta: 目录或资源级专辑线索
+    :param tracks: 本地逻辑曲目列表
+    :param track_match: 曲目对齐策略，支持 strict 或 ignore_duration
+    :return: 候选专辑满足当前对齐策略与身份约束时返回 True
     """
     if not tracks or not album.tracks or not music_album_has_consistent_tracks(album):
         return False
@@ -278,12 +315,15 @@ def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks
     evidence = MetaMusic(title=meta.album or meta.title, version=meta.version)
     if not music_version_matches(info, evidence) or not music_album_year_matches(info, meta):
         return False
-    aligned = align_music_tracks(tracks, album.tracks)
+    aligned = align_music_tracks(tracks, album.tracks, track_match=track_match)
     if len(aligned) != len(tracks):
         return False
     if known_title and artists:
         return True
     named = sum(not music_track_title_is_weak(track) for track in tracks)
+    if track_match == "ignore_duration":
+        # 忽略时长模式下不再把物理时长当作弱专辑名或缺失艺人时的内容确认证据。
+        return named >= 2
     durations = 0
     for index, track in enumerate(tracks):
         remote_duration = album.tracks[aligned[index]].duration
@@ -593,7 +633,7 @@ def _music_track_pair_score(
         meta: MetaMusic, track: MusicInfo, allow_title_override: bool, ignore_duration: bool,
 ) -> float:
     """
-    评估文件与发行曲目的证据，仅在手动明确忽略时长时跳过时长证据。
+    评估文件与发行曲目的证据，仅在明确启用忽略时长模式时跳过时长证据。
     """
     if not allow_title_override and music_credit_conflicts(track, meta):
         return 0.0
@@ -680,6 +720,37 @@ def align_music_tracks(
             for index, values in scores.items() if index not in accepted
         }
     return matched
+
+
+def align_music_tracks_by_policy(
+        metas: list[MetaMusic],
+        tracks: list[MusicInfo],
+        *,
+        allow_title_override: bool = False,
+        track_match: Literal["strict", "fallback_ignore_duration", "ignore_duration", "sequential"] = "strict",
+) -> dict[int, int]:
+    """
+    按给定对齐策略执行曲目对位；回落模式仅在严格对位未完整覆盖时尝试忽略时长。
+
+    :param metas: 本地逻辑曲目线索列表
+    :param tracks: 远端专辑曲目列表
+    :param allow_title_override: 是否允许通过唯一曲序覆盖旧曲名与旧身份
+    :param track_match: 曲目对齐策略，支持 strict、fallback_ignore_duration、ignore_duration 或 sequential
+    :return: 本地索引到远端曲目索引的唯一映射
+    """
+    if track_match == "fallback_ignore_duration":
+        strict_aligned = align_music_tracks(
+            metas, tracks, allow_title_override=allow_title_override, track_match="strict",
+        )
+        if len(strict_aligned) == len(metas):
+            return strict_aligned
+        fallback_aligned = align_music_tracks(
+            metas, tracks, allow_title_override=allow_title_override, track_match="ignore_duration",
+        )
+        return fallback_aligned if len(fallback_aligned) > len(strict_aligned) else strict_aligned
+    return align_music_tracks(
+        metas, tracks, allow_title_override=allow_title_override, track_match=track_match,
+    )
 
 
 def _usable_music_tag(value: Optional[str]) -> bool:

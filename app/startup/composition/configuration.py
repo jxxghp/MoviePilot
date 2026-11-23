@@ -37,7 +37,7 @@ from app.db.adapters.classification import (
 from app.db.adapters.configuration import TransactionalUserConfigurationRepository
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.session import SessionFactory
-from app.runtime.config import Settings
+from app.runtime.config import Settings, normalize_music_track_match_setting
 from app.runtime.settings import (
     configure_runtime_setting_provider,
     configure_runtime_setting_updater,
@@ -287,6 +287,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         music_metadata_to_simplified=settings.MUSIC_METADATA_TO_SIMPLIFIED,
         music_lyrics_to_simplified=settings.MUSIC_LYRICS_TO_SIMPLIFIED,
         music_cue_enable=settings.MUSIC_CUE_ENABLE,
+        music_track_match=normalize_music_track_match_setting(settings.MUSIC_TRACK_MATCH),
         music_release_region_priority=tuple(
             item.strip().upper() for item in settings.MUSIC_RELEASE_REGION_PRIORITY.split(",") if item.strip()
         ),

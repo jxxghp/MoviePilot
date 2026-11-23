@@ -7,7 +7,7 @@ from typing import Any, Iterable, Optional
 from app.chain.base import ChainBase
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.music import music_album_has_consistent_tracks
+from app.domain.music import AutoMusicTrackMatch, music_album_has_consistent_tracks
 from app.schemas.types import MediaSource, MediaType, MusicEntityType
 
 
@@ -363,9 +363,18 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             limit: int = 5,
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            track_match: Optional[AutoMusicTrackMatch] = None,
     ) -> Optional[MusicAlbumInfo]:
         """
         按目录元数据与曲目证据匹配 MusicBrainz 发行版本。
+
+        :param meta: 专辑目录线索
+        :param tracks: 本地曲目线索列表
+        :param limit: 候选发行搜索预算
+        :param music_release_regions: 发行地区优先顺序
+        :param music_release_scripts: 发行文字字形优先顺序
+        :param track_match: 自动整理曲目对齐策略，未指定时不透传以保持旧模块签名兼容
+        :return: 匹配到的专辑详情；未命中或存在歧义时返回 None
         """
         result = self.run_module(
             "match_music_album",
@@ -374,6 +383,7 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             limit=limit,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
+            **({"track_match": track_match} if track_match is not None else {}),
         )
         return self._music_album(result)
 
@@ -384,9 +394,18 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             limit: int = 5,
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            track_match: Optional[AutoMusicTrackMatch] = None,
     ) -> Optional[MusicAlbumInfo]:
         """
         异步按目录元数据与曲目证据匹配 MusicBrainz 发行版本。
+
+        :param meta: 专辑目录线索
+        :param tracks: 本地曲目线索列表
+        :param limit: 候选发行搜索预算
+        :param music_release_regions: 发行地区优先顺序
+        :param music_release_scripts: 发行文字字形优先顺序
+        :param track_match: 自动整理曲目对齐策略，未指定时不透传以保持旧模块签名兼容
+        :return: 匹配到的专辑详情；未命中或存在歧义时返回 None
         """
         result = await self.async_run_module(
             "async_match_music_album",
@@ -395,6 +414,7 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             limit=limit,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
+            **({"track_match": track_match} if track_match is not None else {}),
         )
         return self._music_album(result)
 

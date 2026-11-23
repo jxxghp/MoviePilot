@@ -522,6 +522,7 @@ moviepilot config set MUSIC_LOCAL_COVER_ENABLE true
 moviepilot config set MUSIC_COVER_FILE_PATTERNS 'cover.jpg,folder.jpg,front.jpg,*.png'
 moviepilot config set MUSIC_RELEASE_REGION_PRIORITY CN,TW,HK
 moviepilot config set MUSIC_RELEASE_SCRIPT_PRIORITY Hans,Hant,Latn
+moviepilot config set MUSIC_TRACK_MATCH fallback_ignore_duration
 ```
 
 `MUSIC_LOCAL_COVER_ENABLE` 开启时，下载器监控和文件系统监控的自动音乐整理会同步同目录中
@@ -553,6 +554,7 @@ moviepilot config describe API_TOKEN --show-secrets
 - `RMT_LYRICSEXT` 控制目录监控、工作流扫描和整理链识别的歌词文件后缀，逗号分隔，默认 `.lrc`；音乐仍兼容历史 `.txt` 和 `.lyricsfile.yaml` 旁挂文件
 - `MUSIC_LYRICS_TO_SIMPLIFIED` 默认关闭，独立控制生成的 `.lrc` / `.txt` 歌词正文转简体；时间轴、LRC 标签及来源 Lyricsfile 保持原样。已有歌词仍遵循原刮削策略，需要转换时选择“总是刮削”重新刮削
 - `MUSIC_RELEASE_REGION_PRIORITY` 与 `MUSIC_RELEASE_SCRIPT_PRIORITY` 分别使用逗号分隔的 ISO 3166-1 地区代码和 ISO 15924 文字代码；仅在 MusicBrainz 候选结构同样可信时作为发行版本排序依据，最多使用前三项
+- `MUSIC_TRACK_MATCH` 控制自动整理音乐专辑（及配套专辑刮削）的曲目对齐方式，支持 `strict`（默认，严格校验时长与曲目唯一对位，失败挂起待手动）、`fallback_ignore_duration`（优先严格校验，仅在严格对位未命中时回落忽略时长重试，严格多版本歧义仍保持挂起）和 `ignore_duration`（直接跳过物理时长比较，按曲名、碟号与曲序做双向唯一对位）；不会启用按文件顺序盲套
 - `config describe` 显示单个配置项的类型、默认值和当前值
 
 ## 数据库备份命令

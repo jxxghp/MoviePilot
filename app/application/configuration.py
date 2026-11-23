@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional, Protocol, TypeVar, cast
+from typing import Any, Literal, Optional, Protocol, TypeVar, cast
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.common import JsonData
@@ -386,6 +386,7 @@ class ChainRuntimeConfig:
     :param music_metadata_to_simplified: 是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文
     :param music_lyrics_to_simplified: 是否将写入 LRC/TXT 的歌词正文转为简体中文；保留时间轴、LRC 标签和来源 Lyricsfile
     :param music_cue_enable: 是否读取关联 CUE；已分轨音频可关闭以忽略错误索引，整轨专辑应保持开启
+    :param music_track_match: 自动整理音乐专辑时的曲目对齐方式，支持 strict、fallback_ignore_duration 和 ignore_duration
     :param music_release_region_priority: MusicBrainz 发行地区优先级，按 ISO 3166-1 两位代码从高到低排列
     :param music_release_script_priority: MusicBrainz 发行文字字形优先级，按 ISO 15924 四位代码从高到低排列
     :param recognize_plugin_first: 优先使用辅助识别
@@ -479,6 +480,7 @@ class ChainRuntimeConfig:
     music_metadata_to_simplified: bool = True
     music_lyrics_to_simplified: bool = False
     music_cue_enable: bool = True
+    music_track_match: Literal["strict", "fallback_ignore_duration", "ignore_duration"] = "strict"
     music_release_region_priority: tuple[str, ...] = ()
     music_release_script_priority: tuple[str, ...] = ()
     recognize_plugin_first: bool = False

@@ -120,8 +120,18 @@ online confirmation; album corrections must preserve the returned source-file sc
 - Album track alignment requires unique identity, title, disc/track position,
   or duration evidence; file order never fills unresolved tracks. Numeric file
   names are weak evidence, while numeric titles in tags remain meaningful.
+  `MUSIC_TRACK_MATCH` controls automatic album organization (and companion album
+  scraping) under Settings > System > Advanced > Media > Music: `strict`
+  (default) requires duration tolerances, `fallback_ignore_duration` tries
+  strict alignment first and retries without duration evidence only when strict
+  matching finds no qualifying candidate (never bypassing strict ambiguity), and
+  `ignore_duration` skips physical duration comparison while still requiring
+  unique title/disc/track alignment and non-weak track titles. Automatic
+  organization never allows `sequential` file-order assignment, and album
+  directory caches isolate effective `MUSIC_TRACK_MATCH` modes.
   Manual album selection may correct names using unique positions, but still
-  rejects clear duration conflicts. An incomplete manual alignment stops before
+  rejects clear duration conflicts unless `music_track_match` is overridden on
+  the manual transfer request. An incomplete manual alignment stops before
   file operations and asks the caller to check the selected edition and tracks.
 - A concrete `musicbrainz_release_id` uses direct release lookup; a release-group
   ID constrains release search. Generic inbox directory names are not album
