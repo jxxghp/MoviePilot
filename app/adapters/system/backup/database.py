@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -239,10 +240,10 @@ class PostgreSQLBackupBackend:
 
     def create(self, destination: Path) -> None:
         """
-        创建 PostgreSQL custom-format 在线备份。
+        用可向当前服务端还原的客户端创建在线归档。
         """
         command = [
-            self._require_tool(self._pg_dump),
+            self._restore_compatible_tool(self._pg_dump),
             "--format=custom",
             "--no-owner",
             "--no-acl",
@@ -273,7 +274,7 @@ class PostgreSQLBackupBackend:
         在 CLI 离线进程中覆盖当前 PostgreSQL 数据库内容。
         """
         command = [
-            self._require_tool(self._pg_restore),
+            self._restore_compatible_tool(self._pg_restore),
             "--clean",
             "--if-exists",
             "--no-owner",
@@ -285,6 +286,8 @@ class PostgreSQLBackupBackend:
         ]
         result = self._run(command, include_password=True)
         if result.returncode != 0:
+            if "unsupported version" in result.stderr and "file header" in result.stderr:
+                raise RuntimeError("当前 pg_restore 无法读取该归档格式，请先在独立空库验证归档转换或使用兼容版本的归档")
             raise RuntimeError(f"pg_restore 执行失败，退出码 {result.returncode}")
 
     def _connection_arguments(self) -> list[str]:
@@ -318,11 +321,41 @@ class PostgreSQLBackupBackend:
             check=False,
         )
 
-    def _require_tool(self, executable: str) -> str:
+    def _restore_compatible_tool(self, executable: str) -> str:
         """
-        通过当前解析器确认 PostgreSQL 客户端可用。
+        优先选择与活动库匹配的客户端，拒绝已知不能还原的版本组合。
+
+        :param executable: 当前操作使用的 PostgreSQL 客户端名称或路径
+        :return: 用于本次备份或还原的可执行文件路径
         """
-        return _require_tool(executable, self._tool_resolver)
+        with self._engine.connect() as connection:
+            server = connection.dialect.server_version_info
+        if not server:
+            raise RuntimeError("无法识别 PostgreSQL 服务端版本")
+        major = server[0]
+        is_tool_name = Path(executable).name == executable
+        if is_tool_name:
+            versioned = self._tool_resolver(f"/usr/lib/postgresql/{major}/bin/{executable}")
+            if versioned:
+                return versioned
+        default = _require_tool(executable, self._tool_resolver)
+        result = self._run([default, "--version"], include_password=False)
+        client = re.search(r"\(PostgreSQL\)\s+(\d+)(?=\.|\s|$)", result.stdout)
+        if result.returncode or client is None:
+            raise RuntimeError("无法识别 PostgreSQL 客户端版本")
+        client_major = int(client[1])
+        # 17 起生成的还原脚本含旧服务端无法识别的 transaction_timeout 设置。
+        if major < 17 <= client_major:
+            # 镜像内的 16 客户端仍可用于 12 至 15 的宿主数据库。
+            if is_tool_name and 12 <= major < 16:
+                compatible = self._tool_resolver(f"/usr/lib/postgresql/16/bin/{executable}")
+                if compatible:
+                    return compatible
+            raise RuntimeError(
+                f"PostgreSQL {client_major} 客户端无法直接还原到 PostgreSQL {major}，"
+                f"请安装 PostgreSQL {major} 客户端后重试"
+            )
+        return default
 
     def _environment(self, *, include_password: bool) -> dict[str, str]:
         """

@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 
-def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
+def test_runtime_image_installs_postgresql_clients_from_pgdg() -> None:
     """
     Trixie 镜像必须从签名的 PGDG 源安装固定主版本客户端。
     """
@@ -33,7 +33,8 @@ def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
     assert f"chmod 0644 {keyring}" in dockerfile
     assert f"signed-by={keyring}" in dockerfile
     assert "https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" in dockerfile
-    assert re.search(r"^\s+postgresql-client-18 \\$", dockerfile, re.MULTILINE)
+    for major in (16, 18):
+        assert re.search(rf"^\s+postgresql-client-{major} \\$", dockerfile, re.MULTILINE)
     assert not re.search(r"^\s+postgresql-client \\$", dockerfile, re.MULTILINE)
 
 
