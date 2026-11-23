@@ -1114,3 +1114,235 @@ def test_channel_middleware_fails_closed_without_service(channel_authorization, 
     ))
     assert not accepted and "服务不可用" in result.content
     handler.assert_not_awaited()
+
+
+@pytest.mark.parametrize("text", ["你好 李焕英", "搜索 你好李焕英"])
+def test_approved_member_can_use_traditional_media_interaction_when_agent_disabled(
+    channel_authorization, monkeypatch, text,
+):
+    """
+    未启用 AI Agent 时，已批准普通成员发传统媒体文本应进入受控媒体交互，不报错 Agent 未启用且隔离旧管理会话。
+    """
+    from dataclasses import replace
+
+    from app.application.messaging.site import site_interaction_manager
+
+    service, configs, _ = channel_authorization
+    configs.append(NotificationConf(id="wechat-app", name="企微应用", type="wechat", enabled=True))
+    member = service.request(NotificationChannel.Wechat.value, "企微应用", "wx_member", "微信成员")
+    service.update(member.id, status="approved", role="member", scopes=("search", "subscribe", "download"), reviewer_id=1)
+    principal = service.principal(member.id)
+
+    chain = MessageChain()
+    monkeypatch.setattr(
+        chain, "runtime_config", replace(chain.runtime_config, ai_agent_enable=False, ai_agent_global=False)
+    )
+    media_handle = Mock(return_value=True)
+    site_handle = Mock(return_value=True)
+    plugin_handler = Mock()
+    post = Mock()
+    monkeypatch.setattr("app.chain.interaction.MediaInteractionChain.handle_text_interaction", media_handle)
+    monkeypatch.setattr("app.chain.site.SiteChain.handle_text_interaction", site_handle)
+    monkeypatch.setattr(chain, "_plugin_input_interaction_handler", lambda: plugin_handler)
+    monkeypatch.setattr(chain, "post_message", post)
+    monkeypatch.setattr(chain, "_mark_message_processing_started", Mock(return_value=None))
+    monkeypatch.setattr(chain, "_mark_message_processing_finished", Mock())
+
+    # 模拟该成员被降权前遗留的站点管理会话，普通成员回复不得再进入该管理会话。
+    site_request = site_interaction_manager.create_or_replace(
+        user_id="wx_member", command="/sites", channel=NotificationChannel.Wechat, source="企微应用", username="微信成员",
+    )
+    try:
+        chain.handle_message(NotificationChannel.Wechat, "企微应用", "wx_member", "微信成员", text)
+        media_handle.assert_called_once()
+        kwargs = media_handle.call_args.kwargs
+        assert kwargs["text"] == text
+        assert kwargs["owner_username"] == principal.name
+        assert kwargs["allowed_scopes"]["search"] is True
+        assert kwargs["allowed_scopes"]["subscribe"] is True
+        assert kwargs["allowed_scopes"]["download"] is True
+        site_handle.assert_not_called()
+        plugin_handler.handle_text.assert_not_called()
+        post.assert_not_called()
+
+        # 显式 /ai 仍提示 AI Agent 未启用，而普通非媒体文本不误报未启用。
+        chain.handle_message(NotificationChannel.Wechat, "企微应用", "wx_member", "微信成员", "/ai 查一下")
+        assert post.call_count == 1
+        assert "AI Agent 未启用" in post.call_args.args[0].title
+
+        post.reset_mock()
+        media_handle.reset_mock()
+        media_handle.return_value = False
+        chain.handle_message(NotificationChannel.Wechat, "企微应用", "wx_member", "微信成员", "帮我推荐一部电影")
+        media_handle.assert_called_once()
+        post.assert_not_called()
+    finally:
+        site_interaction_manager.remove(site_request.request_id)
+
+
+def test_approved_member_media_callback_and_noai_routing_preserve_admin_boundary(
+    channel_authorization, monkeypatch,
+):
+    """
+    普通成员可使用传统媒体按钮回调、非全局模式及 /noai 传统交互，但管理回调与斜杠命令仍被拦截。
+    """
+    from dataclasses import replace
+
+    from app.application.messaging.media import media_interaction_manager
+
+    service, _, _ = channel_authorization
+    member = _approve(service, scopes=("search", "download"))
+    principal = service.principal(member.id)
+
+    chain = MessageChain()
+    monkeypatch.setattr(
+        chain, "runtime_config", replace(chain.runtime_config, ai_agent_enable=False, ai_agent_global=False)
+    )
+    media_callback = Mock(return_value=True)
+    media_text = Mock(return_value=True)
+    agent = Mock(return_value=False)
+    post = Mock()
+    monkeypatch.setattr("app.chain.interaction.MediaInteractionChain.handle_callback_interaction", media_callback)
+    monkeypatch.setattr("app.chain.interaction.MediaInteractionChain.handle_text_interaction", media_text)
+    monkeypatch.setattr(chain, "_handle_ai_message", agent)
+    monkeypatch.setattr(chain, "post_message", post)
+    monkeypatch.setattr(chain, "_mark_message_processing_started", Mock(return_value=None))
+    monkeypatch.setattr(chain, "_mark_message_processing_finished", Mock())
+
+    # 传统媒体按钮回调放行并携带实时权限和业务归属。
+    chain.handle_message(
+        NotificationChannel.Telegram, "机器人A", "42", "昵称", "", callback_data="media:req1:select:1"
+    )
+    media_callback.assert_called_once()
+    assert media_callback.call_args.kwargs["callback_data"] == "media:req1:select:1"
+    assert media_callback.call_args.kwargs["owner_username"] == principal.name
+    assert media_callback.call_args.kwargs["allowed_scopes"]["download"] is True
+    assert media_callback.call_args.kwargs["allowed_scopes"]["subscribe"] is False
+
+    # 管理类回调和传统斜杠命令仍仅管理员可用。
+    chain.handle_message(
+        NotificationChannel.Telegram, "机器人A", "42", "昵称", "", callback_data="sites:req1:refresh"
+    )
+    assert "管理员" in post.call_args.args[0].title
+    post.reset_mock()
+    chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "昵称", "/sites")
+    assert "管理员" in post.call_args.args[0].title
+
+    # 全局 Agent 开启时，/noai 与已有活跃媒体会话的后续选择走受控传统媒体交互。
+    monkeypatch.setattr(
+        chain, "runtime_config", replace(chain.runtime_config, ai_agent_enable=True, ai_agent_global=True)
+    )
+    chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "昵称", "/noai 搜索 流浪地球")
+    media_text.assert_called_once()
+    assert media_text.call_args.kwargs["text"] == "搜索 流浪地球"
+    agent.assert_not_called()
+
+    media_text.reset_mock()
+    pending = media_interaction_manager.create_or_replace(
+        user_id="42", channel=NotificationChannel.Telegram, source="机器人A", username="昵称",
+        action="Search", keyword="流浪地球", title="流浪地球",
+    )
+    try:
+        chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "昵称", "1")
+        media_text.assert_called_once()
+        assert media_text.call_args.kwargs["text"] == "1"
+        agent.assert_not_called()
+    finally:
+        media_interaction_manager.remove(pending.request_id)
+
+    # 启用 Agent 但未开全局模式时，未命中媒体交互的普通闲聊提示使用 /ai。
+    post.reset_mock()
+    media_text.reset_mock()
+    media_text.return_value = False
+    monkeypatch.setattr(
+        chain, "runtime_config", replace(chain.runtime_config, ai_agent_enable=True, ai_agent_global=False)
+    )
+    chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "昵称", "帮我推荐一部科幻片")
+    assert "请使用 /ai" in post.call_args.args[0].title
+
+
+def test_traditional_media_interaction_enforces_member_scopes_and_owner_username(monkeypatch):
+    """
+    受控传统媒体交互严格校验搜索、订阅、下载能力，并按授权归属记录下载与订阅用户名。
+    """
+    from app.application.messaging.media import media_interaction_manager
+    from app.chain.interaction import MediaInteractionChain
+    from app.domain.context import Context, MediaInfo
+    from app.domain.meta.metavideo import MetaVideo
+
+    interaction = MediaInteractionChain()
+    post = Mock()
+    media_search = Mock(return_value=(MetaVideo("你好李焕英"), [MediaInfo(title="你好，李焕英", year="2021")]))
+    download_single = Mock()
+    subscribe_add = Mock()
+    monkeypatch.setattr(interaction, "post_message", post)
+    monkeypatch.setattr("app.chain.interaction.MediaChain.search", media_search)
+    monkeypatch.setattr("app.chain.interaction.DownloadChain.download_single", download_single)
+    monkeypatch.setattr("app.chain.interaction.DownloadChain.get_no_exists_info", Mock(return_value=(False, {})))
+    monkeypatch.setattr("app.chain.music_interaction.subscribe.SubscribeChain.add", subscribe_add)
+
+    # 缺少 search 能力时拒绝搜索。
+    assert interaction.handle_text_interaction(
+        channel=NotificationChannel.Wechat, source="企微应用", userid="u1", username="昵称",
+        text="搜索 你好李焕英", allowed_scopes={"search": False, "subscribe": True, "download": False},
+        owner_username="channel_owner",
+    ) is True
+    media_search.assert_not_called()
+    assert "搜索" in post.call_args.args[0].title
+
+    # 缺少 subscribe 能力时拒绝订阅。
+    post.reset_mock()
+    assert interaction.handle_text_interaction(
+        channel=NotificationChannel.Wechat, source="企微应用", userid="u1", username="昵称",
+        text="订阅 你好李焕英", allowed_scopes={"search": True, "subscribe": False, "download": False},
+        owner_username="channel_owner",
+    ) is True
+    media_search.assert_not_called()
+    assert "订阅" in post.call_args.args[0].title
+
+    # 缺少 download 能力时阻止下载，具备 download 能力时使用授权归属用户名下载。
+    post.reset_mock()
+    torrent_ctx = Context(media_info=MediaInfo(title="你好，李焕英", year="2021"))
+    request = media_interaction_manager.create_or_replace(
+        user_id="u1", channel=NotificationChannel.Wechat, source="企微应用", username="昵称",
+        action="Search", keyword="你好李焕英", title="你好，李焕英",
+        meta=MetaVideo("你好李焕英"), items=[torrent_ctx],
+    )
+    request.phase = "torrent"
+    monkeypatch.setattr(interaction, "_get_download_dirs", Mock(return_value=[]))
+    try:
+        assert interaction.handle_text_interaction(
+            channel=NotificationChannel.Wechat, source="企微应用", userid="u1", username="昵称",
+            text="1", allowed_scopes={"search": True, "subscribe": False, "download": False},
+            owner_username="channel_owner",
+        ) is True
+        download_single.assert_not_called()
+        assert "下载" in post.call_args.args[0].title
+
+        assert interaction.handle_text_interaction(
+            channel=NotificationChannel.Wechat, source="企微应用", userid="u1", username="昵称",
+            text="1", allowed_scopes={"search": True, "subscribe": False, "download": True},
+            owner_username="channel_owner",
+        ) is True
+        download_single.assert_called_once()
+        assert download_single.call_args.kwargs["username"] == "channel_owner"
+    finally:
+        media_interaction_manager.remove(request.request_id)
+
+    # 具备 subscribe 能力时，订阅归属记录为授权用户名而非平台昵称。
+    media_item = MediaInfo(title="你好，李焕英", year="2021")
+    sub_request = media_interaction_manager.create_or_replace(
+        user_id="u1", channel=NotificationChannel.Wechat, source="企微应用", username="昵称",
+        action="Subscribe", keyword="你好李焕英", title="你好，李焕英",
+        meta=MetaVideo("你好李焕英"), items=[media_item],
+    )
+    try:
+        assert interaction.handle_text_interaction(
+            channel=NotificationChannel.Wechat, source="企微应用", userid="u1", username="昵称",
+            text="1", allowed_scopes={"search": False, "subscribe": True, "download": False},
+            owner_username="channel_owner",
+        ) is True
+        subscribe_add.assert_called_once()
+        assert subscribe_add.call_args.kwargs["username"] == "channel_owner"
+    finally:
+        media_interaction_manager.remove(sub_request.request_id)

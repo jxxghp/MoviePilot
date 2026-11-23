@@ -47,9 +47,19 @@ def subscribe_media(
     source: str,
     userid: int | str,
     username: str,
+    owner_username: str | None = None,
 ) -> None:
     """
     为已选影视或音乐目标创建普通订阅或音质洗版订阅。
+
+    :param host: 提供用户绑定查询与渠道消息回复能力的宿主对象
+    :param request: 当前媒体交互请求上下文
+    :param mediainfo: 用户选定的影视或音乐目标
+    :param channel: 发起交互的通知渠道
+    :param source: 渠道实例标识
+    :param userid: 渠道平台发送者标识
+    :param username: 渠道展示昵称，未解析到业务归属时兜底使用
+    :param owner_username: 统一渠道授权已确定的业务归属用户名；为空时回退按渠道绑定查询
     """
     best_version = request.action in {"ReSubscribe", "MusicReSubscribe"}
     if not best_version:
@@ -77,11 +87,14 @@ def subscribe_media(
             return
 
     mp_name = (
-        host.user_repository.find_name_by_bindings(
-            {f"{channel.name.lower()}_userid": userid}
+        owner_username
+        or (
+            host.user_repository.find_name_by_bindings(
+                {f"{channel.name.lower()}_userid": userid}
+            )
+            if channel
+            else None
         )
-        if channel
-        else None
     )
     SubscribeChain().add(
         title=mediainfo.title or "",

@@ -4,6 +4,7 @@
 
 import math
 import re
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.application.directory import DirectoryHelper
@@ -49,6 +50,65 @@ class MediaInteractionChain(ChainBase):
     _button_page_size = 8
     _text_page_size = 8
     _auto_download_dir_name = "自动匹配目录"
+    _subscribe_actions = frozenset({"Subscribe", "ReSubscribe", "MusicSubscribe", "MusicReSubscribe"})
+    _scope_labels = {"search": "搜索", "subscribe": "订阅", "download": "下载"}
+
+    @classmethod
+    def _action_required_scope(cls, action: str) -> str:
+        """
+        返回媒体交互动作所需的渠道能力键。
+
+        :param action: 媒体交互动作名称
+        :return: 订阅类动作返回 subscribe，其余搜索类动作返回 search
+        """
+        return "subscribe" if action in cls._subscribe_actions else "search"
+
+    @staticmethod
+    def _has_scope(allowed_scopes: Optional[Mapping[str, Any]], scope: str) -> bool:
+        """
+        判断当前上下文是否具备指定能力；未传权限映射时按管理员/非受限模式放行。
+
+        :param allowed_scopes: 受控普通成员的实时权限映射，None 表示不限制
+        :param scope: 待检查的能力键
+        :return: 允许执行时返回 True
+        """
+        return allowed_scopes is None or allowed_scopes.get(scope) is True
+
+    def _require_scope(
+            self,
+            allowed_scopes: Optional[Mapping[str, Any]],
+            scope: str,
+            *,
+            channel: NotificationChannel,
+            source: str,
+            userid: Union[str, int],
+            username: str,
+    ) -> bool:
+        """
+        在受控成员执行传统媒体交互前校验能力授权，未授权时直接回复提示。
+
+        :param allowed_scopes: 受控普通成员的实时权限映射，None 表示不限制
+        :param scope: 本步骤所需能力键（search、subscribe 或 download）
+        :param channel: 发起交互的通知渠道
+        :param source: 渠道实例标识
+        :param userid: 渠道平台用户标识
+        :param username: 渠道展示名称
+        :return: 已获授权时返回 True；拒绝时回复提示并返回 False
+        """
+        if self._has_scope(allowed_scopes, scope):
+            return True
+        label = self._scope_labels.get(scope, scope)
+        self.post_message(
+            Message(
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                title=f"当前渠道成员未获授权使用{label}能力，请联系管理员调整权限",
+                save_history=False,
+            )
+        )
+        return False
 
     @staticmethod
     def has_pending_interaction(user_id: Union[str, int]) -> bool:
@@ -149,9 +209,22 @@ class MediaInteractionChain(ChainBase):
             username: str,
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> bool:
         """
         处理按钮回调，并将当前视图刷新到原消息上。
+
+        :param callback_data: 渠道传回的按钮回调载荷
+        :param channel: 通知渠道
+        :param source: 渠道实例标识
+        :param userid: 渠道平台用户标识
+        :param username: 渠道展示名称
+        :param original_message_id: 需要原地刷新的消息标识，None 表示发送新消息
+        :param original_chat_id: 会话或群聊标识，None 表示使用渠道默认定位
+        :param allowed_scopes: 受控普通成员的实时权限映射，None 表示不限制
+        :param owner_username: 统一渠道授权确定的业务归属用户名，None 时保留既有解析规则
+        :return: 已匹配并处理回调时返回 True
         """
         parsed = self.parse_callback(callback_data)
         if not parsed:
@@ -232,6 +305,8 @@ class MediaInteractionChain(ChainBase):
                 username=username,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return True
 
@@ -243,6 +318,8 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return True
 
@@ -254,6 +331,8 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return True
 
@@ -266,11 +345,22 @@ class MediaInteractionChain(ChainBase):
             userid: Union[str, int],
             username: str,
             text: str,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> bool:
         """
         处理文本式交互。
 
         有会话时优先处理数字选择和翻页；无会话时负责识别搜索/订阅类入口。
+
+        :param channel: 通知渠道
+        :param source: 渠道实例标识
+        :param userid: 渠道平台用户标识
+        :param username: 渠道展示名称
+        :param text: 用户输入的文本内容
+        :param allowed_scopes: 受控普通成员的实时权限映射，None 表示不限制
+        :param owner_username: 统一渠道授权确定的业务归属用户名，None 时保留既有解析规则
+        :return: 已消费该文本时返回 True
         """
         request = media_interaction_manager.get_by_user(userid)
         normalized = (text or "").strip()
@@ -311,6 +401,8 @@ class MediaInteractionChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    allowed_scopes=allowed_scopes,
+                    owner_username=owner_username,
                 )
             elif request.phase == "torrent":
                 self._handle_torrent_selection(
@@ -320,6 +412,8 @@ class MediaInteractionChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    allowed_scopes=allowed_scopes,
+                    owner_username=owner_username,
                 )
             else:
                 self._handle_media_selection(
@@ -329,6 +423,8 @@ class MediaInteractionChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
+                    allowed_scopes=allowed_scopes,
+                    owner_username=owner_username,
                 )
             return True
 
@@ -403,6 +499,7 @@ class MediaInteractionChain(ChainBase):
             source=source,
             userid=userid,
             username=username,
+            allowed_scopes=allowed_scopes,
         )
         return True
 
@@ -421,10 +518,20 @@ class MediaInteractionChain(ChainBase):
             source: str,
             userid: Union[str, int],
             username: str,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """
         根据用户输入搜索影视或音乐，并进入对应候选选择阶段。
         """
+        if not self._require_scope(
+            allowed_scopes,
+            self._action_required_scope(action),
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+        ):
+            return
         meta: Optional[MetaBase]
         medias: List[MediaInfo | MusicInfo] = []
         if action.startswith("Music"):
@@ -486,6 +593,8 @@ class MediaInteractionChain(ChainBase):
             username: str,
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> None:
         """
         处理媒体选择阶段的序号输入。
@@ -513,6 +622,15 @@ class MediaInteractionChain(ChainBase):
         request.current_media = mediainfo
 
         if request.action in {"Search", "ReSearch", "MusicSearch", "MusicReSearch"}:
+            if not self._require_scope(
+                allowed_scopes,
+                "search",
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+            ):
+                return
             self._search_media_resources(
                 request=request,
                 mediainfo=mediainfo,
@@ -522,6 +640,8 @@ class MediaInteractionChain(ChainBase):
                 username=username,
                 original_message_id=original_message_id,
                 original_chat_id=original_chat_id,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return
 
@@ -531,6 +651,15 @@ class MediaInteractionChain(ChainBase):
             "MusicSubscribe",
             "MusicReSubscribe",
         }:
+            if not self._require_scope(
+                allowed_scopes,
+                "subscribe",
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+            ):
+                return
             subscribe_media(
                 host=self,
                 request=request,
@@ -539,6 +668,7 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                owner_username=owner_username,
             )
 
     def _search_media_resources(
@@ -551,6 +681,8 @@ class MediaInteractionChain(ChainBase):
             username: str,
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> None:
         """
         根据已选媒体搜索资源，并切换到资源选择阶段。
@@ -626,7 +758,7 @@ class MediaInteractionChain(ChainBase):
             return
 
         contexts = TorrentHelper().sort_torrents(contexts)
-        if self._should_auto_download(userid):
+        if self._should_auto_download(userid) and self._has_scope(allowed_scopes, "download"):
             logger.info("用户 %s 在自动下载用户中，开始自动择优下载 ...", userid)
             request.phase = "torrent"
             request.page = 0
@@ -652,6 +784,8 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
                 no_exists=no_exists,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return
 
@@ -676,6 +810,8 @@ class MediaInteractionChain(ChainBase):
             source: str,
             userid: Union[str, int],
             username: str,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> None:
         """
         处理资源选择阶段的下载操作。
@@ -687,6 +823,15 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
             )
+            return
+        if not self._require_scope(
+            allowed_scopes,
+            "download",
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+        ):
             return
 
         if page_index == 0:
@@ -706,6 +851,8 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return
 
@@ -741,7 +888,7 @@ class MediaInteractionChain(ChainBase):
             channel=channel,
             source=source,
             userid=userid,
-            username=username,
+            username=owner_username or username,
             user_specified=True,
         )
 
@@ -793,6 +940,8 @@ class MediaInteractionChain(ChainBase):
             source: str,
             userid: Union[str, int],
             username: str,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> None:
         """
         处理下载目录阶段的序号输入，并继续执行挂起的下载动作。
@@ -804,6 +953,15 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
             )
+            return
+        if not self._require_scope(
+            allowed_scopes,
+            "download",
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+        ):
             return
 
         page_items, page, _ = self._page_items(
@@ -830,6 +988,8 @@ class MediaInteractionChain(ChainBase):
                 userid=userid,
                 username=username,
                 save_path=None,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return
 
@@ -850,6 +1010,8 @@ class MediaInteractionChain(ChainBase):
             userid=userid,
             username=username,
             save_path=save_path,
+            allowed_scopes=allowed_scopes,
+            owner_username=owner_username,
         )
 
     def _execute_pending_download(
@@ -860,6 +1022,8 @@ class MediaInteractionChain(ChainBase):
             userid: Union[str, int],
             username: str,
             save_path: Optional[str],
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> None:
         """
         使用用户确认的下载目录执行单资源下载或自动择优下载。
@@ -873,7 +1037,7 @@ class MediaInteractionChain(ChainBase):
                 channel=channel,
                 source=source,
                 userid=userid,
-                username=username,
+                username=owner_username or username,
                 save_path=save_path,
                 user_specified=True,
             )
@@ -892,6 +1056,8 @@ class MediaInteractionChain(ChainBase):
                 username=username,
                 no_exists=no_exists,
                 save_path=save_path,
+                allowed_scopes=allowed_scopes,
+                owner_username=owner_username,
             )
             return
 
@@ -927,6 +1093,8 @@ class MediaInteractionChain(ChainBase):
             username: str,
             no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]] = None,
             save_path: Optional[str] = None,
+            allowed_scopes: Optional[Mapping[str, Any]] = None,
+            owner_username: Optional[str] = None,
     ) -> None:
         """
         自动择优下载当前资源列表，并在未完成时补建订阅。
@@ -958,10 +1126,22 @@ class MediaInteractionChain(ChainBase):
             channel=channel,
             source=source,
             userid=userid,
-            username=username,
+            username=owner_username or username,
         )
         if downloads and not lefts:
             logger.info("%s 下载完成", current_media.title_year)
+            return
+        if not self._has_scope(allowed_scopes, "subscribe"):
+            self.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    title="当前渠道成员未获授权使用订阅能力，未自动添加缺失订阅",
+                    save_history=False,
+                )
+            )
             return
 
         logger.info("%s 未下载未完整，添加订阅 ...", current_media.title_year)
@@ -975,11 +1155,14 @@ class MediaInteractionChain(ChainBase):
             note = None
 
         mp_name = (
-            self.user_repository.find_name_by_bindings(
-                {f"{channel.name.lower()}_userid": userid}
+            owner_username
+            or (
+                self.user_repository.find_name_by_bindings(
+                    {f"{channel.name.lower()}_userid": userid}
+                )
+                if channel
+                else None
             )
-            if channel
-            else None
         )
         SubscribeChain().add(
             title=current_media.title or "",
