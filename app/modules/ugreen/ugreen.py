@@ -2283,7 +2283,7 @@ class Ugreen:
             total_count = data.get("TotalRecordCount")
             try:
                 reached_total = total_count is not None and offset >= int(total_count)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 reached_total = False
             if len(page_items) < page_size or reached_total:
                 return
@@ -2315,7 +2315,7 @@ class Ugreen:
             total_count = data.get("TotalRecordCount")
             try:
                 return int(total_count) if total_count is not None else None
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 return None
         if not self.is_authenticated() or not self._api:
             return None
