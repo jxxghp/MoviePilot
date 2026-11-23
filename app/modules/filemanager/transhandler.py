@@ -17,10 +17,9 @@ from app.application.audio import AudioMetadataHelper
 from app.application.classification.reference import (
     append_classification_category_path,
     category_path_below_media_type,
-    classification_media_type,
     ensure_path_within_root,
 )
-from app.application.directory import DirectoryHelper
+from app.application.directory import DirectoryHelper, build_media_library_path
 from app.application.messaging.message import TemplateHelper
 from app.application.transfer.execution import (
     TransferExecutionConflictError,
@@ -2806,42 +2805,12 @@ class TransHandler:
         :param need_category_folder: 是否添加分类目录；None 时沿用目录设置
         :return: 最终媒体库目录路径；不创建目录
         """
-        if not target_dir.library_path:
-            raise ValueError("媒体库目录路径为空")
-        if need_type_folder is None:
-            need_type_folder = target_dir.library_type_folder
-        if need_category_folder is None:
-            need_category_folder = target_dir.library_category_folder
-        if not target_dir.media_type and need_type_folder and mediainfo.type:
-            library_dir = Path(target_dir.library_path) / mediainfo.type.value
-        elif target_dir.media_type and need_type_folder:
-            type_folder = (
-                classification_media_type(target_dir.media_type)
-                or target_dir.media_type
-            )
-            library_dir = Path(target_dir.library_path) / type_folder
-        else:
-            library_dir = Path(target_dir.library_path)
-        if need_category_folder:
-            helper = DirectoryHelper()
-            category_path = helper.category_path_for_directory(
-                target_dir,
-                mediainfo,
-            )
-            if category_path:
-                category_path = category_path_below_media_type(
-                    category_path,
-                    target_dir.media_type or mediainfo.type,
-                    type_folder_enabled=bool(need_type_folder),
-                )
-            if category_path:
-                # 固定 ID 使用当前策略路径，旧配置和人工覆盖使用安全路径快照。
-                library_dir = append_classification_category_path(
-                    library_dir,
-                    category_path,
-                )
-
-        return library_dir
+        return build_media_library_path(
+            target_dir,
+            mediainfo,
+            need_type_folder=need_type_folder,
+            need_category_folder=need_category_folder,
+        )
 
     @staticmethod
     def get_naming_dict(

@@ -76,6 +76,61 @@ def build_media_download_path(
     return append_classification_category_path(download_path, category_path)
 
 
+def build_media_library_path(
+    directory: _SchemaTransferDirectoryConf,
+    media: DirectoryMedia,
+    *,
+    need_type_folder: Optional[bool] = None,
+    need_category_folder: Optional[bool] = None,
+    directory_helper: Optional["DirectoryHelper"] = None,
+) -> Path:
+    """
+    按媒体库目录开关、媒体类型和分类配置构造最终媒体库目标父目录。
+
+    仅拼接目录路径，不访问文件系统也不创建目录。
+
+    :param directory: 包含媒体库根路径和类型/分类开关的目录配置
+    :param media: 用于确定类型目录和自动分类的媒体信息
+    :param need_type_folder: 是否添加类型目录；None 时沿用目录配置
+    :param need_category_folder: 是否添加分类目录；None 时沿用目录配置
+    :param directory_helper: 可选目录助手实例；为空时使用默认实例
+    :return: 拼接后的媒体库目标父目录路径
+    :raises ValueError: 目录未配置媒体库根路径
+    """
+    if not directory.library_path:
+        raise ValueError("媒体库目录路径为空")
+    if need_type_folder is None:
+        need_type_folder = directory.library_type_folder
+    if need_category_folder is None:
+        need_category_folder = directory.library_category_folder
+    if not directory.media_type and need_type_folder and media.type:
+        library_dir = Path(directory.library_path) / media.type.value
+    elif directory.media_type and need_type_folder:
+        type_folder = (
+            classification_media_type(directory.media_type)
+            or directory.media_type
+        )
+        library_dir = Path(directory.library_path) / type_folder
+    else:
+        library_dir = Path(directory.library_path)
+    if need_category_folder:
+        helper = directory_helper or DirectoryHelper()
+        category_path = helper.category_path_for_directory(directory, media)
+        if category_path:
+            category_path = category_path_below_media_type(
+                category_path,
+                directory.media_type or media.type,
+                type_folder_enabled=bool(need_type_folder),
+            )
+        if category_path:
+            # 固定 ID 使用当前策略路径，旧配置和人工覆盖使用安全路径快照。
+            library_dir = append_classification_category_path(
+                library_dir,
+                category_path,
+            )
+    return library_dir
+
+
 class DiskTopology(Protocol):
     """
     描述本地路径磁盘拓扑判断能力。

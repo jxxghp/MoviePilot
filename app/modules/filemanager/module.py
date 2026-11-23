@@ -258,12 +258,20 @@ class FileManagerModule(_ModuleBase):
         """
         handler = TransHandler()
         rename_format = get_runtime_setting('RENAME_FORMAT')(mediainfo.type)
+        # 仅保留受支持的媒体/音频/字幕/歌词扩展名，避免把种子名中的点分标签误作文件后缀。
+        raw_suffix = Path(meta.title or "").suffix
+        supported_exts = {
+            ext.lower()
+            for key in ("RMT_MEDIAEXT", "RMT_AUDIOEXT", "RMT_SUBEXT", "RMT_LYRICSEXT")
+            for ext in (get_runtime_setting(key) or ())
+        }
+        file_ext = raw_suffix if raw_suffix and raw_suffix.lower() in supported_exts else ""
         path = handler.get_rename_path(
             template_string=rename_format,
             rename_dict=handler.get_naming_dict(meta=meta,
                                                 mediainfo=mediainfo,
                                                 episodes_info=episodes_info,
-                                                file_ext=Path(meta.title or "").suffix)
+                                                file_ext=file_ext)
         )
         return path.as_posix() if path else ""
 

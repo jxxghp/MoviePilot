@@ -650,3 +650,34 @@ class EpisodeFormatRecommendData(BaseModel):
     reason: Optional[str] = Field(default=None, description="推荐或无法推荐剧集格式的主要原因")
     reasons: list[str] = Field(default_factory=list, description="剧集格式推荐的依据")
     message: Optional[str] = Field(default=None, description="面向调用方的结果说明")
+
+
+class TransferNamePreviewData(BaseModel):
+    """
+    识别测试场景下的整理名称与目标目录预览结果。
+    """
+
+    category: Optional[str] = Field(
+        default=None,
+        description="命中的二级分类路径；未命中分类策略或未启用分类时为空",
+    )
+    target_dir: Optional[str] = Field(
+        default=None,
+        description="按当前重命名模板生成的媒体目标根目录名称；无目录层级时为空",
+    )
+    file_name: Optional[str] = Field(
+        default=None,
+        description="按当前重命名模板生成的最终文件名",
+    )
+    rename_path: Optional[str] = Field(
+        default=None,
+        description="按当前重命名模板生成的完整相对路径（包含季目录等中间层级）",
+    )
+    library_path: Optional[str] = Field(
+        default=None,
+        description="命中的媒体库目标父目录（含类型目录与分类目录）；未匹配到已配置整理目录时为空",
+    )
+    full_path: Optional[str] = Field(
+        default=None,
+        description="结合匹配媒体库目录与重命名模板后的完整目标路径；未匹配到已配置整理目录时为空",
+    )

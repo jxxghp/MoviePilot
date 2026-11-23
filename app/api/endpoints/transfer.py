@@ -2,9 +2,10 @@
 提供文件整理任务查询、执行、重试和控制接口。
 """
 
+import asyncio
 import re
 from pathlib import Path
-from typing import Annotated, Any, List, Literal, Optional
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from fastapi import Depends, HTTPException, Query, status
 
@@ -22,7 +23,7 @@ from app.api.response import (
     ResponseAPIRouter,
 )
 from app.application.configuration import get_api_runtime_config_snapshot
-from app.application.directory import DirectoryHelper
+from app.application.directory import DirectoryHelper, build_media_library_path
 from app.application.history import TransferHistoryLookupService
 from app.application.transfer.execution import (
     TransferExecutionCommand,
@@ -36,6 +37,11 @@ from app.application.transfer.execution import (
 )
 from app.chain.media import MediaChain
 from app.chain.transfer.facade import TransferChain
+from app.domain.context import MediaInfo, MusicInfo
+from app.domain.media import is_music_media_source
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.common import NameData as _SchemaNameData
@@ -59,8 +65,9 @@ from app.schemas.transfer import TransferManualReviewDiscardRequest as _SchemaTr
 from app.schemas.transfer import TransferManualReviewPageData as _SchemaTransferManualReviewPageData
 from app.schemas.transfer import TransferManualReviewRequest as _SchemaTransferManualReviewRequest
 from app.schemas.transfer import TransferManualReviewTaskData as _SchemaTransferManualReviewTaskData
+from app.schemas.transfer import TransferNamePreviewData as _SchemaTransferNamePreviewData
 from app.schemas.transfer import TransferQueuePageData as _SchemaTransferQueuePageData
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
 router = ResponseAPIRouter()
 
@@ -656,6 +663,189 @@ def query_name(
     else:
         new_name = Path(new_path).name
     return _SchemaResponse(success=True, data={"name": new_name})
+
+
+def _build_preview_metainfo(
+    title: str,
+    subtitle: Optional[str],
+    custom_words: Optional[str],
+    media_source: Optional[MediaSource],
+) -> tuple[MetaBase, Optional[Path]]:
+    """
+    按与标题识别接口一致的口径构建整理预览元数据及可选源路径。
+
+    :param title: 种子名、文件名或完整路径
+    :param subtitle: 可选副标题
+    :param custom_words: 可选临时识别词（按行分隔）
+    :param media_source: 可选请求级识别数据源
+    :return: 解析后的元数据对象及路径形式输入的源路径
+    """
+    custom_word_list = custom_words.split("\n") if custom_words else None
+    has_path_sep = ("/" in title or "\\" in title) and "://" not in title
+    normalized_title = title.replace("\\", "/")
+    title_path = Path(normalized_title)
+    src_path = title_path if has_path_sep else None
+
+    config = get_api_runtime_config_snapshot()
+    known_extensions = {
+        ext.lower()
+        for ext in (*config.media_extensions, *config.audio_extensions)
+    }
+    if has_path_sep and title_path.suffix.lower() in known_extensions:
+        metainfo: MetaBase = MetaInfoPath(
+            title_path,
+            custom_words=custom_word_list,
+        )
+        metainfo.title = title
+    else:
+        metainfo = MetaInfo(title, subtitle, custom_words=custom_word_list)
+
+    if is_music_media_source(media_source) and not isinstance(metainfo, MetaMusic):
+        metainfo = MetaMusic.parse_query(title)
+    return metainfo, src_path
+
+
+def _resolve_preview_target_dir(
+    new_path: str,
+    media_type: Optional[MediaType],
+) -> Optional[str]:
+    """
+    从重命名相对路径中推导媒体目标根目录名称。
+
+    :param new_path: 按当前重命名模板生成的相对路径
+    :param media_type: 已识别媒体类型
+    :return: 目标根目录路径文本；无目录层级时返回 None
+    """
+    rename_path = Path(new_path)
+    if media_type is not None:
+        media_path = DirectoryHelper.get_media_root_path(
+            rename_format=get_api_runtime_config_snapshot().rename_format(media_type),
+            rename_path=rename_path,
+            media_type=media_type,
+        )
+        if media_path:
+            normalized = media_path.as_posix()
+            if normalized and normalized != ".":
+                return normalized
+    parents = rename_path.parents
+    fallback = parents[1].name if len(parents) > 2 else (parents[0].name if parents else "")
+    return fallback or None
+
+
+def _resolve_preview_library_path(
+    dir_helper: DirectoryHelper,
+    mediainfo: Union[MediaInfo, MusicInfo],
+    src_path: Optional[Path],
+) -> Optional[str]:
+    """
+    根据当前整理目录配置解析命中的媒体库目标父目录。
+
+    :param dir_helper: 目录配置与分类路径助手
+    :param mediainfo: 已识别的影视或音乐信息
+    :param src_path: 输入为文件路径时的源路径；种子名场景为空
+    :return: 包含类型和分类子目录的媒体库父目录文本；未配置匹配整理目录时返回 None
+    """
+    matched_dir = dir_helper.get_dir(media=mediainfo, src_path=src_path)
+    if not matched_dir or not matched_dir.library_path:
+        return None
+    return build_media_library_path(
+        matched_dir,
+        mediainfo,
+        directory_helper=dir_helper,
+    ).as_posix()
+
+
+@router.get(
+    "/name/preview",
+    summary="预览整理后的名称与目标目录",
+    response_model=_SchemaResponse[_SchemaTransferNamePreviewData],
+)
+async def preview_name(
+    title: str,
+    subtitle: Optional[str] = None,
+    custom_words: Optional[str] = None,
+    media_source: Optional[MediaSource] = None,
+    media_id: Optional[str] = None,
+    mtype: Optional[MediaType] = None,
+    music_type: Optional[str] = None,
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> Any:
+    """
+    按当前重命名模板和分类、目录配置预览识别结果整理后的目录与文件名。
+
+    支持与标题识别测试相同的副标题、临时识别词与数据源参数；传入已识别的
+    ``media_source`` 与 ``media_id`` 时直接复用对应媒体身份，保证与识别结果一致。
+
+    :param title: 种子名、发布标题、文件名或完整文件路径
+    :param subtitle: 可选副标题
+    :param custom_words: 可选临时识别词（每行一条规则），仅用于本次预览
+    :param media_source: 可选请求级识别数据源
+    :param media_id: 可选已识别的原生媒体 ID，须与 ``media_source`` 配套使用
+    :param mtype: 可选已识别媒体类型
+    :param music_type: 可选音乐实体类型
+    :param _: Token 校验载荷
+    :return: 包含分类路径、目标目录名、最终文件名及完整目标路径的预览响应
+    """
+    metainfo, src_path = _build_preview_metainfo(
+        title=title,
+        subtitle=subtitle,
+        custom_words=custom_words,
+        media_source=media_source,
+    )
+    mediainfo = await MediaChain().async_recognize_by_meta(
+        metainfo,
+        media_source=media_source,
+        mtype=mtype,
+        music_type=music_type,
+        media_id=media_id if media_source and media_id else None,
+    )
+    if not mediainfo:
+        return _SchemaResponse(success=False, message="未识别到媒体信息")
+
+    dir_helper = DirectoryHelper()
+    category_resolution = dir_helper.resolve_media_category(mediainfo)
+    if category_resolution.state == "invalid_path":
+        return _SchemaResponse(
+            success=False,
+            message=category_resolution.message or "媒体分类目录路径无效",
+        )
+    category_path = "/".join(category_resolution.path) or None
+
+    try:
+        new_path = await asyncio.to_thread(
+            TransferChain().recommend_name,
+            meta=metainfo,
+            mediainfo=mediainfo,
+        )
+    except Exception as err:
+        logger.warning(f"预览整理名称失败：{err}")
+        return _SchemaResponse(
+            success=False,
+            message=f"重命名模板渲染失败：{err}",
+        )
+    if not new_path:
+        return _SchemaResponse(success=False, message="未识别到新名称")
+
+    normalized_rename_path = Path(new_path).as_posix()
+    file_name = Path(normalized_rename_path).name or None
+    target_dir = _resolve_preview_target_dir(normalized_rename_path, mediainfo.type)
+    library_path = _resolve_preview_library_path(dir_helper, mediainfo, src_path)
+    full_path = (
+        (Path(library_path) / normalized_rename_path).as_posix()
+        if library_path
+        else None
+    )
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaTransferNamePreviewData(
+            category=category_path,
+            target_dir=target_dir,
+            file_name=file_name,
+            rename_path=normalized_rename_path,
+            library_path=library_path,
+            full_path=full_path,
+        ),
+    )
 
 
 @router.get("/queue", summary="查询整理队列", response_model=List[_SchemaTransferJob])

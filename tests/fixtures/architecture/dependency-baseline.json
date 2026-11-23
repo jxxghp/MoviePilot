@@ -978,8 +978,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10587,
-  "edge_sha256": "56f720b09f77ac3ec847c28871320e07ed095adf11df0da815864aa4a2872901",
+  "edge_count": 10594,
+  "edge_sha256": "b2ea0244a1a2d0a0e8aeb1aee7a143d5cb54f4ea0e234e49a4fb431acab4a807",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3507,6 +3507,13 @@
     "app.api.endpoints.transfer -> app.chain.media",
     "app.api.endpoints.transfer -> app.chain.transfer",
     "app.api.endpoints.transfer -> app.chain.transfer.facade",
+    "app.api.endpoints.transfer -> app.domain",
+    "app.api.endpoints.transfer -> app.domain.context",
+    "app.api.endpoints.transfer -> app.domain.media",
+    "app.api.endpoints.transfer -> app.domain.meta",
+    "app.api.endpoints.transfer -> app.domain.meta.metabase",
+    "app.api.endpoints.transfer -> app.domain.meta.metamusic",
+    "app.api.endpoints.transfer -> app.domain.metainfo",
     "app.api.endpoints.transfer -> app.runtime",
     "app.api.endpoints.transfer -> app.runtime.errors",
     "app.api.endpoints.transfer -> app.runtime.log",
