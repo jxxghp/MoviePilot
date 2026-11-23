@@ -2107,3 +2107,146 @@ def test_settle_accepted_download_records_actual_path_for_existing_torrent():
     assert history.path == "/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv"
     assert files[0].fullpath == "/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv"
     assert files[0].savepath == "/volume4/flow"
+
+
+def test_prepare_download_single_syncs_context_media_and_meta_after_resource_download_event(
+    monkeypatch,
+):
+    """
+    ResourceDownload 事件处理器替换 context.media_info 和 context.meta_info 后，下载目录与准备事实应同步生效。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    resolved_dir_medias = []
+    converted_media = MediaInfo(
+        tmdb_info={
+            "id": 1483525,
+            "media_type": MediaType.MOVIE,
+            "title": "可能的爱",
+            "release_date": "2026-01-01",
+        }
+    )
+    converted_media.set_library_category("外语电影")
+    updated_meta = MetaInfo("Possible.Love.2026.S01E02.1080p")
+
+    def replace_context_media(_event_type, event_data):
+        """
+        模拟插件在 ResourceDownload 同步事件中替换上下文媒体与元数据对象。
+        """
+        event_data.context.media_info = converted_media
+        event_data.context.meta_info = updated_meta
+        return SimpleNamespace(event_data=event_data)
+
+    def resolve_dir(media_info, save_path=None):
+        """
+        记录目录解析实际使用的媒体对象并返回固定下载目录。
+        """
+        resolved_dir_medias.append((media_info, save_path))
+        return "local", Path("/downloads/movies"), None
+
+    monkeypatch.setattr(eventmanager, "send_event", replace_context_media)
+    monkeypatch.setattr(download_submission, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(chain, "_resolve_media_download_dir", resolve_dir)
+
+    context = Context(
+        meta_info=MetaInfo("Possible.Love.2026.1080p"),
+        media_info=MediaInfo(
+            media_source=MediaSource.Douban,
+            media_id="36847425",
+            type=MediaType.MOVIE,
+            title="可能的爱",
+        ),
+        torrent_info=TorrentInfo(title="Possible.Love.2026.1080p"),
+    )
+
+    prepared, error_msg = chain._prepare_download_single(
+        context=context,
+        torrent_file=None,
+        torrent_content="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+        episodes=None,
+        channel=None,
+        source="Manual",
+        downloader=None,
+        save_path=None,
+        userid=None,
+        username="tester",
+    )
+
+    assert error_msg is None
+    assert prepared is not None
+    assert resolved_dir_medias == [(converted_media, None)]
+    assert prepared.media is converted_media
+    assert prepared.meta is updated_meta
+    assert context.selected_episodes == [2]
+
+
+def test_settle_download_success_persists_origin_media_trace_and_snapshot_roundtrip():
+    """
+    发生跨来源主身份转换的下载应在 DownloadHistory.note 和持久处理快照中保留 origin_media。
+    """
+    from app.application.chain.events import (
+        restore_download_processing,
+        snapshot_download_processing,
+    )
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",), video_extensions=(".mkv",))
+    chain.durable_event_writer = None
+    chain.download_history_repository = MagicMock()
+    chain._build_download_notification = MagicMock(return_value=None)
+    chain._submit_download_added_task = MagicMock()
+    chain.eventmanager = MagicMock()
+
+    media = MediaInfo(
+        tmdb_info={
+            "id": 1483525,
+            "media_type": MediaType.MOVIE,
+            "title": "可能的爱",
+            "release_date": "2026-01-01",
+        }
+    )
+    media.douban_id = "36847425"
+    meta = MetaInfo("Possible.Love.2026.1080p")
+    torrent = TorrentInfo(title="Possible.Love.2026.1080p")
+    origin_media = {"media_source": "douban", "media_id": "36847425"}
+    context = Context(
+        meta_info=meta,
+        media_info=media,
+        torrent_info=torrent,
+        origin_media=origin_media,
+    )
+
+    chain._settle_download_success(
+        context=context,
+        media=media,
+        meta=meta,
+        torrent=torrent,
+        folder_name="Possible.Love.2026",
+        file_list=["Possible.Love.2026.mkv"],
+        download_dir=Path("/downloads/movies"),
+        layout="Original",
+        downloader="qb",
+        download_hash="hash-origin-1",
+        download_episodes=None,
+        episodes=None,
+        channel=None,
+        source="Manual",
+        userid=None,
+        username="tester",
+        torrent_content=b"torrent",
+        custom_words=None,
+    )
+
+    history, _files = chain.download_history_repository.add.call_args.args
+    assert history.media_source == MediaSource.TMDB
+    assert history.media_id == "1483525"
+    assert history.note["origin_media"] == origin_media
+
+    payload = snapshot_download_processing(
+        context=context,
+        download_dir=Path("/downloads/movies"),
+        torrent_content=b"torrent",
+        download_hash="hash-origin-1",
+        downloader="qb",
+    )
+    restored = restore_download_processing(payload)
+    assert restored.context.origin_media == origin_media

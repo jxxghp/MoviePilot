@@ -2,7 +2,6 @@
 提供下载任务查询、控制和手动添加接口，保留当前用户与媒体身份。
 """
 
-from copy import deepcopy
 from typing import Annotated, Any, List, Optional, Union
 
 import anyio
@@ -34,6 +33,7 @@ from app.application.site.query import (
     get_configured_site_query_service,
 )
 from app.chain.download import DownloadChain
+from app.chain.download.submission import convert_download_identity_to_tmdb
 from app.chain.media import MediaChain
 from app.domain.authorization import has_web_permission
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
@@ -41,6 +41,7 @@ from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfo
 from app.foundation.url import UrlUtils
+from app.schemas.common import JsonData
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import SubtitleInfo as _SchemaSubtitleInfo
@@ -173,58 +174,88 @@ def _resolve_converted_tmdb_media(
     metainfo: MetaBase,
     media_source: MediaSource,
     media_id: str,
-) -> tuple[MetaBase, MediaInfo] | None:
+    *,
+    source_media: Optional[MediaInfo] = None,
+) -> tuple[MetaBase, MediaInfo, dict[str, JsonData]] | None:
     """
-    尝试将非 TMDB 影视身份投影为 TMDB 主身份并识别，失败时不污染原元数据。
+    复用统一下载身份转换规则，将非 TMDB 影视身份投影并核验为完整 TMDB 媒体信息。
     """
-    convert_identity = getattr(media_chain, "convert_media_identity", None)
-    if not callable(convert_identity):
-        return None
-    # IMDb 外部标识可由 TMDB /find 直接区分电影与剧集，避免种子分类或电影标题误解析干扰；
-    # 仅在剧集已解析出季号，或处理豆瓣等季级来源时传递季号。
-    projected_season = (
-        metainfo.begin_season
-        if media_source != MediaSource.IMDb or metainfo.type == MediaType.TV
-        else None
+    return convert_download_identity_to_tmdb(
+        media_chain,
+        metainfo,
+        media_source,
+        media_id,
+        source_media=source_media,
     )
-    tmdbinfo = convert_identity(
-        target_source=MediaSource.TMDB,
+
+
+def _convert_manual_download_media(
+    metainfo: MetaBase,
+    mediainfo: MediaInfo | MusicInfo,
+) -> tuple[MetaBase, MediaInfo | MusicInfo, Optional[dict[str, JsonData]]]:
+    """
+    在全局识别源为 TMDB 时，将手动下载携带的非 TMDB 影视媒体对象转换为 TMDB 主身份。
+
+    仅对电影和电视剧生效；已有 TMDB 身份、音乐、非 TMDB 识别源以及无法可靠转换或核验的目标
+    均保持原媒体与元数据对象不变。
+
+    :param metainfo: 种子标题解析出的元数据
+    :param mediainfo: 请求传入的影视或音乐媒体对象
+    :return: ``(最终元数据, 最终媒体对象, 原来源追溯字典)``；未转换时追溯字典为 None
+    """
+    if (
+        not isinstance(mediainfo, MediaInfo)
+        or mediainfo.type not in (MediaType.MOVIE, MediaType.TV)
+        or not _is_tmdb_recognize_source()
+    ):
+        return metainfo, mediainfo, None
+    source, media_id = resolve_media_identity(media=mediainfo)
+    if not source or not media_id or source == MediaSource.TMDB:
+        return metainfo, mediainfo, None
+    converted = _resolve_converted_tmdb_media(
+        MediaChain(),
+        metainfo,
+        source,
+        media_id,
+        source_media=mediainfo,
+    )
+    if converted is None:
+        return metainfo, mediainfo, None
+    return converted
+
+
+def _origin_media_for_converted_add(
+    media_source: MediaSource | None,
+    media_id: str | None,
+    mediainfo: MediaInfo | MusicInfo,
+) -> Optional[dict[str, JsonData]]:
+    """
+    判断无媒体信息下载是否发生了非 TMDB 到 TMDB 的主身份转换，并返回原来源追溯记录。
+
+    :param media_source: 请求提交的原媒体来源
+    :param media_id: 请求提交的原来源原生标识
+    :param mediainfo: 最终用于提交下载的媒体对象
+    :return: 发生跨来源转换时返回 ``{"media_source": ..., "media_id": ...}``，否则返回 None
+    """
+    if not isinstance(mediainfo, MediaInfo) or media_source is None or media_id is None:
+        return None
+    origin_source, origin_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,
-        season=projected_season,
     )
-    if not isinstance(tmdbinfo, dict):
-        return None
-    tmdb_id = tmdbinfo.get("id")
-    if not tmdb_id or isinstance(tmdb_id, bool):
-        return None
-    raw_type = tmdbinfo.get("media_type")
-    tmdb_mtype = (
-        raw_type
-        if isinstance(raw_type, MediaType)
-        else MediaType.from_agent(str(raw_type or ""))
-    )
-    if tmdb_mtype not in (MediaType.MOVIE, MediaType.TV):
-        tmdb_mtype = None
-    candidate_meta = deepcopy(metainfo)
-    projected_tv_season = tmdbinfo.get("season")
+    final_source, final_id = resolve_media_identity(media=mediainfo)
     if (
-        tmdb_mtype == MediaType.TV
-        and candidate_meta.begin_season is None
-        and isinstance(projected_tv_season, int)
-        and not isinstance(projected_tv_season, bool)
-        and projected_tv_season >= 0
+        origin_source
+        and origin_id
+        and origin_source != MediaSource.TMDB
+        and final_source == MediaSource.TMDB
+        and final_id
     ):
-        candidate_meta.begin_season = projected_tv_season
-    converted = media_chain.recognize_media(
-        meta=candidate_meta,
-        mtype=tmdb_mtype,
-        media_source=MediaSource.TMDB,
-        media_id=str(tmdb_id),
-    )
-    if not isinstance(converted, MediaInfo):
-        return None
-    return candidate_meta, converted
+        return {
+            "media_source": origin_source.value,
+            "media_id": origin_id,
+        }
+    return None
 
 
 def _resolve_explicit_download_media(
@@ -261,7 +292,8 @@ def _resolve_explicit_download_media(
             normalized_id,
         )
         if converted is not None:
-            return converted
+            converted_meta, converted_media, _origin_media = converted
+            return converted_meta, converted_media
     mediainfo = media_chain.recognize_media(
         meta=metainfo,
         media_source=media_source,
@@ -401,13 +433,19 @@ def download(
         mediainfo = MediaInfo()
         mediainfo.from_dict(media_in.model_dump())
     metainfo = MetaInfo(title=torrent_in.title or "", subtitle=torrent_in.description, mtype=mediainfo.type)
+    metainfo, mediainfo, origin_media = _convert_manual_download_media(metainfo, mediainfo)
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
     # 手动下载始终使用选择的下载器
     torrentinfo.site_downloader = downloader
     # 上下文
-    context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
+    context = Context(
+        meta_info=metainfo,
+        media_info=mediainfo,
+        torrent_info=torrentinfo,
+        origin_media=origin_media,
+    )
     did = DownloadChain().download_single(
         context=context,
         username=current_user.name,
@@ -520,7 +558,12 @@ def add(
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
     # 上下文
-    context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
+    context = Context(
+        meta_info=metainfo,
+        media_info=mediainfo,
+        torrent_info=torrentinfo,
+        origin_media=_origin_media_for_converted_add(media_source, media_id, mediainfo),
+    )
 
     did = DownloadChain().download_single(
         context=context,

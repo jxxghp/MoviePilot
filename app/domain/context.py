@@ -2420,6 +2420,7 @@ class Context:
     :param confirmed_full_coverage: 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源
     :param subscription_download: 本次订阅提交的类型、全集洗版模式及新增和升级集数；非订阅下载为 None
     :param music_track_keys: 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度
+    :param origin_media: 主身份转换为 TMDB 前保留的原媒体来源与原生标识，用于下载历史追溯；未转换时为 None
     """
 
     meta_info: Optional[MetaBase] = None
@@ -2437,6 +2438,7 @@ class Context:
     confirmed_full_coverage: bool = False
     music_track_keys: Optional[List[str]] = None
     subscription_download: Optional[Dict[str, JsonData]] = None
+    origin_media: Optional[Dict[str, JsonData]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -2459,4 +2461,5 @@ class Context:
             "confirmed_full_coverage": self.confirmed_full_coverage,
             "music_track_keys": self.music_track_keys,
             "subscription_download": self.subscription_download,
+            "origin_media": self.origin_media,
         }

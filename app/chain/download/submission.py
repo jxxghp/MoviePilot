@@ -6,13 +6,17 @@ import base64
 import hashlib
 import json
 import re
-from copy import copy
+from collections.abc import Mapping, Sequence
+from copy import copy, deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
 from urllib.parse import urlparse
 
-from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_runtime_settings,
+)
 from app.application.directory import (
     specified_download_save_path,
     validate_download_save_path,
@@ -40,11 +44,13 @@ from app.domain.context import (
     TorrentInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.domain.metainfo import MetaInfo
 from app.foundation.url import UrlUtils, url_origin_for_log
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
+from app.schemas.common import JsonData
 from app.schemas.download import (
     DownloadTaskAction,
     ExistingTaskRejection,
@@ -53,14 +59,427 @@ from app.schemas.download import (
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
-from app.schemas.media import resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.message import Message
 from app.schemas.types import (
     ChainEventType,
+    MediaSource,
     MediaType,
     MessageType,
     NotificationChannel,
 )
+
+# 转换后可无损回填到 TMDB 媒体对象的非主来源外链字段，保持主身份不变。
+_AUXILIARY_EXTERNAL_ID_FIELDS = (
+    "douban_id",
+    "bangumi_id",
+    "anilist_id",
+    "imdb_id",
+    "tvdb_id",
+    "tvdb_slug",
+)
+
+
+def is_tmdb_recognize_source() -> bool:
+    """
+    判断当前系统影视识别源配置是否为 TMDB。
+
+    :return: 全局 RECOGNIZE_SOURCE 规范化为 TMDB 时返回 True，否则返回 False
+    """
+    return normalize_media_source(get_runtime_settings().get("RECOGNIZE_SOURCE")) == MediaSource.TMDB
+
+
+def _valid_season_number(value: object) -> Optional[int]:
+    """
+    提取有效的非负整数季号，排除布尔值和负数。
+
+    :param value: 来源或投影返回的原始季号字段
+    :return: 合法季号（含第 0 季特别篇）；无效时返回 None
+    """
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def explicit_meta_seasons(meta: MetaBase) -> list[int]:
+    """
+    从元数据提取显式解析出的季号列表，不把缺失季号的电视剧默认当成第 1 季。
+
+    ``MetaVideo`` 在标题仅含集号（如 ``E01-E05``）且未标季时会回填 ``begin_season=1``
+    但保持 ``total_season=0``；此类默认补齐不算显式季号，以便豆瓣或 Bangumi 季级条目
+    能正确带入真实季号。
+
+    :param meta: 种子标题解析出的元数据
+    :return: 按升序排列的显式季号列表；未解析出季号时返回空列表
+    """
+    begin = _valid_season_number(meta.begin_season)
+    if begin is None:
+        return []
+    end = _valid_season_number(meta.end_season)
+    if end is not None and end >= begin:
+        return list(range(begin, end + 1))
+    if begin == 1 and getattr(meta, "total_season", 0) == 0:
+        return []
+    return [begin]
+
+
+def _extract_source_media_season(source_media: Optional[MediaInfo]) -> Optional[int]:
+    """
+    从非 TMDB 媒体对象本身提取季号，兼容豆瓣和 Bangumi 等季级条目标题。
+
+    :param source_media: 转换前的原媒体对象
+    :return: 提取到的季号；无法确定时返回 None
+    """
+    if source_media is None:
+        return None
+    direct_season = _valid_season_number(source_media.season)
+    if direct_season is not None:
+        return direct_season
+    if not source_media.title:
+        return None
+    return _valid_season_number(MetaInfo(source_media.title).begin_season)
+
+
+def _resolve_conversion_query_season(
+    metainfo: MetaBase,
+    media_source: MediaSource,
+    source_media: Optional[MediaInfo],
+    expected_mtype: Optional[MediaType],
+) -> Optional[int]:
+    """
+    决定传给跨来源身份投影的查询季号，避免把电影或多季包误压成单季。
+
+    :param metainfo: 种子标题解析元数据
+    :param media_source: 待转换的非 TMDB 媒体来源
+    :param source_media: 已知的原媒体对象；无媒体上下文下载时为 None
+    :param expected_mtype: 已确认的影视类型；未确定时为 None
+    :return: 传给 ``convert_media_identity`` 的季号，未限定时返回 None
+    """
+    if expected_mtype == MediaType.MOVIE:
+        return None
+    explicit_seasons = explicit_meta_seasons(metainfo)
+    single_meta_season = explicit_seasons[0] if len(explicit_seasons) == 1 else None
+    if source_media is not None:
+        if single_meta_season is not None:
+            return single_meta_season
+        if not explicit_seasons:
+            return _extract_source_media_season(source_media)
+        return _valid_season_number(source_media.season)
+    if media_source == MediaSource.IMDb:
+        return single_meta_season if metainfo.type == MediaType.TV else None
+    return single_meta_season
+
+
+def _parse_tmdb_media_type(raw_type: object) -> Optional[MediaType]:
+    """
+    把投影返回的影视类型字段规范为电影或电视剧枚举。
+
+    :param raw_type: 投影结果中的 ``media_type`` 原始值
+    :return: 电影或电视剧枚举；无法识别或非影视类型时返回 None
+    """
+    parsed = (
+        raw_type
+        if isinstance(raw_type, MediaType)
+        else MediaType.from_agent(str(raw_type or ""))
+    )
+    return parsed if parsed in (MediaType.MOVIE, MediaType.TV) else None
+
+
+def available_tmdb_seasons(
+    converted: MediaInfo,
+    tmdbinfo: Optional[Mapping[str, Any]] = None,
+) -> set[int]:
+    """
+    收集 TMDB 识别结果中已列出的合法季号集合，用于校验目标季是否存在。
+
+    :param converted: TMDB 完整识别得到的媒体对象
+    :param tmdbinfo: 投影步骤返回的原始 TMDB 字典，可为 None
+    :return: 已确认存在的季号集合；结果未提供季清单时返回空集合
+    """
+    seasons: set[int] = {
+        season for season in (converted.seasons or {})
+        if _valid_season_number(season) is not None
+    }
+    for item in converted.season_info or ():
+        if isinstance(item, Mapping):
+            season_num = _valid_season_number(item.get("season_number"))
+            if season_num is not None:
+                seasons.add(season_num)
+    if seasons or not tmdbinfo:
+        return seasons
+    raw_seasons = tmdbinfo.get("seasons")
+    if not isinstance(raw_seasons, Sequence) or isinstance(raw_seasons, (str, bytes)):
+        return set()
+    for item in raw_seasons:
+        if isinstance(item, Mapping):
+            season_num = _valid_season_number(item.get("season_number"))
+            if season_num is not None:
+                seasons.add(season_num)
+    return seasons
+
+
+def _preserve_origin_media_fields(
+    converted: MediaInfo,
+    origin_source: MediaSource,
+    origin_id: str,
+    source_media: Optional[MediaInfo],
+) -> None:
+    """
+    在转换后的 TMDB 媒体对象上回填缺失的原来源外链标识，保持 TMDB 主身份不变。
+
+    :param converted: 转换并识别完成的 TMDB 媒体对象
+    :param origin_source: 转换前的原媒体来源
+    :param origin_id: 转换前的原来源原生标识
+    :param source_media: 转换前的原媒体对象，可为空
+    """
+    source_field_map: dict[MediaSource, tuple[str, bool]] = {
+        MediaSource.Douban: ("douban_id", False),
+        MediaSource.Bangumi: ("bangumi_id", True),
+        MediaSource.AniList: ("anilist_id", True),
+        MediaSource.IMDb: ("imdb_id", False),
+        MediaSource.TVDB: ("tvdb_id", True),
+    }
+    target = source_field_map.get(origin_source)
+    if target is not None:
+        field_name, is_numeric = target
+        if not getattr(converted, field_name, None):
+            if is_numeric:
+                if origin_id.isdigit():
+                    setattr(converted, field_name, int(origin_id))
+            else:
+                setattr(converted, field_name, origin_id)
+    if source_media is None:
+        return
+    for field_name in _AUXILIARY_EXTERNAL_ID_FIELDS:
+        if not getattr(converted, field_name, None):
+            value = getattr(source_media, field_name, None)
+            if value:
+                setattr(converted, field_name, value)
+
+
+def _validate_converted_tmdb_media(
+    converted: object,
+    *,
+    expected_tmdb_id: str,
+    expected_mtype: Optional[MediaType],
+    episode_group: Optional[str],
+    candidate_meta: MetaBase,
+    tmdbinfo: Mapping[str, Any],
+    origin_source: MediaSource,
+    origin_id: str,
+) -> Optional[MediaInfo]:
+    """
+    核验转换后的 TMDB 媒体对象与原目标在身份、类型、剧集组和电视剧季号上是否可靠一致。
+
+    :param converted: TMDB 完整识别返回的对象
+    :param expected_tmdb_id: 投影给出的目标 TMDB ID
+    :param expected_mtype: 原媒体确定的影视类型；未限定时为 None
+    :param episode_group: 请求保留的剧集组标识；未指定时为 None
+    :param candidate_meta: 已补齐缺失季号的候选元数据
+    :param tmdbinfo: 投影步骤返回的原始 TMDB 字典
+    :param origin_source: 原媒体来源，用于告警日志定位
+    :param origin_id: 原来源原生标识，用于告警日志定位
+    :return: 通过可靠性校验的 TMDB 媒体对象；任一条件不满足时返回 None
+    """
+    if not isinstance(converted, MediaInfo):
+        logger.warning(
+            f"手动下载未能识别转换后的 TMDB {expected_tmdb_id}，保留原身份 {origin_source.value}:{origin_id}"
+        )
+        return None
+    converted_source, converted_id = resolve_media_identity(media=converted)
+    if converted_source != MediaSource.TMDB or converted_id != expected_tmdb_id:
+        logger.warning(
+            f"手动下载识别结果与目标 TMDB {expected_tmdb_id} 不一致，保留原身份 {origin_source.value}:{origin_id}"
+        )
+        return None
+    if expected_mtype is not None and converted.type != expected_mtype:
+        logger.warning(
+            f"手动下载转换后的 TMDB {expected_tmdb_id} 类型（{converted.type}）与原目标（{expected_mtype}）冲突，"
+            f"保留原身份 {origin_source.value}:{origin_id}"
+        )
+        return None
+    if converted.type == MediaType.TV:
+        if episode_group and converted.episode_group != episode_group:
+            logger.warning(
+                f"手动下载转换后的 TMDB {expected_tmdb_id} 未能应用剧集组 {episode_group}，"
+                f"保留原身份 {origin_source.value}:{origin_id}"
+            )
+            return None
+        requested_seasons = explicit_meta_seasons(candidate_meta)
+        available_seasons = available_tmdb_seasons(converted, tmdbinfo)
+        if available_seasons and requested_seasons:
+            missing_seasons = [season for season in requested_seasons if season not in available_seasons]
+            if missing_seasons:
+                logger.warning(
+                    f"手动下载转换后的 TMDB {expected_tmdb_id} 季列表未包含目标季 {missing_seasons}，"
+                    f"保留原身份 {origin_source.value}:{origin_id}"
+                )
+                return None
+    return converted
+
+
+def _project_tmdb_payload(
+    media_chain: Any,
+    *,
+    media_source: MediaSource,
+    media_id: str,
+    expected_mtype: Optional[MediaType],
+    query_season: Optional[int],
+) -> Optional[tuple[Mapping[str, Any], str, Optional[MediaType]]]:
+    """
+    调用共享跨来源投影获取 TMDB 标识与类型，失败或类型冲突时记录告警并返回 None。
+
+    :param media_chain: 提供 ``convert_media_identity`` 的媒体链对象
+    :param media_source: 已规范化的非 TMDB 媒体来源
+    :param media_id: 已规范化的来源原生标识
+    :param expected_mtype: 已确认的影视类型；未限定时为 None
+    :param query_season: 传给投影接口的电视剧季号；电影或未指定时为 None
+    :return: ``(原始投影字典, TMDB ID, 最终识别类型)``；无法可靠投影时返回 None
+    """
+    convert_identity = getattr(media_chain, "convert_media_identity", None)
+    if not callable(convert_identity):
+        return None
+    convert_kwargs: dict[str, Any] = {
+        "target_source": MediaSource.TMDB,
+        "media_source": media_source,
+        "media_id": media_id,
+        "season": query_season,
+    }
+    if expected_mtype is not None:
+        convert_kwargs["mtype"] = expected_mtype
+    try:
+        tmdbinfo = convert_identity(**convert_kwargs)
+    except Exception as err:
+        logger.warning(
+            f"手动下载将 {media_source.value}:{media_id} 转换为 TMDB 主身份失败，保留原身份：{err}"
+        )
+        return None
+    if not isinstance(tmdbinfo, dict):
+        logger.warning(
+            f"手动下载未能将 {media_source.value}:{media_id} 映射到 TMDB 主身份，保留原身份"
+        )
+        return None
+    tmdb_id = tmdbinfo.get("id")
+    if not tmdb_id or isinstance(tmdb_id, bool):
+        logger.warning(
+            f"手动下载转换 {media_source.value}:{media_id} 未返回有效 TMDB ID，保留原身份"
+        )
+        return None
+    tmdb_mtype = _parse_tmdb_media_type(tmdbinfo.get("media_type"))
+    if expected_mtype is not None and tmdb_mtype is not None and tmdb_mtype != expected_mtype:
+        logger.warning(
+            f"手动下载转换 {media_source.value}:{media_id} 类型冲突（原：{expected_mtype.value}，"
+            f"映射：{tmdb_mtype.value}），保留原身份"
+        )
+        return None
+    return tmdbinfo, str(tmdb_id), expected_mtype or tmdb_mtype
+
+
+def convert_download_identity_to_tmdb(
+    media_chain: Any,
+    metainfo: MetaBase,
+    media_source: MediaSource,
+    media_id: str,
+    *,
+    source_media: Optional[MediaInfo] = None,
+    mtype: Optional[MediaType] = None,
+    episode_group: Optional[str] = None,
+) -> Optional[tuple[MetaBase, MediaInfo, dict[str, JsonData]]]:
+    """
+    复用订阅同款跨来源映射将非 TMDB 影视下载目标转换为完整 TMDB 主身份。
+
+    转换仅在命中有效 TMDB 映射、二次完整识别成功且通过类型、电视剧季号与剧集组核验时生效；
+    任一步骤失败均保持传入的 ``metainfo`` 与 ``source_media`` 不受污染并返回 None。
+    成功时会保留种子自身解析的季号与选集，并在返回对象与来源追溯字典中保留原来源信息。
+
+    :param media_chain: 媒体链实例，需提供 ``convert_media_identity`` 与 ``recognize_media``
+    :param metainfo: 种子标题解析出的元数据，转换失败时不会被修改
+    :param media_source: 原媒体来源
+    :param media_id: 原来源原生标识
+    :param source_media: 已知的原媒体对象；无媒体上下文入口为 None
+    :param mtype: 显式影视类型约束；省略时优先读取 ``source_media.type``
+    :param episode_group: 显式剧集组标识；省略时回退到原媒体或元数据中的剧集组
+    :return: ``(候选元数据, 完整 TMDB 媒体对象, 原来源追溯字典)``；不适用或不可靠时返回 None
+    """
+    normalized_source, normalized_id = resolve_media_identity(
+        media_source=media_source,
+        media_id=media_id,
+    )
+    if not normalized_source or not normalized_id or normalized_source == MediaSource.TMDB:
+        return None
+    expected_mtype = mtype or (
+        source_media.type
+        if source_media is not None and source_media.type in (MediaType.MOVIE, MediaType.TV)
+        else None
+    )
+    if source_media is not None and expected_mtype not in (MediaType.MOVIE, MediaType.TV):
+        return None
+    effective_episode_group = (
+        episode_group
+        or (source_media.episode_group if source_media is not None else None)
+        or getattr(metainfo, "episode_group", None)
+    )
+    query_season = _resolve_conversion_query_season(
+        metainfo, normalized_source, source_media, expected_mtype,
+    )
+    projected = _project_tmdb_payload(
+        media_chain,
+        media_source=normalized_source,
+        media_id=normalized_id,
+        expected_mtype=expected_mtype,
+        query_season=query_season,
+    )
+    if projected is None:
+        return None
+    tmdbinfo, tmdb_id, target_mtype = projected
+    candidate_meta = deepcopy(metainfo)
+    if target_mtype == MediaType.TV and not explicit_meta_seasons(candidate_meta):
+        projected_season = _valid_season_number(tmdbinfo.get("season"))
+        fallback_season = (
+            projected_season
+            if projected_season is not None
+            else _extract_source_media_season(source_media)
+        )
+        if fallback_season is not None:
+            candidate_meta.begin_season = fallback_season
+            if getattr(candidate_meta, "total_season", 0) == 0:
+                candidate_meta.total_season = 1
+    recognize_kwargs: dict[str, Any] = {
+        "meta": candidate_meta,
+        "mtype": target_mtype,
+        "media_source": MediaSource.TMDB,
+        "media_id": tmdb_id,
+    }
+    if effective_episode_group:
+        recognize_kwargs["episode_group"] = effective_episode_group
+    try:
+        raw_converted = media_chain.recognize_media(**recognize_kwargs)
+    except Exception as err:
+        logger.warning(
+            f"手动下载识别转换后的 TMDB {tmdb_id} 失败，保留原身份 {normalized_source.value}:{normalized_id}：{err}"
+        )
+        return None
+    converted = _validate_converted_tmdb_media(
+        raw_converted,
+        expected_tmdb_id=tmdb_id,
+        expected_mtype=expected_mtype,
+        episode_group=effective_episode_group,
+        candidate_meta=candidate_meta,
+        tmdbinfo=tmdbinfo,
+        origin_source=normalized_source,
+        origin_id=normalized_id,
+    )
+    if converted is None:
+        return None
+    _preserve_origin_media_fields(converted, normalized_source, normalized_id, source_media)
+    origin_media: dict[str, JsonData] = {
+        "media_source": normalized_source.value,
+        "media_id": normalized_id,
+    }
+    logger.info(
+        f"手动下载主身份已由 {normalized_source.value}:{normalized_id} 转换为 TMDB {tmdb_id}：{converted.title_year}"
+    )
+    return candidate_meta, converted, origin_media
 
 
 @dataclass(frozen=True, slots=True)
@@ -746,6 +1165,24 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             delivered[key] = delivered.get(key, False) or Path(item.dest).is_file()
         return delivered
 
+    @staticmethod
+    def _sync_context_after_download_event(
+        context: Context,
+        torrent: TorrentInfo,
+    ) -> Optional[tuple[TorrentInfo, Union[MediaInfo, MusicInfo], MetaBase]]:
+        """
+        在 ``ResourceDownload`` 事件返回后重新读取上下文，保证插件替换后的媒体与元数据生效。
+
+        :param context: 已派发过 ``ResourceDownload`` 事件的下载上下文
+        :param torrent: 事件派发前的种子对象，用作 ``context.torrent_info`` 未修改时的回退
+        :return: 同步后的 ``(种子, 媒体, 元数据)``；上下文缺失有效媒体或元数据时返回 None
+        """
+        media, meta = context.media_info, context.meta_info
+        if not isinstance(media, (MediaInfo, MusicInfo)) or meta is None:
+            return None
+        updated_torrent = context.torrent_info if context.torrent_info is not None else torrent
+        return updated_torrent, media, meta
+
     def _prepare_download_single(
         self,
         *,
@@ -766,7 +1203,6 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         torrent, media, meta = context.torrent_info, context.media_info, context.meta_info
         if torrent is None or media is None or meta is None:
             return None, "下载上下文缺少媒体、元数据或种子信息"
-        site_downloader = torrent.site_downloader
         supplemented_media = MediaChain().supplement_tmdb_info(media, meta)
         if not isinstance(supplemented_media, (MediaInfo, MusicInfo)):
             return None, "媒体信息补全失败"
@@ -777,6 +1213,11 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         )
         if event_error:
             return None, event_error
+        synced = self._sync_context_after_download_event(context, torrent)
+        if synced is None:
+            return None, "下载上下文缺少媒体或元数据信息"
+        torrent, media, meta = synced
+        site_downloader = torrent.site_downloader
         download_episodes = episode_rules.format_ranges(list(episodes)) if episodes else None
         if episodes is not None:
             context.selected_episodes = sorted(set(episodes))

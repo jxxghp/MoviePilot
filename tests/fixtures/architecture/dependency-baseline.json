@@ -978,8 +978,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10594,
-  "edge_sha256": "b2ea0244a1a2d0a0e8aeb1aee7a143d5cb54f4ea0e234e49a4fb431acab4a807",
+  "edge_count": 10598,
+  "edge_sha256": "993e3c59261342f22092792ee5c363c7f76552106841d3f3b26ce2f9239e4ad0",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2693,6 +2693,7 @@
     "app.api.endpoints.download -> app.application.site.query",
     "app.api.endpoints.download -> app.chain",
     "app.api.endpoints.download -> app.chain.download",
+    "app.api.endpoints.download -> app.chain.download.submission",
     "app.api.endpoints.download -> app.chain.media",
     "app.api.endpoints.download -> app.domain",
     "app.api.endpoints.download -> app.domain.authorization",
@@ -5137,6 +5138,7 @@
     "app.chain.download.submission -> app.domain.episode",
     "app.chain.download.submission -> app.domain.meta",
     "app.chain.download.submission -> app.domain.meta.metabase",
+    "app.chain.download.submission -> app.domain.metainfo",
     "app.chain.download.submission -> app.domain.torrent",
     "app.chain.download.submission -> app.foundation",
     "app.chain.download.submission -> app.foundation.url",
@@ -5146,6 +5148,7 @@
     "app.chain.download.submission -> app.runtime.locks",
     "app.chain.download.submission -> app.runtime.log",
     "app.chain.download.submission -> app.schemas",
+    "app.chain.download.submission -> app.schemas.common",
     "app.chain.download.submission -> app.schemas.download",
     "app.chain.download.submission -> app.schemas.event",
     "app.chain.download.submission -> app.schemas.exception",
@@ -5201,6 +5204,7 @@
     "app.chain.interaction -> app.chain",
     "app.chain.interaction -> app.chain.base",
     "app.chain.interaction -> app.chain.download",
+    "app.chain.interaction -> app.chain.download.submission",
     "app.chain.interaction -> app.chain.media",
     "app.chain.interaction -> app.chain.music_interaction",
     "app.chain.interaction -> app.chain.music_interaction.music",

@@ -139,6 +139,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             episode_group=media.episode_group,
             note={**self._build_download_note(source, media, meta),
                   **({"subscription_download": context.subscription_download} if context.subscription_download else {}),
+                  **({"origin_media": context.origin_media} if getattr(context, "origin_media", None) else {}),
                   torrent_rules.CONFIRMED_SELECTION_NOTE_KEY: self._confirmed_task_selection(
                       previous_selection, downloader=downloader, accepted_files=accepted_files, episodes=episodes,
                       custom_words=custom_words, context=context, task_action=task_action,

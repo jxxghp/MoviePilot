@@ -4,7 +4,7 @@
 
 from dataclasses import replace
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -19,10 +19,12 @@ from app.chain.message import MessageChain
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
 from app.runtime.events import EventManager
 
 # 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.schemas import IncomingMessage, TransferDirectoryConf  # pylint: disable=no-name-in-module
+from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
@@ -2408,3 +2410,239 @@ def test_get_download_dirs_keeps_matching_tv_category_dir():
         "动画下载",
     ]
     assert download_dirs[0].save_path == "rclone:/media/anime"
+
+
+def test_torrent_selection_converts_douban_context_to_tmdb_when_recognize_source_is_tmdb():
+    """
+    消息交互选中豆瓣来源资源且全局识别源为 TMDB 时，应转换为 TMDB 主身份并保留原搜索项。
+    """
+    chain = MediaInteractionChain()
+    douban_media = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="36847425",
+        douban_id="36847425",
+        type=MediaType.MOVIE,
+        title="可能的爱",
+        year="2026",
+    )
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 1483525,
+            "media_type": MediaType.MOVIE,
+            "title": "可能的爱",
+            "release_date": "2026-01-01",
+        }
+    )
+    context = Context(
+        meta_info=MetaInfo("Possible.Love.2026.1080p"),
+        media_info=douban_media,
+        torrent_info=TorrentInfo(title="Possible.Love.2026.1080p"),
+    )
+    request = media_interaction_manager.create_or_replace(
+        user_id="10099",
+        channel=NotificationChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        action="Search",
+        keyword="可能的爱",
+        title="可能的爱",
+        meta=_build_meta("可能的爱"),
+        items=[context],
+    )
+    request.phase = "torrent"
+
+    fake_media_chain = MagicMock()
+    fake_media_chain.convert_media_identity.return_value = {
+        "id": 1483525,
+        "media_type": MediaType.MOVIE,
+    }
+    fake_media_chain.recognize_media.return_value = tmdb_media
+
+    with (
+        patch("app.chain.interaction.is_tmdb_recognize_source", return_value=True),
+        patch("app.chain.interaction.MediaChain", return_value=fake_media_chain),
+        patch("app.chain.interaction.DirectoryHelper.get_download_dirs", return_value=[]),
+        patch(
+            "app.chain.interaction.DownloadChain.download_single",
+            return_value="hash-tmdb",
+        ) as download_single,
+    ):
+        handled = chain.handle_text_interaction(
+            channel=NotificationChannel.Telegram,
+            source="telegram-test",
+            userid="10099",
+            username="tester",
+            text="1",
+        )
+
+    assert handled
+    submitted = download_single.call_args.args[0]
+    assert submitted is not context
+    assert submitted.media_info is tmdb_media
+    assert submitted.media_info.media_source == MediaSource.TMDB
+    assert submitted.media_info.media_id == "1483525"
+    assert submitted.media_info.douban_id == "36847425"
+    assert submitted.origin_media == {"media_source": "douban", "media_id": "36847425"}
+    # 原搜索列表中的条目保持原身份不被原地篡改。
+    assert context.media_info is douban_media
+
+
+def test_auto_download_converts_douban_tv_batch_and_remaps_no_exists_key():
+    """
+    交互自动择优下载豆瓣剧集时，应同步转换批量上下文和缺集键，避免下载与补订身份不一致。
+    """
+    chain = MediaInteractionChain()
+    douban_tv = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        type=MediaType.TV,
+        title="绝望写手 第三季",
+        year="2024",
+    )
+    tmdb_tv = MediaInfo(
+        tmdb_info={
+            "id": 124101,
+            "media_type": MediaType.TV,
+            "name": "绝望写手",
+            "seasons": [
+                {"season_number": 1, "episode_count": 10},
+                {"season_number": 2, "episode_count": 8},
+                {"season_number": 3, "episode_count": 9},
+            ],
+        }
+    )
+    candidate = Context(
+        meta_info=MetaInfo("Hacks.E01-E09.1080p", mtype=MediaType.TV),
+        media_info=douban_tv,
+        torrent_info=TorrentInfo(title="Hacks.E01-E09.1080p"),
+    )
+    request = media_interaction_manager.create_or_replace(
+        user_id="10100",
+        channel=NotificationChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        action="Search",
+        keyword="绝望写手",
+        title="绝望写手 第三季",
+        meta=MetaInfo("绝望写手", mtype=MediaType.TV),
+        items=[candidate],
+    )
+    request.current_media = douban_tv
+    no_exists = {
+        "douban:35932853": {
+            3: NotExistMediaInfo(season=3, episodes=[], total_episode=9, start_episode=1),
+        }
+    }
+    fake_media_chain = MagicMock()
+    fake_media_chain.convert_media_identity.return_value = {
+        "id": 124101,
+        "media_type": MediaType.TV,
+        "season": 3,
+    }
+    fake_media_chain.recognize_media.return_value = tmdb_tv
+
+    with (
+        patch("app.chain.interaction.is_tmdb_recognize_source", return_value=True),
+        patch("app.chain.interaction.MediaChain", return_value=fake_media_chain),
+        patch(
+            "app.chain.interaction.DownloadChain.batch_download",
+            return_value=([candidate], {}),
+        ) as batch_download,
+    ):
+        chain._auto_download(
+            request=request,
+            cache_list=[candidate],
+            channel=NotificationChannel.Telegram,
+            source="telegram-test",
+            userid="10100",
+            username="tester",
+            no_exists=no_exists,
+        )
+
+    batch_download.assert_called_once()
+    kwargs = batch_download.call_args.kwargs
+    assert list(kwargs["no_exists"].keys()) == ["tmdb:124101"]
+    assert 3 in kwargs["no_exists"]["tmdb:124101"]
+    remapped = kwargs["contexts"][0]
+    assert remapped.media_info is tmdb_tv
+    assert remapped.meta_info.begin_season == 3
+    assert remapped.origin_media == {"media_source": "douban", "media_id": "35932853"}
+    assert candidate.media_info is douban_tv
+
+
+def test_auto_download_keeps_origin_identity_when_tmdb_seasons_incompatible():
+    """
+    交互自动择优下载的目标缺集季号不在转换后的 TMDB 季清单内时，应整批保留原身份不改写缺集键。
+    """
+    chain = MediaInteractionChain()
+    douban_tv = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        type=MediaType.TV,
+        title="绝望写手",
+        year="2024",
+    )
+    tmdb_tv = MediaInfo(
+        tmdb_info={
+            "id": 124101,
+            "media_type": MediaType.TV,
+            "name": "绝望写手",
+            "seasons": [
+                {"season_number": 1, "episode_count": 10},
+                {"season_number": 2, "episode_count": 8},
+            ],
+        }
+    )
+    candidate = Context(
+        meta_info=MetaInfo("Hacks.S03E01-E09.1080p", mtype=MediaType.TV),
+        media_info=douban_tv,
+        torrent_info=TorrentInfo(title="Hacks.S03E01-E09.1080p"),
+    )
+    request = media_interaction_manager.create_or_replace(
+        user_id="10101",
+        channel=NotificationChannel.Telegram,
+        source="telegram-test",
+        username="tester",
+        action="Search",
+        keyword="绝望写手",
+        title="绝望写手",
+        meta=MetaInfo("绝望写手", mtype=MediaType.TV),
+        items=[candidate],
+    )
+    request.current_media = douban_tv
+    no_exists = {
+        "douban:35932853": {
+            3: NotExistMediaInfo(season=3, episodes=[], total_episode=9, start_episode=1),
+        }
+    }
+    fake_media_chain = MagicMock()
+    fake_media_chain.convert_media_identity.return_value = {
+        "id": 124101,
+        "media_type": MediaType.TV,
+    }
+    fake_media_chain.recognize_media.return_value = tmdb_tv
+
+    with (
+        patch("app.chain.interaction.is_tmdb_recognize_source", return_value=True),
+        patch("app.chain.interaction.MediaChain", return_value=fake_media_chain),
+        patch(
+            "app.chain.interaction.DownloadChain.batch_download",
+            return_value=([candidate], {}),
+        ) as batch_download,
+    ):
+        chain._auto_download(
+            request=request,
+            cache_list=[candidate],
+            channel=NotificationChannel.Telegram,
+            source="telegram-test",
+            userid="10101",
+            username="tester",
+            no_exists=no_exists,
+        )
+
+    batch_download.assert_called_once()
+    kwargs = batch_download.call_args.kwargs
+    assert list(kwargs["no_exists"].keys()) == ["douban:35932853"]
+    assert kwargs["contexts"][0] is candidate
+    assert kwargs["contexts"][0].media_info is douban_tv
+    assert kwargs["contexts"][0].origin_media is None

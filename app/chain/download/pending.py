@@ -411,6 +411,7 @@ class DownloadPendingOwner(_DownloadOwnerBase):
             "userid": userid,
             "channel": channel.value if channel else None,
             "subscription_download": context.subscription_download,
+            "origin_media": context.origin_media,
             "downloader_scope": self._download_scope(downloader, torrent),
             "user_specified": user_specified,
             "confirmed_full_coverage": bool(getattr(context, "confirmed_full_coverage", False)),
@@ -865,6 +866,9 @@ class DownloadPendingOwner(_DownloadOwnerBase):
         raw_sub_download = payload.get("subscription_download")
         if isinstance(raw_sub_download, Mapping):
             context.subscription_download = _thaw_dict(raw_sub_download)
+        raw_origin_media = payload.get("origin_media")
+        if isinstance(raw_origin_media, Mapping):
+            context.origin_media = _thaw_dict(raw_origin_media)
         raw_selected = payload.get("selected_episodes")
         if isinstance(raw_selected, (list, tuple)):
             context.selected_episodes = [

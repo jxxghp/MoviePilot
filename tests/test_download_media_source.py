@@ -550,3 +550,341 @@ def test_download_add_skips_conversion_when_source_is_already_tmdb(monkeypatch) 
     media_chain.convert_media_identity.assert_not_called()
     assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource.TMDB
     assert media_chain.recognize_media.call_args.kwargs["media_id"] == "1101383"
+    assert download_chain.download_single.call_args.kwargs["context"].origin_media is None
+
+
+def test_download_with_douban_movie_media_converts_to_tmdb_and_keeps_origin_trace(
+    monkeypatch,
+) -> None:
+    """
+    RECOGNIZE_SOURCE=themoviedb 时，从豆瓣电影详情页发起的手动下载应转为 TMDB 主身份并保留原来源追溯。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 1483525,
+            "media_type": MediaType.MOVIE,
+            "title": "可能的爱",
+            "release_date": "2026-01-01",
+        }
+    )
+    media_chain = Mock()
+    media_chain.convert_media_identity.return_value = {
+        "id": 1483525,
+        "media_type": MediaType.MOVIE,
+        "title": "可能的爱",
+    }
+    media_chain.recognize_media.return_value = tmdb_media
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-douban-movie"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.download(
+        media_in=schemas.MediaInfo(
+            media_source=MediaSource.Douban,
+            media_id="36847425",
+            douban_id="36847425",
+            type=MediaType.MOVIE.value,
+            title="可能的爱",
+            year="2026",
+        ),
+        torrent_in=schemas.TorrentInfo(title="Possible.Love.2026.1080p.WEB-DL"),
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    media_chain.convert_media_identity.assert_called_once_with(
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource.Douban,
+        media_id="36847425",
+        mtype=MediaType.MOVIE,
+        season=None,
+    )
+    assert media_chain.recognize_media.call_args.kwargs["media_source"] == MediaSource.TMDB
+    assert media_chain.recognize_media.call_args.kwargs["media_id"] == "1483525"
+    assert media_chain.recognize_media.call_args.kwargs["mtype"] == MediaType.MOVIE
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info is tmdb_media
+    assert context.media_info.media_source == MediaSource.TMDB
+    assert context.media_info.media_id == "1483525"
+    assert context.media_info.douban_id == "36847425"
+    assert context.origin_media == {
+        "media_source": "douban",
+        "media_id": "36847425",
+    }
+
+
+def test_download_with_douban_tv_media_fills_missing_season_and_preserves_episodes(
+    monkeypatch,
+) -> None:
+    """
+    从豆瓣季条目发起手动下载且种子标题缺季号时，应补齐季号、保留选集并核验 TMDB 季列表。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 124101,
+            "media_type": MediaType.TV,
+            "name": "绝望写手",
+            "first_air_date": "2021-05-13",
+            "seasons": [
+                {"season_number": 1, "episode_count": 10},
+                {"season_number": 2, "episode_count": 8},
+                {"season_number": 3, "episode_count": 9},
+            ],
+        }
+    )
+    media_chain = Mock()
+    media_chain.convert_media_identity.return_value = {
+        "id": 124101,
+        "media_type": MediaType.TV,
+        "season": 3,
+    }
+    media_chain.recognize_media.return_value = tmdb_media
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-douban-tv"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.download(
+        media_in=schemas.MediaInfo(
+            media_source=MediaSource.Douban,
+            media_id="35932853",
+            type=MediaType.TV.value,
+            title="绝望写手 第三季",
+            year="2024",
+        ),
+        torrent_in=schemas.TorrentInfo(title="Hacks.E01-E05.1080p.WEB-DL"),
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    media_chain.convert_media_identity.assert_called_once_with(
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource.Douban,
+        media_id="35932853",
+        mtype=MediaType.TV,
+        season=3,
+    )
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info is tmdb_media
+    assert context.meta_info.begin_season == 3
+    assert context.meta_info.episode_list == [1, 2, 3, 4, 5]
+    assert context.media_info.douban_id == "35932853"
+    assert context.origin_media == {
+        "media_source": "douban",
+        "media_id": "35932853",
+    }
+
+
+def test_download_with_bangumi_tv_rejects_unlisted_tmdb_season_and_keeps_origin(
+    monkeypatch,
+) -> None:
+    """
+    TMDB 季列表未包含目标季时视为不可靠转换，应保留原 Bangumi 身份且不污染原元数据。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 99901,
+            "media_type": MediaType.TV,
+            "name": "测试分季动画",
+            "seasons": [{"season_number": 1, "episode_count": 24}],
+        }
+    )
+    media_chain = Mock()
+    media_chain.convert_media_identity.return_value = {
+        "id": 99901,
+        "media_type": MediaType.TV,
+        "season": 2,
+    }
+    media_chain.recognize_media.return_value = tmdb_media
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-keep-bangumi"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.download(
+        media_in=schemas.MediaInfo(
+            media_source=MediaSource.Bangumi,
+            media_id="40000",
+            bangumi_id=40000,
+            type=MediaType.TV.value,
+            title="测试分季动画 第二季",
+            year="2025",
+        ),
+        torrent_in=schemas.TorrentInfo(title="Test.Anime.S02E01-E03.1080p.WEB-DL"),
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info.media_source == MediaSource.Bangumi
+    assert context.media_info.media_id == "40000"
+    assert context.meta_info.media_source is None
+    assert context.meta_info.media_id is None
+    assert context.meta_info.begin_season == 2
+    assert context.meta_info.episode_list == [1, 2, 3]
+    assert context.origin_media is None
+
+
+def test_download_with_episode_group_preserves_on_match_and_falls_back_on_mismatch(
+    monkeypatch,
+) -> None:
+    """
+    剧集组在 TMDB 识别成功应用时应完整保留，未能应用时应回退原身份避免静默丢失。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+
+    def run_case(applied_group: str | None):
+        """
+        构造不同剧集组返回结果并执行一次带剧集组的手动下载。
+        """
+        tmdb_media = MediaInfo(
+            tmdb_info={
+                "id": 88801,
+                "media_type": MediaType.TV,
+                "name": "剧集组测试剧",
+            }
+        )
+        tmdb_media.seasons = {1: [1, 2, 3], 2: [1, 2, 3]}
+        tmdb_media.episode_group = applied_group
+        media_chain = Mock()
+        media_chain.convert_media_identity.return_value = {
+            "id": 88801,
+            "media_type": MediaType.TV,
+            "season": 2,
+        }
+        media_chain.recognize_media.return_value = tmdb_media
+        download_chain = Mock()
+        download_chain.download_single.return_value = "download-eg"
+        monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+        monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+        response = download_endpoint.download(
+            media_in=schemas.MediaInfo(
+                media_source=MediaSource.Bangumi,
+                media_id="50001",
+                type=MediaType.TV.value,
+                title="剧集组测试剧",
+                episode_group="eg-custom-1",
+            ),
+            torrent_in=schemas.TorrentInfo(title="Group.Show.S02E01.1080p"),
+            current_user=SimpleNamespace(name="tester"),
+        )
+        assert response.success is True
+        return media_chain, download_chain.download_single.call_args.kwargs["context"]
+
+    ok_media_chain, ok_context = run_case("eg-custom-1")
+    assert ok_media_chain.recognize_media.call_args.kwargs["episode_group"] == "eg-custom-1"
+    assert ok_context.media_info.media_source == MediaSource.TMDB
+    assert ok_context.media_info.media_id == "88801"
+    assert ok_context.media_info.episode_group == "eg-custom-1"
+    assert ok_context.media_info.bangumi_id == 50001
+    assert ok_context.origin_media == {"media_source": "bangumi", "media_id": "50001"}
+
+    fallback_media_chain, fallback_context = run_case(None)
+    assert fallback_media_chain.recognize_media.call_args.kwargs["episode_group"] == "eg-custom-1"
+    assert fallback_context.media_info.media_source == MediaSource.Bangumi
+    assert fallback_context.media_info.media_id == "50001"
+    assert fallback_context.media_info.episode_group == "eg-custom-1"
+    assert fallback_context.origin_media is None
+
+
+def test_download_rejects_media_type_conflict_and_skips_when_recognize_source_not_tmdb(
+    monkeypatch,
+) -> None:
+    """
+    影视类型冲突或全局识别源非 TMDB 时，手动下载均应保留原来源身份。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    media_chain = Mock()
+    media_chain.convert_media_identity.return_value = {
+        "id": 77701,
+        "media_type": MediaType.MOVIE,
+    }
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-conflict"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    conflict_resp = download_endpoint.download(
+        media_in=schemas.MediaInfo(
+            media_source=MediaSource.Douban,
+            media_id="36000001",
+            type=MediaType.TV.value,
+            title="类型冲突剧",
+        ),
+        torrent_in=schemas.TorrentInfo(title="Conflict.Show.S01E01.1080p"),
+        current_user=SimpleNamespace(name="tester"),
+    )
+    assert conflict_resp.success is True
+    media_chain.recognize_media.assert_not_called()
+    conflict_ctx = download_chain.download_single.call_args.kwargs["context"]
+    assert conflict_ctx.media_info.media_source == MediaSource.Douban
+    assert conflict_ctx.media_info.media_id == "36000001"
+    assert conflict_ctx.origin_media is None
+
+    _patch_recognize_source(monkeypatch, "douban")
+    media_chain.reset_mock()
+    non_tmdb_resp = download_endpoint.download(
+        media_in=schemas.MediaInfo(
+            media_source=MediaSource.Douban,
+            media_id="36847425",
+            type=MediaType.MOVIE.value,
+            title="可能的爱",
+        ),
+        torrent_in=schemas.TorrentInfo(title="Possible.Love.2026.1080p"),
+        current_user=SimpleNamespace(name="tester"),
+    )
+    assert non_tmdb_resp.success is True
+    media_chain.convert_media_identity.assert_not_called()
+    kept_ctx = download_chain.download_single.call_args.kwargs["context"]
+    assert kept_ctx.media_info.media_source == MediaSource.Douban
+    assert kept_ctx.media_info.media_id == "36847425"
+    assert kept_ctx.origin_media is None
+
+
+def test_download_add_records_origin_media_and_preserves_imdb_field_on_conversion(
+    monkeypatch,
+) -> None:
+    """
+    无媒体信息下载发生 IMDb 到 TMDB 转换时，应在上下文与媒体对象中保留原来源追溯信息。
+    """
+    _patch_recognize_source(monkeypatch, "themoviedb")
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 1101383,
+            "media_type": MediaType.MOVIE,
+            "title": "逃出绝命街",
+        }
+    )
+    media_chain = Mock()
+    media_chain.convert_media_identity.return_value = {
+        "id": 1101383,
+        "media_type": MediaType.MOVIE,
+    }
+    media_chain.recognize_media.return_value = tmdb_media
+    download_chain = Mock()
+    download_chain.download_single.return_value = "download-origin"
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: download_chain)
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(
+            title="The.End.of.Oak.Street.2026.1080p.WEB-DL",
+            media_source=MediaSource.IMDb,
+            media_id="tt27165187",
+        ),
+        media_source=MediaSource.IMDb,
+        media_id="tt27165187",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    context = download_chain.download_single.call_args.kwargs["context"]
+    assert context.media_info.imdb_id == "tt27165187"
+    assert context.origin_media == {
+        "media_source": "imdb",
+        "media_id": "tt27165187",
+    }

@@ -5,6 +5,7 @@
 import math
 import re
 from collections.abc import Mapping
+from copy import copy, deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.application.directory import DirectoryHelper
@@ -15,6 +16,12 @@ from app.application.messaging.media import (
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
+from app.chain.download.submission import (
+    available_tmdb_seasons,
+    convert_download_identity_to_tmdb,
+    explicit_meta_seasons,
+    is_tmdb_recognize_source,
+)
 from app.chain.media import MediaChain
 from app.chain.music_interaction.music import (
     format_music_candidate,
@@ -39,7 +46,7 @@ from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.system import TransferDirectoryConf
-from app.schemas.types import MediaType, NotificationChannel
+from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
 
 class MediaInteractionChain(ChainBase):
@@ -871,7 +878,7 @@ class MediaInteractionChain(ChainBase):
             )
             return
 
-        context: Context = page_items[page_index - 1]
+        context: Context = self._prepare_manual_download_context(page_items[page_index - 1])
         if self._prompt_download_dir_selection(
                 request=request,
                 download_mode="single",
@@ -891,6 +898,43 @@ class MediaInteractionChain(ChainBase):
             username=owner_username or username,
             user_specified=True,
         )
+
+    @staticmethod
+    def _prepare_manual_download_context(context: Context) -> Context:
+        """
+        在全局识别源为 TMDB 时，把交互选中的非 TMDB 影视下载上下文转换为 TMDB 主身份。
+
+        未触发转换或转换不可靠时直接返回原上下文对象，不修改搜索缓存列表中的原项。
+
+        :param context: 用户在消息交互中选中的单个资源上下文
+        :return: 转换后的浅拷贝上下文，或无需转换时的原上下文
+        """
+        media, meta = context.media_info, context.meta_info
+        if (
+            not isinstance(media, MediaInfo)
+            or meta is None
+            or media.type not in (MediaType.MOVIE, MediaType.TV)
+            or not is_tmdb_recognize_source()
+        ):
+            return context
+        source, media_id = resolve_media_identity(media=media)
+        if not source or not media_id or source == MediaSource.TMDB:
+            return context
+        converted = convert_download_identity_to_tmdb(
+            MediaChain(),
+            meta,
+            source,
+            media_id,
+            source_media=media,
+        )
+        if converted is None:
+            return context
+        converted_meta, converted_media, origin_media = converted
+        updated = copy(context)
+        updated.meta_info = converted_meta
+        updated.media_info = converted_media
+        updated.origin_media = origin_media
+        return updated
 
     def _prompt_download_dir_selection(
             self,
@@ -1083,6 +1127,123 @@ class MediaInteractionChain(ChainBase):
         request.pending_no_exists = None
         request.pending_torrent_page = 0
 
+    @staticmethod
+    def _batch_seasons_supported(
+        converted_media: MediaInfo,
+        matching_contexts: List[Context],
+        no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]],
+        old_key: str,
+    ) -> bool:
+        """
+        核验批量自动下载涉及的缺集季号和候选显式季号是否均存在于转换后的 TMDB 剧集中。
+
+        :param converted_media: 转换得到的 TMDB 媒体对象
+        :param matching_contexts: 绑定了原非 TMDB 身份的候选上下文
+        :param no_exists: 调用方已计算的缺集映射，可为空
+        :param old_key: 原非 TMDB 身份对应的媒体键
+        :return: 所有目标季均受支持或无需校验时返回 True，存在缺失季时返回 False
+        """
+        if converted_media.type != MediaType.TV:
+            return True
+        available = available_tmdb_seasons(converted_media)
+        if not available:
+            return True
+        if no_exists and old_key in no_exists:
+            if any(season not in available for season in no_exists[old_key]):
+                return False
+        for item in matching_contexts:
+            item_meta = item.meta_info
+            if item_meta is None:
+                continue
+            if any(season not in available for season in explicit_meta_seasons(item_meta)):
+                return False
+        return True
+
+    @classmethod
+    def _prepare_auto_download_batch(
+        cls,
+        current_media: MediaInfo | MusicInfo,
+        meta: MetaBase,
+        cache_list: List[Context],
+        no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]],
+    ) -> Tuple[
+        MediaInfo | MusicInfo,
+        MetaBase,
+        List[Context],
+        Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]],
+    ]:
+        """
+        在自动择优下载前同步转换目标媒体、候选列表和缺集映射的 TMDB 主身份。
+
+        批内目标键、待确认防重键和补建订阅共享同一身份；任一季号核验失败时整批回退原身份。
+
+        :param current_media: 当前交互选中的媒体目标
+        :param meta: 本次搜索请求元数据
+        :param cache_list: 待提交的候选资源上下文列表
+        :param no_exists: 已计算的缺集映射，可为 None
+        :return: 转换或回退后的 ``(目标媒体, 元数据, 候选列表, 缺集映射)``
+        """
+        if (
+            not isinstance(current_media, MediaInfo)
+            or current_media.type not in (MediaType.MOVIE, MediaType.TV)
+            or not is_tmdb_recognize_source()
+        ):
+            return current_media, meta, cache_list, no_exists
+        source, media_id = resolve_media_identity(media=current_media)
+        if not source or not media_id or source == MediaSource.TMDB:
+            return current_media, meta, cache_list, no_exists
+        converted = convert_download_identity_to_tmdb(
+            MediaChain(),
+            meta,
+            source,
+            media_id,
+            source_media=current_media,
+        )
+        if converted is None:
+            return current_media, meta, cache_list, no_exists
+        converted_meta, converted_media, origin_media = converted
+        old_key = build_media_key(source, media_id)
+        new_key = build_media_key(MediaSource.TMDB, converted_media.media_id)
+        matching_contexts = [
+            item for item in cache_list
+            if resolve_media_identity(media=item.media_info) == (source, media_id)
+        ]
+        if not new_key or not cls._batch_seasons_supported(converted_media, matching_contexts, no_exists, old_key):
+            logger.warning(
+                f"交互自动下载转换后的 TMDB {converted_media.media_id} 季信息与候选或缺集不兼容，"
+                f"保留原身份 {source.value}:{media_id}"
+            )
+            return current_media, meta, cache_list, no_exists
+        converted_seasons = explicit_meta_seasons(converted_meta)
+        fill_season = converted_seasons[0] if len(converted_seasons) == 1 else None
+        remapped_contexts: List[Context] = []
+        for item in cache_list:
+            if resolve_media_identity(media=item.media_info) != (source, media_id):
+                remapped_contexts.append(item)
+                continue
+            updated_item = copy(item)
+            updated_item.media_info = converted_media
+            updated_item.origin_media = origin_media
+            if (
+                converted_media.type == MediaType.TV
+                and updated_item.meta_info is not None
+                and fill_season is not None
+                and not explicit_meta_seasons(updated_item.meta_info)
+            ):
+                updated_meta = deepcopy(updated_item.meta_info)
+                updated_meta.begin_season = fill_season
+                if getattr(updated_meta, "total_season", 0) == 0:
+                    updated_meta.total_season = 1
+                updated_item.meta_info = updated_meta
+            remapped_contexts.append(updated_item)
+        remapped_no_exists = no_exists
+        if no_exists is not None and old_key in no_exists:
+            remapped_no_exists = {
+                (new_key if key == old_key else key): value
+                for key, value in no_exists.items()
+            }
+        return converted_media, converted_meta, remapped_contexts, remapped_no_exists
+
     def _auto_download(
             self,
             request: PendingMediaInteraction,
@@ -1110,6 +1271,12 @@ class MediaInteractionChain(ChainBase):
                 title="下载交互信息已失效，请重新搜索媒体",
             )
             return
+        current_media, meta, cache_list, no_exists = self._prepare_auto_download_batch(
+            current_media,
+            meta,
+            cache_list,
+            no_exists,
+        )
         downloadchain = DownloadChain()
         if no_exists is None:
             exist_flag, no_exists = downloadchain.get_no_exists_info(

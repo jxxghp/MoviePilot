@@ -386,6 +386,7 @@ def _restore_context(payload: dict[str, Any]) -> Context:
             payload.get("media_recognize_fail_count") or 0
         ),
         subscription_download=payload.get("subscription_download"),
+        origin_media=payload.get("origin_media"),
         selected_episodes=payload.get("selected_episodes"),
         resource_source=str(payload.get("resource_source") or "unknown"),
         match_source=str(payload.get("match_source") or "unknown"),
