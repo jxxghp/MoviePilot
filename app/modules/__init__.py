@@ -482,18 +482,23 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         """
         获取默认服务配置的名称。
 
-        :return: 优先从所有下载器中查找配置了默认的下载器，如果没有配置，则获取第一个下载器名称
+        只从已启用的下载器配置中选择：已禁用配置不会被实例化，若命中已禁用项会导致所有走默认
+        下载器的请求找不到实例。
+
+        :return: 优先从已启用的下载器中查找配置了默认的下载器，如果没有配置，则获取第一个已启用的下载器名称
         """
         # 优先查找默认配置
         if self._default_config_name:
             return self._default_config_name
 
-        configs = ServiceConfigHelper.get_downloader_configs()
+        configs = [
+            conf for conf in ServiceConfigHelper.get_downloader_configs() if conf.enabled
+        ]
         for conf in configs:
             if conf.default:
                 self._default_config_name = conf.name
                 return self._default_config_name
-        # 如果没有默认配置，返回第一个配置的名称
+        # 如果没有默认配置，返回第一个已启用配置的名称
         first_conf = next(iter(configs), None)
         self._default_config_name = first_conf.name if first_conf else None
         return self._default_config_name
