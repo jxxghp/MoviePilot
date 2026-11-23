@@ -146,8 +146,7 @@ def test_build_media_library_path_matches_transhandler_dest_dir(
     assert TransHandler.get_dest_dir(mediainfo, directory) == expected
 
 
-@pytest.mark.asyncio
-async def test_preview_name_returns_category_dir_file_and_library_path(
+def test_preview_name_returns_category_dir_file_and_library_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
@@ -162,7 +161,7 @@ async def test_preview_name_returns_category_dir_file_and_library_path(
 
     captured_recognize: dict[str, Any] = {}
 
-    async def _fake_recognize_by_meta(
+    def _fake_recognize_by_meta(
         self: Any,
         metainfo: Any,
         *,
@@ -193,7 +192,7 @@ async def test_preview_name_returns_category_dir_file_and_library_path(
     )
     monkeypatch.setattr(
         transfer_endpoint.MediaChain,
-        "async_recognize_by_meta",
+        "recognize_by_meta",
         _fake_recognize_by_meta,
     )
     monkeypatch.setattr(
@@ -226,7 +225,7 @@ async def test_preview_name_returns_category_dir_file_and_library_path(
         ),
     )
 
-    response = await transfer_endpoint.preview_name(
+    response = transfer_endpoint.preview_name(
         title="/downloads/The.Legend.of.1900.1998.1080p.mkv",
         subtitle="海上钢琴师",
         custom_words="屏蔽词",
@@ -251,8 +250,7 @@ async def test_preview_name_returns_category_dir_file_and_library_path(
     )
 
 
-@pytest.mark.asyncio
-async def test_preview_name_handles_tv_season_and_no_configured_directory(
+def test_preview_name_handles_tv_season_and_no_configured_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
@@ -263,7 +261,7 @@ async def test_preview_name_handles_tv_season_and_no_configured_directory(
     mediainfo.title = "测试剧集"
     mediainfo.year = "2026"
 
-    async def _fake_recognize_by_meta(self: Any, metainfo: Any, **_kwargs: Any) -> MediaInfo:
+    def _fake_recognize_by_meta(self: Any, metainfo: Any, **_kwargs: Any) -> MediaInfo:
         """
         返回测试电视剧信息。
         """
@@ -277,7 +275,7 @@ async def test_preview_name_handles_tv_season_and_no_configured_directory(
     )
     monkeypatch.setattr(
         transfer_endpoint.MediaChain,
-        "async_recognize_by_meta",
+        "recognize_by_meta",
         _fake_recognize_by_meta,
     )
     monkeypatch.setattr(
@@ -296,7 +294,7 @@ async def test_preview_name_handles_tv_season_and_no_configured_directory(
     )
     monkeypatch.setattr(DirectoryHelper, "get_dir", lambda self, media=None, src_path=None: None)
 
-    response = await transfer_endpoint.preview_name(title="Test.Show.S01E01.1080p")
+    response = transfer_endpoint.preview_name(title="Test.Show.S01E01.1080p")
 
     assert response.success is True
     assert response.data is not None
@@ -308,8 +306,7 @@ async def test_preview_name_handles_tv_season_and_no_configured_directory(
     assert response.data.full_path is None
 
 
-@pytest.mark.asyncio
-async def test_preview_name_handles_music_disc_directory(
+def test_preview_name_handles_music_disc_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
@@ -323,7 +320,7 @@ async def test_preview_name_handles_music_disc_directory(
         media_id="8f97b17d-1234-4abc-9def-1234567890ab",
     )
 
-    async def _fake_recognize_by_meta(self: Any, metainfo: Any, **_kwargs: Any) -> MusicInfo:
+    def _fake_recognize_by_meta(self: Any, metainfo: Any, **_kwargs: Any) -> MusicInfo:
         """
         返回测试音乐信息。
         """
@@ -337,7 +334,7 @@ async def test_preview_name_handles_music_disc_directory(
     )
     monkeypatch.setattr(
         transfer_endpoint.MediaChain,
-        "async_recognize_by_meta",
+        "recognize_by_meta",
         _fake_recognize_by_meta,
     )
     monkeypatch.setattr(
@@ -356,7 +353,7 @@ async def test_preview_name_handles_music_disc_directory(
     )
     monkeypatch.setattr(DirectoryHelper, "get_dir", lambda self, media=None, src_path=None: None)
 
-    response = await transfer_endpoint.preview_name(
+    response = transfer_endpoint.preview_name(
         title="周杰伦 - 晴天.flac",
         media_source=MediaSource.MusicBrainz,
         media_id="8f97b17d-1234-4abc-9def-1234567890ab",
@@ -370,15 +367,14 @@ async def test_preview_name_handles_music_disc_directory(
     assert response.data.rename_path == "周杰伦/叶惠美/Disc 1/01 - 晴天.flac"
 
 
-@pytest.mark.asyncio
-async def test_preview_name_reports_unrecognized_and_template_errors(
+def test_preview_name_reports_unrecognized_and_template_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     未识别媒体或模板渲染失败时应返回结构化失败响应，而非抛出未处理异常。
     """
 
-    async def _fake_unrecognized(self: Any, metainfo: Any, **_kwargs: Any) -> None:
+    def _fake_unrecognized(self: Any, metainfo: Any, **_kwargs: Any) -> None:
         """
         模拟识别失败返回空媒体信息。
         """
@@ -392,11 +388,11 @@ async def test_preview_name_reports_unrecognized_and_template_errors(
     )
     monkeypatch.setattr(
         transfer_endpoint.MediaChain,
-        "async_recognize_by_meta",
+        "recognize_by_meta",
         _fake_unrecognized,
     )
 
-    unrecognized_response = await transfer_endpoint.preview_name(title="Unknown.Release")
+    unrecognized_response = transfer_endpoint.preview_name(title="Unknown.Release")
     assert unrecognized_response.success is False
     assert "未识别到媒体信息" in (unrecognized_response.message or "")
 
@@ -404,7 +400,7 @@ async def test_preview_name_reports_unrecognized_and_template_errors(
     mediainfo.type = MediaType.MOVIE
     mediainfo.title = "海上钢琴师"
 
-    async def _fake_recognized(self: Any, metainfo: Any, **_kwargs: Any) -> MediaInfo:
+    def _fake_recognized(self: Any, metainfo: Any, **_kwargs: Any) -> MediaInfo:
         """
         模拟识别成功以验证模板渲染失败路径。
         """
@@ -413,7 +409,7 @@ async def test_preview_name_reports_unrecognized_and_template_errors(
 
     monkeypatch.setattr(
         transfer_endpoint.MediaChain,
-        "async_recognize_by_meta",
+        "recognize_by_meta",
         _fake_recognized,
     )
     monkeypatch.setattr(
@@ -439,6 +435,6 @@ async def test_preview_name_reports_unrecognized_and_template_errors(
         _raise_template_error,
     )
 
-    error_response = await transfer_endpoint.preview_name(title="海上钢琴师.1998.mkv")
+    error_response = transfer_endpoint.preview_name(title="海上钢琴师.1998.mkv")
     assert error_response.success is False
     assert "重命名模板渲染失败" in (error_response.message or "")

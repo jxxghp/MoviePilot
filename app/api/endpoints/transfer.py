@@ -2,7 +2,6 @@
 提供文件整理任务查询、执行、重试和控制接口。
 """
 
-import asyncio
 import re
 from pathlib import Path
 from typing import Annotated, Any, List, Literal, Optional, Union
@@ -760,7 +759,7 @@ def _resolve_preview_library_path(
     summary="预览整理后的名称与目标目录",
     response_model=_SchemaResponse[_SchemaTransferNamePreviewData],
 )
-async def preview_name(
+def preview_name(
     title: str,
     subtitle: Optional[str] = None,
     custom_words: Optional[str] = None,
@@ -792,7 +791,7 @@ async def preview_name(
         custom_words=custom_words,
         media_source=media_source,
     )
-    mediainfo = await MediaChain().async_recognize_by_meta(
+    mediainfo = MediaChain().recognize_by_meta(
         metainfo,
         media_source=media_source,
         mtype=mtype,
@@ -812,8 +811,7 @@ async def preview_name(
     category_path = "/".join(category_resolution.path) or None
 
     try:
-        new_path = await asyncio.to_thread(
-            TransferChain().recommend_name,
+        new_path = TransferChain().recommend_name(
             meta=metainfo,
             mediainfo=mediainfo,
         )

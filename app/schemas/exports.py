@@ -583,6 +583,7 @@ SCHEMA_EXPORTS = {
     'TransferManualReviewSourceData': ('app.schemas.transfer', 'TransferManualReviewSourceData'),
     'TransferManualReviewStepData': ('app.schemas.transfer', 'TransferManualReviewStepData'),
     'TransferManualReviewTaskData': ('app.schemas.transfer', 'TransferManualReviewTaskData'),
+    'TransferNamePreviewData': ('app.schemas.transfer', 'TransferNamePreviewData'),
     'TransferOverwriteCheckEventData': ('app.schemas.event', 'TransferOverwriteCheckEventData'),
     'TransferQueueFileItemData': ('app.schemas.transfer', 'TransferQueueFileItemData'),
     'TransferQueueItemData': ('app.schemas.transfer', 'TransferQueueItemData'),
