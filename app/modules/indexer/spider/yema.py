@@ -46,6 +46,7 @@ class YemaSpider:
         :param indexer: 合并站点认证信息后的索引配置
         """
         indexer = indexer or {}
+        self._connection_site = dict(indexer)
         self._name = indexer.get("name") or "YemaPT"
         self._site_url = str(indexer.get("domain") or "https://www.yemapt.org/").rstrip("/")
         self._proxy = get_runtime_setting('PROXY') if indexer.get("proxy") else None
@@ -78,6 +79,51 @@ class YemaSpider:
             "Accept": "application/json, text/plain, */*",
             "User-Agent": self._user_agent,
         }
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        验证 AuthKey；主站未配置时在本适配器内兼容旧 Cookie 会话检测。
+
+        :return: 认证是否有效及可展示的连接或认证失败原因
+        """
+        if not self._api_key:
+            if self._connection_site.get("legacy_cookie_test"):
+                return self._test_cookie_connection()
+            return False, "未配置 AuthKey"
+        with RequestUtils(headers=self._request_headers(), ua=self._user_agent,
+                          proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="POST", url=f"{self._site_url}/openApi/user/fetchBasicInfo.json", json={}, allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            payload = response.json() or {}
+            if isinstance(payload, dict) and payload.get("success") and isinstance(payload.get("data"), dict) \
+                    and payload["data"].get("id"):
+                return True, "连接成功"
+            return False, payload.get("errorMessage") or "AuthKey 已过期或无效" if isinstance(payload, dict) else "AuthKey 已过期或无效"
+
+    def _test_cookie_connection(self) -> Tuple[bool, str]:
+        """
+        兼容主站旧 Cookie 登录接口，不把 AuthKey 认证失败回退成网页成功。
+
+        :return: 旧会话是否有效及失败原因
+        """
+        with RequestUtils(headers={
+            "User-Agent": self._user_agent, "Content-Type": "application/json", "Accept": "application/json, text/plain, */*",
+        }, cookies=self._connection_site.get("cookie") or "", ua=self._user_agent,
+            proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=f"{self._site_url}/api/consumer/fetchSelfDetail", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            payload = response.json()
+            if isinstance(payload, dict) and payload.get("success"):
+                return True, "连接成功"
+            return False, "Cookie已过期"
 
     def _build_params(
         self,

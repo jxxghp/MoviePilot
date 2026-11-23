@@ -40,7 +40,10 @@ from app.api.response import (
 )
 from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
-from app.application.plugin.catalog import get_plugin_catalog_query
+from app.application.plugin.catalog import (
+    PluginMarketUnavailableError,
+    get_plugin_catalog_query,
+)
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.data import PluginDataQueryService, PluginDataSummaryService
 from app.application.plugin.folders import remove_plugin_from_folders
@@ -196,7 +199,10 @@ def _verify_plugin_static_file_access(
 
 
 @router.get(
-    "/", summary="所有插件", response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True}
+    "/",
+    summary="所有插件",
+    response_model=List[_SchemaPlugin],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def all_plugins(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
@@ -206,12 +212,34 @@ async def all_plugins(
     max_results: Annotated[Optional[int], Query(ge=1, le=200)] = None,
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-    response: Response = None,  # type: ignore[assignment]
+    response: Response = cast(Response, None),
 ) -> List[_SchemaPlugin]:
     """
     查询插件清单；未指定分页或限量时返回完整清单。
+
+    市场视图没有在线候选且有索引读取失败时返回依赖失败。
+
+    :param _: 已认证的超级管理员
+    :param state: 插件范围，支持 installed、market 或 all
+    :param force: 是否强制刷新插件市场
+    :param query: 可选的插件名称或描述检索词
+    :param max_results: 旧版调用可选的结果数上限
+    :param page: 可选的页码
+    :param count: 可选的每页数量
+    :param response: 用于写入完整结果数量的 HTTP 响应
+    :return: 按范围、检索条件和分页参数筛选后的插件列表
+    :raises HTTPException: 市场依赖读取失败且无在线候选时返回 HTTP 424
     """
-    plugins = await get_plugin_catalog_query().query(state=state or "all", force=force)
+    try:
+        plugins = await get_plugin_catalog_query().query(
+            state=state or "all",
+            force=force,
+        )
+    except PluginMarketUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_424_FAILED_DEPENDENCY,
+            detail=str(error),
+        ) from error
     if query:
         plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
     if response is not None:

@@ -20,7 +20,7 @@ from app.runtime.log import logger
 from app.runtime.rate import QpsRateLimiter, RateStats
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
-from app.schemas.exception import StorageQueryError
+from app.schemas.exception import StorageOperationUncertainError, StorageQueryError
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
@@ -693,11 +693,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         普通上传会创建新的 OSS 分片任务，凭据过期时对当前分片或完成请求最多刷新重试 5 次。
         取消不主动中止远端分片任务；分片阶段的其他异常向上传播。
         成功后若索引尚不可见，按目标路径合成文件项，不保证此时已有远端文件标识。
+        完成回调失败时先核验目标身份，无法确认则交由调用方人工复核，禁止自动重传。
 
         :param target_dir: 带文件标识的目标目录
         :param local_path: 本地源文件，完成后保留
         :param new_name: 目标文件名；为空时沿用源文件名
-        :return: 上传或已存在的目标项；初始化、完成回调失败或取消时返回 None
+        :return: 上传或已存在的目标项；初始化、明确上传失败或取消时返回 None
+        :raises StorageOperationUncertainError: 数据可能已上传，但无法确认 115 目标文件身份
         """
         # oss2 连同阿里云 SDK 约 19MB，存储发现会导入全部存储实现，上传时才按需导入
         import oss2
@@ -944,20 +946,15 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                         bucket = refresh_upload_bucket()
                         continue
                     raise
-            if result.status != 200:
+            if result.status not in (200, 203):
                 logger.warn(f"【115】{target_name} 上传失败，错误码: {result.status}")
                 return None
-            try:
-                callback_result = result.resp.response.json()
-            except Exception as e:
-                logger.error(f"【115】{target_name} 上传完成回调解析失败: {str(e)}")
-                return None
-            logger.debug(f"【115】上传 Step 6 回调结果：{callback_result}")
-            if not callback_result or not callback_result.get("state"):
-                logger.warn(f"【115】{target_name} 上传完成回调失败: {callback_result}")
-                return None
-            logger.info(f"【115】{target_name} 上传成功")
+            return self.__resolve_upload_completion(
+                result, target_path, local_path, file_size, file_sha1,
+            )
         except oss2.exceptions.OssError as e:
+            if e.status == 203 or e.code == "CallbackFailed":
+                return self.__verify_completed_upload(target_path, file_size, file_sha1)
             if e.code == "FileAlreadyExists":
                 logger.warn(f"【115】{target_name} 已存在")
             else:
@@ -972,6 +969,86 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             f"【115】{target_name} 上传已完成但元数据暂不可见，使用目标路径构造整理结果"
         )
         return self.__build_uploaded_fileitem(target_path, local_path, file_size)
+
+    def __resolve_upload_completion(
+        self, result: Any, target_path: Path, local_path: Path,
+        file_size: int, file_sha1: str,
+    ) -> _SchemaFileItem:
+        """
+        解析 OSS 完成回调，回调失败时仅凭远端身份核验确认成功。
+
+        HTTP 203 表示 OSS 已保存对象但回调失败；缺失或无效回调同样不能证明 115 已登记文件。
+        只有明确成功的 HTTP 200 回调继续允许索引延迟时使用临时元数据。
+
+        :param result: OSS 完成请求返回的 200 或 203 响应
+        :param target_path: 上传请求指定的完整目标路径
+        :param local_path: 本地源文件，仅用于成功回执的兼容元数据
+        :param file_size: 已上传文件的精确字节数
+        :param file_sha1: 上传初始化使用的完整 SHA1
+        :return: 已确认的远端文件或明确成功回调对应的临时文件项
+        :raises StorageOperationUncertainError: 回调及远端查询无法确认目标身份
+        """
+        try:
+            callback_result = result.resp.response.json()
+        except Exception:
+            callback_result = None
+        if (result.status == 203 or not isinstance(callback_result, dict)
+                or not callback_result.get("state")):
+            logger.warn(
+                f"【115】{target_path.name} 上传完成回调未确认（HTTP {result.status}），正在核验远端文件"
+            )
+            callback_data = callback_result.get("data") if isinstance(callback_result, dict) else None
+            file_id = callback_data.get("file_id") if isinstance(callback_data, dict) else None
+            return self.__verify_completed_upload(target_path, file_size, file_sha1, file_id)
+        logger.info(f"【115】{target_path.name} 上传成功")
+        return self.get_item(target_path) or self.__build_uploaded_fileitem(
+            target_path, local_path, file_size,
+        )
+
+    def __verify_completed_upload(
+        self, target_path: Path, file_size: int, file_sha1: str,
+        file_id: Optional[Union[str, int]] = None,
+    ) -> _SchemaFileItem:
+        """
+        按目标目录和名称核验回调异常后的文件，不触发初始化、补传或源文件删除。
+
+        必须取得文件标识、文件类型、原名和精确大小；回调提供标识或远端提供 SHA1 时一并核对。
+        目录暂不可见、查询失败和身份不符均保留不确定性，不能当作上传未执行。
+
+        :param target_path: 上传指定的完整目标路径，路径查询同时限定目标目录
+        :param file_size: 本地上传内容的精确字节数
+        :param file_sha1: 上传初始化使用的完整 SHA1
+        :param file_id: 回调可用时返回的远端文件标识；未提供时不核对该项
+        :return: 身份核验通过的远端文件项
+        :raises StorageOperationUncertainError: 目标不可见、查询失败或文件身份不一致
+        """
+        try:
+            resp = self._request_api(
+                "POST", "/open/folder/get_info", data={"path": target_path.as_posix()},
+                no_error_log=True, accepted_codes=U115_GET_INFO_ACCEPTED_CODES,
+            )
+            data = resp.get("data") if resp and resp.get("state") else None
+            if not isinstance(data, dict) or not data.get("file_id"):
+                raise ValueError("目标文件元数据尚不可见")
+            if (str(data.get("file_category")) != "1"
+                    or data.get("file_name") != target_path.name
+                    or str(data.get("size_byte")) != str(file_size)):
+                raise ValueError("目标文件类型、名称或精确大小不一致")
+            if file_id is not None and str(data["file_id"]) != str(file_id):
+                raise ValueError("目标文件标识与回调不一致")
+            if data.get("sha1") and str(data["sha1"]).casefold() != file_sha1.casefold():
+                raise ValueError("目标文件 SHA1 不一致")
+            return _SchemaFileItem(
+                storage=self.schema.value, fileid=str(data["file_id"]),
+                path=target_path.as_posix(), type="file", name=target_path.name,
+                basename=target_path.stem, extension=target_path.suffix[1:] or None,
+                size=file_size, pickcode=data.get("pick_code"), modify_time=data.get("utime"),
+            )
+        except Exception as error:
+            raise StorageOperationUncertainError(
+                f"【115】{target_path} 上传可能已完成，但无法确认远端文件身份，"
+                f"已保留源文件，禁止自动重传，请人工复核：{error}"
+            ) from error
 
     def __build_uploaded_fileitem(
         self, target_path: Path, local_path: Path, file_size: int

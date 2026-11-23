@@ -49,7 +49,11 @@ def _load_subscribe_chain_class():
     chain_module.__path__ = []
 
     class _ChainBase:
-        subscription_repository = SimpleNamespace()
+        """
+        为隔离链测试提供空订阅仓储及动态修改事务接缝。
+        """
+
+        subscription_repository = SimpleNamespace(list=lambda: [], async_list=AsyncMock(return_value=[]))
 
         def __init__(self):
             """
@@ -638,7 +642,7 @@ def _load_subscribe_chain_class():
         保留存量单元测试按调用时替换 repository 的隔离接缝。
         """
 
-        subscription_repository = SimpleNamespace()
+        subscription_repository = SimpleNamespace(list=lambda: [], async_list=AsyncMock(return_value=[]))
 
         def __init__(self):
             """
@@ -3542,6 +3546,7 @@ class TestSubscribeProgressConsolidation:
             year="2026",
             media_source="themoviedb",
             media_id="31000",
+            episode_group=None,
             vote_average=9.5,
             overview="overview",
             imdb_id="tt1234567",

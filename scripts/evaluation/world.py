@@ -19,7 +19,7 @@ _QUERY_FIELDS = {
     "search.results": frozenset(),
     "subscription.list": _PAGINATION,
     "subscription.find": frozenset(
-        {"media_source", "season", "title", "music_type", "mtype", "year"}
+        {"media_source", "season", "title", "music_type", "mtype", "year", "episode_group"}
     ),
     "subscription.get": frozenset(),
     "subscription.add": frozenset(),
@@ -366,7 +366,7 @@ class EvaluationWorld:
             value = query.get(field)
             if value is not None and (type(value) is not int or value < 1 or (field == "count" and value > 200)):
                 return "分页参数必须为有效正整数，count 不得超过 200"
-        for field in ("name", "title", "music_type", "media_id", "media_source", "mtype", "year"):
+        for field in ("name", "title", "music_type", "media_id", "media_source", "mtype", "year", "episode_group"):
             if query.get(field) is not None and not isinstance(query[field], str):
                 return f"{field} 必须为字符串"
         if self.scenario.scenario_id in _LONG_CONTEXT_SCENARIOS:
@@ -454,6 +454,8 @@ class EvaluationWorld:
                 matched = row["media_source"] == query["media_source"] and row["media_id"] == path_params["media_id"]
                 matched = matched and (query.get("season") is None or row.get("season") == query["season"])
                 matched = matched and (query.get("music_type") is None or row.get("music_type") == query["music_type"])
+                matched = matched and (query.get("mtype") is None or row.get("type") == query["mtype"])
+                matched = matched and (query.get("episode_group") is None or row.get("episode_group") == query["episode_group"])
             if matched:
                 event["observations"].append({"kind": "subscription", "record": deepcopy(row)})
                 return _result("succeeded", "查询成功", row)

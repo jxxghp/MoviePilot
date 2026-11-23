@@ -76,6 +76,20 @@ def test_parse_result_marks_music_torrents(hddolby_spider):
     ]
 
 
+def test_parse_result_maps_hit_and_run(hddolby_spider):
+    """
+    hr 标记应映射为 hit_and_run，兼容数值、字符串和缺失字段。
+    """
+    results = hddolby_spider._HddolbySpider__parse_result([
+        {"id": 1, "name": "The Odyssey 2026 2160p", "category": 401, "size": 1024, "hr": 1},
+        {"id": 2, "name": "Example Movie 1080p", "category": 401, "size": 1024, "hr": 0},
+        {"id": 3, "name": "Example TV 1080p", "category": 402, "size": 1024, "hr": "1"},
+        {"id": 4, "name": "Example TV 2160p", "category": 402, "size": 1024},
+    ])
+
+    assert [torrent["hit_and_run"] for torrent in results] == [True, False, True, False]
+
+
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize(
     ("domain", "api_url", "expected_url"),

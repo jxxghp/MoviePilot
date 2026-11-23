@@ -14,6 +14,8 @@ class ToolTag(str, Enum):
     AgentTool = "agent_tool"
     # 读取信息的能力
     Read = "read"
+    # MoviePilot 与 PT 的临时参考知识
+    Knowledge = "knowledge"
     # 修改状态或产生外部副作用的能力
     Write = "write"
     # 涉及管理员操作的能力分类

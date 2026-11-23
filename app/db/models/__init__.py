@@ -16,6 +16,7 @@ _MODEL_EXPORTS = {
     "DownloadFailure": ("app.db.models.downloadfailure", "DownloadFailure"),
     "DownloadFiles": ("app.db.models.downloadhistory", "DownloadFiles"),
     "DownloadHistory": ("app.db.models.downloadhistory", "DownloadHistory"),
+    "DownloadPending": ("app.db.models.downloadpending", "DownloadPending"),
     "MediaServerItem": ("app.db.models.mediaserver", "MediaServerItem"),
     "Message": ("app.db.models.message", "Message"),
     "OutboxMessage": ("app.db.models.outbox", "OutboxMessage"),
@@ -77,6 +78,7 @@ def load_all_models() -> None:
     """
     显式导入全部 ORM 模型，供建表和 Alembic 元数据收集使用。
     """
+    import_module("app.db.models.authorization")
     for module_name, _ in dict.fromkeys(_MODEL_EXPORTS.values()):
         import_module(module_name)
 

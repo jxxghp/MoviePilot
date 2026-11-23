@@ -69,7 +69,7 @@ RESOURCE_VERSION_FLAG = "v3"
 # 提供商目录不可用时仍能提供常用平台的初始化默认值，不代替运行时能力目录。
 LLM_PROVIDER_DEFAULTS = {
     "deepseek": {
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "base_url": "https://api.deepseek.com",
     },
     "openai": {
@@ -300,6 +300,8 @@ LOCAL_FRONTEND_SERVICE_SCRIPT = textwrap.dedent(
     app.use(
       '/api',
       proxy(`${backendHost}:${backendPort}`, {
+        // 保留设备访问的主机名，避免播放清单生成后端回环地址。
+        preserveHostHdr: true,
         proxyReqPathResolver: req => `/api${req.url}`
       })
     )

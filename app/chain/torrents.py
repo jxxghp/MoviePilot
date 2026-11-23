@@ -2,22 +2,23 @@
 站点种子刷新、预识别缓存和订阅候选准备。
 """
 
-import re
-import traceback
+import threading
+import time
 from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 from app.application.configuration import get_configured_system_config
-from app.application.rss import RssHelper
+from app.application.rss import RssHelper, RssLinkResult, ensure_site_rss
+from app.application.site.observation import SiteSearchObservation, capture_site_search_observation
+from app.application.site.protocol import site_domain, torrent_resource_identity
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.site.throttle import site_request_cooldown
 from app.application.subscription.candidates import CandidateIndex
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
-from app.domain import site as site_rules
-from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -33,8 +34,14 @@ from app.schemas.types import MediaType, MessageType, NotificationChannel, Syste
 
 class TorrentsChain(ChainBase):
     """
-    站点首页或RSS种子处理链，服务于订阅、刷流等
+    站点首页或RSS种子处理链，服务于订阅、刷流等。
+
+    :cvar _refresh_sites_lock: 保护站点刷新准入集合的进程锁
+    :cvar _refreshing_sites: 仍在抓取或识别的站点，真实结束前不释放
     """
+
+    _refresh_sites_lock = threading.Lock()
+    _refreshing_sites: set[int] = set()
 
     _spider_file = "__torrents_cache__"
     _rss_file = "__rss_cache__"
@@ -346,25 +353,18 @@ class TorrentsChain(ChainBase):
 
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
-        获取站点RSS内容，返回种子清单，TTL缓存3分钟
+        获取站点 RSS 内容，补全缺失地址，并在明确过期后同轮恢复一次。
 
         :param domain: 站点域名
+        :return: 本轮获取的种子清单；普通网络故障不触发凭据更新
         """
         logger.info(f'开始获取站点 {domain} RSS ...')
         site = SitesHelper().get_indexer(domain)
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        rss_url = UrlUtils.normalize_http_url(site.get("rss"))
-        if rss_url is None:
-            logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
-            return []
-        rss_items = RssHelper().parse(rss_url, True if site.get("proxy") else False,
-                                      timeout=int(site.get("timeout") or 30),
-                                      ua=site.get("ua") if site.get("ua") else None)
+        rss_items = self._rss_items(domain, site)
         if rss_items is None:
-            # rss过期，尝试保留原配置生成新的rss
-            self.__renew_rss_url(domain=domain, site=site)
             return []
         if not isinstance(rss_items, list):
             logger.error(f'站点 {domain} RSS返回格式无效！')
@@ -406,6 +406,40 @@ class TorrentsChain(ChainBase):
         return ret_torrents
 
     @staticmethod
+    def _parse_rss_url(site: dict[str, Any], url: str) -> Union[List[dict[str, Any]], None, bool]:
+        """
+        使用当前站点的代理、超时和 User-Agent 读取订阅。
+        """
+        return RssHelper().parse(url, proxy=bool(site.get("proxy")), timeout=int(site.get("timeout") or 30),
+                                 ua=site.get("ua") or None)
+
+    def _recovered_rss_items(self, result: RssLinkResult, site: dict[str, Any]) -> Union[List[dict[str, Any]], bool]:
+        """
+        复用续期时的验证结果；并发手工改成新地址时最多补抓一次，不递归续期。
+        """
+        if not result.url:
+            return False
+        if result.items is not None:
+            return result.items
+        items = self._parse_rss_url(site, result.url)
+        return items if isinstance(items, list) else False
+
+    def _rss_items(self, domain: str, site: dict[str, Any]) -> Union[List[dict[str, Any]], None, bool]:
+        """
+        区分空配置、手工无效地址、明确过期和临时故障，限制每轮只恢复一次。
+        """
+        rss_url = UrlUtils.normalize_http_url(site.get("rss"))
+        if rss_url is None:
+            if str(site.get("rss") or "").strip():
+                logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
+                return None
+            return self._recovered_rss_items(self.__renew_rss_url(domain, site, expired=False), site)
+        items = self._parse_rss_url(site, rss_url)
+        if items is None:
+            return self._recovered_rss_items(self.__renew_rss_url(domain, site), site)
+        return items
+
+    @staticmethod
     def _music_browse_paths(site: dict[str, Any]) -> List[str]:
         """
         返回站点独立于默认浏览入口的音乐种子页面路径。
@@ -440,13 +474,16 @@ class TorrentsChain(ChainBase):
             self,
             domain: str,
             torrents: List[TorrentInfo],
+            observations: list[SiteSearchObservation],
     ) -> List[TorrentInfo]:
         """
-        追加抓取站点音乐专用入口的最新种子，并按种子链接去重后返回合并结果。
+        追加音乐专用入口并去重，逐页保存请求事实，避免后页限流抹掉前页的真实请求。
         """
         seen = {torrent.enclosure for torrent in torrents if torrent.enclosure}
         for page in range(2):
-            page_torrents = self.browse(domain=domain, page=page, mtype=MediaType.MUSIC)
+            with capture_site_search_observation() as observation:
+                page_torrents = self.browse(domain=domain, page=page, mtype=MediaType.MUSIC)
+            observations.append(observation)
             if not page_torrents:
                 # 某一页没有数据，说明已经到最后一页，停止获取
                 break
@@ -458,71 +495,130 @@ class TorrentsChain(ChainBase):
                 torrents.append(torrent)
         return torrents
 
-    def _refresh_indexer(
-            self,
-            indexer: dict[str, Any],
-            stype: str,
-            include_music: bool,
-            torrents_cache: Dict[str, List[Context]],
-            music_cache: Dict[str, List[Context]],
-    ) -> str:
+    def _fetch_refresh_resources(
+            self, indexer: dict[str, Any], stype: str, include_music: bool,
+    ) -> tuple[List[TorrentInfo], dict[str, object]]:
         """
-        抓取并写入单个站点的影视、音乐资源缓存。
+        在共享缓存锁外抓取站点页面，区分成功空页、失败和未发请求的限流。
         """
-        domain = site_rules.extract_domain(indexer.get("domain"))
-        if stype == "spider":
-            torrents: List[TorrentInfo] = []
-            for page in range(2):
-                page_torrents = self.browse(domain=domain, page=page)
-                if not page_torrents:
-                    break
-                torrents.extend(page_torrents)
-        else:
-            torrents = self.rss(domain=domain)
-        if include_music and self._music_browse_paths(indexer):
-            torrents = self.__append_music_browse_torrents(domain=domain, torrents=torrents)
-        torrents.sort(key=lambda item: item.pubdate or "", reverse=True)
-        music_torrents = [
-            item for item in torrents if item.category == MediaType.MUSIC.value
-        ][:self.runtime_config.refresh_batch_size]
-        torrents = [
-            item for item in torrents if item.category != MediaType.MUSIC.value
-        ][:self.runtime_config.refresh_batch_size]
-        if not torrents and not music_torrents:
-            logger.info(f'{indexer.get("name")} 没有获取到种子')
-            return domain
-        if self._is_no_cache_site(domain):
-            logger.info(
-                f'{indexer.get("name")} 有 {len(torrents) + len(music_torrents)} 个种子 (不缓存)'
-            )
-            torrents_cache[domain] = []
-            music_cache[domain] = []
-        else:
-            torrents = self._refresh_cached_torrents(torrents, torrents_cache.setdefault(domain, []))
-            music_torrents = self._refresh_cached_torrents(music_torrents, music_cache.setdefault(domain, []))
-        if not torrents and not music_torrents:
-            logger.info(f'{indexer.get("name")} 没有新种子')
-            return domain
-        logger.info(f'{indexer.get("name")} 有 {len(torrents) + len(music_torrents)} 个新种子')
-        for torrent in torrents + music_torrents:
-            if runtime_stop_state.is_system_stopped:
+        domain = site_domain(indexer.get("domain"))
+        torrents: List[TorrentInfo] = []
+        observations = []
+        for page in range(2 if stype == "spider" else 1):
+            with capture_site_search_observation() as observation:
+                page_torrents = self.browse(domain=domain, page=page) if stype == "spider" else self.rss(domain=domain)
+            observations.append(observation)
+            torrents.extend(page_torrents)
+            if not page_torrents or runtime_stop_state.is_system_stopped:
                 break
-            if not torrent.enclosure:
-                logger.warning(f"缺少种子链接，忽略处理: {torrent.title}")
-                continue
-            context = self._build_refresh_context(torrent, stype)
-            target_cache = music_cache if torrent.category == MediaType.MUSIC.value else torrents_cache
-            target_cache.setdefault(domain, []).append(context)
-            if len(target_cache[domain]) > self.runtime_config.torrent_cache_size:
-                target_cache[domain] = target_cache[domain][-self.runtime_config.torrent_cache_size:]
-        return domain
+        if include_music and self._music_browse_paths(indexer) and not runtime_stop_state.is_system_stopped:
+            torrents = self.__append_music_browse_torrents(domain, torrents, observations)
+        reported = [item for item in observations if item.outcome != "skipped"]
+        # RSS 和旧插件不报告观察事实时保留未知，不把空列表当作成功。
+        outcome = "success" if torrents else "unknown"
+        if reported:
+            outcome = next((item.outcome for item in reported if item.outcome != "success"), "success")
+        fact: dict[str, object] = {
+            "id": indexer.get("id"), "name": indexer.get("name"), "status": outcome,
+            "attempted": any(item.attempted for item in reported) if reported else True,
+            "retry_after": max(60.0, site_request_cooldown(indexer)),
+        }
+        return torrents, fact
+
+    def _refresh_site_cache(self, domain: str, stype: str) -> tuple[Dict[str, List[Context]], Dict[str, List[Context]]]:
+        """
+        在调用方持有短缓存锁时读取最新快照，仅清理本次站点的无效资源。
+        """
+        video_file, music_file = self._cache_file_pair(stype)
+        video, music = self.load_cache(video_file) or {}, self.load_cache(music_file) or {}
+        for cache in (video, music):
+            self._ensure_context_compatibility(cache, stype=stype)
+            cache[domain] = [context for context in cache.get(domain, []) if context.torrent_info
+                             and not TorrentHelper().is_invalid(context.torrent_info.enclosure)]
+        return video, music
+
+    def _select_refresh_resources(self, torrents: List[TorrentInfo]) -> tuple[List[TorrentInfo], List[TorrentInfo]]:
+        """
+        保持影视与音乐各自的处理配额，并优先处理新发布资源。
+        """
+        torrents.sort(key=lambda item: item.pubdate or "", reverse=True)
+        video = [item for item in torrents if item.category != MediaType.MUSIC.value]
+        music = [item for item in torrents if item.category == MediaType.MUSIC.value]
+        return video[:self.runtime_config.refresh_batch_size], music[:self.runtime_config.refresh_batch_size]
+
+    def _commit_refresh_resources(
+            self, domain: str, stype: str, resources: tuple[List[TorrentInfo], List[TorrentInfo]],
+            prepared: dict[tuple[object, ...], Context],
+    ) -> List[Context]:
+        """
+        重新读取并合并单站快照，保留并行站点写入及期间人工修正的识别结果。
+        """
+        with cache_mutation("torrent-snapshots"):
+            caches = self._refresh_site_cache(domain, stype)
+            for cache, torrents in zip(caches, resources):
+                if self._is_no_cache_site(domain) and any(resources):
+                    cache[domain] = []
+                for torrent in self._refresh_cached_torrents(torrents, cache[domain]):
+                    context = prepared.get(self._torrent_cache_key(torrent))
+                    if context is not None:
+                        cache[domain].append(context)
+                cache[domain] = cache[domain][-self.runtime_config.torrent_cache_size:]
+            for cache, filename in zip(caches, self._cache_file_pair(stype)):
+                self.save_cache(cache, filename, strict=True)
+            return list(caches[0][domain]) + list(caches[1][domain])
+
+    def refresh_site(
+            self, indexer: dict[str, Any], stype: str = "spider", include_music: bool = False,
+    ) -> tuple[str, List[Context], dict[str, object]]:
+        """
+        独占一个站点直至抓取、识别和缓存合并真实结束，其他站点可同时处理。
+
+        网络和媒体识别不持有共享缓存锁；只在读取与合并时短暂持锁。
+
+        :param indexer: 已选择的站点索引配置，不写入排程快照或日志
+        :param stype: 缓存与抓取模式，spider 或 rss
+        :param include_music: 是否追加音乐专用入口
+        :return: 站点域名、该站最新共享候选和不含凭据的执行事实
+        """
+        site_id = int(indexer["id"])
+        domain = site_domain(indexer.get("domain"))
+        with self._refresh_sites_lock:
+            busy = site_id in self._refreshing_sites
+            if not busy:
+                self._refreshing_sites.add(site_id)
+        if busy:
+            with cache_mutation("torrent-snapshots"):
+                caches = self._refresh_site_cache(domain, stype)
+            return domain, list(caches[0][domain]) + list(caches[1][domain]), {
+                "id": site_id, "name": indexer.get("name"),
+                "status": "deferred", "attempted": False, "retry_after": 60,
+            }
+        started = time.monotonic()
+        try:
+            torrents, fact = self._fetch_refresh_resources(indexer, stype, include_music)
+            resources = self._select_refresh_resources(torrents)
+            with cache_mutation("torrent-snapshots"):
+                caches = self._refresh_site_cache(domain, stype)
+            prepared: dict[tuple[object, ...], Context] = {}
+            for cache, items in zip(caches, resources):
+                cached = [] if self._is_no_cache_site(domain) else cache[domain]
+                for torrent in self._refresh_cached_torrents(items, cached):
+                    if runtime_stop_state.is_system_stopped:
+                        break
+                    prepared[self._torrent_cache_key(torrent)] = self._build_refresh_context(torrent, stype)
+            contexts = self._commit_refresh_resources(domain, stype, resources, prepared)
+            fact.update(candidates=len(contexts), new_candidates=len(prepared), seconds=time.monotonic() - started)
+            return domain, contexts, fact
+        finally:
+            with self._refresh_sites_lock:
+                self._refreshing_sites.remove(site_id)
 
     @staticmethod
     def _torrent_cache_key(torrent: TorrentInfo) -> tuple[object, ...]:
         """
         优先使用站点和种子 ID；缺少稳定身份的旧资源沿用标题、副标题去重。
         """
-        identity = torrent_rules.resource_identity(torrent)
+        identity = torrent_resource_identity(torrent)
         if identity:
             return ("resource", *identity)
         return "title", torrent.site, torrent.title, torrent.description
@@ -607,7 +703,6 @@ class TorrentsChain(ChainBase):
             context.media_recognize_fail_count = 1
         return context
 
-    @cache_mutation("torrent-snapshots")
     def refresh(
             self,
             stype: Optional[str] = None,
@@ -617,96 +712,42 @@ class TorrentsChain(ChainBase):
             site_observer: Optional[Callable[[dict[str, object]], None]] = None,
     ) -> Dict[str, List[Context]]:
         """
-        刷新站点最新资源并返回本轮可匹配的完整候选缓存。
+        刷新所选站点并合并共享候选，保留手工及插件入口的同步调用合同。
 
-        :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
-        :param sites: 强制指定站点ID列表，为空则读取设置的订阅站点
-        :param progress_callback: 资源刷新进度更新回调
-        :param include_music: 是否额外抓取站点的音乐专用浏览入口，服务音乐订阅
-        :param site_observer: 输出已检查站点和安全候选计数，不以空列表推断请求成功
+        :param stype: 强制指定 spider 或 rss，缺省使用当前订阅模式
+        :param sites: 所选站点；空列表沿用默认订阅站点或全部站点的兼容语义
+        :param progress_callback: 每个站点完成后更新进度
+        :param include_music: 是否追加音乐专用入口
+        :param site_observer: 接收各站点的请求、结果和候选事实
+        :return: 本次所选站点的最新共享候选
         """
-        if not stype:
-            stype = self.runtime_config.subscribe_mode
-
-        if not sites:
-            sites = get_configured_system_config().get(SystemConfigKey.RssSites) or []
-
-        # 读取缓存，影视与音乐分别独立存储
-        if stype == 'spider':
-            torrents_cache = self.load_cache(self._spider_file) or {}
-            music_cache = self.load_cache(self._music_spider_file) or {}
-        else:
-            torrents_cache = self.load_cache(self._rss_file) or {}
-            music_cache = self.load_cache(self._music_rss_file) or {}
-        self._ensure_context_compatibility(torrents_cache, stype=stype)
-        self._ensure_context_compatibility(music_cache, stype=stype)
-
-        # 缓存过滤掉无效种子（影视与音乐缓存分别处理）
-        for _cache in (torrents_cache, music_cache):
-            for _domain, _torrents in _cache.items():
-                _cache[_domain] = [_torrent for _torrent in _torrents
-                                   if not TorrentHelper().is_invalid(_torrent.torrent_info.enclosure)]
-
-        domains = []
-        indexers = [
-            indexer for indexer in SitesHelper().get_indexers()
-            if not sites or indexer.get("id") in sites
-        ]
-        total_indexers = len(indexers)
-        if progress_callback:
-            progress_callback(
-                value=0,
-                text=f"开始刷新站点资源，共 {total_indexers} 个站点 ...",
-                data={"total": total_indexers, "finished": 0},
-            )
+        stype = self._cache_type(stype)
+        indexers = self.refresh_indexers(sites)
+        candidates: Dict[str, List[Context]] = {}
         for index, indexer in enumerate(indexers, start=1):
             if runtime_stop_state.is_system_stopped:
                 break
             if progress_callback:
-                progress_callback(
-                    value=(index - 1) / total_indexers * 100 if total_indexers else 100,
-                    text=f"正在刷新站点资源（{index}/{total_indexers}）{indexer.get('name')} ...",
-                    data={
-                        "total": total_indexers,
-                        "finished": index - 1,
-                        "current": indexer.get("id"),
-                    },
-                )
-            domain = self._refresh_indexer(
-                indexer=indexer, stype=stype, include_music=include_music,
-                torrents_cache=torrents_cache, music_cache=music_cache,
-            )
-            domains.append(domain)
+                progress_callback(value=(index - 1) / len(indexers) * 100,
+                                  text=f"正在刷新站点资源（{index}/{len(indexers)}）{indexer.get('name')} ...",
+                                  data={"total": len(indexers), "finished": index - 1, "current": indexer.get("id")})
+            domain, contexts, fact = self.refresh_site(indexer, stype, include_music)
+            candidates[domain] = contexts
             if site_observer:
-                site_observer({"id": indexer.get("id"), "name": indexer.get("name"),
-                               "candidates": len(torrents_cache.get(domain, [])) + len(music_cache.get(domain, [])),
-                               "status": "checked"})
-
-        # 保存缓存到本地，影视与音乐分别存储
-        if stype == "spider":
-            self.save_cache(torrents_cache, self._spider_file)
-            self.save_cache(music_cache, self._music_spider_file)
-        else:
-            self.save_cache(torrents_cache, self._rss_file)
-            self.save_cache(music_cache, self._music_rss_file)
-
-        # 去除不在站点范围内的缓存种子
-        if sites and torrents_cache:
-            torrents_cache = {k: v for k, v in torrents_cache.items() if k in domains}
-        if sites and music_cache:
-            music_cache = {k: v for k, v in music_cache.items() if k in domains}
-
+                site_observer(fact)
         if progress_callback:
-            progress_callback(
-                value=100,
-                text="站点资源刷新完成",
-                data={"total": total_indexers, "finished": total_indexers},
-            )
+            progress_callback(value=100, text="站点资源刷新完成",
+                              data={"total": len(indexers), "finished": len(candidates)})
+        return candidates
 
-        return self._merge_torrent_caches(
-            {domain: list(contexts) for domain, contexts in torrents_cache.items()},
-            music_cache,
-        )
+    @staticmethod
+    def refresh_indexers(sites: Optional[List[int]]) -> list[dict[str, Any]]:
+        """
+        解析刷新入口共享的有效站点范围，空列表保留默认站点兼容语义。
+        """
+        if not sites:
+            sites = get_configured_system_config().get(SystemConfigKey.RssSites) or []
+        return [indexer for indexer in SitesHelper().get_indexers() if not sites or indexer.get("id") in sites]
 
     @staticmethod
     def _ensure_context_compatibility(
@@ -753,45 +794,22 @@ class TorrentsChain(ChainBase):
             return str(media_source)
         return "unknown"
 
-    def __renew_rss_url(self, domain: str, site: dict[str, Any]) -> None:
+    def __renew_rss_url(self, domain: str, site: dict[str, Any], *, expired: bool = True) -> RssLinkResult:
         """
-        保留原配置生成新的rss地址
+        通过统一用例补全或续期，只有被退避策略选中的过期失败才发送通知。
+
+        :param domain: 站点域名
+        :param site: 本轮抓取时的索引配置，保留实际过期地址作为比较依据
+        :param expired: 是否由明确过期响应触发，False 仅补全空地址
+        :return: 保存结果及供本轮复用的验证资源
         """
-        try:
-            # RSS链接过期
-            logger.error(f"站点 {domain} RSS链接已过期，正在尝试自动获取！")
-            # 自动生成rss地址
-            site_url = site.get("url")
-            site_cookie = site.get("cookie")
-            site_rss = site.get("rss")
-            if not isinstance(site_url, str) or not isinstance(site_cookie, str) or not isinstance(site_rss, str):
-                return
-            rss_url, errmsg = RssHelper().get_rss_link(
-                url=site_url,
-                cookie=site_cookie,
-                ua=site.get("ua") or self.runtime_config.user_agent,
-                proxy=True if site.get("proxy") else False,
-                timeout=site.get("timeout"),
-            )
-            if rss_url:
-                # 获取新的日期的passkey
-                match = re.search(r'passkey=([a-zA-Z0-9]+)', rss_url)
-                if match:
-                    new_passkey = match.group(1)
-                    # 获取过期rss除去passkey部分
-                    new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site_rss)
-                    logger.info(f"更新站点 {domain} RSS地址 ...")
-                    self.site_repository.update_rss(domain=domain, rss=new_rss)
-                else:
-                    self.post_message(
-                        Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                link=self.runtime_config.site_url)
-                    )
-            else:
-                self.post_message(
-                    Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                            link=self.runtime_config.site_url))
-        except Exception as e:
-            logger.error(f"站点 {domain} RSS链接自动获取失败：{str(e)} - {traceback.format_exc()}")
-            self.post_message(Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                      link=self.runtime_config.site_url))
+        if expired and any(not isinstance(site.get(key), str) for key in ("url", "cookie", "rss")):
+            return RssLinkResult(message="站点配置不完整，无法自动续期")
+        result = ensure_site_rss(domain, self.site_repository,
+                                 expired_url=UrlUtils.normalize_http_url(site.get("rss")) if expired else None)
+        if result.notify:
+            self.post_message(Message(
+                mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期，自动更新失败",
+                text=result.message, link=self.runtime_config.site_url,
+            ))
+        return result

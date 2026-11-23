@@ -2,6 +2,7 @@
 下载候选规范化、排序和媒体选择 owner。
 """
 
+import inspect
 import json
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple, Union, cast
@@ -11,16 +12,23 @@ from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.download.failures import (
     DownloadFailureSnapshot,
 )
+from app.application.download.pending import (
+    ConfirmedPendingDownload,
+    DownloadPendingSnapshot,
+    pending_blocks_movie_music,
+)
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
     Context,
     MediaInfo,
+    MusicInfo,
 )
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import text as text_tools
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.download import is_unconfirmed_download_message
 from app.schemas.event import ResourceSelectionEventData
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.types import (
@@ -37,6 +45,27 @@ def _new_torrent_helper() -> TorrentHelper:
     """
     factory = cast(Callable[[], TorrentHelper], TorrentHelper)
     return factory()
+
+
+def _accepts_return_detail(func: Callable[..., object]) -> bool:
+    """
+    判断单任务下载入口能否接受 ``return_detail`` 参数，兼容插件替换的旧签名。
+    """
+    try:
+        parameters = inspect.signature(func).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        or (
+            parameter.name == "return_detail"
+            and parameter.kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        )
+        for parameter in parameters
+    )
 
 
 def _confirmed_batch_contexts(contexts: List[Context]) -> List[Context]:
@@ -160,6 +189,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
             for fingerprint, failure in self._active_download_failure_fingerprints(
                 contexts=contexts,
                 source=source,
+                downloader=downloader,
             ).items()
         }
         return contexts, active_failures
@@ -177,16 +207,25 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
         downloader: Optional[str],
         custom_words: Optional[str],
         governance: Optional[SubscriptionDownloadGovernance],
+        pending_records: tuple[DownloadPendingSnapshot, ...] = (),
+        confirmed_pending: tuple[ConfirmedPendingDownload, ...] = (),
     ) -> None:
         """
         处理电影与音乐的直接候选下载。
 
-        两类媒体都遵循成功后按身份去重、失败后继续尝试后续候选的规则，差异只在去重键。
+        两类媒体遵循成功后按身份去重、明确失败后继续尝试后续候选的规则；一旦某候选被下载器
+        受理但任务信息尚未确认（或已有同目标的活跃待确认记录），立即暂停同目标后续候选提交，
+        避免连续下出多个不同哈希的版本。
         """
         downloaded_keys: Dict[MediaType, Set[str]] = {
             MediaType.MOVIE: set(),
             MediaType.MUSIC: set(),
         }
+        blocked_keys: Dict[MediaType, Set[str]] = {
+            MediaType.MOVIE: set(),
+            MediaType.MUSIC: set(),
+        }
+        confirmed_target_keys = {item.record.target_key for item in confirmed_pending if item.record.target_key}
         for context in contexts:
             if runtime_stop_state.is_system_stopped:
                 break
@@ -196,6 +235,20 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
             media_type = media.type
             if media_type not in downloaded_keys:
                 continue
+            download_key, label = self._movie_music_download_key(media, media_type)
+            if download_key in downloaded_keys[media_type] or download_key in blocked_keys[media_type]:
+                continue
+            target_key = self._build_pending_target_key(media)
+            if self._is_movie_music_blocked_by_pending(
+                context=context,
+                label=label,
+                target_key=target_key,
+                pending_records=pending_records,
+                confirmed_target_keys=confirmed_target_keys,
+                governance=governance,
+            ):
+                blocked_keys[media_type].add(download_key)
+                continue
             fingerprint = self._build_download_failure_fingerprint(context)
             if fingerprint and fingerprint in active_failure_records:
                 self._log_download_failure_cooldown(
@@ -203,18 +256,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                     active_failure_records[fingerprint],
                 )
                 continue
-            if media_type == MediaType.MOVIE:
-                download_key = media.title_year
-                label = "电影"
-            else:
-                media_source, media_id = resolve_media_identity(media=media)
-                download_key = build_media_key(media_source, media_id) or media.title_year
-                label = "音乐"
-            if download_key in downloaded_keys[media_type]:
-                continue
             logger.info(f"开始下载{label} {context.torrent_info.title} ...")
-            if self.download_single(
-                context,
+            download_id, message = self._submit_movie_music_candidate(
+                context=context,
                 save_path=save_path,
                 channel=channel,
                 source=source,
@@ -223,9 +267,89 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                 downloader=downloader,
                 custom_words=custom_words,
                 governance=governance,
-            ):
+            )
+            if download_id:
                 logger.info(f"{context.torrent_info.title} 添加下载成功")
                 downloaded_list.append(context)
                 downloaded_keys[media_type].add(download_key)
+            elif is_unconfirmed_download_message(message):
+                logger.warning(
+                    f"{context.torrent_info.title} 已被下载器受理但暂未确认任务信息，"
+                    f"本轮停止为该{label}提交其他版本"
+                )
+                blocked_keys[media_type].add(download_key)
             elif fingerprint:
                 active_failure_records[fingerprint] = None
+
+    @staticmethod
+    def _movie_music_download_key(media: MediaInfo | MusicInfo, media_type: MediaType) -> Tuple[str, str]:
+        """
+        计算电影或音乐在本批中的身份去重键及日志标签。
+        """
+        if media_type == MediaType.MOVIE:
+            return media.title_year, "电影"
+        media_source, media_id = resolve_media_identity(media=media)
+        return build_media_key(media_source, media_id) or media.title_year, "音乐"
+
+    @staticmethod
+    def _is_movie_music_blocked_by_pending(
+        *,
+        context: Context,
+        label: str,
+        target_key: str,
+        pending_records: tuple[DownloadPendingSnapshot, ...],
+        confirmed_target_keys: set[str],
+        governance: Optional[SubscriptionDownloadGovernance],
+    ) -> bool:
+        """
+        检查该电影或音乐是否因已确认转正或仍在待确认保护期而应跳过替代版本。
+        """
+        torrent_title = context.torrent_info.title if context.torrent_info else "未知资源"
+        if target_key and target_key in confirmed_target_keys:
+            logger.info(f"{torrent_title} 跳过：该{label}此前的待确认任务刚已在下载器中确认，本轮不提交其他版本")
+            if governance:
+                governance.report(context, "rejected", "同一目标此前的待确认任务已在下载器确认，暂不提交其他版本")
+            return True
+        pending_record = pending_blocks_movie_music(pending_records, target_key)
+        if pending_record is None:
+            return False
+        logger.info(
+            f"{torrent_title} 跳过：该{label}已有已受理但尚未确认的任务（{pending_record.torrent_name}），"
+            "本轮暂不提交其他版本"
+        )
+        if governance:
+            governance.report(context, "rejected", "同一目标已有待确认下载任务，暂不提交其他版本")
+        return True
+
+    def _submit_movie_music_candidate(
+        self,
+        *,
+        context: Context,
+        save_path: Optional[str],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        userid: Optional[str],
+        username: Optional[str],
+        downloader: Optional[str],
+        custom_words: Optional[str],
+        governance: Optional[SubscriptionDownloadGovernance],
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        提交单个电影或音乐候选并兼容返回任务 ID 或 ``(任务 ID, 结果说明)`` 的下载入口。
+        """
+        detail = {"return_detail": True} if _accepts_return_detail(self.download_single) else {}
+        result = self.download_single(
+            context,
+            save_path=save_path,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            downloader=downloader,
+            custom_words=custom_words,
+            governance=governance,
+            **detail,
+        )
+        if isinstance(result, tuple):
+            return result[0], result[1]
+        return result, None

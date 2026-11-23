@@ -50,8 +50,9 @@ MASKED_FIELDS = {
     "RESOURCE_SECRET_KEY",
     "SECRET_KEY",
     "SUPERUSER_PASSWORD",
+    "VAPID_PRIVATE_KEY",
 }
-MASKED_SUFFIXES = ("_TOKEN", "_PASSWORD", "_SECRET", "_API_KEY")
+MASKED_SUFFIXES = ("_TOKEN", "_PASSWORD", "_SECRET", "_API_KEY", "_PRIVATE_KEY")
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 PREPARED_UPDATE_ROOT = get_runtime_setting("TEMP_PATH") / "moviepilot-update"
 PREPARED_UPDATE_MANIFEST = PREPARED_UPDATE_ROOT / "install.json"

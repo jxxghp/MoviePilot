@@ -3,18 +3,26 @@
 """
 
 import copy
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple, TypedDict, cast
+import inspect
+from typing import TYPE_CHECKING, Callable, Dict, List, Literal, Optional, Set, Tuple, TypedDict, cast
 
 from app.application.download import selection as _selection
 from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.download.pending import (
+    ConfirmedPendingDownload,
+    DownloadPendingSnapshot,
+    pending_blocked_tv_scope,
+)
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain import episode as episode_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
 )
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.download import ExistingTaskRejection, is_unconfirmed_download_message
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import (
     MediaType,
@@ -32,6 +40,26 @@ def _new_torrent_helper() -> TorrentHelper:
     factory = cast(Callable[[], TorrentHelper], TorrentHelper)
     return factory()
 
+
+def _accepts_keyword(func: Callable[..., object], name: str) -> bool:
+    """
+    判断可调用对象能否接受指定的关键字参数，用于兼容插件替换的旧签名下载入口。
+
+    :param func: 待调用的对象
+    :param name: 关键字参数名
+    :return: 签名里有该参数或 ``**kwargs`` 时返回 True；读不到签名时返回 False，按旧签名调用
+    """
+    try:
+        parameters = inspect.signature(func).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        or (parameter.name == name and parameter.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY,
+        ))
+        for parameter in parameters
+    )
 
 class DownloadBatchOwner(_DownloadOwnerBase):
     """
@@ -161,12 +189,20 @@ class _BatchDownloadRun:
         self.allowed_episodes = set(allowed_episodes) if allowed_episodes is not None else None
         self.downloaded: List[Context] = []
         self.failures: Dict[str, Optional[DownloadFailureSnapshot]] = {}
+        # 本批内已被下载器以"只针对这几集"的原因拒绝的（候选, 目标集），见 _submit。候选按对象身份（id）区分：
+        # 本批始终持有这些 Context，身份在批内稳定；资源指纹在缺少媒体或资源身份时为空，不能作这里的键。
+        self.target_failures: Set[Tuple[int, frozenset[int]]] = set()
+        # 本批开始前核对得到的仍待确认与刚确认转正记录，以及本批内新产生的电视剧待确认范围。
+        self.pending_records: tuple[DownloadPendingSnapshot, ...] = ()
+        self.confirmed_pending: tuple[ConfirmedPendingDownload, ...] = ()
+        self.unconfirmed_seasons: Set[Tuple[str, int]] = set()
+        self.unconfirmed_episodes: Set[Tuple[str, int, int]] = set()
         words = options["custom_words"]
         self.custom_words = words.splitlines() if words else None
 
     def run(self) -> None:
         """
-        只准备一次候选，依次匹配电影/音乐、整季、完整集和拆包补集。
+        只准备一次候选，先核对关联待确认提交，再依次匹配电影/音乐、整季、完整集和拆包补集。
         """
         self.contexts, self.failures = self.owner._prepare_batch_download_contexts(
             contexts=self.contexts,
@@ -177,9 +213,15 @@ class _BatchDownloadRun:
             for context in self.contexts:
                 if context.media_info and context.media_info.type == MediaType.TV:
                     context.allowed_episodes = _selection.apply_allowed_episodes(self.allowed_episodes, context)
+        self._reconcile_batch_pending()
+        movie_music_extra: Dict[str, object] = {}
+        if _accepts_keyword(self.owner._download_movie_music_candidates, "pending_records"):
+            movie_music_extra["pending_records"] = self.pending_records
+        if _accepts_keyword(self.owner._download_movie_music_candidates, "confirmed_pending"):
+            movie_music_extra["confirmed_pending"] = self.confirmed_pending
         self.owner._download_movie_music_candidates(
             contexts=self.contexts, downloaded_list=self.downloaded,
-            active_failure_records=self.failures, **self.options,
+            active_failure_records=self.failures, **self.options, **movie_music_extra,
         )
         if self.no_exists:
             self._download_whole_seasons()
@@ -188,6 +230,105 @@ class _BatchDownloadRun:
         if self.no_exists:
             self._download_partial_packs()
         logger.info(f"成功下载种子数：{len(self.downloaded)}，剩余未下载的剧集：{self.no_exists}")
+
+    def _reconcile_batch_pending(self) -> None:
+        """
+        在提交新候选前按已知种子标识核对本批关联媒体的待确认提交，并建立本批防重保护。
+        """
+        target_keys = list(
+            dict.fromkeys(
+                key
+                for context in self.contexts
+                if context.media_info is not None
+                and (key := self.owner._build_pending_target_key(context.media_info))
+            )
+        )
+        for media_key in self.no_exists:
+            tv_key = f"{MediaType.TV.value}:{media_key}"
+            if tv_key not in target_keys:
+                target_keys.append(tv_key)
+        if not target_keys:
+            return
+        reconciled = self.owner.reconcile_pending_downloads(target_keys=target_keys)
+        self.pending_records = reconciled.still_pending
+        self.confirmed_pending = reconciled.confirmed
+        self._apply_confirmed_pending_to_batch()
+        self._apply_tv_pending_guards()
+
+    def _apply_confirmed_pending_to_batch(self) -> None:
+        """
+        将本批刚确认转正的同源待确认任务纳入已下载结果并扣减缺集，避免同批重复提交替代版本。
+        """
+        batch_source = self.options["source"]
+        for item in self.confirmed_pending:
+            record = item.record
+            same_source = record.source == batch_source
+            if same_source:
+                self.downloaded.append(item.context)
+            if record.media_type != MediaType.TV.value:
+                continue
+            self._apply_confirmed_tv_pending(record, deduct_missing=same_source)
+
+    def _apply_confirmed_tv_pending(
+        self,
+        record: DownloadPendingSnapshot,
+        *,
+        deduct_missing: bool,
+    ) -> None:
+        """
+        将刚确认转正的电视剧待确认提交同步到本批缺集或防重集合。
+        """
+        prefix = f"{MediaType.TV.value}:"
+        if not record.target_key.startswith(prefix):
+            return
+        media_key = record.target_key[len(prefix):]
+        seasons = self.no_exists.get(media_key)
+        if not seasons:
+            return
+        covered_seasons = list(record.covered_seasons) or list(seasons)
+        if not record.episodes:
+            if deduct_missing:
+                _selection.update_no_exists_seasons(self.no_exists, media_key, list(seasons), covered_seasons)
+            else:
+                for season in covered_seasons:
+                    self.unconfirmed_seasons.add((media_key, season))
+            return
+        for season in covered_seasons:
+            info = seasons.get(season)
+            if info is None:
+                continue
+            if deduct_missing:
+                needed = info.episodes or list(range(info.start_episode or 1, (info.total_episode or 0) + 1))
+                _selection.update_no_exists_episodes(self.no_exists, media_key, season, needed, set(record.episodes))
+            else:
+                for episode in record.episodes:
+                    self.unconfirmed_episodes.add((media_key, season, episode))
+
+    def _apply_tv_pending_guards(self) -> None:
+        """
+        按当前仍待确认的持久化记录填充本批电视剧季/集防重集合。
+        """
+        if not self.pending_records or not self.no_exists:
+            return
+        for media_key, seasons in self.no_exists.items():
+            tv_key = f"{MediaType.TV.value}:{media_key}"
+            for season in seasons:
+                whole_blocked, blocked_episodes = pending_blocked_tv_scope(self.pending_records, tv_key, season)
+                if whole_blocked:
+                    self.unconfirmed_seasons.add((media_key, season))
+                else:
+                    for episode in blocked_episodes:
+                        self.unconfirmed_episodes.add((media_key, season, episode))
+
+    def _unconfirmed_episodes_for(self, media_key: str, season: int) -> Set[int]:
+        """
+        返回指定剧集单季内已进入待确认状态的离散集号集合。
+        """
+        return {
+            episode
+            for item_media, item_season, episode in self.unconfirmed_episodes
+            if item_media == media_key and item_season == season
+        }
 
     def _in_failure_cooldown(self, context: Context) -> bool:
         """
@@ -206,6 +347,47 @@ class _BatchDownloadRun:
         fingerprint = self.owner._build_download_failure_fingerprint(context)
         if fingerprint:
             self.failures[fingerprint] = None
+
+    def _submit(
+            self, context: Context, *, by_keyword: bool = True, **submission: object,
+    ) -> Literal["accepted", "unconfirmed", "rejected"]:
+        """
+        提交单个资源，区分下载器确认受理、已受理但暂未确认与明确拒绝。
+
+        下载器返回“添加已受理但任务信息尚未确认”时返回 ``unconfirmed``，不将其按普通失败写入
+        单候选冷却，而由调用阶段封锁对应季/集目标，阻止本批继续提交其他版本。
+        下载器以"只针对这几集"的原因拒绝（同一任务上的目标集找不到、目标文件被取消）时，只记"这个候选 +
+        这几集"：后续阶段从同一个包里补别的集（例如备用种子补上被取消的 E03 后，拆包阶段只要 E04）仍可提交。
+        其余失败照旧记整个候选，本批内不再重复提交。
+
+        :param context: 待提交的候选
+        :param by_keyword: 是否以关键字参数传入候选；沿用各阶段原有的调用形状，插件替换的下载入口不受影响
+        :param submission: 透传给单资源下载的 ``episodes``、``torrent_content`` 等参数
+        :return: ``accepted``、``unconfirmed`` 或 ``rejected``
+        """
+        episodes = cast(Optional[Set[int]], submission.get("episodes"))
+        key = (id(context), frozenset(episodes or ()))
+        if key in self.target_failures:
+            logger.info(f"{context.torrent_info.title if context.torrent_info else '未知资源'} 本批已因同样的目标被拒绝，跳过")
+            return "rejected"
+        # 插件替换的下载入口可能是不接受 return_detail 的旧签名：不传，按旧方式只取任务 ID。
+        detail = {"return_detail": True} if _accepts_keyword(self.owner.download_single, "return_detail") else {}
+        if by_keyword:
+            result = self.owner.download_single(context=context, **submission, **self.options, **detail)
+        else:
+            result = self.owner.download_single(context, **submission, **self.options, **detail)
+        # 插件替换的下载入口可能仍只返回任务 ID。
+        download_id, message = result if isinstance(result, tuple) else (result, None)
+        if download_id:
+            return "accepted"
+        if is_unconfirmed_download_message(message):
+            return "unconfirmed"
+        rejection = ExistingTaskRejection.from_message(message)
+        if rejection is not None and rejection.is_target_specific:
+            self.target_failures.add(key)
+        else:
+            self._remember_failure(context)
+        return "rejected"
 
     def _read_torrent(
             self, context: Context, *, partial: bool = False,
@@ -238,6 +420,7 @@ class _BatchDownloadRun:
             return None
         episodes = _new_torrent_helper().get_torrent_episodes(
             files, custom_words=self.custom_words,
+            episode_selection=torrent_rules.episode_selection_for_context(context),
         )
         if partial:
             logger.info(f"{torrent.site_name} - {meta.org_string} 解析种子文件集数：{episodes}")
@@ -285,6 +468,11 @@ class _BatchDownloadRun:
         if context in self.downloaded or self._in_failure_cooldown(context):
             return []
         if not set(seasons).issubset(set(needed)):
+            return []
+        if any(
+            (media_key, season) in self.unconfirmed_seasons or self._unconfirmed_episodes_for(media_key, season)
+            for season in seasons
+        ):
             return []
         required = _selection.get_required_episodes(self.no_exists, media_key, seasons[0])
         # 标注集数的单季包只在完整覆盖目标范围时与无集数整季包同轮按优先级竞争，
@@ -358,14 +546,19 @@ class _BatchDownloadRun:
                 return False
             content, complete, selected = inspected
             logger.info(f"开始下载 {context.torrent_info.title} ...")
-            download_id = self.owner.download_single(
-                context=context, torrent_content=content, episodes=selected, **self.options,
-            )
+            outcome = self._submit(context, torrent_content=content, episodes=selected)
         else:
             logger.info(f"开始下载 {context.torrent_info.title} ...")
-            download_id = self.owner.download_single(context, **self.options)
-        if not download_id:
-            self._remember_failure(context)
+            outcome = self._submit(context, by_keyword=False)
+        if outcome == "unconfirmed":
+            for season in seasons:
+                self.unconfirmed_seasons.add((media_key, season))
+            logger.warning(
+                f"{context.torrent_info.title} 已被下载器受理但暂未确认任务信息，"
+                f"本轮停止为 {media_key} 季 {seasons} 提交其他版本"
+            )
+            return False
+        if outcome != "accepted":
             return False
         if complete:
             context.confirmed_full_coverage = True
@@ -402,8 +595,16 @@ class _BatchDownloadRun:
             meta = context.meta_info
             assert meta is not None
             logger.info(f"开始下载 {meta.title} ...")
-            if not self.owner.download_single(context, episodes=episodes, **self.options):
-                self._remember_failure(context)
+            outcome = self._submit(context, by_keyword=False, episodes=episodes)
+            if outcome == "unconfirmed":
+                for episode in episodes:
+                    self.unconfirmed_episodes.add((media_key, season, episode))
+                logger.warning(
+                    f"{meta.title} 已被下载器受理但暂未确认任务信息，"
+                    f"本轮停止为 {media_key} 季 {season} 集 {sorted(episodes)} 提交其他版本"
+                )
+                continue
+            if outcome != "accepted":
                 continue
             if _selection.requires_complete_coverage(info):
                 context.confirmed_full_coverage = True
@@ -432,14 +633,19 @@ class _BatchDownloadRun:
             return set()
         if len(meta.season_list) != 1 or meta.season_list[0] != season:
             return set()
+        if (media_key, season) in self.unconfirmed_seasons:
+            return set()
         episodes = set(meta.episode_list)
         if not episodes:
             return set()
-        effective = _selection.apply_allowed_episodes(set(needed), context)
+        blocked_episodes = self._unconfirmed_episodes_for(media_key, season)
+        effective = _selection.apply_allowed_episodes(set(needed), context) - blocked_episodes
         if not effective:
             return set()
         if _selection.requires_complete_coverage(info):
             required = _selection.get_required_episodes(self.no_exists, media_key, season)
+            if required.intersection(blocked_episodes):
+                return set()
             matches = bool(required) and required.issubset(episodes) \
                 and _selection.allows_full_pack(episodes, context)
             return required if matches else set()
@@ -466,6 +672,8 @@ class _BatchDownloadRun:
         """
         按优先级解析多集包，只扣减已成功提交的选中集数。
         """
+        if (media_key, season) in self.unconfirmed_seasons:
+            return
         for context in self.contexts:
             if runtime_stop_state.is_system_stopped:
                 break
@@ -477,10 +685,16 @@ class _BatchDownloadRun:
                 continue
             if not needed:
                 break
-            effective = _selection.apply_allowed_episodes(set(needed), context)
+            blocked_episodes = self._unconfirmed_episodes_for(media_key, season)
+            effective = _selection.apply_allowed_episodes(set(needed), context) - blocked_episodes
             if not effective or not self._matches_partial_pack(context, media_key, season, effective):
                 continue
-            selected = self._submit_partial_pack(context, effective)
+            selected = self._submit_partial_pack(
+                context,
+                effective,
+                media_key=media_key,
+                season=season,
+            )
             if selected:
                 needed = _selection.update_no_exists_episodes(
                     self.no_exists, media_key, season, needed, selected,
@@ -499,9 +713,22 @@ class _BatchDownloadRun:
             and (not meta.episode_list or bool(set(meta.episode_list).intersection(effective))) \
             and len(meta.season_list) == 1 and meta.season_list[0] == season
 
-    def _submit_partial_pack(self, context: Context, effective: Set[int]) -> Set[int]:
+    def _submit_partial_pack(
+            self,
+            context: Context,
+            effective: Set[int],
+            *,
+            media_key: Optional[str] = None,
+            season: Optional[int] = None,
+    ) -> Set[int]:
         """
         只在成功提交选中文件后更新识别集数，失败时保留原候选供换源记账。
+
+        :param context: 待提交的多集拆包候选
+        :param effective: 本轮允许选中的目标缺集集合
+        :param media_key: 可选媒体标识键；提供时在未确认状态下封锁对应季集防重
+        :param season: 可选季号；与 ``media_key`` 配合记录未确认集数
+        :return: 确认提交成功的集号集合
         """
         assert context.torrent_info is not None
         parsed = self._read_torrent(context, partial=True)
@@ -515,10 +742,17 @@ class _BatchDownloadRun:
             return set()
         logger.info(f"{torrent.site_name} - {torrent.title} 选中集数：{selected}")
         logger.info(f"开始下载 {torrent.title} ...")
-        if not self.owner.download_single(
-                context=context, torrent_content=content, episodes=selected, **self.options,
-        ):
-            self._remember_failure(context)
+        outcome = self._submit(context, torrent_content=content, episodes=selected)
+        if outcome == "unconfirmed":
+            if media_key is not None and season is not None:
+                for episode in selected:
+                    self.unconfirmed_episodes.add((media_key, season, episode))
+            logger.warning(
+                f"{torrent.title} 已被下载器受理但暂未确认任务信息，"
+                f"本轮停止为 {media_key or '当前目标'} 季 {season} 集 {sorted(selected)} 提交其他版本"
+            )
+            return set()
+        if outcome != "accepted":
             return set()
         logger.info(f"{torrent.title} 添加下载成功")
         self.downloaded.append(context)

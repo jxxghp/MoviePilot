@@ -16,6 +16,7 @@ from app.application.agenttask import (
     configure_agent_task_execution,
     reset_agent_task_execution,
 )
+from app.application.knowledge import KnowledgeService
 from app.application.maintenance import read_cleanup_policy
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
@@ -36,7 +37,9 @@ from app.db.adapters.recall import LegacyRecallRepository
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.session import SessionFactory, async_session_scope
+from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import TaskRegistry
+from app.schemas.knowledge import AgentKnowledgeConfig
 from app.startup.composition.context import (
     AgentChatRepositoryFactory,
 )
@@ -74,6 +77,18 @@ class AgentComposition:
     execution: AgentTaskExecutionService
 
 
+def _agent_knowledge_config() -> AgentKnowledgeConfig:
+    """
+    从宿主实验室开关与既有 Server 地址生成每次检索使用的配置快照。
+
+    :return: 未配置独立用户凭据的中心知识读取设置
+    """
+    return AgentKnowledgeConfig(
+        enabled=get_runtime_setting("AI_AGENT_KNOWLEDGE_ENABLE", True) is True,
+        origin=get_runtime_setting("MP_SERVER_HOST", "") or "",
+    )
+
+
 def _history_retention_cutoff() -> float | None:
     """
     独立 Agent 库复用已配置的清理开关和会话保留期，零天表示不自动删除。
@@ -88,12 +103,25 @@ def compose_agent(
     system_config: SystemConfigOper,
     dependencies: RuntimeDependencies,
     tasks: TaskRegistry | None = None,
+    knowledge: KnowledgeService | None = None,
 ) -> AgentComposition:
     """
     在数据库 worker 启动后构造共享的 Agent 数据与任务服务。
+
+    :param runtime: 数据库 worker 与事务边界
+    :param system_config: 已加载的系统配置快照
+    :param dependencies: HostRuntime 已装配的数据与业务仓储端口
+    :param tasks: 可选的宿主后台任务登记器
+    :param knowledge: 可选的替代只读知识用例；None 时由组合根装配默认实现
+    :return: Agent 数据上下文、仓储与执行服务
     """
     from app.agent.history.storage import SqliteRecallRepository
     from app.agent.runtime import agent_runtime_manager
+    if knowledge is None:
+        from app.adapters.external.knowledge import KnowledgeClient
+        from app.runtime.version import get_app_version
+
+        knowledge = KnowledgeService(_agent_knowledge_config, KnowledgeClient(), get_app_version)
 
     persistence = AgentChatPersistenceService(
         repository=AgentChatOper,
@@ -125,6 +153,7 @@ def compose_agent(
         plugin_data=TransactionalPluginDataRepository(async_session_scope),
         invocations=TransactionalInvocationRepository(SessionFactory),
         recall=recall,
+        knowledge=knowledge,
     )
     return AgentComposition(
         data=data,

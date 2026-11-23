@@ -16,7 +16,7 @@ from app.adapters.system import rust as rust_accel
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import url as url_tools
-from app.foundation.url import UrlUtils
+from app.foundation.url import UrlUtils, mask_url_credentials
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -436,6 +436,8 @@ class SiteSpider:
         """
         同步请求站点搜索页面并解析种子或字幕结果。
 
+        完整请求地址只写入 DEBUG 日志，并先遮盖 URL 凭据。
+
         :return: 解析后的记录列表；不允许搜索或请求解析失败时为空，失败详情记录在实例中
         """
         if not self.__can_search():
@@ -443,7 +445,7 @@ class SiteSpider:
 
         searchurl = self.__get_search_url()
 
-        logger.info(f"开始请求：{searchurl}")
+        logger.debug(f"开始请求：{mask_url_credentials(searchurl)}")
 
         ret = RequestUtils(
             ua=self.ua,
@@ -461,6 +463,8 @@ class SiteSpider:
         """
         异步请求站点搜索页面，再在线程池中解析种子或字幕结果。
 
+        完整请求地址只写入 DEBUG 日志，并先遮盖 URL 凭据。
+
         :return: 解析后的记录列表；不允许搜索或请求解析失败时为空，失败详情记录在实例中
         """
         if not self.__can_search():
@@ -468,7 +472,7 @@ class SiteSpider:
 
         searchurl = self.__get_search_url()
 
-        logger.info(f"开始异步请求：{searchurl}")
+        logger.debug(f"开始异步请求：{mask_url_credentials(searchurl)}")
 
         ret = await AsyncRequestUtils(
             ua=self.ua,

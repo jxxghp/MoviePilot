@@ -234,6 +234,7 @@ class ApiRuntimeConfig:
     :param movie_rename_format: 电影重命名格式
     :param television_rename_format: 电视剧文件的重命名模板
     :param music_rename_format: 音乐重命名格式
+    :param vapid_public_key: Web Push 浏览器订阅使用的 VAPID 公钥
     :param vapid_private_key: Web Push 消息签名使用的 VAPID 私钥
     :param vapid_subject: Web Push VAPID 声明中的联系地址或主体标识
     :param cookiecloud_enable_local: CookieCloud是否启动本地服务
@@ -261,6 +262,7 @@ class ApiRuntimeConfig:
     movie_rename_format: str = ""
     television_rename_format: str = ""
     music_rename_format: str = ""
+    vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = ""
     cookiecloud_enable_local: bool = False
@@ -419,6 +421,7 @@ class ChainRuntimeConfig:
     :param proxy_server: 供浏览器使用的代理连接参数，None 表示不配置代理
     :param proxy_host: 网络代理服务器地址
     :param github_headers: 访问 GitHub 时使用的请求头，可能包含授权凭据
+    :param github_proxy: GitHub 公开资源镜像前缀，空值时使用原始地址
     :param cookiecloud_blacklist: CookieCloud同步黑名单，多个域名,分割
     :param subscribe_mode: 订阅刷新模式：spider 使用站点搜索，rss 使用 RSS 订阅
     :param no_cache_site_key: 不缓存站点资源的域名关键字，多个使用,分隔；留空时所有站点使用缓存
@@ -511,6 +514,7 @@ class ChainRuntimeConfig:
     proxy_server: Any = None
     proxy_host: Optional[str] = None
     github_headers: Any = None
+    github_proxy: Optional[str] = None
     cookiecloud_blacklist: Any = None
     subscribe_mode: str = "spider"
     no_cache_site_key: str = ""

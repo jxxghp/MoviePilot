@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 18
+version: 20
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -178,19 +178,31 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.
 - Useful queries: Inspecting task ownership, enablement, cron/run_at settings, and the latest result.
 - Write boundary: Create, update, enable, disable, or delete tasks through the Agent task API.
-- Columns: `id`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `enabled`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `session_id`, `channel`, `source`, `original_chat_id`, `last_status`, `last_run_at`, `last_result`, `last_run_id`, `run_count`, `created_at`, `updated_at`
+- Columns: `id`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `enabled`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `execution_authorization_id`, `session_id`, `channel`, `source`, `original_chat_id`, `last_status`, `last_run_at`, `last_result`, `last_run_id`, `run_count`, `created_at`, `updated_at`
 
 ### `agenttaskrun`
 - Purpose: Stores the input snapshot, status, timestamps, and result of each Agent task execution.
 - Useful queries: Auditing one run or correlating a failure with task_id, run_id, and trigger source.
 - Write boundary: Execution evidence owned by the task runner; never fabricate rows or edit run status.
-- Columns: `id`, `run_id`, `task_id`, `trigger_source`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `session_id`, `channel`, `message_source`, `original_chat_id`, `status`, `started_at`, `finished_at`, `result`
+- Columns: `id`, `run_id`, `task_id`, `trigger_source`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `execution_authorization_id`, `session_id`, `channel`, `message_source`, `original_chat_id`, `status`, `started_at`, `finished_at`, `result`
 
 ### `alembic_version`
 - Purpose: Records the Alembic migration revision currently applied to the database.
 - Useful queries: Diagnosing startup migration failures or a database/code revision mismatch.
 - Write boundary: Never edit it directly; advance or roll back revisions only through Alembic.
 - Columns: `version_num`
+
+### `channelauthorization`
+- Purpose: Stores per-instance channel authorization, approval state, scopes, and immutable business ownership.
+- Useful queries: Inspecting requests, member capabilities, suspension, and legacy whitelist migration.
+- Write boundary: Owned by channel authorization; never bypass approval, account linking, or live revocation with direct writes.
+- Columns: `id`, `notification_id`, `channel`, `sender_id`, `display_name`, `status`, `role`, `scopes`, `user_id`, `user_identity`, `linked_user_id`, `aliases`, `created_at`, `updated_at`, `origin`, `reviewed_by`
+
+### `channelbinding`
+- Purpose: Stores web-initiated one-time channel binding digests and their five-minute expiry.
+- Useful queries: Checking expiry or consumption without reading or reconstructing the original binding code.
+- Write boundary: Consumed atomically by two-sided identity verification; never extend expiry, forge digests, or replace owners directly.
+- Columns: `id`, `user_id`, `user_identity`, `expires_at`
 
 ### `downloadfailure`
 - Purpose: Stores stable fingerprints, media/torrent context, errors, and retry scheduling for failed downloads.
@@ -209,6 +221,12 @@ and pass the flag only for an explicitly authorized repair.
 - Useful queries: Reviewing download history or tracing a media identity or hash back to its source.
 - Write boundary: Written by the download use case; delete or correct records through the download-history API.
 - Columns: `id`, `path`, `type`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `image`, `poster`, `downloader`, `download_hash`, `torrent_name`, `torrent_description`, `torrent_site`, `userid`, `username`, `channel`, `date`, `note`, `media_category_id`, `media_category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `episode_group`, `custom_words`
+
+### `downloadpending`
+- Purpose: Stores recovery state for download submissions accepted by a downloader but not yet confirmed as a visible task.
+- Useful queries: Inspecting pending infohashes, target scopes, subscription links, expiry timestamps, and duplicate-submission locks.
+- Write boundary: Recovery state owned by download reconciliation; never delete or alter rows manually to bypass duplicate protection, and ordinary history retention does not purge it.
+- Columns: `id`, `pending_key`, `target_key`, `type`, `title`, `year`, `media_source`, `media_id`, `season`, `episodes`, `downloader`, `hashes`, `torrent_name`, `source`, `subscription_id`, `payload`, `submitted_at`, `last_checked_at`, `expires_at`
 
 ### `mediaserveritem`
 - Purpose: Stores the local index and canonical media identity projected from media-server libraries.
@@ -344,10 +362,10 @@ and pass the flag only for an explicitly authorized repair.
 - Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `origin`, `registration`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `media_category_id`, `category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `retry_count`, `auto_paused`, `failure_stage`, `recovery_action`, `cleanup_status`, `cleanup_error`, `date`, `files`, `episode_group`
 
 ### `transferpending`
-- Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.
+- Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, manual review state, and one short-lived pending manual identity authorization.
 - Useful queries: Diagnosing restart recovery, expired leases, retry_wait, terminal failures, or manual review.
 - Write boundary: Core durable state machine advanced only by planning, execution, retry, and review services.
-- Columns: `id`, `task_id`, `storage`, `src_path`, `created_at`, `state`, `updated_at`, `last_error`, `input_version`, `planning_input`, `input_fingerprint`, `checkpoint_version`, `checkpoint_payload`, `planned_at`, `lease_owner`, `lease_token`, `lease_expires_at`, `heartbeat_at`, `attempt_count`, `execution_state`, `execution_version`, `execution_payload`, `execution_fingerprint`, `retry_generation`, `retry_count`, `retry_due_at`, `retry_requested_by`, `retry_reason`, `settlement_revision`, `terminal_history_id`, `manual_review_revision`, `reviewed_at`, `reviewed_by`, `review_reason`, `review_decision`
+- Columns: `id`, `task_id`, `storage`, `src_path`, `created_at`, `state`, `updated_at`, `last_error`, `input_version`, `planning_input`, `input_fingerprint`, `checkpoint_version`, `checkpoint_payload`, `planned_at`, `lease_owner`, `lease_token`, `lease_expires_at`, `heartbeat_at`, `attempt_count`, `execution_state`, `execution_version`, `execution_payload`, `execution_fingerprint`, `retry_generation`, `retry_count`, `retry_due_at`, `retry_requested_by`, `retry_reason`, `manual_identity_authorization`, `settlement_revision`, `terminal_history_id`, `manual_review_revision`, `reviewed_at`, `reviewed_by`, `review_reason`, `review_decision`
 
 ### `transfersettlementreceipt`
 - Purpose: Stores immutable terminal settlement receipts with contiguous revisions per transfer task.
@@ -359,7 +377,7 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores user accounts, password hashes, administrator state, OTP, permissions, and preferences.
 - Useful queries: Authorized diagnostics of account state, permissions, or authentication configuration.
 - Write boundary: Security-sensitive; manage through user, permission, password, and two-factor APIs.
-- Columns: `id`, `name`, `email`, `hashed_password`, `is_active`, `is_superuser`, `avatar`, `is_otp`, `otp_secret`, `permissions`, `settings`, `notification_identity`
+- Columns: `id`, `name`, `account_type`, `email`, `hashed_password`, `is_active`, `is_superuser`, `avatar`, `is_otp`, `otp_secret`, `permissions`, `settings`, `notification_identity`
 
 ### `userconfig`
 - Purpose: Stores per-user JSON configuration isolated by username and key.

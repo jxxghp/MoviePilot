@@ -974,6 +974,20 @@ def _route_manual_transfer(
     )
 
 
+def _manual_music_transfer_options(item: ManualTransferItem) -> dict[str, Any]:
+    """
+    仅传递显式启用的音乐选项，兼容未使用新能力的旧整理调用。
+    """
+    options: dict[str, Any] = {}
+    if item.musicbrainz_release_id is not None:
+        options["musicbrainz_release_id"] = item.musicbrainz_release_id
+    if item.music_track_match != "strict":
+        options["music_track_match"] = item.music_track_match
+    if item.music_target_path:
+        options["music_target_path"] = Path(item.music_target_path)
+    return options
+
+
 def _execute_manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool],
@@ -1079,10 +1093,7 @@ def _execute_manual_transfer(
         selected_music_fileitems, transer_item.music_type,
     )
 
-    release_kwargs: dict[str, Any] = (
-        {"musicbrainz_release_id": transer_item.musicbrainz_release_id}
-        if transer_item.musicbrainz_release_id is not None else {}
-    )
+    release_kwargs = _manual_music_transfer_options(transer_item)
 
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:

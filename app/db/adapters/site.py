@@ -572,6 +572,22 @@ class TransactionalSiteRepository:
         """
         return self._write(lambda repository: SiteWriteResult(*repository.update_rss(domain, rss)))
 
+    def update_rss_if_unchanged(self, site: SiteSnapshot, rss: str) -> SiteWriteResult:
+        """
+        比较生成请求使用的快照并提交 RSS，配置变化时保留用户的新设置。
+
+        :param site: 请求开始前脱离 Session 的站点快照
+        :param rss: 已验证的新地址
+        :return: 原子更新结果；事务异常继续交给用例报告
+        """
+        expected = {key: getattr(site, key) for key in (
+            "domain", "url", "rss", "cookie", "ua", "apikey", "token", "proxy",
+            "timeout", "render", "public", "is_active",
+        )}
+        return self._write(lambda repository: SiteWriteResult(*repository.update_rss_if_unchanged(
+            site.id, rss, expected,
+        )))
+
     def update_userdata(
         self,
         domain: str,

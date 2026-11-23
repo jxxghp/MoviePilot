@@ -82,6 +82,13 @@ _EXTENDED_MEDIA_ID_TAG_RE = re.compile(
     re.IGNORECASE,
 )
 _GENERIC_MEDIA_ID_TAG_RE = re.compile(r'(?:^|[;\[])media_(?:source|id)=', re.IGNORECASE)
+# 季目录全名带年份（如 Season 5 (2026)，重命名规则会生成此类目录名）：
+# Rust 加速器（moviepilot-rust 0.3.13）仍把拼写出的季名误读为剧集名，
+# 必须由 Python 参考解析器处理；待 Rust 侧修复后可移除该分流（issue #7514）。
+_SEASON_DIR_WITH_YEAR_RE = re.compile(
+    r"^(?:Season\s+|S)(\d{1,3})\s*\(\d{4}\)$",
+    re.IGNORECASE,
+)
 _RUST_PARSE_OPTIONS_CACHE_KEY = "_cache_key"
 logger = logging.getLogger(__name__)
 
@@ -501,18 +508,28 @@ def _meta_from_rust(parsed: Optional[dict[str, Any]]) -> Optional[MetaBase]:
 def _requires_python_metainfo(
     title: str,
     custom_words: Optional[List[str]] = None,
+    path_parts: Optional[Tuple[str, ...]] = None,
 ) -> bool:
     """
-    判断标题或临时识别词是否必须由 Python 解析器处理媒体身份标签。
+    判断标题或临时识别词是否必须由 Python 解析器处理。
 
-    :param title: 原始标题
+    除媒体身份标签外，季目录全名带年份（如 Season 5 (2026)）也必须由
+    Python 参考解析器处理：Rust 加速器仍把拼写出的季名误读为剧集名。
+
+    :param title: 原始标题或路径上下文
     :param custom_words: 临时识别词
+    :param path_parts: 路径各段名称，仅路径入口传入，用于逐段识别季目录
     :return: 是否必须使用Python解析器
     """
     candidates = [title or "", *(custom_words or [])]
     if any(_GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates):
         return True
     if any(_PARENTHESIZED_TMDB_RE.search(candidate) for candidate in candidates):
+        return True
+    if any(
+        _SEASON_DIR_WITH_YEAR_RE.match(candidate)
+        for candidate in [*candidates, *(path_parts or ())]
+    ):
         return True
     contains_extended_id = any(
         _EXTENDED_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates
@@ -593,7 +610,11 @@ def MetaInfoPath(path: Path, custom_words: Optional[List[str]] = None, force_vid
     )
     rust_meta = None
     accelerator = get_metainfo_accelerator()
-    if accelerator and not _requires_python_metainfo(path_context, custom_words):
+    if accelerator and not _requires_python_metainfo(
+        path_context,
+        custom_words,
+        path_parts=(path.name, path.parent.name, path.parent.parent.name),
+    ):
         rust_meta = _meta_from_rust(
             accelerator.parse_metainfo_path(
                 str(path),

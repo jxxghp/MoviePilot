@@ -12,6 +12,11 @@ from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
+from app.application.download.pending import (
+    pending_blocks_movie_music,
+    pending_targets_for_scan,
+)
+from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription.activity import current_activity_run, subscription_activity_scope
 from app.application.subscription.contract import (
     SubscriptionRepository,
@@ -39,6 +44,7 @@ from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
     SubscriptionSearchDeferred,
 )
+from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.search.execution import MediaSearchPlan
 from app.chain.search.facade import SearchChain
@@ -81,8 +87,13 @@ def _finish_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscripti
     current = owner.subscription_repository.get(subscribe.id)
     if current is None or owner._SubscribeChain__candidate_contract_changed(subscribe, current):
         return
-    exists, missing = owner.resolve_subscribe_missing(
-        subscribe=current, meta=target.meta, mediainfo=target.media, mediakey=target.media_key)
+    try:
+        exists, missing = owner.resolve_subscribe_missing(
+            subscribe=current, meta=target.meta, mediainfo=target.media, mediakey=target.media_key)
+    except MediaServerQueryError as err:
+        # 媒体库查询失败时缺集未知，不结算完成状态，下一轮重新对账。
+        logger.warning(f"订阅《{subscribe.name}》媒体库查询失败，本轮不结算完成状态：{err}")
+        return
     owner.finish_subscribe_or_not(subscribe=current, meta=target.meta, mediainfo=target.media,
                                   downloads=[], lefts=missing, force=exists)
 
@@ -195,6 +206,56 @@ def _build_subscription_candidate_filter(
     return filter_contexts
 
 
+def _reconcile_paged_pending(
+    owner: _SubscribeOwnerBase,
+    subscribe: SubscriptionSnapshot,
+    target: SubscriptionSearchTarget,
+    target_key: str,
+    execution_context: Optional[SubscriptionExecutionContext],
+) -> tuple[Optional[SubscriptionSnapshot], bool]:
+    """
+    分页搜索前核对本订阅的待确认提交；若已完结或电影仍待确认则返回 ``(快照, True)`` 跳过本轮。
+    """
+    reconcile_owner = getattr(owner, "reconcile_pending_downloads", None)
+    if not callable(reconcile_owner):
+        return subscribe, False
+    reconciled = reconcile_owner(subscription_id=subscribe.id)
+    if reconciled.confirmed:
+        refreshed = owner.subscription_repository.get(subscribe.id)
+        if refreshed is None:
+            return None, True
+        subscribe = refreshed
+    if target.media.type == MediaType.MOVIE and pending_blocks_movie_music(reconciled.still_pending, target_key):
+        logger.info(f"订阅 {subscribe.name} 存在已受理但尚未确认的下载任务，本轮跳过搜索避免重复提交其他版本")
+        if execution_context:
+            execution_context.scan_finished = True
+            execution_context.report_phase("finished")
+        return cast(Optional[SubscriptionSnapshot], owner.subscription_repository.get(subscribe.id)), True
+    return subscribe, False
+
+
+def _paused_pending_targets(
+    download_chain: Any,
+    target_key: str,
+    target: SubscriptionSearchTarget,
+    ready: set[str],
+) -> set[str]:
+    """
+    查询刚进入待确认保护期、本轮分页搜索应停止继续深翻的目标集合。
+    """
+    list_pending = getattr(download_chain, "list_pending_downloads", None)
+    if not target_key or not callable(list_pending):
+        return set()
+    pending_records = list_pending(target_keys=[target_key])
+    paused = pending_targets_for_scan(
+        pending_records,
+        target_key,
+        target.media.type,
+        target.missing.get(str(target.media_key)),
+    )
+    return paused & ready
+
+
 def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
                                 searchchain: SearchChain, target: SubscriptionSearchTarget,
                                 rule_key: SystemConfigKey,
@@ -204,6 +265,15 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
     """
     if not isinstance(target.media, MediaInfo):
         raise ValueError("增量搜索仅适用于影视订阅")
+    download_chain = DownloadChain()
+    key_builder = getattr(download_chain, "_build_pending_target_key", None)
+    target_key = key_builder(target.media) if callable(key_builder) else ""
+    checked_subscribe, should_skip = _reconcile_paged_pending(
+        owner, subscribe, target, target_key, execution_context,
+    )
+    if should_skip or checked_subscribe is None:
+        return checked_subscribe
+    subscribe = checked_subscribe
     dynamic_rule_groups = subscribe.best_version and target.media.type == MediaType.TV
     candidate_filter: Callable[[list[Context]], list[Context]] = partial(
         cast(Any, owner)._filter_search_contexts,
@@ -263,6 +333,7 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
         else:
             leftover = search_targets(MediaSearchPlan(mediainfo=target.media, no_exists=lefts)) if lefts else set()
             settled = ready - leftover
+        settled = settled | _paused_pending_targets(download_chain, target_key, target, ready)
         current = owner.subscription_repository.get(subscribe.id)
         if current and downloads:
             owner.finish_subscribe_or_not(subscribe=current, meta=target.meta, mediainfo=target.media,

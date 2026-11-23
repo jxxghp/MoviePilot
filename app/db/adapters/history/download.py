@@ -244,6 +244,7 @@ class TransactionalDownloadHistoryRepository:
         self,
         page: int = 1,
         count: int = 30,
+        *, username: str | None = None,
     ) -> list[DownloadHistorySnapshot]:
         """
         在独立异步 Session 内分页读取并投影历史。
@@ -252,15 +253,16 @@ class TransactionalDownloadHistoryRepository:
             records = await DownloadHistoryOper(session).async_list_by_page(
                 page,
                 count,
+                username=username,
             )
             return [_project_history(record) for record in records]
 
-    async def async_count(self) -> int:
+    async def async_count(self, *, username: str | None = None) -> int:
         """
         在独立异步 Session 内统计下载历史总数。
         """
         async with self._async_session() as session:
-            return await DownloadHistoryOper(session).async_count()
+            return await DownloadHistoryOper(session).async_count(username=username)
 
     def add(
         self,
@@ -315,6 +317,7 @@ class SessionDownloadHistoryRepository:
         self,
         page: int = 1,
         count: int = 30,
+        *, username: str | None = None,
     ) -> list[DownloadHistorySnapshot]:
         """
         在请求异步 Session 内分页读取并投影历史。
@@ -324,16 +327,17 @@ class SessionDownloadHistoryRepository:
         records = await DownloadHistoryOper(self._session).async_list_by_page(
             page,
             count,
+            username=username,
         )
         return [_project_history(record) for record in records]
 
-    async def async_count(self) -> int:
+    async def async_count(self, *, username: str | None = None) -> int:
         """
         在请求异步 Session 内统计下载历史总数。
         """
         if not isinstance(self._session, AsyncSession):
             raise RuntimeError("下载历史异步统计需要 AsyncSession")
-        return await DownloadHistoryOper(self._session).async_count()
+        return await DownloadHistoryOper(self._session).async_count(username=username)
 
     def stage_delete_history(self, history_id: int) -> None:
         """

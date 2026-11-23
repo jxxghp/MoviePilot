@@ -149,6 +149,36 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
             )
         return None
 
+    def mediaserver_search(
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        server: Optional[str] = None,
+        library_id: Optional[str] = None,
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """
+        在指定或所有已启用 Jellyfin 实例中搜索媒体库，并保留条目所属配置。
+
+        :param keyword: 搜索关键词
+        :param types: 需要搜索的业务类型
+        :param limit: 每个实例返回的最大条目数
+        :param server: 可选指定实例配置名称
+        :param library_id: 可选限定媒体库标识
+        :return: 带 Jellyfin 配置名的搜索结果
+        """
+        items: list[_SchemaMediaServerPlayItem] = []
+        target_instances = (
+            {server: inst}
+            if server and (inst := self.get_instance(server))
+            else ({} if server else self.get_instances())
+        )
+        for server_name, server_obj in target_instances.items():
+            for item in server_obj.search_library(keyword, types, limit, library_id=library_id):
+                item.server = server_name
+                items.append(item)
+        return items
+
     def mediaserver_items(
         self,
         server: str,
@@ -262,6 +292,29 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         if not server_obj:
             return None
         return server_obj.get_play_url(str(item_id))
+
+    def mediaserver_stream_url(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        item_type: Optional[str],
+        media_source_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        返回 Jellyfin 支持 Range 的静态媒体流，而不暴露服务器令牌给客户端。
+
+        :param server: Jellyfin 配置名称
+        :param item_id: Jellyfin 条目标识
+        :param item_type: 媒体服务器返回的类型，用于选择音频或视频接口
+        :param media_source_id: 可选指定的多版本媒体源标识
+        :return: 上游媒体流地址；实例不存在或适配器无法构造地址时返回 None
+        """
+        server_obj = self.get_instance(server)
+        return (
+            server_obj.get_stream_url(str(item_id), item_type, media_source_id=media_source_id)
+            if server_obj
+            else None
+        )
 
     def mediaserver_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None

@@ -597,7 +597,7 @@ def test_wechatclawbot_send_file_prefers_image_when_image_file_has_caption():
             )
 
     assert result
-    mock_client.send_text.assert_not_called()
+    mock_client.send_text.assert_called_once_with(to_user="wxid_user_1", text="图片标题\n\n图片说明", context_token=None)
     mock_client.send_image_png.assert_called_once_with(
         to_user="wxid_user_1",
         image_bytes=b"\x89PNG\r\n\x1a\nfake-png",
@@ -630,7 +630,7 @@ def test_wechatclawbot_send_file_prefers_file_when_generic_file_has_caption():
             )
 
     assert result
-    mock_client.send_text.assert_not_called()
+    mock_client.send_text.assert_called_once_with(to_user="wxid_user_1", text="文件标题\n\n文件说明", context_token=None)
     mock_client.send_file_bytes.assert_called_once_with(
         to_user="wxid_user_1",
         file_bytes=b"plain-text",

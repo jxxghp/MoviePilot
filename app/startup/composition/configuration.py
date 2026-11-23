@@ -154,6 +154,7 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
     """
     从可热更新的部署设置构建一次 API 请求配置快照。
     """
+    vapid = settings.VAPID
     return ApiRuntimeConfig(
         access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
         btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
@@ -170,8 +171,9 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
         movie_rename_format=settings.RENAME_FORMAT(MediaType.MOVIE),
         television_rename_format=settings.RENAME_FORMAT(MediaType.TV),
         music_rename_format=settings.RENAME_FORMAT(MediaType.MUSIC),
-        vapid_private_key=settings.VAPID.get("privateKey", ""),
-        vapid_subject=settings.VAPID.get("subject", ""),
+        vapid_public_key=vapid.get("publicKey", ""),
+        vapid_private_key=vapid.get("privateKey", ""),
+        vapid_subject=vapid.get("subject", ""),
         cookiecloud_enable_local=bool(settings.COOKIECLOUD_ENABLE_LOCAL),
         cookiecloud_auth_header=settings.COOKIECLOUD_AUTH_HEADER,
         cookie_path=settings.COOKIE_PATH,
@@ -328,6 +330,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         proxy_server=settings.PROXY_SERVER,
         proxy_host=settings.PROXY_HOST,
         github_headers=settings.GITHUB_HEADERS,
+        github_proxy=settings.GITHUB_PROXY,
         cookiecloud_blacklist=settings.COOKIECLOUD_BLACKLIST,
         subscribe_mode=settings.SUBSCRIBE_MODE,
         no_cache_site_key=settings.NO_CACHE_SITE_KEY,

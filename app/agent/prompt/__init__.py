@@ -158,10 +158,19 @@ class PromptManager:
             logger.error(f"加载提示词失败: {prompt_name}, 错误: {e}")
             raise
 
-    def get_agent_prompt(self, channel: Optional[str] = None) -> str:
+    def get_agent_prompt(
+        self,
+        channel: Optional[str] = None,
+        *,
+        is_admin: bool = True,
+        user_permissions_prompt: str = "",
+    ) -> str:
         """
-        获取智能体提示词
+        获取智能体提示词。
+
         :param channel: 消息渠道（Telegram、微信、Slack等）
+        :param is_admin: 当前会话主体是否拥有系统管理员上下文
+        :param user_permissions_prompt: 非管理员用户的权限边界说明
         :return: 提示词内容
         """
         # 基础提示词包含领域任务、代码工作流、授权边界和渠道能力约束。
@@ -183,7 +192,7 @@ class PromptManager:
         rich_message_spec = self._generate_rich_message_instructions(msg_channel)
 
         # MoviePilot系统信息
-        moviepilot_info = self._get_moviepilot_info()
+        moviepilot_info = self._get_moviepilot_info(is_admin=is_admin)
         voice_reply_spec = self._generate_voice_reply_instructions()
 
         # 始终替换占位符，避免后续 .format() 时因残留花括号报 KeyError
@@ -194,6 +203,10 @@ class PromptManager:
             button_choice_spec=button_choice_spec,
             rich_message_spec=rich_message_spec,
         )
+
+        normalized_permissions = str(user_permissions_prompt or "").strip()
+        if normalized_permissions:
+            base_prompt = f"{base_prompt}\n\n<user_permissions>\n{normalized_permissions}\n</user_permissions>"
 
         base_prompt = f"{base_prompt}\n\n{self._get_output_language_instruction()}"
 
@@ -322,12 +335,22 @@ class PromptManager:
             sections.append(self._format_numbered_rules("IMPORTANT", rules))
         return "\n\n".join(section for section in sections if section).strip()
 
-    def _get_moviepilot_info(self) -> str:
+    def _get_moviepilot_info(self, *, is_admin: bool = True) -> str:
         """
         获取需要常驻注入的最小 MoviePilot 运行信息。
+
+        :param is_admin: 当前会话主体是否拥有系统管理员权限；普通用户不注入宿主机路径与命令环境
+        :return: 格式化后的运行信息文本
         """
         # 保留日期用于提供“今天是哪天”的稳定上下文，但不再注入秒级时间，
         # 避免每次请求都生成不同的 system prompt，影响 provider 侧 cache 命中率。
+        if not is_admin:
+            return "\n".join(
+                [
+                    f"- 当前日期: {strftime('%Y-%m-%d')}",
+                    "- 当前为非管理员会话：仅可调用当前已开放的业务工具，无法执行宿主机命令、读写宿主机文件、修改系统配置或调用管理员/插件管理能力。",
+                ]
+            )
         info_lines = [
             f"- 当前日期: {strftime('%Y-%m-%d')}",
             f"- 运行环境: {SystemUtils.platform} {'docker' if SystemUtils.is_docker() else ''}",

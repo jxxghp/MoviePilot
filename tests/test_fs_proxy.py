@@ -14,7 +14,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
+import psutil
 import pytest
 
 from app.adapters.system.fsproxy import FileSystemProxy, FileSystemTimeout
@@ -61,6 +64,73 @@ def test_realpath_resolves_parent_alias_for_missing_target(tmp_path, proxy, monk
     alias.symlink_to(real, target_is_directory=True)
     monkeypatch.setattr(FileSystemProxy, "_enabled", staticmethod(lambda: enabled))
     assert proxy.realpath(alias / "new.mkv") == real.resolve() / "new.mkv"
+
+
+@pytest.mark.parametrize("fstype, expected", [
+    ("fuse", True), ("fuse.zfsv3", True), ("zfuse.zfsv3", True),
+    ("fuse.shfs", True), ("fuseblk", True), ("fuseblk.ntfs", True),
+    ("ext4", False), ("zfs", False), ("overlay", False), ("nfs", False), ("fusectl", False),
+])
+def test_is_fuse_path_uses_innermost_mount(tmp_path, proxy, monkeypatch, fstype, expected):
+    """
+    识别容器实际绑定挂载的类型，目录前缀相似的另一挂载不能覆盖当前路径。
+    """
+    root = tmp_path.resolve()
+    partitions = [
+        SimpleNamespace(mountpoint=str(root.parent), fstype="overlay"),
+        SimpleNamespace(mountpoint=str(root), fstype=fstype),
+        SimpleNamespace(mountpoint=str(root) + "-other", fstype="fuse.sshfs"),
+    ]
+    query = Mock(return_value=list(reversed(partitions)))
+    monkeypatch.setattr(psutil, "disk_partitions", query)
+
+    assert proxy.is_fuse_path(root / "Movie.mkv") is expected
+    query.assert_called_once_with(all=True)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_is_fuse_path_resolves_symlink_to_mount_with_spaces(tmp_path, proxy, monkeypatch, enabled):
+    """
+    含空格的挂载路径及目录别名按链接目标识别，代理关闭时沿用相同语义。
+    """
+    root = tmp_path.resolve()
+    mount = root / "fuse volume"
+    mount.mkdir()
+    alias = root / "alias"
+    alias.symlink_to(mount, target_is_directory=True)
+    partitions = [
+        SimpleNamespace(mountpoint=str(root), fstype="ext4"),
+        SimpleNamespace(mountpoint=str(mount), fstype="zfuse.zfsv3"),
+    ]
+    monkeypatch.setattr(psutil, "disk_partitions", lambda **_kwargs: partitions)
+    monkeypatch.setattr(FileSystemProxy, "_enabled", staticmethod(lambda: enabled))
+
+    assert proxy.is_fuse_path(alias / "Movie.mkv")
+
+
+def test_is_fuse_path_refreshes_mount_table_and_keeps_unknown_type(tmp_path, proxy, monkeypatch):
+    """
+    挂载类型改变立即生效，挂载表缺少匹配项时不能认定为 FUSE。
+    """
+    root = tmp_path.resolve()
+    partition = SimpleNamespace(mountpoint=str(root), fstype="zfuse.zfsv3")
+    query = Mock(side_effect=[[partition], [SimpleNamespace(mountpoint=str(root), fstype="ext4")], []])
+    monkeypatch.setattr(psutil, "disk_partitions", query)
+
+    assert proxy.is_fuse_path(root / "Movie.mkv")
+    assert not proxy.is_fuse_path(root / "Movie.mkv")
+    assert not proxy.is_fuse_path(root / "Movie.mkv")
+    assert query.call_count == 3
+
+
+def test_is_fuse_path_propagates_mount_query_failure(tmp_path, proxy, monkeypatch):
+    """
+    无法读取挂载表时保留查询错误，由整理层保留文件并进入未知态复核。
+    """
+    monkeypatch.setattr(psutil, "disk_partitions", Mock(side_effect=OSError("mount query failed")))
+
+    with pytest.raises(OSError, match="mount query failed"):
+        proxy.is_fuse_path(tmp_path)
 
 
 def test_stat_on_directory(tmp_path, proxy):
@@ -161,7 +231,7 @@ def test_rename_symlink_uses_link_device_not_target_device(tmp_path, proxy):
 # 核心价值：超时可放弃
 # --------------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("operation", ["stat", "realpath"])
+@pytest.mark.parametrize("operation", ["stat", "realpath", "is_fuse_path"])
 def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch, operation):
     """
     这是整个代理存在的意义：挂载不返回时，调用方必须在有限时间内拿到异常，

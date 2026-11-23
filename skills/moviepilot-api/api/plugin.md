@@ -207,6 +207,7 @@ Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `force` (boolean; default `False`): 为 true 时强制刷新市场或安装插件。; `max_results` (integer|null): 插件目录结果数上限，范围 1 至 200；省略时返回完整目录。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。; `query` (string|null): 可选关键词，匹配插件标识、名称、说明和作者，不区分大小写。; `state*` (string=market): 固定为 market，仅选择该状态的插件目录条目。
 - `body`: none
+- If the market view has no online candidates and one or more configured index reads fail, the endpoint returns HTTP `424` with a retryable index-read error instead of an empty list. A confirmed empty index or an absent package generation remains a successful read.
 
 ### `plugin.market.sync_wiki`
 `POST /api/v1/system/setting/PLUGIN_MARKET/sync-wiki`; policy effect: `external_side_effect`.

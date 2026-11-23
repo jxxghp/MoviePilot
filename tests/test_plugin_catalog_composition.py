@@ -19,8 +19,10 @@ def test_catalog_version_comparison_accepts_only_explicit_success(
     :param monkeypatch: 用无网络客户端隔离市场读取
     """
     client = SimpleNamespace(
-        get_plugins=lambda *_args, **_kwargs: [],
-        async_get_plugins=AsyncMock(return_value=[]),
+        get_plugin_index_result=lambda *_args, **_kwargs: {},
+        async_get_plugin_index_result=AsyncMock(return_value={}),
+        get_single_plugin_index_result=lambda *_args, **_kwargs: {},
+        async_get_single_plugin_index_result=AsyncMock(return_value={}),
     )
     monkeypatch.setattr(
         plugins_initializer, "get_composed_plugin_market_client", lambda: client
@@ -30,3 +32,10 @@ def test_catalog_version_comparison_accepts_only_explicit_success(
 
     assert catalog._version_compare("2.0.0", "gt", "1.0.0") is True
     assert catalog._version_compare("invalid", "gt", "1.0.0") is False
+    assert catalog._market_loader is client.get_plugin_index_result
+    assert catalog._async_market_loader is client.async_get_plugin_index_result
+    assert catalog._single_market_loader is client.get_single_plugin_index_result
+    assert (
+        catalog._async_single_market_loader
+        is client.async_get_single_plugin_index_result
+    )

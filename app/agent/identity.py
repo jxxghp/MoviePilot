@@ -4,6 +4,8 @@ Agent 渠道绑定与自主任务执行账号的解析。
 渠道发送者标识只用于绑定查询，执行账号始终使用持久化用户主键。
 """
 
+from typing import cast
+
 from app.agent.tools.base import run_agent_blocking
 from app.application.security.user import ChainUserRepository, UserSnapshot
 from app.schemas.types import NotificationChannel
@@ -52,6 +54,8 @@ async def require_execution_user(
     users: ChainUserRepository | None,
     execution_user_id: int | None,
     expected_identity: str | None = None,
+    authorization_id: str | None = None,
+    capability: str | None = None,
 ) -> UserSnapshot:
     """
     按已固定的执行用户主键复核账号，拒绝用户名回收和管理员回退。
@@ -59,9 +63,24 @@ async def require_execution_user(
     :param users: 宿主用户仓储；未装配时拒绝执行
     :param execution_user_id: 固定的用户主键；旧任务为空时须先从原会话更新绑定
     :param expected_identity: 固定的账号不可变身份；提供时拒绝主键被新账号复用
+    :param authorization_id: 固定的渠道授权身份，存在时重新读取当前角色与能力
+    :param capability: 需要复核的渠道能力，普通账号为空
     :return: 当前仍然存在且启用的执行用户及实时权限
     :raises AgentIdentityError: 身份缺失、账号删除或停用
     """
+    if authorization_id:
+        from app.application.security.authorization import get_channel_authorization
+
+        service = get_channel_authorization()
+        if service is None:
+            raise AgentIdentityError("渠道授权服务不可用")
+        try:
+            user = await run_agent_blocking("db", service.principal, authorization_id, capability=capability)
+        except PermissionError as error:
+            raise AgentIdentityError(str(error)) from error
+        if user.id != execution_user_id or (expected_identity is not None and user.notification_identity != expected_identity):
+            raise AgentIdentityError("任务执行主体已改变，请从原会话重新创建任务")
+        return cast(UserSnapshot, user)
     if execution_user_id is None:
         raise AgentIdentityError(
             "任务尚未绑定执行账号，请先确认 MoviePilot 账号的渠道绑定，"
@@ -89,6 +108,7 @@ async def resolve_task_user(
     is_admin: bool,
     execution_user_id: int | None = None,
     execution_user_identity: str = "",
+    authorization_id: str | None = None,
 ) -> UserSnapshot:
     """
     创建或显式更新旧任务时，将可信入口身份转换为真实用户。
@@ -101,11 +121,21 @@ async def resolve_task_user(
     :param is_admin: 可信入口注入的管理员标记，仅已认证集成可借用宿主身份
     :param execution_user_id: 当前自主任务的固定执行主体；嵌套创建时继续沿用
     :param execution_user_identity: 当前自主任务已固定的账号不可变身份
+    :param authorization_id: 当前已确认的渠道授权；嵌套任务不能脱离该身份
     :return: 唯一启用的真实用户
     :raises AgentIdentityError: 无法确定唯一启用用户
     """
     if execution_user_id is not None:
-        return await require_execution_user(users, execution_user_id, execution_user_identity)
+        return await require_execution_user(users, execution_user_id, execution_user_identity, authorization_id, "schedule")
+    if channel and source and channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}:
+        from app.application.security.authorization import get_channel_authorization
+
+        service = get_channel_authorization()
+        if service is not None:
+            try:
+                return cast(UserSnapshot, await run_agent_blocking("db", service.resolve, channel, source, user_id, capability="schedule"))
+            except PermissionError as error:
+                raise AgentIdentityError(str(error)) from error
     integration = source == "api" or (
         channel == NotificationChannel.Web.value
         and source in {"openai", "openai.responses", "anthropic"}

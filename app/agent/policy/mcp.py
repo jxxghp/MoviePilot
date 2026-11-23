@@ -75,7 +75,10 @@ OPERATION_DESCRIPTIONS = {
     "site.cookie.update": "登录一个站点并刷新保存的认证 Cookie。",
     "site.cookie.set": "为一个站点保存浏览器取得的认证 Cookie 和可选 User-Agent，保留其他设置。",
     "site.list": "按状态和名称筛选已配置站点；认证字段仅向超级管理员返回。",
-    "site.test": "测试一个已配置站点的连通性和认证状态。",
+    "site.test": (
+        "测试站点连通性和适配器支持的登录状态；通用网页检测仅检查页面和 Cookie，"
+        "不校验独立的用户认证接口，不能据此判断 UID、Passkey 等用户认证参数有效。"
+    ),
     "site.update": "更新一个已配置站点的完整设置。",
     "site.userdata": "读取最近采集的指定站点账号统计。",
     "slash.list": "列出智能体可分发的斜杠命令。",

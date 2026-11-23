@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from app.agent.policy.api import resolve_api_operation
 from app.agent.policy.contracts import (
     ActionEffect,
+    AuthSource,
     ExecutionOutcome,
     ExecutionReceipt,
     ToolOrigin,
@@ -25,11 +26,13 @@ from app.agent.policy.orchestrator import (
 )
 from app.agent.policy.registry import requests_system_setting_secrets
 from app.agent.policy.sanitizer import stable_type_name
+from app.agent.tools.base import run_agent_blocking
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import McpExternalTool
 from app.agent.tools.result import EXECUTION_OUTCOME_KEY, ToolExecutionError, annotate_tool_result
 from app.agent.tools.tags import ToolTag
+from app.schemas.types import NotificationChannel
 
 if TYPE_CHECKING:
     from app.agent.middleware.guardrails import ToolGuardrailsMiddleware
@@ -225,6 +228,13 @@ class AgentPolicyMiddleware(AgentMiddleware):
         """
         执行一次本地工具调用，并复用 ToolNode 的策略生命周期。
         """
+        authorization_error = await self._channel_authorization_error(tool, arguments)
+        if not authorization_error:
+            authorization_error = self._web_authorization_error(tool)
+        if authorization_error:
+            return False, ToolMessage(content=authorization_error, tool_call_id=str(invocation_id or ""),
+                                      name=str(getattr(tool, "name", "unknown")), status="error",
+                                      additional_kwargs={EXECUTION_OUTCOME_KEY: ExecutionOutcome.FAILED.value})
         if self.context.origin is ToolOrigin.SUBAGENT and not self._subagent_read_allowed(tool, arguments):
             return False, self._subagent_read_only_error(tool, arguments, invocation_id)
         observation = call_policy_hook(
@@ -271,6 +281,62 @@ class AgentPolicyMiddleware(AgentMiddleware):
             )
         return True, result
 
+    async def _channel_authorization_error(self, tool: Any, arguments: dict[str, Any]) -> str | None:
+        """
+        所有本地工具和子代理调用前复核渠道状态，覆盖记忆和外部 MCP 等非基础工具。
+        """
+        identity = self.context.agent_context.get("authorization_id")
+        if not isinstance(identity, str) or not identity:
+            if self.context.agent_context.get("channel_authorization_required") is True:
+                from app.agent.policy.api import API_UNBOUND_READ_OPERATIONS
+
+                public_operation = isinstance(tool, MoviePilotApiTool) and arguments.get("operation_id") in API_UNBOUND_READ_OPERATIONS
+                if not public_operation and getattr(tool, "name", "") not in {"send_message", "send_voice_message"}:
+                    return "此操作需要管理员授权，请发送“申请使用”，批准后重新发送要执行的操作。"
+            return None
+        from app.application.security.authorization import get_channel_authorization
+
+        service = get_channel_authorization()
+        if service is None:
+            return "渠道授权服务不可用，未执行该工具。"
+        try:
+            capability = "schedule" if isinstance(self.context.agent_context.get("execution_user_id"), int) else None
+            user = await run_agent_blocking("db", service.principal, identity, capability=capability)
+            self.context.agent_context["is_admin"] = user.is_superuser
+            if not user.is_superuser and (isinstance(tool, McpExternalTool) or str(getattr(tool, "_agent_tool_source", "")).startswith("plugin:")):
+                return "此扩展工具需要渠道管理员授权。"
+            return None
+        except PermissionError as error:
+            state = self.context.agent_context.setdefault("execution_identity_error", {})
+            if isinstance(state, dict):
+                state["message"] = str(error)
+            return str(error)
+
+    def _web_authorization_error(self, tool: Any) -> str | None:
+        """
+        对直接登录的网页会话复核账号激活状态及插件/管理员工具边界。
+
+        :param tool: 即将执行的本地工具实例
+        :return: 拒绝原因；放行时返回 None
+        """
+        is_web_session = self.context.auth_source is AuthSource.WEB_SESSION or (
+            self.context.channel in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}
+            and self.context.source not in {"api", "openai", "openai.responses", "anthropic"}
+        )
+        if not is_web_session:
+            return None
+        if self.context.agent_context.get("web_user_active") is False:
+            return "当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。"
+        if bool(self.context.agent_context.get("is_admin")):
+            return None
+        tool_source = str(getattr(tool, "_agent_tool_source", "") or "")
+        tool_name = str(getattr(tool, "name", "") or "")
+        if tool_source.startswith("plugin:") or tool_name.startswith("plugin:"):
+            return "此插件工具仅允许系统管理员调用。"
+        if getattr(tool, "_require_admin", getattr(tool, "require_admin", False)):
+            return "抱歉，您没有权限执行此操作（仅限系统管理员）。"
+        return None
+
     @staticmethod
     def _subagent_read_allowed(tool: Any, arguments: dict[str, Any]) -> bool:
         """
@@ -288,6 +354,8 @@ class AgentPolicyMiddleware(AgentMiddleware):
         if isinstance(tool, McpExternalTool):
             return False
         name = getattr(tool, "name", None)
+        if name in {"knowledge_search", "knowledge_read"}:
+            return False
         if name in SUBAGENT_READ_ACTIONS:
             action = arguments.get("action")
             return bool(

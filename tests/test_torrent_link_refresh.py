@@ -14,6 +14,7 @@ import pytest
 import app.application.torrent.download as torrent_download
 import app.chain.download.submission as submission
 import app.chain.torrents as torrents_module
+from app.application.site.protocol import is_expiring_download_url, torrent_resource_identity
 from app.chain.download import DownloadChain
 from app.chain.torrents import TorrentsChain
 from app.domain import torrent as torrent_rules
@@ -136,7 +137,7 @@ def download_chain(monkeypatch):
     """
     在下载文件和站点查询边界打桩，禁止真实网络和下载器提交。
     """
-    chain = object.__new__(DownloadChain)
+    chain = DownloadChain()
     chain.post_message = Mock()
     chain.search_site_torrents = Mock(return_value=[])
     helper = Mock()
@@ -414,7 +415,7 @@ def test_mteam_default_refresh_keeps_existing_cache_and_recognition(refresh_chai
     assert cached.torrent_info is fresh
     assert cached.media_info.title == "已识别"
     refresh_chain._build_refresh_context.assert_not_called()
-    assert torrent_rules.resource_identity(old) != torrent_rules.resource_identity(older.torrent_info)
+    assert torrent_resource_identity(old) != torrent_resource_identity(older.torrent_info)
 
 
 @pytest.mark.parametrize("keys,domain,expected", [
@@ -527,10 +528,10 @@ def test_ttg_path_identity_ignores_signed_auth(page_url, enclosure, expected):
     TTG 详情页和下载路径中的种子 ID 是稳定身份，下载路径末段的 auth 不参与身份；其他站点不套用该路径规则。
     """
     torrent = _torrent(page_url=page_url, enclosure=enclosure)
-    assert torrent_rules.resource_identity(torrent) == expected
+    assert torrent_resource_identity(torrent) == expected
     if expected is not None:
         renewed = replace(torrent, enclosure=TTG_NEW_URL)
-        assert torrent_rules.resource_identity(renewed) == expected
+        assert torrent_resource_identity(renewed) == expected
 
 
 @pytest.mark.parametrize("url,expected", [
@@ -548,7 +549,7 @@ def test_ttg_path_signature_is_expiring(url, expected):
     """
     只有 TTG 的 /dl/{id}/{auth} 下载路径按短时签名处理，其他站点相同形态的路径保持普通链接。
     """
-    assert torrent_rules.is_expiring_download_url(url) is expected
+    assert is_expiring_download_url(url) is expected
 
 
 def test_ttg_expired_path_signature_refreshes_same_resource(download_chain):

@@ -287,7 +287,8 @@ def test_original_year_does_not_become_current_release_date(tmp_path, model, dis
 
 
 @pytest.mark.parametrize("mode", ["copy", "link", "softlink"])
-def test_real_transfer_followed_by_scrape_preserves_seed_and_updates_library(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize("manual_directory", [False, True])
+def test_real_transfer_followed_by_scrape_preserves_seed_and_updates_library(tmp_path, monkeypatch, mode, manual_directory):
     """
     真实规划、存储执行及刮削入口串联后，补写只作用于最终命名的媒体库文件。
     """
@@ -299,7 +300,8 @@ def test_real_transfer_followed_by_scrape_preserves_seed_and_updates_library(tmp
     info = MusicInfo.from_meta(meta)
     info.cover_url = "https://example.invalid/cover.png"
     planning_input = TransferPlanningInput(source_fileitem=source_item.model_dump(mode="json"), target_storage="local",
-                                           target_path=str(tmp_path / "library"), requested_transfer_type=mode, need_rename=True)
+                                           target_path=str(tmp_path / "library"), requested_transfer_type=mode, need_rename=True,
+                                           options={"music_target_path": str(tmp_path / "library")} if manual_directory else {})
     monkeypatch.setattr("app.modules.filemanager.transhandler.eventmanager.send_event", Mock(return_value=None))
     handler = TransHandler()
     checkpoint = handler.plan_transfer(planning_input, meta=meta, mediainfo=info, source_oper=storage,
@@ -310,6 +312,8 @@ def test_real_transfer_followed_by_scrape_preserves_seed_and_updates_library(tmp
     assert result.success, result.message
     target = Path(checkpoint.final_target_path)
     assert target.name == "01 - Song.flac"
+    if manual_directory:
+        assert target.parent == tmp_path / "library"
     if mode != "copy":
         assert source.samefile(target)
 

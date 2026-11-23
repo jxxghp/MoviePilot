@@ -186,7 +186,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     NotificationChannel.Telegram,
                     client_config.config,
                     user_id,
-                ),
+                 source=client_config.name),
                 text=callback_text,
                 is_callback=True,
                 callback_data=callback_data,
@@ -250,6 +250,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             )
 
             user_list = (client_config.config or {}).get("TELEGRAM_USERS")
+            from app.application.security.authorization import get_channel_authorization
+
+            if get_channel_authorization() is not None:
+                user_list = None
 
             if cleaned_text and cleaned_text.startswith("/"):
                 if self._should_reject_admin_command(client_config.config, user_id):
@@ -274,7 +278,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     NotificationChannel.Telegram,
                     client_config.config,
                     user_id,
-                ),
+                 source=client_config.name),
                 text=cleaned_text,
                 message_id=message_id,
                 chat_id=str(chat_id) if chat_id else None,
@@ -469,9 +473,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :raises RuntimeError: 一个或多个匹配实例缺失客户端或未确认发送成功
         """
         failures = []
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
@@ -482,7 +484,15 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             client = self.get_instance(conf.name)
             result = None
             if client:
-                if message.file_path:
+                if message.native_image and message.image:
+                    result = client.send_image(
+                        image=message.image, title=message.title, text=message.text,
+                        userid=str(userid) if userid is not None else None,
+                        original_chat_id=message.original_chat_id, parse_mode=message.parse_mode,
+                        buttons=message.buttons, private_delivery=message.private_delivery,
+                    )
+                elif message.file_path:
+                    file_options: dict[str, Any] = {"private_delivery": True} if message.private_delivery else {}
                     result = client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
@@ -491,6 +501,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         userid=str(userid) if userid is not None else None,
                         original_chat_id=message.original_chat_id,
                         parse_mode=message.parse_mode,
+                        **file_options,
                     )
                 elif message.voice_path:
                     result = client.send_voice(
@@ -727,6 +738,12 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
+        通过统一媒体协议发送完整通知，返回首条消息引用，任一附件失败则返回 None。
+        """
+        return self._send_direct_parts(message, self._send_direct_message_part)
+
+    def _send_direct_message_part(self, message: Message) -> Optional[MessageResponse]:
+        """
         发送新消息并返回首个成功实例的消息引用。
 
         :param message: 待发送通知；语音单独处理，其他内容发送文本或图文，强制回复保留原消息关系
@@ -744,7 +761,22 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     return None
             client = self.get_instance(conf.name)
             if client:
-                if message.voice_path:
+                if message.native_image and message.image:
+                    result = client.send_image(
+                        image=message.image, title=message.title, text=message.text,
+                        userid=str(userid) if userid is not None else None,
+                        original_chat_id=message.original_chat_id, parse_mode=message.parse_mode,
+                        buttons=message.buttons, private_delivery=message.private_delivery,
+                    )
+                elif message.file_path:
+                    result = client.send_file(
+                        file_path=message.file_path, file_name=message.file_name,
+                        title=message.title, text=message.text,
+                        userid=str(userid) if userid is not None else None,
+                        original_chat_id=message.original_chat_id, parse_mode=message.parse_mode,
+                        private_delivery=message.private_delivery,
+                    )
+                elif message.voice_path:
                     result = client.send_voice(
                         voice_path=message.voice_path,
                         userid=str(userid) if userid is not None else None,

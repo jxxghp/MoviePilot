@@ -87,6 +87,17 @@ def _unique_pending_torrents(
     return pending
 
 
+def _reconcile_pending_downloads_if_supported(owner: Any) -> None:
+    """
+    在支持待确认核对钩子的整理链上执行前置核对，兼容未绑定测试替身对象。
+
+    :param owner: 整理队列所有者或测试替身实例
+    """
+    reconcile = getattr(owner, "_reconcile_pending_downloads_before_transfer", None)
+    if callable(reconcile):
+        reconcile()
+
+
 class TransferQueueOwner(_TransferOwnerBase):
     """
     唯一持有整理工作线程、队列、租约和恢复调度。
@@ -133,6 +144,10 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._owned_leases: Dict[str, Tuple[str, float]] = {}
         self._queued_lease_tokens: set[Tuple[str, str]] = set()
         self._resident_tasks: Dict[Tuple[str, str], TransferTask] = {}
+        # 下载器整理轮询把任务交给整理时记录的"选中文件总大小"，键为（下载器, hash）。整理结束打"已整理"
+        # 标签前与当前值比对：期间同一任务被追加了新文件（即使已经下载完成）就不打标签，让下一轮整理
+        # 把新文件也整理掉。只在内存中保存，重启后缺失时退回原有判断。
+        self._transfer_scan_sizes: Dict[Tuple[Optional[str], str], Optional[float]] = {}
         self._replay_thread: Optional[threading.Thread] = None
         self._replay_stop_event = threading.Event()
         self._recovery_wakeup_event = threading.Event()
@@ -1586,6 +1601,81 @@ class TransferQueueOwner(_TransferOwnerBase):
         """
         return self._transfer_queue_service().list_page(page, count)
 
+    def _remember_transfer_scan(self, torrent: DownloaderTorrent) -> None:
+        """
+        记录任务交给整理时的选中文件总大小，供整理结束打"已整理"标签前比对。
+
+        见 ``_TransferChain__selection_changed_since_scan``：期间同一任务被追加了新文件时选中大小会变，
+        此时不能打标签，否则新文件不会再进入下载器整理。
+        记录不会在打标签前被下一轮覆盖：任务在整理作业视图里还有作业时，轮询不会再扫描它（见 ``process`` 的
+        ``existing_hashes``），而打标签发生在整理回调里、作业移出作业视图之前；两轮轮询之间由 ``downloader_lock``
+        串行。
+
+        :param torrent: 本轮交给整理的已完成任务
+        """
+        if torrent.hash:
+            self._transfer_scan_size_records()[(torrent.downloader, torrent.hash)] = torrent.selected_size
+
+    def _transfer_scan_size_records(self) -> Dict[Tuple[Optional[str], str], Optional[float]]:
+        """
+        返回"交给整理时的选中大小"记录，缺失时按需创建。
+
+        正常由 ``__init__`` 创建；绕过 ``__init__`` 构造的实例（测试骨架、复用整理流程的补丁）也要能
+        正常读写，否则打标签前的比对会因缺少属性被异常处理吞掉，任务永远不会打上"已整理"。
+
+        :return: 键为（下载器, hash）的选中大小记录
+        """
+        return cast(
+            Dict[Tuple[Optional[str], str], Optional[float]],
+            self.__dict__.setdefault("_transfer_scan_sizes", {}),
+        )
+
+    def _transfer_downloader_task(
+            self,
+            torrent: DownloaderTorrent,
+            fileitem: FileItem,
+            mediainfo: Any,
+            mtype: Optional[MediaType],
+    ) -> None:
+        """
+        把下载器整理轮询查到的已完成任务交给整理。
+
+        只选中部分文件的任务要跳过下载器报告尚未下载完成的文件。这是下载器整理轮询的内部参数，不进入公开的
+        ``do_transfer`` 签名，与恢复回放一样经 ``_execute_transfer`` 传入；其余任务照旧调用 ``do_transfer``，
+        替换或包装了它的插件看到的调用不变。
+
+        :param torrent: 已完成的下载器任务
+        :param fileitem: 任务内容路径对应的存储文件项（整理根目录）
+        :param mediainfo: 按下载记录识别的媒体信息；非 MoviePilot 下载的任务为 None，按文件识别
+        :param mtype: 下载记录中的媒体类型；无下载记录时为 None
+        """
+        transfer_kwargs: Dict[str, Any] = {
+            "fileitem": fileitem,
+            "mediainfo": mediainfo,
+            "mtype": mtype,
+            "downloader": torrent.downloader,
+            "download_hash": torrent.hash,
+        }
+        if torrent.incomplete_files:
+            self._execute_transfer(**transfer_kwargs, incomplete_files=torrent.incomplete_files)
+        else:
+            self.do_transfer(**transfer_kwargs)
+
+    def _reconcile_pending_downloads_before_transfer(self) -> None:
+        """
+        扫描已完成种子前先核对待确认提交，使延迟落地的任务在整理前补齐下载历史与订阅状态。
+
+        待确认表为空时仅执行一次只读空查询，不访问下载器；异常仅记告警，不阻断整理主流程。
+        """
+        if getattr(self, "download_pending_repository", None) is None:
+            return
+        try:
+            subscribe_chain = getattr(self, "_transfer_subscribe_chain", None)
+            if callable(subscribe_chain):
+                cast(Any, subscribe_chain()).reconcile_pending_downloads()
+        except Exception as err:
+            logger.warning(f"整理前核对待确认下载任务失败，继续执行已完成任务扫描：{err}")
+
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
         """
         获取下载器中的种子列表，并执行整理
@@ -1608,6 +1698,8 @@ class TransferQueueOwner(_TransferOwnerBase):
             logger.info("开始整理下载器中已经完成下载的文件 ...")
             if progress_callback:
                 progress_callback(value=0, text="正在查询已完成下载任务 ...")
+
+            _reconcile_pending_downloads_if_supported(self)
 
             if torrents_list := self.list_torrents(status=TorrentStatus.TRANSFER):
                 existing_hashes = self.jobview.get_all_torrent_hashes()
@@ -1685,14 +1777,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                         # 非MoviePilot下载的任务，按文件识别
                         mediainfo = None
 
+                    self._remember_transfer_scan(torrent)
                     # 执行异步整理，匹配源目录
-                    self.do_transfer(
-                        fileitem=fileitem,
-                        mediainfo=mediainfo,
-                        mtype=mtype,
-                        downloader=torrent.downloader,
-                        download_hash=torrent.hash,
-                    )
+                    self._transfer_downloader_task(torrent, fileitem, mediainfo, mtype)
                     if progress_callback:
                         progress_callback(
                             value=index / total_num * 100,

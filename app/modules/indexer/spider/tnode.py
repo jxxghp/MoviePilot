@@ -51,6 +51,38 @@ class TNodeSpider:
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15
 
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        重新提取当前 Cookie 的 CSRF 令牌，再验证当前用户 API，不复用搜索令牌缓存。
+
+        :return: 当前会话是否有效及连接、令牌或认证失败原因
+        """
+        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        cookie = self._cookie or ""
+        with RequestUtils(ua=user_agent, cookies=cookie, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=str(self._domain), allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            match = re.search(r'<meta name="x-csrf-token" content="(.+?)">', response.text)
+        if not match:
+            return False, "无法获取Token"
+        with RequestUtils(headers={
+            "X-CSRF-TOKEN": match.group(1), "Content-Type": "application/json; charset=utf-8", "User-Agent": user_agent,
+        }, cookies=cookie, ua=user_agent, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=f"{str(self._domain).rstrip('/')}/api/user/getInfo", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            payload = response.json()
+            if isinstance(payload, dict) and payload.get("data"):
+                return True, "连接成功"
+            return False, "Cookie已失效"
+
     def __get_token(self) -> Optional[str]:
         """
         以当前站点和凭据隔离的缓存键获取同步CSRF令牌。

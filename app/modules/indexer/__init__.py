@@ -6,10 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 from typing import Any, Callable, List, Mapping, Optional, Protocol, Tuple, Union, cast
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
+import app.modules.indexer.download as download_protocol
+import app.modules.indexer.rss as rss_protocol
+from app.application.rss import RssLinkRecipe
 from app.application.site.health import get_configured_site_health_service
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
+from app.application.site.protocol import SiteConnectionResult
 from app.application.site.query import get_configured_site_query_service
 
 # 站点目录由外部资源在运行时提供，静态检查环境不包含其实体模块。
@@ -20,9 +24,11 @@ from app.domain import torrent as torrent_rules
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
+from app.foundation.url import split_netloc
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import JsonList, SiteSpider
+from app.modules.indexer.spider.colapt import ColaPTSpider
 from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hdarea import HDAreaSpider
@@ -35,6 +41,7 @@ from app.modules.indexer.spider.rousi import RousiSpider
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
+from app.modules.indexer.spider.ttg import TTGDownloadAdapter
 from app.modules.indexer.spider.yema import YemaSpider
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -197,6 +204,7 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "Haidan": HaiDanSpider,
     "HDDolby": HddolbySpider,
     "HDArea": HDAreaSpider,
+    "ColaPT": ColaPTSpider,
     "HDWing": HDWingSpider,
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
@@ -204,6 +212,18 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "Milkie": MilkieSpider,
     "FluxTorrent": FluxTorrentSpider,
 }
+
+# 旧资源的资料协议与搜索协议命名不同，别名只能在索引模块解释。
+_PROTOCOL_PARSER_ALIASES = {"MTorrent": "mTorrent", "TNode": "TNodeSpider"}
+_DOMAIN_CONNECTION_PARSERS = {
+    "zhuque.in": "TNodeSpider", "m-team.io": "mTorrent", "m-team.cc": "mTorrent",
+    "yemapt.org": "Yema", "hddolby.com": "HDDolby", "hdarea.club": "HDArea",
+    "rousi.pro": "RousiPro", "sunnypt.top": "SunnyPT", "piggo.me": "Piggo", "milkie.cc": "Milkie",
+}
+_DOMAIN_CONNECTION_SETTINGS = {"yemapt.org": {"legacy_cookie_test": True}}
+_CONNECTION_PROTOCOL_NAMES = frozenset(_DOMAIN_CONNECTION_PARSERS.values())
+_SPECIAL_SITE_DOMAINS = ("u2.dmhy.org", "pt.ecust.pp.ua", "pt.gtkpw.xyz", "pt.gtk.pw")
+_TORRENT_PATH_ADAPTERS = (MTorrentSpider, TTGDownloadAdapter, ColaPTSpider)
 
 # 仅传递各专站搜索入口支持的参数，避免同步与异步调用契约分叉。
 _SPECIALIZED_SEARCH_ARGUMENTS = {
@@ -216,6 +236,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "Haidan": ("keyword", "mtype"),
     "HDDolby": ("keyword", "mtype", "cat", "page"),
     "HDArea": ("keyword", "mtype", "cat", "page"),
+    "ColaPT": ("keyword", "mtype", "cat", "page"),
     "HDWing": ("keyword", "mtype", "cat", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
     "Milkie": ("keyword", "mtype", "page"),
@@ -391,14 +412,13 @@ class IndexerModule(_ModuleBase):
         indexer = SitesHelper().get_indexer(site.domain)
         if not indexer:
             return None
-        if indexer.get("parser") == "mTorrent":
-            if not torrent.page_url:
-                return None
-            return MTorrentSpider(indexer).get_subtitle_links(
-                torrent.page_url
-            )
-        # 其他站点尚无专用字幕接口适配，返回 None 交给页面解析流程处理。
-        return None
+        parser_name = str(indexer.get("parser") or "")
+        parser_class = SPIDER_PARSER_CLASSES.get(_PROTOCOL_PARSER_ALIASES.get(parser_name, parser_name))
+        if parser_class is None or not callable(getattr(parser_class, "get_subtitle_links", None)) or not torrent.page_url:
+            return None
+        current_site = {**indexer, **site.model_dump(), "domain": site.url}
+        get_links = getattr(parser_class(current_site), "get_subtitle_links")
+        return cast(List[str], get_links(torrent.page_url))
 
     @staticmethod
     def __search_check(site: dict[str, Any], search_word: Optional[str] = None) -> bool:
@@ -414,7 +434,7 @@ class IndexerModule(_ModuleBase):
             return False
 
         # 站点流控
-        state, msg = SitesHelper().check(site_rules.extract_domain(site.get("domain")))
+        state, msg = SitesHelper().check(IndexerModule.get_site_domain(site.get("domain")))
         if state:
             logger.warn(msg)
             report_site_search_outcome(attempted=False, outcome="deferred", error=msg)
@@ -440,7 +460,7 @@ class IndexerModule(_ModuleBase):
         """
         索引器统计。
         """
-        domain = site_rules.extract_domain(site.get("domain"))
+        domain = IndexerModule.get_site_domain(site.get("domain"))
         if error_flag:
             get_configured_site_health_service().fail(domain)
         else:
@@ -454,7 +474,7 @@ class IndexerModule(_ModuleBase):
         """
         异步索引器统计。
         """
-        domain = site_rules.extract_domain(site.get("domain"))
+        domain = IndexerModule.get_site_domain(site.get("domain"))
         if error_flag:
             await get_configured_site_health_service().async_fail(domain)
         else:
@@ -462,6 +482,22 @@ class IndexerModule(_ModuleBase):
                 domain=domain,
                 seconds=seconds,
             )
+
+    @staticmethod
+    def __site_user_agent(site: dict[str, Any]) -> Optional[str]:
+        """
+        使用适配器声明的 User-Agent 规则构造下载上下文。
+
+        :param site: 包含搜索协议和当前用户配置的站点上下文
+        :return: 专站规则处理后的 User-Agent，普通站点保留当前配置值
+        """
+        raw_ua = site.get("ua")
+        normalized_ua = raw_ua.strip() if isinstance(raw_ua, str) else raw_ua
+        parser_class = SPIDER_PARSER_CLASSES.get(str(site.get("parser") or ""))
+        get_user_agent = getattr(parser_class, "get_user_agent", None)
+        if callable(get_user_agent):
+            return cast(str, get_user_agent(normalized_ua))
+        return cast(Optional[str], normalized_ua)
 
     @staticmethod
     def __parse_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[TorrentInfo]:
@@ -489,7 +525,7 @@ class IndexerModule(_ModuleBase):
                 site=site.get("id"),
                 site_name=site.get("name"),
                 site_cookie=site.get("cookie"),
-                site_ua=site.get("ua"),
+                site_ua=IndexerModule.__site_user_agent(site),
                 site_proxy=bool(site.get("proxy")),
                 site_order=int(site.get("pri") or 0),
                 site_downloader=site.get("downloader"),
@@ -549,7 +585,7 @@ class IndexerModule(_ModuleBase):
         """
         torrent = TorrentInfo()
         torrent.from_dict(record)
-        identity = torrent_rules.resource_identity(torrent)
+        identity = IndexerModule.torrent_resource_identity(torrent)
         parser_class = SPIDER_PARSER_CLASSES.get(str(site.get("parser") or ""))
         if parser_class is not None and identity and identity[1].startswith("id=") \
                 and callable(getattr(parser_class, "get_download_url", None)):
@@ -558,42 +594,188 @@ class IndexerModule(_ModuleBase):
         if not torrent.enclosure and not allow_missing:
             return None
         torrent.site_cookie = site.get("cookie") or ""
-        torrent.site_ua = site.get("ua") or ""
+        torrent.site_ua = IndexerModule.__site_user_agent(site) or ""
         torrent.site_proxy = bool(site.get("proxy"))
         torrent.site_downloader = site.get("downloader") or ""
         return torrent
 
     @staticmethod
-    def test_site(site: dict[str, Any]) -> Optional[Tuple[bool, str]]:
+    def test_site(site: dict[str, Any]) -> SiteConnectionResult:
         """
-        按资源声明调用适配器连接检测，不支持时交还站点链的既有检测路径。
+        域名绑定优先于资源协议，由适配器拥有完整的认证和连接检测。
 
         :param site: 已合并当前用户配置的站点资源及认证上下文
-        :return: 适配器检测结果；没有连接检测能力时为 None，失败结果不得视为不支持
+        :return: 明确的能力回执；不支持与真实失败分离，缺少 Module 不能被网页检测掩盖
         """
-        for key in ("schema", "parser"):
-            parser_class = SPIDER_PARSER_CLASSES.get(str(site.get(key) or ""))
+        domain = IndexerModule.get_site_domain(site.get("domain") or site.get("url"))
+        domain_parser = _DOMAIN_CONNECTION_PARSERS.get(domain)
+        parser_names = (domain_parser,) if domain_parser else (site.get("schema"), site.get("parser"))
+        for value in parser_names:
+            parser_name = str(value or "")
+            parser_name = _PROTOCOL_PARSER_ALIASES.get(parser_name, parser_name)
+            parser_class = SPIDER_PARSER_CLASSES.get(parser_name)
             if parser_class is not None and callable(getattr(parser_class, "test_connection", None)):
-                test_connection = getattr(parser_class(site), "test_connection")
-                return cast(Tuple[bool, str], test_connection())
-        return None
+                current_site = {**site, **_DOMAIN_CONNECTION_SETTINGS.get(domain, {})}
+                test_connection = getattr(parser_class(current_site), "test_connection")
+                success, message = cast(Tuple[bool, str], test_connection())
+                return SiteConnectionResult(supported=True, success=success, message=message)
+            if parser_name in _CONNECTION_PROTOCOL_NAMES:
+                return SiteConnectionResult(supported=True, message="站点适配器未提供连接检测能力")
+        return SiteConnectionResult(supported=False)
 
     @staticmethod
-    def parse_torrent_download_response(request_params: dict[str, Any], status_code: Optional[int], payload: object) -> str:
+    def parse_torrent_download_response(request_params: dict[str, Any], status_code: Optional[int], payload: object,
+                                        response_text: Optional[str] = None) -> Optional[str]:
         """
         将标注协议的换票响应交给已注册适配器解析，通用下载链不解释专站业务码。
 
         :param request_params: 索引器编码的换票配方，protocol 选择响应解析适配器
         :param status_code: 原始 HTTP 状态，None 表示连接失败
         :param payload: 已解析的 JSON，格式无效时为 None
-        :return: 适配器校验后的临时下载地址
+        :param response_text: 不声明结果字段的旧配方使用响应正文
+        :return: 适配器校验后的临时下载地址；旧配方缺少结果时为 None
         :raises ValueError: 解析器不可用或适配器拒绝该响应，不能回退使用错误载荷中的地址
         """
-        parser_class = SPIDER_PARSER_CLASSES.get(str(request_params.get("protocol") or ""))
+        protocol = str(request_params.get("protocol") or "")
+        if not protocol:
+            return download_protocol.parse_download_response(request_params, status_code, payload, response_text)
+        parser_class = SPIDER_PARSER_CLASSES.get(_PROTOCOL_PARSER_ALIASES.get(protocol, protocol))
         parse_response = getattr(parser_class, "parse_download_response", None)
         if not callable(parse_response):
             raise ValueError("站点换票响应解析器不可用")
-        return cast(str, parse_response(status_code=status_code, payload=payload, request_params=request_params))
+        url = parse_response(status_code=status_code, payload=payload, request_params=request_params)
+        if not isinstance(url, str) or not url:
+            raise ValueError("站点换票响应解析器不可用")
+        return url
+
+    @staticmethod
+    def get_site_domain(url: Optional[str]) -> str:
+        """
+        解释站点多级域名例外，其余地址沿用通用领域解析规则。
+
+        :param url: 站点地址或 Cookie Domain；空值返回空字符串
+        :return: 站点目录及持久化使用的匹配域名
+        """
+        if not url:
+            return ""
+        _scheme, netloc = split_netloc(url)
+        hostname = (urlsplit(f"//{netloc.lstrip('.')}").hostname or "").lower()
+        for domain in _SPECIAL_SITE_DOMAINS:
+            if hostname == domain or hostname.endswith(f".{domain}"):
+                return domain
+        return site_rules.extract_domain(url)
+
+    @staticmethod
+    def torrent_resource_identity(torrent: TorrentInfo) -> Optional[tuple[str, str]]:
+        """
+        通用字段优先；适配器补充旧详情页和签名路径的稳定种子身份。
+
+        :param torrent: 搜索、RSS 或旧缓存中的候选，不修改输入
+        :return: 站点及稳定资源标识；不能明确定位时为 None
+        """
+        if torrent.site or torrent.site_name:
+            for name in ("torrent_id", "info_hash"):
+                value = getattr(torrent, name, None)
+                if isinstance(value, (str, int)) and value:
+                    return torrent_rules.resource_identity(torrent)
+        for url in (torrent.page_url, torrent.enclosure):
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                continue
+            try:
+                identity = torrent_rules.resource_identity(TorrentInfo(
+                    site=torrent.site, site_name=torrent.site_name, page_url=url,
+                ))
+                if identity is not None:
+                    return identity
+                for adapter in _TORRENT_PATH_ADAPTERS:
+                    resource_id = adapter.torrent_id_from_url(url)
+                    if resource_id:
+                        return str(torrent.site or torrent.site_name or urlsplit(url).netloc), f"id={resource_id}"
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def is_expiring_download_url(url: Optional[str]) -> bool:
+        """
+        通用查询签名与适配器声明的路径票据共同约束重试。
+
+        :param url: 原始或重定向后的下载地址
+        :return: 是否属于已支持的短时签名协议
+        """
+        if torrent_rules.is_expiring_download_url(url):
+            return True
+        if not url or not url.startswith(("http://", "https://")):
+            return False
+        try:
+            return any(check(url) for adapter in _TORRENT_PATH_ADAPTERS
+                       if callable(check := getattr(adapter, "is_expiring_download_url", None)))
+        except ValueError:
+            return False
+
+    @staticmethod
+    def get_site_rss_recipe(url: str) -> RssLinkRecipe:
+        """
+        分发 RSS 生成规则，不在公共用例保留站点配置表。
+
+        :param url: 站点根地址
+        :return: 站点协议生成的独立获取配方
+        """
+        return rss_protocol.get_rss_recipe(url)
+
+    @staticmethod
+    def is_site_rss_expired(text: str) -> bool:
+        """
+        分发站点 RSS 过期响应解释。
+
+        :param text: RSS 响应正文
+        :return: 是否需要重新获取订阅地址
+        """
+        return rss_protocol.is_rss_expired(text)
+
+    @staticmethod
+    def is_torrent_download_confirmation(content: bytes) -> bool:
+        """
+        分发首次下载确认协议识别，合法种子必须由调用方先解析。
+
+        :param content: 未成功解析为种子的响应原始字节
+        :return: 是否为已支持的下载确认响应
+        """
+        return download_protocol.is_download_confirmation(content)
+
+    @staticmethod
+    def parse_torrent_download_confirmation(text: str, url: str) -> Optional[tuple[str, dict[str, Any]]]:
+        """
+        分发首次下载确认控件解释，不能向其他来源或端点提交。
+
+        :param text: 下载确认页 HTML
+        :param url: 确认页的最终请求地址
+        :return: 安全的提交地址和表单字段；缺少合法表单时为 None
+        """
+        return download_protocol.parse_download_confirmation(text, url)
+
+    @staticmethod
+    def has_site_subtitle_api(site: dict[str, Any]) -> bool:
+        """
+        按已注册适配器能力选择字幕协议，普通模块不判断站点名称。
+
+        :param site: 站点资源声明
+        :return: 是否提供独立字幕接口
+        """
+        parser_name = str(site.get("parser") or "")
+        parser_class = SPIDER_PARSER_CLASSES.get(_PROTOCOL_PARSER_ALIASES.get(parser_name, parser_name))
+        return callable(getattr(parser_class, "get_subtitle_links", None))
+
+    @staticmethod
+    def encrypt_site_payload(data_str: str, key: bytes) -> str:
+        """
+        分发插件兼容的站点协议加密载荷生成。
+
+        :param data_str: 待加密的协议文本
+        :param key: 协议约定的密钥字节
+        :return: 保留既有包装的密文
+        """
+        return download_protocol.encrypt_site_payload(data_str, key)
 
     @staticmethod
     def __wait_for_search_request(site: dict[str, Any], request: _IndexerSearchRequest) -> bool:
@@ -1139,13 +1321,15 @@ class IndexerModule(_ModuleBase):
                                 f"{str(site_url).rstrip('/')}/",
                                 userdata_path.lstrip("/"),
                             )
+                    raw_ua = site.get("ua")
+                    site_ua = raw_ua.strip() if isinstance(raw_ua, str) else ""
                     return site_schema(
                         site_name=site.get("name"),
                         url=site_url,
                         site_cookie=site.get("cookie"),
                         apikey=site.get("apikey"),
                         token=site.get("token"),
-                        ua=site.get("ua") or get_runtime_setting("USER_AGENT"),
+                        ua=site_ua or get_runtime_setting("USER_AGENT"),
                         proxy=site.get("proxy"),
                         api_url=site.get("api_url"))
             return None
@@ -1191,7 +1375,7 @@ class IndexerModule(_ModuleBase):
                 site_obj.err_msg = site_obj.err_msg or "未获取到站点用户信息，请检查 Cookie 是否有效"
             # 解析器保留站点原值，由模型统一执行既有字段校验与列表投影。
             return SiteUserData.model_validate({
-                "domain": site_rules.extract_domain(site.get("url")),
+                "domain": IndexerModule.get_site_domain(site.get("url")),
                 "userid": site_obj.userid,
                 "username": site_obj.username,
                 "user_level": site_obj.user_level,

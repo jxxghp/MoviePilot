@@ -4,7 +4,7 @@
 
 import re
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Tuple, Union, cast
 
 from app.application.audio import capture_audio_metadata
@@ -101,10 +101,115 @@ def _normalize_transfer_identity(
     return mediainfo, normalized_source, normalized_media_id, None
 
 
+def _covered_by_downloader_monitor(file_uri: FileURI, download_dirs: List[TransferDirectoryConf]) -> bool:
+    """
+    判断路径是否位于"下载器监控"类型的下载目录内，即会被下载器整理轮询扫描到。
+
+    :param file_uri: 下载器任务映射后的存储与路径
+    :param download_dirs: 当前下载目录配置
+    :return: 位于某个下载器监控目录（存储一致）之下时返回 True
+    """
+    file_path = Path(file_uri.path or "/")
+    return any(
+        directory.monitor_type == "downloader"
+        and directory.storage == file_uri.storage
+        and directory.download_path
+        and file_path.is_relative_to(Path(directory.download_path))
+        for directory in download_dirs
+    )
+
+
+def _storage_posix_path(path: Optional[str]) -> PurePosixPath:
+    """
+    把存储路径规范为以 "/" 开头、以 "/" 分隔的路径，便于逐级比较（兼容 Windows 本地路径的反斜杠）。
+
+    :param path: 存储上的路径
+    :return: 规范后的路径
+    """
+    return PurePosixPath("/" + str(path or "").replace("\\", "/").lstrip("/"))
+
+
+def _incomplete_matcher(
+        incomplete_files: Optional[list[str]], root: FileItem,
+) -> Optional[Callable[[Optional[str]], bool]]:
+    """
+    构造"路径是否是、或包含下载器报告尚未下载完成的文件"的判断。
+
+    下载器报告的是相对任务内容路径（即整理根目录 ``root``）的路径，拼成完整路径后逐级精确比较：路径是其中某个文件
+    本身，或是某个文件的上级目录（例如蓝光原盘目录）时成立；文件名相同但位于其他目录的文件不受影响。
+
+    :param incomplete_files: 下载器报告尚未下载完成的文件，相对任务内容路径；为空表示无需过滤
+    :param root: 整理根目录，即下载器任务的内容路径
+    :return: 判断函数；无需过滤时返回 None
+    """
+    if not incomplete_files:
+        return None
+    root_path = _storage_posix_path(root.path)
+    targets = [root_path / str(name).replace("\\", "/").lstrip("/") for name in incomplete_files]
+
+    def covers_incomplete(path: Optional[str]) -> bool:
+        """
+        判断给定存储路径是否是、或包含未下载完成的文件。
+        """
+        candidate = _storage_posix_path(path)
+        return any(target == candidate or candidate in target.parents for target in targets)
+
+    return covers_incomplete
+
+
+def _drop_reported_incomplete(
+        candidates: List[Tuple[FileItem, bool]], incomplete_files: Optional[list[str]], root: FileItem,
+) -> List[Tuple[FileItem, bool]]:
+    """
+    从候选中去掉下载器报告尚未下载完成的文件，以及包含这类文件的目录候选，并记录跳过了哪些。
+
+    下载器报告的是相对任务内容路径（即整理根目录 ``root``）的路径，拼成完整路径后与候选逐级精确比较：
+    - 候选是普通文件时，只跳过同一个文件；文件名相同但位于其他目录的文件（例如根目录的 ``E01.mkv`` 未完成、
+      ``Extras/E01.mkv`` 已完成）照常整理；
+    - 候选是蓝光原盘目录时整盘作为一个整理对象，盘内只要有一个文件没下完，整盘都不整理。
+
+    :param candidates: 遍历得到的候选文件与是否位于蓝光目录
+    :param incomplete_files: 下载器报告尚未下载完成的文件，相对任务内容路径；为空表示无需过滤
+    :param root: 整理根目录，即下载器任务的内容路径
+    :return: 保留的候选
+    """
+    covers_incomplete = _incomplete_matcher(incomplete_files, root)
+    if covers_incomplete is None:
+        return candidates
+    kept: List[Tuple[FileItem, bool]] = []
+    skipped: List[str] = []
+    for item, is_bluray_dir in candidates:
+        if covers_incomplete(item.path):
+            skipped.append(str(item.name))
+        else:
+            kept.append((item, is_bluray_dir))
+    if skipped:
+        logger.info(f"跳过下载器报告尚未下载完成的文件（或包含这类文件的蓝光原盘目录）：{'、'.join(skipped)}")
+    return kept
+
+
 class TransferWorkflowOwner(_TransferOwnerBase):
     """
     协调请求级候选构建并委托规划、执行与结算组件。
     """
+
+    @staticmethod
+    def _covered_by_downloader_polling(torrent: Any) -> bool:
+        """
+        判断下载器任务是否在下载器整理轮询的扫描范围内（只看路径，不访问存储）。
+
+        :param torrent: 下载器任务，读取其映射后的 ``path``；没有路径时视为不在范围内
+        :return: 任务位于下载器监控目录内时返回 True；读取目录配置失败时按在范围内处理（更保守）
+        """
+        path = getattr(torrent, "path", None)
+        if not path:
+            return False
+        try:
+            download_dirs = DirectoryHelper().get_download_dirs()
+        except Exception as err:
+            logger.warning(f"读取下载目录配置失败，按下载器监控范围内处理：{err}")
+            return True
+        return _covered_by_downloader_monitor(FileURI.from_uri(Path(path).as_posix()), download_dirs)
 
     @staticmethod
     def _build_transfer_fileitem(
@@ -124,13 +229,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if ".." in file_path.parts:
             logger.warning(f"下载器整理源路径包含越界目录：{file_uri.uri}")
             return None
-        if not any(
-                directory.monitor_type == "downloader"
-                and directory.storage == file_uri.storage
-                and directory.download_path
-                and file_path.is_relative_to(Path(directory.download_path))
-                for directory in download_dirs
-        ):
+        if not _covered_by_downloader_monitor(file_uri, download_dirs):
             if file_uri.storage == "local" and any(
                     directory.monitor_type == "downloader"
                     and directory.storage != "local"
@@ -330,12 +429,17 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         season: Optional[int],
         continue_callback: Optional[Callable[[], bool]],
         selected_fileitems: Optional[list[FileItem]] = None,
+        incomplete_files: Optional[list[str]] = None,
     ) -> Tuple[List[Tuple[FileItem, bool]], bool]:
         """
         收集并过滤本次整理的候选文件。
 
         候选遍历只负责发现文件，业务过滤集中在此阶段；返回模板命中状态供公开整理流程
         保持“未命中自定义集数模板时跳过”的旧行为。
+
+        :param incomplete_files: 下载器报告尚未下载完成的文件（只选中部分文件的下载器任务），相对 ``fileitem``（任务
+            内容路径），一律跳过，包含这类文件的蓝光原盘目录整盘跳过：取消选择前下了一部分、或与选中文件共用分块被写入
+            部分数据的文件留在任务目录里，不能当成正常文件整理
         """
         format_handler = (
             FormatParser(
@@ -404,6 +508,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 for selected_fileitem in selected_fileitems
                 if (latest_fileitem := storage_chain.get_item(selected_fileitem))
             ]
+        candidates = _drop_reported_incomplete(candidates, incomplete_files, fileitem)
         return [
             (item, is_bluray_dir) for item, is_bluray_dir in candidates if is_allowed(item, is_bluray_dir)
         ], matched_template
@@ -517,6 +622,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         selected_fileitems: Optional[list[FileItem]] = None,
         report_results: bool = False,
         skip_success: bool = False,
+        music_track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
+        music_target_path: Optional[Path] = None,
+        incomplete_files: Optional[list[str]] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         执行一个复杂目录的整理操作
@@ -553,6 +661,10 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param selected_fileitems: 前端显式选中的文件，按同一批次规划
         :param report_results: 返回实际阶段回执，后台接收不表示入库完成
         :param skip_success: 在预览、历史清理及任务准入前跳过成功记录
+        :param music_track_match: 手选专辑的曲目对齐方式，默认严格校验
+        :param music_target_path: 本次音乐最终目录，冻结后用于预览及恢复执行
+        :param incomplete_files: 下载器报告尚未下载完成的文件，相对 ``fileitem``（任务内容路径），整理时跳过；由下载器
+            整理轮询对只选中部分文件的任务经 ``_execute_transfer`` 提供，公开的 ``do_transfer`` 不接收此参数
         返回：成功标识，错误信息
         """
         selected_music_album: Optional[MusicAlbumInfo]
@@ -609,6 +721,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             sync_extra_files=bool(sync_extra_files),
             fileitem=fileitem,
             sync_music_covers=not manual and selected_fileitems is None,
+            reported_incomplete=_incomplete_matcher(incomplete_files, fileitem),
         )
 
         try:
@@ -620,6 +733,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 season=season,
                 continue_callback=continue_callback,
                 selected_fileitems=selected_fileitems,
+                incomplete_files=incomplete_files,
             )
         except OperationInterrupted:
             return submission.result(False, [f"{fileitem.name} 已取消"], preview=False, preview_items=[])
@@ -639,9 +753,17 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if not file_items:
             return submission.result(True, [], preview=bool(preview), preview_items=[])
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
+        if download_hash and (deferred_items := candidate_planner.deferred_items):
+            # 选中且已下完的文件本轮延期（依赖的 CUE 未下完）：这轮扫描的那批文件没有全部整理，扫描记录不能再用来确认
+            # "已整理"，否则同一任务其余文件整理完成（或补打标签）时会打上标签，延期的文件此后不再进入下载器整理。
+            # 只有下载器整理轮询会带未完成文件清单，任务一定在轮询范围内，删除记录后按"无法核实"处理、不打标签，
+            # 留给下一轮重新扫描（见 ``_TransferChain__selection_changed_since_scan``）。
+            self._transfer_scan_size_records().pop((downloader, download_hash), None)
+            logger.info(f"种子 {download_hash} 有 {len(deferred_items)} 个文件等待依赖的文件下载完成，本轮不设置已整理标签")
 
         selected_music_track_map, selected_music_error = self._selected_music_track_map(
-            file_items, selected_music_album
+            file_items, selected_music_album,
+            **({"track_match": music_track_match} if music_track_match != "strict" else {}),
         )
         if selected_music_error:
             return False, selected_music_error
@@ -692,6 +814,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 music_release_scripts=music_release_scripts,
                 selected_music_track_map=selected_music_track_map,
                 submission=submission,
+                music_target_path=music_target_path,
             )
         except OperationInterrupted:
             return submission.result(False, [f"{fileitem.name} 已取消"], preview=False, preview_items=[])
@@ -791,6 +914,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         music_release_scripts: Optional[list[str]],
         selected_music_track_map: dict[str, MusicInfo],
         submission: _TransferSubmissionCollector,
+        music_target_path: Optional[Path] = None,
     ) -> Tuple[List[TransferTask], bool, List[str], int, set[Tuple[str, str]]]:
         """
         从冻结候选构建任务，并集中执行历史去重与 持久化 绑定。
@@ -983,7 +1107,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 cleanup_intent = cleanup_dest_fileitem if not preview and not cleanup_intent_assigned else None
                 transfer_task.bind_planning_input(
                     self._build_music_planning_input(transfer_task, music_batch_context, cleanup_intent,
-                                                    music_release_regions, music_release_scripts)
+                                                    music_release_regions, music_release_scripts,
+                                                    music_target_path=music_target_path)
                 )
                 if (
                     recovery_admission
@@ -1203,10 +1328,10 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         if preview and (
                             not preview_items or preview_items[-1].get("source") != transfer_task.fileitem.path
                         ):
+                            # 校验阶段未经过回调时，交给预览投影补充失败提示，避免写死为任务执行。
                             preview_items.append(
                                 build_transfer_preview_item(transfer_task, TransferInfo(
-                                    success=False, message=err_msg, failure_stage="execution",
-                                    recovery_action="刷新整理历史，等待任务结束；仍无法继续时提交人工复核",
+                                    success=False, message=err_msg,
                                 ))
                             )
                         fail_num += 1

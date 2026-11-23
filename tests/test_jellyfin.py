@@ -3,7 +3,10 @@
 """
 
 import sys
+from typing import Optional
 from unittest.mock import patch
+
+import pytest
 
 from app.modules.jellyfin import jellyfin as jellyfin_module
 from app.modules.jellyfin.jellyfin import Jellyfin
@@ -249,13 +252,13 @@ def test_get_librarys_other_unknown_types_keep_library_route() -> None:
     非混合的其他未知类型库不改走 mixed 路由，保持原有链接。
 
     Jellyfin 只对 CollectionType 为空且类型为 CollectionFolder 的库使用 mixed 路由；
-    书籍等有专属路由的类型不在本次修复范围，仍走原有分支。
+    未识别的类型仍保留原有兜底行为。
     """
     client = _build_client()
     libraries = _get_librarys_with_mocked_views(
         client,
         [
-            {"Id": "b1", "Name": "书籍", "CollectionType": "books", "Type": "CollectionFolder"},
+            {"Id": "b1", "Name": "未知", "CollectionType": "unsupported", "Type": "CollectionFolder"},
             {"Id": "u1", "Name": "视图", "CollectionType": None, "Type": "UserView"},
         ],
     )
@@ -264,3 +267,34 @@ def test_get_librarys_other_unknown_types_keep_library_route() -> None:
         "http://jellyfin.local:8096/web/index.html#!/library.html?topParentId=b1",
         "http://jellyfin.local:8096/web/index.html#!/library.html?topParentId=u1",
     ]
+
+
+@pytest.mark.parametrize("play_host", [None, "https://play.example/jellyfin/"])
+@pytest.mark.parametrize(
+    "collection_type,query_suffix",
+    [
+        ("boxsets", "&collectionType=boxsets"),
+        ("books", "&collectionType=books"),
+        ("homevideos", ""),
+        ("playlists", "&collectionType=playlists"),
+        ("livetv", ""),
+    ],
+)
+def test_get_librarys_uses_dedicated_routes(
+    play_host: Optional[str], collection_type: str, query_suffix: str,
+) -> None:
+    """
+    特殊类型库使用对应前端路由，并优先使用外网播放地址。
+    """
+    client = _build_client()
+    client._playhost = play_host
+    libraries = _get_librarys_with_mocked_views(
+        client,
+        [{"Id": "library-id", "Name": "媒体库", "CollectionType": collection_type}],
+    )
+
+    host = play_host or "http://jellyfin.local:8096/"
+    assert libraries[0].link == (
+        f"{host}web/index.html#!/{collection_type}?topParentId=library-id{query_suffix}"
+    )
+    assert libraries[0].type == MediaType.UNKNOWN.value

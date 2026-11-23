@@ -14,7 +14,7 @@ REDACTED_URL_CREDENTIAL = "<REDACTED>"
 URL_QUERY_CREDENTIAL_PATTERN = re.compile(
     r"(?i)([?&](?:[a-z0-9]+[-_.])*(?:"
     r"passkey|rsskey|authkey|auth_token|access_token|access_key|refresh_token|id_token"
-    r"|api_key|apikey|secret_key|secret|password|passwd|token|cookie|sign|pwd|auth|uid|pid|key"
+    r"|api_key|apikey|secret_key|secret|password|passwd|token|cookie|sign|signature|par|pwd|auth|uid|pid|key"
     r"))(\s*=\s*)[^\s&#]*"
 )
 # 主机端口与 userinfo 口令都由冒号引导，因此只在 authority 内以最后一个 @ 为边界遮盖口令。

@@ -108,6 +108,10 @@ def _install_search_observers(monkeypatch, events: list[tuple]) -> None:
             {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "cat": "movie", "page": 3},
         ),
         (
+            "ColaPT",
+            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "cat": "movie", "page": 3},
+        ),
+        (
             "RousiPro",
             {
                 "keyword": "clean keyword",

@@ -292,3 +292,71 @@ def test_media_api_authenticates_and_uses_user_scoped_items() -> None:
     }
     assert 'Token="media-token"' in fake_session.calls[1][1]["headers"]["X-Emby-Authorization"]
     assert fake_session.calls[1][1]["verify"] is False
+
+
+def test_media_api_tracks_status_code_and_formats_ssl_hint() -> None:
+    """
+    媒体库接口应记录失败状态码，并在证书校验异常时补充自签证书提示。
+    """
+    api = UgreenMediaApi(host="https://nas.example:9443", verify_ssl=True)
+    api._request_utils = _FakeSession(
+        post_responses=[_FakeResponse({"Message": "Unauthorized"}, status_code=401)]
+    )
+    with patch("app.modules.ugreen.api.logger.error") as mocked_error:
+        session = api.authenticate("tester", "pwd", log_failure=False)
+    assert session is None
+    assert api.last_status_code == 401
+    mocked_error.assert_not_called()
+
+    def _raise_ssl(*_args: object, **_kwargs: object) -> None:
+        raise OSError("SSL: CERTIFICATE_VERIFY_FAILED self-signed certificate")
+
+    api._request_utils = SimpleNamespace(post_res=_raise_ssl, close=lambda: None)
+    with patch("app.modules.ugreen.api.logger.error") as mocked_error:
+        session = api.authenticate("tester", "pwd", log_failure=False)
+    assert session is None
+    assert api.last_status_code is None
+    mocked_error.assert_called_once()
+    assert "校验 SSL 证书" in mocked_error.call_args.args[0]
+
+
+def test_media_api_item_uses_direct_item_endpoint_and_handles_404() -> None:
+    """
+    媒体库单条目查询应优先访问 Users/{id}/Items/{item_id}，404 静默返回 None。
+    """
+    api = UgreenMediaApi(host="https://nas.example:9443", verify_ssl=False)
+    api._token = "media-token"
+    api._user_id = "user-id"
+    fake_session = _FakeSession(
+        get_responses=[
+            _FakeResponse({"Id": "19394", "Name": "示例剧集", "Type": "Series"}),
+            _FakeResponse({"Message": "Not Found"}, status_code=404),
+            _FakeResponse({"Message": "Method Not Allowed"}, status_code=405),
+            _FakeResponse({"Items": [{"Id": "8531", "Name": "回退电影", "Type": "Movie"}]}),
+        ]
+    )
+    api._request_utils = fake_session
+
+    item = api.item("19394")
+    assert item == {"Id": "19394", "Name": "示例剧集", "Type": "Series"}
+    assert fake_session.calls[0][1]["url"].endswith("/emby/Users/user-id/Items/19394")
+
+    with patch("app.modules.ugreen.api.logger.error") as mocked_error:
+        missing = api.item("999999")
+    assert missing is None
+    assert api.last_status_code == 404
+    mocked_error.assert_not_called()
+
+    fallback_item = api.item("8531")
+    assert fallback_item == {"Id": "8531", "Name": "回退电影", "Type": "Movie"}
+    assert fake_session.calls[3][1]["params"]["Ids"] == "8531"
+
+
+def test_media_api_uses_distinct_device_ids_per_instance() -> None:
+    """
+    不同媒体库客户端实例应使用独立 DeviceId，避免临时认证踢掉主会话令牌。
+    """
+    first = UgreenMediaApi(host="https://nas.example:9443", verify_ssl=False)
+    second = UgreenMediaApi(host="https://nas.example:9443", verify_ssl=False)
+
+    assert first._headers()["X-Emby-Authorization"] != second._headers()["X-Emby-Authorization"]

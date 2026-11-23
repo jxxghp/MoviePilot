@@ -52,6 +52,8 @@ _IMAGE_FETCH_ATTEMPTS = 2
 _IMAGE_RETRY_STATUS_CODES = frozenset({408, 500, 502, 503, 504})
 _IMAGE_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 _IMAGE_MAX_REDIRECTS = 5
+# 公开 GitHub 图片镜像的单次请求预算，单位为秒。
+_IMAGE_MIRROR_TIMEOUT = 15
 
 
 @dataclass(frozen=True, slots=True)
@@ -681,6 +683,54 @@ class ImageHelper(metaclass=Singleton):
             use_cache=use_cache,
         )
 
+    @staticmethod
+    def _github_mirror_request(
+        request: _ImageFetchRequest,
+        cookies: Optional[str | dict[str, str]],
+    ) -> Optional[_ImageFetchRequest]:
+        """
+        为匿名 GitHub 静态图片生成镜像目标，沿用原 URL 的缓存身份。
+
+        :param request: 原始图片请求，不改写其缓存键
+        :param cookies: 带 Cookie 的请求保持原始出口，避免向镜像扩散凭据
+        :return: 镜像请求；未配置镜像或不属于公开静态资源时返回 None
+        """
+        prefix = get_chain_runtime_config_snapshot().github_proxy
+        if not prefix or cookies:
+            return None
+        try:
+            parts = urlsplit(request.url)
+            static_host = parts.hostname in {
+                "raw.githubusercontent.com", "avatars.githubusercontent.com",
+                "user-images.githubusercontent.com",
+            }
+            blob_image = parts.hostname == "github.com" and "/blob/" in parts.path and (
+                ("raw", "true") in parse_qsl(parts.query)
+            )
+            if (
+                parts.scheme != "https" or parts.port not in (None, 443)
+                or parts.username or parts.password or not (static_host or blob_image)
+                or any(key.lower() != "raw" for key, _ in parse_qsl(parts.query))
+            ):
+                return None
+        except ValueError:
+            return None
+        return _ImageFetchRequest(
+            url=f"{prefix.rstrip('/')}/{request.url}",
+            cache_path=request.cache_path,
+            use_cache=request.use_cache,
+        )
+
+    @staticmethod
+    def _mirror_request_options(options: Mapping[str, Any]) -> dict[str, Any]:
+        """
+        镜像使用匿名直连，HTTP 代理和原始 Cookie 只用于原始出口。
+
+        :param options: 原始图片的传输选项
+        :return: 不含来源凭据与代理的镜像选项
+        """
+        return {**options, "proxies": None, "cookies": None, "referer": None, "timeout": _IMAGE_MIRROR_TIMEOUT}
+
     def _cached_image(
         self, content: Optional[bytes]
     ) -> Optional[tuple[bytes, str]]:
@@ -696,12 +746,17 @@ class ImageHelper(metaclass=Singleton):
         self,
         request: _ImageFetchRequest,
         response: Optional[ImageResponsePort],
+        *,
+        warn_on_failure: bool = True,
     ) -> Optional[tuple[bytes, str]]:
         """
         统一远端状态码与图片内容校验，拒绝结果不得进入缓存。
+
+        :param warn_on_failure: 最终出口失败时告警，镜像尚可回退时保持安静
         """
         if response is None or response.status_code != 200:
-            logger.warn(f"Failed to fetch image from URL: {request.url}")
+            if warn_on_failure:
+                logger.warn(f"Failed to fetch image from URL: {request.url}")
             return None
         mime_type = self.get_image_mime_type(response.content)
         return (response.content, mime_type) if mime_type else None
@@ -921,15 +976,23 @@ class ImageHelper(metaclass=Singleton):
             if cached_result is not None:
                 return cached_result
         transport, _ = _image_ports_snapshot()
-        result = self._fetched_image(
-            request,
-            self._fetch_image_response(
-                transport,
-                request,
-                ImageHelper._get_request_params(request.url, proxy, cookies),
-                redirect_validator,
-            ),
-        )
+        options = ImageHelper._get_request_params(request.url, proxy, cookies)
+        result = None
+        mirror = self._github_mirror_request(request, cookies)
+        if mirror is not None and SecurityUtils.is_safe_url(
+            mirror.url, {mirror.url}, strict=True, block_private=True,
+            allowed_private_ranges=_redirect_private_ranges(),
+        ):
+            try:
+                result = self._fetched_image(request, self._fetch_image_response(
+                    transport, mirror, self._mirror_request_options(options), redirect_validator,
+                ), warn_on_failure=False)
+            except Exception as error:
+                logger.debug(f"GitHub 图片镜像请求失败：{type(error).__name__}")
+        if result is None:
+            result = self._fetched_image(request, self._fetch_image_response(
+                transport, request, options, redirect_validator,
+            ))
         if result is None:
             return None
         self.file_cache.set(request.cache_path, result[0], region="images")
@@ -975,15 +1038,23 @@ class ImageHelper(metaclass=Singleton):
             if cached_result is not None:
                 return cached_result
         transport, _ = _image_ports_snapshot()
-        result = self._fetched_image(
-            request,
-            await self._async_fetch_image_response(
-                transport,
-                request,
-                ImageHelper._get_request_params(request.url, proxy, cookies),
-                redirect_validator,
-            ),
-        )
+        options = ImageHelper._get_request_params(request.url, proxy, cookies)
+        result = None
+        mirror = self._github_mirror_request(request, cookies)
+        if mirror is not None and await SecurityUtils.is_safe_url_async(
+            mirror.url, {mirror.url}, strict=True, block_private=True,
+            allowed_private_ranges=_redirect_private_ranges(),
+        ):
+            try:
+                result = self._fetched_image(request, await self._async_fetch_image_response(
+                    transport, mirror, self._mirror_request_options(options), redirect_validator,
+                ), warn_on_failure=False)
+            except Exception as error:
+                logger.debug(f"GitHub 图片镜像请求失败：{type(error).__name__}")
+        if result is None:
+            result = self._fetched_image(request, await self._async_fetch_image_response(
+                transport, request, options, redirect_validator,
+            ))
         if result is None:
             return None
         await self.async_file_cache.set(

@@ -18,7 +18,11 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("include_candidates", [False, True])
-async def test_music_manual_candidate_opt_in_survives_http_and_serialization(include_candidates):
+@pytest.mark.parametrize(("resource_title", "reason"), [
+    ("Jay Chou - 晴天 FLAC", "artist_unverified"),
+    ("U2 - One Tree Hill FLAC", "title_mismatch"),
+])
+async def test_music_manual_candidate_opt_in_survives_http_and_serialization(include_candidates, resource_title, reason):
     """
     默认精确搜索不会放行未核验署名，显式人工候选请求保留资源但不绑定目标。
     """
@@ -29,7 +33,7 @@ async def test_music_manual_candidate_opt_in_survives_http_and_serialization(inc
     chain._async_save_results = AsyncMock()
     chain.cancel_ai_recommend = Mock()
     chain._SearchChain__async_search_all_sites = AsyncMock(return_value=[
-        TorrentInfo(title="Jay Chou - 晴天 FLAC", category=MediaType.MUSIC.value),
+        TorrentInfo(title=resource_title, category=MediaType.MUSIC.value),
     ])
     metadata = Mock()
     metadata.async_recognize_media = AsyncMock(return_value=target)
@@ -53,9 +57,10 @@ async def test_music_manual_candidate_opt_in_survives_http_and_serialization(inc
         assert len(payload["data"]) == 1
         candidate = payload["data"][0]
         assert candidate["match_status"] == "candidate"
-        assert candidate["match_reason"] == "artist_unverified"
+        assert candidate["match_reason"] == reason
         assert candidate["media_info"] is None
-        assert candidate["meta_info"]["artists"] == ["Jay Chou"]
+        assert candidate["torrent_info"]["title"] == resource_title
+        assert candidate["meta_info"]["artists"] == [resource_title.split(" - ")[0]]
         assert candidate["meta_info"]["media_id"] is None
         assert chain.async_save_last_search_params.call_args.kwargs["include_candidates"] is True
     else:

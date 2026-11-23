@@ -11,6 +11,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
 from jinja2 import Template
 
+from app.adapters.system.fsproxy import fsproxy
 from app.adapters.system.host import SystemUtils
 from app.application.audio import AudioMetadataHelper
 from app.application.classification.reference import (
@@ -552,13 +553,9 @@ class TransHandler:
             )
             if self.__is_subtitle_file(fileitem):
                 final_target = self.__rename_subtitles(fileitem, final_target)
-            target_directory_path = DirectoryHelper.get_media_root_path(
-                rename_format,
-                rename_path=final_target,
-                media_type=mediainfo.type,
+            final_target, target_directory_path = self.__resolve_file_target_paths(
+                planning_input, mediainfo, target_path, final_target, rename_format,
             )
-            if not target_directory_path:
-                raise ValueError("重命名格式无效")
             if self.__is_media_image_file(fileitem):
                 # 封面保持原名并放到媒体根，不套用曲序/曲名模板或进入 Disc 子目录。
                 final_target = target_directory_path / Path(str(fileitem.path)).name
@@ -597,6 +594,28 @@ class TransHandler:
             overwrite_mode=overwrite_mode,
             preview=preview,
         )
+
+    @staticmethod
+    def __resolve_file_target_paths(
+            planning_input: TransferPlanningInput,
+            mediainfo: MediaInfo | MusicInfo,
+            target_path: Path,
+            rendered_path: Path,
+            rename_format: str,
+    ) -> tuple[Path, Path]:
+        """
+        解析模板文件与媒体根目录，手动音乐最终目录仅保留已渲染的文件名。
+
+        先渲染完整模板可保留跨目录层级的 Jinja 条件语义。
+        """
+        if mediainfo.type == MediaType.MUSIC and planning_input.options.get("music_target_path"):
+            return target_path / rendered_path.name, target_path
+        media_root = DirectoryHelper.get_media_root_path(
+            rename_format, rename_path=rendered_path, media_type=mediainfo.type,
+        )
+        if not media_root:
+            raise ValueError("重命名格式无效")
+        return rendered_path, media_root
 
     @staticmethod
     def __intercept_transfer(
@@ -670,6 +689,7 @@ class TransHandler:
 
         未知目标状态返回失败结果；明确策略拒绝标记为覆盖跳过，以保留已有成功历史。
         字幕及其他附件优先覆盖；普通文件允许插件先作裁决，再按配置和音乐音质或大小判断。
+        本地链接有效性以目标路径的严格查询结果为准，悬空链接由存储适配器在落地时修复。
 
         :param fileitem: 源文件项，提供大小及附件判断信息
         :param meta: 源元数据，提供音乐音质信息
@@ -706,17 +726,8 @@ class TransHandler:
                 ".jpg", ".jpeg", ".png", ".webp"
             }, None
 
-        checked_target = target_file
-        over_flag = False
-        if target_storage == "local" and target_file.is_symlink():
-            checked_target = target_file.readlink()
-            if not checked_target.exists():
-                over_flag = True
-        if over_flag:
-            return True, False, None
-
         logger.info(
-            f"目的文件系统中已经存在同名文件 {checked_target}，"
+            f"目的文件系统中已经存在同名文件 {target_file}，"
             f"当前整理覆盖模式设置为 {overwrite_mode}"
         )
         event_data = TransferOverwriteCheckEventData(
@@ -844,7 +855,8 @@ class TransHandler:
         清理前比对冻结文件的大小、类型及可用身份；证据不足时保留文件。
 
         本地链接的查询沿用 stat 语义，硬链接和软链接均比较实际内容的身份。
-        本地必须核对修改时间，优先纳秒证据；同路径还核对状态时间，防止等长改写后还原 mtime。
+        本地必须核对修改时间，优先纳秒证据；同路径还核对状态时间。
+        FUSE 可在写入收尾后单独更新状态时间，完整身份一致时按挂载类型兼容。
         rename 合法改变状态时间，因此跨路径只比较修改时间。旧本地快照回退到秒级修改时间，
         缺少时间凭据时转人工复核。云盘修改时间可能在上传后变化或缺失，不参与校验。
 
@@ -867,21 +879,44 @@ class TransHandler:
             if expected.fileid != current.fileid:
                 raise TransferExecutionConflictError(f"文件 {expected.path} 已被替换，禁止清理")
         if expected.storage == "local":
-            expected_time: Optional[int | float]
-            current_time: Optional[int | float]
-            if expected.modify_time_ns is not None:
-                expected_time, current_time = expected.modify_time_ns, current.modify_time_ns
-            else:
-                expected_time, current_time = expected.modify_time, current.modify_time
-            if expected_time is None or current_time is None:
-                raise StorageQueryError(f"文件 {expected.path} 缺少修改时间身份凭据，需人工复核")
-            if expected_time != current_time:
-                raise TransferExecutionConflictError(f"文件 {expected.path} 的修改时间已变化，禁止清理")
-            if expected.path == current.path and expected.change_time_ns is not None:
-                if current.change_time_ns is None:
-                    raise StorageQueryError(f"文件 {expected.path} 缺少状态时间身份凭据，需人工复核")
-                if expected.change_time_ns != current.change_time_ns:
-                    raise TransferExecutionConflictError(f"文件 {expected.path} 的状态时间已变化，禁止清理")
+            TransHandler.__assert_local_file_version(expected, current)
+
+    @staticmethod
+    def __assert_local_file_version(expected: FileItem, current: FileItem) -> None:
+        """
+        在大小、类型和稳定 ID 已核对后，检查本地文件的时间版本凭据。
+
+        同路径状态时间可识别等长改写后还原 mtime 的变化。仅在稳定 ID 和纳秒修改时间
+        均一致且当前挂载确认为 FUSE 时，允许单独的 ctime 变化并记录告警。
+        旧快照凭据不足、挂载未知或查询失败时继续保留文件。
+
+        :param expected: 已完成基础身份核验的冻结本地文件
+        :param current: 当前严格查询结果
+        :raises TransferExecutionConflictError: 修改时间或不满足兼容条件的状态时间变化
+        :raises StorageQueryError: 缺少冻结快照要求的时间凭据
+        :raises OSError: FUSE 挂载识别失败
+        """
+        expected_time: Optional[int | float]
+        current_time: Optional[int | float]
+        if expected.modify_time_ns is not None:
+            expected_time, current_time = expected.modify_time_ns, current.modify_time_ns
+        else:
+            expected_time, current_time = expected.modify_time, current.modify_time
+        if expected_time is None or current_time is None:
+            raise StorageQueryError(f"文件 {expected.path} 缺少修改时间身份凭据，需人工复核")
+        if expected_time != current_time:
+            raise TransferExecutionConflictError(f"文件 {expected.path} 的修改时间已变化，禁止清理")
+        if expected.path != current.path or expected.change_time_ns is None:
+            return
+        if current.change_time_ns is None:
+            raise StorageQueryError(f"文件 {expected.path} 缺少状态时间身份凭据，需人工复核")
+        if expected.change_time_ns == current.change_time_ns:
+            return
+        if (expected.fileid and expected.modify_time_ns is not None
+                and fsproxy.is_fuse_path(Path(cast(str, current.path)))):
+            logger.warning(f"文件 {expected.path} 的 FUSE 状态时间已变化，大小、类型、文件 ID 和纳秒修改时间一致，继续清理")
+            return
+        raise TransferExecutionConflictError(f"文件 {expected.path} 的状态时间已变化，禁止清理")
 
     @classmethod
     def __inherit_shared_local_identity(cls, expected: FileItem, receipt: Optional[FileItem]) -> FileItem:
@@ -1056,6 +1091,7 @@ class TransHandler:
 
         移动根据源与目标的存在性判断；本地复制比较完整内容，链接核对文件身份或链接指向。
         非本地目标已存在时，仅凭存在性不能认定复制已完成。
+        同一远端移动遗留原名落点时，严格核对稳定文件 ID 后只确认移动完成，改名单独收口。
 
         :param fileitem: 冻结的源文件项
         :param target_storage: 目标存储标识
@@ -1086,6 +1122,10 @@ class TransHandler:
             "target_exists": target_exists,
             "item": TransHandler.__serialize_step_item(target_item),
         })
+        if (transfer_type == "move" and fileitem.storage == target_storage != "local"
+                and not source_exists and not target_exists
+                and Path(fileitem.path).name != target_file.name):
+            return TransHandler.__observe_intermediate_move(fileitem, target_oper, target_file, evidence)
         # 115 盘内操作包含复制/移动及改名。最终路径缺失不能排除中间副本已产生，
         # 包括旧版适配器留下的原名或编号副本，禁止据此自动重复复制。
         if fileitem.storage == target_storage == "u115":
@@ -1160,6 +1200,43 @@ class TransHandler:
         )
 
     @classmethod
+    def __observe_intermediate_move(
+            cls, source: FileItem, storage_oper: StorageBase, target: Path, evidence: TransferStepResult,
+    ) -> TransferOperationObservation:
+        """
+        只读确认远端移动后的原名落点，禁止凭同名或同大小接纳无关文件。
+
+        源与最终目标均已确认不存在时，只有原名落点与冻结源的稳定 ID、大小和类型一致，
+        才记录移动回执。后续必须通过独立改名步骤完成最终目标，不能直接结算成功。
+
+        :param source: 含原路径和稳定文件 ID 的冻结源身份
+        :param storage_oper: 提供严格查询的同一远端存储
+        :param target: 冻结的最终文件路径
+        :param evidence: 源与最终目标均缺失的只读证据
+        :return: 原名落点的移动回执；身份冲突或查询不确定时继续隔离
+        """
+        intermediate = target.with_name(Path(cast(str, source.path)).name)
+        payload = {**evidence.payload, "intermediate_path": intermediate.as_posix()}
+        try:
+            item = storage_oper.get_item_strict(intermediate)
+            if item is None:
+                state = TransferOperationObservationState.CONFLICT
+            elif not source.fileid:
+                state = TransferOperationObservationState.UNKNOWN
+                payload["identity_error"] = "冻结源缺少稳定文件 ID，无法确认原名落点"
+            else:
+                cls.__assert_file_identity(source, item)
+                state = TransferOperationObservationState.APPLIED
+                payload["item"] = cls.__serialize_step_item(item)
+        except TransferExecutionConflictError as error:
+            state = TransferOperationObservationState.CONFLICT
+            payload["identity_error"] = str(error)
+        except Exception as error:
+            state = TransferOperationObservationState.UNKNOWN
+            payload["query_error"] = str(error)
+        return TransferOperationObservation(state=state, evidence=TransferStepResult(payload=payload))
+
+    @classmethod
     def __execute_transfer_with_steps(
             cls,
             *,
@@ -1174,7 +1251,7 @@ class TransHandler:
             materialize_kind: str = "materialize_target",
     ) -> tuple[Optional[FileItem], str]:
         """
-        按冻结叶节点执行传输，并把跨存储 move 拆为落地与源删除。
+        按冻结叶节点执行传输，分别恢复远端移动的剩余改名及跨存储移动的源删除。
 
         意图直接消费原始快照，避免旧快照补默认字段或适配器更新运行期文件信息
         导致步骤身份漂移；每个外部操作单独恢复文件对象。
@@ -1255,6 +1332,11 @@ class TransHandler:
         if not new_item:
             return None, "整理步骤成功证据缺少目标文件"
         if not cross_storage_move:
+            if transfer_type == "move" and fileitem.storage == target_storage != "local":
+                new_item = cls.__finish_remote_move_with_step(
+                    step_runner=step_runner, storage_oper=target_oper, source=fileitem,
+                    moved=new_item, target=target_file,
+                )
             return new_item, str(materialized.payload.get("message") or "")
         new_item = cls.__restore_move_target_identity(fileitem, new_item)
 
@@ -1295,6 +1377,37 @@ class TransHandler:
             ),
         )
         return new_item, str(materialized.payload.get("message") or "")
+
+    @classmethod
+    def __finish_remote_move_with_step(
+            cls, *, step_runner: Optional[TransferStepRunner], storage_oper: StorageBase,
+            source: FileItem, moved: FileItem, target: Path,
+    ) -> FileItem:
+        """
+        消费已持久化的移动回执，仅对身份确认的原名落点补齐改名。
+
+        保留旧 materialize_target 意图和顺序；旧成功回执已是最终路径时直接复用。
+        原名回执即使在改名后重启也不改写，由独立改名步骤观察并恢复最终结果。
+
+        :param step_runner: 持久步骤执行器；为空时同步执行
+        :param storage_oper: 同一远端存储的查询与改名适配器
+        :param source: 冻结的原始源文件身份
+        :param moved: 已确认移动成功的文件回执
+        :param target: 冻结的最终文件路径
+        :return: 最终路径下的文件身份
+        :raises TransferExecutionConflictError: 回执既不是最终路径也不是可信的原名落点
+        """
+        if moved.path == target.as_posix():
+            return moved
+        intermediate = target.with_name(Path(cast(str, source.path)).name)
+        if moved.path != intermediate.as_posix() or not source.fileid:
+            raise TransferExecutionConflictError("远端移动回执缺少可信的原名落点，禁止自动改名")
+        cls.__assert_file_identity(source, moved)
+        renamed = cls.__rename_with_step(
+            step_runner=step_runner, storage_oper=storage_oper, storage=cast(str, source.storage),
+            source=intermediate, target=target, kind="rename_move_target", expected_source=moved,
+        )
+        return cast(FileItem, renamed)
 
     @classmethod
     def __observe_rename(

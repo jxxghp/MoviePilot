@@ -9,10 +9,11 @@ from unittest.mock import Mock
 
 import pytest
 
+from app.application.mediaserver import MediaServerQueryError
 from app.modules.trimemedia import api as trimemedia_api
 from app.modules.trimemedia.module import TrimeMediaModule
 from app.modules.trimemedia.trimemedia import TrimeMedia
-from app.schemas.types import MediaSource
+from app.schemas.types import MediaSource, MediaType
 
 
 def _authenticated_client() -> TrimeMedia:
@@ -90,6 +91,190 @@ def test_get_tv_episodes_skips_incomplete_episode_numbers():
         "series",
         {1: [2]},
     )
+
+
+def test_get_tv_episodes_returns_not_found_when_series_search_is_empty():
+    """
+    飞牛标题搜索成功但无匹配时，应按未入库返回空集映射。
+    """
+    client = _authenticated_client()
+    client._api.search_list = Mock(return_value=[])
+
+    assert client.get_tv_episodes(title="未收录的剧集", year="2026") == (None, {})
+    client._api.search_list.assert_called_once_with(keywords="未收录的剧集")
+
+
+def test_media_exists_allows_subscription_search_when_series_is_absent():
+    """
+    飞牛剧集搜索确认无结果时，严格媒体库查询应允许订阅继续搜索。
+    """
+    client = _authenticated_client()
+    client._api.search_list = Mock(return_value=[])
+    module = TrimeMediaModule.__new__(TrimeMediaModule)
+    module._instances = {"PwStation": client}
+    mediainfo = SimpleNamespace(
+        type=MediaType.TV,
+        title="未收录的剧集",
+        year="2026",
+        title_year="未收录的剧集 (2026)",
+        media_source=MediaSource.TMDB,
+        media_id="297253",
+    )
+
+    assert module.media_exists(
+        mediainfo, server="PwStation", raise_on_query_failure=True
+    ) is None
+    client._api.search_list.assert_called_once_with(keywords="未收录的剧集")
+
+
+def test_media_exists_retries_transient_strict_tv_query_failure(monkeypatch):
+    """
+    飞牛严格电视剧查询首次失败、重试成功时应返回已确认的季集。
+    """
+    client = _authenticated_client()
+    client._TrimeMedia__get_tv_episodes_once = Mock(side_effect=[(None, None), ("series", {1: [1, 2]})])
+    module = TrimeMediaModule.__new__(TrimeMediaModule)
+    module._instances = {"PwStation": client}
+    sleep = Mock()
+    monkeypatch.setattr("app.modules.trimemedia.trimemedia.time.sleep", sleep)
+    mediainfo = SimpleNamespace(
+        type=MediaType.TV,
+        title="测试剧集",
+        year="2026",
+        title_year="测试剧集 (2026)",
+        media_source=MediaSource.TMDB,
+        media_id="297253",
+    )
+
+    result = module.media_exists(mediainfo, server="PwStation", raise_on_query_failure=True)
+
+    assert result is not None
+    assert result.seasons == {1: [1, 2]}
+    assert client._TrimeMedia__get_tv_episodes_once.call_count == 2
+    sleep.assert_called_once_with(0.5)
+
+
+def test_media_exists_keeps_persistent_strict_tv_query_failure(monkeypatch):
+    """
+    飞牛严格电视剧查询连续失败时仍应抛出查询异常，不按缺集处理。
+    """
+    client = _authenticated_client()
+    client._TrimeMedia__get_tv_episodes_once = Mock(return_value=(None, None))
+    module = TrimeMediaModule.__new__(TrimeMediaModule)
+    module._instances = {"PwStation": client}
+    monkeypatch.setattr("app.modules.trimemedia.trimemedia.time.sleep", Mock())
+    mediainfo = SimpleNamespace(
+        type=MediaType.TV,
+        title="测试剧集",
+        year="2026",
+        title_year="测试剧集 (2026)",
+        media_source=MediaSource.TMDB,
+        media_id="297253",
+    )
+
+    with pytest.raises(MediaServerQueryError):
+        module.media_exists(mediainfo, server="PwStation", raise_on_query_failure=True)
+
+    assert client._TrimeMedia__get_tv_episodes_once.call_count == 2
+
+
+def test_get_tv_episodes_does_not_retry_when_unauthenticated(monkeypatch):
+    """
+    未认证实例的查询不会通过短暂重试延迟订阅检查。
+    """
+    client = _authenticated_client()
+    client.is_authenticated.return_value = False
+    query_once = Mock()
+    client._TrimeMedia__get_tv_episodes_once = query_once
+    sleep = Mock()
+    monkeypatch.setattr("app.modules.trimemedia.trimemedia.time.sleep", sleep)
+
+    assert client.get_tv_episodes(title="测试剧集") == (None, None)
+    query_once.assert_not_called()
+    sleep.assert_not_called()
+
+
+def test_get_tv_episodes_returns_not_found_when_stale_series_disappears():
+    """
+    飞牛缓存条目失效且标题搜索确认无结果时，应按未入库返回空映射。
+    """
+    client = _authenticated_client()
+    client.get_iteminfo = Mock(return_value=None)
+    client._api.search_list = Mock(return_value=[])
+
+    assert client.get_tv_episodes(item_id="stale-series", title="已移除剧集") == (None, {})
+    assert client._api.search_list.call_count == 1
+
+
+def test_get_tv_episodes_preserves_series_search_failure():
+    """
+    飞牛电视剧搜索请求失败时，应保留查询失败状态。
+    """
+    client = _authenticated_client()
+    client._api.search_list = Mock(return_value=None)
+
+    assert client.get_tv_episodes(title="查询失败的剧集", year="2026") == (None, None)
+
+
+def test_get_tv_episodes_returns_not_found_when_title_does_not_match():
+    """
+    飞牛搜索成功但剧名与年份均不匹配时，应按目标剧未入库处理。
+    """
+    client = _authenticated_client()
+    client._api.search_list = Mock(
+        return_value=[
+            trimemedia_api.Item(
+                guid="other-series",
+                type=trimemedia_api.Type.TV,
+                title="另一部剧集",
+                air_date="2026-01-01",
+            )
+        ]
+    )
+
+    assert client.get_tv_episodes(title="未收录的剧集", year="2026") == (None, {})
+
+
+def test_get_tv_episodes_preserves_season_query_failure():
+    """
+    飞牛季列表请求失败时，不应把未知集数转换为未入库。
+    """
+    client = _authenticated_client()
+    client.get_iteminfo = Mock(
+        return_value=SimpleNamespace(media_source=None, media_id=None)
+    )
+    client._api.season_list = Mock(return_value=None)
+
+    assert client.get_tv_episodes(item_id="series") == (None, None)
+
+
+def test_get_tv_episodes_preserves_episode_query_failure():
+    """
+    飞牛分集列表请求失败时，不应把未知集数转换为未入库。
+    """
+    client = _authenticated_client()
+    client.get_iteminfo = Mock(
+        return_value=SimpleNamespace(media_source=None, media_id=None)
+    )
+    client._api.season_list = Mock(
+        return_value=[SimpleNamespace(guid="season", season_number=1)]
+    )
+    client._api.episode_list = Mock(return_value=None)
+
+    assert client.get_tv_episodes(item_id="series") == (None, None)
+
+
+def test_get_tv_episodes_returns_empty_map_when_series_has_no_seasons():
+    """
+    飞牛季列表请求成功但无季时，应返回确认无已入库分集的空映射。
+    """
+    client = _authenticated_client()
+    client.get_iteminfo = Mock(
+        return_value=SimpleNamespace(media_source=None, media_id=None)
+    )
+    client._api.season_list = Mock(return_value=[])
+
+    assert client.get_tv_episodes(item_id="series") == ("series", {})
 
 
 @pytest.mark.parametrize("method", ["get_latest", "get_latest_backdrops"])

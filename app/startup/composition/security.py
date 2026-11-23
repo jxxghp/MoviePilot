@@ -21,6 +21,7 @@ from app.application.security.auth import (
     reset_auth_service,
     validate_token_identity,
 )
+from app.application.security.authorization import ChannelAuthorizationService, configure_channel_authorization
 from app.application.security.passkey import (
     PASSKEY_CHALLENGE_TTL_SECONDS,
     PasskeyService,
@@ -31,6 +32,7 @@ from app.application.security.passkey import (
 )
 from app.application.security.user import configure_user_lookups, reset_user_lookups
 from app.application.security.widget import WidgetScopeFactory
+from app.db.adapters.authorization import authorization_scope
 from app.db.adapters.user import SqlAlchemyUserRepository
 from app.db.adapters.widget import widget_scope
 from app.db.oper.passkey import PassKeyOper
@@ -91,6 +93,7 @@ def configure_security_services() -> SecurityComposition:
     构造并登记认证、用户查询和 PassKey 服务。
     """
     users = build_transactional_user_repository()
+    configure_channel_authorization(ChannelAuthorizationService(partial(authorization_scope, SessionFactory)))
     _backfill_superuser_setting(users)
     configure_user_lookups(
         by_id=lambda user_id: build_transactional_user_repository().get_by_id(user_id),
@@ -134,6 +137,7 @@ def reset_security_services() -> None:
     """
     按发布逆序撤销认证、用户查询和 PassKey 服务。
     """
+    configure_channel_authorization(None)
     reset_passkey_service()
     reset_passkey_challenge_cache()
     reset_auth_service()

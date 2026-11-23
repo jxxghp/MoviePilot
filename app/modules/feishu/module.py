@@ -164,27 +164,14 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         :param message: 通知内容和目标；同时有封面与文件时分别发送卡片和附件
         :param kwargs: 兼容模块分发的附加参数，当前不使用
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
             client: Optional[Feishu] = self.get_instance(conf.name)
             if client:
-                if message.image and message.file_path:
-                    # 普通文件无法嵌入卡片，先发送图文卡片，再单独发送附件，避免图片被 file_path 分支吞掉。
-                    client.send_notification(
-                        message=message.model_copy(update={"file_path": None, "file_name": None}),
-                        userid=userid,
-                        chat_id=chat_id,
-                        receive_id_type=receive_id_type,
-                        original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                    )
-                    client.send_file(
-                        file_path=message.file_path,
-                        userid=userid,
-                        chat_id=chat_id,
-                        file_name=message.file_name,
-                        receive_id_type=receive_id_type,
+                if message.native_image and message.image:
+                    client.send_image(
+                        image=message.image, title=message.title, text=message.text, userid=userid,
+                        chat_id=chat_id, receive_id_type=receive_id_type, buttons=message.buttons,
                         original_message_id=str(message.original_message_id) if message.original_message_id else None,
                     )
                 elif message.file_path:
@@ -301,9 +288,13 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
-        发送消息并返回首个成功实例的消息引用。
+        通过统一媒体协议发送完整通知，返回首条消息引用，任一附件失败则返回 None。
+        """
+        return self._send_direct_parts(message, self._send_direct_message_part)
 
-        封面与附件组合只以卡片发送结果决定成功，附件发送结果不影响返回值。
+    def _send_direct_message_part(self, message: Message) -> Optional[MessageResponse]:
+        """
+        发送消息并返回首个成功实例的消息引用。
 
         :param message: 待发送通知；plain 模式通过纯文本保留敏感字符，封面与文件分别发送
         :return: 成功主消息的引用与可选流式状态；没有成功实例时返回 None
@@ -315,23 +306,12 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             client: Optional[Feishu] = self.get_instance(conf.name)
             if not client:
                 continue
-            if message.image and message.file_path:
-                result = client.send_notification(
-                    message=message.model_copy(update={"file_path": None, "file_name": None}),
-                    userid=userid,
-                    chat_id=chat_id,
-                    receive_id_type=receive_id_type,
+            if message.native_image and message.image:
+                result = client.send_image(
+                    image=message.image, title=message.title, text=message.text, userid=userid,
+                    chat_id=chat_id, receive_id_type=receive_id_type, buttons=message.buttons,
                     original_message_id=str(message.original_message_id) if message.original_message_id else None,
                 )
-                if result and result.get("success"):
-                    client.send_file(
-                        file_path=message.file_path,
-                        userid=userid,
-                        chat_id=chat_id,
-                        file_name=message.file_name,
-                        receive_id_type=receive_id_type,
-                        original_message_id=str(message.original_message_id) if message.original_message_id else None,
-                    )
             elif message.file_path:
                 result = client.send_file(
                     file_path=message.file_path,

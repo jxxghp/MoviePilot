@@ -559,6 +559,8 @@ class FileManagerModule(_ModuleBase):
         目录配置优先于显式目标路径；未匹配配置时保留自定义路径能力并告警，
         未提供显式路径时业务拒绝，不自动使用存储根目录。
 
+        本次音乐最终目录沿用匹配目录的整理策略，未匹配目录且方式为自动时使用复制。
+
         :param fileitem: 文件信息
         :param meta: 预识别的元数据
         :param mediainfo: 识别的媒体信息
@@ -578,6 +580,14 @@ class FileManagerModule(_ModuleBase):
         :raises ValueError: 源路径、目标路径、整理方式或存储配置无效
         """
         handler = TransHandler()
+        music_target = (
+            planning_input.options.get("music_target_path")
+            if planning_input is not None and mediainfo.type == MediaType.MUSIC else None
+        )
+        music_target_path = Path(music_target) if isinstance(music_target, str) and music_target else None
+        target_path = music_target_path or target_path
+        library_type_folder = False if music_target_path else library_type_folder
+        library_category_folder = False if music_target_path else library_category_folder
         if (
                 fileitem.storage == "local"
                 and (not fileitem.path or not Path(fileitem.path).exists())
@@ -603,6 +613,7 @@ class FileManagerModule(_ModuleBase):
                                                need_category_folder=library_category_folder)
         elif target_path:
             explicit_target_path = target_path
+            transfer_type = transfer_type or ("copy" if music_target_path else None)
             need_scrape = scrape or False
             need_rename = True
             need_notify = False
@@ -622,6 +633,8 @@ class FileManagerModule(_ModuleBase):
             logger.error(
                 f"{mediainfo.type.value if mediainfo.type else '未知类型'} {mediainfo.title_year} 未找到有效的媒体库目录，无法整理文件，源路径：{fileitem.path}")
             raise TransferPlanningRejectedError("未找到有效的媒体库目录")
+        target_path = music_target_path or target_path
+        need_rename = bool(music_target_path) or need_rename
         if not transfer_type:
             directory_name = target_directory.name if target_directory else "目标目录"
             logger.error(f"{directory_name} 未设置整理方式")

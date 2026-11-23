@@ -85,9 +85,7 @@ class WebPushModule(_ModuleBase, _MessageBase[object]):
         :param message: 待发送的标题、正文、目标用户与跳转链接
         :param kwargs: 为模块分发接口保留的扩展参数，本实现不使用
         """
-        for conf in self.get_configs().values():
-            if not self.check_message(message, conf.name):
-                continue
+        for conf, message in self.iter_message_configs(message):
             webpush_users = (conf.config or {}).get("WEBPUSH_USERNAME") or ""
             if webpush_users:
                 # 设定了接收用户时，非该用户的消息不接收
@@ -103,6 +101,9 @@ class WebPushModule(_ModuleBase, _MessageBase[object]):
                 else:
                     caption = message.text
                     content = ""
+                vapid_config = get_runtime_setting("VAPID") or {}
+                vapid_private_key = str(vapid_config.get("privateKey") or "")
+                vapid_subject = str(vapid_config.get("subject") or "")
                 for sub in webpush_registry.list():
                     logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
                     try:
@@ -120,8 +121,8 @@ class WebPushModule(_ModuleBase, _MessageBase[object]):
                                 "body": content,
                                 "url": message.link or "/?shotcut=message"
                             }),
-                            vapid_private_key=get_runtime_setting('VAPID').get("privateKey"),
-                            vapid_subject=get_runtime_setting('VAPID').get("subject"),
+                            vapid_private_key=vapid_private_key,
+                            vapid_subject=vapid_subject,
                             **webpush_options,
                         )
                     except WebPushDeliveryError as err:

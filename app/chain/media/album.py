@@ -7,7 +7,7 @@ import json
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Optional, Union, cast
+from typing import Any, Literal, Optional, Union, cast
 
 from app.application.audio import AudioMetadataHelper, music_cue_enabled
 from app.application.configuration import get_chain_runtime_config_snapshot
@@ -34,6 +34,7 @@ from app.domain.music import (
     music_text_key,
 )
 from app.foundation.text import convert as zhconv_convert
+from app.foundation.text import natural_sort_key
 from app.runtime.execution import run_in_threadpool
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MusicEntityType
 
@@ -377,11 +378,17 @@ class MediaAlbumOwner(_MediaOwnerBase):
         cls,
         files: list[Path],
         album: MusicAlbumInfo,
+        *,
+        track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
     ) -> dict[str, MusicInfo]:
         """
-        读取本地标签，并把手动选择发行版的曲目对齐到文件。
+        读取本地标签，按本次手动策略将所选发行版曲目对齐到文件。
         """
-        return cls._album_track_map(files, AudioMetadataHelper.read_many(files), album, allow_title_override=True)
+        if track_match == "sequential":
+            # 路径自然排序固定目录扫描与多选请求的顺序，保证预览和实际提交一致。
+            files = sorted(files, key=lambda path: natural_sort_key(path.as_posix()))
+        return cls._album_track_map(files, AudioMetadataHelper.read_many(files), album,
+                                   allow_title_override=True, track_match=track_match)
 
     @classmethod
     def _album_track_map(
@@ -391,6 +398,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         album: MusicAlbumInfo,
         *,
         allow_title_override: bool = False,
+        track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
     ) -> dict[str, MusicInfo]:
         """
         逻辑曲目全部对位后才输出对应物理文件，整轨始终保持 Album 身份。
@@ -398,7 +406,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         if len(files) != len(metas) or not music_album_has_consistent_tracks(album):
             return {}
         logical, owners = expand_music_tracks(metas)
-        aligned = align_music_tracks(logical, album.tracks, allow_title_override=allow_title_override)
+        aligned = align_music_tracks(logical, album.tracks, allow_title_override=allow_title_override, track_match=track_match)
         result: dict[str, MusicInfo] = {}
         for index, path in enumerate(files):
             positions = [position for position, owner in enumerate(owners) if owner == index]

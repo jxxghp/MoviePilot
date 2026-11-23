@@ -589,9 +589,11 @@ def _music_track_identity_match(meta: MetaMusic, track: MusicInfo, allow_title_o
     return identity_match
 
 
-def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_override: bool) -> float:
+def _music_track_pair_score(
+        meta: MetaMusic, track: MusicInfo, allow_title_override: bool, ignore_duration: bool,
+) -> float:
     """
-    评估一条文件与发行曲目的证据；明确身份或时长冲突不能被其它分数抵消。
+    评估文件与发行曲目的证据，仅在手动明确忽略时长时跳过时长证据。
     """
     if not allow_title_override and music_credit_conflicts(track, meta):
         return 0.0
@@ -606,7 +608,7 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
             and not music_artist_evidence_matches(track, meta, artists)):
         return 0.0
     duration_close = False
-    if meta.duration and track.duration:
+    if not ignore_duration and meta.duration and track.duration:
         delta = abs(meta.duration - track.duration)
         longest = max(meta.duration, track.duration)
         if delta > max(10, longest * 0.08):
@@ -623,7 +625,7 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
     )
     if not identity_match and not title_match and not weak_title and not (allow_title_override and position_match):
         return 0.0
-    if not identity_match and not title_match and meta.duration and track.duration and not duration_close:
+    if not ignore_duration and not identity_match and not title_match and meta.duration and track.duration and not duration_close:
         return 0.0
     if not (identity_match or title_match or position_match or (weak_title and duration_close)):
         return 0.0
@@ -644,17 +646,21 @@ def _unique_track_choice(scores: dict[int, float]) -> Optional[int]:
 
 def align_music_tracks(
         metas: list[MetaMusic], tracks: list[MusicInfo], *, allow_title_override: bool = False,
+        track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
 ) -> dict[int, int]:
     """
     以双向唯一证据对位曲目，返回本地索引到远端索引；无证据项保持未匹配。
 
-    手选发行可依据唯一位置纠正旧曲名及旧身份，但仍拒绝显著时长冲突。
-    双向检查使重复版本不能抢占一个位置，输入排序不会改变歌曲身份。
+    手选发行可依据唯一位置纠正旧曲名及旧身份，默认拒绝显著时长冲突。
+    ignore_duration 跳过时长证据；sequential 按输入顺序对应且要求数量一致。
+    严格与忽略时长模式通过双向检查消除重复版本歧义，输入排序不会改变歌曲身份。
     """
+    if track_match == "sequential":
+        return dict(enumerate(range(len(tracks)))) if len(metas) == len(tracks) else {}
     scores = {
         index: {
             remote: score for remote, track in enumerate(tracks)
-            if (score := _music_track_pair_score(meta, track, allow_title_override)) > 0
+            if (score := _music_track_pair_score(meta, track, allow_title_override, track_match == "ignore_duration")) > 0
         }
         for index, meta in enumerate(metas)
     }

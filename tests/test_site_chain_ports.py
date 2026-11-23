@@ -213,7 +213,7 @@ def test_unconfigured_site_port_fails_without_implicit_adapter() -> None:
     [
         (None, (False, "无法打开网站！")),
         (_FakeResponse(429, reason="rate"), (False, "错误：429 rate！")),
-        (_FakeResponse(200, text="ok"), (True, "连接成功")),
+        (_FakeResponse(200, text="ok"), (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")),
     ],
 )
 def test_http_port_preserves_failure_tristate_and_closes_response(
@@ -230,6 +230,7 @@ def test_http_port_preserves_failure_tristate_and_closes_response(
     assert result == expected
     assert http.closed == 1
     assert http.calls[0]["url"] == "https://port.test/"
+    assert http.calls[0]["timeout"] == 60
 
 
 def test_browser_and_challenge_ports_keep_render_failure_semantics() -> None:
@@ -253,6 +254,44 @@ def test_browser_and_challenge_ports_keep_render_failure_semantics() -> None:
     assert result == (False, "无法通过Cloudflare！")
     assert challenge.calls == ["<title>Just a moment...</title>"]
     assert browser.calls[0]["url"] == "https://protected.test/"
+
+
+@pytest.mark.parametrize("status_code", [403, 500])
+def test_private_site_error_response_cannot_pass_with_login_markers(status_code: int) -> None:
+    """
+    HTTP 失败页即使带有退出链接，也不能记录为站点连接成功。
+    """
+    http = _FakeHttpPort(_FakeResponse(status_code, text='<a href="logout.php">退出</a>'))
+    _configure(http)
+    site = SiteSnapshot(id=2, name="测试站点", domain="port.test", url="https://port.test/")
+
+    assert _chain()._SiteChain__test(site) == (False, f"错误：{status_code} OK！")
+    assert http.closed == 1
+
+
+def test_falsey_http_403_response_keeps_cloudflare_diagnosis() -> None:
+    """
+    requests 的错误响应为假值时，仍能从 403 正文识别 Cloudflare。
+    """
+    challenge = _FakeChallengePort(True)
+    http = _FakeHttpPort(_FakeResponse(403, text="challenge"))
+    _configure(http, challenge=challenge)
+    site = SiteSnapshot(id=2, name="测试站点", domain="port.test", url="https://port.test/")
+
+    assert _chain()._SiteChain__test(site) == (False, "站点被Cloudflare防护，请打开站点浏览器仿真！")
+    assert challenge.calls == ["challenge"]
+    assert http.closed == 1
+
+
+@pytest.mark.parametrize("source", [None, ""])
+def test_empty_browser_result_cannot_pass_for_a_public_site(source: Optional[str]) -> None:
+    """
+    公开站点未取得浏览器页面时应失败，不能跳过登录判断后直接报成功。
+    """
+    browser = _FakeBrowserPort(source)
+    _configure(_FakeHttpPort(), browser=browser)
+
+    assert _chain()._SiteChain__test(_public_site(render=True)) == (False, "无法打开网站！")
 
 
 def test_cookiecloud_failure_uses_fake_port_without_network() -> None:
@@ -399,6 +438,7 @@ def test_cookiecloud_adapter_closes_remote_response(monkeypatch) -> None:
     helper._key = "key"
     helper._password = "password"
     helper._enable_local = False
+    helper._domain_resolver = cookiecloud_module.site_rules.extract_domain
     monkeypatch.setattr(helper, "_CookieCloudHelper__sync_setting", lambda: None)
     monkeypatch.setattr(cookiecloud_module, "RequestUtils", FakeRequest)
     monkeypatch.setattr(
@@ -573,7 +613,7 @@ def test_site_connection_keeps_cookie_when_hdwing_redirects_to_https(monkeypatch
         id=1, name="瓷器", domain="hdwing.org", url="http://hdwing.org/", cookie="uid=1",
     )
 
-    assert _chain()._SiteChain__test(site) == (True, "连接成功")
+    assert _chain()._SiteChain__test(site) == (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")
     assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
 
 
@@ -661,3 +701,60 @@ def test_favicon_failure_logs_only_site_origin(monkeypatch) -> None:
     assert favicon_url == "https://site.test/icon.png?token=secret"
     assert content is None
     assert errors == ["获取站点图标失败：https://site.test"]
+
+
+def test_site_connectivity_trims_legacy_whitespace_ua_and_falls_back_when_blank() -> None:
+    """
+    历史配置中带首尾空格或全空白的站点 UA 在连通性测试时应自动裁剪或回退默认 UA。
+    """
+    http = _FakeHttpPort(_FakeResponse(200, text="ok"), _FakeResponse(200, text="ok"))
+    _configure(http)
+    padded_site = SiteSnapshot(
+        id=1,
+        name="空格UA站",
+        domain="padded.test",
+        url="https://padded.test/",
+        ua=" Mozilla/5.0 Edg/158.0.0.0 ",
+        public=True,
+    )
+    blank_site = SiteSnapshot(
+        id=2,
+        name="空白UA站",
+        domain="blank.test",
+        url="https://blank.test/",
+        ua="   ",
+        public=True,
+    )
+
+    assert _chain()._SiteChain__test(padded_site)[0] is True
+    assert _chain()._SiteChain__test(blank_site)[0] is True
+    assert http.calls[0]["ua"] == "Mozilla/5.0 Edg/158.0.0.0"
+    assert http.calls[1]["ua"] == "MoviePilot-Test"
+
+
+@pytest.mark.parametrize("bad_ua", ["Mozilla/5.0\nInjected", "Mozilla/5.0 中文"])
+def test_site_connectivity_reports_invalid_ua_instead_of_unreachable(
+    monkeypatch: pytest.MonkeyPatch, bad_ua: str,
+) -> None:
+    """
+    UA 含非法字符时应明确提示配置错误并告警，而不是误报无法打开网站。
+    """
+    http = _FakeHttpPort()
+    _configure(http)
+    warnings: list[str] = []
+    monkeypatch.setattr(site_module.logger, "warning", warnings.append)
+    site = SiteSnapshot(
+        id=3,
+        name="非法UA站",
+        domain="bad-ua.test",
+        url="https://bad-ua.test/",
+        ua=bad_ua,
+        public=True,
+    )
+
+    result = _chain()._SiteChain__test(site)
+
+    assert result == (False, "站点浏览器标识(UA)包含非法字符，请检查配置！")
+    assert http.calls == []
+    assert len(warnings) == 1
+    assert "User-Agent" in warnings[0]

@@ -54,7 +54,11 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_configured_system_config,
 )
-from app.application.subscription.contract import SubscriptionIdentityConflictError, SubscriptionQueryPort
+from app.application.subscription.contract import (
+    SubscriptionIdentity,
+    SubscriptionIdentityConflictError,
+    SubscriptionQueryPort,
+)
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
     SubscribeDeletionActor,
@@ -465,20 +469,34 @@ async def subscribe_media_identity(
     year: Optional[str] = None,
     mtype: Optional[MediaType] = None,
     music_type: Optional[str] = None,
+    episode_group: Optional[str] = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """
-    根据媒体身份查询订阅，影视身份未命中时按类型、标题和可用年份跨源回退。
+    按原生身份、共同 TMDB 身份依次查询，最后保留类型、标题和年份的提示回退。
     """
     metadata = MetaInfo(title) if title else None
     normalized_title = metadata.name if metadata else None
     if season is None and metadata:
         season = metadata.begin_season
     subscribes = await query.list_by_media_identity(media_source, media_id, music_type)
+    if mtype is not None:
+        subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype.value]
     if season is not None:
         subscribes = [subscribe for subscribe in subscribes if subscribe.season == season]
+    if episode_group is not None:
+        subscribes = [subscribe for subscribe in subscribes if subscribe.episode_group == episode_group]
     result = select_accessible_subscribe(subscribes, current_user)
+    if not result and mtype is not None and mtype in (MediaType.MOVIE, MediaType.TV):
+        subscribes = await query.list_by_projected_identity(
+            SubscriptionIdentity(
+                media_source=media_source, media_id=media_id, type=mtype.value,
+                season=season, episode_group=episode_group,
+            ),
+            username=None if current_user.is_superuser else current_user.name,
+        )
+        result = select_accessible_subscribe(subscribes, current_user)
     if (
         not result
         and mtype in (MediaType.MOVIE, MediaType.TV)
@@ -490,6 +508,8 @@ async def subscribe_media_identity(
             media_type=mtype,
             season=season,
         )
+        if episode_group is not None:
+            subscribes = [subscribe for subscribe in subscribes if subscribe.episode_group == episode_group]
         result = select_accessible_subscribe(subscribes, current_user)
     return result if result else _SchemaSubscribe()
 

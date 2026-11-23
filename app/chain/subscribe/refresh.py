@@ -2,10 +2,14 @@
 订阅元数据、进度与剧集范围刷新
 """
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime
+from threading import Event
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
+from app.application.configuration import get_scheduler_runtime_config
+from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription import priority as _priority
 from app.application.subscription.activity import activity_time, subscription_activity_scope
 from app.application.subscription.contract import (
@@ -16,10 +20,12 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.facts import FreshFactLease
 from app.application.subscription.observability import subscription_log_scope
+from app.application.subscription.refresh import RefreshPolicy
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
 from app.chain.subscribe.metadata import SubscribeMetadataOwner
+from app.chain.subscribe.poll import SubscriptionRefreshPoll
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.domain.context import (
@@ -27,8 +33,10 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.runtime.events import eventmanager
+from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.runtime.tasks import get_task_registry
 from app.schemas.event import SubscribeEpisodesRefreshEventData
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.types import (
@@ -38,10 +46,45 @@ from app.schemas.types import (
 )
 
 
+def _reconcile_pending_downloads_if_available(owner: Any) -> None:
+    """
+    在混入了待确认下载核对能力的订阅链上触发核对，兼容独立构造的刷新组件单元测试。
+
+    :param owner: 订阅刷新组件或完整 ``SubscribeChain`` 实例
+    """
+    reconcile = getattr(owner, "reconcile_pending_downloads", None)
+    if callable(reconcile):
+        reconcile()
+
+
 class SubscribeRefreshOwner(SubscribeMetadataOwner):
     """
     订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责组件。
     """
+
+    async def async_refresh(
+        self, progress_callback: Optional[Callable[..., None]] = None, *,
+        mtype: Optional[str] = None, source: str = "automatic", scheduled: bool = False,
+    ) -> None:
+        """
+        托管同步刷新工作，取消或配置重载后仍等真实收尾才交还调度所有权。
+
+        :param progress_callback: 传递到刷新、匹配和排程进度的回调
+        :param mtype: 手工刷新可选的媒体类型
+        :param source: 活动记录来源，手工入口使用 manual
+        :param scheduled: 是否只处理自动模式下已到期站点
+        """
+        stop_event = Event()
+        task = get_task_registry().create_sync(
+            self.refresh, owner="subscription.refresh", progress_callback=progress_callback,
+            mtype=mtype, source=source, scheduled=scheduled, _stop_event=stop_event,
+        )
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            stop_event.set()
+            await await_task_to_terminal(task)
+            raise
 
     def refresh(
         self,
@@ -49,6 +92,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         *,
         mtype: Optional[str] = None,
         source: str = "automatic",
+        scheduled: bool = False,
+        _stop_event: Optional[Event] = None,
     ) -> None:
         """
         刷新指定媒体类型的订阅
@@ -56,12 +101,19 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         :param progress_callback: 定时服务进度更新回调
         :param mtype: 可选媒体类型，省略时刷新所有类型
         :param source: 手工入口传 manual，定时和兼容调用默认 automatic
+        :param scheduled: 自动模式的定时扫描按站点时间片运行；手工和旧插件缺省立即刷新
+        :param _stop_event: 异步宿主取消本轮时停止接纳新站点，等待已接受工作真实结束
         """
         # 触发刷新站点资源，从缓存中匹配订阅
         sites = self.get_subscribed_sites(mtype)
         if sites is None:
             if progress_callback:
                 progress_callback(value=100, text="没有订阅需要刷新")
+            return
+
+        if scheduled and self.runtime_config.subscribe_mode == "spider":
+            policy = RefreshPolicy(timezone_name=get_scheduler_runtime_config().timezone)
+            SubscriptionRefreshPoll(self, policy, progress_callback, _stop_event).run()
             return
 
         def _update_refresh_progress(
@@ -152,6 +204,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         :param mtype: 可选媒体类型，省略时检查所有类型
         """
         repository = self.subscription_repository
+        # 检查订阅前先核对待确认提交，确保延迟出现在下载器的任务及时补记历史并更新订阅状态。
+        _reconcile_pending_downloads_if_available(self)
         subscribes = repository.list()
         if mtype is not None:
             subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype]
@@ -305,6 +359,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         best_version_accept_downloaded 仅用于分集洗版的外部完成守卫：为 True 时，
         priority>0 的目标集视为已满足；默认 False 保持主程序洗版完成需 priority==100
         的搜索/完成口径。
+
+        :raises MediaServerQueryError: 非洗版电视剧订阅的媒体库查询失败时；调用方应跳过
+            本轮，不把未知状态写成缺集
         """
         mediakey = mediakey or subscribe_media_key(subscribe)
         if subscribe.type == MediaType.TV.value:
@@ -315,7 +372,12 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             totals = {}
             if subscribe.season is not None and effective_total_episode:
                 totals = {subscribe.season: effective_total_episode}
-            exist_flag, no_exists = DownloadChain().get_no_exists_info(meta=meta, mediainfo=mediainfo, totals=totals)
+            exist_flag, no_exists = DownloadChain().get_no_exists_info(
+                meta=meta, mediainfo=mediainfo, totals=totals,
+                totals_are_episode_numbers=bool(subscribe.manual_total_episode),
+                # 仅电视剧服务能区分查询失败与未找到；电影/音乐查询失败仍按未找到处理。
+                raise_on_query_failure=mediainfo.type == MediaType.TV,
+            )
         elif meta.type != MediaType.TV and self._SubscribeChain__is_best_version_complete(subscribe):
             return True, {}
         else:
@@ -467,9 +529,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
         主流程会通过 ``__refresh_total_episode_before_completion`` 持久化增长后的总集数；
         该查询接口只需要同样避免旧 total 造成误判，因此仅使用当前 mediainfo 中更大的
-        季集数作为临时目标范围。
+        季集数作为临时目标范围。历史负数总集数按未设置处理。
         """
-        current_total = subscribe.total_episode or 0
+        current_total = max(subscribe.total_episode or 0, 0)
         if subscribe.type != MediaType.TV.value:
             return current_total
         if subscribe.manual_total_episode:
@@ -686,12 +748,18 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             if not mediainfo:
                 return {"scene": scene, "updated": False, "fields": [], "reason": "recognize_failed"}
             mediakey = subscribe_media_key(subscribe)
-            exist_flag, no_exists = self.resolve_subscribe_missing(
-                subscribe=subscribe,
-                meta=meta,
-                mediainfo=mediainfo,
-                mediakey=mediakey,
-            )
+            try:
+                exist_flag, no_exists = self.resolve_subscribe_missing(
+                    subscribe=subscribe,
+                    meta=meta,
+                    mediainfo=mediainfo,
+                    mediakey=mediakey,
+                )
+            except MediaServerQueryError as err:
+                # 媒体库查询失败时缺集未知，不写回进度，下一轮重新查询。
+                # 与 resolve 返回空的 "resolve_missing_failed" 区分，便于从进度摘要识别媒体库故障。
+                logger.warning(f"订阅 {subscribe.name} 媒体库查询失败，本轮不刷新进度：{err}")
+                return {"scene": scene, "updated": False, "fields": [], "reason": "media_query_failed"}
             if not exist_flag and not no_exists:
                 return {"scene": scene, "updated": False, "fields": [], "reason": "resolve_missing_failed"}
 

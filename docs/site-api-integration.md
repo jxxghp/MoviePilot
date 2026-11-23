@@ -458,3 +458,50 @@ MP 已有 API Key 搜索及临时下载地址的实现案例，但不会自动�
   批量辅种接口接收的是 `info_hash`，不能将青蛙辅种插件的 `pieces_hash` 当成同一种指纹。
 
 离线回归只使用合成凭据并替换网络边界；实际 API 验收结果需另外记录，HTTP 200 本身不能证明种子文件有效。
+
+### 可乐开放 API 适配
+
+可乐（ReelCore）使用[开放 API 文档](https://www.colapt.com/api-docs)中的 `https://www.colapt.com/api/v1`。
+需同时更新包含 `ColaPT` 适配器的后端，以及把 `colapt.com` 从 `MTorrent` 改为声明 `ColaPT` schema/parser 的站点索引资源；
+资源未切换前仍按 M-Team 兼容方式接入，不受本适配影响。
+在网页「账号设置 → API Key」新建 API Key，勾选「读取」和「下载」范围，填入 MoviePilot 站点 **API Key**。
+每把 Key 读取类请求 60 次/分钟、下载类 120 次/分钟，带关键词的搜索另有 30 次/分钟上限；超出返回 HTTP 429 与 `Retry-After`。
+建议在站点设置中配置至少两秒访问间隔，避免订阅集中搜索触发远端限流后进入共享冷却。
+
+- 连接检测和用户统计使用 `GET /me/stats`，不使用 Cookie、网页会话或浏览器仿真。
+  用户 ID、用户名取 `user.id` / `user.username`，注册时间取 `joined_at`；流量取计费口径的十进制字节字符串
+  `billed_uploaded_bytes` / `billed_downloaded_bytes`，分享率取 4 位小数字符串 `ratio`（无计费下载量时为 null，保持为空），
+  瓶盖取 `points_balance`，等级取 `class_name`，做种汇总取 `seeding` / `seeding_bytes`，未读数量取 `unread_messages`；
+  不自动读取或标记站内信。
+- 搜索和最新列表使用 `GET /media?view=torrents`，每个分组恰好一个种子，按种子全局分页；
+  MP 零起始页码换算为接口的一起始 `page`，每页 100 条，按 `sort=latest&direction=desc` 排序，
+  并以 `official_first=false` 关闭官方置顶。普通关键词使用 `q`，完整 IMDb ID 使用 `imdb_id`；末页依据 `total_pages`。
+- 分类是固定枚举 `movie` / `tv` / `anime` / `variety` / `documentary` / `other`，`category` 逗号分隔多选。
+  显式分类去重后交给服务端；未指定时按媒体类型只排除明确属于另一类型的分类（电影排除 `tv` / `variety`，剧集排除 `movie`）。
+  结果中 `movie` 映射为电影，`tv` 和 `variety` 映射为电视剧；动漫、纪录片、其他和未关联作品的种子保持未知，
+  由后续媒体识别确定。作品的 `imdb_id` / `douban_id` 作为媒体标识；`hit_and_run` 为 true 表示此刻下载会开启 H&R 考核。
+- 促销直接读取服务端当前计费的 `promotion`（上传、下载倍率为 `num/den` 分数，结束时间 `ends_at`）；
+  `promotion` 为 null 表示正常计费。详情页为 `/torrents/{id}`，检查点按该路径中的 ID 重建下载配方。
+- 搜索结果只保留下载配方，真正下载时才 `POST /torrents/{id}/download-links` 签发 30 分钟有效的签名地址
+  `/downloads/{凭据}/{id}?exp=…&sig=…`。签发只带 API Key，最终种子 GET 不携带 API Key 或 Cookie；
+  地址必须是本站 HTTPS、带签名且种子 ID 与所选资源一致。
+  接口失败、范围不足、非 JSON 和 HTTP 429 不视为成功，限流沿用同站点共享冷却。
+- 错误统一为 `{"error":{"code","message","request_id","fields"}}`，按 `code` 区分失效密钥、缺少范围、需改密码、
+  无权限和限流，不按 HTTP 状态猜测。
+- 本次未接入字幕（`listMediaSubtitles` / `downloadSubtitle`）、站内信列表和哈希反查辅种接口。
+
+### 好学 FluxTorrent 兼容层适配
+
+好学使用 `/api/v1/compat/nexusphp` 只读 JSON 兼容层，站点索引资源从 `3.0.28` 起声明 `FluxTorrent` 搜索和用户数据协议。
+登录站点后，在安全设置页面的「开放 API 令牌」中签发包含 `read` 权限的 `fxo_` 开头令牌，填入 MoviePilot 站点 **API Key**。
+API Key 为空时使用 **Token**。这枚开放 API 令牌与站点 RSS 的 passkey 分别管理。[好学安全设置](https://www.hxpt.org/my?tab=security)
+
+- 连接检测和用户资料使用 `GET /user.json`，读取等级、上传下载量、分享率、魔力、做种数量、做种体积和注册时间。
+  老版本接口缺少做种和注册信息时，通过 `/api/v1/plugins/ptppUserInfo` 补齐。
+- 搜索和最新列表使用 `GET /torrents.json`，页码从 1 开始，每页 50 条，关键词使用 `keyword`。
+  分类和促销倍率取兼容层字段，详情链接指向 `/torrent/{id}`，种子文件通过 `GET /download.php?id=...&apikey=...` 获取。
+- 连接检测、用户资料及同步、异步搜索共用站点设置的请求间隔和次数窗口。
+  只读 API 遇到 HTTP 503 时分别等待三秒和六秒，最多重试两次；持续失败保留失败结果。
+  认证失败直接结束本次用户解析并保留接口错误。
+- 好学网关会对默认 MoviePilot User-Agent 返回 HTTP 503，适配器使用默认浏览器标识，
+  并将相同标识传递给种子下载；站点手工设置的其他 User-Agent 优先。

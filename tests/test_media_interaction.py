@@ -2153,6 +2153,8 @@ def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
     download_single.assert_called_once()
     assert download_single.call_args.args[0] is context
     assert "save_path" not in download_single.call_args.kwargs
+    # 用户在交互里选中了具体资源，属于手动指定种子（已暂停的已有任务会被恢复）。
+    assert download_single.call_args.kwargs["user_specified"] is True
 
 
 def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
@@ -2338,6 +2340,8 @@ def test_download_dir_callback_runs_pending_single_download_with_save_path():
     download_single.assert_called_once()
     assert download_single.call_args.args[0] is context
     assert download_single.call_args.kwargs["save_path"] == "/downloads/movies"
+    # 选完下载目录后提交的仍是用户选中的那个资源，属于手动指定种子。
+    assert download_single.call_args.kwargs["user_specified"] is True
 
 
 def test_download_dir_text_reply_runs_pending_single_download_without_save_path():

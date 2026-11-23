@@ -57,6 +57,28 @@ def test_empty_result_snapshot_predicate():
     """
     assert _is_empty_result_snapshot(_snapshot(EMPTY_PAYLOAD))
     assert not _is_empty_result_snapshot(_snapshot(NOT_EMPTY_PAYLOAD))
+    assert _is_empty_result_snapshot(
+        _snapshot(
+            {
+                "movie_results": [],
+                "person_results": [],
+                "tv_results": [],
+                "tv_episode_results": [],
+                "tv_season_results": [],
+            }
+        )
+    )
+    assert not _is_empty_result_snapshot(
+        _snapshot(
+            {
+                "movie_results": [{"id": 1101383}],
+                "person_results": [],
+                "tv_results": [],
+                "tv_episode_results": [],
+                "tv_season_results": [],
+            }
+        )
+    )
     assert not _is_empty_result_snapshot(_snapshot({"id": 98865, "title": "Test"}))
     # json 非字典或无 results 字段时不能误判为空结果
     assert not _is_empty_result_snapshot(_snapshot("upstream error"))

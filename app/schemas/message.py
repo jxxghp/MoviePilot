@@ -275,9 +275,10 @@ class Message(BaseModel):
     title: Optional[str] = Field(default=None, description="标题")
     text: Optional[str] = Field(default=None, description="文本内容")
     image: Optional[str] = Field(default=None, description="图片")
+    native_image: bool = Field(default=False, description="将 image 作为完整原图发送；由宿主适配渠道，不支持上传时明确降级，默认保留封面语义")
     poster: Optional[str] = Field(default=None, description="独立媒体海报，不使用背景图回退")
     voice_path: Optional[str] = Field(default=None, description="语音文件路径")
-    file_path: Optional[str] = Field(default=None, description="本地文件路径")
+    file_path: Optional[str] = Field(default=None, description="本地附件路径；宿主按渠道上传，不支持时明确提示，发送后保留源文件")
     file_name: Optional[str] = Field(default=None, description="发送时展示的文件名")
     voice_caption: Optional[str] = Field(default=None, description="语音消息附带说明文字")
     link: Optional[str] = Field(default=None, description="链接")
@@ -388,6 +389,14 @@ class Subscription(BaseModel):
 
     endpoint: Optional[str] = Field(default=None, description="请求端点地址")
     keys: Optional[dict[str, str]] = Field(default_factory=dict, description="推送订阅的加密公钥与认证密钥")
+
+
+class WebPushPublicKeyData(BaseModel):
+    """
+    浏览器 Web Push 订阅使用的 VAPID 公钥响应数据。
+    """
+
+    public_key: str = Field(description="base64url 编码的未压缩 P-256 VAPID 公钥")
 
 
 class SubscriptionMessage(BaseModel):

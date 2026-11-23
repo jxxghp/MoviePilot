@@ -5,19 +5,47 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import threading
 import time
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from typing import Optional
 
+from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
 
 # 同步等待定期复核调用方取消和进程停止；异步等待不占用工作线程。
 _CANCEL_CHECK_INTERVAL = 0.05
 _cancel_check: ContextVar[Optional[Callable[[], bool]]] = ContextVar("browser_cancel_check", default=None)
+_queue_timeout: ContextVar[Optional[float]] = ContextVar("browser_queue_timeout", default=None)
+
+
+@dataclass(frozen=True)
+class BrowserQueueStatus:
+    """
+    当前进程内浏览器实例队列的只读状态快照。
+
+    :param active: 当前尚未归还的浏览器实例名额数
+    :param waiting: 当前正在排队等待准入的调用数
+    :param limit: 当前生效的同时存活浏览器实例上限
+    """
+
+    active: int
+    waiting: int
+    limit: int
+
+    @property
+    def available(self) -> int:
+        """
+        返回当前可立即准入的空闲名额数；降容期间活跃实例超过上限时返回 0。
+
+        :return: 空闲浏览器实例名额数，不小于 0
+        """
+        return max(0, self.limit - self.active)
 
 
 class BrowserQueueCancelledError(RuntimeError):
@@ -49,26 +77,78 @@ def check_browser_request() -> None:
         raise BrowserQueueCancelledError("浏览器请求已取消或系统正在停止")
 
 
+def resolve_browser_queue_timeout(default: float) -> float:
+    """
+    解析当前调用生效的浏览器排队超时秒数。
+
+    调用方通过 :func:`browser_request` 指定的超时只能收紧等待上限，不能突破宿主配置。
+
+    :param default: 宿主配置的排队超时上限（秒）
+    :return: 当前调用实际生效的排队超时秒数
+    """
+    override = _queue_timeout.get()
+    if override is None:
+        return default
+    return min(default, override)
+
+
 @contextmanager
-def browser_request(cancelled: Callable[[], bool]) -> Iterator[None]:
+def browser_request(
+    cancelled: Optional[Callable[[], bool]] = None,
+    *,
+    queue_timeout: Optional[float] = None,
+) -> Iterator[None]:
     """
-    叠加当前调用的取消检查，并随执行上下文传播到浏览器所属线程。
+    叠加当前调用的取消检查与可选排队超时上限，并随执行上下文传播到浏览器所属线程。
 
-    :param cancelled: 返回当前调用是否已失效的线程安全检查函数
+    在排队等待、启动和原生操作期间，只要 ``cancelled()`` 返回 ``True`` 或进程进入停机状态，
+    尚未准入的调用会立即撤销排队票据并抛出 :class:`BrowserQueueCancelledError`，不影响其他持有者。
+    嵌套使用时，任一外层取消条件触发都会使内层失效；``queue_timeout`` 只取更严格的上限。
+
+    :param cancelled: 返回当前调用是否已失效的线程安全无参可调用对象；为 None 时沿用外层与停机检查
+    :param queue_timeout: 本次调用允许的最长排队秒数，必须为有限正数；为 None 时沿用外层或宿主上限
+    :raises TypeError: ``cancelled`` 非空且不可调用
+    :raises ValueError: ``queue_timeout`` 不是有限正数
     """
-    parent = _cancel_check.get()
+    if cancelled is not None and not callable(cancelled):
+        raise TypeError("cancelled 必须是无参可调用对象")
+    if queue_timeout is not None and (
+        isinstance(queue_timeout, bool)
+        or not math.isfinite(queue_timeout)
+        or queue_timeout <= 0
+    ):
+        raise ValueError("浏览器排队超时必须大于零")
 
-    def is_cancelled() -> bool:
-        """
-        任一祖先调用取消后，嵌套调用都不能再取得浏览器名额。
-        """
-        return cancelled() or (parent is not None and parent())
+    cancel_token: Optional[Token[Optional[Callable[[], bool]]]] = None
+    timeout_token: Optional[Token[Optional[float]]] = None
 
-    token = _cancel_check.set(is_cancelled)
+    if cancelled is not None:
+        parent = _cancel_check.get()
+
+        def is_cancelled() -> bool:
+            """
+            任一祖先调用取消后，嵌套调用都不能再取得浏览器名额。
+            """
+            return cancelled() or (parent is not None and parent())
+
+        cancel_token = _cancel_check.set(is_cancelled)
+
+    if queue_timeout is not None:
+        parent_timeout = _queue_timeout.get()
+        effective_timeout = (
+            float(queue_timeout)
+            if parent_timeout is None
+            else min(parent_timeout, float(queue_timeout))
+        )
+        timeout_token = _queue_timeout.set(effective_timeout)
+
     try:
         yield
     finally:
-        _cancel_check.reset(token)
+        if timeout_token is not None:
+            _queue_timeout.reset(timeout_token)
+        if cancel_token is not None:
+            _cancel_check.reset(cancel_token)
 
 
 class BrowserLease:
@@ -106,6 +186,7 @@ class BrowserCapacity:
         """
         self._condition = threading.Condition()
         self._limit = 1
+        self._configured = False
         self._waiting: deque[object] = deque()
         self._active: set[object] = set()
 
@@ -125,6 +206,41 @@ class BrowserCapacity:
         with self._condition:
             return len(self._waiting)
 
+    @property
+    def limit(self) -> int:
+        """
+        返回当前队列生效的同时存活实例上限。
+        """
+        with self._condition:
+            return self._limit
+
+    @property
+    def configured(self) -> bool:
+        """
+        返回队列并发上限是否已按宿主配置初始化。
+        """
+        with self._condition:
+            return self._configured
+
+    def snapshot(self, *, default_limit: Optional[int] = None) -> BrowserQueueStatus:
+        """
+        原子读取当前活跃实例数、排队等待数与生效并发上限。
+
+        :param default_limit: 队列尚未按宿主配置初始化时使用的展示上限；已配置时忽略该值
+        :return: 只读队列状态快照
+        """
+        with self._condition:
+            effective_limit = (
+                self._limit
+                if self._configured or default_limit is None
+                else default_limit
+            )
+            return BrowserQueueStatus(
+                active=len(self._active),
+                waiting=len(self._waiting),
+                limit=effective_limit,
+            )
+
     def configure(self, limit: int) -> None:
         """
         更新后续准入容量；调低容量不撤销已经运行的实例。
@@ -135,6 +251,7 @@ class BrowserCapacity:
             raise ValueError("浏览器并发上限必须大于零")
         with self._condition:
             self._limit = limit
+            self._configured = True
             self._condition.notify_all()
 
     def _enter(self) -> object:
@@ -215,3 +332,17 @@ class BrowserCapacity:
 
 
 browser_capacity = BrowserCapacity()
+
+
+def get_browser_queue_status() -> BrowserQueueStatus:
+    """
+    查询当前进程内浏览器实例队列的只读状态快照。
+
+    本接口不会修改队列状态、占用名额或加载浏览器内核，适合在发起低优先级任务前评估排队深度。
+
+    :return: 包含活跃实例数、排队等待数、并发上限与空闲名额数的只读快照
+    """
+    if browser_capacity.configured:
+        return browser_capacity.snapshot()
+    configured_limit = max(1, int(get_runtime_setting("CLOAKBROWSER_MAX_CONCURRENCY", 3)))
+    return browser_capacity.snapshot(default_limit=configured_limit)

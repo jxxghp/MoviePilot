@@ -4,12 +4,13 @@
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from typing import TypedDict as _TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 from app.schemas.common import JsonData
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
 
@@ -225,6 +226,220 @@ class MediaServerSeasonInfo(BaseModel):
     episodes: Optional[List[int]] = Field(default_factory=list, description="剧集信息")
 
 
+class MediaServerSubtitleTrack(BaseModel):
+    """
+    声明可通过本服务流式读取的同名外挂字幕。
+    """
+
+    subtitle_id: str = Field(description="字幕文件名标识，不包含服务端目录路径")
+    title: str = Field(description="播放器显示名称")
+    language: Optional[str] = Field(default=None, description="从文件名识别的语言标识")
+    url: str = Field(description="当前 MoviePilot 实例的字幕流地址")
+
+
+class MediaServerStreamInfo(BaseModel):
+    """
+    声明原生播放器使用的当前实例媒体流地址和外挂字幕。
+    """
+
+    item_id: str = Field(description="已解析的媒体服务器条目标识")
+    server: Optional[str] = Field(default=None, description="媒体服务器配置名称；单文件票据省略")
+    title: str = Field(description="媒体标题")
+    content_url: str = Field(description="当前 MoviePilot 实例的媒体流地址")
+    media_type: Literal["video", "audio"] = Field(default="video", description="播放器使用的媒体类型")
+    artist: Optional[str] = Field(default=None, description="音乐表演者")
+    album: Optional[str] = Field(default=None, description="音乐专辑")
+    subtitles: List[MediaServerSubtitleTrack] = Field(default_factory=list, description="同目录或媒体服务器提供的外挂字幕")
+    lyrics_url: Optional[str] = Field(default=None, description="当前实例的同名 LRC 歌词流地址")
+    media_source_id: Optional[str] = Field(default=None, description="本次播放绑定的媒体源标识")
+    resume_position_ms: Optional[int] = Field(default=None, description="服务端记录的断点续播位置（毫秒）")
+    duration_ms: Optional[int] = Field(default=None, description="媒体总时长（毫秒）")
+
+
+class MediaServerMediaStream(BaseModel):
+    """
+    媒体服务器单个媒体源中的视频、音频或字幕轨道信息。
+    """
+
+    index: Optional[int] = Field(default=None, description="服务端轨道序号")
+    type: Literal["video", "audio", "subtitle", "unknown"] = Field(default="unknown", description="轨道类型")
+    codec: Optional[str] = Field(default=None, description="轨道编解码格式")
+    language: Optional[str] = Field(default=None, description="轨道语言标识")
+    title: Optional[str] = Field(default=None, description="原始轨道标题")
+    display_title: Optional[str] = Field(default=None, description="适合界面展示的轨道名称")
+    is_default: bool = Field(default=False, description="是否为默认轨道")
+    is_forced: bool = Field(default=False, description="是否为强制字幕轨道")
+    is_external: bool = Field(default=False, description="是否为独立外挂字幕轨道")
+    subtitle_id: Optional[str] = Field(default=None, description="可通过本实例字幕代理下载的字幕标识")
+    channels: Optional[int] = Field(default=None, description="音频声道数")
+    channel_layout: Optional[str] = Field(default=None, description="音频声道布局")
+    bitrate: Optional[int] = Field(default=None, description="轨道码率（bps）")
+    width: Optional[int] = Field(default=None, description="视频宽度（像素）")
+    height: Optional[int] = Field(default=None, description="视频高度（像素）")
+    video_range: Optional[str] = Field(default=None, description="视频动态范围，例如 SDR、HDR")
+
+
+class MediaServerMediaSource(BaseModel):
+    """
+    媒体服务器可播放条目的单个文件版本或媒体源信息。
+    """
+
+    id: str = Field(description="媒体源标识")
+    name: Optional[str] = Field(default=None, description="版本展示名称")
+    container: Optional[str] = Field(default=None, description="封装容器格式")
+    size: Optional[int] = Field(default=None, description="文件字节大小")
+    bitrate: Optional[int] = Field(default=None, description="整体码率（bps）")
+    duration_ms: Optional[int] = Field(default=None, description="媒体源时长（毫秒）")
+    streams: List[MediaServerMediaStream] = Field(default_factory=list, description="包含的视频、音频与字幕轨道")
+
+
+class MediaServerPerson(BaseModel):
+    """
+    媒体服务器条目关联的演职员信息。
+    """
+
+    id: Optional[str] = Field(default=None, description="演职员在媒体服务器中的标识")
+    name: str = Field(description="演职员姓名")
+    role: Optional[str] = Field(default=None, description="饰演角色或职务说明")
+    type: Optional[str] = Field(default=None, description="人员类型，例如 Actor、Director")
+    image: Optional[str] = Field(default=None, description="已签名的头像图片地址")
+
+
+class MediaServerBrowseItem(BaseModel):
+    """
+    媒体服务器浏览列表、季列表与分集列表共用的轻量媒体卡片模型。
+    """
+
+    item_id: str = Field(description="媒体服务器条目标识")
+    server: Optional[str] = Field(default=None, description="所属媒体服务器配置名称")
+    server_type: Optional[str] = Field(default=None, description="媒体服务器类型")
+    item_type: str = Field(default="Movie", description="条目维度：Movie、Series、Season、Episode、MusicAlbum、Audio、Folder")
+    media_type: Optional[str] = Field(default=None, description="统一业务媒体类型：电影、电视剧、音乐")
+    title: str = Field(description="展示标题")
+    original_title: Optional[str] = Field(default=None, description="原始语言标题")
+    subtitle: Optional[str] = Field(default=None, description="副标题或补充信息")
+    overview: Optional[str] = Field(default=None, description="剧情或条目简介")
+    year: Optional[Union[str, int]] = Field(default=None, description="发行或首播年份")
+    premiere_date: Optional[str] = Field(default=None, description="首映或首播日期")
+    rating: Optional[float] = Field(default=None, description="社区评分（0 至 10）")
+    duration_ms: Optional[int] = Field(default=None, description="时长（毫秒）")
+    poster: Optional[str] = Field(default=None, description="已签名的海报主图地址")
+    backdrop: Optional[str] = Field(default=None, description="已签名的背景横图地址")
+    thumb: Optional[str] = Field(default=None, description="已签名的剧照或缩略图地址")
+    series_id: Optional[str] = Field(default=None, description="所属剧集条目标识")
+    series_name: Optional[str] = Field(default=None, description="所属剧集标题")
+    season_id: Optional[str] = Field(default=None, description="所属季条目标识")
+    season_number: Optional[int] = Field(default=None, description="季号")
+    episode_number: Optional[int] = Field(default=None, description="集号")
+    child_count: Optional[int] = Field(default=None, description="子条目数量，例如季数或集数")
+    played: Optional[bool] = Field(default=None, description="当前用户是否已观看完成")
+    played_percentage: Optional[float] = Field(default=None, description="观看进度百分比（0 至 100）")
+    resume_position_ms: Optional[int] = Field(default=None, description="续播位置（毫秒）")
+    use_cookies: Optional[bool] = Field(default=None, description="图片代理访问是否需要携带服务端 Cookie")
+
+
+class MediaServerBrowsePage(BaseModel):
+    """
+    媒体服务器媒体库分页浏览结果。
+    """
+
+    items: List[MediaServerBrowseItem] = Field(default_factory=list, description="当前页媒体条目")
+    total_count: int = Field(default=0, description="符合筛选条件的总条目数")
+    start_index: int = Field(default=0, description="当前页零基起始偏移")
+    limit: int = Field(default=30, description="当前页请求上限")
+    has_more: bool = Field(default=False, description="是否存在下一页数据")
+
+
+class MediaServerFilterOptions(BaseModel):
+    """
+    媒体服务器指定媒体库可用的筛选与排序选项。
+    """
+
+    genres: List[str] = Field(default_factory=list, description="可用风格/类型标签列表")
+    years: List[int] = Field(default_factory=list, description="可用年份列表，按降序排列")
+    item_types: List[str] = Field(default_factory=list, description="可用媒体维度选项")
+    sort_options: List[str] = Field(default_factory=list, description="可用排序键列表")
+
+
+class MediaServerItemDetail(MediaServerBrowseItem):
+    """
+    媒体服务器单个条目（电影、剧集、季、集、音乐）的完整详情。
+    """
+
+    tagline: Optional[str] = Field(default=None, description="标语或副宣传语")
+    official_rating: Optional[str] = Field(default=None, description="内容分级，例如 PG-13、TV-MA")
+    genres: List[str] = Field(default_factory=list, description="风格与分类标签")
+    studios: List[str] = Field(default_factory=list, description="制作公司或发行商")
+    people: List[MediaServerPerson] = Field(default_factory=list, description="主要演职员列表")
+    media_source: Optional[MediaSource] = Field(default=None, description="关联外部元数据源")
+    media_id: Optional[str] = Field(default=None, description="关联外部元数据源标识")
+    imdb_id: Optional[str] = Field(default=None, description="IMDb 编号")
+    tmdb_id: Optional[str] = Field(default=None, description="TMDB 编号")
+    tvdb_id: Optional[str] = Field(default=None, description="TVDB 编号")
+    douban_id: Optional[str] = Field(default=None, description="豆瓣编号")
+    parent_id: Optional[str] = Field(default=None, description="上级目录或父条目标识")
+    season_name: Optional[str] = Field(default=None, description="所属季名称")
+    season_count: Optional[int] = Field(default=None, description="剧集总季数")
+    episode_count: Optional[int] = Field(default=None, description="剧集或当前季总集数")
+    media_sources: List[MediaServerMediaSource] = Field(default_factory=list, description="可播放的多版本及音轨字幕轨道列表")
+    play_url: Optional[str] = Field(default=None, description="媒体服务器网页跳转地址")
+    can_play: bool = Field(default=False, description="当前条目是否支持直接发起播放")
+
+
+class MediaServerProgressReportRequest(BaseModel):
+    """
+    客户端回传原生播放器播放进度的请求体。
+    """
+
+    item_id: str = Field(description="正在播放的媒体服务器条目标识")
+    server: str = Field(description="所属媒体服务器配置名称")
+    media_source_id: Optional[str] = Field(default=None, description="当前播放使用的媒体源标识")
+    position_ms: int = Field(default=0, ge=0, description="当前播放位置（毫秒）")
+    duration_ms: Optional[int] = Field(default=None, ge=0, description="媒体总时长（毫秒）")
+    is_paused: bool = Field(default=False, description="当前是否处于暂停状态")
+    state: Literal["playing", "paused", "stopped"] = Field(default="playing", description="回传事件状态")
+
+
+class MediaServerMusicStreamRequest(BaseModel):
+    """
+    用标准音乐身份和元数据查找媒体库中的单曲条目。
+    """
+
+    media_source: MediaSource = Field(description="音乐元数据来源")
+    media_id: str = Field(description="单曲录音的来源 ID")
+    title: str = Field(description="单曲标题")
+    artists: List[str] = Field(default_factory=list, description="单曲表演者")
+    artist: Optional[str] = Field(default=None, description="单曲主表演者")
+    album: Optional[str] = Field(default=None, description="所属专辑名称")
+    album_artist: Optional[str] = Field(default=None, description="专辑表演者")
+    year: Optional[int] = Field(default=None, description="发行年份")
+    track_number: Optional[int] = Field(default=None, description="专辑曲序")
+    disc_number: Optional[int] = Field(default=None, description="专辑碟号")
+
+
+class MediaServerFileStreamTicketRequest(BaseModel):
+    """
+    请求为文件管理器选中的本地媒体文件签发短期播放票据。
+
+    文件对象仍需在端点按当前管理用户的存储范围重新核验。
+    """
+
+    file: _SchemaFileItem = Field(description="文件管理器当前选中的本地文件条目")
+    media_type: Literal["video", "audio"] = Field(default="video", description="所选文件的媒体类型")
+
+
+class MediaServerFileStreamTicket(BaseModel):
+    """
+    返回单个文件的受控播放标识与显示标题。
+
+    标识只代表票据签发时通过权限检查的那一个文件。
+    """
+
+    item_id: str = Field(description="不包含服务器路径的短期媒体票据标识")
+    title: str = Field(description="供播放器显示的文件标题")
+    media_type: Literal["video", "audio"] = Field(default="video", description="所选文件的媒体类型")
+
+
 class WebhookEventInfo(BaseModel):
     """
     Webhook事件信息。
@@ -316,9 +531,11 @@ class MediaServerPlayItem(BaseModel):
     """
     id: Optional[Union[str, int]] = Field(default=None, description="记录标识")
     item_id: Optional[Union[str, int]] = Field(default=None, description="媒体项目 ID")
+    server: Optional[str] = Field(default=None, description="媒体服务器配置名称")
     server_id: Optional[str] = Field(default=None, description="媒体服务器 ID")
     title: Optional[str] = Field(default=None, description="标题")
     subtitle: Optional[str] = Field(default=None, description="副标题")
+    year: Optional[Union[str, int]] = Field(default=None, description="发行年份")
     type: Optional[str] = Field(default=None, description="类型标识")
     image: Optional[str] = Field(default=None, description="图片")
     link: Optional[str] = Field(default=None, description="链接")

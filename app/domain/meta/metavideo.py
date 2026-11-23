@@ -18,7 +18,7 @@ from app.domain.tokens import Tokens
 from app.foundation import text as text_tools
 from app.schemas.types import MediaType
 
-SEASON_FULL_RE = re.compile(r"^(?:Season\s+|S)(\d{1,3})$", re.IGNORECASE)
+SEASON_FULL_RE = re.compile(r"^(?:Season\s+|S)(\d{1,3})(?:\s*\(\d{4}\))?$", re.IGNORECASE)
 FIRST_BRACKET_RE = re.compile(r'^[\[【](.+?)[\]】]')
 BRACKET_DOT_TITLE_RE = re.compile(r'[A-Za-z]+\..+(?:19|20)\d{2}')
 BRACKET_RESOURCE_RE = re.compile(
@@ -28,6 +28,8 @@ BRACKET_RESOURCE_RE = re.compile(
 YEAR_RANGE_RE = re.compile(r'([\s.]+)(\d{4})-(\d{4})')
 FILE_SIZE_RE = re.compile(r'[0-9.]+\s*[MGT]i?B(?![A-Z]+)', re.IGNORECASE)
 DATE_RE = re.compile(r'\d{4}[\s._-]\d{1,2}[\s._-]\d{1,2}')
+CRC32_BRACKET_RE = re.compile(r'\[([0-9A-Fa-f]{8})\]|\(([0-9A-Fa-f]{8})\)|【([0-9A-Fa-f]{8})】')
+_HEX_CHARS = frozenset("0123456789abcdefABCDEF")
 DIY_RE = re.compile(r'DIY', re.IGNORECASE)
 DIY_TITLE_RE = re.compile(r'-DIY@', re.IGNORECASE)
 DESCRIPTION_SPLIT_RE = re.compile(r'[\s/|]+')
@@ -241,6 +243,7 @@ class MetaVideo(MetaBase):
         title = YEAR_RANGE_RE.sub(r'\1\2', title)
         title = FILE_SIZE_RE.sub("", title)
         title = DATE_RE.sub("", title)
+        title = self._strip_crc32_checksum(title)
         media_exts = get_media_extensions()
         tokens = Tokens(title)
         streaming_platforms = StreamingPlatforms()
@@ -279,6 +282,38 @@ class MetaVideo(MetaBase):
         if not self.video_bit:
             self.video_bit = self.extract_video_bit(self.video_encode)
 
+    @staticmethod
+    def _is_crc32_token(token: str) -> bool:
+        """
+        判断词元是否为同时包含数字与十六进制字母的 8 位 CRC32 校验码。
+
+        :param token: 待检查的单个词元
+        :return: 是否为 8 位十六进制 CRC32 校验码
+        """
+        return (
+            len(token) == 8
+            and all(ch in _HEX_CHARS for ch in token)
+            and any(ch.isdigit() for ch in token)
+            and any(ch.isalpha() for ch in token)
+        )
+
+    @classmethod
+    def _strip_crc32_checksum(cls, title: str) -> str:
+        """
+        剥离括号内的 8 位十六进制 CRC32 校验码，保留纯数字日期与正常片名。
+
+        :param title: 待预处理的影视标题
+        :return: 清理 CRC32 校验码后的标题
+        """
+        def _replace(match: re.Match[str]) -> str:
+            """
+            仅移除同时含数字与十六进制字母的括号校验码。
+            """
+            checksum = match.group(1) or match.group(2) or match.group(3) or ""
+            return "" if cls._is_crc32_token(checksum) else match.group(0)
+
+        return CRC32_BRACKET_RE.sub(_replace, title)
+
     def __parse_token(
         self,
         token: str,
@@ -290,9 +325,12 @@ class MetaVideo(MetaBase):
         """
         按固定优先级处理单个词元，首个命中的阶段终止后续识别。
         """
+        if self._is_crc32_token(token):
+            state.stop_name = True
+            return
         if self.__init_part(token, tokens, state):
             return
-        if self.__init_name(token, media_exts, state):
+        if self.__init_name(token, tokens, media_exts, state):
             return
         if self.__init_year(token, state):
             return
@@ -361,9 +399,31 @@ class MetaVideo(MetaBase):
                 name = None
         return name
 
+    def __is_zero_title_token(self, token: str, tokens: Tokens) -> bool:
+        """
+        判断以 0 开头的词元是否属于片名。
+
+        仅当词元恰为单个 0、前一个词元不是纯数字、且后继词元是季、集或四位
+        年份时成立，用于保留《Steins;Gate 0》《ID-0》这类编号续作；`2.0` 音轨
+        分数与 `01` 序号仍按干扰词丢弃。
+        """
+        if token != "0":
+            return False
+        prev_token = tokens.prev()
+        if not prev_token or prev_token.isdigit():
+            return False
+        next_token = tokens.cur()
+        if not next_token:
+            return False
+        if next_token.isdigit() and len(next_token) == 4:
+            return True
+        return bool(self._season_pattern.search(next_token)
+                    or self._episode_pattern.search(next_token))
+
     def __init_name(
         self,
         token: Optional[str],
+        tokens: Tokens,
         media_exts: Sequence[str],
         state: _VideoParseState,
     ) -> bool:
@@ -407,8 +467,8 @@ class MetaVideo(MetaBase):
                 if state.last_kind == _VideoTokenKind.NAME_SEASON_WORD:
                     return False
                 if self.name:
-                    # 名字后面以 0 开头的不要，极有可能是集
-                    if token.startswith('0'):
+                    # 名字后面以 0 开头的通常是集数，但片名结尾的单个 0 是续作编号
+                    if token.startswith('0') and not self.__is_zero_title_token(token, tokens):
                         return False
                     # 检查是否真正的数字
                     if token.isdigit():

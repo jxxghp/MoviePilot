@@ -1,4 +1,4 @@
-"""UberLLM 预设通过共享 OpenAI 兼容通道发现模型的边界回归。"""
+"""MartLLM 预设通过共享 OpenAI 兼容通道发现模型的边界回归。"""
 
 from unittest.mock import AsyncMock
 
@@ -23,7 +23,7 @@ def manager(monkeypatch):
 @pytest.mark.parametrize(
     "base_url, expected_url",
     [
-        (None, "https://api.uberllm.dev/v1/models"),
+        (None, "https://api.martllm.com/v1/models"),
         ("https://relay.example/v1", "https://relay.example/v1/models"),
     ],
 )

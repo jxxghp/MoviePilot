@@ -14,6 +14,7 @@ from app.application.subscription.contract import (
     SubscriptionQueryPort,
     SubscriptionSnapshot,
 )
+from app.application.subscription.lookup import SubscriptionIdentityLookup
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.common import JsonData
@@ -25,7 +26,9 @@ from app.schemas.types import MediaSource, MediaType
 
 class SubscriptionQueryService:
     """
-    封装不修改订阅状态的三个公开查询用例。
+    封装订阅列表、存在性和跨源身份查询，不修改订阅记录。
+
+    身份投影和候选快照缓存仅在配置了跨源查询能力的请求级实例内复用。
     """
 
     _SOURCE_FIELDS = {
@@ -51,6 +54,7 @@ class SubscriptionQueryService:
         *,
         async_repository: Optional[SubscriptionQueryPort] = None,
         history_repository: Optional[SubscriptionHistoryQueryPort] = None,
+        identity_lookup: Optional[SubscriptionIdentityLookup] = None,
     ) -> None:
         """
         保存订阅查询仓储端口。
@@ -58,6 +62,8 @@ class SubscriptionQueryService:
         self._repository = repository
         self._async_repository = async_repository
         self._history_repository = history_repository
+        self._identity_lookup = identity_lookup
+        self._projection_records: Optional[list[SubscriptionSnapshot]] = None
 
     @staticmethod
     def _to_public_view(record: Any) -> SubscribeView:
@@ -139,6 +145,25 @@ class SubscriptionQueryService:
             for record in records
             if self._matches_music_type(record, music_type)
         ]
+
+    async def list_by_projected_identity(
+        self,
+        identity: SubscriptionIdentity,
+        username: Optional[str] = None,
+    ) -> list[SubscribeView]:
+        """
+        通过共同 TMDB 身份读取跨源订阅，转换前先限制用户可见范围。
+
+        :param identity: 请求媒体的类型、来源及季集身份
+        :param username: 普通用户的 owner 限定；管理员传 None
+        :return: 身份转换确认等价的订阅；没有转换能力或转换失败时为空列表
+        """
+        if self._async_repository is None or self._identity_lookup is None:
+            return []
+        if self._projection_records is None:
+            self._projection_records = await self._async_repository.async_list()
+        matches = await self._identity_lookup.async_find(identity, self._projection_records, username)
+        return [self._to_public_view(record) for record in matches]
 
     async def list_by_video_metadata(
         self,

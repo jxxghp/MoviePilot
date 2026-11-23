@@ -4,6 +4,7 @@ Agent 根层运行时配置管理。
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import re
 import shutil
@@ -588,6 +589,9 @@ class AgentRuntimeManager:
                 if self._should_update_bundled_subagent(relative, path, target):
                     shutil.copy2(path, target)
                     logger.info(f"已更新默认 Agent 子代理定义: {target}")
+                elif self._should_update_bundled_persona(relative, path, target):
+                    shutil.copy2(path, target)
+                    logger.info(f"已更新未自定义的默认 Agent 人格: {target}")
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
@@ -635,6 +639,39 @@ class AgentRuntimeManager:
         source_version = cls._read_markdown_version(source_path)
         target_version = cls._read_markdown_version(target_path)
         return source_version > target_version
+
+    @classmethod
+    def _should_update_bundled_persona(
+        cls,
+        relative_path: Path,
+        source_path: Path,
+        target_path: Path,
+    ) -> bool:
+        """
+        仅将与已知旧内置版本逐字节相同的人格副本升级，保留任何用户改写。
+
+        :param relative_path: 人格定义相对默认根目录的路径
+        :param source_path: 最新打包的人格模板
+        :param target_path: 用户运行时中的现有人格模板
+        :return: 目标仍与 source frontmatter 中登记的某个旧内置版本完全一致
+        """
+        parts = relative_path.parts
+        if len(parts) != 3 or parts[0] != PERSONAS_DIR or relative_path.name != PERSONA_FILE:
+            return False
+        source_document = cls._read_markdown(source_path)
+        source_version = cls._coerce_int_metadata(source_document.metadata.get("version"), default=1)
+        target_version = cls._read_markdown_version(target_path)
+        if source_version <= target_version:
+            return False
+        previous_hashes = cls._normalize_string_list(
+            source_document.metadata.get("previous_default_sha256s", []),
+            f"{source_path}.previous_default_sha256s",
+        )
+        try:
+            target_digest = hashlib.sha256(target_path.read_bytes()).hexdigest()
+        except OSError:
+            return False
+        return target_digest in previous_hashes
 
     @staticmethod
     def _read_markdown_version(path: Path) -> int:

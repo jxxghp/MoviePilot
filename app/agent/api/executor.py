@@ -18,6 +18,7 @@ from app.agent.policy.api import (
 )
 from app.agent.policy.contracts import ActionEffect
 from app.agent.policy.sanitizer import stable_type_name
+from app.agent.tools.base import run_agent_blocking
 from app.application.security.token import create_access_token
 from app.runtime.log import logger
 from app.runtime.priority import PRIORITY_HEADER, interactive_key
@@ -55,6 +56,7 @@ class ApiExecutionContext:
     :param channel_user_id: 发起会话的用户在消息渠道内的原始标识，如 Telegram 用户 ID；
         与渠道一起写入宿主令牌的签名声明，供命令回执等需要回复原渠道的场景使用，
         不参与 API 用户鉴权；无渠道时为 None
+    :param authorization_id: 统一渠道成员身份；非渠道调用为空
     """
 
     user_id: str
@@ -65,6 +67,7 @@ class ApiExecutionContext:
     source: str | None = None
     public_read_only: bool = False
     channel_user_id: str | None = None
+    authorization_id: str | None = None
 
 
 class MoviePilotApiExecutor:
@@ -138,7 +141,7 @@ class MoviePilotApiExecutor:
             rendered = rendered.replace("{" + name + "}", quote(str(value), safe=""))
         return rendered
 
-    def _build_headers(self) -> dict[str, str]:
+    def _build_headers(self, operation_id: str | None = None, method: str | None = None, path: str | None = None) -> dict[str, str]:
         """
         构造宿主令牌和请求上下文头，并确保头值符合 ASCII 约束。
         """
@@ -146,7 +149,23 @@ class MoviePilotApiExecutor:
         if not user_id.isdigit():
             raise ApiExecutionError("当前 Agent 身份没有可用于 API 鉴权的用户 ID")
         username = self._context.username or user_id
-        if self._context.channel and self._context.channel_user_id and not self._context.public_read_only:
+        if self._context.authorization_id:
+            from app.application.security.authorization import get_channel_authorization
+
+            service = get_channel_authorization()
+            if service is None or not operation_id:
+                raise ApiExecutionError("渠道授权服务不可用")
+            try:
+                user = service.authorize_operation(self._context.authorization_id, operation_id)
+            except PermissionError as error:
+                raise ApiExecutionError(str(error)) from error
+            token = create_access_token(
+                userid=user.id, username=user.name, super_user=user.is_superuser,
+                agent_channel=self._context.channel, agent_channel_user=self._context.channel_user_id,
+                agent_authorization_id=user.authorization_id, agent_operation=operation_id,
+                agent_method=method, agent_path=path,
+            )
+        elif self._context.channel and self._context.channel_user_id and not self._context.public_read_only:
             # 渠道发起人写入宿主签名声明而非请求头，外部调用者无法伪造命令回执和会话操作的目标。
             token = create_access_token(
                 userid=int(user_id),
@@ -241,8 +260,9 @@ class MoviePilotApiExecutor:
             if operation_id == "search.torrents"
             else _DEFAULT_API_REQUEST_TIMEOUT_SECONDS
         )
+        headers = await run_agent_blocking("db", self._build_headers, operation_id=operation_id, method=route.method, path=path) if self._context.authorization_id else self._build_headers()
         request = self._request_factory(
-            headers=self._build_headers(),
+            headers=headers,
             timeout=request_timeout,
             verify=False,
             trust_env=False,

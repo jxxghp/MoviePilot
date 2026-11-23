@@ -4,7 +4,11 @@
 
 from lxml import etree
 
-from app.domain.site import SiteUtils
+from app.domain.site import (
+    SiteUtils,
+    find_invalid_http_header_names,
+    is_valid_http_header_value,
+)
 from app.foundation.dom import DomUtils
 from app.sdk.string import StringUtils
 
@@ -52,3 +56,27 @@ def test_site_checkin_state_is_derived_from_html_markers():
     assert SiteUtils.is_checkin(pending_html) is False
     assert SiteUtils.is_checkin(completed_html) is True
     assert SiteUtils.is_checkin("") is False
+
+
+def test_http_header_value_validation_rejects_whitespace_controls_and_non_latin1():
+    """
+    HTTP 请求头纯规则校验应拒绝首尾空白、控制字符及非 Latin-1 文本，并仅返回出错字段名。
+    """
+    assert is_valid_http_header_value("") is True
+    assert is_valid_http_header_value("Mozilla/5.0 (Windows NT 10.0; Win64; x64)") is True
+    assert is_valid_http_header_value(" Mozilla/5.0") is False
+    assert is_valid_http_header_value("Mozilla/5.0 ") is False
+    assert is_valid_http_header_value("Mozilla/5.0\nBad") is False
+    assert is_valid_http_header_value("Mozilla/5.0\x00Bad") is False
+    assert is_valid_http_header_value("Mozilla/5.0 中文") is False
+
+    assert find_invalid_http_header_names(None) == []
+    assert find_invalid_http_header_names({}) == []
+    assert find_invalid_http_header_names(
+        {
+            "User-Agent": " Mozilla/5.0",
+            "Accept": "text/html",
+            "X-Empty": None,
+            "X-Bad-Type": 123,
+        }
+    ) == ["User-Agent", "X-Bad-Type"]

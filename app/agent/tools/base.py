@@ -811,6 +811,19 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         :return: 当前调用者是系统管理员、渠道管理员或显式管理员上下文时返回 True
         """
+        authorization_id = self._agent_context.get("authorization_id")
+        if isinstance(authorization_id, str) and authorization_id:
+            from app.application.security.authorization import get_channel_authorization
+
+            service = get_channel_authorization()
+            if service is None:
+                return False
+            try:
+                user = await self.run_blocking("db", service.principal, authorization_id,
+                                              capability="schedule" if isinstance(self._agent_context.get("execution_user_id"), int) else None)
+                return bool(user.is_superuser)
+            except PermissionError:
+                return False
         if "is_admin" in self._agent_context:
             return self._agent_context.get("is_admin") is True
 
@@ -861,6 +874,55 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 resolved_roots.append(resolved_root)
         return resolved_roots
 
+    def _get_non_admin_upload_roots(self) -> list[Path]:
+        """
+        获取当前会话普通用户可只读访问的附件上传目录。
+
+        :return: 当前会话归属的临时附件目录列表
+        """
+        temp_path = get_runtime_setting("TEMP_PATH")
+        raw_session_id = str(self._session_id or "").strip()
+        if not temp_path or not raw_session_id:
+            return []
+        if "/" in raw_session_id or "\\" in raw_session_id or ".." in raw_session_id:
+            return []
+        upload_base = self._resolve_local_path(str(Path(temp_path) / "agent_uploads"))
+        candidates = {raw_session_id.replace(":", "_"), raw_session_id}
+        roots: list[Path] = []
+        for candidate in candidates:
+            if not candidate or candidate in {".", ".."}:
+                continue
+            resolved_dir = self._resolve_local_path(str(upload_base / candidate))
+            if self._is_path_relative_to(resolved_dir, upload_base) and resolved_dir != upload_base:
+                if resolved_dir not in roots:
+                    roots.append(resolved_dir)
+        return roots
+
+    def _check_non_admin_memory_access(
+        self,
+        resolved_path: Path,
+        memory_root: Path,
+        operation: str,
+    ) -> Optional[str]:
+        """
+        校验普通用户访问记忆目录时的归属与写权限边界。
+
+        :param resolved_path: 归一化后的目标路径
+        :param memory_root: Agent 记忆根目录
+        :param operation: 当前操作名称
+        :return: 拒绝原因；允许时返回 None
+        """
+        user_memory_root = memory_root / "users"
+        if self._is_path_relative_to(resolved_path, user_memory_root):
+            user_key = build_user_memory_key(str(self._agent_context.get("memory_owner_id") or self._user_id))
+            own_memory_root = user_memory_root / user_key if user_key else None
+            if not own_memory_root or not self._is_path_relative_to(resolved_path, own_memory_root):
+                return "抱歉，普通用户只能访问自己的用户级记忆，不能读取或修改其他用户的记忆。"
+            return None
+        if operation != "读取":
+            return "抱歉，全局公共记忆只有系统管理员才能写入；请将个人偏好写入当前用户的记忆目录。"
+        return None
+
     async def _check_local_file_access(
         self, path: str, operation: str = "访问"
     ) -> tuple[Optional[Path], Optional[str]]:
@@ -878,6 +940,12 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         if await self.is_admin_user():
             return resolved_path, None
 
+        if operation == "读取" and any(
+            self._is_path_relative_to(resolved_path, upload_root)
+            for upload_root in self._get_non_admin_upload_roots()
+        ):
+            return resolved_path, None
+
         allowed_roots = self._get_non_admin_local_file_roots()
         if not any(
             self._is_path_relative_to(resolved_path, root)
@@ -890,42 +958,25 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             )
 
         agent_root = allowed_roots[0]
+        if self._is_path_relative_to(resolved_path, agent_root / "jobs"):
+            return resolved_path, "抱歉，Agent 后台任务配置仅允许系统管理员访问。"
+
         memory_root = agent_root / "memory"
+        if self._is_path_relative_to(resolved_path, memory_root):
+            return resolved_path, self._check_non_admin_memory_access(resolved_path, memory_root, operation)
+
         runtime_root = agent_root / "runtime"
         for protected in (runtime_root / 'learning' / 'users', runtime_root / 'history' / 'users', runtime_root / 'code' / 'users'):
             if self._is_path_relative_to(resolved_path, protected):
-                user_key = build_user_memory_key(self._user_id)
+                user_key = build_user_memory_key(str(self._agent_context.get("memory_owner_id") or self._user_id))
                 if not user_key or not self._is_path_relative_to(resolved_path, protected / user_key):
                     return resolved_path, '抱歉，不能读取或修改其他用户的 Agent 消息和个人技能。'
         if self._is_path_relative_to(resolved_path, runtime_root) and operation != "读取":
-            return (
-                resolved_path,
-                "抱歉，Agent 人格及运行时配置只有系统管理员才能修改。",
-            )
-
+            return resolved_path, "抱歉，Agent 人格及运行时配置只有系统管理员才能修改。"
         if self._is_path_relative_to(resolved_path, agent_root / 'skills') and operation != '读取':
             return resolved_path, '抱歉，公共技能只有系统管理员才能修改；个人学习请使用 skill_manage。'
-
-        if not self._is_path_relative_to(resolved_path, memory_root):
-            return resolved_path, None
-
-        user_memory_root = memory_root / "users"
-        if self._is_path_relative_to(resolved_path, user_memory_root):
-            user_key = build_user_memory_key(self._user_id)
-            own_memory_root = user_memory_root / user_key if user_key else None
-            if not own_memory_root or not self._is_path_relative_to(resolved_path, own_memory_root):
-                return (
-                    resolved_path,
-                    "抱歉，普通用户只能访问自己的用户级记忆，不能读取或修改其他用户的记忆。",
-                )
-            return resolved_path, None
-
         if operation != "读取":
-            return (
-                resolved_path,
-                "抱歉，全局公共记忆只有系统管理员才能写入；请将个人偏好写入当前用户的记忆目录。",
-            )
-
+            return resolved_path, "抱歉，普通用户只能修改自己的用户级记忆，不能修改 Agent 公共或系统文件。"
         return resolved_path, None
 
     async def _check_local_storage_access(
@@ -971,6 +1022,19 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         Agent 共享上下文中的显式管理员事实优先；没有该事实的旧调用才按渠道
         管理员名单回查，并保留无消息渠道内部调用的兼容行为。
         """
+        authorization_id = self._agent_context.get("authorization_id")
+        if isinstance(authorization_id, str) and authorization_id:
+            from app.application.security.authorization import get_channel_authorization
+
+            service = get_channel_authorization()
+            if service is None:
+                return "渠道授权服务不可用"
+            try:
+                user = await self.run_blocking("db", service.principal, authorization_id,
+                                              capability="schedule" if isinstance(self._agent_context.get("execution_user_id"), int) else None)
+                self._agent_context["is_admin"] = user.is_superuser
+            except PermissionError as error:
+                return str(error)
         if not self._require_admin:
             return None
 
@@ -988,8 +1052,8 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         return (
             "抱歉，您没有执行此工具的权限。"
             "只有渠道管理员或系统管理员才能执行工具操作。"
-            "如需执行工具，请联系管理员将您的用户ID添加到渠道管理员列表中（设定 -> 通知 -> 对应渠道配置 -> 管理员名单），"
-            "或联系系统管理员为您设置管理员权限。"
+            "如需执行工具，请联系系统管理员在「用户管理 -> 渠道授权」中，按您的通知实例和渠道用户ID将您设为渠道管理员，"
+            "或为您的网页账号开通系统管理员权限。"
         )
 
     async def _has_channel_admin_permission(self) -> bool:

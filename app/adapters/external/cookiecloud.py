@@ -3,7 +3,7 @@
 """
 
 import json
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from app.adapters.network.http import RequestUtils
 from app.domain import site as site_rules
@@ -31,10 +31,13 @@ class CookieCloudHelper:
         "CookieAutoDeleteCleaningDiscarded",
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, domain_resolver: Callable[[Optional[str]], str] = site_rules.extract_domain) -> None:
         """
-        加载当前 CookieCloud 配置。
+        加载当前 CookieCloud 配置，域名归组策略由调用方注入。
+
+        :param domain_resolver: 域名匹配规则；独立技术调用默认使用通用解析，不在 Adapter 解释专站例外
         """
+        self._domain_resolver = domain_resolver
         self.__sync_setting()
 
     def __sync_setting(self) -> None:
@@ -110,7 +113,7 @@ class CookieCloudHelper:
         domain_groups: dict[str, list[dict[str, Any]]] = {}
         for site, cookies in contents.items():
             for cookie in cookies:
-                domain_key = site_rules.extract_domain(cookie.get("domain"))
+                domain_key = self._domain_resolver(cookie.get("domain"))
                 if not domain_groups.get(domain_key):
                     domain_groups[domain_key] = [cookie]
                 else:

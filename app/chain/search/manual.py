@@ -184,10 +184,12 @@ class _ManualPage:
             SearchDiagnosticWarning,
         )
 
-        rules = RuleHelper().explain_rule_groups(
-            media=None if self.raw_title else self.media, group_names=self.plan.rule_groups or [],
-        )
+        helper = RuleHelper()
+        media = None if self.raw_title else self.media
+        group_names = self.plan.rule_groups or []
+        rules = helper.explain_rule_groups(media=media, group_names=group_names)
         warnings = [SearchDiagnosticWarning(code=rule.reason, rule_group=rule.name) for rule in rules if rule.reason]
+        warnings.extend(helper.diagnose_rule_groups(media=media, group_names=group_names))
         sites: dict[Optional[int], SearchDiagnosticSite] = {}
         warning_codes: set[str] = set()
         for observation in self.observations:

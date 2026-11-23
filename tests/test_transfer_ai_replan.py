@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from app.api.endpoints import history as history_endpoint
 from app.application.chain.events import TransferResultSettlement
 from app.application.history import TransferHistoryWrite
+from app.application.history.retry import max_failed_retries
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionConflictError,
@@ -27,7 +28,8 @@ from app.application.transfer.workflow import (
     TransferPlanCheckpoint,
     TransferPlanningInput,
 )
-from app.chain.transfer.execution import _DurableTransferStepRunner
+from app.chain.media import MediaChain
+from app.chain.transfer.execution import TransferExecutionOwner, _DurableTransferStepRunner
 from app.chain.transfer.facade import TransferChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
@@ -36,6 +38,7 @@ from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
+from app.domain.context import MediaInfo
 from app.domain.meta.metavideo import MetaVideo
 from app.schemas.file import FileItem
 from app.schemas.history import TransferHistoryReplanRequest
@@ -111,22 +114,53 @@ def _failed_recognition(store, tmp_path):
     return claimed, planning, receipt
 
 
-def _correct(executions, history_id, task_id):
+def _correct(executions, history_id, task_id, settlement_revision=1):
     """
     模拟 Agent 经媒体查询核实后提交本 Issue 的 S02E03 修正。
 
     :param executions: 执行仓储端口
     :param history_id: 精确失败历史标识
     :param task_id: 原始失败回执关联的持久任务
+    :param settlement_revision: 当前失败回执的结算版本
     :return: 持久调度受理结果
     """
     return TransferExecutionCommand(executions).request_replan(
-        history_id=history_id, task_id=task_id, settlement_revision=1, media_source='themoviedb', media_id='117061', media_type='tv',
+        history_id=history_id, task_id=task_id, settlement_revision=settlement_revision,
+        media_source='themoviedb', media_id='117061', media_type='tv',
         season=2, episode=3, requested_by='test-agent',
     )
 
 
-def test_replan_preserves_identity_evidence_budget_and_replays_correct_season(replan_store, tmp_path):
+def _grant_manual_identity_authorization(executions, history_id, task_id):
+    """
+    为当前失败结算覆盖任务上的单份人工身份修正授权。
+
+    :param executions: 执行仓储端口
+    :param history_id: 失败历史标识
+    :param task_id: 失败任务标识
+    :return: 授权是否登记成功
+    """
+    return TransferExecutionCommand(executions).grant_manual_identity_authorization(
+        history_id=history_id, task_id=task_id, settlement_revision=1,
+    )
+
+
+def _exhaust_replan_budget(factory, history_id):
+    """
+    将测试任务推进到真实预算门拒绝的状态。
+
+    :param factory: 隔离数据库的会话工厂
+    :param history_id: 失败历史标识
+    """
+    with factory() as session:
+        pending = session.scalars(select(TransferPending)).one()
+        history = session.get(TransferHistory, history_id)
+        pending.retry_count = history.retry_count = max_failed_retries()
+        history.auto_paused = True
+        session.commit()
+
+
+def test_replan_preserves_identity_evidence_budget_and_replays_correct_season(replan_store, tmp_path, monkeypatch):
     """
     修正重启后仍使用同一任务与预算，并从 accepted 输入恢复正确身份和 S02E03。
     """
@@ -176,6 +210,18 @@ def test_replan_preserves_identity_evidence_budget_and_replays_correct_season(re
     assert task.meta.begin_season == 2 and task.meta.begin_episode == 3
     assert task.target_path.as_posix() == planning.target_path
     assert task.transfer_type == 'copy'
+    # 从真实修正、进程恢复和入队结果继续识别，覆盖原生标识完整下传。
+    media_chain = MediaChain()
+    expected = MediaInfo(media_source=MediaSource.TMDB, media_id='117061', type=MediaType.TV)
+    native_recognize = Mock(return_value=expected)
+    monkeypatch.setattr(media_chain, 'recognize_media', native_recognize)
+    monkeypatch.setattr(media_chain, 'obtain_images', Mock())
+    assert TransferExecutionOwner._recognize_task_meta(task, restore_history=False) is expected
+    assert native_recognize.call_args.kwargs['media_source'] is MediaSource.TMDB
+    assert native_recognize.call_args.kwargs['media_id'] == '117061'
+    assert native_recognize.call_args.kwargs['mtype'] is MediaType.TV
+    recognized_meta = native_recognize.call_args.kwargs['meta']
+    assert recognized_meta.begin_season == 2 and recognized_meta.begin_episode == 3
     admissions.release_claim(task_id=claimed.task_id, lease_token=replay.lease_token)
 
 
@@ -193,6 +239,85 @@ def test_repeated_replan_is_rejected_without_extra_generation(replan_store, tmp_
     with factory() as session:
         assert len(session.scalars(select(TransferPending)).all()) == 1
         assert len(session.scalars(select(TransferSettlementReceipt)).all()) == 1
+
+
+def test_manual_identity_authorization_is_one_slot_and_consumed_with_replan(replan_store, tmp_path):
+    """
+    预算耗尽时仅接受任务上的单份授权，并与重规划在同一事务中清除。
+    """
+    _admissions, executions, factory, _writer = replan_store
+    claimed, _planning, receipt = _failed_recognition(replan_store, tmp_path)
+    _exhaust_replan_budget(factory, receipt.history_id)
+    with pytest.raises(TransferExecutionConflictError, match="自动重试次数已耗尽"):
+        _correct(executions, receipt.history_id, claimed.task_id)
+
+    assert _grant_manual_identity_authorization(executions, receipt.history_id, claimed.task_id)
+    assert _grant_manual_identity_authorization(executions, receipt.history_id, claimed.task_id)
+    with factory() as session:
+        pending = session.scalars(select(TransferPending)).one()
+        assert pending.manual_identity_authorization["history_id"] == receipt.history_id
+        assert pending.manual_identity_authorization["settlement_revision"] == receipt.settlement_revision
+
+    before = executions.get_snapshot(task_id=claimed.task_id)
+    result = _correct(executions, receipt.history_id, claimed.task_id)
+    assert result.accepted and result.state is TransferExecutionState.RETRY_WAIT
+    with factory() as session:
+        pending = session.scalars(select(TransferPending)).one()
+        assert pending.manual_identity_authorization is None
+        assert pending.retry_count == before.retry_count + 1
+        assert pending.retry_requested_by.endswith("+manual_identity")
+        assert "管理用户确认" in pending.retry_reason
+    with pytest.raises(TransferExecutionConflictError):
+        _correct(executions, receipt.history_id, claimed.task_id)
+
+
+@pytest.mark.parametrize("authorization", [
+    {"history_id": 999, "settlement_revision": 1, "expires_at": "2999-01-01 00:00:00.000000"},
+    {"history_id": 1, "settlement_revision": 99, "expires_at": "2999-01-01 00:00:00.000000"},
+    {"history_id": 1, "settlement_revision": 1, "expires_at": "2000-01-01 00:00:00.000000"},
+])
+def test_stale_manual_identity_authorization_does_not_bypass_budget(
+        replan_store, tmp_path, authorization,
+):
+    """
+    错历史、错结算版本或过期授权均保持预算拒绝，且不改写授权槽。
+    """
+    _admissions, executions, factory, _writer = replan_store
+    claimed, _planning, receipt = _failed_recognition(replan_store, tmp_path)
+    _exhaust_replan_budget(factory, receipt.history_id)
+    authorization = dict(authorization)
+    if authorization["history_id"] == 1:
+        authorization["history_id"] = receipt.history_id
+    with factory() as session:
+        pending = session.scalars(select(TransferPending)).one()
+        pending.manual_identity_authorization = authorization
+        session.commit()
+
+    with pytest.raises(TransferExecutionConflictError, match="自动重试次数已耗尽"):
+        _correct(executions, receipt.history_id, claimed.task_id)
+    with factory() as session:
+        pending = session.scalars(select(TransferPending)).one()
+        assert pending.manual_identity_authorization == authorization
+
+
+def test_manual_authorization_rolls_back_when_file_side_effect_guard_rejects(replan_store, tmp_path):
+    """
+    文件副作用检查拒绝后回滚授权清除，保留单份授权供后续安全处理。
+    """
+    _admissions, executions, factory, _writer = replan_store
+    claimed, _planning, receipt = _failed_recognition(replan_store, tmp_path)
+    _exhaust_replan_budget(factory, receipt.history_id)
+    assert _grant_manual_identity_authorization(executions, receipt.history_id, claimed.task_id)
+    with factory() as session:
+        step = session.scalars(select(TransferExecutionStep)).one()
+        step.phase, step.kind = "transfer", "materialize_target"
+        session.commit()
+
+    with pytest.raises(TransferExecutionConflictError, match="文件操作"):
+        _correct(executions, receipt.history_id, claimed.task_id)
+    with factory() as session:
+        pending = session.scalars(select(TransferPending)).one()
+        assert pending.manual_identity_authorization is not None
 
 
 @pytest.mark.parametrize('blocker', ['manual_review', 'running', 'active_lease', 'history_revision',

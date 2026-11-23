@@ -139,6 +139,23 @@ def compose_cache_backend():
 
 
 @pytest.fixture(autouse=True)
+def isolate_channel_authorization_service():
+    """
+    隔离启动测试登记的渠道授权服务，显式授权用例自行装配临时数据库服务。
+
+    :yields: 没有隐式渠道配置的测试阶段；退出时恢复原进程提供方
+    """
+    from app.application.security.authorization import configure_channel_authorization, get_channel_authorization
+
+    previous = get_channel_authorization()
+    configure_channel_authorization(None)
+    try:
+        yield
+    finally:
+        configure_channel_authorization(previous)
+
+
+@pytest.fixture(autouse=True)
 def install_runtime_settings_test_proxies(monkeypatch):
     """
     向已导入的历史配置替换点注入本用例专用代理。
@@ -396,7 +413,10 @@ def configure_plugin_system_services():
         TransactionalAgentTaskRepository,
         TransactionalPluginDataRepository,
     )
-    from app.db.adapters.download import TransactionalDownloadFailureRepository
+    from app.db.adapters.download import (
+        TransactionalDownloadFailureRepository,
+        TransactionalDownloadPendingRepository,
+    )
     from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
     from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
     from app.db.adapters.mediaserver import TransactionalMediaServerRepository
@@ -542,6 +562,7 @@ def configure_plugin_system_services():
             transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
             media_server_repository=TransactionalMediaServerRepository(SessionFactory),
             download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+            download_pending_repository=TransactionalDownloadPendingRepository(SessionFactory),
             user_repository=user_repository(),
             configuration=build_chain_runtime_config(settings),
         )
@@ -553,6 +574,11 @@ def configure_plugin_system_services():
     )
 
     init_chain_ports()
+    # 共享关系与详情页查找会访问外部服务；普通单元测试保持未装配，由专项测试注入受控实现。
+    from app.application.server.lookup import configure_media_mapping_lookup
+    from app.application.server.mapping import configure_media_mapping_port
+    configure_media_mapping_lookup(None)
+    configure_media_mapping_port(None)
     init_chain_network_ports()
     configure_site_query_service(SiteQueryService(repository=site_repository()))
     configure_site_health_service(SiteHealthService(repository=site_repository()))
@@ -643,10 +669,13 @@ def configure_plugin_system_services():
     from app.agent.llm.provider import LLMProviderManager
     from app.agent.skills.registry import SkillHelper
     from app.application.messaging.skill import register_skill_catalog_provider
+    from app.startup.composition.site import configure_site_protocol_composition, reset_site_protocol_composition
 
     register_skill_catalog_provider(lambda: SkillHelper())
     register_llm_provider_runtime(lambda: LLMProviderManager())
+    configure_site_protocol_composition()
     yield
+    reset_site_protocol_composition()
     reset_chain_network_ports()
     reset_chain_ports()
     reset_plugin_system()

@@ -30,6 +30,16 @@ MEDIA_SERVER_EXISTENCE_QUERY = MediaServerQueryOptions(fields=frozenset({
 }))
 
 
+class MediaServerQueryError(RuntimeError):
+    """
+    媒体服务器存在性查询失败，未能确认媒体是否已入库。
+
+    与“未找到”不同：查询失败时调用方不得把目标当作缺失处理。订阅入口遇到
+    该异常应跳过本轮，不更新缺集、不触发补下；异常消息携带失败的服务器名
+    称与媒体标题，供日志定位。
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class MediaServerSyncItem:
     """
@@ -546,6 +556,10 @@ class MusicMediaServerHelper:
             return False
 
         if not is_album:
+            target_album = getattr(mediainfo, "album", None)
+            actual_album = note.get("album")
+            if target_album and actual_album and not cls.same_name(actual_album, target_album):
+                return False
             return True
         try:
             expected_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)

@@ -22,6 +22,7 @@ from app.agent.llm import helper as llm_module
 from app.agent.middleware.skills import SkillToolInput
 from app.agent.middleware.subagents import _SubAgentControlInput
 from app.agent.tools.impl.api import MoviePilotApiInput
+from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaInput
 from app.agent.tools.impl.view_image import ViewImageInput
 
 _PATCH_MARKER = "_moviepilot_test_tool_schema_patched"
@@ -30,6 +31,7 @@ _TOOL_INPUTS = {
     "subagent": _SubAgentControlInput,
     "moviepilot_api": MoviePilotApiInput,
     "view_image": ViewImageInput,
+    "recognize_captcha": RecognizeCaptchaInput,
 }
 
 
@@ -114,6 +116,19 @@ def _iter_schema_nodes(schema: dict, path: str = ""):
             yield from _iter_schema_nodes(child, f"{path}[{keyword}]")
 
 
+def _assert_no_binary_format(schema: Any, name: str) -> None:
+    """
+    递归检查 schema 内不存在 format: binary，避免 Responses 请求被 400 拒绝。
+    """
+    if isinstance(schema, dict):
+        assert schema.get("format") != "binary", f"{name} 仍含 binary: {schema}"
+        for child in schema.values():
+            _assert_no_binary_format(child, name)
+    elif isinstance(schema, list):
+        for child in schema:
+            _assert_no_binary_format(child, name)
+
+
 @pytest.mark.parametrize("use_responses_api", [False, True], ids=["chat", "responses"])
 @pytest.mark.parametrize(
     "bind_kwargs",
@@ -139,6 +154,13 @@ def test_non_gemini_requests_preserve_nullable_tool_parameters(
     assert skill["properties"]["file"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
     assert skill["required"] == (["name", "file"] if bind_kwargs.get("strict") else ["name"])
 
+    image_data = _parameters(tools, "view_image")["properties"]["image_data"]
+    assert image_data["anyOf"] == [{"type": "string"}, {"type": "null"}]
+
+    captcha = _parameters(tools, "recognize_captcha")["properties"]["image_data"]
+    assert captcha["anyOf"] == [{"type": "string"}, {"type": "null"}]
+    _assert_no_binary_format(_parameters(tools, "recognize_captcha"), "recognize_captcha")
+
 
 def test_optional_fields_collapse_to_single_type_for_gemini_models() -> None:
     """
@@ -163,6 +185,10 @@ def test_optional_fields_collapse_to_single_type_for_gemini_models() -> None:
     image_data = _parameters(tools, "view_image")["properties"]["image_data"]
     assert image_data["type"] == "string"
     assert "anyOf" not in image_data
+
+    captcha_data = _parameters(tools, "recognize_captcha")["properties"]["image_data"]
+    assert captcha_data["type"] == "string"
+    assert "anyOf" not in captcha_data
 
 
 def test_true_unions_keep_their_semantics_for_non_gemini_models() -> None:

@@ -3,9 +3,11 @@
 """
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
+from app.application.plugin.catalog import PluginCatalogService, PluginMarketUnavailableError
 from app.runtime import log as log_module
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.log import set_plugin_instance_log_level
@@ -34,8 +36,6 @@ def _facade(**overrides):
         ),
         system=lambda: SimpleNamespace(),
         market_catalog=lambda: None,
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,
@@ -47,6 +47,146 @@ def _facade(**overrides):
     )
     defaults.update(overrides)
     return PluginCatalogFacade(**defaults)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("repo", ["https://github.com/Example/Plugins.git/", "https://github.com/unknown/plugins"])
+async def test_source_candidates_only_load_selected_configured_repository(monkeypatch, repo):
+    """
+    文档查询只读取所选配置仓库的兼容代际，未知来源不能触发网络扫描。
+    """
+    from app.runtime.extensions.plugin import catalog as catalog_module
+
+    collect = AsyncMock(return_value=[])
+    monkeypatch.setattr(catalog_module, "get_runtime_setting", lambda key: {
+        "PLUGIN_MARKET": "https://github.com/Other/Plugins,https://github.com/Example/Plugins",
+        "VERSION_FLAG": "v3",
+    }[key])
+    facade = _facade(
+        system=lambda: SimpleNamespace(compatible_flags=lambda _flag: ["v3", "v2"]),
+        market_catalog=lambda: SimpleNamespace(async_collect=collect),
+    )
+
+    assert await facade.async_online_candidates(repo_url=repo) == []
+    if "unknown" in repo:
+        collect.assert_not_awaited()
+    else:
+        assert collect.await_args.kwargs["markets"] == ["https://github.com/Example/Plugins"]
+        assert collect.await_args.kwargs["compatible_flags"] == ["v3", "v2"]
+        assert collect.await_args.kwargs["single_source"] is True
+
+
+@pytest.mark.asyncio
+async def test_catalog_service_routes_single_repo_and_full_scan_to_separate_loaders():
+    """
+    单仓读取与单仓候选查询走单仓读取端口，全量市场扫描走扫描读取端口。
+    """
+    repo_a = "https://github.com/Example/RepoA"
+    repo_b = "https://github.com/Example/RepoB"
+    scan_sync_calls: list[tuple[str, str | None, bool]] = []
+    single_sync_calls: list[tuple[str, str | None, bool]] = []
+    scan_async_calls: list[tuple[str, str | None, bool]] = []
+    single_async_calls: list[tuple[str, str | None, bool]] = []
+
+    def scan_sync(market: str, package_version: str | None, force: bool):
+        scan_sync_calls.append((market, package_version, force))
+        return {}
+
+    def single_sync(market: str, package_version: str | None, force: bool):
+        single_sync_calls.append((market, package_version, force))
+        return {}
+
+    async def scan_async(market: str, package_version: str | None, force: bool):
+        scan_async_calls.append((market, package_version, force))
+        return {}
+
+    async def single_async(market: str, package_version: str | None, force: bool):
+        single_async_calls.append((market, package_version, force))
+        return {}
+
+    service = PluginCatalogService(
+        market_loader=scan_sync,
+        async_market_loader=scan_async,
+        single_market_loader=single_sync,
+        async_single_market_loader=single_async,
+        installed_plugins_provider=list,
+        plugin_mapper=lambda *_args: None,
+        is_local_repo=lambda _value: False,
+        version_compare=lambda *_args: False,
+        warning=lambda *_args: None,
+        error=lambda *_args: None,
+        info=lambda *_args: None,
+    )
+
+    service.load(repo_a, "v3", force=True)
+    await service.async_load(repo_a, "v3", force=True)
+    await service.async_collect(
+        markets=[repo_a],
+        compatible_flags=["v3"],
+        force=False,
+        single_source=True,
+    )
+    await service.async_collect(
+        markets=[repo_a, repo_b],
+        compatible_flags=["v3"],
+        force=True,
+    )
+
+    assert single_sync_calls == [(repo_a, "v3", True)]
+    assert scan_sync_calls == []
+    assert single_async_calls[0] == (repo_a, "v3", True)
+    assert set(single_async_calls[1:]) == {
+        (repo_a, None, False),
+        (repo_a, "v3", False),
+    }
+    assert len(single_async_calls) == 3
+    assert set(scan_async_calls) == {
+        (repo_a, None, True),
+        (repo_a, "v3", True),
+        (repo_b, None, True),
+        (repo_b, "v3", True),
+    }
+    assert len(scan_async_calls) == 4
+
+
+@pytest.mark.asyncio
+async def test_catalog_reports_when_market_candidates_cannot_be_loaded(monkeypatch):
+    """
+    全市场查询保留索引失败，单仓文档查询继续返回空候选。
+    """
+    from app.runtime.extensions.plugin import catalog as catalog_module
+
+    repo = "https://github.com/Example/Plugins"
+    errors: list[str] = []
+    info: list[str] = []
+    loader = AsyncMock(side_effect=RuntimeError("索引请求失败"))
+    service = PluginCatalogService(
+        market_loader=lambda *_args: None,
+        async_market_loader=loader,
+        installed_plugins_provider=list,
+        plugin_mapper=lambda *_args: None,
+        is_local_repo=lambda _value: False,
+        version_compare=lambda *_args: False,
+        warning=lambda message: pytest.fail(message),
+        error=errors.append,
+        info=info.append,
+    )
+    monkeypatch.setattr(catalog_module, "get_runtime_setting", lambda key: {
+        "PLUGIN_MARKET": repo,
+        "VERSION_FLAG": "v3",
+    }[key])
+    facade = _facade(
+        system=lambda: SimpleNamespace(compatible_flags=lambda _flag: ["v3"]),
+        market_catalog=lambda: service,
+    )
+
+    with pytest.raises(PluginMarketUnavailableError, match="插件市场索引暂时无法读取"):
+        await facade.async_online_candidates(force=True)
+    loader.assert_any_await(repo, "v3", True)
+
+    assert await facade.async_online_candidates(repo_url=repo) == []
+    assert len(errors) == len(info) == 2
+    assert all(repo in error for error in errors)
 
 
 @pytest.mark.asyncio
@@ -88,8 +228,6 @@ async def test_async_online_normalizes_market_configuration(monkeypatch) -> None
             compatible_flags=lambda _flag: [],
         ),
         market_catalog=lambda: FakeMarketCatalog(),
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,
@@ -134,8 +272,6 @@ def test_installed_catalog_keeps_plugins_that_are_not_loaded():
         ),
         system=lambda: SimpleNamespace(),
         market_catalog=lambda: None,
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,
@@ -182,8 +318,6 @@ def test_local_repository_failure_does_not_break_catalog_projection():
             local_candidates=local_candidates,
         ),
         market_catalog=lambda: None,
-        market_loader=lambda *_args, **_kwargs: [],
-        async_market_loader=lambda *_args, **_kwargs: [],
         map_plugin=lambda **_kwargs: None,
         auth_checker=lambda **_kwargs: True,
         plugin_attr=lambda _plugin_id, _attr: None,

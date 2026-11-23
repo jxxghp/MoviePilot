@@ -82,6 +82,49 @@ def test_episode_evidence_survives_resource_brackets(stem: str) -> None:
     assert meta.episode == "E01"
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "[AI-Raws] 機動戦士ガンダム 第08MS小隊 ノンクレジットOP (BD HEVC 1440x1080 FLAC)[B7858E21].mkv",
+        "[AI-Raws] 機動戦士ガンダム 第08MS小隊 ノンクレジットOP (BD HEVC 1440x1080 FLAC)(B7858E21).mkv",
+        "[AI-Raws] 機動戦士ガンダム 第08MS小隊 ノンクレジットOP (BD HEVC 1440x1080 FLAC)【B7858E21】.mkv",
+        "Show.2026.1080p.BD.FLAC.B7858E21.mkv",
+        "Another.Show.2026.1080p.WEB-DL.[A1F2E005].mkv",
+    ],
+)
+def test_crc32_checksum_does_not_become_episode(
+    title: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    8 位十六进制 CRC32 校验码（如 [B7858E21]）不得被 Python 解析器误识别为集数。
+    """
+    monkeypatch.setattr(meta_runtime, "_media_extensions_provider", lambda: (".mkv",))
+    monkeypatch.setattr(meta_runtime, "_audio_extensions_provider", lambda: ())
+    monkeypatch.setattr(meta_runtime, "_metainfo_accelerator", None)
+    meta = MetaInfo(title)
+    assert meta.begin_episode is None
+    assert meta.begin_season is None
+
+
+def test_real_episodes_and_numeric_dates_survive_crc32_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    排除 CRC32 校验码后，正常集数（含 S01E21）、年份和纯数字日期应继续保留。
+    """
+    monkeypatch.setattr(meta_runtime, "_media_extensions_provider", lambda: (".mkv",))
+    monkeypatch.setattr(meta_runtime, "_audio_extensions_provider", lambda: ())
+    monkeypatch.setattr(meta_runtime, "_metainfo_accelerator", None)
+    ep_meta = MetaInfo("Show S01E21 [B7858E21].mkv")
+    assert ep_meta.type == MediaType.TV
+    assert ep_meta.begin_season == 1
+    assert ep_meta.begin_episode == 21
+
+    movie_meta = MetaInfo("Movie 2026 (20260101) [A1B2C3D4].mkv")
+    assert movie_meta.year == "2026"
+    assert movie_meta.begin_episode is None
+
+
 @pytest.mark.parametrize("episode", ["01", "01-12", "01v2", "I", "IV", "1080"])
 @pytest.mark.parametrize("brackets", [("[", "]"), ("【", "】")])
 def test_numeric_and_roman_brackets_still_select_anime(

@@ -614,6 +614,7 @@ def configure_plugin_services() -> None:
             local_plugins=plugin_manager.get_local_plugins,
             local_repo_plugins=plugin_manager.get_local_repo_plugins,
             online_candidates=plugin_manager.async_get_online_plugin_candidates,
+            source_candidates=lambda repo_url: plugin_manager.async_get_online_plugin_candidates(repo_url=repo_url),
             process_plugins=plugin_manager.process_plugins_list,
             identities=persistence.list_identities,
             free_threaded=is_free_threaded_runtime,
@@ -972,8 +973,10 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
 
     client = get_composed_plugin_market_client()
     return PluginCatalogService(
-        market_loader=client.get_plugins,
-        async_market_loader=client.async_get_plugins,
+        market_loader=client.get_plugin_index_result,
+        async_market_loader=client.async_get_plugin_index_result,
+        single_market_loader=client.get_single_plugin_index_result,
+        async_single_market_loader=client.async_get_single_plugin_index_result,
         installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
@@ -982,6 +985,7 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
         version_compare=version_matches,
         warning=logger.warning,
         error=logger.error,
+        info=logger.info,
     )
 
 

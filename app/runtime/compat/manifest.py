@@ -339,10 +339,10 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         owner="application",
     ),
     "app.utils.site": ModuleAlias(
-        target="app.domain.site",
+        target="app.sdk._legacy.domain",
         replacement="app.sdk.network",
         introduced="v3.0.0",
-        owner="domain",
+        owner="sdk",
     ),
     "app.utils.string": ModuleAlias(
         target="app.sdk.string",
@@ -497,8 +497,8 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         introduced="v3.0.0", owner="application",
     ),
     "app.helper.cookiecloud": ModuleAlias(
-        target="app.adapters.external.cookiecloud", replacement="app.adapters.external.cookiecloud",
-        introduced="v3.0.0", owner="adapters",
+        target="app.sdk._legacy.cookiecloud", replacement="app.sdk._legacy.cookiecloud",
+        introduced="v3.0.0", owner="sdk",
     ),
     "app.helper.directory": ModuleAlias(
         target="app.application.directory", replacement="app.application.directory",

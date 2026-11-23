@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemM
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.types import Command
 
+from app.agent.evidence.scope import EVIDENCE_MARKER, evidence_in_use
 from app.agent.learning.prompts import COMBINED_REVIEW_PROMPT, MEMORY_REVIEW_PROMPT, SKILL_REVIEW_PROMPT
 from app.agent.learning.tools import LearningTools
 from app.agent.learning.usage import ReviewUsage
@@ -44,8 +45,10 @@ class ReviewSnapshot:
     @classmethod
     def capture(cls, request: ModelRequest, result: Any) -> 'ReviewSnapshot | None':
         """
-        只接受客户端函数工具，供应商原生工具不能由本地白名单约束时不启动复盘。
+        临时资料轮次不捕获复盘；供应商原生工具也不能绕过本地执行白名单。
         """
+        if evidence_in_use() or any(EVIDENCE_MARKER in message.additional_kwargs for message in request.messages):
+            return None
         schemas = [deepcopy(convert_to_openai_tool(tool)) for tool in request.tools]
         if any(schema.get('type') != 'function' for schema in schemas) or request.response_format is not None:
             return None

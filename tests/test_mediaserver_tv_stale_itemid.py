@@ -26,12 +26,18 @@ class _FakeResponse:
         保存模拟接口的响应内容与状态，避免实际网络请求。
         """
         self._payload = payload
+        self.status_code = 200
 
     def json(self):
         """
         返回测试预置的响应体。
         """
         return self._payload
+
+    def close(self):
+        """
+        保留响应释放接缝，测试替身不持有网络资源。
+        """
 
 
 def _build_plex():
@@ -233,13 +239,8 @@ def test_ugreen_tv_episodes_fallback_when_cached_item_id_missing() -> None:
     client = Ugreen.__new__(Ugreen)
     client._api = Mock()
     client.is_authenticated = Mock(return_value=True)
-    client.get_iteminfo = Mock(
-        side_effect=[
-            None,
-            SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
-        ]
-    )
-    client._Ugreen__search_tv_item = Mock(return_value={"ug_video_info_id": "new-series-id"})
+    client.get_iteminfo = Mock(return_value=None)
+    client._Ugreen__search_tv_items = Mock(return_value=[{"ug_video_info_id": "new-series-id"}])
     client._api.get_tv.return_value = {
         "season_info": [{"category_id": "season-1", "season_num": 1}],
         "tv_info": [{"category_id": "season-1", "episode": 1}],
@@ -255,7 +256,7 @@ def test_ugreen_tv_episodes_fallback_when_cached_item_id_missing() -> None:
 
     assert item_id == "new-series-id"
     assert episodes == {1: [1]}
-    client._Ugreen__search_tv_item.assert_called_once_with("测试剧集", "2026", MediaSource.TMDB, "12345")
+    client._Ugreen__search_tv_items.assert_called_once_with("测试剧集", "2026", MediaSource.TMDB, "12345")
 
 
 def test_trime_media_tv_episodes_fallback_when_cached_item_id_missing() -> None:
@@ -271,7 +272,9 @@ def test_trime_media_tv_episodes_fallback_when_cached_item_id_missing() -> None:
             SimpleNamespace(media_source=MediaSource.TMDB, media_id="12345"),
         ]
     )
-    client._TrimeMedia__get_series_id_by_name = Mock(return_value="new-series-id")
+    client._TrimeMedia__get_series_id_by_name = Mock(
+        return_value=(True, "new-series-id")
+    )
     client._api.season_list.return_value = [SimpleNamespace(season_number=1, guid="season-1")]
     client._api.episode_list.return_value = [SimpleNamespace(season_number=1, episode_number=1)]
 

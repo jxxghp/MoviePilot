@@ -5,10 +5,7 @@
 import base64
 import datetime
 import hashlib
-import hmac
 import importlib
-import json
-import os
 import traceback
 from datetime import timedelta
 from typing import Any, Optional, Union
@@ -85,6 +82,10 @@ def create_access_token(
     purpose: Optional[str] = "authentication",
     agent_channel: Optional[str] = None,
     agent_channel_user: Optional[str] = None,
+    agent_authorization_id: Optional[str] = None,
+    agent_operation: Optional[str] = None,
+    agent_method: Optional[str] = None,
+    agent_path: Optional[str] = None,
 ) -> str:
     """
     创建带身份、权限等级和用途声明的 JWT 访问令牌。
@@ -100,6 +101,10 @@ def create_access_token(
     :param purpose: 令牌用途，authentication 或 resource
     :param agent_channel: 宿主 Agent 会话所属的消息渠道
     :param agent_channel_user: 发起该会话的用户在渠道内的原始标识
+    :param agent_authorization_id: 统一渠道授权的不可变身份，存在时必须提供固定操作与路径
+    :param agent_operation: 已通过授权检查的受控操作
+    :param agent_method: 当前 API 请求的固定方法
+    :param agent_path: 当前 API 请求的固定路径
     :return: 已签名的 JWT 字符串
     :raises ValueError: 自定义有效期不是正数
     """
@@ -133,6 +138,11 @@ def create_access_token(
     if purpose == "authentication" and agent_channel and agent_channel_user:
         payload["agent_channel"] = agent_channel
         payload["agent_channel_user"] = agent_channel_user
+    if agent_authorization_id:
+        if purpose != "authentication" or not all((agent_operation, agent_method, agent_path)):
+            raise ValueError("渠道凭据必须限定到一次受控 API 操作")
+        payload.update(agent_authorization_id=agent_authorization_id, agent_operation=agent_operation,
+                       agent_method=agent_method, agent_path=agent_path)
     encoded: str = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
     return encoded
 
@@ -249,26 +259,3 @@ def aes_encrypt(data: str, key: str) -> str:
     encoded = data.encode("utf-8")
     result = cipher.encrypt(pad(encoded, AES.block_size))
     return base64.b64encode(bytes(cipher.iv) + result).decode("utf-8")
-
-
-def nexusphp_encrypt(data_str: str, key: bytes) -> str:
-    """
-    生成 NexusPHP 兼容的 AES-CBC 加密载荷。
-    """
-    iv = os.urandom(16)
-    iv_base64 = base64.b64encode(iv)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    ciphertext = cipher.encrypt(pad(data_str.encode(), AES.block_size))
-    ciphertext_base64 = base64.b64encode(ciphertext)
-    mac = hmac.new(
-        key,
-        msg=iv_base64 + ciphertext_base64,
-        digestmod=hashlib.sha256,
-    ).hexdigest()
-    payload = json.dumps({
-        "iv": iv_base64.decode(),
-        "value": ciphertext_base64.decode(),
-        "mac": mac,
-        "tag": "",
-    })
-    return base64.b64encode(payload.encode()).decode()

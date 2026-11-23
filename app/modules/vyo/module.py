@@ -186,6 +186,32 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
             return server_obj.get_iteminfo(str(item_id))
         return None
 
+    def mediaserver_search(
+        self,
+        keyword: str,
+        types: List[str],
+        limit: int,
+        server: Optional[str] = None,
+        library_id: Optional[str] = None,
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """搜索指定或所有已启用 Vyo 实例，并保留每条结果的配置名称。"""
+        items: List[_SchemaMediaServerPlayItem] = []
+        target_instances = (
+            {server: inst}
+            if server and (inst := self.get_instance(server))
+            else ({} if server else self.get_instances())
+        )
+        for server_name, server_obj in target_instances.items():
+            matched = (
+                server_obj.search_library(keyword, types, limit, library_id=library_id)
+                if library_id
+                else server_obj.search_library(keyword, types, limit)
+            )
+            for item in matched:
+                item.server = server_name
+                items.append(item)
+        return items
+
     def mediaserver_tv_episodes(
         self, server: str, item_id: Union[str, int]
     ) -> Optional[List[_SchemaMediaServerSeasonInfo]]:

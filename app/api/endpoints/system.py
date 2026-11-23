@@ -504,6 +504,7 @@ async def get_user_global_setting(
             "LLM_SUPPORT_AUDIO_OUTPUT",
             "RECOGNIZE_SOURCE",
             "SEARCH_SOURCE",
+            "TMDB_LOCALE",
             "MUSIC_CUE_ENABLE",
             "AI_RECOMMEND_ENABLED",
         }
@@ -632,7 +633,9 @@ async def get_env_setting(
     """
     查询系统环境变量，包括当前版本号（仅管理员）
     """
-    info = get_runtime_settings().snapshot(exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY"})
+    info = get_runtime_settings().snapshot(
+        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY", "VAPID_PRIVATE_KEY"}
+    )
     # GitHub Token 只通过专用授权状态接口返回脱敏摘要，不能随系统设置快照进入浏览器。
     if "GITHUB_TOKEN" in info:
         info["GITHUB_TOKEN"] = None

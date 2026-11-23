@@ -14,6 +14,23 @@ from app.modules.ugreen.crypto import UgreenCrypto
 from app.runtime.log import logger
 
 
+def _format_request_error(err: Exception, verify_ssl: bool) -> str:
+    """
+    格式化请求异常说明，并在证书校验失败时给出关闭自签证书校验的提示。
+
+    :param err: 捕获到的 HTTP 或 TLS 请求异常
+    :param verify_ssl: 当前客户端是否开启 HTTPS 证书校验
+    :return: 适合写入错误日志的异常文本
+    """
+    detail = str(err)
+    if verify_ssl and (
+        "CERTIFICATE_VERIFY_FAILED" in detail
+        or "SSLCertVerificationError" in detail
+    ):
+        return f"{detail}（如使用自签名 HTTPS 证书，请关闭「校验 SSL 证书」）"
+    return detail
+
+
 @dataclass
 class ApiResult:
     """
@@ -238,6 +255,7 @@ class Api:
                     json=json_data,
                     timeout=self._timeout,
                     verify=self._verify_ssl,
+                    raise_exception=True,
                 )
             else:
                 resp = self._request_utils.get_res(
@@ -246,6 +264,7 @@ class Api:
                     params=params,
                     timeout=self._timeout,
                     verify=self._verify_ssl,
+                    raise_exception=True,
                 )
             if resp is None:
                 logger.error(f"请求绿联接口失败：{url} 未收到 HTTP 响应")
@@ -253,7 +272,9 @@ class Api:
             payload = resp.json()
             return payload if isinstance(payload, dict) else None
         except Exception as err:
-            logger.error(f"请求绿联接口失败：{url} {err}")
+            logger.error(
+                f"请求绿联接口失败：{url} {_format_request_error(err, self._verify_ssl)}"
+            )
             return None
 
     @staticmethod
@@ -302,13 +323,16 @@ class Api:
                 json={"username": username},
                 timeout=self._timeout,
                 verify=self._verify_ssl,
+                raise_exception=True,
             )
             if check_resp is None:
                 logger.error("绿联获取登录公钥失败：未收到 HTTP 响应")
                 return None
             check_json = check_resp.json()
         except Exception as err:
-            logger.error(f"绿联获取登录公钥失败：{err}")
+            logger.error(
+                f"绿联获取登录公钥失败：{_format_request_error(err, self._verify_ssl)}"
+            )
             return None
 
         check_result = self._build_result(check_json)
@@ -956,8 +980,10 @@ class UgreenMediaApi:
         "_token",
         "_user_id",
         "_server_id",
+        "_device_id",
         "_timeout",
         "_verify_ssl",
+        "_last_status_code",
     )
 
     def __init__(self, host: str, timeout: int = 20, verify_ssl: bool = True) -> None:
@@ -979,8 +1005,18 @@ class UgreenMediaApi:
         self._token: Optional[str] = None
         self._user_id: Optional[str] = None
         self._server_id: Optional[str] = None
+        # 为每个客户端实例分配独立 DeviceId，避免临时认证或并发连接相互踢掉 AccessToken。
+        self._device_id = f"moviepilot-ugreen-{uuid.uuid4().hex[:12]}"
         self._timeout = timeout
         self._verify_ssl = bool(verify_ssl)
+        self._last_status_code: Optional[int] = None
+
+    @property
+    def last_status_code(self) -> Optional[int]:
+        """
+        获取最近一次请求收到的 HTTP 状态码；未收到响应或发生异常时为 None。
+        """
+        return self._last_status_code
 
     @property
     def host(self) -> str:
@@ -1024,7 +1060,7 @@ class UgreenMediaApi:
         return {
             "X-Emby-Authorization": (
                 'MediaBrowser Client="MoviePilot", Device="requests", '
-                f'DeviceId="moviepilot-ugreen", Version="1.0.0"{token}'
+                f'DeviceId="{self._device_id}", Version="1.0.0"{token}'
             ),
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -1037,6 +1073,7 @@ class UgreenMediaApi:
         params: Optional[dict[str, Any]] = None,
         data: Optional[dict[str, Any]] = None,
         authenticated: bool = True,
+        log_http_failure: bool = True,
     ) -> Optional[Any]:
         """
         调用媒体库服务 Emby 兼容接口并解析 JSON 响应。
@@ -1046,8 +1083,10 @@ class UgreenMediaApi:
         :param params: 查询参数
         :param data: JSON 请求体
         :param authenticated: 是否附加当前 AccessToken
+        :param log_http_failure: 收到非 2xx HTTP 状态码时是否输出错误日志，网络或证书异常始终记录
         :return: JSON 响应，连接失败或服务端拒绝时返回 None
         """
+        self._last_status_code = None
         request_params = dict(params or {})
         if authenticated and self._token:
             request_params["api_key"] = self._token
@@ -1061,6 +1100,7 @@ class UgreenMediaApi:
                     json=data,
                     timeout=self._timeout,
                     verify=self._verify_ssl,
+                    raise_exception=True,
                 )
             else:
                 response = self._request_utils.get_res(
@@ -1069,22 +1109,33 @@ class UgreenMediaApi:
                     params=request_params,
                     timeout=self._timeout,
                     verify=self._verify_ssl,
+                    raise_exception=True,
                 )
             status_code = getattr(response, "status_code", None)
+            self._last_status_code = status_code if isinstance(status_code, int) else None
             if response is None or not 200 <= (status_code or 0) < 300:
-                logger.error(f"请求绿联媒体库接口失败：{url} HTTP {status_code or '无响应'}")
+                if log_http_failure or self._last_status_code is None:
+                    logger.error(f"请求绿联媒体库接口失败：{url} HTTP {status_code or '无响应'}")
                 return None
             return response.json()
         except Exception as err:
-            logger.error(f"请求绿联媒体库接口失败：{url} {err}")
+            logger.error(
+                f"请求绿联媒体库接口失败：{url} {_format_request_error(err, self._verify_ssl)}"
+            )
             return None
 
-    def authenticate(self, username: str, password: str) -> Optional[UgreenMediaSession]:
+    def authenticate(
+        self,
+        username: str,
+        password: str,
+        log_failure: bool = True,
+    ) -> Optional[UgreenMediaSession]:
         """
         使用媒体库账号登录 Emby 兼容接口。
 
         :param username: 媒体库账号
         :param password: 媒体库密码
+        :param log_failure: 认证返回非 2xx HTTP 状态码时是否记录错误日志
         :return: 登录会话，认证失败或缺少用户 ID 时返回 None
         """
         if not username or not password:
@@ -1094,6 +1145,7 @@ class UgreenMediaApi:
             method="POST",
             data={"Username": username, "Pw": password},
             authenticated=False,
+            log_http_failure=log_failure,
         )
         if not isinstance(payload, Mapping):
             return None
@@ -1194,17 +1246,36 @@ class UgreenMediaApi:
 
     def item(self, item_id: Union[str, int]) -> Optional[dict[str, Any]]:
         """
-        通过当前用户的条目查询接口读取单个媒体详情。
+        读取当前用户视角下的单个媒体详情。
+
+        优先调用 `emby/Users/{user_id}/Items/{item_id}`；绿联媒体库服务的 `Items?Ids=...`
+        过滤在部分版本返回空列表，因此仅在详情路径不被支持（HTTP 405/501）时回退该查询。
+        条目不存在（HTTP 404）时静默返回 None 并保留状态码。
 
         :param item_id: 媒体库服务条目标识
-        :return: 首个匹配条目的字典；标识为空、未登录、无匹配或查询失败时返回 None
+        :return: 匹配条目的原始字典；标识为空、未登录、不存在或查询失败时返回 None
         """
         if not self._user_id or not item_id:
             return None
-        payload = self.items(ids=str(item_id), limit=1)
-        if not payload:
+        path = f"emby/Users/{self._user_id}/Items/{item_id}"
+        payload = self._request(path, log_http_failure=False)
+        if isinstance(payload, Mapping) and payload.get("Id"):
+            return dict(payload)
+        if self._last_status_code == 404:
             return None
-        items = payload.get("Items")
+        if self._last_status_code is None:
+            return None
+        if 200 <= self._last_status_code < 300:
+            return None
+        if self._last_status_code not in {405, 501}:
+            logger.error(
+                f"请求绿联媒体库接口失败：{self._host}/{path} HTTP {self._last_status_code}"
+            )
+            return None
+        fallback = self.items(ids=str(item_id), limit=1)
+        if not fallback:
+            return None
+        items = fallback.get("Items")
         return dict(items[0]) if isinstance(items, list) and items else None
 
     def counts(self) -> Optional[dict[str, Any]]:

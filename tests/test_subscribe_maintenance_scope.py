@@ -100,6 +100,21 @@ def test_query_owner_only_returns_sites_for_requested_media_type():
     assert owner.get_subscribed_sites(MediaType.MUSIC.value) is None
 
 
+@pytest.mark.parametrize("states", [("S",), ("N",), ("S", "N")])
+def test_global_refresh_stops_when_no_subscription_is_eligible(states):
+    """
+    全局刷新只有暂停或尚未首次搜索的订阅时，不能回退到默认全部站点。
+    """
+    owner = object.__new__(SubscribeQueryOwner)
+    owner.subscription_repository = SimpleNamespace(list=lambda: [
+        SimpleNamespace(state=state, type=MediaType.TV.value) for state in states
+    ])
+    owner.get_states_for_search = lambda _state: "R,P"
+    owner.get_sub_sites = Mock()
+    assert owner.get_subscribed_sites() is None
+    owner.get_sub_sites.assert_not_called()
+
+
 def test_refresh_check_only_processes_requested_media_type():
     """
     订阅元数据检查只把当前媒体类型交给单订阅检查器。

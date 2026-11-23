@@ -13,7 +13,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.chain.site import SiteChain
 from app.modules.indexer.parser.rousi import RousiSiteUserInfo
 from app.modules.indexer.spider import rousi as rousi_module
 from app.modules.indexer.spider.rousi import RousiSpider
@@ -346,22 +345,21 @@ def test_site_connectivity_uses_peergo_personal_api_key(monkeypatch):
     @contextmanager
     def fake_open_response(*, url: str, headers: dict, **_kwargs):
         """
-        在 Site HTTP Port 边界回放有效用户资料。
+        在适配器 HTTP 边界回放有效用户资料。
         """
         captured.update({"url": url, "headers": headers})
         yield _FakeResponse({"code": 0, "message": "success", "data": {"id": 619}})
 
-    monkeypatch.setattr("app.chain.site._open_site_response", fake_open_response)
+    monkeypatch.setattr(rousi_module, "RequestUtils", lambda **kwargs: SimpleNamespace(
+        response_manager=lambda **request: fake_open_response(headers=kwargs["headers"], **request),
+    ))
     site = SimpleNamespace(
         url="https://rousi.pro/",
         apikey="rousi-secret",
         proxy=0,
         timeout=15,
     )
-    chain = object.__new__(SiteChain)
-    chain.runtime_config = SimpleNamespace(proxy=None)
-
-    state, message = chain._SiteChain__rousi_test(site)
+    state, message = RousiSpider({**vars(site), "domain": site.url}).test_connection()
 
     assert state
     assert message == "连接成功"
@@ -374,9 +372,7 @@ def test_site_connectivity_rejects_missing_personal_api_key():
     Rousi 连接测试应在请求前报告个人 API Key 缺失。
     """
     site = SimpleNamespace(url="https://rousi.pro/", apikey="", proxy=0, timeout=15)
-    chain = object.__new__(SiteChain)
-
-    state, message = chain._SiteChain__rousi_test(site)
+    state, message = RousiSpider({**vars(site), "domain": site.url}).test_connection()
 
     assert not state
     assert message == "未配置个人 API Key"

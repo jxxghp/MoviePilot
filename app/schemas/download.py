@@ -2,6 +2,7 @@
 下载任务、下载器状态和源文件分类接口的数据结构。
 """
 
+from enum import Enum as _Enum
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -10,8 +11,174 @@ from pydantic import model_validator as _model_validator
 from app.schemas.types import MediaSource as _MediaSource
 from app.schemas.types import MusicEntityType as _MusicEntityType
 
-# 下载器报告同一 hash 的任务已存在时返回的统一说明，订阅链路据此区分复用与新增提交。
+# 下载器模块 download() 四元组第四项的约定说明。同一 hash 已在下载器中时，内置下载器会先按
+# 本次目标核验已有任务（是否暂停、哪些文件被取消过），能受理才返回 hash，并用以下三个值之一告诉
+# 下载链"这次对已有任务做了什么"；不能受理时不返回 hash，说明以 ``ExistingTaskRejection`` 开头。
+# 插件提供的下载器模块不返回这些值时，下载链按原有"新建任务"语义结算。
+#
+# 已有任务原样复用：目标文件此前已选中，且已下载完成或任务正在运行，下载器状态未做任何改动。
 DOWNLOAD_TASK_ALREADY_EXISTS = "下载任务已存在"
+# 已有任务追加了本次目标文件（用户手动指定种子时，暂停的任务会同时恢复），下载链按新增下载发送通知。
+DOWNLOAD_TASK_FILES_APPENDED = "下载任务已存在，已追加选择本次目标文件"
+# 用户手动指定种子，目标文件此前已选中但任务已暂停、目标未下完：恢复了该任务，下载链按新增下载发送通知。
+DOWNLOAD_TASK_RESUMED = "下载任务已存在，已恢复下载"
+# 下载器已受理添加请求，但轮询确认超时仍未查到任务时的固定说明开头。
+# 下载链据此区分“明确拒绝添加”与“已受理但状态未知”：后者不得立即当成可安全换版本的失败，
+# 须先保留待确认状态并按已知种子标识重新核对。
+DOWNLOAD_TASK_UNCONFIRMED_PREFIX = "下载任务添加成功，但获取"
+
+
+def is_unconfirmed_download_message(message: Optional[str]) -> bool:
+    """
+    判断下载器返回的说明是否表示“添加请求已受理，但任务信息尚未确认”。
+
+    :param message: 下载器 ``download()`` 返回的第四项说明
+    :return: 属于已受理但未确认状态时返回 True，否则返回 False
+    """
+    return bool(message and message.startswith(DOWNLOAD_TASK_UNCONFIRMED_PREFIX))
+
+
+class PendingDownloadCheckStatus(str, _Enum):
+    """
+    按已知种子标识核对待确认下载任务时的下载器回执状态。
+    """
+
+    # 下载器已找到对应任务并完成必要收尾，可安全转正结算
+    CONFIRMED = "confirmed"
+    # 下载器在线且查询成功，当前尚未出现对应任务
+    NOT_FOUND = "not_found"
+    # 下载器离线、超时或查询失败，任务状态仍未知，不得据此释放待确认
+    QUERY_ERROR = "query_error"
+    # 任务已出现，但后续选集或已有任务核验明确拒绝，可安全释放待确认
+    REJECTED = "rejected"
+
+
+class PendingDownloadCheckResult(BaseModel):
+    """
+    下载器模块核对待确认提交后返回的结构化结果。
+
+    :param status: 本次核对的结果分类
+    :param downloader: 实际执行核对的下载器配置名称；未确定实例时为 None
+    :param download_hash: 已确认任务在下载器中的实际哈希；未确认时为 None
+    :param layout: 已确认任务对应的下载器内容布局；未确认时为 None
+    :param message: 面向日志、通知和动作识别的说明文本
+    """
+
+    status: PendingDownloadCheckStatus = Field(description="待确认任务核对结果分类")
+    downloader: Optional[str] = Field(default=None, description="实际核对的下载器配置名称")
+    download_hash: Optional[str] = Field(default=None, description="已确认任务的实际哈希")
+    layout: Optional[str] = Field(default=None, description="已确认任务的下载器内容布局")
+    message: str = Field(default="", description="核对结果说明，受理已有任务时保留既有约定常量")
+
+
+class DownloadTaskAction(str, _Enum):
+    """
+    下载器受理一次提交时对任务实际做了什么，供下载历史结算与 DownloadAdded 事件区分。
+
+    同一个种子可以先后承载多次不同的下载请求（例如同一季包分几次下载不同集），
+    "任务已存在"不再等于"本次请求已满足"，因此需要区分以下几种结果。
+    """
+
+    # 新建下载任务
+    CREATED = "created"
+    # 已有任务追加选择了本次目标文件
+    APPENDED = "appended"
+    # 已有任务的目标文件此前已选中，用户手动指定种子时恢复了暂停的任务
+    RESUMED = "resumed"
+    # 已有任务原样复用，未做任何改动
+    REUSED = "reused"
+
+    @classmethod
+    def from_downloader_message(cls, message: Optional[str]) -> "DownloadTaskAction":
+        """
+        按下载器返回的说明识别本次对任务的动作。
+
+        :param message: 下载器 download() 返回的第四项说明；仅在已返回 hash 时有意义
+        :return: 已有任务的三种约定说明分别映射为追加、恢复和复用，其余说明视为新建任务
+        """
+        return {
+            DOWNLOAD_TASK_FILES_APPENDED: cls.APPENDED,
+            DOWNLOAD_TASK_RESUMED: cls.RESUMED,
+            DOWNLOAD_TASK_ALREADY_EXISTS: cls.REUSED,
+        }.get(message or "", cls.CREATED)
+
+    @property
+    def is_existing_task(self) -> bool:
+        """
+        是否复用了下载器中已有的同一 hash 任务；为 True 时文件明细需要按路径去重。
+        """
+        return self is not DownloadTaskAction.CREATED
+
+
+class ExistingTaskRejection(str, _Enum):
+    """
+    同一 hash 已在下载器中、但不能受理本次请求的原因；枚举值同时是失败说明的固定开头。
+
+    下载器模块返回 ``f"{原因}（任务 {hash}）：{细节}"``，下载链用 ``from_message`` 识别原因，决定通知去重的
+    范围与时长、批量下载本批内记失败的范围，不再从自由文本里猜关键字。已有任务的拒绝不会让订阅跳过候选，
+    每一轮都按下载器实时状态重新判断。新增原因时同时确认 ``is_resource_level`` 与 ``is_target_specific`` 的归类。
+    """
+
+    # 读取不到文件列表（磁力任务尚无元数据，或下载器查询失败）
+    FILES_UNAVAILABLE = "已有任务的文件列表暂时无法读取"
+    # 文件列表里找不到能完整覆盖目标集的视频
+    EPISODES_NOT_FOUND = "已有任务中未找到目标集数"
+    # 目标主文件（视频；没有视频的种子为全部文件）此前经 MP 确认选中过，现在被取消选择（只可能是用户、插件或外部所为）
+    FILES_CANCELLED = "已有任务的目标文件已被取消选择"
+    # 任务已暂停且目标尚未下载完成；自动流程不论是谁暂停的都不恢复（用户手动指定种子时会恢复，不会产生此原因）
+    PAUSED = "已有任务已暂停"
+    # 下载器报告任务出错（例如数据文件缺失）
+    TASK_ERROR = "已有任务处于错误状态"
+    # 读取任务状态失败，无法判断能否继续下载
+    STATE_UNAVAILABLE = "已有任务的状态暂时无法读取"
+    # 追加选择、刷新优先级、恢复任务、移除"已整理"或补写系统种子标签后未能确认
+    NOT_CONFIRMED = "已有任务的修改未能确认"
+
+    @property
+    def is_resource_level(self) -> bool:
+        """
+        原因是否属于"在有人处理之前反复重试都会得到同样结果"，同一原因的通知静默期较长（24 小时）。
+
+        目标文件被取消、集数对不上、任务出错属于这一类；其余原因（读取失败、暂停、写入未确认）可能
+        很快恢复，静默期较短（1 小时）。静默期只决定多久后再通知一次，不影响下一轮是否重新判断。
+        """
+        return self in (
+            ExistingTaskRejection.EPISODES_NOT_FOUND,
+            ExistingTaskRejection.FILES_CANCELLED,
+            ExistingTaskRejection.TASK_ERROR,
+        )
+
+    @property
+    def is_target_specific(self) -> bool:
+        """
+        原因是否只针对本次请求的目标集，而不是整个任务。
+
+        目标集找不到、目标文件被取消只说明"这几集"在这个任务上不能用，同一任务上的其他集仍可正常追加，
+        通知去重与批量下载本批内的失败记录只作用于"这台下载器 + 这个种子 + 这几集"；其余原因（暂停、出错、
+        读取或写入失败）对任务上的任何请求都一样，作用于"这台下载器 + 这个种子"。
+        """
+        return self in (ExistingTaskRejection.EPISODES_NOT_FOUND, ExistingTaskRejection.FILES_CANCELLED)
+
+    @classmethod
+    def from_message(cls, message: Optional[str]) -> Optional["ExistingTaskRejection"]:
+        """
+        从下载器返回的失败说明识别已有任务的拒绝原因。
+
+        :param message: 下载器 download() 返回的第四项说明
+        :return: 说明以某个原因开头时返回该原因，否则返回 None
+        """
+        text = message or ""
+        return next((item for item in cls if text.startswith(item.value)), None)
+
+    def describe(self, torrent_hash: str, detail: str) -> str:
+        """
+        生成以原因开头的失败说明，供下载器模块返回。
+
+        :param torrent_hash: 已有任务的 hash
+        :param detail: 面向用户的细节与处理建议
+        :return: ``from_message`` 能识别的完整说明
+        """
+        return f"{self.value}（任务 {torrent_hash}）：{detail}"
 
 
 class DownloadTask(BaseModel):

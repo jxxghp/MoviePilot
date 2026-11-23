@@ -28,7 +28,26 @@ class DownloaderTorrent(BaseModel):
     season_episode: Optional[str] = Field(default=None, description="季集信息的展示文本")
     path: Optional[Path] = Field(default=None, description="文件或目录路径")
     size: Optional[float] = Field(default=0.0, description="文件大小，单位为字节")
+    selected_size: Optional[float] = Field(
+        default=None,
+        description="当前选中下载的文件总大小，单位为字节；同一任务追加文件后会变大，下载器无法提供时为空",
+    )
+    incomplete_files: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "下载器整理轮询中只选中了部分文件的任务，下载器报告尚未下载完成的文件，路径相对任务内容路径 path（含取消选择"
+            "后残留在磁盘上的部分数据、与选中文件共用分块而被写入部分数据的相邻文件），整理时跳过，包含这类文件的蓝光原盘"
+            "目录整盘跳过；为空表示无需过滤"
+        ),
+    )
     progress: Optional[float] = Field(default=0.0, description="当前完成百分比")
+    selected_completed: Optional[bool] = Field(
+        default=None,
+        description=(
+            "选中下载的文件是否已全部下载完成；完成百分比按全部数据计算的下载器（rTorrent，只选了部分文件时选中部分下完"
+            "也不到 100）提供，为空时按完成百分比是否达到 100 判断"
+        ),
+    )
     state: Optional[str] = Field(default="downloading", description="当前业务状态")
     upspeed: Optional[str] = Field(default=None, description="当前上传速度的格式化展示文本")
     dlspeed: Optional[str] = Field(default=None, description="当前下载速度的格式化展示文本")
@@ -372,6 +391,14 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
         description="本次手动整理的 MusicBrainz 文字字形优先级；空值继承系统设置",
     )
     music_cue_enable: Optional[bool] = Field(default=None, strict=True, description="本次手动整理是否识别 CUE；空值继承系统设置")
+    music_track_match: Literal["strict", "ignore_duration", "sequential"] = Field(
+        default="strict",
+        description="本次手选专辑曲目对齐方式，支持严格校验、忽略时长或按源路径自然顺序套用。顺序模式要求曲目数一致",
+    )
+    music_target_path: Optional[str] = Field(
+        default=None,
+        description="本次音乐最终目录。填写后只应用文件名模板，类型、分类及专辑目录层级由此路径确定",
+    )
     type_name: Optional[str] = Field(default=None, description="类型")
     season: Optional[int] = Field(default=None, description="季号")
     transfer_type: Optional[str] = Field(default=None, description="整理方式")
@@ -380,7 +407,10 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     episode_part: Optional[str] = Field(default=None, description="指定PART")
     episode_offset: Optional[str] = Field(default=None, description="集数偏移")
     min_filesize: Optional[int] = Field(default=0, description="最低文件大小阈值，单位为 MiB；0 不限制，启用时仅保留严格大于阈值的文件")
-    scrape: Optional[bool] = Field(default=False, description="刮削")
+    scrape: Optional[bool] = Field(
+        default=None,
+        description="刮削；为空时跟随目标目录的刮削设置",
+    )
     library_type_folder: Optional[bool] = Field(default=None, description="媒体库类型子目录")
     library_category_folder: Optional[bool] = Field(default=None, description="媒体库类别子目录")
     from_history: Optional[bool] = Field(default=False, description="复用历史识别信息")
@@ -388,6 +418,24 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     preview: Optional[bool] = Field(default=False, description="仅预览，不执行整理")
     reorganize: Optional[bool] = Field(default=False, description="重新整理，清理命中的成功历史及其旧目标")
     skip_success: bool = Field(default=False, description="跳过成功历史，优先于重新整理；预览与执行使用相同过滤范围")
+
+    @model_validator(mode="after")
+    def validate_music_manual_options(self) -> "ManualTransferItem":
+        """
+        限定音乐专用选项并规范最终目录，拒绝相对路径和上级目录跳转。
+        """
+        if self.music_track_match == "strict" and not self.music_target_path:
+            return self
+        if (self.type_name or "").strip().lower() not in {"", "自动", "auto", "none", "音乐", "music"}:
+            raise ValueError("音乐手动整理选项不能用于影视整理")
+        if self.music_track_match != "strict" and self.music_type != "album":
+            raise ValueError("调整曲目对齐方式需要选择音乐专辑")
+        if self.music_target_path is not None:
+            path = Path(self.music_target_path.strip())
+            if not path.is_absolute() or ".." in path.parts:
+                raise ValueError("音乐最终目录必须为不含上级跳转的绝对路径")
+            self.music_target_path = path.as_posix()
+        return self
 
     @model_validator(mode="after")
     def validate_music_release_selection(self) -> "ManualTransferItem":

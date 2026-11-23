@@ -46,6 +46,11 @@
       "group": "ai_agent",
       "source_file": "app/runtime/config.py"
     },
+    "AI_AGENT_KNOWLEDGE_ENABLE": {
+      "description": "是否允许 Agent 使用 MoviePilot Server 的中心知识工具",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py"
+    },
     "AI_AGENT_OUTPUT_LANGUAGE": {
       "description": "内置智能助手输出语言，默认使用简体中文",
       "group": "ai_agent",
@@ -1344,6 +1349,21 @@
     "USAGE_STATISTIC_SHARE": {
       "description": "安装版本统计上报",
       "group": "plugins",
+      "source_file": "app/runtime/config.py"
+    },
+    "VAPID_PRIVATE_KEY": {
+      "description": "Web Push VAPID 私钥（base64url 编码的 P-256 私钥），留空时使用运行期内置默认值；需与 VAPID_PUBLIC_KEY 成对配置",
+      "group": "security",
+      "source_file": "app/runtime/config.py"
+    },
+    "VAPID_PUBLIC_KEY": {
+      "description": "Web Push VAPID 公钥（base64url 编码的未压缩 P-256 公钥），留空时使用运行期内置默认值；需与 VAPID_PRIVATE_KEY 成对配置",
+      "group": "security",
+      "source_file": "app/runtime/config.py"
+    },
+    "VAPID_SUBJECT": {
+      "description": "Web Push VAPID 联系主体（mailto: 或 https:// 地址），留空时默认使用超级管理员邮箱地址",
+      "group": "security",
       "source_file": "app/runtime/config.py"
     },
     "WALLPAPER": {

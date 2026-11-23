@@ -72,7 +72,9 @@ def _connectivity_adapter(monkeypatch, chain, response=None):
     保留注册表和真实索引分发，仅替换适配器 HTTP、等待与代理配置边界。
     """
     module = object.__new__(IndexerModule)
-    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(
+        **{key: value for key, value in kwargs.items() if key != "raise_exception"},
+    ))
     monkeypatch.setattr(hdarea, "get_runtime_setting", lambda key: {
         "PROXY": chain.runtime_config.proxy or {}, "USER_AGENT": chain.runtime_config.user_agent,
     }[key])
@@ -83,6 +85,14 @@ def _connectivity_adapter(monkeypatch, chain, response=None):
     constructor = Mock(return_value=request)
     monkeypatch.setattr(hdarea, "RequestUtils", constructor)
     return wait, defer, request, constructor
+
+
+def _test_connection(chain, site):
+    """
+    从站点链入口调用真实索引能力，不访问已经删除的专站路由。
+    """
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    return chain.test(site.url)
 
 
 @pytest.fixture
@@ -387,7 +397,7 @@ def test_connectivity_rejects_api_errors_and_invalid_identity(monkeypatch, statu
     chain = SiteChain()
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
     _wait, defer, _request, _constructor = _connectivity_adapter(monkeypatch, chain, _response(data, status, code))
-    state, message = chain.special_site_test["hdarea.club"](SiteSnapshot(
+    state, message = _test_connection(chain, SiteSnapshot(
         id=7370, name="高清视界", url="https://hdarea.club/", apikey="synthetic-key",
     ))
     assert state is False and expected in message
@@ -402,10 +412,10 @@ def test_connectivity_without_key_or_response_has_clear_failure(monkeypatch):
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
     _wait, _defer, request, constructor = _connectivity_adapter(monkeypatch, chain)
     site = SiteSnapshot(id=7370, name="高清视界", url="https://hdarea.club/", cookie="unused-cookie")
-    assert chain.special_site_test["hdarea.club"](site) == (False, hdarea.KEY_REQUIRED)
+    assert _test_connection(chain, site) == (False, hdarea.KEY_REQUIRED)
     constructor.assert_not_called()
     site = SiteSnapshot(id=7370, name="高清视界", url="https://hdarea.club/", apikey="synthetic-key")
-    assert chain.special_site_test["hdarea.club"](site) == (False, "无法连接 HDArea API")
+    assert _test_connection(chain, site) == (False, "无法连接 HDArea API")
     request.get_res.assert_called_once()
 
 
@@ -418,7 +428,7 @@ def test_connectivity_rejects_non_json_profile(monkeypatch):
     response = _response({})
     response._content = b"<html>private-body</html>"
     _connectivity_adapter(monkeypatch, chain, response)
-    state, message = chain.special_site_test["hdarea.club"](SiteSnapshot(
+    state, message = _test_connection(chain, SiteSnapshot(
         id=7370, name="高清视界", url="https://hdarea.club/", apikey="synthetic-key",
     ))
     assert state is False and "private-body" not in message

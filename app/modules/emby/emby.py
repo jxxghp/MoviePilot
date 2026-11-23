@@ -13,12 +13,41 @@ from requests import Response
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
-from app.modules._base.mediaserver import emby_episode_numbers, emby_query_params, iter_emby_items
+from app.modules._base.embybrowse import (
+    EmbyBrowseConfig,
+    emby_browse_items,
+    emby_filter_options,
+    emby_item_detail,
+    emby_report_progress,
+    emby_search_library,
+    emby_season_episodes,
+    emby_seasons,
+    emby_stream_url,
+    emby_subtitle_url,
+)
+from app.modules._base.mediaserver import (
+    emby_episode_numbers,
+    emby_query_params,
+    iter_emby_items,
+    read_emby_query_items,
+)
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import (
+    MediaServerBrowseItem as _SchemaMediaServerBrowseItem,
+)
+from app.schemas.mediaserver import (
+    MediaServerBrowsePage as _SchemaMediaServerBrowsePage,
+)
 from app.schemas.mediaserver import MediaServerField, MediaServerItem, MediaServerQueryOptions
+from app.schemas.mediaserver import (
+    MediaServerFilterOptions as _SchemaMediaServerFilterOptions,
+)
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
+from app.schemas.mediaserver import (
+    MediaServerItemDetail as _SchemaMediaServerItemDetail,
+)
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
@@ -231,6 +260,8 @@ class Emby:
                 library_type = MediaType.MUSIC.value
             elif library.get("CollectionType") == "tvshows":
                 library_type = MediaType.TV.value
+            elif library.get("CollectionType") == "boxsets":
+                library_type = "合集"
             else:
                 library_type = MediaType.UNKNOWN.value
             image = (
@@ -254,7 +285,9 @@ class Emby:
                     type=library_type,
                     item_count=self.get_items_count(
                         library.get("Id"),
-                        "MusicAlbum" if library_type == MediaType.MUSIC.value else "Movie,Series",
+                        "MusicAlbum"
+                        if library_type == MediaType.MUSIC.value
+                        else ("BoxSet" if library_type == "合集" else "Movie,Series"),
                     )
                     if options.includes(MediaServerField.COUNTS)
                     else None,
@@ -452,15 +485,11 @@ class Emby:
         }
         try:
             params.update(emby_query_params(query))
-            res = RequestUtils().get_res(url, params)
-            if res:
-                res_items = res.json().get("Items")
-                if res_items:
-                    for res_item in res_items:
-                        if res_item.get("Name") == name and (
-                            not year or str(res_item.get("ProductionYear")) == str(year)
-                        ):
-                            return _optional_text(res_item.get("Id"))
+            for res_item in read_emby_query_items(RequestUtils(), url, params):
+                if res_item.get("Name") == name and (
+                    not year or str(res_item.get("ProductionYear")) == str(year)
+                ):
+                    return _optional_text(res_item.get("Id"))
         except Exception as e:
             logger.error("连接Items出错：" + str(e))
             return None
@@ -569,6 +598,168 @@ class Emby:
             logger.debug(f"查询Emby音乐出错：{e}")
             return []
 
+    def _browse_config(
+        self, username: Optional[str] = None, *, require_user: bool = True
+    ) -> Optional[EmbyBrowseConfig]:
+        """
+        构造当前 Emby 实例的统一浏览协议配置。
+
+        :param username: 可选用户名，用于限定用户可见数据
+        :param require_user: 是否要求存在有效用户标识
+        :return: 协议配置；未完成初始化或缺少所需用户时返回 None
+        """
+        if not self._host or not self._apikey:
+            return None
+        user_id = self.get_user(username) if username else self.user
+        if require_user and not user_id:
+            return None
+        return EmbyBrowseConfig(
+            host=self._host,
+            api_key=self._apikey,
+            user_id=str(user_id or ""),
+            server_type="emby",
+            api_prefix="emby/",
+            play_host=self._playhost,
+            server_id=getattr(self, "serverid", None),
+            request_factory=lambda: RequestUtils(timeout=15),
+            include_api_key_param=True,
+            image_api_key=True,
+            play_url_builder=self.get_play_url,
+        )
+
+    def browse_items(
+        self,
+        *,
+        library_id: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        item_type: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        played_filter: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        keyword: Optional[str] = None,
+        start_index: int = 0,
+        limit: int = 30,
+        username: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerBrowsePage]:
+        """
+        分页浏览 Emby 媒体库并支持筛选、排序和搜索。
+        """
+        cfg = self._browse_config(username)
+        if not cfg:
+            return None
+        return emby_browse_items(
+            cfg,
+            library_id=library_id,
+            parent_id=parent_id,
+            item_type=item_type,
+            genre=genre,
+            year=year,
+            played_filter=played_filter,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            keyword=keyword,
+            start_index=start_index,
+            limit=limit,
+        )
+
+    def get_filter_options(
+        self, library_id: Optional[str] = None, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerFilterOptions]:
+        """
+        获取 Emby 指定媒体库的风格、年份与排序筛选选项。
+        """
+        cfg = self._browse_config(username)
+        return emby_filter_options(cfg, library_id=library_id) if cfg else None
+
+    def get_item_detail(
+        self, item_id: str, username: Optional[str] = None
+    ) -> Optional[_SchemaMediaServerItemDetail]:
+        """
+        获取 Emby 单个条目的完整详情（含多版本及音轨字幕轨道）。
+        """
+        cfg = self._browse_config(username)
+        return emby_item_detail(cfg, item_id) if cfg else None
+
+    def get_seasons(
+        self, series_id: str, username: Optional[str] = None
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """
+        获取 Emby 电视剧的全部季卡片信息。
+        """
+        cfg = self._browse_config(username)
+        return emby_seasons(cfg, series_id) if cfg else None
+
+    def get_season_episodes(
+        self,
+        series_id: str,
+        *,
+        season_id: Optional[str] = None,
+        season: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerBrowseItem]]:
+        """
+        获取 Emby 电视剧指定季的全部单集详情卡片。
+        """
+        cfg = self._browse_config(username)
+        return emby_season_episodes(cfg, series_id, season_id=season_id, season=season) if cfg else None
+
+    def get_subtitle_url(self, item_id: str, subtitle_id: str) -> Optional[str]:
+        """
+        解析 Emby 服务端外挂或可提取字幕的上游流地址。
+        """
+        cfg = self._browse_config(require_user=False)
+        return emby_subtitle_url(cfg, item_id, subtitle_id) if cfg else None
+
+    def report_progress(
+        self,
+        item_id: str,
+        *,
+        position_ms: int,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+    ) -> bool:
+        """
+        将客户端播放进度回传给 Emby 服务器。
+        """
+        _ = duration_ms
+        cfg = self._browse_config(username)
+        if not cfg:
+            return False
+        return emby_report_progress(
+            cfg,
+            item_id,
+            position_ms,
+            media_source_id=media_source_id,
+            is_paused=is_paused,
+            state=state,
+        )
+
+    def search_library(
+        self,
+        keyword: str,
+        types: list[str],
+        limit: int,
+        library_id: Optional[str] = None,
+    ) -> List[_SchemaMediaServerPlayItem]:
+        """
+        通过 Emby Items 搜索接口查询电影、电视剧和可播放音乐单曲。
+
+        :param keyword: 搜索关键词
+        :param types: 需要搜索的业务类型
+        :param limit: 最多返回的条目数量
+        :param library_id: 可选媒体库标识限定
+        :return: 带封面、年份或音乐副标题的媒体服务器条目
+        """
+        cfg = self._browse_config()
+        if not cfg:
+            return []
+        return emby_search_library(cfg, keyword, types, limit, library_id=library_id)
+
     def get_tv_episodes(
         self,
         item_id: Optional[str] = None,
@@ -593,8 +784,8 @@ class Emby:
         :param media_id: 对应来源的媒体标识
         :param season: 目标季号；None 表示查询全部季
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
-        :return: 电视剧条目标识与“季号到集号列表”映射；配置缺失或异常返回两项 None，
-            未找到、身份不兼容或响应无可用数据时返回 None 和空映射
+        :return: 电视剧条目标识与季集映射；配置、请求或身份校验不可用时返回两项 None，
+            仅确认未找到、身份冲突或成功查询无分集时返回空映射
         """
         if not self._host or not self._apikey:
             return None, None
@@ -623,7 +814,7 @@ class Emby:
                 **({"query": query.with_fields(MediaServerField.IDENTITY)} if query is not None else {}),
             )
         if not item_info:
-            return None, {}
+            return None, None
         if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
             return None, {}
         if season is None:
@@ -636,28 +827,23 @@ class Emby:
                     MediaServerQueryOptions(fields=frozenset()) if query is not None and query.fields is not None else None
                 )
             )
-            res_json = RequestUtils().get_res(url, params)
-            if res_json:
-                tv_item = res_json.json()
-                res_items = tv_item.get("Items")
-                season_episodes: dict[int, list[int]] = {}
-                for res_item in res_items:
-                    season_index = res_item.get("ParentIndexNumber")
-                    if season_index is None:
-                        continue
-                    if season is not None and season != season_index:
-                        continue
-                    episode_index = res_item.get("IndexNumber")
-                    if episode_index is None:
-                        continue
-                    if season_index not in season_episodes:
-                        season_episodes[season_index] = []
-                    season_episodes[season_index].extend(emby_episode_numbers(res_item))
-                return item_id, season_episodes
+            season_episodes: dict[int, list[int]] = {}
+            for res_item in read_emby_query_items(RequestUtils(), url, params):
+                season_index = res_item.get("ParentIndexNumber")
+                if season_index is None:
+                    continue
+                if season is not None and season != season_index:
+                    continue
+                episode_index = res_item.get("IndexNumber")
+                if episode_index is None:
+                    continue
+                if season_index not in season_episodes:
+                    season_episodes[season_index] = []
+                season_episodes[season_index].extend(emby_episode_numbers(res_item))
+            return item_id, season_episodes
         except Exception as e:
             logger.error("连接Shows/Id/Episodes出错：" + str(e))
             return None, None
-        return None, {}
 
     def get_season_episode_ids(
         self, item_id: str, season: int, *, query: Optional[MediaServerQueryOptions] = None
@@ -1165,6 +1351,25 @@ class Emby:
         server_query = f"&serverId={server_id}" if server_id else ""
         return f"{self._playhost or self._host}web/index.html#!" \
             f"/item?id={item_id}&context=home{server_query}"
+
+    def get_stream_url(
+        self,
+        item_id: str,
+        item_type: Optional[str],
+        media_source_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        为原生播放器构造支持 Range 的 Emby 静态文件流地址，支持指定多版本媒体源。
+
+        :param item_id: Emby 条目标识
+        :param item_type: 媒体服务器返回的条目类型
+        :param media_source_id: 可选指定媒体源标识
+        :return: Emby 原始媒体流地址；实例配置或条目标识缺失时返回 None
+        """
+        cfg = self._browse_config(require_user=False)
+        if not cfg:
+            return None
+        return emby_stream_url(cfg, item_id, item_type, media_source_id=media_source_id)
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """

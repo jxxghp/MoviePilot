@@ -4,13 +4,15 @@
 
 import threading
 from abc import ABCMeta, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Callable, Dict, Generic, Mapping, Optional, Protocol, Tuple, Type, TypeVar, Union
 
+from app.application.messaging.attachment import notification_parts
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
-from app.schemas.message import Message
+from app.schemas.message import Message, MessageResponse
 from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf
 from app.schemas.types import (
     DownloaderType,
@@ -318,6 +320,43 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
             return {}
         return {conf.name: conf for conf in configs if conf.type == self._service_name and conf.enabled}
 
+    def iter_message_configs(self, message: Message) -> Iterator[tuple[NotificationConf, Message]]:
+        """
+        先按原通知过滤实例，再为每个实例独立适配图片与附件。
+
+        :param message: 保留原始接收人、通知范围和内容的统一消息
+        :yields: 通过原通知规则的配置与渠道消息；附件拆分不会改写其他实例的输入
+        """
+        for conf in self.get_configs().values():
+            if not self.check_message(message, conf.name):
+                continue
+            channel = getattr(self, "_channel", None)
+            if channel is None:
+                subtype = getattr(self, "get_subtype", lambda: None)()
+                channel = subtype if isinstance(subtype, NotificationChannel) else None
+            parts = notification_parts(message, channel) if channel is not None else [message]
+            for part in parts:
+                yield conf, part
+
+    def _send_direct_parts(
+        self, message: Message, sender: Callable[[Message], Optional[MessageResponse]],
+    ) -> Optional[MessageResponse]:
+        """
+        直接发送接口也保留组合附件；后续部分绑定首条成功实例，任一失败不得当作完整成功。
+        """
+        channel = getattr(self, "_channel", None) or getattr(self, "get_subtype", lambda: None)()
+        parts = notification_parts(message, channel) if isinstance(channel, NotificationChannel) else [message]
+        first = None
+        for part in parts:
+            if first is not None and first.source:
+                part = part.model_copy(update={"source": first.source})
+            response = sender(part)
+            if response is None or not response.success:
+                return None
+            if first is None:
+                first = response
+        return first
+
     def check_message(self, message: Message, source: Optional[str] = None) -> bool:
         """
         检查消息渠道及消息类型，判断是否处理消息。
@@ -443,18 +482,23 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         """
         获取默认服务配置的名称。
 
-        :return: 优先从所有下载器中查找配置了默认的下载器，如果没有配置，则获取第一个下载器名称
+        只从已启用的下载器配置中选择：已禁用配置不会被实例化，若命中已禁用项会导致所有走默认
+        下载器的请求找不到实例。
+
+        :return: 优先从已启用的下载器中查找配置了默认的下载器，如果没有配置，则获取第一个已启用的下载器名称
         """
         # 优先查找默认配置
         if self._default_config_name:
             return self._default_config_name
 
-        configs = ServiceConfigHelper.get_downloader_configs()
+        configs = [
+            conf for conf in ServiceConfigHelper.get_downloader_configs() if conf.enabled
+        ]
         for conf in configs:
             if conf.default:
                 self._default_config_name = conf.name
                 return self._default_config_name
-        # 如果没有默认配置，返回第一个配置的名称
+        # 如果没有默认配置，返回第一个已启用配置的名称
         first_conf = next(iter(configs), None)
         self._default_config_name = first_conf.name if first_conf else None
         return self._default_config_name

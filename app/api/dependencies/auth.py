@@ -16,12 +16,14 @@ from app.application.security.auth import (
     AuthService,
     AuthUserRepository,
 )
+from app.application.security.authorization import get_channel_authorization
 from app.application.security.passkey import PasskeyRepository, PasskeyService
 from app.application.security.user import (
     UserRepository,
     UserService,
 )
 from app.application.security.userconfig import get_configured_user_configuration
+from app.domain.authorization import has_web_permission
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.startup.composition.context import HostRuntime
 
@@ -74,6 +76,8 @@ def get_current_user(
     """
     读取令牌对应用户；主体 ID 缺失或账号不存在时按认证失败处理。
     """
+    if token_data.agent_authorization_id:
+        return _channel_principal(token_data)
     user_repository = cast(
         AuthUserRepository, runtime.authentication.user_repository(db)
     )
@@ -95,6 +99,10 @@ async def get_current_user_async(
     """
     异步读取令牌对应用户；主体 ID 缺失或账号不存在时按认证失败处理。
     """
+    if token_data.agent_authorization_id:
+        from app.runtime.execution import run_in_threadpool
+
+        return await run_in_threadpool(_channel_principal, token_data)
     user_repository = cast(
         UserRepository, runtime.authentication.user_repository(db)
     )
@@ -106,6 +114,19 @@ async def get_current_user_async(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def _channel_principal(token_data: _SchemaTokenPayload) -> Any:
+    """
+    为当前请求读取实时渠道权限，不把底层内部账号当作普通网页登录账号。
+    """
+    service = get_channel_authorization()
+    if service is None or not token_data.agent_authorization_id or not token_data.agent_operation:
+        raise HTTPException(status_code=401, detail="渠道授权不可用")
+    try:
+        return service.authorize_operation(token_data.agent_authorization_id, token_data.agent_operation)
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
 
 def get_current_active_user(
@@ -146,6 +167,25 @@ def _ensure_manage_user(current_user: Any) -> Any:
     if not current_user.is_superuser and not bool(permissions.get("manage")):
         raise HTTPException(status_code=403, detail="用户权限不足")
     return current_user
+
+
+def get_current_download_viewer(current_user: Any = Depends(get_current_active_user)) -> Any:
+    """
+    允许管理员、下载管理用户查看全局下载；渠道成员及具备搜索/订阅权限的普通网页用户仅可查看本人下载。
+
+    :param current_user: 当前已认证激活用户
+    :return: 通过校验的当前用户
+    """
+    if getattr(current_user, "authorization_id", None) and current_user.permissions.get("download") is True:
+        return current_user
+    permissions = getattr(current_user, "permissions", None)
+    if current_user.is_superuser or has_web_permission(False, permissions, "manage", "manage.downloading"):
+        return current_user
+    if has_web_permission(False, permissions, "search", "search.resource") or has_web_permission(
+        False, permissions, "subscribe"
+    ):
+        return current_user
+    raise HTTPException(status_code=403, detail="用户权限不足")
 
 
 def get_current_active_manage_user(

@@ -131,14 +131,27 @@ def _build_builtin_movie_rules() -> list[ClassificationRule]:
 
 def _build_builtin_tv_rules() -> list[ClassificationRule]:
     """
-    构造内置电视剧分类规则。
+    构造内置电视剧分类规则，儿童优先于按地区划分的动画分类。
     """
     return [
+        ClassificationRule(
+            id="tv.kids.default",
+            name="儿童",
+            kind="category",
+            priority=3,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.genre_keys",
+                operator="contains_any",
+                value=["kids"],
+            ),
+            target=ClassificationTarget(category_id="tv.kids"),
+        ),
         ClassificationRule(
             id="tv.dongman.cn.default",
             name="国漫",
             kind="category",
-            priority=2,
+            priority=4,
             media_types=["电视剧"],
             when=ClassificationConditionGroup(
                 all=[
@@ -160,7 +173,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.dongman.jp.default",
             name="日番",
             kind="category",
-            priority=3,
+            priority=5,
             media_types=["电视剧"],
             when=ClassificationConditionGroup(
                 all=[
@@ -182,7 +195,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.animation.other.default",
             name="其他动画",
             kind="category",
-            priority=4,
+            priority=6,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.genre_keys",
@@ -195,7 +208,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.documentary.default",
             name="纪录片",
             kind="category",
-            priority=4,
+            priority=7,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.genre_keys",
@@ -205,23 +218,10 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             target=ClassificationTarget(category_id="tv.documentary"),
         ),
         ClassificationRule(
-            id="tv.kids.default",
-            name="儿童",
-            kind="category",
-            priority=5,
-            media_types=["电视剧"],
-            when=ClassificationCondition(
-                field="media.genre_keys",
-                operator="contains_any",
-                value=["kids"],
-            ),
-            target=ClassificationTarget(category_id="tv.kids"),
-        ),
-        ClassificationRule(
             id="tv.variety.default",
             name="综艺",
             kind="category",
-            priority=6,
+            priority=8,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.genre_keys",
@@ -234,7 +234,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.chinese.default",
             name="国产剧",
             kind="category",
-            priority=7,
+            priority=9,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.countries",
@@ -247,7 +247,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.western.default",
             name="欧美剧",
             kind="category",
-            priority=8,
+            priority=10,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.countries",
@@ -264,7 +264,7 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             id="tv.asian.default",
             name="亚洲剧",
             kind="category",
-            priority=9,
+            priority=11,
             media_types=["电视剧"],
             when=ClassificationCondition(
                 field="media.countries",

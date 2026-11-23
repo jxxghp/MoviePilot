@@ -16,6 +16,7 @@ from app.runtime.stop import StopState, runtime_stop_state
 if TYPE_CHECKING:
     from app.application.classification.execution import ClassificationExecutionPort
     from app.application.download.failures import DownloadFailureRepository
+    from app.application.download.pending import DownloadPendingRepository
     from app.application.history import (
         DownloadHistoryRepository,
         TransferHistoryRepository,
@@ -76,6 +77,7 @@ class ChainRuntimeContext:
     :param transfer_execution_repository: 持久整理任务认领、检查点与结算仓储
     :param media_server_repository: 媒体服务器同步数据读取仓储
     :param download_failure_repository: 下载失败冷却状态仓储
+    :param download_pending_repository: 下载已受理待确认状态仓储；None 表示未装配
     :param user_repository: 链层读取本地用户归属和权限的仓储
     :param subscription_activity: 订阅活动记录服务；None 表示未装配
     :param classification_service: 完整媒体结果分类执行服务；None 表示未装配
@@ -128,6 +130,7 @@ class ChainRuntimeContext:
     configuration_provider: Optional[Callable[[], ChainRuntimeConfig]] = None
     stop_state: StopState = field(default_factory=lambda: runtime_stop_state)
     system_service: Optional[SystemService] = None
+    download_pending_repository: Optional[DownloadPendingRepository] = None
 
 
 def _unconfigured_chain_runtime_context() -> ChainRuntimeContext:

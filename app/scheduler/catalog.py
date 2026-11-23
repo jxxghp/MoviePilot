@@ -217,6 +217,13 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=5),
         )
 
+    def _poll_subscription_refresh(self) -> None:
+        """
+        刷新空闲时才唤醒托管任务，在途扫描会合并到期站点，不重复报告重入。
+        """
+        if not self._is_job_active("subscribe_refresh"):
+            self.start("subscribe_refresh", scheduled=True)
+
     def _initialize_catalog(self, config: SchedulerRuntimeConfig) -> None:
         """
         构建完整任务目录并投影到尚未启动的 APScheduler。
@@ -229,7 +236,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 JobSpec("mediaserver_sync", "同步媒体服务器", services.sync_mediaserver, "mediaserver"),
                 JobSpec("subscribe_tmdb", "订阅元数据更新", services.check_subscribe, "subscription"),
                 *_subscription_search_job_specs(services, config.subscribe_search_interval),
-                JobSpec("subscribe_refresh", "订阅刷新", services.refresh_subscribe, "subscription"),
+                JobSpec("subscribe_refresh", "订阅刷新", services.refresh_subscribe, "subscription", timeout_seconds=0),
                 JobSpec("subscribe_follow", "关注的订阅分享", services.follow_subscribe, "subscription"),
                 JobSpec(
                     "transfer",
@@ -378,18 +385,15 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             )
 
         if config.subscribe_mode == "spider":
-            # 站点首页种子定时刷新模式
-            triggers = TimerUtils.random_scheduler(num_executions=32)
-            for trigger in triggers:
-                self._scheduler.add_job(
-                    self.start,
-                    "cron",
-                    id=f"subscribe_refresh|{trigger.hour}:{trigger.minute}",
-                    name="订阅刷新",
-                    hour=trigger.hour,
-                    minute=trigger.minute,
-                    kwargs={"job_id": "subscribe_refresh"},
-                )
+            # 轻量检查逐站到期时间；实际请求受持久时间片和站点限流共同约束。
+            self._scheduler.add_job(
+                self._poll_subscription_refresh,
+                "interval",
+                id="subscribe_refresh",
+                name="订阅刷新",
+                minutes=1,
+                next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=15),
+            )
         else:
             # RSS订阅模式
             self._scheduler.add_job(

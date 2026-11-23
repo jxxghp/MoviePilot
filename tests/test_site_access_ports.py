@@ -11,6 +11,7 @@ from app.application import rss as rss_module
 from app.application.rss import RssHelper, configure_rss_ports
 from app.application.security import cookie as cookie_module
 from app.application.security.cookie import CookieHelper, configure_cookie_ports
+from app.application.site.protocol import get_site_protocol_port
 from app.application.torrent.download import (
     TorrentHelper,
     configure_torrent_port,
@@ -64,6 +65,7 @@ def reset_ports():
     保证每个用例前后均无跨测试端口状态。
     """
     site_initializer.reset_site_access_ports()
+    site_composition.configure_site_protocol_composition()
     yield
     site_initializer.reset_site_access_ports()
 
@@ -354,6 +356,8 @@ def test_initializer_rolls_back_partial_ports_on_failure(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="RSS 访问端口"):
         rss_module._require_rss_ports()
+    with pytest.raises(RuntimeError, match="站点协议端口"):
+        get_site_protocol_port()
 
 
 def test_initializer_configures_and_reset_releases_all_ports() -> None:
@@ -366,6 +370,8 @@ def test_initializer_configures_and_reset_releases_all_ports() -> None:
     assert cookie_module._require_cookie_ports()
     assert torrent_module._require_torrent_port()
     assert site_module._site_ports_snapshot()
+    assert get_site_protocol_port()
+    assert rss_module._require_rss_site_port()
 
     site_initializer.reset_site_access_ports()
 
@@ -377,3 +383,7 @@ def test_initializer_configures_and_reset_releases_all_ports() -> None:
         torrent_module._require_torrent_port()
     with pytest.raises(RuntimeError):
         site_module._site_ports_snapshot()
+    with pytest.raises(RuntimeError, match="站点协议端口"):
+        get_site_protocol_port()
+    with pytest.raises(RuntimeError, match="RSS 站点协议端口"):
+        rss_module._require_rss_site_port()

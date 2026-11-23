@@ -190,6 +190,21 @@ class AgentTaskTool(MoviePilotTool):
         target = kwargs.get("task_id") or kwargs.get("name") or ""
         return f"{action_name}自主定时任务：{target}".rstrip("：")
 
+    def set_agent_context(self, agent_context: Optional[dict[str, object]]) -> None:
+        """
+        渠道成员按调度能力管理本人任务，其他入口保留既有管理员要求。
+        """
+        super().set_agent_context(agent_context)
+        self._require_admin = not bool(self._agent_context.get("authorization_id"))
+
+    @property
+    def _task_owner(self) -> str:
+        """
+        按不可变授权身份隔离任务，避免相同平台 ID 在不同机器人之间串用。
+        """
+        identity = self._agent_context.get("authorization_id")
+        return f"channel:{identity}" if identity else str(self._user_id)
+
     @staticmethod
     def _absolute_trigger(payload: AgentTaskInput) -> str:
         """
@@ -238,10 +253,11 @@ class AgentTaskTool(MoviePilotTool):
             trigger_type=payload.trigger_type,
             cron_expression=(trigger_value if payload.trigger_type == "cron" else None),
             run_at=trigger_value if payload.trigger_type == "date" else None,
-            user_id=str(self._user_id),
+            user_id=self._task_owner,
             username=user.name,
             execution_user_id=user.id,
             execution_user_identity=user.notification_identity,
+            execution_authorization_id=user.authorization_id,
             session_id=str(self._session_id),
             channel=self._channel or (chat.channel if chat else None),
             source=self._source or (chat.source if chat else None),
@@ -267,10 +283,10 @@ class AgentTaskTool(MoviePilotTool):
 
         oper = self.data.tasks
         if task_id is not None:
-            task = oper.get(task_id=task_id, user_id=str(self._user_id))
+            task = oper.get(task_id=task_id, user_id=self._task_owner)
             tasks = [task] if task else []
         else:
-            tasks = oper.list(user_id=str(self._user_id), enabled=enabled)
+            tasks = oper.list(user_id=self._task_owner, enabled=enabled)
         result: list[dict[str, object]] = []
         for task in tasks:
             data = agent_task_to_dict(
@@ -283,7 +299,7 @@ class AgentTaskTool(MoviePilotTool):
                     agent_task_run_to_dict(run)
                     for run in oper.list_runs(
                         task_id=task.id,
-                        user_id=str(self._user_id),
+                        user_id=self._task_owner,
                         limit=10,
                     )
                 ]
@@ -307,7 +323,7 @@ class AgentTaskTool(MoviePilotTool):
         if payload.task_id is None:
             raise ValueError("update 缺少 task_id")
         oper = self.data.tasks
-        task = oper.get(task_id=payload.task_id, user_id=str(self._user_id))
+        task = oper.get(task_id=payload.task_id, user_id=self._task_owner)
         if not task:
             return None
         if task.last_status == "running":
@@ -367,16 +383,16 @@ class AgentTaskTool(MoviePilotTool):
         updated = oper.update(
             task_id=payload.task_id,
             payload=update_payload,
-            user_id=str(self._user_id),
+            user_id=self._task_owner,
         )
         if not updated:
-            current = oper.get(task_id=payload.task_id, user_id=str(self._user_id))
+            current = oper.get(task_id=payload.task_id, user_id=self._task_owner)
             if current and current.last_status == "running":
                 return {"error": (f"Agent 定时任务 {payload.task_id} 正在执行，请稍后再修改")}
             return None
         updated_task = oper.get(
             task_id=payload.task_id,
-            user_id=str(self._user_id),
+            user_id=self._task_owner,
         )
         if updated_task is None:
             return None
@@ -390,7 +406,7 @@ class AgentTaskTool(MoviePilotTool):
         """
         校验任务归属和状态，返回可执行性及任务名称。
         """
-        task = self.data.tasks.get(task_id=task_id, user_id=str(self._user_id))
+        task = self.data.tasks.get(task_id=task_id, user_id=self._task_owner)
         if not task:
             return "not_found", None
         if not task.enabled:
@@ -407,7 +423,7 @@ class AgentTaskTool(MoviePilotTool):
 
         deleted = self.data.tasks.delete(
             task_id=task_id,
-            user_id=str(self._user_id),
+            user_id=self._task_owner,
         )
         if deleted:
             remove_agent_task_job(task_id)
@@ -433,6 +449,7 @@ class AgentTaskTool(MoviePilotTool):
             is_admin=await self.is_admin_user(),
             execution_user_id=context_id if isinstance(context_id, int) else None,
             execution_user_identity=str(self._agent_context.get("execution_user_identity") or ""),
+            authorization_id=str(self._agent_context.get("authorization_id") or "") or None,
         )
 
     async def _update(self, payload: AgentTaskInput) -> str:
@@ -443,7 +460,7 @@ class AgentTaskTool(MoviePilotTool):
         :return: 更新后的任务或不能更新的明确原因
         """
         current = await self.run_blocking(
-            "db", self.data.tasks.get, task_id=payload.task_id, user_id=str(self._user_id),
+            "db", self.data.tasks.get, task_id=payload.task_id, user_id=self._task_owner,
         )
         identity_payload: dict[str, object] = {}
         if current is not None and current.execution_user_id is None and payload.enabled is not False:
@@ -458,6 +475,7 @@ class AgentTaskTool(MoviePilotTool):
             identity_payload = {
                 "execution_user_id": user.id,
                 "execution_user_identity": user.notification_identity,
+                "execution_authorization_id": user.authorization_id,
                 "username": user.name,
             }
         task = await self.run_blocking("db", self._update_task, payload, identity_payload)
@@ -493,6 +511,18 @@ class AgentTaskTool(MoviePilotTool):
             delay_minutes=delay_minutes,
             enabled=enabled,
         )
+        identity = self._agent_context.get("authorization_id")
+        if isinstance(identity, str) and identity:
+            from app.application.security.authorization import get_channel_authorization
+
+            service = get_channel_authorization()
+            if service is None:
+                return "渠道授权服务不可用"
+            capability = "schedule" if action in {"create", "run"} or (action == "update" and enabled is not False) else None
+            try:
+                await self.run_blocking("db", service.principal, identity, capability=capability)
+            except PermissionError as error:
+                return str(error)
         if payload.action == "create":
             if not get_runtime_setting("AI_AGENT_ENABLE"):
                 return "AI Agent 未启用，无法创建自主定时任务"

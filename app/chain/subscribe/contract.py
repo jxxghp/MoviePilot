@@ -119,6 +119,8 @@ if TYPE_CHECKING:
         get_subscribe_source_keyword: Callable[..., Any]
         get_subscribed_sites: Callable[..., Any]
         has_music_subscribe: Callable[..., Any]
+        load_cache: Callable[..., Any]
+        save_cache: Callable[..., Any]
         match: Callable[..., Any]
         media_exists: Callable[..., Any]
         media_files: Callable[..., Any]
@@ -131,8 +133,10 @@ if TYPE_CHECKING:
         remote_list: Callable[..., Any]
         edit_message: Callable[..., bool]
         resolve_subscribe_missing: Callable[..., Any]
+        reconcile_pending_downloads: Callable[..., Any]
         reconcile_subscription_completion: Callable[..., Any]
         resume_search_queue: Callable[..., Any]
+        settle_confirmed_pending_downloads: Callable[..., int]
 
     _SubscribeOwnerBase = _SubscribeOwnerHost
 else:

@@ -244,7 +244,7 @@ shared `DATA_CLEANUP_ENABLE` policy when it has a safe time boundary:
 - `outboxmessage` has separate completed and dead-letter retention periods;
   pending and processing intents are recovery state and are never age-deleted.
 
-`transferpending` and `plugininstallation` are recovery queues/journals rather
+`transferpending`, `downloadpending` and `plugininstallation` are recovery queues/journals rather
 than history. Their age is not proof that they are disposable, so generic
 retention cleanup must not delete them. Current-state tables keyed by a user,
 site, plugin, workflow, passkey, or media-library item are likewise outside

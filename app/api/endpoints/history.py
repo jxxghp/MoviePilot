@@ -261,6 +261,42 @@ def _submit_batch_ai_redo(
     )
 
 
+def _resolve_download_history_username(token: _SchemaTokenPayload) -> Optional[str]:
+    """
+    解析下载历史查询应限定的用户名；管理员和下载管理权限用户返回 None 以查看全局记录。
+
+    :param token: 已校验的访问令牌载荷
+    :return: 限定查询的用户名；允许全局查询时返回 None
+    """
+    if token.agent_authorization_id:
+        from app.application.security.authorization import get_channel_authorization
+
+        authorization = get_channel_authorization()
+        if authorization is None:
+            raise HTTPException(status_code=503, detail="渠道授权服务不可用")
+        user = authorization.authorize_operation(token.agent_authorization_id, token.agent_operation or "")
+        return None if user.is_superuser else user.name
+    if token.super_user:
+        return None
+    if token.sub is not None:
+        from app.application.security.user import get_configured_user_id_lookup
+        from app.domain.authorization import has_web_permission
+
+        web_user = get_configured_user_id_lookup()(int(token.sub))
+        if web_user is None or not web_user.is_active:
+            raise HTTPException(status_code=401, detail="用户未激活")
+        if web_user.is_superuser or has_web_permission(False, web_user.permissions, "manage", "manage.downloading"):
+            return None
+        if has_web_permission(False, web_user.permissions, "search", "search.resource") or has_web_permission(
+            False, web_user.permissions, "subscribe"
+        ):
+            return web_user.name
+        raise HTTPException(status_code=403, detail="用户权限不足")
+    if token.username:
+        return token.username
+    raise HTTPException(status_code=403, detail="用户权限不足")
+
+
 @router.get(
     "/download",
     summary="查询下载历史记录",
@@ -279,6 +315,14 @@ async def download_history(
     """
     page = page if page is not None else 1
     count = count if count is not None else 30
+    if isinstance(_, _SchemaTokenPayload) and (_.agent_authorization_id or not _.super_user):
+        from app.runtime.execution import run_in_threadpool
+
+        username = await run_in_threadpool(_resolve_download_history_username, _)
+        results = await query.list_download(page=page, count=count, username=username)
+        if response is not None:
+            response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download(username=username))
+        return results
     results = await query.list_download(page=page, count=count)
     if response is not None:
         response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download())
@@ -507,6 +551,34 @@ def replan_transfer_history(
     return _SchemaResponse(success=result.accepted, message=result.message)
 
 
+async def _grant_manual_identity_authorization(
+        history: Any,
+        execution_repository: TransferExecutionRepository,
+) -> None:
+    """
+    在启动智能助手分析时覆盖任务上唯一的待消费身份修正授权。
+
+    :param history: 本次点击对应的整理历史视图
+    :param execution_repository: 拥有短事务的执行仓储
+    """
+    task_id = getattr(history, "transfer_task_id", None)
+    settlement_revision = getattr(history, "transfer_settlement_revision", None)
+    if not task_id or not settlement_revision:
+        return
+    try:
+        granted = await asyncio.to_thread(
+            TransferExecutionCommand(execution_repository).grant_manual_identity_authorization,
+            history_id=history.id,
+            task_id=task_id,
+            settlement_revision=settlement_revision,
+        )
+    except Exception as error:
+        logger.warning(f"整理历史 {history.id} 的人工身份授权登记失败：{error}")
+        return
+    if not granted:
+        logger.warning(f"整理历史 {history.id} 的任务或结算版本已变化，未登记人工身份授权")
+
+
 @router.post(
     "/transfer/{history_id}/ai-redo",
     summary="智能助手重新整理",
@@ -536,6 +608,8 @@ async def ai_redo_transfer_history(
     )
     if rejection:
         return _SchemaResponse(success=False, message=rejection)
+
+    await _grant_manual_identity_authorization(history, execution_repository)
 
     prompt = build_manual_redo_prompt(history)
     progress_key = f"ai_redo_transfer_{history_id}_{int(time.time() * 1000)}"
@@ -587,6 +661,9 @@ async def batch_ai_redo_transfer_history(
         )
         if rejection:
             return _SchemaResponse(success=False, message=f"第 {history.id} 条：{rejection}")
+
+    for history in histories:
+        await _grant_manual_identity_authorization(history, execution_repository)
 
     return _submit_batch_ai_redo(
         histories=histories,

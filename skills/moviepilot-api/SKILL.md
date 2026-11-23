@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 72
+version: 79
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -111,11 +111,11 @@ Passkey origins and is not the gateway base URL. Keep it configured even when
 the public reverse proxy is unreachable from inside the container.
 
 `subscription.add`, `subscription.update`, and `subscription.delete` require
-authorization for the action and scope and use the active MoviePilot user bound to the channel account,
+authorization for the action and scope and use the channel member identity verified by the host,
 including for channel administrators. Creation belongs to that user; ordinary
-users may update or delete only their own subscriptions. An unbound or inactive
-channel user must bind an active account before retrying, not switch to an
-administrator identity.
+users may update or delete only their own subscriptions. A channel member needs
+current approval from a MoviePilot administrator; account binding is optional
+and must not substitute an administrator identity.
 
 `subscription.list` uses the current user identity and subscription ownership filtering.
 The separate global subscription integration endpoint requires a valid API_TOKEN
@@ -162,6 +162,14 @@ not atomic; cross-share hard links are unsupported. Update saved directory and
 downloader mappings when switching path modes.
 
 ## Overall Workflow
+
+Conversions from other video sources to TMDB reuse cached community mappings
+before matching names and share successful results. Browsing only looks up known
+mappings to add a TheMovieDb link and preserves the original source identity.
+`GET /api/v1/media/mapping` and `POST /api/v1/media/mapping/match` (an explicit
+user click that runs the subscription conversion when no mapping is known) are
+frontend helpers, without Agent operations; continue using `media.detail` and do
+not construct extra HTTP requests.
 
 1. Select the exact `operation_id` from the category index below.
 2. Call `read_skill` again with `name="moviepilot-api"` and
@@ -252,6 +260,13 @@ credential, or enable, rotate, or export widget grants on a user's behalf. Readi
 issue or rotate credentials. See `docs/widgets.md` for the protocol and user scope. System extensions
 must not hold the main login token.
 
+`GET /api/v1/plugin/history/{plugin_id}?force=false` reads one installed plugin (or instance)
+from its bound repository without aggregating the market; unknown plugins return 404
+and unbound plugins retain their local snapshot. Use `force=true` only
+when a fresh index is needed; `/plugin/history/{plugin_id}` retains its default refresh.
+Failed/missing indexes retry after five minutes; transport failures remain failures
+for installation admission. Documentation queries read only the selected configured repository.
+
 Plugin metadata may include `plugin_readme`, an optional HTTP(S) documentation link.
 The UI resolves missing links through the admin REST endpoint
 `GET /api/v1/plugin/readme/{plugin_id}?repo_url=...`, which returns `url` or null
@@ -263,9 +278,9 @@ does not trigger `has_update`. Use `plugin.source.options` to inspect alternativ
 sources; switching sources still requires an explicit source change. Installed
 plugins without a bound source retain market candidates for source selection.
 
-Operations declare an identity scope: `public` reads external public metadata without requiring a channel account binding; `bound_user` uses the active MoviePilot user bound to the stable channel sender ID (Web uses its authenticated user ID); `admin` requires administrator authority. Read-only does not mean public. Channel nicknames never establish identity. Personal records and subscription writes retain their existing ownership and permission checks.
+Operations declare an identity scope: `public` reads external public metadata without account binding or approval; `bound_user` uses the host-verified channel authorization (Web uses its authenticated user ID); `admin` requires current administrator authority. Channel members do not need web-login accounts. Read-only does not mean public. Nicknames never establish identity. Personal subscriptions and downloads retain owner checks. See `docs/channel-authorization.md` for approval, migration, and account linking.
 
-When identity resolution fails, relay the gateway's actual remediation message and sender ID. Channel users bind their own MoviePilot account via avatar > Personal Information > Account Binding, fill the named channel field, and save. Do not invent a Settings > Users binding page, substitute nicknames/group/bot IDs, diagnose an ambiguous binding failure as a network issue, or ask Web users to bind a notification channel. Public operations do not require binding.
+When identity resolution fails, relay the actual gateway remediation. Channel users send `/apply` and a MoviePilot web administrator approves through the authorization dialog opened from User Management. Existing web accounts may generate a one-time binding code in their profile and complete linking in their own bot private chat. Never substitute nicknames, group IDs, bot IDs, or an administrator account; do not diagnose authorization failure as a network error. Web users need no channel binding. Public operations remain available without approval.
 
 This Skill is the complete callable MoviePilot business API surface for the
 Agent. Every operation in `allowed-api-operations` has one exact parameter
@@ -374,8 +389,11 @@ token exchange downloads retain their existing credential rules.
 - Treat `success=false`, HTTP error data, empty results, and validation errors as
   real outcomes. Do not claim success without checking the response.
 - `media.scrape` reports rejected media and failed NFO writes as business failures,
-  including failures within a directory. For concurrent custom-filter changes,
-  re-read the rules and confirm the intended change before retrying a conflict.
+  including failures within a directory. For music albums, report its `message`:
+  track titles, artists and numbers are retained by default; the music tag
+  overwrite policy only updates reliably aligned tracks. An aligned count does
+  not prove every tag changed. For concurrent custom-filter changes, re-read
+  the rules and confirm the intended change before retrying a conflict.
 - Respect an explicit `execution_outcome`: `pending` is accepted but unfinished,
   `unknown` means a write may have happened, and `replayed` means this call did
   not execute; `previous_status` describes the earlier receipt. Do not repeat an
@@ -389,7 +407,7 @@ token exchange downloads retain their existing credential rules.
 ## Agent Task And Conversation State
 
 - For `agent_task` updates, `enabled=null` preserves the current enabled state. Renaming a paused task does not resume its schedule.
-- `agent_task` pins a real execution account at creation. Channel senders must uniquely bind to an active MoviePilot user. Background API calls retain that account's permissions, and invalid identity fails the run. Confirm legacy tasks with `update` in their original conversation or recreate them; never substitute a same-name account or fall back to the superuser.
+- `agent_task` pins both the execution account and channel authorization at creation. Channel members need the schedule capability, not a web-login account. Background APIs, tools, and subagents recheck that same identity and live authority. Recreate unconfirmed legacy channel tasks in the original conversation; never substitute a same-name account or fall back to the superuser.
 - Traditional message sessions are scoped by channel, configured source, and user ID. A stop, clear, status query, or confirmation targets the current source's session.
 - Background WebAgent completion appends the current turn to display history. Frontend complete snapshots keep their existing replacement contract.
 - Complete snapshot replacement retains hidden choice receipts so delayed snapshots cannot restore a selected card to pending; ordinary messages retain replacement behavior.
@@ -417,6 +435,12 @@ token exchange downloads retain their existing credential rules.
 - Recent `search.results` snapshots belong to the authenticated user; search again after
   upgrading to populate them. Optional Web `done.diagnostics` uses `scope=page` for the current
   page. Skipped rule groups do not increase the resource rejection count.
+- Page diagnostics `rule_id_invalid`, `rule_id_missing`, and `rule_syntax_invalid`
+  describe configuration errors in selected applicable rule groups, not ordinary
+  resource mismatches. Optional `warnings.rule_ids` preserves complete IDs and
+  surrounding whitespace. Use rule APIs to rename IDs and references together;
+  do not edit the database. Upgrade migration handles unambiguous legacy IDs;
+  confirm ambiguous references manually instead of relaxing parsing or skipping rules.
 - For list inspection, explicitly send the operation's documented pagination
   fields instead of requesting an unbounded legacy result. For optional legacy
   pagination, start with `query={"page":1,"count":20}`.

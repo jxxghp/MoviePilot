@@ -1,14 +1,18 @@
 """
-验证本地文件复制和移动时的权限继承、时间戳与跨盘回退。
+验证本地文件复制、移动及链接修复的权限、原子性与失败保护。
 """
 
 import errno
 import os
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
+
+import pytest
 
 from app import schemas
 from app.modules.filemanager.storages import local as local_storage_module
+from app.schemas.exception import StorageQueryError
 
 SOURCE_MTIME_NS = 1_000_000_000_000_000_000
 
@@ -196,6 +200,9 @@ def test_list_skips_subitems_that_disappear_before_stat(tmp_path: Path) -> None:
     original_stat = local_storage_module.fsproxy.stat
 
     def _stat(path, *args, **kwargs):
+        """
+        模拟文件在目录枚举后、读取元数据之前被删除。
+        """
         if Path(path).name == "vanished.txt":
             raise OSError(errno.ENOENT, "No such file or directory")
         return original_stat(path, *args, **kwargs)
@@ -207,3 +214,103 @@ def test_list_skips_subitems_that_disappear_before_stat(tmp_path: Path) -> None:
     assert "keep.txt" in names
     assert "keepdir" in names
     assert "vanished.txt" not in names
+
+
+def test_softlink_failed_replacement_preserves_original_link(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    原子替换失败时，源文件和原链接均保留，已创建的私有链接须清理。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.mkv"
+    source.write_bytes(b"movie")
+    original_link = tmp_path / "missing.mkv"
+    target.symlink_to(original_link)
+
+    def fail_replace(staged: Path, destination: Path) -> None:
+        """
+        验证新链接已创建、旧链接仍在，再模拟替换时被拒绝访问。
+        """
+        assert staged.is_symlink() and staged.resolve() == source.resolve()
+        assert destination.readlink() == original_link
+        raise PermissionError(errno.EACCES, "permission denied")
+
+    monkeypatch.setattr(local_storage_module.os, "replace", fail_replace)
+
+    assert not _make_storage().softlink(schemas.FileItem(path=source.as_posix()), target)
+    assert source.read_bytes() == b"movie"
+    assert target.is_symlink() and not target.exists()
+    assert target.readlink() == original_link
+    assert not list(tmp_path.glob(".*.mp"))
+
+
+@pytest.mark.parametrize("new_target", ["file", "symlink"])
+def test_softlink_repair_preserves_target_that_changes_during_staging(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, new_target: str,
+) -> None:
+    """
+    暂存期间被其他任务替换的文件或有效链接，不能再被旧任务覆盖。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.mkv"
+    source.write_bytes(b"movie")
+    target.symlink_to(tmp_path / "missing.mkv")
+    replacement = tmp_path / "replacement.mkv"
+    replacement.write_bytes(b"another-task")
+    real_softlink = local_storage_module.SystemUtils.softlink
+
+    def create_then_change_target(src: Path, dest: Path) -> tuple[int, str]:
+        """
+        创建私有链接后模拟另一个任务已更新最终目标。
+        """
+        assert dest != target
+        result = real_softlink(src, dest)
+        target.unlink()
+        if new_target == "symlink":
+            target.symlink_to(replacement)
+        else:
+            target.write_bytes(b"another-task")
+        return result
+
+    monkeypatch.setattr(local_storage_module.SystemUtils, "softlink", create_then_change_target)
+
+    assert not _make_storage().softlink(schemas.FileItem(path=source.as_posix()), target)
+    assert source.read_bytes() == b"movie"
+    assert target.read_bytes() == b"another-task"
+    assert target.is_symlink() is (new_target == "symlink")
+    assert replacement.read_bytes() == b"another-task"
+    assert not list(tmp_path.glob(".*.mp"))
+
+
+@pytest.mark.parametrize("failed_query", [1, 2])
+def test_softlink_repair_requires_confirmed_missing_target(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed_query: int,
+) -> None:
+    """
+    创建前或替换前无法确认目标状态时均应停止修复并保留原链接。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.mkv"
+    source.write_bytes(b"movie")
+    original_link = tmp_path / "missing.mkv"
+    target.symlink_to(original_link)
+    storage = _make_storage()
+    real_query = storage.get_item_strict
+    queries = 0
+
+    def query(path: Path) -> Optional[schemas.FileItem]:
+        """
+        在指定的严格查询阶段模拟挂载不可用。
+        """
+        nonlocal queries
+        queries += 1
+        if queries == failed_query:
+            raise StorageQueryError("测试挂载不可用")
+        return real_query(path)
+
+    monkeypatch.setattr(storage, "get_item_strict", query)
+
+    assert not storage.softlink(schemas.FileItem(path=source.as_posix()), target)
+    assert queries == failed_query
+    assert source.read_bytes() == b"movie"
+    assert target.is_symlink() and not target.exists()
+    assert target.readlink() == original_link
+    assert not list(tmp_path.glob(".*.mp"))

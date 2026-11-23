@@ -531,6 +531,18 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 text=(f"已检查订阅（{summary.finished}/{total_num}）"),
             )
 
+    def _reconcile_pending_before_match(
+        self,
+        subscribe: SubscriptionSnapshot,
+    ) -> Optional[SubscriptionSnapshot]:
+        """
+        单条订阅进入匹配前先核对其待确认提交；若已确认并完成订阅则返回 None。
+        """
+        reconciled = self.reconcile_pending_downloads(subscription_id=subscribe.id)
+        if not reconciled.confirmed:
+            return subscribe
+        return cast(Optional[SubscriptionSnapshot], self.subscription_repository.get(subscribe.id))
+
     def _match_subscription(
         self,
         *,
@@ -548,8 +560,11 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             activity.counts["sites"] = len(execution_context.refresh_sites) or len(processed_torrents)
             activity.details["sites"] = cast(Any, list(execution_context.refresh_sites))
             activity.details["candidate_scope"] = "shared"
+            current = self._reconcile_pending_before_match(subscribe)
+            if current is None:
+                return "completed"
             result = self._execute_match(
-                subscribe=subscribe, processed_torrents=processed_torrents,
+                subscribe=current, processed_torrents=processed_torrents,
                 candidate_index=candidate_index, fresh_fact_lease=fresh_fact_lease,
                 execution_context=execution_context,
             )

@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import Request
+from fastapi import FastAPI, Request
 from starlette.responses import Response
 from starlette.testclient import TestClient
 
@@ -32,7 +32,10 @@ from app.api.endpoints.plugin import (
 )
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin import release as release_module
-from app.application.plugin.catalog import PluginCatalogQuery
+from app.application.plugin.catalog import (
+    PluginCatalogQuery,
+    PluginMarketUnavailableError,
+)
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
@@ -108,6 +111,128 @@ def _catalog_query(plugin_manager: MagicMock, persistence: MagicMock) -> PluginC
         identities=persistence.list_identities,
         free_threaded=lambda: False,
     )
+
+
+def test_all_plugins_returns_failed_dependency_for_unavailable_market(monkeypatch):
+    """
+    市场不可用时 HTTP 接口返回 424 和可执行的错误提示。
+    """
+    message = "插件市场索引暂时无法读取，请检查 GitHub 网络连接和代理配置"
+    catalog = SimpleNamespace(
+        query=AsyncMock(side_effect=PluginMarketUnavailableError(message))
+    )
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_plugin_catalog_query",
+        lambda: catalog,
+    )
+
+    api = FastAPI()
+    api.include_router(plugin_endpoint.router, prefix="/api/v1/plugin")
+    api.dependency_overrides[plugin_endpoint.get_current_active_superuser_async] = lambda: None
+
+    with TestClient(api) as client:
+        response = client.get("/api/v1/plugin/", params={"state": "market", "force": "true"})
+
+    catalog.query.assert_awaited_once_with(state="market", force=True)
+    assert response.status_code == 424
+    assert response.json()["detail"] == message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["all", "installed"])
+async def test_all_plugins_query_keeps_installed_view_when_market_is_unavailable(state: str):
+    """
+    市场不可用时仍允许 all 视图返回本地已安装插件。
+    """
+    installed = schemas.Plugin(id="Installed", installed=True)
+    online_candidates = AsyncMock(side_effect=PluginMarketUnavailableError("索引读取失败"))
+    query = PluginCatalogQuery(
+        installed_plugins=lambda: [installed],
+        local_plugins=lambda: [installed],
+        local_repo_plugins=lambda: [],
+        online_candidates=online_candidates,
+        process_plugins=lambda higher, base: higher + base,
+        identities=AsyncMock(return_value=[]),
+        free_threaded=lambda: False,
+    )
+
+    result = await query.query(state=state)
+
+    assert [plugin.id for plugin in result] == ["Installed"]
+    assert result[0].installed is True
+    assert online_candidates.await_count == (1 if state == "all" else 0)
+
+
+@pytest.mark.asyncio
+async def test_market_query_keeps_local_candidates_when_online_markets_are_unavailable():
+    """
+    远程市场不可用时保留本地仓库候选，避免故障屏蔽本地可安装插件。
+    """
+    local_candidate = schemas.Plugin(
+        id="LocalCandidate",
+        repo_url="local://LocalCandidate",
+    )
+    query = PluginCatalogQuery(
+        installed_plugins=list,
+        local_plugins=list,
+        local_repo_plugins=lambda: [local_candidate],
+        online_candidates=AsyncMock(
+            side_effect=PluginMarketUnavailableError("索引读取失败")
+        ),
+        process_plugins=lambda higher, base: higher + base,
+        identities=AsyncMock(return_value=[]),
+        free_threaded=lambda: False,
+    )
+
+    result = await query.query(state="market")
+
+    assert [plugin.id for plugin in result] == ["LocalCandidate"]
+
+
+@pytest.mark.asyncio
+async def test_market_query_keeps_uninstalled_runtime_plugins_when_online_markets_are_unavailable():
+    """
+    远程市场不可用时保留本地未安装插件占位项。
+    """
+    runtime_candidate = schemas.Plugin(id="RuntimeCandidate", installed=False)
+    query = PluginCatalogQuery(
+        installed_plugins=list,
+        local_plugins=lambda: [runtime_candidate],
+        local_repo_plugins=list,
+        online_candidates=AsyncMock(
+            side_effect=PluginMarketUnavailableError("索引读取失败")
+        ),
+        process_plugins=lambda higher, base: higher + base,
+        identities=AsyncMock(return_value=[]),
+        free_threaded=lambda: False,
+    )
+
+    result = await query.query(state="market")
+
+    assert [plugin.id for plugin in result] == ["RuntimeCandidate"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("found", [False, True])
+async def test_single_plugin_metadata_avoids_market_aggregation(monkeypatch, found):
+    """
+    指定已安装插件 ID 时沿用绑定来源查询，不读取全市场；不存在时返回 404。
+    """
+    plugin = schemas.Plugin(id="Demo", installed=True) if found else None
+    history = AsyncMock(return_value=plugin)
+    catalog = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_release_service", lambda: SimpleNamespace(history=history))
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_catalog_query", catalog)
+
+    if found:
+        assert await plugin_endpoint.plugin_history("Demo", force=False) == plugin
+    else:
+        with pytest.raises(plugin_endpoint.HTTPException) as error:
+            await plugin_endpoint.plugin_history("Demo", force=False)
+        assert error.value.status_code == 404
+    history.assert_awaited_once_with("Demo", force=False)
+    catalog.assert_not_called()
 
 
 def test_update_candidates_report_source_and_binding_relationship():
