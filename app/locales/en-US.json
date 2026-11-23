@@ -680,7 +680,8 @@
     "渠道授权服务尚未就绪": "The channel authorization service is not ready",
     "请使用 MoviePilot 系统管理员账号管理渠道授权": "Use a MoviePilot system administrator account to manage channel authorization",
     "目标渠道不存在或尚未启用": "The target channel does not exist or is disabled",
-    "渠道授权服务不可用": "The channel authorization service is unavailable"
+    "渠道授权服务不可用": "The channel authorization service is unavailable",
+    "用户未激活": "User is inactive"
   },
   "message_patterns": [
     {

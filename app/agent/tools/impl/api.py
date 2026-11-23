@@ -310,6 +310,76 @@ class MoviePilotApiTool(MoviePilotTool):
             ensure_ascii=False,
         )
 
+    def _sync_direct_web_user_context(self, user: Any, *, is_direct_user_channel: bool) -> None:
+        """
+        将实时查询到的网页用户状态与权限同步回当前工具上下文。
+
+        :param user: 实时数据库用户记录
+        :param is_direct_user_channel: 是否为直接网页或 WebAgent 渠道
+        """
+        if not is_direct_user_channel:
+            return
+        if not user.is_active:
+            self._agent_context["web_user_active"] = False
+            return
+        normalized_permissions = normalize_web_permissions(getattr(user, "permissions", None))
+        self._resolved_web_permissions = normalized_permissions
+        self._agent_context["web_user_active"] = True
+        self._agent_context["web_user_permissions"] = normalized_permissions
+        self._agent_context["is_admin"] = bool(user.is_superuser)
+
+    def _check_operation_authorization(
+        self,
+        operation_id: str,
+        *,
+        requires_system_admin: bool,
+        is_admin: bool,
+        query: Optional[Dict[str, Any]],
+        body: Any,
+    ) -> Optional[str]:
+        """
+        按当前会话来源校验操作权限；拒绝时返回结构化 JSON 错误字符串。
+
+        :param operation_id: 白名单业务 API 操作标识
+        :param requires_system_admin: 操作在非网页渠道下是否要求系统管理员
+        :param is_admin: 当前解析出的主体是否为超级管理员
+        :param query: 查询参数
+        :param body: 请求体
+        :return: 拒绝时的 JSON 错误响应；允许时返回 None
+        """
+        if self._is_direct_web_session():
+            if self._agent_context.get("web_user_active") is False:
+                message = "当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。"
+                self._record_identity_error(message)
+                return json.dumps(
+                    {"success": False, "error": "permission_denied", "message": message},
+                    ensure_ascii=False,
+                )
+            allowed, denial_reason = authorize_web_operation(
+                is_superuser=is_admin,
+                permissions=self._get_resolved_web_permissions(),
+                operation_id=operation_id,
+                media_type=self._extract_request_media_type(query=query, body=body),
+            )
+            if not allowed:
+                self._record_identity_error(denial_reason)
+                return json.dumps(
+                    {"success": False, "error": "permission_denied", "message": denial_reason},
+                    ensure_ascii=False,
+                )
+            return None
+        if requires_system_admin and not is_admin:
+            self._record_identity_error("任务执行账号不具备此操作需要的系统管理员权限。")
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "permission_denied",
+                    "message": "This MoviePilot API operation requires a system administrator.",
+                },
+                ensure_ascii=False,
+            )
+        return None
+
     async def _resolve_superuser_integration_identity(
         self,
     ) -> tuple[str, Optional[str], bool]:
@@ -396,16 +466,9 @@ class MoviePilotApiTool(MoviePilotTool):
             user = await self._resolve_channel_api_user(raw_user_id)
         if user is None:
             raise ApiExecutionError(self._identity_unavailable_message())
+        self._sync_direct_web_user_context(user, is_direct_user_channel=is_direct_user_channel)
         if not user.is_active:
-            if is_direct_user_channel:
-                self._agent_context["web_user_active"] = False
             raise ApiExecutionError("当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。重新绑定不能解除停用。")
-        if is_direct_user_channel:
-            normalized_permissions = normalize_web_permissions(getattr(user, "permissions", None))
-            self._resolved_web_permissions = normalized_permissions
-            self._agent_context["web_user_active"] = True
-            self._agent_context["web_user_permissions"] = normalized_permissions
-            self._agent_context["is_admin"] = bool(user.is_superuser)
         return str(user.id), user.name, bool(user.is_superuser)
 
     def _identity_unavailable_message(self) -> str:
@@ -553,43 +616,15 @@ class MoviePilotApiTool(MoviePilotTool):
                 require_system_admin=requires_system_admin,
                 public_read_only=operation_id in API_UNBOUND_READ_OPERATIONS,
             )
-            if self._is_direct_web_session():
-                if self._agent_context.get("web_user_active") is False:
-                    self._record_identity_error("当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。")
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": "permission_denied",
-                            "message": "当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。",
-                        },
-                        ensure_ascii=False,
-                    )
-                allowed, denial_reason = authorize_web_operation(
-                    is_superuser=is_admin,
-                    permissions=self._get_resolved_web_permissions(),
-                    operation_id=operation_id,
-                    media_type=self._extract_request_media_type(query=query, body=body),
-                )
-                if not allowed:
-                    self._record_identity_error(denial_reason)
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": "permission_denied",
-                            "message": denial_reason,
-                        },
-                        ensure_ascii=False,
-                    )
-            elif requires_system_admin and not is_admin:
-                self._record_identity_error("任务执行账号不具备此操作需要的系统管理员权限。")
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": "permission_denied",
-                        "message": "This MoviePilot API operation requires a system administrator.",
-                    },
-                    ensure_ascii=False,
-                )
+            denied_response = self._check_operation_authorization(
+                operation_id,
+                requires_system_admin=requires_system_admin,
+                is_admin=is_admin,
+                query=query,
+                body=body,
+            )
+            if denied_response is not None:
+                return denied_response
             result = await executor.execute(
                 operation_id,
                 path_params=path_params,

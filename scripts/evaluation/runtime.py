@@ -833,10 +833,25 @@ async def _run_isolated(
         output: list[str] = []
         command_root = directory / "command-workspace"
         command_root.mkdir()
+        eval_user = SimpleNamespace(
+            id=1,
+            name="evaluation",
+            is_active=True,
+            is_superuser=True,
+            permissions={},
+        )
+
+        async def _eval_get_user(_key: Any) -> Any:
+            return eval_user
+
+        eval_users = SimpleNamespace(
+            async_get_by_id=_eval_get_user,
+            async_get_by_name=_eval_get_user,
+        )
         agent = _agent_type()(
             session_id=session_id, user_id="1", username="evaluation", channel=NotificationChannel.WebAgent.value,
             source="evaluation", is_channel_admin=True, replay_mode=ReplyMode.CAPTURE_ONLY, allow_message_tools=False,
-            output_callback=output.append, data=SimpleNamespace(invocations=invocation_repository),
+            output_callback=output.append, data=SimpleNamespace(invocations=invocation_repository, users=eval_users),
             memory=MemoryManager(chat=memory_port, persistence=memory_port), model=model, model_name=model_name,
             context_window=context_window, max_iterations=max_iterations,
         )

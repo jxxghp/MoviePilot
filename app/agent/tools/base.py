@@ -898,6 +898,31 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                     roots.append(resolved_dir)
         return roots
 
+    def _check_non_admin_memory_access(
+        self,
+        resolved_path: Path,
+        memory_root: Path,
+        operation: str,
+    ) -> Optional[str]:
+        """
+        校验普通用户访问记忆目录时的归属与写权限边界。
+
+        :param resolved_path: 归一化后的目标路径
+        :param memory_root: Agent 记忆根目录
+        :param operation: 当前操作名称
+        :return: 拒绝原因；允许时返回 None
+        """
+        user_memory_root = memory_root / "users"
+        if self._is_path_relative_to(resolved_path, user_memory_root):
+            user_key = build_user_memory_key(str(self._agent_context.get("memory_owner_id") or self._user_id))
+            own_memory_root = user_memory_root / user_key if user_key else None
+            if not own_memory_root or not self._is_path_relative_to(resolved_path, own_memory_root):
+                return "抱歉，普通用户只能访问自己的用户级记忆，不能读取或修改其他用户的记忆。"
+            return None
+        if operation != "读取":
+            return "抱歉，全局公共记忆只有系统管理员才能写入；请将个人偏好写入当前用户的记忆目录。"
+        return None
+
     async def _check_local_file_access(
         self, path: str, operation: str = "访问"
     ) -> tuple[Optional[Path], Optional[str]]:
@@ -937,6 +962,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             return resolved_path, "抱歉，Agent 后台任务配置仅允许系统管理员访问。"
 
         memory_root = agent_root / "memory"
+        if self._is_path_relative_to(resolved_path, memory_root):
+            return resolved_path, self._check_non_admin_memory_access(resolved_path, memory_root, operation)
+
         runtime_root = agent_root / "runtime"
         for protected in (runtime_root / 'learning' / 'users', runtime_root / 'history' / 'users', runtime_root / 'code' / 'users'):
             if self._is_path_relative_to(resolved_path, protected):
@@ -944,39 +972,11 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 if not user_key or not self._is_path_relative_to(resolved_path, protected / user_key):
                     return resolved_path, '抱歉，不能读取或修改其他用户的 Agent 消息和个人技能。'
         if self._is_path_relative_to(resolved_path, runtime_root) and operation != "读取":
-            return (
-                resolved_path,
-                "抱歉，Agent 人格及运行时配置只有系统管理员才能修改。",
-            )
-
+            return resolved_path, "抱歉，Agent 人格及运行时配置只有系统管理员才能修改。"
         if self._is_path_relative_to(resolved_path, agent_root / 'skills') and operation != '读取':
             return resolved_path, '抱歉，公共技能只有系统管理员才能修改；个人学习请使用 skill_manage。'
-
-        if not self._is_path_relative_to(resolved_path, memory_root):
-            if operation != "读取":
-                return (
-                    resolved_path,
-                    "抱歉，普通用户只能修改自己的用户级记忆，不能修改 Agent 公共或系统文件。",
-                )
-            return resolved_path, None
-
-        user_memory_root = memory_root / "users"
-        if self._is_path_relative_to(resolved_path, user_memory_root):
-            user_key = build_user_memory_key(str(self._agent_context.get("memory_owner_id") or self._user_id))
-            own_memory_root = user_memory_root / user_key if user_key else None
-            if not own_memory_root or not self._is_path_relative_to(resolved_path, own_memory_root):
-                return (
-                    resolved_path,
-                    "抱歉，普通用户只能访问自己的用户级记忆，不能读取或修改其他用户的记忆。",
-                )
-            return resolved_path, None
-
         if operation != "读取":
-            return (
-                resolved_path,
-                "抱歉，全局公共记忆只有系统管理员才能写入；请将个人偏好写入当前用户的记忆目录。",
-            )
-
+            return resolved_path, "抱歉，普通用户只能修改自己的用户级记忆，不能修改 Agent 公共或系统文件。"
         return resolved_path, None
 
     async def _check_local_storage_access(
