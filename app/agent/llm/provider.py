@@ -187,7 +187,7 @@ class LLMProviderManager(
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
         """
-        刷新动态目录后返回 Provider 目录。
+        返回前端可渲染的内置 Provider 目录。
         """
         return await _ProviderCatalog.list_providers_async(
             self,

@@ -767,7 +767,7 @@
       "source_file": "app/runtime/config.py"
     },
     "LLM_PROVIDER": {
-      "description": "LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）",
+      "description": "LLM提供商（支持内置主流厂商及通用 OpenAI / Anthropic 兼容入口）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py"
     },

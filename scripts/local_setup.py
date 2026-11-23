@@ -124,6 +124,7 @@ LLM_PROVIDER_DEFAULTS = {
 LLM_PROVIDER_FALLBACK_CHOICES = {
     "deepseek": "DeepSeek",
     "openai": "OpenAI Compatible",
+    "anthropic-compatible": "Anthropic Compatible",
     "google": "Google",
     "anthropic": "Anthropic",
     "baidu-qianfan-coding-plan": "百度千帆",
