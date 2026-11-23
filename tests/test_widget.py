@@ -541,12 +541,14 @@ def test_widget_dependency_assembly_and_absent_capability(widget_case, monkeypat
     sampler = Mock(return_value=DownloaderInfo())
     monkeypatch.setattr(dependencies, "sample_downloader", sampler)
     snapshots = dependencies.get_widget_snapshot_service(case.history, ApiRuntimeConfig(60, True, False))
-    result = asyncio.run(snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    first = service.register(101, case.owners[0], uuid4())
+    result = asyncio.run(snapshots.snapshot(service.authenticate(first.secret)))
     assert result.sections[0].state == "empty"
     download_chain.downloading.assert_called_once_with(require_source=True)
     sampler.assert_not_called()
     _update_user(case, is_superuser=True)
-    asyncio.run(snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    second = service.register(101, case.owners[0], uuid4())
+    asyncio.run(snapshots.snapshot(service.authenticate(second.secret)))
     sampler.assert_called_once_with(btrfs_fsid_dedup=True, require_source=True)
 
 
