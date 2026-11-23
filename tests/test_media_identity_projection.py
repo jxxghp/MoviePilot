@@ -47,6 +47,13 @@ class _SyncProjectionChain:
         self.tmdb_match = kwargs
         return self.tmdb_result
 
+    def match_tmdbinfo(self, **kwargs: Any) -> dict[str, Any]:
+        """
+        记录直接通过外部 ID 匹配 TMDB 的同步调用参数。
+        """
+        self.tmdb_match = kwargs
+        return self.tmdb_result
+
     @staticmethod
     def tmdb_info(
         tmdbid: int,
@@ -104,6 +111,13 @@ class _AsyncProjectionChain:
     ) -> dict[str, Any]:
         """
         记录异步 TMDB 匹配参数并返回原始详情。
+        """
+        self.tmdb_match = kwargs
+        return self.tmdb_result
+
+    async def async_match_tmdbinfo(self, **kwargs: Any) -> dict[str, Any]:
+        """
+        记录直接通过外部 ID 匹配 TMDB 的异步调用参数。
         """
         self.tmdb_match = kwargs
         return self.tmdb_result
@@ -217,3 +231,46 @@ def test_async_tmdb_to_douban_matches_sync_projection() -> None:
     assert result == {"id": "1295644", "media_type": "tv"}
     assert chain.douban_match["year"] == "2025"
     assert chain.douban_match["imdbid"] == "tt0000550"
+
+
+def test_imdb_to_tmdb_sync_and_async_projection() -> None:
+    """
+    IMDb 转 TMDB 应规范化 tt 编号并直接按 IMDb 外部标识查找 TMDB。
+    """
+    sync_chain = _SyncProjectionChain()
+    sync_chain.tmdb_result = {"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+
+    sync_result = MediaChain.convert_media_identity(
+        sync_chain,
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource.IMDb,
+        media_id="TT27165187",
+    )
+
+    assert sync_result == {"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+    assert sync_chain.tmdb_match == {
+        "name": "",
+        "mtype": None,
+        "imdbid": "tt27165187",
+    }
+
+    async_chain = _AsyncProjectionChain()
+    async_chain.tmdb_result = {"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+
+    async_result = asyncio.run(
+        MediaChain.async_convert_media_identity(
+            async_chain,
+            target_source=MediaSource.TMDB,
+            media_source=MediaSource.IMDb,
+            media_id="TT27165187",
+        )
+    )
+
+    assert async_result == sync_result
+    assert async_chain.tmdb_match == sync_chain.tmdb_match
+    assert MediaChain.convert_media_identity(
+        sync_chain,
+        target_source=MediaSource.TMDB,
+        media_source=MediaSource.IMDb,
+        media_id="invalid-id",
+    ) is None

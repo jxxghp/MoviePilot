@@ -366,6 +366,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         mtype: Optional[MediaType] = None,
         year: Optional[str] = None,
         season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """
         搜索和匹配TMDB信息
@@ -374,8 +375,17 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param mtype: 类型
         :param year: 年份
         :param season: 季
+        :param imdbid: 可选 IMDb 条目标识，用于精确查找 TMDB 详情
         """
-        return cast(Optional[dict[str, Any]], self.run_module("match_tmdbinfo", name=name, mtype=mtype, year=year, season=season))
+        kwargs: dict[str, Any] = {
+            "name": name,
+            "mtype": mtype,
+            "year": year,
+            "season": season,
+        }
+        if imdbid is not None:
+            kwargs["imdbid"] = imdbid
+        return cast(Optional[dict[str, Any]], self.run_module("match_tmdbinfo", **kwargs))
 
     async def async_match_tmdbinfo(
         self,
@@ -383,6 +393,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         mtype: Optional[MediaType] = None,
         year: Optional[str] = None,
         season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """
         搜索和匹配TMDB信息（异步版本）
@@ -391,8 +402,17 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param mtype: 类型
         :param year: 年份
         :param season: 季
+        :param imdbid: 可选 IMDb 条目标识，用于精确查找 TMDB 详情
         """
-        return cast(Optional[dict[str, Any]], await self.async_run_module("async_match_tmdbinfo", name=name, mtype=mtype, year=year, season=season))
+        kwargs: dict[str, Any] = {
+            "name": name,
+            "mtype": mtype,
+            "year": year,
+            "season": season,
+        }
+        if imdbid is not None:
+            kwargs["imdbid"] = imdbid
+        return cast(Optional[dict[str, Any]], await self.async_run_module("async_match_tmdbinfo", **kwargs))
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
         """

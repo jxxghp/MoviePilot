@@ -135,7 +135,7 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         if is_tmdb_recognize_source is None or not is_tmdb_recognize_source():
             return None
         source, media_id = resolve_media_identity(media=subscribe)
-        if source not in (MediaSource.Douban, MediaSource.Bangumi, MediaSource.AniList) or not media_id:
+        if source not in (MediaSource.Douban, MediaSource.Bangumi, MediaSource.AniList, MediaSource.IMDb) or not media_id:
             return None
 
         media_chain = media_chain_factory()

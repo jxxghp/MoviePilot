@@ -1189,7 +1189,12 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return await self._async_run_recognize_steps(plan)
 
     def match_tmdbinfo(
-        self, name: str, mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None
+        self,
+        name: str,
+        mtype: Optional[MediaType] = None,
+        year: Optional[str] = None,
+        season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[_TmdbData]:
         """
         搜索和匹配TMDB信息。
@@ -1198,8 +1203,14 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
         :param year: 作品上映或整剧首播年份，未指定时不按年份限制
         :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :param imdbid: 可选 IMDb 条目标识；优先通过外部标识精确查找 TMDB 详情
         :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
+        if imdbid:
+            logger.info(f"开始使用 IMDb ID：{imdbid} 匹配TMDB信息 ...")
+            info = self.tmdb.find_by_imdb_id(imdb_id=imdbid, mtype=mtype)
+            if info or not name:
+                return info
         logger.info(f"开始使用 名称：{name} 年份：{year} 匹配TMDB信息 ...")
         info = self.tmdb.match(name=name, year=year, mtype=mtype or MediaType.MOVIE, season_year=year, season_number=season)
         if info and not info.get("genres"):
@@ -1210,7 +1221,12 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return info
 
     async def async_match_tmdbinfo(
-        self, name: str, mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None
+        self,
+        name: str,
+        mtype: Optional[MediaType] = None,
+        year: Optional[str] = None,
+        season: Optional[int] = None,
+        imdbid: Optional[str] = None,
     ) -> Optional[_TmdbData]:
         """
         异步搜索和匹配TMDB信息。
@@ -1219,8 +1235,14 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
         :param year: 作品上映或整剧首播年份，未指定时不按年份限制
         :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :param imdbid: 可选 IMDb 条目标识；优先通过外部标识精确查找 TMDB 详情
         :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
+        if imdbid:
+            logger.info(f"开始使用 IMDb ID：{imdbid} 匹配TMDB信息 ...")
+            info = await self.tmdb.async_find_by_imdb_id(imdb_id=imdbid, mtype=mtype)
+            if info or not name:
+                return info
         logger.info(f"开始使用 名称：{name} 年份：{year} 匹配TMDB信息 ...")
         info = await self.tmdb.async_match(name=name, year=year, mtype=mtype or MediaType.MOVIE, season_year=year, season_number=season)
         if info and not info.get("genres"):

@@ -157,3 +157,58 @@ def test_module_match_and_image_sync_async_boundaries() -> None:
     module.tmdb.async_get_info = AsyncMock(return_value=None)
     assert asyncio.run(module.async_tmdb_info(1, MediaType.MOVIE)) is None
     assert TheMovieDbModule._pick_best_tmdb_image(None) is None
+
+
+def test_module_match_tmdbinfo_by_imdb_id_sync_and_async() -> None:
+    """
+    传入 imdbid 时应优先通过 TMDB find 查找，未命中且无标题时不降级标题搜索。
+    """
+    module = _module()
+    expected = {"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+    module.tmdb.find_by_imdb_id.return_value = expected
+    module.tmdb.async_find_by_imdb_id = AsyncMock(return_value=expected)
+
+    assert module.match_tmdbinfo("", imdbid="tt27165187") == expected
+    module.tmdb.match.assert_not_called()
+    assert asyncio.run(module.async_match_tmdbinfo("", imdbid="tt27165187")) == expected
+
+    module.tmdb.find_by_imdb_id.return_value = None
+    assert module.match_tmdbinfo("", imdbid="tt27165187") is None
+    module.tmdb.match.assert_not_called()
+
+    module.tmdb.match.return_value = {"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+    assert module.match_tmdbinfo("The End of Oak Street", imdbid="tt27165187") is not None
+    module.tmdb.match.assert_called_once()
+
+
+def test_tmdb_api_find_by_imdb_id_sync_async_and_disambiguation() -> None:
+    """
+    TmdbApi 应支持按 IMDb ID 同步和异步查找电影与电视剧并拒绝类型歧义。
+    """
+    from app.modules.themoviedb.tmdbapi import TmdbApi
+
+    api = object.__new__(TmdbApi)
+    api.find = Mock()
+    api.find.find_by_imdb_id.return_value = {
+        "movie_results": [{"id": 1101383, "title": "逃出绝命街"}],
+        "tv_results": [],
+    }
+    api.find.async_find_by_imdb_id = AsyncMock(return_value=api.find.find_by_imdb_id.return_value)
+    api.get_info = Mock(return_value={"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"})
+    api.async_get_info = AsyncMock(return_value={"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"})
+
+    assert api.find_by_imdb_id("TT27165187") == {"id": 1101383, "media_type": MediaType.MOVIE, "title": "逃出绝命街"}
+    api.find.find_by_imdb_id.assert_called_once_with("tt27165187")
+    api.get_info.assert_called_once_with(mtype=MediaType.MOVIE, tmdbid=1101383)
+
+    assert asyncio.run(api.async_find_by_imdb_id("tt27165187")) == {
+        "id": 1101383,
+        "media_type": MediaType.MOVIE,
+        "title": "逃出绝命街",
+    }
+    assert api.find_by_imdb_id("invalid") is None
+    assert TmdbApi._select_find_result({"movie_results": [{"id": 1}], "tv_results": [{"id": 2}]}, None) is None
+    assert TmdbApi._select_find_result({"movie_results": [{"id": 1}], "tv_results": [{"id": 2}]}, MediaType.TV) == (
+        MediaType.TV,
+        2,
+    )

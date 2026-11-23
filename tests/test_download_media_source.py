@@ -64,6 +64,192 @@ def test_download_add_passes_generic_media_source(monkeypatch) -> None:
     assert captured["download"]["context"].media_info is media
 
 
+def test_download_add_converts_imdb_to_tmdb_when_recognize_source_is_tmdb(monkeypatch) -> None:
+    """
+    站点资源携带 IMDb ID 且识别源为 TMDB 时，下载应优先转为 TMDB 本地化身份。
+    """
+    captured: dict[str, object] = {}
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 1101383,
+            "media_type": MediaType.MOVIE,
+            "title": "逃出绝命街",
+            "original_title": "The End of Oak Street",
+        }
+    )
+
+    class FakeMediaChain:
+        """
+        模拟 IMDb 到 TMDB 的身份转换和二次精确识别。
+        """
+
+        def convert_media_identity(self, **kwargs):
+            """
+            记录身份转换参数并返回 TMDB 条目。
+            """
+            captured["convert"] = kwargs
+            return {"id": 1101383, "media_type": MediaType.MOVIE}
+
+        def recognize_media(self, **kwargs):
+            """
+            记录识别参数并返回 TMDB 中文媒体信息。
+            """
+            captured["recognize"] = kwargs
+            return tmdb_media
+
+    class FakeDownloadChain:
+        """
+        模拟下载任务提交。
+        """
+
+        def download_single(self, **kwargs):
+            """
+            保存下载上下文并返回任务 ID。
+            """
+            captured["download"] = kwargs
+            return "download-imdb-converted"
+
+    monkeypatch.setattr(download_endpoint, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", FakeDownloadChain)
+    monkeypatch.setattr(download_endpoint, "get_runtime_setting", lambda _key, _default=None: "themoviedb")
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(title="The.End.of.Oak.Street.2026.2160p"),
+        media_source="imdb",
+        media_id="tt27165187",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    assert captured["convert"] == {
+        "target_source": MediaSource.TMDB,
+        "media_source": MediaSource.IMDb,
+        "media_id": "tt27165187",
+    }
+    assert captured["recognize"]["media_source"] == MediaSource.TMDB
+    assert captured["recognize"]["media_id"] == "1101383"
+    assert captured["recognize"]["mtype"] == MediaType.MOVIE
+    assert captured["download"]["context"].media_info is tmdb_media
+
+
+def test_download_add_falls_back_to_imdb_when_tmdb_conversion_misses(monkeypatch) -> None:
+    """
+    TMDB 无法按 IMDb ID 命中时，应回退使用原始 IMDb 识别结果。
+    """
+    captured: dict[str, object] = {}
+    imdb_media = MediaInfo(
+        media_source=MediaSource.IMDb,
+        media_id="tt99999999",
+        type=MediaType.MOVIE,
+        title="Indie Film",
+    )
+
+    class FakeMediaChain:
+        """
+        模拟 TMDB 转换未命中但 IMDb 原生识别成功。
+        """
+
+        def convert_media_identity(self, **_kwargs):
+            """
+            返回空值表示 TMDB 未收录该 IMDb 映射。
+            """
+            return None
+
+        def recognize_media(self, **kwargs):
+            """
+            记录回退后的识别参数并返回 IMDb 媒体。
+            """
+            captured["recognize"] = kwargs
+            return imdb_media
+
+    class FakeDownloadChain:
+        """
+        模拟下载任务提交。
+        """
+
+        def download_single(self, **kwargs):
+            """
+            保存下载上下文并返回任务 ID。
+            """
+            captured["download"] = kwargs
+            return "download-imdb-fallback"
+
+    monkeypatch.setattr(download_endpoint, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", FakeDownloadChain)
+    monkeypatch.setattr(download_endpoint, "get_runtime_setting", lambda _key, _default=None: "themoviedb")
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(title="Indie.Film.2026.1080p"),
+        media_source="imdb",
+        media_id="tt99999999",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    assert captured["recognize"]["media_source"] == MediaSource.IMDb
+    assert captured["recognize"]["media_id"] == "tt99999999"
+    assert captured["download"]["context"].media_info is imdb_media
+
+
+def test_download_add_keeps_imdb_when_recognize_source_is_imdb(monkeypatch) -> None:
+    """
+    用户显式将识别源设为 IMDb 时，不应将其改写为 TMDB。
+    """
+    captured: dict[str, object] = {}
+    imdb_media = MediaInfo(
+        media_source=MediaSource.IMDb,
+        media_id="tt27165187",
+        type=MediaType.MOVIE,
+        title="The End of Oak Street",
+    )
+
+    class FakeMediaChain:
+        """
+        禁止在非 TMDB 主识别源时触发 IMDb 到 TMDB 的转换。
+        """
+
+        def convert_media_identity(self, **_kwargs):
+            """
+            非 TMDB 识别源不应调用身份转换。
+            """
+            raise AssertionError("RECOGNIZE_SOURCE 为 imdb 时不应转换")
+
+        def recognize_media(self, **kwargs):
+            """
+            记录原生 IMDb 识别调用。
+            """
+            captured["recognize"] = kwargs
+            return imdb_media
+
+    class FakeDownloadChain:
+        """
+        模拟下载任务提交。
+        """
+
+        def download_single(self, **kwargs):
+            """
+            保存下载上下文并返回任务 ID。
+            """
+            captured["download"] = kwargs
+            return "download-imdb-direct"
+
+    monkeypatch.setattr(download_endpoint, "MediaChain", FakeMediaChain)
+    monkeypatch.setattr(download_endpoint, "DownloadChain", FakeDownloadChain)
+    monkeypatch.setattr(download_endpoint, "get_runtime_setting", lambda _key, _default=None: "imdb")
+
+    response = download_endpoint.add(
+        torrent_in=schemas.TorrentInfo(title="The.End.of.Oak.Street.2026.2160p"),
+        media_source="imdb",
+        media_id="tt27165187",
+        current_user=SimpleNamespace(name="tester"),
+    )
+
+    assert response.success is True
+    assert captured["recognize"]["media_source"] == MediaSource.IMDb
+    assert captured["recognize"]["media_id"] == "tt27165187"
+    assert captured["download"]["context"].media_info is imdb_media
+
+
 def test_download_add_rejects_source_without_media_id() -> None:
     """
     显式媒体来源必须和原生 ID 成对提供，不能退回标题猜测。

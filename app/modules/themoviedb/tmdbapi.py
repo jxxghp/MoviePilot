@@ -4,6 +4,7 @@ TMDB 名称匹配计划、详情消歧及同步异步查询服务。
 
 import re
 import traceback
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Generator, List, Optional, cast
@@ -14,11 +15,12 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MediaType
 
-from .tmdbv3api import TV, Collection, Discover, Episode, Movie, Person, Search, Season, TMDb, Trending
+from .tmdbv3api import TV, Collection, Discover, Episode, Find, Movie, Person, Search, Season, TMDb, Trending
 from .tmdbv3api.exceptions import TMDbConnectionError, TMDbException
 
 _MediaRecord = dict[str, Any]
 _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_IMDB_ID_PATTERN = re.compile(r"^tt\d+$", re.IGNORECASE)
 
 
 class _MatchTarget(Enum):
@@ -99,6 +101,7 @@ class TmdbApi:
         self.trending = Trending(language=language)
         self.person = Person(language=language)
         self.collection = Collection(language=language)
+        self.find = Find(language=language)
 
     def search_multiis(self, title: str) -> List[_MediaRecord]:
         """
@@ -1079,6 +1082,80 @@ class TmdbApi:
             raise_on_connection_error,
         )
         return self._project_info(tmdb_info)
+
+    @staticmethod
+    def _normalize_imdb_id(imdb_id: Optional[str]) -> Optional[str]:
+        """
+        校验并规范化 IMDb 条目标识，非法格式返回空值。
+
+        :param imdb_id: 原始 IMDb 标识字符串
+        :return: 规范化后的小写 tt 编号，格式不合法时返回 None
+        """
+        value = str(imdb_id or "").strip().lower()
+        return value if _IMDB_ID_PATTERN.fullmatch(value) else None
+
+    @staticmethod
+    def _select_find_result(
+        payload: object,
+        mtype: Optional[MediaType] = None,
+    ) -> Optional[tuple[MediaType, int]]:
+        """
+        从 TMDB `/find` 响应中按媒体类型消歧并提取唯一的 TMDB 条目身份。
+
+        :param payload: TMDB `/find` 接口返回的原始 JSON 映射
+        :param mtype: 可选限定的电影或电视剧类型
+        :return: 匹配到的 `(MediaType, tmdbid)` 二元组；无结果或存在类型歧义时返回 None
+        """
+        if not isinstance(payload, Mapping):
+            return None
+        movies = [
+            item
+            for item in (payload.get("movie_results") or ())
+            if isinstance(item, Mapping) and isinstance(item.get("id"), int)
+        ]
+        tvs = [
+            item
+            for item in (payload.get("tv_results") or ())
+            if isinstance(item, Mapping) and isinstance(item.get("id"), int)
+        ]
+        if mtype == MediaType.MOVIE:
+            return (MediaType.MOVIE, movies[0]["id"]) if movies else None
+        if mtype == MediaType.TV:
+            return (MediaType.TV, tvs[0]["id"]) if tvs else None
+        if movies and not tvs:
+            return MediaType.MOVIE, movies[0]["id"]
+        if tvs and not movies:
+            return MediaType.TV, tvs[0]["id"]
+        return None
+
+    def find_by_imdb_id(
+        self,
+        imdb_id: str,
+        mtype: Optional[MediaType] = None,
+    ) -> Optional[_MediaRecord]:
+        """
+        同步通过 IMDb 标识查找并拉取完整的 TMDB 本地化详情。
+
+        :param imdb_id: IMDb 条目标识（如 `tt27165187`）
+        :param mtype: 可选限定的电影或电视剧类型，None 表示自动根据 `/find` 结果判定
+        :return: 补齐 `media_type` 与本地化标题的 TMDB 详情字典；无匹配或异常时返回 None
+        """
+        normalized_id = self._normalize_imdb_id(imdb_id)
+        if not normalized_id or not self.find:
+            return None
+        try:
+            payload = self.find.find_by_imdb_id(normalized_id)
+        except TMDbException as err:
+            logger.error(f"连接TMDB出错：{str(err)}")
+            return None
+        except Exception as err:
+            logger.error(f"连接TMDB出错：{str(err)}")
+            return None
+        matched = self._select_find_result(payload, mtype)
+        if not matched:
+            return None
+        matched_type, tmdb_id = matched
+        return self.get_info(mtype=matched_type, tmdbid=tmdb_id)
 
     @staticmethod
     def __get_content_rating(tmdb_info: _MediaRecord) -> Optional[str]:
@@ -2070,6 +2147,35 @@ class TmdbApi:
         )
         return self._project_info(tmdb_info)
 
+    async def async_find_by_imdb_id(
+        self,
+        imdb_id: str,
+        mtype: Optional[MediaType] = None,
+    ) -> Optional[_MediaRecord]:
+        """
+        异步通过 IMDb 标识查找并拉取完整的 TMDB 本地化详情。
+
+        :param imdb_id: IMDb 条目标识（如 `tt27165187`）
+        :param mtype: 可选限定的电影或电视剧类型，None 表示自动根据 `/find` 结果判定
+        :return: 补齐 `media_type` 与本地化标题的 TMDB 详情字典；无匹配或异常时返回 None
+        """
+        normalized_id = self._normalize_imdb_id(imdb_id)
+        if not normalized_id or not self.find:
+            return None
+        try:
+            payload = await self.find.async_find_by_imdb_id(normalized_id)
+        except TMDbException as err:
+            logger.error(f"连接TMDB出错：{str(err)}")
+            return None
+        except Exception as err:
+            logger.error(f"连接TMDB出错：{str(err)}")
+            return None
+        matched = self._select_find_result(payload, mtype)
+        if not matched:
+            return None
+        matched_type, tmdb_id = matched
+        return await self.async_get_info(mtype=matched_type, tmdbid=tmdb_id)
+
     async def async_get_tv_season_detail(self, tmdbid: int, season: int) -> _MediaRecord:
         """
         获取电视剧季的详情（异步版本）。
@@ -2395,6 +2501,7 @@ class TmdbApi:
             self.trending,
             self.person,
             self.collection,
+            self.find,
         ):
             if client:
                 client.close()

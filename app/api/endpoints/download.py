@@ -37,6 +37,7 @@ from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfo
 from app.foundation.url import UrlUtils
+from app.runtime.settings import get_runtime_setting
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import SubtitleInfo as _SchemaSubtitleInfo
@@ -49,6 +50,7 @@ from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUp
 from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
 from app.schemas.file import FileURI as _SchemaFileURI
+from app.schemas.media import normalize_media_source
 from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -185,14 +187,42 @@ def _resolve_add_media(
         normalized_music_type = MUSIC_ENTITY_RECORDING
     metainfo = MetaInfo(title=torrent_in.title or "", subtitle=torrent_in.description,
                         mtype=MediaType.MUSIC if is_music else None)
+    mediainfo: MediaInfo | MusicInfo | None = None
     if media_source and media_id:
-        mediainfo = MediaChain().recognize_media(
-            meta=metainfo,
-            media_source=media_source,
-            media_id=media_id,
-            mtype=MediaType.MUSIC if is_music else None,
-            music_type=normalized_music_type,
-        )
+        media_chain = MediaChain()
+        if (
+            not is_music
+            and media_source == MediaSource.IMDb
+            and normalize_media_source(get_runtime_setting("RECOGNIZE_SOURCE", None)) == MediaSource.TMDB
+            and hasattr(media_chain, "convert_media_identity")
+        ):
+            tmdb_info = media_chain.convert_media_identity(
+                target_source=MediaSource.TMDB,
+                media_source=media_source,
+                media_id=media_id,
+            )
+            tmdb_id = tmdb_info.get("id") if isinstance(tmdb_info, dict) else None
+            if tmdb_id:
+                raw_type = tmdb_info.get("media_type") if isinstance(tmdb_info, dict) else None
+                tmdb_mtype = (
+                    raw_type
+                    if isinstance(raw_type, MediaType)
+                    else MediaType.from_agent(str(raw_type or ""))
+                )
+                mediainfo = media_chain.recognize_media(
+                    meta=metainfo,
+                    media_source=MediaSource.TMDB,
+                    media_id=str(tmdb_id),
+                    mtype=tmdb_mtype if tmdb_mtype in (MediaType.MOVIE, MediaType.TV) else None,
+                )
+        if not mediainfo:
+            mediainfo = media_chain.recognize_media(
+                meta=metainfo,
+                media_source=media_source,
+                media_id=media_id,
+                mtype=MediaType.MUSIC if is_music else None,
+                music_type=normalized_music_type,
+            )
     else:
         mediainfo = MediaChain().recognize_by_meta(
             metainfo,
