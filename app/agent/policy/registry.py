@@ -60,6 +60,7 @@ BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
         "execute_code",
         "query_doctor_report",
         "read_file",
+        "read_log",
         "recognize_captcha",
         "search_web",
         "send_local_file",
