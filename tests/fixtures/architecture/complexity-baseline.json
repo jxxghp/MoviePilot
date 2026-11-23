@@ -77,7 +77,6 @@
       "app/domain/meta/metamusic.py:MetaMusic._parse_music_scene_tokens": 19,
       "app/domain/meta/metamusic.py:MetaMusic.parse_resource": 20,
       "app/domain/meta/metavideo.py:MetaVideo.__init__": 18,
-      "app/domain/meta/metavideo.py:MetaVideo.__init_episode": 17,
       "app/domain/meta/metavideo.py:MetaVideo.__init_name": 31,
       "app/domain/metainfo.py:_find_metainfo_python": 29,
       "app/domain/music.py:parse_music_cue": 21,

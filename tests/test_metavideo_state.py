@@ -66,3 +66,31 @@ def test_metavideo_keeps_transient_token_state_out_of_result_model():
         "_unknown_name_str",
     }
     assert transient_fields.isdisjoint(vars(meta))
+
+
+@pytest.mark.parametrize(
+    ("title", "expected_season", "expected_ep", "expected_end"),
+    [
+        ("Mobile.Suit.Gundam.00.S01E01.2007.1080p.BluRay.x265.FLAC.2.0-FROGE", 1, 1, None),
+        ("Mobile.Suit.Gundam.00.S01E25.2007.1080p.BluRay.x265.FLAC.2.0-FROGE", 1, 25, None),
+        ("Mobile.Suit.Gundam.00.S02E24.2007.1080p.BluRay.x265.FLAC.2.0-FROGE", 2, 24, None),
+        ("The.100.S02E05.1080p.WEB-DL.H264", 2, 5, None),
+        ("Brooklyn.99.S05E12.1080p.WEB-DL.H264", 5, 12, None),
+        ("Show.00.S01E01.S01E02.1080p", 1, 1, 2),
+        ("Show.01.1080p.WEB-DL", 1, 1, None),
+    ],
+)
+def test_explicit_season_episode_overrides_prior_bare_digit_guess(
+    title: str,
+    expected_season: int | None,
+    expected_ep: int | None,
+    expected_end: int | None,
+) -> None:
+    """
+    片名中的裸数字（如 Gundam.00 / The.100 / Brooklyn.99）先误触发集号猜测时，
+    后续显式 SxxEyy 必须覆盖前置猜测，而纯裸数字单集场景保持兼容。
+    """
+    meta = MetaVideo(title, isfile=True)
+    assert meta.begin_season == expected_season
+    assert meta.begin_episode == expected_ep
+    assert meta.end_episode == expected_end
