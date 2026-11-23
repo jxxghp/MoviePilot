@@ -22,6 +22,7 @@ from app.domain.meta.runtime import (
     get_metainfo_accelerator,
 )
 from app.domain.metainfo import MetaInfo, MetaInfoPath, find_metainfo
+from app.domain.tokens import Tokens
 from app.schemas.types import MediaSource, MediaType
 from tests.cases.meta import meta_cases
 
@@ -394,6 +395,27 @@ def test_python_metainfo_preserves_all_resource_types(title, expected):
     assert meta.resource_type == expected
     assert meta.edition.startswith(expected)
     assert expected in meta.resource_term
+
+
+def test_tokens_prev_and_cur_bracket_the_consumed_token():
+    """
+    主循环用 get_next() 先消费当前词元，因此 cur() 是后继、prev() 才是前驱。
+
+    词元流 ``a b c``：游标停在首位时没有前驱；消费一个词元后 cur() 指向下一个、
+    prev() 仍为空；再消费一个词元后 prev() 回到刚消费的那个词元。
+    """
+    tokens = Tokens("a b c")
+
+    assert tokens.cur() == "a"
+    assert tokens.prev() is None
+
+    assert tokens.get_next() == "a"
+    assert tokens.cur() == "b"
+    assert tokens.prev() is None
+
+    assert tokens.get_next() == "b"
+    assert tokens.cur() == "c"
+    assert tokens.prev() == "a"
 
 
 ZERO_TITLE_CASES = [
