@@ -396,6 +396,64 @@ def test_python_metainfo_preserves_all_resource_types(title, expected):
     assert expected in meta.resource_term
 
 
+ZERO_TITLE_CASES = [
+    (
+        "Steins;Gate.0.S01E15.2018.1080p.BluRay.x265.10bit.FLAC.2.0.2Audio-ADE",
+        ("Steins Gate 0", "2018", 1, 15),
+    ),
+    (
+        "ID.0.S01E01.2017.1080p.BluRay.x265.10bit.FLAC.2.0-ADE",
+        ("Id 0", "2017", 1, 1),
+    ),
+    (
+        "Example.Show.0.S01E01",
+        ("Example Show 0", None, 1, 1),
+    ),
+    (
+        "Example.Show.0.2018.1080p.BluRay.x265-GROUP",
+        ("Example Show 0", "2018", None, None),
+    ),
+    (
+        "Example.Show.0",
+        ("Example Show", None, None, None),
+    ),
+    (
+        "Example.Show.0.1080p.BluRay.x265-GROUP",
+        ("Example Show", None, None, None),
+    ),
+    (
+        "Example.Movie.2.0.2021.1080p.BluRay.x265-GROUP",
+        ("Example Movie 2", "2021", None, None),
+    ),
+    (
+        "Example.Show.NCED.01",
+        ("Example Show Nced", None, None, 1),
+    ),
+]
+
+
+@pytest.mark.parametrize(("title", "expected"), ZERO_TITLE_CASES)
+def test_metainfo_and_python_fallback_keep_single_zero_sequel_title(title, expected):
+    """
+    片名结尾的单个 0 是续作编号，Rust 加速器与 Python 兜底必须给出相同结果。
+
+    只有词元恰为单个 0、前一个词元不是纯数字、后继是季、集或四位年份时才保留；
+    `01` 序号与 `2.0` 音轨分数仍按干扰词丢弃。
+    """
+    def _identity(meta):
+        return (
+            meta.en_name,
+            str(meta.year) if meta.year else None,
+            meta.begin_season,
+            meta.begin_episode,
+        )
+
+    assert _identity(MetaInfo(title)) == expected
+
+    with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
+        assert _identity(MetaInfo(title)) == expected
+
+
 def test_metainfo_routes_audio_filename_to_music():
     """
     音频文件名应直接走音乐分支并完成艺术家/曲名拆分，不再进入影视季集解析。

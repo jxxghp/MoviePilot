@@ -291,7 +291,7 @@ class MetaVideo(MetaBase):
         """
         if self.__init_part(token, tokens, state):
             return
-        if self.__init_name(token, media_exts, state):
+        if self.__init_name(token, tokens, media_exts, state):
             return
         if self.__init_year(token, state):
             return
@@ -360,9 +360,31 @@ class MetaVideo(MetaBase):
                 name = None
         return name
 
+    def __is_zero_title_token(self, token: str, tokens: Tokens) -> bool:
+        """
+        判断以 0 开头的词元是否属于片名。
+
+        仅当词元恰为单个 0、前一个词元不是纯数字、且后继词元是季、集或四位
+        年份时成立，用于保留《Steins;Gate 0》《ID-0》这类编号续作；`2.0` 音轨
+        分数与 `01` 序号仍按干扰词丢弃。
+        """
+        if token != "0":
+            return False
+        prev_token = tokens.prev()
+        if not prev_token or prev_token.isdigit():
+            return False
+        next_token = tokens.cur()
+        if not next_token:
+            return False
+        if next_token.isdigit() and len(next_token) == 4:
+            return True
+        return bool(self._season_pattern.search(next_token)
+                    or self._episode_pattern.search(next_token))
+
     def __init_name(
         self,
         token: Optional[str],
+        tokens: Tokens,
         media_exts: Sequence[str],
         state: _VideoParseState,
     ) -> bool:
@@ -406,8 +428,8 @@ class MetaVideo(MetaBase):
                 if state.last_kind == _VideoTokenKind.NAME_SEASON_WORD:
                     return False
                 if self.name:
-                    # 名字后面以 0 开头的不要，极有可能是集
-                    if token.startswith('0'):
+                    # 名字后面以 0 开头的通常是集数，但片名结尾的单个 0 是续作编号
+                    if token.startswith('0') and not self.__is_zero_title_token(token, tokens):
                         return False
                     # 检查是否真正的数字
                     if token.isdigit():
