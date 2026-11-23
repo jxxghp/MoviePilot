@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import re
+import time
 from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,13 @@ from app.schemas.types import (
     MessageType,
     NotificationChannel,
 )
+
+# 下载器模块全部返回空值时的统一错误前缀，用于通知文案与同原因去重。
+_NO_DOWNLOADER_INSTANCE_ERROR_PREFIX = "未找到可用下载器实例"
+# 同一下载器范围在该窗口内只通知一次“未找到可用下载器实例”，
+# 避免整轮候选逐条刷屏。
+_NO_DOWNLOADER_INSTANCE_NOTIFY_INTERVAL = 300.0
+_no_downloader_instance_notified_until: Dict[str, float] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -875,6 +883,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         if not category and prepared.media.type == MediaType.MUSIC:
             category = MediaType.MUSIC.value
         task_hashes = torrent_rules.download_hashes(prepared.torrent_content)
+        requested_downloader = downloader or prepared.site_downloader
         # 读取确认记录 → 下载器受理 → 写入下载历史整段持有任务锁，见 downloader_task_locks：
         # 已有任务上的追加与整理链回写、删除、暂停开始互斥，确认记录的读取、合并与写回也不会被并发提交打断。
         result: Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]
@@ -900,15 +909,45 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     download_dir=prepared.download_dir,
                     category=category,
                     label=label,
-                    downloader=downloader or prepared.site_downloader,
+                    downloader=requested_downloader,
                     custom_words=custom_words,
                     episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
                     confirmed_selection=previous_selection,
                     user_specified=user_specified,
                 )
-            actual_downloader, download_hash, layout, error_msg = (
-                result if result else (None, None, None, "未找到下载器")
-            )
+                if result is None and requested_downloader:
+                    # 订阅、站点绑定或默认订阅配置里的下载器名可能已失效；
+                    # 回退默认实例再试一次，避免整轮候选都因一个失效名字而失败。
+                    logger.warning(
+                        f"指定的下载器实例 {requested_downloader} 不可用，"
+                        f"回退默认下载器重试：{prepared.torrent.title}"
+                    )
+                    result = self.download(
+                        content=prepared.torrent_content,
+                        cookie=prepared.torrent.site_cookie,
+                        episodes=cast(Set[int], episodes),
+                        download_dir=prepared.download_dir,
+                        category=category,
+                        label=label,
+                        downloader=None,
+                        custom_words=custom_words,
+                        episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
+                        confirmed_selection=previous_selection,
+                        user_specified=user_specified,
+                    )
+            if result is None:
+                requested_scope = requested_downloader or "默认下载器"
+                logger.warning(
+                    f"未找到可用的下载器实例：{requested_scope}，"
+                    f"请检查下载器配置、站点绑定或订阅的下载器设置：{prepared.torrent.title}"
+                )
+                actual_downloader, download_hash, layout, error_msg = (
+                    None, None, None,
+                    f"{_NO_DOWNLOADER_INSTANCE_ERROR_PREFIX}：{requested_scope}，"
+                    f"请检查下载器配置、站点绑定或订阅的下载器设置",
+                )
+            else:
+                actual_downloader, download_hash, layout, error_msg = result
             if download_hash:
                 self._settle_accepted_download(
                     prepared=prepared,
@@ -1109,6 +1148,19 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             )
         return actual_dir
 
+    @staticmethod
+    def _no_instance_notify_scope(error_msg: str, downloader_scope: str) -> Optional[str]:
+        """
+        为“未找到可用下载器实例”类错误生成同原因去重键，其余错误返回 None。
+
+        :param error_msg: 下载器拒绝或兜底原因
+        :param downloader_scope: 请求指向的下载器范围
+        :return: 需要按下载器范围去重的通知键；非无实例错误时返回 None
+        """
+        if not error_msg.startswith(_NO_DOWNLOADER_INSTANCE_ERROR_PREFIX):
+            return None
+        return f"{_NO_DOWNLOADER_INSTANCE_ERROR_PREFIX}:{downloader_scope}"
+
     def _record_rejected_download(
         self,
         *,
@@ -1129,6 +1181,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         已有任务的拒绝不会让订阅跳过候选，每一轮都交给下载器按实时状态重新判断（用户在下载器里恢复任务、
         重新勾选文件后下一轮就能接着用）。自动流程（订阅、工作流、插件）在同一原因的通知静默期内重复遇到时
         只记日志，不再通知、不顺延记录，见 ``_existing_task_rejection_noted``；用户手动指定种子时每次都通知。
+        没有可用下载器实例时，同一下载器范围在短窗口内只通知一次，
+        但仍为每个候选写入失败记录。
 
         :param user_specified: 用户明确指定了这个种子
         """
@@ -1142,6 +1196,27 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 f"{prepared.torrent.title}，{error_msg}"
             )
             return
+        no_instance_scope = self._no_instance_notify_scope(error_msg, downloader_scope)
+        if no_instance_scope is not None and not user_specified:
+            notified_until = _no_downloader_instance_notified_until.get(no_instance_scope, 0.0)
+            now = time.monotonic()
+            if now < notified_until:
+                logger.info(
+                    f"{prepared.media.title_year} 未找到可用下载器实例（{downloader_scope}），"
+                    f"与最近一次原因相同，不重复通知：{prepared.torrent.title}"
+                )
+                self._record_download_failure(
+                    context=context,
+                    error_msg=error_msg,
+                    downloader=actual_downloader or downloader or prepared.site_downloader,
+                    source=source,
+                    episodes=episodes,
+                    downloader_scope=downloader_scope,
+                )
+                return
+            _no_downloader_instance_notified_until[no_instance_scope] = (
+                now + _NO_DOWNLOADER_INSTANCE_NOTIFY_INTERVAL
+            )
         logger.error(
             f"{prepared.media.title_year} 添加下载任务失败："
             f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"

@@ -142,6 +142,10 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
         server = self.get_instance(downloader)
         if not server:
+            logger.warning(
+                f"未找到可用的下载器实例：{downloader or '默认下载器'}，"
+                f"跳过 {self.get_name()} 模块"
+            )
             return None
 
         # rTorrent 的 load.raw/load.start 只把种子放进加载队列就返回成功，之后才在内部判重：同一 hash

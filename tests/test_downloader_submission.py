@@ -1571,3 +1571,140 @@ def test_rejection_ledger_read_failure_counts_as_not_noted():
     assert chain._existing_task_rejection_noted(
         _season_context(), rejection=ExistingTaskRejection.PAUSED, downloader_scope="qb", episodes={3},
     ) is False
+
+
+def _no_instance_chain():
+    """
+    构造只替换下载模块边界的下载链，用于验证无可用下载器实例的兜底与回退行为。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+    return chain
+
+
+def _no_instance_prepared(content):
+    """
+    构造提交前已经准备好的下载事实。
+    """
+    return SimpleNamespace(
+        torrent_content=content,
+        torrent=SimpleNamespace(
+            site_cookie="",
+            site_downloader=None,
+            site_name="m-team",
+            title="Show.S01E06",
+            enclosure="https://example.invalid/torrent",
+        ),
+        media=SimpleNamespace(
+            category="TV",
+            title_year="Show (2026)",
+            get_message_image=Mock(return_value=None),
+            get_poster_image=Mock(return_value=None),
+        ),
+        meta=SimpleNamespace(season_episode="S01E06", org_string="Show.S01E06"),
+        download_dir=Path("/downloads"),
+        download_episodes=None,
+        folder_name="",
+        file_list=[],
+        site_downloader=None,
+    )
+
+
+def test_no_downloader_instance_error_names_scope_and_retries_default():
+    """
+    指定下载器不可用时先回退默认实例重试，仍无实例时错误信息应包含请求的下载器范围。
+    """
+    content, _hashes = _torrent()
+    chain = _no_instance_chain()
+    chain.download = Mock(return_value=None)
+
+    result, message = chain._submit_prepared_download(
+        prepared=_no_instance_prepared(content),
+        context=Context(),
+        episodes=None,
+        channel=None,
+        source="subscribe",
+        downloader="stale-downloader",
+        userid=None,
+        username=None,
+        label=None,
+        custom_words=None,
+        governance=None,
+    )
+
+    assert result is None
+    assert chain.download.call_count == 2
+    assert chain.download.call_args_list[0].kwargs["downloader"] == "stale-downloader"
+    assert chain.download.call_args_list[1].kwargs["downloader"] is None
+    assert chain._record_rejected_download.called
+    error_msg = chain._record_rejected_download.call_args.kwargs["error_msg"]
+    assert "stale-downloader" in error_msg
+    assert submission_module._NO_DOWNLOADER_INSTANCE_ERROR_PREFIX in error_msg
+    assert message == error_msg
+
+
+def test_no_downloader_instance_falls_back_to_default_and_settles():
+    """
+    指定下载器不可用但默认下载器可用时，回退默认实例并正常结算。
+    """
+    content, hashes = _torrent()
+    chain = _no_instance_chain()
+    chain.download = Mock(side_effect=[
+        None,
+        ("default-downloader", hashes[0], "Original", "添加下载成功"),
+    ])
+
+    result, message = chain._submit_prepared_download(
+        prepared=_no_instance_prepared(content),
+        context=Context(),
+        episodes=None,
+        channel=None,
+        source="subscribe",
+        downloader="stale-downloader",
+        userid=None,
+        username=None,
+        label=None,
+        custom_words=None,
+        governance=None,
+    )
+
+    assert result == hashes[0]
+    assert chain.download.call_count == 2
+    assert chain._settle_accepted_download.called
+    assert chain._settle_accepted_download.call_args.kwargs["actual_downloader"] == "default-downloader"
+    chain._record_rejected_download.assert_not_called()
+
+
+def test_no_downloader_instance_notification_dedup_per_scope():
+    """
+    自动流程在同一下载器范围内重复遇到无可用实例时只通知一次，但仍逐条记录失败。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = Mock()
+    chain.download_history_repository.get_by_hashes.return_value = {}
+    chain._record_download_failure = Mock()
+    chain.post_message = Mock()
+    prepared = _no_instance_prepared(_torrent()[0])
+    submission_module._no_downloader_instance_notified_until.clear()
+
+    error_msg = "未找到可用下载器实例：stale-downloader，请检查下载器配置、站点绑定或订阅的下载器设置"
+    for _ in range(3):
+        chain._record_rejected_download(
+            prepared=prepared,
+            context=Context(),
+            episodes=None,
+            channel=None,
+            source="subscribe",
+            downloader="stale-downloader",
+            userid=None,
+            actual_downloader=None,
+            error_msg=error_msg,
+            user_specified=False,
+        )
+
+    assert chain.post_message.call_count == 1
+    assert chain._record_download_failure.call_count == 3
+    submission_module._no_downloader_instance_notified_until.clear()

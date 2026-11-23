@@ -161,6 +161,10 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
 
         server = self.get_instance(downloader)
         if not server:
+            logger.warning(
+                f"未找到可用的下载器实例：{downloader or '默认下载器'}，"
+                f"跳过 {self.get_name()} 模块"
+            )
             return None
 
         # 生成随机Tag
