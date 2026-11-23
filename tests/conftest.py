@@ -413,7 +413,10 @@ def configure_plugin_system_services():
         TransactionalAgentTaskRepository,
         TransactionalPluginDataRepository,
     )
-    from app.db.adapters.download import TransactionalDownloadFailureRepository
+    from app.db.adapters.download import (
+        TransactionalDownloadFailureRepository,
+        TransactionalDownloadPendingRepository,
+    )
     from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
     from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
     from app.db.adapters.mediaserver import TransactionalMediaServerRepository
@@ -559,6 +562,7 @@ def configure_plugin_system_services():
             transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
             media_server_repository=TransactionalMediaServerRepository(SessionFactory),
             download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+            download_pending_repository=TransactionalDownloadPendingRepository(SessionFactory),
             user_repository=user_repository(),
             configuration=build_chain_runtime_config(settings),
         )

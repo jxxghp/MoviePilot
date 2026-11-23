@@ -22,6 +22,53 @@ DOWNLOAD_TASK_ALREADY_EXISTS = "下载任务已存在"
 DOWNLOAD_TASK_FILES_APPENDED = "下载任务已存在，已追加选择本次目标文件"
 # 用户手动指定种子，目标文件此前已选中但任务已暂停、目标未下完：恢复了该任务，下载链按新增下载发送通知。
 DOWNLOAD_TASK_RESUMED = "下载任务已存在，已恢复下载"
+# 下载器已受理添加请求，但轮询确认超时仍未查到任务时的固定说明开头。
+# 下载链据此区分“明确拒绝添加”与“已受理但状态未知”：后者不得立即当成可安全换版本的失败，
+# 须先保留待确认状态并按已知种子标识重新核对。
+DOWNLOAD_TASK_UNCONFIRMED_PREFIX = "下载任务添加成功，但获取"
+
+
+def is_unconfirmed_download_message(message: Optional[str]) -> bool:
+    """
+    判断下载器返回的说明是否表示“添加请求已受理，但任务信息尚未确认”。
+
+    :param message: 下载器 ``download()`` 返回的第四项说明
+    :return: 属于已受理但未确认状态时返回 True，否则返回 False
+    """
+    return bool(message and message.startswith(DOWNLOAD_TASK_UNCONFIRMED_PREFIX))
+
+
+class PendingDownloadCheckStatus(str, _Enum):
+    """
+    按已知种子标识核对待确认下载任务时的下载器回执状态。
+    """
+
+    # 下载器已找到对应任务并完成必要收尾，可安全转正结算
+    CONFIRMED = "confirmed"
+    # 下载器在线且查询成功，当前尚未出现对应任务
+    NOT_FOUND = "not_found"
+    # 下载器离线、超时或查询失败，任务状态仍未知，不得据此释放待确认
+    QUERY_ERROR = "query_error"
+    # 任务已出现，但后续选集或已有任务核验明确拒绝，可安全释放待确认
+    REJECTED = "rejected"
+
+
+class PendingDownloadCheckResult(BaseModel):
+    """
+    下载器模块核对待确认提交后返回的结构化结果。
+
+    :param status: 本次核对的结果分类
+    :param downloader: 实际执行核对的下载器配置名称；未确定实例时为 None
+    :param download_hash: 已确认任务在下载器中的实际哈希；未确认时为 None
+    :param layout: 已确认任务对应的下载器内容布局；未确认时为 None
+    :param message: 面向日志、通知和动作识别的说明文本
+    """
+
+    status: PendingDownloadCheckStatus = Field(description="待确认任务核对结果分类")
+    downloader: Optional[str] = Field(default=None, description="实际核对的下载器配置名称")
+    download_hash: Optional[str] = Field(default=None, description="已确认任务的实际哈希")
+    layout: Optional[str] = Field(default=None, description="已确认任务的下载器内容布局")
+    message: str = Field(default="", description="核对结果说明，受理已有任务时保留既有约定常量")
 
 
 class DownloadTaskAction(str, _Enum):

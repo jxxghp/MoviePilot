@@ -24,6 +24,7 @@ from app.domain.meta.metabase import MetaBase
 from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
 from app.schemas.context import MediaPerson
+from app.schemas.download import PendingDownloadCheckResult
 from app.schemas.exception import BusinessRejectedError, RateLimitExceededException
 from app.schemas.file import FileItem
 from app.schemas.mediaserver import ExistMediaInfo, MediaServerQueryOptions, WebhookEventInfo
@@ -80,6 +81,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         self.transfer_execution_repository = context.transfer_execution_repository
         self.media_server_repository = context.media_server_repository
         self.download_failure_repository = context.download_failure_repository
+        self.download_pending_repository = context.download_pending_repository
         self.user_repository = context.user_repository
         self.classification_service = context.classification_service
         self._runtime_config_provider = context.configuration_provider
@@ -915,6 +917,39 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             category=category,
             label=label,
             downloader=downloader,
+            custom_words=custom_words,
+            episode_selection=episode_selection,
+            confirmed_selection=confirmed_selection,
+            user_specified=user_specified,
+        ))
+
+    def confirm_pending_download(
+        self,
+        hashes: List[str],
+        downloader: Optional[str] = None,
+        episodes: Optional[Set[int]] = None,
+        custom_words: Optional[str] = None,
+        episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+        confirmed_selection: Optional[torrent_rules.ConfirmedSelection] = None,
+        user_specified: bool = False,
+    ) -> Optional[PendingDownloadCheckResult]:
+        """
+        按已知种子哈希向下载器核对一笔已受理但尚未确认的下载提交，并在任务可见后完成必要收尾。
+
+        :param hashes: 由种子内容解析出的已知小写 v1/v2 哈希列表
+        :param downloader: 受理或请求指向的下载器名称；省略时核对默认下载器
+        :param episodes: 本次提交的目标集数集合；非空时在任务出现后补做选集或已有任务核验
+        :param custom_words: 来源识别词，用于与首次提交保持一致的选集解析
+        :param episode_selection: 冻结的目标季与季集映射
+        :param confirmed_selection: MP 此前在同一种子上确认选中过的文件记录
+        :param user_specified: 是否为用户明确指定的种子
+        :return: 下载器核对结果；不支持该能力的第三方下载器返回 None
+        """
+        return cast(Optional[PendingDownloadCheckResult], self.run_module(
+            "confirm_pending_download",
+            hashes=hashes,
+            downloader=downloader,
+            episodes=episodes,
             custom_words=custom_words,
             episode_selection=episode_selection,
             confirmed_selection=confirmed_selection,

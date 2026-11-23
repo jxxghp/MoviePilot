@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.db.oper.agenttask import AgentTaskOper
     from app.db.oper.downloadfailure import DownloadFailureOper
     from app.db.oper.downloadhistory import DownloadHistoryOper
+    from app.db.oper.downloadpending import DownloadPendingOper
     from app.db.oper.mediaserver import MediaServerOper
     from app.db.oper.message import MessageOper
     from app.db.oper.plugindata import PluginDataOper
@@ -39,6 +40,7 @@ _OPER_MODULES = {
     "AgentTaskOper": "agenttask",
     "DownloadFailureOper": "downloadfailure",
     "DownloadHistoryOper": "downloadhistory",
+    "DownloadPendingOper": "downloadpending",
     "MediaServerOper": "mediaserver",
     "MessageOper": "message",
     "PluginDataOper": "plugindata",
@@ -79,6 +81,7 @@ __all__ = [
     "AgentTaskOper",
     "DownloadFailureOper",
     "DownloadHistoryOper",
+    "DownloadPendingOper",
     "MediaServerOper",
     "MessageOper",
     "PluginDataOper",

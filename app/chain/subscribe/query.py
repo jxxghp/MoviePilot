@@ -12,6 +12,7 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
 )
+from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.mediaserver import MediaServerChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
@@ -556,6 +557,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         # 如果已下载完毕，执行订阅完成操作
         if exist_flag:
             logger.info(f"{mediainfo.title_year} 已全部下载")
+            clear_pending = getattr(DownloadChain(), "clear_pending_downloads_for_media", None)
+            if callable(clear_pending):
+                clear_pending(mediainfo)
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
             return True, no_exists
 

@@ -850,12 +850,12 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1194 |
-| 内部导入边 | 10,525 |
+| Python 模块 | 1198 |
+| 内部导入边 | 10,576 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 52（精确 policy 准入，Application / Chain 均为 0；本知识 Adapter 仍复用宿主 HTTP 层） |
-| Module Contract V2 spec | 237（其中 223 个方法进入 `run_module` 观察面） |
+| Module Contract V2 spec | 247（其中 233 个方法进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 76（74 静态、2 动态）/ 19（18 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |

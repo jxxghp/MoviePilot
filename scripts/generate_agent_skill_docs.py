@@ -78,6 +78,11 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Reviewing download history or tracing a media identity or hash back to its source.",
         "Written by the download use case; delete or correct records through the download-history API.",
     ),
+    "downloadpending": (
+        "Stores recovery state for download submissions accepted by a downloader but not yet confirmed as a visible task.",
+        "Inspecting pending infohashes, target scopes, subscription links, expiry timestamps, and duplicate-submission locks.",
+        "Recovery state owned by download reconciliation; never delete or alter rows manually to bypass duplicate protection, and ordinary history retention does not purge it.",
+    ),
     "mediaserveritem": (
         "Stores the local index and canonical media identity projected from media-server libraries.",
         "Checking library presence, server/library/path placement, and season information.",

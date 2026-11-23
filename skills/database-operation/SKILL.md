@@ -222,6 +222,12 @@ and pass the flag only for an explicitly authorized repair.
 - Write boundary: Written by the download use case; delete or correct records through the download-history API.
 - Columns: `id`, `path`, `type`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `image`, `poster`, `downloader`, `download_hash`, `torrent_name`, `torrent_description`, `torrent_site`, `userid`, `username`, `channel`, `date`, `note`, `media_category_id`, `media_category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `episode_group`, `custom_words`
 
+### `downloadpending`
+- Purpose: Stores recovery state for download submissions accepted by a downloader but not yet confirmed as a visible task.
+- Useful queries: Inspecting pending infohashes, target scopes, subscription links, expiry timestamps, and duplicate-submission locks.
+- Write boundary: Recovery state owned by download reconciliation; never delete or alter rows manually to bypass duplicate protection, and ordinary history retention does not purge it.
+- Columns: `id`, `pending_key`, `target_key`, `type`, `title`, `year`, `media_source`, `media_id`, `season`, `episodes`, `downloader`, `hashes`, `torrent_name`, `source`, `subscription_id`, `payload`, `submitted_at`, `last_checked_at`, `expires_at`
+
 ### `mediaserveritem`
 - Purpose: Stores the local index and canonical media identity projected from media-server libraries.
 - Useful queries: Checking library presence, server/library/path placement, and season information.

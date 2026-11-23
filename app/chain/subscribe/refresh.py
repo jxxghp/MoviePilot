@@ -46,6 +46,17 @@ from app.schemas.types import (
 )
 
 
+def _reconcile_pending_downloads_if_available(owner: Any) -> None:
+    """
+    在混入了待确认下载核对能力的订阅链上触发核对，兼容独立构造的刷新组件单元测试。
+
+    :param owner: 订阅刷新组件或完整 ``SubscribeChain`` 实例
+    """
+    reconcile = getattr(owner, "reconcile_pending_downloads", None)
+    if callable(reconcile):
+        reconcile()
+
+
 class SubscribeRefreshOwner(SubscribeMetadataOwner):
     """
     订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责组件。
@@ -193,6 +204,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         :param mtype: 可选媒体类型，省略时检查所有类型
         """
         repository = self.subscription_repository
+        # 检查订阅前先核对待确认提交，确保延迟出现在下载器的任务及时补记历史并更新订阅状态。
+        _reconcile_pending_downloads_if_available(self)
         subscribes = repository.list()
         if mtype is not None:
             subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype]

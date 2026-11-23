@@ -302,6 +302,66 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         # TR 始终使用原始种子布局, 返回"Original"
         return downloader or self.get_default_config_name(), torrent_hash, "Original", message
 
+    def _lookup_pending_task_hash(
+            self, server: Transmission, expected_hashes: frozenset[str],
+    ) -> Tuple[Optional[str], bool]:
+        """
+        按已知哈希集合严格查询 Transmission 中是否已出现对应任务。
+        """
+        torrents, error = server.get_torrents(ids=list(expected_hashes))
+        if error:
+            return None, True
+        try:
+            for torrent in torrents:
+                candidate_hashes = {
+                    str(getattr(torrent, key, None) or "").lower()
+                    for key in ("hashString", "hash_string", "infohash_v1", "infohash_v2")
+                }
+                if expected_hashes.intersection(candidate_hashes):
+                    return str(torrent.hashString), False
+            return None, False
+        finally:
+            torrents.clear()
+
+    def _finish_pending_whole_download(
+            self, server: Transmission, torrent_hash: str,
+            downloader: Optional[str], state: torrent_rules.ExistingTaskState,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        完成无需选集的待确认 Transmission 任务收尾。
+        """
+        return downloader or self.get_default_config_name(), torrent_hash, "Original", "添加下载任务成功"
+
+    def _finish_pending_selected_download(
+            self, server: Transmission, torrent_hash: str, episodes: Set[int],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        为延迟落地的 Transmission 暂停新任务补做选集并启动。
+        """
+        selected, message = self._select_download_files(
+            server, torrent_hash, episodes, custom_words, episode_selection,
+        )
+        if not selected:
+            return None, None, None, self._discard_failed_selection(server, torrent_hash, message)
+        return downloader or self.get_default_config_name(), torrent_hash, "Original", "添加下载任务成功"
+
+    def _finish_pending_existing_task(
+            self, server: Transmission, torrent_hash: str, episodes: Optional[Set[int]],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection],
+            user_specified: bool,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        将待确认任务转交 Transmission 已有任务核验流程。
+        """
+        return self._finish_existing_task(
+            server, torrent_hash, episodes, custom_words, downloader,
+            episode_selection, confirmed_selection, user_specified=user_specified,
+        )
+
     def _existing_task_files(
             self, server: Transmission, torrent_hash: str,
     ) -> Optional[List[torrent_rules.ExistingTaskFile]]:

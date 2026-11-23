@@ -212,30 +212,194 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                         del torrents
                 return None, None, None, f"添加种子任务失败：{torrent_desc}"
             else:
-                torrent_hash = next(iter(added_torrent_ids), None)
-                if not torrent_hash:
-                    torrent_hash = server.get_torrent_id_by_tag(tags=tag)
-                if torrent_hash:
-                    temporary_tag_cleaned = server.delete_torrents_tag(torrent_hash, tag)
-                if not torrent_hash:
-                    return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{torrent_desc}"
-                else:
-                    # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
-                    torrent_layout = server.get_content_layout()
-                    if is_paused:
-                        return self._finish_selected_download(
-                            server, torrent_hash, episodes or set(), custom_words, downloader, torrent_layout,
-                            episode_selection,
-                        )
-                    else:
-                        if server.is_force_resume():
-                            server.torrents_set_force_start(torrent_hash)
-                        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载成功"
+                result, torrent_hash, temporary_tag_cleaned = self._finish_added_task(
+                    server=server,
+                    added_torrent_ids=added_torrent_ids,
+                    tag=tag,
+                    expected_hashes=expected_hashes,
+                    torrent_desc=torrent_desc,
+                    is_paused=is_paused,
+                    episodes=episodes,
+                    custom_words=custom_words,
+                    downloader=downloader,
+                    episode_selection=episode_selection,
+                    confirmed_selection=confirmed_selection,
+                    user_specified=user_specified,
+                )
+                return result
 
         finally:
             # qBittorrent 可能在添加或查询链路中途失败，仍需清理已注册的临时标签。
             if not temporary_tag_cleaned:
                 server.delete_torrents_tag(torrent_hash, tag)
+
+    def _finish_added_task(
+            self,
+            *,
+            server: Qbittorrent,
+            added_torrent_ids: Iterable[str],
+            tag: str,
+            expected_hashes: frozenset[str],
+            torrent_desc: str,
+            is_paused: bool,
+            episodes: Optional[Set[int]],
+            custom_words: Optional[str],
+            downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection],
+            user_specified: bool,
+    ) -> Tuple[Tuple[Optional[str], Optional[str], Optional[str], str], Optional[str], bool]:
+        """
+        处理 qBittorrent 受理添加后的定位、标签清理与选集/启动收尾。
+
+        优先使用响应返回的任务 ID，其次按临时标签轮询，超时后按已知哈希兜底区分本次新建与
+        静默去重的已有任务；仍未查到时返回“已受理但未确认”说明。
+        """
+        torrent_hash = next(iter(added_torrent_ids), None)
+        if not torrent_hash:
+            torrent_hash = server.get_torrent_id_by_tag(tags=tag)
+        if not torrent_hash and expected_hashes:
+            torrent_hash, existing_hash = self._locate_added_task_by_hashes(server, tag, expected_hashes)
+            if existing_hash is not None:
+                logger.warn(f"下载器中已存在该种子任务：{existing_hash} - {torrent_desc}")
+                return (
+                    self._finish_existing_task(
+                        server, existing_hash, episodes, custom_words,
+                        downloader, episode_selection, confirmed_selection,
+                        user_specified=user_specified,
+                    ),
+                    None,
+                    False,
+                )
+        temporary_tag_cleaned = server.delete_torrents_tag(torrent_hash, tag) if torrent_hash else False
+        if not torrent_hash:
+            return (
+                (None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{torrent_desc}"),
+                None,
+                temporary_tag_cleaned,
+            )
+        # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
+        torrent_layout = server.get_content_layout()
+        if is_paused:
+            result = self._finish_selected_download(
+                server, torrent_hash, episodes or set(), custom_words, downloader, torrent_layout,
+                episode_selection,
+            )
+            return result, torrent_hash, temporary_tag_cleaned
+        if server.is_force_resume():
+            server.torrents_set_force_start(torrent_hash)
+        return (
+            (downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载成功"),
+            torrent_hash,
+            temporary_tag_cleaned,
+        )
+
+    @staticmethod
+    def _match_torrent_by_hashes(
+            torrents: Iterable[Any], expected_hashes: frozenset[str],
+    ) -> Optional[Any]:
+        """
+        在 qBittorrent 返回的任务集合中按 v1/v2 哈希匹配首个任务。
+        """
+        for torrent in torrents:
+            candidate_hashes = {
+                str(torrent.get(key) or "").lower()
+                for key in ("hash", "infohash_v1", "infohash_v2")
+            }
+            if expected_hashes.intersection(candidate_hashes):
+                return torrent
+        return None
+
+    def _locate_added_task_by_hashes(
+            self, server: Qbittorrent, tag: str, expected_hashes: frozenset[str],
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        临时标签轮询超时后按已知哈希兜底核对，区分本次新建任务与静默去重的已有任务。
+
+        qBittorrent 部分版本对已存在种子仍返回 Ok. 且不写入本次随机标签；按哈希查到且不带本次
+        随机标签时，直接转已有任务核验，避免误判为添加后查不到任务。
+
+        :param server: 当前 qBittorrent 客户端
+        :param tag: 本次添加生成的随机临时标签
+        :param expected_hashes: 由种子内容计算出的小写 v1/v2 哈希集合
+        :return: 本次新建任务哈希与已有任务哈希，至多一项非空
+        """
+        torrents, error = server.get_torrents(ids=list(expected_hashes))
+        if error or not torrents:
+            return None, None
+        try:
+            matched = self._match_torrent_by_hashes(torrents, expected_hashes)
+            if matched is None:
+                return None, None
+            matched_hash = matched.get("hash")
+            if not matched_hash:
+                return None, None
+            torrent_tags = {
+                str(item).strip()
+                for item in str(matched.get("tags") or "").split(",")
+                if str(item).strip()
+            }
+            if tag in torrent_tags:
+                return str(matched_hash), None
+            return None, str(matched_hash)
+        finally:
+            torrents.clear()
+
+    def _lookup_pending_task_hash(
+            self, server: Qbittorrent, expected_hashes: frozenset[str],
+    ) -> Tuple[Optional[str], bool]:
+        """
+        按已知哈希集合严格查询 qBittorrent 中是否已出现对应任务。
+        """
+        torrents, error = server.get_torrents(ids=list(expected_hashes))
+        if error:
+            return None, True
+        try:
+            matched = self._match_torrent_by_hashes(torrents, expected_hashes)
+            matched_hash = matched.get("hash") if matched is not None else None
+            return (str(matched_hash) if matched_hash else None), False
+        finally:
+            torrents.clear()
+
+    def _finish_pending_whole_download(
+            self, server: Qbittorrent, torrent_hash: str,
+            downloader: Optional[str], state: torrent_rules.ExistingTaskState,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        完成无需选集的待确认 qBittorrent 任务收尾；仅运行态且启用强制继续时补设强制开始。
+        """
+        torrent_layout = server.get_content_layout()
+        if state is torrent_rules.ExistingTaskState.RUNNING and server.is_force_resume():
+            server.torrents_set_force_start(torrent_hash)
+        return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载成功"
+
+    def _finish_pending_selected_download(
+            self, server: Qbittorrent, torrent_hash: str, episodes: Set[int],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        为延迟落地的 qBittorrent 暂停新任务补做选集并启动。
+        """
+        return self._finish_selected_download(
+            server, torrent_hash, episodes, custom_words, downloader,
+            server.get_content_layout(), episode_selection,
+        )
+
+    def _finish_pending_existing_task(
+            self, server: Qbittorrent, torrent_hash: str, episodes: Optional[Set[int]],
+            custom_words: Optional[str], downloader: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection],
+            confirmed_selection: Optional[torrent_rules.ConfirmedSelection],
+            user_specified: bool,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        将待确认任务转交 qBittorrent 已有任务核验流程。
+        """
+        return self._finish_existing_task(
+            server, torrent_hash, episodes, custom_words, downloader,
+            episode_selection, confirmed_selection, user_specified=user_specified,
+        )
 
     def _finish_existing_task(
             self, server: Qbittorrent, torrent_hash: str, episodes: Optional[Set[int]],

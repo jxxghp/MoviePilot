@@ -45,7 +45,11 @@ from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.locks import downloader_task_locks
 from app.runtime.log import logger
-from app.schemas.download import DownloadTaskAction, ExistingTaskRejection
+from app.schemas.download import (
+    DownloadTaskAction,
+    ExistingTaskRejection,
+    is_unconfirmed_download_message,
+)
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
@@ -668,8 +672,16 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             user_specified=user_specified,
         )
         if governance:
-            governance.report(context, "submitted" if download_hash else "failed",
-                              None if download_hash else "下载器未接受该资源，未提交成功")
+            if download_hash:
+                governance.report(context, "submitted", None)
+            elif is_unconfirmed_download_message(error_msg):
+                governance.report(
+                    context,
+                    "failed",
+                    "下载器已受理但暂未确认任务信息，已保留待确认状态并暂停同目标换源",
+                )
+            else:
+                governance.report(context, "failed", "下载器未接受该资源，未提交成功")
         return (download_hash, error_msg) if return_detail else download_hash
 
     def _has_completed_music_download(self, prepared: _PreparedDownload, source: Optional[str]) -> bool:
@@ -940,19 +952,35 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     downloader_scope=self._download_scope(downloader, prepared.torrent),
                 )
         if not download_hash:
-            self._record_rejected_download(
-                prepared=prepared,
-                context=context,
-                episodes=episodes,
-                channel=channel,
-                source=source,
-                downloader=downloader,
-                userid=userid,
-                actual_downloader=actual_downloader,
-                error_msg=error_msg,
-                user_specified=user_specified,
-                record_failure=not missing_downloader,
-            )
+            if is_unconfirmed_download_message(error_msg):
+                self._record_unconfirmed_download(
+                    prepared=prepared,
+                    context=context,
+                    episodes=episodes,
+                    channel=channel,
+                    source=source,
+                    downloader=downloader,
+                    userid=userid,
+                    username=username,
+                    custom_words=custom_words,
+                    actual_downloader=actual_downloader,
+                    error_msg=error_msg,
+                    user_specified=user_specified,
+                )
+            else:
+                self._record_rejected_download(
+                    prepared=prepared,
+                    context=context,
+                    episodes=episodes,
+                    channel=channel,
+                    source=source,
+                    downloader=downloader,
+                    userid=userid,
+                    actual_downloader=actual_downloader,
+                    error_msg=error_msg,
+                    user_specified=user_specified,
+                    record_failure=not missing_downloader,
+                )
         return download_hash, error_msg
 
     @staticmethod
