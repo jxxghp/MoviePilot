@@ -103,11 +103,16 @@ class FanartModule(_ModuleBase):
         :param mediainfo: 待补充的媒体对象，将原地修改海报、背景图或标志字段
         :return: 原媒体对象；模块关闭、缺少身份或没有图片时为 None
         """
-        images = self.__obtain_fanart_images(mediainfo=mediainfo)
+        image_languages: dict[str, str] = {}
+        images = self.__obtain_fanart_images(
+            mediainfo=mediainfo, image_languages=image_languages
+        )
         if not images:
             return None
 
-        self.__set_mediainfo_images(mediainfo=mediainfo, images=images)
+        self.__set_mediainfo_images(
+            mediainfo=mediainfo, images=images, image_languages=image_languages
+        )
         return mediainfo
 
     async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
@@ -119,16 +124,24 @@ class FanartModule(_ModuleBase):
         :param mediainfo: 待补充的媒体对象，将原地修改海报、背景图或标志字段
         :return: 原媒体对象；模块关闭、缺少身份或没有图片时为 None
         """
-        images = await self.__async_obtain_fanart_images(mediainfo=mediainfo)
+        image_languages: dict[str, str] = {}
+        images = await self.__async_obtain_fanart_images(
+            mediainfo=mediainfo, image_languages=image_languages
+        )
         if not images:
             return None
 
-        self.__set_mediainfo_images(mediainfo=mediainfo, images=images)
+        self.__set_mediainfo_images(
+            mediainfo=mediainfo, images=images, image_languages=image_languages
+        )
         return mediainfo
 
     @classmethod
     def __set_mediainfo_images(
-        cls, mediainfo: MediaInfo, images: dict[str, Any]
+        cls,
+        mediainfo: MediaInfo,
+        images: dict[str, Any],
+        image_languages: Optional[dict[str, str]] = None,
     ) -> None:
         """
         显式回填 MediaInfo 支持的展示图片字段。
@@ -137,6 +150,9 @@ class FanartModule(_ModuleBase):
             image_attr = cls.__mediainfo_image_attr(image_name)
             if image_attr and not getattr(mediainfo, image_attr, None):
                 setattr(mediainfo, image_attr, image_url)
+                if image_attr == "logo_path" and image_languages:
+                    if logo_lang := image_languages.get(image_name):
+                        mediainfo.logo_language = logo_lang
                 logger.debug(f"{mediainfo.title_year} 使用 Fanart 图片回填 {image_attr}：{image_name}")
 
     def metadata_img(
@@ -159,7 +175,11 @@ class FanartModule(_ModuleBase):
         return self.__obtain_fanart_images(mediainfo=mediainfo, season=season)
 
     def __obtain_fanart_images(
-        self, mediainfo: MediaInfo, season: Optional[int] = None
+        self,
+        mediainfo: MediaInfo,
+        season: Optional[int] = None,
+        *,
+        image_languages: Optional[dict[str, str]] = None,
     ) -> Optional[dict[str, Any]]:
         """
         获取 Fanart 图片并转换为刮削图片名称。
@@ -175,12 +195,15 @@ class FanartModule(_ModuleBase):
             season=season,
             query=query,
             key_token=key_token,
+            image_languages=image_languages,
         )
 
     async def __async_obtain_fanart_images(
         self,
         mediainfo: MediaInfo,
         season: Optional[int] = None,
+        *,
+        image_languages: Optional[dict[str, str]] = None,
     ) -> Optional[dict[str, Any]]:
         """
         异步获取 Fanart 图片并转换为刮削图片名称。
@@ -196,6 +219,7 @@ class FanartModule(_ModuleBase):
             season=season,
             query=query,
             key_token=key_token,
+            image_languages=image_languages,
         )
 
     @staticmethod
@@ -306,6 +330,7 @@ class FanartModule(_ModuleBase):
         *,
         query: Optional[Tuple[MediaType, Union[str, int], str]] = None,
         key_token: Optional[str] = None,
+        image_languages: Optional[dict[str, str]] = None,
     ) -> Optional[dict[str, Any]]:
         """
         把服务端图片类型转换为刮削文件名，并筛选所需季号。
@@ -368,7 +393,12 @@ class FanartModule(_ModuleBase):
                     continue
                 image_obj = self.__pick_best_image(images)
                 if image_url := image_obj.get("url"):
-                    ret[f"{image_name}{self.__image_suffix(image_url)}"] = image_url
+                    filename = f"{image_name}{self.__image_suffix(image_url)}"
+                    ret[filename] = image_url
+                    if image_languages is not None:
+                        lang = str(image_obj.get("lang") or "").strip().lower()
+                        if lang:
+                            image_languages[filename] = lang
 
         return ret or None
 

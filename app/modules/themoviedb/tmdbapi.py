@@ -1417,8 +1417,8 @@ class TmdbApi:
 
         candidates: list[Optional[str]] = []
         for raw_locale in (
-            LocaleHelper.get_current_locale(),
             get_runtime_setting("TMDB_LOCALE"),
+            LocaleHelper.get_current_locale(),
         ):
             text = str(raw_locale or "").strip()
             if not text:

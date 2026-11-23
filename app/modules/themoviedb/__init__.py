@@ -1618,12 +1618,12 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     @staticmethod
-    def _pick_best_tmdb_image(
+    def _pick_best_tmdb_image_item(
         images: Optional[_TmdbDataList],
         preferred_locale: Optional[str] = None,
-    ) -> Optional[str]:
+    ) -> Optional[_TmdbData]:
         """
-        从 TMDB 图片候选中优先按当前语言选出评分最高的文件路径，无匹配语言时回退默认候选。
+        从 TMDB 图片候选中优先按当前语言选出评分最高的完整候选记录，无匹配语言时回退默认候选。
         """
         if not images:
             return None
@@ -1654,7 +1654,19 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             )
 
         ranked = sorted(images, key=_score, reverse=True)
-        return ranked[0].get("file_path")
+        return ranked[0]
+
+    @classmethod
+    def _pick_best_tmdb_image(
+        cls,
+        images: Optional[_TmdbDataList],
+        preferred_locale: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        从 TMDB 图片候选中优先按当前语言选出评分最高的文件路径，无匹配语言时回退默认候选。
+        """
+        item = cls._pick_best_tmdb_image_item(images, preferred_locale=preferred_locale)
+        return item.get("file_path") if item else None
 
     @classmethod
     def _process_tmdb_images(cls, mediainfo: MediaInfo, images: _TmdbData) -> MediaInfo:
@@ -1667,17 +1679,27 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if isinstance(images, list):
             images = images[0]
-        preferred_locale = LocaleHelper.get_current_locale() or str(
-            get_runtime_setting("TMDB_LOCALE") or ""
-        ).strip() or None
+        preferred_locale = (
+            str(get_runtime_setting("TMDB_LOCALE") or "").strip()
+            or LocaleHelper.get_current_locale()
+            or None
+        )
         if not mediainfo.backdrop_path:
             if image_path := cls._pick_best_tmdb_image(images.get("backdrops")):
                 mediainfo.backdrop_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
         if not mediainfo.logo_path:
-            if image_path := cls._pick_best_tmdb_image(
+            if logo_item := cls._pick_best_tmdb_image_item(
                 images.get("logos"), preferred_locale=preferred_locale
             ):
-                mediainfo.logo_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
+                if image_path := logo_item.get("file_path"):
+                    mediainfo.logo_path = get_runtime_setting("TMDB_IMAGE_URL")(image_path)
+                    iso_lang = str(logo_item.get("iso_639_1") or "").strip().lower()
+                    iso_region = str(logo_item.get("iso_3166_1") or "").strip().upper()
+                    mediainfo.logo_language = (
+                        f"{iso_lang}-{iso_region}"
+                        if iso_lang and iso_region
+                        else (iso_lang or None)
+                    )
         if not mediainfo.poster_path:
             if image_path := cls._pick_best_tmdb_image(
                 images.get("posters"), preferred_locale=preferred_locale

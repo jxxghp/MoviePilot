@@ -308,6 +308,7 @@ class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     backdrop_path: Optional[str] = Field(default=None, description="背景图片")
     poster_path: Optional[str] = Field(default=None, description="海报图片")
     logo_path: Optional[str] = Field(default=None, description="标题 LOGO")
+    logo_language: Optional[str] = Field(default=None, description="标题 LOGO 语言代码")
     vote_average: Optional[float] = Field(default=0.0, description="评分")
     overview: Optional[str] = Field(default=None, description="描述")
     library_category: Optional[str] = Field(default="", description="媒体库目录分类；category 是过渡期兼容字段")

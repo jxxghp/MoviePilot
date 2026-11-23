@@ -425,6 +425,40 @@ def test_pick_best_tmdb_logo_prefers_current_locale_then_falls_back() -> None:
     ) == "/en-logo.png"
 
 
+def test_process_tmdb_images_records_selected_logo_language(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    TMDB 选出 Logo 时应同步记录 logo_language，方便客户端区分中文 Logo 与外语回退 Logo。
+    """
+    monkeypatch.setattr(
+        "app.modules.themoviedb.get_runtime_setting",
+        lambda key: (lambda path: f"https://images.test{path}") if key == "TMDB_IMAGE_URL" else "zh-CN",
+    )
+    zh_media = MediaInfo(tmdb_info=_movie_info(41))
+    TheMovieDbModule._process_tmdb_images(
+        zh_media,
+        {
+            "logos": [
+                {"file_path": "/en-logo.png", "iso_639_1": "en", "vote_average": 9.0, "vote_count": 50},
+                {"file_path": "/zh-logo.png", "iso_639_1": "zh", "iso_3166_1": "CN", "vote_average": 5.0, "vote_count": 2},
+            ]
+        },
+    )
+    assert zh_media.logo_path == "https://images.test/zh-logo.png"
+    assert zh_media.logo_language == "zh-CN"
+
+    en_media = MediaInfo(tmdb_info=_movie_info(42))
+    TheMovieDbModule._process_tmdb_images(
+        en_media,
+        {
+            "logos": [
+                {"file_path": "/en-logo.png", "iso_639_1": "en", "vote_average": 9.0, "vote_count": 50},
+            ]
+        },
+    )
+    assert en_media.logo_path == "https://images.test/en-logo.png"
+    assert en_media.logo_language == "en"
+
+
 @pytest.mark.parametrize("media_source,recognize_source,tmdb_id,complete_images", [
     ("douban", "douban", None, False),
     ("douban", "douban", 40, False),
