@@ -1195,3 +1195,416 @@ def test_tv_complete_and_partial_pack_unconfirmed_blocks_only_affected_episodes(
     assert ("tmdb:83867", 1, 1) in run.unconfirmed_episodes
     assert ("tmdb:83867", 1, 2) in run.unconfirmed_episodes
     assert run.no_exists["tmdb:83867"][1].episodes == [1, 2]
+
+
+def test_batch_reconciles_confirmed_and_pending_tv_across_same_and_other_sources():
+    """
+    批量下载开始前核对同源/异源刚确认与仍待确认的电视剧季集，精确扣减或封锁对应范围。
+    """
+    from app.application.download.pending import ConfirmedPendingDownload, PendingReconciliationResult
+
+    tv_media_a = MediaInfo(
+        title="ShowA", year="2024", type=MediaType.TV, media_source=MediaSource.TMDB, media_id="1001"
+    )
+    tv_media_b = MediaInfo(
+        title="ShowB", year="2024", type=MediaType.TV, media_source=MediaSource.TMDB, media_id="1002"
+    )
+
+    def _tv_snap(
+        key: str,
+        target_key: str,
+        *,
+        season: int,
+        episodes: tuple[int, ...] | None,
+        source: str,
+    ):
+        return download_pending_module._snapshot_from_write(
+            DownloadPendingWrite(
+                pending_key=key,
+                target_key=target_key,
+                submitted_at="2026-11-22 21:43:28",
+                expires_at="2099-11-22 23:43:28",
+                media_type=MediaType.TV.value,
+                title="Show",
+                year="2024",
+                media_source=MediaSource.TMDB,
+                media_id=target_key.split(":")[-1],
+                season=season,
+                episodes=episodes,
+                downloader="qb",
+                hashes=("a" * 40,),
+                torrent_name=f"Show-{key}",
+                source=source,
+            )
+        )
+
+    confirmed = (
+        # 同源整季刚确认 -> 扣减 S01 并计入 downloaded
+        ConfirmedPendingDownload(
+            record=_tv_snap("c-same-season", "电视剧:tmdb:1001", season=1, episodes=None, source="sub-1"),
+            context=_tv_context("ShowA.S01", media_id="1001", season=1),
+            downloader="qb",
+            download_hash="1" * 40,
+        ),
+        # 异源整季刚确认 -> 不扣减但封锁 S02 避免重复提交
+        ConfirmedPendingDownload(
+            record=_tv_snap("c-other-season", "电视剧:tmdb:1001", season=2, episodes=None, source="other-sub"),
+            context=_tv_context("ShowA.S02", media_id="1001", season=2),
+            downloader="qb",
+            download_hash="2" * 40,
+        ),
+        # 同源按集刚确认 -> 扣减 S03E01
+        ConfirmedPendingDownload(
+            record=_tv_snap("c-same-ep", "电视剧:tmdb:1001", season=3, episodes=(1,), source="sub-1"),
+            context=_tv_context("ShowA.S03E01", media_id="1001", season=3, episodes=(1,)),
+            downloader="qb",
+            download_hash="3" * 40,
+        ),
+        # 异源按集刚确认 -> 不扣减但封锁 S03E02
+        ConfirmedPendingDownload(
+            record=_tv_snap("c-other-ep", "电视剧:tmdb:1001", season=3, episodes=(2,), source="other-sub"),
+            context=_tv_context("ShowA.S03E02", media_id="1001", season=3, episodes=(2,)),
+            downloader="qb",
+            download_hash="4" * 40,
+        ),
+        # 目标不在 no_exists 或非电视剧 -> 安全忽略
+        ConfirmedPendingDownload(
+            record=_tv_snap("c-missing-media", "电视剧:tmdb:9999", season=1, episodes=None, source="sub-1"),
+            context=_tv_context("Missing.S01", media_id="9999", season=1),
+            downloader="qb",
+            download_hash="5" * 40,
+        ),
+        ConfirmedPendingDownload(
+            record=_tv_snap("c-missing-season", "电视剧:tmdb:1001", season=9, episodes=(1,), source="sub-1"),
+            context=_tv_context("ShowA.S09E01", media_id="1001", season=9, episodes=(1,)),
+            downloader="qb",
+            download_hash="6" * 40,
+        ),
+        ConfirmedPendingDownload(
+            record=download_pending_module._snapshot_from_write(
+                DownloadPendingWrite(
+                    pending_key="c-movie",
+                    target_key="电影:tmdb:27205",
+                    submitted_at="2026-11-22 21:43:28",
+                    expires_at="2099-11-22 23:43:28",
+                    media_type=MediaType.MOVIE.value,
+                    title="Inception",
+                    year="2010",
+                    media_source=MediaSource.TMDB,
+                    media_id="27205",
+                    downloader="qb",
+                    hashes=("7" * 40,),
+                    torrent_name="Inception",
+                    source="sub-1",
+                )
+            ),
+            context=_movie_context("Inception.1080p"),
+            downloader="qb",
+            download_hash="7" * 40,
+        ),
+    )
+    still_pending = (
+        # ShowB S01 整季仍待确认，S02E01 仍待确认
+        _tv_snap("p-whole", "电视剧:tmdb:1002", season=1, episodes=None, source="sub-1"),
+        _tv_snap("p-ep", "电视剧:tmdb:1002", season=2, episodes=(1,), source="sub-1"),
+    )
+
+    chain = object.__new__(DownloadChain)
+    chain.eventmanager = SimpleNamespace(send_event=MagicMock(return_value=None))
+    chain._load_active_download_failures = MagicMock(return_value={})
+    chain.reconcile_pending_downloads = MagicMock(
+        return_value=PendingReconciliationResult(confirmed=confirmed, still_pending=still_pending)
+    )
+    chain.download_single = MagicMock(return_value=("hash-ok", "添加下载成功"))
+
+    # ShowB S02 要求完整覆盖 [1, 2]，因 E01 待确认，整包完整集必须被拦住；S01 整季被封锁，拆包也跳过。
+    ctx_b_s1 = _tv_context("ShowB.S01.1080p", media_id="1002", season=1)
+    ctx_b_s1.media_info = tv_media_b
+    ctx_b_s2 = _tv_context("ShowB.S02E01-E02.1080p", media_id="1002", season=2, episodes=(1, 2))
+    ctx_b_s2.media_info = tv_media_b
+    ctx_a_s2 = _tv_context("ShowA.S02.1080p", media_id="1001", season=2)
+    ctx_a_s2.media_info = tv_media_a
+
+    no_exists = {
+        "tmdb:1001": {
+            1: NotExistMediaInfo(season=1, episodes=[], total_episode=8, start_episode=1),
+            2: NotExistMediaInfo(season=2, episodes=[], total_episode=8, start_episode=1),
+            3: NotExistMediaInfo(season=3, episodes=[1, 2, 3], total_episode=8, start_episode=1),
+        },
+        "tmdb:1002": {
+            1: NotExistMediaInfo(season=1, episodes=[1, 2], total_episode=8, start_episode=1),
+            2: NotExistMediaInfo(
+                season=2, episodes=[1, 2], total_episode=2, start_episode=1, require_complete_coverage=True
+            ),
+        },
+        "tmdb:1003": {
+            1: NotExistMediaInfo(season=1, episodes=[], total_episode=4, start_episode=1),
+        },
+    }
+    options = download_batch._BatchDownloadOptions(
+        save_path=None,
+        channel=None,
+        source="sub-1",
+        userid=None,
+        username=None,
+        downloader="qb",
+        custom_words=None,
+        governance=None,
+    )
+    run = download_batch._BatchDownloadRun(chain, [ctx_a_s2, ctx_b_s1, ctx_b_s2], no_exists, options, None)
+    run.run()
+
+    # 同源确认的 S01 被移除，S03E01 被扣减；异源与待确认的季/集都被加入防重集合且无重复提交。
+    assert 1 not in run.no_exists["tmdb:1001"]
+    assert run.no_exists["tmdb:1001"][3].episodes == [2, 3]
+    assert ("tmdb:1001", 2) in run.unconfirmed_seasons
+    assert ("tmdb:1001", 3, 2) in run.unconfirmed_episodes
+    assert ("tmdb:1002", 1) in run.unconfirmed_seasons
+    assert ("tmdb:1002", 2, 1) in run.unconfirmed_episodes
+    chain.download_single.assert_not_called()
+
+    # 覆盖目标键前缀不匹配时的早退防御分支。
+    bad_record = _tv_snap("bad", "电影:tmdb:1001", season=1, episodes=None, source="sub-1")
+    run._apply_confirmed_tv_pending(bad_record, deduct_missing=True)
+
+
+def test_selection_movie_music_governance_reports_confirmed_and_pending_blocks():
+    """
+    电影与音乐候选命中刚确认转正或仍在待确认保护期的记录时，向治理器报告 rejected 并跳过提交。
+    """
+    from app.application.download.pending import ConfirmedPendingDownload
+
+    ctx_confirmed = _movie_context("Confirmed.Movie.2160p", media_id="27205")
+    ctx_pending = _movie_context("Pending.Movie.2160p", media_id="27206")
+    ctx_pending.media_info.title = "Interstellar"
+    ctx_pending.media_info.year = "2014"
+    confirmed_snap = download_pending_module._snapshot_from_write(
+        DownloadPendingWrite(
+            pending_key="k-confirmed",
+            target_key="电影:tmdb:27205",
+            submitted_at="2026-11-22 21:43:28",
+            expires_at="2099-11-22 23:43:28",
+            media_type=MediaType.MOVIE.value,
+            title="Inception",
+            year="2010",
+            media_source=MediaSource.TMDB,
+            media_id="27205",
+            downloader="qb",
+            hashes=("1" * 40,),
+            torrent_name="Confirmed.Prev",
+        )
+    )
+    pending_snap = download_pending_module._snapshot_from_write(
+        DownloadPendingWrite(
+            pending_key="k-pending",
+            target_key="电影:tmdb:27206",
+            submitted_at="2026-11-22 21:43:28",
+            expires_at="2099-11-22 23:43:28",
+            media_type=MediaType.MOVIE.value,
+            title="Inception",
+            year="2010",
+            media_source=MediaSource.TMDB,
+            media_id="27206",
+            downloader="qb",
+            hashes=("2" * 40,),
+            torrent_name="Pending.Prev",
+        )
+    )
+
+    decisions: list[tuple[str, str, str]] = []
+    governance = SubscriptionDownloadGovernance(
+        decision_observer=lambda ctx, decision, reason: decisions.append((ctx.torrent_info.title, decision, reason)),
+    )
+    chain = object.__new__(DownloadChain)
+    chain.download_single = MagicMock()
+    downloaded: list[Context] = []
+
+    chain._download_movie_music_candidates(
+        contexts=[Context(meta_info=None, media_info=None, torrent_info=None), ctx_confirmed, ctx_pending],
+        downloaded_list=downloaded,
+        active_failure_records={},
+        save_path=None,
+        channel=None,
+        source=None,
+        userid=None,
+        username=None,
+        downloader="qb",
+        custom_words=None,
+        governance=governance,
+        pending_records=(pending_snap,),
+        confirmed_pending=(
+            ConfirmedPendingDownload(
+                record=confirmed_snap,
+                context=ctx_confirmed,
+                downloader="qb",
+                download_hash="1" * 40,
+            ),
+        ),
+    )
+
+    assert downloaded == []
+    chain.download_single.assert_not_called()
+    assert len(decisions) == 2
+    assert decisions[0][1] == "rejected" and "已在下载器确认" in decisions[0][2]
+    assert decisions[1][1] == "rejected" and "待确认下载任务" in decisions[1][2]
+
+
+def test_subscribe_settle_confirmed_pending_tv_seasons_episodes_and_best_version_guard():
+    """
+    订阅延迟确认结算覆盖电视剧整季/按集缺集扣减、媒体库异常保守处理、洗版优先级保护与无效订阅忽略。
+    """
+    from app.application.download.pending import ConfirmedPendingDownload
+    from app.application.mediaserver import MediaServerQueryError
+
+    sub_tv = SubscriptionSnapshot(
+        id=31,
+        name="ShowA",
+        year="2024",
+        type=MediaType.TV.value,
+        media_source=MediaSource.TMDB,
+        media_id="1001",
+        season=1,
+    )
+    sub_movie_best = SubscriptionSnapshot(
+        id=32,
+        name="Inception",
+        year="2010",
+        type=MediaType.MOVIE.value,
+        media_source=MediaSource.TMDB,
+        media_id="27205",
+        best_version=1,
+        current_priority=95,
+    )
+    sub_no_id = SubscriptionSnapshot(
+        id=33,
+        name="TitleOnly",
+        year="2024",
+        type=MediaType.MOVIE.value,
+        media_source=None,
+        media_id=None,
+    )
+
+    subs = {31: sub_tv, 32: sub_movie_best, 33: sub_no_id}
+    owner = object.__new__(SubscribeChain)
+    owner.subscription_repository = SimpleNamespace(get=lambda sub_id: subs.get(sub_id))
+    owner.finish_subscribe_or_not = MagicMock()
+
+    def _item(
+        *,
+        sub_id: int | None,
+        context: Context,
+        media_type: str,
+        target_key: str,
+        season: int | None = None,
+        episodes: tuple[int, ...] | None = None,
+    ) -> ConfirmedPendingDownload:
+        snap = download_pending_module._snapshot_from_write(
+            DownloadPendingWrite(
+                pending_key=f"k-{sub_id}-{season}-{episodes}",
+                target_key=target_key,
+                submitted_at="2026-11-22 21:43:28",
+                expires_at="2099-11-22 23:43:28",
+                media_type=media_type,
+                title=context.media_info.title if context.media_info else "X",
+                year="2024",
+                media_source=MediaSource.TMDB,
+                media_id=target_key.split(":")[-1] if ":" in target_key else None,
+                season=season,
+                episodes=episodes,
+                downloader="qb",
+                hashes=("9" * 40,),
+                torrent_name="Rel",
+                subscription_id=sub_id,
+            )
+        )
+        return ConfirmedPendingDownload(record=snap, context=context, downloader="qb", download_hash="9" * 40)
+
+    # 1. 电视剧按集延迟确认：扣减 E01，保留剩余 E02。
+    owner.resolve_subscribe_missing = MagicMock(
+        return_value=(
+            False,
+            {"tmdb:1001": {1: NotExistMediaInfo(season=1, episodes=[1, 2], total_episode=2, start_episode=1)}},
+        )
+    )
+    tv_ep_item = _item(
+        sub_id=31,
+        context=_tv_context("ShowA.S01E01", media_id="1001", season=1, episodes=(1,)),
+        media_type=MediaType.TV.value,
+        target_key="电视剧:tmdb:1001",
+        season=1,
+        episodes=(1,),
+    )
+    assert owner.settle_confirmed_pending_downloads((tv_ep_item,)) == 1
+    assert owner.finish_subscribe_or_not.call_args.kwargs["lefts"]["tmdb:1001"][1].episodes == [2]
+
+    # 2. 电视剧整季延迟确认：扣减整季后 lefts 清空。
+    owner.resolve_subscribe_missing = MagicMock(
+        return_value=(
+            False,
+            {"tmdb:1001": {1: NotExistMediaInfo(season=1, episodes=[], total_episode=2, start_episode=1)}},
+        )
+    )
+    tv_season_item = _item(
+        sub_id=31,
+        context=_tv_context("ShowA.S01", media_id="1001", season=1),
+        media_type=MediaType.TV.value,
+        target_key="电视剧:tmdb:1001",
+        season=1,
+        episodes=None,
+    )
+    assert owner.settle_confirmed_pending_downloads((tv_season_item,)) == 1
+    assert owner.finish_subscribe_or_not.call_args.kwargs["lefts"] == {}
+
+    # 3. 媒体库查询异常时保守返回 lefts=None，不崩溃。
+    owner.resolve_subscribe_missing = MagicMock(side_effect=MediaServerQueryError("jellyfin down"))
+    assert owner.settle_confirmed_pending_downloads((tv_season_item,)) == 1
+    assert owner.finish_subscribe_or_not.call_args.kwargs["lefts"] is None
+
+    # 4. 电影洗版已有更高优先级（95 >= 90），旧待确认回执被忽略不降级。
+    low_pri_movie = _item(
+        sub_id=32,
+        context=_movie_context("Inception.Old", media_id="27205", pri_order=90),
+        media_type=MediaType.MOVIE.value,
+        target_key="电影:tmdb:27205",
+    )
+    assert owner.settle_confirmed_pending_downloads((low_pri_movie,)) == 0
+
+    # 5. 无订阅 ID、订阅已删、缺少 meta/media、身份不匹配均安全返回 0；无媒体 ID 时按标题匹配。
+    no_sub_item = _item(
+        sub_id=None,
+        context=_movie_context("NoSub"),
+        media_type=MediaType.MOVIE.value,
+        target_key="电影:tmdb:27205",
+    )
+    deleted_sub_item = _item(
+        sub_id=999,
+        context=_movie_context("DeletedSub"),
+        media_type=MediaType.MOVIE.value,
+        target_key="电影:tmdb:27205",
+    )
+    broken_ctx_item = _item(
+        sub_id=31,
+        context=Context(meta_info=None, media_info=None, torrent_info=TorrentInfo(title="Broken")),
+        media_type=MediaType.TV.value,
+        target_key="电视剧:tmdb:1001",
+    )
+    mismatch_item = _item(
+        sub_id=31,
+        context=_tv_context("OtherShow.S01", media_id="8888", season=1),
+        media_type=MediaType.TV.value,
+        target_key="电视剧:tmdb:8888",
+    )
+    title_only_ctx = Context(
+        meta_info=MetaInfo("TitleOnly.2024"),
+        media_info=MediaInfo(title="TitleOnly", year="2024", type=MediaType.MOVIE),
+        torrent_info=TorrentInfo(title="TitleOnly.1080p", pri_order=80),
+    )
+    title_only_item = _item(
+        sub_id=33,
+        context=title_only_ctx,
+        media_type=MediaType.MOVIE.value,
+        target_key="电影:TitleOnly:2024",
+    )
+    assert owner.settle_confirmed_pending_downloads(
+        (no_sub_item, deleted_sub_item, broken_ctx_item, mismatch_item, title_only_item)
+    ) == 1
