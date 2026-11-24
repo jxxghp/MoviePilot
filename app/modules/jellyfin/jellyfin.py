@@ -383,7 +383,6 @@ class Jellyfin:
                         "将回退选择可用的超级管理员账号！"
                     )
                 # 查询管理员，优先选择同时具备全库访问能力的账号，再回退到普通管理员。
-                total_library_count = len(self.get_jellyfin_folders())
                 best_admin_id = None
                 best_admin_name = None
                 best_admin_library_count = -1
@@ -405,7 +404,7 @@ class Jellyfin:
                     return None
                 logger.warning(
                     "未找到具备全库访问权限的管理员账号，"
-                    f"回退使用显式访问范围为 {best_admin_library_count}/{total_library_count} "
+                    f"回退使用显式访问范围为 {best_admin_library_count} "
                     f"个媒体库的管理员账号 {best_admin_name}！"
                 )
                 return best_admin_id
