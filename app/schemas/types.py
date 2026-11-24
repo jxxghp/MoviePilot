@@ -619,15 +619,28 @@ class NotificationChannel(Enum):
     @classmethod
     def _missing_(cls, value: object) -> Optional["NotificationChannel"]:
         """
-        接受带命名空间的扩展传输标识；标识可解析不代表模块存在或入口可信。
+        解析带命名空间的扩展值而不缓存；格式合法不代表平台注册或入口可信。
         """
         if not isinstance(value, str) or re.fullmatch(r"platform:[a-z][a-z0-9._-]{0,54}", value) is None:
             return None
         member = object.__new__(cls)
         member._name_ = value
         member._value_ = value
-        existing = cls._value2member_map_.setdefault(value, member)
-        return existing if isinstance(existing, cls) else None
+        return member
+
+    def __eq__(self, other: object) -> bool:
+        """
+        同类枚举按传输值比较，保证无缓存扩展在入站核对和序列化后仍相等。
+        """
+        if isinstance(other, NotificationChannel):
+            return self.value == other.value
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        """
+        保持内置枚举的名称哈希，并让同值扩展可稳定用于集合和字典。
+        """
+        return hash(self._name_)
 
     @classmethod
     def __get_pydantic_json_schema__(

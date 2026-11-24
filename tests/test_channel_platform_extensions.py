@@ -843,6 +843,68 @@ def test_namespaced_transport_roundtrips_without_granting_trust(extension):
         NotificationChannel("typo-channel")
 
 
+def test_unregistered_transport_batch_does_not_mutate_enum_or_platform_state(extension):
+    """
+    批量解析合法但未注册的外部标识不得增长全局枚举缓存、平台目录或授权记录。
+    """
+    import json
+
+    from pydantic import TypeAdapter
+
+    directory, _, service = extension
+    values_before = dict(NotificationChannel._value2member_map_)
+    members_before = dict(NotificationChannel.__members__)
+    names_before = tuple(NotificationChannel._member_names_)
+    providers_before = tuple(entry.provider for entry in directory.providers())
+    adapter = TypeAdapter(NotificationChannel)
+    for index in range(4096):
+        identifier = f"platform:unregistered-batch-{index}"
+        channel = NotificationChannel(identifier)
+        decoded = adapter.validate_json(json.dumps(identifier))
+        assert channel == decoded
+        assert adapter.dump_json(decoded) == json.dumps(identifier).encode()
+        assert directory.get(identifier) is None
+    assert NotificationChannel._value2member_map_ == values_before
+    assert dict(NotificationChannel.__members__) == members_before
+    assert tuple(NotificationChannel._member_names_) == names_before
+    assert tuple(entry.provider for entry in directory.providers()) == providers_before
+    assert not service.list_members()
+    with pytest.raises(PermissionError):
+        service.request("platform:unregistered-batch-0", "first", "p-alice", "Alice")
+    assert not service.list_members()
+
+
+def test_uncached_transport_preserves_enum_equality_hashing_and_builtin_identity():
+    """
+    无缓存扩展仍可比较和充当键，复制与序列化不改变值；内置成员继续保持单例。
+    """
+    import copy
+    import pickle
+
+    from pydantic import TypeAdapter
+
+    first = NotificationChannel("platform:uncached-equality")
+    second = NotificationChannel("platform:uncached-equality")
+    different = NotificationChannel("platform:uncached-other")
+    adapter = TypeAdapter(NotificationChannel)
+    assert first == second and first != different
+    assert hash(first) == hash(second)
+    assert {first: "owner"}[second] == "owner"
+    assert len({first, second, different}) == 2
+    assert first != first.value and first != object()
+    assert first not in {NotificationChannel.Web, NotificationChannel.WebAgent}
+    assert copy.copy(first) == first
+    assert copy.deepcopy(first) == first
+    assert pickle.loads(pickle.dumps(first)) == first
+    assert adapter.validate_json(adapter.dump_json(first)) == first
+    for member in NotificationChannel:
+        assert NotificationChannel(member.value) is member
+        assert NotificationChannel[member.name] is member
+        assert adapter.validate_json(adapter.dump_json(member)) is member
+        assert hash(member) == hash(member.name)
+        assert member != member.value
+
+
 @pytest.mark.parametrize("field,value", [("provider", "telegram"), ("identity_namespace", "recreated-namespace")])
 def test_authenticated_origin_mismatch_cannot_use_existing_approval(extension, field, value):
     """
