@@ -2,6 +2,7 @@
 本地存储的文件查询、原子复制、移动、链接及容量统计。
 """
 
+import errno
 import os
 import shutil
 import time
@@ -290,20 +291,103 @@ class LocalStorage(StorageBase):
 
     # 中间文件使用隐藏名称及专用后缀，降低媒体库把未完成内容当作成品的风险。
     PARTIAL_SUFFIX = ".mp-partial"
+    # 悬空软链接修复使用的同目录私有暂存后缀。
+    STAGED_LINK_SUFFIX = ".mp"
+    # 文件系统未报告有效单文件名上限时回退的默认字节预算。
+    DEFAULT_NAME_MAX = 255
     # 中间文件按修改时间清理的阈值，单位为秒；正常失败路径会先尝试自行清理。
     PARTIAL_STALE_SECONDS = 24 * 3600
+
+    @classmethod
+    def _resolve_name_max(cls, directory: Path) -> int:
+        """
+        查询目标目录所在文件系统的单文件名字节上限。
+
+        Windows 不提供 os.pathconf，部分挂载可能抛出 OSError 或 ValueError，
+        POSIX 在无固定上限时返回负数；上述情况统一回退到默认上限 255。
+
+        :param directory: 目标文件所在父目录
+        :return: 正整数单文件名字节预算上限
+        """
+        pathconf = getattr(os, "pathconf", None)
+        if pathconf is None:
+            return cls.DEFAULT_NAME_MAX
+        try:
+            limit = int(pathconf(directory, "PC_NAME_MAX"))
+        except (OSError, ValueError):
+            return cls.DEFAULT_NAME_MAX
+        return limit if limit > 0 else cls.DEFAULT_NAME_MAX
+
+    @classmethod
+    def _compact_temp_path(
+        cls,
+        directory: Path,
+        suffix: str,
+        name_max: Optional[int] = None,
+    ) -> Path:
+        """
+        构造不含目标文件名的紧凑同目录隐藏临时路径。
+
+        当文件系统上限过小，或网络挂载、NFD 归一化导致带目标名前缀的临时名
+        仍触发 ENAMETOOLONG 时作为兜底名称。
+
+        :param directory: 目标文件所在父目录
+        :param suffix: 以点号开头的专用临时后缀
+        :param name_max: 已知的单文件名上限；为 None 时按目录查询
+        :return: 仅含前导点、随机标识与专用后缀的隐藏路径
+        """
+        limit = cls._resolve_name_max(directory) if name_max is None else name_max
+        token = uuid.uuid4().hex
+        keep = max(0, limit - 1 - len(os.fsencode(suffix)))
+        return directory / f".{token[:keep]}{suffix}"
+
+    @classmethod
+    def _scoped_temp_path(cls, dest: Path, suffix: str) -> Path:
+        """
+        按目标目录文件名上限构造同目录隐藏临时路径。
+
+        目标名在预算内时保持“.<目标名>.<uuid><后缀>”格式不变；超出预算时按
+        os.fsencode 原始字节在完整字符边界截断目标名，兼容 surrogateescape
+        非 UTF-8 文件名且不切碎多字节字符；预算不足以容纳首字符时退化为紧凑名。
+
+        :param dest: 最终目标文件路径
+        :param suffix: 以点号开头的专用临时后缀
+        :return: 同目录下不超长且每次调用独立的隐藏临时路径
+        """
+        name_max = cls._resolve_name_max(dest.parent)
+        token = uuid.uuid4().hex
+        suffix_bytes = len(os.fsencode(suffix))
+        # 前导点 + 分隔点 + uuid hex + 专用后缀占用的固定字节数
+        budget = name_max - (2 + len(token) + suffix_bytes)
+        if budget <= 0:
+            return cls._compact_temp_path(dest.parent, suffix, name_max=name_max)
+        name = dest.name
+        if len(os.fsencode(name)) > budget:
+            truncated: list[str] = []
+            used = 0
+            for char in name:
+                char_bytes = len(os.fsencode(char))
+                if used + char_bytes > budget:
+                    break
+                truncated.append(char)
+                used += char_bytes
+            name = "".join(truncated)
+        if not name:
+            return cls._compact_temp_path(dest.parent, suffix, name_max=name_max)
+        return dest.parent / f".{name}.{token}{suffix}"
 
     @classmethod
     def _partial_path(cls, dest: Path) -> Path:
         """
         生成同目录、每次调用独立的中间写入路径。
 
-        同目录便于完成后原子替换；随机标识隔离同进程和跨进程的同目标任务。
+        同目录便于完成后原子替换；随机标识隔离同进程和跨进程的同目标任务，
+        并按目标目录 PC_NAME_MAX 控制长度以避免长目标名触发 ENAMETOOLONG。
 
         :param dest: 最终文件路径
         :return: 隐藏的 .mp-partial 文件路径
         """
-        return dest.parent / f".{dest.name}.{uuid.uuid4().hex}{cls.PARTIAL_SUFFIX}"
+        return cls._scoped_temp_path(dest, cls.PARTIAL_SUFFIX)
 
     @classmethod
     def _cleanup_stale_partials(cls, directory: Path) -> None:
@@ -409,12 +493,30 @@ class LocalStorage(StorageBase):
             if self.__should_show_progress(src, dest) else None
         )
         try:
-            copied = fsproxy.copy(
-                src, partial,
-                progress_cb=progress_callback,
-                cancel_cb=lambda: runtime_stop_state.consume_transfer_stop(src.as_posix()),
-                chunk_size=self.chunk_size,
-            )
+            try:
+                copied = fsproxy.copy(
+                    src, partial,
+                    progress_cb=progress_callback,
+                    cancel_cb=lambda: runtime_stop_state.consume_transfer_stop(src.as_posix()),
+                    chunk_size=self.chunk_size,
+                )
+            except OSError as err:
+                # 网络挂载（如 SMB/NFS 下层加密目录）或 NFD 展开可能使实际限制严于 PC_NAME_MAX，
+                # 仅在带目标名前缀的临时名触发 ENAMETOOLONG 时回退紧凑短名重试一次。
+                compact = self._compact_temp_path(dest.parent, self.PARTIAL_SUFFIX)
+                if (
+                    err.errno != errno.ENAMETOOLONG
+                    or len(os.fsencode(partial.name)) <= len(os.fsencode(compact.name))
+                ):
+                    raise
+                partial.unlink(missing_ok=True)
+                partial = compact
+                copied = fsproxy.copy(
+                    src, partial,
+                    progress_cb=progress_callback,
+                    cancel_cb=lambda: runtime_stop_state.consume_transfer_stop(src.as_posix()),
+                    chunk_size=self.chunk_size,
+                )
             if not copied:
                 logger.info(f"【本地】{src} 复制未完成")
                 return False
@@ -623,7 +725,7 @@ class LocalStorage(StorageBase):
         link_file = target_file
         try:
             if target_file.is_symlink() and self.get_item_strict(target_file) is None:
-                link_file = target_file.with_name(f".{target_file.name}.{uuid.uuid4().hex}.mp")
+                link_file = self._scoped_temp_path(target_file, self.STAGED_LINK_SUFFIX)
         except StorageQueryError as err:
             logger.error(f"【本地】无法确认软链接目标状态：{err}")
             return False
