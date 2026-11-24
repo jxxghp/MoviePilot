@@ -426,8 +426,10 @@ class TransferSettlementOwner(_TransferOwnerBase):
             transferinfo.file_count = (
                 self.jobview.count(task.mediainfo, meta.begin_season) or 1
             )
+            # 移动整理或非本地目录整理完成时，源目录统计可能已归零，需保留执行结果已累计的字节数。
             transferinfo.total_size = (
                 self.jobview.size(task.mediainfo, meta.begin_season)
+                or transferinfo.total_size
                 or task.fileitem.size
             )
             # 发送通知，实时手动整理时不发
