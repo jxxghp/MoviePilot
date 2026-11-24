@@ -17,7 +17,11 @@ from app.api.context import get_background_task_registry, resolve_background_tas
 from app.api.dependencies.agent import get_message_query_service
 from app.api.dependencies.auth import get_current_active_superuser, get_current_active_user
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    PositiveCountParam,
+    PositivePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_configured_system_config,
@@ -227,17 +231,18 @@ async def web_message(
 async def get_message_history(
     _: _SchemaTokenPayload = Depends(verify_token),
     service: MessageQueryService = Depends(get_message_query_service),
-    page: Optional[int] = 1,
-    count: Optional[int] = 20,
+    page: PositivePageParam = 1,
+    count: PositiveCountParam = 20,
 ) -> List[_SchemaMessageHistoryItem]:
     """
     分页获取消息表中的全部历史记录，包含接收消息与发送通知。
 
     旧路径 GET /api/v1/message/web 作为兼容入口保留相同行为；仅查询系统已发送通知时使用 GET /api/v1/message/notification。
 
+    :param _: 已验证的访问令牌载荷
     :param service: 消息历史查询服务
-    :param page: 页码，从 1 开始，传 None 时默认第 1 页
-    :param count: 每页最多返回条数，传 None 时默认 20 条
+    :param page: 页码，从 1 开始，最小为 1；直接调用传入 None 时默认第 1 页
+    :param count: 每页最多返回条数，最小为 1；直接调用传入 None 时默认 20 条
     :return: 按登记时间和主键倒序排列的消息历史列表
     """
     messages = await service.list_history(
@@ -251,15 +256,16 @@ async def get_message_history(
 async def get_notification_message(
     _: _SchemaTokenPayload = Depends(verify_token),
     service: MessageQueryService = Depends(get_message_query_service),
-    page: Optional[int] = 1,
-    count: Optional[int] = 20,
+    page: PositivePageParam = 1,
+    count: PositiveCountParam = 20,
 ) -> List[_SchemaMessageHistoryItem]:
     """
     获取清理水位之后系统发送的通知消息列表，仅包含发送方向（action=1）记录。
 
+    :param _: 已验证的访问令牌载荷
     :param service: 消息历史查询服务
-    :param page: 页码，从 1 开始，传 None 时默认第 1 页
-    :param count: 每页最多返回条数，传 None 时默认 20 条
+    :param page: 页码，从 1 开始，最小为 1；直接调用传入 None 时默认第 1 页
+    :param count: 每页最多返回条数，最小为 1；直接调用传入 None 时默认 20 条
     :return: 按登记时间和主键倒序排列的系统通知消息列表
     """
     clear_before = _get_notification_clear_before()

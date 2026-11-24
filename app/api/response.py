@@ -73,6 +73,22 @@ CompatibleCountParam = Annotated[
         ),
     ),
 ]
+# 原生分页接口的页码参数，限制为正整数并保留端点各自的默认页码与直接调用空值回退。
+PositivePageParam = Annotated[
+    Optional[int],
+    Query(
+        ge=1,
+        description="从 1 开始的结果页码。",
+    ),
+]
+# 原生分页接口的每页条数参数，限制为正整数以避免负数进入数据库 LIMIT 子句。
+PositiveCountParam = Annotated[
+    Optional[int],
+    Query(
+        ge=1,
+        description="当前页最多返回的记录数。",
+    ),
+]
 _COLLECTION_WINDOW_PARAMETERS = frozenset(
     {"page", "count", "limit", "offset", "page_size", "max_results"}
 )

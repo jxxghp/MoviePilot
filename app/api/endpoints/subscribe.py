@@ -47,6 +47,8 @@ from app.api.response import (
     COLLECTION_TOTAL_OPENAPI_KEY,
     CompatibleCountParam,
     CompatiblePageParam,
+    PositiveCountParam,
+    PositivePageParam,
     ResponseAPIRouter,
     resolve_compatible_pagination,
 )
@@ -614,14 +616,22 @@ async def seerr_subscribe(
 )
 async def subscribe_history(
     mtype: str,
-    page: Optional[int] = 1,
-    count: Optional[int] = 30,
+    response: Response,
+    page: PositivePageParam = 1,
+    count: PositiveCountParam = 30,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
-    response: Response = None,  # type: ignore[assignment]
 ) -> Any:
     """
-    查询电影、电视剧或音乐订阅历史
+    分页查询电影、电视剧或音乐订阅历史，并通过响应头写入精确总数。
+
+    :param mtype: 订阅媒体类型分类
+    :param response: 由 FastAPI 注入的响应对象，用于设置集合总数响应头
+    :param page: 页码，从 1 开始，最小为 1；直接调用传入 None 时默认第 1 页
+    :param count: 每页最多返回条数，最小为 1；直接调用传入 None 时默认 30 条
+    :param query: 订阅查询服务
+    :param current_user: 当前已认证用户，非超级用户仅查询本人记录
+    :return: 当前分页窗口内的订阅历史列表
     """
     username = None if current_user.is_superuser else current_user.name
     page = page if page is not None else 1

@@ -509,16 +509,6 @@
       "reason": "runtime-mro"
     },
     {
-      "path": "app/api/endpoints/history.py",
-      "owner": "download_history",
-      "codes": [
-        "assignment"
-      ],
-      "fingerprint": "e7327c23ed2dd984fc664c9d0dc8341d955337c6472d02702665ac5e5ecdbad7",
-      "statement": "@router.get('/download', summary='查询下载历史记录', response_model=List[_SchemaDownloadHistory], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def download_history(page: Optional[int]=1, count: Optional[int]=30, query: HistoryQueryService=Depends(get_history_query_service), _: _SchemaTokenPayload=Depends(verify_token), response: Response=None) -> Any:",
-      "reason": "fastapi-response-default"
-    },
-    {
       "path": "app/api/endpoints/mfa.py",
       "owner": "passkey_list",
       "codes": [
@@ -616,16 +606,6 @@
       ],
       "fingerprint": "ed2e2a56d57aabca69b5a5778313547b43d081b1d98757758797c34aa5fb9f42",
       "statement": "@router.get('/', summary='查询所有订阅', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_subscribes(response: Response=None, query: SubscriptionQueryService=Depends(get_subscription_query_service), status_service: SubscriptionExecutionStatusService=Depends(get_subscription_execution_status_service), current_user: ApiPrincipal=Depends(get_current_active_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
-      "reason": "fastapi-response-default"
-    },
-    {
-      "path": "app/api/endpoints/subscribe.py",
-      "owner": "subscribe_history",
-      "codes": [
-        "assignment"
-      ],
-      "fingerprint": "ac30ef74741b93c556c16d34d74aa02334a761c24300522c16830145b72775de",
-      "statement": "@router.get('/history/{mtype}', summary='查询订阅历史', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def subscribe_history(mtype: str, page: Optional[int]=1, count: Optional[int]=30, query: SubscriptionQueryService=Depends(get_subscription_query_service), current_user: ApiPrincipal=Depends(get_current_active_user_async), response: Response=None) -> Any:",
       "reason": "fastapi-response-default"
     },
     {
