@@ -36,6 +36,7 @@ from app.chain.download.ports import (
 )
 from app.chain.media import MediaChain
 from app.domain import episode as episode_rules
+from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
@@ -610,17 +611,19 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             else None
         )
         http, _ = _download_ports_snapshot()
-        proxies = (
-            get_chain_runtime_config_snapshot().proxy
-            if request_params.get("proxy")
-            else None
-        )
+        config = get_chain_runtime_config_snapshot()
+        effective_ua = site_rules.resolve_site_user_agent(
+            ua,
+            getattr(config, "site_user_agent", None),
+            config.user_agent,
+        ) or None
+        proxies = config.proxy if request_params.get("proxy") else None
         site = site_request_config(request_url, site_id)
         wait_for_site_request(site)
         if request_params.get("method") == "get":
             response = http.get(
                 request_url,
-                ua=ua,
+                ua=effective_ua,
                 cookies=cookie,
                 headers=headers,
                 proxies=proxies,
@@ -631,7 +634,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                             (("json", "json_body"), ("allow_redirects", "allow_redirects")) if name in request_params}
             response = http.post(
                 request_url,
-                ua=ua,
+                ua=effective_ua,
                 cookies=cookie,
                 headers=headers,
                 proxies=proxies,
@@ -878,7 +881,11 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             result = helper.download_torrent(
                 url=url,
                 cookie=cookie,
-                ua=torrent.site_ua or self.runtime_config.user_agent,
+                ua=site_rules.resolve_site_user_agent(
+                    torrent.site_ua,
+                    getattr(self.runtime_config, "site_user_agent", None),
+                    self.runtime_config.user_agent,
+                ),
                 proxy=torrent.site_proxy,
                 cache_invalid=not (indirect_download or expiring),
                 site_id=torrent.site,

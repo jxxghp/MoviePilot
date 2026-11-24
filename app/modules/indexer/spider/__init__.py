@@ -13,6 +13,7 @@ from pyquery import PyQuery
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.adapters.system import rust as rust_accel
+from app.domain import site as site_rules
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import url as url_tools
@@ -205,7 +206,10 @@ class SiteSpider:
         self._result_offset = 0
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"
-        self.ua = indexer.get('ua') or get_runtime_setting('USER_AGENT')
+        self.ua: Optional[str] = site_rules.resolve_site_user_agent_from_settings(
+            indexer.get('ua'),
+            get_runtime_setting,
+        )
         self.proxies = get_runtime_setting('PROXY') if indexer.get('proxy') else None
         self.proxy_server = get_runtime_setting('PROXY_SERVER') if indexer.get('proxy') else None
         self.cookie = indexer.get('cookie')

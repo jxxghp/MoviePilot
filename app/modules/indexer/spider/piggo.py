@@ -155,7 +155,7 @@ class PiggoSpider:
         self._token = access_token(indexer.get("apikey"), indexer.get("token"))
         self._proxy = get_runtime_setting("PROXY") if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
-        self._ua = indexer.get("ua") or get_runtime_setting("USER_AGENT")
+        self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get("ua"), get_runtime_setting)
         self._timeout = indexer.get("timeout") or 15
         self._rate_site = {key: indexer.get(key) for key in
                            ("id", "domain", "limit_seconds", "limit_interval", "limit_count")}

@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.site.observation import report_site_search_page
 from app.application.site.throttle import async_wait_for_site_request, defer_site_request, wait_for_site_request
+from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.foundation import temporal as time_tools
 from app.foundation.url import UrlUtils
@@ -142,7 +143,7 @@ class HDAreaSpider:
         self._site_url = str(indexer.get("domain") or "https://hdarea.club/").rstrip("/")
         self._api_url = str(indexer.get("api_url") or f"{self._site_url}/api/v1").rstrip("/")
         self._apikey = str(indexer.get("apikey") or "").strip()
-        self._ua = indexer.get("ua") or get_runtime_setting("USER_AGENT")
+        self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get("ua"), get_runtime_setting)
         self._proxy = get_runtime_setting("PROXY") if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
         self._timeout = indexer.get("timeout") or 15

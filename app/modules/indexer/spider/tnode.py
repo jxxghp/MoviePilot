@@ -6,6 +6,7 @@ import re
 from typing import Any, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
 from app.foundation.crypto import HashUtils
 from app.runtime.cache import cached
@@ -47,8 +48,8 @@ class TNodeSpider:
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
             self._cookie = indexer.get('cookie')
-            self._token_key = HashUtils.md5(repr((self._domain, self._cookie, indexer.get('ua'))))
-            self._ua = indexer.get('ua')
+            self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get('ua'), get_runtime_setting)
+            self._token_key = HashUtils.md5(repr((self._domain, self._cookie, self._ua)))
             self._timeout = indexer.get('timeout') or 15
 
     def test_connection(self) -> Tuple[bool, str]:
@@ -57,7 +58,7 @@ class TNodeSpider:
 
         :return: 当前会话是否有效及连接、令牌或认证失败原因
         """
-        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        user_agent = site_rules.resolve_site_user_agent_from_settings(self._ua, get_runtime_setting)
         cookie = self._cookie or ""
         with RequestUtils(ua=user_agent, cookies=cookie, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
             method="GET", url=str(self._domain), allow_redirects=False,

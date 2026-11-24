@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Tuple
 from urllib.parse import quote
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -50,7 +51,7 @@ class MilkieSpider:
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
             self._apikey = indexer.get('apikey')
-            self._ua = indexer.get('ua')
+            self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get('ua'), get_runtime_setting)
             self._timeout = indexer.get('timeout') or 15
 
     @classmethod
@@ -69,7 +70,7 @@ class MilkieSpider:
 
         :return: 认证是否有效及连接或响应失败原因
         """
-        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        user_agent = site_rules.resolve_site_user_agent_from_settings(self._ua, get_runtime_setting)
         with RequestUtils(headers={
             "Accept": "application/json", "User-Agent": user_agent, "x-milkie-auth": self._apikey,
         }, ua=user_agent, proxies=self._proxy or {}, timeout=self._timeout).response_manager(

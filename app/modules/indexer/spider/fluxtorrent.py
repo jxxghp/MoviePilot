@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.site.throttle import async_wait_for_site_request, wait_for_site_request
+from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -195,17 +196,20 @@ class FluxTorrentSpider:
     @staticmethod
     def get_user_agent(ua: Optional[str]) -> str:
         """
-        为 API 请求和种子下载选择站点自定义或默认浏览器 User-Agent。
+        为 API 请求和种子下载选择站点自定义、通用配置或默认浏览器 User-Agent。
 
-        好学网关会拒绝默认 MoviePilot 标识，返回 Nginx 503。资源合并填入的
-        宿主默认标识同样转换为浏览器标识，站点显式设置的其他值保持优先。
+        好学网关会拒绝默认 MoviePilot 标识，返回 Nginx 503。站点未单独配置或使用资源回填的
+        宿主默认标识时，优先采用通用站点配置，未配置通用值时回退浏览器标识。
 
         :param ua: 站点配置或资源合并后的 User-Agent
         :return: 本次站点请求使用的 User-Agent
         """
-        if not ua or ua == get_runtime_setting("USER_AGENT"):
-            return str(get_runtime_setting("NORMAL_USER_AGENT"))
-        return ua
+        return site_rules.resolve_site_user_agent(
+            ua,
+            site_rules.read_optional_setting(get_runtime_setting, "SITE_USER_AGENT"),
+            site_rules.read_optional_setting(get_runtime_setting, "NORMAL_USER_AGENT") or "",
+            host_default_ua=site_rules.read_optional_setting(get_runtime_setting, "USER_AGENT"),
+        )
 
     @classmethod
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:

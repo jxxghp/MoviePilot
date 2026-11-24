@@ -153,6 +153,28 @@ def _validate_rust_accel(value: Any) -> Optional[str]:
     return None
 
 
+def _validate_site_user_agent(value: Any) -> Optional[str]:
+    """
+    校验通用站点默认 User-Agent 能否作为合法 HTTP 请求头发送。
+
+    :param value: 类型归一化后的配置值；留空时为 None
+    :return: 包含控制字符或非 Latin-1 字符时返回错误说明，合法时返回 None
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return "站点默认浏览器标识(UA)格式无效"
+    if value != value.strip() or any(
+        (ord(ch) < 0x20 and ch != "\t") or ord(ch) == 0x7F for ch in value
+    ):
+        return "站点默认浏览器标识(UA)包含非法字符，请检查配置"
+    try:
+        value.encode("latin-1")
+    except UnicodeEncodeError:
+        return "站点默认浏览器标识(UA)包含非法字符，请检查配置"
+    return None
+
+
 # 自动整理音乐专辑允许的曲目对齐策略集合。
 _AUTO_MUSIC_TRACK_MATCH_MODES = frozenset(
     {"strict", "fallback_ignore_duration", "ignore_duration"}
@@ -575,6 +597,13 @@ class ConfigModel(BaseModel):
         default=5, ge=1, description="CloakBrowser 关闭宽限秒数，超时强制回收本次进程树，默认 5 秒",
     )
     FLARESOLVERR_URL: Optional[str] = Field(default=None, description='FlareSolverr 服务地址，例如 http://127.0.0.1:8191')
+    SITE_USER_AGENT: Annotated[
+        Optional[str],
+        SettingPolicy(validate=_validate_site_user_agent),
+    ] = Field(
+        default=None,
+        description='站点默认User-Agent，站点未单独配置时使用；留空则使用全局默认User-Agent',
+    )
 
     # 搜索配置
     SEARCH_MULTIPLE_NAME: bool = Field(default=False, description='搜索多个名称')

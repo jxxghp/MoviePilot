@@ -417,6 +417,7 @@ class ChainRuntimeConfig:
     :param television_subscribe_url: 电视剧订阅页面地址，未配置时为 None
     :param music_subscribe_url: 音乐订阅页面地址，未配置时为 None
     :param user_agent: 站点及外部服务请求使用的默认 User-Agent
+    :param site_user_agent: 站点选项配置的通用站点默认 User-Agent，未配置时为 None
     :param normal_user_agent: 模拟普通浏览器请求使用的 User-Agent
     :param proxy: 供 requests 兼容客户端使用的协议到代理地址映射，None 表示不配置代理
     :param proxy_server: 供浏览器使用的代理连接参数，None 表示不配置代理
@@ -511,6 +512,7 @@ class ChainRuntimeConfig:
     television_subscribe_url: Optional[str] = None
     music_subscribe_url: Optional[str] = None
     user_agent: str = ""
+    site_user_agent: Optional[str] = None
     normal_user_agent: str = ""
     proxy: Any = None
     proxy_server: Any = None

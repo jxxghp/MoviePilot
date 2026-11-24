@@ -7,6 +7,7 @@ import json
 from typing import Any, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -51,7 +52,7 @@ class YemaSpider:
         self._site_url = str(indexer.get("domain") or "https://www.yemapt.org/").rstrip("/")
         self._proxy = get_runtime_setting('PROXY') if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
-        self._user_agent = indexer.get("ua") or get_runtime_setting('USER_AGENT')
+        self._user_agent = site_rules.resolve_site_user_agent_from_settings(indexer.get("ua"), get_runtime_setting)
         self._api_key = indexer.get("apikey")
         self._timeout = indexer.get("timeout") or 15
         self._search_url = f"{self._site_url}/openApi/torrent/fetchOpenTorrentList.json"

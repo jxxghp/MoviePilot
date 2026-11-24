@@ -326,6 +326,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         television_subscribe_url=settings.MP_DOMAIN("#/subscribe/tv?tab=mysub"),
         music_subscribe_url=settings.MP_DOMAIN("#/subscribe/music?tab=mysub"),
         user_agent=settings.USER_AGENT,
+        site_user_agent=settings.SITE_USER_AGENT,
         normal_user_agent=settings.NORMAL_USER_AGENT,
         proxy=settings.PROXY,
         proxy_server=settings.PROXY_SERVER,

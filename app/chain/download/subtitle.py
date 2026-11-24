@@ -28,6 +28,7 @@ from app.chain.download.ports import (
 )
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
+from app.domain import site as site_rules
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -588,7 +589,11 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             response = http.get(
                 subtitle.enclosure,
                 cookies=subtitle.site_cookie,
-                ua=subtitle.site_ua or self.runtime_config.user_agent,
+                ua=site_rules.resolve_site_user_agent(
+                    subtitle.site_ua,
+                    getattr(self.runtime_config, "site_user_agent", None),
+                    self.runtime_config.user_agent,
+                ),
                 proxies=self.runtime_config.proxy if subtitle.site_proxy else None,
                 raise_exception=True,
             )

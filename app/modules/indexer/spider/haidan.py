@@ -80,7 +80,7 @@ class HaiDanSpider:
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
             self._cookie = indexer.get('cookie')
-            self._ua = indexer.get('ua')
+            self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get('ua'), get_runtime_setting)
             self._timeout = indexer.get('timeout') or 15
 
     def __get_params(self, keyword: str, mtype: Optional[MediaType] = None) -> str:

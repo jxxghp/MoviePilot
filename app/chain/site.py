@@ -604,11 +604,16 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         连接新站点，必要时通过已配置代理重试。
         """
+        ua = site_rules.resolve_site_user_agent(
+            indexer.get("ua"),
+            getattr(self.runtime_config, "site_user_agent", None),
+            self.runtime_config.user_agent,
+        )
         with _open_site_response(
             method="GET",
             url=domain_url,
             cookie=cookie,
-            ua=self.runtime_config.user_agent,
+            ua=ua,
         ) as response:
             if response is not None or not self.runtime_config.proxy_host:
                 return False, self._site_connection_response(response)
@@ -617,7 +622,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             method="GET",
             url=domain_url,
             cookie=cookie,
-            ua=self.runtime_config.user_agent,
+            ua=ua,
             proxies=self.runtime_config.proxy,
         ) as response:
             return True, self._site_connection_response(response)
@@ -684,9 +689,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not isinstance(icon_domain, str) or not isinstance(icon_name, str):
             logger.warn(f"站点 {domain} 索引器缺少图标域名或名称！")
             return
-        icon_url, icon_base64 = self.__parse_favicon(url=icon_domain,
-                                                     cookie=cookie or "",
-                                                     ua=self.runtime_config.user_agent)
+        icon_url, icon_base64 = self.__parse_favicon(
+            url=icon_domain,
+            cookie=cookie or "",
+            ua=site_rules.resolve_site_user_agent(
+                siteinfo.ua,
+                getattr(self.runtime_config, "site_user_agent", None),
+                self.runtime_config.user_agent,
+            ),
+        )
         if icon_url:
             repository.update_icon(name=icon_name,
                                    domain=domain,
@@ -795,7 +806,11 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         site_url = site_info.url
         site_cookie = site_info.cookie or ""
-        ua = (site_info.ua or "").strip() or self.runtime_config.user_agent
+        ua = site_rules.resolve_site_user_agent(
+            site_info.ua,
+            getattr(self.runtime_config, "site_user_agent", None),
+            self.runtime_config.user_agent,
+        )
         if ua and not site_rules.is_valid_http_header_value(ua):
             logger.warning(
                 f"站点【{site_info.name}】请求头 User-Agent 包含非法字符，无法发起连通性测试"
