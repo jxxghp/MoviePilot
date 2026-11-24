@@ -104,6 +104,7 @@ def test_get_user_prefers_enable_all_folders_admin() -> None:
         user_id = client.get_user()
 
     assert user_id == "full-admin-id"
+    request_utils_cls.return_value.get_res.assert_called_once()
 
 
 def test_get_user_warns_and_prefers_larger_visible_scope_admin() -> None:
