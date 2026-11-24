@@ -26,7 +26,12 @@ from app.domain.meta.runtime import (
     get_media_extensions,
     get_metainfo_accelerator,
 )
-from app.domain.meta.words import WordsMatcher, get_custom_words
+from app.domain.meta.words import (
+    WordsMatcher,
+    get_custom_words,
+    normalize_global_custom_words,
+    resolve_custom_words,
+)
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import MediaSource, MediaType
 
@@ -412,7 +417,7 @@ def _rust_default_parse_options() -> dict[str, Any]:
         get_customization()
     )
     options = {
-        "custom_words": get_custom_words() or [],
+        "custom_words": normalize_global_custom_words(get_custom_words()),
         # PyO3 当前按 Python list 提取 Vec<String>，不能传 tuple。
         "media_exts": list(get_media_extensions()),
         "release_groups": release_groups,
@@ -438,11 +443,19 @@ def _rust_parse_options(custom_words: Optional[List[str]] = None) -> dict[str, A
     """
     收集 Rust Meta 解析所需的运行时配置，避免 Rust 层直接访问数据库和 settings。
 
-    与 Python 识别词匹配器保持一致：None 或空列表沿用全局规则，非空列表覆盖全局规则。
+    与 Python 识别词匹配器保持一致：None 或空列表沿用全局规则，非空列表默认覆盖全局规则并支持 ``@global`` 展开全局规则。
+
+    :param custom_words: 临时或订阅自定义识别词列表
+    :return: 供 Rust 解析器消费的配置字典
     """
+    default_options = _rust_default_parse_options()
     if not custom_words:
-        return _rust_default_parse_options()
-    return _rust_custom_parse_options(tuple(custom_words))
+        return default_options
+    resolved_words = resolve_custom_words(
+        custom_words,
+        global_words=default_options["custom_words"],
+    )
+    return _rust_custom_parse_options(tuple(resolved_words))
 
 
 def clear_rust_parse_options_cache() -> None:
@@ -521,7 +534,15 @@ def _requires_python_metainfo(
     :param path_parts: 路径各段名称，仅路径入口传入，用于逐段识别季目录
     :return: 是否必须使用Python解析器
     """
-    candidates = [title or "", *(custom_words or [])]
+    resolved_words = (
+        resolve_custom_words(
+            custom_words,
+            global_words=_rust_default_parse_options()["custom_words"],
+        )
+        if custom_words
+        else []
+    )
+    candidates = [title or "", *resolved_words]
     if any(_GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates):
         return True
     if any(_PARENTHESIZED_TMDB_RE.search(candidate) for candidate in candidates):

@@ -278,7 +278,7 @@ The `WordsMatcher.prepare()` method (in `app/domain/meta/words.py`) processes ea
    - Otherwise → Block word format (1)
 3. For combined format, replacement runs first; episode offset only runs if replacement succeeded
 4. Returns the modified title and a list of rules that were actually applied
-5. Priority: per-subscribe `custom_words` parameter takes precedence over global `CustomIdentifiers`
+5. Priority: non-empty per-subscribe `custom_words` overrides global `CustomIdentifiers` by default; include a standalone `@global` line inside `custom_words` to expand global `CustomIdentifiers` at that position
 
 ## Safety Notes
 

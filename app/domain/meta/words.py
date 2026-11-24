@@ -32,6 +32,73 @@ def get_custom_words() -> object:
     return _custom_words_provider()
 
 
+# 在临时或订阅自定义识别词中按行引用全局自定义识别词的占位符
+GLOBAL_CUSTOM_WORDS_TOKEN = "@global"
+
+
+def is_global_custom_words_token(word: object) -> bool:
+    """
+    判断识别词条目是否为引用全局自定义识别词的占位符。
+
+    忽略首尾空白字符与大小写，兼容不同平台的换行切分结果。
+
+    :param word: 待检查的单行识别词对象
+    :return: 匹配 ``@global`` 占位符时返回 True
+    """
+    return isinstance(word, str) and word.strip().lower() == GLOBAL_CUSTOM_WORDS_TOKEN
+
+
+def normalize_global_custom_words(configured_words: object) -> List[str]:
+    """
+    将原始全局自定义识别词配置收窄为有效字符串列表，并剔除误写入的全局占位符以防递归展开。
+
+    :param configured_words: 系统配置提供的原始全局识别词对象
+    :return: 过滤后的全局自定义识别词列表
+    """
+    if not isinstance(configured_words, list):
+        return []
+    return [
+        word
+        for word in configured_words
+        if isinstance(word, str) and not is_global_custom_words_token(word)
+    ]
+
+
+def resolve_custom_words(
+    custom_words: Optional[List[str]] = None,
+    global_words: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    解析本次识别实际生效的自定义识别词有序列表。
+
+    当 ``custom_words`` 为 ``None`` 或空列表时沿用全局自定义识别词；当 ``custom_words`` 非空时默认独立覆盖全局规则，
+    若其中包含 ``@global`` 占位符行，则在该行位置原地展开全局自定义识别词，重复占位符仅首次展开以避免重复偏移。
+
+    :param custom_words: 调用方传入的临时或订阅自定义识别词列表
+    :param global_words: 已预取的全局识别词列表；未提供时实时读取当前全局配置
+    :return: 按实际执行顺序展开后的自定义识别词列表
+    """
+    resolved_global = (
+        normalize_global_custom_words(get_custom_words())
+        if global_words is None
+        else normalize_global_custom_words(global_words)
+    )
+    if not custom_words:
+        return resolved_global
+    if not any(is_global_custom_words_token(word) for word in custom_words):
+        return list(custom_words)
+    merged: List[str] = []
+    expanded = False
+    for word in custom_words:
+        if is_global_custom_words_token(word):
+            if not expanded:
+                merged.extend(resolved_global)
+                expanded = True
+            continue
+        merged.append(word)
+    return merged
+
+
 _COMBINED_WORD_RE = re.compile(r'^\s*(.*?)\s*=>\s*(.*?)\s*&&\s*(.*?)\s*<>\s*(.*?)\s*>>\s*(.*?)\s*$')
 _LEADING_ZERO_RE = re.compile(r"^0+")
 _EP_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])EP(?![A-Za-z0-9_])")
@@ -136,7 +203,7 @@ class WordsMatcher(metaclass=Singleton):
         3：前定位词 <> 后定位词 >> 偏移量（EP）。
 
         :param title: 待处理的主标题
-        :param custom_words: 临时识别词列表；未提供时读取已注入的配置
+        :param custom_words: 临时识别词列表；未提供或为空时读取全局配置，非空时默认覆盖全局配置并支持 ``@global`` 引入全局规则
         :return: 处理后的标题及已应用的识别词
         """
         title, _, appley_words = self.__prepare(title, None, custom_words)
@@ -153,7 +220,7 @@ class WordsMatcher(metaclass=Singleton):
 
         :param title: 主标题、种子名或文件名
         :param subtitle: 副标题或站点描述
-        :param custom_words: 临时自定义识别词列表
+        :param custom_words: 临时自定义识别词列表；非空时默认覆盖全局配置并支持 ``@global`` 引入全局规则
         :return: 处理后的标题、副标题和已应用的识别词
         """
         return self.__prepare(title, subtitle, custom_words)
@@ -168,10 +235,7 @@ class WordsMatcher(metaclass=Singleton):
         按识别词顺序处理标题，并在需要时更新副标题中的集数。
         """
         appley_words = []
-        configured_words = get_custom_words()
-        words: List[str] = custom_words or (
-            configured_words if isinstance(configured_words, list) else []
-        )
+        words = resolve_custom_words(custom_words)
         for word in words:
             if not word or word.startswith("#"):
                 continue
