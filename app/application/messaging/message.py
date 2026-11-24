@@ -55,7 +55,7 @@ class AsyncMessageQueryRepository(Protocol):
             self, page: int = 1, count: int = 30
     ) -> list[Any]:
         """
-        分页读取 Web 消息。
+        分页读取全部消息历史记录，不区分渠道与收发方向。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的消息数，默认 30
@@ -92,12 +92,18 @@ class MessageQueryService:
     def __init__(self, repository: AsyncMessageQueryRepository):
         """
         使用显式消息查询端口初始化服务。
+
+        :param repository: 消息历史与通知查询持久化端口
         """
         self._repository = repository
 
-    async def list_web(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
+    async def list_history(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        分页返回可由 API schema 消费的 Web 消息字典。
+        分页返回可由 API 模型消费的全部消息历史字典，包含接收消息与发送通知。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数，默认 20
+        :return: 按记录时间和主键降序排列的消息字典列表
         """
         messages = await self._repository.async_list_by_page(page=page, count=count)
         result: list[dict[str, Any]] = []
@@ -105,7 +111,7 @@ class MessageQueryService:
             try:
                 result.append(message.to_dict())
             except Exception as error:
-                logger.error(f"获取WEB消息列表失败: {str(error)}")
+                logger.error(f"获取消息历史列表失败: {str(error)}")
         return result
 
     async def list_notifications(
@@ -117,7 +123,14 @@ class MessageQueryService:
             media_clear_before: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """
-        分页返回清理水位之后的通知消息字典。
+        分页返回清理水位之后的系统已发送通知消息字典。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数，默认 20
+        :param all_clear_before: 全部通知的清理时间水位，None 表示不限制
+        :param system_clear_before: 无图片系统通知的清理时间水位，None 表示不限制
+        :param media_clear_before: 含图片媒体通知的清理时间水位，None 表示不限制
+        :return: 仅包含已发送通知（action=1）且晚于相应清理水位的消息字典列表
         """
         messages = await self._repository.async_list_sent_by_page(
             page=page,

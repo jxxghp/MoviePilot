@@ -45,7 +45,7 @@ class MessageOper(DbOper):
         :param image: 图片
         :param link: 链接
         :param userid: 用户ID
-        :param action: 消息方向：0-接收息，1-发送消息
+        :param action: 消息方向：0-接收消息，1-发送消息
         :param note: 附件json
         """
         kwargs.update({
@@ -139,7 +139,11 @@ class MessageOper(DbOper):
             self, page: int = 1, count: int = 30
     ) -> list[Message]:
         """
-        分页获取消息记录。
+        异步分页获取全部消息记录，不区分渠道与收发方向。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数，默认 30
+        :return: 按登记时间和主键倒序排列的消息记录列表
         """
         async def query(session: AsyncSession) -> list[Message]:
             """

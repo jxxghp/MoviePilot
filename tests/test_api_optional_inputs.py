@@ -57,9 +57,9 @@ def test_history_and_web_message_optional_pagination():
     response = asyncio.run(history.transfer_history(page=None, count=None, query=query, _=None))
     query.list_transfer.assert_awaited_once_with(title=None, page=1, count=30, status=None)
     assert response.success is True
-    messages = SimpleNamespace(list_web=AsyncMock(return_value=[]))
-    assert asyncio.run(message.get_web_message(service=messages, page=None, count=None, _=None)) == []
-    messages.list_web.assert_awaited_once_with(page=1, count=20)
+    messages = SimpleNamespace(list_history=AsyncMock(return_value=[]))
+    assert asyncio.run(message.get_message_history(service=messages, page=None, count=None, _=None)) == []
+    messages.list_history.assert_awaited_once_with(page=1, count=20)
 
 
 @pytest.mark.parametrize("season", [None, 2])

@@ -774,6 +774,11 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
         target_name="MessageHistoryItem",
         replacement="app.schemas.message.MessageHistoryItem",
     ),
+    "WebMessageItem": SymbolAlias(
+        target_module="app.schemas.message",
+        target_name="MessageHistoryItem",
+        replacement="app.schemas.message.MessageHistoryItem",
+    ),
     **{
         old: SymbolAlias(
             target_module="app.schemas.message",

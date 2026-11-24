@@ -4,10 +4,17 @@
 
 import asyncio
 import json
+from collections.abc import Iterator
 from unittest.mock import Mock
 
+import pytest
+
 from app.api.endpoints import message as message_endpoint
-from app.api.endpoints.message import clear_notification_message, get_notification_message
+from app.api.endpoints.message import (
+    clear_notification_message,
+    get_message_history,
+    get_notification_message,
+)
 from app.api.endpoints.system import get_message
 from app.application.messaging.message import _SSE_QUEUE_MAXSIZE, MessageHelper, MessageQueryService
 from app.chain.base import ChainBase
@@ -31,6 +38,18 @@ def _clear_messages() -> None:
     SystemConfigOper().delete(SystemConfigKey.NotificationClearBefore)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_message_state() -> Iterator[None]:
+    """
+    在每条用例前后清理默认消息表与通知清理水位，避免跨测试文件残留。
+
+    :yields: 测试执行上下文
+    """
+    _clear_messages()
+    yield
+    _clear_messages()
+
+
 def _reset_message_helper(helper: MessageHelper) -> None:
     """
     清空单例消息队列和去重缓存，避免用例间互相影响。
@@ -51,7 +70,7 @@ def _set_message_time(title: str, reg_time: str) -> None:
 
 def test_notification_history_only_lists_sent_messages() -> None:
     """
-    通知历史应返回已发送消息，包含通过消息链登记的智能体消息。
+    通知历史接口仅返回已发送消息（action=1），不混入用户发来的接收消息（action=0）。
     """
     _clear_messages()
     oper = MessageOper()
@@ -59,22 +78,202 @@ def test_notification_history_only_lists_sent_messages() -> None:
     oper.add(title="用户消息", text="帮我搜索", action=0)
     oper.add(title="智能体回复", text="已处理", action=1, mtype=MessageType.Agent)
 
-    messages = MessageOper().list_by_page(page=1, count=10)
-    assert [message.title for message in messages if message.action == 1] == ["智能体回复", "系统通知"]
+    async def _load_notifications() -> list[tuple[str | None, int | None]]:
+        """
+        通过通知历史端点读取已发送消息列表。
+        """
+        async with AsyncSessionFactory() as db:
+            items = await get_notification_message(
+                service=MessageQueryService(MessageOper(db)),
+                page=1,
+                count=10,
+            )
+        return [(item.title, item.action) for item in items]
+
+    assert asyncio.run(_load_notifications()) == [
+        ("智能体回复", 1),
+        ("系统通知", 1),
+    ]
 
 
-def test_web_message_history_returns_all_messages() -> None:
+def test_message_history_endpoint_returns_all_directions_and_keeps_web_compat() -> None:
     """
-    Web 消息历史返回消息表中的全部记录。
+    消息历史接口返回接收与发送全部记录，同时保留 /web 兼容路由并隐藏其公开文档。
     """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.adapters.web.security.access import verify_token
+    from app.api.dependencies.agent import get_message_query_service
+    from app.schemas.token import TokenPayload
+
     _clear_messages()
     oper = MessageOper()
     oper.add(title="智能体回复", text="已处理", action=1, mtype=MessageType.Agent)
     oper.add(title="用户消息", text="/ai 帮我处理", action=0)
     oper.add(title="普通通知", text="下载完成", action=1, mtype=MessageType.Download)
 
-    messages = MessageOper().list_by_page(page=1, count=10)
-    assert [message.title for message in messages] == ["普通通知", "用户消息", "智能体回复"]
+    async def _load_history() -> list[tuple[str | None, int | None]]:
+        """
+        通过消息历史端点读取全部方向记录。
+        """
+        async with AsyncSessionFactory() as db:
+            items = await get_message_history(
+                service=MessageQueryService(MessageOper(db)),
+                page=1,
+                count=10,
+            )
+        return [(item.title, item.action) for item in items]
+
+    assert asyncio.run(_load_history()) == [
+        ("普通通知", 1),
+        ("用户消息", 0),
+        ("智能体回复", 1),
+    ]
+
+    app = FastAPI()
+    app.include_router(message_endpoint.router, prefix="/api/v1/message")
+    app.dependency_overrides[verify_token] = lambda: TokenPayload(sub="1", super_user=True)
+
+    async def _override_service() -> MessageQueryService:
+        """
+        在测试请求内提供绑定异步会话的消息历史查询服务。
+        """
+        async with AsyncSessionFactory() as db:
+            items = await MessageOper(db).async_list_by_page(page=1, count=20)
+
+        class _SnapshotRepository:
+            """
+            回放预取消息对象的内存测试仓储。
+            """
+
+            async def async_list_by_page(self, page: int = 1, count: int = 30) -> list[MessageModel]:
+                """
+                返回当前测试批次中的消息快照。
+
+                :param page: 页码
+                :param count: 每页数量
+                :return: 切片后的消息列表
+                """
+                start = (page - 1) * count
+                return items[start:start + count]
+
+            async def async_list_sent_by_page(
+                self,
+                page: int = 1,
+                count: int = 30,
+                all_clear_before: str | None = None,
+                system_clear_before: str | None = None,
+                media_clear_before: str | None = None,
+            ) -> list[MessageModel]:
+                """
+                返回当前测试批次中发送方向的通知消息快照。
+
+                :param page: 页码
+                :param count: 每页数量
+                :param all_clear_before: 全部清理水位
+                :param system_clear_before: 系统通知清理水位
+                :param media_clear_before: 媒体通知清理水位
+                :return: 仅包含发送方向的消息列表
+                """
+                sent = [item for item in items if item.action == 1]
+                start = (page - 1) * count
+                return sent[start:start + count]
+
+        return MessageQueryService(_SnapshotRepository())
+
+    app.dependency_overrides[get_message_query_service] = _override_service
+    with TestClient(app) as client:
+        history_res = client.get("/api/v1/message/history?page=1&count=10")
+        compat_res = client.get("/api/v1/message/web?page=1&count=10")
+        notification_res = client.get("/api/v1/message/notification?page=1&count=10")
+        openapi_paths = client.get("/openapi.json").json()["paths"]
+
+    assert history_res.status_code == 200
+    assert compat_res.status_code == 200
+    assert history_res.json() == compat_res.json()
+    assert [(row["title"], row["action"]) for row in history_res.json()["data"]] == [
+        ("普通通知", 1),
+        ("用户消息", 0),
+        ("智能体回复", 1),
+    ]
+    assert [(row["title"], row["action"]) for row in notification_res.json()["data"]] == [
+        ("普通通知", 1),
+        ("智能体回复", 1),
+    ]
+    assert "get" in openapi_paths["/api/v1/message/history"]
+    assert not openapi_paths["/api/v1/message/history"]["get"].get("deprecated")
+    assert openapi_paths["/api/v1/message/web"]["get"].get("deprecated") is True
+
+
+def test_message_query_service_skips_broken_row_projection() -> None:
+    """
+    单条历史记录序列化异常时，查询服务记录错误并继续返回其余有效消息。
+    """
+
+    class _BrokenRow:
+        """
+        模拟 to_dict 抛出异常的损坏持久化对象。
+        """
+
+        def to_dict(self) -> dict[str, object]:
+            """
+            抛出序列化错误以验证容错分支。
+
+            :raises RuntimeError: 始终抛出模拟异常
+            """
+            raise RuntimeError("corrupted row")
+
+    class _ValidRow:
+        """
+        模拟正常序列化为字典的消息持久化对象。
+        """
+
+        def to_dict(self) -> dict[str, object]:
+            """
+            返回最小有效消息字典。
+
+            :return: 包含标题与方向的字典
+            """
+            return {"title": "正常消息", "action": 0}
+
+    class _StubRepository:
+        """
+        混合返回损坏记录与有效记录的测试仓储。
+        """
+
+        async def async_list_by_page(self, page: int = 1, count: int = 30) -> list[object]:
+            """
+            返回一条损坏记录与一条有效记录。
+
+            :param page: 页码
+            :param count: 每页数量
+            :return: 混合测试记录列表
+            """
+            return [_BrokenRow(), _ValidRow()]
+
+        async def async_list_sent_by_page(
+            self,
+            page: int = 1,
+            count: int = 30,
+            all_clear_before: str | None = None,
+            system_clear_before: str | None = None,
+            media_clear_before: str | None = None,
+        ) -> list[object]:
+            """
+            满足协议签名的空通知查询实现。
+
+            :param page: 页码
+            :param count: 每页数量
+            :param all_clear_before: 全部清理水位
+            :param system_clear_before: 系统通知清理水位
+            :param media_clear_before: 媒体通知清理水位
+            :return: 空列表
+            """
+            return []
+
+    result = asyncio.run(MessageQueryService(_StubRepository()).list_history(page=1, count=10))
+    assert result == [{"title": "正常消息", "action": 0}]
 
 
 def test_notification_clear_marker_filters_history_across_requests() -> None:

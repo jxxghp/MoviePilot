@@ -331,7 +331,10 @@ Web 影视精确与标题 SSE 的 `manual_paging=true` 模式在最终 `done` �
 Web 会话沿用当前用户；无渠道调用不携带收件人，插件回执按既有管理员通知目标路由，
 没有可用目标时不发送。
 
-`GET /api/v1/message/notification` 的可空 `poster` 字段提供独立媒体海报。
+`GET /api/v1/message/history` 分页返回消息表中的全部历史记录（包含 `action=0` 的接收消息与
+`action=1` 的发送消息，`GET /api/v1/message/web` 作为兼容入口保留相同行为）；
+`GET /api/v1/message/notification` 仅返回清理水位之后的系统已发送通知（`action=1`），
+其可空 `poster` 字段提供独立媒体海报。
 新通知从已有媒体上下文提取海报；`image` 继续保留原有渠道图片语义。
 旧通知及没有海报的通知返回 `poster: null`，客户端不应将背景图裁切成海报。
 

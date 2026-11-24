@@ -1192,6 +1192,11 @@
           "replacement": "app.application.transfer.workflow.TransferTask",
           "target_module": "app.sdk._legacy.transfer",
           "target_name": "TransferTask"
+        },
+        "WebMessageItem": {
+          "replacement": "app.schemas.message.MessageHistoryItem",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageHistoryItem"
         }
       },
       "app.schemas.agent": {
@@ -1261,6 +1266,11 @@
           "replacement": "app.schemas.types.MessageType",
           "target_module": "app.schemas.types",
           "target_name": "MessageType"
+        },
+        "WebMessageItem": {
+          "replacement": "app.schemas.message.MessageHistoryItem",
+          "target_module": "app.schemas.message",
+          "target_name": "MessageHistoryItem"
         }
       },
       "app.schemas.transfer": {

@@ -34,7 +34,6 @@ from app.schemas.message import MessageClearScope as _SchemaMessageClearScope
 from app.schemas.message import MessageHistoryItem as _SchemaMessageHistoryItem
 from app.schemas.message import Subscription as _SchemaSubscription
 from app.schemas.message import SubscriptionMessage as _SchemaSubscriptionMessage
-from app.schemas.message import WebMessageItem as _SchemaWebMessageItem
 from app.schemas.message import WebPushPublicKeyData as _SchemaWebPushPublicKeyData
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -214,20 +213,38 @@ async def web_message(
     return _SchemaResponse(success=True)
 
 
-@router.get("/web", summary="获取WEB消息", response_model=List[_SchemaWebMessageItem])
-async def get_web_message(
+@router.get(
+    "/web",
+    summary="获取消息历史（兼容入口）",
+    response_model=List[_SchemaMessageHistoryItem],
+    deprecated=True,
+)
+@router.get(
+    "/history",
+    summary="获取消息历史",
+    response_model=List[_SchemaMessageHistoryItem],
+)
+async def get_message_history(
     _: _SchemaTokenPayload = Depends(verify_token),
     service: MessageQueryService = Depends(get_message_query_service),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-) -> List[dict[str, Any]]:
+) -> List[_SchemaMessageHistoryItem]:
     """
-    获取WEB消息列表
+    分页获取消息表中的全部历史记录，包含接收消息与发送通知。
+
+    旧路径 GET /api/v1/message/web 作为兼容入口保留相同行为；仅查询系统已发送通知时使用 GET /api/v1/message/notification。
+
+    :param service: 消息历史查询服务
+    :param page: 页码，从 1 开始，传 None 时默认第 1 页
+    :param count: 每页最多返回条数，传 None 时默认 20 条
+    :return: 按登记时间和主键倒序排列的消息历史列表
     """
-    return await service.list_web(
+    messages = await service.list_history(
         page=page if page is not None else 1,
         count=count if count is not None else 20,
     )
+    return [_SchemaMessageHistoryItem(**message) for message in messages]
 
 
 @router.get("/notification", summary="获取通知消息", response_model=List[_SchemaMessageHistoryItem])
@@ -238,7 +255,12 @@ async def get_notification_message(
     count: Optional[int] = 20,
 ) -> List[_SchemaMessageHistoryItem]:
     """
-    获取系统发送的通知消息列表。
+    获取清理水位之后系统发送的通知消息列表，仅包含发送方向（action=1）记录。
+
+    :param service: 消息历史查询服务
+    :param page: 页码，从 1 开始，传 None 时默认第 1 页
+    :param count: 每页最多返回条数，传 None 时默认 20 条
+    :return: 按登记时间和主键倒序排列的系统通知消息列表
     """
     clear_before = _get_notification_clear_before()
     messages = await service.list_notifications(
