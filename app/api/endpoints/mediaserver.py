@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.adapters.mediastream import (
     _AUDIO_EXTENSIONS,
     _VIDEO_EXTENSIONS,
+    _extract_local_strm_direct_url,
     _file_stream_response,
     _file_stream_ticket_media_type,
     _find_lyrics_path,
@@ -19,6 +20,7 @@ from app.adapters.mediastream import (
     _is_file_stream_ticket,
     _remote_stream_response,
     _resolve_file_stream_ticket,
+    _sanitize_strm_direct_url,
     _stream_source,
     _subtitle_tracks,
     _validate_stream_url,
@@ -378,6 +380,42 @@ def search_library(
     return _SchemaResponse(success=True, data=results)
 
 
+def _resolve_manifest_strm_url(
+    item: _SchemaMediaServerItem,
+    path: Optional[Path],
+    detail: Optional[_SchemaMediaServerItemDetail],
+    media_source_id: Optional[str] = None,
+) -> Optional[str]:
+    """
+    提取当前播放条目可用的无凭据 STRM HTTP(S) 客户端直链地址。
+
+    优先读取本机 STRM 文件中的目标直链，其次采用媒体服务器详情报告的远端 STRM 媒体源，
+    最后兼容媒体服务器条目路径本身即为 HTTP(S) STRM 目标的场景。
+
+    :param item: 已解析的媒体服务器条目或文件票据条目
+    :param path: 本机可读取的媒体或 STRM 文件路径
+    :param detail: 可选媒体服务器完整详情
+    :param media_source_id: 可选指定的多版本媒体源标识
+    :return: 规范化后的 HTTP(S) 直链地址；非 STRM 或为本地路径时返回 None
+    """
+    if path is not None and path.suffix.casefold() == ".strm":
+        local_direct = _extract_local_strm_direct_url(path)
+        if local_direct:
+            return local_direct
+    if detail and detail.media_sources:
+        target_source = next(
+            (src for src in detail.media_sources if media_source_id and src.id == media_source_id),
+            detail.media_sources[0],
+        )
+        if target_source.direct_url:
+            sanitized = _sanitize_strm_direct_url(target_source.direct_url)
+            if sanitized:
+                return sanitized
+    if item.path and item.path.strip().casefold().startswith(("http://", "https://")):
+        return _sanitize_strm_direct_url(item.path)
+    return None
+
+
 @router.get(
     "/stream-info",
     summary="查询媒体流与外挂字幕",
@@ -391,7 +429,7 @@ def stream_info(
     userinfo: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaMediaServerStreamInfo]:
     """
-    返回当前实例代理的媒体流地址；媒体服务器条目优先通过服务器原始流播放并合并外挂字幕。
+    返回当前实例代理的媒体流地址；当条目确认为无内嵌凭据的 HTTP(S) STRM 时同时附带客户端直链地址。
 
     :param itemid: 媒体服务器条目标识
     :param request: 当前请求，用于构造本实例流地址
@@ -401,29 +439,36 @@ def stream_info(
     :return: 可供原生播放器读取的媒体流清单
     """
     server_name, item, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
-    _playback_source(server_name, itemid, item, path, media_source_id=media_source_id)
+    is_audio = _is_audio_item(item, path)
+    detail: Optional[_SchemaMediaServerItemDetail] = None
+    item_path_is_strm = bool(item.path and item.path.strip().casefold().endswith(".strm"))
+    if server_name and (not is_audio or item_path_is_strm):
+        raw_detail = MediaServerChain().item_detail(
+            server=server_name, item_id=item.item_id or itemid, username=userinfo.username
+        )
+        if isinstance(raw_detail, _SchemaMediaServerItemDetail):
+            detail = raw_detail
+    strm_url = _resolve_manifest_strm_url(item, path, detail, media_source_id=media_source_id)
+    try:
+        _playback_source(server_name, itemid, item, path, media_source_id=media_source_id)
+    except HTTPException as exc:
+        if not (strm_url and exc.status_code == status.HTTP_501_NOT_IMPLEMENTED):
+            raise
     stream_query = {"itemid": itemid}
     if server_name:
         stream_query["server"] = server_name
     if media_source_id:
         stream_query["media_source_id"] = media_source_id
     content_url = request.url_for("stream_item_content").include_query_params(**stream_query)
-    is_audio = _is_audio_item(item, path)
     subtitles: list[_SchemaMediaServerSubtitleTrack] = (
         [] if not path or is_audio else _subtitle_tracks(itemid, path, request, server_name)
     )
-    detail: Optional[_SchemaMediaServerItemDetail] = None
-    if server_name and not is_audio:
-        raw_detail = MediaServerChain().item_detail(
-            server=server_name, item_id=item.item_id or itemid, username=userinfo.username
-        )
-        if isinstance(raw_detail, _SchemaMediaServerItemDetail):
-            detail = raw_detail
-            seen_ids = {track.subtitle_id for track in subtitles}
-            for track in _server_subtitle_tracks(detail, itemid, request, server_name, media_source_id):
-                if track.subtitle_id not in seen_ids:
-                    seen_ids.add(track.subtitle_id)
-                    subtitles.append(track)
+    if detail and not is_audio:
+        seen_ids = {track.subtitle_id for track in subtitles}
+        for track in _server_subtitle_tracks(detail, itemid, request, server_name, media_source_id):
+            if track.subtitle_id not in seen_ids:
+                seen_ids.add(track.subtitle_id)
+                subtitles.append(track)
     resolved_source_id = media_source_id or (
         detail.media_sources[0].id if detail and detail.media_sources else None
     )
@@ -434,6 +479,7 @@ def stream_info(
             server=server_name,
             title=item.title or (path.stem if path else itemid),
             content_url=str(content_url),
+            strm_url=strm_url,
             media_type="audio" if is_audio else "video",
             artist=_stream_item_note(item, "artist"),
             album=_stream_item_note(item, "album"),
@@ -454,19 +500,31 @@ def stream_info(
 def music_stream_info(
     music: _SchemaMediaServerMusicStreamRequest,
     request: Request,
-    _: _SchemaTokenPayload = Depends(verify_token),
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaMediaServerStreamInfo]:
     """
     将音乐元数据源的曲目身份匹配到媒体服务器中的单曲并返回流与 LRC 歌词。
 
     :param music: 详情页选中的单曲元数据，不接受专辑或艺术家 ID
     :param request: 当前请求，用于生成当前实例流地址
-    :param _: 已验证的访问令牌
+    :param userinfo: 已验证的访问令牌
     :return: 实际媒体服务器单曲的音频流和可选同名歌词清单
     """
     server, item, path = _find_music_stream_item(music)
     itemid = str(item.item_id or item.id or "")
-    _playback_source(server, itemid, item, path)
+    detail: Optional[_SchemaMediaServerItemDetail] = None
+    if item.path and item.path.strip().casefold().endswith(".strm"):
+        raw_detail = MediaServerChain().item_detail(
+            server=server, item_id=itemid, username=userinfo.username
+        )
+        if isinstance(raw_detail, _SchemaMediaServerItemDetail):
+            detail = raw_detail
+    strm_url = _resolve_manifest_strm_url(item, path, detail)
+    try:
+        _playback_source(server, itemid, item, path)
+    except HTTPException as exc:
+        if not (strm_url and exc.status_code == status.HTTP_501_NOT_IMPLEMENTED):
+            raise
     content_url = request.url_for("stream_item_content").include_query_params(itemid=itemid, server=server)
     return _SchemaResponse(
         success=True,
@@ -475,6 +533,7 @@ def music_stream_info(
             server=server,
             title=item.title or music.title,
             content_url=str(content_url),
+            strm_url=strm_url,
             media_type="audio",
             artist=music.artist or music.album_artist or next(iter(music.artists), None) or _stream_item_note(item, "artist"),
             album=music.album or _stream_item_note(item, "album"),

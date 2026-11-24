@@ -246,6 +246,10 @@ class MediaServerStreamInfo(BaseModel):
     server: Optional[str] = Field(default=None, description="媒体服务器配置名称；单文件票据省略")
     title: str = Field(description="媒体标题")
     content_url: str = Field(description="当前 MoviePilot 实例的媒体流地址")
+    strm_url: Optional[str] = Field(
+        default=None,
+        description="STRM 条目解析出的无内嵌凭据 HTTP(S) 客户端直链地址；普通文件或需代理鉴权流时为 None",
+    )
     media_type: Literal["video", "audio"] = Field(default="video", description="播放器使用的媒体类型")
     artist: Optional[str] = Field(default=None, description="音乐表演者")
     album: Optional[str] = Field(default=None, description="音乐专辑")
@@ -290,6 +294,10 @@ class MediaServerMediaSource(BaseModel):
     size: Optional[int] = Field(default=None, description="文件字节大小")
     bitrate: Optional[int] = Field(default=None, description="整体码率（bps）")
     duration_ms: Optional[int] = Field(default=None, description="媒体源时长（毫秒）")
+    direct_url: Optional[str] = Field(
+        default=None,
+        description="媒体源为远端 HTTP(S) STRM 时的无凭据直链地址；本地文件源为 None",
+    )
     streams: List[MediaServerMediaStream] = Field(default_factory=list, description="包含的视频、音频与字幕轨道")
 
 

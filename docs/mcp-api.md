@@ -122,8 +122,8 @@ Server 使用独立 SQL 表长期保存关系，不属于识别缓存清理范�
 整理历史播放成功记录时使用目标文件，失败记录使用源文件；不会把媒体库目录或剧集系列作为播放对象。
 
 `GET /api/v1/mediaserver/stream-info?itemid=...` 按已入库媒体服务器条目返回 `content_url`
-、媒体类型、所属媒体服务器 `server` 和同目录同基础文件名的外挂字幕清单；音频条目还会返回表演者、专辑和可选 LRC 歌词地址。
-响应不包含本机文件路径或 STRM 上游凭据。`POST /api/v1/mediaserver/stream-info/music` 接收
+、可选 `strm_url`、媒体类型、所属媒体服务器 `server` 和同目录同基础文件名的外挂字幕清单；音频条目还会返回表演者、专辑和可选 LRC 歌词地址。
+当条目对应无内嵌账号密码的 HTTP(S) `.strm` 媒体源时，`strm_url` 提供规范化后的客户端直链地址（供 App 优先直连播放并在不可达时回退 `content_url`）；普通媒体文件及需要服务端密钥鉴权的原始流不填充 `strm_url`，响应始终不包含本机文件路径或媒体服务器密钥。`POST /api/v1/mediaserver/stream-info/music` 接收
 单曲 recording 的来源、ID、标题、艺人和专辑信息，在已启用媒体服务器中执行精确匹配后返回实际单曲流清单；
 专辑和艺人的元数据 ID 不可用作播放条目。
 使用普通 Bearer 登录请求该清单会签发短期资源 Cookie。App 将该 Cookie 限定到当前实例的
