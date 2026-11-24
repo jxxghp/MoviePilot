@@ -766,6 +766,13 @@ class SearchScan:
         self.collection.deepen(ready - settled - cached)
         self.checkpoint()
 
+    def _covered_targets(self) -> set[str]:
+        """
+        未尝试候选仍覆盖的未提交目标，供第一页先交和站点未收录早停判断使用。
+        """
+        return {target for key in self.candidates if key not in self.attempted
+                for target in self._coverage(key)}
+
     def _first_pass_targets(self) -> set[str]:
         """
         各站第一页到齐后可以先提交的目标，和只搜第一页时一样快；没选中的由 choose 转入深页兜底。
@@ -776,7 +783,7 @@ class SearchScan:
         只有整包能先交，全套散集不算，避免深页的整季包失去被选中的机会。
         """
         untried = [key for key in self.candidates if key not in self.attempted]
-        covered = {target for key in untried for target in self._coverage(key)}
+        covered = self._covered_targets()
         remaining = set(self.collection.remaining)
         if self.prefer_complete:
             # 首次下载优先整包：只有单个资源就覆盖全部缺集才先交，散集凑齐也继续找整包。
@@ -863,9 +870,15 @@ class SearchScan:
                 continue
             advanced = self.step(key) or advanced
             ready = self.collection.ready(full=self.full)
-            if not self.first_pass_done and not self.complete_scan and self.collection.first_pages_ready():
-                self.first_pass_done = True
-                ready |= self._first_pass_targets()
+            if not self.complete_scan and self.collection.first_pages_ready():
+                if not self.first_pass_done:
+                    self.first_pass_done = True
+                    ready |= self._first_pass_targets()
+                elif (not self.full and self.collection.pending and self.collection.unreleased()
+                      and self.collection.pending <= self._covered_targets()):
+                    # 已就绪集都有候选、其余缺集均为站点未收录时，提交后即可结束本轮；
+                    # 否则来源无法累积关闭证据，只能翻到页数上限才释放这些集。
+                    ready |= self.collection.pending
             if ready:
                 self.choose(ready, submit)
             if self.execution and time.monotonic() - started >= SEARCH_SLICE_SECONDS:
