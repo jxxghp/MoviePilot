@@ -348,3 +348,99 @@ async def test_calendar_reports_delivered_episode_as_in_library(monkeypatch) -> 
     assert calendar_subscribe.note == [5]
     assert calendar_subscribe.lack_episode == 11
     assert calendar_subscribe.completed_episode == 1
+
+
+@pytest.mark.asyncio
+async def test_calendar_preserves_start_episode_for_range_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    订阅日历窗口摘要保留开始集数，供前端区分起始集前跳过集数与真实入库集数。
+
+    :param monkeypatch: 隔离外部日程查询并在用例结束后恢复的测试夹具
+    """
+    from datetime import date
+
+    from app.chain.subscribe.calendar import SubscribeCalendarChain
+    from app.schemas.calendar import CalendarDate, CalendarEpisode
+    from app.schemas.subscribe import Subscribe
+
+    async def schedule(_source: Any, _media_id: Any, _mtype: Any, _season: Any, _group: Any) -> List[CalendarDate]:
+        """
+        返回包含起始集号的单日播出日程。
+        """
+        return [CalendarDate(date="2026-10-01", episodes=[CalendarEpisode(episode_number=20)])]
+
+    monkeypatch.setattr(SubscribeCalendarChain, "_schedule", staticmethod(schedule))
+    subscribe = _build_subscribe(start_episode=20, total_episode=22, lack_episode=3, note=[])
+
+    page = await SubscribeCalendarChain().window(
+        [Subscribe.model_validate(subscribe.to_dict())],
+        date(2026, 10, 1),
+        date(2026, 11, 1),
+        1,
+        50,
+    )
+
+    calendar_subscribe = page.items[0].subscribe
+    assert calendar_subscribe.start_episode == 20
+    assert calendar_subscribe.total_episode == 22
+    assert calendar_subscribe.lack_episode == 3
+    assert calendar_subscribe.completed_episode == 19
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (
+            {"start_episode": 20, "total_episode": 22, "lack_episode": 3},
+            19,
+        ),
+        (
+            {
+                "start_episode": 10,
+                "total_episode": 22,
+                "lack_episode": 10,
+                "best_version": 1,
+                "episode_priority": {"1": 100, "10": 100, "11": 80, "12": 100},
+            },
+            11,
+        ),
+        (
+            {
+                "start_episode": 20,
+                "total_episode": 22,
+                "best_version": 1,
+                "best_version_full": 1,
+                "current_priority": 80,
+            },
+            19,
+        ),
+        (
+            {
+                "start_episode": 20,
+                "total_episode": 22,
+                "best_version": 1,
+                "best_version_full": 1,
+                "current_priority": 100,
+            },
+            22,
+        ),
+    ],
+)
+def test_completed_episode_counts_episodes_before_start_across_modes(
+    payload: Dict[str, Any], expected: int
+) -> None:
+    """
+    验证设置开始集数后，普通与洗版模式均以总集数为分母并将起始集前集数计入完成。
+
+    :param payload: 覆盖默认订阅属性的测试输入
+    :param expected: 期望派生的已完成集数
+    """
+    from app.schemas.subscribe import Subscribe
+
+    subscribe = Subscribe(
+        name="跨集段剧集",
+        type=MediaType.TV.value,
+        season=1,
+        **payload,
+    )
+    assert subscribe.completed_episode == expected
