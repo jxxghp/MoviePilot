@@ -24,6 +24,7 @@ from app.application.messaging.interaction.agent import (
 from app.chain.message import MessageChain
 from app.runtime.config import settings
 from app.runtime.loop import main_loop_registry
+from app.schemas.system import NotificationConf
 from app.schemas.types import NotificationChannel
 
 
@@ -319,6 +320,13 @@ def test_secret_confirmation_preempts_plugin_interaction_on_message_channels() -
             manager = Mock()
             manager.matches_secret_confirmation.return_value = True
             with (
+                patch(
+                    "app.chain.message.ChannelAuthorizationService.notification",
+                    return_value=NotificationConf(
+                        name=f"{channel.value}-test",
+                        type=channel.name.lower(),
+                    ),
+                ),
                 patch(
                     "app.chain.message.get_running_agent_manager",
                     return_value=manager,

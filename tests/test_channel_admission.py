@@ -299,6 +299,9 @@ def test_sdk_rule_proof_requires_current_connection_and_cannot_come_from_json(mo
     monkeypatch.setattr(chain, "message_parser", lambda **_: IncomingMessage(
         channel=channel, source="corp", userid="alice", text="搜索电影", chat_id="allowed-group", conversation_type="group",
     ))
+    monkeypatch.setattr(chain, "run_module", lambda _method, **_: IncomingMessage(
+        channel=channel, source="corp", userid="alice", text="搜索电影", chat_id="allowed-group", conversation_type="group",
+    ))
     chain.process(body, None, {"source": "corp"})
     chain.process_platform_payload(body, "corp", channel, "stale-connection")
     chain.process_platform_payload(body, "corp", channel, config.id)

@@ -58,10 +58,11 @@ def _module(monkeypatch: pytest.MonkeyPatch, channel, module_class, client):
     """
     保留真实通知过滤和接收人规则，替换实例目录及渠道发送边界。
     """
+    from app.application.messaging.channel import platform_for_channel
     module = module_class()
     module._channel = channel
     conf = SimpleNamespace(id="fixture", identity_namespace="owner", name="source", config={},
-                           type=channel.name.lower(), enabled=True)
+                           type=platform_for_channel(channel.value).provider, enabled=True)
     monkeypatch.setattr(module, "get_configs", lambda: {"source": conf})
     monkeypatch.setattr(module, "get_instance", lambda _: client)
     monkeypatch.setattr(module, "get_instances", lambda: {"source": client})

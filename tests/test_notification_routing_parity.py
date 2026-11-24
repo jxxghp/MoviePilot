@@ -346,7 +346,8 @@ def test_all_user_apppush_targets_preserve_other_channel_defaults(monkeypatch, m
     chain = _NotificationHarness(_NotificationSettingsRepository({"admin": {"apppush": "a" * 32}}))
     chain.post_message(Message(mtype=MessageType.Download, title="下载完成"))
     message = chain.messagequeue.send_message.call_args.kwargs["message"]
-    conf = NotificationConf(name="channel", type="channel", enabled=True, switchs=["资源下载"])
+    from app.application.messaging.channel import platform_for_channel
+    conf = NotificationConf(name="channel", type=platform_for_channel(channel.value).provider, enabled=True, switchs=["资源下载"])
     module = module_type.__new__(module_type)
     module._channel = channel
     module._configs = {conf.name: conf}

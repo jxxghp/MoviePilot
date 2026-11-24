@@ -46,7 +46,7 @@ def test_discord_edit_reports_tuple_status(monkeypatch, result, expected):
     """
     module = object.__new__(DiscordModule)
     module._channel = NotificationChannel.Discord
-    monkeypatch.setattr(module, "get_configs", lambda: {"review": SimpleNamespace(name="review")})
+    monkeypatch.setattr(module, "get_configs", lambda: {"review": SimpleNamespace(name="review", type="discord")})
     monkeypatch.setattr(module, "get_instance", lambda _name: SimpleNamespace(send_msg=lambda **_kw: result))
     assert module.edit_message(NotificationChannel.Discord, "review", "1", "2", "text") is expected
 

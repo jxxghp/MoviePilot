@@ -20,6 +20,9 @@ class AdmissionProof:
     :param conversation: 事件所属群组或会话地址，未知时为空
     :param expires_at: 证明失效的 UTC Unix 秒
     :param private: 平台是否已确认本次事件来自私聊
+    :param provider: 可信宿主入口绑定的平台 owner，旧回调证明可省略
+    :param identity_namespace: 入口核对的连接身份空间
+    :param ingress_source: 宿主记录的认证入口类别，不是调用者可提交的权限
     """
 
     connection_id: str
@@ -28,6 +31,9 @@ class AdmissionProof:
     conversation: str | None
     expires_at: float
     private: bool = False
+    provider: str | None = None
+    identity_namespace: str | None = None
+    ingress_source: str | None = None
 
     def matches(self, rule: InteractionMatch) -> bool:
         """

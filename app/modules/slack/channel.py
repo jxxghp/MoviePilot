@@ -18,6 +18,9 @@ class SlackPlatform(ChannelPlatformBase):
     provider = "slack"
     channel = "Slack"
     attachment_schemes = ("slack",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
+    private_pattern = '[UW][A-Z0-9]+'
     interaction = True
     binding_fields = ("slack_userid",)
     edit_fields = ("SLACK_CHANNEL",)

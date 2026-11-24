@@ -23,6 +23,8 @@ class ChannelPlatform(Protocol):
     """
     模块实现的协议边界，不决定成员审批、角色或业务权限。
 
+    :ivar legacy_native_image: 平台对旧冻结通知的原图处理事实
+    :ivar module_id: 既有模块清单的宿主实现 ID，用于固定解析 owner
     :ivar display_name: 既有模块清单的展示名称
     :ivar attachment_schemes: 由模块拥有的附件 URI scheme
     :ivar text_confirmation: 是否支持既有确认文本入口
@@ -33,6 +35,8 @@ class ChannelPlatform(Protocol):
     :ivar binding_fields: 平台拥有的旧账号绑定字段
     """
 
+    legacy_native_image: bool
+    module_id: str
     display_name: str
     provider: str
     channel: str
@@ -169,6 +173,16 @@ class ChannelPlatform(Protocol):
         """
         ...
 
+    def private_target(self, value: str) -> str:
+        """
+        校验个人投递地址的协议约束，不决定接收者是否已授权。
+
+        :param value: 宿主已经明确指定的个人地址
+        :return: 平台接受的单个个人地址
+        :raises PermissionError: 地址不是本平台允许的个人目标
+        """
+        ...
+
     def bound_address(self, message: Message) -> NotificationRule | None:
         """
         按平台优先级解析已绑定地址，仅产生路由事实。
@@ -296,29 +310,37 @@ def platform_catalog() -> ChannelPlatformCatalog:
     return get_channel_platform_catalog()
 
 
-def platform_for_channel(channel: str) -> ChannelPlatform:
+def platform_for_channel(channel: str, *, provider: str | None = None) -> ChannelPlatform:
     """
     解析兼容渠道名称，平台声明只提供身份事实。
 
+    :param provider: 连接已确定的平台协议 owner；同传输类型可以有不同 provider
     :param channel: 入站或历史记录的渠道名称
     :return: 唯一匹配的平台实现
     :raises ValueError: 渠道未注册或存在歧义
     """
+    if provider is not None:
+        entry = platform_catalog().get(provider)
+        if entry is None or entry.channel != channel:
+            raise ValueError("连接的平台与传输类型不一致")
+        return entry
+    # 仅无连接上下文的旧调用使用此兼容路径；歧义拒绝，不选择目录第一项。
     matches = [entry for entry in platform_catalog().providers() if entry.channel == channel]
     if len(matches) != 1:
         raise ValueError("渠道身份协议不存在或不唯一")
     return matches[0]
 
 
-def resolve_actor_ids(channel: str, value: str) -> tuple[str, ...]:
+def resolve_actor_ids(channel: str, value: str, *, provider: str | None = None) -> tuple[str, ...]:
     """
     在用例入口解释平台标识，再由领域层独立拒绝非个人主体。
 
     :param channel: 平台渠道名称
+    :param provider: 所属连接已确定的协议 owner；旧无连接调用有歧义时拒绝
     :param value: 认证报文、管理员录入或历史记录的原始标识
     :return: 已通过领域校验的规范个人标识及别名
     """
-    return channel_actor_ids(platform_for_channel(channel).actor(value))
+    return channel_actor_ids(platform_for_channel(channel, provider=provider).actor(value))
 
 
 def normalize_policy_actors(provider: str, policy: InteractionPolicy) -> InteractionPolicy:

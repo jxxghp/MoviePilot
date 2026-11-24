@@ -19,6 +19,8 @@ class SynologyChatPlatform(ChannelPlatformBase):
     provider = "synologychat"
     channel = "SynologyChat"
     attachment_schemes = ("synology",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
     interaction = True
     binding_fields = ("synologychat_userid",)
     edit_fields = ("SYNOLOGYCHAT_WEBHOOK",)

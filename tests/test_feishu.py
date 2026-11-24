@@ -1532,7 +1532,7 @@ def test_module_send_direct_message_prefers_open_id_target():
     """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
-    conf = SimpleNamespace(name="feishu-main")
+    conf = SimpleNamespace(name="feishu-main", type="feishu")
     client = MagicMock()
     client.send_notification.return_value = {
         "success": True,
@@ -1572,7 +1572,7 @@ def test_module_plain_direct_message_uses_literal_text_transport():
     """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
-    conf = SimpleNamespace(name="feishu-main")
+    conf = SimpleNamespace(name="feishu-main", type="feishu")
     client = MagicMock()
     client.send_text.return_value = {
         "success": True,
@@ -1619,7 +1619,7 @@ def test_module_download_helpers_delegate_to_client():
     client.download_message_resource_bytes.return_value = (b"image", "poster.png", "image/png")
 
     with (
-        patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main")),
+        patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main", type="feishu")),
         patch.object(module, "get_instance", return_value=client),
     ):
         data_url = module.download_feishu_image_to_data_url("feishu://image/om_msg/img_v2_xxx", "feishu-main")
@@ -1654,7 +1654,7 @@ def test_module_message_reaction_helpers_delegate_to_client():
     client.delete_message_reaction.return_value = True
 
     with (
-        patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main")),
+        patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main", type="feishu")),
         patch.object(module, "get_instance", return_value=client),
     ):
         reaction_id = module.add_feishu_message_reaction("om_x", "GLANCE", "feishu-main")
@@ -1714,7 +1714,7 @@ def test_module_finalize_message_closes_streaming_card():
     client.close_streaming_card.return_value = True
 
     with (
-        patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main")),
+        patch.object(module, "get_config", return_value=SimpleNamespace(name="feishu-main", type="feishu")),
         patch.object(module, "get_instance", return_value=client),
     ):
         success = module.finalize_message(
@@ -1737,7 +1737,7 @@ def test_module_post_message_prefers_file_and_voice_paths():
     模块发送入口优先按文件或语音载荷选择专用发送路径。
     """
     module = FeishuModule()
-    conf = SimpleNamespace(name="feishu-main")
+    conf = SimpleNamespace(name="feishu-main", type="feishu")
     client = MagicMock()
 
     with (
@@ -1770,7 +1770,7 @@ def test_module_post_message_sends_image_card_before_file_attachment():
     通知含图片和附件时先发送图片卡片，再发送不重复说明的附件。
     """
     module = FeishuModule()
-    conf = SimpleNamespace(name="feishu-main")
+    conf = SimpleNamespace(name="feishu-main", type="feishu")
     client = MagicMock()
 
     with (
@@ -1804,7 +1804,7 @@ def test_module_send_direct_message_sends_image_card_before_file_attachment():
     """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
-    conf = SimpleNamespace(name="feishu-main")
+    conf = SimpleNamespace(name="feishu-main", type="feishu")
     client = MagicMock()
     client.send_notification.return_value = {
         "success": True,
@@ -1842,7 +1842,7 @@ def test_module_post_message_passes_original_message_id_for_reply():
     模块将原消息标识传给客户端，保留回复语义。
     """
     module = FeishuModule()
-    conf = SimpleNamespace(name="feishu-main")
+    conf = SimpleNamespace(name="feishu-main", type="feishu")
     client = MagicMock()
 
     with (
@@ -1911,7 +1911,7 @@ def test_module_post_message_replies_to_original_chat_for_group_message():
     携带原会话上下文的回复应定向到原会话（群聊）。
     """
     module = FeishuModule()
-    conf = SimpleNamespace(name="feishu-main")
+    conf = SimpleNamespace(name="feishu-main", type="feishu")
     client = MagicMock()
 
     with (

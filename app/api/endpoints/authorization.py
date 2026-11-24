@@ -212,6 +212,7 @@ def create_authorization(
             config.name or "",
             payload.sender_id.strip(),
             payload.display_name.strip(),
+            connection_id=config.id,
         )
     except (PermissionError, ValueError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

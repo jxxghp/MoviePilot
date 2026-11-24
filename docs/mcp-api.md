@@ -911,3 +911,5 @@ REST 调用示例：
 公共用例、授权、受众、发送时间与 Outbox 保持由宿主执行；平台身份、地址协议、凭据、诊断与特殊分段由所属模块实现。注册方式、兼容和完整调用链见[平台边界](channel-refactor/platform-boundaries.md)。
 
 `GET /api/v1/notification/channels` 增加 `providers`（类型到显示名称）和按连接 ID 的 `capabilities`，包含规则/目标类型、标签键、线程/账号筛选、回调令牌/登录管理能力及交互表单扩展键。能力不携带凭据，也不授予业务权限。`PUT .../{connection_id}/interaction` 的规范扩展输入为 `platform_options`；后端模块负责校验。Discord 的旧 `command_guild_id` 输入/输出保留兼容；canonical 持久化不再保存该 flat 字段。通知规则后端验证始终执行，前端不根据平台名自行解释地址。公开 MCP 工具和插件调用方式不变。
+
+`NotificationChannel` 的内置编码保持兼容，扩展传输为 `platform:<小写标识>`（本体 1–55 字符）；可解析的标识不授予信任或权限。管理员直接录入成员绑定请求中的稳定连接 ID，provider 和传输类型由服务端连接配置确定。`AdmissionProof` 的 provider/namespace/来源只在宿主私有入口生成，公开消息 JSON 不接受这些信任事实。

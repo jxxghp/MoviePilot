@@ -167,10 +167,8 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
                 raise ValueError(f"{spec.source}: 渠道扩展必须属于本通知模块的 channel 契约")
         if spec.metadata["type"] not in module_type_values:
             raise ValueError(f"{spec.source}: 非法 metadata.type={spec.metadata['type']!r}")
-        if spec.metadata["subtype"] not in _SUBTYPE_NAMES:
-            raise ValueError(
-                f"{spec.source}: 非法 metadata.subtype={spec.metadata['subtype']!r}"
-            )
+        if spec.metadata["subtype"] not in _SUBTYPE_NAMES and not _extended_notification_subtype(spec):
+            raise ValueError(f"{spec.source}: 非法 metadata.subtype={spec.metadata['subtype']!r}")
         priority = spec.metadata["priority"]
         if isinstance(priority, bool) or not isinstance(priority, int):
             raise ValueError(f"{spec.source}: metadata.priority 必须是整数")
@@ -183,6 +181,18 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
                 raise ValueError(
                     f"{spec.source}: activation.watch 必须包含 selector 配置键"
                 )
+
+
+def _extended_notification_subtype(spec: CapabilitySpec) -> bool:
+    """
+    仅有显式平台实现的通知模块可声明独立的扩展传输标识。
+    """
+    if not spec.metadata.get("channel_extension") or spec.metadata.get("type") != ModuleType.Notification.value:
+        return False
+    try:
+        return NotificationChannel(str(spec.metadata["subtype"])).value.startswith("platform:")
+    except ValueError:
+        return False
 
 
 def build_host_module_registry() -> CapabilityRegistry:

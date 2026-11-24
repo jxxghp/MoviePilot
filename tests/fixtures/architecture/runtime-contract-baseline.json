@@ -8852,7 +8852,7 @@
     }
   },
   "run_module": {
-    "call_count": 258,
+    "call_count": 259,
     "dynamic_call_count": 1,
     "dynamic_calls": [
       {
@@ -9962,6 +9962,11 @@
       "message_parser": [
         {
           "caller": "app.chain.base",
+          "count": 1,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.message",
           "count": 1,
           "mode": "sync"
         }

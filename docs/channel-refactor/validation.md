@@ -23,13 +23,13 @@
 
 执行锁定环境的完整 `uv run --locked --no-sync python tests/run.py`，改动文件及全应用 pylint、mypy、架构依赖、复杂度、并发、异步阻塞、任务归属、service locator、Ruff/mypy ratchet 和三轮启动性能检查。复杂度只允许固化下降，不提升预算；冷导入预算保持 3000ms。
 
-本轮为本地审阅交付，尚未提交、推送或发布；后续 CI 结果须按实际提交核对。真实企业微信测试跳过；其他真实平台和生产部署尚需对应环境验收。数据库回退要求恢复完整备份，详见[升级计划](plan.md)。
+第一轮验收已形成上述本地提交，未推送或发布；后续 CI 结果须按实际提交核对。真实企业微信测试跳过；其他真实平台和生产部署尚需对应环境验收。数据库回退要求恢复完整备份，详见[升级计划](plan.md)。
 
 ## 通用核心与平台实现分离
 
 职责来源、最终 owner、完整调用链、兼容与架构边界以[平台边界文档](platform-boundaries.md)为准。
 
-## 2026-11-24 平台职责分离验收
+## 第一轮平台职责分离验收（4e666434e / af33d57d）
 
 | 检查 | 最终结果 |
 | --- | --- |
@@ -47,3 +47,28 @@
 架构依赖与运行合同快照仅记录已审阅的 owner/调用变化；新增 1 个 `MessageAttachmentRead` schema 导出，没有删除或改名公开导出。原 13 种下载模块 ABI 保留，调用由平台读取计划描述。复杂度基线只移除三项旧豁免：附件图像 18→9、文件 19→5、音频 19→8；不提高复杂度、覆盖率或启动门槛，覆盖率基线未改。
 
 源码与测试均位于独立工作树，原 PR 源码、当前手测源指针和实例未切换。精确暂存树、diff、日志与浏览器截图随本地 `review/manifest.json` 留档，后续提交可按“协议/用例实现”“回归与架构约束”“文档”划分职责；本轮不自动创建提交或操作远端。
+
+## 独立平台边界补齐
+
+以[独立平台验收与身份职责](platform-boundaries-completion.md)为本轮补齐设计和调用链；旧 Web 复用测试不再作为扩展完成的证据。
+
+本轮新增验收以独立 `review-completion/manifest.json` 的最终源码树和日志为准；第一轮测试数与截图只代表其对应提交，不能冒充当前源码验收。
+
+
+## 本轮补齐验收结果
+
+| 检查 | 结果与证据范围 |
+| --- | --- |
+| 后端全量 | `CONFIG_DIR=<临时目录> uv run --locked --no-sync python -m coverage run --parallel-mode tests/run.py --shard N/8`，8 个分片全部成功：22,915 通过、22 跳过 |
+| 最终新增 Schema 回归 | 同一应用源码另执行 `coverage run --parallel-mode -m pytest -q tests/test_channel_platform_extensions.py tests/test_channel_platform_architecture.py`：71 通过；其中公开 OpenAPI/JSON 往返是全量后新增的 1 项测试，不将重复执行计入全量总数 |
+| 覆盖率 | 保留全量和补充测试原始数据，以 Coverage API `combine(..., keep=True)` 合并，`coverage_ratchet.py --report <coverage.json>` 通过；全 app 排除 plugins：82.51%，1,229 文件；canonical 覆盖率基线未修改 |
+| 独立平台链路 | 12 个内置平台共存 + 独立传输；实际认证、宿主分派、申请、管理员 HTTP 审批、规则执行和拒绝；共享传输不同 provider 仍隔离 |
+| 架构约束 | `channel_platforms.py`、`baseline.py --check-host` 和全量依赖测试通过；局部变量、枚举/导入别名和字典查表反例通过 |
+| pylint / 类型 | PR base、HEAD 和本轮暂存变更的 Python 文件并集及全 app 均 10.00/10；新增 Schema 测试另复验 10.00/10；`mypy_policy.py`、`mypy_ratchet.py` 通过，0 类型错误 |
+| 其他门禁 | `complexity.py`、`concurrency.py`、`async_blocking.py`、`task_ownership.py`、`service_locator.py`、`ruff_ratchet.py` 通过；原门槛保持 |
+| 启动性能 | `performance.py --check --repeat 3` 通过；中位数 factory 1881.687ms、main 1825.886ms、lifecycle 1829.128ms；模块数与 3000ms 预算保持 |
+| 前端本轮 | `yarn test:run`：5,084 通过、1 跳过；`yarn format:check`、`yarn lint`、`yarn typecheck` 通过；新增目录测试同时展示全部 12 个内置平台和独立平台，组件专项 12 项通过 |
+| 前端构建/浏览器 | 本轮未改生产前端源码，复用 af33d57d 的构建及桌面/移动浏览器证据；本轮新增后端不宣称已做新的真实浏览器或租户验收 |
+| 环境与交付 | 使用隔离测试配置，真实企业微信继续跳过；未推送、强推、合并、发布或切换手测实例。按用户要求将已验收改动提交本地，提交阶段不额外运行测试；最新 commit 和 tree 由审阅索引记录 |
+
+完整日志、原始覆盖率数据位置与源码树哈希由本地 `review-completion/manifest.json` 索引；该 manifest 和 `current-source.json` 均指向实际前后端工作树。旧 PR 内容尚未同步，不能用远端链接代替本轮源码证据。最终应用源码与全量测试时一致；之后只增加 Schema 测试和更新文档，补充测试、覆盖率和静态检查已重跑。

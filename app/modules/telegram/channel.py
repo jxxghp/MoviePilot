@@ -20,6 +20,9 @@ class TelegramPlatform(ChannelPlatformBase):
     provider = "telegram"
     channel = "Telegram"
     attachment_schemes = ("tg",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
+    private_pattern = '[1-9][0-9]*'
     interaction = True
     text_confirmation = True
     binding_fields = ("telegram_userid",)

@@ -27,6 +27,10 @@ class WechatPlatform(ChannelPlatformBase):
     provider = "wechat"
     channel = "微信"
     attachment_schemes = ("wxwork", "wxbot")
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
+    private_pattern = '(?!@all$)[A-Za-z0-9_@.-]+'
+    legacy_native_image = True
     interaction = True
     binding_fields = ("wechat_userid",)
     edit_fields = ()

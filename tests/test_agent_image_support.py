@@ -638,7 +638,7 @@ def test_slack_module_download_file_to_data_url():
     client.download_file.return_value = (b"png-binary", "image/png")
 
     with patch.object(
-        module, "get_config", return_value=SimpleNamespace(name="slack-test")
+        module, "get_config", return_value=SimpleNamespace(name="slack-test", type="slack")
     ), patch.object(module, "get_instance", return_value=client):
         data_url = module.download_slack_file_to_data_url(
             "https://files.slack.com/files-pri/T1-F1/test.png",
@@ -1231,7 +1231,7 @@ def test_vocechat_post_message_passes_image_and_correct_target():
     with patch.object(
         module,
         "get_configs",
-        return_value={"vocechat-test": SimpleNamespace(name="vocechat-test")},
+        return_value={"vocechat-test": SimpleNamespace(name="vocechat-test", type="vocechat")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1268,7 +1268,7 @@ def test_slack_post_message_passes_local_file():
         with patch.object(
             module,
             "get_configs",
-            return_value={"slack-test": SimpleNamespace(name="slack-test")},
+            return_value={"slack-test": SimpleNamespace(name="slack-test", type="slack")},
         ), patch.object(
             module, "check_message", return_value=True
         ), patch.object(
@@ -1571,7 +1571,7 @@ def test_telegram_post_message_passes_file_to_client():
         with patch.object(
             module,
             "get_configs",
-            return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+            return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
         ), patch.object(
             module, "check_message", return_value=True
         ), patch.object(

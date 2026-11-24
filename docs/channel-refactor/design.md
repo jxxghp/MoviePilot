@@ -39,3 +39,7 @@ Web Push 设备由服务器绑定当前本地账号，保存 owner、密钥与�
 ## 通用核心与平台实现分离
 
 职责来源、最终 owner、完整调用链、兼容与架构边界以[平台边界文档](platform-boundaries.md)为准。
+
+## 独立平台边界补齐
+
+以[独立平台验收与身份职责](platform-boundaries-completion.md)为本轮补齐设计和调用链；旧 Web 复用测试不再作为扩展完成的证据。

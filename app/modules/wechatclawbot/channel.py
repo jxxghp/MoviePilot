@@ -21,6 +21,8 @@ class WechatClawBotPlatform(ChannelPlatformBase):
     provider = "wechatclawbot"
     channel = "微信ClawBot"
     attachment_schemes = ("wxclaw",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
     interaction = True
     cache_reconciliation = True
     binding_fields = ("wechatclawbot_userid",)

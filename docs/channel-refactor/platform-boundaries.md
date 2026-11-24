@@ -65,3 +65,7 @@ flowchart TD
 `python scripts/architecture/channel_platforms.py` 已接入架构 CI。检查通用授权、仓储、渠道应用包、消息结构、附件组合、Chain 与启动层中的具体模块导入、协议常量、凭据键、平台枚举分派及 provider 字面量分支；没有写基线模式。允许实现边界是 `app/modules/<provider>/channel.py`、既有模块客户端、模块清单与注册适配器、组合根的装配入口，以及 `database/legacy`/迁移的固定离线算法。允许边界不能成为公共用例或权限逻辑的替身。
 
 `test_channel_platform_extensions.py` 提供合成渠道，经既有注册表加载，证明规范身份、历史别名、群组拒绝、跨连接、冲突拒绝、规则能力、设置投影与自定义线程均无需修改核心。它还覆盖固定离线升级对照、原模块附件 ABI、Slack 冻结分段和确认后恢复。既有回归继续覆盖账号关联、撤权、跨群组/线程、凭据轮换和同名重建。真实企业微信验收本轮明确跳过。
+
+## 独立平台边界补齐
+
+以[独立平台验收与身份职责](platform-boundaries-completion.md)为本轮补齐设计和调用链；旧 Web 复用测试不再作为扩展完成的证据。

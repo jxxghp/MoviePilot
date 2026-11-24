@@ -998,8 +998,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10978,
-  "edge_sha256": "cdf61a496b6cad500720ab6cdf90bf5f765b8cf63928aaf11cfd8f0677eea6f2",
+  "edge_count": 10980,
+  "edge_sha256": "73c50bfd5dfb9396da051a0091e6020b8b481911b0f2433c077674ecda05a4bd",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7810,6 +7810,8 @@
     "app.modules -> app.application.messaging.channel",
     "app.modules -> app.application.messaging.channel.rules",
     "app.modules -> app.application.messaging.delivery",
+    "app.modules -> app.domain",
+    "app.modules -> app.domain.authorization",
     "app.modules -> app.runtime",
     "app.modules -> app.runtime.extensions",
     "app.modules -> app.runtime.extensions.service",

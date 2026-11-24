@@ -18,10 +18,23 @@ def test_channel_core_has_no_platform_protocol_dependencies():
     "source",
     [
         "from app.modules.qqbot.channel import QQPlatform",
+        'from importlib import import_module as load\nresolve = load\nresolve("app.modules.qqbot")',
+        'import importlib as lib\nload = lib.import_module\nload("app.modules.qqbot")',
+        'kind = connection.provider\nname = "new-platform"\nif kind == name: pass',
+        'kind = connection.channel\nmatch kind:\n    case "new-platform": pass',
+        "import app.schemas.types as T\nkind = T.NotificationChannel.Slack",
+        'mapping = {"new-platform": 1}\nkey = config.get("provider")\nhandler = mapping.get(key)',
         'actor.removeprefix("GID#")',
         'config.get("DISCORD_GUILD_ID")',
         'if connection.provider == "new-platform": pass',
         "if channel == NotificationChannel.Slack: pass",
+        'kind = connection.provider\nif kind == "new-platform": pass',
+        'kind = connection.channel\nother = kind\nif other in {"one", "two"}: pass',
+        "from app.schemas.types import NotificationChannel as Transport\nchoice = Transport\nkind = choice.Slack",
+        'mapping = {"new-platform": object()}\nkey = connection.provider\nhandler = mapping[key]',
+        'mapping = {"new-platform": object()}\nalias = mapping\nkey = connection.channel\nhandler = alias.get(key)',
+        'def route(connection):\n    target = connection.provider\n    if target == "fixture": return 1',
+        'import importlib as loader\nhandler = loader.import_module("app.modules.qqbot")',
     ],
 )
 def test_guard_rejects_protocol_and_concrete_platform_dispatch(source):

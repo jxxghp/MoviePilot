@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.application.messaging.channel import platform_for_channel
 from app.modules.dingtalk import DingTalkModule
 from app.modules.discord import DiscordModule
 from app.modules.feishu.feishu import Feishu
@@ -24,6 +25,14 @@ from app.modules.wechat.wechatbot import WeChatBot
 from app.schemas.message import Message, NotificationBlock, NotificationContent
 from app.schemas.system import NotificationConf
 from app.schemas.types import NotificationChannel
+
+
+def _configuration(module):
+    """
+    使用真实模块声明的 provider，文本渲染回归仍通过同一连接/平台边界。
+    """
+    channel = module.get_subtype()
+    return SimpleNamespace(name="test", type=platform_for_channel(channel.value).provider, enabled=True)
 
 
 def _message() -> Message:
@@ -44,7 +53,7 @@ def test_module_passes_only_own_rich_text(module_class, channel, method):
     result = {"success": True, "message_id": 1} if channel == "Telegram" else (True, {"ts": "1"})
     client = SimpleNamespace(send_msg=Mock(return_value=result))
     message = _message()
-    with (patch.object(module, "get_configs", return_value={"test": SimpleNamespace(name="test")}),
+    with (patch.object(module, "get_configs", return_value={"test": _configuration(module)}),
           patch.object(module, "check_message", return_value=True),
           patch.object(module, "get_instance", return_value=client)):
         getattr(module, method)(message)
@@ -63,7 +72,7 @@ def test_rich_text_does_not_bypass_notification_switch(module_class):
     关闭渠道时，专用正文不能绕过 check_message 执行真实发送。
     """
     module = module_class()
-    with (patch.object(module, "get_configs", return_value={"test": SimpleNamespace(name="test")}),
+    with (patch.object(module, "get_configs", return_value={"test": _configuration(module)}),
           patch.object(module, "check_message", return_value=False),
           patch.object(module, "get_instance") as get_client):
         module.post_message(_message())
@@ -227,7 +236,7 @@ def test_additional_channels_select_body_and_keep_every_paragraph(module_class, 
     message.rich_content = NotificationContent(blocks=[NotificationBlock(title=f"站点{index}",
         text="签到成功" + "奖励" * 50) for index in range(80)]) if rich else None
     expected = message.channel_text(channel) if rich else message.text
-    with (patch.object(module, "get_configs", return_value={"test": SimpleNamespace(name="test", type="test", enabled=True)}),
+    with (patch.object(module, "get_configs", return_value={"test": _configuration(module)}),
           patch.object(module, "check_message", return_value=True),
           patch.object(module, "get_instance", return_value=client)):
         module.post_message(message)
@@ -246,7 +255,7 @@ def test_missing_notification_instance_does_not_send(module_class):
     """
     module = module_class()
     with (patch.object(module, "get_configs", return_value={
-        "test": SimpleNamespace(name="test", type="test", enabled=True)}),
+        "test": _configuration(module)}),
           patch.object(module, "check_message", return_value=True),
           patch.object(module, "get_instance", return_value=None)):
         assert module.post_message(_message()) is None
@@ -261,7 +270,7 @@ def test_discord_attachment_does_not_enter_rich_text_loop():
     message = _message()
     message.file_path = "/tmp/test-only-placeholder.txt"
     with (patch.object(module, "get_configs", return_value={
-        "test": SimpleNamespace(name="test", type="test", enabled=True)}),
+        "test": _configuration(module)}),
           patch.object(module, "check_message", return_value=True),
           patch.object(module, "get_instance", return_value=client)):
         module.post_message(message)
@@ -325,7 +334,7 @@ def test_qq_module_supplies_chunks_and_preserves_plain_fallback():
     client = SimpleNamespace(send_msg=Mock())
     message = _message()
     message.rich_content = NotificationContent(blocks=[NotificationBlock(title="站点结果")])
-    with (patch.object(module, "get_configs", return_value={"test": SimpleNamespace(name="test")}),
+    with (patch.object(module, "get_configs", return_value={"test": _configuration(module)}),
           patch.object(module, "check_message", return_value=True),
           patch.object(module, "get_instance", return_value=client)):
         module.post_message(message)

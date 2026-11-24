@@ -54,7 +54,7 @@ class MessageResponse(BaseModel):
     source: Optional[str] = Field(default=None, description="消息来源")
     metadata: Optional[Dict[str, JsonData]] = Field(
         default=None,
-        description="渠道自定义上下文（如飞书流式卡片 card_id/element_id/sequence）",
+        description="由所属平台解释的发送上下文，公共用例不解释协议字段",
     )
     success: bool = Field(default=False, description="是否发送成功")
 
@@ -303,7 +303,7 @@ class Message(BaseModel):
         default=None,
         description="按钮列表，格式：[[{\"text\": \"按钮文本\", \"callback_data\": \"回调数据\", \"url\": \"链接\"}]]",
     )
-    force_reply: bool = Field(default=False, description="Telegram ForceReply 回复标记")
+    force_reply: bool = Field(default=False, description="平台原生回复请求标记，由所属模块解释")
     original_message_id: Optional[Union[str, int]] = Field(default=None, description="原消息ID，用于编辑消息")
     original_chat_id: Optional[str] = Field(default=None, description="原消息的聊天ID，用于编辑消息")
     thread_id: Optional[str] = Field(default=None, description="原会话内的回复话题或线程 ID")
@@ -311,11 +311,11 @@ class Message(BaseModel):
         default=None, description="宿主的投递语义，决定使用通知开关还是交互开关",
     )
     private_delivery: bool = Field(default=False, description="是否必须按用户身份投递到私聊，禁止回退原会话或最近会话映射")
-    disable_web_page_preview: Optional[bool] = Field(default=None, description="是否禁用链接预览（仅Telegram支持）")
-    parse_mode: Optional[str] = Field(default=None, description="消息文本格式；Telegram 支持 MarkdownV2、HTML、plain，飞书直发支持 plain")
+    disable_web_page_preview: Optional[bool] = Field(default=None, description="链接预览偏好，实际支持与校验由所属平台决定")
+    parse_mode: Optional[str] = Field(default=None, description="平台文本格式提示，由所属模块校验和编码")
     rich_message: Optional[str] = Field(
         default=None,
-        description="Telegram Rich Message 完整 Markdown 正文；其他渠道可使用 text 作为回退",
+        description="平台富文本兼容正文，公共文本回退使用 text",
     )
     rich_content: Optional[NotificationContent] = Field(default=None, description="渠道无关的结构化通知，宿主按能力渲染；text 始终保留为纯文本回退")
     save_history: bool = Field(default=True, description="是否写入消息历史")

@@ -28,8 +28,10 @@ class ModuleChannelPlatform:
         """
         assert spec.selector is not None
         self._spec = spec
+        self.module_id = spec.id
         self.provider = str(spec.selector.config["match_value"])
-        self.channel = NotificationChannel[str(spec.metadata["subtype"])].value
+        subtype = str(spec.metadata["subtype"])
+        self.channel = (NotificationChannel.__members__.get(subtype) or NotificationChannel(subtype)).value
         self.display_name = str(spec.metadata["name"])
         self.interaction = spec.metadata.get("channel_interaction") is True
 
@@ -60,6 +62,8 @@ class ModuleChannelCatalog:
         self._entries = tuple(
             ModuleChannelPlatform(spec) for spec in registry.list_specs() if spec.metadata.get("channel_extension")
         )
+        if any(entry.interaction and entry.channel in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value} for entry in self._entries):
+            raise ValueError("宿主网页身份不能注册为外部平台交互入口")
         providers = [entry.provider for entry in self._entries]
         if len(set(providers)) != len(providers):
             raise ValueError("同一渠道类型存在重复的平台扩展")

@@ -23,6 +23,8 @@ class DiscordPlatform(ChannelPlatformBase):
     provider = "discord"
     channel = "Discord"
     attachment_schemes = ("discord",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
     interaction = True
     binding_fields = ("discord_userid",)
     edit_fields = ()

@@ -17,6 +17,9 @@ class FeishuPlatform(ChannelPlatformBase):
     provider = "feishu"
     channel = "飞书"
     attachment_schemes = ("feishu",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
+    private_pattern = '(?!oc_).*'
     interaction = True
     text_confirmation = True
     binding_fields = ("feishu_userid", "feishu_openid")

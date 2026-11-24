@@ -162,7 +162,7 @@ async def test_agent_final_edit_waits_during_telegram_edit_interval(
     handler._original_message_id = "question"
     module = TelegramModule()
     module._channel = NotificationChannel.Telegram
-    monkeypatch.setattr(module, "get_configs", lambda: {"bot": SimpleNamespace(name="bot")})
+    monkeypatch.setattr(module, "get_configs", lambda: {"bot": SimpleNamespace(name="bot", type="telegram")})
     monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
     monkeypatch.setattr(module, "check_message", lambda *_args: True)
     monkeypatch.setattr(module, "get_notification_targets", lambda _message: None)
@@ -1013,7 +1013,7 @@ def test_telegram_module_passes_parse_mode_to_client():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1043,7 +1043,7 @@ def test_telegram_module_passes_rich_message_to_client():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1073,7 +1073,7 @@ def test_telegram_module_passes_streaming_rich_message_to_edit_client():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "get_instance", return_value=client
     ):
@@ -1100,7 +1100,7 @@ def test_telegram_module_plain_post_message_keeps_chat_without_editing_source_me
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1134,7 +1134,7 @@ def test_telegram_module_passes_force_reply_to_client():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1171,7 +1171,7 @@ def test_telegram_module_force_reply_sends_new_prompt_message():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1212,7 +1212,7 @@ def test_telegram_module_direct_force_reply_sends_new_prompt_message():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1255,7 +1255,7 @@ def test_telegram_module_direct_buttons_keep_new_message_behavior():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(
@@ -1296,7 +1296,7 @@ def test_telegram_module_plain_direct_message_keeps_userid_target():
     with patch.object(
         module,
         "get_configs",
-        return_value={"telegram-test": SimpleNamespace(name="telegram-test")},
+        return_value={"telegram-test": SimpleNamespace(name="telegram-test", type="telegram")},
     ), patch.object(
         module, "check_message", return_value=True
     ), patch.object(

@@ -616,6 +616,34 @@ class NotificationChannel(Enum):
     # QQ 消息渠道
     QQ = "QQ"
 
+    @classmethod
+    def _missing_(cls, value: object) -> Optional["NotificationChannel"]:
+        """
+        接受带命名空间的扩展传输标识；标识可解析不代表模块存在或入口可信。
+        """
+        if not isinstance(value, str) or re.fullmatch(r"platform:[a-z][a-z0-9._-]{0,54}", value) is None:
+            return None
+        member = object.__new__(cls)
+        member._name_ = value
+        member._value_ = value
+        existing = cls._value2member_map_.setdefault(value, member)
+        return existing if isinstance(existing, cls) else None
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler,
+    ) -> dict[str, object]:
+        """
+        保留全部内置值并公开扩展格式，枚举成员不能被误当作授权白名单。
+        """
+        schema: dict[str, object] = handler(core_schema)
+        values = schema.pop("enum", [member.value for member in cls])
+        schema["anyOf"] = [
+            {"type": "string", "enum": values},
+            {"type": "string", "pattern": r"^platform:[a-z][a-z0-9._-]{0,54}$"},
+        ]
+        return schema
+
 
 class NotificationAction(str, Enum):
     """

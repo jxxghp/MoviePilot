@@ -851,7 +851,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1229 |
-| 内部导入边 | 10,978 |
+| 内部导入边 | 10,980 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 52（精确 policy 准入，Application / Chain 均为 0；本知识 Adapter 仍复用宿主 HTTP 层） |
@@ -903,3 +903,5 @@ Pylint 分别提供对应证据。验证结论应绑定实际源码提交，不�
 ## 渠道平台扩展边界
 
 公共用例、授权、受众、发送时间与 Outbox 保持由宿主执行；平台身份、地址协议、凭据、诊断与特殊分段由所属模块实现。注册方式、兼容和完整调用链见[平台边界](channel-refactor/platform-boundaries.md)。
+
+独立平台传输、连接归属与入口认证的职责及增量注册验收见[边界补齐](channel-refactor/platform-boundaries-completion.md)。

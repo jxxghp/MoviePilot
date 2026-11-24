@@ -10,7 +10,7 @@ from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import NotificationChannel
 
 
-def notification_parts(message: Message, channel: NotificationChannel) -> list[Message]:
+def notification_parts(message: Message, channel: NotificationChannel, *, provider: str | None = None) -> list[Message]:
     """
     为单个渠道生成互不污染的图片、附件或降级文本。
 
@@ -29,7 +29,15 @@ def notification_parts(message: Message, channel: NotificationChannel) -> list[M
         ]
     else:
         parts = [message]
-    platform = next((entry for entry in channel_platform.platform_catalog().providers() if entry.channel == channel.value), None)
+    try:
+        platform = channel_platform.platform_for_channel(channel.value, provider=provider)
+    except ValueError:
+        if provider is not None:
+            raise
+        matches = [entry for entry in channel_platform.platform_catalog().providers() if entry.channel == channel.value]
+        if matches:
+            raise ValueError("分段需要明确连接的平台 owner")
+        platform = None
     if platform is not None:
         parts = platform.split_notification(parts)
     adapted = [_channel_part(part, channel) for part in parts]

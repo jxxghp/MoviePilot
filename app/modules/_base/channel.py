@@ -25,6 +25,10 @@ class ChannelPlatformBase:
     """
     为模块提供字段允许列表和规范路由的通用模板，不授予任何权限。
 
+    :ivar legacy_native_image: 是否由模块保留旧冻结意图的原图语义
+    :ivar private_pattern: 本平台单个个人地址的格式约束
+    :ivar private_forbidden_prefixes: 本平台不接受为个人的兼容地址前缀
+    :ivar private_forbidden_suffixes: 本平台不接受为个人的兼容地址后缀
     :ivar provider: 既有服务配置的平台标识
     :ivar channel: 兼容通知渠道名称
     :ivar interaction: 是否提供认证交互入口
@@ -83,6 +87,10 @@ class ChannelPlatformBase:
     all_address: str | None = None
     literal_address_prefixes: tuple[str, ...] = ()
     needs_target_review: bool = False
+    legacy_native_image: bool = False
+    private_pattern: str | None = None
+    private_forbidden_prefixes: tuple[str, ...] = ()
+    private_forbidden_suffixes: tuple[str, ...] = ()
 
     def actor(self, value: str) -> ChannelActor:
         """
@@ -258,6 +266,16 @@ class ChannelPlatformBase:
             elif self.needs_target_review or raw_names and not names:
                 rules.append(NotificationRule(kind="review", message_types=types, enabled=False))
         return tuple(rules)
+
+    def private_target(self, value: str) -> str:
+        """
+        按模块声明校验地址格式；清除群回复和权限复核属于宿主统一安全政策。
+        """
+        if (any(value.lower().startswith(prefix) for prefix in self.private_forbidden_prefixes)
+                or any(value.endswith(suffix) for suffix in self.private_forbidden_suffixes)
+                or self.private_pattern and re.fullmatch(self.private_pattern, value) is None):
+            raise PermissionError("强制私聊不能使用群地址或无效个人地址")
+        return value
 
     def bound_address(self, message: Message) -> NotificationRule | None:
         """

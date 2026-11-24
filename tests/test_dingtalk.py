@@ -163,7 +163,7 @@ def test_module_routes_matching_notifications_to_dingtalk_client(monkeypatch) ->
     module = DingTalkModule()
     module._channel = NotificationChannel.DingTalk
     client = Mock()
-    config = SimpleNamespace(name="家庭群", switchs=[MessageType.Organize.value])
+    config = SimpleNamespace(name="家庭群", type="dingtalk", switchs=[MessageType.Organize.value])
     monkeypatch.setattr(module, "get_configs", lambda: {config.name: config})
     monkeypatch.setattr(module, "get_config", lambda name=None: config)
     monkeypatch.setattr(module, "get_instance", lambda name=None: client)

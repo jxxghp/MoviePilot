@@ -242,6 +242,10 @@ class ModuleInvocationDispatcher:
         contract = get_module_method_contract(method)
         logger.debug("模块方法契约：%s -> %s", method, contract.family)
         result = None
+        host_module = kwargs.pop("_host_module", None)
+        if host_module is not None:
+            # 已认证 SDK 解析只交给清单指定的宿主 owner，不能先由插件或其他平台接管。
+            return self.execute_system_modules(method, result, *args, strict_errors=strict_errors, _host_module=host_module, **kwargs)
         if contract.public_to_plugins:
             with observe_duration(
                 "module.provider.duration", method=method, provider_type="plugin"
@@ -540,6 +544,7 @@ class ModuleInvocationDispatcher:
         result: Any,
         *args: Any,
         strict_errors: bool = False,
+        _host_module: str | None = None,
         **kwargs: Any,
     ) -> Any:
         """
@@ -553,6 +558,8 @@ class ModuleInvocationDispatcher:
         )
         for module in modules:
             module_id = module.__class__.__name__
+            if _host_module is not None and module_id != _host_module:
+                continue
             module_name = self._module_name(module, module_id)
             try:
                 func = getattr(module, method)

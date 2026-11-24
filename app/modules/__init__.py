@@ -2,13 +2,13 @@
 模块生命周期、配置化服务实例和消息路由的公共基类。
 """
 
-import re
 import threading
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Callable, Dict, Generic, Mapping, Optional, Protocol, Tuple, Type, TypeVar, Union
 
+import app.application.messaging.channel as channel_platform
 from app.application.messaging.attachment import notification_parts
 from app.application.messaging.channel.rules import notification_rule_applies, routed_notification_messages
 from app.application.messaging.delivery import (
@@ -394,29 +394,22 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         channel = self._channel or getattr(self, "get_subtype")()
         if message.channel is not None and message.channel != channel:
             return message
-        if channel not in {
-            NotificationChannel.Telegram, NotificationChannel.Wechat, NotificationChannel.WechatClawBot,
-            NotificationChannel.Feishu, NotificationChannel.QQ, NotificationChannel.Discord,
-            NotificationChannel.Slack, NotificationChannel.VoceChat, NotificationChannel.SynologyChat,
-        }:
-            raise PermissionError("该渠道不支持机器人个人私聊投递")
         if not message.source or message.userid is None or not str(message.userid).strip():
             raise PermissionError("强制私聊必须指定渠道实例和个人用户 ID")
-        if message.source not in self.get_configs():
+        config = self.get_configs().get(message.source)
+        if config is None:
             raise RuntimeError("私聊渠道实例不存在或已停用")
-        userid = str(message.userid).strip()
-        if userid.lower().startswith(("group:", "gid#")) or userid.endswith("@chatroom"):
-            raise PermissionError("强制私聊不能使用群地址")
-        if channel == NotificationChannel.Telegram and (not userid.isascii() or not userid.isdecimal() or int(userid) <= 0):
-            raise PermissionError("Telegram 私聊必须使用正整数个人用户 ID")
-        if channel == NotificationChannel.Wechat and (
-                userid.lower() == "@all" or not re.fullmatch(r"[A-Za-z0-9_@.-]+", userid)
-        ):
-            raise PermissionError("企业微信私聊必须是单个个人用户，不能使用全体或多用户地址")
-        if channel == NotificationChannel.Slack and not re.fullmatch(r"[UW][A-Z0-9]+", userid):
-            raise PermissionError("Slack 私聊必须使用个人用户 ID，不能使用频道或频道名称")
-        if channel == NotificationChannel.Feishu and userid.startswith("oc_"):
-            raise PermissionError("飞书私聊不能使用群会话 ID")
+        from app.application.messaging.channel import platform_for_channel
+        from app.domain.authorization import channel_actor_ids
+
+        try:
+            platform = platform_for_channel(channel.value, provider=config.type)
+            if not platform.interaction:
+                raise PermissionError("该渠道不支持机器人个人私聊投递")
+            channel_actor_ids(platform.actor(str(message.userid)))
+        except ValueError as error:
+            raise PermissionError("强制私聊不能使用群地址或未知平台") from error
+        userid = platform.private_target(str(message.userid).strip())
         return message.model_copy(update={
             "channel": channel, "userid": userid, "targets": None,
             "original_chat_id": None, "original_message_id": None, "thread_id": None, "force_reply": False,
@@ -507,11 +500,12 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
             messages = self._rule_messages(message, conf)
             for routed in messages:
                 if legacy_attachment_layout_active():
-                    if channel != NotificationChannel.Wechat and routed.native_image:
+                    platform = channel_platform.platform_catalog().get(conf.type or "")
+                    if not (platform and platform.legacy_native_image) and routed.native_image:
                         routed = routed.model_copy(update={"native_image": False})
                     yield conf, routed
                     continue
-                for part in notification_parts(routed, channel) if channel is not None else (routed,):
+                for part in notification_parts(routed, channel, provider=conf.type) if channel is not None else (routed,):
                     yield conf, part
 
     def _rule_messages(self, message: Message, config: NotificationConf) -> Iterator[Message]:
@@ -534,7 +528,7 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         """
         message = self.prepare_message(message)
         channel = getattr(self, "_channel", None) or getattr(self, "get_subtype", lambda: None)()
-        parts = notification_parts(message, channel) if isinstance(channel, NotificationChannel) else [message]
+        parts = notification_parts(message, channel, provider=self._service_name) if isinstance(channel, NotificationChannel) else [message]
         first = None
         for part in parts:
             if first is not None and first.source:

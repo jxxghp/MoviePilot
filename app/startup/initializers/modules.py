@@ -256,8 +256,22 @@ def _manage_inactive_notification(channel: str, action: str, params: dict[str, A
     """
     只编排模块声明的离线管理动作，启动层不解释平台登录协议。
     """
-    platform = channel_platform.platform_catalog().get(channel.lower())
-    return platform.manage(action, params) if platform else None
+    if params.get("saved_connection") is not True:
+        return None
+    connection = next((item for item in ServiceConfigHelper.get_notification_configs()
+                       if item.id == str(params.get("source") or "")), None)
+    if connection is None:
+        return None
+    from app.schemas.types import NotificationChannel
+
+    try:
+        transport = NotificationChannel.__members__.get(channel) or NotificationChannel(channel)
+    except ValueError:
+        return None
+    platform = channel_platform.platform_catalog().get(connection.type or "")
+    if platform is None or platform.channel != transport.value:
+        return None
+    return platform.manage(action, params)
 
 
 def configure_runtime_data_providers() -> None:

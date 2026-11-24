@@ -19,6 +19,8 @@ class VoceChatPlatform(ChannelPlatformBase):
     provider = "vocechat"
     channel = "VoceChat"
     attachment_schemes = ("vocechat",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
     interaction = True
     binding_fields = ("vocechat_userid",)
     edit_fields = ("VOCECHAT_CHANNEL_ID",)

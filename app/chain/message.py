@@ -297,25 +297,32 @@ class MessageChain(ChainBase):
         """
         仅由宿主内已认证 SDK 调用，在普通解析结果上附加来源证明。
         """
-        info = self.message_parser(source=source, body=body, form=None, args={})
-        if not info or info.channel != channel or info.source != source:
-            return
         try:
-            config = ChannelAuthorizationService.notification(channel.value, source)
-        except PermissionError:
+            config = ChannelAuthorizationService.notification(channel.value, source, connection_id=connection_id)
+            platform = channel_platform.platform_for_channel(channel.value, provider=config.type)
+        except (PermissionError, ValueError):
             return
-        if config.id != connection_id:
+        info = self.run_module(
+            "message_parser", _host_module=platform.module_id, source=source, body=body, form=None, args={},
+        )
+        if not isinstance(info, IncomingMessage) or info.channel != channel or info.source != source:
             return
         policy = config.interaction_policy
-        if policy and info.userid is not None and (policy.admission_rules or policy.auto_download_rules):
-            group = channel_platform.platform_for_channel(channel.value).conversation(str(info.chat_id)) if info.chat_id and info.conversation_type == "group" else None
-            proof = AdmissionProof(
-                config.id, policy.revision, str(info.userid), group,
-                time.time() + 60, private=info.conversation_type == "private",
-            )
-            info._admission_proof = proof
-            if not claim_verified_event(proof, sha256(body).hexdigest()):
-                return
+        if info.userid is None:
+            return
+        try:
+            channel_platform.resolve_actor_ids(channel.value, str(info.userid), provider=config.type)
+        except ValueError:
+            return
+        group = platform.conversation(str(info.chat_id)) if info.chat_id and info.conversation_type == "group" else None
+        proof = AdmissionProof(
+            config.id, policy.revision if policy else 0, str(info.userid), group, time.time() + 60,
+            private=info.conversation_type == "private", provider=config.type,
+            identity_namespace=config.identity_namespace or config.id, ingress_source="authenticated_sdk",
+        )
+        info._admission_proof = proof
+        if policy and (policy.admission_rules or policy.auto_download_rules) and not claim_verified_event(proof, sha256(body).hexdigest()):
+            return
         self.process_incoming(info, verified_event_claimed=True)
 
     def process_incoming(
@@ -1021,8 +1028,9 @@ class MessageChain(ChainBase):
         将模块支持的确认控制文本交回所属 Agent 会话。
         """
         try:
-            supports_confirmation = channel_platform.platform_for_channel(channel.value).text_confirmation
-        except ValueError:
+            config = ChannelAuthorizationService.notification(channel.value, source)
+            supports_confirmation = channel_platform.platform_for_channel(channel.value, provider=config.type).text_confirmation
+        except (ValueError, PermissionError):
             supports_confirmation = False
         if not supports_confirmation:
             return False
@@ -2220,7 +2228,7 @@ class MessageChain(ChainBase):
         transcripts = []
         for audio_ref in audio_refs:
             try:
-                plan = self._attachment_read_plan("audio", audio_ref, channel)
+                plan = self._attachment_read_plan("audio", audio_ref, channel, source=source)
                 content = self._execute_attachment_read(plan, source) if plan else None
                 filename = (plan.audio_filename if plan.exact_filename else self._guess_audio_filename(audio_ref, default=plan.audio_filename)) if plan else "input.ogg"
                 if not plan and audio_ref.startswith("http"):
@@ -2290,7 +2298,7 @@ class MessageChain(ChainBase):
                 if attachment_ref.startswith("data:"):
                     data_urls.append(attachment_ref)
                 else:
-                    plan = self._attachment_read_plan("image", attachment_ref, channel)
+                    plan = self._attachment_read_plan("image", attachment_ref, channel, source=source)
                     value = self._execute_attachment_read(plan, source) if plan else None
                     if isinstance(value, str) and value:
                         data_urls.append(value)
@@ -2406,7 +2414,7 @@ class MessageChain(ChainBase):
             return None
         if file_ref.startswith("data:"):
             return self._decode_data_url_bytes(file_ref)
-        plan = self._attachment_read_plan("file", file_ref, channel)
+        plan = self._attachment_read_plan("file", file_ref, channel, source=source)
         if plan is not None:
             value = self._execute_attachment_read(plan, source)
             return self._decode_data_url_bytes(value) if isinstance(value, str) else value
@@ -2416,7 +2424,7 @@ class MessageChain(ChainBase):
         return None
 
     @staticmethod
-    def _attachment_read_plan(kind: str, reference: str, channel: NotificationChannel) -> MessageAttachmentRead | None:
+    def _attachment_read_plan(kind: str, reference: str, channel: NotificationChannel, *, source: str | None = None) -> MessageAttachmentRead | None:
         """
         让当前平台解释附件协议，未知平台只保留通用 HTTP/data 路径。
         """
@@ -2425,8 +2433,14 @@ class MessageChain(ChainBase):
         owners = [entry for entry in channel_platform.platform_catalog().providers() if scheme in entry.attachment_schemes]
         if owners:
             return owners[0].attachment_reference(kind, reference) if len(owners) == 1 else None
+        provider = None
+        if source:
+            try:
+                provider = ChannelAuthorizationService.notification(channel.value, source).type
+            except PermissionError:
+                pass
         try:
-            platform = channel_platform.platform_for_channel(channel.value)
+            platform = channel_platform.platform_for_channel(channel.value, provider=provider)
         except ValueError:
             return None
         return platform.attachment_reference(kind, reference)

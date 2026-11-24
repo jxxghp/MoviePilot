@@ -330,3 +330,5 @@ Run `tests/test_architecture_dependencies.py` after any ownership, package-root
 or import change.
 
 消息渠道公共应用包拥有用例、事务/revision、通用规则匹配、受众、时间和 Outbox。其包端口描述模块事实；平台身份解析、凭据、地址校验/编码、专属配置、诊断、缓存与特殊分段由 `app/modules/<provider>/channel.py` 及既有客户端实现。`CapabilityRegistry` 的清单扩展只提供事实，不授予权限。仓储接收规范身份，启动层只编排生命周期。历史升级使用固定离线 `database/legacy` 格式，不调用运行目录或网络。职责表、调用链及可执行约束见[平台边界](../channel-refactor/platform-boundaries.md)。
+
+消息传输类型可以使用 `platform:<id>` 独立扩展；provider 负责协议，连接 ID/namespace 负责归属，私有入口证明负责认证事实。宿主网页类型不能被外部模块用于跳过授权。已认证 SDK 解析必须固定清单中的宿主模块，不能通过全局 parser 或插件猜测 owner。平台格式约束与统一安全政策详见[边界补齐](../channel-refactor/platform-boundaries-completion.md)。

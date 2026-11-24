@@ -18,6 +18,8 @@ class QQPlatform(ChannelPlatformBase):
     provider = "qqbot"
     channel = "QQ"
     attachment_schemes = ("qq",)
+    private_forbidden_prefixes = ("group:", "gid#")
+    private_forbidden_suffixes = ("@chatroom",)
     interaction = True
     binding_fields = ("qq_userid", "qq_openid")
     edit_fields = ("QQ_OPENID", "QQ_GROUP_OPENID", "QQ_APP_SECRET")

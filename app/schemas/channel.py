@@ -322,7 +322,7 @@ class ChannelConnectionForm(BaseModel):
 
 class ChannelConnectionEdit(BaseModel):
     """
-    更新既有共享连接的非凭据参数。
+    更新既有共享连接；公开字段由宿主校验，专属配置由所属模块校验。
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -331,7 +331,7 @@ class ChannelConnectionEdit(BaseModel):
     enabled: bool = Field(description="连接总开关")
     provider_config: dict[str, JsonData] | None = Field(default=None, repr=False)
     inbound_token: SecretStr | None = Field(
-        default=None, min_length=32, max_length=256, description="VoceChat 专用回调验证令牌", repr=False,
+        default=None, min_length=32, max_length=256, description="连接的专用入站令牌；本编辑接口统一要求 32 至 256 字符，平台可施加更严格约束", repr=False,
     )
     expected_revision: ChannelRevision = Field(description="读取时得到的连接版本")
 
