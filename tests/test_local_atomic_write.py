@@ -8,18 +8,22 @@ SIGKILL）时目标目录会留下一个**半截的媒体文件，而且叫最�
 改成「写临时名 → os.replace」后，os.replace 在同目录内由内核保证原子性：
 中断只可能留下一个带专用后缀的隐藏文件，最终文件要么完整存在，要么根本不存在。
 """
+import errno
 import os
+import sys
 from pathlib import Path
 
 import pytest
 
+from app.adapters.system.fsproxy import fsproxy
 from app.modules.filemanager.storages.local import LocalStorage
-from app.schemas import FileItem
+from app.schemas.file import FileItem
 
 
 def _fileitem(path: Path) -> FileItem:
     """
     构造本地文件项。
+
     :param path: 文件路径
     :return: 文件项
     """
@@ -122,7 +126,7 @@ def test_partial_path_keeps_short_dest_name_unchanged(tmp_path, storage):
     210 + 45 = 255）的边界名也不应被截断。
     """
     short = storage._partial_path(tmp_path / "Movie.2024.mkv")
-    assert f".Movie.2024.mkv." in short.name
+    assert ".Movie.2024.mkv." in short.name
     assert short.name.endswith(LocalStorage.PARTIAL_SUFFIX)
 
     boundary = _name_with_byte_length(210)
@@ -172,14 +176,18 @@ def test_copy_long_dest_name_succeeds(tmp_path, storage):
     assert not list(dest_dir.glob(f"*{LocalStorage.PARTIAL_SUFFIX}"))
 
 
-def test_copy_non_utf8_long_dest_name_succeeds(tmp_path, storage):
+def test_copy_non_utf8_long_dest_name_succeeds(tmp_path, storage, monkeypatch):
     """
     非 UTF-8 长文件名复制必须成功（issue #7572 的跟进回归）。
 
     磁盘上可能存在无法按 UTF-8 解码的文件名（surrogateescape）；度量与
     截断必须用 os.fsencode 往返原字节，str.encode("utf-8") 会直接抛
     UnicodeEncodeError，让本可复制的文件写不进去。
+    APFS 等强制合法 UTF-8 的文件系统无法直接落盘原始字节，此时通过底层端口替身校验。
     """
+    if sys.getfilesystemencodeerrors() != "surrogateescape":
+        pytest.skip("当前平台文件系统编码未使用 surrogateescape")
+
     src = tmp_path / "src" / "Episode.nfo"
     src.parent.mkdir()
     src.write_bytes(b"<episodedetails />")
@@ -191,10 +199,46 @@ def test_copy_non_utf8_long_dest_name_succeeds(tmp_path, storage):
     name = os.fsdecode(raw)
 
     partial = storage._partial_path(dest_dir / name)
-    assert len(os.fsencode(partial.name)) <= 255
-    assert storage.copy(_fileitem(src), dest_dir, name) is True
-    assert (dest_dir / name).read_bytes() == b"<episodedetails />"
-    assert not list(dest_dir.glob(f"*{LocalStorage.PARTIAL_SUFFIX}"))
+    raw_partial = os.fsencode(partial.name)
+    assert len(raw_partial) <= 255
+    assert raw_partial.startswith(b".\xff" + b"\xff" * 9)
+
+    probe = dest_dir / os.fsdecode(b".mp-probe-\xff")
+    supports_raw_bytes = True
+    try:
+        probe.write_bytes(b"")
+    except OSError:
+        supports_raw_bytes = False
+    finally:
+        probe.unlink(missing_ok=True)
+
+    if supports_raw_bytes:
+        assert storage.copy(_fileitem(src), dest_dir, name) is True
+        assert (dest_dir / name).read_bytes() == b"<episodedetails />"
+        assert not list(dest_dir.glob(f"*{LocalStorage.PARTIAL_SUFFIX}"))
+    else:
+        recorded: dict[str, Path] = {}
+
+        def fake_copy(source, destination, **_kwargs):
+            """
+            记录传入底层复制的中间路径，避免 APFS 因非 UTF-8 字节报 EILSEQ。
+            """
+            assert source == src
+            assert len(os.fsencode(destination.name)) <= 255
+            recorded["partial"] = destination
+            return {"copied": 18, "total": 18}
+
+        def fake_replace(source, destination):
+            """
+            校验原子替换阶段将预算内的中间路径提升到完整目标路径。
+            """
+            assert source == recorded["partial"]
+            recorded["dest"] = Path(destination)
+
+        monkeypatch.setattr(fsproxy, "copy", fake_copy)
+        monkeypatch.setattr(os, "replace", fake_replace)
+        assert storage.copy(_fileitem(src), dest_dir, name, try_reflink=False) is True
+        assert recorded["dest"] == dest_dir / name
 
 
 def test_partial_path_respects_tiny_name_max(tmp_path, storage, monkeypatch):
@@ -209,6 +253,129 @@ def test_partial_path_respects_tiny_name_max(tmp_path, storage, monkeypatch):
     assert partial.name.startswith(".")
     assert partial.name.endswith(LocalStorage.PARTIAL_SUFFIX)
     assert len(os.fsencode(partial.name)) <= 40
+
+
+def test_partial_path_falls_back_when_pathconf_unavailable_or_unlimited(
+    tmp_path, storage, monkeypatch
+):
+    """
+    缺少 os.pathconf、查询抛错或返回无上限负数时，统一回退到 255 字节预算。
+    """
+    long_name = _name_with_byte_length(218)
+
+    # 模拟 Windows 环境不存在 os.pathconf
+    monkeypatch.delattr(os, "pathconf", raising=False)
+    win_partial = storage._partial_path(tmp_path / long_name)
+    assert len(os.fsencode(win_partial.name)) <= 255
+    assert win_partial.name.endswith(LocalStorage.PARTIAL_SUFFIX)
+
+    # 模拟挂载查询抛出 OSError
+    def raise_oserror(*_args):
+        """
+        模拟不支持 PC_NAME_MAX 查询的文件系统。
+        """
+        raise OSError(errno.EINVAL, "Invalid argument")
+
+    monkeypatch.setattr(os, "pathconf", raise_oserror, raising=False)
+    err_partial = storage._partial_path(tmp_path / long_name)
+    assert len(os.fsencode(err_partial.name)) <= 255
+
+    # 模拟 POSIX 无固定上限时返回 -1，不得退化为固定空标识名
+    monkeypatch.setattr(os, "pathconf", lambda *_args: -1, raising=False)
+    unlimited_a = storage._partial_path(tmp_path / "Movie.2024.mkv")
+    unlimited_b = storage._partial_path(tmp_path / "Movie.2024.mkv")
+    assert ".Movie.2024.mkv." in unlimited_a.name
+    assert unlimited_a != unlimited_b
+
+
+def test_partial_path_omits_empty_name_when_multibyte_char_exceeds_small_budget(
+    tmp_path, storage, monkeypatch
+):
+    """
+    剩余预算小于首字符多字节长度时，应退化为单前导点紧凑名，避免拼出双点前缀。
+    """
+    monkeypatch.setattr(os, "pathconf", lambda *_args: 46, raising=False)
+
+    partial = storage._partial_path(tmp_path / "测试.nfo")
+
+    assert partial.name.startswith(".")
+    assert not partial.name.startswith("..")
+    assert partial.name.endswith(LocalStorage.PARTIAL_SUFFIX)
+    assert len(os.fsencode(partial.name)) <= 46
+
+
+def test_copy_retries_compact_partial_when_mount_enforces_stricter_name_max(
+    tmp_path, storage, monkeypatch
+):
+    """
+    网络挂载虚报 PC_NAME_MAX=255 但底层限制 143 字节时，复制应自动回退紧凑中间名完成写入；
+    若最终目标名自身已超限，则在替换阶段失败且不重复复制。
+    """
+    src = tmp_path / "src" / "Episode.nfo"
+    src.parent.mkdir()
+    src.write_bytes(b"<episodedetails />")
+    dest_dir = tmp_path / "encrypted_mount"
+    dest_dir.mkdir()
+
+    monkeypatch.setattr(os, "pathconf", lambda *_args: 255, raising=False)
+    real_copy = fsproxy.copy
+    real_replace = os.replace
+    copy_attempts: list[Path] = []
+
+    def strict_copy(source, destination, **kwargs):
+        """
+        模拟下层 eCryptfs 目录拒绝超过 143 字节的文件名。
+        """
+        copy_attempts.append(destination)
+        if len(os.fsencode(destination.name)) > 143:
+            raise OSError(errno.ENAMETOOLONG, "File name too long")
+        return real_copy(source, destination, **kwargs)
+
+    def strict_replace(source, destination):
+        """
+        模拟最终替换同样遵守下层 143 字节上限。
+        """
+        if len(os.fsencode(Path(destination).name)) > 143:
+            raise OSError(errno.ENAMETOOLONG, "File name too long")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(fsproxy, "copy", strict_copy)
+    monkeypatch.setattr(os, "replace", strict_replace)
+
+    valid_dest = _name_with_byte_length(130)
+    assert storage.copy(_fileitem(src), dest_dir, valid_dest, try_reflink=False) is True
+    assert len(copy_attempts) == 2
+    assert len(os.fsencode(copy_attempts[0].name)) == 175
+    assert len(os.fsencode(copy_attempts[1].name)) == 44
+    assert (dest_dir / valid_dest).read_bytes() == b"<episodedetails />"
+    assert not list(dest_dir.glob(f"*{LocalStorage.PARTIAL_SUFFIX}"))
+
+    # 最终目标名本身超过 143 字节（但初始中间名也超过 143 字节）：回退写完紧凑名后在 replace 失败并清理
+    copy_attempts.clear()
+    too_long_dest = _name_with_byte_length(150)
+    assert storage.copy(_fileitem(src), dest_dir, too_long_dest, try_reflink=False) is False
+    assert not (dest_dir / too_long_dest).exists()
+    assert not list(dest_dir.glob(f"*{LocalStorage.PARTIAL_SUFFIX}"))
+
+
+def test_softlink_repair_dangling_long_target_name_succeeds(tmp_path, storage):
+    """
+    悬空软链接的目标文件名接近 255 字节上限时，私有暂存链接仍须控制在上限内并完成原子修复。
+    """
+    src = tmp_path / "src" / "Episode.mkv"
+    src.parent.mkdir()
+    src.write_bytes(b"video")
+    dest_dir = tmp_path / "library"
+    dest_dir.mkdir()
+
+    long_target = dest_dir / _name_with_byte_length(230)
+    long_target.symlink_to(tmp_path / "missing.mkv")
+    assert long_target.is_symlink() and not long_target.exists()
+
+    assert storage.softlink(_fileitem(src), long_target) is True
+    assert long_target.is_symlink()
+    assert long_target.resolve() == src.resolve()
+    assert not list(dest_dir.glob(f".*{LocalStorage.STAGED_LINK_SUFFIX}"))
 
 
 def test_cleanup_removes_stale_truncated_partial(tmp_path, storage):
