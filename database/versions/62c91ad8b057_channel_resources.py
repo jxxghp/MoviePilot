@@ -9,7 +9,7 @@ import logging
 import sqlalchemy as sa
 from alembic import op
 
-from app.application.messaging.channel.settings import read_channel_resources
+from database.legacy.channel_resources_v1 import read_channel_resources
 
 revision = "62c91ad8b057"
 down_revision = "c4e8f1a29b03"

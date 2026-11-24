@@ -303,6 +303,7 @@ SCHEMA_EXPORTS = {
     'MediaType': ('app.schemas.subscribe', 'MediaType'),
     'Message': ('app.schemas.message', 'Message'),
     'MessageActionEventData': ('app.schemas.event', 'MessageActionEventData'),
+    'MessageAttachmentRead': ('app.schemas.message', 'MessageAttachmentRead'),
     'MessageClearBefore': ('app.schemas.message', 'MessageClearBefore'),
     'MessageClearData': ('app.schemas.message', 'MessageClearData'),
     'MessageClearScope': ('app.schemas.message', 'MessageClearScope'),

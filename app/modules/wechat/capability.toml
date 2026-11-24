@@ -10,6 +10,10 @@ type = "notification"
 subtype = "Wechat"
 priority = 1
 
+channel_extension = "app.modules.wechat.channel:WechatPlatform"
+
+channel_interaction = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications", "ChannelSettings"]

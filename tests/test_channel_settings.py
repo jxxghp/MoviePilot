@@ -733,3 +733,83 @@ async def test_legacy_client_cannot_reuse_deleted_identity():
     await service.replace_legacy([NotificationConf(id="old", name="Same", type="telegram")])
     connection = service.read().connections[0]
     assert connection.id != "old" and connection.identity_namespace != "old"
+
+
+@pytest.mark.asyncio
+async def test_wechat_app_edit_and_rotation_keep_identity_and_hide_credentials(monkeypatch):
+    """
+    企业微信应用通过真实平台扩展编辑回调和轮换 secret；诊断模拟，公开表单永不回填凭据。
+    """
+    from app.modules.wechat.channel import WechatPlatform
+    platform = WechatPlatform()
+    source = _Configuration([{
+        "id": "corp", "name": "corp", "type": "wechat", "enabled": True, "switchs": ["订阅"],
+        "config": {"WECHAT_MODE": "app", "WECHAT_CORPID": "fixture-corp", "WECHAT_APP_ID": "3",
+                   "WECHAT_APP_SECRET": "fixture-old", "WECHAT_TOKEN": "callback-token", "WECHAT_ENCODING_AESKEY": "callback-key"},
+    }])
+    verify = Mock(side_effect=lambda _corp, _agent, secret: "fixture-account" if secret in {"fixture-old", "fixture-new"} else "other-account")
+    monkeypatch.setattr("app.modules.wechat.wechat.WeChat.probe_app_identity", verify)
+
+    async def probe(connection):
+        """
+        使用实际模块诊断逻辑，外部 API 替身保持身份比较行为。
+        """
+        return platform.probe_identity(connection)
+
+    service = ChannelSettingsService(source, probe=probe)
+    original, = service.read().connections
+    assert original.can_rotate_credential
+    form = service.read_connection_form("corp")
+    assert set(form.editable_fields) == {"WECHAT_TOKEN", "WECHAT_ENCODING_AESKEY"}
+    assert not {"WECHAT_TOKEN", "WECHAT_ENCODING_AESKEY", "WECHAT_APP_SECRET"}.intersection(form.values)
+    edited = await service.edit_connection("corp", ChannelConnectionEdit(
+        name="corp", enabled=True, expected_revision=1,
+        provider_config={"WECHAT_TOKEN": "", "WECHAT_ENCODING_AESKEY": "replacement-callback-key"},
+    ))
+    snapshot = source.state[SystemConfigKey.ChannelSettings]
+    assert snapshot["connections"]["corp"]["provider_config"]["WECHAT_TOKEN"] == "callback-token"
+    assert edited.identity_namespace == original.identity_namespace
+    with pytest.raises(ValueError):
+        await service.edit_connection("corp", ChannelConnectionEdit(
+            name="corp", enabled=True, expected_revision=2, provider_config={"WECHAT_CORPID": "replacement-corp"},
+        ))
+    rotated = await service.rotate_credential("corp", ChannelCredentialRotation(secret="fixture-new", expected_revision=2))
+    assert rotated.revision == 3 and rotated.identity_namespace == original.identity_namespace
+    verify.assert_any_call("fixture-corp", "3", "fixture-new")
+    with pytest.raises(ChannelSettingsConflict, match="另一个平台账号"):
+        await service.rotate_credential("corp", ChannelCredentialRotation(secret="fixture-foreign", expected_revision=3))
+    for address in ("@all", "alice|bob"):
+        with pytest.raises(ValueError, match="单个企业微信"):
+            await service.edit_notification("corp", NotificationRouteEdit(
+                enabled=True, expected_revision=1,
+                rules=({"kind": "user", "target": address, "message_types": ["订阅"]},),
+            ))
+    assert source.state[SystemConfigKey.ChannelSettings]["connections"]["corp"]["provider_config"]["WECHAT_APP_SECRET"] == "fixture-new"
+
+
+@pytest.mark.asyncio
+async def test_wechat_bot_protected_fields_and_unverified_gateway_remain_closed():
+    """
+    智能机器人只可修改当前身份的密钥；非官方网关不能原地编辑受保护的连接参数。
+    """
+    from app.modules.wechat.channel import WechatPlatform
+    source = _Configuration([{
+        "id": "bot", "name": "bot", "type": "wechat", "enabled": True,
+        "config": {"WECHAT_MODE": "bot", "WECHAT_BOT_ID": "fixture-bot", "WECHAT_BOT_SECRET": "fixture-key"},
+    }])
+    service = ChannelSettingsService(source)
+    form = service.read_connection_form("bot")
+    assert form.editable_fields == ("WECHAT_BOT_SECRET",)
+    assert "WECHAT_BOT_SECRET" not in form.values
+    await service.edit_connection("bot", ChannelConnectionEdit(
+        name="bot", enabled=True, expected_revision=1, provider_config={"WECHAT_BOT_SECRET": "replacement-key"},
+    ))
+    record = ChannelSettings.model_validate(source.state[SystemConfigKey.ChannelSettings]).connections["bot"]
+    platform = WechatPlatform()
+    assert platform.credential_key(record) is None
+    assert platform.probe_identity(record) is None
+    unknown = record.model_copy(update={"provider_config": record.provider_config | {"WECHAT_BOT_WS_URL": "wss://fixture.invalid"}})
+    assert platform.editable_fields(unknown) == ()
+    assert platform.capabilities(unknown).rule_kinds == ()
+    with pytest.raises(ValueError):
+        platform.patch_config(unknown, {"WECHAT_BOT_SECRET": "new-key"})

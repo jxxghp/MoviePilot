@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.modules.telegram.channel import TelegramPlatform
 from app.schemas.channel import ChannelConnection
 from app.startup.initializers import modules
 
@@ -39,9 +40,9 @@ def test_telegram_identity_requires_verified_bot_and_always_closes_client(monkey
         client.get_me.return_value = response
     factory = Mock(return_value=client)
     monkeypatch.setattr("app.modules.telegram.botapi.TelegramBotApi", factory)
-    monkeypatch.setattr(modules, "get_runtime_setting", lambda _key: None)
+    monkeypatch.setattr("app.runtime.settings.get_runtime_setting", lambda _key: None)
 
-    assert modules._read_telegram_account(_connection(TELEGRAM_TOKEN="123:fixture_token")) == expected
+    assert TelegramPlatform().probe_identity(_connection(TELEGRAM_TOKEN="123:fixture_token")) == expected
     client.get_me.assert_called_once_with()
     client.close.assert_called_once_with()
     factory.assert_called_once_with("123:fixture_token", proxy=None)
@@ -55,7 +56,7 @@ def test_invalid_telegram_credentials_do_not_create_platform_client(monkeypatch,
     factory = Mock()
     monkeypatch.setattr("app.modules.telegram.botapi.TelegramBotApi", factory)
 
-    assert modules._read_telegram_account(_connection(TELEGRAM_TOKEN=token)) is None
+    assert TelegramPlatform().probe_identity(_connection(TELEGRAM_TOKEN=token)) is None
     factory.assert_not_called()
 
 
@@ -67,7 +68,16 @@ async def test_clawbot_cache_reconciliation_surfaces_failure_after_rename(monkey
     """
     before = _connection("wechatclawbot")
     after = before.model_copy(update={"name": "renamed"})
-    worker = AsyncMock(return_value={"success": success})
+    cache = Mock(return_value={"success": success})
+    monkeypatch.setattr("app.modules.wechatclawbot.wechatclawbot.WechatClawBot.reconcile_cached_states", cache)
+
+    async def execute(operation, *args):
+        """
+        在测试线程执行模块 hook，保留失败传播并隔离真实缓存。
+        """
+        return operation(*args)
+
+    worker = AsyncMock(side_effect=execute)
     monkeypatch.setattr(modules, "run_in_threadpool_to_completion", worker)
 
     if success:
@@ -76,7 +86,7 @@ async def test_clawbot_cache_reconciliation_surfaces_failure_after_rename(monkey
         with pytest.raises(RuntimeError, match="登录缓存未同步"):
             await modules._reconcile_channel_connections((before,), (after,))
     worker.assert_awaited_once()
-    assert worker.call_args.args[1:] == (
+    assert cache.call_args.args == (
         [{"id": "fixture", "name": "fixture", "type": "wechatclawbot"}],
         [{"id": "fixture", "name": "renamed", "type": "wechatclawbot"}],
     )

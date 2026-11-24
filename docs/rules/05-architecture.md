@@ -329,4 +329,4 @@ Event producer and consumer facts are collected solely by
 Run `tests/test_architecture_dependencies.py` after any ownership, package-root
 or import change.
 
-消息渠道投递规则的校验、旧地址迁移与目标匹配由 `app/application/messaging/channel/rules.py` 承担，连接资源管理由同包 `settings.py` 承担。宿主直接导入对应职责 owner，连接资源与投递规则不重复导出或维护第二份实现。
+消息渠道公共应用包拥有用例、事务/revision、通用规则匹配、受众、时间和 Outbox。其包端口描述模块事实；平台身份解析、凭据、地址校验/编码、专属配置、诊断、缓存与特殊分段由 `app/modules/<provider>/channel.py` 及既有客户端实现。`CapabilityRegistry` 的清单扩展只提供事实，不授予权限。仓储接收规范身份，启动层只编排生命周期。历史升级使用固定离线 `database/legacy` 格式，不调用运行目录或网络。职责表、调用链及可执行约束见[平台边界](../channel-refactor/platform-boundaries.md)。

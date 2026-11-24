@@ -978,7 +978,7 @@ def test_every_channel_uses_common_grants_instead_of_legacy_keys(channel_authori
     各平台管理员都读取公共授权，旧名单和默认投递接收人不能恢复已撤销的权限。
     """
     from app.application.messaging.channel.admin import matches_channel_admin
-    from app.domain.authorization import LEGACY_CHANNELS
+    from app.schemas.legacychannel import LEGACY_CHANNELS
 
     service, configs, _ = channel_authorization
     channel, _, admin_key, primary_key = LEGACY_CHANNELS[channel_type]

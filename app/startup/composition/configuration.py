@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 from app.application.configuration import (
     ApiRuntimeConfig,
@@ -44,6 +44,9 @@ from app.runtime.settings import (
     reset_runtime_setting_ports,
 )
 from app.schemas.types import MediaType
+
+if TYPE_CHECKING:
+    from app.application.messaging.channel.platform import ChannelPlatformCatalog
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +105,7 @@ async def compose_configuration(
             api=lambda: build_api_runtime_config(settings),
             scheduler=lambda: build_scheduler_runtime_config(settings),
             chain=lambda: build_chain_runtime_config(settings),
+            channels=build_channel_platform_catalog,
         ),
         settings=RuntimeSettingsService(settings),
     )
@@ -353,3 +357,11 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         cache_path=settings.CACHE_PATH,
         global_image_cache_days=settings.GLOBAL_IMAGE_CACHE_DAYS,
     )
+
+
+def build_channel_platform_catalog() -> "ChannelPlatformCatalog":
+    """
+    首次需要平台目录时才装配既有模块清单，冷导入不触发模块发现。
+    """
+    from app.runtime.extensions.module.channel import build_channel_platform_catalog as build
+    return build()

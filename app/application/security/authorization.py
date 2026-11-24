@@ -17,6 +17,7 @@ from json import dumps
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol
 
+import app.application.messaging.channel as channel_platform
 from app.application.messaging.channel.catalog import interaction_channel
 from app.application.notification import get_notification_configs
 from app.application.outbox import CHANNEL_AUTHORIZATION_RECEIPT_TOPIC, OutboxIntent
@@ -26,8 +27,8 @@ from app.domain.authorization import (
     AUTHORIZATION_SCOPES,
     CHANNEL_OPERATION_SCOPES,
     CHANNEL_PUBLIC_OPERATIONS,
-    channel_actor_ids,
 )
+from app.schemas.channel import InteractionPolicy
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
 from app.schemas.types import NotificationChannel
@@ -143,7 +144,7 @@ class AuthorizationUnitOfWork(Protocol):
         """
         ...
 
-    def find(self, notification_id: str, sender_id: str) -> ChannelMember | None:
+    def find(self, notification_id: str, sender_id: str | tuple[str, ...]) -> ChannelMember | None:
         """
         精确查找渠道实例内的发送者。
 
@@ -153,7 +154,7 @@ class AuthorizationUnitOfWork(Protocol):
         """
         ...
 
-    def request(self, notification_id: str, channel: str, sender_id: str, display_name: str) -> ChannelMember:
+    def request(self, notification_id: str, channel: str, sender_id: str, display_name: str, *, actor_ids: tuple[str, ...] = (), bindings: tuple[str, ...] = ()) -> ChannelMember:
         """
         幂等暂存申请，不恢复已被拒绝或停用的成员。
 
@@ -274,7 +275,33 @@ def channel_search_auto_download(channel: str, source: str, sender_id: str) -> b
         config = ChannelAuthorizationService.notification(channel, source)
     except PermissionError:
         return False
-    return matches_auto_download(config.interaction_policy, _admission_proof.get(), sender_id, time.time())
+    try:
+        policy, proof, sender = _normalized_admission(config, sender_id)
+    except ValueError:
+        return False
+    return matches_auto_download(policy, proof, sender, time.time())
+
+
+def _normalized_admission(config: NotificationConf, sender_id: str) -> tuple[InteractionPolicy | None, AdmissionProof | None, str]:
+    """
+    所有认证入站与历史规则在进入纯领域匹配前解释身份，不增加或延长事件证明。
+
+    :param config: 当前连接及规则版本
+    :param sender_id: 发言人原始或规范标识
+    :return: 规范策略、保留连接/版本/时效的证明、规范个人标识
+    """
+    platform = channel_platform.platform_catalog().get(config.type or "")
+    if platform is None:
+        return config.interaction_policy, None, sender_id
+    sender = channel_platform.resolve_actor_ids(platform.channel, sender_id)[0]
+    proof = _admission_proof.get()
+    if proof is not None:
+        proof = replace(
+            proof, sender=channel_platform.resolve_actor_ids(platform.channel, proof.sender)[0],
+            conversation=platform.conversation(proof.conversation) if proof.conversation is not None else None,
+        )
+    policy = channel_platform.normalize_policy_actors(platform.provider, config.interaction_policy) if config.interaction_policy else None
+    return policy, proof, sender
 
 
 class ChannelAuthorizationService:
@@ -316,10 +343,13 @@ class ChannelAuthorizationService:
         """
         查询当前启用实例中的稳定发送者，不根据显示名或群 ID 授权。
         """
-        sender_id = channel_actor_ids(channel, sender_id)[0]
+        sender_id = channel_platform.resolve_actor_ids(channel, sender_id)[0]
         notification = self.notification(channel, source)
         with self._scope() as transaction:
-            return transaction.find(notification.id, sender_id)
+            member = transaction.find(notification.id, channel_platform.resolve_actor_ids(channel, sender_id))
+            if member is not None:
+                channel_platform.resolve_actor_ids(channel, member.sender_id)
+            return member
 
     def delivery(self, member_id: str) -> tuple[str, str, str] | None:
         """
@@ -429,10 +459,11 @@ class ChannelAuthorizationService:
         """
         原子登记申请；重复消息不会增加记录或解除管理员停用。
         """
-        sender_id = channel_actor_ids(channel, sender_id)[0]
+        sender_id = channel_platform.resolve_actor_ids(channel, sender_id)[0]
         notification = self.notification(channel, source)
         with self._scope() as transaction:
-            member = transaction.request(notification.id, channel, sender_id, display_name)
+            member = transaction.request(notification.id, channel, sender_id, display_name, actor_ids=channel_platform.resolve_actor_ids(channel, sender_id), bindings=channel_platform.platform_for_channel(channel).binding_fields)
+            channel_platform.resolve_actor_ids(channel, member.sender_id)
             transaction.commit()
             return member
 
@@ -460,8 +491,8 @@ class ChannelAuthorizationService:
             if current is None:
                 raise ValueError("渠道成员不存在")
             if status == "approved":
-                sender_id = channel_actor_ids(current.channel, current.sender_id)[0]
-                unique = transaction.find(current.notification_id, sender_id)
+                sender_id = channel_platform.resolve_actor_ids(current.channel, current.sender_id)[0]
+                unique = transaction.find(current.notification_id, channel_platform.resolve_actor_ids(current.channel, sender_id))
                 if unique is None or unique.id != member_id:
                     raise ValueError("同一发送者存在冲突授权，请联系管理员核对")
             normalized = tuple(sorted(set(scopes)))
@@ -509,8 +540,8 @@ class ChannelAuthorizationService:
                 if action == "delete" and member.status == "approved" and not confirm_approved:
                     raise ValueError("删除已授权成员需要再次确认")
                 if action == "approve":
-                    sender = channel_actor_ids(member.channel, member.sender_id)[0]
-                    unique = transaction.find(member.notification_id, sender)
+                    sender = channel_platform.resolve_actor_ids(member.channel, member.sender_id)[0]
+                    unique = transaction.find(member.notification_id, channel_platform.resolve_actor_ids(member.channel, sender))
                     if unique is None or unique.id != member.id:
                         raise ChannelAuthorizationConflict("同一发送者存在冲突授权，请先逐条核对")
                 selected.append(member)
@@ -575,7 +606,7 @@ class ChannelAuthorizationService:
             config = self._receipt_connection(member)
             if config is None or (config.identity_namespace or config.id) != identity_namespace or not config.name:
                 return None
-            channel_actor_ids(member.channel, member.sender_id)
+            channel_platform.resolve_actor_ids(member.channel, member.sender_id)
             return member, config.name
 
     @staticmethod
@@ -615,9 +646,9 @@ class ChannelAuthorizationService:
         scopes = self.context_scopes(config, sender_id)
         if policy is None or "schedule" not in scopes:
             return None
-        sender_id = channel_actor_ids(channel, sender_id)[0]
+        sender_id = channel_platform.resolve_actor_ids(channel, sender_id)[0]
         with self._scope() as transaction:
-            member = transaction.request(config.id, channel, sender_id, sender_id)
+            member = transaction.request(config.id, channel, sender_id, sender_id, actor_ids=channel_platform.resolve_actor_ids(channel, sender_id), bindings=channel_platform.platform_for_channel(channel).binding_fields)
             if member.status != "pending":
                 return None
             # 同规则版本和来源复用任务列表。群、私聊与不同平台发送者的入口互相隔离。
@@ -645,8 +676,8 @@ class ChannelAuthorizationService:
             if member is None or (grant is None and member.status != "approved"):
                 raise PermissionError("渠道成员尚未授权或已停用，请联系管理员")
             try:
-                sender_id = channel_actor_ids(member.channel, member.sender_id)[0]
-                unique = transaction.find(member.notification_id, sender_id)
+                sender_id = channel_platform.resolve_actor_ids(member.channel, member.sender_id)[0]
+                unique = transaction.find(member.notification_id, channel_platform.resolve_actor_ids(member.channel, sender_id))
             except ValueError as error:
                 raise PermissionError("历史群身份或冲突授权需要重新核对实际发送者") from error
             if unique is None or unique.id != member.id:
@@ -727,10 +758,13 @@ class ChannelAuthorizationService:
         """
         使用当前连接策略复核宿主附加的事件证明。
         """
-        proof = _admission_proof.get()
         if config.interaction_enabled is False:
             return frozenset()
-        return allowed_context_scopes(config.interaction_policy, proof, sender_id, time.time())
+        try:
+            policy, proof, sender = _normalized_admission(config, sender_id)
+        except ValueError:
+            return frozenset()
+        return allowed_context_scopes(policy, proof, sender, time.time())
 
     def resolve_operation(
         self, channel: str, source: str, sender_id: str, operation_id: str,
@@ -765,8 +799,9 @@ class ChannelAuthorizationService:
         """
         为已准入的本次操作取得独立业务归属，保留成员原审批状态。
         """
+        sender_id = channel_platform.resolve_actor_ids(channel, sender_id)[0]
         with self._scope() as transaction:
-            member = transaction.request(config.id, channel, sender_id, sender_id)
+            member = transaction.request(config.id, channel, sender_id, sender_id, actor_ids=channel_platform.resolve_actor_ids(channel, sender_id), bindings=channel_platform.platform_for_channel(channel).binding_fields)
             if member.status != "pending":
                 raise PermissionError("此操作需要管理员授权")
             user = transaction.user(member.user_id)
@@ -812,7 +847,10 @@ class ChannelAuthorizationService:
         """
         notification = self.notification(channel, source)
         with self._scope() as transaction:
-            transaction.observe_aliases(notification.id, sender_id, tuple(value for value in aliases if value))
+            transaction.observe_aliases(
+                notification.id, channel_platform.resolve_actor_ids(channel, sender_id)[0],
+                tuple(dict.fromkeys(candidate for value in (sender_id, *aliases) if value for candidate in channel_platform.resolve_actor_ids(channel, value))),
+            )
             transaction.commit()
 
 

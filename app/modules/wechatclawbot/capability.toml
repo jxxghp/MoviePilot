@@ -10,6 +10,10 @@ type = "notification"
 subtype = "WechatClawBot"
 priority = 2
 
+channel_extension = "app.modules.wechatclawbot.channel:WechatClawBotPlatform"
+
+channel_interaction = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications", "ChannelSettings"]

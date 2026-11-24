@@ -65,6 +65,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Check channel platform boundaries
+        run: uv run --locked --no-sync python scripts/architecture/channel_platforms.py
+
       - name: Check event semantic policy
         run: |
           uv run --locked --no-sync pytest \

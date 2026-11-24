@@ -257,6 +257,7 @@ def configure_plugin_system_services():
     from app.startup.composition.configuration import (
         build_api_runtime_config,
         build_chain_runtime_config,
+        build_channel_platform_catalog,
         build_scheduler_runtime_config,
         build_token_runtime_config,
     )
@@ -277,6 +278,7 @@ def configure_plugin_system_services():
             api=lambda: build_api_runtime_config(settings),
             scheduler=lambda: build_scheduler_runtime_config(settings),
             chain=lambda: build_chain_runtime_config(settings),
+            channels=build_channel_platform_catalog,
         )
     )
     configure_runtime_settings(RuntimeSettingsService(settings))

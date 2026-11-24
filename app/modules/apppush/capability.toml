@@ -10,6 +10,10 @@ type = "notification"
 subtype = "AppPush"
 priority = 7
 
+channel_extension = "app.modules.apppush.channel:AppPushPlatform"
+
+channel_interaction = false
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications", "ChannelSettings"]

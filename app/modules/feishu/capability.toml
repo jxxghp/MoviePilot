@@ -10,6 +10,10 @@ type = "notification"
 subtype = "Feishu"
 priority = 2
 
+channel_extension = "app.modules.feishu.channel:FeishuPlatform"
+
+channel_interaction = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications", "ChannelSettings"]

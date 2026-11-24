@@ -10,6 +10,10 @@ type = "notification"
 subtype = "QQ"
 priority = 10
 
+channel_extension = "app.modules.qqbot.channel:QQPlatform"
+
+channel_interaction = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications", "ChannelSettings"]

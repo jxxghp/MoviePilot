@@ -10,6 +10,10 @@ type = "notification"
 subtype = "Telegram"
 priority = 0
 
+channel_extension = "app.modules.telegram.channel:TelegramPlatform"
+
+channel_interaction = true
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications", "ChannelSettings", "PROXY_HOST"]

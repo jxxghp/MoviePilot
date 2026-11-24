@@ -2,16 +2,17 @@
 渠道设置的条件写入、旧数据读取和配置失效通知。
 """
 
-import re
 from collections import Counter
 from collections.abc import Awaitable
 from typing import Any, Callable, TypeVar
 from uuid import uuid4
 
+import app.application.messaging.channel as channel_platform
 from app.application.configuration import SystemConfigService
 from app.application.messaging.channel.catalog import (
     import_legacy_channels,
     patch_provider_config,
+    platform_capabilities,
     project_legacy_channels,
     provider_editable_fields,
     provider_form_values,
@@ -39,6 +40,7 @@ from app.schemas.channel import (
     ChannelSettingsView,
     InteractionPolicy,
     InteractionPolicyEdit,
+    InteractionPolicyView,
     NotificationRoute,
     NotificationRouteEdit,
 )
@@ -100,7 +102,16 @@ def read_channel_resources(raw: Any, legacy_rows: Any) -> ChannelSettings:
     :return: 供查询或事务起点使用的资源快照
     """
     if raw is not None:
-        return migrate_notification_rules(ChannelSettings.model_validate(raw))
+        normalized = dict(raw)
+        connections = raw.get("connections", {})
+        normalized["interactions"] = {
+            key: (platform.normalize_interaction(value) if (platform := channel_platform.platform_catalog().get(connections.get(key, {}).get("provider", ""))) else value)
+            for key, value in raw.get("interactions", {}).items()
+        }
+        snapshot = ChannelSettings.model_validate(normalized)
+        for key, policy in snapshot.interactions.items():
+            snapshot.interactions[key] = channel_platform.normalize_policy_actors(snapshot.connections[key].provider, policy)
+        return migrate_notification_rules(snapshot)
     return migrate_notification_rules(import_legacy_channels(_parse_legacy_rows(legacy_rows)))
 
 
@@ -144,9 +155,11 @@ class ChannelSettingsService:
         snapshot = self._read_snapshot()
         live = {key: record for key, record in snapshot.connections.items()}
         return ChannelSettingsView(
+            providers={entry.provider: entry.display_name for entry in channel_platform.platform_catalog().providers()},
             connections=tuple(self._summary(record) for record in live.values()),
             notifications=tuple(route for key, route in snapshot.notifications.items() if key in live),
-            interactions=tuple(policy for key, policy in snapshot.interactions.items() if key in live),
+            interactions=tuple(self._policy_view(live[key], policy) for key, policy in snapshot.interactions.items() if key in live),
+            capabilities={key: platform_capabilities(record) for key, record in live.items()},
             orders={
                 "notification": self._card_order(snapshot, "notification"),
                 "interaction": self._card_order(snapshot, "interaction"),
@@ -161,6 +174,15 @@ class ChannelSettingsService:
                 for connection_id in snapshot.interactions if connection_id in live
             },
         )
+
+    @staticmethod
+    def _policy_view(connection: ChannelConnection, policy: InteractionPolicy) -> InteractionPolicy:
+        """
+        读取模块的兼容投影，规范策略及持久化结构不接受平台字段。
+        """
+        platform = channel_platform.platform_catalog().get(connection.provider)
+        data = platform.export_interaction(policy) if platform else policy.model_dump()
+        return InteractionPolicyView.model_validate(data)
 
     @staticmethod
     def _card_order(snapshot: ChannelSettings, feature: ChannelFeature) -> tuple[str, ...]:
@@ -210,7 +232,7 @@ class ChannelSettingsService:
         raw = self._config.get(SystemConfigKey.ChannelSettings)
         if raw is None:
             return self._config.get(SystemConfigKey.Notifications)
-        return project_legacy_channels(ChannelSettings.model_validate(raw))
+        return project_legacy_channels(read_channel_resources(raw, None))
 
     async def create_connection(self, request: ChannelConnectionCreate) -> ChannelConnectionInfo:
         """
@@ -242,7 +264,9 @@ class ChannelSettingsService:
         仅拷贝公共连接字段，即使输入是含私有配置的持久化连接。
         """
         fields = connection.model_dump(include=set(ChannelConnectionInfo.model_fields))
-        fields["inbound_token_configured"] = bool(connection.provider_config.get("VOCECHAT_INBOUND_TOKEN"))
+        platform = channel_platform.platform_catalog().get(connection.provider)
+        token_key = platform.inbound_token_key() if platform else None
+        fields["inbound_token_configured"] = bool(token_key and connection.provider_config.get(token_key))
         fields["can_rotate_credential"] = self._credential_key(connection) is not None
         return ChannelConnectionInfo.model_validate(fields)
 
@@ -255,18 +279,8 @@ class ChannelSettingsService:
         """
         if self._probe is None:
             return None
-        config = connection.provider_config
-        if connection.provider == "telegram" and config.get("API_URL") in (
-            None, "", "https://api.telegram.org", "https://api.telegram.org/",
-        ):
-            return "TELEGRAM_TOKEN"
-        if connection.provider == "wechat" and connection.mode == "app" and config.get("WECHAT_PROXY") in (
-            None, "", "https://qyapi.weixin.qq.com", "https://qyapi.weixin.qq.com/",
-        ):
-            return "WECHAT_APP_SECRET"
-        if connection.provider == "slack":
-            return "SLACK_OAUTH_TOKEN"
-        return None
+        platform = channel_platform.platform_catalog().get(connection.provider)
+        return platform.credential_key(connection) if platform else None
 
     async def edit_connection(self, connection_id: str, edit: ChannelConnectionEdit) -> ChannelConnectionInfo:
         """
@@ -284,10 +298,12 @@ class ChannelSettingsService:
             if edit.provider_config is not None:
                 changes["provider_config"] = patch_provider_config(record, edit.provider_config)
             if edit.inbound_token is not None:
-                if record.provider != "vocechat":
+                platform = channel_platform.platform_catalog().get(record.provider)
+                token_key = platform.inbound_token_key() if platform else None
+                if token_key is None:
                     raise ChannelSettingsConflict("该连接无需设置回调验证令牌")
                 changes["provider_config"] = changes.get("provider_config", record.provider_config) | {
-                    "VOCECHAT_INBOUND_TOKEN": edit.inbound_token.get_secret_value(),
+                    token_key: edit.inbound_token.get_secret_value(),
                 }
             updated = record.model_copy(update=changes)
             snapshot.connections[connection_id] = updated
@@ -424,21 +440,26 @@ class ChannelSettingsService:
             connection = self._editable_connection(snapshot, connection_id)
             record = snapshot.interactions[connection_id]
             self._expect_revision(record.revision, edit.expected_revision)
-            updates = edit.model_dump(exclude={"expected_revision"}, exclude_none=True)
+            platform = channel_platform.platform_catalog().get(connection.provider)
+            candidate = edit.model_dump(exclude_none=True)
+            normalized = platform.normalize_interaction(candidate) if platform else candidate
+            if normalized.keys() - InteractionPolicyEdit.model_fields.keys():
+                raise ValueError("该渠道不支持所提交的交互字段")
+            updates = {key: value for key, value in normalized.items() if key != "expected_revision"}
             data = record.model_dump() | updates | {"revision": record.revision + 1}
             if data["admission"] in {"manual", "open"}:
                 data["admission_rules"] = ()
             if data["auto_download"] != "specified":
                 data["auto_download_rules"] = ()
-            updated = InteractionPolicy.model_validate(data)
+            updated = channel_platform.normalize_policy_actors(connection.provider, InteractionPolicy.model_validate(data))
             self._validate_interaction(connection, updated)
-            if edit.command_guild_id is not None:
-                guild = edit.command_guild_id.strip()
-                if connection.provider != "discord" or (guild and not re.fullmatch(r"[1-9][0-9]*", guild)):
-                    raise ValueError("请输入有效的 Discord 服务器 ID")
-                updated = updated.model_copy(update={"command_guild_id": guild or None})
+            platform = channel_platform.platform_catalog().get(connection.provider)
+            options = platform.validate_interaction(updated.platform_options) if platform else {}
+            if platform is None and updated.platform_options:
+                raise ValueError("该渠道没有声明平台交互选项")
+            updated = updated.model_copy(update={"platform_options": options})
             snapshot.interactions[connection_id] = updated
-            return updated
+            return self._policy_view(connection, updated)
 
         return await self._edit(apply)
 

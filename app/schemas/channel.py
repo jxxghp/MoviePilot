@@ -5,7 +5,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, SerializeAsAny, StringConstraints, model_validator
 from pydantic_core import PydanticCustomError
 
 from app.schemas.common import JsonData
@@ -234,7 +234,7 @@ class InteractionPolicy(BaseModel):
     connection_id: ChannelText = Field(description="所引用的稳定连接 ID")
     identity_namespace: ChannelText = Field(description="配置交互时确认的连接身份空间")
     enabled: bool = Field(description="机器人交互开关")
-    command_guild_id: ChannelText | None = Field(default=None, description="Discord 命令注册的服务器 ID")
+    platform_options: dict[str, JsonData] = Field(default_factory=dict, description="由所属模块校验的平台交互选项")
     admission: AdmissionMode = Field(
         default="manual", description="机器人接入策略",
     )
@@ -245,6 +245,15 @@ class InteractionPolicy(BaseModel):
     auto_download_rules: tuple[InteractionMatch, ...] = Field(default=(), max_length=100)
     revision: ChannelRevision = Field(description="该策略的条件写入版本")
 
+
+
+class InteractionPolicyView(InteractionPolicy):
+    """
+    API 只读投影允许所属模块补充兼容字段，持久化模型仍拒绝未知字段。
+    """
+
+    model_config = ConfigDict(extra="allow", frozen=True)
+    __pydantic_extra__: dict[str, JsonData] = Field(init=False, description="所属平台的 JSON 兼容字段，禁止任意 Python 对象")
 
 
 class ChannelSettings(BaseModel):
@@ -379,15 +388,37 @@ class InteractionPolicyEdit(BaseModel):
     可独立保存的机器人交互设置。
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="allow", frozen=True)
+    __pydantic_extra__: dict[str, JsonData] = Field(init=False, description="所属平台的 JSON 兼容字段，禁止任意 Python 对象")
 
     enabled: bool = Field(description="机器人交互开关")
-    command_guild_id: str | None = Field(default=None, max_length=160, description="Discord 命令注册服务器 ID，空字符串使用默认范围")
+    platform_options: dict[str, JsonData] | None = Field(default=None, description="由所属模块校验的平台交互选项")
     admission: AdmissionMode | None = Field(default=None, description="省略时保留当前接入方式")
     admission_rules: tuple[AdmissionRule, ...] | None = Field(default=None, max_length=100)
     auto_download: AutoDownloadMode | None = Field(default=None, description="省略时保留当前值")
     auto_download_rules: tuple[InteractionMatch, ...] | None = Field(default=None, max_length=100)
     expected_revision: ChannelRevision = Field(description="读取时得到的策略版本")
+
+
+class ChannelPlatformCapabilities(BaseModel):
+    """
+    模块公开的平台事实与表单能力，不携带凭据或授予业务权限。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_kinds: tuple[RuleKind, ...] = Field(default=(), description="能从认证事件验证的匹配条件")
+    target_kinds: tuple[NotificationTargetKind, ...] = Field(default=(), description="支持的通知接收对象")
+    account_targets: bool = Field(default=False, description="是否能在宿主限定账号集合内选择设备")
+    legacy_usernames: bool = Field(default=False, description="是否保留正式版本的用户名筛选")
+    thread_id: bool = Field(default=False, description="会话是否支持明确的线程或话题")
+    rule_labels: dict[str, str] = Field(default_factory=dict, description="匹配条件的翻译键")
+    target_labels: dict[str, str] = Field(default_factory=dict, description="投递对象的翻译键")
+    interaction_form: str | None = Field(default=None, description="平台专属交互表单的扩展标识")
+    inbound_token: bool = Field(default=False, description="是否支持专用回调令牌编辑")
+    login_management: bool = Field(default=False, description="是否提供平台登录管理表单")
+    credential_label: str = Field(default="channelSettings.newCredential", description="凭据编辑标签的翻译键")
+    credential_action: str = Field(default="channelSettings.rotateCredential", description="凭据轮换动作的翻译键")
 
 
 class ChannelSettingsView(BaseModel):
@@ -399,11 +430,13 @@ class ChannelSettingsView(BaseModel):
 
     connections: tuple[ChannelConnectionInfo, ...] = Field(description="共享连接及其版本")
     notifications: tuple[NotificationRoute, ...] = Field(description="可配置的通知路由及其版本")
-    interactions: tuple[InteractionPolicy, ...] = Field(description="可配置的交互策略及其版本")
+    interactions: tuple[SerializeAsAny[InteractionPolicy], ...] = Field(description="可配置的交互策略及其版本")
     notification_target_kinds: dict[ChannelText, tuple[NotificationTargetKind, ...]] = Field(default_factory=dict, description="按连接公布支持的投递目标")
     admission_modes: dict[ChannelText, tuple[AdmissionMode, ...]] = Field(description="每个交互连接可以验证的接入方式")
     rule_kinds: dict[ChannelText, tuple[RuleKind, ...]] = Field(default_factory=dict)
     orders: dict[ChannelFeature, tuple[ChannelText, ...]] = Field(default_factory=dict)
+    providers: dict[str, str] = Field(default_factory=dict, description="模块目录声明的连接类型及显示名称")
+    capabilities: dict[ChannelText, ChannelPlatformCapabilities] = Field(default_factory=dict, description="各连接的模块能力与表单扩展描述")
     can_edit_provider_config: bool = Field(default=True)
     can_delete_connections: bool = Field(default=True, description="是否支持完整删除共享连接")
 

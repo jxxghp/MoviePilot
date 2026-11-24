@@ -10,6 +10,10 @@ type = "notification"
 subtype = "WebPush"
 priority = 6
 
+channel_extension = "app.modules.webpush.channel:WebPushPlatform"
+
+channel_interaction = false
+
 [activation]
 policy = "when_configured"
 watch = ["Notifications", "ChannelSettings"]

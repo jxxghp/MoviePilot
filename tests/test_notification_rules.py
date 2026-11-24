@@ -149,7 +149,7 @@ def test_migration_moves_discord_command_scope_in_the_config_transaction():
     }]).model_dump(mode="json")
     stored["notifications"]["discord"].pop("rules")
     stored["connections"]["discord"]["provider_config"]["DISCORD_GUILD_ID"] = 23
-    stored["interactions"]["discord"].pop("command_guild_id")
+    stored["interactions"]["discord"].pop("platform_options")
     engine = sa.create_engine("sqlite://")
     with engine.begin() as bind:
         meta = sa.MetaData()
@@ -161,7 +161,7 @@ def test_migration_moves_discord_command_scope_in_the_config_transaction():
             migration._migrate_channel_configuration()
         saved = bind.execute(sa.select(config.c.value)).scalar_one()
     snapshot = read_channel_resources(saved, None)
-    assert snapshot.interactions["discord"].command_guild_id == "23"
+    assert snapshot.interactions["discord"].platform_options["command_guild_id"] == "23"
     assert snapshot.notifications["discord"].rules[-1].kind == "review"
     assert project_runtime_channels(snapshot)[0].config == {
         "DISCORD_BOT_TOKEN": "fixture", "DISCORD_COMMAND_GUILD_ID": "23",

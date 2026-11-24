@@ -264,6 +264,7 @@ def prepare_backend() -> None:
     from app.startup.composition.configuration import (
         build_api_runtime_config,
         build_chain_runtime_config,
+        build_channel_platform_catalog,
         build_scheduler_runtime_config,
     )
     configure_runtime_configuration(
@@ -271,6 +272,7 @@ def prepare_backend() -> None:
             api=lambda: build_api_runtime_config(settings),
             scheduler=lambda: build_scheduler_runtime_config(settings),
             chain=lambda: build_chain_runtime_config(settings),
+            channels=build_channel_platform_catalog,
         )
     )
     # 插件 SDK 的站点域名与协议入口依赖站点协议端口与惰性模块运行时，统一经启动组合层按需装配。

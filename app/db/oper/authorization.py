@@ -15,7 +15,7 @@ from app.db.models.agenttask import AgentTask
 from app.db.models.authorization import ChannelAuthorization, ChannelBinding, ChannelRuleTaskGrant
 from app.db.models.systemconfig import SystemConfig
 from app.db.models.user import User
-from app.domain.authorization import CHANNEL_BINDINGS, DEFAULT_MEMBER_SCOPES, channel_actor_ids
+from app.domain.authorization import DEFAULT_MEMBER_SCOPES
 from app.schemas.types import SystemConfigKey
 
 
@@ -82,23 +82,23 @@ class ChannelAuthorizationOper:
             policy_revision=policy_revision, scopes=list(scopes),
         ).on_conflict_do_nothing(index_elements=[table.id]))
 
-    def find(self, notification_id: str, sender_id: str) -> ChannelAuthorization | None:
+    def find(self, notification_id: str, sender_id: str | tuple[str, ...]) -> ChannelAuthorization | None:
         """
         精确匹配实例内发送者及平台证明的别名，不跨实例匹配。
         """
+        candidates = (sender_id,) if isinstance(sender_id, str) else sender_id
         rows = self._session.scalars(
             select(ChannelAuthorization).where(ChannelAuthorization.notification_id == notification_id)
         )
         matches = []
         for row in rows:
-            candidates = channel_actor_ids(row.channel, sender_id)
             if row.sender_id in candidates or set(candidates).intersection(row.aliases or []):
                 matches.append(row)
         if len(matches) > 1:
             raise ValueError("同一发送者存在冲突授权，请联系管理员核对")
         return matches[0] if matches else None
 
-    def request(self, notification_id: str, channel: str, sender_id: str, display_name: str) -> ChannelAuthorization:
+    def request(self, notification_id: str, channel: str, sender_id: str, display_name: str, *, actor_ids: tuple[str, ...] = (), bindings: tuple[str, ...] = ()) -> ChannelAuthorization:
         """
         暂存唯一申请及不可登录的内部归属；新关联必须另行验证双方身份。
         """
@@ -106,10 +106,9 @@ class ChannelAuthorizationOper:
         self._session.execute(
             update(SystemConfig).where(SystemConfig.key == SystemConfigKey.Notifications.value).values(id=SystemConfig.id)
         )
-        existing = self.find(notification_id, sender_id)
+        existing = self.find(notification_id, actor_ids or (sender_id,))
         if existing is not None:
             return existing
-        keys = CHANNEL_BINDINGS.get(channel, ())
         identity = uuid4().hex
         user = User(
             name=f"channel_{identity}",
@@ -118,7 +117,7 @@ class ChannelAuthorizationOper:
             is_superuser=False,
             hashed_password=None,
             notification_identity=uuid4().hex,
-            settings={keys[0]: sender_id} if keys else {},
+            settings={bindings[0]: sender_id} if bindings else {},
             permissions={},
         )
         self._session.add(user)

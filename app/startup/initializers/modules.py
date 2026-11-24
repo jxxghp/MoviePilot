@@ -16,6 +16,7 @@ except ImportError as e:
     print(error_message, file=sys.stderr)
     sys.exit(1)
 
+import app.application.messaging.channel as channel_platform
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.system.host import SystemUtils
 from app.application.configuration import (
@@ -32,6 +33,7 @@ from app.application.messaging.channel.catalog import project_runtime_channels
 from app.application.messaging.channel.settings import (
     configure_connection_identity_probe,
     configure_connection_reconciler,
+    read_channel_resources,
 )
 from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
@@ -78,7 +80,7 @@ from app.runtime.settings import (
 from app.runtime.tasks import TaskRegistry, get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
-from app.schemas.channel import ChannelConnection, ChannelConnectionInfo, ChannelSettings
+from app.schemas.channel import ChannelConnection, ChannelConnectionInfo
 from app.schemas.message import Message
 from app.schemas.types import EventType, MessageType, SystemConfigKey
 from app.startup.composition.agent import (
@@ -214,7 +216,7 @@ def _read_service_config(key: SystemConfigKey) -> Any:
         if snapshot is not None:
             return [
                 item.model_dump(mode="json")
-                for item in project_runtime_channels(ChannelSettings.model_validate(snapshot))
+                for item in project_runtime_channels(read_channel_resources(snapshot, None))
             ]
     return config.get(key)
 
@@ -223,48 +225,13 @@ async def _reconcile_channel_connections(
     previous: tuple[ChannelConnectionInfo, ...], current: tuple[ChannelConnectionInfo, ...],
 ) -> None:
     """
-    同步已提交的 ClawBot 连接与登录缓存，停用连接也需要对账。
+    提交后按模块分组编排缓存对账，平台实现拥有具体缓存操作。
     """
-    from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
-
-    before = [{"id": item.id, "name": item.name, "type": item.provider}
-              for item in previous if item.provider == "wechatclawbot"]
-    after = [{"id": item.id, "name": item.name, "type": item.provider}
-             for item in current if item.provider == "wechatclawbot"]
-    if before == after:
-        return
-    result = await run_in_threadpool_to_completion(
-        WechatClawBot.reconcile_cached_states, before, after,
-    )
-    if not result.get("success"):
-        raise RuntimeError("ClawBot 登录缓存未同步")
-
-
-def _read_telegram_account(connection: ChannelConnection) -> str | None:
-    """
-    用官方 Telegram Bot API 核验令牌并关闭诊断客户端。
-
-    :param connection: 待核验的连接配置，凭据不进入日志
-    :return: 官方响应确认的机器人数字 ID
-    """
-    import re
-
-    from app.modules.telegram.botapi import TelegramApiError, TelegramBotApi, TelegramNetworkError
-
-    token = connection.provider_config.get("TELEGRAM_TOKEN")
-    if not isinstance(token, str) or not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token):
-        return None
-    client = TelegramBotApi(token, proxy=get_runtime_setting("PROXY"))
-    try:
-        info = client.get_me()
-        bot_id = info.get("id")
-        if info.get("is_bot") is True and type(bot_id) is int and bot_id > 0:
-            return str(bot_id)
-        return None
-    except (TelegramApiError, TelegramNetworkError, TypeError, ValueError):
-        return None
-    finally:
-        client.close()
+    for platform in channel_platform.platform_catalog().providers():
+        before = tuple(item for item in previous if item.provider == platform.provider)
+        after = tuple(item for item in current if item.provider == platform.provider)
+        if platform.cache_reconciliation and before != after:
+            await run_in_threadpool_to_completion(platform.reconcile, before, after)
 
 
 async def _probe_channel_identity(connection: ChannelConnection) -> str | None:
@@ -281,39 +248,16 @@ def _read_channel_identity(connection: ChannelConnection) -> str | None:
     """
     从已支持的平台诊断接口读取机器人身份。
     """
-    if connection.provider == "telegram":
-        return _read_telegram_account(connection)
-    if connection.provider == "slack":
-        from app.modules.slack.slack import Slack
-
-        token = connection.provider_config.get("SLACK_OAUTH_TOKEN")
-        return Slack.probe_workspace_identity(token) if isinstance(token, str) else None
-    if connection.provider == "wechat" and connection.mode == "app":
-        from app.modules.wechat.wechat import WeChat
-
-        config = connection.provider_config
-        app_id = config.get("WECHAT_APP_ID")
-        corp_id = config.get("WECHAT_CORPID")
-        secret = config.get("WECHAT_APP_SECRET")
-        if isinstance(corp_id, str) and isinstance(secret, str) and type(app_id) in (str, int):
-            return WeChat.probe_app_identity(corp_id, str(app_id), secret)
-    return None
+    platform = channel_platform.platform_catalog().get(connection.provider)
+    return platform.probe_identity(connection) if platform else None
 
 
 def _manage_inactive_notification(channel: str, action: str, params: dict[str, Any]) -> dict[str, Any] | None:
     """
-    允许管理已保存的 ClawBot 登录状态，创建只服务本次动作的客户端。
+    只编排模块声明的离线管理动作，启动层不解释平台登录协议。
     """
-    if channel != "WechatClawBot" or params.get("saved_connection") is not True:
-        return None
-    if action not in {"status", "refresh_qrcode", "logout", "test_connection"}:
-        return None
-    from app.modules.wechatclawbot import WechatClawBotModule
-    from app.schemas.types import NotificationAction, NotificationChannel
-
-    return WechatClawBotModule().channel_manage(
-        channel=NotificationChannel.WechatClawBot, action=NotificationAction(action), **params,
-    )
+    platform = channel_platform.platform_catalog().get(channel.lower())
+    return platform.manage(action, params) if platform else None
 
 
 def configure_runtime_data_providers() -> None:

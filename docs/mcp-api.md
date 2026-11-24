@@ -905,3 +905,9 @@ REST 调用示例：
 `PUT /api/v1/notification/channels/{id}/notification` 的每条规则支持 `audiences` 数组，成员仅为 `admin/user/all`，空数组沿用全局，旧 `audience` 单选可继续读取。多选仅筛选宿主通知类别；个人类别仍只能发绑定地址/允许账号，平台全体目标必须限定 `audiences=["all"]`。规则分享使用第二版，并兼容第一版导入。
 
 `POST /api/v1/system/setting/NotificationSwitchs` 的每个场景对象支持 `missing_user`：`admin`（默认）或 `skip`。只影响无法确定操作用户的个人分支，不取消明确选中的管理员分支。系统设置合同拒绝其他值，旧场景缺省该字段时保留原管理员回退行为。
+
+## 渠道平台扩展边界
+
+公共用例、授权、受众、发送时间与 Outbox 保持由宿主执行；平台身份、地址协议、凭据、诊断与特殊分段由所属模块实现。注册方式、兼容和完整调用链见[平台边界](channel-refactor/platform-boundaries.md)。
+
+`GET /api/v1/notification/channels` 增加 `providers`（类型到显示名称）和按连接 ID 的 `capabilities`，包含规则/目标类型、标签键、线程/账号筛选、回调令牌/登录管理能力及交互表单扩展键。能力不携带凭据，也不授予业务权限。`PUT .../{connection_id}/interaction` 的规范扩展输入为 `platform_options`；后端模块负责校验。Discord 的旧 `command_guild_id` 输入/输出保留兼容；canonical 持久化不再保存该 flat 字段。通知规则后端验证始终执行，前端不根据平台名自行解释地址。公开 MCP 工具和插件调用方式不变。

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Union
 from typing import Literal as _Literal
 
 from pydantic import BaseModel, Field, field_validator
+from pydantic import ConfigDict as _ConfigDict
 from pydantic import PrivateAttr as _PrivateAttr
 
 from app.schemas.common import JsonData
@@ -581,3 +582,18 @@ class AgentWebChoiceRequest(BaseModel):
     callback_data: str = Field(..., min_length=1, description="Agent 工具生成的按钮回调数据")
     original_message_id: Optional[Union[str, int]] = Field(default=None, description="WebAgent 原助手消息 ID，用于传统按钮回调原地编辑")
     original_chat_id: Optional[Union[str, int]] = Field(default=None, description="WebAgent 原聊天 ID，用于传统按钮回调原地编辑")
+
+
+class MessageAttachmentRead(BaseModel):
+    """
+    模块产生的读取事实，不包含授权或任意可执行对象。
+    """
+
+    model_config = _ConfigDict(extra="forbid", frozen=True)
+
+    method: str | None = Field(default=None, description="既有模块下载方法；与 URL 二选一")
+    parameters: dict[str, str] = Field(default_factory=dict, description="模块方法拥有的引用参数")
+    url: str | None = Field(default=None, description="模块解码后的 HTTP 地址，仍经过宿主网络策略")
+    encoding: _Literal["bytes", "data_url", "base64_jpeg"] = Field(default="bytes", description="既有模块方法的返回编码")
+    audio_filename: str = Field(default="input.ogg", description="音频扩展名推断失败时使用的文件名")
+    exact_filename: bool = Field(default=False, description="平台已确认格式，无需根据引用推断扩展名")

@@ -121,18 +121,18 @@ class SqlAlchemyAuthorizationUnitOfWork:
             grant.id, grant.member_id, grant.member_version, grant.policy_revision, grant.scopes,
         )
 
-    def find(self, notification_id: str, sender_id: str) -> ChannelMember | None:
+    def find(self, notification_id: str, sender_id: str | tuple[str, ...]) -> ChannelMember | None:
         """
         读取通知实例内唯一匹配的发送者。
         """
         row = self._members.find(notification_id, sender_id)
         return _snapshot(row) if row else None
 
-    def request(self, notification_id: str, channel: str, sender_id: str, display_name: str) -> ChannelMember:
+    def request(self, notification_id: str, channel: str, sender_id: str, display_name: str, *, actor_ids: tuple[str, ...] = (), bindings: tuple[str, ...] = ()) -> ChannelMember:
         """
         暂存申请并复制数据库生成的内部归属主键。
         """
-        return _snapshot(self._members.request(notification_id, channel, sender_id, display_name))
+        return _snapshot(self._members.request(notification_id, channel, sender_id, display_name, actor_ids=actor_ids, bindings=bindings))
 
     def update(
         self, member_id: str, *, status: str, role: str, scopes: tuple[str, ...], reviewer_id: int,

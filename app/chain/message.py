@@ -19,9 +19,10 @@ from datetime import datetime
 from functools import partial
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, Union
 from urllib.parse import unquote, urlparse
 
+import app.application.messaging.channel as channel_platform
 from app.application.agent import (
     get_running_agent_manager,
     is_audio_input_available,
@@ -64,7 +65,7 @@ from app.domain.admission import AdmissionProof
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import get_task_registry
-from app.schemas.message import IncomingMessage, Message
+from app.schemas.message import IncomingMessage, Message, MessageAttachmentRead
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import EventType, MessageType, NotificationChannel
 
@@ -307,7 +308,7 @@ class MessageChain(ChainBase):
             return
         policy = config.interaction_policy
         if policy and info.userid is not None and (policy.admission_rules or policy.auto_download_rules):
-            group = str(info.chat_id).removeprefix("group:") if info.chat_id and info.conversation_type == "group" else None
+            group = channel_platform.platform_for_channel(channel.value).conversation(str(info.chat_id)) if info.chat_id and info.conversation_type == "group" else None
             proof = AdmissionProof(
                 config.id, policy.revision, str(info.userid), group,
                 time.time() + 60, private=info.conversation_type == "private",
@@ -1017,9 +1018,13 @@ class MessageChain(ChainBase):
             is_channel_admin: Optional[bool] = None,
     ) -> bool:
         """
-        将 TG/飞书中的确认控制文本交回所属 Agent 会话。
+        将模块支持的确认控制文本交回所属 Agent 会话。
         """
-        if channel not in {NotificationChannel.Telegram, NotificationChannel.Feishu}:
+        try:
+            supports_confirmation = channel_platform.platform_for_channel(channel.value).text_confirmation
+        except ValueError:
+            supports_confirmation = False
+        if not supports_confirmation:
             return False
         if str(text or "").strip() not in {"确认", "取消"}:
             return False
@@ -2215,97 +2220,14 @@ class MessageChain(ChainBase):
         transcripts = []
         for audio_ref in audio_refs:
             try:
-                if audio_ref.startswith("tg://voice_file_id/"):
-                    file_id = audio_ref.replace("tg://voice_file_id/", "", 1)
-                    content = self.run_module(
-                        "download_telegram_file_bytes", file_id=file_id, source=source
-                    )
-                    filename = "input.ogg"
-                elif audio_ref.startswith("tg://audio_file_id/"):
-                    file_id = audio_ref.replace("tg://audio_file_id/", "", 1)
-                    content = self.run_module(
-                        "download_telegram_file_bytes", file_id=file_id, source=source
-                    )
-                    filename = "input.mp3"
-                elif audio_ref.startswith("wxwork://voice_media_id/"):
-                    content = self.run_module(
-                        "download_wechat_media_bytes",
-                        media_ref=audio_ref,
-                        source=source,
-                    )
-                    filename = "input.amr"
-                elif audio_ref.startswith("wxclaw://voice/"):
-                    content = self.run_module(
-                        "download_wechat_media_bytes",
-                        media_ref=audio_ref,
-                        source=source,
-                    )
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.amr"
-                    )
-                elif audio_ref.startswith("slack://file/"):
-                    content = self.run_module(
-                        "download_slack_file_bytes", file_ref=audio_ref, source=source
-                    )
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.ogg"
-                    )
-                elif audio_ref.startswith("discord://file/"):
-                    content = self.run_module(
-                        "download_discord_file_bytes", file_ref=audio_ref, source=source
-                    )
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.ogg"
-                    )
-                elif audio_ref.startswith("qq://file/"):
-                    content = self.run_module(
-                        "download_qq_file_bytes", file_ref=audio_ref, source=source
-                    )
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.ogg"
-                    )
-                elif audio_ref.startswith("vocechat://file/"):
-                    content = self.run_module(
-                        "download_vocechat_file_bytes",
-                        file_ref=audio_ref,
-                        source=source,
-                    )
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.ogg"
-                    )
-                elif audio_ref.startswith("synology://file/"):
-                    content = self.run_module(
-                        "download_synologychat_file_bytes",
-                        file_ref=audio_ref,
-                        source=source,
-                    )
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.ogg"
-                    )
-                elif audio_ref.startswith("wxbot://voice"):
-                    continue
-                elif audio_ref.startswith("feishu://file/"):
-                    content = self.run_module(
-                        "download_feishu_file_bytes", file_ref=audio_ref, source=source
-                    )
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.opus"
-                    )
-                elif audio_ref.startswith("http"):
+                plan = self._attachment_read_plan("audio", audio_ref, channel)
+                content = self._execute_attachment_read(plan, source) if plan else None
+                filename = (plan.audio_filename if plan.exact_filename else self._guess_audio_filename(audio_ref, default=plan.audio_filename)) if plan else "input.ogg"
+                if not plan and audio_ref.startswith("http"):
                     content, _ = _read_message_http(audio_ref)
-                    filename = self._guess_audio_filename(
-                        audio_ref, default="input.ogg"
-                    )
-                else:
-                    logger.debug(
-                        "暂不支持的语音引用: channel=%s, source=%s, ref=%s",
-                        channel.value if channel else None,
-                        source,
-                        audio_ref,
-                    )
-                    continue
+                    filename = self._guess_audio_filename(audio_ref)
 
-                if not content:
+                if not isinstance(content, bytes) or not content:
                     logger.warning(
                         "语音下载失败，跳过识别: channel=%s, source=%s, ref=%s",
                         channel.value if channel else None,
@@ -2367,67 +2289,16 @@ class MessageChain(ChainBase):
                 before_count = len(data_urls)
                 if attachment_ref.startswith("data:"):
                     data_urls.append(attachment_ref)
-                elif attachment_ref.startswith("tg://file_id/"):
-                    file_id = attachment_ref.replace("tg://file_id/", "")
-                    base64_data = self.run_module(
-                        "download_telegram_file_to_base64",
-                        file_id=file_id,
-                        source=source,
-                    )
-                    if base64_data:
-                        data_urls.append(f"data:image/jpeg;base64,{base64_data}")
-                elif attachment_ref.startswith(
-                        "wxwork://media_id/"
-                ) or attachment_ref.startswith(
-                    "wxbot://image/"
-                ) or attachment_ref.startswith(
-                    "wxclaw://image/"
-                ):
-                    data_url = self.run_module(
-                        "download_wechat_image_to_data_url",
-                        image_ref=attachment_ref,
-                        source=source,
-                    )
-                    if data_url:
-                        data_urls.append(data_url)
-                elif attachment_ref.startswith("feishu://image/"):
-                    data_url = self.run_module(
-                        "download_feishu_image_to_data_url",
-                        image_ref=attachment_ref,
-                        source=source,
-                    )
-                    if data_url:
-                        data_urls.append(data_url)
-                elif channel == NotificationChannel.Slack:
-                    data_url = self.run_module(
-                        "download_slack_file_to_data_url",
-                        file_url=attachment_ref,
-                        source=source,
-                    )
-                    if data_url:
-                        data_urls.append(data_url)
-                elif attachment_ref.startswith("vocechat://file/"):
-                    data_url = self.run_module(
-                        "download_vocechat_image_to_data_url",
-                        image_ref=attachment_ref,
-                        source=source,
-                    )
-                    if data_url:
-                        data_urls.append(data_url)
-                elif attachment_ref.startswith("http"):
-                    content, headers = _read_message_http(attachment_ref)
-                    if content:
-                        base64_data = base64.b64encode(content).decode()
-                        mime_type = headers.get("Content-Type", "image/jpeg")
-                        data_urls.append(f"data:{mime_type};base64,{base64_data}")
                 else:
-                    logger.debug(
-                        "暂不支持直接转换为 data URL 的附件引用: channel=%s, source=%s, ref=%s",
-                        channel.value if channel else None,
-                        source,
-                        attachment_ref,
-                    )
-                    continue
+                    plan = self._attachment_read_plan("image", attachment_ref, channel)
+                    value = self._execute_attachment_read(plan, source) if plan else None
+                    if isinstance(value, str) and value:
+                        data_urls.append(value)
+                    elif not plan and attachment_ref.startswith("http"):
+                        content, headers = _read_message_http(attachment_ref)
+                        if content:
+                            encoded = base64.b64encode(content).decode()
+                            data_urls.append(f"data:{headers.get('Content-Type', 'image/jpeg')};base64,{encoded}")
 
                 if len(data_urls) > before_count:
                     logger.info(
@@ -2535,80 +2406,45 @@ class MessageChain(ChainBase):
             return None
         if file_ref.startswith("data:"):
             return self._decode_data_url_bytes(file_ref)
-        if file_ref.startswith("tg://file_id/"):
-            file_id = file_ref.replace("tg://file_id/", "", 1)
-            return cast(Optional[bytes], self.run_module(
-                "download_telegram_file_bytes", file_id=file_id, source=source
-            ))
-        if file_ref.startswith("tg://document_file_id/"):
-            file_id = file_ref.replace("tg://document_file_id/", "", 1)
-            return cast(Optional[bytes], self.run_module(
-                "download_telegram_file_bytes", file_id=file_id, source=source
-            ))
-        if file_ref.startswith("wxwork://media_id/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_wechat_media_bytes", media_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("wxwork://file_media_id/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_wechat_media_bytes", media_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("wxbot://image/"):
-            data_url = self.run_module(
-                "download_wechat_image_to_data_url", image_ref=file_ref, source=source
-            )
-            return self._decode_data_url_bytes(data_url) if data_url else None
-        if file_ref.startswith("wxclaw://image/"):
-            data_url = self.run_module(
-                "download_wechat_image_to_data_url", image_ref=file_ref, source=source
-            )
-            return self._decode_data_url_bytes(data_url) if data_url else None
-        if file_ref.startswith("wxbot://file/"):
-            file_url = unquote(file_ref.replace("wxbot://file/", "", 1))
-            content, _ = _read_message_http(file_url)
-            return content
-        if file_ref.startswith("wxclaw://file/") or file_ref.startswith("wxclaw://voice/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_wechat_media_bytes", media_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("feishu://file/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_feishu_file_bytes", file_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("slack://file/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_slack_file_bytes", file_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("discord://file/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_discord_file_bytes", file_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("qq://file/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_qq_file_bytes", file_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("vocechat://file/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_vocechat_file_bytes", file_ref=file_ref, source=source
-            ))
-        if file_ref.startswith("synology://file/"):
-            return cast(Optional[bytes], self.run_module(
-                "download_synologychat_file_bytes", file_ref=file_ref, source=source
-            ))
+        plan = self._attachment_read_plan("file", file_ref, channel)
+        if plan is not None:
+            value = self._execute_attachment_read(plan, source)
+            return self._decode_data_url_bytes(value) if isinstance(value, str) else value
         if file_ref.startswith("http"):
-            if channel == NotificationChannel.Slack:
-                data_url = self.run_module(
-                    "download_slack_file_to_data_url", file_url=file_ref, source=source
-                )
-                return self._decode_data_url_bytes(data_url) if data_url else None
             content, _ = _read_message_http(file_ref)
             return content
-        logger.debug(
-            "暂不支持的附件引用: channel=%s, source=%s, ref=%s",
-            channel.value if channel else None,
-            source,
-            file_ref,
-        )
+        return None
+
+    @staticmethod
+    def _attachment_read_plan(kind: str, reference: str, channel: NotificationChannel) -> MessageAttachmentRead | None:
+        """
+        让当前平台解释附件协议，未知平台只保留通用 HTTP/data 路径。
+        """
+        # 显式 URI 由唯一声明该 scheme 的模块解释，保留旧混合附件/插件协议。
+        scheme = reference.partition(":")[0]
+        owners = [entry for entry in channel_platform.platform_catalog().providers() if scheme in entry.attachment_schemes]
+        if owners:
+            return owners[0].attachment_reference(kind, reference) if len(owners) == 1 else None
+        try:
+            platform = channel_platform.platform_for_channel(channel.value)
+        except ValueError:
+            return None
+        return platform.attachment_reference(kind, reference)
+
+    def _execute_attachment_read(self, plan: MessageAttachmentRead, source: str) -> bytes | str | None:
+        """
+        沿既有模块调度执行下载，不解释平台 URI 或读取其他连接凭据。
+        """
+        if plan.url is not None:
+            content, _ = _read_message_http(plan.url)
+            return content
+        if plan.method is None:
+            return None
+        value = self.run_module(plan.method, source=source, **plan.parameters)
+        if plan.encoding == "base64_jpeg" and isinstance(value, str) and value:
+            return f"data:image/jpeg;base64,{value}"
+        if isinstance(value, (bytes, str)):
+            return value
         return None
 
     def _save_agent_attachment(

@@ -11,7 +11,7 @@ from alembic.operations import Operations
 
 from app.db.models.authorization import ChannelAuthorization
 from app.db.models.user import User
-from app.domain.authorization import LEGACY_CHANNELS
+from app.schemas.legacychannel import LEGACY_CHANNELS
 
 
 def _tables(connection):

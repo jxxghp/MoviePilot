@@ -845,17 +845,17 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-11-23 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-11-24 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1213 |
-| 内部导入边 | 10,872 |
+| Python 模块 | 1229 |
+| 内部导入边 | 10,978 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 52（精确 policy 准入，Application / Chain 均为 0；本知识 Adapter 仍复用宿主 HTTP 层） |
-| Module Contract V2 spec | 247（其中 233 个方法进入 `run_module` 观察面） |
+| Module Contract V2 spec | 247（其中 220 个方法进入静态 `run_module` 观察面，附件计划另有 1 个动态调用点） |
 | Event Contract | 53 |
 | Event producer / consumer | 76（74 静态、2 动态）/ 19（18 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |
@@ -899,3 +899,7 @@ Pylint 分别提供对应证据。验证结论应绑定实际源码提交，不�
 | [订阅生命周期](subscribe-lifecycle.md) | 订阅模式、字段所有权与生命周期阶段 |
 | [MCP 接入](mcp-api.md) | 外部 Agent 连接、认证、工具发现和调用 |
 | [CLI](cli.md) / [Doctor](doctor.md) | 本地管理与故障诊断 |
+
+## 渠道平台扩展边界
+
+公共用例、授权、受众、发送时间与 Outbox 保持由宿主执行；平台身份、地址协议、凭据、诊断与特殊分段由所属模块实现。注册方式、兼容和完整调用链见[平台边界](channel-refactor/platform-boundaries.md)。

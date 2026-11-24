@@ -291,7 +291,7 @@ def _normalize_configs(value: list[NotificationConf], *, validate_identities: bo
         data = config.model_dump(exclude={"notification_enabled", "interaction_enabled", "interaction_policy"})
         data["id"] = identity
         data["name"] = name
-        from app.domain.authorization import LEGACY_CHANNELS
+        from app.schemas.legacychannel import LEGACY_CHANNELS
 
         definition = LEGACY_CHANNELS.get(data.get("type") or "")
         if definition:

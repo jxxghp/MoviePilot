@@ -153,10 +153,18 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
             raise ValueError(
                 f"{spec.source}: entrypoint 必须指向同包且类名等于 capability id"
             )
-        if set(spec.metadata) != allowed_metadata:
+        if (set(spec.metadata) - {"channel_extension", "channel_interaction"}) != allowed_metadata:
             raise ValueError(
                 f"{spec.source}: metadata 字段必须是 {sorted(allowed_metadata)}"
             )
+        extension = spec.metadata.get("channel_extension")
+        if extension is not None:
+            expected_prefix = f"{expected_module}.channel:"
+            if (spec.metadata["type"] != ModuleType.Notification.value
+                    or not isinstance(extension, str) or not extension.startswith(expected_prefix)
+                    or not extension.removeprefix(expected_prefix).isidentifier()
+                    or type(spec.metadata.get("channel_interaction")) is not bool):
+                raise ValueError(f"{spec.source}: 渠道扩展必须属于本通知模块的 channel 契约")
         if spec.metadata["type"] not in module_type_values:
             raise ValueError(f"{spec.source}: 非法 metadata.type={spec.metadata['type']!r}")
         if spec.metadata["subtype"] not in _SUBTYPE_NAMES:

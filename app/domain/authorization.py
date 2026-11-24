@@ -6,68 +6,43 @@
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
-
-from app.schemas.types import NotificationChannel
-
-# 类型、渠道、旧普通用户键、旧管理员键和升级时保留的主用户键。
-LEGACY_CHANNELS = {
-    "telegram": (NotificationChannel.Telegram.value, "TELEGRAM_USERS", "TELEGRAM_ADMINS", "TELEGRAM_CHAT_ID"),
-    "wechat": (NotificationChannel.Wechat.value, "", "WECHAT_ADMINS", "WECHAT_BOT_CHAT_ID"),
-    "wechatclawbot": (
-        NotificationChannel.WechatClawBot.value,
-        "",
-        "WECHATCLAWBOT_ADMINS",
-        "WECHATCLAWBOT_DEFAULT_TARGET",
-    ),
-    "feishu": (NotificationChannel.Feishu.value, "", "FEISHU_ADMINS", "FEISHU_OPEN_ID"),
-    "qqbot": (NotificationChannel.QQ.value, "", "QQBOT_ADMINS", "QQ_OPENID"),
-    "discord": (NotificationChannel.Discord.value, "", "DISCORD_ADMINS", ""),
-    "slack": (NotificationChannel.Slack.value, "", "SLACK_ADMINS", ""),
-    "vocechat": (NotificationChannel.VoceChat.value, "", "VOCECHAT_ADMINS", ""),
-    "synologychat": (NotificationChannel.SynologyChat.value, "", "SYNOLOGYCHAT_ADMINS", ""),
-}
 
 # 新成员默认拥有的业务能力；定时任务和管理员能力必须单独授予。
 DEFAULT_MEMBER_SCOPES = ("search", "subscribe", "download")
 # 授权系统接受的完整能力集合，管理员拥有全部能力。
 AUTHORIZATION_SCOPES = (*DEFAULT_MEMBER_SCOPES, "schedule")
-# 原账号绑定字段用于升级时找到原业务归属，不使用昵称推断账号。
-CHANNEL_BINDINGS = {
-    NotificationChannel.Telegram.value: ("telegram_userid",),
-    NotificationChannel.Wechat.value: ("wechat_userid",),
-    NotificationChannel.WechatClawBot.value: ("wechatclawbot_userid",),
-    NotificationChannel.Feishu.value: ("feishu_userid", "feishu_openid"),
-    NotificationChannel.QQ.value: ("qq_userid", "qq_openid"),
-    NotificationChannel.Discord.value: ("discord_userid",),
-    NotificationChannel.Slack.value: ("slack_userid",),
-    NotificationChannel.VoceChat.value: ("vocechat_userid",),
-    NotificationChannel.SynologyChat.value: ("synologychat_userid",),
-}
 
-def channel_actor_ids(channel: str, sender_id: str) -> tuple[str, ...]:
+@dataclass(frozen=True, slots=True)
+class ChannelActor:
     """
-    校验个人发送者，并返回平台确定性的 ID 表示，不把投递群地址当成用户。
+    平台已经解析的主体事实，不包含协议前缀或授权结论。
 
-    VoceChat 的数字 ID 与 UID 前缀等价；不合并不同人的授权，也不使用昵称推断。
-
-    :param channel: 平台渠道显示值
-    :param sender_id: 受信平台事件或管理员核对的个人 ID
-    :return: 规范 ID 及同一平台的确定性历史表示
-    :raises ValueError: ID 为空或是该平台的群地址
+    :param id: 规范主体标识，作用域由调用方连接身份空间限定
+    :param kind: 个人、群组或无法确认的主体类型
+    :param aliases: 平台能够证明属于同一主体的确定性历史标识
     """
-    value = sender_id.strip()
-    if not value:
+
+    id: str
+    kind: str = "person"
+    aliases: tuple[str, ...] = ()
+
+
+def channel_actor_ids(actor: ChannelActor) -> tuple[str, ...]:
+    """
+    仅接受规范个人主体，并返回同一主体的去重查询标识。
+
+    :param actor: 由平台产生、尚未授予任何业务权限的身份事实
+    :return: 规范主体 ID 及已证明的别名
+    :raises ValueError: 主体不是个人，或者标识为空
+    """
+    if actor.kind != "person":
+        raise ValueError("群地址或未知主体不能作为个人渠道授权身份，请核对实际发送者")
+    values = tuple(dict.fromkeys(value.strip() for value in (actor.id, *actor.aliases)))
+    if not values or any(not value for value in values):
         raise ValueError("缺少渠道发送者 ID")
-    if channel == NotificationChannel.QQ.value and value.lower().startswith("group:"):
-        raise ValueError("群地址不能作为个人渠道授权身份，请核对实际发送者")
-    if channel == NotificationChannel.VoceChat.value:
-        if value.upper().startswith("GID#"):
-            raise ValueError("群地址不能作为个人渠道授权身份，请核对实际发送者")
-        numeric = value[4:] if value.startswith("UID#") else value
-        if numeric.isascii() and numeric.isdecimal():
-            return f"UID#{numeric}", numeric
-    return (value,)
+    return values
 
 
 # 普通渠道成员仅开放明确审计过的数据归属操作，其余能力由管理员执行。

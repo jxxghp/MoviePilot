@@ -4,6 +4,7 @@
 
 from pathlib import Path
 
+import app.application.messaging.channel as channel_platform
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import NotificationChannel
@@ -28,10 +29,9 @@ def notification_parts(message: Message, channel: NotificationChannel) -> list[M
         ]
     else:
         parts = [message]
-    if channel == NotificationChannel.Slack and message.native_image and message.image and message.buttons:
-        caption = parts[0].model_copy(update={"image": None, "native_image": False, "link": None})
-        image = parts[0].model_copy(update={"title": None, "text": None, "buttons": None, "link": None})
-        parts = [caption, image, *parts[1:]]
+    platform = next((entry for entry in channel_platform.platform_catalog().providers() if entry.channel == channel.value), None)
+    if platform is not None:
+        parts = platform.split_notification(parts)
     adapted = [_channel_part(part, channel) for part in parts]
     if len(adapted) > 1:
         for index, part in enumerate(adapted):
