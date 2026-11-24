@@ -39,7 +39,7 @@ class SunnyPTSpider:
         ).rstrip("/")
         self._proxy = get_runtime_setting('PROXY') if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
-        self._user_agent = indexer.get("ua") or get_runtime_setting('USER_AGENT')
+        self._user_agent = site_rules.resolve_site_user_agent_from_settings(indexer.get("ua"), get_runtime_setting)
         self._api_key = indexer.get("apikey")
         self._timeout = indexer.get("timeout") or 15
         self._configured_categories = self._parse_configured_categories(

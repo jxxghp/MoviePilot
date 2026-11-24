@@ -242,3 +242,72 @@ def test_plex_uses_original_part_url_instead_of_web_or_transcoding_page() -> Non
         "http://media.test/library/parts/17/file.mkv?X-Plex-Token=synthetic"
     )
     service._plex.fetchItem.assert_called_once_with("/library/metadata/9")
+
+
+def test_emby_strm_item_exposes_direct_strm_url_without_server_key(
+    monkeypatch: pytest.MonkeyPatch, playback_client
+) -> None:
+    """
+    验证 Emby 系 STRM 条目通过详情与 PlaybackInfo 提取客户端直链，且绝不泄露服务端 api_key。
+    """
+    from app.modules._base.embybrowse import EmbyBrowseConfig, emby_item_detail, emby_stream_url
+
+    item_payload = {
+        "Id": "strm-ep-1",
+        "Name": "云盘直链第一集",
+        "Type": "Episode",
+        "Path": "/media/tv/Show/S01E01.strm",
+        "MediaSources": [
+            {
+                "Id": "strm-src-1",
+                "Container": "strm",
+                "Protocol": "File",
+                "Path": "/media/tv/Show/S01E01.strm",
+                "MediaStreams": [],
+            }
+        ],
+    }
+    playback_payload = {
+        "MediaSources": [
+            {
+                "Id": "strm-src-1",
+                "Container": "mkv",
+                "Protocol": "Http",
+                "Path": "https://cdn.example.test/d/115/Show S01E01.mkv?sign=abc|User-Agent=Mozilla",
+            }
+        ]
+    }
+
+    def fake_get_res(url: str, _params: dict[str, object]) -> Mock:
+        resp = Mock(status_code=200)
+        resp.json.return_value = playback_payload if url.endswith("/PlaybackInfo") else item_payload
+        return resp
+
+    cfg = EmbyBrowseConfig(
+        host="http://emby.test/",
+        api_key="secret-emby-key",
+        user_id="u-1",
+        server_type="emby",
+        request_factory=lambda: Mock(get_res=Mock(side_effect=fake_get_res)),
+    )
+    detail = emby_item_detail(cfg, "strm-ep-1")
+    assert detail is not None
+    assert detail.media_sources[0].direct_url == "https://cdn.example.test/d/115/Show%20S01E01.mkv?sign=abc"
+    assert emby_stream_url(cfg, "strm-ep-1", "Episode") == "https://cdn.example.test/d/115/Show%20S01E01.mkv?sign=abc"
+
+    client, chain, _ = playback_client
+    chain.find_item.return_value = (
+        "Emby-客厅",
+        MediaServerItem(item_id="strm-ep-1", item_type="Episode", title="云盘直链第一集", path="/media/tv/Show/S01E01.strm"),
+    )
+    chain.item_detail.return_value = detail
+    chain.get_stream_url.return_value = None
+
+    manifest_response = client.get(
+        "/api/v1/mediaserver/stream-info", params={"itemid": "strm-ep-1", "server": "Emby-客厅"}
+    )
+    assert manifest_response.status_code == 200
+    manifest = manifest_response.json()["data"]
+    assert manifest["strm_url"] == "https://cdn.example.test/d/115/Show%20S01E01.mkv?sign=abc"
+    assert "secret-emby-key" not in manifest_response.text
+    assert "/media/tv/Show" not in manifest_response.text

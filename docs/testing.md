@@ -113,7 +113,7 @@ AppPush 的所有用户范围由 `tests/test_notification_routing_parity.py` 验
 
 `tests/test_site_auth.py` 验证用户认证参数规范化、切换站点后过滤其他站点前缀、仅持久化成功
 配置，以及启动认证的环境变量优先级。`tests/test_site_chain_ports.py` 覆盖错误 HTTP 响应、
-Cloudflare、空浏览器页面和通用检测的范围提示；这些检测不会验证用户认证页的 UID 或 Passkey。
+Cloudflare、空浏览器页面和通用检测的连通提示；这些检测不会验证用户认证页的 UID 或 Passkey。
 认证扩展的传输诊断与各平台 ABI 由 MoviePilot-Build 的离线回放和编译资源验证负责。
 
 ## 外部依赖：一律 mock，零真实网络

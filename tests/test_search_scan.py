@@ -65,6 +65,14 @@ def torrent(episode, version=1):
                        enclosure=f"https://site.example/download?id={episode}{version}")
 
 
+def unknown_torrent(page):
+    """
+    构造标题为空的资源，使识别结果保持未知，阻止来源累积关闭证据。
+    """
+    return TorrentInfo(site=1, description=f"unknown-{page}", title="",
+                       enclosure=f"https://site.example/download?id=unknown-{page}")
+
+
 def pages(owner, monkeypatch, data):
     """
     用内存页面替换站点请求，并返回请求页码记录。
@@ -1197,6 +1205,22 @@ def test_ongoing_series_releases_round_after_available_episodes_are_submitted(ow
     assert scan.ended
     assert scan.collection.remaining == {"1:1006", "1:1007"}
     assert "还缺 E1006-E1007（站点上还没有，之后的定时检查会继续找）" in scan.progress_text()
+
+
+def test_resumed_scan_submits_available_episode_instead_of_paging_to_limit(owner, monkeypatch):
+    """
+    已就绪集已有候选、其余缺集均为站点未收录时，恢复的检查点也应提交后结束，
+    不因来源无法累积关闭证据而翻到页数上限。
+    """
+    calls = pages(owner, monkeypatch, {page: [torrent(16), unknown_torrent(page)] for page in range(20)})
+    submitted = []
+    scan = SearchScan(owner=owner, plan=plan(list(range(16, 35))))
+    scan.first_pass_done = True
+    scan.run(lambda _items, ready: submitted.append(set(ready)) or ready)
+    assert calls == [0]
+    assert submitted == [{"1:16"}]
+    assert scan.ended
+    assert scan.collection.remaining == {f"1:{ep}" for ep in range(17, 35)}
 
 
 def test_only_unreleased_episodes_check_first_page_and_do_not_try_aliases(owner, monkeypatch):

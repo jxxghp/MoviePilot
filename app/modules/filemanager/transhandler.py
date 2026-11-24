@@ -2046,6 +2046,23 @@ class TransHandler:
             )
         return new_item, None
 
+    @staticmethod
+    def __resolve_leaf_size(
+        planned_item: TransferPlanItem,
+        target_item: FileItem,
+    ) -> int:
+        """
+        读取目录叶子文件的有效字节数，优先使用冻结源大小，缺失时回退到目标回执大小。
+
+        :param planned_item: 包含冻结源快照的目录叶子操作
+        :param target_item: 本次实际落地后的目标文件项
+        :return: 叶子文件的字节数；源和目标均未提供大小时返回 0
+        """
+        source_size = FileItem.model_validate(planned_item.source_fileitem).size
+        if source_size is not None:
+            return source_size
+        return target_item.size or 0
+
     def execute_transfer_plan(
         self,
         checkpoint: TransferPlanCheckpoint,
@@ -2183,10 +2200,13 @@ class TransHandler:
                 )
                 if failure:
                     return failure
+                target_leaf = cast(FileItem, new_item)
                 self.__update_result(
                     result=result,
                     file_list=[planned_item.source_fileitem.get("path")],
-                    file_list_new=[cast(FileItem, new_item).path],
+                    file_list_new=[target_leaf.path],
+                    file_count=1,
+                    total_size=self.__resolve_leaf_size(planned_item, target_leaf),
                 )
             self.__cleanup_with_step(
                 step_runner=step_runner,

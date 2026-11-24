@@ -18,6 +18,7 @@ class CalendarSubscription(BaseModel):
     year: Optional[str] = Field(default=None, description="发行年份")
     season: Optional[int] = Field(default=None, description="订阅季号")
     poster: Optional[str] = Field(default=None, description="海报地址")
+    start_episode: Optional[int] = Field(default=None, description="开始集数")
     total_episode: Optional[int] = Field(default=None, description="总集数")
     lack_episode: Optional[int] = Field(default=None, description="缺失集数")
     completed_episode: Optional[int] = Field(default=None, description="已入库集数")

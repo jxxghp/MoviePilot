@@ -695,3 +695,174 @@ async def test_indexer_dispatches_sync_and_async_search_with_promotions(monkeypa
         ("Free.Torrent.2026", 0), ("Normal.Torrent.2026", 1),
     ]
     assert [method for method, _url, _kwargs in requests] == ["get", "post", "async-get", "post"]
+
+
+@pytest.mark.parametrize(
+    "gate_snippet",
+    [
+        '<div id="turnstile_gate" style="position: fixed;"></div>',
+        "<div class='gate' id='turnstile_gate'></div>",
+        "<script>jQuery.post('ajax_turnstile.php', {'cf-turnstile-response': token});</script>",
+    ],
+)
+def test_turnstile_gated_page_skips_promotion_request_and_keeps_normal_factor(gate_snippet):
+    """
+    列表页将促销查询置于 Turnstile 校验门控后时，应跳过未验证 POST 且不消耗站点流控额度。
+    """
+    gated_html = _PAGE_HTML.replace("</body>", f"{gate_snippet}</body>")
+    honeypot_response = {
+        "status": 200,
+        "message": {
+            "838806": {
+                "sp_state": (
+                    '<p style="display: none"> <img class="pro_free" src="pic/trans.gif" '
+                    'alt="Free" onmouseover="domTT_activate(this, event, \'content\', \'<b>免费</b>'
+                ),
+                "timeout": "",
+            },
+        },
+    }
+    patcher, post_res = _patched_promotion(_mock_response(honeypot_response))
+    try:
+        spider = HDWingPageSpider(indexer=_INDEXER)
+        torrents = spider.parse(gated_html)
+    finally:
+        patcher.stop()
+
+    post_res.assert_not_called()
+    hdwing.wait_for_site_request.assert_not_called()
+    assert len(torrents) == 2
+    assert all(t["downloadvolumefactor"] == 1 for t in torrents)
+
+
+def test_torrent_title_mentioning_turnstile_endpoint_does_not_skip_promotion():
+    """
+    普通正文或标题出现 ajax_turnstile.php 文本时不应误判为脚本门控。
+    """
+    html = _PAGE_HTML.replace("Normal.Torrent.2026", "Fix.ajax_turnstile.php.Notes.2026")
+    patcher, post_res = _patched_promotion(_mock_response(_PROMOTION_RESPONSE))
+    try:
+        torrents = HDWingPageSpider(indexer=_INDEXER).parse(html)
+    finally:
+        patcher.stop()
+
+    post_res.assert_called_once()
+    assert next(t for t in torrents if t["title"] == "Free.Torrent.2026")["downloadvolumefactor"] == 0
+    assert next(t for t in torrents if "ajax_turnstile.php" in t["title"])["downloadvolumefactor"] == 1
+
+
+@pytest.mark.parametrize("use_rust", [False, True])
+def test_unclosed_hidden_honeypot_does_not_mark_free_or_corrupt_following_cells(monkeypatch, use_rust):
+    """
+    未闭合属性引号的隐藏假免费标签在 Python 与 Rust 解析下均不得误判免费或吞噬后续下载链接。
+    """
+    monkeypatch.setattr(rust_accel, "is_enabled", lambda: use_rust)
+    row_html = """
+    <html><head><meta name="x-csrf" content="a1b2c3d4e5"/></head><body>
+    <table class="torrent_list">
+    <tr class="torrent">
+    <td><a title="Normal.Movie.2026" href="details.php?id=840734&amp;hit=1">Normal.Movie.2026</a></td>
+    <td class="discount"><span class="sp_state_placeholder" id="840734"></span></td>
+    <td class="share_rule" valign="middle"><img src="/pic/share_rule_3.gif" title="欢迎转载"></td>
+    <td class="act"><a href="download.php?hash=test_hash_value">下载</a></td>
+    </tr>
+    </table></body></html>
+    """
+    site = deepcopy(_INDEXER)
+    site["torrents"]["fields"]["download"] = {"selector": 'a[href*="download.php?hash="]', "attribute": "href"}
+    honeypot_payload = {
+        "status": 200,
+        "message": {
+            "840734": {
+                "sp_state": (
+                    '<p style="display: none"> <img class="pro_free" src="pic/trans.gif" alt="Free" '
+                    'onmouseover="domTT_activate(this, event, \'content\', \'<b><font class=&quot;free&quot;>免费</font></b>'
+                ),
+                "timeout": "",
+            },
+        },
+    }
+    patcher, _ = _patched_promotion(_mock_response(honeypot_payload))
+    try:
+        spider = HDWingPageSpider(indexer=site)
+        injected = spider.inject_promotions(row_html)
+        torrents = spider.parse(row_html)
+    finally:
+        patcher.stop()
+
+    assert "pro_free" not in injected
+    assert len(torrents) == 1
+    assert torrents[0]["downloadvolumefactor"] == 1
+    assert torrents[0]["enclosure"] == "https://hdwing.org/download.php?hash=test_hash_value"
+
+
+@pytest.mark.parametrize(
+    "hidden_markup",
+    [
+        '<p style="display: none"><img class="pro_free" src="pic/trans.gif" alt="Free" /></p>',
+        '<span style="color: red; display: none !important"><img class="pro_free" src="pic/trans.gif" /></span>',
+        '<div style="visibility: hidden"><img class="pro_free2up" src="pic/trans.gif" /></div>',
+        '<div style="visibility: collapse"><img class="pro_free" src="pic/trans.gif" /></div>',
+        '<div style="opacity: 0"><img class="pro_free" src="pic/trans.gif" /></div>',
+        '<div style="opacity: 0.0 !important"><img class="pro_free" src="pic/trans.gif" /></div>',
+        '<p hidden><img class="pro_free" src="pic/trans.gif" /></p>',
+        '<img class="pro_free" src="pic/trans.gif" style="display:none" />',
+        '<template><img class="pro_free" src="pic/trans.gif" /></template>',
+        '<noscript><img class="pro_free" src="pic/trans.gif" /></noscript>',
+        '<!-- <img class="pro_free" src="pic/trans.gif" /> -->',
+    ],
+)
+def test_various_hidden_promotion_markups_are_ignored(hidden_markup):
+    """
+    各种隐藏样式、hidden 属性、非渲染容器与注释包裹的假促销图标均不得注入并误判为免费。
+    """
+    payload = {
+        "status": 200,
+        "message": {
+            "838806": {"sp_state": hidden_markup, "timeout": ""},
+            "838805": {"sp_state": "", "timeout": ""},
+        },
+    }
+    patcher, _ = _patched_promotion(_mock_response(payload))
+    try:
+        torrents = HDWingPageSpider(indexer=_INDEXER).parse(_PAGE_HTML)
+    finally:
+        patcher.stop()
+
+    assert len(torrents) == 2
+    assert all(t["downloadvolumefactor"] == 1 for t in torrents)
+    assert all(t["uploadvolumefactor"] == 1 for t in torrents)
+
+
+def test_hidden_honeypot_alongside_real_visible_promotion_keeps_real_factor():
+    """
+    同一响应同时包含隐藏假免费标签与真实可见促销图标时，应剔除隐藏蜜罐并保留真实优惠倍率。
+    """
+    mixed_sp_state = (
+        '<p style="margin: 0; opacity: invalid; display: none">'
+        '<img class="pro_free" src="pic/trans.gif" /></p>'
+        '<img class="pro_50pctdown2up" src="pic/trans.gif" style="margin-left: 2px; opacity: 1" />'
+    )
+    payload = {
+        "status": 200,
+        "message": {
+            "838806": {"sp_state": mixed_sp_state, "timeout": "<span>限时优惠</span>"},
+            "838805": {"sp_state": "", "timeout": "   "},
+        },
+    }
+    patcher, _ = _patched_promotion(_mock_response(payload))
+    try:
+        spider = HDWingPageSpider(indexer=_INDEXER)
+        injected = spider.inject_promotions(_PAGE_HTML)
+        torrents = spider.parse(_PAGE_HTML)
+    finally:
+        patcher.stop()
+
+    assert "pro_free" not in injected
+    assert "限时优惠" in injected
+    promo_torrent = next(t for t in torrents if t["title"] == "Free.Torrent.2026")
+    normal_torrent = next(t for t in torrents if t["title"] == "Normal.Torrent.2026")
+    assert promo_torrent["downloadvolumefactor"] == 0.5
+    assert promo_torrent["uploadvolumefactor"] == 2
+    assert normal_torrent["downloadvolumefactor"] == 1
+    assert normal_torrent["uploadvolumefactor"] == 1

@@ -5,7 +5,7 @@
 import json
 import mimetypes
 import uuid
-from typing import Any, AsyncIterator, Optional
+from typing import Annotated, Any, AsyncIterator, Optional
 from urllib.parse import unquote
 
 from fastapi import (
@@ -14,6 +14,7 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -432,16 +433,16 @@ async def run_agent_command(
 async def list_agent_chat_sessions(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-    page: int = 1,
-    count: int = 30,
+    page: Annotated[int, Query(ge=1, description="从 1 开始的结果页码。")] = 1,
+    count: Annotated[int, Query(ge=1, description="当前页最多返回的记录数。")] = 30,
 ) -> _SchemaResponse[list[_SchemaAgentChatSessionSummary]]:
     """
     获取当前用户可访问的 Agent 历史会话列表。
 
     :param current_user: 当前登录用户
     :param service: Agent 会话应用服务
-    :param page: 页码
-    :param count: 每页数量
+    :param page: 页码，从 1 开始，默认第 1 页
+    :param count: 每页最多返回的会话数，最小为 1，默认 30 条
     :return: 会话摘要列表
     """
     chats = await service.list(

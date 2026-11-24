@@ -131,8 +131,8 @@ Server 使用独立 SQL 表长期保存关系，不属于识别缓存清理范�
 整理历史播放成功记录时使用目标文件，失败记录使用源文件；不会把媒体库目录或剧集系列作为播放对象。
 
 `GET /api/v1/mediaserver/stream-info?itemid=...` 按已入库媒体服务器条目返回 `content_url`
-、媒体类型、所属媒体服务器 `server` 和同目录同基础文件名的外挂字幕清单；音频条目还会返回表演者、专辑和可选 LRC 歌词地址。
-响应不包含本机文件路径或 STRM 上游凭据。`POST /api/v1/mediaserver/stream-info/music` 接收
+、可选 `strm_url`、媒体类型、所属媒体服务器 `server` 和同目录同基础文件名的外挂字幕清单；音频条目还会返回表演者、专辑和可选 LRC 歌词地址。
+当条目对应无内嵌账号密码的 HTTP(S) `.strm` 媒体源时，`strm_url` 提供规范化后的客户端直链地址（供 App 优先直连播放并在不可达时回退 `content_url`）；普通媒体文件及需要服务端密钥鉴权的原始流不填充 `strm_url`，响应始终不包含本机文件路径或媒体服务器密钥。`POST /api/v1/mediaserver/stream-info/music` 接收
 单曲 recording 的来源、ID、标题、艺人和专辑信息，在已启用媒体服务器中执行精确匹配后返回实际单曲流清单；
 专辑和艺人的元数据 ID 不可用作播放条目。
 使用普通 Bearer 登录请求该清单会签发短期资源 Cookie。App 将该 Cookie 限定到当前实例的
@@ -288,7 +288,7 @@ Web 影视精确与标题 SSE 的 `manual_paging=true` 模式在最终 `done` �
 快照立即失效，在途旧结果不能写回新会话；失败查询允许重试。
 
 `GET /api/v1/site/test/{site_id}` 检查站点连通性和适配器支持的登录状态。普通站点只检测
-网页和 Cookie，成功说明不代表「用户认证」中的 UID、Passkey 等凭据有效；API 站点使用
+网页和 Cookie，连通测试通过不代表「用户认证」中的 UID、Passkey 等凭据有效；API 站点使用
 各自已适配的登录接口。独立的用户认证仍通过 `POST /api/v1/site/auth` 执行，成功保存时清除
 切换站点遗留的其他已知站点前缀字段；启动认证也会过滤这些字段，未知扩展参数继续兼容。
 过滤后参数为空时直接拒绝请求，避免资源改为读取环境变量并认证其他站点。
@@ -347,7 +347,10 @@ Web 影视精确与标题 SSE 的 `manual_paging=true` 模式在最终 `done` �
 Web 会话沿用当前用户；无渠道调用不携带收件人，插件回执按既有管理员通知目标路由，
 没有可用目标时不发送。
 
-`GET /api/v1/message/notification` 的可空 `poster` 字段提供独立媒体海报。
+`GET /api/v1/message/history` 分页返回消息表中的全部历史记录（包含 `action=0` 的接收消息与
+`action=1` 的发送消息，`GET /api/v1/message/web` 作为兼容入口保留相同行为）；
+`GET /api/v1/message/notification` 仅返回清理水位之后的系统已发送通知（`action=1`），
+其可空 `poster` 字段提供独立媒体海报。
 新通知从已有媒体上下文提取海报；`image` 继续保留原有渠道图片语义。
 旧通知及没有海报的通知返回 `poster: null`，客户端不应将背景图裁切成海报。
 

@@ -91,7 +91,7 @@ class MTorrentSpider:
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
             self._cookie = indexer.get('cookie')
-            self._ua = indexer.get('ua')
+            self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get('ua'), get_runtime_setting)
             self._apikey = indexer.get('apikey')
             self._token = indexer.get('token')
             self._timeout = indexer.get('timeout') or 15
@@ -641,7 +641,7 @@ class MTorrentSpider:
 
         :return: 认证是否有效及接口失败原因
         """
-        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        user_agent = site_rules.resolve_site_user_agent_from_settings(self._ua, get_runtime_setting)
         with RequestUtils(headers={
             "User-Agent": user_agent, "Accept": "application/json, text/plain, */*", "x-api-key": self._apikey,
         }, ua=user_agent, proxies=self._proxy or {}, timeout=self._timeout).response_manager(

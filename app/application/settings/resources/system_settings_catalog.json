@@ -1206,6 +1206,11 @@
       "group": "sites",
       "source_file": "app/runtime/config.py"
     },
+    "SITE_USER_AGENT": {
+      "description": "站点默认User-Agent，站点未单独配置时使用；留空则使用全局默认User-Agent",
+      "group": "sites",
+      "source_file": "app/runtime/config.py"
+    },
     "SKILL_MARKET": {
       "description": "技能市场仓库地址，多个地址使用,分隔",
       "group": "skills",

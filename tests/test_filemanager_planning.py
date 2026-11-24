@@ -848,3 +848,149 @@ def test_directory_intercept_step_uses_frozen_source_after_size_projection():
         if kind == "plugin_transfer_intercept"
     )
     assert intercept["source"] == planning_input.source_fileitem
+
+
+def test_directory_execution_accumulates_total_size_and_file_count():
+    """
+    目录整理成功时累加全部叶子文件数量与大小，并与单文件结果保持一致。
+    """
+    root = FileItem(storage="alist", path="/downloads/disc", name="disc", type="dir")
+    bdmv = FileItem(storage="alist", path="/downloads/disc/BDMV", name="BDMV", type="dir")
+    stream_dir = FileItem(
+        storage="alist", path="/downloads/disc/BDMV/STREAM", name="STREAM", type="dir",
+    )
+    cert_dir = FileItem(
+        storage="alist", path="/downloads/disc/CERTIFICATE", name="CERTIFICATE", type="dir",
+    )
+    stream_main = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/STREAM/00001.m2ts",
+        name="00001.m2ts",
+        type="file",
+        extension="m2ts",
+        size=1000,
+    )
+    stream_extra = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/STREAM/00002.m2ts",
+        name="00002.m2ts",
+        type="file",
+        extension="m2ts",
+        size=2500,
+    )
+    index_file = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/index.bdmv",
+        name="index.bdmv",
+        type="file",
+        extension="bdmv",
+        size=128,
+    )
+    empty_file = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/MovieObject.bdmv",
+        name="MovieObject.bdmv",
+        type="file",
+        extension="bdmv",
+        size=0,
+    )
+    unknown_size_cert = FileItem(
+        storage="alist",
+        path="/downloads/disc/CERTIFICATE/id.bdmv",
+        name="id.bdmv",
+        type="file",
+        extension="bdmv",
+        size=None,
+    )
+    source_tree = ReadOnlyTreeStorage(
+        {
+            root.path: [bdmv, cert_dir],
+            bdmv.path: [stream_dir, index_file, empty_file],
+            stream_dir.path: [stream_main, stream_extra],
+            cert_dir.path: [unknown_size_cert],
+        }
+    )
+
+    class _TargetSizedRecordingStorage(RecordingStorage):
+        """
+        源缺少大小时在落地目标上补全字节数，验证回退统计。
+        """
+
+        def copy(self, fileitem: FileItem, path: Path, name: str) -> bool:
+            """
+            模拟复制并在目标缺失大小时写入实际落地大小。
+            """
+            copied = super().copy(fileitem, path, name)
+            target_key = (path / name).as_posix()
+            if self.files[target_key].size is None:
+                self.files[target_key] = self.files[target_key].model_copy(
+                    update={"size": 48}
+                )
+            return copied
+
+    meta = MetaBase("Test Movie (2026)")
+    meta.type = MediaType.MOVIE
+    meta.name = "Test Movie"
+    meta.year = "2026"
+    mediainfo = MediaInfo(
+        type=MediaType.MOVIE,
+        title="Test Movie",
+        year="2026",
+        tmdb_id=12345,
+    )
+    handler = TransHandler()
+    dir_checkpoint = handler.plan_transfer(
+        _build_input(root, need_rename=False),
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=source_tree,
+        target_storage="alist",
+        target_path=Path("/library"),
+        transfer_type="copy",
+        need_scrape=False,
+        need_rename=False,
+        need_notify=True,
+        overwrite_mode="never",
+        episodes_info=None,
+        preview=False,
+    )
+    storage = _TargetSizedRecordingStorage([])
+
+    dir_result = handler.execute_transfer_plan(
+        dir_checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=storage,
+        target_oper=storage,
+    )
+
+    assert dir_result.success is True
+    assert dir_result.file_count == 5
+    assert len(dir_result.file_list) == 5
+    assert len(dir_result.file_list_new) == 5
+    assert dir_result.total_size == 1000 + 2500 + 128 + 0 + 48
+    # 目录项自身的 size 仍保持仅统计 BDMV/STREAM 的原有兼容投影。
+    assert dir_result.fileitem.size == 1000 + 2500
+
+    # 对照单文件整理：同样返回准确的 file_count 与 total_size。
+    single_file = _build_fileitem().model_copy(update={"size": 2048})
+    single_meta, single_mediainfo = _build_media()
+    single_checkpoint = _plan_file(
+        handler,
+        _build_input(single_file),
+        single_meta,
+        single_mediainfo,
+        ReadOnlyTreeStorage({}),
+    )
+    single_storage = RecordingStorage([])
+    single_result = handler.execute_transfer_plan(
+        single_checkpoint,
+        meta=single_meta,
+        mediainfo=single_mediainfo,
+        source_oper=single_storage,
+        target_oper=single_storage,
+    )
+
+    assert single_result.success is True
+    assert single_result.file_count == 1
+    assert single_result.total_size == 2048

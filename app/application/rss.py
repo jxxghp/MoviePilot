@@ -623,8 +623,11 @@ class _RssLinkRecovery:
         """
         用配置摘要隔离退避，更新 Cookie 或手工修改 RSS 后立即获得新预算。
         """
-        values = (site.id, site.url, site.rss, site.cookie, site.ua, site.apikey, site.token,
-                  site.proxy, site.timeout, site.render)
+        values = (
+            site.id, site.url, site.rss, site.cookie, site.ua,
+            getattr(get_chain_runtime_config_snapshot(), "site_user_agent", None),
+            site.apikey, site.token, site.proxy, site.timeout, site.render,
+        )
         return hashlib.sha256(repr(values).encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -666,7 +669,10 @@ class _RssLinkRecovery:
         """
         if not site.url or not site.cookie:
             return RssLinkResult(message="站点缺少地址或Cookie，无法自动获取RSS")
-        ua = site.ua or get_chain_runtime_config_snapshot().user_agent
+        config = get_chain_runtime_config_snapshot()
+        ua = site_rules.resolve_site_user_agent(
+            site.ua, getattr(config, "site_user_agent", None), config.user_agent
+        )
         generated, message = helper.get_rss_link(
             url=site.url, cookie=site.cookie, ua=ua, proxy=bool(site.proxy),
             timeout=site.timeout, render=bool(site.render),

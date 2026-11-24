@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Tuple
 from urllib.parse import quote
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.runtime.log import logger
@@ -41,6 +42,7 @@ class TorrentLeech:
         初始化站点认证信息和媒体分类配置。
         """
         self._indexer = indexer
+        self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get('ua'), get_runtime_setting)
         if indexer.get('proxy'):
             self._proxy = get_runtime_setting('PROXY')
             self._timeout = indexer.get('timeout') or 15
@@ -161,7 +163,7 @@ class TorrentLeech:
         res = RequestUtils(
             headers={
                 "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": f"{self._indexer.get('ua')}",
+                "User-Agent": f"{self._ua}",
             },
             cookies=self._indexer.get('cookie'),
             proxies=self._proxy,
@@ -195,7 +197,7 @@ class TorrentLeech:
         res = await AsyncRequestUtils(
             headers={
                 "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": f"{self._indexer.get('ua')}",
+                "User-Agent": f"{self._ua}",
             },
             cookies=self._indexer.get('cookie'),
             proxies=self._proxy,

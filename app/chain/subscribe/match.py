@@ -33,7 +33,7 @@ from app.domain.context import (
     TorrentInfo,
 )
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.words import WordsMatcher
+from app.domain.meta.words import WordsMatcher, is_global_custom_words_token
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
@@ -53,6 +53,46 @@ def _record_match_resource(context: Context, decision: str, reason: Optional[str
     activity = current_activity_run()
     if activity:
         activity.resource(context, decision, reason)
+
+
+def _should_reparse_torrent_meta(
+    wordsmatcher: WordsMatcher,
+    torrent_info: TorrentInfo,
+    torrent_meta: MetaBase,
+    custom_words_list: list[str],
+) -> bool:
+    """
+    判断订阅自定义识别词是否需要对候选种子重新执行元数据识别。
+
+    普通覆盖模式下仅在订阅规则命中原始标题或副标题时重算；包含 ``@global`` 时仅在预处理结果相对默认全局规则发生变化
+    （或与候选缓存中的 ``org_string`` 不一致）时重算，避免仅命中全局规则的无关候选重复触发外部元数据查询。
+
+    :param wordsmatcher: 识别词匹配器实例
+    :param torrent_info: 候选种子原始信息
+    :param torrent_meta: 候选种子当前缓存的解析元数据
+    :param custom_words_list: 按行拆分的订阅自定义识别词列表
+    :return: 需要按订阅识别词重新构造 ``MetaInfo`` 并识别媒体时返回 True
+    """
+    raw_title = torrent_info.title or torrent_meta.org_string or ""
+    raw_subtitle = torrent_info.description
+    if not hasattr(wordsmatcher, "prepare_with_subtitle"):
+        _, apply_words = wordsmatcher.prepare(
+            torrent_meta.org_string or raw_title,
+            custom_words=custom_words_list,
+        )
+        return bool(apply_words)
+    custom_title, custom_subtitle, apply_words = wordsmatcher.prepare_with_subtitle(
+        raw_title, raw_subtitle, custom_words=custom_words_list
+    )
+    if not any(is_global_custom_words_token(word) for word in custom_words_list):
+        return bool(apply_words)
+    default_title, default_subtitle, _ = wordsmatcher.prepare_with_subtitle(
+        raw_title, raw_subtitle
+    )
+    if (custom_title, custom_subtitle) != (default_title, default_subtitle):
+        return True
+    cached_org = getattr(torrent_meta, "org_string", None)
+    return bool(apply_words and cached_org is not None and custom_title != cached_org)
 
 
 def _record_filter_rejection(helper: TorrentHelper, context: Context, params: Dict[str, Any]) -> None:
@@ -652,37 +692,34 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     logger.debug(f"{torrent_info.site_name} - {torrent_info.title} 不符合订阅站点要求")
                     continue
 
-                # 有自定义识别词时，需要判断是否需要重新识别
-                if custom_words_list:
-                    # 从原始标题重新应用识别词，避免对已改写文本重复替换。
-                    _, apply_words = wordsmatcher.prepare(
-                        cast(str, torrent_meta.org_string), custom_words=custom_words_list
+                # 有自定义识别词时，仅在实际改变候选预处理结果或命中专属规则时重新识别
+                if custom_words_list and _should_reparse_torrent_meta(
+                    wordsmatcher, torrent_info, torrent_meta, custom_words_list
+                ):
+                    logger.debug(
+                        f"{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据..."
                     )
-                    if apply_words:
-                        logger.debug(
-                            f"{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据..."
+                    torrent_meta = MetaInfo(
+                        title=cast(str, torrent_info.title),
+                        subtitle=torrent_info.description,
+                        custom_words=custom_words_list,
+                    )
+                    _context.meta_info = torrent_meta
+                    torrent_mediainfo = MediaChain().recognize_by_meta(
+                        torrent_meta,
+                        episode_group=subscribe.episode_group,
+                        obtain_images=False,
+                    )
+                    if torrent_mediainfo:
+                        torrent_mediainfo.clear()
+                        _context.media_info = torrent_mediainfo
+                        _context.match_source = _get_media_id_match_source(
+                            torrent_mediainfo
                         )
-                        torrent_meta = MetaInfo(
-                            title=cast(str, torrent_info.title),
-                            subtitle=torrent_info.description,
-                            custom_words=custom_words_list,
+                        _context.candidate_recognized = bool(
+                            resolve_media_identity(media=torrent_mediainfo)[1]
                         )
-                        _context.meta_info = torrent_meta
-                        torrent_mediainfo = MediaChain().recognize_by_meta(
-                            torrent_meta,
-                            episode_group=subscribe.episode_group,
-                            obtain_images=False,
-                        )
-                        if torrent_mediainfo:
-                            torrent_mediainfo.clear()
-                            _context.media_info = torrent_mediainfo
-                            _context.match_source = _get_media_id_match_source(
-                                torrent_mediainfo
-                            )
-                            _context.candidate_recognized = bool(
-                                resolve_media_identity(media=torrent_mediainfo)[1]
-                            )
-                            _context.media_info_is_target = False
+                        _context.media_info_is_target = False
 
                 # 如果仍然没有识别到媒体信息，尝试标题匹配
                 if not torrent_mediainfo or not resolve_media_identity(media=torrent_mediainfo)[1]:

@@ -8,7 +8,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Optional
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper
@@ -361,20 +361,121 @@ def _parse_media_stream(source_id: str, raw: Mapping[str, Any]) -> MediaServerMe
     )
 
 
-def _parse_media_sources(raw: Mapping[str, Any]) -> list[MediaServerMediaSource]:
+def _sanitize_emby_strm_url(cfg: Optional[EmbyBrowseConfig], raw_path: Any) -> Optional[str]:
     """
-    提取条目的全部多版本媒体源及其视频、音频和字幕轨道。
+    校验并规范化 Emby 系媒体源报告的远端 STRM HTTP(S) 直链，排除包含服务端密钥或内嵌凭据的地址。
+
+    :param cfg: 可选 Emby 系协议配置，用于排除带服务端 API 密钥的地址
+    :param raw_path: 媒体源 ``Path`` 字段原始值
+    :return: 可供客户端直连播放的 HTTP(S) 地址；非远端直链或包含敏感凭据时返回 None
+    """
+    if not isinstance(raw_path, str):
+        return None
+    candidate = raw_path.strip().split("|", 1)[0].strip()
+    if not candidate or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate):
+        return None
+    if cfg and cfg.api_key and cfg.api_key in candidate:
+        return None
+    parsed = urlsplit(candidate)
+    scheme = parsed.scheme.casefold()
+    hostname = (parsed.hostname or "").strip().rstrip(".")
+    if (
+        scheme not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        return None
+    safe_path = quote(parsed.path, safe="/:@!$&'()*+,;=-._~%")
+    safe_query = quote(parsed.query, safe="/?:@!$&'()*+,;=-._~%")
+    return urlunsplit((scheme, parsed.netloc, safe_path, safe_query, ""))
+
+
+def _fetch_playback_sources(cfg: EmbyBrowseConfig, item_id: str) -> list[Mapping[str, Any]]:
+    """
+    查询 Emby 系 ``PlaybackInfo`` 接口获取已展开的媒体源列表（含服务端解析后的 STRM 目标地址）。
+
+    :param cfg: Emby 系协议配置
+    :param item_id: 媒体条目标识
+    :return: 原始媒体源字典列表；查询失败时返回空列表
+    """
+    if not cfg.host or not cfg.api_key or not item_id:
+        return []
+    try:
+        pb_params: dict[str, Any] = {}
+        if cfg.user_id:
+            pb_params["UserId"] = cfg.user_id
+        response = cfg.request_factory().get_res(
+            f"{cfg.host}{cfg.api_prefix}Items/{quote(str(item_id), safe='')}/PlaybackInfo",
+            _api_params(cfg, pb_params),
+        )
+        if response is None or response.status_code != 200:
+            return []
+        sources = (response.json() or {}).get("MediaSources") or []
+        return [val for val in sources if isinstance(val, Mapping)]
+    except Exception as err:
+        logger.debug(f"读取 {cfg.server_type} PlaybackInfo 失败：{err}")
+        return []
+
+
+def _extract_emby_source_direct_url(
+    source: Mapping[str, Any], cfg: Optional[EmbyBrowseConfig] = None
+) -> Optional[str]:
+    """
+    从单个 Emby 媒体源字典中提取 STRM HTTP(S) 直链地址。
+
+    :param source: 服务端单个 ``MediaSource`` 字典
+    :param cfg: 可选 Emby 系协议配置
+    :return: 校验通过的 HTTP(S) 直链；本地文件媒体源返回 None
+    """
+    protocol = str(source.get("Protocol") or "").strip().casefold()
+    container = str(source.get("Container") or "").strip().casefold()
+    raw_path = source.get("Path")
+    if protocol == "http" or container == "strm" or bool(source.get("IsRemote")):
+        return _sanitize_emby_strm_url(cfg, raw_path)
+    return None
+
+
+def _parse_media_sources(
+    raw: Mapping[str, Any],
+    *,
+    cfg: Optional[EmbyBrowseConfig] = None,
+    item_id: Optional[str] = None,
+) -> list[MediaServerMediaSource]:
+    """
+    提取条目的全部多版本媒体源及其视频、音频和字幕轨道，并在 STRM 源未展开时补查直链。
 
     :param raw: 服务端原始条目字典
+    :param cfg: 可选 Emby 系协议配置，用于在 STRM 未展开时请求 ``PlaybackInfo``
+    :param item_id: 可选媒体条目标识
     :return: 统一媒体源列表
     """
     sources: list[MediaServerMediaSource] = []
+    playback_by_id: Optional[dict[str, Mapping[str, Any]]] = None
+    item_path_is_strm = str(raw.get("Path") or "").strip().casefold().endswith(".strm")
     for source in raw.get("MediaSources") or []:
         if not isinstance(source, Mapping):
             continue
         source_id = str(source.get("Id") or "").strip()
         if not source_id:
             continue
+        direct_url = _extract_emby_source_direct_url(source, cfg)
+        source_is_strm = (
+            item_path_is_strm
+            or str(source.get("Container") or "").strip().casefold() == "strm"
+            or str(source.get("Path") or "").strip().casefold().endswith(".strm")
+        )
+        if direct_url is None and source_is_strm and cfg is not None and item_id:
+            if playback_by_id is None:
+                playback_by_id = {
+                    str(pb.get("Id") or "").strip(): pb
+                    for pb in _fetch_playback_sources(cfg, item_id)
+                    if str(pb.get("Id") or "").strip()
+                }
+            matched_pb = playback_by_id.get(source_id) or next(iter(playback_by_id.values()), None)
+            if matched_pb is not None:
+                direct_url = _extract_emby_source_direct_url(matched_pb, cfg)
         streams = [
             _parse_media_stream(source_id, item)
             for item in (source.get("MediaStreams") or [])
@@ -388,6 +489,7 @@ def _parse_media_sources(raw: Mapping[str, Any]) -> list[MediaServerMediaSource]
                 size=source.get("Size") if isinstance(source.get("Size"), int) else None,
                 bitrate=source.get("Bitrate") if isinstance(source.get("Bitrate"), int) else None,
                 duration_ms=_ticks_to_ms(source.get("RunTimeTicks")),
+                direct_url=direct_url,
                 streams=streams,
             )
         )
@@ -591,7 +693,7 @@ def emby_item_detail(cfg: EmbyBrowseConfig, item_id: str) -> Optional[MediaServe
         for studio in (raw.get("Studios") or [])
         if studio
     ]
-    media_sources = _parse_media_sources(raw)
+    media_sources = _parse_media_sources(raw, cfg=cfg, item_id=base.item_id)
     play_url = cfg.play_url_builder(base.item_id) if cfg.play_url_builder else None
     item_type = base.item_type
     season_count = raw.get("ChildCount") if item_type == "Series" and isinstance(raw.get("ChildCount"), int) else None
@@ -707,27 +809,17 @@ def emby_stream_url(
         return None
     selected_source_id = media_source_id
     if not selected_source_id:
-        try:
-            pb_params: dict[str, Any] = {}
-            if cfg.user_id:
-                pb_params["UserId"] = cfg.user_id
-            response = cfg.request_factory().get_res(
-                f"{cfg.host}{cfg.api_prefix}Items/{quote(str(item_id), safe='')}/PlaybackInfo",
-                _api_params(cfg, pb_params),
-            )
-            if response is None or response.status_code != 200:
-                return None
-            sources = response.json().get("MediaSources") or []
-            source = next(
-                (val for val in sources if isinstance(val, Mapping) and val.get("Id") and not val.get("RequiresOpening")),
-                None,
-            )
-            if not source:
-                return None
-            selected_source_id = str(source["Id"])
-        except Exception as err:
-            logger.debug(f"读取 {cfg.server_type} PlaybackInfo 失败：{err}")
+        sources = _fetch_playback_sources(cfg, item_id)
+        source = next(
+            (val for val in sources if val.get("Id") and not val.get("RequiresOpening")),
+            None,
+        )
+        if not source:
             return None
+        direct_url = _extract_emby_source_direct_url(source, cfg)
+        if direct_url:
+            return direct_url
+        selected_source_id = str(source["Id"])
 
     route = "Audio" if (item_type or "").casefold() in {"audio", "music", MediaType.MUSIC.value.casefold()} else "Videos"
     play_session_id = hashlib.sha256(

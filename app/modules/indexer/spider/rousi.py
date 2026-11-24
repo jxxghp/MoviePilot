@@ -72,7 +72,7 @@ class RousiSpider:
                 self._proxy = get_runtime_setting('PROXY')
             self._use_proxy = bool(indexer.get('proxy'))
             self._cookie = indexer.get('cookie')
-            self._ua = indexer.get('ua')
+            self._ua = site_rules.resolve_site_user_agent_from_settings(indexer.get('ua'), get_runtime_setting)
             self._apikey = indexer.get('apikey')
             self._timeout = indexer.get('timeout') or 15
 
@@ -342,7 +342,7 @@ class RousiSpider:
             return False, "未配置个人 API Key"
         with RequestUtils(headers={
             "Content-Type": "application/json", "Accept": "application/json", "Authorization": f"Bearer {self._apikey}",
-        }, ua=self._ua or get_runtime_setting("USER_AGENT"), proxies=self._proxy or {},
+        }, ua=site_rules.resolve_site_user_agent_from_settings(self._ua, get_runtime_setting), proxies=self._proxy or {},
             timeout=self._timeout).response_manager(
             method="GET", url=f"https://{self._domain}/api/v1/profile", allow_redirects=False,
         ) as response:

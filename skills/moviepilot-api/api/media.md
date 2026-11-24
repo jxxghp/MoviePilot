@@ -198,7 +198,7 @@ Purpose: 为一个存储项目生成或刷新元数据。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `storage*` (string|null): 操作使用的已配置存储名称或存储类型。
 - `query`: `episode_group` (string|null): TMDB 剧集组编号，用于按指定季集顺序识别电视剧; `media_id` (string|null): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。; `media_source` (MediaSource|null): 元数据来源标识，保留与 media_id 一同返回的精确值。; `music_type` (string|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `type_name` (MediaType|null): 仅凭来源标识无法区分时使用的显式媒体类型名。
-- `body`: `basename` (string|null): 不含扩展名的文件基本名称; `children` (array<FileItem-Input>|null): 子节点; `drive_id` (string|null): 云盘驱动器标识; `extension` (string|null): 文件后缀; `fileid` (string|null): 存储服务分配的文件标识; `modify_time` (number|null): 文件修改时间的 Unix 时间戳; `name` (string|null): 文件名; `parent_fileid` (string|null): 父ID; `path` (string|null; default `/`): 文件路径; `pickcode` (string|null): 115 文件下载提取码; `size` (integer|null): 文件大小; `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储; `thumbnail` (string|null): 缩略图; `type` (string|null): 条目类型，dir 表示目录，file 表示文件; `url` (string|null): 访问地址
+- `body`: `basename` (string|null): 不含扩展名的文件基本名称; `change_time_ns` (integer|null): 本地状态变化时间的 Unix 纳秒值，JSON 使用十进制字符串；用于同路径清理核验，未提供时为 None; `children` (array<FileItem-Input>|null): 子节点; `drive_id` (string|null): 云盘驱动器标识; `extension` (string|null): 文件后缀; `fileid` (string|null): 存储服务分配的文件标识; `modify_time` (number|null): 文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None; `modify_time_ns` (integer|null): 本地修改时间的 Unix 纳秒值，JSON 使用十进制字符串避免精度丢失；旧快照或远端未提供时为 None; `name` (string|null): 文件名; `parent_fileid` (string|null): 父ID; `path` (string|null; default `/`): 文件路径; `pickcode` (string|null): 115 文件下载提取码; `size` (integer|null): 文件大小，单位为字节；目录或来源未提供时可为 None; `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储; `thumbnail` (string|null): 缩略图; `type` (string|null): 条目类型，dir 表示目录，file 表示文件; `url` (string|null): 访问地址
 
 ### `media.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
@@ -215,7 +215,7 @@ Purpose: 按精确媒体身份读取季列表，或回退到标题与年份查�
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
-- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `media_id` (string|null): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。; `media_source` (MediaSource|null): 元数据来源标识，保留与 media_id 一同返回的精确值。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。; `season` (integer): 媒体、搜索、订阅或整理操作使用的季号。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。; `year` (string): 用于区分同名媒体的发行或首映年份。
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `media_id` (string|null): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。; `media_source` (MediaSource|null): 元数据来源标识，保留与 media_id 一同返回的精确值。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。; `season` (integer|null): 媒体、搜索、订阅或整理操作使用的季号。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。; `year` (string|null): 用于区分同名媒体的发行或首映年份。
 - `body`: none
 
 ### `media.sources`
@@ -295,16 +295,18 @@ This category document is self-contained: the shared models below are included s
 ### `FileItem-Input`
 已配置存储提供方返回的一个文件或目录。
 - `basename` (string|null): 不含扩展名的文件基本名称
+- `change_time_ns` (integer|null): 本地状态变化时间的 Unix 纳秒值，JSON 使用十进制字符串；用于同路径清理核验，未提供时为 None
 - `children` (array<FileItem-Input>|null): 子节点
 - `drive_id` (string|null): 云盘驱动器标识
 - `extension` (string|null): 文件后缀
 - `fileid` (string|null): 存储服务分配的文件标识
-- `modify_time` (number|null): 文件修改时间的 Unix 时间戳
+- `modify_time` (number|null): 文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None
+- `modify_time_ns` (integer|null): 本地修改时间的 Unix 纳秒值，JSON 使用十进制字符串避免精度丢失；旧快照或远端未提供时为 None
 - `name` (string|null): 文件名
 - `parent_fileid` (string|null): 父ID
 - `path` (string|null; default `/`): 文件路径
 - `pickcode` (string|null): 115 文件下载提取码
-- `size` (integer|null): 文件大小
+- `size` (integer|null): 文件大小，单位为字节；目录或来源未提供时可为 None
 - `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储
 - `thumbnail` (string|null): 缩略图
 - `type` (string|null): 条目类型，dir 表示目录，file 表示文件
@@ -332,6 +334,7 @@ This runtime model has no directly writable fields.
 - `phase*` (string): 当前执行阶段
 - `source` (string|null): 触发本轮订阅执行的入口或来源
 - `state*` (string): 当前业务状态
+- `submitted_count` (integer; default `0`): 本次任务已添加的下载数量，用于区分已添加下载与暂无资源
 - `task_id` (string|null): 任务标识
 - `updated_at*` (string): 更新时间
 
@@ -340,7 +343,7 @@ This runtime model has no directly writable fields.
 - `category` (string|null): 种子分类 电影/电视剧/音乐
 - `date_elapsed` (string|null): 已过时间
 - `description` (string|null): 种子副标题
-- `downloadvolumefactor` (number|null): 下载因子
+- `downloadvolumefactor` (number|null): 下载统计倍率，例如 0 表示免费下载、0.5 表示按一半下载量计入统计
 - `enclosure` (string|null): 种子链接
 - `freedate` (string|null): 免费截止时间
 - `freedate_diff` (string|null): 剩余免费时间
@@ -361,10 +364,18 @@ This runtime model has no directly writable fields.
 - `site_order` (integer|null; default `0`): 站点优先级
 - `site_proxy` (boolean|null; default `False`): 站点是否使用代理
 - `site_ua` (string|null): 站点UA
-- `size` (number|null; default `0.0`): 种子大小
+- `size` (number|null; default `0.0`): 种子包含的文件总大小，单位为字节
 - `title` (string|null): 种子名称
-- `uploadvolumefactor` (number|null): 上传因子
+- `uploadvolumefactor` (number|null): 上传统计倍率，例如 2 表示按实际上传量的两倍计入站点统计
 - `volume_factor` (string|null): 促销
+
+### `TransferRegistrationAudit`
+服务器记录的外部登记操作者、UTC 时间和文件核验证据。
+- `actor_id*` (integer; minimum `1.0`): 登记管理员的完整用户主键，身份以此字段为准
+- `actor_name*` (string; minimum length `1`): 管理员名称显示快照，最多 128 字符；超长时取前 127 字符加省略号，空名称显示 #用户ID
+- `registered_at*` (string): 服务器生成的 UTC ISO 登记时间
+- `source_state*` (string(present,absent)): 核验时源文件存在或确认不存在
+- `verification*` (string(matching_sizes,native_hardlink,destination_only)): 两端大小匹配、本地硬链接或仅目标存在；均不代表内容校验和
 
 ### `WorkflowExecutionConfig`
 工作流并发、汇合、分支和失败策略。

@@ -486,10 +486,10 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def __site_user_agent(site: dict[str, Any]) -> Optional[str]:
         """
-        使用适配器声明的 User-Agent 规则构造下载上下文。
+        使用适配器声明的 User-Agent 规则或通用站点回退策略构造下载上下文。
 
         :param site: 包含搜索协议和当前用户配置的站点上下文
-        :return: 专站规则处理后的 User-Agent，普通站点保留当前配置值
+        :return: 专站规则或三级优先级解析后的 User-Agent；均为空时返回 None
         """
         raw_ua = site.get("ua")
         normalized_ua = raw_ua.strip() if isinstance(raw_ua, str) else raw_ua
@@ -497,7 +497,7 @@ class IndexerModule(_ModuleBase):
         get_user_agent = getattr(parser_class, "get_user_agent", None)
         if callable(get_user_agent):
             return cast(str, get_user_agent(normalized_ua))
-        return cast(Optional[str], normalized_ua)
+        return site_rules.resolve_site_user_agent_from_settings(normalized_ua, get_runtime_setting) or None
 
     @staticmethod
     def __parse_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[TorrentInfo]:
@@ -546,7 +546,7 @@ class IndexerModule(_ModuleBase):
         return [SubtitleInfo(site=site.get("id"),
                              site_name=site.get("name"),
                              site_cookie=site.get("cookie"),
-                             site_ua=site.get("ua"),
+                             site_ua=IndexerModule.__site_user_agent(site),
                              site_proxy=bool(site.get("proxy")),
                              site_order=int(site.get("pri") or 0),
                              **result) for result in result_array if
@@ -1322,14 +1322,13 @@ class IndexerModule(_ModuleBase):
                                 userdata_path.lstrip("/"),
                             )
                     raw_ua = site.get("ua")
-                    site_ua = raw_ua.strip() if isinstance(raw_ua, str) else ""
                     return site_schema(
                         site_name=site.get("name"),
                         url=site_url,
                         site_cookie=site.get("cookie"),
                         apikey=site.get("apikey"),
                         token=site.get("token"),
-                        ua=site_ua or get_runtime_setting("USER_AGENT"),
+                        ua=site_rules.resolve_site_user_agent_from_settings(raw_ua, get_runtime_setting),
                         proxy=site.get("proxy"),
                         api_url=site.get("api_url"))
             return None

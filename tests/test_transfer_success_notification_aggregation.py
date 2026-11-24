@@ -549,3 +549,191 @@ def test_success_notifications_render_configured_template(chain, monkeypatch, me
     assert message.username == "tester"
     config.get.assert_called_with(SystemConfigKey.NotificationTemplates)
     chain.messageoper.add.assert_called_once()
+
+
+def test_bluray_directory_transfer_reports_real_size_in_aggregated_notification(
+    chain, monkeypatch,
+):
+    """
+    蓝光原盘目录整理经默认成功通知聚合后，应准确展示文件总数与总字节数而非 0.0B。
+    """
+    from app.application.transfer.workflow import TransferPlanningInput
+    from app.modules.filemanager.transhandler import TransHandler
+    from tests.test_filemanager_planning import ReadOnlyTreeStorage, RecordingStorage
+
+    root = FileItem(storage="alist", path="/downloads/Odyssey.2026", name="Odyssey.2026", type="dir")
+    bdmv = FileItem(storage="alist", path="/downloads/Odyssey.2026/BDMV", name="BDMV", type="dir")
+    stream_dir = FileItem(
+        storage="alist", path="/downloads/Odyssey.2026/BDMV/STREAM", name="STREAM", type="dir",
+    )
+    files = [
+        FileItem(
+            storage="alist",
+            path="/downloads/Odyssey.2026/BDMV/STREAM/00001.m2ts",
+            name="00001.m2ts",
+            type="file",
+            extension="m2ts",
+            size=1024,
+        ),
+        FileItem(
+            storage="alist",
+            path="/downloads/Odyssey.2026/BDMV/index.bdmv",
+            name="index.bdmv",
+            type="file",
+            extension="bdmv",
+            size=512,
+        ),
+        FileItem(
+            storage="alist",
+            path="/downloads/Odyssey.2026/BDMV/MovieObject.bdmv",
+            name="MovieObject.bdmv",
+            type="file",
+            extension="bdmv",
+            size=512,
+        ),
+    ]
+    source_tree = ReadOnlyTreeStorage(
+        {
+            root.path: [bdmv],
+            bdmv.path: [stream_dir, files[1], files[2]],
+            stream_dir.path: [files[0]],
+        }
+    )
+    meta = MetaInfo("The.Odyssey.2026.2160p.UHD.Blu-ray")
+    mediainfo = MediaInfo(title="奥德赛", year="2026", type=MediaType.MOVIE, tmdb_id=99999)
+    handler = TransHandler()
+    checkpoint = handler.plan_transfer(
+        TransferPlanningInput(
+            source_fileitem=root.model_dump(mode="json"),
+            target_storage="alist",
+            target_path="/library",
+            requested_transfer_type="copy",
+            need_rename=False,
+            overwrite_mode="never",
+        ),
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=source_tree,
+        target_storage="alist",
+        target_path=Path("/library"),
+        transfer_type="copy",
+        need_scrape=False,
+        need_rename=False,
+        need_notify=True,
+        overwrite_mode="never",
+        episodes_info=None,
+        preview=False,
+    )
+    storage = RecordingStorage([])
+    result = handler.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=storage,
+        target_oper=storage,
+    )
+
+    template = """{
+        'title': '{{ title_year }} 已入库',
+        'text': '共{{ file_count }}个文件，大小：{{ total_size }}'
+    }"""
+    config = Mock()
+    config.get.return_value = {ContentType.OrganizeSuccess.value: template}
+    monkeypatch.setattr("app.application.messaging.message.get_configured_system_config", lambda: config)
+    chain.post_message = TransferChain.post_message.__get__(chain)
+    chain.messageoper = Mock()
+    chain._dispatch_notification_steps = Mock()
+    chain.jobview = JobManager()
+    chain._success_target_files = {}
+    chain.transfer_history_repository = Mock()
+    chain._TransferChain__mark_torrent_completed_if_done = Mock()
+    chain._record_scrape_target = Mock()
+    chain._send_metadata_scrape_event = Mock()
+    chain._is_primary_media_file = Mock(return_value=True)
+    chain.durable_event_writer = Mock()
+    chain.durable_event_writer.transfer_result.return_value = TransferSettlementResult(
+        history_id=1, settlement_revision=1, pending_deleted=True,
+    )
+    monkeypatch.setattr("app.chain.transfer.settlement.clear_transfer_failures", Mock())
+
+    task = TransferTask(
+        fileitem=root,
+        meta=meta,
+        mediainfo=mediainfo,
+        target_path=Path("/library"),
+        transfer_batch_id="bdmv-batch",
+        username="tester",
+        background=True,
+    )
+    task.bind_admission_task_id("task-bdmv")
+    task.bind_execution_lease(owner_id="worker", lease_token="lease-bdmv")
+    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+        payload={"outcome": "succeeded", "transferinfo": result.model_dump(mode="json")},
+        operation_ids=("op-bdmv",),
+    ))
+    chain.jobview.add_task(task)
+    chain._register_scrape_batch_task(task)
+    chain._close_scrape_batch("bdmv-batch")
+
+    chain._TransferChain__default_callback(task, result)
+    chain._finish_scrape_batch_task(task)
+
+    chain._dispatch_notification_steps.assert_called_once()
+    message = chain._dispatch_notification_steps.call_args.args[0]
+    assert message.title == "奥德赛 (2026) 已入库"
+    assert message.text == "共3个文件，大小：2.0K"
+
+
+def test_non_aggregated_notification_preserves_directory_total_size_when_jobview_zero(
+    chain, monkeypatch,
+):
+    """
+    关闭成功通知聚合且源目录无法再统计大小时，结算通知保留执行结果累计的字节数。
+    """
+    chain.runtime_config = replace(chain.runtime_config, transfer_success_notification_aggregation=False)
+    chain.jobview = JobManager()
+    chain._success_target_files = {}
+    chain.transfer_history_repository = Mock()
+    chain._TransferChain__mark_torrent_completed_if_done = Mock()
+    chain._record_scrape_target = Mock()
+    chain._send_metadata_scrape_event = Mock()
+    chain._is_primary_media_file = Mock(return_value=True)
+    chain.durable_event_writer = Mock()
+    chain.durable_event_writer.transfer_result.return_value = TransferSettlementResult(
+        history_id=2, settlement_revision=1, pending_deleted=True,
+    )
+    monkeypatch.setattr("app.chain.transfer.settlement.clear_transfer_failures", Mock())
+
+    root = FileItem(storage="alist", path="/downloads/Odyssey.2026", name="Odyssey.2026", type="dir")
+    meta = MetaInfo("The.Odyssey.2026.2160p.UHD.Blu-ray")
+    mediainfo = MediaInfo(title="奥德赛", year="2026", type=MediaType.MOVIE, tmdb_id=99999)
+    task = TransferTask(
+        fileitem=root,
+        meta=meta,
+        mediainfo=mediainfo,
+        target_path=Path("/library"),
+        username="tester",
+        background=True,
+    )
+    result = TransferInfo(
+        success=True,
+        fileitem=root,
+        target_item=FileItem(storage="alist", path="/library/Odyssey.2026", type="dir"),
+        target_diritem=FileItem(storage="alist", path="/library/Odyssey.2026", type="dir"),
+        file_list_new=["/library/Odyssey.2026/BDMV/index.bdmv"],
+        file_count=1,
+        total_size=4096,
+        need_notify=True,
+    )
+    task.bind_admission_task_id("task-legacy-dir")
+    task.bind_execution_lease(owner_id="worker", lease_token="lease-legacy-dir")
+    task.bind_execution_checkpoint(TransferExecutionCheckpoint.create(
+        payload={"outcome": "succeeded", "transferinfo": result.model_dump(mode="json")},
+        operation_ids=("op-legacy-dir",),
+    ))
+    chain.jobview.add_task(task)
+
+    chain._TransferChain__default_callback(task, result)
+
+    chain.post_message.assert_called_once()
+    assert chain.post_message.call_args.kwargs["transferinfo"].total_size == 4096

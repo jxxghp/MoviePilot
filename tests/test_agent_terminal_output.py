@@ -265,7 +265,7 @@ async def test_output_between_empty_snapshot_and_await_is_not_lost(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_wait_deadline_keeps_session_running_and_usable(terminal_manager):
+async def test_wait_deadline_keeps_session_running_and_usable(monkeypatch, terminal_manager):
     """
     分段等待到期是一次空快照，不能被解释成命令超时或终止。
     """
@@ -275,7 +275,9 @@ async def test_wait_deadline_keeps_session_running_and_usable(terminal_manager):
     assert expired["output"] == "" and _position(expired) == _position(initial)
     assert expired["status"] == "running" and expired["exit_code"] is None
     assert not session.wait_task.done()
+    arrived = _observe_bytes(monkeypatch, session, b"AFTER-WAIT-DEADLINE\n")
     await _input(session, "AFTER-WAIT-DEADLINE\n")
+    await asyncio.wait_for(arrived.wait(), timeout=_DEADLINE)
     resumed = await asyncio.wait_for(terminal_manager.wait(
         session_id=session.session_id, timeout_ms=10000, **_cursor(expired),
     ), timeout=_DEADLINE)

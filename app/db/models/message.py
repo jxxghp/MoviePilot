@@ -38,7 +38,7 @@ class Message(Base):
     userid: Mapped[Optional[str]] = mapped_column(String)
     # 登记时间
     reg_time: Mapped[Optional[str]] = mapped_column(String)
-    # 消息方向：0-接收息，1-发送消息
+    # 消息方向：0-接收消息，1-发送消息
     action: Mapped[Optional[int]] = mapped_column(Integer)
     # 附件json
     note: Mapped[Optional[Any]] = mapped_column(JSON)

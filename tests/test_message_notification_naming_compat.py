@@ -30,6 +30,7 @@ _EXPECTED_RESOLUTIONS = {
     ("app.schemas.message", "Notification"): Message,
     ("app.schemas.message", "CommingMessage"): IncomingMessage,
     ("app.schemas.message", "NotificationHistoryItem"): MessageHistoryItem,
+    ("app.schemas.message", "WebMessageItem"): MessageHistoryItem,
     ("app.schemas.message", "NotificationClearScope"): MessageClearScope,
     ("app.schemas.message", "NotificationClearBefore"): MessageClearBefore,
     ("app.schemas.message", "NotificationClearData"): MessageClearData,
@@ -52,6 +53,7 @@ def test_canonical_modules_do_not_define_legacy_names():
         "Notification",
         "CommingMessage",
         "NotificationHistoryItem",
+        "WebMessageItem",
         "NotificationClearScope",
         "NotificationClearBefore",
         "NotificationClearData",
@@ -89,6 +91,7 @@ def test_schemas_package_level_legacy_imports_resolve():
     assert schemas_package.Notification is Message
     assert schemas_package.CommingMessage is IncomingMessage
     assert schemas_package.NotificationHistoryItem is MessageHistoryItem
+    assert schemas_package.WebMessageItem is MessageHistoryItem
     assert schemas_package.ChannelCapabilityManager is ChannelCapabilityManager
 
 

@@ -6,7 +6,10 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Union, cast
 
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import (
+    get_chain_runtime_config_snapshot,
+    get_configured_system_config,
+)
 from app.application.rss import RssHelper, RssLinkResult, ensure_site_rss
 from app.application.site.observation import SiteSearchObservation, capture_site_search_observation
 from app.application.site.protocol import site_domain, torrent_resource_identity
@@ -19,6 +22,7 @@ from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
+from app.domain import site as site_rules
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -387,7 +391,11 @@ class TorrentsChain(ChainBase):
                     site=site.get("id"),
                     site_name=site.get("name"),
                     site_cookie=site.get("cookie"),
-                    site_ua=site.get("ua") or self.runtime_config.user_agent,
+                    site_ua=site_rules.resolve_site_user_agent(
+                        site.get("ua"),
+                        getattr(self.runtime_config, "site_user_agent", None),
+                        self.runtime_config.user_agent,
+                    ),
                     site_proxy=bool(site.get("proxy")),
                     site_order=int(site.get("pri") or 0),
                     site_downloader=site.get("downloader"),
@@ -410,8 +418,18 @@ class TorrentsChain(ChainBase):
         """
         使用当前站点的代理、超时和 User-Agent 读取订阅。
         """
-        return RssHelper().parse(url, proxy=bool(site.get("proxy")), timeout=int(site.get("timeout") or 30),
-                                 ua=site.get("ua") or None)
+        config = get_chain_runtime_config_snapshot()
+        ua = site_rules.resolve_site_user_agent(
+            site.get("ua"),
+            getattr(config, "site_user_agent", None),
+            config.user_agent,
+        )
+        return RssHelper().parse(
+            url,
+            proxy=bool(site.get("proxy")),
+            timeout=int(site.get("timeout") or 30),
+            ua=ua or None,
+        )
 
     def _recovered_rss_items(self, result: RssLinkResult, site: dict[str, Any]) -> Union[List[dict[str, Any]], bool]:
         """

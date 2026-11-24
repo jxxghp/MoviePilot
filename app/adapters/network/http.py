@@ -506,6 +506,88 @@ def _record_shared_pool_timeout(
             return
 
 
+# 共享 transport 看门任务的登记 owner：每个使用共享 transport 的事件循环
+# 挂一个同 owner 的看门任务，任务名即 owner。须与
+# _ensure_shared_async_transport_watchdog 中 TaskRegistry.create 的 owner
+# 字面量保持一致（任务归属门禁要求该处使用字符串字面量）。
+_SHARED_TRANSPORT_WATCHDOG_OWNER = "http.transport.watchdog"
+
+
+async def _watch_shared_async_transports() -> None:
+    """
+    看门任务：等待被取消，退出时关闭本循环的共享 transport。
+
+    asyncio.run / asyncio.Runner 在关闭循环前会取消全部剩余任务，看门任务
+    借此机会调用 aclose_shared_async_transports()，在循环仍在运行时关闭
+    连接池；常驻循环不受影响（任务一直挂起，直到宿主显式关闭时才被取消）。
+    weakref.finalize 无法替代：桶的值链（transport→连接→循环）让循环对象
+    始终可达，finalize 在桶被弹出前永远不会触发。
+    """
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        await aclose_shared_async_transports()
+        raise
+
+
+def _find_shared_async_transport_watchdog(
+    loop: asyncio.AbstractEventLoop,
+) -> Optional[asyncio.Task[Any]]:
+    """
+    在给定循环的任务中查找共享 transport 看门任务。
+
+    :param loop: 待查找的事件循环
+    :return: 看门任务，未找到时返回 None
+    """
+    for task in asyncio.all_tasks(loop):
+        if task.get_name() == _SHARED_TRANSPORT_WATCHDOG_OWNER:
+            return task
+    return None
+
+
+def _ensure_shared_async_transport_watchdog(
+    loop: asyncio.AbstractEventLoop,
+) -> None:
+    """
+    首次在循环上创建共享 transport 桶时挂看门任务；已存在则不重复创建。
+
+    看门任务经任务登记器创建并按 owner 归属，便于关停阶段统一收口，与本
+    文件退役池关闭共用同一登记路径。须在循环所属线程调用
+    （_get_shared_async_transport 的调用方保证）。登记器已停止时只记警告，
+    不阻断本次请求（退化为修复前的行为）。
+
+    :param loop: 待挂接看门任务的事件循环
+    """
+    if _find_shared_async_transport_watchdog(loop) is not None:
+        return
+    try:
+        get_task_registry().create(
+            _watch_shared_async_transports(),
+            owner="http.transport.watchdog",
+            cancel_on_shutdown=True,
+        )
+    except RuntimeError:  # pragma: no cover - 登记器已停止的防御性分支
+        logger.warning("后台任务登记器已停止，共享 HTTP 连接池看门任务未创建，临时循环退出时连接池可能残留")
+
+
+def _cancel_shared_async_transport_watchdog(
+    loop: asyncio.AbstractEventLoop,
+) -> None:
+    """
+    取消给定循环的看门任务，避免池关闭后循环关闭时残留 pending task。
+
+    调用方就是看门任务本身（临时循环退出时）则跳过，由它在 aclose 返回后
+    自行以 CancelledError 退出。
+
+    :param loop: 待取消看门任务的事件循环
+    """
+    task = _find_shared_async_transport_watchdog(loop)
+    if task is None or task.done():
+        return
+    if task is not asyncio.current_task():
+        task.cancel()
+
+
 def _get_shared_async_transport(
     proxy: Optional[str],
     verify: _VerifySetting,
@@ -538,6 +620,13 @@ def _get_shared_async_transport(
         if per_loop is None:
             per_loop = collections.OrderedDict()
             _shared_async_transports[loop] = per_loop
+            new_loop_bucket = True
+        else:
+            new_loop_bucket = False
+    if new_loop_bucket:
+        # 首次在该循环上建桶时挂看门任务：临时循环退出取消全部任务时由它
+        # 关闭本循环的共享池，避免连接随循环退出而泄漏。
+        _ensure_shared_async_transport_watchdog(loop)
 
     key: _SharedTransportKey = (
         proxy,
@@ -598,6 +687,9 @@ async def aclose_shared_async_transports() -> None:
         ]
         for transport in retiring:
             _shared_transport_recovery[transport].closing = True
+    # 池已弹出：取消本循环的看门任务，避免循环关闭时残留 pending task。
+    # 调用方就是看门任务本身（临时循环退出）时跳过，由它自行退出。
+    _cancel_shared_async_transport_watchdog(loop)
     transports = list(per_loop.values()) if per_loop else []
     if per_loop:
         per_loop.clear()

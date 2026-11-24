@@ -35,6 +35,8 @@ from app.api.dependencies.history import (
 from app.api.response import (
     COLLECTION_TOTAL_HEADER,
     COLLECTION_TOTAL_OPENAPI_KEY,
+    PositiveCountParam,
+    PositivePageParam,
     ResponseAPIRouter,
 )
 from app.application.agent import get_running_agent_manager
@@ -307,14 +309,21 @@ def _resolve_download_history_filters(token: _SchemaTokenPayload) -> dict[str, O
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def download_history(
-    page: Optional[int] = 1,
-    count: Optional[int] = 30,
+    response: Response,
+    page: PositivePageParam = 1,
+    count: PositiveCountParam = 30,
     query: HistoryQueryService = Depends(get_history_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
-    response: Response = None,  # type: ignore[assignment]
 ) -> Any:
     """
-    按下载时间倒序查询下载历史记录
+    按下载时间倒序分页查询下载历史记录，并通过响应头写入精确总数。
+
+    :param response: 由 FastAPI 注入的响应对象，用于设置集合总数响应头
+    :param page: 页码，从 1 开始，最小为 1；直接调用传入 None 时默认第 1 页
+    :param count: 每页最多返回条数，最小为 1；直接调用传入 None 时默认 30 条
+    :param query: 下载与整理历史查询服务
+    :param _: 已验证的访问令牌载荷
+    :return: 当前分页窗口内的下载历史记录列表
     """
     page = page if page is not None else 1
     count = count if count is not None else 30
@@ -356,15 +365,24 @@ def delete_download_history(
 )
 async def transfer_history(
     title: Optional[str] = None,
-    page: Optional[int] = 1,
-    count: Optional[int] = 30,
+    page: PositivePageParam = 1,
+    count: PositiveCountParam = 30,
     status: Optional[bool] = None,
     origin: Optional[Literal["external"]] = None,
     query: HistoryQueryService = Depends(get_history_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    查询整理记录，title 支持通配符 * 和 ?（如 *.mkv、*2024*）
+    按条件分页查询整理记录，title 支持通配符 * 和 ?（如 *.mkv、*2024*）。
+
+    :param title: 可选标题或路径匹配条件，支持通配符与分词模糊检索
+    :param page: 页码，从 1 开始，最小为 1；直接调用传入 None 时默认第 1 页
+    :param count: 每页最多返回条数，最小为 1；直接调用传入 None 时默认 30 条
+    :param status: 可选整理成功状态筛选，None 表示不限制
+    :param origin: 可选来源筛选，external 仅返回外部登记历史
+    :param query: 下载与整理历史查询服务
+    :param _: 已验证的访问令牌载荷
+    :return: 包含当前页整理记录与精确总数的统一响应
     """
     page = page if page is not None else 1
     count = count if count is not None else 30

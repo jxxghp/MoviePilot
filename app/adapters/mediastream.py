@@ -10,7 +10,7 @@ import socket
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Iterator, Optional
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, Request, status
@@ -265,6 +265,74 @@ def _validate_stream_url(url: str, *, configured_hosts: set[str]) -> str:
     return url
 
 
+def _sanitize_strm_direct_url(raw_url: str) -> Optional[str]:
+    """
+    规范化并校验可供客户端直连播放的 STRM HTTP(S) 地址，剔除内嵌凭据与播放器附加头后缀。
+
+    本函数不发起 DNS 或网络请求，仅用于向已认证客户端返回安全的 HTTP(S) 直链文本；
+    服务端代理转发仍须走 ``_validate_stream_url``。
+
+    :param raw_url: STRM 文件或媒体服务器报告的原始地址
+    :return: 规范化后的 HTTP(S) 直链；非 HTTP(S)、包含账号密码或控制字符时返回 None
+    """
+    candidate = raw_url.strip().split("|", 1)[0].strip()
+    if not candidate or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate):
+        return None
+    parsed = urlsplit(candidate)
+    scheme = parsed.scheme.casefold()
+    hostname = (parsed.hostname or "").strip().rstrip(".")
+    if (
+        scheme not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        return None
+    safe_path = quote(parsed.path, safe="/:@!$&'()*+,;=-._~%")
+    safe_query = quote(parsed.query, safe="/?:@!$&'()*+,;=-._~%")
+    return urlunsplit((scheme, parsed.netloc, safe_path, safe_query, ""))
+
+
+def _extract_strm_target_line(content: str) -> Optional[str]:
+    """
+    从 STRM 文本中提取唯一有效的媒体地址行，忽略空行与 ``#`` 注释指令。
+
+    :param content: STRM 文本内容
+    :return: 唯一的目标行文本；为空或包含多条媒体地址时返回 None
+    """
+    lines = [
+        stripped
+        for raw_line in content.splitlines()
+        if (stripped := raw_line.strip()) and not stripped.startswith("#")
+    ]
+    if len(lines) != 1:
+        return None
+    return lines[0]
+
+
+def _extract_local_strm_direct_url(path: Path) -> Optional[str]:
+    """
+    从本机可读的 STRM 文件中提取供客户端直连播放的 HTTP(S) 地址。
+
+    当 STRM 指向本地文件路径、体积超限或编码无效时不抛出异常，仅返回 None，
+    交由常规流校验分支返回对应状态码。
+
+    :param path: 本机 STRM 文件路径
+    :return: 无内嵌凭据的 HTTP(S) 直链地址；不可直连时返回 None
+    """
+    if path.suffix.casefold() != ".strm":
+        return None
+    try:
+        if path.stat().st_size > _STRM_MAX_BYTES:
+            return None
+        content = path.read_text(encoding="utf-8-sig").strip()
+    except (OSError, UnicodeError):
+        return None
+    target = _extract_strm_target_line(content)
+    return _sanitize_strm_direct_url(target) if target else None
+
+
 def _resolve_strm_source(path: Path, configured_hosts: set[str]) -> tuple[str, Path | str]:
     """
     解析单行 STRM 文件为本地媒体文件或经过校验的 HTTP(S) 源。
@@ -285,13 +353,14 @@ def _resolve_strm_source(path: Path, configured_hosts: set[str]) -> tuple[str, P
     except OSError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="STRM 文件不可读取") from None
 
-    lines = [line.strip() for line in content.splitlines() if line.strip()]
-    if len(lines) != 1:
+    target = _extract_strm_target_line(content)
+    if not target:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="STRM 文件内容无效")
-    source = lines[0]
+    source = target.split("|", 1)[0].strip()
     parsed = urlsplit(source)
     if parsed.scheme:
-        return "remote", _validate_stream_url(source, configured_hosts=configured_hosts)
+        normalized = _sanitize_strm_direct_url(source) or source
+        return "remote", _validate_stream_url(normalized, configured_hosts=configured_hosts)
 
     source_path = Path(source)
     if not source_path.is_absolute():

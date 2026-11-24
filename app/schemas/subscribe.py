@@ -43,8 +43,9 @@ def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]
     """
     计算订阅"已完成"集数派生值，仅用于响应填充，不入库。
 
-    普通电视剧按 ``total_episode - lack_episode`` 计算；分集洗版按订阅目标范围内
-    priority==100 的分集数量计算；全集洗版按整包准入基线是否达到 100 计算。
+    以全季总集数为分母，起始集之前的集数视为无需下载并计入已完成：普通电视剧按
+    ``total_episode - lack_episode`` 计算；分集洗版与全集洗版在起始集前的逻辑完成集数基础上，
+    分别叠加订阅目标范围内 ``priority == 100`` 的分集数量，或整包准入基线达到 100 时的目标集数。
 
     :param subscribe: 需要计算进度的订阅快照
     :return: 已完成集数；不是电视剧或没有总集数时返回 None
@@ -315,7 +316,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     @model_validator(mode="after")
     def _fill_completed_episode(self) -> "Subscribe":
         """
-        填充 ``completed_episode`` 派生字段。电视剧订阅按 best_version 分支计算，。
+        填充 ``completed_episode`` 派生字段。电视剧订阅按 best_version 分支计算，
         电影或缺少 total_episode 时保持 None。
         """
         if self.completed_episode is not None:

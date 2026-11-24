@@ -399,9 +399,11 @@ class _BatchDownloadRun:
         torrent = context.torrent_info
         meta = context.meta_info
         assert meta is not None
-        logger.info(f"开始下载种子 {torrent.title} ...")
+        logger.info(f"读取种子文件以核对集数：{torrent.title} ...")
         errors: List[str] = []
-        content, _, files = self.owner.download_torrent(torrent, on_failure=errors.append)
+        content, _, files = self.owner.download_torrent(
+            torrent, on_failure=errors.append, retry=False, notify=False,
+        )
         if not content:
             log_failure = logger.info if partial else logger.warn
             log_failure(f"{torrent.title} 种子下载失败！")

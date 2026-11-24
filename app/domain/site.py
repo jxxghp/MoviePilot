@@ -3,7 +3,7 @@
 """
 
 from io import BytesIO
-from typing import Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from lxml import etree
@@ -162,6 +162,84 @@ def is_valid_http_header_value(value: str) -> bool:
     except UnicodeEncodeError:
         return False
     return True
+
+
+def resolve_site_user_agent(
+    site_ua: Optional[str],
+    configured_ua: Optional[str],
+    default_ua: str,
+    *,
+    host_default_ua: Optional[str] = None,
+) -> str:
+    """
+    按“站点配置 > 通用配置 > 默认值”解析站点访问使用的 User-Agent。
+
+    当单个站点未配置自定义值，或传入值等于宿主全局默认标识（兼容站点资源合并自动回填的默认标识）时，
+    优先回退到系统设定中的通用站点 User-Agent；通用配置也为空时再使用兜底默认值。
+
+    :param site_ua: 单个站点配置的 User-Agent，或经站点资源合并后的值
+    :param configured_ua: 站点选项中配置的通用默认 User-Agent
+    :param default_ua: 当前访问场景的兜底默认 User-Agent
+    :param host_default_ua: 宿主全局默认 User-Agent；专站默认浏览器标识与宿主默认标识不同时用于识别资源回填值
+    :return: 去除首尾空白后的最终请求 User-Agent
+    """
+    normalized_default = default_ua.strip() if isinstance(default_ua, str) else ""
+    normalized_host_default = (
+        host_default_ua.strip()
+        if isinstance(host_default_ua, str)
+        else normalized_default
+    )
+    normalized_site = site_ua.strip() if isinstance(site_ua, str) else ""
+    if (
+        normalized_site
+        and normalized_site != normalized_default
+        and normalized_site != normalized_host_default
+    ):
+        return normalized_site
+    normalized_configured = (
+        configured_ua.strip() if isinstance(configured_ua, str) else ""
+    )
+    if normalized_configured:
+        return normalized_configured
+    if normalized_site and normalized_site == normalized_default:
+        return normalized_site
+    return normalized_default
+
+
+def read_optional_setting(
+    setting_getter: Callable[[str], Any],
+    key: str,
+) -> Optional[str]:
+    """
+    通过注入的配置读取器安全读取可选字符串配置，兼容只声明部分键的测试桩。
+
+    :param setting_getter: 外部注入的配置读取函数
+    :param key: 配置项键名
+    :return: 字符串配置值；缺失或为 None 时返回 None
+    """
+    try:
+        value = setting_getter(key)
+    except (AttributeError, KeyError):
+        return None
+    return str(value) if value is not None else None
+
+
+def resolve_site_user_agent_from_settings(
+    site_ua: Optional[str],
+    setting_getter: Callable[[str], Any],
+) -> str:
+    """
+    通过注入的设置读取函数按“站点配置 > 通用配置 > 默认值”解析站点 User-Agent。
+
+    :param site_ua: 站点自身配置或资源合并后的 User-Agent
+    :param setting_getter: 外部注入的运行时设置读取函数
+    :return: 去除首尾空白后的最终请求 User-Agent
+    """
+    return resolve_site_user_agent(
+        site_ua,
+        read_optional_setting(setting_getter, "SITE_USER_AGENT"),
+        read_optional_setting(setting_getter, "USER_AGENT") or "",
+    )
 
 
 def find_invalid_http_header_names(headers: Optional[Mapping[str, object]]) -> list[str]:
