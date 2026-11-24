@@ -203,6 +203,8 @@ def test_retry_fetches_new_ticket_after_temporary_content_failure(boundary: Simp
 def test_ticket_failure_reaches_preparation_and_batch_cooldown(boundary: SimpleNamespace, partial: Optional[bool]) -> None:
     """
     单资源准备、完整包和拆包读取都持久化真实换票原因，并只写一次一小时冷却。
+
+    拆包读取仅核对集数，失败时不推送下载失败告警。
     """
     boundary.ticket.post.return_value = _response({"message": "torrent not found"}, 404)
     if partial is None:
@@ -216,13 +218,34 @@ def test_ticket_failure_reaches_preparation_and_batch_cooldown(boundary: SimpleN
                        username=None, downloader=None, custom_words=None, governance=None)
         batch = _BatchDownloadRun(boundary.chain, [], {}, options, None)
         assert batch._read_torrent(boundary.context, partial=partial) is None
-        error = boundary.chain.post_message.call_args.args[0].text.split("错误信息：", 1)[1].split("\n站点：", 1)[0]
+        boundary.chain.post_message.assert_not_called()
+        error = boundary.chain.download_failure_repository.record_failure.call_args.args[0].error_message
 
     boundary.chain.download_failure_repository.record_failure.assert_called_once()
     write = boundary.chain.download_failure_repository.record_failure.call_args.args[0]
     assert write.error_message == error and error.startswith("换票失败：")
     assert (datetime.fromisoformat(write.next_retry_at) - datetime.fromisoformat(write.failed_at)).total_seconds() == 3600
     assert write.source == "Subscribe|7372"
+
+
+def test_batch_torrent_read_does_not_retry_or_notify_on_missing_link(boundary: SimpleNamespace) -> None:
+    """
+    仅核对集数的种子读取不把“无法打开链接”当作瞬时失败重试，也不推送下载失败告警。
+    """
+    boundary.torrent.enclosure = "https://tracker.example/download?id=39"
+    boundary.port.request.return_value = None
+    options = dict(save_path=None, channel=None, source="Subscribe|7372", userid=None,
+                   username=None, downloader=None, custom_words=None, governance=None)
+    batch = _BatchDownloadRun(boundary.chain, [], {}, options, None)
+
+    assert batch._read_torrent(boundary.context, partial=True) is None
+
+    boundary.port.request.assert_called_once()
+    torrent_download.time.sleep.assert_not_called()
+    boundary.chain.post_message.assert_not_called()
+    boundary.chain.download_failure_repository.record_failure.assert_called_once()
+    write = boundary.chain.download_failure_repository.record_failure.call_args.args[0]
+    assert write.error_message == "无法打开链接"
 
 
 def test_missing_content_result_still_reports_failure(boundary: SimpleNamespace) -> None:

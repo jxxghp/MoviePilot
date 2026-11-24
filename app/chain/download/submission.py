@@ -753,12 +753,17 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                          source: Optional[str] = None,
                          userid: Union[str, int, None] = None,
                          on_failure: Optional[Callable[[str], None]] = None,
+                         *,
+                         retry: bool = True,
+                         notify: bool = True,
                          ) -> Tuple[Optional[Union[str, bytes]], str, list[str]]:
         """
         下载种子文件，如果是磁力链，会返回磁力链接本身
         换票种子按站点资源和原始换票凭据复用本地内容，命中后不再请求临时链接。
 
         :param on_failure: 将本次具体失败原因交还准备流程，保持返回元组与并发调用隔离
+        :param retry: 是否对普通 GET 瞬时失败退避重试；仅核对集数的读取应关闭
+        :param notify: 失败时是否推送下载失败告警；仅核对集数的读取应关闭
         :return: 种子内容，种子目录名，种子文件清单
         """
         enclosure = torrent.enclosure
@@ -773,7 +778,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             logger.info(f"{torrent.title} 命中下载失败黑名单，跳过下载")
             return None, "", []
         torrent = self._with_site_credentials(torrent)
-        result = self._get_torrent_content(torrent)
+        result = self._get_torrent_content(torrent, retry=retry)
         if result is None:
             reason = "换票失败：未获取到下载地址" if enclosure.startswith("[") else "无法获取下载地址"
             result = None, "", [], reason
@@ -788,13 +793,14 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             if not enclosure.startswith("[") and error_msg and "种子数据有误" in error_msg:
                 helper.add_invalid(enclosure)
             logger.error(f"下载种子文件失败：{torrent.title}，{error_msg}")
-            self.post_message(Message(
-                channel=channel,
-                source=source if channel else None,
-                mtype=MessageType.Manual,
-                title=f"{torrent.title} 种子下载失败！",
-                text=f"错误信息：{error_msg}\n站点：{torrent.site_name}",
-                userid=userid))
+            if notify:
+                self.post_message(Message(
+                    channel=channel,
+                    source=source if channel else None,
+                    mtype=MessageType.Manual,
+                    title=f"{torrent.title} 种子下载失败！",
+                    text=f"错误信息：{error_msg}\n站点：{torrent.site_name}",
+                    userid=userid))
             return None, "", []
 
         return content, download_folder or "", files or []
@@ -810,13 +816,14 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         scope = json.dumps((identity, torrent.enclosure, torrent.site_cookie))
         return f"resource-{hashlib.sha256(scope.encode('utf-8')).hexdigest()}.torrent"
 
-    def _get_torrent_content(self, torrent: TorrentInfo) -> Optional[Tuple[
+    def _get_torrent_content(self, torrent: TorrentInfo, *, retry: bool = True) -> Optional[Tuple[
         Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str],
     ]]:
         """
         先读取已验证的换票种子内容；缓存损坏时重新换票，失败与磁力链不缓存。
 
         :param torrent: 含原始资源地址和站点认证上下文的候选
+        :param retry: 是否对普通 GET 瞬时失败退避重试
         :return: 内容、目录、文件列表及失败原因；换票失败不作为资源损坏处理
         """
         if not torrent.enclosure:
@@ -854,7 +861,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             reason = "换票失败：未获取到下载地址" if indirect_download else "无法获取下载地址"
             return None, "", [], reason
         _, content, download_folder, files, error_msg = self._download_torrent_content(
-            torrent, torrent_url, site_cookie, indirect_download
+            torrent, torrent_url, site_cookie, indirect_download, retry=retry
         )
         if indirect_download and not content and torrent_rules.rate_limit_cooldown(error_msg) is None:
             # 临时票据的错误页或失效不证明原种子损坏，下一次调用仍应重新换票。
@@ -871,9 +878,13 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             url: str,
             cookie: Optional[str],
             indirect_download: bool,
+            *,
+            retry: bool = True,
     ) -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str]]:
         """
         短时签名失效时刷新同一资源并重试一次，最终失败再交由调用方冷却。
+
+        :param retry: 是否对普通 GET 瞬时失败退避重试；仅核对集数的读取应关闭
         """
         helper: TorrentHelper = cast(Any, TorrentHelper)()
         for attempt in range(2):
@@ -887,7 +898,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                     self.runtime_config.user_agent,
                 ),
                 proxy=torrent.site_proxy,
-                cache_invalid=not (indirect_download or expiring),
+                cache_invalid=retry and not (indirect_download or expiring),
                 site_id=torrent.site,
             )
             if result[1] or attempt or indirect_download or not expiring:
