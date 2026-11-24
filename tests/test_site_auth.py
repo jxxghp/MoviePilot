@@ -192,15 +192,15 @@ def test_auth_failure_response_keeps_the_requested_language(monkeypatch, locale,
 
 
 @pytest.mark.parametrize("locale,expected", [
-    ("en-US", "Page reachable (login checked according to site settings; user-authentication endpoint not verified)"),
-    ("zh-TW", "網頁可存取（依站點設定檢查登入狀態，未驗證使用者認證介面）"),
+    ("en-US", "Connection successful"),
+    ("zh-TW", "連線成功"),
 ])
-def test_connectivity_scope_response_keeps_the_requested_language(monkeypatch, locale, expected) -> None:
+def test_connectivity_success_response_keeps_the_requested_language(monkeypatch, locale, expected) -> None:
     """
-    站点测试成功的范围说明经过 API 翻译后再由前端展示。
+    站点测试成功提示经过 API 翻译后再由前端展示。
     """
     chain = Mock()
-    chain.test.return_value = (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")
+    chain.test.return_value = (True, "连接成功")
     monkeypatch.setattr(site_endpoint, "SiteChain", Mock(return_value=chain))
     query = Mock(get_sync=Mock(return_value=SimpleNamespace(domain="site.test")))
     token = LocaleHelper.set_current_locale(locale)

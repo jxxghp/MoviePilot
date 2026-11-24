@@ -213,7 +213,7 @@ def test_unconfigured_site_port_fails_without_implicit_adapter() -> None:
     [
         (None, (False, "无法打开网站！")),
         (_FakeResponse(429, reason="rate"), (False, "错误：429 rate！")),
-        (_FakeResponse(200, text="ok"), (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")),
+        (_FakeResponse(200, text="ok"), (True, "连接成功")),
     ],
 )
 def test_http_port_preserves_failure_tristate_and_closes_response(
@@ -613,7 +613,7 @@ def test_site_connection_keeps_cookie_when_hdwing_redirects_to_https(monkeypatch
         id=1, name="瓷器", domain="hdwing.org", url="http://hdwing.org/", cookie="uid=1",
     )
 
-    assert _chain()._SiteChain__test(site) == (True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）")
+    assert _chain()._SiteChain__test(site) == (True, "连接成功")
     assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
 
 

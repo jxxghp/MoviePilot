@@ -407,7 +407,6 @@
     "无法打开网站！": "Unable to open the site!",
     "无法获取Token": "Unable to get token",
     "连接成功": "Connection successful",
-    "网页可访问（按站点设置检查登录状态，未验证用户认证接口）": "Page reachable (login checked according to site settings; user-authentication endpoint not verified)",
     "请求超时": "Request timed out",
     "DNS 解析失败": "DNS resolution failed",
     "代理连接失败": "Proxy connection failed",

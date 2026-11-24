@@ -743,13 +743,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def test(self, url: str) -> Tuple[bool, str]:
         """
-        测试站点连通性，并在适配器支持时检查对应的认证接口。
+        测试站点连通性。
 
-        通用网页检测会检查页面可达性和已保存 Cookie 的登录状态，但不会验证独立的
-        UID、Passkey 或 API Key 认证参数。
+        专属适配器站点通过对应接口校验认证与连通性，其余站点检查网页可达性及
+        已保存 Cookie 的登录状态。
 
         :param url: 站点域名
-        :return: 检测是否通过及对应的范围或失败原因
+        :return: 是否连通及连接成功提示或失败原因
         """
         domain = site_domain(url)
         repository = self.site_repository
@@ -786,7 +786,12 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __test(self, site_info: SiteSnapshot) -> Tuple[bool, str]:
         """
-        通用站点测试
+        通用站点连通性测试。
+
+        按站点配置以直接请求或浏览器仿真访问页面，并对非公开站点校验 Cookie 登录状态。
+
+        :param site_info: 待检测站点的只读配置快照
+        :return: 是否连通及连接成功提示或失败原因
         """
         site_url = site_info.url
         site_cookie = site_info.cookie or ""
@@ -842,7 +847,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     return False, f"错误：{res.status_code} {res.reason}！"
                 else:
                     return False, "无法打开网站！"
-        return True, "网页可访问（按站点设置检查登录状态，未验证用户认证接口）"
+        return True, "连接成功"
 
     def _interaction_handler(self) -> "SiteInteractionHandler":
         """
