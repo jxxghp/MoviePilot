@@ -232,7 +232,7 @@ def search_danmaku(
     :param count: 兼容分页每页条数（省略时返回完整列表）
     :return: 作品搜索结果列表
     """
-    _ = page, count
+    del page, count
     try:
         items = service.search(keyword, episode=episode, anime_type=anime_type)
     except DanmakuError as err:
