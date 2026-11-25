@@ -335,6 +335,49 @@ def test_navidrome_subsonic_scrobble_now_playing_and_threshold() -> None:
     assert calls[-1][1]["id"] == "song-1"
 
 
+@pytest.mark.parametrize(
+    ("position_ms", "duration_ms", "playback_time_ms", "should_scrobble"),
+    [
+        pytest.param(480_000, 600_000, 2_000, False, id="seek-ahead"),
+        pytest.param(250_000, None, 0, False, id="reported-zero"),
+        pytest.param(10_000, 180_000, 90_000, True, id="elapsed-half"),
+        pytest.param(10_000, 900_000, 240_000, True, id="elapsed-four-minutes"),
+        pytest.param(250_000, None, None, True, id="legacy-position"),
+    ],
+)
+def test_navidrome_scrobble_prefers_elapsed_listening_time(
+    monkeypatch: pytest.MonkeyPatch,
+    position_ms: int,
+    duration_ms: Optional[int],
+    playback_time_ms: Optional[int],
+    should_scrobble: bool,
+) -> None:
+    """
+    有累计播放时长时按实际收听计次；拖动进度条不算收听，旧客户端仍可按位置估算。
+    """
+    client = object.__new__(Navidrome)
+    client.user = "music_user"
+    request = Mock(return_value={"status": "ok"})
+    monkeypatch.setattr(client, "_call", request)
+
+    result = client.report_progress(
+        "song-1",
+        position_ms=position_ms,
+        duration_ms=duration_ms,
+        state="stopped",
+        playback_time_ms=playback_time_ms,
+    )
+
+    assert result["reported"] is True
+    assert result["scrobbled"] is should_scrobble
+    if should_scrobble:
+        request.assert_called_once()
+        assert request.call_args.args == ("scrobble",)
+        assert request.call_args.kwargs["submission"] == "true"
+    else:
+        request.assert_not_called()
+
+
 def test_upstream_stream_strips_extra_headers_on_cross_origin_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证上游流代理在同源主机透传会话头，遇跨源 302 重定向自动剥离会话头。"""
     captured_calls: list[tuple[str, dict[str, str]]] = []
