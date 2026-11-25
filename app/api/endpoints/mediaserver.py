@@ -158,7 +158,10 @@ def _resolve_stream_item(
     if not _is_file_stream_ticket(itemid):
         server_name, item, path = _find_stream_item(itemid, **({"server": server} if server else {}))
         return server_name, item, path
-    storage_ticket = _resolve_storage_file_stream_ticket(itemid, user_id)
+    try:
+        storage_ticket = _resolve_storage_file_stream_ticket(itemid, user_id)
+    except HTTPException:
+        storage_ticket = None
     if storage_ticket is not None:
         storage_item, ticket_media_type = storage_ticket
         item_type = "Audio" if ticket_media_type == "audio" else "Episode"

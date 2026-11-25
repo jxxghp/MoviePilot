@@ -469,6 +469,28 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("fileitem", "path"),
     ),
+    "supports_file_stream": ModuleMethodContract(
+        family="storage",
+        input_contract="StorageStreamSupportRequest",
+        result_contract="bool | None",
+        result_shape=ModuleResultShape.BOOLEAN,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("storage",),
+    ),
+    "get_file_stream_url": ModuleMethodContract(
+        family="storage",
+        input_contract="StorageStreamUrlRequest",
+        result_contract="tuple[str, dict[str, str]] | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("fileitem",),
+    ),
+    "open_file_stream": ModuleMethodContract(
+        family="storage",
+        input_contract="StorageOpenStreamRequest",
+        result_contract="tuple[BinaryIO, int] | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("fileitem",),
+    ),
     "upload_file": ModuleMethodContract(
         family="storage",
         input_contract="StorageUploadRequest",

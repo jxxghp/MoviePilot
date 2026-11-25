@@ -301,7 +301,11 @@
     "STRM 上游不支持 Range，无法提供可靠跳转": "The STRM source does not support Range requests, so reliable seeking is unavailable",
     "该音乐格式不支持在线播放": "This music format cannot be streamed",
     "仅支持本地媒体文件": "Only local media files are supported",
+    "仅支持媒体文件": "Only media files are supported",
     "该文件格式不支持在线播放": "This file format cannot be streamed",
+    "该文件格式不支持在线流式播放": "This file format does not support online streaming",
+    "该存储暂不支持在线流式播放": "This storage does not support online streaming",
+    "未找到远端媒体文件": "Remote media file was not found",
     "媒体服务器剧集查询失败": "The media server failed to look up the episode",
     "未找到媒体服务器字幕": "Media server subtitle was not found",
     "媒体服务器浏览请求失败": "Media server browse request failed",
@@ -735,6 +739,10 @@
     {
       "source": "订阅分类无效：{reason}",
       "target": "Invalid subscription classification: {reason}"
+    },
+    {
+      "source": "订阅媒体类型无效：{type}",
+      "target": "Invalid subscription media type: {type}"
     },
     {
       "source": "不支持的推荐来源: {source}",

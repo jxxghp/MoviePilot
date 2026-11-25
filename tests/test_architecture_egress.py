@@ -127,7 +127,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.discord.discord", "discord"): "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
     ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
-    ("app.modules.filemanager.storages.smb", "smbclient"): "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
+    ("app.modules.filemanager.storages.smb", "smbclient"): "bfc6993d05d5d33dfcb8044fda6c89a3cc3c599fecb0fe327cefd9e1f9145092",
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
