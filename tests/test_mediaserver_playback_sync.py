@@ -370,7 +370,9 @@ def test_upstream_stream_strips_extra_headers_on_cross_origin_redirect(monkeypat
 
 
 def test_session_registry_ordering_idempotency_and_throttle() -> None:
-    """验证播放会话注册表具备乱序丢弃、终态停止幂等和 UserData 30 秒节流能力。"""
+    """
+    验证播放会话注册表具备乱序丢弃、终态停止幂等和 UserData 30 秒节流能力。
+    """
     registry = playback_app.PlaybackSessionRegistry()
     sess, skip1, allow1 = registry.begin_progress_event(
         play_session_id="sid-1",
@@ -390,7 +392,7 @@ def test_session_registry_ordering_idempotency_and_throttle() -> None:
     )
     assert skip1 is False
     assert allow1 is True
-    registry.record_progress_outcome(sess, state="playing", userdata_written=True)
+    registry.record_progress_outcome(sess, state="playing", seq=2, reported=True, userdata_written=True)
 
     # 乱序旧包 seq=1 应被跳过
     _, skip_old, _ = registry.begin_progress_event(
@@ -450,7 +452,7 @@ def test_session_registry_ordering_idempotency_and_throttle() -> None:
     )
     assert skip_stop is False
     assert allow_stop is True
-    registry.record_progress_outcome(sess_stop, state="stopped")
+    registry.record_progress_outcome(sess_stop, state="stopped", seq=4, reported=True)
 
     _, skip_dup_stop, _ = registry.begin_progress_event(
         play_session_id="sid-1",
@@ -469,6 +471,59 @@ def test_session_registry_ordering_idempotency_and_throttle() -> None:
         play_method="DirectPlay",
     )
     assert skip_dup_stop is True
+
+
+@pytest.mark.parametrize(("failed_seq", "retry_seq"), [(4, 4), (4, 5), (None, None)])
+def test_failed_stop_progress_is_sent_again(
+    isolated_playback_env: _InMemorySystemConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    failed_seq: Optional[int],
+    retry_seq: Optional[int],
+) -> None:
+    """
+    播放停止上报失败后，客户端补报应再次请求媒体服务器，成功后仍忽略重复上报。
+    """
+    chain = Mock()
+    chain.report_progress_detail.side_effect = [
+        {"reported": False, "mode": "session"},
+        {"reported": True, "mode": "session"},
+    ]
+    configs = [MediaServerConf(name="播放服务器", type="plex", enabled=True)]
+    monkeypatch.setattr(mediaserver_endpoint, "get_mediaserver_configs", lambda: configs)
+    monkeypatch.setattr(mediaserver_endpoint, "MediaServerChain", lambda: chain)
+
+    app = FastAPI()
+    app.include_router(mediaserver_endpoint.router, prefix="/api/v1/mediaserver")
+    app.dependency_overrides[api_verify_token] = lambda: TokenPayload(sub=7, username="alice")
+    path = "/api/v1/mediaserver/progress"
+    payload = {
+        "server": "播放服务器",
+        "item_id": "movie-1",
+        "play_session_id": "stop-retry",
+        "state": "stopped",
+        "position_ms": 42000,
+        "seq": failed_seq,
+    }
+
+    with TestClient(app) as client:
+        failed = client.post(path, json=payload).json()
+        assert not failed["success"]
+        assert not failed["data"]["reported"]
+
+        if failed_seq is not None:
+            client.post(path, json={**payload, "seq": failed_seq - 1})
+            client.post(path, json={**payload, "state": "playing"})
+            chain.report_progress_detail.assert_called_once()
+
+        payload["seq"] = retry_seq
+        retried = client.post(path, json=payload).json()
+        assert retried["success"]
+        assert retried["data"]["reported"]
+        assert chain.report_progress_detail.call_count == 2
+
+        repeated = client.post(path, json=payload).json()
+        assert repeated["data"]["reported"]
+        assert chain.report_progress_detail.call_count == 2
 
 
 def test_account_binding_endpoints_and_auxiliary_auth_capture(
