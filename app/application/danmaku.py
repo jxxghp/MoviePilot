@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional, Protocol
+from typing import Any, Optional, Protocol
 from urllib.parse import urlencode, urlsplit
 
 from app.application.configuration import get_configured_system_config
