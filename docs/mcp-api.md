@@ -916,3 +916,6 @@ REST 调用示例：
 `GET /api/v1/notification/channels` 增加 `providers`（类型到显示名称）和按连接 ID 的 `capabilities`，包含规则/目标类型、标签键、线程/账号筛选、回调令牌/登录管理能力及交互表单扩展键。能力不携带凭据，也不授予业务权限。`PUT .../{connection_id}/interaction` 的规范扩展输入为 `platform_options`；后端模块负责校验。Discord 的旧 `command_guild_id` 输入/输出保留兼容；canonical 持久化不再保存该 flat 字段。通知规则后端验证始终执行，前端不根据平台名自行解释地址。公开 MCP 工具和插件调用方式不变。
 
 `NotificationChannel` 的内置编码保持兼容，扩展传输为 `platform:<小写标识>`（本体 1–55 字符）；可解析的标识不授予信任或权限。管理员直接录入成员绑定请求中的稳定连接 ID，provider 和传输类型由服务端连接配置确定。`AdmissionProof` 的 provider/namespace/来源只在宿主私有入口生成，公开消息 JSON 不接受这些信任事实。
+
+
+渠道 SDK v1 及公开兼容接口的边界见[接入与兼容台账](channel-refactor/sdk-boundaries.md)。现有消息 HTTP 路径、API_TOKEN/登录认证及返回结构保留；来源明确时固定宿主 parser，省略来源只接受唯一规范结果，公开参数不能设置 SDK 信任标记或私有证明。成功响应代表任务提交，不代表成员已批准或业务操作已获授权。旧通知配置写入仍通过当前资源服务执行身份、revision 与权限保护。

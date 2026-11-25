@@ -10,6 +10,7 @@ type = "notification"
 subtype = "DingTalk"
 priority = 11
 
+channel_api_version = 1
 channel_extension = "app.modules.dingtalk.channel:DingtalkPlatform"
 
 channel_interaction = false

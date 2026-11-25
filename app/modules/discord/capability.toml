@@ -10,6 +10,7 @@ type = "notification"
 subtype = "Discord"
 priority = 4
 
+channel_api_version = 1
 channel_extension = "app.modules.discord.channel:DiscordPlatform"
 
 channel_interaction = true

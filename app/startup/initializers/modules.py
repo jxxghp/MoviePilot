@@ -41,7 +41,6 @@ from app.application.messaging.chat import (
 from app.application.messaging.ingress import (
     configure_platform_payload_receiver,
     configure_verified_event_claim,
-    configure_verified_message_receiver,
 )
 from app.application.messaging.message import (
     MessageHelper,
@@ -289,11 +288,10 @@ def configure_runtime_data_providers() -> None:
 
     configure_verified_event_claim(partial(claim_inbound_event, SessionFactory))
     configure_platform_payload_receiver(
-        lambda body, source, channel, connection_id: MessageChain().process_platform_payload(
-            body, source, channel, connection_id,
+        lambda body, source, channel, connection_id, provider, namespace, owner, revision: MessageChain().process_platform_payload(
+            body, source, channel, connection_id, provider, namespace, owner, revision,
         ),
     )
-    configure_verified_message_receiver(lambda info: MessageChain().process_incoming(info))
     configure_connection_reconciler(_reconcile_channel_connections)
     configure_connection_identity_probe(_probe_channel_identity)
     configure_inactive_channel_manager(_manage_inactive_notification)
@@ -314,7 +312,6 @@ def reset_runtime_data_providers() -> None:
     configure_inactive_channel_manager(None)
     configure_connection_reconciler(None)
     configure_platform_payload_receiver(None)
-    configure_verified_message_receiver(None)
     configure_verified_event_claim(None)
     reset_module_runtime()
     reset_service_config_reader()

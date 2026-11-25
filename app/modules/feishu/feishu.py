@@ -19,7 +19,7 @@ from app.adapters.network.http import RequestUtils
 from app.adapters.network.ip import IpUtils
 from app.adapters.system.attachment import image_upload_bytes, image_upload_file, load_image
 from app.application.messaging.channel.admin import matches_channel_admin
-from app.application.messaging.ingress import submit_message_to_host, submit_platform_payload
+from app.application.messaging.ingress import submit_bound_payload as _submit_bound_payload
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo
 from app.foundation import size as size_tools
@@ -86,7 +86,7 @@ class Feishu:
         :param kwargs: 通知实例传入的其他配置，当前忽略
         """
         self._name = name or "feishu"
-        self._connection_id = kwargs.get("connection_id")
+        self._message_ingress = kwargs.get("message_ingress")
         self._app_id = (FEISHU_APP_ID or "").strip()
         self._app_secret = (FEISHU_APP_SECRET or "").strip()
         self._default_open_id = (FEISHU_OPEN_ID or "").strip() or None
@@ -208,20 +208,12 @@ class Feishu:
         finally:
             self._ready.clear()
 
-    def _forward_to_message_chain(self, payload: JsonDict) -> bool:
+    def _forward_to_message_chain(self, payload: dict[str, Any]) -> bool:
         """
-        将飞书入站消息转发到统一消息入口，复用现有交互主链。
+        将已认证事件交给当前连接的绑定入口；提交失败在当前路径结束。
         """
-        forwarded = submit_platform_payload(
-            payload, self._name, NotificationChannel.Feishu,
-            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
-        )
-        if forwarded is not None:
-            return forwarded
-        return submit_message_to_host(
-            payload,
-            self._name,
-            submit=ThreadHelper().submit,
+        return _submit_bound_payload(
+            payload, getattr(self, "_message_ingress", None), self._name, submit=ThreadHelper().submit,
         )
 
     @staticmethod
@@ -501,12 +493,12 @@ class Feishu:
             userid,
             callback_data,
         )
-        self._forward_to_message_chain(payload)
+        accepted = self._forward_to_message_chain(payload)
 
         return {
             "toast": {
-                "type": "info",
-                "content": "操作已提交",
+                "type": "info" if accepted else "error",
+                "content": "操作已提交" if accepted else "操作提交失败，请重试",
             }
         }
 
@@ -585,6 +577,7 @@ class Feishu:
 
         :return: 接收线程已退出且完成会话清理时返回 True；等待 5 秒后线程仍存活时返回 False
         """
+        self._message_ingress = None
         self._ready.clear()
         ws_client = self._ws_client
         ws_thread = self._ws_thread

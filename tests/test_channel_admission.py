@@ -159,7 +159,7 @@ def test_group_callback_requires_current_authenticated_gateway(monkeypatch, poli
     send = Mock()
     monkeypatch.setattr(bot, "_send_raw", send)
     submit = Mock()
-    monkeypatch.setattr("app.modules.wechat.wechatbot.submit_verified_message", submit)
+    monkeypatch.setattr(bot, "_message_ingress", submit)
     monkeypatch.setattr("app.modules.wechat.wechatbot.time.time", lambda: 1000)
 
     bot._on_open(current)
@@ -182,12 +182,10 @@ def test_group_callback_requires_current_authenticated_gateway(monkeypatch, poli
     bot._on_message(Mock(), event(body))
     submit.assert_not_called()
     bot._on_message(current, event(body))
-    (incoming, _) = submit.call_args.args
-    assert (incoming.userid, incoming.chat_id, incoming.message_id) == ("alice", "group:allowed-group", "message")
-    assert incoming._admission_proof.connection_id == policy.connection_id
-    assert incoming._admission_proof.expires_at == 1060
+    incoming = submit.call_args.args[0]["body"]
+    assert (incoming["from"]["userid"], incoming["chatid"], incoming["msgid"]) == ("alice", "allowed-group", "message")
     message = WechatModule()._notification_target(
-        Mock(private_delivery=False, original_chat_id=incoming.chat_id),
+        Mock(private_delivery=False, original_chat_id=f"group:{incoming["chatid"]}"),
         NotificationConf(config={"WECHAT_MODE": "bot"}),
     )
     assert message == "group:allowed-group"
@@ -302,9 +300,11 @@ def test_sdk_rule_proof_requires_current_connection_and_cannot_come_from_json(mo
     monkeypatch.setattr(chain, "run_module", lambda _method, **_: IncomingMessage(
         channel=channel, source="corp", userid="alice", text="搜索电影", chat_id="allowed-group", conversation_type="group",
     ))
+    monkeypatch.setattr("app.chain.message.get_channel_authorization", lambda: object())
     chain.process(body, None, {"source": "corp"})
     chain.process_platform_payload(body, "corp", channel, "stale-connection")
-    chain.process_platform_payload(body, "corp", channel, config.id)
+    monkeypatch.setattr("app.chain.message.get_channel_authorization", lambda: object())
+    chain.process_platform_payload(body, "corp", channel, config.id, "telegram", config.id, "TelegramModule", policy.revision)
     assert len(received) == 2 and received[0] is None
     assert received[1].conversation == "allowed-group"
     assert received[1].connection_id == config.id

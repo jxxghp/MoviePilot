@@ -86,7 +86,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         """
         通知可以独立发送，网关只在启用机器人交互时启动。
         """
-        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_gateway": conf.interaction_enabled is not False}
+        return {**super()._service_kwargs(conf), "start_gateway": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:

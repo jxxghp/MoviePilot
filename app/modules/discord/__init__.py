@@ -92,7 +92,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         """
         仅通知模式启动出站客户端，不连接 Gateway。
         """
-        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_gateway": conf.interaction_enabled is not False}
+        return {**super()._service_kwargs(conf), "start_gateway": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:

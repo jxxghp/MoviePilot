@@ -68,7 +68,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         """
         以通知模式运行时只创建 Slack Web API 客户端。
         """
-        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_socket": conf.interaction_enabled is not False}
+        return {**super()._service_kwargs(conf), "start_socket": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:

@@ -10,6 +10,7 @@ type = "notification"
 subtype = "Feishu"
 priority = 2
 
+channel_api_version = 1
 channel_extension = "app.modules.feishu.channel:FeishuPlatform"
 
 channel_interaction = true

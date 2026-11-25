@@ -149,7 +149,8 @@ def test_saved_clawbot_login_targets_stable_id_even_when_disabled(module, monkey
                                      saved_connection=True, WECHATCLAWBOT_BASE_URL="https://other.example")
     assert resolved["data"]["connected"] is True
     assert build.call_args.kwargs == {"identity": "stored-id", "name": "stored-id",
-                                     "WECHATCLAWBOT_BASE_URL": "https://fixture.example", "auto_start_polling": False}
+                                     "WECHATCLAWBOT_BASE_URL": "https://fixture.example", "auto_start_polling": False,
+                                     "message_ingress": None}
     close.assert_called_once()
     runtime.assert_not_called()
 

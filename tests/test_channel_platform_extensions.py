@@ -22,16 +22,17 @@ from app.db.adapters.authorization import authorization_scope
 from app.db.models.authorization import ChannelAuthorization
 from app.db.models.user import User
 from app.db.session import SessionFactory
-from app.domain.authorization import ChannelActor, channel_actor_ids
+from app.domain.authorization import channel_actor_ids
 from app.modules import _MessageBase
 from app.modules._base.channel import ChannelPlatformBase
 from app.runtime.capabilities.model import ActivationPolicy, CapabilitySpec, SelectorSpec
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.extensions.module.channel import ModuleChannelCatalog
-from app.schemas.channel import ChannelPlatformCapabilities, NotificationRule
+from app.schemas.channel import NotificationRule
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
 from app.schemas.types import MessageType, NotificationChannel, SystemConfigKey
+from app.sdk.channel import CHANNEL_EXTENSION_API_VERSION, ChannelActor, ChannelPlatformCapabilities
 
 
 class FixturePlatform(ChannelPlatformBase):
@@ -93,6 +94,7 @@ def extension(monkeypatch, db):
             "priority": 0,
             "channel_extension": __name__ + ":FixturePlatform",
             "channel_interaction": True,
+            "channel_api_version": CHANNEL_EXTENSION_API_VERSION,
         },
         selector=SelectorSpec("service", {"match_value": FixturePlatform.provider}),
         watch=(),
@@ -529,7 +531,7 @@ class BoundaryFixtureModule(_MessageBase):
         """
         import json
 
-        from app.schemas.message import IncomingMessage
+        from app.sdk.channel import IncomingMessage
 
         if source != self.connection.name:
             return None
@@ -552,18 +554,14 @@ class BoundaryFixtureModule(_MessageBase):
         import hmac
         import json
 
-        from app.application.messaging.ingress import submit_platform_payload
+        from app.application.messaging.ingress import bind_platform_payload
 
         content = json.dumps(payload, sort_keys=True).encode()
         if not hmac.compare_digest(hmac.digest(self.key, content, "sha256").hex(), signature):
             return False
-        return submit_platform_payload(
-            payload,
-            self.connection.name,
-            self._channel,
-            self.connection.id,
-            submit=lambda operation, *args: operation(*args),
-        )
+        bound = bind_platform_payload(self.connection)
+        assert bound is not None and CHANNEL_EXTENSION_API_VERSION == 1
+        return bound(payload, submit=lambda operation, *args: operation(*args))
 
 
 def test_independent_platform_authenticated_lifecycle_with_all_builtins(extension, monkeypatch, db):
@@ -616,6 +614,7 @@ def test_independent_platform_authenticated_lifecycle_with_all_builtins(extensio
     )
     monkeypatch.setattr(chain, "_module_dispatcher", dispatcher)
     monkeypatch.setattr(auth, "_configured_service", service)
+    monkeypatch.setattr("app.chain.message.get_notification_configs", lambda: configs)
     monkeypatch.setattr(ingress, "_platform_payload_receiver", chain.process_platform_payload)
     monkeypatch.setattr(ingress, "_verified_event_claim", partial(claim_inbound_event, SessionFactory))
     db.watermark(OutboxMessage)
@@ -697,11 +696,17 @@ def test_independent_platform_authenticated_lifecycle_with_all_builtins(extensio
     assert proof_facts[-1].provider == FixturePlatform.provider
     assert proof_facts[-1].identity_namespace == config.identity_namespace
     assert proof_facts[-1].ingress_source == "authenticated_sdk"
+    chain.process(json.dumps({
+        "event": "legacy-approved", "sender": "PERSON::alice", "text": "/noai 搜索 legacy approved",
+        "group": "ROOM::red",
+    }).encode(), None, {"source": config.name})
+    assert len(effects) == 2 and effects[-1][0] == member.user_id
+    assert proof_facts[-1] is None
     with pytest.raises(PermissionError):
         service.resolve(FixturePlatform.channel, configs[1].name, "p-alice")
     service.update(member.id, status="disabled", role="member", scopes=("search",), reviewer_id=1)
     receive("PERSON::alice", "搜索 disabled", group="ROOM::red")
-    assert len(effects) == 1
+    assert len(effects) == 2
     config.interaction_policy = config.interaction_policy.model_copy(
         update={
             "admission": "rules",
@@ -709,17 +714,22 @@ def test_independent_platform_authenticated_lifecycle_with_all_builtins(extensio
             "admission_rules": (AdmissionRule(kind="group", target="ROOM::red", scopes=("search",)),),
         }
     )
-    receive("PERSON::bob", "搜索 by rule", group="ROOM::red")
+    chain.process(json.dumps({
+        "event": "legacy-proof-spoof", "sender": "PERSON::bob", "text": "搜索 forged proof", "group": "ROOM::red",
+        "_admission_proof": {"connection_id": config.id, "sender": "p-bob", "conversation": "ROOM::red"},
+    }).encode(), None, {"source": config.name, "_authenticated_sdk": True})
     assert len(effects) == 2
+    receive("PERSON::bob", "搜索 by rule", group="ROOM::red")
+    assert len(effects) == 3
     assert module.receive(*frames[-1]) is True
-    assert len(effects) == 2  # 重放帧不能再次执行规则授权的业务。
+    assert len(effects) == 3  # 重放帧不能再次执行规则授权的业务。
     bob = service.find(FixturePlatform.channel, config.name, "p-bob")
     assert bob.status == "pending" and effects[-1][0] == bob.user_id
     receive("PERSON::bob", "搜索 wrong group", group="ROOM::blue")
-    assert len(effects) == 2
+    assert len(effects) == 3
     service.update(bob.id, status="rejected", role="member", scopes=(), reviewer_id=1)
     receive("PERSON::bob", "搜索 rejected", group="ROOM::red")
-    assert len(effects) == 2
+    assert len(effects) == 3
     assert spy.call_count == 0
     assert auth._admission_proof.get() is None
     assert directory.get("telegram").channel == "Telegram"
@@ -1013,3 +1023,50 @@ def test_public_transport_schema_preserves_builtin_values_and_namespaced_extensi
     assert all(member.value != maximum for member in NotificationChannel)
     with pytest.raises(ValueError):
         NotificationChannel(123)
+
+
+@pytest.mark.parametrize("version", [2, True, "1", None])
+def test_host_platform_registration_rejects_unknown_api_versions(extension, version):
+    """
+    注册表投影拒绝未知版本，版本值不能通过布尔或字符串的宽松转换获得信任。
+    """
+    from dataclasses import replace
+
+    from app.runtime.extensions.module.channel import ModuleChannelPlatform
+
+    directory, _, _ = extension
+    spec = directory.get(FixturePlatform.provider)._spec
+    with pytest.raises(ValueError, match="契约版本"):
+        ModuleChannelPlatform(replace(spec, metadata=dict(spec.metadata) | {"channel_api_version": version}))
+
+
+def test_plugin_capability_cannot_masquerade_as_host_platform_owner(extension):
+    """
+    即使完整复制宿主渠道元数据，可安装插件也不能取得宿主解析 owner 身份。
+    """
+    from dataclasses import replace
+
+    from app.runtime.extensions.module.channel import ModuleChannelPlatform
+
+    directory, _, _ = extension
+    spec = directory.get(FixturePlatform.provider)._spec
+    with pytest.raises(ValueError, match="插件不能冒充"):
+        ModuleChannelPlatform(replace(spec, kind="plugin"))
+
+
+def test_legacy_host_manifest_defaults_to_v1_without_granting_extra_capability(extension):
+    """
+    未标版本的已发布宿主清单按第一版解释，全部内置平台和独立平台共存。
+    """
+    from dataclasses import replace
+
+    from app.runtime.extensions.module.channel import ModuleChannelPlatform
+
+    directory, _, _ = extension
+    spec = directory.get(FixturePlatform.provider)._spec
+    metadata = dict(spec.metadata)
+    metadata.pop("channel_api_version")
+    legacy = ModuleChannelPlatform(replace(spec, metadata=metadata))
+    assert legacy.api_version == CHANNEL_EXTENSION_API_VERSION == 1
+    assert len(directory.providers()) == 13
+    assert all(entry.api_version == 1 for entry in directory.providers())

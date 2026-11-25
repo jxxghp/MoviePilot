@@ -21,8 +21,7 @@ from app.adapters.network.http import RequestUtils
 from app.adapters.system.attachment import load_image
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.image import build_wechat_image_url
-from app.application.messaging.ingress import submit_message_to_host, submit_verified_message
-from app.domain.admission import AdmissionProof
+from app.application.messaging.ingress import submit_bound_payload as _submit_bound_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -76,6 +75,7 @@ class WeChatBot:
         """
         self._config_name = name or "wechat"
         self._interaction_policy = interaction_policy
+        self._message_ingress = kwargs.get("message_ingress")
         self._bot_id = WECHAT_BOT_ID
         self._bot_secret = WECHAT_BOT_SECRET
         self._default_chat_id = WECHAT_BOT_CHAT_ID.strip() if WECHAT_BOT_CHAT_ID else None
@@ -173,6 +173,7 @@ class WeChatBot:
 
         :return: 两个线程均已退出时返回 True，否则返回 False
         """
+        self._message_ingress = None
         self._stop_event.set()
         self._authenticated.clear()
         if self._ws_app:
@@ -661,9 +662,13 @@ class WeChatBot:
         mime_type = self._guess_mime_type(content, payload.get("mime_type") or "image/jpeg")
         return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
-    def _receive_verified_text(self, body: Dict[str, Any], sender: str) -> bool:
+    def _receive_verified_text(self, body: Dict[str, Any], sender: str) -> Optional[bool]:
         """
         将当前官方长连接收到的群聊或单聊文本交给宿主判定。
+
+        :param body: 当前 SDK 连接收到的平台事件
+        :param sender: 事件中的个人发送者
+        :return: 未使用此文本入口时为 None；否则返回提交结果，失败也不能再次提交
         """
         policy = getattr(self, "_interaction_policy", None)
         chat_type = body.get("chattype")
@@ -672,41 +677,38 @@ class WeChatBot:
             not policy or not policy.enabled or not self._is_verified_text_callback(body)
             or chat_type not in {"group", "single"} or (chat_type == "group" and not chat_id)
         ):
-            return False
+            return None
         text = re.sub(r"@\S+", "", self._extract_text_from_body(body) or "").strip()
         event_id = body.get("msgid")
         if not text or not isinstance(event_id, str) or not event_id.strip():
-            return False
+            return None
         if chat_id is None and not (policy.admission_rules or policy.auto_download_rules):
-            return False
+            return None
         if chat_id is None:
             self._remember_target(sender)
-        info = IncomingMessage(
-            channel=NotificationChannel.Wechat, source=self._config_name, userid=sender,
-            text=text, chat_id=f"group:{chat_id}" if chat_id else None,
-            conversation_type="group" if chat_id else "private", message_id=event_id,
-        )
-        info._admission_proof = AdmissionProof(
-            policy.connection_id, policy.revision, sender, chat_id, time.time() + 60, private=chat_id is None,
-        )
-        submit_verified_message(info, ThreadHelper().submit)
-        return True
+        return self._forward_to_message_chain({"body": body})
 
     def _is_verified_text_callback(self, body: Dict[str, Any]) -> bool:
         """
         确认事件来自当前官方已认证连接并发给本机器人。
         """
+        return self._is_verified_callback(body) and body.get("msgtype") == "text"
+
+    def _is_verified_callback(self, body: Dict[str, Any]) -> bool:
+        """
+        将 SDK 认证连接、机器人身份与停机状态一并约束于当前事件。
+        """
         return (
             self._authenticated.is_set() and not self._stop_event.is_set()
             and self._ws_url == self._default_ws_url and body.get("aibotid") == self._bot_id
-            and body.get("msgtype") == "text" and "compat_info" not in body
+            and "compat_info" not in body
         )
 
     def _handle_callback_message(self, payload: Dict[str, Any]) -> None:
         """
         接收私聊文本、图片、语音或文件，记录互动用户并检查管理员命令权限。
 
-        可信群文本经过平台证明路径；私聊的兼容报文交给统一消息入口。
+        群组文本和私聊使用同一个绑定入口；文本提交失败后也不得重复提交。
 
         :param payload: 完整机器人消息回调报文
         """
@@ -715,7 +717,7 @@ class WeChatBot:
         if not sender:
             return
 
-        if self._receive_verified_text(body, sender) or body.get("chattype") == "group":
+        if self._receive_verified_text(body, sender) is not None or body.get("chattype") == "group":
             return
 
         text = self._extract_text_from_body(body)
@@ -759,10 +761,11 @@ class WeChatBot:
         :param payload: 保留来源字段的机器人回调报文
         :return: 入口任务成功提交时返回 True，否则返回 False
         """
-        return submit_message_to_host(
-            payload,
-            self._config_name,
-            submit=ThreadHelper().submit,
+        if not self._is_verified_callback(payload.get("body") or {}):
+            logger.warning("企业微信入站未接受：reason=not_authenticated_or_stopping")
+            return False
+        return _submit_bound_payload(
+            payload, getattr(self, "_message_ingress", None), self._config_name, submit=ThreadHelper().submit,
         )
 
     @staticmethod

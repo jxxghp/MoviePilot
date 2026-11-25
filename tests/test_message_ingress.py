@@ -1,8 +1,9 @@
 """
-多消息渠道复用统一宿主回环入口的契约测试。
+宿主 SDK 单路径入站、生命周期封口与显式插件 HTTP 兼容契约。
 """
 
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 from urllib.parse import parse_qs, urlparse
@@ -15,31 +16,9 @@ from app.modules.feishu import feishu as feishu_module
 from app.modules.qqbot import qqbot as qqbot_module
 from app.modules.slack import slack as slack_module
 from app.modules.telegram import telegram as telegram_module
-from app.modules.wechat import wechatbot as wechat_module
 from app.modules.wechatclawbot import wechatclawbot as clawbot_module
-from app.schemas.message import IncomingMessage
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-
-@pytest.mark.parametrize("submission", ["missing", "accepted", "rejected", "stopped"])
-def test_verified_message_submission_acknowledges_only_accepted_work(monkeypatch, submission):
-    """
-    已验证消息只在后台执行器接受后确认，停机和背压时保留平台重试机会。
-    """
-    receiver = Mock()
-    info = IncomingMessage()
-    submit = Mock(return_value=submission == "accepted")
-    if submission == "stopped":
-        submit.side_effect = RuntimeError("executor stopped")
-    monkeypatch.setattr(ingress, "_verified_receiver", None if submission == "missing" else receiver)
-
-    assert ingress.submit_verified_message(info, submit) is (submission == "accepted")
-    if submission == "missing":
-        submit.assert_not_called()
-    else:
-        submit.assert_called_once_with(receiver, info)
-    receiver.assert_not_called()
 
 
 class _FakeMessageIngressPort:
@@ -261,100 +240,54 @@ def test_submit_message_to_host_copies_payload_and_reports_admission_failure():
 
 
 @pytest.mark.parametrize(
-    ("module", "client_type", "source_attr"),
+    "module,client_type,source_attr",
     [
         (feishu_module, feishu_module.Feishu, "_name"),
         (qqbot_module, qqbot_module.QQBot, "_config_name"),
-        (wechat_module, wechat_module.WeChatBot, "_config_name"),
-    ],
-)
-def test_threaded_channels_submit_through_managed_executor(
-    monkeypatch,
-    module,
-    client_type,
-    source_attr,
-):
-    """
-    原裸线程渠道必须把回环任务交给共享 ThreadHelper。
-    """
-    calls = []
-    executor = SimpleNamespace(submit=lambda *_args, **_kwargs: None)
-
-    def submit_message(payload, source, *, submit, timeout=15):
-        """
-        记录渠道传给统一提交边界的参数。
-        """
-        calls.append((payload, source, submit, timeout))
-        return True
-
-    monkeypatch.setattr(module, "ThreadHelper", lambda: executor)
-    monkeypatch.setattr(module, "submit_message_to_host", submit_message)
-    client = object.__new__(client_type)
-    setattr(client, source_attr, "channel-main")
-
-    assert client._forward_to_message_chain({"text": "hello"}) is True
-    assert calls == [({"text": "hello"}, "channel-main", executor.submit, 15)]
-
-
-@pytest.mark.parametrize(
-    ("module", "client_type", "source_attr"),
-    [
         (telegram_module, telegram_module.Telegram, "_config_name"),
+        (slack_module, slack_module.Slack, "_config_name"),
         (clawbot_module, clawbot_module.WechatClawBot, "_config_name"),
     ],
 )
-def test_sync_channels_forward_through_shared_ingress(
-    monkeypatch,
-    module,
-    client_type,
-    source_attr,
-):
+@pytest.mark.parametrize("accepted", [True, False, None])
+def test_sdk_clients_use_only_the_bound_ingress(monkeypatch, module, client_type, source_attr, accepted):
     """
-    同步轮询渠道必须复用统一回环请求和确认语义。
+    已装配、拒绝及身份缺失均只走绑定提交，不调用已保留的插件 HTTP 兼容路径。
     """
-    forward = MagicMock(return_value=True)
-    monkeypatch.setattr(module, "forward_message_to_host", forward)
+    executor = SimpleNamespace(submit=Mock())
+    monkeypatch.setattr(module, "ThreadHelper", lambda: executor)
     client = object.__new__(client_type)
     setattr(client, source_attr, "channel-main")
-
-    assert client._forward_to_message_chain({"text": "hello"}) is True
-    forward.assert_called_once_with({"text": "hello"}, "channel-main")
-
-
-def test_slack_preserves_callback_timeout_through_shared_ingress(monkeypatch):
-    """
-    Slack action 的历史长超时必须继续传给统一入口。
-    """
-    forward = MagicMock(return_value=True)
-    monkeypatch.setattr(slack_module, "forward_message_to_host", forward)
-    client = object.__new__(slack_module.Slack)
-    client._config_name = "slack-main"
-
-    assert client._forward_to_message_chain({"action": "run"}, timeout=60) is True
-    forward.assert_called_once_with(
-        {"action": "run"},
-        "slack-main",
-        timeout=60,
-    )
+    bound = Mock(return_value=accepted) if accepted is not None else None
+    client._message_ingress = bound
+    if module is clawbot_module:
+        client._stop_event = Event()
+    payload = {"text": "hello"}
+    extra = {"timeout": 60} if module is slack_module else {}
+    port = ingress._message_ingress_snapshot()
+    assert client._forward_to_message_chain(payload, **extra) is (accepted is True)
+    if bound is not None:
+        bound.assert_called_once_with(payload, submit=executor.submit)
+    assert port.sync_calls == [] and port.async_calls == []
 
 
 @pytest.mark.asyncio
-async def test_discord_uses_shared_async_ingress(monkeypatch):
+@pytest.mark.parametrize("accepted", [True, False, None])
+async def test_discord_uses_only_the_bound_ingress(monkeypatch, accepted):
     """
-    Discord 自有事件循环不得继续维护独立 httpx 回环实现。
+    Discord 自有事件循环也只提交绑定任务，失败不能切换为 HTTP。
     """
-    forward = AsyncMock(return_value=True)
-    monkeypatch.setattr(discord_module, "async_forward_message_to_host", forward)
+    executor = SimpleNamespace(submit=Mock())
+    monkeypatch.setattr(discord_module, "ThreadHelper", lambda: executor)
     client = object.__new__(discord_module.Discord)
     client._config_name = "discord-main"
-
-    await client._post_to_ds({"text": "hello"})
-
-    forward.assert_awaited_once_with(
-        {"text": "hello"},
-        "discord-main",
-        timeout=10,
-    )
+    bound = Mock(return_value=accepted) if accepted is not None else None
+    client._message_ingress = bound
+    assert await client._post_to_ds({"text": "hello"}) is (accepted is True)
+    if bound is not None:
+        bound.assert_called_once_with({"text": "hello"}, submit=executor.submit)
+    port = ingress._message_ingress_snapshot()
+    assert port.sync_calls == [] and port.async_calls == []
 
 
 def test_message_modules_cannot_reimplement_loopback_endpoint():
@@ -383,19 +316,21 @@ def test_platform_payload_submission_preserves_queue_acknowledgement(monkeypatch
     if outcome == "stopped":
         submit.side_effect = RuntimeError("executor stopped")
     monkeypatch.setattr(ingress, "_platform_payload_receiver", receiver)
+    monkeypatch.setattr("app.application.security.authorization.get_channel_authorization", lambda: object())
     payload = {"text": object() if outcome == "invalid_payload" else "hello"}
 
     assert ingress.submit_platform_payload(
         payload, "fixture", NotificationChannel.Telegram, "connection", submit=submit,
+        provider="telegram", identity_namespace="namespace", parser_owner="TelegramModule", policy_revision=1,
     ) is (outcome == "accepted")
     receiver.assert_not_called()
     if outcome == "invalid_payload":
         submit.assert_not_called()
     else:
         call = submit.call_args.args
-        assert call[0] is receiver
-        assert json.loads(call[1]) == payload
-        assert call[2:] == ("fixture", NotificationChannel.Telegram, "connection")
+        assert call[0] is ingress._deliver_platform_payload and call[1] is receiver
+        assert json.loads(call[2]) == payload
+        assert call[3:] == ("fixture", NotificationChannel.Telegram, "connection", "telegram", "namespace", "TelegramModule", 1)
 
 
 def test_verified_event_claim_fails_closed_when_shared_store_is_unavailable(monkeypatch):

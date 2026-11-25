@@ -49,7 +49,7 @@ from app.application.messaging.session import MessageSessionService
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
-from app.application.notification import channel_interaction_is_enabled
+from app.application.notification import channel_interaction_is_enabled, get_notification_configs
 from app.application.security.authorization import (
     ChannelAuthorizationService,
     get_channel_authorization,
@@ -282,37 +282,87 @@ class MessageChain(ChainBase):
 
     def process(self, body: Any, form: Any, args: Any) -> None:
         """
-        调用模块识别消息内容
+        保留公开 HTTP 回调，并按当前配置固定宿主解析 owner；旧插件结果不产生可信证明。
         """
+        if get_channel_authorization() is None or self.stop_state.is_system_stopped:
+            logger.warning("HTTP 渠道入口未就绪或已停机，消息未处理")
+            return
+        args = dict(args or {})
+        args.pop("_authenticated_sdk", None)
         source = args.get("source")
-        info = self.message_parser(source=source, body=body, form=form, args=args)
-        if not info:
-            logger.info("消息链路未识别到有效消息: source=%s", source)
+        info = self._parse_http_message(source, body, form, args)
+        if not info or info.channel in {NotificationChannel.Web, NotificationChannel.WebAgent}:
+            logger.info(f"HTTP 渠道未产生有效外部消息：source={source}")
             return
         self.process_incoming(info, source)
 
+    def _parse_http_message(self, source: str | None, body: Any, form: Any, args: Any) -> IncomingMessage | None:
+        """
+        从注册表选择规范宿主解析器；省略来源的旧回调只接受唯一解析结果。
+        """
+        current = [config for config in get_notification_configs() if source is None or config.name == source]
+        configs = [config for config in current if config.interaction_enabled is not False]
+        if source is not None and current and not configs:
+            logger.warning(f"HTTP 渠道入口拒绝：reason=interaction_disabled, source={source}")
+            return None
+        owners = {platform.module_id: platform for config in configs
+                  if (platform := channel_platform.platform_catalog().get(config.type or "")) is not None}
+        if not owners:
+            info = self.run_module("message_parser", source=source, body=body, form=form, args=args)
+            if isinstance(info, IncomingMessage):
+                info._admission_proof = None
+                return info
+            return None
+        candidates = []
+        for owner, platform in owners.items():
+            info = self.run_module("message_parser", _host_module=owner, source=source, body=body, form=form, args=args)
+            if isinstance(info, IncomingMessage) and info.channel and info.channel.value == platform.channel:
+                matches = [config for config in configs if config.name == info.source and config.type == platform.provider]
+                if len(matches) == 1:
+                    candidates.append(info)
+        if len(candidates) > 1:
+            logger.warning(f"HTTP 渠道入口拒绝：reason=ambiguous_connection, source={source}")
+        return candidates[0] if len(candidates) == 1 else None
+
     def process_platform_payload(
         self, body: bytes, source: str, channel: NotificationChannel, connection_id: str,
+        provider: str | None = None, identity_namespace: str | None = None,
+        parser_owner: str | None = None, policy_revision: int | None = None,
     ) -> None:
         """
-        仅由宿主内已认证 SDK 调用，在普通解析结果上附加来源证明。
+        复核宿主 SDK 的冻结身份及明确解析 owner，再独立执行通用授权。
         """
+        if self.stop_state.is_system_stopped:
+            logger.warning(f"SDK 入站未处理：reason=stopping, source={source}")
+            return
         try:
             config = ChannelAuthorizationService.notification(channel.value, source, connection_id=connection_id)
             platform = channel_platform.platform_for_channel(channel.value, provider=config.type)
+            if (
+                get_channel_authorization() is None or provider != config.type
+                or identity_namespace != (config.identity_namespace or config.id)
+                or parser_owner != platform.module_id
+                or policy_revision != (config.interaction_policy.revision if config.interaction_policy else 0)
+            ):
+                raise PermissionError("SDK 连接身份、解析 owner 或策略版本已改变")
         except (PermissionError, ValueError):
+            logger.warning(f"SDK 入站拒绝：reason=identity_or_revision_changed, source={source}")
             return
         info = self.run_module(
-            "message_parser", _host_module=platform.module_id, source=source, body=body, form=None, args={},
+            "message_parser", _host_module=platform.module_id, source=source, body=body, form=None,
+            args={"_authenticated_sdk": True},
         )
         if not isinstance(info, IncomingMessage) or info.channel != channel or info.source != source:
+            logger.warning(f"SDK 入站未处理：reason=parser_rejected, source={source}")
             return
         policy = config.interaction_policy
         if info.userid is None:
+            logger.warning(f"SDK 入站未处理：reason=actor_missing, source={source}")
             return
         try:
             channel_platform.resolve_actor_ids(channel.value, str(info.userid), provider=config.type)
         except ValueError:
+            logger.warning(f"SDK 入站未处理：reason=invalid_actor, source={source}")
             return
         group = platform.conversation(str(info.chat_id)) if info.chat_id and info.conversation_type == "group" else None
         proof = AdmissionProof(

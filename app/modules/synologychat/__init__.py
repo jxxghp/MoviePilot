@@ -19,7 +19,7 @@ from app.application.messaging.delivery import (
     NotificationParts,
     notification_preflight_active,
 )
-from app.domain.admission import AdmissionProof
+from app.domain.admission import AdmissionProof as _AdmissionProof
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.synologychat.synologychat import SynologyChat
@@ -195,8 +195,10 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                 event_id = message.get("post_id")
                 if policy and isinstance(event_id, str) and event_id:
                     incoming.message_id = event_id
-                    incoming._admission_proof = AdmissionProof(
+                    incoming._admission_proof = _AdmissionProof(
                         client_config.id, policy.revision, str(user_id), None, time.time() + 60,
+                        provider=client_config.type, identity_namespace=client_config.identity_namespace or client_config.id,
+                        ingress_source="verified_http",
                     )
                 return incoming
         except Exception as err:

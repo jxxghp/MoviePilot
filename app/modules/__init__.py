@@ -18,6 +18,7 @@ from app.application.messaging.delivery import (
     notification_rules_for_dispatch,
     platform_message_id,
 )
+from app.application.messaging.ingress import bind_platform_payload as _bind_platform_payload
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
@@ -367,6 +368,15 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         """
         super().__init__()
         self._channel: Optional[NotificationChannel] = None
+
+    def _service_kwargs(self, conf: NotificationConf) -> Dict[str, Any]:
+        """
+        先展开平台配置，再用宿主绑定覆盖入口参数，禁止配置字段伪造信任来源。
+
+        :param conf: 当前已投影的连接及交互配置
+        :return: 客户端参数和仅供当前宿主连接使用的绑定函数
+        """
+        return {**super()._service_kwargs(conf), "message_ingress": _bind_platform_payload(conf)}
 
     def get_configs(self) -> Dict[Optional[str], NotificationConf]:
         """

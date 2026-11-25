@@ -53,7 +53,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         """
         仅在交互启用时启动飞书事件长连接。
         """
-        return {**super()._service_kwargs(conf), "connection_id": conf.id, "start_ws": conf.interaction_enabled is not False}
+        return {**super()._service_kwargs(conf), "start_ws": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:

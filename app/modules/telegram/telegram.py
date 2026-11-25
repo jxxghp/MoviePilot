@@ -28,7 +28,7 @@ except ImportError:
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.attachment import load_image
 from app.application.image import ImageHelper
-from app.application.messaging.ingress import forward_message_to_host, submit_platform_payload
+from app.application.messaging.ingress import submit_bound_payload as _submit_bound_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -52,7 +52,6 @@ from app.schemas.delivery import (
 )
 from app.schemas.exception import ImmediateException
 from app.schemas.message import Message
-from app.schemas.types import NotificationChannel
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
 TELEGRAM_PARSE_MODE_HTML = "HTML"
@@ -273,8 +272,8 @@ class Telegram:
             parse_mode=TELEGRAM_PARSE_MODE_MARKDOWN,
         )
         self._config_name = kwargs.get("name")
-        self._connection_id = (
-            kwargs.get("connection_id") if kwargs.get("API_URL") in (
+        self._message_ingress = (
+            kwargs.get("message_ingress") if kwargs.get("API_URL") in (
                 None, "", "https://api.telegram.org", "https://api.telegram.org/",
             ) else None
         )
@@ -582,15 +581,11 @@ class Telegram:
 
     def _forward_to_message_chain(self, payload: dict[str, Any]) -> bool:
         """
-        把 Telegram SDK 回调同步转交统一消息入口。
+        将已认证事件交给当前连接的绑定入口；提交失败在当前路径结束。
         """
-        forwarded = submit_platform_payload(
-            payload, self._config_name, NotificationChannel.Telegram,
-            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
+        return _submit_bound_payload(
+            payload, getattr(self, "_message_ingress", None), self._config_name, submit=ThreadHelper().submit,
         )
-        if forwarded is not None:
-            return forwarded
-        return forward_message_to_host(payload, self._config_name)
 
     @property
     def bot(self) -> Optional[TelegramBotApi]:
@@ -2949,6 +2944,7 @@ class Telegram:
 
         :return: 所有输入状态任务收尾且更新分发可安全停止时返回 True，否则返回 False
         """
+        self._message_ingress = None
         converged = True
         with self._typing_lifecycle_lock:
             self._typing_accepting = False

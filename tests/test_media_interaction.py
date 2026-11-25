@@ -506,11 +506,12 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
     handle_ai.assert_not_called()
 
 
-def test_message_process_preserves_parser_message_id_context():
+def test_message_process_preserves_parser_message_id_context(monkeypatch):
     """
     消息链不按渠道解释 message_id，只透传解析器给出的原消息上下文。
     """
     chain = MessageChain()
+    monkeypatch.setattr("app.chain.message.get_channel_authorization", lambda: object())
     incoming = IncomingMessage(
         channel=NotificationChannel.Telegram,
         source="telegram-test",
@@ -523,7 +524,7 @@ def test_message_process_preserves_parser_message_id_context():
     )
 
     with (
-        patch.object(chain, "message_parser", return_value=incoming),
+        patch.object(chain, "_parse_http_message", return_value=incoming),
         patch.object(chain, "handle_message") as handle_message,
     ):
         chain.process(body=None, form=None, args={"source": "telegram-test"})
@@ -535,11 +536,12 @@ def test_message_process_preserves_parser_message_id_context():
     assert kwargs["reply_to_message_id"] == 99
 
 
-def test_message_process_keeps_callback_message_id_as_edit_context():
+def test_message_process_keeps_callback_message_id_as_edit_context(monkeypatch):
     """
     按钮回调的 message_id 仍应作为机器人原消息 ID 传递，供编辑原消息使用。
     """
     chain = MessageChain()
+    monkeypatch.setattr("app.chain.message.get_channel_authorization", lambda: object())
     incoming = IncomingMessage(
         channel=NotificationChannel.Telegram,
         source="telegram-test",
@@ -552,7 +554,7 @@ def test_message_process_keeps_callback_message_id_as_edit_context():
     )
 
     with (
-        patch.object(chain, "message_parser", return_value=incoming),
+        patch.object(chain, "_parse_http_message", return_value=incoming),
         patch.object(chain, "handle_message") as handle_message,
     ):
         chain.process(body=None, form=None, args={"source": "telegram-test"})
@@ -563,11 +565,12 @@ def test_message_process_keeps_callback_message_id_as_edit_context():
     assert kwargs["original_chat_id"] == "chat-a"
 
 
-def test_message_process_preserves_non_telegram_plain_message_id():
+def test_message_process_preserves_non_telegram_plain_message_id(monkeypatch):
     """
     非 Telegram 渠道保持旧行为，普通消息 ID 仍向下传递给渠道实现自行解释。
     """
     chain = MessageChain()
+    monkeypatch.setattr("app.chain.message.get_channel_authorization", lambda: object())
     incoming = IncomingMessage(
         channel=NotificationChannel.Slack,
         source="slack-test",
@@ -579,7 +582,7 @@ def test_message_process_preserves_non_telegram_plain_message_id():
     )
 
     with (
-        patch.object(chain, "message_parser", return_value=incoming),
+        patch.object(chain, "_parse_http_message", return_value=incoming),
         patch.object(chain, "handle_message") as handle_message,
     ):
         chain.process(body=None, form=None, args={"source": "slack-test"})

@@ -74,3 +74,6 @@
 ## 渠道平台扩展边界
 
 公共用例、授权、受众、发送时间与 Outbox 保持由宿主执行；平台身份、地址协议、凭据、诊断与特殊分段由所属模块实现。注册方式、兼容和完整调用链见[平台边界](channel-refactor/platform-boundaries.md)。
+
+
+宿主 SDK 的身份绑定、公开 HTTP 与插件兼容边界见[渠道 SDK 与兼容台账](channel-refactor/sdk-boundaries.md)。SDK/HTTP 接收确认仅说明任务入队，审批、规则、业务权限和撤权仍由通用核心独立执行；入口未装配或停止时不再隐式回环重投。

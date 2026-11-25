@@ -3,12 +3,15 @@
 """
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, SerializeAsAny, StringConstraints, model_validator
 from pydantic_core import PydanticCustomError
 
 from app.schemas.common import JsonData
+
+# 宿主渠道扩展的类型契约版本；版本匹配不产生注册或授权。
+CHANNEL_EXTENSION_API_VERSION: Final[int] = 1
 
 type AdmissionMode = Literal["manual", "manual_rules", "rules", "open"]
 type AutoDownloadMode = Literal["off", "specified", "all"]

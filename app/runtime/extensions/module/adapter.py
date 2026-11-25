@@ -20,6 +20,7 @@ from app.runtime.capabilities.model import (
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.settings import get_runtime_setting, has_runtime_setting
+from app.schemas.channel import CHANNEL_EXTENSION_API_VERSION
 from app.schemas.types import (
     DownloaderType,
     MediaRecognizeType,
@@ -153,18 +154,11 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
             raise ValueError(
                 f"{spec.source}: entrypoint 必须指向同包且类名等于 capability id"
             )
-        if (set(spec.metadata) - {"channel_extension", "channel_interaction"}) != allowed_metadata:
+        if (set(spec.metadata) - {"channel_extension", "channel_interaction", "channel_api_version"}) != allowed_metadata:
             raise ValueError(
                 f"{spec.source}: metadata 字段必须是 {sorted(allowed_metadata)}"
             )
-        extension = spec.metadata.get("channel_extension")
-        if extension is not None:
-            expected_prefix = f"{expected_module}.channel:"
-            if (spec.metadata["type"] != ModuleType.Notification.value
-                    or not isinstance(extension, str) or not extension.startswith(expected_prefix)
-                    or not extension.removeprefix(expected_prefix).isidentifier()
-                    or type(spec.metadata.get("channel_interaction")) is not bool):
-                raise ValueError(f"{spec.source}: 渠道扩展必须属于本通知模块的 channel 契约")
+        _validate_channel_extension(spec, expected_module)
         if spec.metadata["type"] not in module_type_values:
             raise ValueError(f"{spec.source}: 非法 metadata.type={spec.metadata['type']!r}")
         if spec.metadata["subtype"] not in _SUBTYPE_NAMES and not _extended_notification_subtype(spec):
@@ -181,6 +175,38 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
                 raise ValueError(
                     f"{spec.source}: activation.watch 必须包含 selector 配置键"
                 )
+
+
+def channel_extension_api_version(spec: CapabilitySpec) -> int:
+    """
+    读取既有清单的扩展版本，未声明的旧宿主扩展按第一版解释；拒绝未知版本。
+
+    :param spec: 声明渠道实现的宿主模块清单
+    :return: 当前支持的渠道类型契约版本
+    :raises ValueError: 版本未知或不是整数
+    """
+    value = spec.metadata.get("channel_api_version", CHANNEL_EXTENSION_API_VERSION)
+    if type(value) is not int or value != CHANNEL_EXTENSION_API_VERSION:
+        raise ValueError(f"{spec.source}: 不支持的渠道扩展契约版本")
+    return value
+
+
+def _validate_channel_extension(spec: CapabilitySpec, expected_module: str) -> None:
+    """
+    同包扩展声明与类型契约一起校验，能力和版本都不赋予入口信任。
+    """
+    extension = spec.metadata.get("channel_extension")
+    if extension is None:
+        if "channel_api_version" in spec.metadata:
+            raise ValueError(f"{spec.source}: 渠道版本必须随同平台实现声明")
+        return
+    expected_prefix = f"{expected_module}.channel:"
+    if (spec.metadata["type"] != ModuleType.Notification.value
+            or not isinstance(extension, str) or not extension.startswith(expected_prefix)
+            or not extension.removeprefix(expected_prefix).isidentifier()
+            or type(spec.metadata.get("channel_interaction")) is not bool):
+        raise ValueError(f"{spec.source}: 渠道扩展必须属于本通知模块的 channel 契约")
+    channel_extension_api_version(spec)
 
 
 def _extended_notification_subtype(spec: CapabilitySpec) -> bool:

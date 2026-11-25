@@ -10,6 +10,7 @@ type = "notification"
 subtype = "WebPush"
 priority = 6
 
+channel_api_version = 1
 channel_extension = "app.modules.webpush.channel:WebPushPlatform"
 
 channel_interaction = false

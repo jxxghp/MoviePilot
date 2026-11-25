@@ -60,7 +60,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :param conf: 当前连接的运行投影
         :return: 连接配置及是否启动入站轮询
         """
-        return {**super()._service_kwargs(conf), "connection_id": conf.id, "auto_start_polling": conf.interaction_enabled is not False}
+        return {**super()._service_kwargs(conf), "auto_start_polling": conf.interaction_enabled is not False}
 
     @staticmethod
     def get_name() -> str:

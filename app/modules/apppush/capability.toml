@@ -10,6 +10,7 @@ type = "notification"
 subtype = "AppPush"
 priority = 7
 
+channel_api_version = 1
 channel_extension = "app.modules.apppush.channel:AppPushPlatform"
 
 channel_interaction = false

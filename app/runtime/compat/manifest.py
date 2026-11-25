@@ -816,6 +816,69 @@ _REDIS_CACHE_BACKEND_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
 }
 
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    # 旧模块中曾可导入的显式回环 helper 仅为插件保留；宿主客户端已退出这些调用。
+    "app.modules.telegram.telegram": {
+        "NotificationChannel": SymbolAlias(
+            target_module="app.schemas.types", target_name="NotificationChannel",
+            replacement="app.sdk.channel.NotificationChannel",
+        ),
+        "forward_message_to_host": SymbolAlias(
+            target_module="app.application.messaging.ingress",
+            target_name="forward_message_to_host",
+            replacement="app.sdk._legacy.ingress.forward_message_to_host",
+        ),
+    },
+    "app.modules.slack.slack": {
+        "forward_message_to_host": SymbolAlias(
+            target_module="app.application.messaging.ingress",
+            target_name="forward_message_to_host",
+            replacement="app.sdk._legacy.ingress.forward_message_to_host",
+        ),
+    },
+    "app.modules.discord.discord": {
+        "async_forward_message_to_host": SymbolAlias(
+            target_module="app.application.messaging.ingress",
+            target_name="async_forward_message_to_host",
+            replacement="app.sdk._legacy.ingress.async_forward_message_to_host",
+        ),
+    },
+    "app.modules.qqbot.qqbot": {
+        "NotificationChannel": SymbolAlias(
+            target_module="app.schemas.types", target_name="NotificationChannel",
+            replacement="app.sdk.channel.NotificationChannel",
+        ),
+        "submit_message_to_host": SymbolAlias(
+            target_module="app.application.messaging.ingress",
+            target_name="submit_message_to_host",
+            replacement="app.sdk._legacy.ingress.submit_message_to_host",
+        ),
+    },
+    "app.modules.feishu.feishu": {
+        "submit_message_to_host": SymbolAlias(
+            target_module="app.application.messaging.ingress",
+            target_name="submit_message_to_host",
+            replacement="app.sdk._legacy.ingress.submit_message_to_host",
+        ),
+    },
+    "app.modules.wechat.wechatbot": {
+        "submit_message_to_host": SymbolAlias(
+            target_module="app.application.messaging.ingress",
+            target_name="submit_message_to_host",
+            replacement="app.sdk._legacy.ingress.submit_message_to_host",
+        ),
+    },
+    "app.modules.wechatclawbot.wechatclawbot": {
+        "NotificationChannel": SymbolAlias(
+            target_module="app.schemas.types", target_name="NotificationChannel",
+            replacement="app.sdk.channel.NotificationChannel",
+        ),
+        "forward_message_to_host": SymbolAlias(
+            target_module="app.application.messaging.ingress",
+            target_name="forward_message_to_host",
+            replacement="app.sdk._legacy.ingress.forward_message_to_host",
+        ),
+    },
+
     "app.adapters.cache.backends": _REDIS_CACHE_BACKEND_SYMBOL_ALIASES,
     "app.agent": {
         "AgentChain": SymbolAlias(

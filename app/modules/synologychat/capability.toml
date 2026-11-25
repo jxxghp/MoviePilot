@@ -10,6 +10,7 @@ type = "notification"
 subtype = "SynologyChat"
 priority = 5
 
+channel_api_version = 1
 channel_extension = "app.modules.synologychat.channel:SynologyChatPlatform"
 
 channel_interaction = true

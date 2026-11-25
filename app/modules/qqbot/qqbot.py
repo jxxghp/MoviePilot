@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from PIL import Image
 
 from app.adapters.network.http import RequestUtils
-from app.application.messaging.ingress import submit_message_to_host, submit_platform_payload
+from app.application.messaging.ingress import submit_bound_payload as _submit_bound_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -30,7 +30,6 @@ from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.runtime.thread import ThreadHelper
 from app.schemas.delivery import DeliveryPartOutcome, DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt
-from app.schemas.types import NotificationChannel
 
 # QQ Markdown 图片展示尺寸限制，单位像素，避免竖版海报被客户端拉伸变形
 _DEFAULT_IMAGE_SIZE: Tuple[int, int] = (208, 320)
@@ -82,7 +81,7 @@ class QQBot:
         self._default_openid = QQ_OPENID
         self._default_group_openid = QQ_GROUP_OPENID
         self._config_name = name or "qqbot"
-        self._connection_id = kwargs.get("connection_id")
+        self._message_ingress = kwargs.get("message_ingress")
         self._ready = True
 
         # 曾发过消息的用户/群，用于无默认接收者时的广播 {(target_id, is_group), ...}
@@ -125,18 +124,10 @@ class QQBot:
 
     def _forward_to_message_chain(self, payload: dict[str, Any]) -> bool:
         """
-        通过受管线程池把 QQ Bot 入站载荷 转交统一消息入口。
+        将已认证事件交给当前连接的绑定入口；提交失败在当前路径结束。
         """
-        forwarded = submit_platform_payload(
-            payload, self._config_name, NotificationChannel.QQ,
-            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
-        )
-        if forwarded is not None:
-            return forwarded
-        return submit_message_to_host(
-            payload,
-            self._config_name,
-            submit=ThreadHelper().submit,
+        return _submit_bound_payload(
+            payload, getattr(self, "_message_ingress", None), self._config_name, submit=ThreadHelper().submit,
         )
 
     def _on_gateway_message(self, payload: dict[str, Any]) -> None:
@@ -197,6 +188,7 @@ class QQBot:
 
         :return: 网关线程已终止或从未启动时返回 True；仍存活时返回 False
         """
+        self._message_ingress = None
         if self._gateway_stop is not None:
             self._gateway_stop.set()
         try:

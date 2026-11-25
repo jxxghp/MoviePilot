@@ -8,7 +8,11 @@ from typing import Any
 
 from app.runtime.capabilities.model import CapabilitySpec
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.extensions.module.adapter import build_host_module_registry
+from app.runtime.extensions.module.adapter import (
+    HOST_MODULE_KIND,
+    build_host_module_registry,
+    channel_extension_api_version,
+)
 from app.schemas.types import NotificationChannel
 
 
@@ -16,6 +20,8 @@ class ModuleChannelPlatform:
     """
     在调用平台协议时才加载模块实现，枚举元数据不会初始化 SDK 或连接。
 
+    :ivar api_version: 已通过宿主验证的渠道扩展类型契约版本
+    :ivar module_id: 清单中的唯一宿主解析 owner，不接受插件自行冒充
     :ivar provider: 原有服务 selector 声明的平台标识
     :ivar channel: 原有通知枚举声明的兼容名称
     :ivar display_name: 模块展示名称
@@ -24,9 +30,14 @@ class ModuleChannelPlatform:
 
     def __init__(self, spec: CapabilitySpec) -> None:
         """
+        核验宿主 kind 和类型版本，冻结解析 owner 后才允许读取平台实现。
+
         :param spec: 经宿主清单验证的模块能力声明
         """
+        if spec.kind != HOST_MODULE_KIND:
+            raise ValueError("可信渠道扩展必须属于宿主模块清单，插件不能冒充宿主 owner")
         assert spec.selector is not None
+        self.api_version = channel_extension_api_version(spec)
         self._spec = spec
         self.module_id = spec.id
         self.provider = str(spec.selector.config["match_value"])

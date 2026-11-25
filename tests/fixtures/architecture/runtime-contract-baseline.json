@@ -1105,6 +1105,70 @@
           "target_name": "resolve_media_identity"
         }
       },
+      "app.modules.discord.discord": {
+        "async_forward_message_to_host": {
+          "replacement": "app.sdk._legacy.ingress.async_forward_message_to_host",
+          "target_module": "app.application.messaging.ingress",
+          "target_name": "async_forward_message_to_host"
+        }
+      },
+      "app.modules.feishu.feishu": {
+        "submit_message_to_host": {
+          "replacement": "app.sdk._legacy.ingress.submit_message_to_host",
+          "target_module": "app.application.messaging.ingress",
+          "target_name": "submit_message_to_host"
+        }
+      },
+      "app.modules.qqbot.qqbot": {
+        "NotificationChannel": {
+          "replacement": "app.sdk.channel.NotificationChannel",
+          "target_module": "app.schemas.types",
+          "target_name": "NotificationChannel"
+        },
+        "submit_message_to_host": {
+          "replacement": "app.sdk._legacy.ingress.submit_message_to_host",
+          "target_module": "app.application.messaging.ingress",
+          "target_name": "submit_message_to_host"
+        }
+      },
+      "app.modules.slack.slack": {
+        "forward_message_to_host": {
+          "replacement": "app.sdk._legacy.ingress.forward_message_to_host",
+          "target_module": "app.application.messaging.ingress",
+          "target_name": "forward_message_to_host"
+        }
+      },
+      "app.modules.telegram.telegram": {
+        "NotificationChannel": {
+          "replacement": "app.sdk.channel.NotificationChannel",
+          "target_module": "app.schemas.types",
+          "target_name": "NotificationChannel"
+        },
+        "forward_message_to_host": {
+          "replacement": "app.sdk._legacy.ingress.forward_message_to_host",
+          "target_module": "app.application.messaging.ingress",
+          "target_name": "forward_message_to_host"
+        }
+      },
+      "app.modules.wechat.wechatbot": {
+        "submit_message_to_host": {
+          "replacement": "app.sdk._legacy.ingress.submit_message_to_host",
+          "target_module": "app.application.messaging.ingress",
+          "target_name": "submit_message_to_host"
+        }
+      },
+      "app.modules.wechatclawbot.wechatclawbot": {
+        "NotificationChannel": {
+          "replacement": "app.sdk.channel.NotificationChannel",
+          "target_module": "app.schemas.types",
+          "target_name": "NotificationChannel"
+        },
+        "forward_message_to_host": {
+          "replacement": "app.sdk._legacy.ingress.forward_message_to_host",
+          "target_module": "app.application.messaging.ingress",
+          "target_name": "forward_message_to_host"
+        }
+      },
       "app.plugins": {
         "PluginChian": {
           "replacement": "app.sdk.plugin.PluginChain",
@@ -8862,7 +8926,7 @@
     }
   },
   "run_module": {
-    "call_count": 259,
+    "call_count": 261,
     "dynamic_call_count": 1,
     "dynamic_calls": [
       {
@@ -9977,7 +10041,7 @@
         },
         {
           "caller": "app.chain.message",
-          "count": 1,
+          "count": 3,
           "mode": "sync"
         }
       ],
@@ -10746,6 +10810,73 @@
         "kind": "import",
         "name": "ChainBase",
         "target": "app.chain.base.ChainBase"
+      }
+    ],
+    "app.sdk.channel": [
+      {
+        "kind": "import",
+        "name": "CHANNEL_EXTENSION_API_VERSION",
+        "target": "app.schemas.channel.CHANNEL_EXTENSION_API_VERSION"
+      },
+      {
+        "kind": "import",
+        "name": "ChannelActor",
+        "target": "app.domain.authorization.ChannelActor"
+      },
+      {
+        "kind": "import",
+        "name": "ChannelConnection",
+        "target": "app.schemas.channel.ChannelConnection"
+      },
+      {
+        "kind": "import",
+        "name": "ChannelConnectionInfo",
+        "target": "app.schemas.channel.ChannelConnectionInfo"
+      },
+      {
+        "kind": "import",
+        "name": "ChannelPlatform",
+        "target": "app.application.messaging.channel.platform.ChannelPlatform"
+      },
+      {
+        "kind": "import",
+        "name": "ChannelPlatformCapabilities",
+        "target": "app.schemas.channel.ChannelPlatformCapabilities"
+      },
+      {
+        "kind": "import",
+        "name": "IncomingMessage",
+        "target": "app.schemas.message.IncomingMessage"
+      },
+      {
+        "kind": "import",
+        "name": "InteractionPolicy",
+        "target": "app.schemas.channel.InteractionPolicy"
+      },
+      {
+        "kind": "import",
+        "name": "Message",
+        "target": "app.schemas.message.Message"
+      },
+      {
+        "kind": "import",
+        "name": "MessageAttachmentRead",
+        "target": "app.schemas.message.MessageAttachmentRead"
+      },
+      {
+        "kind": "import",
+        "name": "NotificationChannel",
+        "target": "app.schemas.types.NotificationChannel"
+      },
+      {
+        "kind": "import",
+        "name": "NotificationRoute",
+        "target": "app.schemas.channel.NotificationRoute"
+      },
+      {
+        "kind": "import",
+        "name": "NotificationRule",
+        "target": "app.schemas.channel.NotificationRule"
       }
     ],
     "app.sdk.classification": [

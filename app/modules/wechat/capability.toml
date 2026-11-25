@@ -10,6 +10,7 @@ type = "notification"
 subtype = "Wechat"
 priority = 1
 
+channel_api_version = 1
 channel_extension = "app.modules.wechat.channel:WechatPlatform"
 
 channel_interaction = true

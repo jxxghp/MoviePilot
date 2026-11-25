@@ -43,3 +43,8 @@ Web Push 设备由服务器绑定当前本地账号，保存 owner、密钥与�
 ## 独立平台边界补齐
 
 以[独立平台验收与身份职责](platform-boundaries-completion.md)为本轮补齐设计和调用链；旧 Web 复用测试不再作为扩展完成的证据。
+
+
+## SDK 接入与兼容治理
+
+平台客户端、宿主扩展、公共插件 SDK 和历史兼容分开承担职责。绑定提交冻结连接/provider/身份空间/owner/revision，统一核心继续独立授权；类型 SDK v1 不提供可信装配或插件平台注册。逐渠道实际链路、公开兼容及退出条件见[SDK 边界与台账](sdk-boundaries.md)。

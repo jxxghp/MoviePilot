@@ -18,7 +18,7 @@ from app.application.messaging.delivery import (
     NotificationParts,
     notification_preflight_active,
 )
-from app.domain.admission import AdmissionProof
+from app.domain.admission import AdmissionProof as _AdmissionProof
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.vocechat.vocechat import VoceChat
@@ -195,9 +195,11 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
                 event_id = msg_body.get("mid")
                 if token and policy and isinstance(event_id, (str, int)) and event_id:
                     incoming.message_id = event_id
-                    incoming._admission_proof = AdmissionProof(
+                    incoming._admission_proof = _AdmissionProof(
                         client_config.id, policy.revision, actor_userid, str(gid) if gid is not None else None,
                         time.time() + 60, private=incoming.conversation_type == "private",
+                        provider=client_config.type, identity_namespace=client_config.identity_namespace or client_config.id,
+                        ingress_source="verified_http",
                     )
                 return incoming
         except Exception as err:

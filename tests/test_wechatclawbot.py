@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from app.modules.wechatclawbot import WechatClawBotModule
 from app.modules.wechatclawbot.wechatclawbot import ILinkClient, WechatClawBot
+from app.schemas.system import NotificationConf
 
 CLIENT_BASE_URL = "https://ilinkai.weixin.qq.com"
 
@@ -18,10 +19,10 @@ def test_notification_only_clawbot_keeps_stable_identity_without_polling():
     仅投递时不启动入站轮询，适配器配置不能覆盖宿主的身份或开关。
     """
     module = WechatClawBotModule()
-    config = SimpleNamespace(id="stable-connection", name="ClawBot", interaction_enabled=False,
-                             config={"identity": "stale-name", "auto_start_polling": True})
+    config = NotificationConf(id="stable-connection", name="ClawBot", type="wechatclawbot", interaction_enabled=False,
+                              config={"identity": "stale-name", "auto_start_polling": True})
     assert module._service_kwargs(config) == {
-        "name": "ClawBot", "identity": "stable-connection", "auto_start_polling": False,
+        "name": "ClawBot", "identity": "stable-connection", "auto_start_polling": False, "message_ingress": None,
     }
     config.interaction_enabled = True
     assert module._service_kwargs(config)["auto_start_polling"] is True

@@ -174,7 +174,9 @@ def test_process_allows_image_only_message():
         images=["tg://file_id/image-1"],
     )
 
-    with patch.object(chain, "message_parser", return_value=message), patch.object(
+    with patch("app.chain.message.get_channel_authorization", return_value=Mock()), patch.object(
+        chain, "run_module", return_value=message
+    ), patch.object(
         chain, "handle_message"
     ) as handle_message:
         chain.process(body="{}", form={}, args={"source": "telegram-test"})
@@ -197,7 +199,9 @@ def test_process_allows_audio_only_message():
         audio_refs=["tg://voice_file_id/voice-1"],
     )
 
-    with patch.object(chain, "message_parser", return_value=message), patch.object(
+    with patch("app.chain.message.get_channel_authorization", return_value=Mock()), patch.object(
+        chain, "run_module", return_value=message
+    ), patch.object(
         chain, "handle_message"
     ) as handle_message:
         chain.process(body="{}", form={}, args={"source": "telegram-test"})
@@ -227,7 +231,9 @@ def test_process_allows_file_only_message():
         ],
     )
 
-    with patch.object(chain, "message_parser", return_value=message), patch.object(
+    with patch("app.chain.message.get_channel_authorization", return_value=Mock()), patch.object(
+        chain, "run_module", return_value=message
+    ), patch.object(
         chain, "handle_message"
     ) as handle_message:
         chain.process(body="{}", form={}, args={"source": "telegram-test"})

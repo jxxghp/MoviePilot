@@ -15,6 +15,7 @@ from app.application.messaging.delivery import (
     NotificationParts,
     notification_preflight_active,
 )
+from app.application.messaging.ingress import bind_platform_payload as _bind_platform_payload
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
@@ -127,6 +128,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
             **(conf.config or {}),
             "name": conf.name,
             "identity": conf.id,
+            "message_ingress": _bind_platform_payload(conf),
             "auto_start_polling": getattr(conf, "interaction_enabled", None) is not False,
         }
 

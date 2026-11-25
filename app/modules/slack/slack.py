@@ -18,7 +18,7 @@ from slack_sdk.web.slack_response import SlackResponse
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.attachment import image_upload_file, load_image
-from app.application.messaging.ingress import forward_message_to_host, submit_platform_payload
+from app.application.messaging.ingress import submit_bound_payload as _submit_bound_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -123,7 +123,7 @@ class Slack:
         self._channel = SLACK_CHANNEL or ""
         self._oauth_token = SLACK_OAUTH_TOKEN
         self._config_name = kwargs.get("name")
-        self._connection_id = kwargs.get("connection_id")
+        self._message_ingress = kwargs.get("message_ingress")
         self._app_id = (SLACK_APP_ID or "").strip()
         self._command_request_url = (SLACK_COMMAND_REQUEST_URL or "").strip()
         self._manifest_client = (
@@ -194,24 +194,17 @@ class Slack:
 
     def _forward_to_message_chain(self, payload: dict[str, Any], *, timeout: float) -> bool:
         """
-        把 Slack SDK 回调同步转交统一消息入口。
+        将已认证事件交给当前连接的绑定入口；提交失败在当前路径结束。
         """
-        forwarded = submit_platform_payload(
-            payload, self._config_name, NotificationChannel.Slack,
-            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
-        )
-        if forwarded is not None:
-            return forwarded
-        return forward_message_to_host(
-            payload,
-            self._config_name,
-            timeout=timeout,
+        return _submit_bound_payload(
+            payload, getattr(self, "_message_ingress", None), self._config_name, submit=ThreadHelper().submit,
         )
 
     def stop(self) -> bool:
         """
         关闭 Socket Mode 服务，并返回资源是否成功释放。
         """
+        self._message_ingress = None
         if self._service:
             try:
                 cast(Callable[[], None], self._service.close)()

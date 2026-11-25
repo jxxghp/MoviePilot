@@ -22,7 +22,7 @@ from app.application.messaging.delivery import (
     legacy_attachment_layout_active,
     notification_preflight_active,
 )
-from app.domain.admission import AdmissionProof
+from app.domain.admission import AdmissionProof as _AdmissionProof
 from app.domain.context import Context, MediaInfo
 from app.foundation.dom import DomUtils
 from app.modules._base.notification import _MessageChannelModuleBase
@@ -118,17 +118,16 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
         """
         return (config or {}).get("WECHAT_MODE", "app") == "bot"
 
-    @classmethod
-    def _create_client(cls, conf: Any) -> WeChat | WeChatBot:
+    def _create_client(self, conf: Any) -> WeChat | WeChatBot:
         """
         按实例模式创建企业微信应用或智能机器人客户端。
         """
-        if cls._is_bot_mode(conf.config):
+        if self._is_bot_mode(conf.config):
             return WeChatBot(**{
-                **(conf.config or {}), "name": conf.name,
+                **self._service_kwargs(conf),
                 "interaction_policy": getattr(conf, "interaction_policy", None),
             })
-        return WeChat(name=conf.name, **conf.config)
+        return WeChat(**self._service_kwargs(conf))
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
@@ -141,7 +140,8 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
         """
         解析企业微信回调并检查管理员命令权限。
 
-        应用模式支持文本、图片、语音、文件和菜单点击；机器人模式只接受私聊。
+        应用模式支持文本、图片、语音、文件和菜单点击；机器人 HTTP 兼容入口只接收私聊，
+        可信 SDK 上下文另允许已验证的群组文本。
         解析错误记录日志后忽略该消息。
 
         :param source: 通知实例名称
@@ -155,7 +155,10 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
             if not client_config:
                 return None
             if self._is_bot_mode(client_config.config):
-                return self._parse_bot_message(source=source, body=body, client_config=client_config)
+                return self._parse_bot_message(
+                    source=source, body=body, client_config=client_config,
+                    authenticated_sdk=(args or {}).get("_authenticated_sdk") is True,
+                )
             client = cast(WeChat, self.get_instance(client_config.name))
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
@@ -284,12 +287,13 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
             return
         if abs(time.time() - received_at) <= 60:
             incoming.message_id = event_id
-            incoming._admission_proof = AdmissionProof(
+            incoming._admission_proof = _AdmissionProof(
                 config.id, policy.revision, user_id, None, received_at + 60, private=True,
+                provider=config.type, identity_namespace=config.identity_namespace or config.id, ingress_source="verified_http",
             )
 
     def _parse_bot_message(
-        self, source: str, body: Any, client_config: Any
+        self, source: str, body: Any, client_config: Any, *, authenticated_sdk: bool = False
     ) -> Optional[IncomingMessage]:
         """
         提取机器人私聊内容并检查管理员命令权限。
@@ -297,7 +301,8 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
         :param source: 保留的来源参数，实际来源使用 client_config.name
         :param body: JSON 字节、文本或已解析的字典
         :param client_config: 当前实例配置，提供来源名称和管理员策略
-        :return: 含附件和管理员标记的统一消息；群聊、空内容或未授权命令返回 None
+        :param authenticated_sdk: 仅由固定宿主 SDK 入口设置的解析上下文
+        :return: 含附件和管理员标记的统一消息；非可信群聊、空内容或未授权命令返回 None
         """
         try:
             if isinstance(body, bytes):
@@ -319,7 +324,8 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
         sender = ((payload_body.get("from") or {}).get("userid") or "").strip()
         if not sender:
             return None
-        if payload_body.get("chattype") == "group":
+        group = payload_body.get("chattype") == "group"
+        if group and (not authenticated_sdk or payload_body.get("msgtype") != "text" or not payload_body.get("chatid")):
             return None
 
         text = WeChatBot._extract_text_from_body(payload_body)
@@ -361,7 +367,9 @@ class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
             channel=NotificationChannel.Wechat,
             source=client_config.name,
             userid=sender,
-            conversation_type="private" if payload_body.get("chattype") == "single" else "unknown",
+            chat_id=f"group:{payload_body["chatid"]}" if group else None,
+            message_id=payload_body.get("msgid"),
+            conversation_type="group" if group else "private" if payload_body.get("chattype") == "single" else "unknown",
             username=sender,
             is_channel_admin=matches_channel_admin(
                 NotificationChannel.Wechat,

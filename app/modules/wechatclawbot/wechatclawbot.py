@@ -23,7 +23,7 @@ from Crypto.Util.Padding import pad
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.attachment import load_image
-from app.application.messaging.ingress import forward_message_to_host, submit_platform_payload
+from app.application.messaging.ingress import submit_bound_payload as _submit_bound_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -33,7 +33,6 @@ from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
 from app.schemas.delivery import DeliveryPartOutcome, DeliveryPartPlanner, DeliveryPartSender, DeliveryReceipt
 from app.schemas.message import Message
-from app.schemas.types import NotificationChannel
 
 
 @dataclass(frozen=True, slots=True)
@@ -1762,6 +1761,7 @@ class WechatClawBot:
         self._config_name = name or "wechatclawbot"
         self._identity = str(identity or self._config_name)
         self._base_url = (WECHATCLAWBOT_BASE_URL or self._default_base_url).rstrip("/")
+        self._message_ingress = kwargs.get("message_ingress") if self._base_url == self._default_base_url else None
         self._default_target = (WECHATCLAWBOT_DEFAULT_TARGET or "").strip() or None
         self._auto_start_polling = bool(auto_start_polling)
         self._admins = [
@@ -2147,17 +2147,16 @@ class WechatClawBot:
                     break
                 self._stop_event.wait(delay)
 
-    def _forward_to_message_chain(self, payload: Dict[str, Any]) -> bool:
+    def _forward_to_message_chain(self, payload: dict[str, Any]) -> bool:
         """
-        把 WeChatClawBot 轮询消息同步转交统一消息入口。
+        将已认证事件交给当前连接的绑定入口；提交失败在当前路径结束。
         """
-        forwarded = submit_platform_payload(
-            payload, self._config_name, NotificationChannel.WechatClawBot,
-            self._identity if getattr(self, "_base_url", None) == self._default_base_url else None, submit=ThreadHelper().submit,
+        if self._stop_event.is_set():
+            logger.warning("微信 ClawBot 入站未接受：reason=stopping")
+            return False
+        return _submit_bound_payload(
+            payload, getattr(self, "_message_ingress", None), self._config_name, submit=ThreadHelper().submit,
         )
-        if forwarded is not None:
-            return forwarded
-        return forward_message_to_host(payload, self._config_name)
 
     def _build_known_targets(self) -> List[Dict[str, Any]]:
         """

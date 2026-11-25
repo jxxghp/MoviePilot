@@ -17,6 +17,7 @@ CORE = (
     "app/db/oper/authorization.py",
     "app/db/adapters/authorization.py",
     "app/application/messaging/attachment.py",
+    "app/application/messaging/ingress.py",
     "app/schemas/channel.py",
     "app/startup/initializers/modules.py",
     "app/chain/message.py",
@@ -245,6 +246,155 @@ def source_violations(source: str) -> list[str]:
     return sorted(set(flow.issues))
 
 
+# 旧回环只保留在显式兼容实现中，内置渠道不能借别名重新调用。
+LEGACY_INGRESS = frozenset({"forward_message_to_host", "async_forward_message_to_host", "submit_message_to_host"})
+# 这些能力创建或接受可信来源，普通插件公开 SDK 不得暴露。
+TRUSTED_INGRESS = frozenset({
+    "AdmissionProof", "bind_platform_payload", "submit_bound_payload", "submit_platform_payload",
+    "configure_platform_payload_receiver", "configure_verified_event_claim", "claim_verified_event",
+    "configure_verified_message_receiver", "submit_verified_message",
+})
+# 第一版只公开现有规范类型；新增服务、实现、注册和装配须另行审查契约版本。
+CHANNEL_SDK_EXPORTS = frozenset({
+    "CHANNEL_EXTENSION_API_VERSION", "ChannelActor", "ChannelConnection", "ChannelConnectionInfo",
+    "ChannelPlatform", "ChannelPlatformCapabilities", "IncomingMessage", "InteractionPolicy", "Message",
+    "MessageAttachmentRead", "NotificationChannel", "NotificationRoute", "NotificationRule",
+})
+
+
+CHANNEL_SDK_OWNERS = {
+    "CHANNEL_EXTENSION_API_VERSION": "app.schemas.channel",
+    "ChannelActor": "app.domain.authorization", "ChannelPlatform": "app.application.messaging.channel.platform",
+    "ChannelConnection": "app.schemas.channel", "ChannelConnectionInfo": "app.schemas.channel",
+    "ChannelPlatformCapabilities": "app.schemas.channel", "InteractionPolicy": "app.schemas.channel",
+    "NotificationRoute": "app.schemas.channel", "NotificationRule": "app.schemas.channel",
+    "IncomingMessage": "app.schemas.message", "Message": "app.schemas.message",
+    "MessageAttachmentRead": "app.schemas.message", "NotificationChannel": "app.schemas.types", "Final": "typing",
+}
+
+
+def legacy_ingress_violations(source: str) -> list[str]:
+    """
+    根据导入来源及局部别名识别旧回环调用，不限制普通用户定义的同名方法。
+
+    :param source: 宿主 canonical 源码
+    :return: 依赖旧 helper 的导入或调用位置
+    """
+    tree = ast.parse(source)
+    bindings: dict[str, str] = {}
+    issues = []
+
+    def origin(node: ast.AST) -> str:
+        """
+        解析静态模块和局部别名的来源；不执行反射或用户源码。
+        """
+        if isinstance(node, ast.Name):
+            return bindings.get(node.id, "")
+        if isinstance(node, ast.Attribute) and (parent := origin(node.value)):
+            return parent + "." + node.attr
+        return ""
+
+    def legacy(value: str) -> bool:
+        """
+        仅识别规范实现和保留的旧模块/SDK 中的显式回环符号。
+        """
+        owner, _, name = value.rpartition(".")
+        return name in LEGACY_INGRESS and (
+            owner in {"app.application.messaging.ingress", "app.sdk._legacy.ingress"}
+            or owner.startswith("app.modules.")
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                value = node.module + "." + alias.name
+                bindings[alias.asname or alias.name] = value
+                if legacy(value) or (alias.name == "*" and (
+                    node.module in {"app.application.messaging.ingress", "app.sdk._legacy.ingress"}
+                    or node.module.startswith("app.modules.")
+                )):
+                    issues.append(f"{node.lineno}: 宿主不得导入旧 HTTP 回环 helper")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bindings[alias.asname or alias.name.split(".")[0]] = alias.name if alias.asname else alias.name.split(".")[0]
+    for _ in range(len(list(ast.walk(tree)))):
+        previous = bindings.copy()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if value := origin(node.value):
+                    bindings.update({target.id: value for target in targets if isinstance(target, ast.Name)})
+        if previous == bindings:
+            break
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Attribute, ast.Name)) and legacy(origin(node)):
+            issues.append(f"{node.lineno}: 宿主不得通过模块或局部别名调用旧 HTTP 回环")
+    return sorted(set(issues))
+
+
+def sdk_source_violations(source: str, *, channel_facade: bool = False) -> list[str]:
+    """
+    约束公开 SDK 的可信入口泄漏，并固化第一版渠道类型门面的精确公开集合。
+
+    :param source: SDK 文件源码
+    :param channel_facade: 是否为仅允许类型导出的渠道门面
+    :return: 不允许的导出、装配依赖或运行代码
+    """
+    tree = ast.parse(source)
+    issues = []
+    exports = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names = {alias.name for alias in node.names}
+            if (node.module is not None and node.module.startswith("app.modules")) or (
+                node.module == "app.application.messaging.ingress" and (names & TRUSTED_INGRESS or "*" in names)
+            ) or (
+                node.module == "app.domain.admission" and ("AdmissionProof" in names or "*" in names)
+            ) or (node.module == "app.application.messaging" and "ingress" in names) or (
+                node.module == "app.domain" and "admission" in names
+            ) or (
+                node.module is not None and node.module.startswith("app.startup")
+            ):
+                issues.append(f"{node.lineno}: 公开 SDK 不得导入可信入口或私有证明")
+            if channel_facade and any(
+                CHANNEL_SDK_OWNERS.get(alias.name) != node.module or alias.asname not in (None, alias.name)
+                for alias in node.names
+            ):
+                issues.append(f"{node.lineno}: 第一版渠道 SDK 必须使用类型的规范 owner")
+        if isinstance(node, ast.Import) and any(
+            alias.name in {"app.application.messaging.ingress", "app.domain.admission"}
+            or alias.name.startswith(("app.startup", "app.modules")) for alias in node.names
+        ):
+            issues.append(f"{node.lineno}: 公开 SDK 不得暴露整个可信入口模块")
+        if channel_facade and isinstance(node, (ast.Call, ast.FunctionDef, ast.AsyncFunctionDef, ast.Import)):
+            issues.append(f"{node.lineno}: 渠道类型 SDK 不得隐藏运行服务或动态装配")
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+            try:
+                exports = set(ast.literal_eval(node.value))
+            except (ValueError, TypeError):
+                issues.append(f"{node.lineno}: SDK 公开集合必须可静态核对")
+    if channel_facade and exports != CHANNEL_SDK_EXPORTS:
+        issues.append("渠道 SDK 的公开集合偏离第一版契约")
+    return issues
+
+
+def sdk_boundary_violations(root: Path) -> list[str]:
+    """
+    允许已登记的旧实现及 SDK 私有兼容适配，检查其余宿主和公开 SDK 文件。
+    """
+    issues = []
+    for path in (root / "app").rglob("*.py"):
+        relative = path.relative_to(root).as_posix()
+        if relative.startswith("app/sdk/") and "/_legacy/" not in relative:
+            found = sdk_source_violations(path.read_text(encoding="utf-8-sig"), channel_facade=relative == "app/sdk/channel.py")
+        elif relative.startswith(("app/sdk/", "app/runtime/compat/", "app/plugins/")) or relative == "app/application/messaging/ingress.py":
+            continue
+        else:
+            found = legacy_ingress_violations(path.read_text(encoding="utf-8-sig"))
+        issues.extend(f"{relative}:{issue}" for issue in found)
+    return issues
+
+
 def violations(root: Path = ROOT) -> list[str]:
     """
     检查固定公共边界及新增的渠道应用文件，不扫描平台实现或冻结升级代码。
@@ -255,7 +405,7 @@ def violations(root: Path = ROOT) -> list[str]:
     paths = set(CORE) | {
         str(path.relative_to(root)) for path in (root / "app/application/messaging/channel").glob("*.py")
     }
-    return [
+    return sdk_boundary_violations(root) + [
         f"{path}:{issue}"
         for path in sorted(paths)
         for issue in source_violations((root / path).read_text(encoding="utf-8"))

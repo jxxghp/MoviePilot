@@ -10,6 +10,7 @@ type = "notification"
 subtype = "WechatClawBot"
 priority = 2
 
+channel_api_version = 1
 channel_extension = "app.modules.wechatclawbot.channel:WechatClawBotPlatform"
 
 channel_interaction = true

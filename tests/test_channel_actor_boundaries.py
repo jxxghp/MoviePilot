@@ -44,6 +44,7 @@ def actor_channels(db, monkeypatch):
                          config={"VOCECHAT_CHANNEL_ID": "2"}),
     ]
     monkeypatch.setattr(authorization_module, "get_notification_configs", lambda **_: configs)
+    monkeypatch.setattr("app.chain.message.get_notification_configs", lambda **_: configs)
     previous = authorization_module.get_channel_authorization()
     service = ChannelAuthorizationService(partial(authorization_scope, SessionFactory))
     authorization_module.configure_channel_authorization(service)
@@ -105,7 +106,7 @@ def test_group_senders_have_independent_authority(actor_channels, monkeypatch, p
     assert tuple(str(item.userid) for item in messages) == expected
     assert all(item.conversation_type == "group" and item.chat_id for item in messages)
     for message in messages:
-        monkeypatch.setattr(chain, "message_parser", lambda value=message, **_: value)
+        monkeypatch.setattr(chain, "run_module", lambda _method, value=message, **_: value)
         chain.process(None, {}, {"source": message.source})
     first = service.find(messages[0].channel.value, messages[0].source, expected[0])
     second = service.find(messages[1].channel.value, messages[1].source, expected[1])
@@ -121,7 +122,7 @@ def test_group_senders_have_independent_authority(actor_channels, monkeypatch, p
     agent = Mock()
     monkeypatch.setattr(chain, "_handle_ai_message", agent)
     forged = messages[1].model_copy(update={"is_channel_admin": True, "text": "下载电影"})
-    monkeypatch.setattr(chain, "message_parser", lambda **_: forged)
+    monkeypatch.setattr(chain, "run_module", lambda _method, **_: forged)
     chain.process(None, {}, {"source": forged.source})
     agent.assert_not_called()
     assert "授权" in chain.post_message.call_args.args[0].title
@@ -242,7 +243,7 @@ def test_application_reply_reaches_original_group(actor_channels, monkeypatch, p
     module = modules[platform]
     incoming = _parse(module, platform, actor)
     chain = MessageChain()
-    monkeypatch.setattr(chain, "message_parser", lambda **_: incoming)
+    monkeypatch.setattr(chain, "run_module", lambda _method, **_: incoming)
 
     def deliver(message, **_):
         """
@@ -280,7 +281,7 @@ def test_group_media_and_pagination_keep_reply_context(actor_channels, monkeypat
     monkeypatch.setattr(chain, "_mark_message_processing_finished", Mock())
     monkeypatch.setattr(chain, "_record_user_message", Mock())
     monkeypatch.setattr(chain, "_handle_secret_confirmation_control", Mock(return_value=False))
-    monkeypatch.setattr(chain, "message_parser", lambda **_: incoming)
+    monkeypatch.setattr(chain, "run_module", lambda _method, **_: incoming)
     meta = MetaBase("测试电影")
     meta.name = "测试电影"
     medias = [MediaInfo(title=f"电影{index}", type=MediaType.MOVIE, tmdb_id=index) for index in range(1, 11)]

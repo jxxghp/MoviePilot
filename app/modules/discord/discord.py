@@ -16,7 +16,7 @@ import discord
 from discord import app_commands
 
 from app.adapters.system.attachment import load_image
-from app.application.messaging.ingress import async_forward_message_to_host, submit_platform_payload
+from app.application.messaging.ingress import submit_bound_payload as _submit_bound_payload
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -111,7 +111,7 @@ class Discord:
         self._command_guild_id = self._to_int(DISCORD_COMMAND_GUILD_ID) or self._guild_id
         self._channel_id = self._to_int(DISCORD_CHANNEL_ID)
         self._config_name = kwargs.get("name")
-        self._connection_id = kwargs.get("connection_id")
+        self._message_ingress = kwargs.get("message_ingress")
         logger.debug(
             f"[Discord] 解析后的 ID: _guild_id={self._guild_id}, _channel_id={self._channel_id}"
         )
@@ -336,6 +336,7 @@ class Discord:
         """
         停止 Discord 客户端，并返回事件循环线程是否已经终止。
         """
+        self._message_ingress = None
         if not self._client or not self._loop or not self._thread:
             return True
         self._stop_requested.set()
@@ -1874,21 +1875,10 @@ class Discord:
             content = re.sub(mention_pattern, "", content).strip()
         return content
 
-    async def _post_to_ds(self, payload: Dict[str, Any]) -> None:
+    async def _post_to_ds(self, payload: Dict[str, Any]) -> bool:
         """
-        把 Discord 事件异步转交统一消息入口。
+        Discord 事件只提交当前连接的绑定入口，保持平台确认与业务接受相互独立。
         """
-        forwarded = submit_platform_payload(
-            payload, self._config_name, NotificationChannel.Discord,
-            getattr(self, "_connection_id", None), submit=ThreadHelper().submit,
+        return _submit_bound_payload(
+            payload, getattr(self, "_message_ingress", None), self._config_name, submit=ThreadHelper().submit,
         )
-        if forwarded is not None:
-            if not forwarded:
-                logger.error("转发 Discord 消息失败")
-            return
-        if not await async_forward_message_to_host(
-            payload,
-            self._config_name,
-            timeout=10,
-        ):
-            logger.error("转发 Discord 消息失败")

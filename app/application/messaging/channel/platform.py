@@ -23,6 +23,7 @@ class ChannelPlatform(Protocol):
     """
     模块实现的协议边界，不决定成员审批、角色或业务权限。
 
+    :ivar api_version: 宿主清单验证的接口版本，不产生平台注册或成员权限
     :ivar legacy_native_image: 平台对旧冻结通知的原图处理事实
     :ivar module_id: 既有模块清单的宿主实现 ID，用于固定解析 owner
     :ivar display_name: 既有模块清单的展示名称
@@ -35,6 +36,7 @@ class ChannelPlatform(Protocol):
     :ivar binding_fields: 平台拥有的旧账号绑定字段
     """
 
+    api_version: int
     legacy_native_image: bool
     module_id: str
     display_name: str
