@@ -32,6 +32,7 @@ from app.db.adapters.download import (
     TransactionalDownloadFailureRepository,
     TransactionalDownloadPendingRepository,
 )
+from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.downloadpending import DownloadPending
 from app.db.session import SessionFactory
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
@@ -708,12 +709,36 @@ def test_transfer_chain_reconciles_pending_before_scanning_completed_torrents():
     assert events == ["reconcile", "list_torrents"]
 
 
-def test_reconcile_pending_is_idempotent_when_history_was_already_written_after_submission():
+@pytest.mark.parametrize(
+    ("pending_downloader", "histories", "already_settled"),
+    [
+        pytest.param("qb", [("qb", "22:27:05")], True, id="same-instance"),
+        pytest.param("qb", [("qb", "22:27:05"), ("qb-other", "22:28:05")], True, id="same-instance-shadowed"),
+        pytest.param("qb", [("qb-other", "22:28:05")], False, id="other-instance"),
+        pytest.param("qb", [("qb", "21:42:00"), ("qb-other", "22:28:05")], False, id="old-same-instance"),
+        pytest.param("", [("", "22:28:05")], False, id="unknown-instance"),
+    ],
+)
+def test_reconcile_pending_recovers_only_from_current_instance_history(
+    db, pending_downloader, histories, already_settled,
+):
     """
-    崩溃恢复幂等：若该哈希已存在不早于提交时间的下载历史，核对时直接清理待确认而不重复写历史。
+    同一下载器在提交后写入的历史可用于幂等恢复。其他实例或归属不明的历史仍须向下载器核对。
     """
+    db.watermark(DownloadPending)
     pending_repo = TransactionalDownloadPendingRepository(SessionFactory)
     target_hash = "c" * 40
+    db.add(*[
+        DownloadHistory(
+            path="/downloads/Inception",
+            type=MediaType.MOVIE.value,
+            title="Inception",
+            downloader=history_downloader,
+            download_hash=target_hash,
+            date=f"2026-11-22 {history_time}",
+        )
+        for history_downloader, history_time in histories
+    ])
     pending_repo.upsert(
         DownloadPendingWrite(
             pending_key="idempotent-pending",
@@ -725,7 +750,7 @@ def test_reconcile_pending_is_idempotent_when_history_was_already_written_after_
             year="2010",
             media_source=MediaSource.TMDB,
             media_id="27205",
-            downloader="qb",
+            downloader=pending_downloader,
             hashes=(target_hash,),
             torrent_name="Release-A",
             source='Subscribe|{"id": 42}',
@@ -734,27 +759,27 @@ def test_reconcile_pending_is_idempotent_when_history_was_already_written_after_
     )
     chain = DownloadChain()
     chain.download_pending_repository = pending_repo
-    chain.download_history_repository = SimpleNamespace(
-        get_by_hashes=MagicMock(
-            return_value={
-                target_hash: SimpleNamespace(
-                    downloader="qb",
-                    download_hash=target_hash,
-                    date="2026-11-22 22:27:05",
-                )
-            }
+    chain.confirm_pending_download = MagicMock(
+        return_value=PendingDownloadCheckResult(
+            status=PendingDownloadCheckStatus.NOT_FOUND,
+            downloader=pending_downloader or None,
         )
     )
-    chain.confirm_pending_download = MagicMock()
     chain._settle_download_success = MagicMock()
 
-    result = chain.reconcile_pending_downloads()
+    result = chain.reconcile_pending_downloads(subscription_id=42)
 
-    assert len(result.confirmed) == 1
-    assert result.confirmed[0].download_hash == target_hash
-    assert pending_repo.list_all() == []
-    chain.confirm_pending_download.assert_not_called()
     chain._settle_download_success.assert_not_called()
+    if already_settled:
+        assert [(item.downloader, item.download_hash) for item in result.confirmed] == [(pending_downloader, target_hash)]
+        assert pending_repo.get_by_key("idempotent-pending") is None
+        chain.confirm_pending_download.assert_not_called()
+    else:
+        assert result.confirmed == ()
+        assert [item.pending_key for item in result.still_pending] == ["idempotent-pending"]
+        assert pending_repo.get_by_key("idempotent-pending") is not None
+        chain.confirm_pending_download.assert_called_once()
+        assert chain.confirm_pending_download.call_args.kwargs["downloader"] == (pending_downloader or None)
 
 
 def test_music_batch_blocks_same_music_after_unconfirmed_without_blocking_other_music(monkeypatch):

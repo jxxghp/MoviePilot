@@ -147,13 +147,19 @@ class DownloadHistoryOper(DbOper):
             lambda session: DownloadHistory.get_by_hash(session, download_hash)
         )
 
-    def get_by_hashes(self, download_hashes: List[str]) -> Dict[str, DownloadHistory]:
+    def get_by_hashes(
+        self, download_hashes: List[str], *, downloader: Optional[str] = None,
+    ) -> Dict[str, DownloadHistory]:
         """
         批量按 Hash 查询下载记录，并返回以 Hash 为键的映射。
+
+        :param download_hashes: 待批量查询的下载任务哈希标识
+        :param downloader: 限定为该名称的下载器实例；None 表示跨实例查询
+        :return: 以任务哈希为键的最新历史映射
         """
         histories = self._execute_sync_query(
             lambda session: DownloadHistory.get_by_hashes(
-                session, download_hashes
+                session, download_hashes, downloader=downloader,
             )
         )
         return {
