@@ -1427,7 +1427,6 @@ class LLMHelper:
     def _should_use_openai_responses_api(
             cls,
             provider: str,
-            model: str | None,
             runtime: dict[str, Any],
             api_protocol: str | None = None,
     ) -> bool | None:
@@ -1437,9 +1436,7 @@ class LLMHelper:
         优先级：
         1. 运行时显式要求（ChatGPT Plus/Pro OAuth、Codex 等端点契约），始终保留；
         2. 用户通过 ``LLM_API_PROTOCOL`` 显式指定 ``responses`` / ``chat_completions``；
-        3. ``auto``（默认）保持原有 ChatGPT 官方 API Key + GPT-5/o 系推理模型
-           自动切换逻辑，通用 OpenAI 兼容入口仍走 Chat Completions，
-           避免误伤第三方兼容服务。
+        3. 官方 ChatGPT API Key 优先 Responses；目录仅声明 Chat Completions 时使用该协议。
 
         :param api_protocol: 显式传入的 API 协议，未传入时读取 ``LLM_API_PROTOCOL``
         :return: True/False 强制指定协议；None 表示交由 LangChain 默认行为
@@ -1459,13 +1456,14 @@ class LLMHelper:
             return None
 
         base_url = str(runtime.get("base_url") or "").strip().lower()
-        if "api.openai.com" not in base_url:
+        if not cls._matches_endpoint_host(base_url, "api.openai.com"):
             return None
 
-        model_name = cls._normalize_model_name(model)
-        if model_name.startswith(("gpt-5", "o1", "o3", "o4")):
-            return True
-        return None
+        metadata = runtime.get("model_metadata") or {}
+        endpoints = metadata.get("supported_endpoints")
+        if isinstance(endpoints, list) and "/v1/chat/completions" in endpoints and "/v1/responses" not in endpoints:
+            return False
+        return True
 
     @staticmethod
     def _normalize_api_protocol(api_protocol: str | None) -> str:
@@ -1711,7 +1709,6 @@ class LLMHelper:
         )
         use_responses_api = cls._should_use_openai_responses_api(
             provider=provider_name,
-            model=model_name,
             runtime=runtime,
             api_protocol=effective_api_protocol,
         )
