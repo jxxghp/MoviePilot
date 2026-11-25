@@ -904,3 +904,42 @@ def test_remote_storage_smb_and_http_progressive_stream_tickets(
             },
         )
         assert unsupported.status_code == 400
+
+
+def test_smb_open_file_stream_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    验证 SMB.open_file_stream 的空路径、正常打开与异常回退分支。
+    """
+    import io
+    import sys
+    import types
+
+    from app.modules.filemanager.storages.smb import SMB
+    from app.schemas.file import FileItem
+
+    storage = SMB.__new__(SMB)
+    storage._connected = False  # noqa: SLF001
+    monkeypatch.setattr(storage, "_check_connection", lambda: None)
+    monkeypatch.setattr(storage, "_normalize_path", lambda p: f"\\\\nas\\share\\{p.lstrip('/')}")
+
+    fake_stream = io.BytesIO(b"hello-smb")
+    fake_smbclient = types.SimpleNamespace(
+        stat=lambda _p: SimpleNamespace(st_size=9),
+        open_file=lambda _p, mode="rb": fake_stream if mode == "rb" else None,
+    )
+    monkeypatch.setitem(sys.modules, "smbclient", fake_smbclient)
+
+    assert storage.open_file_stream(FileItem(storage="smb", type="file", path="", name="empty.mp4")) is None
+
+    result = storage.open_file_stream(FileItem(storage="smb", type="file", path="/movies/a.mp4", name="a.mp4"))
+    assert result == (fake_stream, 9)
+
+    def _boom(_p: str):
+        raise OSError("smb broken")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "smbclient",
+        types.SimpleNamespace(stat=_boom, open_file=lambda _p, mode="rb": None),
+    )
+    assert storage.open_file_stream(FileItem(storage="smb", type="file", path="/movies/a.mp4", name="a.mp4")) is None
