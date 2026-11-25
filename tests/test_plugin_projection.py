@@ -4,6 +4,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.schemas.category import ClassificationFieldDefinition
 from app.schemas.event import MediaSourceInfo
@@ -187,7 +189,12 @@ def test_projection_serializes_public_media_source_sdk_model():
     )
 
 
-def test_projection_isolates_one_plugin_hook_failure():
+@pytest.mark.parametrize("hook,method,healthy,expected", [
+    ("get_service", "services", [{"id": "healthy"}], [{"id": "healthy"}]),
+    ("get_module", "modules", {"message_parser": "handler"}, {("Healthy", "测试插件"): {"message_parser": "handler"}}),
+    ("get_api", "apis", [{"path": "/items"}], [{"path": "/Healthy/items", "auth": "apikey"}]),
+])
+def test_projection_isolates_one_plugin_hook_failure(hook, method, healthy, expected):
     """
     单个插件 hook 失败只记日志，不阻断其他插件投影。
     """
@@ -202,13 +209,13 @@ def test_projection_isolates_one_plugin_hook_failure():
 
     projection = PluginProjection(
         {
-            "Broken": _Plugin(get_service=fail),
-            "Healthy": _Plugin(get_service=lambda: [{"id": "healthy"}]),
+            "Broken": _Plugin(**{hook: fail}),
+            "Healthy": _Plugin(**{hook: lambda: healthy}),
         },
         log=log,
     )
 
-    assert projection.services() == [{"id": "healthy"}]
+    assert getattr(projection, method)() == expected
     assert errors and "Broken" in errors[0]
 
 

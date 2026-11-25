@@ -162,6 +162,50 @@ def test_submit_rejection_or_exception_never_invokes_receiver(ready_ingress, out
     ready_ingress.assert_not_called()
 
 
+def test_bound_entry_exception_is_diagnosed_without_retry_or_sensitive_details(ready_ingress, monkeypatch):
+    """
+    绑定入口异常只提交一次并记录错误类型，不回环或把可能含凭据的异常正文写入日志。
+    """
+    bound = Mock(side_effect=RuntimeError("fixture-private-token"))
+    submit = Mock()
+    legacy = Mock()
+    log = Mock()
+    monkeypatch.setattr(ingress, "forward_message_to_host", legacy)
+    monkeypatch.setattr(ingress.logger, "warning", log)
+    assert ingress.submit_bound_payload({"text": "申请使用"}, bound, "fixture", submit=submit) is False
+    bound.assert_called_once_with({"text": "申请使用"}, submit=submit)
+    submit.assert_not_called()
+    legacy.assert_not_called()
+    ready_ingress.assert_not_called()
+    assert "reason=submit_failed:RuntimeError," in log.call_args.args[0]
+    assert "fixture-private-token" not in str(log.call_args)
+
+
+def test_offline_claim_is_connection_scoped_bounded_and_expires(monkeypatch):
+    """
+    未装配共享认领服务的隔离入口按连接防重，缓存满时拒绝新事件，过期后才释放容量。
+    """
+    from cachetools import TTLCache
+
+    from app.domain.admission import AdmissionProof
+
+    clock = [100.0]
+    cache = TTLCache(maxsize=2, ttl=120, timer=lambda: clock[0])
+    monkeypatch.setattr(ingress, "time", SimpleNamespace(time=lambda: clock[0]))
+    monkeypatch.setattr(ingress, "_verified_events", cache)
+    monkeypatch.setattr(ingress, "_verified_event_claim", None)
+    first = AdmissionProof("first", 1, "alice", None, 1000)
+    second = AdmissionProof("second", 1, "alice", None, 1000)
+    assert ingress.claim_verified_event(first, "event-one") is True
+    assert ingress.claim_verified_event(first, "event-one") is False
+    assert ingress.claim_verified_event(second, "event-one") is True
+    assert ingress.claim_verified_event(first, "event-two") is False
+    assert len(cache) == cache.maxsize
+    clock[0] = 221
+    assert ingress.claim_verified_event(first, "event-two") is True
+    assert len(cache) == 1
+
+
 @pytest.mark.parametrize(
     "module,symbol",
     [
