@@ -1223,6 +1223,55 @@ def test_resumed_scan_submits_available_episode_instead_of_paging_to_limit(owner
     assert scan.collection.remaining == {f"1:{ep}" for ep in range(17, 35)}
 
 
+@pytest.mark.parametrize("first_download_succeeds", [True, False])
+def test_deep_page_submission_skips_other_sites_only_when_no_released_gap_remains(
+    owner, monkeypatch, first_download_succeeds,
+):
+    """
+    深页补完已收录缺集后立即停止翻页；下载失败时继续搜索其他来源的候选。
+    """
+    monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [{"id": 1}, {"id": 2}])
+    site_pages = {(1, 0): [torrent(30)], (2, 0): [torrent(31)],
+                  (1, 1): [torrent(15)], (2, 1): [torrent(15, 2)]}
+    calls = []
+
+    def request(**params):
+        """
+        记录站点页请求，各站第二页各提供一个缺集候选。
+        """
+        site, page = params["site"]["id"], params["page"]
+        calls.append((site, page))
+        items = site_pages.get((site, page), [])
+        for item in items:
+            item.site = site
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(items), has_more=bool(items))
+        return items
+
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    submitted = []
+
+    def submit(items, ready):
+        """
+        首个候选可模拟下载失败，备用候选成功结算同一个缺集。
+        """
+        submitted.append((calls[-1], {item.torrent_info.description for item in items}, ready))
+        return ready if first_download_succeeds or len(submitted) > 1 else set()
+
+    scan = SearchScan(owner=owner, plan=plan([15, 34]))
+    scan.run(submit)
+
+    assert scan.ended
+    assert scan.collection.remaining == {"1:34"}
+    expected_calls = [(1, 0), (2, 0), (1, 1)]
+    expected_submitted = [((1, 1), {"15-1"}, {"1:15"})]
+    if not first_download_succeeds:
+        expected_calls.append((2, 1))
+        expected_submitted.append(((2, 1), {"15-2"}, {"1:15"}))
+    assert submitted == expected_submitted
+    assert calls == expected_calls
+
+
 def test_only_unreleased_episodes_check_first_page_and_do_not_try_aliases(owner, monkeypatch):
     """
     只缺未播出集数时检查首个关键词首页，不继续尝试别名。
