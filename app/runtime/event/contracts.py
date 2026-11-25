@@ -158,6 +158,7 @@ _PAYLOAD_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     ChainEventType.TransferOverwriteCheck: event_schemas.TransferOverwriteCheckEventData,
     ChainEventType.ResourceSelection: event_schemas.ResourceSelectionContractData,
     ChainEventType.ResourceDownload: event_schemas.ResourceDownloadContractData,
+    ChainEventType.ResourceSubmit: event_schemas.ResourceSubmitContractData,
     ChainEventType.DiscoverSource: event_schemas.DiscoverSourceEventData,
     ChainEventType.MediaRecognizeConvert: event_schemas.MediaRecognizeConvertEventData,
     ChainEventType.RecommendSource: event_schemas.RecommendSourceEventData,
@@ -183,18 +184,21 @@ _SNAPSHOT_EVENTS = {
     EventType.MetadataScrape,
     ChainEventType.ResourceSelection,
     ChainEventType.ResourceDownload,
+    ChainEventType.ResourceSubmit,
     ChainEventType.SubscribeCompletionCheck,
 }
 
 _INPUT_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     ChainEventType.ResourceSelection: event_schemas.ResourceSelectionInputContractData,
     ChainEventType.ResourceDownload: event_schemas.ResourceDownloadInputContractData,
+    ChainEventType.ResourceSubmit: event_schemas.ResourceSubmitInputContractData,
     ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckInputContractData,
 }
 
 _OUTPUT_MODELS: dict[EventType | ChainEventType, type[BaseModel]] = {
     ChainEventType.ResourceSelection: event_schemas.ResourceSelectionOutputContractData,
     ChainEventType.ResourceDownload: event_schemas.ResourceDownloadOutputContractData,
+    ChainEventType.ResourceSubmit: event_schemas.ResourceSubmitOutputContractData,
     ChainEventType.SubscribeCompletionCheck: event_schemas.SubscribeCompletionCheckOutputContractData,
 }
 

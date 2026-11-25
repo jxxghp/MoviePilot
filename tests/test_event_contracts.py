@@ -26,6 +26,8 @@ from app.schemas.event import (
     ResourceDownloadOutputContractData,
     ResourceSelectionInputContractData,
     ResourceSelectionOutputContractData,
+    ResourceSubmitInputContractData,
+    ResourceSubmitOutputContractData,
 )
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
@@ -34,12 +36,12 @@ from app.schemas.types import ChainEventType, EventType, MediaType, SystemConfig
 
 def test_every_event_enum_has_complete_contract() -> None:
     """
-    53 个广播/链式事件必须全部登记并绑定 typed payload。
+    54 个广播/链式事件必须全部登记并绑定 typed payload。
     """
     expected = {*EventType, *ChainEventType}
 
     assert set(EVENT_CONTRACTS) == expected
-    assert len(EVENT_CONTRACTS) == 53
+    assert len(EVENT_CONTRACTS) == 54
     for contract in EVENT_CONTRACTS.values():
         assert contract.mode in {"broadcast", "chain"}
         assert contract.payload_contract
@@ -204,6 +206,7 @@ def test_snapshot_contract_metadata_declares_mutable_chain_boundaries() -> None:
     """
     selection = get_event_contract(ChainEventType.ResourceSelection)
     download = get_event_contract(ChainEventType.ResourceDownload)
+    submit = get_event_contract(ChainEventType.ResourceSubmit)
 
     assert selection.schema_version == 1
     assert selection.payload_mode.value == "snapshot"
@@ -211,6 +214,9 @@ def test_snapshot_contract_metadata_declares_mutable_chain_boundaries() -> None:
     assert selection.output_model is ResourceSelectionOutputContractData
     assert download.input_model is ResourceDownloadInputContractData
     assert download.output_model is ResourceDownloadOutputContractData
+    assert submit.payload_mode.value == "snapshot"
+    assert submit.input_model is ResourceSubmitInputContractData
+    assert submit.output_model is ResourceSubmitOutputContractData
     assert selection.validation_mode.value == "diagnostic"
 
 

@@ -1680,7 +1680,7 @@
     ],
     "dynamic_consumer_count": 1,
     "dynamic_producer_count": 2,
-    "event_count": 53,
+    "event_count": 54,
     "event_index": {
       "ChainEventType.AgentLLMProvider": {
         "consumer_fingerprints": [],
@@ -1774,6 +1774,12 @@
         "consumer_fingerprints": [],
         "producer_fingerprints": [
           "8121a37b3badc8940c2f1c5bbc563845cf342bc073c20af63113c6989aa01255"
+        ]
+      },
+      "ChainEventType.ResourceSubmit": {
+        "consumer_fingerprints": [],
+        "producer_fingerprints": [
+          "7d564f9e9178c7d4d8b10604b35ee34617b75c952f30aa03f6f2dcbce6c7923a"
         ]
       },
       "ChainEventType.StorageOperSelection": {
@@ -2049,11 +2055,11 @@
         ]
       }
     },
-    "fact_count": 95,
+    "fact_count": 96,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
-    "producer_call_count": 76,
-    "producer_event_reference_count": 76,
+    "producer_call_count": 77,
+    "producer_event_reference_count": 77,
     "producers": [
       {
         "caller": "app.agent.orchestrator",
@@ -2331,6 +2337,18 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "_DownloadResourceOwner._apply_resource_download_event",
+        "receiver_kind": "canonical_singleton"
+      },
+      {
+        "caller": "app.chain.download.submission",
+        "dynamic": false,
+        "events": [
+          "ChainEventType.ResourceSubmit"
+        ],
+        "fingerprint": "7d564f9e9178c7d4d8b10604b35ee34617b75c952f30aa03f6f2dcbce6c7923a",
+        "invalid": false,
+        "method": "send_event",
+        "qualname": "_DownloadResourceOwner._apply_resource_submit_event",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -2967,7 +2985,7 @@
       }
     ],
     "static_consumer_count": 18,
-    "static_producer_call_count": 74
+    "static_producer_call_count": 75
   },
   "event_specs": {
     "ChainEventType.AgentLLMProvider": {
@@ -3182,6 +3200,21 @@
       "ordering": "priority_serial",
       "output_contract": "ResourceSelectionOutputContractData",
       "payload_contract": "ResourceSelectionContractData",
+      "payload_mode": "snapshot",
+      "schema_version": 1,
+      "sensitive_fields": [],
+      "validation_mode": "diagnostic",
+      "visibility": "plugin_public"
+    },
+    "ChainEventType.ResourceSubmit": {
+      "delivery": "ephemeral",
+      "error_behavior": "stop_chain",
+      "input_contract": "ResourceSubmitInputContractData",
+      "legacy_reason": null,
+      "mode": "chain",
+      "ordering": "priority_serial",
+      "output_contract": "ResourceSubmitOutputContractData",
+      "payload_contract": "ResourceSubmitContractData",
       "payload_mode": "snapshot",
       "schema_version": 1,
       "sensitive_fields": [],
@@ -10997,6 +11030,21 @@
       },
       {
         "kind": "import",
+        "name": "ResourceSubmitContractData",
+        "target": "app.schemas.event.ResourceSubmitContractData"
+      },
+      {
+        "kind": "import",
+        "name": "ResourceSubmitInputContractData",
+        "target": "app.schemas.event.ResourceSubmitInputContractData"
+      },
+      {
+        "kind": "import",
+        "name": "ResourceSubmitOutputContractData",
+        "target": "app.schemas.event.ResourceSubmitOutputContractData"
+      },
+      {
+        "kind": "import",
         "name": "SubscribeCompletionCheckContractData",
         "target": "app.schemas.event.SubscribeCompletionCheckContractData"
       },
@@ -11230,6 +11278,11 @@
         "kind": "import",
         "name": "set_custom_separator",
         "target": "app.domain.meta.customization.set_custom_separator"
+      },
+      {
+        "kind": "import",
+        "name": "torrent_resource_identity",
+        "target": "app.application.site.protocol.torrent_resource_identity"
       }
     ],
     "app.sdk.network": [

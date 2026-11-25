@@ -978,8 +978,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10616,
-  "edge_sha256": "8c7011467ea900ddf272bd56e0a465b88c42202115fd1cf439f096e57fecf480",
+  "edge_count": 10619,
+  "edge_sha256": "841c123087d7ac4267342942dfb7629a3e889fe3214eb5b207f7f6a92046b950",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10417,6 +10417,9 @@
     "app.sdk.feishu -> app.adapters.network.feishu",
     "app.sdk.logging -> app.runtime",
     "app.sdk.logging -> app.runtime.log",
+    "app.sdk.media -> app.application",
+    "app.sdk.media -> app.application.site",
+    "app.sdk.media -> app.application.site.protocol",
     "app.sdk.media -> app.domain",
     "app.sdk.media -> app.domain.context",
     "app.sdk.media -> app.domain.media",

@@ -396,6 +396,8 @@ class ChainEventType(Enum):
     ResourceSelection = "resource.selection"
     # 资源下载
     ResourceDownload = "resource.download"
+    # 资源提交下载器前
+    ResourceSubmit = "resource.submit"
     # 探索数据源
     DiscoverSource = "discover.source"
     # 媒体识别转换

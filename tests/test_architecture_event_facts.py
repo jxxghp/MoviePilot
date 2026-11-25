@@ -1221,17 +1221,17 @@ def publish(kind):
 
 def test_collect_event_facts_matches_current_host_inventory() -> None:
     """
-    统一事实覆盖当前 76 个 producer 调用与 19 个 consumer 调用。
+    统一事实覆盖当前 77 个 producer 调用与 19 个 consumer 调用。
     """
     facts = current_event_facts()
     producers = facts["producers"]
     consumers = facts["consumers"]
 
-    assert len(producers) == 76
-    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 74
+    assert len(producers) == 77
+    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 75
     assert sum(fact["dynamic"] for fact in producers) == 2
     assert sum(fact["invalid"] for fact in producers) == 0
-    assert sum(len(fact["events"]) for fact in producers) == 76
+    assert sum(len(fact["events"]) for fact in producers) == 77
     assert len(consumers) == 19
     assert sum(not fact["dynamic"] and not fact["invalid"] for fact in consumers) == 18
     assert sum(fact["dynamic"] for fact in consumers) == 1

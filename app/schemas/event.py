@@ -467,6 +467,55 @@ class ResourceDownloadOutputContractData(ChainEventData):
     reason: str = Field(default="", description="拦截原因")
 
 
+class ResourceSubmitContractData(ChainEventData):
+    """
+    ResourceSubmit 的稳定输入/输出契约。
+    """
+
+    context: Optional[ContextSnapshot] = Field(default=None, description="当前资源上下文")
+    hashes: List[str] = Field(default_factory=list, description="种子或磁力解析出的真实 info_hash 列表")
+    episodes: Optional[Set[int]] = Field(default=None, description="剧集信息")
+    channel: Optional[NotificationChannel] = Field(default=None, description="消息渠道标识")
+    origin: Optional[str] = Field(default=None, description="操作来源")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    save_path: Optional[str] = Field(default=None, description="最终下载保存路径")
+    folder_name: str = Field(default="", description="种子顶层目录名")
+    file_list: List[str] = Field(default_factory=list, description="种子内相对文件路径清单")
+    user_specified: bool = Field(default=False, description="是否为用户手动明确指定该种子")
+    options: Optional[Dict[str, EventJsonValue]] = Field(default=None, description="下载提交选项")
+    cancel: bool = Field(default=False, description="是否取消当前提交")
+    source: str = Field(default="未知拦截源", description="数据来源")
+    reason: str = Field(default="", description="拦截原因")
+
+
+class ResourceSubmitInputContractData(ChainEventData):
+    """
+    ResourceSubmit 事件输入字段。
+    """
+
+    context: Optional[ContextSnapshot] = Field(default=None, description="当前资源上下文")
+    hashes: List[str] = Field(default_factory=list, description="种子或磁力解析出的真实 info_hash 列表")
+    episodes: Optional[Set[int]] = Field(default=None, description="剧集信息")
+    channel: Optional[NotificationChannel] = Field(default=None, description="消息渠道标识")
+    origin: Optional[str] = Field(default=None, description="操作来源")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    save_path: Optional[str] = Field(default=None, description="最终下载保存路径")
+    folder_name: str = Field(default="", description="种子顶层目录名")
+    file_list: List[str] = Field(default_factory=list, description="种子内相对文件路径清单")
+    user_specified: bool = Field(default=False, description="是否为用户手动明确指定该种子")
+    options: Optional[Dict[str, EventJsonValue]] = Field(default=None, description="下载提交选项")
+
+
+class ResourceSubmitOutputContractData(ChainEventData):
+    """
+    ResourceSubmit 事件插件回写字段。
+    """
+
+    cancel: bool = Field(default=False, description="是否取消当前提交")
+    source: str = Field(default="未知拦截源", description="数据来源")
+    reason: str = Field(default="", description="拦截原因")
+
+
 class DownloadAddedContractData(BaseEventData):
     """
     DownloadAdded 的稳定下载上下文契约。
@@ -798,6 +847,30 @@ class ResourceDownloadEventData(ChainEventData):
 
     # 输出参数
     cancel: bool = Field(default=False, description="是否取消下载，默认值为 False")
+    source: str = Field(default="未知拦截源", description="拦截源，默认值为 \"未知拦截源\"")
+    reason: str = Field(default="", description="拦截原因，描述拦截的具体原因")
+
+
+class ResourceSubmitEventData(ChainEventData):
+    """
+    ResourceSubmit 事件的数据模型，在种子内容解析完成后、提交下载器之前触发。
+    """
+
+    # 输入参数
+    context: Any = Field(None, description="当前资源上下文")
+    hashes: List[str] = Field(default_factory=list, description="种子或磁力解析出的真实 info_hash 列表")
+    episodes: Optional[Set[int]] = Field(None, description="需要下载的集数")
+    channel: Optional[NotificationChannel] = Field(None, description="通知渠道")
+    origin: Optional[str] = Field(None, description="来源（消息通知、Subscribe、Manual等）")
+    downloader: Optional[str] = Field(None, description="下载器")
+    save_path: Optional[str] = Field(None, description="最终下载保存路径")
+    folder_name: str = Field(default="", description="种子顶层目录名")
+    file_list: List[str] = Field(default_factory=list, description="种子内相对文件路径清单")
+    user_specified: bool = Field(default=False, description="是否为用户手动明确指定该种子")
+    options: Optional[dict[str, Any]] = Field(default_factory=dict, description="其他参数")
+
+    # 输出参数
+    cancel: bool = Field(default=False, description="是否取消提交下载器，默认值为 False")
     source: str = Field(default="未知拦截源", description="拦截源，默认值为 \"未知拦截源\"")
     reason: str = Field(default="", description="拦截原因，描述拦截的具体原因")
 
