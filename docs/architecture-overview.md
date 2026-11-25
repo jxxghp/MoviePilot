@@ -415,8 +415,8 @@ collector 只接受 canonical `eventmanager`、`EventManager()` 及其有限别�
 `register`/`add_event_listener`；当前宿主有 18 个静态注册点，另保留 1 个由工作流配置驱动的
 真实动态注册。`app/plugins/**` 插件副本不进入宿主事实。
 
-生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 76 个
-生产调用，其中 74 个静态解析为 76 个事件引用，`Command.send_plugin_event` 的插件事件类型和
+生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 77 个
+生产调用，其中 75 个静态解析为 77 个事件引用，`Command.send_plugin_event` 的插件事件类型和
 `dispatch_event_handler` 的持久事件恢复类型保持动态；后者只接受 `DURABLE_EVENT_TOPICS`
 登记的事件。19 个消费注册中 18 个静态、1 个动态。生成的
 `runtime-contract-baseline.json` 保存 line-free 事实、数量和枚举索引；人工维护的
@@ -850,8 +850,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1231 |
-| 内部导入边 | 11,015 |
+| Python 模块 | 1232 |
+| 内部导入边 | 11,039 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 52（精确 policy 准入，Application / Chain 均为 0；本知识 Adapter 仍复用宿主 HTTP 层） |

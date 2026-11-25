@@ -299,6 +299,8 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         item_id: Union[str, int],
         item_type: Optional[str],
         media_source_id: Optional[str] = None,
+        play_session_id: Optional[str] = None,
+        user_token: Optional[str] = None,
     ) -> Optional[str]:
         """
         返回 Emby 支持 Range 的静态媒体流，而不暴露服务器令牌给客户端。
@@ -307,11 +309,19 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         :param item_id: Emby 条目标识
         :param item_type: 媒体服务器返回的类型，用于选择音频或视频接口
         :param media_source_id: 可选指定的多版本媒体源标识
+        :param play_session_id: 可选本次播放会话标识
+        :param user_token: 可选用户级访问令牌
         :return: 上游媒体流地址；实例不存在或适配器无法构造地址时返回 None
         """
         server_obj = self.get_instance(server)
         return (
-            server_obj.get_stream_url(str(item_id), item_type, media_source_id=media_source_id)
+            server_obj.get_stream_url(
+                str(item_id),
+                item_type,
+                media_source_id=media_source_id,
+                play_session_id=play_session_id,
+                user_token=user_token,
+            )
             if server_obj
             else None
         )

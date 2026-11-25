@@ -291,6 +291,9 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
         operations=_LIST_OBJECT_OPERATIONS,
         match_field="name",
     ),
+    SystemConfigKey.MediaServerUserCredentials: _internal_contract(
+        "media_servers", Optional[dict[str, JsonData]], sensitive=True
+    ),
     SystemConfigKey.Notifications: _managed_contract(
         "notifications", Optional[list[NotificationConf]],
         "notification/config", sensitive=True,

@@ -6,6 +6,8 @@ import secrets
 from dataclasses import dataclass
 from typing import Literal, Optional, Tuple, Union
 
+from app.application.mediaserver import get_mediaserver_configs
+from app.application.playback import BINDABLE_MEDIA_SERVER_TYPES, save_user_mediaserver_credential
 from app.application.security.otp import OtpUtils
 from app.application.security.token import get_password_hash, verify_password
 from app.application.security.user import AuxiliaryUserCreate, UserAuthSnapshot
@@ -218,6 +220,40 @@ class UserChain(ChainBase):
             return False
         return True
 
+    @staticmethod
+    def _capture_auxiliary_mediaserver_token(username: str, credentials: AuthCredentials) -> None:
+        """
+        当用户通过 Emby、Jellyfin 或 Plex 完成辅助登录时，自动加密留存其媒体服务器令牌，
+        以便原生播放时无需二次绑定即可直接上报实时会话。
+
+        :param username: 已确认通过认证的 MoviePilot 用户名
+        :param credentials: 辅助认证成功返回的凭据快照
+        """
+        token = (credentials.token or "").strip()
+        service = (credentials.service or "").strip()
+        if not token or not service:
+            return
+        try:
+            configs = get_mediaserver_configs()
+        except Exception:
+            return
+        matched = next(
+            (conf for conf in configs if conf.enabled and conf.name == service),
+            None,
+        )
+        if not matched or (matched.type or "").strip().casefold() not in BINDABLE_MEDIA_SERVER_TYPES:
+            return
+        try:
+            save_user_mediaserver_credential(
+                username=username,
+                server=service,
+                token=token,
+                remote_username=credentials.username or username,
+                source="auxiliary_auth",
+            )
+        except Exception as err:
+            logger.debug(f"自动留存媒体服务器辅助登录令牌失败（{service}）：{err}")
+
     def _process_auth_success(self, username: str, credentials: AuthCredentials) -> bool:
         """
         完成辅助认证拦截检查，并在允许时创建本地用户。
@@ -260,6 +296,7 @@ class UserChain(ChainBase):
             logger.info(
                 f"认证类型：{credentials.grant_type}，用户：{username}，渠道：{channel}，"
                 f"服务：{service} 认证成功，token：{anonymized_token}")
+            self._capture_auxiliary_mediaserver_token(username, credentials)
             return True
         else:
             if credentials.grant_type == "password":
@@ -268,6 +305,7 @@ class UserChain(ChainBase):
                     hashed_password=get_password_hash(secrets.token_urlsafe(16)),
                 ))
                 logger.info(f"用户 {username} 不存在，已通过 {credentials.grant_type} 认证并已创建普通用户")
+                self._capture_auxiliary_mediaserver_token(username, credentials)
                 return True
             else:
                 logger.warning(

@@ -396,6 +396,8 @@ class ChainEventType(Enum):
     ResourceSelection = "resource.selection"
     # 资源下载
     ResourceDownload = "resource.download"
+    # 资源提交下载器前
+    ResourceSubmit = "resource.submit"
     # 探索数据源
     DiscoverSource = "discover.source"
     # 媒体识别转换
@@ -424,6 +426,8 @@ class SystemConfigKey(Enum):
     Downloaders = "Downloaders"
     # 媒体服务器配置
     MediaServers = "MediaServers"
+    # 用户级媒体服务器播放与会话同步的内部加密凭据；按用户名与服务器名隔离，不向客户端下发
+    MediaServerUserCredentials = "MediaServerUserCredentials"
     # 消息通知配置
     Notifications = "Notifications"
     # 共享渠道连接、通知路由和交互策略的原子配置快照。

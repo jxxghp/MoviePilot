@@ -510,6 +510,7 @@ TTG_OLD_URL = "https://totheglory.im/dl/395931/3576"
 TTG_NEW_URL = "https://totheglory.im/dl/395931/8067"
 # TTG RSS 条目的下载链接是 rssdd.php?par=，par 为 base64 编码的 "vvv{id}..."，不使用 /dl/ 路径签名
 TTG_RSS_URL = "https://totheglory.im/rssdd.php?par=dnZ2Mzk1OTMx&ssl=yes"
+TTG_RSS_URL_WITH_TAIL = f"https://totheglory.im/rssdd.php?par={base64.b64encode(b'vvv395931,passkey123').decode()}&ssl=yes"
 
 
 @pytest.mark.parametrize("page_url,enclosure,expected", [
@@ -518,7 +519,10 @@ TTG_RSS_URL = "https://totheglory.im/rssdd.php?par=dnZ2Mzk1OTMx&ssl=yes"
     ("https://totheglory.im/t/395931", None, ("1", "id=395931")),
     ("https://www.totheglory.im/t/395931/", None, ("1", "id=395931")),
     (TTG_PAGE_URL, TTG_RSS_URL, ("1", "id=395931")),
-    (None, TTG_RSS_URL, None),
+    (None, TTG_RSS_URL, ("1", "id=395931")),
+    (None, TTG_RSS_URL_WITH_TAIL, ("1", "id=395931")),
+    (None, "https://totheglory.im/rssdd.php?par=!!!invalid!!!", None),
+    (None, f"https://totheglory.im/rssdd.php?par={base64.b64encode(b'other395931').decode()}", None),
     ("https://tracker.example/t/395931/", "https://tracker.example/dl/395931/3576", None),
     ("https://totheglory.im/browse.php?c=M", "https://totheglory.im/dl/395931/", None),
     ("https://nottheglory.im/t/395931/", None, None),

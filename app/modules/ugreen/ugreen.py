@@ -23,7 +23,8 @@ from app.modules._base.embybrowse import (
     emby_browse_items,
     emby_filter_options,
     emby_item_detail,
-    emby_report_progress,
+    emby_prepare_playback_session,
+    emby_report_progress_detail,
     emby_search_library,
     emby_season_episodes,
     emby_seasons,
@@ -1908,6 +1909,7 @@ class Ugreen:
             request_factory=lambda: RequestUtils(timeout=15, verify=verify_ssl),
             include_api_key_param=True,
             image_api_key=True,
+            is_user_token=True,
             play_url_builder=lambda _: self.__build_root_url(),
         )
 
@@ -2083,15 +2085,59 @@ class Ugreen:
             return emby_season_episodes(cfg, series_id, season_id=season_id, season=season)
         return []
 
+    def prepare_playback_session(
+        self,
+        item_id: str,
+        *,
+        media_source_id: Optional[str] = None,
+        username: Optional[str] = None,
+        user_token: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        为绿联媒体库服务（Emby 兼容）准备播放会话上下文。
+        """
+        _ = username
+        cfg = self._media_service_browse_config()
+        if not cfg:
+            return None
+        return emby_prepare_playback_session(
+            cfg,
+            item_id,
+            media_source_id=media_source_id,
+            user_token=user_token,
+            client_id=client_id,
+            device_name=device_name,
+            platform=platform,
+            app_version=app_version,
+        )
+
     def get_stream_url(
         self,
         item_id: str,
         item_type: Optional[str],
         media_source_id: Optional[str] = None,
+        *,
+        play_session_id: Optional[str] = None,
+        user_token: Optional[str] = None,
     ) -> Optional[str]:
         """获取绿联媒体库服务的静态原始流地址。"""
         cfg = self._media_service_browse_config()
-        return emby_stream_url(cfg, item_id, item_type, media_source_id=media_source_id) if cfg else None
+        return (
+            emby_stream_url(
+                cfg,
+                item_id,
+                item_type,
+                media_source_id=media_source_id,
+                play_session_id=play_session_id,
+                user_token=user_token,
+            )
+            if cfg
+            else None
+        )
 
     def get_subtitle_url(self, item_id: str, subtitle_id: str) -> Optional[str]:
         """解析绿联媒体库服务外挂字幕流地址。"""
@@ -2108,14 +2154,46 @@ class Ugreen:
         is_paused: bool = False,
         state: str = "playing",
         username: Optional[str] = None,
-    ) -> bool:
-        """回传绿联媒体库服务的播放进度。"""
-        _ = duration_ms, username
+        play_session_id: Optional[str] = None,
+        event_name: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+        play_method: str = "DirectPlay",
+        playback_time_ms: Optional[int] = None,
+        audio_stream_index: Optional[int] = None,
+        subtitle_stream_index: Optional[int] = None,
+        user_token: Optional[str] = None,
+        started_reported: bool = False,
+        allow_userdata_write: bool = True,
+        scrobbled: bool = False,
+    ) -> Dict[str, Any]:
+        """回传绿联媒体库服务的播放进度与实时会话状态。"""
+        _ = username, playback_time_ms, scrobbled
         cfg = self._media_service_browse_config()
         if not cfg:
-            return False
-        return emby_report_progress(
-            cfg, item_id, position_ms, media_source_id=media_source_id, is_paused=is_paused, state=state
+            return {"reported": False, "mode": "unsupported", "started_sent": False}
+        return emby_report_progress_detail(
+            cfg,
+            item_id,
+            position_ms,
+            media_source_id=media_source_id,
+            duration_ms=duration_ms,
+            is_paused=is_paused,
+            state=state,
+            play_session_id=play_session_id,
+            event_name=event_name,
+            client_id=client_id,
+            device_name=device_name,
+            platform=platform,
+            app_version=app_version,
+            play_method=play_method,
+            audio_stream_index=audio_stream_index,
+            subtitle_stream_index=subtitle_stream_index,
+            user_token=user_token,
+            started_reported=started_reported,
+            allow_userdata_write=allow_userdata_write,
         )
 
     def search_library(

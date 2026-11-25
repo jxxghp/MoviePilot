@@ -2256,3 +2256,188 @@ def test_settle_download_success_persists_origin_media_trace_and_snapshot_roundt
     )
     restored = restore_download_processing(payload)
     assert restored.context.origin_media == origin_media
+
+
+def test_execute_download_single_emits_resource_submit_with_hashes_and_cancels_before_downloader(
+    monkeypatch,
+):
+    """
+    ResourceSubmit 在拉取种子并解析出真实 info_hash 后触发；取消时不得进入下载器提交或标记副作用开始。
+    """
+    from app.application.download.admission import SubscriptionDownloadGovernance
+    from app.schemas.types import ChainEventType
+
+    chain = DownloadChain.__new__(DownloadChain)
+    captured = []
+    submitted = MagicMock(return_value=("should-not-run", None))
+    mark_started = MagicMock()
+    decision_observer = MagicMock()
+    governance = SubscriptionDownloadGovernance(
+        mark_started=mark_started,
+        decision_observer=decision_observer,
+    )
+
+    def handle_event(event_type, event_data):
+        """
+        记录链式事件并在 ResourceSubmit 阶段按真实哈希取消提交。
+        """
+        captured.append((event_type, event_data))
+        if event_type == ChainEventType.ResourceSubmit:
+            event_data.cancel = True
+            event_data.source = "订阅助手（增强版）"
+            event_data.reason = "命中近期删除指纹"
+        return SimpleNamespace(event_data=event_data)
+
+    monkeypatch.setattr(eventmanager, "send_event", handle_event)
+    monkeypatch.setattr(download_submission, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(chain, "_resolve_media_download_dir", lambda **_kw: ("local", Path("/downloads/movies"), None))
+    monkeypatch.setattr(chain, "_submit_prepared_download", submitted)
+
+    torrent_hash = "3db38150daf7c83acf17bb413d9e29c3c8a90efd"
+    context = Context(
+        meta_info=MetaInfo("Forgotten.Island.2026.2160p.mkv"),
+        media_info=MediaInfo(
+            media_source=MediaSource.TMDB,
+            media_id="1465063",
+            type=MediaType.MOVIE,
+            title="忘却之岛",
+            year="2026",
+        ),
+        torrent_info=TorrentInfo(
+            title="Forgotten Island 2026 2160p-RiKKi",
+            site_downloader="qb-main",
+        ),
+    )
+
+    download_id, error_msg = chain._execute_download_single(
+        context=context,
+        torrent_content=f"magnet:?xt=urn:btih:{torrent_hash}",
+        source='Subscribe|{"id": 9}',
+        username="tester",
+        label="movie",
+        return_detail=True,
+        governance=governance,
+        user_specified=False,
+    )
+
+    assert download_id is None
+    assert error_msg == "下载被事件取消"
+    submitted.assert_not_called()
+    mark_started.assert_not_called()
+    decision_observer.assert_called_once_with(context, "rejected", "命中近期删除指纹")
+    assert [et for et, _ in captured] == [ChainEventType.ResourceDownload, ChainEventType.ResourceSubmit]
+    submit_data = captured[1][1]
+    assert submit_data.hashes == [torrent_hash]
+    assert submit_data.downloader == "qb-main"
+    assert submit_data.save_path == "/downloads/movies"
+    assert submit_data.origin == 'Subscribe|{"id": 9}'
+    assert submit_data.user_specified is False
+    assert submit_data.options["label"] == "movie"
+
+
+def test_execute_download_single_passes_parsed_hashes_through_resource_submit_when_allowed(
+    monkeypatch,
+):
+    """
+    ResourceSubmit 放行时应把已计算的真实哈希传给提交阶段并正常提交下载器。
+    """
+    from app.schemas.types import ChainEventType
+
+    chain = DownloadChain.__new__(DownloadChain)
+    seen_submit = []
+    submitted = MagicMock(return_value=("3db38150daf7c83acf17bb413d9e29c3c8a90efd", "添加下载成功"))
+
+    def handle_event(event_type, event_data):
+        """
+        放行全部链式事件并记录 ResourceSubmit 载荷。
+        """
+        if event_type == ChainEventType.ResourceSubmit:
+            seen_submit.append(event_data)
+        return SimpleNamespace(event_data=event_data)
+
+    monkeypatch.setattr(eventmanager, "send_event", handle_event)
+    monkeypatch.setattr(download_submission, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(chain, "_resolve_media_download_dir", lambda **_kw: ("local", Path("/downloads/movies"), None))
+    monkeypatch.setattr(chain, "_submit_prepared_download", submitted)
+
+    torrent_hash = "3db38150daf7c83acf17bb413d9e29c3c8a90efd"
+    context = Context(
+        meta_info=MetaInfo("Forgotten.Island.2026.2160p.mkv"),
+        media_info=MediaInfo(
+            media_source=MediaSource.TMDB,
+            media_id="1465063",
+            type=MediaType.MOVIE,
+            title="忘却之岛",
+            year="2026",
+        ),
+        torrent_info=TorrentInfo(title="Forgotten Island 2026 2160p-RiKKi"),
+    )
+
+    download_id, error_msg = chain._execute_download_single(
+        context=context,
+        torrent_content=f"magnet:?xt=urn:btih:{torrent_hash}",
+        downloader="qb-explicit",
+        return_detail=True,
+        user_specified=True,
+    )
+
+    assert download_id == torrent_hash
+    assert error_msg == "添加下载成功"
+    assert len(seen_submit) == 1
+    assert seen_submit[0].hashes == [torrent_hash]
+    assert seen_submit[0].downloader == "qb-explicit"
+    assert seen_submit[0].user_specified is True
+    assert submitted.call_args.kwargs["task_hashes"] == frozenset({torrent_hash})
+
+
+def test_resource_submit_revocation_rechecks_authorization_without_leaking_owner(monkeypatch):
+    """
+    上游提交事件不能继承本次下载归属；事件处理中撤权后，不再进入提交阶段。
+    """
+    from app.application.download.admission import (
+        DownloadAuthorizationError,
+        get_download_authorization,
+        scoped_download_authorization,
+    )
+    from app.schemas.types import ChainEventType
+
+    chain = DownloadChain.__new__(DownloadChain)
+    submitted = MagicMock()
+    events = []
+    revoked = False
+
+    def authorize():
+        """
+        模拟当前成员在外部事件回调期间被管理员撤权。
+        """
+        if revoked:
+            raise PermissionError("成员已撤权")
+
+    def handle_event(event_type, event_data):
+        """
+        检查事件不继承调用者上下文，并在下载器提交事件中撤销权限。
+        """
+        nonlocal revoked
+        assert get_download_owner() is None
+        assert get_download_authorization() is None
+        events.append(event_type)
+        if event_type == ChainEventType.ResourceSubmit:
+            revoked = True
+        return SimpleNamespace(event_data=event_data)
+
+    monkeypatch.setattr(eventmanager, "send_event", handle_event)
+    monkeypatch.setattr(download_submission, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(chain, "_resolve_media_download_dir", lambda **_: ("local", Path("/downloads/movies"), None))
+    monkeypatch.setattr(chain, "_submit_prepared_download", submitted)
+    context = Context(
+        meta_info=MetaInfo("Demo.Movie.2026.mkv"),
+        media_info=MediaInfo(type=MediaType.MOVIE, title="Demo Movie", tmdb_id=1),
+        torrent_info=TorrentInfo(title="Demo Movie 2026"),
+    )
+    with scoped_download_owner("a" * 32), scoped_download_authorization(authorize):
+        with pytest.raises(DownloadAuthorizationError, match="成员已撤权"):
+            chain.download_single(context=context, torrent_content="magnet:?xt=urn:btih:" + "a" * 40)
+        assert get_download_owner() == "a" * 32
+        assert get_download_authorization() is authorize
+    assert events == [ChainEventType.ResourceDownload, ChainEventType.ResourceSubmit]
+    submitted.assert_not_called()

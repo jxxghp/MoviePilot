@@ -466,6 +466,8 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         item_id: Union[str, int],
         item_type: Optional[str],
         media_source_id: Optional[str] = None,
+        play_session_id: Optional[str] = None,
+        user_token: Optional[str] = None,
     ) -> Optional[str]:
         """
         返回 Navidrome 已签名的原始音频流地址。
@@ -474,13 +476,99 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param item_id: Navidrome 曲目标识
         :param item_type: 媒体服务器返回的类型，本适配器只服务音频条目
         :param media_source_id: 兼容统一流接口的可选媒体源标识
+        :param play_session_id: 兼容统一流接口的可选会话标识
+        :param user_token: 兼容统一流接口的可选用户令牌
         :return: 上游音频流地址；条目不是音频或实例不可用时返回 None
         """
-        _ = media_source_id
+        _ = media_source_id, play_session_id, user_token
         if (item_type or "").casefold() not in {"audio", "music", "track", MediaType.MUSIC.value.casefold()}:
             return None
         service = self.get_instance(server)
         return service.get_play_url(str(item_id)) if service else None
+
+    def mediaserver_playback_session(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        media_source_id: Optional[str] = None,
+        username: Optional[str] = None,
+        user_token: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        准备 Navidrome 播放会话上下文，声明 Subsonic scrobble 同步模式。
+        """
+        service = self.get_instance(server)
+        if not service:
+            return None
+        return service.prepare_playback_session(
+            str(item_id),
+            media_source_id=media_source_id,
+            username=username,
+            user_token=user_token,
+            client_id=client_id,
+            device_name=device_name,
+            platform=platform,
+            app_version=app_version,
+        )
+
+    def mediaserver_report_progress(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        position_ms: int,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+        play_session_id: Optional[str] = None,
+        event_name: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+        play_method: str = "DirectPlay",
+        playback_time_ms: Optional[int] = None,
+        audio_stream_index: Optional[int] = None,
+        subtitle_stream_index: Optional[int] = None,
+        user_token: Optional[str] = None,
+        started_reported: bool = False,
+        allow_userdata_write: bool = True,
+        scrobbled: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        向 Navidrome 回传 Subsonic 正在播放和完播记录。
+        """
+        service = self.get_instance(server)
+        if not service:
+            return None
+        return service.report_progress(
+            str(item_id),
+            position_ms=position_ms,
+            media_source_id=media_source_id,
+            duration_ms=duration_ms,
+            is_paused=is_paused,
+            state=state,
+            username=username,
+            play_session_id=play_session_id,
+            event_name=event_name,
+            client_id=client_id,
+            device_name=device_name,
+            platform=platform,
+            app_version=app_version,
+            play_method=play_method,
+            playback_time_ms=playback_time_ms,
+            audio_stream_index=audio_stream_index,
+            subtitle_stream_index=subtitle_stream_index,
+            user_token=user_token,
+            started_reported=started_reported,
+            allow_userdata_write=allow_userdata_write,
+            scrobbled=scrobbled,
+        )
 
     def mediaserver_latest(
         self,

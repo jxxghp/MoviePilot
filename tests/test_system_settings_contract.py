@@ -137,6 +137,22 @@ def test_structured_sensitive_settings_preserve_non_secret_match_fields() -> Non
     assert redacted[0]["config"]["token"] == "***"
 
 
+@pytest.mark.parametrize("key,mode", [
+    (SystemConfigKey.Notifications, "dedicated_operation"),
+    (SystemConfigKey.ChannelSettings, "internal_state"),
+    (SystemConfigKey.MediaServerUserCredentials, "internal_state"),
+])
+def test_channel_and_media_credentials_keep_dedicated_write_boundaries(key, mode) -> None:
+    """
+    同步上游媒体凭据合同后，旧通知和新渠道资源仍不能通过通用设置入口改写。
+    """
+    spec = ALL_SETTING_SPECS[key.value]
+    assert spec.apply_mode == mode
+    assert spec.generic_write_allowed is False
+    assert spec.update_operations == ()
+    assert spec.sensitive is True
+
+
 @pytest.mark.asyncio
 async def test_settings_update_rejects_managed_and_internal_generic_writes(monkeypatch) -> None:
     """

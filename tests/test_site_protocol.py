@@ -29,6 +29,7 @@ from app.application.site.protocol import (
 from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.domain.context import TorrentInfo
+from app.sdk.media import torrent_resource_identity as sdk_torrent_resource_identity
 from app.sdk.security import nexusphp_encrypt
 from app.sdk.string import StringUtils
 from app.startup.composition import site as composition
@@ -130,6 +131,7 @@ async def test_site_api_mutation_keeps_u2_and_dmhy_keys_apart(protocol_boundary,
 @pytest.mark.parametrize("page_url,enclosure,expected", [
     ("https://totheglory.im/t/17/", "https://totheglory.im/dl/17/old", ("7", "id=17")),
     ("https://totheglory.im/t/17/", "https://totheglory.im/download?id=23", ("7", "id=17")),
+    (None, f"https://totheglory.im/rssdd.php?par={base64.b64encode(b'vvv17').decode()}&ssl=yes", ("7", "id=17")),
     ("https://kp.m-team.cc/detail/17", "https://tracker.example/download?id=23", ("7", "id=17")),
     ("https://tracker.example/detail/17", "[old]https://tracker.example/api", ("7", "id=17")),
     ("https://tracker.example/torrents.php?id=12&torrentid=17", None, ("7", "id=17")),
@@ -142,6 +144,7 @@ def test_module_identity_preserves_url_precedence_and_legacy_paths(protocol_boun
     """
     torrent = TorrentInfo(site=7, page_url=page_url, enclosure=enclosure)
     assert torrent_resource_identity(torrent) == expected
+    assert sdk_torrent_resource_identity(torrent) == expected
     assert torrent.page_url == page_url and torrent.enclosure == enclosure
 
 
