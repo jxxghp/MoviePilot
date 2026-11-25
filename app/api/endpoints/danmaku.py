@@ -13,7 +13,11 @@ from app.adapters.external.danmaku import RequestUtilsDanmakuTransport
 from app.adapters.web.security.access import verify_token
 from app.api.dependencies.auth import get_current_active_superuser
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.danmaku import DanmakuError, DanmakuService, is_danmaku_enabled
 from app.schemas.danmaku import (
     DanmakuAnimeSearchItem,
@@ -213,6 +217,8 @@ def search_danmaku(
     anime_type: Optional[str] = Query(default=None, alias="type", max_length=32),
     _: _SchemaTokenPayload = Depends(verify_token),
     service: DanmakuService = Depends(get_danmaku_service),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> _SchemaResponse[List[DanmakuAnimeSearchItem]]:
     """
     调用上游搜索接口按剧名查找候选作品及分集列表。
@@ -222,8 +228,11 @@ def search_danmaku(
     :param anime_type: 可选作品分类过滤
     :param _: 已验证的登录用户访问令牌
     :param service: 弹幕代理应用服务
+    :param page: 兼容分页页码（省略时返回完整列表）
+    :param count: 兼容分页每页条数（省略时返回完整列表）
     :return: 作品搜索结果列表
     """
+    _ = page, count
     try:
         items = service.search(keyword, episode=episode, anime_type=anime_type)
     except DanmakuError as err:

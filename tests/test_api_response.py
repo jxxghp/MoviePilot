@@ -735,6 +735,7 @@ def test_v1_model_free_routes_match_audited_native_allowlist():
         ("/mediaserver/stream", "stream_item_content"),
         ("/mediaserver/stream-subtitle", "stream_item_subtitle"),
         ("/mediaserver/stream-lyrics", "stream_item_lyrics"),
+        ("/danmaku/comments/{episode_id}", "get_danmaku_comments"),
         ("/search/media/{media_id}/stream", "search_by_id_stream"),
         ("/search/title/stream", "search_by_title_stream"),
         ("/search/subtitle/title/stream", "search_subtitle_by_title_stream"),
