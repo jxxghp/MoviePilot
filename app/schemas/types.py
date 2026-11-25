@@ -428,6 +428,10 @@ class SystemConfigKey(Enum):
     MediaServers = "MediaServers"
     # 用户级媒体服务器播放与会话同步的内部加密凭据；按用户名与服务器名隔离，不向客户端下发
     MediaServerUserCredentials = "MediaServerUserCredentials"
+    # 自定义弹弹play 兼容弹幕服务配置与缓存策略；包含加密上游凭据，不向普通用户下发
+    DanmakuConfig = "DanmakuConfig"
+    # 媒体条目与弹幕剧集的手动纠偏绑定与时间偏移映射
+    DanmakuBindings = "DanmakuBindings"
     # 消息通知配置
     Notifications = "Notifications"
     # App 中心推送自动接入的内部凭据状态；按服务地址隔离，不通过通知渠道配置下发

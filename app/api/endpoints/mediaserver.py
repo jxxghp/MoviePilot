@@ -39,6 +39,7 @@ from app.api.response import (
     ResponseAPIRouter,
 )
 from app.application.configuration import get_configured_system_config
+from app.application.danmaku import is_danmaku_enabled
 from app.application.mediaserver import (
     MEDIA_SERVER_EXISTENCE_QUERY,
     MediaServerQueryService,
@@ -607,6 +608,59 @@ def _build_manifest_playback_routes(
     )
 
 
+def _extract_stream_danmaku_metadata(
+    item: _SchemaMediaServerItem,
+    path: Optional[Path],
+    detail: Optional[_SchemaMediaServerItemDetail],
+    resolved_source_id: Optional[str],
+) -> tuple[Optional[int], Optional[str], Optional[str], Optional[int]]:
+    """
+    从已加载的条目与详情中安全提取年份、TMDB 标识、纯文件名与文件大小，不触发额外媒体服务器请求。
+
+    :param item: 媒体服务器条目
+    :param path: 可选本地文件路径
+    :param detail: 可选媒体服务器详情
+    :param resolved_source_id: 解析出的媒体源标识
+    :return: ``(year, tmdb_id, file_name, file_size)`` 四元组
+    """
+    target_source = (
+        next(
+            (src for src in detail.media_sources if resolved_source_id and src.id == resolved_source_id),
+            detail.media_sources[0],
+        )
+        if detail and detail.media_sources
+        else None
+    )
+    raw_year = detail.year if detail and detail.year is not None else item.year
+    parsed_year: Optional[int] = None
+    if raw_year is not None and not isinstance(raw_year, bool):
+        try:
+            parsed_year = int(str(raw_year).strip())
+        except ValueError:
+            parsed_year = None
+    resolved_tmdb_id = (
+        str(detail.tmdb_id).strip()
+        if detail and detail.tmdb_id
+        else (
+            str(item.media_id).strip()
+            if item.media_source == MediaSource.TMDB and item.media_id
+            else None
+        )
+    ) or None
+    safe_file_name: Optional[str] = None
+    if path is not None:
+        safe_file_name = path.name or None
+    elif item.path and not item.path.strip().casefold().startswith(("http://", "https://")):
+        safe_file_name = Path(item.path).name or None
+    resolved_file_size = target_source.size if target_source and target_source.size is not None else None
+    if resolved_file_size is None and path is not None:
+        try:
+            resolved_file_size = path.stat().st_size
+        except OSError:
+            resolved_file_size = None
+    return parsed_year, resolved_tmdb_id, safe_file_name, resolved_file_size
+
+
 @router.get(
     "/stream-info",
     summary="查询媒体流与外挂字幕",
@@ -683,6 +737,9 @@ def stream_info(
             if track.subtitle_id not in seen_ids:
                 seen_ids.add(track.subtitle_id)
                 subtitles.append(track)
+    parsed_year, resolved_tmdb_id, safe_file_name, resolved_file_size = _extract_stream_danmaku_metadata(
+        item, path, detail, resolved_source_id
+    )
     return _SchemaResponse(
         success=True,
         data=_SchemaMediaServerStreamInfo(
@@ -703,6 +760,14 @@ def stream_info(
             progress_sync_mode=sync_mode,
             resume_position_ms=detail.resume_position_ms if detail else None,
             duration_ms=detail.duration_ms if detail else None,
+            danmaku_enabled=False if is_audio else is_danmaku_enabled(),
+            series_name=detail.series_name if detail else None,
+            season_number=detail.season_number if detail else None,
+            episode_number=detail.episode_number if detail else None,
+            year=parsed_year,
+            tmdb_id=resolved_tmdb_id,
+            file_name=safe_file_name,
+            file_size=resolved_file_size,
         ),
     )
 

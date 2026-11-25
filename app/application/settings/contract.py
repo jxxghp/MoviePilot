@@ -293,6 +293,12 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
     SystemConfigKey.MediaServerUserCredentials: _internal_contract(
         "media_servers", Optional[dict[str, JsonData]], sensitive=True
     ),
+    SystemConfigKey.DanmakuConfig: _internal_contract(
+        "media_servers", Optional[dict[str, JsonData]], sensitive=True
+    ),
+    SystemConfigKey.DanmakuBindings: _internal_contract(
+        "media_servers", Optional[dict[str, JsonData]]
+    ),
     SystemConfigKey.Notifications: _contract(
         "notifications",
         Optional[list[NotificationConf]],

@@ -1443,6 +1443,16 @@
       "enum_name": "Customization",
       "source_file": "app/schemas/types.py"
     },
+    "DanmakuBindings": {
+      "description": "媒体条目与弹幕剧集的手动纠偏绑定与时间偏移映射",
+      "enum_name": "DanmakuBindings",
+      "source_file": "app/schemas/types.py"
+    },
+    "DanmakuConfig": {
+      "description": "自定义弹弹play 兼容弹幕服务配置与缓存策略；包含加密上游凭据，不向普通用户下发",
+      "enum_name": "DanmakuConfig",
+      "source_file": "app/schemas/types.py"
+    },
     "DefaultMovieSubscribeConfig": {
       "description": "默认电影订阅规则",
       "enum_name": "DefaultMovieSubscribeConfig",
