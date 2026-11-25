@@ -437,7 +437,6 @@ class Jellyfin:
         )
         try:
             res = self._request(headers={
-                'Authorization': auth_value,
                 'X-Emby-Authorization': auth_value,
                 'Content-Type': 'application/json',
                 "Accept": "application/json"

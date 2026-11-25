@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
@@ -23,6 +24,7 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.mediaserver import (
     MediaServerAccountBinding,
     MediaServerBindingStatus,
+    MediaServerPlaybackRoute,
     MediaServerSyncMode,
 )
 from app.schemas.system import MediaServerConf
@@ -36,8 +38,18 @@ _SESSION_TTL_SECONDS = 12 * 60 * 60
 USERDATA_FALLBACK_THROTTLE_SECONDS = 30.0
 # 支持用户单独绑定个人令牌的媒体服务器类型
 BINDABLE_MEDIA_SERVER_TYPES = frozenset({"emby", "jellyfin", "plex"})
+# 支持在用户绑定个人令牌后向客户端签发直连路由的媒体服务器类型
+DIRECT_PLAY_SERVER_TYPES = frozenset({"emby", "jellyfin", "plex"})
 # 内置已完成用户态登录的 Emby 兼容服务器类型
 BUILTIN_USER_SESSION_TYPES = frozenset({"zspace"})
+# 客户端直连 URL 中必须剔除的凭据查询参数名（凭据统一走同源 Header）
+_CREDENTIAL_QUERY_KEYS = frozenset({"api_key", "apikey", "x-emby-token", "x-mediabrowser-token", "x-plex-token"})
+# 仅容器或宿主机本机可达、手机/平板客户端绝无法直连的主机名
+_UNREACHABLE_CLIENT_HOSTS = frozenset({"localhost", "host.docker.internal", "gateway.docker.internal"})
+# Docker 默认桥接网段（通常仅容器间互通）
+_DOCKER_DEFAULT_BRIDGE = ipaddress.ip_network("172.17.0.0/16")
+# 常见局域网本地域名后缀
+_LAN_HOSTNAME_SUFFIXES = (".local", ".lan", ".home", ".home.arpa", ".internal")
 
 
 def sanitize_client_header_value(value: Optional[str], fallback: str, max_len: int = 80) -> str:
@@ -411,6 +423,240 @@ def list_user_mediaserver_bindings(
             )
         )
     return bindings
+
+
+def _classify_host_reachability(hostname: str) -> Optional[Literal["server_lan", "server_wan"]]:
+    """
+    判定目标主机名是否具备客户端直连条件，并区分局域网与外网类型。
+
+    :param hostname: 已转为小写并去除末尾点号的主机名或 IP
+    :return: `server_lan`、`server_wan`，或客户端不可达时返回 None
+    """
+    if not hostname or hostname in _UNREACHABLE_CLIENT_HOSTS:
+        return None
+    try:
+        ip_obj = ipaddress.ip_address(hostname)
+    except ValueError:
+        if "." not in hostname:
+            # 无点号的单段主机名（如 http://emby:8096）属于容器内网别名
+            return None
+        if hostname.endswith(_LAN_HOSTNAME_SUFFIXES):
+            return "server_lan"
+        return "server_wan"
+    if ip_obj.is_loopback or ip_obj.is_unspecified or ip_obj.is_multicast:
+        return None
+    if isinstance(ip_obj, ipaddress.IPv4Address) and ip_obj in _DOCKER_DEFAULT_BRIDGE:
+        return None
+    if ip_obj.is_private or ip_obj.is_link_local:
+        return "server_lan"
+    return "server_wan"
+
+
+def classify_client_reachable_base_url(
+    raw_url: Optional[str],
+) -> Optional[tuple[str, Literal["server_lan", "server_wan"]]]:
+    """
+    校验媒体服务器配置地址是否允许下发给客户端直连，并返回规整后的根地址与网络类型。
+
+    :param raw_url: 媒体服务器的 `host` 或 `play_host` 配置值
+    :return: `(不含尾斜杠的规范根地址, server_lan 或 server_wan)`；不可达或含内嵌凭据时返回 None
+    """
+    cleaned = str(raw_url or "").strip()
+    if not cleaned:
+        return None
+    if "://" not in cleaned:
+        cleaned = f"http://{cleaned}"
+    parsed = urlsplit(cleaned)
+    scheme = parsed.scheme.casefold()
+    if scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    try:
+        _ = parsed.port
+    except ValueError:
+        return None
+    kind = _classify_host_reachability(parsed.hostname.casefold().rstrip("."))
+    if kind is None:
+        return None
+    base_path = parsed.path.rstrip("/")
+    normalized_base = urlunsplit((scheme, parsed.netloc, base_path, "", ""))
+    return normalized_base, kind
+
+
+def _strip_credential_query(url: str) -> str:
+    """
+    从媒体流地址中剥离可能存在的凭据查询参数，确保访问令牌仅经同源 HTTP Header 传输。
+
+    :param url: 原始媒体流地址
+    :return: 移除凭据查询参数后的完整地址
+    """
+    parsed = urlsplit(url)
+    filtered = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if k.casefold() not in _CREDENTIAL_QUERY_KEYS
+    ]
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(filtered), ""))
+
+
+def _rewrite_stream_url_to_base(upstream_url: str, configured_host: Optional[str], target_base: str) -> Optional[str]:
+    """
+    将上游流 URL 的根地址安全改写到指定的客户端直连根地址（保留反代子路径与流查询参数，剔除凭据参数）。
+
+    :param upstream_url: 媒体服务器适配器生成的原始流 URL
+    :param configured_host: 媒体服务器配置的 `host` 原始根地址（用于剥离已有子路径前缀）
+    :param target_base: 目标直连根地址（不含尾斜杠）
+    :return: 改写并清洗凭据参数后的直连流 URL
+    """
+    sanitized_upstream = _strip_credential_query(upstream_url)
+    up_parts = urlsplit(sanitized_upstream)
+    target_parts = urlsplit(target_base)
+    if up_parts.scheme.casefold() not in {"http", "https"} or not up_parts.path:
+        return None
+    rel_path = up_parts.path
+    if configured_host:
+        raw_cfg = configured_host.strip()
+        cfg_parts = urlsplit(raw_cfg if "://" in raw_cfg else f"http://{raw_cfg}")
+        cfg_prefix = cfg_parts.path.rstrip("/")
+        if cfg_prefix and rel_path.startswith(f"{cfg_prefix}/"):
+            rel_path = rel_path[len(cfg_prefix):]
+    target_prefix = target_parts.path.rstrip("/")
+    merged_path = f"{target_prefix}{rel_path}" if rel_path.startswith("/") else f"{target_prefix}/{rel_path}"
+    return urlunsplit((target_parts.scheme, target_parts.netloc, merged_path, up_parts.query, ""))
+
+
+def _build_direct_probe_url(server_type: str, target_base: str) -> Optional[str]:
+    """
+    为指定类型的媒体服务器构造无需鉴权的毫秒级连通性探测端点。
+
+    :param server_type: 媒体服务器类型（emby / jellyfin / plex）
+    :param target_base: 规整后的目标根地址（不含尾斜杠）
+    :return: 探测 URL
+    """
+    base = target_base.rstrip("/")
+    if server_type == "emby":
+        return f"{base}/emby/System/Ping"
+    if server_type == "jellyfin":
+        return f"{base}/System/Ping"
+    if server_type == "plex":
+        return f"{base}/identity"
+    return None
+
+
+def _build_direct_auth_headers(
+    server_type: str,
+    user_token: str,
+    upstream_headers: Optional[Mapping[str, str]] = None,
+) -> dict[str, str]:
+    """
+    组装客户端直连媒体服务器所需的用户级同源请求头（绝不使用管理员 API Key）。
+
+    :param server_type: 媒体服务器类型（emby / jellyfin / plex）
+    :param user_token: 当前用户绑定的个人访问令牌
+    :param upstream_headers: 可选会话级附加头（如 `X-Emby-Authorization` / `X-Plex-*`）
+    :return: 仅限发往媒体服务器同源主机的请求头字典
+    """
+    headers: dict[str, str] = {}
+    if upstream_headers:
+        for key, value in upstream_headers.items():
+            if key and value:
+                headers[str(key)] = str(value)
+    if server_type in {"emby", "jellyfin"}:
+        headers["X-Emby-Token"] = user_token
+        if server_type == "jellyfin" and "Authorization" not in headers and "X-Emby-Authorization" in headers:
+            headers["Authorization"] = headers["X-Emby-Authorization"]
+    elif server_type == "plex":
+        headers["X-Plex-Token"] = user_token
+    return headers
+
+
+def build_client_playback_routes(
+    *,
+    content_url: str,
+    strm_url: Optional[str] = None,
+    server_type: Optional[str] = None,
+    server_config: Optional[Mapping[str, Any]] = None,
+    upstream_stream_url: Optional[str] = None,
+    user_token: Optional[str] = None,
+    upstream_headers: Optional[Mapping[str, str]] = None,
+) -> list[MediaServerPlaybackRoute]:
+    """
+    按优先级生成客户端可选播放路由列表：STRM 直链 > 局域网直连 > 外网直连 > MoviePilot 后台中转。
+
+    仅当媒体服务器属于支持直连的类型且当前用户已绑定有效个人令牌时，才签发 `server_lan` / `server_wan` 路由，
+    绝不向客户端暴露管理员 API Key 或全局密码。
+
+    :param content_url: 当前 MoviePilot 实例的代理流地址（恒为最终兜底路由）
+    :param strm_url: 可选已净化的无凭据 STRM HTTP(S) 直链地址
+    :param server_type: 媒体服务器类型标识
+    :param server_config: 媒体服务器配置字典（读取 `host` 与 `play_host`）
+    :param upstream_stream_url: 上游媒体服务器流 URL
+    :param user_token: 当前用户已绑定的有效个人令牌；未绑定时为 None
+    :param upstream_headers: 当前播放会话关联的设备/鉴权请求头
+    :return: 按优先级升序排列的候选播放路由列表
+    """
+    routes: list[MediaServerPlaybackRoute] = []
+    if strm_url:
+        routes.append(
+            MediaServerPlaybackRoute(
+                kind="strm_direct",
+                url=strm_url,
+                probe_url=None,
+                headers={},
+                priority=10,
+                requires_same_origin_auth=False,
+            )
+        )
+
+    normalized_type = str(server_type or "").strip().casefold()
+    clean_token = (user_token or "").strip()
+    if (
+        normalized_type in DIRECT_PLAY_SERVER_TYPES
+        and clean_token
+        and upstream_stream_url
+        and isinstance(server_config, Mapping)
+    ):
+        raw_host = str(server_config.get("host") or "").strip() or None
+        raw_play_host = str(server_config.get("play_host") or "").strip() or None
+        seen_bases: set[str] = set()
+        direct_candidates: list[MediaServerPlaybackRoute] = []
+        direct_headers = _build_direct_auth_headers(normalized_type, clean_token, upstream_headers)
+        for raw_candidate in (raw_host, raw_play_host):
+            classified = classify_client_reachable_base_url(raw_candidate)
+            if not classified:
+                continue
+            target_base, route_kind = classified
+            if target_base in seen_bases:
+                continue
+            seen_bases.add(target_base)
+            direct_url = _rewrite_stream_url_to_base(upstream_stream_url, raw_host, target_base)
+            if not direct_url:
+                continue
+            direct_candidates.append(
+                MediaServerPlaybackRoute(
+                    kind=route_kind,
+                    url=direct_url,
+                    probe_url=_build_direct_probe_url(normalized_type, target_base),
+                    headers=dict(direct_headers),
+                    priority=20 if route_kind == "server_lan" else 30,
+                    requires_same_origin_auth=False,
+                )
+            )
+        direct_candidates.sort(key=lambda item: item.priority)
+        routes.extend(direct_candidates)
+
+    routes.append(
+        MediaServerPlaybackRoute(
+            kind="mp_proxy",
+            url=content_url,
+            probe_url=None,
+            headers={},
+            priority=100,
+            requires_same_origin_auth=True,
+        )
+    )
+    return routes
 
 
 @dataclass(slots=True)

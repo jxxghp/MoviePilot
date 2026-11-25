@@ -240,6 +240,7 @@ class MediaServerSubtitleTrack(BaseModel):
 MediaServerSyncMode = Literal["session", "userdata", "scrobble", "none"]
 MediaServerProgressReportMode = Literal["session", "userdata", "scrobble", "unsupported"]
 MediaServerBindingStatus = Literal["bound", "invalid", "unbound", "builtin", "unsupported"]
+MediaServerPlaybackRouteKind = Literal["strm_direct", "server_lan", "server_wan", "mp_proxy"]
 MediaServerProgressEventName = Literal[
     "Start",
     "TimeUpdate",
@@ -250,6 +251,30 @@ MediaServerProgressEventName = Literal[
     "SubtitleTrackChange",
     "Stop",
 ]
+
+
+class MediaServerPlaybackRoute(BaseModel):
+    """
+    客户端可按优先级探测与降级的单条媒体播放路由候选。
+    """
+
+    kind: MediaServerPlaybackRouteKind = Field(
+        description="路由类型：strm_direct、server_lan、server_wan 或 mp_proxy"
+    )
+    url: str = Field(description="该路由对应的媒体流地址（不含内嵌凭据查询参数）")
+    probe_url: Optional[str] = Field(
+        default=None,
+        description="客户端用于快速连通性探测的无鉴权轻量端点地址",
+    )
+    headers: Dict[str, str] = Field(
+        default_factory=dict,
+        description="仅在严格同源请求时附加的媒体服务器用户级请求头，跨源重定向必须剥离",
+    )
+    priority: int = Field(default=100, description="路由优先级数值，越小越优先尝试")
+    requires_same_origin_auth: bool = Field(
+        default=False,
+        description="是否为 MoviePilot 实例同源代理流（需要附带 MoviePilot 令牌与资源 Cookie）",
+    )
 
 
 class MediaServerStreamInfo(BaseModel):
@@ -265,6 +290,10 @@ class MediaServerStreamInfo(BaseModel):
     strm_url: Optional[str] = Field(
         default=None,
         description="STRM 条目解析出的无内嵌凭据 HTTP(S) 客户端直链地址；普通文件或需代理鉴权流时为 None",
+    )
+    playback_routes: List[MediaServerPlaybackRoute] = Field(
+        default_factory=list,
+        description="按优先级排序的可选播放路由列表（STRM 直链、局域网/外网直连及 MoviePilot 后台中转兜底）",
     )
     media_type: Literal["video", "audio"] = Field(default="video", description="播放器使用的媒体类型")
     artist: Optional[str] = Field(default=None, description="音乐表演者")

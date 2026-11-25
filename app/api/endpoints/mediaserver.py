@@ -46,6 +46,7 @@ from app.application.mediaserver import (
 )
 from app.application.playback import (
     BINDABLE_MEDIA_SERVER_TYPES,
+    build_client_playback_routes,
     delete_user_mediaserver_credential,
     get_playback_session_registry,
     get_user_mediaserver_credential,
@@ -78,6 +79,7 @@ from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerItemDetail as _SchemaMediaServerItemDetail
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerMusicStreamRequest as _SchemaMediaServerMusicStreamRequest
+from app.schemas.mediaserver import MediaServerPlaybackRoute as _SchemaMediaServerPlaybackRoute
 from app.schemas.mediaserver import MediaServerPlayData as _SchemaMediaServerPlayData
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import MediaServerProgressReportMode as _SchemaMediaServerProgressReportMode
@@ -545,6 +547,66 @@ def _resolve_manifest_strm_url(
     return None
 
 
+def _build_manifest_playback_routes(
+    *,
+    content_url: str,
+    strm_url: Optional[str],
+    server_name: Optional[str],
+    item_id: str,
+    item: _SchemaMediaServerItem,
+    path: Optional[Path],
+    media_source_id: Optional[str],
+    play_session_id: Optional[str],
+    userinfo: _SchemaTokenPayload,
+) -> list[_SchemaMediaServerPlaybackRoute]:
+    """
+    为 `stream-info` / `stream-info/music` 构造安全有序的客户端播放路由候选。
+
+    仅在当前用户已绑定该媒体服务器的有效个人令牌时附加局域网/外网直连路由，未绑定用户仅返回代理及无凭据 STRM 路由。
+    """
+    if not server_name:
+        return build_client_playback_routes(content_url=content_url, strm_url=strm_url)
+    conf = _find_mediaserver_config(server_name)
+    server_type = (conf.type or "").strip().casefold() if conf and conf.type else None
+    cred = get_user_mediaserver_credential(userinfo.username, server_name)
+    user_token = cred.token if cred and cred.token else None
+    session_state = (
+        get_playback_session_registry().get_for_stream(
+            play_session_id,
+            user_id=userinfo.sub,
+            server=server_name,
+            item_id=item.item_id or item_id,
+        )
+        if play_session_id
+        else None
+    )
+    upstream_stream_url: Optional[str] = None
+    if user_token:
+        try:
+            src_type, src_val, _ = _playback_source(
+                server_name,
+                item_id,
+                item,
+                path,
+                media_source_id=media_source_id,
+                play_session_id=session_state.upstream_play_session_id if session_state else None,
+                user_token=user_token,
+            )
+            if src_type == "server":
+                upstream_stream_url = str(src_val)
+        except HTTPException:
+            upstream_stream_url = None
+    return build_client_playback_routes(
+        content_url=content_url,
+        strm_url=strm_url,
+        server_type=server_type,
+        server_config=conf.config if conf else None,
+        upstream_stream_url=upstream_stream_url,
+        user_token=user_token,
+        upstream_headers=session_state.upstream_headers if session_state else None,
+    )
+
+
 @router.get(
     "/stream-info",
     summary="查询媒体流与外挂字幕",
@@ -600,7 +662,18 @@ def stream_info(
         stream_query["media_source_id"] = media_source_id
     if play_session_id:
         stream_query["play_session_id"] = play_session_id
-    content_url = request.url_for("stream_item_content").include_query_params(**stream_query)
+    content_url = str(request.url_for("stream_item_content").include_query_params(**stream_query))
+    playback_routes = _build_manifest_playback_routes(
+        content_url=content_url,
+        strm_url=strm_url,
+        server_name=server_name,
+        item_id=itemid,
+        item=item,
+        path=path,
+        media_source_id=resolved_source_id,
+        play_session_id=play_session_id,
+        userinfo=userinfo,
+    )
     subtitles: list[_SchemaMediaServerSubtitleTrack] = (
         [] if not path or is_audio else _subtitle_tracks(itemid, path, request, server_name)
     )
@@ -617,8 +690,9 @@ def stream_info(
             server=server_name,
             server_type=server_type,
             title=item.title or (path.stem if path else itemid),
-            content_url=str(content_url),
+            content_url=content_url,
             strm_url=strm_url,
+            playback_routes=playback_routes,
             media_type="audio" if is_audio else "video",
             artist=_stream_item_note(item, "artist"),
             album=_stream_item_note(item, "album"),
@@ -676,7 +750,18 @@ def music_stream_info(
     stream_query = {"itemid": itemid, "server": server}
     if play_session_id:
         stream_query["play_session_id"] = play_session_id
-    content_url = request.url_for("stream_item_content").include_query_params(**stream_query)
+    content_url = str(request.url_for("stream_item_content").include_query_params(**stream_query))
+    playback_routes = _build_manifest_playback_routes(
+        content_url=content_url,
+        strm_url=strm_url,
+        server_name=server,
+        item_id=itemid,
+        item=item,
+        path=path,
+        media_source_id=None,
+        play_session_id=play_session_id,
+        userinfo=userinfo,
+    )
     return _SchemaResponse(
         success=True,
         data=_SchemaMediaServerStreamInfo(
@@ -684,8 +769,9 @@ def music_stream_info(
             server=server,
             server_type=server_type,
             title=item.title or music.title,
-            content_url=str(content_url),
+            content_url=content_url,
             strm_url=strm_url,
+            playback_routes=playback_routes,
             media_type="audio",
             artist=music.artist or music.album_artist or next(iter(music.artists), None) or _stream_item_note(item, "artist"),
             album=music.album or _stream_item_note(item, "album"),
@@ -1573,13 +1659,18 @@ def report_progress(
 )
 def list_account_bindings(
     userinfo: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> _SchemaResponse[List[_SchemaMediaServerAccountBinding]]:
     """
     返回当前登录用户在全部已启用媒体服务器上的账号绑定状态与播放同步模式。
 
     :param userinfo: 已验证的访问令牌
+    :param page: 兼容客户端的分页页码，由统一响应路由按需切片
+    :param count: 兼容客户端的每页数量，由统一响应路由按需切片
     :return: 不含任何敏感令牌或密码的绑定状态列表
     """
+    _ = page, count
     if not userinfo.username:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="当前登录身份缺少用户名")
     bindings = list_user_mediaserver_bindings(userinfo.username, get_mediaserver_configs())

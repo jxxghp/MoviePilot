@@ -658,3 +658,94 @@ def test_plex_verify_user_token_and_managed_user_resolution(monkeypatch: pytest.
 
     # 验证直接令牌校验
     assert plex_client.verify_user_token("tok-2fa") == "plex_2fa_user"
+
+
+def test_build_client_playback_routes_security_and_classification() -> None:
+    """验证直连路由构造严格隔离管理员凭据、过滤容器地址并按 LAN > WAN > Proxy 排序。"""
+    # 1. 容器/回环主机必须被过滤，私网和公网主机正确分类
+    assert playback_app.classify_client_reachable_base_url("http://127.0.0.1:8096") is None
+    assert playback_app.classify_client_reachable_base_url("http://localhost:8096") is None
+    assert playback_app.classify_client_reachable_base_url("http://emby:8096") is None
+    assert playback_app.classify_client_reachable_base_url("http://host.docker.internal:8096") is None
+    assert playback_app.classify_client_reachable_base_url("http://172.17.0.2:8096") is None
+    assert playback_app.classify_client_reachable_base_url("http://user:pass@192.168.1.10:8096") is None
+    assert playback_app.classify_client_reachable_base_url("http://192.168.1.10:8096/") == (
+        "http://192.168.1.10:8096",
+        "server_lan",
+    )
+    assert playback_app.classify_client_reachable_base_url("https://emby.example.com/media/") == (
+        "https://emby.example.com/media",
+        "server_wan",
+    )
+
+    # 2. 未绑定个人令牌时绝不下发直连路由或管理员 API Key
+    unbound_routes = playback_app.build_client_playback_routes(
+        content_url="https://mp.example.com/api/v1/mediaserver/stream?itemid=1",
+        strm_url=None,
+        server_type="emby",
+        server_config={
+            "host": "http://192.168.1.10:8096",
+            "play_host": "https://emby.example.com",
+            "apikey": "SUPER-ADMIN-API-KEY",
+        },
+        upstream_stream_url="http://192.168.1.10:8096/emby/Videos/1/stream?Static=true&api_key=SUPER-ADMIN-API-KEY",
+        user_token=None,
+    )
+    assert [r.kind for r in unbound_routes] == ["mp_proxy"]
+    assert "SUPER-ADMIN-API-KEY" not in str(unbound_routes)
+
+    # 3. 已绑定个人令牌的 Emby 同时有 LAN/WAN：URL 中剔除 api_key，令牌放 headers，LAN 排在 WAN 前
+    emby_routes = playback_app.build_client_playback_routes(
+        content_url="https://mp.example.com/api/v1/mediaserver/stream?itemid=1",
+        strm_url="https://cdn.example.com/movie.mkv",
+        server_type="emby",
+        server_config={
+            "host": "http://192.168.1.10:8096",
+            "play_host": "https://emby.example.com",
+        },
+        upstream_stream_url=(
+            "http://192.168.1.10:8096/emby/Videos/1/stream"
+            "?Static=true&MediaSourceId=ms1&PlaySessionId=ps1&api_key=user-personal-tok"
+        ),
+        user_token="user-personal-tok",
+        upstream_headers={"X-Emby-Authorization": 'MediaBrowser Client="MoviePilot"'},
+    )
+    assert [r.kind for r in emby_routes] == ["strm_direct", "server_lan", "server_wan", "mp_proxy"]
+    lan = emby_routes[1]
+    wan = emby_routes[2]
+    assert lan.probe_url == "http://192.168.1.10:8096/emby/System/Ping"
+    assert wan.probe_url == "https://emby.example.com/emby/System/Ping"
+    assert "api_key" not in lan.url
+    assert "user-personal-tok" not in lan.url
+    assert "PlaySessionId=ps1" in lan.url
+    assert lan.headers["X-Emby-Token"] == "user-personal-tok"
+    assert lan.headers["X-Emby-Authorization"] == 'MediaBrowser Client="MoviePilot"'
+    assert wan.url.startswith("https://emby.example.com/emby/Videos/1/stream?")
+
+    # 4. Plex Docker 内网 host 自动过滤，仅下发外网直连 + 代理；X-Plex-Token 剥离出 URL
+    plex_routes = playback_app.build_client_playback_routes(
+        content_url="https://mp.example.com/api/v1/mediaserver/stream?itemid=42",
+        server_type="plex",
+        server_config={
+            "host": "http://plex:32400",
+            "play_host": "https://plex.example.com",
+        },
+        upstream_stream_url="http://plex:32400/library/parts/99/file.mkv?X-Plex-Token=plex-user-tok",
+        user_token="plex-user-tok",
+        upstream_headers={"X-Plex-Client-Identifier": "cid-1"},
+    )
+    assert [r.kind for r in plex_routes] == ["server_wan", "mp_proxy"]
+    assert plex_routes[0].url == "https://plex.example.com/library/parts/99/file.mkv"
+    assert plex_routes[0].probe_url == "https://plex.example.com/identity"
+    assert plex_routes[0].headers["X-Plex-Token"] == "plex-user-tok"
+    assert plex_routes[0].headers["X-Plex-Client-Identifier"] == "cid-1"
+
+    # 5. Navidrome 不下发直连凭据路由
+    navi_routes = playback_app.build_client_playback_routes(
+        content_url="https://mp.example.com/api/v1/mediaserver/stream?itemid=song-1",
+        server_type="navidrome",
+        server_config={"host": "http://192.168.1.20:4533"},
+        upstream_stream_url="http://192.168.1.20:4533/rest/stream?id=song-1",
+        user_token="anything",
+    )
+    assert [r.kind for r in navi_routes] == ["mp_proxy"]

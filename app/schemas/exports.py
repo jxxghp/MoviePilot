@@ -295,6 +295,8 @@ SCHEMA_EXPORTS = {
     'MediaServerPerson': ('app.schemas.mediaserver', 'MediaServerPerson'),
     'MediaServerPlayData': ('app.schemas.mediaserver', 'MediaServerPlayData'),
     'MediaServerPlayItem': ('app.schemas.mediaserver', 'MediaServerPlayItem'),
+    'MediaServerPlaybackRoute': ('app.schemas.mediaserver', 'MediaServerPlaybackRoute'),
+    'MediaServerPlaybackRouteKind': ('app.schemas.mediaserver', 'MediaServerPlaybackRouteKind'),
     'MediaServerProgressEventName': ('app.schemas.mediaserver', 'MediaServerProgressEventName'),
     'MediaServerProgressReportMode': ('app.schemas.mediaserver', 'MediaServerProgressReportMode'),
     'MediaServerProgressReportRequest': ('app.schemas.mediaserver', 'MediaServerProgressReportRequest'),
