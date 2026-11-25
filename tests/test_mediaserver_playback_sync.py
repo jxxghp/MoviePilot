@@ -17,6 +17,7 @@ from app.adapters import mediastream
 from app.adapters.web.security.access import verify_token as api_verify_token
 from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.application import playback as playback_app
+from app.chain.mediaserver import MediaServerChain
 from app.chain.user import UserChain
 from app.modules._base.embybrowse import (
     EmbyBrowseConfig,
@@ -749,3 +750,70 @@ def test_build_client_playback_routes_security_and_classification() -> None:
         user_token="anything",
     )
     assert [r.kind for r in navi_routes] == ["mp_proxy"]
+
+
+def test_mediaserver_chain_playback_and_auth_methods(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 MediaServerChain 的播放会话申请、结构化进度上报与单次用户认证封装。"""
+    chain = MediaServerChain.__new__(MediaServerChain)
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def _fake_run_module(method: str, **kwargs: Any) -> Any:
+        calls.append((method, kwargs))
+        if method == "mediaserver_playback_session":
+            return {"play_session_id": "ps-100", "media_source_id": "ms-1"} if kwargs["item_id"] == "1" else None
+        if method == "mediaserver_report_progress":
+            if kwargs["item_id"] == "dict-item":
+                return {
+                    "reported": True,
+                    "mode": "session",
+                    "started_sent": True,
+                    "scrobbled": False,
+                    "userdata_written": False,
+                    "token_invalid": False,
+                    "needs_account_bind": False,
+                    "detail": None,
+                }
+            return True if kwargs["item_id"] == "legacy-ok" else False
+        if method == "user_authenticate":
+            creds = kwargs["credentials"]
+            if creds.grant_type == "token" and creds.token == "plex-tok":
+                return AuthCredentials(grant_type="token", username="alice", token="plex-tok")
+            if creds.grant_type == "password" and creds.password == "secret":
+                return AuthCredentials(grant_type="token", username="alice", token="emby-tok")
+            return None
+        return None
+
+    monkeypatch.setattr(chain, "run_module", _fake_run_module)
+
+    # prepare_playback_session
+    assert chain.prepare_playback_session("Emby", "1", username="alice") == {
+        "play_session_id": "ps-100",
+        "media_source_id": "ms-1",
+    }
+    assert chain.prepare_playback_session("Emby", "missing") is None
+
+    # report_progress_detail：结构化字典与旧布尔兼容分支
+    detail_ok = chain.report_progress_detail("Emby", "dict-item", 12000, state="started")
+    assert detail_ok["reported"] is True
+    assert detail_ok["mode"] == "session"
+    assert detail_ok["started_sent"] is True
+
+    legacy_ok = chain.report_progress_detail("Emby", "legacy-ok", 5000, state="playing")
+    assert legacy_ok["reported"] is True
+    assert legacy_ok["mode"] == "session"
+    assert legacy_ok["started_sent"] is True
+
+    legacy_fail = chain.report_progress_detail("Emby", "legacy-fail", 5000, state="stopped")
+    assert legacy_fail["reported"] is False
+    assert legacy_fail["mode"] == "unsupported"
+
+    # report_progress 布尔包装
+    assert chain.report_progress("Emby", "dict-item", 12000) is True
+
+    # authenticate_user：token / password / failure
+    tok_res = chain.authenticate_user("Plex", username="alice", token="plex-tok")
+    assert tok_res is not None and tok_res.token == "plex-tok"
+    pwd_res = chain.authenticate_user("Emby", username="alice", password="secret")
+    assert pwd_res is not None and pwd_res.token == "emby-tok"
+    assert chain.authenticate_user("Emby", username="alice", password="wrong") is None
+    assert len(calls) >= 8
