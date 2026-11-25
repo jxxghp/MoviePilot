@@ -980,8 +980,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10678,
-  "edge_sha256": "faf9bdd85757d382b62b5b20e3148fc82cf9f95e75f1d215520eb487b26a7581",
+  "edge_count": 10679,
+  "edge_sha256": "8598166523cd5e82081a70228ab927eed7db280339941daf3c0090443bb150fc",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8719,6 +8719,7 @@
     "app.modules.indexer.spider.piggo -> app.adapters.network.http",
     "app.modules.indexer.spider.piggo -> app.application",
     "app.modules.indexer.spider.piggo -> app.application.site",
+    "app.modules.indexer.spider.piggo -> app.application.site.observation",
     "app.modules.indexer.spider.piggo -> app.application.site.throttle",
     "app.modules.indexer.spider.piggo -> app.domain",
     "app.modules.indexer.spider.piggo -> app.domain.site",

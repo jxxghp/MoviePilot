@@ -53,8 +53,12 @@ def _response(data, status=200, code=0):
 
 
 def _list(items=None, page=1):
-    return {"items": deepcopy([ITEM] if items is None else items), "page": page, "per_page": 100,
-            "pages": page, "total": 1, "total_capped": False}
+    """
+    构造总数未截断的最后一页；指定页号时包含之前满页的计数。
+    """
+    rows = deepcopy([ITEM] if items is None else items)
+    return {"items": rows, "page": page, "per_page": 100, "pages": page,
+            "total": (page - 1) * 100 + len(rows), "total_capped": False}
 
 
 def _recipe(enclosure):
@@ -102,6 +106,9 @@ async def test_search_uses_post_json_and_official_fields(boundary, asynchronous)
     同步和异步均使用当前目录、正式分类与 IMDb 参数，不访问 PHP 或前台接口。
     """
     spider = piggo.PiggoSpider(INDEXER)
+    boundary.responses[1] = _response(_list(page=3))
+    request = boundary.async_request if asynchronous else boundary.request
+    request.post_res.side_effect = boundary.responses
     result = (await spider.async_search("tt33265527", MediaType.TV, page=2) if asynchronous else
               spider.search("tt33265527", MediaType.TV, page=2))
     assert result[0] is False
@@ -118,7 +125,6 @@ async def test_search_uses_post_json_and_official_fields(boundary, asynchronous)
     assert recipe["allow_redirects"] is False and recipe["proxy"] is True
     assert recipe["header"]["Authorization"] == "Bearer synthetic-piggo-key"
     assert recipe["header"]["User-Agent"] == "Piggo-Test"
-    request = boundary.async_request if asynchronous else boundary.request
     factory = boundary.async_factory if asynchronous else boundary.factory
     assert [call.kwargs for call in request.post_res.call_args_list] == [
         {"url": "https://api.piggo.me/v1/api/catalog", "json": {}, "allow_redirects": False},
@@ -228,7 +234,7 @@ def test_multiple_sections_use_complete_category_union(boundary):
     catalog = deepcopy(CATALOG)
     catalog["sections"].append({"id": 44, "name": "儿童电影"})
     catalog["categories"].append({"id": 404, "section_id": 44, "name": "海外"})
-    boundary.request.post_res.side_effect = [_response(catalog), _response(_list())]
+    boundary.request.post_res.side_effect = [_response(catalog), _response(_list(page=2))]
     assert piggo.PiggoSpider(INDEXER).search("中文 2026", MediaType.MOVIE, page=1)[0] is False
     assert boundary.request.post_res.call_args.kwargs["json"] == {
         "page": 2, "per_page": 100, "q": "中文 2026", "category_id": [101, 404],
@@ -287,23 +293,72 @@ async def test_missing_token_never_uses_cookie_or_network(boundary, asynchronous
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("keyword,fields", [
+    ("tt33265527", {"imdb_id": "tt33265527"}),
+    ("https://www.imdb.com/title/tt33265527/?ref_=test", {"imdb_id": "tt33265527"}),
+    ("https://movie.douban.com/subject/36457187/", {"douban_id": "36457187"}),
+    ("https://www.themoviedb.org/movie/278-title", {"tmdb_id": "278", "tmdb_kind": "movie"}),
+    ("https://www.themoviedb.org/tv/278", {"tmdb_id": "278", "tmdb_kind": "tv"}),
+    ("https://themoviedb.org.invalid/tv/278", {"q": "https themoviedb org invalid tv 278"}),
+    ("2026", {"q": "2026"}),
+])
 @pytest.mark.asyncio
-async def test_indexer_module_dispatches_piggo_and_preserves_identity(boundary, monkeypatch, asynchronous):
+async def test_indexer_module_dispatches_piggo_and_preserves_identity(boundary, monkeypatch, asynchronous, keyword, fields):
     """
-    真实索引模块可路由猪猪协议，并保留作品身份、标准种子字段和站点配置。
+    同步与异步索引入口保留精确查询、结果身份和已确认的末页状态。
+
+    :param boundary: 注入离线 HTTP 响应的测试夹具
+    :param monkeypatch: 隔离站点健康服务和搜索预检查
+    :param asynchronous: 是否走异步索引入口
+    :param keyword: 搜索入口收到的原始输入
+    :param fields: 应发送的作品字段或普通关键词，不包含分页及分类
     """
     health = Mock(async_success=AsyncMock(), async_fail=AsyncMock())
     monkeypatch.setattr(indexer_module, "get_configured_site_health_service", lambda: health)
     helper = Mock(check=Mock(return_value=(False, "")))
     monkeypatch.setattr(indexer_module, "SitesHelper", Mock(return_value=helper))
     module = object.__new__(IndexerModule)
-    result = (await module.async_search_torrents(INDEXER, keyword="tt33265527", mtype=MediaType.TV) if asynchronous else
-              module.search_torrents(INDEXER, keyword="tt33265527", mtype=MediaType.TV))
+    with capture_site_search_observation() as observation:
+        result = (await module.async_search_torrents(INDEXER, keyword=keyword, mtype=MediaType.TV) if asynchronous else
+                  module.search_torrents(INDEXER, keyword=keyword, mtype=MediaType.TV))
     assert len(result) == 1
     assert (result[0].site, result[0].media_source, result[0].media_id) == (7274, MediaSource.IMDb, "tt33265527")
     assert _recipe(result[0].enclosure)[1].endswith("/56354/download-link")
     assert result[0].downloadvolumefactor is None
+    assert (observation.outcome, observation.has_more, observation.raw_count) == ("success", False, 1)
+    request = boundary.async_request if asynchronous else boundary.request
+    assert request.post_res.call_args.kwargs["json"] == {
+        "page": 1, "per_page": 100, "section_id": 22, **fields,
+    }
     (health.async_success if asynchronous else health.success).assert_called_once()
+
+
+@pytest.mark.parametrize("data,expected", [
+    ({"page": 100, "pages": 100, "total": 10000, "total_capped": True}, None),
+    ({"page": 100, "pages": 101, "total": 10000, "total_capped": True}, True),
+    ({"page": 100, "pages": 100, "total": 10000, "total_capped": False}, False),
+    ({}, None),
+])
+def test_piggo_capped_total_does_not_claim_last_page(data, expected):
+    """
+    total 到达 10000 上限时不把页数边界误判为真实末页。
+
+    :param data: 官方搜索分页响应
+    :param expected: 应报告的续页状态
+    """
+    assert piggo.PiggoSpider._has_more_pages(data, 100) is expected
+
+
+def test_piggo_rejects_wrong_response_page(boundary):
+    """
+    响应页号与请求不一致时拒绝整页，避免搜索重复或跳页。
+
+    :param boundary: 离线 HTTP 夹具
+    """
+    boundary.request.post_res.side_effect = [_response(CATALOG), _response(_list(page=1))]
+    spider = piggo.PiggoSpider(INDEXER)
+    assert spider.search("标题", page=1) == (True, [])
+    assert "错误页码" in spider.error_detail
 
 
 @pytest.mark.parametrize("domain,resource_key", [("piggo.me", "schema"), ("mirror.test", "schema"), ("mirror.test", "parser")])
@@ -477,7 +532,7 @@ def test_checkpoint_restores_recipe_using_current_token(boundary):
 
 @pytest.mark.parametrize("status,payload,expected", [
     (200, None, "结构无效"), (200, {"code": 0, "data": []}, "有效 data"),
-    (401, None, "令牌"), (429, None, "限流"),
+    (401, None, "通道已关闭"), (429, None, "限流"),
     (200, {"code": 0, "data": {"code": "notice_unread", "notice_gate": "invalid"}}, "网页端阅读"),
     (200, {"code": "notice_unread", "data": {}}, "网页端阅读"),
     (422, {"code": 422, "data": {"message": "synthetic-key 参数无效"}}, "失败"),

@@ -115,7 +115,7 @@ def test_notice_gate_preserves_reason_and_never_fetches_torrent(boundary, status
     response.close.assert_called_once()
 
 
-@pytest.mark.parametrize("status,code", [(401, 401), (200, 401), (500, 0), (302, 0)])
+@pytest.mark.parametrize("status,code", [(401, 401), (200, 401), (404, 404), (500, 0), (302, 0)])
 def test_failed_ticket_never_uses_url_from_error_response(boundary, status, code):
     """
     错误状态即使附带看似有效的 URL，也不能向下载主机发出请求。

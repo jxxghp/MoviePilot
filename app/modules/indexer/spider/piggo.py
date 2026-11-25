@@ -10,6 +10,7 @@ from typing import Any, Optional, TypeAlias, cast
 from urllib.parse import urljoin, urlparse
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.application.site.observation import report_site_search_page
 from app.application.site.throttle import async_wait_for_site_request, defer_site_request, wait_for_site_request
 from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
@@ -40,6 +41,27 @@ def access_token(apikey: Optional[str], token: Optional[str]) -> str:
     return str(apikey or "").strip() or str(token or "").strip()
 
 
+def media_search_params(keyword: Optional[str]) -> dict[str, str]:
+    """
+    将独立 IMDb 编号或官方作品链接解释为精确搜索，不猜测裸数字的来源。
+
+    :param keyword: 搜索输入，可为作品链接、普通标题或空值
+    :return: 已识别的搜索字段；不是精确搜索时返回空字典
+    """
+    value = (keyword or "").strip().lower()
+    if re.fullmatch(r"tt[0-9]+", value):
+        return {"imdb_id": value}
+    if match := re.fullmatch(r"https?://(?:www\.)?imdb\.com/title/(tt[0-9]+)/?(?:[?#]\S*)?", value):
+        return {"imdb_id": match[1]}
+    if match := re.fullmatch(r"https?://movie\.douban\.com/subject/([1-9][0-9]*)/?(?:[?#]\S*)?", value):
+        return {"douban_id": match[1]}
+    if match := re.fullmatch(
+        r"https?://(?:www\.)?themoviedb\.org/(movie|tv)/([1-9][0-9]*)(?:-[^/?#\s]+)?/?(?:[?#]\S*)?", value,
+    ):
+        return {"tmdb_id": match[2], "tmdb_kind": match[1]}
+    return {}
+
+
 def response_data(status_code: int, payload: object, token: str = "") -> dict[str, Any]:
     """
     校验 HTTP 和业务状态，阻止外层成功码掩盖必读公告。
@@ -62,7 +84,7 @@ def response_data(status_code: int, payload: object, token: str = "") -> dict[st
         title = str(gate.get("title") or "") if isinstance(gate, dict) else ""
         message = f"有未读必读公告，请到猪猪网页端阅读后重试{f'：{title}' if title else ''}"
     elif status_code == 401 or code == "401" or inner_code == "401":
-        message = "猪猪存取令牌已过期或无效，请重新生成长期存取令牌"
+        message = "猪猪存取令牌无效或实验室通道已关闭，请检查令牌及站点设置"
     elif status_code == 429 or code == "429" or inner_code == "429":
         message = f"站点限流：{message or 'HTTP 429，请稍后重试'}"
     elif not payload and status_code == 200:
@@ -389,7 +411,7 @@ class PiggoSpider:
 
         显式分类优先于媒体类型；不合并多路分区分页，也不把分类 ID 当作分区 ID。
 
-        :param keyword: 标题关键词或完整 IMDb ID，空白时不添加搜索字段
+        :param keyword: 标题关键词、完整 IMDb ID 或官方作品链接，空白时不添加搜索字段
         :param mtype: 可按目录解释的媒体类型，未知类型不缩窄查询
         :param cat: 显式分类 ID，可用逗号分隔
         :param page: MoviePilot 从零开始的页码
@@ -400,10 +422,7 @@ class PiggoSpider:
         params: dict[str, Any] = {"page": int(page or 0) + 1, "per_page": self._size}
         value = str(keyword or "").strip()
         if value:
-            if re.fullmatch(r"tt[0-9]+", value, re.IGNORECASE):
-                params["imdb_id"] = value.lower()
-            else:
-                params["q"] = value
+            params.update(media_search_params(value) or {"q": value})
         if cat:
             if not re.fullmatch(r"[1-9][0-9]*(\s*,\s*[1-9][0-9]*)*", cat.strip()):
                 raise ValueError("猪猪分类须填写当前目录中的正整数 ID，以逗号分隔")
@@ -514,6 +533,27 @@ class PiggoSpider:
             "labels": self._tag_labels(item, catalog[2]),
         }
 
+    @staticmethod
+    def _has_more_pages(data: dict[str, Any], requested_page: int) -> Optional[bool]:
+        """
+        解释已返回的页号与页数；截断计数的最后一页不等于实际末页。
+
+        :param data: 实验室搜索响应，旧响应可能没有页数
+        :param requested_page: 实际请求的页码，从 1 开始
+        :return: 服务端确认的续页状态；页数缺失或总数截断且已到计数边界时未知
+        :raises ValueError: 返回页码与请求不一致或分页字段无效
+        """
+        if "page" in data and integer(data["page"], minimum=1) != requested_page:
+            raise ValueError("猪猪 API 返回了错误页码")
+        if "pages" not in data:
+            return None
+        capped = data.get("total_capped", False)
+        if not isinstance(capped, bool):
+            raise ValueError("猪猪 API 返回了无效分页状态")
+        if requested_page < integer(data["pages"]):
+            return True
+        return None if capped else False
+
     def _parse_result(self, data: dict[str, Any], catalog: _Catalog) -> list[dict[str, Any]]:
         """
         校验整页种子后发布结果，坏条目不能形成半页成功或提前结束自动分页。
@@ -546,7 +586,7 @@ class PiggoSpider:
         """
         同步搜索或浏览最新种子，不执行网页登录或提前签发下载链接。
 
-        :param keyword: 标题关键词或完整 IMDb ID；为空时浏览最新种子
+        :param keyword: 标题关键词、完整 IMDb ID 或官方作品链接；为空时浏览最新种子
         :param mtype: 用当前目录限定的媒体类型
         :param cat: 显式分类 ID，可用逗号分隔
         :param page: 从零开始的 MoviePilot 页码
@@ -558,12 +598,15 @@ class PiggoSpider:
             if not self._token:
                 raise ValueError(TOKEN_REQUIRED)
             catalog = self._load_catalog()
-            data = self._request("torrents", self._params(keyword, mtype, cat, page, catalog))
+            params = self._params(keyword, mtype, cat, page, catalog)
+            data = self._request("torrents", params)
+            has_more = self._has_more_pages(data, params["page"])
             torrents = self._parse_result(data, catalog)
             for section_id in self._tag_sections(data, catalog):
                 tags = self._request("catalog", {"section_id": section_id})
                 catalog[2][section_id] = self._parse_tags(tags.get("tags", []))
             self._apply_tag_labels(torrents, data, catalog)
+            report_site_search_page(raw_count=len(torrents), has_more=has_more)
             return False, torrents
         except ValueError as err:
             self.error_detail = str(err)
@@ -575,7 +618,7 @@ class PiggoSpider:
         """
         异步执行同一实验室搜索协议，取消时不在后台继续请求。
 
-        :param keyword: 标题关键词或完整 IMDb ID；为空时浏览最新种子
+        :param keyword: 标题关键词、完整 IMDb ID 或官方作品链接；为空时浏览最新种子
         :param mtype: 用当前目录限定的媒体类型
         :param cat: 显式分类 ID，可用逗号分隔
         :param page: 从零开始的 MoviePilot 页码
@@ -587,12 +630,15 @@ class PiggoSpider:
             if not self._token:
                 raise ValueError(TOKEN_REQUIRED)
             catalog = await self._async_load_catalog()
-            data = await self._async_request("torrents", self._params(keyword, mtype, cat, page, catalog))
+            params = self._params(keyword, mtype, cat, page, catalog)
+            data = await self._async_request("torrents", params)
+            has_more = self._has_more_pages(data, params["page"])
             torrents = self._parse_result(data, catalog)
             for section_id in self._tag_sections(data, catalog):
                 tags = await self._async_request("catalog", {"section_id": section_id})
                 catalog[2][section_id] = self._parse_tags(tags.get("tags", []))
             self._apply_tag_labels(torrents, data, catalog)
+            report_site_search_page(raw_count=len(torrents), has_more=has_more)
             return False, torrents
         except ValueError as err:
             self.error_detail = str(err)
