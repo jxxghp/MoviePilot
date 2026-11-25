@@ -322,11 +322,14 @@ class DownloadHistoryQueryPort(Protocol):
     def get_by_hashes(
         self,
         download_hashes: list[str],
+        *,
+        downloader: Optional[str] = None,
     ) -> dict[str, DownloadHistorySnapshot]:
         """
         批量返回以下载任务 Hash 为键的最新历史快照。
 
         :param download_hashes: 待批量查询的下载任务哈希标识
+        :param downloader: 限定为该名称的下载器实例；None 表示跨实例查询
         :return: 以任务哈希为键的最新历史映射；未找到的哈希不写入映射
         """
         ...

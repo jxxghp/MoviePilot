@@ -107,9 +107,16 @@ class DownloadHistory(Base):
         return history
 
     @classmethod
-    def get_by_hashes(cls, db: Session, download_hashes: List[str]) -> list["DownloadHistory"]:
+    def get_by_hashes(
+        cls, db: Session, download_hashes: List[str], *, downloader: Optional[str] = None,
+    ) -> list["DownloadHistory"]:
         """
         批量查询多个下载任务的最新历史记录，避免在上层形成 N+1 查询。
+
+        :param db: 调用方持有的同步数据库会话
+        :param download_hashes: 待批量查询的下载任务哈希标识
+        :param downloader: 选取最新记录前限定下载器实例名称；None 表示跨实例查询
+        :return: 按请求顺序返回的最新历史列表，每个哈希最多一条
         """
         normalized_hashes = []
         seen_hashes = set()
@@ -122,11 +129,12 @@ class DownloadHistory(Base):
         if not normalized_hashes:
             return []
 
+        statement = select(DownloadHistory).where(DownloadHistory.download_hash.in_(normalized_hashes))
+        if downloader is not None:
+            statement = statement.where(DownloadHistory.downloader == downloader)
         histories = db.execute(
-            select(DownloadHistory)
-            .where(DownloadHistory.download_hash.in_(normalized_hashes))
             # 登记时间只精确到秒，同一秒内的多条记录以主键为准，与 get_by_hash 的"最新"口径一致。
-            .order_by(DownloadHistory.download_hash, DownloadHistory.date.desc(), DownloadHistory.id.desc())
+            statement.order_by(DownloadHistory.download_hash, DownloadHistory.date.desc(), DownloadHistory.id.desc())
         ).scalars().all()
         latest_histories = {}
         for history in histories:

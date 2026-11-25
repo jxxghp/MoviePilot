@@ -667,15 +667,15 @@ class DownloadPendingOwner(_DownloadOwnerBase):
             if current is None:
                 # 已被并发线程确认结算或释放，无需重复处理。
                 return "already_gone", None
-            already_recorded = self._find_settled_history_for_pending(current)
-            if already_recorded is not None:
+            settled_hash = self._find_settled_history_for_pending(current)
+            if settled_hash is not None:
                 self._delete_pending_record(current.pending_key)
                 context = self._build_confirmed_context(current)
                 return "confirmed", ConfirmedPendingDownload(
                     record=current,
                     context=context,
-                    downloader=already_recorded[0],
-                    download_hash=already_recorded[1],
+                    downloader=current.downloader,
+                    download_hash=settled_hash,
                 )
             check = self._query_pending_in_downloader(current)
             if check.status is PendingDownloadCheckStatus.CONFIRMED and check.download_hash:
@@ -739,26 +739,27 @@ class DownloadPendingOwner(_DownloadOwnerBase):
     def _find_settled_history_for_pending(
         self,
         record: DownloadPendingSnapshot,
-    ) -> Optional[tuple[Optional[str], str]]:
+    ) -> Optional[str]:
         """
-        检查该待确认提交的哈希是否已写入不早于本次提交时间的下载历史，实现崩溃恢复幂等。
+        仅使用同一下载器实例在提交时或之后写入的历史作为已结算凭据。
+
+        :param record: 待恢复的提交记录；缺少实例名称时继续向下载器核对
+        :return: 符合恢复条件的任务哈希；无匹配时返回 None
         """
-        if not record.hashes:
+        if not record.downloader or not record.hashes:
             return None
-        history_repo = getattr(self, "download_history_repository", None)
+        history_repo = self.download_history_repository
         if history_repo is None:
             return None
         candidates = sorted({variant for item in record.hashes for variant in (item.lower(), item.upper())})
         try:
-            histories = history_repo.get_by_hashes(candidates)
+            histories = history_repo.get_by_hashes(candidates, downloader=record.downloader)
         except Exception as err:
             logger.debug(f"幂等检查待确认下载历史失败：{err}")
             return None
-        for item in (histories or {}).values():
-            history_date = str(getattr(item, "date", "") or "")
-            history_hash = str(getattr(item, "download_hash", "") or "")
-            if history_hash and history_date >= record.submitted_at:
-                return getattr(item, "downloader", None), history_hash
+        for history_hash, item in histories.items():
+            if item.date and item.date >= record.submitted_at:
+                return history_hash
         return None
 
     def _query_pending_in_downloader(
