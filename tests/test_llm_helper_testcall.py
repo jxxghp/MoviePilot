@@ -1178,7 +1178,8 @@ def test_get_llm_preserves_openai_max() -> None:
     assert calls[0].get("reasoning_effort") == "max"
 
 
-def test_get_llm_uses_responses_api_for_chatgpt_reasoning_models() -> None:
+@pytest.mark.parametrize("model", ["gpt-5.4", "gpt-6.2-sol", "custom-reasoner"])
+def test_get_llm_uses_responses_api_for_chatgpt_reasoning_models(model: str) -> None:
     """
     校验 ChatGPT 官方推理模型会切换到 Responses API。
     """
@@ -1197,7 +1198,7 @@ def test_get_llm_uses_responses_api_for_chatgpt_reasoning_models() -> None:
         asyncio.run(
             llm_module.LLMHelper.get_llm(
                 provider="chatgpt",
-                model="gpt-5.4",
+                model=model,
                 thinking_level="xhigh",
                 api_key="sk-test",
                 base_url="https://api.openai.com/v1",
@@ -1342,6 +1343,21 @@ def test_get_llm_responses_protocol_forces_responses_api() -> None:
 
     assert len(calls) == 1
     assert calls[0].get("use_responses_api")
+
+
+@pytest.mark.parametrize(("metadata", "expected"), [
+    ({}, True),
+    ({"reasoning": False}, True),
+    ({"supported_endpoints": ["/v1/chat/completions"]}, False),
+    ({"supported_endpoints": ["/v1/responses"]}, True),
+    ({"supported_endpoints": ["/v1/chat/completions", "/v1/responses"]}, True),
+])
+def test_chatgpt_auto_protocol_uses_endpoints_without_effort(metadata, expected):
+    """
+    协议选择依据端点声明；官方地址在缺少声明时默认使用 Responses。
+    """
+    runtime = {"base_url": "https://api.openai.com/v1", "model_id": "gpt-6.2-sol", "model_metadata": metadata}
+    assert llm_module.LLMHelper._should_use_openai_responses_api("chatgpt", runtime, "auto") is expected
 
 
 def test_get_llm_chat_completions_protocol_overrides_chatgpt_auto() -> None:
