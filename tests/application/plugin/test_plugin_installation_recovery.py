@@ -2,16 +2,9 @@
 插件安装 journal 启动重放与阻断边界测试。
 """
 
-from tests.support.plugin.recovery import (
-    RECEIPT,
-    _Persistence,
-    _packages,
-)
-
 from dataclasses import replace
 from datetime import datetime, timezone
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -26,6 +19,11 @@ from app.application.plugin.recovery import PluginInstallationRecoveryService
 from app.application.plugin.transaction import (
     PluginInstallationPhase,
     PluginInstallationRecord,
+)
+from tests.support.plugin.recovery import (
+    RECEIPT,
+    _packages,
+    _Persistence,
 )
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)

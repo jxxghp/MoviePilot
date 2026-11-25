@@ -450,26 +450,32 @@ async def test_production_data_context_uses_one_real_capability_manager(monkeypa
     """
     正式组合根、真实能力owner和真实AgentManager共享同一实例，关闭配置收敛后台任务。
     """
+    from importlib import import_module
+
     from app.agent import loader
     from app.agent.manager import AgentManager
     from app.startup.composition.agent import publish_agent_services
     from app.startup.initializers import agent as module
 
+    # 兼容导入隔离可能撤销父包属性，直接定位真实模块，不依赖前序测试发布子模块属性。
+    manager_module = import_module("app.agent.manager")
+    capability_module = import_module("app.agent.capabilities.adapter")
+    composition_module = import_module("app.startup.composition.agent")
     memory = SimpleNamespace(configure=Mock(), initialize=Mock(), close=AsyncMock())
     manager = AgentManager(memory=memory)
     enabled = {"value": initially_enabled}
     monkeypatch.setattr(loader, "_agent_runtime", None)
-    monkeypatch.setattr("app.agent.manager.agent_manager", manager)
+    monkeypatch.setattr(manager_module, "agent_manager", manager)
     monkeypatch.setattr(module, "agent_manager", None)
     monkeypatch.setattr(module, "_agent_data_context", None)
     monkeypatch.setattr(module, "_injected_agent_manager", None)
     monkeypatch.setattr(module, "get_runtime_setting", lambda _key: enabled["value"])
-    monkeypatch.setattr("app.agent.capabilities.adapter.get_runtime_setting", lambda _key: enabled["value"])
+    monkeypatch.setattr(capability_module, "get_runtime_setting", lambda _key: enabled["value"])
     initializer = module.AgentInitializer()
     monkeypatch.setattr(module, "agent_initializer", initializer)
     context = SimpleNamespace(chat=object(), chat_persistence=object())
     for name in ("configure_agent_chat_service", "configure_agent_chat_persistence", "configure_agent_task_execution"):
-        monkeypatch.setattr("app.startup.composition.agent." + name, lambda *_args: None)
+        monkeypatch.setattr(composition_module, name, lambda *_args: None)
     publish_agent_services(SimpleNamespace(data=context, execution=object()),
         data_context_registrar=module.configure_agent_data_context)
     try:

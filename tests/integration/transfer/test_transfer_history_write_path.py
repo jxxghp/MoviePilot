@@ -13,20 +13,18 @@ app/application/history/；此前长在 TransferHistoryOper 上，故本文件�
 test_db_transferhistory_write_path.py。
 """
 
-from tests.support.transfer.history import (
-    _repository,
-)
 import pytest
 
 from app import schemas
 from app.application.history import add_transfer_fail, add_transfer_success
-from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
 from app.db.models.transferhistory import TransferHistory
-from app.db.session import SessionFactory, async_session_scope
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.category import ClassificationResult, ClassificationSelection
 from app.schemas.types import MediaSource, MediaType
+from tests.support.transfer.history import (
+    _repository,
+)
 
 
 @pytest.fixture(autouse=True)

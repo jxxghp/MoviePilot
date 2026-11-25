@@ -3,6 +3,7 @@
 """
 
 from types import SimpleNamespace
+
 from app.modules.qbittorrent import QbittorrentModule
 from app.modules.transmission import TransmissionModule
 

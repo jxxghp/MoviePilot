@@ -2,15 +2,7 @@
 自动音乐来源顺序、隔离诊断和不可重置的请求预算。
 """
 
-from tests.support.music.fallback import (
-    _album,
-    _backend,
-    _directory_setup,
-)
-
 import asyncio
-import shutil
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -24,14 +16,18 @@ from app.application.music.observation import (
 )
 from app.application.music.recognition import async_recognize_music_sources, recognize_music_sources
 from app.chain.media import MediaChain
-from app.chain.media.cache import AlbumDirectoryCache
 from app.chain.media.path import _music_path_plan
-from app.domain.context import MusicAlbumInfo, MusicInfo
+from app.domain.context import MusicInfo
 from app.domain.media import music_recognition_sources
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.douban.apiv2 import DoubanApi
 from app.modules.theaudiodb import TheAudioDbModule
 from app.schemas.types import MediaSource, MediaType
+from tests.support.music.fallback import (
+    _album,
+    _backend,
+    _directory_setup,
+)
 
 
 def _accepts(info, source):

@@ -2,20 +2,11 @@
 按真实发行单元整理多碟、群星和全集，保持标签类型与文件查询范围。
 """
 
-from tests.support.music.releases import (
-    RELEASE_A,
-    RELEASE_B,
-    _audio,
-    _prepare,
-    _resolve,
-)
-
 import shutil
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from mutagen.flac import FLAC
 from mutagen.id3 import TPOS, TXXX
 
 from app.application.audio import AudioMetadataHelper
@@ -23,8 +14,15 @@ from app.chain.media import MediaChain
 from app.chain.media.cache import AlbumDirectoryCache
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaType
+from tests.support.music.releases import (
+    RELEASE_A,
+    RELEASE_B,
+    _audio,
+    _prepare,
+    _resolve,
+)
 from tests.support.music.tags import _tag_audio
-from tests.support.transfer.files import make_fileitem, make_transfer_chain
+from tests.support.transfer.files import make_fileitem
 
 
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])

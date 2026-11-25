@@ -2,10 +2,6 @@
 用户冻结快照与短事务适配器测试。
 """
 
-from tests.support.security.users import (
-    _user_write_context,
-)
-
 import asyncio
 import threading
 from contextlib import asynccontextmanager
@@ -25,13 +21,15 @@ from app.application.security.user import (
 from app.application.security.userconfig import UserConfigurationService
 from app.db.adapters.configuration import TransactionalUserConfigurationRepository
 from app.db.adapters.user import SqlAlchemyUserRepository, TransactionalUserRepository
-from app.db.engine import _register_sqlite_foreign_keys
 from app.db.models.passkey import PassKey
 from app.db.models.user import User
 from app.db.models.userconfig import UserConfig
 from app.db.oper.userconfig import UserConfigOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.foundation.singleton import Singleton
+from tests.support.security.users import (
+    _user_write_context,
+)
 
 
 class _InlineDatabaseExecutor:

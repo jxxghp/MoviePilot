@@ -16,8 +16,8 @@ from app.chain.transfer.execution import _TransferManualReviewRequired
 from app.chain.transfer.facade import TransferChain
 from app.chain.transfer.request import _TransferSubmissionCollector
 from app.schemas.transfer import TransferInfo
-from tests.support.transfer.manual import _patch_transfer_planning
 from tests.support.transfer.files import make_fileitem, make_transfer_chain
+from tests.support.transfer.manual import _patch_transfer_planning
 
 
 @pytest.fixture

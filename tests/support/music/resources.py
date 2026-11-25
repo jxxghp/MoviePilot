@@ -3,6 +3,7 @@
 """
 
 import pytest
+
 from app.adapters.system import rust
 from app.domain.meta import runtime
 from app.domain.meta.metamusic import MetaMusic

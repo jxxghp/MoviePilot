@@ -2,10 +2,6 @@
 验证音乐订阅的元数据构造、历史值兼容和缺集缓存。
 """
 
-from tests.support.music.subscriptions import (
-    _subscribe,
-)
-
 import asyncio
 from contextlib import contextmanager
 from dataclasses import fields
@@ -40,6 +36,9 @@ from app.domain.context import (
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.category import ClassificationSelection
 from app.schemas.types import MediaSource, MediaType
+from tests.support.music.subscriptions import (
+    _subscribe,
+)
 
 
 def _music_info() -> MusicInfo:

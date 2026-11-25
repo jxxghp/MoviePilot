@@ -3,7 +3,9 @@
 """
 
 import threading
+
 import pytest
+
 from app.runtime.log import NonBlockingFileHandler
 
 

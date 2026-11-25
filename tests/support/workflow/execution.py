@@ -3,6 +3,7 @@
 """
 
 from types import SimpleNamespace
+
 from app.schemas.workflow import ActionContext, ActionResult
 
 

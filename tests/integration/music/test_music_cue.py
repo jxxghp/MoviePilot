@@ -2,11 +2,6 @@
 CUE 专辑识别、整轨旁挂归档和真实复制/硬链接的引用完整性。
 """
 
-from tests.support.music.cue import (
-    CUE,
-    _image_pair,
-)
-
 import asyncio
 import hashlib
 import shutil
@@ -35,8 +30,11 @@ from app.runtime.config import ConfigModel, settings
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import MediaType
+from tests.support.music.cue import (
+    CUE,
+    _image_pair,
+)
 from tests.support.transfer.files import bind_empty_history_repositories, make_fileitem, make_transfer_chain
-
 
 # 每只分轨各有 FILE 块，但同一文件名重复声明 INDEX 01，触发“同一文件的时间索引重复或逆序”。
 SPLIT_BROKEN_CUE = '''REM DATE 2003

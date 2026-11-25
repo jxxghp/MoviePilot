@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+
 from app.chain.media import MediaChain
 from app.chain.media.cache import AlbumDirectoryCache
 from app.domain.context import MusicAlbumInfo, MusicInfo

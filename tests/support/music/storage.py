@@ -3,6 +3,7 @@
 """
 
 from types import SimpleNamespace
+
 from app.chain.media import MediaChain
 from tests.support.transfer.files import bind_empty_history_repositories, make_transfer_chain
 

@@ -2,26 +2,20 @@
 验证整理时附属文件的同步与路径处理。
 """
 
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from app.chain.transfer.facade import TransferChain
+from app.schemas.file import FileItem
+from app.schemas.transfer import EpisodeFormat
+from app.schemas.types import MediaType
 from tests.support.transfer.files import (
     FakeMeta,
     bind_empty_history_repositories,
     make_fileitem,
     make_transfer_chain,
-)
-
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock
-
-import pytest
-
-from app.chain.transfer.facade import TransferChain
-from app.domain.meta.metabase import MetaBase
-from app.schemas.file import FileItem
-from app.schemas.transfer import EpisodeFormat
-from app.schemas.types import MediaType
-from tests.support.transfer.jobs import (
-    make_transfer_chain as make_base_transfer_chain,
 )
 
 

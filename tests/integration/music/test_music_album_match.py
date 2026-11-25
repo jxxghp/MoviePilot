@@ -2,12 +2,6 @@
 验证音乐专辑发行版本按曲目数、时长和地区偏好匹配。
 """
 
-from tests.support.music.albums import (
-    ALBUM_TRACKS,
-    _local_tracks,
-    _release_detail,
-)
-
 import asyncio
 import os
 import threading
@@ -21,6 +15,11 @@ from app.chain.media.cache import AlbumDirectoryCache
 from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule, _MusicReleasePreference
+from tests.support.music.albums import (
+    ALBUM_TRACKS,
+    _local_tracks,
+    _release_detail,
+)
 
 
 def test_match_music_album_selects_release_by_count_and_duration(monkeypatch):

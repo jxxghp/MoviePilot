@@ -5,6 +5,7 @@
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
 from app.application.transfer.execution import TransferExecutionCheckpoint, TransferSettlementResult
 from app.application.transfer.workflow import JobManager, TransferAdmission, TransferTask
 from app.chain.transfer.facade import TransferChain

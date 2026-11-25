@@ -2,13 +2,6 @@
 覆盖整理必须先完整落地新版本，失败及恢复时保留旧版本。
 """
 
-from tests.support.transfer.overwrite import (
-    _checkpoint,
-    _durable_runner,
-    _execute,
-    repository_factory,
-)
-
 import errno
 import os
 import shutil
@@ -21,8 +14,6 @@ from typing import Callable, Optional
 from unittest.mock import Mock
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer.execution import (
     TransferExecutionCommand,
@@ -40,10 +31,6 @@ from app.application.transfer.workflow import (
 from app.chain.transfer import execution as execution_module
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
-from app.db.base import Base
-from app.db.models.transferexecutionstep import TransferExecutionStep
-from app.db.models.transferhistory import TransferHistory
-from app.db.models.transferpending import TransferPending
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager.module import FileManagerModule
@@ -53,6 +40,8 @@ from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.exception import StorageQueryError
 from app.schemas.file import FileItem
 from app.schemas.types import MediaType
+from tests.support.transfer.overwrite import _checkpoint, _durable_runner, _execute
+from tests.support.transfer.overwrite import repository_factory as repository_factory
 
 
 @pytest.fixture

@@ -2,17 +2,8 @@
 通过真实音频容器覆盖空标签、原生 ID3 和独立音轨总数的读取契约。
 """
 
-from tests.support.music.containers import (
-    _write_aiff,
-    _write_dff,
-    _write_dsf,
-    _write_wave,
-)
-
 import hashlib
 import shutil
-import struct
-import wave
 from pathlib import Path
 
 import pytest
@@ -22,6 +13,12 @@ from mutagen.id3 import TALB, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK, TSRC, TXXX, UF
 from mutagen.wave import WAVE
 
 from app.application.audio import AudioMetadataHelper
+from tests.support.music.containers import (
+    _write_aiff,
+    _write_dff,
+    _write_dsf,
+    _write_wave,
+)
 
 RECORDING_ID = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
 

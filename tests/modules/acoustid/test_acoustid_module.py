@@ -2,11 +2,6 @@
 验证 AcoustID 指纹查询、缓存及指纹生成失败的处理边界。
 """
 
-from tests.support.music.acoustid import (
-    FakeResponse,
-    RECORDING_ID,
-)
-
 import asyncio
 import json
 from pathlib import Path
@@ -16,6 +11,10 @@ from unittest.mock import AsyncMock, Mock
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.modules.acoustid import AcoustIdModule
 from app.runtime.config import ConfigModel
+from tests.support.music.acoustid import (
+    RECORDING_ID,
+    FakeResponse,
+)
 
 
 class FakeAsyncResponse(FakeResponse):

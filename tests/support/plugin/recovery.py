@@ -4,9 +4,9 @@
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+
 from app.application.plugin.identity import PluginIdentity
 from app.application.plugin.transaction import PluginInstallationPhase, PluginInstallationRecord
-
 
 RECEIPT = "sha256:" + "1" * 64
 

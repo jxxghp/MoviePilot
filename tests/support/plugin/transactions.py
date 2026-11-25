@@ -5,10 +5,11 @@
 import copy
 import threading
 from datetime import datetime, timezone
+
 import sqlalchemy as sa
+
 from app.application.plugin.transaction import PluginInstallationPhase, PluginInstallationRecord
 from app.db.models.systemconfig import SystemConfig
-
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 

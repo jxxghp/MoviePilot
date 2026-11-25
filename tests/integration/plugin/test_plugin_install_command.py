@@ -2,30 +2,14 @@
 插件安装事务用例的端到端副作用顺序与补偿测试。
 """
 
-from tests.support.plugin.commands import (
-    NOW,
-    RECEIPT,
-    REPO_URL,
-    SOURCE_KEY,
-    _PersistenceSpy,
-    _admission,
-    _command,
-)
-
 import asyncio
 from contextlib import nullcontext
 from dataclasses import replace
-from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
 
-from app.application.plugin.admission import (
-    PluginInstallAdmission,
-    PluginInstallAdmissionRequest,
-    admit_plugin_install,
-)
 from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
@@ -35,13 +19,7 @@ from app.application.plugin.identity import (
 )
 from app.application.plugin.install import PluginInstallCommand
 from app.application.plugin.recovery import PluginInstallationRecoveryService
-from app.application.plugin.source import (
-    CandidateInventory,
-    MarketRead,
-    PluginMarketCandidate,
-)
 from app.application.plugin.transaction import (
-    PluginInstallationConflictError,
     PluginInstallationPhase,
     PluginInstallationRecord,
 )
@@ -52,6 +30,15 @@ from app.schemas.exception import (
     PluginMutationRejectedError,
 )
 from app.schemas.plugin import PluginRuntimeStatus
+from tests.support.plugin.commands import (
+    NOW,
+    RECEIPT,
+    REPO_URL,
+    SOURCE_KEY,
+    _admission,
+    _command,
+    _PersistenceSpy,
+)
 
 
 def _identity(*, version: str = "1.0.0", revision: int = 1) -> PluginIdentity:

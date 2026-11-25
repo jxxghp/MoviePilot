@@ -44,8 +44,8 @@ from app.modules.musicbrainz import MusicBrainzModule
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaType
 from tests.support.music.albums import _release_detail
-from tests.support.music.cue import _image_pair
 from tests.support.music.context import _audio_files
+from tests.support.music.cue import _image_pair
 from tests.support.transfer.files import bind_empty_history_repositories, make_transfer_chain
 
 

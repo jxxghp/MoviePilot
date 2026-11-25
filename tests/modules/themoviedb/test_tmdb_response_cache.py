@@ -2,13 +2,8 @@
 验证TMDB 响应缓存键、命中和更新行为。
 """
 
-from tests.support.metadata.tmdb import (
-    _FakeResponse,
-)
-
 import asyncio
 import pickle
-from threading import RLock
 from unittest.mock import Mock, patch
 
 import pytest
@@ -16,6 +11,9 @@ import pytest
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbException
 from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
+from tests.support.metadata.tmdb import (
+    _FakeResponse,
+)
 
 
 class _UnicodeDecodeErrorResponse:

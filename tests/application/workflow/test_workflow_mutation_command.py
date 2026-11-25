@@ -2,11 +2,6 @@
 验证工作流修改命令的校验与持久化委托。
 """
 
-from tests.support.workflow.commands import (
-    _command,
-    _workflow,
-)
-
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -16,9 +11,12 @@ import app.application.workflow as workflow_application
 from app.application.workflow import (
     WorkflowDefinitionCommand,
     WorkflowExecutionCommand,
-    WorkflowMutationCommand,
     WorkflowQueryService,
     WorkflowSnapshot,
+)
+from tests.support.workflow.commands import (
+    _command,
+    _workflow,
 )
 
 

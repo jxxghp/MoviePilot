@@ -2,11 +2,6 @@
 验证音乐整理中专辑候选的选择与确认。
 """
 
-from tests.support.music.selection import (
-    _directory_item,
-    _prepare_chain,
-)
-
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,10 +11,12 @@ from app.chain.transfer.facade import TransferChain
 from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.category import ClassificationResult, ClassificationSelection
-from app.schemas.file import FileItem
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
+from tests.support.music.selection import (
+    _directory_item,
+    _prepare_chain,
+)
 from tests.support.transfer.files import (
-    bind_empty_history_repositories,
     make_fileitem,
     make_transfer_chain,
 )

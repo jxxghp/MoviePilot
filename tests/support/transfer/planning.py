@@ -7,8 +7,14 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+
 from app.application.transfer import workflow as transfer_application
-from app.application.transfer.execution import TransferExecutionSnapshot, TransferExecutionState, TransferExecutionStep, TransferStepState
+from app.application.transfer.execution import (
+    TransferExecutionSnapshot,
+    TransferExecutionState,
+    TransferExecutionStep,
+    TransferStepState,
+)
 from app.application.transfer.workflow import TransferTask
 from app.chain.transfer.facade import TransferChain
 from app.schemas.file import FileItem

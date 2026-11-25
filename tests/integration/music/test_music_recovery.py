@@ -25,11 +25,11 @@ from app.domain.music import MusicDirectoryMatch
 from app.modules.musicbrainz import MusicBrainzModule
 from app.schemas.types import MediaType
 from tests.support.music.albums import _release_detail
-from tests.support.music.cue import _image_pair
 from tests.support.music.cache import _build_music_cache, _TTLCacheStub
 from tests.support.music.context import _audio_files
-from tests.support.music.storage import _setup_transfer
+from tests.support.music.cue import _image_pair
 from tests.support.music.musicbrainz import _FakeMusicBrainzResponse
+from tests.support.music.storage import _setup_transfer
 from tests.support.transfer.files import make_fileitem
 
 SIGNATURE = (("one.flac", 100, 1),)

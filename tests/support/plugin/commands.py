@@ -7,13 +7,17 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+
 from app.application.plugin.admission import PluginInstallAdmission, PluginInstallAdmissionRequest, admit_plugin_install
 from app.application.plugin.identity import PluginIdentity, TrustedPluginSourceType
 from app.application.plugin.install import PluginInstallCommand
 from app.application.plugin.source import CandidateInventory, MarketRead, PluginMarketCandidate
-from app.application.plugin.transaction import PluginInstallationConflictError, PluginInstallationPhase, PluginInstallationRecord
+from app.application.plugin.transaction import (
+    PluginInstallationConflictError,
+    PluginInstallationPhase,
+    PluginInstallationRecord,
+)
 from app.schemas.plugin import PluginRuntimeStatus
-
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 

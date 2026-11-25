@@ -5,7 +5,6 @@
 import shutil
 from pathlib import Path
 
-
 CUE = '''REM DATE 2003
 PERFORMER "测试歌手"
 TITLE "专辑示例"

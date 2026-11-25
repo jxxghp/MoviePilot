@@ -2,14 +2,7 @@
 统一插件安装 Gateway 测试。
 """
 
-from tests.support.plugin.gateway import (
-    NOW,
-    REPO_URL,
-    _inventory,
-)
-
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -31,6 +24,11 @@ from app.application.plugin.source import (
     PluginMarketCandidate,
 )
 from app.schemas.exception import PluginMutationRejectedError
+from tests.support.plugin.gateway import (
+    NOW,
+    REPO_URL,
+    _inventory,
+)
 
 
 def _other_plugin_inventory() -> CandidateInventory:

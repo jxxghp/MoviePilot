@@ -19,8 +19,8 @@ from app.db.adapters.plugininstallation import TransactionalPluginInstallationSt
 from app.db.models.plugininstallation import PluginInstallation
 from app.db.models.plugininstance import PluginInstance
 from app.db.models.systemconfig import SystemConfig
-from tests.support.plugin.transactions import _AtomicSystemConfig, _record
 from tests.support.plugin.recovery import _packages, _Persistence
+from tests.support.plugin.transactions import _AtomicSystemConfig, _record
 
 
 @pytest.mark.parametrize("enabled", [True, False])

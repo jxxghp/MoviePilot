@@ -2,13 +2,8 @@
 音乐整理的存储证据隔离、特殊包提示及显式影视上下文保护。
 """
 
-from tests.support.music.storage import (
-    _setup_transfer,
-)
-
 import shutil
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -22,7 +17,10 @@ from app.domain.meta.metamusic import MetaMusic
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource, MediaType
 from tests.support.music.context import _history
-from tests.support.transfer.files import bind_empty_history_repositories, make_fileitem, make_transfer_chain
+from tests.support.music.storage import (
+    _setup_transfer,
+)
+from tests.support.transfer.files import make_fileitem
 
 
 def _tagged_file(tmp_path):

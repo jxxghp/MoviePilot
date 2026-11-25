@@ -2,11 +2,6 @@
 验证文件整理计划的输入冻结、操作顺序、事件拦截和清理兼容。
 """
 
-from tests.support.storage.planning import (
-    ReadOnlyTreeStorage,
-    RecordingStorage,
-)
-
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
@@ -28,6 +23,10 @@ from app.runtime.events import eventmanager
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import ChainEventType, MediaType
 from app.schemas.workflow import FileItem
+from tests.support.storage.planning import (
+    ReadOnlyTreeStorage,
+    RecordingStorage,
+)
 
 
 def _build_media() -> tuple[MetaBase, MediaInfo]:

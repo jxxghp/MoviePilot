@@ -5,12 +5,6 @@ MusicBrainz 音乐识别本地持久化缓存测试。
 统计与权限，以及 MusicBrainzModule 识别流程对缓存的命中与回填。
 """
 
-from tests.support.music.cache import (
-    _MemoryCacheStub,
-    _TTLCacheStub,
-    _build_module_with_cache,
-    _build_music_cache,
-)
 import asyncio
 import inspect
 import pickle
@@ -22,9 +16,13 @@ from app.api.deps import get_current_active_superuser_async
 from app.api.endpoints import music as music_endpoint
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.modules.musicbrainz import MusicBrainzModule
 from app.modules.musicbrainz import cache as music_cache_module
 from app.modules.musicbrainz.cache import MusicBrainzCache
+from tests.support.music.cache import (
+    _build_module_with_cache,
+    _build_music_cache,
+    _TTLCacheStub,
+)
 
 
 class _FileCacheStub:

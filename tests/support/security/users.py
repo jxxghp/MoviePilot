@@ -3,9 +3,11 @@
 """
 
 from contextlib import asynccontextmanager
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
+
 from app.db.engine import _register_sqlite_foreign_keys
 from app.db.models.passkey import PassKey
 from app.db.models.user import User

@@ -2,12 +2,6 @@
 插件安装事务记录、SQLite CAS 和 membership 测试。
 """
 
-from tests.support.plugin.transactions import (
-    NOW,
-    _AtomicSystemConfig,
-    _record,
-)
-
 import copy
 import importlib
 import os
@@ -15,13 +9,18 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import datetime, timezone
 
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy.orm import sessionmaker
+
+from tests.support.plugin.transactions import (
+    NOW,
+    _AtomicSystemConfig,
+    _record,
+)
 
 try:
     import psycopg2 as postgres_driver

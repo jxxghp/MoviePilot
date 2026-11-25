@@ -2,14 +2,6 @@
 真实容器、来源响应及 JSON 快照分别保留录音与发行身份和字段来源。
 """
 
-from tests.support.music.tags import (
-    GROUP,
-    RECORDING,
-    RELEASE,
-    TRACK,
-    _tag_audio,
-)
-
 import asyncio
 import json
 import pickle
@@ -18,10 +10,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from mutagen import File
 from mutagen.flac import FLAC
-from mutagen.id3 import TALB, TDOR, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK, TXXX, UFID
-from mutagen.mp4 import MP4
 
 from app.application.audio import AudioMetadataHelper
 from app.chain.download import DownloadChain
@@ -32,8 +21,15 @@ from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 from app.schemas.music import MusicInfo as MusicInfoSchema
 from app.schemas.music import MusicMeta as MusicMetaSchema
-from tests.support.music.containers import _write_dsf, _write_wave
 from tests.support.music.albums import _release_detail
+from tests.support.music.containers import _write_dsf, _write_wave
+from tests.support.music.tags import (
+    GROUP,
+    RECORDING,
+    RELEASE,
+    TRACK,
+    _tag_audio,
+)
 from tests.support.transfer.files import make_fileitem
 
 IDENTITIES = {

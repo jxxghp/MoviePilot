@@ -2,15 +2,6 @@
 用真实音频与链接验证标签刮削不会改写PT源文件。
 """
 
-from tests.support.music.identity import (
-    _COVER,
-    _GROUP,
-    _RECORDING,
-    _RELEASE,
-    _TRACK,
-)
-
-import base64
 import hashlib
 import os
 import shutil
@@ -35,6 +26,13 @@ from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.file import FileItem
 from tests.support.music.containers import _write_aiff, _write_dff, _write_dsf, _write_wave
+from tests.support.music.identity import (
+    _COVER,
+    _GROUP,
+    _RECORDING,
+    _RELEASE,
+    _TRACK,
+)
 
 
 def _audio_file(tmp_path, container):

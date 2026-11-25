@@ -3,9 +3,9 @@
 """
 
 from datetime import datetime, timezone
+
 from app.application.plugin.identity import TrustedPluginSourceType
 from app.application.plugin.source import CandidateInventory, MarketRead, PluginMarketCandidate
-
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 

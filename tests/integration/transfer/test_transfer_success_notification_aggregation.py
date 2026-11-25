@@ -27,8 +27,8 @@ from app.runtime.loop import main_loop_registry
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import ContentType, EventType, MediaType, MessageType, SystemConfigKey
-from tests.support.transfer.manual import _patch_transfer_planning
 from tests.support.transfer.files import make_transfer_chain
+from tests.support.transfer.manual import _patch_transfer_planning
 
 
 class _Loop:

@@ -4,20 +4,12 @@
 
 from __future__ import annotations
 
-from tests.support.browser.contexts import (
-    _FakeContext,
-    _FakeElement,
-    _FakePage,
-    _FakeResponse,
-)
-
 import asyncio
 import json
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -32,6 +24,10 @@ from app.adapters.network.browser import (
 from app.agent.terminal.ownership import TerminalScope, close_terminal_scope
 from app.agent.tools.impl.browse_webpage import BrowserAction, BrowseWebpageTool
 from app.runtime.correlation import correlation_scope, get_correlation_id
+from tests.support.browser.contexts import (
+    _FakeContext,
+    _FakePage,
+)
 
 
 @pytest.fixture(autouse=True)

@@ -2,14 +2,9 @@
 订阅日志的上下文隔离、权限、原文输出及文件生命周期回归。
 """
 
-from tests.support.subscription.logging import (
-    fixture_file_writer,
-)
-
 import asyncio
 import io
 import logging
-import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -21,8 +16,9 @@ from app.api.endpoints import subexecution
 from app.application.system import LogFileData, LogNotFoundError
 from app.runtime import log as log_module
 from app.runtime.execution import submit_with_context
-from app.runtime.log import LoggerManager, NonBlockingFileHandler, bind_log_scope, logger
+from app.runtime.log import LoggerManager, bind_log_scope, logger
 from app.startup.composition.system import _FileLogAdapter
+from tests.support.subscription.logging import fixture_file_writer as fixture_file_writer
 
 
 @pytest.fixture(name="captured")

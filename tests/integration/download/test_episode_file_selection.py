@@ -2,10 +2,6 @@
 三个下载器在选集、附属文件保留和已有任务增量追加上的一致性回归。
 """
 
-from tests.support.download.episodes import (
-    existing_task,
-)
-
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -30,6 +26,9 @@ from app.schemas.download import (
 )
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType, TorrentQueryStatus
+from tests.support.download.episodes import (
+    existing_task,
+)
 
 
 @pytest.fixture(params=[QbittorrentModule, TransmissionModule, RtorrentModule])

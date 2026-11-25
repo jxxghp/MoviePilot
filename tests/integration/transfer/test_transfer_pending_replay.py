@@ -8,12 +8,6 @@
 这些测试固定三项不变量：入队即落盘登记、终态即注销、重启能回放。
 """
 
-from tests.support.transfer.replay import (
-    _admission,
-    _build_chain,
-    _execution_snapshot,
-    _task,
-)
 import threading
 import time
 from dataclasses import replace
@@ -24,18 +18,19 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.application.transfer.execution import (
-    TransferExecutionSnapshot,
     TransferExecutionState,
 )
 from app.application.transfer.workflow import (
-    TransferAdmission,
     TransferPlanningInput,
-    TransferTask,
 )
 
 # 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
-from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
-from app.schemas.file import FileItem
+from tests.support.transfer.replay import (
+    _admission,
+    _build_chain,
+    _execution_snapshot,
+    _task,
+)
 
 
 def test_admit_transfer_records_storage_and_path():

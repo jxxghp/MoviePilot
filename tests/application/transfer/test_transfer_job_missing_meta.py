@@ -18,8 +18,8 @@ from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaType
-from tests.support.transfer.replay import _admission, _build_chain
 from tests.support.transfer.planning import _chain, _checkpoint
+from tests.support.transfer.replay import _admission, _build_chain
 
 
 def _task(*, has_media: bool = False, path: str = "/downloads/Movie.mkv") -> TransferTask:

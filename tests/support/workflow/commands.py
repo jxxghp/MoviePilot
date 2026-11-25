@@ -4,6 +4,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import Mock
+
 from app.application.workflow import WorkflowMutationCommand
 
 

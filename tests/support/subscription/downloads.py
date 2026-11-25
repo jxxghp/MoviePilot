@@ -3,10 +3,13 @@
 """
 
 from __future__ import annotations
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
 import pytest
+
 import app.chain.download.submission as download_submission
 from app.chain.download import DownloadChain
 from app.domain.context import Context, MediaInfo, TorrentInfo

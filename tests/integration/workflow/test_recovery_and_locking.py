@@ -23,8 +23,8 @@ from app.runtime.cache import MemoryBackend
 from app.scheduler.reconcile import SchedulerReconcileOwner
 from app.startup.composition import subscription as composition
 from app.workflow.actions import BaseAction
-from tests.support.workflow.execution import _build_workflow, _FakeWorkflowManager
 from tests.support.workflow.commands import _command, _workflow
+from tests.support.workflow.execution import _build_workflow, _FakeWorkflowManager
 
 
 @pytest.mark.asyncio

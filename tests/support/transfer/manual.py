@@ -3,6 +3,7 @@
 """
 
 from types import SimpleNamespace
+
 from tests.support.transfer.files import FakeMeta
 
 

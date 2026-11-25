@@ -2,16 +2,6 @@
 验证 settling 终态在崩溃后只重放持久结算。
 """
 
-from tests.support.transfer.recovery import (
-    _build_chain,
-    _plan_checkpoint,
-    _planning_input,
-    _recovered_task,
-    _transfer_result,
-)
-
-import threading
-import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -35,7 +25,6 @@ from app.application.transfer.workflow import (
     TransferAdmission,
     TransferPlanCheckpoint,
     TransferPlanItem,
-    TransferPlanningInput,
     TransferTask,
 )
 from app.chain.transfer.execution import _DurableTransferStepRunner
@@ -47,8 +36,14 @@ from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
-from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
+from tests.support.transfer.recovery import (
+    _build_chain,
+    _plan_checkpoint,
+    _planning_input,
+    _recovered_task,
+    _transfer_result,
+)
 
 
 def _execution_checkpoint(

@@ -2,16 +2,6 @@
 验证整理作业的登记、状态更新和结束管理。
 """
 
-from tests.support.transfer.jobs import (
-    FakeMedia,
-    FakeMeta,
-    bind_terminal_checkpoint,
-    make_fileitem,
-    make_task,
-    make_transfer_chain,
-)
-
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -21,13 +11,8 @@ from app.application.history.retry import (
     failed_retry_count,
     record_transfer_failure,
 )
-from app.application.transfer.execution import (
-    TransferExecutionCheckpoint,
-    TransferSettlementResult,
-)
 from app.application.transfer.workflow import (
     JobManager,
-    TransferAdmission,
     TransferPlanningInput,
     TransferTask,
 )
@@ -39,7 +24,15 @@ from app.modules.filemanager.transhandler import TransHandler
 from app.runtime.config import settings
 from app.schemas.file import FileItem
 from app.schemas.transfer import EpisodeFormat, TransferInfo
-from app.schemas.types import EventType, MediaSource, MediaType
+from app.schemas.types import EventType, MediaType
+from tests.support.transfer.jobs import (
+    FakeMedia,
+    FakeMeta,
+    bind_terminal_checkpoint,
+    make_fileitem,
+    make_task,
+    make_transfer_chain,
+)
 
 
 def _reset_failed_retries(src_path, storage=None):

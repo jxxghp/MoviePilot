@@ -2,11 +2,6 @@
 验证工作流执行状态、分支与任务生命周期。
 """
 
-from tests.support.workflow.execution import (
-    _FakeWorkflowManager,
-    _build_workflow,
-)
-
 import base64
 import pickle
 import threading
@@ -20,7 +15,10 @@ from app.chain import workflow as workflow_module
 from app.runtime.correlation import correlation_scope, get_correlation_id
 from app.schemas.types import EventType
 from app.schemas.workflow import Action, ActionContext, ActionResult
-
+from tests.support.workflow.execution import (
+    _build_workflow,
+    _FakeWorkflowManager,
+)
 
 _LEGACY_PAYLOAD_CALLS = []
 

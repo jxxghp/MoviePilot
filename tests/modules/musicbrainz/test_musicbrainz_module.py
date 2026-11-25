@@ -2,10 +2,6 @@
 验证 MusicBrainz 搜索回退、艺术家身份及同步异步查询。
 """
 
-from tests.support.music.musicbrainz import (
-    _FakeMusicBrainzResponse,
-)
-
 import asyncio
 from unittest.mock import AsyncMock, Mock
 
@@ -16,6 +12,9 @@ from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 from app.runtime.config import settings
 from app.schemas.types import MediaSource
+from tests.support.music.musicbrainz import (
+    _FakeMusicBrainzResponse,
+)
 
 
 def test_recording_search_uses_phrase_before_character_fallback(monkeypatch):

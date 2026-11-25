@@ -2,25 +2,20 @@
 下载种子原始证据在丢弃旧身份后仍参与整专查询，并保持作用范围。
 """
 
-from tests.support.music.context import (
-    _audio_files,
-    _history,
-)
-
 import asyncio
-import shutil
-from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from mutagen.flac import FLAC
 
-from app.application.history import DownloadHistorySnapshot
 from app.chain.media import MediaChain
 from app.chain.transfer.facade import TransferChain
 from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.schemas.types import MediaType
+from tests.support.music.context import (
+    _audio_files,
+    _history,
+)
 from tests.support.transfer.files import make_fileitem
 
 

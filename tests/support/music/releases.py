@@ -4,11 +4,12 @@
 
 import shutil
 from pathlib import Path
+
 from mutagen.flac import FLAC
+
 from app.application.audio import AudioMetadataHelper
 from app.schemas.types import MediaType
 from tests.support.transfer.files import make_fileitem, make_transfer_chain
-
 
 RELEASE_A = "11111111-1111-4111-8111-111111111111"
 

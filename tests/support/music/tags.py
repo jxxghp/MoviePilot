@@ -3,11 +3,11 @@
 """
 
 from pathlib import Path
+
 from mutagen import File
 from mutagen.flac import FLAC
 from mutagen.id3 import TALB, TDOR, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK, TXXX, UFID
 from mutagen.mp4 import MP4
-
 
 RECORDING = "11111111-1111-4111-8111-111111111111"
 

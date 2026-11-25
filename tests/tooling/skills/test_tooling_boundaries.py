@@ -2,20 +2,13 @@
 本地开发、审查工具和技能脚本的隔离回归。
 """
 
-from tests.support.tooling.scripts import (
-    ROOT,
-    _load_script,
-)
-
 import ast
-import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
 from argparse import Namespace
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -25,6 +18,10 @@ from scripts.architecture import baseline, coverage_ratchet
 from scripts.evaluation.score import evaluate
 from scripts.evaluation.world import EvaluationWorld
 from scripts.perf import moviepilot_docker_ab as perf
+from tests.support.tooling.scripts import (
+    ROOT,
+    _load_script,
+)
 
 
 def test_coverage_write_snapshot_is_internally_consistent(tmp_path, monkeypatch) -> None:

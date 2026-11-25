@@ -2,20 +2,6 @@
 整理规划检查点的事务顺序、恢复与无副作用边界合同。
 """
 
-from tests.support.transfer.planning import (
-    _ExecutionRepositoryStub,
-    _bind_checkpoint,
-    _bind_planning_input,
-    _chain,
-    _checkpoint,
-    _planned_admission,
-    _planning_contracts,
-    _planning_input,
-    _resolved_checkpoint,
-    _source_snapshot,
-    _task,
-)
-
 import ast
 import inspect
 import threading
@@ -34,12 +20,9 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionSnapshot,
     TransferExecutionState,
-    TransferExecutionStep,
     TransferPlanningRejectedError,
     TransferSettlementResult,
-    TransferStepState,
 )
-from app.application.transfer.workflow import TransferTask
 from app.chain.transfer.facade import TransferChain
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
@@ -55,6 +38,18 @@ from app.schemas.exception import StorageQueryError
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferInfo
+from tests.support.transfer.planning import (
+    _bind_checkpoint,
+    _bind_planning_input,
+    _chain,
+    _checkpoint,
+    _planned_admission,
+    _planning_contracts,
+    _planning_input,
+    _resolved_checkpoint,
+    _source_snapshot,
+    _task,
+)
 
 
 @pytest.mark.parametrize(

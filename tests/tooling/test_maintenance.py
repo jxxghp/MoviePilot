@@ -4,7 +4,8 @@
 
 import subprocess
 
-from scripts.testing.maintenance import compare_base, inventory, layout_violations, test_imports as collect_test_imports
+from scripts.testing.maintenance import compare_base, inventory, layout_violations
+from scripts.testing.maintenance import test_imports as collect_test_imports
 
 
 def test_import_forms_resolve_the_same_test_dependency():

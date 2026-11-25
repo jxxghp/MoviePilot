@@ -2,10 +2,6 @@
 验证手动整理的历史摘要、重做确认和失效任务恢复。
 """
 
-from tests.support.transfer.manual import (
-    _patch_transfer_planning,
-)
-
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -36,11 +32,13 @@ from app.db.session import SessionFactory, async_session_scope
 from app.runtime.config import settings
 from app.schemas.transfer import ManualTransferItem, TransferInfo
 from app.schemas.types import MediaSource, MediaType
-from tests.support.transfer.jobs import FakeMedia
 from tests.support.transfer.files import (
-    FakeMeta,
     make_fileitem,
     make_transfer_chain,
+)
+from tests.support.transfer.jobs import FakeMedia
+from tests.support.transfer.manual import (
+    _patch_transfer_planning,
 )
 
 
