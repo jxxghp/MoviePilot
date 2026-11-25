@@ -91,6 +91,42 @@ def test_builtin_provider_catalog_exposes_generic_entries_and_curated_vendors() 
 
 
 @pytest.mark.usefixtures("_isolate_provider_manager")
+@pytest.mark.parametrize(
+    ("provider_id", "saved_base_url", "expected_base_url"),
+    [
+        ("api-route", None, "https://global.api-route.com/v1"),
+        ("aigrow", None, "https://aigrow.gg/v1"),
+        ("uberllm", None, "https://api.martllm.com/v1"),
+        ("atlascloud", " https://proxy.example.test/v1/ ", "https://proxy.example.test/v1"),
+        ("huggingface", None, "https://router.huggingface.co/v1"),
+    ],
+)
+def test_saved_relay_config_keeps_runtime_endpoint(
+    provider_id: str, saved_base_url: str | None, expected_base_url: str,
+) -> None:
+    """
+    旧中转预设退出目录后，已保存的配置仍使用原接口地址和 API Key。
+    """
+    manager = LLMProviderManager()
+    manager._models_dev_data = {}
+
+    runtime = asyncio.run(
+        manager.resolve_runtime(
+            provider_id=provider_id,
+            model="custom-model",
+            api_key="test-key",
+            base_url=saved_base_url,
+        )
+    )
+
+    assert runtime["runtime"] == "openai_compatible"
+    assert runtime["base_url"] == expected_base_url
+    assert runtime["api_key"] == "test-key"
+    assert runtime["model_id"] == "custom-model"
+    assert manager.resolve_model_list_base_url(provider_id, saved_base_url) == expected_base_url
+
+
+@pytest.mark.usefixtures("_isolate_provider_manager")
 def test_generic_anthropic_compatible_provider_runtime_and_metadata_boundary() -> None:
     """
     通用 Anthropic 兼容入口要求填写地址、规范化 /v1 路径且不信任官方上限元数据。

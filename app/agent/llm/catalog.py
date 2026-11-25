@@ -6,11 +6,34 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
 from app.agent.llm.runtime import LLMProviderError
 from app.runtime.log import logger
+
+# v3.2.12 移除的内置 OpenAI 兼容预设。只用于恢复已保存的标识、原地址和模型列表来源。
+_LEGACY_OPENAI_PROVIDERS = {
+    "aigrow": ("https://aigrow.gg/v1", "openai_compatible"),
+    "api-route": ("https://global.api-route.com/v1", "openai_compatible"),
+    "atlascloud": ("https://api.atlascloud.ai/v1", "openai_compatible"),
+    "cheapaimodel": ("https://api.cheapaimodel.ai/v1", "openai_compatible"),
+    "cheaperinference": ("https://api.cheaperinference.com/v1", "openai_compatible"),
+    "fireworks-ai": ("https://api.fireworks.ai/inference/v1", "models_dev_only"),
+    "huggingface": ("https://router.huggingface.co/v1", "models_dev_only"),
+    "jiekou": ("https://api.jiekou.ai/openai", "models_dev_only"),
+    "kilo": ("https://api.kilo.ai/api/gateway", "models_dev_only"),
+    "llama": ("https://api.llama.com/compat/v1", "models_dev_only"),
+    "llmgateway": ("https://api.llmgateway.io/v1", "models_dev_only"),
+    "nova": ("https://api.nova.amazon.com/v1", "models_dev_only"),
+    "obscurify-ai": ("https://obscurify.ai/v1", "openai_compatible"),
+    "poe": ("https://api.poe.com/v1", "models_dev_only"),
+    "qihang-ai": ("https://api.qhaigc.net/v1", "models_dev_only"),
+    "runcrate": ("https://api.runcrate.ai/v1", "openai_compatible"),
+    "trustedrouter": ("https://api.trustedrouter.com/v1", "openai_compatible"),
+    "uberllm": ("https://api.martllm.com/v1", "openai_compatible"),
+}
 
 
 @dataclass(frozen=True)
@@ -92,6 +115,30 @@ class ProviderSpec:
     model_list_strategy: str = "openai_compatible"
     sort_order: int = 100
     description: str = ""
+
+
+@cache
+def _legacy_openai_provider(provider_id: str, base_url: str, model_list_strategy: str) -> ProviderSpec:
+    """
+    从旧内置预设恢复连接定义，同一进程中复用定义以免重复记录迁移提示。
+
+    :param provider_id: 已移除的内置预设标识
+    :param base_url: 原内置预设的默认服务地址
+    :param model_list_strategy: 原模型列表查询策略
+    :return: 仅用于按标识解析的 OpenAI 兼容定义
+    """
+    logger.warning(
+        f"LLM 提供商预设 {provider_id} 已移出目录。"
+        f"重新配置时请选择 OpenAI 兼容并保留原有 Base URL，未填写时使用 {base_url}。"
+    )
+    return ProviderSpec(
+        id=provider_id,
+        name=provider_id,
+        runtime="openai_compatible",
+        default_base_url=base_url,
+        models_dev_provider_id=provider_id,
+        model_list_strategy=model_list_strategy,
+    )
 
 
 class _ProviderCatalog:
@@ -921,12 +968,18 @@ class _ProviderCatalog:
 
     def get_provider(self, provider_id: str) -> ProviderSpec:
         """
-        按 provider id 获取定义。
+        按标识获取内置定义或已移除的旧预设定义。
+
+        :param provider_id: 内置或已保存的提供商标识
+        :return: 用于连接模型服务的定义
+        :raises LLMProviderError: 无法识别提供商标识
         """
         normalized = self._normalize_provider_id(provider_id)
         for spec in self._provider_specs():
             if spec.id == normalized:
                 return spec
+        if legacy := _LEGACY_OPENAI_PROVIDERS.get(normalized):
+            return _legacy_openai_provider(normalized, *legacy)
         raise LLMProviderError(f"不支持的 LLM 提供商：{provider_id}")
 
     @staticmethod

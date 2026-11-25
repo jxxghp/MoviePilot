@@ -295,6 +295,11 @@ moviepilot setup --config-dir /path/to/moviepilot-config
 - 媒体服务器
 - 消息通知渠道
 
+升级后，已移出目录的旧内置中转预设仍使用原有配置。重新配置时选择「OpenAI 兼容」
+（`LLM_PROVIDER=openai`），保留原有的模型 ID、API Key 和 Base URL。此前未填写 Base URL
+时，填写日志提示中的原预设地址。原来通过 models.dev 动态选择的其他供应商，可按其服务协议
+选择通用兼容入口并填写原有 Base URL。
+
 `LLM_TEMPERATURE` 为可选配置，默认留空。设置页留空或清空配置后，LLM 请求不发送
 `temperature`，使用模型服务默认值；Google 原生运行时使用 SDK 的模型默认温度。
 显式填写 `0`、`1` 等数值仍按填写值发送。
