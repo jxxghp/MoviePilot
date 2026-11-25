@@ -10,9 +10,9 @@ pytest 是唯一运行入口。`tests/conftest.py` 在收集前完成隔离引�
 # 串行全量
 uv run --locked --no-sync pytest tests
 # 单文件
-uv run --locked --no-sync pytest tests/test_xxx.py
+uv run --locked --no-sync pytest tests/application/plugin/test_admission.py
 # 单用例
-uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y
+uv run --locked --no-sync pytest tests/application/plugin/test_admission.py::test_same_source_update_preserves_binding_and_advances_payload
 # 默认按文件预计耗时均衡为 4 片并行跑全量
 uv run --locked --no-sync python tests/run.py
 # 串行全量，便于调试或生成覆盖率
@@ -26,17 +26,15 @@ uv run --locked --no-sync python tests/run.py --shard 1/4
 `tests/fixtures/durations.json` 慢文件耗时估算：按耗时降序，逐个分给预计总耗时最短的分片；
 耗时相同时按路径、分片编号决定归属，片内仍按路径排序。新增或未记录文件使用 1 秒权重，
 不依赖本机缓存，确保同一代码版本在本地与 CI 的文件集合和顺序一致。
+运行器递归收集 `tests/**/test_*.py`。排除清单和耗时键均使用相对 `tests/` 的完整路径，
+例如 `integration/plugin/test_enablement.py`；迁移已记录的慢文件时同步迁移其耗时键，
+不同责任域中的同名文件不能共用一个 basename 权重或排除项。
 耗时数据来自成功 Ubuntu/Python 3.14 Coverage 日志的逐文件进度时间戳（含续行），
 只记录至少 3 秒的文件并向上取整；后续发现慢文件偏移时可依据成功 CI 日志更新。
 `--exclude-architecture-gate` 跳过 `ARCHITECTURE_GATE_TESTS` 列出的架构测试文件，这些文件由 CI 的
-`architecture` job 在同一进程内运行并共享全量扫描结果（`tests/architecture_cache.py`），覆盖率分片不再重复执行；
+`architecture` job 在同一进程内运行并共享全量扫描结果（`tests/support/architecture/cache.py`），覆盖率分片不再重复执行；
 本地默认全量仍包含它们。
 这些估算仅用于调度，不构成性能或覆盖率基线。
-
-插件配置安全回归由 `tests/test_agent_api_bodies.py`、`tests/test_agent_invocation_middleware.py`
-和 `tests/test_plugin_config_table.py` 覆盖：空配置与脱敏占位不能经 Agent 网关写入，
-REST 空覆盖不会改动已有实例配置或刷新服务，真实成功回执的重放与本次写入区分。
-回执指纹仍区分不同凭据，测试仅使用合成值与临时数据库，不代表报告者的 Docker 实例验收。
 
 - 不再使用 `python -m unittest discover`：它不导入 `tests` 包、收不到纯函数用例，且绕过 `conftest.py` 的隔离。
 - 不再依赖 `python tests/test_xxx.py` 直跑：所有 `if __name__ == "__main__": unittest.main()` 尾巴已移除。
@@ -62,34 +60,34 @@ focused 测试验证，不要求启动产品全套测试。
 目标 base 复现或其他充分证据说明，并按 `docs/rules/12-collaboration-and-distribution.md`
 的已记录维护者决定处置。已预授权的同一范围无需逐次重问，缺少证据时保留未知，不伪报通过。
 
-持久通知恢复由 `tests/test_outbox_recovery.py` 使用临时 SQLite、真实线程及屏障验证：
+持久通知恢复由 `tests/integration/outbox/test_outbox_recovery.py` 使用临时 SQLite、真实线程及屏障验证：
 整理事件阻塞时下载通知仍能完成、同类事件不会并行重复认领、在途租约续期、崩溃租约接管、
-提交失败与取消后的重试，以及关闭超时保留资源。`tests/test_telegram.py` 覆盖海报失败后的文本
+提交失败与取消后的重试，以及关闭超时保留资源。`tests/modules/telegram/test_telegram.py` 覆盖海报失败后的文本
 兜底、会话/话题/按钮保留、429 不追加请求，以及发送失败不能被 outbox 当作成功确认。
 海报上传网络失败时最多尝试三次，退避为 3、6 秒；短通知及 plain、HTML、MarkdownV2
 长通知覆盖重试成功、耗尽后文本兜底、重试中被拒绝或遇到 429，验证顺序与正文完整性。
 等待与 Bot API 均使用替身，不代表真实 Telegram 网络和 Docker 实例验收。
 
-`tests/test_outbox_event_isolation.py` 使用临时 SQLite、真实恢复线程和可释放屏障验证逐处理器
+`tests/integration/outbox/test_outbox_event_isolation.py` 使用临时 SQLite、真实恢复线程和可释放屏障验证逐处理器
 持久投递：慢处理器尚未返回时，其他处理器已经收到同批十二集；失败只重试对应投递，父消息
 重放不重复展开或增加新订阅者。用例同时覆盖事务回滚、陈旧 attempt、租约续期、异步处理器、
 重载窗口和关闭超时保留 owner。父事件完成表示投递记录已持久化，实际执行结果以
 `event.handler.*` 子记录为准；这些离线测试不代表真实插件或媒体服务器验收。
 
-AppPush 的所有用户范围由 `tests/test_notification_routing_parity.py` 验证：下载、入库和订阅消息
+AppPush 的所有用户范围由 `tests/integration/messaging/test_notification_routing_parity.py` 验证：下载、入库和订阅消息
 经同步、异步与持久事件入口到达真实渠道；明确用户和管理员范围保持隔离，组合范围不重复发送。
-`tests/test_user_repository.py` 使用临时数据库验证接收集合只含启用账号的不可变身份，
-`tests/test_apppush.py` 验证无明确范围时不广播，以及单账号投递失败不阻断其他账号；投递 HTTP 均使用替身。
+`tests/integration/security/test_user_repository.py` 使用临时数据库验证接收集合只含启用账号的不可变身份，
+`tests/modules/apppush/test_apppush.py` 验证无明确范围时不广播，以及单账号投递失败不阻断其他账号；投递 HTTP 均使用替身。
 
-`tests/test_db_error_diagnostics.py` 在临时 SQLite 的同步及异步连接池中注入
+`tests/db/queries/test_db_error_diagnostics.py` 在临时 SQLite 的同步及异步连接池中注入
 `SQLITE_IOERR_SHORT_READ`：失败事务保留原始异常、不自动重放写入，后续独立事务
 使用新连接恢复；锁争用和约束错误不触发额外的连接失效。
-`tests/test_event_runtime_components.py` 验证 `SystemError` 处理器失败时只记日志，
+`tests/integration/event/test_event_runtime_components.py` 验证 `SystemError` 处理器失败时只记日志，
 不再调用通知回调或派生错误广播。此回归不模拟真实磁盘故障，也不保证持续 I/O 故障时数据库可用。
 
 ### 浏览器空闲回收与生命周期
 
-`tests/test_lifecycle_shutdown.py` 冻结“浏览器空闲回收”的正常/安全模式清单、模块与任务登记器依赖、
+`tests/integration/lifecycle/test_lifecycle_shutdown.py` 冻结“浏览器空闲回收”的正常/安全模式清单、模块与任务登记器依赖、
 启动顺序和预算，保留真实 TaskRegistry 与扫描协程验证正常关闭及后段启动失败回滚。
 登记器必须在模块释放前取消扫描，不能借取消提前全关活动浏览器；最终全关仍由
 `modules.close_browser_sessions` 在托管资源释放前执行。
@@ -111,40 +109,40 @@ AppPush 的所有用户范围由 `tests/test_notification_routing_parity.py` 验
 - 用例**不得**连接或写入真实数据库、不得读写真实 `config/`。需要的库状态在用例内构造。
 - 用例**不得**依赖某个本地才有的动态模块副本；缺失的外部模块由 conftest 兜底或用例自行 mock。
 
-`tests/test_site_auth.py` 验证用户认证参数规范化、切换站点后过滤其他站点前缀、仅持久化成功
-配置，以及启动认证的环境变量优先级。`tests/test_site_chain_ports.py` 覆盖错误 HTTP 响应、
+`tests/integration/site/test_site_auth.py` 验证用户认证参数规范化、切换站点后过滤其他站点前缀、仅持久化成功
+配置，以及启动认证的环境变量优先级。`tests/integration/site/test_site_chain_ports.py` 覆盖错误 HTTP 响应、
 Cloudflare、空浏览器页面和通用检测的连通提示；这些检测不会验证用户认证页的 UID 或 Passkey。
 认证扩展的传输诊断与各平台 ABI 由 MoviePilot-Build 的离线回放和编译资源验证负责。
 
 ## 外部依赖：一律 mock，零真实网络
 
-季集选集由 `tests/test_episode_file_selection.py`、`tests/test_download_batch_phases.py` 和
-`tests/test_download_history_episode_mapping.py` 验证：S01E20 已识别为 S02E08 时，整包选中
+季集选集由 `tests/integration/download/test_episode_file_selection.py`、`tests/integration/download/test_download_batch_phases.py` 和
+`tests/integration/download/test_download_history_episode_mapping.py` 验证：S01E20 已识别为 S02E08 时，整包选中
 真实第 20 集，候选集数检查与历史文件明细采用相同对应关系。仅使用标题与识别结果中明确、
 等长的集号对应项，不根据季号猜测整包偏移；无对应依据时拒绝跨季同号文件，特别篇 S00
 独立匹配。来源识别词已经修正的文件不重复换算，无集号附件继续保留。
 选集失败只请求移除本次新增任务并保留文件，再由现有下载链记录退避、通知和尝试其它候选；
 下载器拒绝清理时明确提示人工核查。已有任务只追加目标文件，规则见下文“种子下载重试回归”。
-`tests/test_module_invocation_dispatcher.py` 同时验证旧插件下载器不接收新增可选的
+`tests/integration/modules/test_module_invocation_dispatcher.py` 同时验证旧插件下载器不接收新增可选的
 `episode_selection` 时继续兼容。这些测试使用离线下载器替身，不代表真实 Docker 实例验收。
 
 AniList 直接访问官方 GraphQL 接口，不再探测 `trace.moe/anilist/`。中文数据集保存在
 `<CONFIG_DIR>/cache/anilist/anilist-chinese.json`，有效期 24 小时，同步、异步查询和重建客户端
 共用快照；配置 `GITHUB_PROXY` 时先直连镜像，失败再按 `PROXY` 访问原始 GitHub 地址。
 下载失败保留过期数据并在五分钟后重试，目录或文件读写失败时仍可使用已下载的内存数据。
-`tests/test_anilist_translations.py` 使用临时目录和下载替身验证重建客户端后的缓存复用、到期刷新、
+`tests/modules/anilist/test_anilist_translations.py` 使用临时目录和下载替身验证重建客户端后的缓存复用、到期刷新、
 坏缓存、磁盘故障、镜像回退、同步异步并发去重及取消后释放锁；不据此推断真实代理耗时。
 
-高清杜比换域回归由 `tests/test_hddolby_spider.py`、`tests/test_hddolby_parser.py` 和
-`tests/test_site_connectivity.py` 验证：网页使用 `www.uhddolby.com` 时，搜索、用户资料和
+高清杜比换域回归由 `tests/modules/indexer/test_hddolby_spider.py`、`tests/modules/indexer/test_hddolby_parser.py` 和
+`tests/integration/site/test_site_connectivity.py` 验证：网页使用 `www.uhddolby.com` 时，搜索、用户资料和
 做种统计仍可按资源的 `api_url` 访问 `api.hddolby.com`，并保留站点代理和认证配置。
 API 连接失败或返回 HTTP 错误时，连通性提示指出实际接口主机；网页解析成功不能代替
 API 验证。错误提示和搜索告警不得输出地址中的账号、密码或查询令牌。测试不使用真实站点凭据。
 
-社区勋章使用 `tests/test_community_medal_background.py` 验证启动主动预热、无人访问时的六小时
+社区勋章使用 `tests/integration/community/test_community_medal_background.py` 验证启动主动预热、无人访问时的六小时
 更新、失败后的自动重试及 TaskRegistry 关闭。外部下载或远端开关被屏障阻塞时，查询必须在
 屏障释放前返回当前快照；冷启动通过 `refreshing` 表示后台尚未完成，不能把刷新锁或网络等待
-转移到页面请求。`tests/test_community_medals.py` 保留凭据隔离、有效开关和名单协议覆盖。
+转移到页面请求。`tests/integration/community/test_community_medals.py` 保留凭据隔离、有效开关和名单协议覆盖。
 
 测试**禁止**发起任何真实外部请求，包括但不限于 TMDB（`api.themoviedb.org`）、LLM 目录（`models.dev`）、下载器、媒体服务器、MP 服务器（`movie-pilot.org` 的共享识别 API）、以及任意外链图片/资源。**验收标准是全量跑测零真实出站**。
 
@@ -159,35 +157,35 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
     ...
 ```
 
-**2. 外部 HTTP API 用「录制—回放」(cassette)**：一次性录制真实响应存入 `tests/fixtures/`，测试时按请求键回放，使识别/解析等逻辑仍由真实结构数据驱动，但全程离线。参考实现：`tests/test_tmdb_recognize.py` + `tests/fixtures/tmdb_recognize_cassette.json`（在 `setUpModule` 中替换 TMDB 客户端的 HTTP 出入口；重新录制时临时包裹该出入口、跑一遍真实请求并落盘）。
+**2. 外部 HTTP API 用「录制—回放」(cassette)**：一次性录制真实响应存入 `tests/fixtures/`，测试时按请求键回放，使识别/解析等逻辑仍由真实结构数据驱动，但全程离线。参考实现：`tests/modules/themoviedb/test_tmdb_recognize.py` + `tests/fixtures/tmdb_recognize_cassette.json`（在 `setUpModule` 中替换 TMDB 客户端的 HTTP 出入口；重新录制时临时包裹该出入口、跑一遍真实请求并落盘）。
 
 > 注意：识别这类端到端流程往往不止一个外部出口。例如 TMDB 识别除了目录请求，链路层还会向 MP 服务器上报/查询「共享识别 API」——这类旁路出口必须一并打桩。用下文的 socket 探针确认确实零出站。
 
 ### 媒体库查询失败与订阅缺集
 
-`tests/test_mediaserver_existence_failure.py` 连接真实 Emby/Jellyfin 客户端、模块调度器、
+`tests/integration/mediaserver/test_mediaserver_existence_failure.py` 连接真实 Emby/Jellyfin 客户端、模块调度器、
 缺集计算和订阅进度入口，仅替换 HTTP 与持久化出口。测试覆盖标题搜索、缓存回查、详情及
 分集接口的无响应、HTTP 错误和无效条目结构，以及空库、服务恢复和多服务器部分失败。
 失败时不写缺集进度、不完成订阅；媒体库恢复后按实际已有季集重新计算，保留订阅下载事实。
-`tests/test_trimemedia_coverage.py` 验证飞牛严格电视剧查询首次失败后等待 0.5 秒重试一次，
+`tests/modules/trimemedia/test_trimemedia_coverage.py` 验证飞牛严格电视剧查询首次失败后等待 0.5 秒重试一次，
 重试仍失败时继续抛出查询异常；普通未找到不触发重试。上述离线测试不代表真实媒体服务器
 或报告者 Docker 实例验收。
 
 ### 详情页按需查找 TMDB 链接
 
-`tests/test_media_mapping_lookup.py` 注入假匹配、可控时钟和独立 `TaskRegistry`，验证共享关系
+`tests/integration/media/test_media_mapping_lookup.py` 注入假匹配、可控时钟和独立 `TaskRegistry`，验证共享关系
 优先于本地记录（没找到后被订阅补齐、本地结果被 Server 修正）、10 分钟记录与 LRU 淘汰、
 同条目合并、第 5 个不同条目被拒绝、请求断开后查找继续并占用名额、任务首次调度前被关停取消时
 仍清理在途项、超时和异常不写记录，以及结论日志。Chain 方法用例覆盖豆瓣电影、豆瓣剧集、
 Bangumi、AniList 与插件来源，确认返回值与上报关系一致；季匹配回退到整剧名称且 TMDB 详情未列出
-所附季号时既不返回也不上报，订阅转换结果保持不变（`tests/test_media_mapping.py` 同步覆盖上报路径）；
+所附季号时既不返回也不上报，订阅转换结果保持不变（`tests/integration/media/test_media_mapping.py` 同步覆盖上报路径）；
 接口用例覆盖参数校验和 429/502/503 翻译。
 新增 `app/application/server/lookup.py` 进入启动导入闭包，三个启动入口的模块数快照各增加 1；
 仅更新该结构事实，原冷导入耗时记录与 3000ms 上限保留。上述用例不访问 TMDB、豆瓣或 Server。
 
 ### 飞书长会话流式卡片回归
 
-`tests/test_feishu.py` 在 CardKit API 边界模拟 `300309` / `200850`：重开同一卡片的
+`tests/modules/feishu/test_feishu.py` 在 CardKit API 边界模拟 `300309` / `200850`：重开同一卡片的
 流式模式后补发完整累积文本，设置、文本和结束关闭共用严格递增的 sequence，
 每次请求使用独立 UUID。恢复操作每次刷新最多尝试一次；恢复失败或普通更新失败时，
 按 2、4、8、16、32、60 秒退避，之后保持 60 秒间隔。冷却期间不请求远端、不重复告警，
@@ -196,13 +194,13 @@ Bangumi、AniList 与插件来源，确认返回值与上报关系一致；季�
 
 ### 存储与监控的边界回归
 
-`tests/test_transfer_safe_overwrite.py` 使用真实临时文件验证覆盖失败保留旧文件，
+`tests/integration/transfer/test_transfer_safe_overwrite.py` 使用真实临时文件验证覆盖失败保留旧文件，
 并在持久步骤边界模拟中断；copy、move、硬链接和软链接均须先完成新文件再替换旧目标。
 恢复回归还需验证源文件被替换、新目标变成半文件、备份被替换以及历史清理的符号链接路径，
 不能仅凭路径存在就删除源文件或旧备份。
 远端状态不明保持人工复核，不能通过删除旧文件后盲目重试证明成功。
 
-`tests/test_transfer_remote_move_recovery.py` 使用真实临时文件和独立 SQLite 步骤账本回放
+`tests/integration/transfer/test_transfer_remote_move_recovery.py` 使用真实临时文件和独立 SQLite 步骤账本回放
 CloudDrive 的移动后改名失败，验证重新取得租约后仅补改名、移动及改名后的进程中断恢复、
 旧最终路径回执兼容、并发替换与查询故障隔离，以及补改名意图不能脱离冻结计划和移动回执。
 这些离线测试不代表真实 CloudDrive gRPC 通道或报告者的百文件并发场景已验收。
@@ -223,7 +221,7 @@ CloudDrive 的移动后改名失败，验证重新取得租约后仅补改名、
 文件项构造、快照遍历及轮询逻辑。仅替换 `snapshot_storage` 的返回值可以验证轮询器，
 但不能证明存储适配器正确区分了空目录与查询失败。
 
-`tests/test_smb_storage.py` 提供以下离线场景：
+`tests/modules/filemanager/test_smb_storage.py` 提供以下离线场景：
 
 - 单共享和多共享下，祖先目录时间不变时仍发现后代新增、修改、保留旧 mtime 的文件移入和删除。
 - 根目录、子目录、单个文件或类型查询失败时，不提交空快照或部分快照。
@@ -234,21 +232,21 @@ CloudDrive 的移动后改名失败，验证重新取得租约后仅补改名、
 这些场景只承诺已验证的 SMB 查询语义；为其他存储接入严格快照时，应在其 SDK/API
 边界复现同样的状态转换，并评估目录时间语义、分页和请求成本。
 
-`tests/test_u115_storage.py` 在 115 API 边界验证目录时间不推进时的深层新增、修改、
+`tests/modules/filemanager/test_u115_storage.py` 在 115 API 边界验证目录时间不推进时的深层新增、修改、
 保留旧时间的文件移入和删除，兼容空基线，并覆盖千条分页、递归深度和重复派发。
 115 快照不再按目录时间剪枝；扫描间隔、深度和接口限流不变，但每轮可能增加目录列表请求。
 这些用例不代表 115 已接入严格查询或验证了查询失败时的快照原子性。
 
 ### 存储严格查询回执回归
 
-`tests/test_u115_storage.py` 在 OSS 和 115 API 边界模拟分片完成返回 203、HTTP 200 回调失败、
+`tests/modules/filemanager/test_u115_storage.py` 在 OSS 和 115 API 边界模拟分片完成返回 203、HTTP 200 回调失败、
 目录暂不可见及身份冲突，核对目标目录/名称、文件标识、精确字节数和可用的 SHA1。
 身份未确认时保留源文件，不能合成成功元数据；跨存储移动只在核验成功后删除源文件。
-`tests/test_transfer_execution_runner.py` 使用独立数据库验证这种不确定结果持久进入人工复核，
+`tests/integration/transfer/test_transfer_execution_runner.py` 使用独立数据库验证这种不确定结果持久进入人工复核，
 通用路径查询不能把它降级为可重试失败，旧 worker 也不能再次上传。这些离线用例不代表真实
 115 回调故障已复现或报告者 Docker 环境已验收。
 
-`tests/test_storage_cleanup_receipts.py` 通过真实 StorageChain、模块调度器和 FileManager，
+`tests/integration/storage/test_storage_cleanup_receipts.py` 通过真实 StorageChain、模块调度器和 FileManager，
 验证未知存储、未初始化模块、缺失模块和适配器不可用均保留整理历史。自定义存储提供方
 放在插件优先路径或宿主前后顺序时，都须能传递明确的文件项/不存在回执；普通查询仍可返回空值。
 
@@ -263,68 +261,68 @@ CloudDrive 的移动后改名失败，验证重新取得租约后仅补改名、
 MP 曾确认选中（下载历史 note 中的 `confirmed_selection`）、现在被取消的目标主文件按“被别人取消”拒绝。用户手动指定
 种子（`download_single(user_specified=True)`）时重新选中被取消的目标，先追加再恢复暂停的任务。追加、恢复、移除
 “已整理”与补写系统种子标签都要回读确认，未确认即失败；拒绝不让订阅跳过候选，通知按原因与范围去重。见
-`tests/test_existing_task_decision.py`、`tests/test_episode_file_selection.py` 与 `tests/test_downloader_submission.py`；
-旧插件下载器不接收新增参数时的兼容见 `tests/test_module_invocation_dispatcher.py`。同一任务上“读取状态 → 改动”的
-操作持有 `downloader_task_locks`，见 `tests/test_runtime_keyed_locks.py` 与 `tests/test_download_task_service.py`。
+`tests/domain/subscription/test_existing_task_decision.py`、`tests/integration/download/test_episode_file_selection.py` 与 `tests/integration/download/test_downloader_submission.py`；
+旧插件下载器不接收新增参数时的兼容见 `tests/integration/modules/test_module_invocation_dispatcher.py`。同一任务上“读取状态 → 改动”的
+操作持有 `downloader_task_locks`，见 `tests/runtime/concurrency/test_runtime_keyed_locks.py` 与 `tests/integration/download/test_download_task_service.py`。
 
 只选中部分文件的任务进入下载器整理轮询时逐文件确认，附上下载器报告未下完的文件（相对任务内容路径），整理时跳过，
 蓝光原盘盘内有未完成文件时整盘跳过；音频同目录的 CUE 未下完时该目录的音频本轮延期，同时本轮不写“已整理”。读不到
 文件状态或路径对应不上时本轮不整理。打“已整理”前确认选中部分已下完、选中大小与交给整理时一致；移动整理后删除任务前
-确认任务目录里没有未整理的媒体文件。见 `tests/test_transfer_downloader_storage.py`、`tests/test_music_cue.py`、
-`tests/test_transfer_mark_torrent_completed.py` 与 `tests/test_transfer_torrent_cleanup.py`。rTorrent 按
+确认任务目录里没有未整理的媒体文件。见 `tests/chain/transfer/test_transfer_downloader_storage.py`、`tests/integration/music/test_music_cue.py`、
+`tests/integration/transfer/test_transfer_mark_torrent_completed.py` 与 `tests/chain/transfer/test_transfer_torrent_cleanup.py`。rTorrent 按
 `d.is_partially_done` 合成完成标记（进度仍按全部数据计算），添加前按 hash 预查，校验期间按运行处理，恢复时补
-`d.resume`，见 `tests/test_rtorrent_responses.py`；这些命令按文档实现，尚未在真实 rTorrent 实例上验证。
+`d.resume`，见 `tests/modules/rtorrent/test_rtorrent_responses.py`；这些命令按文档实现，尚未在真实 rTorrent 实例上验证。
 
 新任务的视频文件按目标集交集选择，允许多集文件连带下载相邻集；无集号的非视频附属文件保留，
 无集号视频不随整包附件自动选中。只有视频可证明目标集完整覆盖，单集请求仍允许唯一视频兜底。
-`tests/test_episode_file_selection.py` 覆盖三种下载器的一致规则，历史明细也按交集保留多集视频。
-`tests/test_transmission_add_status.py` 在 SDK HTTP 边界回放新增、重复和 409 会话握手，验证
+`tests/integration/download/test_episode_file_selection.py` 覆盖三种下载器的一致规则，历史明细也按交集保留多集视频。
+`tests/modules/transmission/test_transmission_add_status.py` 在 SDK HTTP 边界回放新增、重复和 409 会话握手，验证
 重复添加及响应丢失后的重试不会被宿主误当作可以暂停重选的新任务。
 
-`tests/test_download_category.py` 从真实下载链经过 qBittorrent 模块和客户端，在 SDK 边界检查
+`tests/integration/download/test_download_category.py` 从真实下载链经过 qBittorrent 模块和客户端，在 SDK 边界检查
 音乐缺分类时使用“音乐”、已有分类优先，以及自动管理开关和指定路径的传递。
 覆盖豆瓣音乐、MusicBrainz、无显式身份、专辑、单曲与艺术家合集，且下载器分类兜底不回写媒体信息。
 
-`tests/test_music_bilingual_matching.py` 在 Python/Rust 解析、同步/异步/流式搜索和订阅复核中，
+`tests/integration/music/test_music_bilingual_matching.py` 在 Python/Rust 解析、同步/异步/流式搜索和订阅复核中，
 验证双语作品名及艺人署名只有在括号两侧均属于同一实体的可信名称时才匹配；
 未知别名、副标题、不同录音版本及歌曲所属专辑继续保留各自的身份边界。
 
-`tests/test_subscribe_media_id_conflict.py` 与 `tests/test_subscribe_type_conflict.py` 验证
+`tests/chain/subscription/test_subscribe_media_id_conflict.py` 与 `tests/integration/subscription/test_subscribe_type_conflict.py` 验证
 订阅候选已识别出的媒体来源、ID 或类型冲突时直接拒绝，不以标题、别名或年份覆盖身份。
 《剑来》同名真人与动漫的离线回归覆盖资源年份一致、共同首播年份及缺失年份，断言动漫
 不会进入下载且共享候选不被回填；身份一致的资源和未识别出身份的标题兜底仍可下载。
 
-普通电视剧首次下载的整包优先回归见 `tests/test_subscribe_paged_search.py`：订阅没有下载记录，
+普通电视剧首次下载的整包优先回归见 `tests/integration/subscription/test_subscribe_paged_search.py`：订阅没有下载记录，
 且最新媒体库缺失全部目标集时，先收集所选搜索范围内的候选再尝试完整包；单页策略仍只查每个
 来源的第一页。整包继续通过规则过滤、优先级门槛和种子文件完整覆盖校验，无可用整包时按集
 回退。已有下载记录或媒体库已有目标集时沿用补集行为，提交前重新检查当前订阅；不会开启洗版
 或写入洗版优先级。测试覆盖显式缺集列表、后页整包、不完整包和搜索期间进度变化，均隔离外部服务。
 完整覆盖目标来自订阅起止集；整包含范围外剧集时只选目标集提交，例如只订阅第 5 集时整季包也只下载
-第 5 集，种子集数与目标一致时仍整包提交。下载层用例见 `tests/test_download_batch_phases.py`。
-整包未通过优先级门槛而回退普通下载时，按订阅范围拆包。`tests/test_subscribe_missing_scope.py`
+第 5 集，种子集数与目标一致时仍整包提交。下载层用例见 `tests/integration/download/test_download_batch_phases.py`。
+整包未通过优先级门槛而回退普通下载时，按订阅范围拆包。`tests/integration/subscription/test_subscribe_missing_scope.py`
 覆盖媒体库无此剧和只有其他季两种情况，并验证单集、累计编号和断号资源只提交范围内可用的集。
 断号缺失集继续等待补集。早于季首的历史集数设置保留原缺集语义，历史负数按未设置处理。
-`tests/test_download_batch_phases.py` 验证下载一季后，其他季的显式缺集仍可在本轮提交。
+`tests/integration/download/test_download_batch_phases.py` 验证下载一季后，其他季的显式缺集仍可在本轮提交。
 
 整包优先也约束候选分批：已收集的整包即使排序低于分集、检查点恢复后缺少临时下载地址，
 也须先恢复地址并共同进入下载选择；多个整包不完整、下载失败或恢复后已不可用时才回退分集。
-`tests/test_search_scan.py` 与 `tests/test_subscribe_paged_search.py` 在离线边界验证恢复、过滤和
+`tests/integration/search/test_search_scan.py` 与 `tests/integration/subscription/test_subscribe_paged_search.py` 在离线边界验证恢复、过滤和
 实际下载提交的先后顺序，同时保留普通补集按可用前缀提交的行为。
 
 同一轮分页搜索在站点冷却或时间片结束后恢复时，沿用已处理候选记录，避免无可用集数的
-候选反复重取原页并占用翻页预算。`tests/test_search_scan.py` 使用临时 SQLite、真实站点预算
+候选反复重取原页并占用翻页预算。`tests/integration/search/test_search_scan.py` 使用临时 SQLite、真实站点预算
 和虚拟时钟覆盖秒级冷却下的连续恢复，验证剩余来源继续翻页、末页候选处理后正常收尾，
 且未收录缺集仍保留。新一轮搜索或缺集范围扩大时重新评估候选；旧检查点缺少该记录时兼容恢复。
 
 ### 自动订阅刷新排程
 
-`tests/test_subscription_refresh_schedule.py` 使用虚拟时间验证每天 32 个白天与 4 个夜间时间片、
+`tests/application/subscription/test_subscription_refresh_schedule.py` 使用虚拟时间验证每天 32 个白天与 4 个夜间时间片、
 跨日与夏令时、不同实例及站点偏移、启动错峰、漏触发合并、限流、失败退避和重启恢复。
-`tests/test_subscription_refresh_poll.py` 与 `tests/test_torrents_refresh_concurrency.py` 使用合成站点、
+`tests/integration/subscription/test_subscription_refresh_poll.py` 与 `tests/integration/torrent/test_torrents_refresh_concurrency.py` 使用合成站点、
 真实线程屏障和隔离缓存，验证慢站不阻塞健康站点、同站互斥、并行缓存合并、人工识别修正保留、
 成功空页与失败区分、匹配失败恢复、五分钟匹配合并及跨轮次事实恢复，以及保存失败后仍等待已接受工作结束。
-`tests/test_scheduler_cache_expiry.py` 验证自动模式分钟扫描与 RSS 原周期，
-`tests/test_scheduler_lifecycle.py` 验证刷新取消后仍保留 Scheduler 所有权直至同步线程退出。
+`tests/integration/scheduling/test_scheduler_cache_expiry.py` 验证自动模式分钟扫描与 RSS 原周期，
+`tests/integration/scheduling/test_scheduler_lifecycle.py` 验证刷新取消后仍保留 Scheduler 所有权直至同步线程退出。
 这些用例不访问站点、下载器或真实数据库；不能替代真实站点的流控与响应验收。
 排程行为与持久化边界见[自动订阅刷新排程](subscription-refresh.md)。
 新增排程策略和轮询 owner 两个模块，因此三个启动入口的模块数快照各增加 2；
@@ -332,11 +330,11 @@ MP 曾确认选中（下载历史 note 中的 `confirmed_selection`）、现在�
 
 ### 站点 RSS 补全和续期
 
-`tests/test_rss_recovery.py` 离线回放 RSS 自动补全和续期：真实 HTTP 响应真假语义、HTML 包装的
+`tests/integration/site/test_rss_recovery.py` 离线回放 RSS 自动补全和续期：真实 HTTP 响应真假语义、HTML 包装的
 明确过期提示、合法空订阅与登录页区分、相对地址、重复筛选参数和完整认证值替换，
 以及 CookieCloud、手工更新事件和登录更新入口。虚拟时钟验证失败退避、每日通知去重与
 配置变更后的即时重试；真实线程屏障验证同站合并且不阻塞其他站点，验证资源直接供同轮使用。
-`tests/test_site_repository.py` 在临时 SQLite 中验证新链接提交、NULL 条件比较、并发配置修改
+`tests/integration/site/test_site_repository.py` 在临时 SQLite 中验证新链接提交、NULL 条件比较、并发配置修改
 及删除重建的保护，并验证 Oper 仍由调用方决定提交或回滚。测试不使用真实凭据、不连接站点，
 专站页面变更及真实账号续期仍需对应站点验收。
 
@@ -344,8 +342,8 @@ MP 曾确认选中（下载历史 note 中的 `confirmed_selection`）、现在�
 
 本地流控等待由实际拒绝原因决定：访问间隔不足只等待间隔，计数配额耗尽才等待计数窗口。
 资源包说明包含上次访问时间时扣除已过去的时间，并保留一秒边界余量；原因未知时沿用保守窗口，
-时间缺失或无效时等待该规则全长。`tests/test_search_site_throttle.py`、`tests/test_search_scan.py`
-和 `tests/test_subscription_site_budget.py` 覆盖两类限制同时配置、剩余时间、时间异常与共享预算，
+时间缺失或无效时等待该规则全长。`tests/integration/search/test_search_site_throttle.py`、`tests/integration/search/test_search_scan.py`
+和 `tests/integration/subscription/test_subscription_site_budget.py` 覆盖两类限制同时配置、剩余时间、时间异常与共享预算，
 验证短冷却不累计长冷却止损，也不会提前关闭优先站点。
 自动分页未实际发出请求时，共享预算取消完整请求间隔的预约，只保留实际剩余冷却；
 真实成功请求仍保留最小间隔。该收口使用临时 SQLite 验证跨订阅可见的预算时间和租约释放。
@@ -353,16 +351,16 @@ MP 曾确认选中（下载历史 note 中的 `confirmed_selection`）、现在�
 全集洗版（`best_version=1`、`best_version_full=1`）的主动搜索始终使用洗版规则组，
 包括尚无下载记录或仍有缺集的订阅；未通过洗版规则的整包不会回落到普通订阅规则组。
 订阅显式指定的规则组仍优先。分集洗版中从未下载的剧集继续使用普通订阅规则。
-`tests/test_subscribe_paged_search.py` 覆盖无记录、部分及全部已下载、整季标题与显式集数包，
+`tests/integration/subscription/test_subscribe_paged_search.py` 覆盖无记录、部分及全部已下载、整季标题与显式集数包，
 验证只有符合洗版规则的完整包能够提交；没有合格候选时，不写下载事实或提升洗版优先级。
 
-种子下载重试的离线边界见 `tests/test_torrent_download_retry.py`：普通 GET 在网络失败、
+种子下载重试的离线边界见 `tests/integration/torrent/test_torrent_download_retry.py`：普通 GET 在网络失败、
 403/5xx、空响应或无法解析的响应后最多重试两次，退避为 1、2 秒。签名链接刷新、换票地址、
 首次下载确认按 HTML 表单语义读取控件，兼容单双引号、属性顺序、空 action 和提交按钮；
 仅向同来源的下载端点提交一次 POST，使用确认页地址作为 Referer。HTTP 429、JSON `message` / `msg` 或 HTML 频控页明确提示限流时，
 停止短退避重试并在通知中保留原因，不把限流响应交给种子解析器或写入无效地址缓存。
 
-`tests/test_site_request_throttle.py` 验证搜索、换票、取种子、重定向和确认 POST 共享站点的
+`tests/integration/site/test_site_request_throttle.py` 验证搜索、换票、取种子、重定向和确认 POST 共享站点的
 `limit_seconds`、`limit_interval`、`limit_count`，不同 API 主机按原站点 ID 共用额度。
 HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站点；冷却期间
 不再请求或刷新签名，并保留原文到通知和下载失败记录。虚拟时钟、并发许可和异步取消用例
@@ -380,7 +378,7 @@ HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站
 订阅持久化保留具体失败原因，无效种子使用 24 小时资源冷却，避免重启后每小时重复通知。
 网络异常、空响应、403/5xx 和限流仍沿用瞬时重试与流控规则，不因本次修改加入内容无效黑名单。
 换票失败与换票所得临时地址的无效响应不证明原种子损坏，均不写入无效地址缓存。
-`tests/test_indirect_download_failure_reason.py` 覆盖旧配方无响应、HTTP 错误、结果缺失、
+`tests/integration/download/test_indirect_download_failure_reason.py` 覆盖旧配方无响应、HTTP 错误、结果缺失、
 成功标志失败及临时地址的非种子内容：日志、通知与准备/完整包/拆包冷却保留
 “换票失败”或“临时下载地址失效”分类，并使用现有 1 小时瞬时冷却。
 换票诊断包含 HTTP 状态、有限错误字段摘要及是否携带 Cookie，不输出凭据或完整签名 URL。
@@ -389,10 +387,10 @@ HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站
 下载器确认原样复用已有任务（没有追加文件）、本次提交记不下任何集且整包全部媒体文件明细已记录时，按资源指纹登记
 7 天提交退避，指纹包含订阅 ID 与下载器范围；追加了文件或带集数的提交都不登记，以免挡住扩大范围后的补集。退避只压制
 该订阅往该下载器重投该资源，订阅不会被判定完成或失败，仅订阅来源写台账，冷却跳过日志转述台账中的原因。见
-`tests/test_torrent_download_retry.py` 与 `tests/test_downloader_submission.py`。
+`tests/integration/torrent/test_torrent_download_retry.py` 与 `tests/integration/download/test_downloader_submission.py`。
 整包退避指纹不包含解析种子后补齐的集数，下一轮搜索仍能命中；普通失败仍按原有集数指纹隔离。
 
-换票资源的跨批次复用见 `tests/test_download_resource_cache.py`：种子成功解析后，
+换票资源的跨批次复用见 `tests/integration/download/test_download_resource_cache.py`：种子成功解析后，
 本地 `torrents` 缓存以站点资源身份、原始换票请求和 Cookie 的摘要保存内容，命中后
 不再换票。缓存沿用种子目录的清理周期；损坏或清理后重新获取，缺少稳定身份时不共享。
 测试覆盖十二轮无需要集或无法识别集数、缺集变化后的即时选中、站点与凭据隔离，
@@ -401,21 +399,21 @@ HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站
 
 ## CUE 内容签名回归
 
-`tests/test_album_cue_cache_signature.py` 在同步及异步目录识别中等长改写真实 CUE 文件，
+`tests/integration/music/test_album_cue_cache_signature.py` 在同步及异步目录识别中等长改写真实 CUE 文件，
 恢复原 mtime，断言重新请求专辑匹配且使用新曲目。夹具使用不登记单例的专用真实 owner
 和私有目录缓存，不替换已有 MediaChain 实例或类缓存。
 
 ## 自隔离：用了什么，就还原什么
 
-`tests/test_workflow_safety.py` 使用真实工作流 manager、执行器和节点线程模拟同 ID 重跑、
+`tests/integration/workflow/test_workflow_safety.py` 使用真实工作流 manager、执行器和节点线程模拟同 ID 重跑、
 终态事务阻塞与失败，确保准入之前没有 reset/start，真实结束和最终落盘之前不释放 owner。
 虚拟时钟验证普通同步动作超时、循环等待截止与协作取消；单节点无边图可执行，坏 DAG 保存和运行均拒绝。
-`tests/test_security_user_boundaries.py` 覆盖管理权限、已有/未落库会话隔离、用户名回收、
+`tests/integration/security/test_security_user_boundaries.py` 覆盖管理权限、已有/未落库会话隔离、用户名回收、
 旧记录恢复、缓存授权以及管理员续聊保留原归属和实际执行人。
 图片代理测试通过真实组合根 HTTP Adapter 和 MockTransport 验证跳转在请求前拒绝，
 事件契约/SDK 测试同时验证诊断无原始输入和嵌套快照隔离，均无需外部网络。
 
-`tests/test_event_dispatch_snapshot.py` 使用真实线程池闸门和跨线程提交间隙验证事件关闭结算。
+`tests/integration/event/test_event_dispatch_snapshot.py` 使用真实线程池闸门和跨线程提交间隙验证事件关闭结算。
 同步、异步处理器正常返回、抛错或取消时，均先移除自己的 owner 登记，再发布完成信号，
 使关闭等待者不会被已完成但仍登记的句柄唤醒。同步完成观察者在通知调用栈中检查登记表；
 异步用例暂停提交线程在释放生命周期锁与登记完成回调之间的位置，处理器仍在真实事件循环中执行。
@@ -438,7 +436,7 @@ HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站
 
 新增测试**一律** pytest 原生风格，评审不接受新写的 `unittest.TestCase`：
 
-- 文件名 `test_*.py`，置于 `tests/`。
+- 文件名 `test_*.py`，按下述责任域归属，不再新增根目录平铺文件。
 - 函数式用例 `def test_xxx():` + 普通 `assert` + pytest fixture，不用 `self.assertXxx`。
 - 涉及外部服务一律 mock（见上）。
 - 异常断言用 `pytest.raises`，参数化用 `@pytest.mark.parametrize`。
@@ -476,7 +474,8 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## `unittest → pytest` 演进路线：改到即转
 
-存量有大量 `unittest.TestCase`。pytest 原生支持运行 `TestCase`，所以它们能正常跑——**不做大爆炸式重写**，避免无谓的回归风险。路线是：
+当前套件采用 pytest 原生风格。若后续回迁历史代码时遇到 `unittest.TestCase`，
+pytest 仍可运行，但应遵守改到即转的规则，不为转换单独扩大业务变更范围：
 
 - **新测试**：直接 pytest 原生（见上）。
 - **存量**：当你因别的原因改到某个 `TestCase` 文件时，**顺手**把它整文件转成 pytest 原生，并跑一遍该文件确认行为不变。
@@ -496,23 +495,63 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 | `setUpClass` / `tearDownClass` | `@pytest.fixture(scope="class")` 或模块级 fixture |
 | `@unittest.skipIf(c, r)` | `@pytest.mark.skipif(c, reason=r)` |
 
-## 存量测试清理
+## 测试归属与生命周期
 
-删除测试需要明确指出保留的等价覆盖，不能只依据文件年代、执行耗时、名称相似或覆盖率百分比。
+单一责任域的测试对应生产代码的 owner；跨模块协作按被验证的业务不变量归入
+`integration/<业务域>/`，不要按审查批次或缺陷编号持续建立补充文件。
 
-- **可删除的重复**：被测入口、输入、fixture、参数化和执行前状态一致，且保留用例包含全部断言。完全相同的执行体可保留一份；同输入的断言子集可并入更完整用例的说明。
-- **不能自动删除的相似用例**：同步与异步入口、冷启动与重复重置、过期清理前后、迁移前后、不同平台或可选依赖条件，均可能拥有独立行为。
-- **没有直接 `assert` 不等于空测试**：`pytest.raises`、辅助断言、迁移 round-trip、导入兼容和“不抛异常”都是有效契约；只有名称或注释声称存在的覆盖则需要进一步核实。
-- **删除后验证**：运行受影响文件，核对保留用例及生产代码行/分支覆盖；跨领域清理再运行 `python tests/run.py`。不降低覆盖率基线、不新增 skip、不削弱架构或兼容门禁。
+```text
+tests/
+├── domain/<能力>/test_*.py          # 纯业务规则
+├── application/<能力>/test_*.py     # 用例与端口边界
+├── adapters/<能力>/test_*.py        # 外部协议与具体 I/O
+├── integration/<业务域>/test_*.py   # 跨模块事务、恢复和生命周期
+├── contracts/                      # 架构与兼容契约
+├── tooling/                        # 测试工具自身的行为
+├── support/                        # 确有跨文件消费者的共享设施
+└── fixtures/                       # 回放数据与已审核基线
+```
+
+其他单一 owner 沿用源码层名，如 `agent/`、`api/`、`runtime/`、`db/`、`chain/`、`modules/`、`startup/`。
+目录导航见 [tests/README.md](../tests/README.md)。根目录只保留统一入口、包说明和隔离引导，
+禁止新增或恢复平铺测试文件。移动测试时同步路径引用、耗时键和门禁扫描，
+对比 pytest 收集清单及分片并集，不保留导入新测试的旧路径壳文件。
+单文件辅助函数就地保留，同域 fixture 放局部 `conftest.py`，确有复用的工厂与替身才提取到
+同域 `support` 或 `tests/support/`。禁止从 `test_*.py` 导入辅助函数，避免导入即注册另一套测试。
+
+每次修改测试都检查以下生命周期决定，并在 PR 的测试维护栏说明依据：
+
+- **扩充**：先查已有入口、输入和失败路径；优先扩充已有测试或参数表，说明新增用例能发现什么尚未覆盖的错误。
+- **合并**：入口、输入、fixture、参数化及执行前状态一致，保留用例包含全部断言时可合并。同输入的断言子集并入更完整用例；不能只比较函数名或覆盖率。
+- **退役**：重复测试注明保留的等价覆盖；行为随功能明确下线时注明撤销的契约，同时清理专属 fixture、辅助代码和文档引用。迁移、SDK 和旧插件兼容不能仅因年代久远退役。
+- **保留**：同步与异步、冷启动与重置、清理前后、迁移前后、平台及可选依赖条件可能独立；相同函数体只是候选，不自动删除。没有直接 `assert` 也不等于空测试，`pytest.raises`、辅助断言、round-trip 和导入成功均可能是有效契约。
+- **验证**：运行受影响文件，核对参数化收集项及生产代码行/分支覆盖；共享脚手架或跨域清理运行全量。不降低基线、不新增 skip，也不以减少文件数替代行为验证。
+
+规范文档只维护长期约定，不再随每次缺陷修复追加回归流水账；场景和复现依据写入所属用例、
+issue 或 PR。不为文档标题、自然语言措辞和内部变量名新增精确字符串断言；机器执行的配置、
+公开协议和稳定安全约束仍应保留契约验证。
+
+```bash
+# 只读清点并检查完整测试树的目录和依赖，不自动删除候选
+uv run --locked --no-sync python scripts/testing/maintenance.py > test-maintenance.json
+# 同时输出相对实际 PR 基准的文件增删清单
+uv run --locked --no-sync python scripts/testing/maintenance.py --base upstream/v3
+```
+
+PR 的 architecture job 运行同一全量维护检查并上传报告，Git base 只用于变更摘要，
+不能因某个平铺路径或跨测试导入曾出现在基准中就恢复它，不维护例外基线。
+函数定义数不等于参数化后的用例数；候选报告不证明语义重复。每月由相关模块维护者
+结合报告及成功 CI 的逐文件/逐用例耗时审查热点、偶发失败和过期 fixture，把清理放入对应业务变更
+或独立维护 PR。不规定增删比例、数量上限或删除配额，也不要求为每条文字规范再写一个测试。
 
 ## 插件发布快照与并发回归
 
-`tests/test_plugin_startup_sync.py` 保留启动同步线程、同步安装桥接、Gateway、安装命令和
+`tests/integration/plugin/test_plugin_startup_sync.py` 保留启动同步线程、同步安装桥接、Gateway、安装命令和
 插件生命周期，验证批量恢复沿用同一启动事务，并按顺序完成安装与加载。市场、下载和
 数据库端口均隔离；安装期间的外部变更仍须在副作用前拒绝，单个恢复失败后其余插件
 继续处理，全部完成后才释放事务执行权。用例同时验证镜像内置实例保持运行。
 
-`tests/test_plugin_publish_snapshot.py` 固定读取快照，并在 package 返回后确定性推进远端引用，
+`tests/integration/plugin/test_plugin_publish_snapshot.py` 固定读取快照，并在 package 返回后确定性推进远端引用，
 断言非强推冲突保留并发作者更新；自动初始化新仓后必须重新固定、读取和合并，不能把新主分支
 当空仓库。测试只替换 GitHub I/O，保留真实文件读取、清单合并与 Git Data 请求构造。
 

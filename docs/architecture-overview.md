@@ -871,8 +871,8 @@ flowchart LR
 
 ```bash
 # 文档结构与架构快照合同
-uv run --locked --no-sync pytest tests/test_architecture_documentation.py \
-  tests/test_architecture_contract_baseline.py -q
+uv run --locked --no-sync pytest tests/contracts/documentation/test_architecture_documentation.py \
+  tests/contracts/architecture/test_architecture_contract_baseline.py -q
 
 # 当前宿主事实与快照是否一致；此命令不写基线
 uv run --locked --no-sync python scripts/architecture/baseline.py --check-host

@@ -1,0 +1,1196 @@
+"""
+验证手动整理的历史摘要、重做确认和失效任务恢复。
+"""
+
+from tests.support.transfer.manual import (
+    _patch_transfer_planning,
+)
+
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from app.api.endpoints.transfer import (
+    manual_transfer as manual_transfer_endpoint,
+)
+from app.api.endpoints.transfer import (
+    query_manual_transfer_history,
+)
+from app.application.history import (
+    TransferHistoryWrite,
+)
+from app.application.history.retry import (
+    clear_transfer_failures,
+    failed_retry_count,
+    max_failed_retries,
+    record_transfer_failure,
+)
+from app.application.transfer.workflow import TransferPlanningInput
+from app.chain.transfer.facade import TransferChain
+from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
+from app.db.models.transferpending import TransferPending
+from app.db.session import SessionFactory, async_session_scope
+from app.runtime.config import settings
+from app.schemas.transfer import ManualTransferItem, TransferInfo
+from app.schemas.types import MediaSource, MediaType
+from tests.support.transfer.jobs import FakeMedia
+from tests.support.transfer.files import (
+    FakeMeta,
+    make_fileitem,
+    make_transfer_chain,
+)
+
+
+def test_manual_transfer_restarts_orphaned_admission_after_target_directory_removed(
+        monkeypatch, tmp_path,
+) -> None:
+    """
+    旧自动任务失效且无历史时，删除目标后手动重整应进入全新任务执行。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem(str(tmp_path / "Test.Show.S01E01.mkv"))
+    old_target = tmp_path / "old-library"
+    old_target.mkdir()
+    planning_input = TransferPlanningInput(
+        source_fileitem=fileitem.model_dump(mode="json"), meta=None, mediainfo=None,
+        target_path=str(old_target), options={"manual": False, "background": True},
+    )
+    repository = TransactionalTransferAdmissionRepository(SessionFactory)
+    old = repository.admit(
+        storage=fileitem.storage, src_path=fileitem.path, planning_input=planning_input,
+    )
+    with monkeypatch.context() as expired_clock:
+        expired_clock.setattr(repository, "_lease_now", lambda: datetime.now(timezone.utc) - timedelta(minutes=5))
+        assert repository.claim_task(task_id=old.task_id, owner_id="old-worker", lease_seconds=120)
+    old_target.rmdir()
+    planned, deleted = [], []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, None, planned, deleted)
+    chain._transfer_admissions = repository
+
+    state, message = chain.do_transfer(
+        fileitem=fileitem, background=False, manual=True, target_path=tmp_path / "new-library",
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [fileitem.path]
+    assert deleted == []
+    assert repository.claim_task(task_id=old.task_id, owner_id="old-worker", lease_seconds=120) is None
+    # 读回确认手动入口实际提交了新规划意图，而非只绕过返回值检查。
+    with repository._session_factory() as session:
+        pending = TransferPending.get_by_identity(session, storage=fileitem.storage, src_path=fileitem.path)
+        assert pending is not None
+        assert pending.task_id != old.task_id
+        assert pending.planning_input["options"]["manual"] is True
+        assert pending.planning_input["target_path"] == str(tmp_path / "new-library")
+
+
+def _reset_failed_retries(src_path, storage=None):
+    """
+    清空失败重试计数，隔离用例之间共享的模块级计数缓存。
+    """
+    clear_transfer_failures(src_path, storage)
+
+
+def _history_repository() -> TransactionalTransferHistoryRepository:
+    """
+    构造类型化整理历史仓储。
+    """
+    return TransactionalTransferHistoryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+
+
+def test_query_manual_transfer_history_returns_success_summary(monkeypatch):
+    """
+    手动整理初始化接口应只返回成功历史摘要供前端切换重整状态。
+    """
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    captured = []
+
+    class _FakeTransferChain:
+        """
+        记录历史查询收到的文件项。
+        """
+
+        def get_manual_transfer_histories(self, fileitems):
+            """
+            返回两条成功历史记录。
+            """
+            captured.extend(fileitems)
+            return [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.TransferChain",
+        _FakeTransferChain,
+    )
+
+    response = query_manual_transfer_history(
+        transer_item=ManualTransferItem(fileitem=fileitem),
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert response.data == {"reorganize": True, "history_count": 2}
+    assert captured == [fileitem]
+
+
+def test_manual_transfer_endpoint_passes_reorganize_confirmation(monkeypatch):
+    """
+    手动整理接口应把前端重整确认传入整理链。
+    """
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    captured = {}
+
+    class _FakeTransferChain:
+        """
+        记录手动整理调用参数。
+        """
+
+        def manual_transfer(self, **kwargs):
+            """
+            保存整理参数并返回成功。
+            """
+            captured.update(kwargs)
+            return True, ""
+
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.TransferChain",
+        _FakeTransferChain,
+    )
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(
+            fileitem=fileitem,
+            reorganize=True,
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert captured["reorganize"] is True
+
+
+@pytest.mark.parametrize("cue_enabled", [None, False, True])
+@pytest.mark.parametrize("batch", [False, True])
+@pytest.mark.parametrize("preview", [False, True])
+def test_manual_transfer_endpoint_passes_cue_policy(monkeypatch, cue_enabled, batch, preview):
+    """
+    目录、所选文件、预览及执行均透传本次 CUE 策略，空值保持继承语义。
+    """
+    source = make_fileitem("/downloads/album/track.flac")
+    captured = []
+
+    class _FakeTransferChain:
+        """
+        在整理 API 与链调用边界记录请求策略。
+        """
+
+        def manual_transfer(self, **kwargs):
+            """
+            保留本次策略并返回空预览或执行回执。
+            """
+            captured.append(kwargs)
+            return True, {"summary": {"total": 0, "success": 0, "failed": 0}, "items": []} if preview else ""
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", _FakeTransferChain)
+    item = ManualTransferItem(
+        fileitems=[source] if batch else None,
+        **({} if batch else {"fileitem": source.model_copy(update={"path": "/downloads/album", "type": "dir"})}),
+        music_cue_enable=cue_enabled, preview=preview,
+    )
+    response = manual_transfer_endpoint(
+        transer_item=item, background=False, history_query=SimpleNamespace(get=lambda _id: None), _="token",
+    )
+    assert response.success is True
+    assert captured
+    assert all(call["music_cue_enable"] is cue_enabled for call in captured)
+
+
+@pytest.mark.parametrize("value", ["false", "true", 0, 1, [], {}])
+def test_manual_cue_policy_rejects_non_boolean_inputs(value):
+    """
+    请求级开关只接受布尔值或空值，避免字符串假值被当作开启。
+    """
+    with pytest.raises(ValueError):
+        ManualTransferItem(music_cue_enable=value)
+
+
+def test_history_endpoint_reorganize_uses_chain_cleanup(monkeypatch):
+    """
+    历史 ID 重整应交由整理链清理历史，不能再传入旧目标重复删除。
+    """
+    src_fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    dest_fileitem = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=21,
+        status=True,
+        mode="copy",
+        src_fileitem=src_fileitem.model_dump(),
+        dest_fileitem=dest_fileitem.model_dump(),
+    )
+    captured = {}
+
+    class _FakeTransferChain:
+        """
+        记录历史 ID 重整调用参数。
+        """
+
+        def manual_transfer(self, **kwargs):
+            """
+            保存整理参数并返回成功。
+            """
+            captured.update(kwargs)
+            return True, ""
+
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.TransferChain",
+        _FakeTransferChain,
+    )
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(
+            logid=history.id,
+            reorganize=True,
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: history),
+        _="token",
+    )
+
+    assert response.success is True
+    assert captured["force"] is True
+    assert captured["reorganize"] is True
+    assert captured["cleanup_dest_fileitem"] is None
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+@pytest.mark.parametrize("background", [True, False])
+def test_failed_history_manual_auto_uses_durable_retry(monkeypatch, accepted, background):
+    """
+    历史入口选择自动识别时仍须检查失败任务，不能绕过调度器重新准入。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=14,
+        transfer_task_id="transfer-task-14",
+        status=False,
+        mode="copy",
+        src_fileitem=fileitem.model_dump(),
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+    )
+    planned, deleted, retries = [], [], []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, deleted)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+
+    def request_retry(record, *, requested_by):
+        """
+        记录旧任务重试，模拟调度器接受或拒绝请求。
+        """
+        retries.append((record.transfer_task_id, requested_by))
+        return accepted, "已提交重试" if accepted else "任务需要人工处理"
+
+    def reject_new_admission(task):
+        """
+        模拟旧任务仍占用源路径时，新规划输入必然冲突。
+        """
+        raise AssertionError(f"旧任务重试不应重新准入：{task.fileitem.path}")
+
+    monkeypatch.setattr(chain, "_request_durable_transfer_retry", request_retry)
+    monkeypatch.setattr(chain, "put_to_queue", reject_new_admission)
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(logid=history.id, from_history=False),
+        background=background,
+        history_query=SimpleNamespace(get=lambda _history_id: history),
+        _="token",
+    )
+
+    assert response.success is accepted
+    assert retries == [(history.transfer_task_id, "manual_reorganize")]
+    assert planned == []
+    assert deleted == []
+    if not accepted:
+        assert "任务需要人工处理" in response.message
+
+
+@pytest.mark.parametrize("status", [True, False])
+def test_manual_history_auto_preserves_legacy_retry_and_success_force(monkeypatch, status):
+    """
+    旧版失败历史仍清理后重试，成功历史保留原有强制整理行为。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=15,
+        status=status,
+        mode="copy",
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+        src_fileitem=fileitem.model_dump(),
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+    )
+    planned, deleted = [], []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, deleted)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+    chain.transfer_execution_repository = None
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(logid=history.id, from_history=False),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: history),
+        _="token",
+    )
+
+    assert response.success is True
+    assert planned == [fileitem.path]
+    assert deleted == ([] if status else [("history", history.id)])
+
+
+def test_success_history_directory_query_excludes_failed_and_siblings():
+    """
+    目录历史查询应限定路径边界，并且只返回成功记录。
+    """
+    transfer_history_oper = _history_repository()
+    created_histories = [
+        transfer_history_oper.replace(TransferHistoryWrite(
+            src="/issue-6191/show/episode-1.mkv",
+            src_storage="local",
+            status=True,
+        )),
+        transfer_history_oper.replace(TransferHistoryWrite(
+            src="/issue-6191/show/episode-2.mkv",
+            src_storage="local",
+            status=False,
+        )),
+        transfer_history_oper.replace(TransferHistoryWrite(
+            src="/issue-6191/show-other/episode-3.mkv",
+            src_storage="local",
+            status=True,
+        )),
+    ]
+    try:
+        histories = transfer_history_oper.list_success_by_src(
+            "/issue-6191/show",
+            storage="local",
+            recursive=True,
+        )
+
+        assert [history.src for history in histories] == [
+            "/issue-6191/show/episode-1.mkv"
+        ]
+    finally:
+        for history in created_histories:
+            transfer_history_oper.delete(history.id)
+
+
+def test_success_history_directory_query_escapes_sql_wildcards():
+    """
+    目录名中的 SQL 通配符应按普通字符匹配，不能扩大查询范围。
+    """
+    transfer_history_oper = _history_repository()
+    created_histories = [
+        transfer_history_oper.replace(TransferHistoryWrite(
+            src="/issue-6191/show_100%/episode-1.mkv",
+            src_storage="local",
+            status=True,
+        )),
+        transfer_history_oper.replace(TransferHistoryWrite(
+            src="/issue-6191/showA100B/episode-2.mkv",
+            src_storage="local",
+            status=True,
+        )),
+    ]
+    try:
+        histories = transfer_history_oper.list_success_by_src(
+            "/issue-6191/show_100%",
+            storage="local",
+            recursive=True,
+        )
+
+        assert [history.src for history in histories] == [
+            "/issue-6191/show_100%/episode-1.mkv"
+        ]
+    finally:
+        for history in created_histories:
+            transfer_history_oper.delete(history.id)
+
+
+def test_successful_move_history_is_found_by_current_destination():
+    """
+    成功移动后从媒体库现址打开整理界面时，应识别原整理历史。
+    """
+    transfer_history_oper = _history_repository()
+    destination = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    history = transfer_history_oper.replace(TransferHistoryWrite(
+        src="/downloads/Test.Show.S01E01.mkv",
+        src_storage="local",
+        dest=destination.path,
+        dest_storage="local",
+        dest_fileitem=destination.model_dump(),
+        mode="move",
+        status=True,
+    ))
+    try:
+        chain = make_transfer_chain()
+        chain.transfer_history_repository = transfer_history_oper
+        histories = TransferChain.get_manual_transfer_histories(
+            chain,
+            [destination],
+        )
+
+        assert [current.id for current in histories] == [history.id]
+    finally:
+        transfer_history_oper.delete(history.id)
+
+
+def test_manual_transfer_removes_failed_history_before_retry(monkeypatch):
+    """
+    失败历史不应阻塞手动整理，并应在重试前清理旧目标和记录。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    old_dest = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=7,
+        status=False,
+        mode="copy",
+        dest_fileitem=old_dest.model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=None,
+        src_storage=None,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        background=False,
+        manual=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [
+        ("target", old_dest.path),
+        ("history", history.id),
+    ]
+    assert planned == [fileitem.path]
+
+
+def test_automatic_transfer_retries_failed_history_within_retry_budget(monkeypatch):
+    """
+    失败重试次数未达上限（默认计数为 0）时，自动整理遇到失败记录应放行重试，避免一次瞬时故障永久锁死文件。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=12,
+        status=False,
+        mode="copy",
+        dest_fileitem=make_fileitem(
+            "/library/Test Show/Test.Show.S01E01.mkv"
+        ).model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            background=False,
+            manual=False,
+        )
+
+        assert state is True
+        assert message == ""
+        assert deleted == []
+        assert planned == [fileitem.path]
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+
+
+def test_automatic_transfer_skips_failed_history_when_retry_budget_exhausted(monkeypatch):
+    """
+    失败重试次数已达上限时，自动整理遇到失败记录仍应被拦截、不进入整理链，避免失败任务自动循环。
+    """
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=13,
+        status=False,
+        mode="copy",
+        dest_fileitem=make_fileitem(
+            "/library/Test Show/Test.Show.S01E01.mkv"
+        ).model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        record_transfer_failure(fileitem.path, fileitem.storage)
+
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            background=False,
+            manual=False,
+        )
+
+        assert state is False
+        assert message == f"{fileitem.name} 已整理过"
+        assert deleted == []
+        assert planned == []
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+
+
+def test_automatic_transfer_new_version_bypasses_exhausted_retry_budget(monkeypatch):
+    """
+    失败预算耗尽后同路径新版本必须进入整理，且不能给下载任务补打已整理标签。
+    """
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    fileitem.size = 200
+    history = SimpleNamespace(
+        id=15,
+        status=False,
+        mode="copy",
+        dest_fileitem=None,
+        download_hash="abc123",
+        downloader="qbittorrent",
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+        src_fileitem={"size": 100},
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+    completed = []
+    chain.transfer_completed = lambda download_hash, downloader: completed.append(
+        (download_hash, downloader)
+    )
+
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        record_transfer_failure(fileitem.path, fileitem.storage, file_size=100)
+
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            downloader="qbittorrent",
+            download_hash="abc123",
+            background=False,
+            manual=False,
+        )
+
+        assert state is True
+        assert message == ""
+        assert deleted == []
+        assert planned == [fileitem.path]
+        assert completed == []
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+
+
+def test_manual_transfer_bypasses_retry_budget_when_exhausted(monkeypatch):
+    """
+    手动整理不受重试次数上限限制：manual=True 时查重闸根本不参与判定
+    （do_transfer 中 `if transferd and not manual` 已把 manual 路径排除在外），
+    即使失败计数已达上限（自动路径会因此拦截），仍应清理失败记录、重置计数并放行重试。
+    """
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    old_dest = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=14,
+        status=False,
+        mode="copy",
+        dest_fileitem=old_dest.model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    _reset_failed_retries(fileitem.path, fileitem.storage)
+    try:
+        record_transfer_failure(fileitem.path, fileitem.storage)
+        assert failed_retry_count(fileitem.path, fileitem.storage) >= max_failed_retries()
+
+        state, message = TransferChain.do_transfer(
+            chain,
+            fileitem=fileitem,
+            background=False,
+            manual=True,
+        )
+
+        assert state is True
+        assert message == ""
+        assert deleted == [
+            ("target", old_dest.path),
+            ("history", history.id),
+        ]
+        assert planned == [fileitem.path]
+        assert failed_retry_count(fileitem.path, fileitem.storage) == 0
+    finally:
+        _reset_failed_retries(fileitem.path, fileitem.storage)
+
+
+def test_manual_transfer_keeps_success_history_without_confirmation(monkeypatch):
+    """
+    未携带重整标志时，成功历史仍应阻止普通手动整理。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=8,
+        status=True,
+        mode="copy",
+        dest_fileitem=make_fileitem(
+            "/library/Test Show/Test.Show.S01E01.mkv"
+        ).model_dump(),
+        download_hash=None,
+        downloader=None,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        background=False,
+        manual=True,
+    )
+
+    assert state is True
+    assert message == f"{fileitem.name} 已整理过"
+    assert deleted == []
+    assert planned == []
+
+
+@pytest.mark.parametrize("source_kind", ["fileitem", "fileitems", "logid", "logids"])
+@pytest.mark.parametrize("preview", [False, True])
+@pytest.mark.parametrize("move", [False, True])
+def test_manual_skip_success_preserves_history_and_target_for_every_entry(
+        monkeypatch: pytest.MonkeyPatch, source_kind: str, preview: bool, move: bool,
+) -> None:
+    """
+    跳过成功记录覆盖单选、多选与历史入口，且优先于重整及历史入口的强制标志。
+    """
+    chain = make_transfer_chain()
+    original = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    destination = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    fileitem = destination if move else original
+    history = SimpleNamespace(
+        id=901, status=True, mode="move" if move else "copy",
+        src=original.path, src_storage="local", src_fileitem=original.model_dump(),
+        dest=destination.path, dest_storage="local", dest_fileitem=destination.model_dump(),
+        download_hash=None, downloader=None,
+    )
+    planned: list[str] = []
+    deleted: list[tuple[str, Any]] = []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, None if move else history, planned, deleted)
+    monkeypatch.setattr(chain.transfer_history_repository, "get_by_dest", lambda *args, **kwargs: history if move else None)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+    source_values = {"fileitem": fileitem, "fileitems": [fileitem], "logid": history.id, "logids": [history.id]}
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(
+            **{source_kind: source_values[source_kind]},
+            reorganize=True, skip_success=True, preview=preview,
+        ),
+        background=False, history_query=SimpleNamespace(get=lambda _logid: history), _="token",
+    )
+
+    assert response.success is True
+    assert planned == []
+    assert deleted == []
+    data = response.model_dump()["data"]
+    if preview:
+        assert data["summary"] == {"total": 0, "success": 0, "failed": 0}
+        assert data["items"] == []
+        assert data["message"] == "已跳过 1 条成功整理记录"
+    else:
+        assert [(item["source"], item["state"]) for item in data["items"]] == [(fileitem.path, "skipped")]
+
+
+@pytest.mark.parametrize("preview", [False, True])
+@pytest.mark.parametrize("success_count", [1, 903])
+def test_manual_skip_success_continues_failed_durable_and_new_files(
+        monkeypatch: pytest.MonkeyPatch, preview: bool, success_count: int,
+) -> None:
+    """
+    混合目录跳过成功项；失败项保留原任务重试，新项继续整理，预览只展示待处理文件。
+    """
+    chain = make_transfer_chain()
+    files = [make_fileitem(f"/downloads/Test.Show.S01E{episode:02d}.mkv") for episode in range(1, success_count + 3)]
+    source = files[0].model_copy(update={"path": "/downloads/", "type": "dir"})
+    histories = {
+        fileitem.path: SimpleNamespace(id=index, status=True, mode="copy", download_hash=None, downloader=None)
+        for index, fileitem in enumerate(files[:success_count])
+    }
+    histories[files[-2].path] = SimpleNamespace(id=success_count, status=False, transfer_task_id="failed-task", mode="copy")
+    planned: list[str] = []
+    deleted: list[tuple[str, Any]] = []
+    retries: list[str] = []
+    _patch_transfer_planning(monkeypatch, chain, files[0], None, planned, deleted)
+    monkeypatch.setattr(chain, "_TransferChain__get_trans_fileitems", lambda *args, **kwargs: [(item, False) for item in files])
+    monkeypatch.setattr(chain.transfer_history_repository, "get_by_src", lambda src, **kwargs: histories.get(src))
+    monkeypatch.setattr(
+        chain.transfer_history_repository, "get_success_by_src",
+        lambda src, **kwargs: record if (record := histories.get(src)) and record.status else None,
+    )
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+
+    def request_retry(history: Any, **_kwargs: Any) -> tuple[bool, str]:
+        """
+        记录失败任务的原计划重试，避免进入真实恢复调度器。
+        """
+        retries.append(history.transfer_task_id)
+        return True, "已提交重试"
+
+    def execute(task: Any, callback: Any = None) -> tuple[bool, str]:
+        """
+        记录真正到达执行器的候选，并通过正式回调形成预览内容。
+        """
+        planned.append(task.fileitem.path)
+        if preview:
+            callback(task, TransferInfo(success=True, message="", target_item=task.fileitem))
+        return True, ""
+
+    monkeypatch.setattr(chain, "_request_durable_transfer_retry", request_retry)
+    monkeypatch.setattr(chain, "_TransferChain__handle_transfer", execute)
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(fileitem=source, skip_success=True, preview=preview),
+        background=False, history_query=SimpleNamespace(), _="token",
+    )
+
+    assert response.success is True
+    assert deleted == []
+    data = response.model_dump()["data"]
+    if preview:
+        assert retries == []
+        assert planned == [files[-2].path, files[-1].path]
+        assert data["summary"] == {"total": 2, "success": 2, "failed": 0}
+        assert [item["source"] for item in data["items"]] == planned
+        assert data["message"] == f"已跳过 {success_count} 条成功整理记录"
+    else:
+        assert retries == ["failed-task"]
+        assert planned == [files[-1].path]
+        assert [item["state"] for item in data["items"]] == ["skipped"] * success_count + ["retry_wait", "accepted"]
+
+
+def test_manual_skip_success_matches_storage_and_move_destination() -> None:
+    """
+    成功匹配遵守存储边界，失败源记录不能遮蔽成功移动目标，普通复制目标仍可整理。
+    """
+    repository = _history_repository()
+    destination = make_fileitem("/skip-success/library/Test.Show.S01E01.mkv")
+    histories = [
+        repository.replace(TransferHistoryWrite(
+            src="/skip-success/downloads/Test.Show.S01E01.mkv", src_storage="local",
+            dest=destination.path, dest_storage="local", mode="move", status=True,
+        )),
+        repository.replace(TransferHistoryWrite(src=destination.path, src_storage="local", status=False)),
+        repository.replace(TransferHistoryWrite(
+            src="/skip-success/failed-download/Test.Show.S01E01.mkv", src_storage="local",
+            dest=destination.path, dest_storage="local", mode="move", status=False,
+        )),
+    ]
+    chain = make_transfer_chain()
+    chain.transfer_history_repository = repository
+    try:
+        assert chain._has_successful_manual_transfer_history(destination) is True
+        assert [history.id for history in chain.get_manual_transfer_histories([destination])] == [histories[0].id]
+        assert chain._has_successful_manual_transfer_history(destination.model_copy(update={"storage": "alist"})) is False
+        assert chain._has_successful_manual_transfer_history(make_fileitem(histories[0].src)) is True
+        repository.delete(histories[0].id)
+        histories[0] = repository.replace(TransferHistoryWrite(
+            src="/skip-success/downloads/Test.Show.S01E01.mkv", src_storage="local",
+            dest=destination.path, dest_storage="local", mode="copy", status=True,
+        ))
+        assert chain._has_successful_manual_transfer_history(destination) is False
+    finally:
+        for history in histories:
+            repository.delete(history.id)
+
+
+def test_manual_reorganize_removes_success_history_and_old_target(monkeypatch):
+    """
+    用户确认重新整理后，应清理成功历史及非移动模式旧目标再执行。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    old_dest = make_fileitem("/library/Wrong Show/Wrong.Show.S02E01.mkv")
+    history = SimpleNamespace(
+        id=9,
+        status=True,
+        mode="copy",
+        dest_fileitem=old_dest.model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=None,
+        src_storage=None,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        background=False,
+        manual=True,
+        reorganize=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [
+        ("target", old_dest.path),
+        ("history", history.id),
+    ]
+    assert planned == [fileitem.path]
+
+
+def test_manual_reorganize_accepts_old_target_disappearing_during_delete(monkeypatch):
+    """远端删除返回失败但读回已不存在时，不应把重整永远卡在旧历史上。"""
+    chain = make_transfer_chain()
+    old_dest = make_fileitem("/library/Wrong Show/Wrong.Show.S02E01.mkv")
+    history = SimpleNamespace(
+        id=19, status=True, mode="copy", dest_fileitem=old_dest.model_dump(),
+        transfer_task_id=None, download_hash=None, downloader=None, src=None, src_storage=None,
+    )
+    deleted: list[tuple[str, object]] = []
+    states = iter((old_dest, None))
+    monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
+        get_file_item_strict=lambda **_kwargs: next(states),
+        delete_media_file=lambda _item: False,
+    ))
+    state, message = chain._delete_manual_transfer_history(
+        history,
+        SimpleNamespace(delete=lambda history_id: deleted.append(("history", history_id))),
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [("history", 19)]
+
+
+def test_explicit_durable_reorganize_discards_old_task_and_replans(monkeypatch):
+    """
+    显式重新整理 durable 失败历史时不得登记原计划重试，应清理后重新规划。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=12,
+        transfer_task_id="transfer-task-12",
+        transfer_settlement_revision=1,
+        status=False,
+        mode="copy",
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+    monkeypatch.setattr(
+        chain,
+        "_request_durable_transfer_retry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("显式重新整理不得登记旧 durable 计划重试")
+        ),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_delete_manual_transfer_history",
+        lambda history, transfer_history_oper: deleted.append(
+            ("history", history.id)
+        ) or (True, ""),
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        background=False,
+        manual=True,
+        reorganize=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [("history", 12)]
+    assert planned == [fileitem.path]
+
+
+def test_manual_explicit_identity_replans_failed_durable_history(monkeypatch):
+    """
+    手动指定媒体身份时，应清理失败 durable 任务而不是复用原计划重试。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=13,
+        transfer_task_id="transfer-task-13",
+        transfer_settlement_revision=2,
+        status=False,
+        mode="copy",
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+    monkeypatch.setattr(
+        chain,
+        "_request_durable_transfer_retry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("新的媒体身份不得复用旧 durable 计划")
+        ),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_delete_manual_transfer_history",
+        lambda history, transfer_history_oper: deleted.append(
+            ("history", history.id)
+        ) or (True, ""),
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        mediainfo=FakeMedia(286322),
+        mtype=MediaType.TV,
+        media_source=MediaSource.TMDB,
+        media_id="286322",
+        background=False,
+        manual=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [("history", 13)]
+    assert planned == [fileitem.path]
+
+
+def test_manual_reorganize_keeps_successful_move_target_as_source(monkeypatch):
+    """
+    成功移动后的目标是当前重整源，只能删历史记录，不能先删除文件。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=10,
+        status=True,
+        mode="move",
+        dest_fileitem=fileitem.model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=None,
+        src_storage=None,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        background=False,
+        manual=True,
+        reorganize=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [("history", history.id)]
+    assert planned == [fileitem.path]
+
+
+def test_forced_manual_reorganize_still_removes_history(monkeypatch):
+    """
+    从历史入口强制重新整理时，仍应按重整确认清理旧目标和记录。
+    """
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    old_dest = make_fileitem("/library/Wrong Show/Wrong.Show.S02E01.mkv")
+    history = SimpleNamespace(
+        id=11,
+        status=True,
+        mode="copy",
+        dest_fileitem=old_dest.model_dump(),
+        download_hash=None,
+        downloader=None,
+        src=None,
+        src_storage=None,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        background=False,
+        manual=True,
+        force=True,
+        reorganize=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [
+        ("target", old_dest.path),
+        ("history", history.id),
+    ]
+    assert planned == [fileitem.path]
+
+
+def test_manual_transfer_music_release_preferences_are_normalized():
+    """
+    手动整理应规范地区和文字代码，并保留用户给出的优先顺序。
+    """
+    item = ManualTransferItem(
+        music_release_regions=["cn", "TW"],
+        music_release_scripts=["hans", "Hant"],
+    )
+
+    assert item.music_release_regions == ["CN", "TW"]
+    assert item.music_release_scripts == ["Hans", "Hant"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("music_release_regions", ["CHN"]),
+        ("music_release_regions", ["CN", "cn"]),
+        ("music_release_scripts", ["Chinese"]),
+        ("music_release_scripts", ["Hans", "hans"]),
+    ],
+)
+def test_manual_transfer_music_release_preferences_reject_invalid_codes(field, value):
+    """
+    非法或重复的发行偏好不能进入整理链。
+    """
+    with pytest.raises(ValueError):
+        ManualTransferItem(**{field: value})

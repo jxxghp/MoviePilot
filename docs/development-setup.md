@@ -49,6 +49,11 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 同步共享环境。测试不加载运行用 `app.env`，由测试引导隔离临时 `CONFIG_DIR`；本地服务启动
 则遵循工作区的子进程环境加载约定。
 
+测试文件归属、增删与 fixture 生命周期按[单元测试规范](testing.md#测试归属与生命周期)维护。
+修改测试时运行 `uv run --locked --no-sync python scripts/testing/maintenance.py --base <pr-base>`；
+不传 `--base` 时清点并检查完整测试树，提供基准则附加文件增删摘要。
+基准历史不构成恢复旧平铺文件或旧导入的例外。工具不访问应用配置、数据库或网络，也不自动删除候选。
+
 ### 2. 依赖分层与事实源
 
 主程序只维护以下依赖事实源：
@@ -365,17 +370,17 @@ Python 3.14 还会在平台支持时输出 C 栈；关闭 GIL 时只转储当前
 
 ### Agent 历史消息索引验证
 
-独立消息库位于 Agent 运行目录，不参与主库 Alembic。使用临时运行目录运行 `tests/test_agent_recall_persistence.py`，不得用真实用户的 `state.db` 做索引破坏或重建测试。CJK tokenizer 保留 Hermes 原版源码及许可证于 `native/fts5_cjk/`；Docker 构建与 CLI 依赖安装使用该目录的 `install.py`，按本机架构编译并用目标解释器实际验证两字中文查询，安装到 `<sys.prefix>/lib/moviepilot/libfts5_cjk.so`。旧配置目录内的手工扩展作为加载回退；编译器要求和补装/检查命令见该目录 README。测试有本地 C 编译器时在临时目录构建，无编译器时只跳过原生扩展用例，不能宣称该分词路径已验证。常规 FTS5 与 trigram、短中文回退无需该扩展，扩展缺失或失效时索引状态会明确降级。独立 schema 版本不等于产品版本；后续新增主库升级脚本从 3.1.0 命名。
+独立消息库位于 Agent 运行目录，不参与主库 Alembic。使用临时运行目录运行 `tests/agent/memory/test_agent_recall_persistence.py`，不得用真实用户的 `state.db` 做索引破坏或重建测试。CJK tokenizer 保留 Hermes 原版源码及许可证于 `native/fts5_cjk/`；Docker 构建与 CLI 依赖安装使用该目录的 `install.py`，按本机架构编译并用目标解释器实际验证两字中文查询，安装到 `<sys.prefix>/lib/moviepilot/libfts5_cjk.so`。旧配置目录内的手工扩展作为加载回退；编译器要求和补装/检查命令见该目录 README。测试有本地 C 编译器时在临时目录构建，无编译器时只跳过原生扩展用例，不能宣称该分词路径已验证。常规 FTS5 与 trigram、短中文回退无需该扩展，扩展缺失或失效时索引状态会明确降级。独立 schema 版本不等于产品版本；后续新增主库升级脚本从 3.1.0 命名。
 
 ### Agent 学习验证
 
 交互执行隔离、后台避让及超时配置见 [智能助手执行优先策略](agent-execution.md)。
 
-`tests/test_agent_learning_skills.py`、`tests/test_agent_learning_memory.py` 和
-`tests/test_agent_learning_review.py` 用临时目录与确定性模型核对 Hermes 学习契约，
+`tests/agent/memory/test_agent_learning_skills.py`、`tests/agent/memory/test_agent_learning_memory.py` 和
+`tests/agent/memory/test_agent_learning_review.py` 用临时目录与确定性模型核对 Hermes 学习契约，
 不访问实际 LLM 或个人记忆。匹配器、威胁模式和提示词的上游来源及 MIT 许可在
 `app/agent/learning/LICENSE.hermes`；不得以这些离线测试替代固定真实模型的效果评测。
 
-`tests/test_agent_guardrail_controller.py` 保留 Hermes 原始循环规则的纯行为回归，
-`tests/test_agent_guardrails.py` 使用真实 LangGraph 验证并行顺序、逐运行隔离、正常轮询、
+`tests/agent/security/test_agent_guardrail_controller.py` 保留 Hermes 原始循环规则的纯行为回归，
+`tests/agent/security/test_agent_guardrails.py` 使用真实 LangGraph 验证并行顺序、逐运行隔离、正常轮询、
 未知结果、尾部行动继续提示和流式停止交付。派生代码许可在 `app/agent/guardrails/LICENSE.hermes`。

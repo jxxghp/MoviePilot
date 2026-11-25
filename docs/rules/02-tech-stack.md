@@ -129,7 +129,7 @@
 
 | Tool | Purpose | Command |
 |---|---|---|
-| pytest | Test runner | `uv run --locked --no-sync pytest tests/test_xxx.py` |
+| pytest | Test runner | `uv run --locked --no-sync pytest tests/application/plugin/test_admission.py` |
 | pylint | Static analysis | `uv run --locked --no-sync pylint app/` |
 | uv | Lock and environment consistency | `uv lock --check && uv sync --locked --offline --inexact --no-dev --check` |
 | pip-audit | Locked dependency vulnerability scan | `uv export --quiet --locked --no-dev --no-emit-project -o /tmp/moviepilot-audit-requirements.txt && uvx --from pip-audit pip-audit --require-hashes --disable-pip --strict --progress-spinner off -r /tmp/moviepilot-audit-requirements.txt` |

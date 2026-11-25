@@ -1,0 +1,219 @@
+"""
+音乐站点发行命名的解析和搜索匹配回归。
+"""
+
+from tests.support.music.resources import (
+    music_engine,
+)
+
+import pytest
+
+from app.adapters.system import rust
+from app.chain.search import SearchChain
+from app.domain.context import MusicInfo, TorrentInfo
+from app.domain.meta import runtime
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.domain.music import match_music_resource
+from app.schemas.types import MediaType
+
+RESOURCE_TITLES = [
+    "赵雷-署前街少年 2022 - WEB-DL - 24bit ALAC-HHWEB",
+    "赵雷 - 署前街少年 2022 - FLAC TJUPT",
+    "[赵雷-署前街少年][2022][Hi-Res 44 1kHz_24bit][FLAC]",
+    "赵雷 - 署前街少年 2022 - WEB-DL - 24bit ALAC - HHWEB",
+]
+
+
+@pytest.mark.usefixtures("music_engine")
+@pytest.mark.parametrize("title", RESOURCE_TITLES)
+def test_album_release_names_match_without_target_assisted_parsing(title):
+    """
+    真实命名变体应独立解析身份，并通过专辑搜索的严格匹配。
+    """
+    meta = MetaMusic.parse_resource(title)
+    assert (meta.title, meta.artists, meta.year) == ("署前街少年", ["赵雷"], 2022)
+    assert meta.org_string == title
+    assert meta.audio_format == ("ALAC" if "ALAC" in title else "FLAC")
+    assert meta.audio_lossless is True
+    target = MusicInfo(music_type="album", title="署前街少年", artists=["赵雷"], year="2022")
+    assert match_music_resource(target, title).status == "exact"
+
+
+@pytest.mark.usefixtures("music_engine")
+def test_album_search_preserves_resources_from_different_sites():
+    """
+    同一专辑的站点命名差异不能隐藏有折扣的候选。
+    """
+    target = MusicInfo(music_type="album", title="署前街少年", artists=["赵雷"], year="2022")
+    torrents = [
+        TorrentInfo(title=title, category=MediaType.MUSIC.value, site_name=f"Site{index}",
+                    size=599533814, downloadvolumefactor=0.5 if index == 0 else 1,
+                    hit_and_run=index != 0)
+        for index, title in enumerate(RESOURCE_TITLES)
+    ]
+    contexts = SearchChain()._build_music_contexts(torrents, target, rule_groups=[])
+    assert [context.torrent_info for context in contexts] == torrents
+    assert contexts[0].torrent_info.downloadvolumefactor == 0.5
+    assert contexts[0].torrent_info.hit_and_run is False
+
+
+@pytest.mark.usefixtures("music_engine")
+@pytest.mark.parametrize("title,reason", [
+    ("赵雷-成都 2022 - FLAC TJUPT", "title_mismatch"),
+    ("其他艺人-署前街少年 2022 - FLAC TJUPT", "artist_unverified"),
+    ("赵雷-署前街少年 2021 - FLAC TJUPT", "year_mismatch"),
+    ("赵雷-署前街少年 (Live) 2022 - FLAC TJUPT", "version_mismatch"),
+    ("[赵雷-署前街少年 (Remix)][2022][FLAC]", "version_mismatch"),
+])
+def test_release_normalization_preserves_identity_constraints(title, reason):
+    """
+    清理发行标记不能放宽作品、艺人、年份和版本的原有匹配约束。
+    """
+    target = MusicInfo(music_type="album", title="署前街少年", artists=["赵雷"], year="2022")
+    result = match_music_resource(target, title)
+    assert result.status != "exact"
+    assert result.reason == reason
+
+
+@pytest.mark.usefixtures("music_engine")
+@pytest.mark.parametrize("title", [
+    "为你盛开——许巍",
+    "署前街少年-赵雷 FLAC",
+    "Artist - Best Album FLAC",
+    "Artist - Single Ladies FLAC",
+    "Artist - Live At Montreux 1999 2022 FLAC",
+    "Artist - Album 2022 - FLAC LIVE",
+    "Artist - Album 2022 - FLAC DELUXE",
+    "Artist - Album 2022 - FLAC REMASTERED",
+    "Artist - Album 2022 - FLAC RE-RECORDED",
+    "Artist - Album 2022 - FLAC Bonus Track",
+])
+def test_release_normalization_preserves_other_naming_styles(title):
+    """
+    缺少明确发行尾链时沿用原解析规则，不能把自然语言尾段当发布组。
+    """
+    assert MetaMusic._normalize_resource_release(title) == title
+    resource = MetaMusic.parse_resource(title)
+    query = MetaMusic.parse_query(title)
+    assert (resource.title, resource.artists, resource.year) == (query.title, query.artists, query.year)
+
+
+@pytest.mark.usefixtures("music_engine")
+@pytest.mark.parametrize("title,artists", [
+    ("Artist - Album 2022 - FLAC", ["Artist"]),
+    ("Album 2022 - FLAC", []),
+    ("[Artist - Album][2022][FLAC]", ["Artist"]),
+])
+def test_release_names_without_group_or_cjk_credit(title, artists):
+    """
+    规格不带发布组也应保留年份，且不能为缺少署名的资源补写艺术家。
+    """
+    meta = MetaMusic.parse_resource(title)
+    assert (meta.title, meta.artists, meta.year, meta.audio_format) == ("Album", artists, 2022, "FLAC")
+
+
+@pytest.mark.usefixtures("music_engine")
+def test_multi_file_release_suffix_matches_album_main_title():
+    """
+    分轨资源常用的 ``FLAC Multi File`` 尾标不应进入专辑标题，专辑副标题省略时仍应命中主标题。
+    """
+    resource = "Various Artists - The Secret Life Of Walter Mitty 2013 - FLAC Multi File"
+    meta = MetaMusic.parse_resource(resource)
+    target = MusicInfo(
+        music_type="album",
+        title="The Secret Life of Walter Mitty: Music From and Inspired by the Motion Picture",
+        artists=["Various Artists"],
+        year=2013,
+    )
+
+    assert (meta.title, meta.year, meta.artists) == (
+        "The Secret Life Of Walter Mitty", 2013, ["Various Artists"],
+    )
+    assert match_music_resource(target, resource).status == "exact"
+
+
+@pytest.mark.usefixtures("music_engine")
+@pytest.mark.parametrize("title,expected,year", [
+    (
+        "程响 (Cheng Xiang) - 江南多雨时 [2020] [单曲专辑] FLAC / Lossless / WEB / 2020",
+        "江南多雨时", 2020,
+    ),
+    (
+        "群星 (Various Artists) - âge 20th Archives Song Archives [2020] [合辑] "
+        "FLAC / Lossless / Log (100%) / Cue / CD / 2020",
+        "âge 20th Archives Song Archives", 2020,
+    ),
+    (
+        "群星 - 南泥湾 (Nanni Bay) [1990] [专辑] "
+        "FLAC / Lossless / Log (100%) / Cue / CD / 自抓 / 1990",
+        "南泥湾 (Nanni Bay)", 1990,
+    ),
+    ("Artist - Album FLAC / Lossless / WEB / 2020", "Album", 2020),
+    ("Artist - Example Album [2020] FLAC / Lossless / Log (100%) / Cue / CD", "Example Album", 2020),
+    ("Artist - Love / Hate [2020] FLAC / Lossless / WEB / 2020", "Love / Hate", 2020),
+    ("Artist - Captain's Log (100%) [2020] FLAC / Lossless / CD / 2020", "Captain's Log (100%)", 2020),
+    ("Artist - CD [2020] FLAC / Lossless / CD / 2020", "CD", 2020),
+    ("Artist - Album (Live) [2020] FLAC / Lossless / WEB / 2020", "Album (Live)", 2020),
+])
+def test_gazelle_slash_specs_preserve_music_identity(title: str, expected: str, year: int) -> None:
+    """
+    Gazelle 规格尾链不进入作品名，正文斜杠、抓轨同名词与版本说明仍须保留。
+
+    :param title: 含规格尾链的站点资源标题
+    :param expected: 应保留的真实作品名
+    :param year: 应提取的发行年份
+    """
+    meta = MetaInfo(title, mtype=MediaType.MUSIC)
+
+    assert meta.title == expected
+    assert meta.year == year
+    assert meta.org_string == title
+    assert meta.artists == [title.partition(" - ")[0]]
+    assert meta.audio_format == "FLAC"
+    assert meta.audio_lossless is True
+
+
+@pytest.mark.parametrize("title,expected,year,audio_format", [
+    (
+        "薛之谦 (Joker Xue) - 尘 (Dust) [2019] [专辑] "
+        "FLAC / Lossless / Log (100%) / Cue / CD / 自抓 / 禁转 / 2019",
+        "尘 (Dust)", 2019, "FLAC",
+    ),
+    (
+        "薛之谦 (Joker Xue) - 尘 (Dust) [2019] [专辑] FLAC / Lossless / WEB / 自购 / 禁转 / 2019",
+        "尘 (Dust)", 2019, "FLAC",
+    ),
+    (
+        "老狼 (Lao Lang) - 恋恋风尘 [1995] [专辑] "
+        "WAV / Lossless / Log (78%) / Cue / CD / 1995 / 可替代",
+        "恋恋风尘", 1995, "WAV",
+    ),
+    (
+        "夏曰入侵企画 (Summer Warz) - 尘星 [2024] [单曲专辑] FLAC / 24bit Lossless / WEB / 2024",
+        "尘星", 2024, "FLAC",
+    ),
+])
+def test_hddolby_transfer_spec_tails_preserve_music_identity(
+        title: str, expected: str, year: int, audio_format: str,
+) -> None:
+    """
+    海豚（HDDolby）音乐区的转让声明（禁转/限转/自购/可替代）和位深前缀（24bit Lossless）
+    不改变规格尾链的剥离，年份允许出现在链中任意位置；否则作品名会残留
+    ``// Log (100%) // CD // 禁转 /`` 一类残片，导致搜索结果与目标专辑不匹配。
+
+    仅运行 Python 参考实现；Rust 镜像待 moviepilot-rust 同步后对齐。
+
+    :param title: 海豚站点报告的资源标题
+    :param expected: 应保留的真实作品名
+    :param year: 应提取的发行年份
+    :param audio_format: 应识别的音频格式
+    """
+    meta = MetaInfo(title, mtype=MediaType.MUSIC)
+
+    assert meta.title == expected
+    assert meta.year == year
+    assert meta.org_string == title
+    assert meta.artists == [title.partition(" - ")[0]]
+    assert meta.audio_format == audio_format
+    assert meta.audio_lossless is True
