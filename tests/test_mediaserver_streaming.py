@@ -735,3 +735,82 @@ def test_media_server_search_chain_deduplicates_per_server_and_signs_posters(mon
     ]
     assert [item.image for item in items] == ["signed:https://a/poster", "signed:https://b/poster"]
     run_module.assert_called_once_with("mediaserver_search", keyword="剧集", types=["电视剧", "音乐"], limit=20)
+
+
+@pytest.mark.parametrize(
+    "filename,expected_mime",
+    [
+        ("track.flac", "audio/flac"),
+        ("track.m4a", "audio/mp4"),
+        ("audiobook.m4b", "audio/mp4"),
+        ("track.mp3", "audio/mpeg"),
+        ("track.wav", "audio/wav"),
+        ("track.aac", "audio/aac"),
+        ("track.mpc", "audio/x-musepack"),
+        ("track.dsf", "audio/x-dsf"),
+        ("track.ape", "audio/x-ape"),
+    ],
+)
+def test_audio_file_stream_exposes_standard_mime_and_progressive_chunks(
+    tmp_path: Path, filename: str, expected_mime: str
+) -> None:
+    """验证本地音频流返回标准 MIME 类型、64KB 渐进分块与 HEAD 元数据探测，支持边加载边播放。"""
+    payload = b"A" * (140 * 1024)
+    audio = tmp_path / filename
+    audio.write_bytes(payload)
+
+    head_resp = mediastream._file_stream_response(audio, None, head_only=True)
+    assert head_resp.status_code == 200
+    assert head_resp.media_type == expected_mime
+    assert head_resp.headers["accept-ranges"] == "bytes"
+    assert head_resp.headers["content-length"] == str(len(payload))
+
+    async def collect(resp) -> list[bytes]:
+        return [chunk async for chunk in resp.body_iterator]
+
+    assert asyncio.run(collect(head_resp)) == []
+
+    stream_resp = mediastream._file_stream_response(audio, "bytes=0-131071")
+    chunks = asyncio.run(collect(stream_resp))
+    assert stream_resp.status_code == 206
+    assert stream_resp.media_type == expected_mime
+    assert stream_resp.headers["content-range"] == f"bytes 0-131071/{len(payload)}"
+    assert [len(c) for c in chunks] == [64 * 1024, 64 * 1024]
+
+
+def test_stream_route_supports_head_and_range_for_local_audio_ticket(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """验证 `/api/v1/mediaserver/stream` 支持 `HEAD` 与 `GET Range` 探测本地音频票据，不再返回 405。"""
+    audio = tmp_path / "Lossless Track.m4a"
+    audio.write_bytes(b"0123456789abcdef")
+    monkeypatch.setattr(mediastream, "get_runtime_setting", lambda _key: "test-resource-secret")
+    monkeypatch.setattr(mediaserver, "_ensure_manage_storage_item", lambda fileitem, _user: fileitem)
+    current_user = SimpleNamespace(id=19, is_superuser=True, permissions={})
+    app = FastAPI()
+    app.include_router(mediaserver.router, prefix="/api/v1/mediaserver")
+    app.dependency_overrides[mediaserver.get_current_active_manage_user] = lambda: current_user
+    app.dependency_overrides[mediaserver.verify_token] = lambda: TokenPayload(sub=19)
+    app.dependency_overrides[mediaserver.verify_resource_token] = lambda: TokenPayload(sub=19)
+
+    with TestClient(app) as client:
+        ticket = client.post(
+            "/api/v1/mediaserver/stream-ticket",
+            json={
+                "file": {"storage": "local", "type": "file", "name": audio.name, "path": str(audio)},
+                "media_type": "audio",
+            },
+        )
+        item_id = ticket.json()["data"]["item_id"]
+        manifest = client.get("/api/v1/mediaserver/stream-info", params={"itemid": item_id}).json()["data"]
+        head_resp = client.head(manifest["content_url"])
+        range_resp = client.get(manifest["content_url"], headers={"Range": "bytes=0-3"})
+
+    assert head_resp.status_code == 200
+    assert head_resp.headers["accept-ranges"] == "bytes"
+    assert head_resp.headers["content-length"] == "16"
+    assert head_resp.headers["content-type"].startswith("audio/mp4")
+    assert head_resp.content == b""
+    assert range_resp.status_code == 206
+    assert range_resp.headers["content-range"] == "bytes 0-3/16"
+    assert range_resp.content == b"0123"

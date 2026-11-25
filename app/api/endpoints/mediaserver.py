@@ -782,8 +782,9 @@ def music_stream_info(
     )
 
 
-@router.get(
+@router.api_route(
     "/stream",
+    methods=["GET", "HEAD"],
     summary="流式读取已入库媒体",
     name="stream_item_content",
     response_class=StreamingResponse,
@@ -803,6 +804,7 @@ def stream_item_content(
 ) -> StreamingResponse:
     """
     媒体服务器条目优先代理原始流，明确不支持时回退本地；文件票据只读本地。
+    同时支持 `GET` 分块传输与 `HEAD` 元数据/Range 探测，确保本地音视频边加载边播放。
 
     :param itemid: 媒体服务器条目标识
     :param request: 当前请求，包含可选 Range 头
@@ -838,22 +840,23 @@ def stream_item_content(
         user_token=user_cred.token if user_cred else None,
     )
     range_header = request.headers.get("range")
+    head_only = request.method.upper() == "HEAD"
     upstream_headers = session_state.upstream_headers if session_state and session_state.upstream_headers else None
     if source_type == "server":
         try:
             if upstream_headers:
                 return _remote_stream_response(
-                    str(source), range_header, configured_hosts, extra_headers=upstream_headers
+                    str(source), range_header, configured_hosts, extra_headers=upstream_headers, head_only=head_only
                 )
-            return _remote_stream_response(str(source), range_header, configured_hosts)
+            return _remote_stream_response(str(source), range_header, configured_hosts, head_only=head_only)
         except HTTPException as error:
             if not path or error.status_code not in {status.HTTP_404_NOT_FOUND, status.HTTP_501_NOT_IMPLEMENTED}:
                 raise
             configured_hosts = _configured_stream_hosts(path)
             source_type, source = _stream_source(path, configured_hosts)
     if source_type == "file":
-        return _file_stream_response(Path(source), range_header)
-    return _remote_stream_response(str(source), range_header, configured_hosts)
+        return _file_stream_response(Path(source), range_header, head_only=head_only)
+    return _remote_stream_response(str(source), range_header, configured_hosts, head_only=head_only)
 
 
 @router.get(

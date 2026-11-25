@@ -21,6 +21,7 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.mediaserver import MediaServerSubtitleTrack as _SchemaMediaServerSubtitleTrack
 
 _STREAM_CHUNK_SIZE = 256 * 1024
+_AUDIO_STREAM_CHUNK_SIZE = 64 * 1024
 _STRM_MAX_BYTES = 16 * 1024
 _STREAM_MAX_REDIRECTS = 5
 _FILE_TICKET_PREFIX = "file."
@@ -38,6 +39,37 @@ _AUDIO_EXTENSIONS = frozenset(
         ".oga", ".ogg", ".opus", ".pcm", ".tak", ".tta", ".wav", ".wma", ".wv",
     }
 )
+_AUDIO_MIME_TYPES = {
+    ".aac": "audio/aac",
+    ".ac3": "audio/ac3",
+    ".aif": "audio/aiff",
+    ".aifc": "audio/aiff",
+    ".aiff": "audio/aiff",
+    ".alac": "audio/mp4",
+    ".amr": "audio/amr",
+    ".ape": "audio/x-ape",
+    ".caf": "audio/x-caf",
+    ".dff": "audio/x-dff",
+    ".dsf": "audio/x-dsf",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".m4b": "audio/mp4",
+    ".m4p": "audio/mp4",
+    ".mid": "audio/midi",
+    ".midi": "audio/midi",
+    ".mka": "audio/x-matroska",
+    ".mp3": "audio/mpeg",
+    ".mpc": "audio/x-musepack",
+    ".oga": "audio/ogg",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".pcm": "audio/L16",
+    ".tak": "audio/x-tak",
+    ".tta": "audio/x-tta",
+    ".wav": "audio/wav",
+    ".wma": "audio/x-ms-wma",
+    ".wv": "audio/x-wavpack",
+}
 _SUBTITLE_EXTENSIONS = frozenset({".ass", ".smi", ".srt", ".ssa", ".sub", ".sup", ".vtt"})
 _SUBTITLE_MIME_TYPES = {
     ".ass": "text/x-ssa",
@@ -560,12 +592,21 @@ def _parse_range_header(range_header: Optional[str], size: int) -> tuple[int, in
     return start, end, status.HTTP_206_PARTIAL_CONTENT
 
 
-def _file_stream_response(path: Path, range_header: Optional[str]) -> StreamingResponse:
+def _file_stream_response(
+    path: Path,
+    range_header: Optional[str],
+    *,
+    head_only: bool = False,
+) -> StreamingResponse:
     """
     以有界内存和 HTTP Range 语义读取本地媒体或字幕文件。
 
+    - 对音频显式返回标准 IANA MIME 类型并采用较小分片（64KB），便于移动端播放器在无后缀流 URL 下立即边加载边播放；
+    - 支持 `HEAD` 元数据探测请求，仅返回长度、MIME 与 Range 头而不读取文件内容。
+
     :param path: 已由媒体服务器条目或同名字幕发现的本地文件
     :param range_header: 客户端 Range 请求头
+    :param head_only: 为 True 时只返回响应头而不输出正文
     :return: 带正确长度及 Content-Range 的流式响应
     """
     try:
@@ -587,7 +628,22 @@ def _file_stream_response(path: Path, range_header: Optional[str]) -> StreamingR
     }
     if response_status == status.HTTP_206_PARTIAL_CONTENT:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-    content_type = _SUBTITLE_MIME_TYPES.get(path.suffix.casefold()) or mimetypes.guess_type(path.name)[0]
+    suffix = path.suffix.casefold()
+    content_type = (
+        _SUBTITLE_MIME_TYPES.get(suffix)
+        or _AUDIO_MIME_TYPES.get(suffix)
+        or mimetypes.guess_type(path.name)[0]
+    )
+    chunk_size = _AUDIO_STREAM_CHUNK_SIZE if suffix in _AUDIO_EXTENSIONS else _STREAM_CHUNK_SIZE
+
+    if head_only:
+        file.close()
+        return StreamingResponse(
+            iter(()),
+            status_code=response_status,
+            media_type=content_type or "application/octet-stream",
+            headers=headers,
+        )
 
     def chunks() -> Iterator[bytes]:
         """
@@ -599,7 +655,7 @@ def _file_stream_response(path: Path, range_header: Optional[str]) -> StreamingR
         try:
             file.seek(start)
             while remaining > 0:
-                chunk = file.read(min(_STREAM_CHUNK_SIZE, remaining))
+                chunk = file.read(min(chunk_size, remaining))
                 if not chunk:
                     break
                 remaining -= len(chunk)
@@ -707,6 +763,8 @@ def _remote_stream_response(
     range_header: Optional[str],
     configured_hosts: set[str],
     extra_headers: Optional[dict[str, str]] = None,
+    *,
+    head_only: bool = False,
 ) -> StreamingResponse:
     """
     代理媒体服务器或 STRM 上游流，并保留其真实的 Range 响应。
@@ -758,6 +816,18 @@ def _remote_stream_response(
         if key in upstream.headers
     }
     response_headers["Cache-Control"] = "private, no-store"
+    media_type = upstream.headers.get("Content-Type", "application/octet-stream")
+    upstream_status = upstream.status_code
+
+    if head_only:
+        context.__exit__(None, None, None)
+        client.close()
+        return StreamingResponse(
+            iter(()),
+            status_code=upstream_status,
+            media_type=media_type,
+            headers=response_headers,
+        )
 
     def chunks() -> Iterator[bytes]:
         """
@@ -775,7 +845,7 @@ def _remote_stream_response(
 
     return StreamingResponse(
         chunks(),
-        status_code=upstream.status_code,
-        media_type=upstream.headers.get("Content-Type", "application/octet-stream"),
+        status_code=upstream_status,
+        media_type=media_type,
         headers=response_headers,
     )
