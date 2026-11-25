@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import inspect
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextvars import ContextVar
 from typing import Any, Optional
 
 from app.runtime.correlation import correlation_scope
@@ -18,6 +19,12 @@ from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.observability import observe_duration
 from app.schemas.types import EventType
 
+# 标记当前调用栈正在执行 SystemError 处理器；线程池与协程按上下文快照继承。
+_HANDLING_SYSTEM_ERROR: ContextVar[bool] = ContextVar(
+    "handling_system_error",
+    default=False,
+)
+
 
 def _instance_binding_scope(class_name: str) -> AbstractContextManager[None]:
     """
@@ -27,6 +34,35 @@ def _instance_binding_scope(class_name: str) -> AbstractContextManager[None]:
     命中这里，但缓存里没有它们的等级覆盖记录，过滤时自然回落全局等级。
     """
     return bind_plugin_instance(class_name) if class_name else nullcontext()
+
+
+@contextmanager
+def system_error_handling_scope(event_type: object) -> Iterator[None]:
+    """
+    在 SystemError 处理器调用栈内标记错误通知上下文，其他事件保持原上下文。
+
+    处理器发送错误通知时，渠道失败会在同一调用栈内再次产生 SystemError；
+    该标记供事件总线识别并停止这类递归广播。
+
+    :param event_type: 当前处理的事件类型
+    """
+    if event_type != EventType.SystemError:
+        yield
+        return
+    token = _HANDLING_SYSTEM_ERROR.set(True)
+    try:
+        yield
+    finally:
+        _HANDLING_SYSTEM_ERROR.reset(token)
+
+
+def is_handling_system_error() -> bool:
+    """
+    判断当前调用栈是否源自 SystemError 处理器。
+
+    :return: 处于 SystemError 处理器或其继承上下文的派生调用中时返回 True
+    """
+    return _HANDLING_SYSTEM_ERROR.get()
 
 
 class EventDispatcher:
@@ -307,7 +343,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ), _instance_binding_scope(class_name):
+                ), _instance_binding_scope(class_name), system_error_handling_scope(event.event_type):
                     method(event)
             except Exception as err:
                 self._error_handler(
@@ -340,7 +376,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ), _instance_binding_scope(class_name):
+                ), _instance_binding_scope(class_name), system_error_handling_scope(event.event_type):
                     method(event)
             except Exception as err:
                 self._error_handler(
@@ -366,7 +402,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ), _instance_binding_scope(class_name):
+                ), _instance_binding_scope(class_name), system_error_handling_scope(event.event_type):
                     if inspect.iscoroutinefunction(method):
                         await method(event)
                     elif binding.run_sync_in_threadpool or not class_name:
@@ -405,7 +441,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ), _instance_binding_scope(class_name):
+                ), _instance_binding_scope(class_name), system_error_handling_scope(event.event_type):
                     if inspect.iscoroutinefunction(method):
                         await method(event)
                     elif run_sync_in_threadpool or binding.run_sync_in_threadpool or not class_name:
