@@ -2,7 +2,10 @@
 插件能力投影的隔离契约测试。
 """
 
+from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.schemas.category import ClassificationFieldDefinition
@@ -296,6 +299,72 @@ def test_projection_exposes_remote_bundle_hash_for_source_and_virtual_instances(
     updated_hash = projection.remotes("Demo")[0]["bundle_hash"]
     assert len(updated_hash) == 12
     assert updated_hash != first_hash
+
+
+@pytest.mark.parametrize(
+    ("source_plugin_id", "dist_path"),
+    [
+        pytest.param(None, "dist/../../outside", id="parent-segment"),
+        pytest.param(None, "dist\\assets", id="backslash"),
+        pytest.param("../outside", "dist/assets", id="plugin-dir-escape"),
+        pytest.param(None, "dist/missing", id="missing-entry"),
+        pytest.param(None, "dist/linked", id="entry-symlink-escape"),
+    ],
+)
+def test_projection_omits_bundle_hash_for_unsafe_or_missing_remote_entry(tmp_path, source_plugin_id, dist_path):
+    """
+    联邦产物路径越界、指向插件目录之外或入口文件不存在时，remotes 仍正常输出但不附带 bundle_hash。
+    """
+    plugins_root = tmp_path / "plugins"
+    (plugins_root / "demo" / "dist" / "assets").mkdir(parents=True)
+    (plugins_root / "demo" / "dist" / "assets" / "remoteEntry.js").write_text("export {};\n", encoding="utf-8")
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    (outside_dir / "remoteEntry.js").write_text("export const leaked = true;\n", encoding="utf-8")
+    linked_dir = plugins_root / "demo" / "dist" / "linked"
+    linked_dir.mkdir(parents=True)
+    (linked_dir / "remoteEntry.js").symlink_to(outside_dir / "remoteEntry.js")
+
+    plugin = _Plugin(
+        plugin_version="2.0.0",
+        plugin_source_id=source_plugin_id,
+        get_render_mode=lambda: ("vue", dist_path),
+    )
+    projection = PluginProjection(
+        {"Demo": plugin},
+        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+        plugins_root=plugins_root,
+    )
+
+    remote = projection.remotes()[0]
+    assert remote["version"] == "2.0.0"
+    assert "bundle_hash" not in remote
+
+
+def test_projection_omits_bundle_hash_when_remote_entry_is_unreadable(tmp_path, monkeypatch):
+    """
+    读取 remoteEntry.js 失败时不中断 remotes 输出，只省略 bundle_hash。
+    """
+    assets_dir = tmp_path / "demo" / "dist" / "assets"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "remoteEntry.js").write_text("export {};\n", encoding="utf-8")
+
+    def _raise_os_error(_path):
+        """
+        模拟文件在检查后被移除或无权读取。
+        """
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_bytes", _raise_os_error)
+    projection = PluginProjection(
+        {"Demo": _Plugin(plugin_version="2.0.0", get_render_mode=lambda: ("vue", "dist/assets"))},
+        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+        plugins_root=tmp_path,
+    )
+
+    remote = projection.remotes()[0]
+    assert remote["url"].startswith("/Demo/dist/assets")
+    assert "bundle_hash" not in remote
 
 
 def test_projection_exposes_source_identity_for_virtual_frontend_instance():
