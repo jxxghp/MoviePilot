@@ -28,6 +28,7 @@ from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
 from app.db.models.authorization import ChannelAuthorization, ChannelBinding, ChannelRuleTaskGrant
 from app.db.models.downloadhistory import DownloadHistory
+from app.db.models.message import Message as MessageHistory
 from app.db.models.outbox import OutboxMessage
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
@@ -44,14 +45,13 @@ from app.schemas.types import EventType, NotificationChannel
 @pytest.fixture
 def channel_authorization(db, monkeypatch):
     """
-    装配真实临时数据库授权服务，恢复进程服务并清理新增成员和内部账号。
+    装配真实临时数据库授权服务，恢复进程服务并清理新增成员、内部账号及消息历史。
 
     :param db: 共享隔离库的水位清理工具
     :param monkeypatch: 当前用例的配置函数替换工具
     :yields: 授权服务、启用渠道配置及真实用户仓储
     """
-    db.watermark(User)
-    db.watermark(OutboxMessage)
+    db.watermark(User, OutboxMessage, MessageHistory)
     configs = [
         NotificationConf(id="telegram-a", name="机器人A", type="telegram", enabled=True),
         NotificationConf(id="telegram-b", name="机器人B", type="telegram", enabled=True),
@@ -712,12 +712,19 @@ def test_manual_revocation_stops_existing_admin_interactions_before_dispatch(
         chain.handle_message(NotificationChannel.Telegram, "机器人A", "42", "成员", text,
                              callback_data=callback, original_chat_id="-100", is_channel_admin=True)
 
+    with SessionFactory() as session:
+        history_before = set(session.scalars(select(MessageHistory.id)))
     send_old_interaction()
     dispatch.assert_called_once()
+    with SessionFactory() as session:
+        accepted_history = set(session.scalars(select(MessageHistory.id))) - history_before
+    assert len(accepted_history) == (1 if callback is None else 0)
     service.update(member.id, status="disabled", role="admin", scopes=(), reviewer_id=1)
     send_old_interaction()
     dispatch.assert_called_once()
     assert reply.call_args.args[0].original_chat_id == "-100"
+    with SessionFactory() as session:
+        assert set(session.scalars(select(MessageHistory.id))) - history_before == accepted_history
 
 
 def test_member_can_search_select_download_and_subscribe_without_ai(channel_authorization, monkeypatch):
