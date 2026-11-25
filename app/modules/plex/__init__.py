@@ -95,18 +95,20 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def user_authenticate(self, credentials: AuthCredentials, service_name: Optional[str] = None) \
             -> Optional[AuthCredentials]:
         """
-        通过 Plex 账号完成辅助认证，并验证服务器访问能力。
+        通过 Plex 账号密码或直接令牌完成认证，并验证服务器访问能力。
 
         每次尝试前发送认证拦截事件；被取消的实例不认证。邮箱登录成功后用户名替换为 Plex 规范用户名。
 
-        :param credentials: 密码授权凭据；成功后原地更新令牌、渠道、服务名和规范用户名
+        :param credentials: 密码或 `token` 授权凭据；成功后原地更新令牌、渠道、服务名和规范用户名
         :param service_name: 要认证的实例名称；省略时依次尝试全部实例
         :return: 成功时返回修改后的原凭据；不支持的授权类型、无可用实例或认证失败时返回 None
         """
-        # Plex认证
-        if not credentials or credentials.grant_type != "password":
+        # Plex认证（支持密码认证及 2FA 账号直接提交 X-Plex-Token 绑定）
+        if not credentials or credentials.grant_type not in {"password", "token"}:
             return None
-        if credentials.username is None or credentials.password is None:
+        if credentials.grant_type == "password" and (credentials.username is None or credentials.password is None):
+            return None
+        if credentials.grant_type == "token" and not (credentials.token or "").strip():
             return None
         # 确定要认证的服务器列表
         servers: Iterable[tuple[Optional[str], Plex]]
@@ -118,18 +120,27 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             servers = self.get_instances().items()
         # 遍历要认证的服务器
         for name, server in servers:
-            service_name = name or self.get_name()
+            resolved_service = name or self.get_name()
             # 触发认证拦截事件
             intercept_event = eventmanager.send_event(
                 etype=ChainEventType.AuthIntercept,
                 data=AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
-                                              service=service_name, status="triggered")
+                                              service=resolved_service, status="triggered")
             )
             if intercept_event and isinstance(intercept_event.event_data, AuthInterceptCredentials):
                 intercept_data = intercept_event.event_data
                 if intercept_data.cancel:
                     continue
-            auth_result = server.authenticate(credentials.username, credentials.password)
+            if credentials.grant_type == "token":
+                verified_user = server.verify_user_token(credentials.token or "")
+                if verified_user is not None:
+                    credentials.channel = self.get_name()
+                    credentials.service = name
+                    if verified_user:
+                        credentials.username = verified_user
+                    return credentials
+                continue
+            auth_result = server.authenticate(credentials.username or "", credentials.password or "")
             if auth_result:
                 token, username = auth_result
                 credentials.channel = self.get_name()
@@ -511,6 +522,8 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         item_id: Union[str, int],
         item_type: Optional[str],
         media_source_id: Optional[str] = None,
+        play_session_id: Optional[str] = None,
+        user_token: Optional[str] = None,
     ) -> Optional[str]:
         """
         返回 Plex 原始音视频文件流地址。
@@ -519,12 +532,24 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param item_id: Plex 条目标识
         :param item_type: 媒体服务器返回的条目类型，只接受具体音视频
         :param media_source_id: 可选指定 MediaPart ID
+        :param play_session_id: 可选本次播放会话标识
+        :param user_token: 可选用户级访问令牌
         :return: 原始媒体流地址；实例不可用或条目不是音视频时返回 None
         """
         if (item_type or "").casefold() not in {"movie", "episode", "audio", "music", "track"}:
             return None
         server_obj = self.get_instance(server)
-        return server_obj.get_stream_url(str(item_id), media_source_id=media_source_id) if server_obj else None
+        if not server_obj:
+            return None
+        try:
+            return server_obj.get_stream_url(
+                str(item_id),
+                media_source_id=media_source_id,
+                play_session_id=play_session_id,
+                user_token=user_token,
+            )
+        except TypeError:
+            return server_obj.get_stream_url(str(item_id), media_source_id=media_source_id)
 
     def mediaserver_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None

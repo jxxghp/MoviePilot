@@ -194,6 +194,8 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         item_id: Union[str, int],
         item_type: Optional[str],
         media_source_id: Optional[str] = None,
+        play_session_id: Optional[str] = None,
+        user_token: Optional[str] = None,
     ) -> Optional[str]:
         """
         委托客户端获取支持 Range 的原始媒体流地址；未实现时返回 None。
@@ -202,18 +204,74 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         :param item_id: 媒体服务器条目标识
         :param item_type: 媒体服务器返回的条目类型
         :param media_source_id: 可选指定的多版本媒体源标识
+        :param play_session_id: 可选本次播放会话标识，用于与实时会话关联
+        :param user_token: 可选用户级访问令牌
         :return: 上游媒体流地址；当前适配器不支持时返回 None
         """
         server_obj = self.get_instance(server)
         getter = getattr(server_obj, "get_stream_url", None)
         if not callable(getter):
             return None
+        extra: dict[str, Any] = {}
+        if media_source_id:
+            extra["media_source_id"] = media_source_id
+        if play_session_id:
+            extra["play_session_id"] = play_session_id
+        if user_token:
+            extra["user_token"] = user_token
         try:
-            if media_source_id:
-                return cast(Optional[str], getter(str(item_id), item_type, media_source_id=media_source_id))
-            return cast(Optional[str], getter(str(item_id), item_type))
+            return cast(Optional[str], getter(str(item_id), item_type, **extra))
         except TypeError:
+            if media_source_id:
+                try:
+                    return cast(Optional[str], getter(str(item_id), item_type, media_source_id=media_source_id))
+                except TypeError:
+                    pass
             return cast(Optional[str], getter(str(item_id), item_type))
+
+    def mediaserver_playback_session(
+        self,
+        server: str,
+        item_id: Union[str, int],
+        media_source_id: Optional[str] = None,
+        username: Optional[str] = None,
+        user_token: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """
+        委托媒体服务器客户端准备播放会话上下文（官方 PlaySessionId 与同源流会话头）。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: 媒体条目标识
+        :param media_source_id: 可选多版本媒体源标识
+        :param username: 可选 MoviePilot 用户名
+        :param user_token: 可选当前用户绑定的访问令牌
+        :param client_id: 客户端匿名稳定设备标识
+        :param device_name: 客户端设备展示名
+        :param platform: 客户端平台标识
+        :param app_version: 客户端版本号
+        :return: 包含 `play_session_id`、`media_source_id`、`stream_headers` 与 `sync_mode` 的字典；不支持时返回 None
+        """
+        server_obj = self.get_instance(server)
+        preparer = getattr(server_obj, "prepare_playback_session", None)
+        if not callable(preparer):
+            return None
+        return cast(
+            Optional[dict[str, Any]],
+            preparer(
+                str(item_id),
+                media_source_id=media_source_id,
+                username=username,
+                user_token=user_token,
+                client_id=client_id,
+                device_name=device_name,
+                platform=platform,
+                app_version=app_version,
+            ),
+        )
 
     def mediaserver_subtitle_url(
         self, server: str, item_id: Union[str, int], subtitle_id: str
@@ -409,9 +467,23 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         is_paused: bool = False,
         state: str = "playing",
         username: Optional[str] = None,
-    ) -> Optional[bool]:
+        play_session_id: Optional[str] = None,
+        event_name: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+        play_method: str = "DirectPlay",
+        playback_time_ms: Optional[int] = None,
+        audio_stream_index: Optional[int] = None,
+        subtitle_stream_index: Optional[int] = None,
+        user_token: Optional[str] = None,
+        started_reported: bool = False,
+        allow_userdata_write: bool = True,
+        scrobbled: bool = False,
+    ) -> Optional[Union[bool, dict[str, Any]]]:
         """
-        向媒体服务器回传客户端的播放进度状态。
+        向媒体服务器回传客户端的播放进度与实时会话状态。
 
         :param server: 媒体服务器配置名称
         :param item_id: 条目标识
@@ -419,26 +491,66 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         :param media_source_id: 可选媒体源标识
         :param duration_ms: 可选总时长（毫秒）
         :param is_paused: 是否暂停
-        :param state: 事件状态：playing / paused / stopped
+        :param state: 事件状态：started / playing / paused / stopped
         :param username: 可选用户名
-        :return: 服务端回传成功返回 True；不支持时返回 None
+        :param play_session_id: 可选本次播放会话标识
+        :param event_name: 可选细分播放事件名
+        :param client_id: 客户端匿名安装标识
+        :param device_name: 客户端设备展示名
+        :param platform: 客户端平台标识
+        :param app_version: 客户端版本号
+        :param play_method: 播放方式
+        :param playback_time_ms: 本次会话累计有效播放耗时（毫秒）
+        :param audio_stream_index: 当前选中服务端音轨序号
+        :param subtitle_stream_index: 当前选中服务端字幕序号
+        :param user_token: 可选当前用户绑定的访问令牌
+        :param started_reported: 后端会话表记录的是否已发送过起播事件
+        :param allow_userdata_write: 是否允许本轮执行 API Key 兜底 UserData 写入
+        :param scrobbled: 是否已向目标服务器提交完播记录
+        :return: 结构化同步回执字典或布尔值；适配器不支持时返回 None
         """
         server_obj = self.get_instance(server)
         reporter = getattr(server_obj, "report_progress", None)
         if not callable(reporter):
             return None
-        return cast(
-            bool,
-            reporter(
-                str(item_id),
-                position_ms=position_ms,
-                media_source_id=media_source_id,
-                duration_ms=duration_ms,
-                is_paused=is_paused,
-                state=state,
-                username=username,
-            ),
-        )
+        kwargs: dict[str, Any] = {
+            "position_ms": position_ms,
+            "media_source_id": media_source_id,
+            "duration_ms": duration_ms,
+            "is_paused": is_paused,
+            "state": state,
+            "username": username,
+            "play_session_id": play_session_id,
+            "event_name": event_name,
+            "client_id": client_id,
+            "device_name": device_name,
+            "platform": platform,
+            "app_version": app_version,
+            "play_method": play_method,
+            "playback_time_ms": playback_time_ms,
+            "audio_stream_index": audio_stream_index,
+            "subtitle_stream_index": subtitle_stream_index,
+            "user_token": user_token,
+            "started_reported": started_reported,
+            "allow_userdata_write": allow_userdata_write,
+            "scrobbled": scrobbled,
+        }
+        try:
+            return cast(Union[bool, dict[str, Any]], reporter(str(item_id), **kwargs))
+        except TypeError:
+            # 兼容只接受基础参数的旧版或插件媒体服务器客户端
+            return cast(
+                Union[bool, dict[str, Any]],
+                reporter(
+                    str(item_id),
+                    position_ms=position_ms,
+                    media_source_id=media_source_id,
+                    duration_ms=duration_ms,
+                    is_paused=is_paused,
+                    state=state,
+                    username=username,
+                ),
+            )
 
     def user_authenticate(
             self,

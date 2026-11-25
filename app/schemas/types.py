@@ -426,6 +426,8 @@ class SystemConfigKey(Enum):
     Downloaders = "Downloaders"
     # 媒体服务器配置
     MediaServers = "MediaServers"
+    # 用户级媒体服务器播放与会话同步的内部加密凭据；按用户名与服务器名隔离，不向客户端下发
+    MediaServerUserCredentials = "MediaServerUserCredentials"
     # 消息通知配置
     Notifications = "Notifications"
     # App 中心推送自动接入的内部凭据状态；按服务地址隔离，不通过通知渠道配置下发

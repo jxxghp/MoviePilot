@@ -5,6 +5,7 @@ Plex 客户端，负责媒体库同步、媒体身份查询、播放链接及 We
 import hashlib
 import json
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus, urlencode
@@ -25,7 +26,8 @@ from app.modules._base.plexbrowse import (
     plex_browse_items,
     plex_filter_options,
     plex_item_detail,
-    plex_report_progress,
+    plex_prepare_playback_session,
+    plex_report_progress_detail,
     plex_season_episodes,
     plex_seasons,
     plex_subtitle_url,
@@ -185,6 +187,7 @@ class Plex:
                 use_session=True,
             )
         self._sync_libraries = sync_libraries or []
+        self._managed_user_tokens: Dict[str, Tuple[str, float]] = {}
 
     def is_inactive(self) -> bool:
         """
@@ -228,6 +231,104 @@ class Plex:
             # 处理认证失败或网络错误等情况
             logger.error(f"Authentication failed: {e}")
         return None
+
+    def verify_user_token(self, token: str) -> Optional[str]:
+        """
+        验证用户提供的 Plex 访问令牌是否可访问当前服务器，并尽量读取对应用户名。
+
+        :param token: 待验证的 `X-Plex-Token`
+        :return: 验证通过时返回解析出的用户名（未能获取时返回空字符串）；令牌无效或无法访问时返回 None
+        """
+        clean_token = (token or "").strip()
+        if not clean_token or not self._host:
+            return None
+        base = self._host.rstrip("/")
+        headers = {
+            "X-Plex-Token": clean_token,
+            "Accept": "application/json",
+        }
+        try:
+            http = RequestUtils(headers=headers, timeout=min(self._timeout, 15))
+            res = http.get_res(f"{base}/")
+            if not res or res.status_code != 200:
+                return None
+            account_res = http.get_res(f"{base}/myplex/account")
+            if account_res and account_res.status_code == 200:
+                data = account_res.json() if account_res.text else {}
+                my_plex = data.get("MyPlex") if isinstance(data, dict) else None
+                if isinstance(my_plex, dict):
+                    username = my_plex.get("username") or my_plex.get("title")
+                    if username:
+                        return str(username)
+            return ""
+        except Exception as err:
+            logger.debug(f"校验 Plex 用户令牌失败：{err}")
+            return None
+
+    def _fetch_managed_user_token(self, clean_user: str) -> Optional[str]:
+        """
+        通过 plex.tv 共享服务器接口按用户名查找对应的托管/共享用户访问令牌。
+
+        :param clean_user: 已去空白的 MoviePilot 用户名
+        :return: 匹配到的用户令牌；未找到或请求失败时返回 None
+        """
+        machine_id = getattr(self._plex, "machineIdentifier", None)
+        if not machine_id or not self._token:
+            return None
+        try:
+            shared_res = RequestUtils(
+                headers={"X-Plex-Token": self._token, "Accept": "application/xml"},
+                timeout=min(self._timeout, 15),
+            ).get_res(f"https://plex.tv/api/servers/{machine_id}/shared_servers")
+            if not shared_res or shared_res.status_code != 200 or not shared_res.text:
+                return None
+            root = ET.fromstring(shared_res.text)
+        except Exception as err:
+            logger.debug(f"解析 Plex 共享/托管用户令牌失败：{err}")
+            return None
+        target = clean_user.casefold()
+        for elem in root.findall(".//SharedServer"):
+            u_name = (elem.attrib.get("username") or "").strip().casefold()
+            u_title = (elem.attrib.get("title") or "").strip().casefold()
+            u_email = (elem.attrib.get("email") or "").strip().casefold()
+            access_token = (elem.attrib.get("accessToken") or "").strip()
+            if access_token and target in {u_name, u_title, u_email}:
+                return access_token
+        return None
+
+    def _resolve_user_token(
+        self,
+        username: Optional[str] = None,
+        explicit_token: Optional[str] = None,
+    ) -> Tuple[str, bool]:
+        """
+        解析本次播放或上报应使用的 Plex 访问令牌。
+
+        优先级为：用户显式绑定的个人令牌 > 同名 Plex Home 托管用户令牌（10 分钟缓存）> 实例默认令牌。
+
+        :param username: 可选 MoviePilot 用户名
+        :param explicit_token: 可选用户已绑定的个人 `X-Plex-Token`
+        :return: `(有效令牌, 是否为用户显式绑定令牌)`
+        """
+        clean_explicit = (explicit_token or "").strip()
+        if clean_explicit:
+            return clean_explicit, True
+        clean_user = (username or "").strip()
+        if not clean_user or not self._plex:
+            return self._token or "", False
+        cache = getattr(self, "_managed_user_tokens", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._managed_user_tokens = cache
+        now = time.monotonic()
+        cached_entry = cache.get(clean_user)
+        if cached_entry and (now - cached_entry[1]) < 600.0:
+            return cached_entry[0], False
+        managed_token = self._fetch_managed_user_token(clean_user)
+        if managed_token:
+            cache[clean_user] = (managed_token, now)
+            return managed_token, False
+        return self._token or "", False
 
     _image_cache: Callable[
         [Callable[..., Optional[List[str]]]], Callable[..., Optional[List[str]]]
@@ -580,6 +681,44 @@ class Plex:
         _ = item_id
         return plex_subtitle_url(self._host or "", self._token or "", subtitle_id)
 
+    def prepare_playback_session(
+        self,
+        item_id: str,
+        *,
+        media_source_id: Optional[str] = None,
+        username: Optional[str] = None,
+        user_token: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        为 Plex 播放准备独立会话标识和同源拉流请求头。
+
+        :param item_id: Plex 条目标识
+        :param media_source_id: 可选 MediaPart 标识
+        :param username: 可选 MoviePilot 用户名
+        :param user_token: 可选用户已绑定的 `X-Plex-Token`
+        :param client_id: 客户端匿名稳定设备标识
+        :param device_name: 客户端设备展示名
+        :param platform: 客户端平台标识
+        :param app_version: 客户端版本号
+        :return: 包含 `play_session_id`、`media_source_id`、`stream_headers` 与 `sync_mode` 的字典
+        """
+        _ = item_id
+        token, _ = self._resolve_user_token(username=username, explicit_token=user_token)
+        if not token:
+            return None
+        return plex_prepare_playback_session(
+            token,
+            media_source_id=media_source_id,
+            client_id=client_id,
+            device_name=device_name,
+            platform=platform,
+            app_version=app_version,
+        )
+
     def report_progress(
         self,
         item_id: str,
@@ -590,17 +729,67 @@ class Plex:
         is_paused: bool = False,
         state: str = "playing",
         username: Optional[str] = None,
-    ) -> bool:
-        """向 Plex 回传客户端播放进度。"""
-        _ = media_source_id, username
-        return plex_report_progress(
-            self._plex,
+        play_session_id: Optional[str] = None,
+        event_name: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+        play_method: str = "DirectPlay",
+        playback_time_ms: Optional[int] = None,
+        audio_stream_index: Optional[int] = None,
+        subtitle_stream_index: Optional[int] = None,
+        user_token: Optional[str] = None,
+        started_reported: bool = False,
+        allow_userdata_write: bool = True,
+        scrobbled: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        直调 Plex `/:/timeline` 上报客户端实时播放状态，并在完播停止时按需补发 `/:/scrobble`。
+
+        若用户显式绑定的个人令牌失效（HTTP 401），立即回退到实例默认令牌确保本次进度不丢失，
+        同时通过 `token_invalid=True` 通知上层标记凭据失效。
+        """
+        _ = media_source_id, event_name, play_method, audio_stream_index, subtitle_stream_index, started_reported, allow_userdata_write
+        token, is_explicit = self._resolve_user_token(username=username, explicit_token=user_token)
+        if not self._host or not token:
+            return {"reported": False, "mode": "unsupported", "started_sent": False, "scrobbled": scrobbled}
+        result = plex_report_progress_detail(
+            self._host,
+            token,
             item_id,
             position_ms,
             duration_ms=duration_ms,
             is_paused=is_paused,
             state=state,
+            play_session_id=play_session_id,
+            client_id=client_id,
+            device_name=device_name,
+            platform=platform,
+            app_version=app_version,
+            playback_time_ms=playback_time_ms,
+            scrobbled=scrobbled,
         )
+        if result.get("token_invalid") and is_explicit and self._token and self._token != token:
+            fallback = plex_report_progress_detail(
+                self._host,
+                self._token,
+                item_id,
+                position_ms,
+                duration_ms=duration_ms,
+                is_paused=is_paused,
+                state=state,
+                play_session_id=play_session_id,
+                client_id=client_id,
+                device_name=device_name,
+                platform=platform,
+                app_version=app_version,
+                playback_time_ms=playback_time_ms,
+                scrobbled=scrobbled,
+            )
+            fallback["token_invalid"] = True
+            return fallback
+        return result
 
     def search_library_items(
         self,
@@ -1439,15 +1628,26 @@ class Plex:
             raise AttributeError("'NoneType' object has no attribute 'machineIdentifier'")
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
 
-    def get_stream_url(self, item_id: str, media_source_id: Optional[str] = None) -> Optional[str]:
+    def get_stream_url(
+        self,
+        item_id: str,
+        media_source_id: Optional[str] = None,
+        *,
+        play_session_id: Optional[str] = None,
+        user_token: Optional[str] = None,
+    ) -> Optional[str]:
         """
         从 Plex 条目解析单个原始媒体文件的服务端读取地址，支持按 part ID 选择版本。
 
         :param item_id: Plex 条目标识，可以是数字或 /library/metadata/ 路径
         :param media_source_id: 可选指定 MediaPart ID（多版本场景）
+        :param play_session_id: 保留兼容的会话标识（Plex 会话号通过请求头传递）
+        :param user_token: 可选用户绑定的 `X-Plex-Token`，优先用于拉流归属
         :return: 包含服务端鉴权参数的原始文件流地址；未连接或无法解析时返回 None
         """
-        if self._plex is None or not self._host or not self._token or not item_id:
+        _ = play_session_id
+        effective_token = (user_token or "").strip() or self._token
+        if self._plex is None or not self._host or not effective_token or not item_id:
             return None
         try:
             item = self.__fetch_item(item_id)
@@ -1464,7 +1664,7 @@ class Plex:
             if not part_key.startswith("/library/parts/"):
                 return None
             separator = "&" if "?" in part_key else "?"
-            return f"{self._host.rstrip('/')}{part_key}{separator}{urlencode({'X-Plex-Token': self._token})}"
+            return f"{self._host.rstrip('/')}{part_key}{separator}{urlencode({'X-Plex-Token': effective_token})}"
         except Exception:
             logger.warning("Plex 原始媒体流信息读取失败，尝试本地文件播放")
             return None

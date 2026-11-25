@@ -20,9 +20,6 @@
   "app/modules/jellyfin/__init__.py": {
     "F401": 1
   },
-  "app/modules/navidrome/__init__.py": {
-    "F401": 2
-  },
   "app/modules/slack/__init__.py": {
     "F401": 2
   },

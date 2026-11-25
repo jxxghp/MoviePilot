@@ -208,9 +208,25 @@ def test_emby_browse_filters_detail_seasons_episodes_and_subtitles() -> None:
     assert len(search_res) == 1
     assert search_res[0].type == MediaType.MOVIE.value
 
-    # 7. Progress report
-    http.post_res.return_value = Mock(status_code=204)
+    # 7. Progress report (API Key 兜底 UserData 与用户令牌实时 Sessions 双模式)
+    http.post_res.return_value = Mock(status_code=200)
     assert emby_report_progress(cfg, "ep-1", 120_000, media_source_id="src-4k", state="paused") is True
+    assert http.post_res.call_args.kwargs["json"]["PlaybackPositionTicks"] == 1_200_000_000
+
+    session_cfg = EmbyBrowseConfig(
+        host=cfg.host,
+        api_key="user-access-token",
+        user_id=cfg.user_id,
+        server_type=cfg.server_type,
+        api_prefix=cfg.api_prefix,
+        play_host=cfg.play_host,
+        server_id=cfg.server_id,
+        request_factory=lambda: http,
+        is_user_token=True,
+    )
+    http.post_res.reset_mock()
+    http.post_res.return_value = Mock(status_code=204)
+    assert emby_report_progress(session_cfg, "ep-1", 120_000, media_source_id="src-4k", state="paused") is True
     assert http.post_res.call_args.kwargs["json"]["PositionTicks"] == 1_200_000_000
 
 

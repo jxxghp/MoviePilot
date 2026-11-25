@@ -9,9 +9,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Optional
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from uuid import uuid4
 
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper
+from app.application.playback import sanitize_client_header_value
 from app.runtime.log import logger
 from app.schemas.mediaserver import (
     MediaServerBrowseItem,
@@ -88,6 +90,7 @@ class EmbyBrowseConfig:
     :param include_api_key_param: 是否在查询参数中附加 `api_key`
     :param image_api_key: 是否在图片 URL 中附加 `api_key` 参数
     :param play_url_builder: 可选自定义网页播放地址构造器
+    :param is_user_token: 当前 `api_key` 本身是否为已登录的用户级访问令牌（如极影视、绿联媒体库服务）
     """
 
     host: str
@@ -101,6 +104,123 @@ class EmbyBrowseConfig:
     include_api_key_param: bool = True
     image_api_key: bool = True
     play_url_builder: Optional[Callable[[str], Optional[str]]] = None
+    is_user_token: bool = False
+
+
+# 完播判定阈值：播放进度达到 90% 时自动触发已看标记
+_PLAYED_COMPLETION_RATIO = 0.9
+# 兜底 UserData 模式下最小写入位置（毫秒），避免 0~5 秒误触污染继续观看列表
+_MIN_RESUME_WRITE_MS = 5_000
+
+
+def emby_build_auth_headers(
+    token: str,
+    *,
+    client_id: Optional[str] = None,
+    device_name: Optional[str] = None,
+    app_version: Optional[str] = None,
+    server_type: str = "emby",
+) -> dict[str, str]:
+    """
+    构造 Emby 与 Jellyfin 标准客户端认证头，用于声明设备身份与绑定用户会话。
+
+    :param token: 用户级访问令牌或服务端令牌
+    :param client_id: 客户端稳定匿名设备标识
+    :param device_name: 客户端设备展示名
+    :param app_version: 客户端版本号
+    :param server_type: 媒体服务器类型标识
+    :return: 包含标准 `Authorization`（及 Emby 兼容 `X-Emby-Authorization`）的请求头字典
+    """
+    safe_device = sanitize_client_header_value(device_name, "MoviePilot")
+    safe_device_id = sanitize_client_header_value(client_id, "moviepilot-client")
+    safe_version = sanitize_client_header_value(app_version, "2.0.3", max_len=32)
+    safe_token = sanitize_client_header_value(token, "", max_len=512)
+    header_value = (
+        f'MediaBrowser Client="MoviePilot", '
+        f'Device="{safe_device}", '
+        f'DeviceId="{safe_device_id}", '
+        f'Version="{safe_version}", '
+        f'Token="{safe_token}"'
+    )
+    headers = {"Authorization": header_value}
+    if server_type != "jellyfin":
+        headers["X-Emby-Authorization"] = header_value
+    return headers
+
+
+def emby_prepare_playback_session(
+    cfg: EmbyBrowseConfig,
+    item_id: str,
+    *,
+    media_source_id: Optional[str] = None,
+    user_token: Optional[str] = None,
+    client_id: Optional[str] = None,
+    device_name: Optional[str] = None,
+    platform: Optional[str] = None,
+    app_version: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    在起播前向 Emby 系服务器申请官方 `PlaySessionId` 并生成同源流会话头。
+
+    仅在具备用户级访问令牌时调用 `PlaybackInfo` 申请官方会话；否则返回兜底会话标识与 `userdata` 同步模式。
+
+    :param cfg: Emby 系协议配置
+    :param item_id: 媒体条目标识
+    :param media_source_id: 可选指定的多版本媒体源标识
+    :param user_token: 可选当前用户绑定的访问令牌
+    :param client_id: 客户端匿名安装标识
+    :param device_name: 客户端设备名称
+    :param platform: 可选客户端平台标识，设备名为空时作为展示回退
+    :param app_version: 客户端版本号
+    :return: 包含 `play_session_id`、`media_source_id`、`stream_headers` 与 `sync_mode` 的字典
+    """
+    effective_token = (user_token or "").strip() or (cfg.api_key if cfg.is_user_token else "")
+    fallback_session = uuid4().hex
+    if not effective_token or not cfg.host or not item_id:
+        return {
+            "play_session_id": fallback_session,
+            "media_source_id": media_source_id,
+            "stream_headers": {},
+            "sync_mode": "userdata",
+        }
+
+    headers = emby_build_auth_headers(
+        effective_token,
+        client_id=client_id,
+        device_name=device_name or platform,
+        app_version=app_version,
+        server_type=cfg.server_type,
+    )
+    play_session_id = fallback_session
+    resolved_source_id = media_source_id
+    params: dict[str, Any] = {"UserId": cfg.user_id} if cfg.user_id else {}
+    url = f"{cfg.host}{cfg.api_prefix}Items/{quote(str(item_id), safe='')}/PlaybackInfo"
+    try:
+        res = cfg.request_factory().post_res(
+            url=url,
+            params=params,
+            headers=headers,
+            json={"UserId": cfg.user_id} if cfg.user_id else {},
+        )
+        if res and res.status_code == 200:
+            payload = res.json() or {}
+            server_session_id = str(payload.get("PlaySessionId") or "").strip()
+            if server_session_id:
+                play_session_id = server_session_id
+            if not resolved_source_id:
+                sources = payload.get("MediaSources") or []
+                first_source = next((val for val in sources if isinstance(val, Mapping) and val.get("Id")), None)
+                if first_source:
+                    resolved_source_id = str(first_source["Id"])
+    except Exception as err:
+        logger.debug(f"申请 {cfg.server_type} PlaybackInfo 会话失败：{err}")
+
+    return {
+        "play_session_id": play_session_id,
+        "media_source_id": resolved_source_id,
+        "stream_headers": headers,
+        "sync_mode": "session",
+    }
 
 
 def _ticks_to_ms(value: Any) -> Optional[int]:
@@ -795,17 +915,23 @@ def emby_stream_url(
     item_id: str,
     item_type: Optional[str],
     media_source_id: Optional[str] = None,
+    *,
+    play_session_id: Optional[str] = None,
+    user_token: Optional[str] = None,
 ) -> Optional[str]:
     """
-    为 Emby 系服务器构造支持 HTTP Range 的原始静态媒体流地址，支持指定多版本 `media_source_id`。
+    为 Emby 系服务器构造支持 HTTP Range 的原始静态媒体流地址，支持指定多版本 `media_source_id` 与会话标识。
 
     :param cfg: Emby 系协议配置
     :param item_id: 媒体条目标识
     :param item_type: 媒体类型，用于选择 Audio 或 Videos 端点
     :param media_source_id: 可选指定媒体源标识
+    :param play_session_id: 可选官方或本次播放会话标识，用于与实时进度会话关联
+    :param user_token: 可选用户级访问令牌，优先用于绑定同用户拉流连接
     :return: 上游原始媒体流地址；不可用时返回 None
     """
-    if not cfg.host or not cfg.api_key or not item_id:
+    effective_key = (user_token or "").strip() or cfg.api_key
+    if not cfg.host or not effective_key or not item_id:
         return None
     selected_source_id = media_source_id
     if not selected_source_id:
@@ -822,7 +948,7 @@ def emby_stream_url(
         selected_source_id = str(source["Id"])
 
     route = "Audio" if (item_type or "").casefold() in {"audio", "music", MediaType.MUSIC.value.casefold()} else "Videos"
-    play_session_id = hashlib.sha256(
+    resolved_session_id = (play_session_id or "").strip() or hashlib.sha256(
         f"{cfg.host}:{cfg.user_id}:{item_id}".encode("utf-8")
         if not media_source_id
         else f"{cfg.host}:{cfg.user_id}:{item_id}:{selected_source_id}".encode("utf-8")
@@ -830,8 +956,8 @@ def emby_stream_url(
     query = urlencode({
         "static": "true",
         "MediaSourceId": selected_source_id,
-        "PlaySessionId": play_session_id,
-        "api_key": cfg.api_key,
+        "PlaySessionId": resolved_session_id,
+        "api_key": effective_key,
     })
     return f"{cfg.host}{cfg.api_prefix}{route}/{quote(str(item_id), safe='')}/stream?{query}"
 
@@ -858,50 +984,375 @@ def emby_subtitle_url(cfg: EmbyBrowseConfig, item_id: str, subtitle_id: str) -> 
     )
 
 
+def _post_emby_session_event(
+    cfg: EmbyBrowseConfig,
+    endpoint: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+) -> tuple[bool, bool]:
+    """
+    向 Emby 系服务器发送单次会话生命周期事件，区分正常成功与 401 令牌失效。
+
+    :param cfg: Emby 系协议配置
+    :param endpoint: 相对 `api_prefix` 的会话端点路径
+    :param payload: 请求体 JSON 字典
+    :param headers: 客户端认证头
+    :return: `(是否成功, 是否为 401 令牌失效)`
+    """
+    url = f"{cfg.host}{cfg.api_prefix}{endpoint}"
+    try:
+        res = cfg.request_factory().post_res(url=url, headers=headers, json=payload)
+        if res is None:
+            return False, False
+        if res.status_code == 401:
+            return False, True
+        return res.status_code in {200, 204}, False
+    except Exception as err:
+        logger.debug(f"发送 {cfg.server_type} 会话事件 {endpoint} 失败：{err}")
+        return False, False
+
+
+def _emby_session_payload(
+    *,
+    item_id: str,
+    position_ms: int,
+    play_session_id: str,
+    media_source_id: Optional[str],
+    is_paused: bool,
+    state: str,
+    play_method: str,
+    event_name: Optional[str],
+    audio_stream_index: Optional[int],
+    subtitle_stream_index: Optional[int],
+) -> dict[str, Any]:
+    """
+    组装 Emby / Jellyfin 播放会话接口的标准请求体。
+
+    :return: 序列化就绪的会话事件字典
+    """
+    payload: dict[str, Any] = {
+        "ItemId": str(item_id),
+        "PositionTicks": max(0, int(position_ms)) * _TICKS_PER_MS,
+        "IsPaused": bool(is_paused or state == "paused"),
+        "IsMuted": False,
+        "CanSeek": True,
+        "PlayMethod": play_method or "DirectPlay",
+        "PlaySessionId": play_session_id,
+    }
+    if media_source_id:
+        payload["MediaSourceId"] = media_source_id
+    if state != "stopped":
+        default_event = "Pause" if payload["IsPaused"] else "TimeUpdate"
+        payload["EventName"] = event_name or ("Start" if state == "started" else default_event)
+    if audio_stream_index is not None:
+        payload["AudioStreamIndex"] = int(audio_stream_index)
+    if subtitle_stream_index is not None:
+        payload["SubtitleStreamIndex"] = int(subtitle_stream_index)
+    return payload
+
+
+def _emby_report_session_mode(
+    cfg: EmbyBrowseConfig,
+    *,
+    token: str,
+    item_id: str,
+    position_ms: int,
+    play_session_id: str,
+    media_source_id: Optional[str],
+    is_paused: bool,
+    state: str,
+    event_name: Optional[str],
+    client_id: Optional[str],
+    device_name: Optional[str],
+    app_version: Optional[str],
+    play_method: str,
+    audio_stream_index: Optional[int],
+    subtitle_stream_index: Optional[int],
+    started_reported: bool,
+) -> dict[str, Any]:
+    """
+    使用用户级访问令牌执行 Emby / Jellyfin 三段式实时播放会话上报。
+
+    若尚未发送起播事件，在收到首个 `playing`/`paused` 时自动补发 `POST /Sessions/Playing` 完成会话自愈。
+
+    :return: 包含 `reported`、`mode`、`started_sent`、`token_invalid` 的结构化回执
+    """
+    headers = emby_build_auth_headers(
+        token,
+        client_id=client_id,
+        device_name=device_name,
+        app_version=app_version,
+        server_type=cfg.server_type,
+    )
+    payload = _emby_session_payload(
+        item_id=item_id,
+        position_ms=position_ms,
+        play_session_id=play_session_id,
+        media_source_id=media_source_id,
+        is_paused=is_paused,
+        state=state,
+        play_method=play_method,
+        event_name=event_name,
+        audio_stream_index=audio_stream_index,
+        subtitle_stream_index=subtitle_stream_index,
+    )
+    started_sent = started_reported
+    if state == "started" or (not started_reported and state in {"playing", "paused"}):
+        start_payload = dict(payload)
+        start_payload["IsPaused"] = False if state == "started" else payload["IsPaused"]
+        start_payload["EventName"] = "Start"
+        ok, unauthorized = _post_emby_session_event(cfg, "Sessions/Playing", start_payload, headers)
+        if unauthorized:
+            return {"reported": False, "mode": "session", "started_sent": False, "token_invalid": True}
+        if ok:
+            started_sent = True
+        if state == "started":
+            return {"reported": ok, "mode": "session", "started_sent": started_sent, "token_invalid": False}
+
+    endpoint = "Sessions/Playing/Stopped" if state == "stopped" else "Sessions/Playing/Progress"
+    ok, unauthorized = _post_emby_session_event(cfg, endpoint, payload, headers)
+    if unauthorized:
+        return {"reported": False, "mode": "session", "started_sent": started_sent, "token_invalid": True}
+    return {"reported": ok, "mode": "session", "started_sent": started_sent, "token_invalid": False}
+
+
+def _post_emby_userdata_with_compat(
+    cfg: EmbyBrowseConfig,
+    *,
+    primary_url: str,
+    primary_params: dict[str, Any],
+    fallback_url: Optional[str],
+    fallback_params: Optional[dict[str, Any]],
+    json_body: Optional[dict[str, Any]],
+) -> bool:
+    """
+    向 Emby / Jellyfin 的 UserData 或 PlayedItems 端点写入用户观看数据，并在 Jellyfin 旧版 404 时回退兼容路径。
+
+    :return: 写入成功返回 True
+    """
+    try:
+        res = cfg.request_factory().post_res(url=primary_url, params=primary_params, json=json_body)
+        if res and res.status_code in {200, 204}:
+            return True
+        if fallback_url and (res is None or res.status_code in {404, 405}):
+            res2 = cfg.request_factory().post_res(
+                url=fallback_url,
+                params=fallback_params or _api_params(cfg),
+                json=json_body,
+            )
+            return bool(res2 and res2.status_code in {200, 204})
+        return False
+    except Exception as err:
+        logger.debug(f"兜底写入 {cfg.server_type} 播放进度失败：{err}")
+        return False
+
+
+def _emby_report_userdata_fallback(
+    cfg: EmbyBrowseConfig,
+    *,
+    item_id: str,
+    position_ms: int,
+    duration_ms: Optional[int],
+    state: str,
+    allow_userdata_write: bool,
+    token_invalid: bool,
+) -> dict[str, Any]:
+    """
+    在仅配置全局服务端 API Key（无用户级令牌）时，通过 UserData / PlayedItems 持久化断点与已看状态。
+
+    :return: 包含 `reported`、`mode="userdata"`、`userdata_written`、`needs_account_bind` 的结构化回执
+    """
+    base_result: dict[str, Any] = {
+        "reported": False,
+        "mode": "userdata",
+        "started_sent": False,
+        "userdata_written": False,
+        "token_invalid": token_invalid,
+        "needs_account_bind": True,
+        "detail": "当前使用 API Key 仅同步观看进度；绑定媒体服务器账号后可在仪表盘实时显示正在播放",
+    }
+    if not cfg.host or not cfg.api_key or not cfg.user_id:
+        return base_result
+    if state == "started":
+        base_result["reported"] = True
+        return base_result
+    if state == "playing" and not allow_userdata_write:
+        base_result["reported"] = True
+        return base_result
+
+    quoted_item = quote(str(item_id), safe="")
+    quoted_user = quote(str(cfg.user_id), safe="")
+    is_completed = bool(
+        state == "stopped"
+        and duration_ms
+        and duration_ms > 0
+        and (position_ms / duration_ms) >= _PLAYED_COMPLETION_RATIO
+    )
+    if is_completed:
+        if cfg.server_type == "jellyfin":
+            ok = _post_emby_userdata_with_compat(
+                cfg,
+                primary_url=f"{cfg.host}UserPlayedItems/{quoted_item}",
+                primary_params=_api_params(cfg, {"userId": cfg.user_id}),
+                fallback_url=f"{cfg.host}Users/{quoted_user}/PlayedItems/{quoted_item}",
+                fallback_params=_api_params(cfg),
+                json_body=None,
+            )
+        else:
+            ok = _post_emby_userdata_with_compat(
+                cfg,
+                primary_url=f"{cfg.host}{cfg.api_prefix}Users/{quoted_user}/PlayedItems/{quoted_item}",
+                primary_params=_api_params(cfg),
+                fallback_url=None,
+                fallback_params=None,
+                json_body=None,
+            )
+        base_result["reported"] = ok
+        base_result["userdata_written"] = ok
+        return base_result
+
+    if position_ms < _MIN_RESUME_WRITE_MS and state == "playing":
+        base_result["reported"] = True
+        return base_result
+
+    body = {"PlaybackPositionTicks": max(0, int(position_ms)) * _TICKS_PER_MS}
+    if cfg.server_type == "jellyfin":
+        ok = _post_emby_userdata_with_compat(
+            cfg,
+            primary_url=f"{cfg.host}UserItems/{quoted_item}/UserData",
+            primary_params=_api_params(cfg, {"userId": cfg.user_id}),
+            fallback_url=f"{cfg.host}Users/{quoted_user}/Items/{quoted_item}/UserData",
+            fallback_params=_api_params(cfg),
+            json_body=body,
+        )
+    else:
+        ok = _post_emby_userdata_with_compat(
+            cfg,
+            primary_url=f"{cfg.host}{cfg.api_prefix}Users/{quoted_user}/Items/{quoted_item}/UserData",
+            primary_params=_api_params(cfg),
+            fallback_url=None,
+            fallback_params=None,
+            json_body=body,
+        )
+    base_result["reported"] = ok
+    base_result["userdata_written"] = ok
+    return base_result
+
+
+def emby_report_progress_detail(
+    cfg: EmbyBrowseConfig,
+    item_id: str,
+    position_ms: int,
+    *,
+    media_source_id: Optional[str] = None,
+    duration_ms: Optional[int] = None,
+    is_paused: bool = False,
+    state: str = "playing",
+    play_session_id: Optional[str] = None,
+    event_name: Optional[str] = None,
+    client_id: Optional[str] = None,
+    device_name: Optional[str] = None,
+    platform: Optional[str] = None,
+    app_version: Optional[str] = None,
+    play_method: str = "DirectPlay",
+    audio_stream_index: Optional[int] = None,
+    subtitle_stream_index: Optional[int] = None,
+    user_token: Optional[str] = None,
+    started_reported: bool = False,
+    allow_userdata_write: bool = True,
+) -> dict[str, Any]:
+    """
+    按双轨策略将播放状态与进度回传给 Emby 系服务器。
+
+    具备用户级访问令牌时走完整 `Sessions/Playing*` 实时会话；令牌 401 失效或仅配置全局 API Key 时
+    自动降级写入 `UserData` / `PlayedItems` 确保断点与已看状态不丢失。
+
+    :return: 包含 `reported`、`mode`、`started_sent`、`userdata_written`、`token_invalid`、`needs_account_bind` 的回执字典
+    """
+    if not cfg.host or not item_id:
+        return {"reported": False, "mode": "unsupported", "started_sent": False, "needs_account_bind": False}
+    resolved_session_id = (play_session_id or "").strip() or hashlib.sha256(
+        f"{cfg.host}:{cfg.user_id}:{item_id}".encode("utf-8")
+    ).hexdigest()[:32]
+    external_user_token = (user_token or "").strip()
+    effective_user_token = external_user_token or (cfg.api_key if cfg.is_user_token else "")
+    if effective_user_token:
+        session_result = _emby_report_session_mode(
+            cfg,
+            token=effective_user_token,
+            item_id=item_id,
+            position_ms=position_ms,
+            play_session_id=resolved_session_id,
+            media_source_id=media_source_id,
+            is_paused=is_paused,
+            state=state,
+            event_name=event_name,
+            client_id=client_id,
+            device_name=device_name or platform,
+            app_version=app_version,
+            play_method=play_method,
+            audio_stream_index=audio_stream_index,
+            subtitle_stream_index=subtitle_stream_index,
+            started_reported=started_reported,
+        )
+        if not session_result.get("token_invalid") or not external_user_token or not cfg.api_key:
+            session_result.setdefault("needs_account_bind", bool(session_result.get("token_invalid")))
+            return session_result
+        return _emby_report_userdata_fallback(
+            cfg,
+            item_id=item_id,
+            position_ms=position_ms,
+            duration_ms=duration_ms,
+            state=state,
+            allow_userdata_write=allow_userdata_write,
+            token_invalid=True,
+        )
+    return _emby_report_userdata_fallback(
+        cfg,
+        item_id=item_id,
+        position_ms=position_ms,
+        duration_ms=duration_ms,
+        state=state,
+        allow_userdata_write=allow_userdata_write,
+        token_invalid=False,
+    )
+
+
 def emby_report_progress(
     cfg: EmbyBrowseConfig,
     item_id: str,
     position_ms: int,
     *,
     media_source_id: Optional[str] = None,
+    duration_ms: Optional[int] = None,
     is_paused: bool = False,
     state: str = "playing",
+    user_token: Optional[str] = None,
 ) -> bool:
     """
-    将客户端播放进度回传给 Emby 系服务器，同步继续观看和已看状态。
+    将客户端播放进度回传给 Emby 系服务器的布尔结果兼容入口。
 
     :param cfg: Emby 系协议配置
     :param item_id: 正在播放的条目标识
     :param position_ms: 当前播放位置（毫秒）
     :param media_source_id: 可选媒体源标识
+    :param duration_ms: 可选媒体总时长（毫秒）
     :param is_paused: 是否处于暂停状态
-    :param state: 事件状态：playing / paused / stopped
+    :param state: 事件状态：started / playing / paused / stopped
+    :param user_token: 可选用户级访问令牌
     :return: 服务端接收成功时返回 True
     """
-    if not cfg.host or not cfg.api_key or not item_id:
-        return False
-    endpoint = "Sessions/Playing/Stopped" if state == "stopped" else "Sessions/Playing/Progress"
-    play_session_id = hashlib.sha256(f"{cfg.host}:{cfg.user_id}:{item_id}".encode("utf-8")).hexdigest()[:32]
-    payload: dict[str, Any] = {
-        "ItemId": str(item_id),
-        "PositionTicks": max(0, int(position_ms)) * _TICKS_PER_MS,
-        "IsPaused": bool(is_paused or state == "paused"),
-        "PlayMethod": "DirectPlay",
-        "PlaySessionId": play_session_id,
-    }
-    if media_source_id:
-        payload["MediaSourceId"] = media_source_id
-    url = f"{cfg.host}{cfg.api_prefix}{endpoint}"
-    try:
-        res = cfg.request_factory().post_res(
-            url=url,
-            params=_api_params(cfg),
-            json=payload,
-        )
-        return bool(res and res.status_code in {200, 204})
-    except Exception as err:
-        logger.debug(f"回传 {cfg.server_type} 播放进度失败：{err}")
-        return False
+    result = emby_report_progress_detail(
+        cfg,
+        item_id,
+        position_ms,
+        media_source_id=media_source_id,
+        duration_ms=duration_ms,
+        is_paused=is_paused,
+        state=state,
+        user_token=user_token,
+    )
+    return bool(result.get("reported"))
 
 
 def emby_search_library(

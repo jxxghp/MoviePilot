@@ -631,26 +631,47 @@ def _validate_range_syntax(range_header: Optional[str]) -> None:
         )
 
 
+def _stream_origin(url: str) -> tuple[str, str, int]:
+    """
+    提取 HTTP(S) URL 的规范化源站三元组，用于控制跨源重定向时剥离上游会话头。
+
+    :param url: 待提取源站的地址
+    :return: `(scheme, hostname, port)` 三元组
+    """
+    parsed = urlsplit(url)
+    scheme = parsed.scheme.casefold()
+    hostname = (parsed.hostname or "").casefold().rstrip(".")
+    port = parsed.port or (443 if scheme == "https" else 80)
+    return scheme, hostname, port
+
+
 def _open_upstream_stream(
     url: str,
     range_header: Optional[str],
     configured_hosts: set[str],
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> tuple[Any, AbstractContextManager[Any], RequestUtils]:
     """
     打开媒体服务器或 STRM 上游流，并逐跳验证重定向地址。
 
+    仅在与初始上游完全同源的请求上附带 `extra_headers`，跨源重定向到网盘 CDN 等外部目标时自动剥离。
+
     :param url: 媒体服务器原始流或已解析的 STRM 地址
     :param range_header: 客户端 Range 请求头
     :param configured_hosts: 管理员明确配置的媒体服务器与存储主机名
+    :param extra_headers: 可选仅发往同源媒体服务器的会话关联请求头
     :return: 上游响应、负责关闭响应的上下文和 HTTP 客户端
     :raises HTTPException: 上游不可用、目标不安全或重定向次数超限时
     """
     client = RequestUtils(timeout=30, verify=True)
     current_url = url
+    initial_origin = _stream_origin(url)
     try:
         for _ in range(_STREAM_MAX_REDIRECTS + 1):
             _validate_stream_url(current_url, configured_hosts=configured_hosts)
             headers = {"Accept-Encoding": "identity"}
+            if extra_headers and _stream_origin(current_url) == initial_origin:
+                headers.update(extra_headers)
             if range_header:
                 headers["Range"] = range_header
             context = client.get_stream(
@@ -685,6 +706,7 @@ def _remote_stream_response(
     url: str,
     range_header: Optional[str],
     configured_hosts: set[str],
+    extra_headers: Optional[dict[str, str]] = None,
 ) -> StreamingResponse:
     """
     代理媒体服务器或 STRM 上游流，并保留其真实的 Range 响应。
@@ -692,11 +714,14 @@ def _remote_stream_response(
     :param url: 已解析的上游媒体地址
     :param range_header: 客户端 Range 请求头
     :param configured_hosts: 管理员明确配置的媒体服务器与存储主机名
+    :param extra_headers: 可选仅发往源媒体服务器同源主机的会话关联请求头
     :return: 流式响应
     :raises HTTPException: 上游错误或未实现所请求的 Range 时
     """
     _validate_range_syntax(range_header)
-    upstream, context, client = _open_upstream_stream(url, range_header, configured_hosts)
+    upstream, context, client = _open_upstream_stream(
+        url, range_header, configured_hosts, extra_headers=extra_headers
+    )
     if upstream.status_code == status.HTTP_416_RANGE_NOT_SATISFIABLE:
         headers = {key: upstream.headers[key] for key in ("Content-Range", "Accept-Ranges") if key in upstream.headers}
         context.__exit__(None, None, None)

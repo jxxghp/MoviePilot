@@ -5,8 +5,10 @@ Navidrome Subsonic/OpenSubsonic API 客户端。
 import hashlib
 import re
 import secrets
+import time
 from typing import Any, Dict, Generator, List, Optional
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
@@ -688,6 +690,105 @@ class Navidrome:
         if not url:
             return None
         return f"{url}/stream?{urlencode(self._params(id=item_id))}"
+
+    def prepare_playback_session(
+        self,
+        item_id: str,
+        *,
+        media_source_id: Optional[str] = None,
+        username: Optional[str] = None,
+        user_token: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        为 Navidrome 音乐播放生成本地会话上下文并声明 Subsonic scrobble 模式。
+        """
+        _ = item_id, username, user_token, client_id, device_name, platform, app_version
+        if not self.user:
+            return None
+        return {
+            "play_session_id": uuid4().hex,
+            "media_source_id": media_source_id,
+            "stream_headers": {},
+            "sync_mode": "scrobble",
+        }
+
+    def report_progress(
+        self,
+        item_id: str,
+        *,
+        position_ms: int,
+        media_source_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        is_paused: bool = False,
+        state: str = "playing",
+        username: Optional[str] = None,
+        play_session_id: Optional[str] = None,
+        event_name: Optional[str] = None,
+        client_id: Optional[str] = None,
+        device_name: Optional[str] = None,
+        platform: Optional[str] = None,
+        app_version: Optional[str] = None,
+        play_method: str = "DirectPlay",
+        playback_time_ms: Optional[int] = None,
+        audio_stream_index: Optional[int] = None,
+        subtitle_stream_index: Optional[int] = None,
+        user_token: Optional[str] = None,
+        started_reported: bool = False,
+        allow_userdata_write: bool = True,
+        scrobbled: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        通过 Subsonic `scrobble` 接口同步 Navidrome 正在播放状态与完播计数。
+
+        起播时上报 `submission=false` 激活正在播放列表；停止时若满足 Last.fm/Subsonic 规则
+        （已播 >= 50% 或累计听满 4 分钟）且尚未计次，则提交 `submission=true`。
+        """
+        _ = (
+            media_source_id,
+            is_paused,
+            username,
+            play_session_id,
+            event_name,
+            client_id,
+            device_name,
+            platform,
+            app_version,
+            play_method,
+            audio_stream_index,
+            subtitle_stream_index,
+            user_token,
+            allow_userdata_write,
+        )
+        if not self.user or not item_id:
+            return {"reported": False, "mode": "unsupported", "started_sent": started_reported, "scrobbled": scrobbled}
+        if state == "started" or (state == "playing" and not started_reported):
+            ok = self._call("scrobble", id=item_id, submission="false") is not None
+            return {
+                "reported": ok,
+                "mode": "scrobble",
+                "started_sent": ok or started_reported,
+                "scrobbled": scrobbled,
+            }
+        if state == "stopped":
+            if scrobbled:
+                return {"reported": True, "mode": "scrobble", "started_sent": started_reported, "scrobbled": True}
+            reached_half = bool(duration_ms and duration_ms > 0 and (position_ms / duration_ms) >= 0.5)
+            reached_four_min = (playback_time_ms is not None and playback_time_ms >= 240_000) or position_ms >= 240_000
+            if reached_half or reached_four_min:
+                ok = self._call("scrobble", id=item_id, submission="true", time=int(time.time() * 1000)) is not None
+                return {
+                    "reported": ok,
+                    "mode": "scrobble",
+                    "started_sent": started_reported,
+                    "scrobbled": ok,
+                }
+            return {"reported": True, "mode": "scrobble", "started_sent": started_reported, "scrobbled": False}
+        # Subsonic 协议无中途秒级进度上报接口，避免在心跳期无意义重复刷写
+        return {"reported": True, "mode": "scrobble", "started_sent": started_reported, "scrobbled": scrobbled}
 
     def refresh_root_library(self) -> bool:
         """

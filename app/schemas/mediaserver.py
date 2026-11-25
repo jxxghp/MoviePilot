@@ -237,6 +237,21 @@ class MediaServerSubtitleTrack(BaseModel):
     url: str = Field(description="当前 MoviePilot 实例的字幕流地址")
 
 
+MediaServerSyncMode = Literal["session", "userdata", "scrobble", "none"]
+MediaServerProgressReportMode = Literal["session", "userdata", "scrobble", "unsupported"]
+MediaServerBindingStatus = Literal["bound", "invalid", "unbound", "builtin", "unsupported"]
+MediaServerProgressEventName = Literal[
+    "Start",
+    "TimeUpdate",
+    "Pause",
+    "Unpause",
+    "Seek",
+    "AudioTrackChange",
+    "SubtitleTrackChange",
+    "Stop",
+]
+
+
 class MediaServerStreamInfo(BaseModel):
     """
     声明原生播放器使用的当前实例媒体流地址和外挂字幕。
@@ -244,6 +259,7 @@ class MediaServerStreamInfo(BaseModel):
 
     item_id: str = Field(description="已解析的媒体服务器条目标识")
     server: Optional[str] = Field(default=None, description="媒体服务器配置名称；单文件票据省略")
+    server_type: Optional[str] = Field(default=None, description="媒体服务器类型标识，例如 emby、jellyfin、plex")
     title: str = Field(description="媒体标题")
     content_url: str = Field(description="当前 MoviePilot 实例的媒体流地址")
     strm_url: Optional[str] = Field(
@@ -256,6 +272,11 @@ class MediaServerStreamInfo(BaseModel):
     subtitles: List[MediaServerSubtitleTrack] = Field(default_factory=list, description="同目录或媒体服务器提供的外挂字幕")
     lyrics_url: Optional[str] = Field(default=None, description="当前实例的同名 LRC 歌词流地址")
     media_source_id: Optional[str] = Field(default=None, description="本次播放绑定的媒体源标识")
+    play_session_id: Optional[str] = Field(default=None, description="本次播放会话唯一标识，用于关联流请求与心跳上报")
+    progress_sync_mode: Optional[MediaServerSyncMode] = Field(
+        default=None,
+        description="当前媒体服务器对该用户的有效进度同步模式：session、userdata、scrobble 或 none",
+    )
     resume_position_ms: Optional[int] = Field(default=None, description="服务端记录的断点续播位置（毫秒）")
     duration_ms: Optional[int] = Field(default=None, description="媒体总时长（毫秒）")
 
@@ -396,7 +417,7 @@ class MediaServerItemDetail(MediaServerBrowseItem):
 
 class MediaServerProgressReportRequest(BaseModel):
     """
-    客户端回传原生播放器播放进度的请求体。
+    客户端回传原生播放器播放进度与会话生命周期的请求体。
     """
 
     item_id: str = Field(description="正在播放的媒体服务器条目标识")
@@ -405,7 +426,86 @@ class MediaServerProgressReportRequest(BaseModel):
     position_ms: int = Field(default=0, ge=0, description="当前播放位置（毫秒）")
     duration_ms: Optional[int] = Field(default=None, ge=0, description="媒体总时长（毫秒）")
     is_paused: bool = Field(default=False, description="当前是否处于暂停状态")
-    state: Literal["playing", "paused", "stopped"] = Field(default="playing", description="回传事件状态")
+    state: Literal["started", "playing", "paused", "stopped"] = Field(
+        default="playing",
+        description="回传事件状态：started 起播、playing 播放中、paused 暂停中、stopped 停止",
+    )
+    event_name: Optional[MediaServerProgressEventName] = Field(
+        default=None,
+        description="细分播放事件名称，用于驱动 Emby 与 Jellyfin 的实时会话更新",
+    )
+    play_session_id: Optional[str] = Field(default=None, description="本次播放会话唯一标识")
+    client_id: Optional[str] = Field(default=None, description="客户端匿名安装设备标识，用于区分并发播放设备")
+    device_name: Optional[str] = Field(default=None, description="客户端设备展示名称，例如 iPhone 16 Pro")
+    platform: Optional[Literal["iOS", "Android", "HarmonyOS", "Web"]] = Field(
+        default=None,
+        description="客户端所属平台标识",
+    )
+    app_version: Optional[str] = Field(default=None, description="客户端应用版本号")
+    play_method: Literal["DirectPlay", "DirectStream", "Transcode"] = Field(
+        default="DirectPlay",
+        description="媒体流播放方式，默认直放 DirectPlay",
+    )
+    playback_time_ms: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="本次播放会话累计真实播放耗时（毫秒），供 Plex 与音乐记录使用",
+    )
+    audio_stream_index: Optional[int] = Field(default=None, ge=0, description="当前选中的服务端音轨序号")
+    subtitle_stream_index: Optional[int] = Field(default=None, ge=-1, description="当前选中的服务端字幕序号，-1 表示关闭")
+    seq: Optional[int] = Field(default=None, ge=0, description="同一播放会话内的单调递增事件序号，用于服务端防乱序")
+
+
+class MediaServerProgressReportResult(BaseModel):
+    """
+    播放进度与会话上报的执行回执。
+    """
+
+    reported: bool = Field(default=False, description="媒体服务器是否成功接收本次进度或状态更新")
+    mode: MediaServerProgressReportMode = Field(
+        default="unsupported",
+        description="本次实际采用的同步模式：session 实时会话、userdata 进度兜底、scrobble 音乐记录或 unsupported",
+    )
+    play_session_id: Optional[str] = Field(default=None, description="服务端确认的本次播放会话标识")
+    needs_account_bind: bool = Field(
+        default=False,
+        description="是否建议用户在个人设置中绑定或重新绑定媒体服务器账号以启用实时正在播放会话",
+    )
+    detail: Optional[str] = Field(default=None, description="面向诊断或提示的中文说明")
+
+
+class MediaServerAccountBinding(BaseModel):
+    """
+    当前用户与单个媒体服务器实例的账号绑定及同步能力状态，不含任何令牌或密码。
+    """
+
+    server: str = Field(description="媒体服务器配置名称")
+    server_type: str = Field(description="媒体服务器类型标识，例如 emby、jellyfin、plex")
+    sync_mode: MediaServerSyncMode = Field(
+        description="当前生效的同步模式：session 实时会话、userdata 仅进度同步、scrobble 音乐记录或 none",
+    )
+    supports_binding: bool = Field(description="是否支持为当前用户单独绑定媒体服务器账号令牌")
+    bound: bool = Field(description="当前用户是否已存在有效的绑定凭据")
+    status: MediaServerBindingStatus = Field(
+        description="绑定状态：bound 已绑定、invalid 凭据失效、unbound 未绑定、builtin 内置用户态、unsupported 暂不支持",
+    )
+    remote_username: Optional[str] = Field(default=None, description="已绑定的媒体服务器侧用户名")
+    source: Optional[Literal["manual", "auxiliary_auth"]] = Field(
+        default=None,
+        description="凭据来源：manual 手动绑定，auxiliary_auth 登录辅助认证自动捕获",
+    )
+    updated_at: Optional[int] = Field(default=None, description="凭据最近更新的 Unix 秒级时间戳")
+
+
+class MediaServerAccountBindRequest(BaseModel):
+    """
+    当前用户绑定媒体服务器账号令牌的请求体，密码仅用于一次性换取令牌且不落库。
+    """
+
+    server: str = Field(min_length=1, max_length=120, description="目标媒体服务器配置名称")
+    username: Optional[str] = Field(default=None, max_length=200, description="媒体服务器登录用户名或邮箱")
+    password: Optional[str] = Field(default=None, max_length=200, description="媒体服务器登录密码，仅用于一次性验证换取令牌")
+    token: Optional[str] = Field(default=None, max_length=512, description="可选直接访问令牌（主要用于 Plex 用户令牌绑定）")
 
 
 class MediaServerMusicStreamRequest(BaseModel):

@@ -44,6 +44,16 @@ from app.application.mediaserver import (
     MediaServerQueryService,
     get_mediaserver_configs,
 )
+from app.application.playback import (
+    BINDABLE_MEDIA_SERVER_TYPES,
+    delete_user_mediaserver_credential,
+    get_playback_session_registry,
+    get_user_mediaserver_credential,
+    list_user_mediaserver_bindings,
+    mark_user_mediaserver_credential_invalid,
+    resolve_server_sync_mode,
+    save_user_mediaserver_credential,
+)
 from app.application.storage import StorageHelper
 from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
@@ -54,6 +64,8 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.media import build_media_key, resolve_media_identity
+from app.schemas.mediaserver import MediaServerAccountBinding as _SchemaMediaServerAccountBinding
+from app.schemas.mediaserver import MediaServerAccountBindRequest as _SchemaMediaServerAccountBindRequest
 from app.schemas.mediaserver import MediaServerBrowseItem as _SchemaMediaServerBrowseItem
 from app.schemas.mediaserver import MediaServerBrowsePage as _SchemaMediaServerBrowsePage
 from app.schemas.mediaserver import MediaServerExistingEpisodes as _SchemaMediaServerExistingEpisodes
@@ -68,11 +80,15 @@ from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibr
 from app.schemas.mediaserver import MediaServerMusicStreamRequest as _SchemaMediaServerMusicStreamRequest
 from app.schemas.mediaserver import MediaServerPlayData as _SchemaMediaServerPlayData
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
+from app.schemas.mediaserver import MediaServerProgressReportMode as _SchemaMediaServerProgressReportMode
 from app.schemas.mediaserver import MediaServerProgressReportRequest as _SchemaMediaServerProgressReportRequest
+from app.schemas.mediaserver import MediaServerProgressReportResult as _SchemaMediaServerProgressReportResult
 from app.schemas.mediaserver import MediaServerStreamInfo as _SchemaMediaServerStreamInfo
 from app.schemas.mediaserver import MediaServerSubtitleTrack as _SchemaMediaServerSubtitleTrack
+from app.schemas.mediaserver import MediaServerSyncMode as _SchemaMediaServerSyncMode
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
@@ -179,12 +195,116 @@ def _find_music_stream_item(
     return match.server, item, path
 
 
+_VALID_CLIENT_PLATFORMS = frozenset({"iOS", "Android", "HarmonyOS", "Web"})
+
+
+def _extract_client_playback_context(request: Request) -> dict[str, Optional[str]]:
+    """
+    从请求头或查询参数提取客户端播放设备上下文，供会话创建和设备展示使用。
+
+    :param request: 当前 HTTP 请求对象
+    :return: 包含 `client_id`、`device_name`、`platform`、`app_version` 的上下文字典
+    """
+    raw_platform = (request.headers.get("x-mp-platform") or "").strip()
+    platform = raw_platform if raw_platform in _VALID_CLIENT_PLATFORMS else None
+    client_id = (request.headers.get("x-mp-client-id") or request.query_params.get("client_id") or "").strip() or None
+    device_name = (request.headers.get("x-mp-device-name") or "").strip() or None
+    app_version = (request.headers.get("x-mp-app-version") or "").strip() or None
+    return {
+        "client_id": client_id,
+        "device_name": device_name,
+        "platform": platform,
+        "app_version": app_version,
+    }
+
+
+def _find_mediaserver_config(server: Optional[str]) -> Optional[_SchemaMediaServerConf]:
+    """
+    按配置名称查找已启用的媒体服务器配置。
+
+    :param server: 媒体服务器配置名称
+    :return: 匹配的配置对象；未找到或配置未初始化时返回 None
+    """
+    if not server:
+        return None
+    try:
+        configs = get_mediaserver_configs()
+    except Exception:
+        return None
+    return next((conf for conf in configs if conf.enabled and conf.name == server), None)
+
+
+def _prepare_manifest_playback_session(
+    *,
+    server_name: Optional[str],
+    item_id: str,
+    media_source_id: Optional[str],
+    userinfo: _SchemaTokenPayload,
+    request: Request,
+) -> tuple[Optional[str], Optional[str], _SchemaMediaServerSyncMode]:
+    """
+    为 `stream-info` / `stream-info/music` 准备上游播放会话并登记进程内注册表。
+
+    :param server_name: 媒体服务器配置名称；单文件票据为 None
+    :param item_id: 媒体条目标识
+    :param media_source_id: 可选多版本媒体源标识
+    :param userinfo: 当前已验证用户的令牌载荷
+    :param request: 当前 HTTP 请求对象
+    :return: `(play_session_id, server_type, progress_sync_mode)`
+    """
+    if not server_name:
+        return None, None, "none"
+    conf = _find_mediaserver_config(server_name)
+    server_type = (conf.type or "").strip().casefold() if conf and conf.type else None
+    cred = get_user_mediaserver_credential(userinfo.username, server_name)
+    sync_mode = resolve_server_sync_mode(server_type, cred, conf.config if conf else None)
+    client_ctx = _extract_client_playback_context(request)
+    session_info = MediaServerChain().prepare_playback_session(
+        server=server_name,
+        item_id=item_id,
+        media_source_id=media_source_id,
+        username=userinfo.username,
+        user_token=cred.token if cred else None,
+        client_id=client_ctx["client_id"],
+        device_name=client_ctx["device_name"],
+        platform=client_ctx["platform"],
+        app_version=client_ctx["app_version"],
+    )
+    if not isinstance(session_info, dict):
+        return None, server_type, sync_mode
+    upstream_session_id = str(session_info.get("play_session_id") or "").strip() or None
+    reported_sync_mode = session_info.get("sync_mode")
+    if reported_sync_mode in {"session", "userdata", "scrobble", "none"}:
+        sync_mode = reported_sync_mode
+    raw_headers = session_info.get("stream_headers")
+    upstream_headers = {str(k): str(v) for k, v in raw_headers.items()} if isinstance(raw_headers, dict) else {}
+    registered = get_playback_session_registry().register(
+        play_session_id=upstream_session_id,
+        upstream_play_session_id=upstream_session_id,
+        user_id=userinfo.sub,
+        username=userinfo.username,
+        server=server_name,
+        server_type=server_type or "",
+        item_id=item_id,
+        media_source_id=str(session_info.get("media_source_id") or media_source_id or "") or None,
+        client_id=client_ctx["client_id"],
+        device_name=client_ctx["device_name"],
+        platform=client_ctx["platform"],
+        app_version=client_ctx["app_version"],
+        upstream_headers=upstream_headers,
+    )
+    return registered.play_session_id, server_type, sync_mode
+
+
 def _playback_source(
     server: Optional[str],
     itemid: str,
     item: _SchemaMediaServerItem,
     path: Optional[Path],
     media_source_id: Optional[str] = None,
+    *,
+    play_session_id: Optional[str] = None,
+    user_token: Optional[str] = None,
 ) -> tuple[str, Path | str, set[str]]:
     """
     优先选择媒体服务器原始流，适配器不支持时才解析本地文件或 STRM。
@@ -196,14 +316,23 @@ def _playback_source(
     :param item: 已授权的媒体服务器条目
     :param path: 可选的本机媒体文件路径
     :param media_source_id: 可选指定多版本媒体源标识
+    :param play_session_id: 可选上游播放会话标识
+    :param user_token: 可选用户绑定的访问令牌
     :return: 流来源类型、文件路径或上游 URL，以及允许的已配置主机名
     :raises HTTPException: 媒体服务器不支持原始流且本地文件不可读取时
     """
     if server:
         chain = MediaServerChain()
+        extra_kwargs: dict[str, Any] = {}
+        if media_source_id:
+            extra_kwargs["media_source_id"] = media_source_id
+        if play_session_id:
+            extra_kwargs["play_session_id"] = play_session_id
+        if user_token:
+            extra_kwargs["user_token"] = user_token
         upstream = (
-            chain.get_stream_url(server, itemid, item.item_type, media_source_id=media_source_id)
-            if media_source_id
+            chain.get_stream_url(server, itemid, item.item_type, **extra_kwargs)
+            if extra_kwargs
             else chain.get_stream_url(server, itemid, item.item_type)
         )
         if upstream:
@@ -454,11 +583,23 @@ def stream_info(
     except HTTPException as exc:
         if not (strm_url and exc.status_code == status.HTTP_501_NOT_IMPLEMENTED):
             raise
+    resolved_source_id = media_source_id or (
+        detail.media_sources[0].id if detail and detail.media_sources else None
+    )
+    play_session_id, server_type, sync_mode = _prepare_manifest_playback_session(
+        server_name=server_name,
+        item_id=item.item_id or itemid,
+        media_source_id=resolved_source_id,
+        userinfo=userinfo,
+        request=request,
+    )
     stream_query = {"itemid": itemid}
     if server_name:
         stream_query["server"] = server_name
     if media_source_id:
         stream_query["media_source_id"] = media_source_id
+    if play_session_id:
+        stream_query["play_session_id"] = play_session_id
     content_url = request.url_for("stream_item_content").include_query_params(**stream_query)
     subtitles: list[_SchemaMediaServerSubtitleTrack] = (
         [] if not path or is_audio else _subtitle_tracks(itemid, path, request, server_name)
@@ -469,14 +610,12 @@ def stream_info(
             if track.subtitle_id not in seen_ids:
                 seen_ids.add(track.subtitle_id)
                 subtitles.append(track)
-    resolved_source_id = media_source_id or (
-        detail.media_sources[0].id if detail and detail.media_sources else None
-    )
     return _SchemaResponse(
         success=True,
         data=_SchemaMediaServerStreamInfo(
             item_id=item.item_id or itemid,
             server=server_name,
+            server_type=server_type,
             title=item.title or (path.stem if path else itemid),
             content_url=str(content_url),
             strm_url=strm_url,
@@ -486,6 +625,8 @@ def stream_info(
             subtitles=subtitles,
             lyrics_url=_lyrics_url(itemid, path, request, server_name) if path and is_audio else None,
             media_source_id=resolved_source_id,
+            play_session_id=play_session_id,
+            progress_sync_mode=sync_mode,
             resume_position_ms=detail.resume_position_ms if detail else None,
             duration_ms=detail.duration_ms if detail else None,
         ),
@@ -525,12 +666,23 @@ def music_stream_info(
     except HTTPException as exc:
         if not (strm_url and exc.status_code == status.HTTP_501_NOT_IMPLEMENTED):
             raise
-    content_url = request.url_for("stream_item_content").include_query_params(itemid=itemid, server=server)
+    play_session_id, server_type, sync_mode = _prepare_manifest_playback_session(
+        server_name=server,
+        item_id=itemid,
+        media_source_id=None,
+        userinfo=userinfo,
+        request=request,
+    )
+    stream_query = {"itemid": itemid, "server": server}
+    if play_session_id:
+        stream_query["play_session_id"] = play_session_id
+    content_url = request.url_for("stream_item_content").include_query_params(**stream_query)
     return _SchemaResponse(
         success=True,
         data=_SchemaMediaServerStreamInfo(
             item_id=itemid,
             server=server,
+            server_type=server_type,
             title=item.title or music.title,
             content_url=str(content_url),
             strm_url=strm_url,
@@ -538,6 +690,8 @@ def music_stream_info(
             artist=music.artist or music.album_artist or next(iter(music.artists), None) or _stream_item_note(item, "artist"),
             album=music.album or _stream_item_note(item, "album"),
             lyrics_url=_lyrics_url(itemid, path, request, server) if path else None,
+            play_session_id=play_session_id,
+            progress_sync_mode=sync_mode,
         ),
     )
 
@@ -558,6 +712,7 @@ def stream_item_content(
     request: Request,
     server: Optional[str] = None,
     media_source_id: Optional[str] = None,
+    play_session_id: Optional[str] = None,
     userinfo: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> StreamingResponse:
     """
@@ -567,16 +722,43 @@ def stream_item_content(
     :param request: 当前请求，包含可选 Range 头
     :param server: 可选媒体服务器配置名，精确绑定搜索结果来源
     :param media_source_id: 可选指定的多版本媒体源标识
+    :param play_session_id: 可选本次播放会话标识，用于向同源媒体服务器透传会话头
     :param userinfo: 已验证的访问令牌
     :return: 本地文件或受控 STRM 上游流式响应
     """
     server_name, item, path = _resolve_stream_item(itemid, userinfo.sub, server=server)
+    session_state = (
+        get_playback_session_registry().get_for_stream(
+            play_session_id,
+            user_id=userinfo.sub,
+            server=server_name,
+            item_id=item.item_id or itemid,
+        )
+        if play_session_id and server_name
+        else None
+    )
+    user_cred = (
+        get_user_mediaserver_credential(userinfo.username, server_name)
+        if session_state and server_name and userinfo.username
+        else None
+    )
     source_type, source, configured_hosts = _playback_source(
-        server_name, itemid, item, path, media_source_id=media_source_id
+        server_name,
+        itemid,
+        item,
+        path,
+        media_source_id=media_source_id,
+        play_session_id=session_state.upstream_play_session_id if session_state else None,
+        user_token=user_cred.token if user_cred else None,
     )
     range_header = request.headers.get("range")
+    upstream_headers = session_state.upstream_headers if session_state and session_state.upstream_headers else None
     if source_type == "server":
         try:
+            if upstream_headers:
+                return _remote_stream_response(
+                    str(source), range_header, configured_hosts, extra_headers=upstream_headers
+                )
             return _remote_stream_response(str(source), range_header, configured_hosts)
         except HTTPException as error:
             if not path or error.status_code not in {status.HTTP_404_NOT_FOUND, status.HTTP_501_NOT_IMPLEMENTED}:
@@ -1218,33 +1400,279 @@ def item_season_episodes(
     return _SchemaResponse(success=True, data=episodes)
 
 
+def _coerce_progress_report_mode(raw_mode: Any) -> _SchemaMediaServerProgressReportMode:
+    """
+    将适配器返回的模式字符串规整为受契约约束的枚举字面量。
+    """
+    if raw_mode == "session":
+        return "session"
+    if raw_mode == "userdata":
+        return "userdata"
+    if raw_mode == "scrobble":
+        return "scrobble"
+    return "unsupported"
+
+
+def _dispatch_progress_report(
+    chain: MediaServerChain,
+    payload: _SchemaMediaServerProgressReportRequest,
+    *,
+    username: Optional[str],
+    session: Any,
+    user_token: Optional[str],
+    allow_userdata_write: bool,
+) -> dict[str, Any]:
+    """
+    调用媒体服务器链执行进度上报，兼容仅实现旧布尔回执的测试桩与扩展适配器。
+    """
+    raw = chain.report_progress_detail(
+        server=payload.server,
+        item_id=payload.item_id,
+        position_ms=payload.position_ms,
+        media_source_id=payload.media_source_id or session.media_source_id,
+        duration_ms=payload.duration_ms,
+        is_paused=payload.is_paused,
+        state=payload.state,
+        username=username,
+        play_session_id=session.upstream_play_session_id,
+        event_name=payload.event_name,
+        client_id=payload.client_id or session.client_id,
+        device_name=payload.device_name or session.device_name,
+        platform=payload.platform or session.platform,
+        app_version=payload.app_version or session.app_version,
+        play_method=payload.play_method or session.play_method,
+        playback_time_ms=payload.playback_time_ms,
+        audio_stream_index=payload.audio_stream_index,
+        subtitle_stream_index=payload.subtitle_stream_index,
+        user_token=user_token,
+        started_reported=session.started_reported,
+        allow_userdata_write=allow_userdata_write,
+        scrobbled=session.scrobbled,
+    )
+    if isinstance(raw, dict):
+        return raw
+    # 兼容仅对 chain.report_progress 打桩的旧单测
+    legacy_ok = bool(
+        chain.report_progress(
+            server=payload.server,
+            item_id=payload.item_id,
+            position_ms=payload.position_ms,
+            media_source_id=payload.media_source_id,
+            duration_ms=payload.duration_ms,
+            is_paused=payload.is_paused,
+            state=payload.state,
+            username=username,
+        )
+    )
+    return {
+        "reported": legacy_ok,
+        "mode": "session" if legacy_ok else "unsupported",
+        "started_sent": legacy_ok and payload.state in {"started", "playing"},
+        "scrobbled": False,
+        "userdata_written": False,
+        "token_invalid": False,
+        "needs_account_bind": False,
+        "detail": None,
+    }
+
+
 @router.post(
     "/progress",
     summary="回传原生播放器播放进度到媒体服务器",
-    response_model=_SchemaResponse[None],
+    response_model=_SchemaResponse[_SchemaMediaServerProgressReportResult],
 )
 def report_progress(
     payload: _SchemaMediaServerProgressReportRequest,
     userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaMediaServerProgressReportResult]:
+    """
+    将客户端当前播放位置与会话生命周期同步回源媒体服务器，更新正在播放、继续观看与已看标记。
+
+    :param payload: 播放进度与会话生命周期请求体
+    :param userinfo: 已验证的访问令牌
+    :return: 包含同步模式与账号绑定建议的结构化回执
+    """
+    conf = _find_mediaserver_config(payload.server)
+    server_type = (conf.type or "").strip().casefold() if conf and conf.type else ""
+    raw_cred = get_user_mediaserver_credential(userinfo.username, payload.server, include_invalid=True)
+    valid_cred = raw_cred if (raw_cred and not raw_cred.invalid and raw_cred.token) else None
+    registry = get_playback_session_registry()
+    session, should_skip, allow_userdata_write = registry.begin_progress_event(
+        play_session_id=payload.play_session_id,
+        user_id=userinfo.sub,
+        username=userinfo.username,
+        server=payload.server,
+        server_type=server_type,
+        item_id=payload.item_id,
+        media_source_id=payload.media_source_id,
+        state=payload.state,
+        seq=payload.seq,
+        client_id=payload.client_id,
+        device_name=payload.device_name,
+        platform=payload.platform,
+        app_version=payload.app_version,
+        play_method=payload.play_method,
+    )
+    if should_skip:
+        sync_mode = resolve_server_sync_mode(server_type, valid_cred, conf.config if conf else None)
+        report_mode = _coerce_progress_report_mode("unsupported" if sync_mode == "none" else sync_mode)
+        return _SchemaResponse(
+            success=True,
+            data=_SchemaMediaServerProgressReportResult(
+                reported=True,
+                mode=report_mode,
+                play_session_id=session.play_session_id,
+                needs_account_bind=bool(raw_cred and raw_cred.invalid),
+                detail="过期或重复的播放事件已忽略",
+            ),
+        )
+
+    outcome = _dispatch_progress_report(
+        MediaServerChain(),
+        payload,
+        username=userinfo.username,
+        session=session,
+        user_token=valid_cred.token if valid_cred else None,
+        allow_userdata_write=allow_userdata_write,
+    )
+    if outcome.get("token_invalid") and userinfo.username:
+        mark_user_mediaserver_credential_invalid(userinfo.username, payload.server)
+    registry.record_progress_outcome(
+        session,
+        state=payload.state,
+        started_sent=bool(outcome.get("started_sent")),
+        scrobbled=bool(outcome.get("scrobbled")),
+        userdata_written=bool(outcome.get("userdata_written")),
+    )
+    reported = bool(outcome.get("reported"))
+    mode = _coerce_progress_report_mode(outcome.get("mode"))
+    needs_bind = bool(outcome.get("needs_account_bind") or outcome.get("token_invalid") or (raw_cred and raw_cred.invalid))
+    detail_msg = str(outcome.get("detail") or "") or (
+        "媒体服务器账号凭据已失效，请在设置中重新绑定以恢复实时播放会话"
+        if outcome.get("token_invalid")
+        else None
+    )
+    result = _SchemaMediaServerProgressReportResult(
+        reported=reported,
+        mode=mode,
+        play_session_id=session.play_session_id,
+        needs_account_bind=needs_bind,
+        detail=detail_msg,
+    )
+    return _SchemaResponse(
+        success=reported,
+        message="" if reported else (detail_msg or "当前媒体服务器未记录播放进度"),
+        data=result,
+    )
+
+
+@router.get(
+    "/account-bindings",
+    summary="查询当前用户的媒体服务器账号绑定状态",
+    response_model=_SchemaResponse[List[_SchemaMediaServerAccountBinding]],
+)
+def list_account_bindings(
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[List[_SchemaMediaServerAccountBinding]]:
+    """
+    返回当前登录用户在全部已启用媒体服务器上的账号绑定状态与播放同步模式。
+
+    :param userinfo: 已验证的访问令牌
+    :return: 不含任何敏感令牌或密码的绑定状态列表
+    """
+    if not userinfo.username:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="当前登录身份缺少用户名")
+    bindings = list_user_mediaserver_bindings(userinfo.username, get_mediaserver_configs())
+    return _SchemaResponse(success=True, data=bindings)
+
+
+@router.post(
+    "/account-bindings",
+    summary="绑定当前用户的媒体服务器账号以启用实时播放会话",
+    response_model=_SchemaResponse[_SchemaMediaServerAccountBinding],
+)
+def bind_account(
+    payload: _SchemaMediaServerAccountBindRequest,
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaMediaServerAccountBinding]:
+    """
+    一次性验证用户提供的媒体服务器账号密码或 Plex 访问令牌，并加密持久化用户级令牌。
+
+    :param payload: 媒体服务器绑定请求体（密码仅用于本次换取令牌，绝不落库）
+    :param userinfo: 已验证的访问令牌
+    :return: 绑定后的脱敏状态摘要
+    :raises HTTPException: 服务器不存在、类型不支持绑定、输入不完整或媒体服务器认证失败时
+    """
+    if not userinfo.username:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="当前登录身份缺少用户名")
+    configs = get_mediaserver_configs()
+    conf = next((item for item in configs if item.enabled and item.name == payload.server), None)
+    if not conf or not conf.type:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到对应的已启用媒体服务器")
+    server_type = conf.type.strip().casefold()
+    if server_type not in BINDABLE_MEDIA_SERVER_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前媒体服务器无需单独绑定账号")
+
+    clean_token = (payload.token or "").strip()
+    clean_username = (payload.username or "").strip()
+    clean_password = payload.password or ""
+    if clean_token:
+        if server_type != "plex":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="仅 Plex 支持直接提交访问令牌绑定")
+        auth_result = MediaServerChain().authenticate_user(
+            server=payload.server,
+            username=clean_username or userinfo.username,
+            token=clean_token,
+        )
+    else:
+        if not clean_username or not clean_password:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="请填写媒体服务器用户名和密码")
+        auth_result = MediaServerChain().authenticate_user(
+            server=payload.server,
+            username=clean_username,
+            password=clean_password,
+        )
+    if not auth_result or not auth_result.token:
+        # MoviePilot 会话本身有效，此处为远端媒体服务器凭据校验失败，返回 400 避免前端/App 误判登录失效退出
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="媒体服务器账号验证失败，请核对凭据后重试")
+
+    save_user_mediaserver_credential(
+        username=userinfo.username,
+        server=payload.server,
+        token=auth_result.token,
+        remote_username=auth_result.username or clean_username or userinfo.username,
+        source="manual",
+    )
+    bindings = list_user_mediaserver_bindings(userinfo.username, configs)
+    updated = next((item for item in bindings if item.server == payload.server), None)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="保存媒体服务器账号绑定失败")
+    return _SchemaResponse(success=True, message="媒体服务器账号绑定成功", data=updated)
+
+
+@router.delete(
+    "/account-bindings/{server}",
+    summary="解绑当前用户的媒体服务器账号",
+    response_model=_SchemaResponse[None],
+)
+def unbind_account(
+    server: str,
+    userinfo: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[None]:
     """
-    将客户端当前播放位置与状态同步回源媒体服务器，更新继续观看与已看标记。
+    清除当前用户在指定媒体服务器上绑定的访问令牌，恢复为服务器默认同步模式。
 
-    :param payload: 播放进度回传请求体
+    :param server: 目标媒体服务器配置名称
     :param userinfo: 已验证的访问令牌
-    :return: 回传是否成功的响应包装
+    :return: 操作结果响应
     """
-    reported = MediaServerChain().report_progress(
-        server=payload.server,
-        item_id=payload.item_id,
-        position_ms=payload.position_ms,
-        media_source_id=payload.media_source_id,
-        duration_ms=payload.duration_ms,
-        is_paused=payload.is_paused,
-        state=payload.state,
-        username=userinfo.username,
+    if not userinfo.username:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="当前登录身份缺少用户名")
+    removed = delete_user_mediaserver_credential(userinfo.username, server)
+    return _SchemaResponse(
+        success=True,
+        message="已解除媒体服务器账号绑定" if removed else "当前服务器未绑定账号",
     )
-    return _SchemaResponse(success=reported, message="" if reported else "当前媒体服务器未记录播放进度")
 
 
 @router.get(

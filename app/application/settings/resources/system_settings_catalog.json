@@ -1498,6 +1498,11 @@
       "enum_name": "MediaRecognizeShareCount",
       "source_file": "app/schemas/types.py"
     },
+    "MediaServerUserCredentials": {
+      "description": "用户级媒体服务器播放与会话同步的内部加密凭据；按用户名与服务器名隔离，不向客户端下发",
+      "enum_name": "MediaServerUserCredentials",
+      "source_file": "app/schemas/types.py"
+    },
     "MediaServers": {
       "description": "媒体服务器配置",
       "enum_name": "MediaServers",
