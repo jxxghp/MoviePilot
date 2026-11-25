@@ -1626,14 +1626,16 @@ def report_progress(
     )
     if outcome.get("token_invalid") and userinfo.username:
         mark_user_mediaserver_credential_invalid(userinfo.username, payload.server)
+    reported = bool(outcome.get("reported"))
     registry.record_progress_outcome(
         session,
         state=payload.state,
+        seq=payload.seq,
+        reported=reported,
         started_sent=bool(outcome.get("started_sent")),
         scrobbled=bool(outcome.get("scrobbled")),
         userdata_written=bool(outcome.get("userdata_written")),
     )
-    reported = bool(outcome.get("reported"))
     mode = _coerce_progress_report_mode(outcome.get("mode"))
     needs_bind = bool(outcome.get("needs_account_bind") or outcome.get("token_invalid") or (raw_cred and raw_cred.invalid))
     detail_msg = str(outcome.get("detail") or "") or (

@@ -679,9 +679,10 @@ class PlaybackSessionState:
     :param play_method: 播放方式
     :param upstream_headers: 仅限发往源媒体服务器同源主机的拉流会话头
     :param started_reported: 是否已成功向上游发送起播事件
-    :param stopped_reported: 是否已处理终态停止事件
+    :param stopped_reported: 停止事件是否已成功同步
     :param scrobbled: 是否已向 Plex 或 Navidrome 提交完播标记
     :param last_seq: 已接收的最大事件序号
+    :param retry_failed_stop: 最大序号对应的停止事件失败后是否可补报
     :param last_userdata_write_at: 上次执行 API Key UserData 写入的单调时钟秒数
     :param updated_at: 最近活跃的单调时钟秒数，用于过期清理
     """
@@ -704,6 +705,7 @@ class PlaybackSessionState:
     stopped_reported: bool = False
     scrobbled: bool = False
     last_seq: int = -1
+    retry_failed_stop: bool = False
     last_userdata_write_at: float = 0.0
     updated_at: float = field(default_factory=time.monotonic)
 
@@ -888,10 +890,13 @@ class PlaybackSessionRegistry:
                 sess.started_reported = False
                 sess.scrobbled = False
                 sess.last_seq = -1
-            if seq is not None and seq <= sess.last_seq:
+            # 仅允许补报最近一次同步失败的停止事件，避免放行旧事件或并发重复提交。
+            retry_failed_stop = state == "stopped" and sess.retry_failed_stop and seq == sess.last_seq
+            if seq is not None and seq <= sess.last_seq and not retry_failed_stop:
                 return sess, True, False
             if seq is not None:
                 sess.last_seq = seq
+                sess.retry_failed_stop = False
 
             allow_userdata_write = (
                 state in {"paused", "stopped"}
@@ -905,12 +910,22 @@ class PlaybackSessionRegistry:
         session: PlaybackSessionState,
         *,
         state: str,
+        seq: Optional[int],
+        reported: bool,
         started_sent: bool = False,
         scrobbled: bool = False,
         userdata_written: bool = False,
     ) -> None:
         """
-        根据本次上游调用结果回写播放会话运行态。
+        根据本次上游调用结果回写播放会话运行态，成功后才确认停止。
+
+        :param session: 本次同步对应的播放会话
+        :param state: 本次同步的播放事件状态
+        :param seq: 客户端事件序号；旧客户端可能未提供
+        :param reported: 媒体服务器是否成功接收本次进度或状态更新
+        :param started_sent: 是否已经发送起播事件
+        :param scrobbled: 是否已经提交完播标记
+        :param userdata_written: 是否写入了观看进度
         """
         now = time.monotonic()
         with self._lock:
@@ -922,7 +937,10 @@ class PlaybackSessionRegistry:
             if userdata_written:
                 session.last_userdata_write_at = now
             if state == "stopped":
-                session.stopped_reported = True
+                if reported:
+                    session.stopped_reported = True
+                elif seq == session.last_seq:
+                    session.retry_failed_stop = True
 
     def reset(self) -> None:
         """
