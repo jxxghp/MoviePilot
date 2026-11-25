@@ -247,7 +247,7 @@ def test_projection_builds_federation_and_auth_provider_entries():
 
 def test_projection_versions_federation_remote_entry_after_plugin_update():
     """
-    插件版本变化时，联邦入口 URL 应生成新的缓存键。
+    插件版本变化时，联邦入口 URL 应生成新的缓存键，并附带 version 字段。
     """
     plugin = _Plugin(
         plugin_version="1.2.3+build 4",
@@ -258,7 +258,44 @@ def test_projection_versions_federation_remote_entry_after_plugin_update():
         remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
     )
 
-    assert projection.remotes()[0]["url"] == "/Demo/dist/assets?v=1.2.3%2Bbuild+4"
+    remote = projection.remotes()[0]
+    assert remote["url"] == "/Demo/dist/assets?v=1.2.3%2Bbuild+4"
+    assert remote["version"] == "1.2.3+build 4"
+
+
+def test_projection_exposes_remote_bundle_hash_for_source_and_virtual_instances(tmp_path):
+    """
+    存在联邦产物目录时，remotes 应输出 remoteEntry.js 的稳定内容哈希并在产物更新后变化。
+    """
+    assets_dir = tmp_path / "demo" / "dist" / "assets"
+    assets_dir.mkdir(parents=True)
+    entry_file = assets_dir / "remoteEntry.js"
+    entry_file.write_text("export const version = 1;\n", encoding="utf-8")
+
+    host_plugin = _Plugin(
+        plugin_version="2.0.0",
+        get_render_mode=lambda: ("vue", "dist/assets"),
+    )
+    clone_plugin = _Plugin(
+        plugin_version="2.0.0",
+        plugin_source_id="Demo",
+        get_render_mode=lambda: ("vue", "dist/assets"),
+    )
+    projection = PluginProjection(
+        {"Demo": host_plugin, "DemoClone": clone_plugin},
+        remote_entry_factory=lambda plugin_id, path: f"/api/v1/plugin/file/{plugin_id.lower()}/{path}/remoteEntry.js",
+        plugins_root=tmp_path,
+    )
+
+    remotes = {item["id"]: item for item in projection.remotes()}
+    first_hash = remotes["Demo"]["bundle_hash"]
+    assert len(first_hash) == 12
+    assert remotes["DemoClone"]["bundle_hash"] == first_hash
+
+    entry_file.write_text("export const version = 2;\n", encoding="utf-8")
+    updated_hash = projection.remotes("Demo")[0]["bundle_hash"]
+    assert len(updated_hash) == 12
+    assert updated_hash != first_hash
 
 
 def test_projection_exposes_source_identity_for_virtual_frontend_instance():

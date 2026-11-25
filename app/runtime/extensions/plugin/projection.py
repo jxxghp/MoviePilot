@@ -2,9 +2,11 @@
 插件公开能力投影。
 """
 
+import hashlib
 import inspect
 import posixpath
 import re
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional
 from urllib.parse import urlencode
 
@@ -41,6 +43,7 @@ class PluginProjection:
         running_plugins: Mapping[str, Any],
         log: Any = default_logger,
         remote_entry_factory: Optional[Callable[[str, str], str]] = None,
+        plugins_root: Optional[Path] = None,
     ) -> None:
         """
         保存运行态插件映射和错误日志端口。
@@ -48,6 +51,7 @@ class PluginProjection:
         self._running_plugins = running_plugins
         self._logger = log
         self._remote_entry_factory = remote_entry_factory
+        self._plugins_root = plugins_root.resolve() if plugins_root is not None else None
 
     def _items(self, pid: Optional[str]) -> list[tuple[str, Any]]:
         """
@@ -234,7 +238,36 @@ class PluginProjection:
         source_plugin_id = getattr(plugin, "plugin_source_id", None)
         if source_plugin_id:
             remote["source_plugin_id"] = source_plugin_id
+        plugin_version = getattr(plugin, "plugin_version", None)
+        if plugin_version:
+            remote["version"] = str(plugin_version)
+        bundle_hash = self._remote_bundle_hash(
+            source_plugin_id or plugin_id,
+            dist_path,
+        )
+        if bundle_hash:
+            remote["bundle_hash"] = bundle_hash
         return remote
+
+    def _remote_bundle_hash(self, source_plugin_id: str, dist_path: str) -> Optional[str]:
+        """
+        计算插件联邦入口 remoteEntry.js 的短内容摘要，供移动端无协商磁盘缓存失效使用。
+        """
+        if self._plugins_root is None or not isinstance(dist_path, str) or not dist_path.strip():
+            return None
+        relative_dist = Path(dist_path.strip("/"))
+        if relative_dist.is_absolute() or ".." in relative_dist.parts or "\\" in dist_path:
+            return None
+        try:
+            plugin_dir = (self._plugins_root / source_plugin_id.lower()).resolve()
+            if not plugin_dir.is_relative_to(self._plugins_root):
+                return None
+            entry_file = (plugin_dir / relative_dist / "remoteEntry.js").resolve()
+            if not entry_file.is_relative_to(plugin_dir) or not entry_file.is_file():
+                return None
+            return hashlib.sha256(entry_file.read_bytes()).hexdigest()[:12]
+        except OSError:
+            return None
 
     @staticmethod
     def _versioned_url(url: str, plugin: Any) -> str:

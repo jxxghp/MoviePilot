@@ -728,6 +728,8 @@ class PluginRemoteInfo(BaseModel):
     url: str = Field(description="访问地址")
     name: str = Field(description="显示名称")
     source_plugin_id: Optional[str] = Field(default=None, description="静默丢弃，投影层写进去也到不了前端")
+    version: Optional[str] = Field(default=None, description="插件版本号，便于移动端联邦产物缓存失效")
+    bundle_hash: Optional[str] = Field(default=None, description="remoteEntry.js 产物内容摘要")
 
 
 class PluginReleaseItem(BaseModel):

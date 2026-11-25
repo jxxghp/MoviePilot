@@ -506,6 +506,7 @@ def build_plugin_runtime(
         registry.running,
         environment.logger,
         environment.remote_entry,
+        plugins_root=environment.plugins_root,
     )
     return PluginRuntime(
         registry=registry,
