@@ -236,12 +236,13 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
     @staticmethod
-    def _download_failure_ttl(error_msg: Optional[str]) -> int:
+    def _download_failure_ttl(error_msg: Optional[str], *, episode_probe: bool = False) -> int:
         """
         限流按站点窗口冷却；已有任务的拒绝按原因区分资源级与瞬时冷却；换票、临时地址和泛化空内容
         失败使用瞬时冷却。
 
         :param error_msg: 准备或下载器提交阶段保留的具体失败原因
+        :param episode_probe: 是否为仅核对集数的读取；一次无效响应只按瞬时失败处理
         :return: 冷却秒数；换票诊断中的 404 等关键字不能升级为资源失效
         """
         rate_limit_ttl = torrent_rules.rate_limit_cooldown(error_msg)
@@ -255,7 +256,8 @@ class DownloadFailureOwner(_DownloadOwnerBase):
                 return DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS
             return DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS
         error_text = str(error_msg or "").lower()
-        if error_text.startswith(("换票失败：", "临时下载地址失效：")):
+        if (error_text.startswith(("换票失败：", "临时下载地址失效："))
+                or (episode_probe and error_text.startswith("种子数据有误"))):
             return DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS
         if any(keyword in error_text for keyword in DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS):
             return DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS

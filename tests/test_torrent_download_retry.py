@@ -17,6 +17,7 @@ import app.chain.download.failure as failure_owner
 import app.chain.download.submission as submission
 from app.application.download.failures import DownloadFailureWrite
 from app.chain.download import DownloadChain
+from app.chain.download.batch import _BatchDownloadRun
 from app.chain.download.failure import (
     DOWNLOAD_FAILURE_DUPLICATE_MESSAGE,
     DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS,
@@ -502,6 +503,46 @@ def test_invalid_torrent_data_has_resource_cooldown(error):
     无效种子及确认失败使用资源级冷却，重启也不会退回每小时通知。
     """
     assert DownloadFailureOwner._download_failure_ttl(error) == 86400
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_episode_probe_invalid_content_allows_recovered_download(boundary, monkeypatch, partial):
+    """
+    核对集数遇到站点维护页时本批去重，记录短冷却，站点恢复后可立即正式下载。
+
+    :param boundary: 隔离种子请求、缓存和等待的边界夹具
+    :param monkeypatch: 恢复共享种子助手替身的测试夹具
+    :param partial: 是否走拆包核对集数路径
+    """
+    helper, port, _, sleep = boundary
+    monkeypatch.setattr(submission, "TorrentHelper", Mock(return_value=helper))
+    port.request.side_effect = [_response(content=b"<html>Site maintenance</html>"), _response()]
+    chain = object.__new__(DownloadChain)
+    chain.post_message = Mock()
+    chain.download_failure_repository = Mock()
+    torrent = TorrentInfo(site=1, site_name="test", title="Series S01", enclosure=URL, site_cookie="session=test")
+    context = Context(
+        torrent_info=torrent, media_info=MediaInfo(title="Series", type=MediaType.TV),
+        meta_info=MetaInfo("Series S01"),
+    )
+    options = dict(save_path=None, channel=None, source="Subscribe|39", userid=None,
+                   username=None, downloader=None, custom_words=None, governance=None)
+    batch = _BatchDownloadRun(chain, [], {}, options, None)
+
+    assert batch._read_torrent(context, partial=partial) is None
+    assert batch._in_failure_cooldown(context)
+    port.request.assert_called_once()
+    sleep.assert_not_called()
+    chain.post_message.assert_not_called()
+
+    assert chain.download_torrent(torrent) == (CONTENT, "", ["Series.mkv"])
+    assert port.request.call_count == 2
+    helper.add_invalid.assert_not_called()
+    chain.download_failure_repository.record_failure.assert_called_once()
+    failure = chain.download_failure_repository.record_failure.call_args.args[0]
+    assert failure.error_message == "种子数据有误，请确认链接是否正确"
+    assert (datetime.fromisoformat(failure.next_retry_at)
+            - datetime.fromisoformat(failure.failed_at)).total_seconds() == 3600
 
 
 def test_invalid_content_preparation_preserves_persisted_resource_cooldown(boundary, monkeypatch):

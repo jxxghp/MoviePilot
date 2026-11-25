@@ -229,6 +229,7 @@ def test_empty_torrent_is_recorded_once_and_not_retried_in_later_phases(batch):
     batch.chain.download_torrent.assert_called_once()
     batch.chain._record_download_failure.assert_called_once_with(
         context=whole, error_msg="下载种子内容为空", downloader="test", source="Subscribe|42",
+        ttl_seconds=3600,
     )
 
 

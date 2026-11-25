@@ -15,7 +15,6 @@ import app.chain.download.submission as submission
 from app.adapters.cache.backends import FileBackend
 from app.chain.download import DownloadChain
 from app.chain.download.batch import _BatchDownloadRun
-from app.chain.download.failure import DownloadFailureOwner
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaType
@@ -161,7 +160,7 @@ def test_batch_keeps_daily_limit_reason_and_cooldown(boundary, partial):
     assert recorded["error_msg"] == f"站点限流：{reason}"
     assert recorded["context"] is context
     assert recorded["source"] == "Subscribe|48"
-    assert DownloadFailureOwner._download_failure_ttl(recorded["error_msg"]) == 86400
+    assert recorded["ttl_seconds"] == 86400
     boundary.port.request.assert_called_once()
     key = boundary.chain._indirect_torrent_cache_key(context.torrent_info)
     assert boundary.cache.get(key, region="torrents") is None

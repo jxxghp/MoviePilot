@@ -761,8 +761,12 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         下载种子文件，如果是磁力链，会返回磁力链接本身
         换票种子按站点资源和原始换票凭据复用本地内容，命中后不再请求临时链接。
 
+        :param torrent: 包含站点身份和种子地址的候选
+        :param channel: 下载失败通知的渠道
+        :param source: 下载请求来源，指定通知渠道时用于路由通知
+        :param userid: 接收下载失败通知的用户
         :param on_failure: 将本次具体失败原因交还准备流程，保持返回元组与并发调用隔离
-        :param retry: 是否对普通 GET 瞬时失败退避重试；仅核对集数的读取应关闭
+        :param retry: 是否对普通 GET 失败退避重试并缓存无效地址；仅核对集数时关闭
         :param notify: 失败时是否推送下载失败告警；仅核对集数的读取应关闭
         :return: 种子内容，种子目录名，种子文件清单
         """
@@ -790,7 +794,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         if not content:
             if on_failure:
                 on_failure(error_msg or "下载种子内容为空")
-            if not enclosure.startswith("[") and error_msg and "种子数据有误" in error_msg:
+            if retry and not enclosure.startswith("[") and "种子数据有误" in (error_msg or ""):
                 helper.add_invalid(enclosure)
             logger.error(f"下载种子文件失败：{torrent.title}，{error_msg}")
             if notify:
