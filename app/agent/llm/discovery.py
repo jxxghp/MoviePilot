@@ -17,6 +17,11 @@ from app.agent.llm.runtime import LLMProviderAuthError, LLMProviderError
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
+# Anthropic `/v1/models` 单页上限；首页沿用端点默认分页，后续页按游标请求。
+_ANTHROPIC_MODELS_PAGE_LIMIT = 1000
+# 分页请求次数上限，防止兼容端点持续返回 has_more 造成无限翻页。
+_ANTHROPIC_MODELS_MAX_PAGES = 20
+
 
 def attach_server_tool_capabilities(
     provider: str,
@@ -518,6 +523,44 @@ class _ProviderDiscovery:
                 )
         return sorted(results, key=lambda item: item["name"].lower())
 
+    @staticmethod
+    async def _fetch_anthropic_model_pages(
+        request: AsyncRequestUtils,
+        url: str,
+    ) -> list[Any]:
+        """
+        按 Anthropic `/v1/models` 的游标分页读取全部模型条目。
+
+        首页不附加查询参数，保持对不支持分页的兼容端点的原有请求；响应声明 ``has_more``
+        时再以 ``last_id`` 作为 ``after_id`` 继续请求。游标缺失、重复或达到页数上限时停止翻页并记录警告。
+
+        :param request: 已携带认证头和代理策略的异步请求客户端
+        :param url: 模型列表接口地址
+        :return: 各页 ``data`` 中的原始模型条目，按返回顺序拼接
+        :raises LLMProviderError: 任一页响应不是包含 ``data`` 列表的对象
+        """
+        raw_models: list[Any] = []
+        params: Optional[dict[str, Any]] = None
+        seen_cursors: set[str] = set()
+        for _ in range(_ANTHROPIC_MODELS_MAX_PAGES):
+            response = await request.get_res(url, params=params, raise_exception=True)
+            response.raise_for_status()
+            payload = response.json()
+            page = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(page, list):
+                raise LLMProviderError("Anthropic 兼容模型列表响应格式不正确")
+            raw_models.extend(page)
+            if payload.get("has_more") is not True:
+                return raw_models
+            last_id = payload.get("last_id")
+            if not isinstance(last_id, str) or not last_id or last_id in seen_cursors:
+                logger.warning("Anthropic 兼容模型列表声明还有后续页，但未返回新的翻页游标，模型列表可能不完整")
+                return raw_models
+            seen_cursors.add(last_id)
+            params = {"limit": _ANTHROPIC_MODELS_PAGE_LIMIT, "after_id": last_id}
+        logger.warning(f"Anthropic 兼容模型列表超过 {_ANTHROPIC_MODELS_MAX_PAGES} 页，已停止翻页，模型列表可能不完整")
+        return raw_models
+
     async def _list_models_from_anthropic_endpoint(
         self,
         provider_id: str,
@@ -539,27 +582,20 @@ class _ProviderDiscovery:
         headers = dict(default_headers or {})
         headers["x-api-key"] = api_key
         headers.setdefault("anthropic-version", "2023-06-01")
-        response = await self._build_async_request(
-            use_proxy,
-            headers=headers,
-        ).get_res(
+        raw_models = await self._fetch_anthropic_model_pages(
+            self._build_async_request(use_proxy, headers=headers),
             f"{normalized_base_url}/v1/models",
-            raise_exception=True,
         )
-        response.raise_for_status()
-        payload = response.json()
-
-        raw_models = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(raw_models, list):
-            raise LLMProviderError("Anthropic 兼容模型列表响应格式不正确")
 
         results = []
+        seen_model_ids: set[str] = set()
         for item in raw_models:
             if not isinstance(item, dict):
                 continue
             model_id = str(item.get("id") or "").strip()
-            if not model_id:
+            if not model_id or model_id in seen_model_ids:
                 continue
+            seen_model_ids.add(model_id)
             metadata = (
                 self.resolve_cached_model_metadata(
                     provider_id,

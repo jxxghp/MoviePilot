@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+from app.agent.llm import discovery as discovery_module
 from app.agent.llm.provider import (
     LLMProviderError,
     LLMProviderManager,
@@ -171,11 +172,14 @@ def test_generic_anthropic_compatible_lists_models_from_endpoint(
             """
             self.headers = headers
 
-        async def get_res(self, url: str, raise_exception: bool = False) -> _FakeResponse:
+        async def get_res(
+            self, url: str, params: dict[str, object] | None = None, raise_exception: bool = False,
+        ) -> _FakeResponse:
             """
             记录请求参数并返回测试模型列表。
             """
             captured["url"] = url
+            captured["params"] = params
             captured["headers"] = dict(self.headers)
             captured["raise_exception"] = raise_exception
             return _FakeResponse()
@@ -198,6 +202,7 @@ def test_generic_anthropic_compatible_lists_models_from_endpoint(
         )
 
     assert captured["url"] == expected_models_url
+    assert captured["params"] is None
     assert captured["raise_exception"] is True
     assert captured["headers"] == {
         "User-Agent": "CustomAgent/1.0",
@@ -249,11 +254,13 @@ def test_generic_anthropic_compatible_skips_invalid_items_and_rejects_bad_payloa
         顺序返回预置模型列表响应的异步请求替身。
         """
 
-        async def get_res(self, url: str, raise_exception: bool = False) -> _FakeResponse:
+        async def get_res(
+            self, url: str, params: dict[str, object] | None = None, raise_exception: bool = False,
+        ) -> _FakeResponse:
             """
             消费下一份测试载荷。
             """
-            del url, raise_exception
+            del url, params, raise_exception
             return _FakeResponse(payloads.pop(0))
 
     with patch.object(manager, "_build_async_request", return_value=_FakeAsyncRequest()):
@@ -283,6 +290,154 @@ def test_generic_anthropic_compatible_skips_invalid_items_and_rejects_bad_payloa
                 base_url="   ",
             )
         )
+
+
+class _PagedAnthropicResponse:
+    """
+    返回预置分页载荷的最小 HTTP 响应替身。
+    """
+
+    def __init__(self, body: dict[str, object]) -> None:
+        """
+        记录本页响应体。
+
+        :param body: 本页 JSON 载荷
+        """
+        self._body = body
+
+    def raise_for_status(self) -> None:
+        """
+        模拟 HTTP 200 状态校验。
+        """
+
+    def json(self) -> dict[str, object]:
+        """
+        返回本页 JSON 载荷。
+        """
+        return self._body
+
+
+class _PagedAnthropicRequest:
+    """
+    按调用顺序返回分页载荷并记录每次查询参数的异步请求替身。
+    """
+
+    def __init__(self, pages: list[dict[str, object]]) -> None:
+        """
+        保存待返回的分页载荷。
+
+        :param pages: 按请求顺序返回的响应体；用尽后重复返回最后一页
+        """
+        self._pages = pages
+        self.params: list[dict[str, object] | None] = []
+
+    async def get_res(
+        self, url: str, params: dict[str, object] | None = None, raise_exception: bool = False,
+    ) -> _PagedAnthropicResponse:
+        """
+        记录本次查询参数并返回下一页。
+
+        :param url: 模型列表接口地址
+        :param params: 本次分页查询参数
+        :param raise_exception: 是否要求透传请求异常
+        :return: 下一页响应替身
+        """
+        del url, raise_exception
+        self.params.append(params)
+        return _PagedAnthropicResponse(self._pages[min(len(self.params), len(self._pages)) - 1])
+
+
+@pytest.mark.usefixtures("_isolate_provider_manager")
+def test_generic_anthropic_compatible_follows_model_list_cursor() -> None:
+    """
+    Anthropic 兼容端点声明 has_more 时按 last_id 继续翻页，跨页重复的模型只保留一次。
+    """
+    manager = LLMProviderManager()
+    manager._models_dev_data = {}
+    request = _PagedAnthropicRequest(
+        [
+            {
+                "data": [{"id": "claude-opus-5-5"}, {"id": "claude-sonnet-5-5"}],
+                "has_more": True,
+                "first_id": "claude-opus-5-5",
+                "last_id": "claude-sonnet-5-5",
+            },
+            {
+                "data": [{"id": "claude-sonnet-5-5"}, {"id": "claude-haiku-4-5"}],
+                "has_more": False,
+                "first_id": "claude-sonnet-5-5",
+                "last_id": "claude-haiku-4-5",
+            },
+        ]
+    )
+
+    with patch.object(manager, "_build_async_request", return_value=request):
+        models = asyncio.run(
+            manager.list_models(
+                provider_id="anthropic-compatible",
+                api_key="sk-ant-test",
+                base_url="https://relay.example.com/v1",
+            )
+        )
+
+    assert request.params == [None, {"limit": 1000, "after_id": "claude-sonnet-5-5"}]
+    assert sorted(item["id"] for item in models) == [
+        "claude-haiku-4-5",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("pages", "expected_requests"),
+    [
+        pytest.param(
+            [{"data": [{"id": "claude-a"}], "has_more": True, "last_id": "claude-a"}],
+            2,
+            id="repeated-cursor",
+        ),
+        pytest.param(
+            [{"data": [{"id": "claude-a"}], "has_more": True}],
+            1,
+            id="missing-cursor",
+        ),
+        pytest.param(
+            [
+                {"data": [{"id": f"claude-{index}"}], "has_more": True, "last_id": f"claude-{index}"}
+                for index in range(5)
+            ],
+            3,
+            id="page-limit",
+        ),
+    ],
+)
+@pytest.mark.usefixtures("_isolate_provider_manager")
+def test_generic_anthropic_compatible_stops_unbounded_pagination(
+    monkeypatch, pages: list[dict[str, object]], expected_requests: int,
+) -> None:
+    """
+    兼容端点的游标缺失、重复或页数超限时停止翻页，保留已读取的模型并提示列表可能不完整。
+    """
+    monkeypatch.setattr(discovery_module, "_ANTHROPIC_MODELS_MAX_PAGES", 3)
+    manager = LLMProviderManager()
+    manager._models_dev_data = {}
+    request = _PagedAnthropicRequest(pages)
+
+    with patch.object(manager, "_build_async_request", return_value=request), patch.object(
+        discovery_module.logger, "warning",
+    ) as warning:
+        models = asyncio.run(
+            manager.list_models(
+                provider_id="anthropic-compatible",
+                api_key="sk-ant-test",
+                base_url="https://relay.example.com/v1",
+            )
+        )
+
+    assert len(request.params) == expected_requests
+    assert models
+    assert request.params[0] is None
+    assert any("可能不完整" in str(call.args[0]) for call in warning.call_args_list)
 
 
 @pytest.mark.usefixtures("_isolate_provider_manager")
