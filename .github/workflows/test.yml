@@ -52,6 +52,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v10.0.1
@@ -65,20 +67,36 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Check test ownership and shared fixtures
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          TEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: uv run --locked --no-sync python scripts/testing/maintenance.py --base "$TEST_BASE_SHA" | tee test-maintenance.json
+
+      - name: Upload test maintenance inventory
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-maintenance
+          path: test-maintenance.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Check event semantic policy
         run: |
           uv run --locked --no-sync pytest \
-            tests/test_architecture_dependencies.py \
-            tests/test_architecture_adapter_imports.py \
-            tests/test_architecture_egress.py \
-            tests/test_architecture_event_facts.py \
-            tests/test_architecture_event_policy.py -q
+            tests/contracts/architecture/test_architecture_dependencies.py \
+            tests/contracts/architecture/test_architecture_adapter_imports.py \
+            tests/contracts/architecture/test_architecture_egress.py \
+            tests/contracts/architecture/test_architecture_event_facts.py \
+            tests/contracts/architecture/test_architecture_event_policy.py -q
 
       - name: Check host architecture snapshot
         run: |
           uv run --locked --no-sync pytest \
-            tests/test_architecture_contract_baseline.py \
-            tests/test_architecture_baseline_cli.py -q
+            tests/contracts/architecture/test_architecture_contract_baseline.py \
+            tests/contracts/architecture/test_architecture_baseline_cli.py -q
           uv run --locked --no-sync python \
             scripts/architecture/baseline.py --check-host
 

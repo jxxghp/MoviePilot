@@ -434,6 +434,45 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.download(fileitem, path=path)
 
+    def supports_file_stream(self, storage: str) -> bool:
+        """
+        检查指定存储实现是否支持按需 HTTP Range 流式读取（无需整文件落盘）。
+        """
+        if storage == "local":
+            return True
+        if storage not in self._support_storages:
+            return False
+        storage_oper = self.__get_storage_oper(storage)
+        if not storage_oper:
+            return False
+        storage_cls = type(storage_oper)
+        return (
+            storage_cls.get_stream_url is not StorageBase.get_stream_url
+            or storage_cls.open_file_stream is not StorageBase.open_file_stream
+        )
+
+    def get_file_stream_url(self, fileitem: FileItem) -> Optional[tuple[str, dict[str, str]]]:
+        """
+        委托远端存储解析可 Range 代理的 HTTP(S) 直链与上游请求头。
+        """
+        if fileitem.storage not in self._support_storages:
+            return None
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            return None
+        return storage_oper.get_stream_url(fileitem)
+
+    def open_file_stream(self, fileitem: FileItem) -> Optional[tuple[Any, int]]:
+        """
+        委托远端存储以可 seek 二进制流打开文件用于 HTTP Range 渐进传输。
+        """
+        if fileitem.storage not in self._support_storages:
+            return None
+        storage_oper = self.__get_storage_oper(fileitem.storage)
+        if not storage_oper:
+            return None
+        return storage_oper.open_file_stream(fileitem)
+
     def upload_file(self, fileitem: FileItem, path: Path, new_name: Optional[str] = None) -> Optional[FileItem]:
         """
         委托目标存储接收本地文件。

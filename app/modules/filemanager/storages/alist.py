@@ -555,6 +555,64 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
         return True
 
+    def _resolve_download_url(
+        self,
+        fileitem: _SchemaFileItem,
+        password: Optional[str] = "",
+    ) -> Optional[tuple[str, Optional[int]]]:
+        """
+        向 OpenList/AList 查询单文件的签名直链或 `/d` 下载地址及可选文件大小。
+        """
+        if not fileitem.path:
+            return None
+        resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
+            self.__get_api_url("/api/fs/get"),
+            json={
+                "path": fileitem.path,
+                "password": password,
+                "page": 1,
+                "per_page": 0,
+                "refresh": False,
+            },
+        )
+        if not resp:
+            logger.warn(f"【OpenList】请求获取文件 {fileitem.path} 失败，无法连接alist服务")
+            return None
+        if resp.status_code != 200:
+            logger.warn(
+                f"【OpenList】请求获取文件 {fileitem.path} 失败，状态码：{resp.status_code}"
+            )
+            return None
+
+        result = resp.json()
+        if result["code"] != 200:
+            logger.warn(
+                f"【OpenList】获取文件 {fileitem.path} 失败，错误信息：{result['message']}"
+            )
+            return None
+
+        data = result.get("data") or {}
+        remote_size = data.get("size")
+        if data.get("raw_url"):
+            return str(data["raw_url"]), remote_size
+        download_url = UrlUtils.adapt_request_url(
+            self.__get_base_url, f"/d{fileitem.path}"
+        )
+        if download_url and data.get("sign"):
+            download_url = download_url + "?sign=" + data["sign"]
+        if not download_url:
+            return None
+        return download_url, remote_size
+
+    def get_stream_url(self, fileitem: _SchemaFileItem) -> Optional[tuple[str, dict[str, str]]]:
+        """
+        返回 OpenList/AList 文件的 HTTP 直链用于 Range 流式播放。
+        """
+        resolved = self._resolve_download_url(fileitem)
+        if not resolved:
+            return None
+        return resolved[0], {}
+
     def download(
         self,
         fileitem: _SchemaFileItem,
@@ -574,44 +632,11 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         if not fileitem.path:
             return None
-        resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
-            self.__get_api_url("/api/fs/get"),
-            json={
-                "path": fileitem.path,
-                "password": password,
-                "page": 1,
-                "per_page": 0,
-                "refresh": False,
-            },
-        )
-        if not resp:
-            logger.warn(f"【OpenList】请求获取文件 {path} 失败，无法连接alist服务")
-            return None
-        if resp.status_code != 200:
-            logger.warn(
-                f"【OpenList】请求获取文件 {path} 失败，状态码：{resp.status_code}"
-            )
-            return None
-
-        result = resp.json()
-        if result["code"] != 200:
-            logger.warn(
-                f"【OpenList】获取文件 {path} 失败，错误信息：{result['message']}"
-            )
-            return None
-
-        if result["data"]["raw_url"]:
-            download_url = result["data"]["raw_url"]
-        else:
-            download_url = UrlUtils.adapt_request_url(
-                self.__get_base_url, f"/d{fileitem.path}"
-            )
-            if download_url and result["data"]["sign"]:
-                download_url = download_url + "?sign=" + result["data"]["sign"]
-
+        resolved = self._resolve_download_url(fileitem, password=password)
         local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
-        if local_path is None or not download_url:
+        if local_path is None or not resolved:
             return None
+        download_url, remote_size = resolved
 
         # 下载使用 raw_url 或带 sign 的 /d 地址，API 令牌不属于文件服务及其重定向目标。
         request_utils = RequestUtils()
@@ -630,7 +655,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                         downloaded_size += len(chunk)
                 expected_size = fileitem.size
                 if expected_size is None:
-                    expected_size = result["data"].get("size")
+                    expected_size = remote_size
                 if expected_size is None and r.headers.get("Content-Length"):
                     expected_size = int(r.headers["Content-Length"])
                 if expected_size is not None and downloaded_size != expected_size:

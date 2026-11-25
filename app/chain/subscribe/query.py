@@ -11,6 +11,7 @@ from app.application.subscription.contract import (
     SubscriptionRepository,
     SubscriptionSnapshot,
     build_subscribe_meta,
+    resolve_subscribe_media_type,
 )
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -42,6 +43,26 @@ from app.schemas.types import (
     MediaType,
     SystemConfigKey,
 )
+
+
+def _build_valid_subscribe_meta(subscribe: SubscriptionSnapshot) -> Optional[MetaBase]:
+    """
+    校验订阅名称与媒体类型后构造元数据；损坏或空白记录记录告警并返回 None。
+    """
+    if not (subscribe.name or "").strip() or resolve_subscribe_media_type(subscribe.type) is None:
+        logger.warning(
+            f"跳过无效订阅文件查询：id={subscribe.id}，标题={subscribe.name or '<空>'}，"
+            f"类型={subscribe.type or '<空>'}"
+        )
+        return None
+    try:
+        return build_subscribe_meta(subscribe)
+    except ValueError:
+        logger.warning(
+            f"跳过类型异常的订阅文件查询：id={subscribe.id}，标题={subscribe.name or '<空>'}，"
+            f"类型={subscribe.type or '<空>'}"
+        )
+        return None
 
 
 def _public_subscribe_view(subscribe: SubscriptionSnapshot) -> _SchemaSubscribe:
@@ -367,10 +388,8 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                             episodes[0].download = downloads
                             downloads.append(download_file_info)
 
-        try:
-            meta = build_subscribe_meta(subscribe)
-        except ValueError:
-            logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+        meta = _build_valid_subscribe_meta(subscribe)
+        if meta is None:
             return subscribe_info
         mediainfo = MediaChain().recognize_media(
             meta=meta,

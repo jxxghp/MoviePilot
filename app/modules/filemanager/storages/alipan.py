@@ -884,6 +884,34 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             )
         return self.__get_fileitem(result, parent=target_dir_path)
 
+    def get_stream_url(self, fileitem: _SchemaFileItem) -> Optional[Tuple[str, dict[str, str]]]:
+        """
+        返回阿里云盘文件的直链与必要上游请求头，用于 HTTP Range 渐进式流媒体代理。
+        """
+        if not fileitem.path:
+            return None
+        drive_id = fileitem.drive_id
+        file_id = fileitem.fileid
+        if not drive_id or not file_id:
+            detail = self.get_item(Path(fileitem.path))
+            if not detail or not detail.drive_id or not detail.fileid:
+                return None
+            drive_id = detail.drive_id
+            file_id = detail.fileid
+        download_info = self._request_api(
+            "POST",
+            "/adrive/v1.0/openFile/getDownloadUrl",
+            json={"drive_id": drive_id, "file_id": file_id},
+        )
+        download_url = download_info.get("url") if isinstance(download_info, dict) else None
+        if not download_url:
+            return None
+        headers = {
+            "User-Agent": str(get_runtime_setting("NORMAL_USER_AGENT")),
+            "Referer": "https://www.aliyundrive.com/",
+        }
+        return str(download_url), headers
+
     def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         下载云端文件到本地目录并报告进度。

@@ -851,7 +851,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1200 |
-| 内部导入边 | 10,641 |
+| 内部导入边 | 10,679 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 52（精确 policy 准入，Application / Chain 均为 0；本知识 Adapter 仍复用宿主 HTTP 层） |
@@ -871,8 +871,8 @@ flowchart LR
 
 ```bash
 # 文档结构与架构快照合同
-uv run --locked --no-sync pytest tests/test_architecture_documentation.py \
-  tests/test_architecture_contract_baseline.py -q
+uv run --locked --no-sync pytest tests/contracts/documentation/test_architecture_documentation.py \
+  tests/contracts/architecture/test_architecture_contract_baseline.py -q
 
 # 当前宿主事实与快照是否一致；此命令不写基线
 uv run --locked --no-sync python scripts/architecture/baseline.py --check-host

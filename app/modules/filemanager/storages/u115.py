@@ -1072,6 +1072,29 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             modify_time=local_path.stat().st_mtime if local_path.exists() else None,
         )
 
+    def get_stream_url(self, fileitem: _SchemaFileItem) -> Optional[Tuple[str, dict[str, str]]]:
+        """
+        返回 115 网盘文件的直链与请求头，用于 HTTP Range 渐进式流媒体代理。
+        """
+        if not fileitem.path:
+            return None
+        pickcode = fileitem.pickcode
+        if not pickcode:
+            detail = self.get_item(Path(fileitem.path))
+            if not detail or not detail.pickcode:
+                return None
+            pickcode = detail.pickcode
+        download_info = self._request_api(
+            "POST", "/open/ufile/downurl", "data", data={"pick_code": pickcode}
+        )
+        if not isinstance(download_info, dict) or not download_info:
+            return None
+        download_url = list(download_info.values())[0].get("url", {}).get("url")
+        if not download_url:
+            return None
+        ua = getattr(self._request_utils, "_ua", None) or str(get_runtime_setting("NORMAL_USER_AGENT"))
+        return str(download_url), {"User-Agent": str(ua)}
+
     def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         查询下载地址后将云端文件写入本地目录并报告进度。

@@ -40,6 +40,8 @@ _SECRET_SETTING_NAMES = frozenset(
         # 媒体服务器用户播放令牌是内部加密凭据，默认查询应整体脱敏。
         "media_server_user_credentials",
         "mediaserver_user_credentials",
+        # 弹幕上游服务地址与加密凭据整体受保护，禁止在普通设置快照与日志中泄露。
+        "danmaku_config",
         # 中心知识的源地址与独立令牌整体受保护，Agent 不能通过设置读取凭据。
         "ai_agent_knowledge",
     }

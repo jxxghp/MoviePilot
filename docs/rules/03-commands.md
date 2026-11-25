@@ -44,16 +44,16 @@ uv sync --locked --offline --inexact --no-dev --check
 
 ```bash
 # 运行指定测试文件
-uv run --locked --no-sync pytest tests/test_xxx.py
+uv run --locked --no-sync pytest tests/application/plugin/test_admission.py
 
 # 运行全部测试
 uv run --locked --no-sync pytest
 
 # 运行测试并显示详细结果
-uv run --locked --no-sync pytest -v tests/test_xxx.py
+uv run --locked --no-sync pytest -v tests/application/plugin/test_admission.py
 
 # 运行指定测试函数
-uv run --locked --no-sync pytest tests/test_xxx.py::test_function_name
+uv run --locked --no-sync pytest tests/application/plugin/test_admission.py::test_same_source_update_preserves_binding_and_advances_payload
 ```
 
 **Rules:**

@@ -308,6 +308,14 @@ class MediaServerStreamInfo(BaseModel):
     )
     resume_position_ms: Optional[int] = Field(default=None, description="服务端记录的断点续播位置（毫秒）")
     duration_ms: Optional[int] = Field(default=None, description="媒体总时长（毫秒）")
+    danmaku_enabled: bool = Field(default=False, description="当前实例是否已启用弹幕代理服务")
+    series_name: Optional[str] = Field(default=None, description="所属剧集标题（电视剧/动漫单集）")
+    season_number: Optional[int] = Field(default=None, description="季号")
+    episode_number: Optional[int] = Field(default=None, description="集号")
+    year: Optional[int] = Field(default=None, description="发行或首播年份")
+    tmdb_id: Optional[str] = Field(default=None, description="TMDB 标识")
+    file_name: Optional[str] = Field(default=None, description="原始文件名（不含敏感目录路径）")
+    file_size: Optional[int] = Field(default=None, description="媒体文件字节大小（可选）")
 
 
 class MediaServerMediaStream(BaseModel):

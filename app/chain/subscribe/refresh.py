@@ -15,6 +15,7 @@ from app.application.subscription.activity import activity_time, subscription_ac
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
+    resolve_subscribe_media_type,
     subscribe_media_key,
     subscribe_media_keys,
 )
@@ -298,10 +299,12 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                         "current": subscribe.id,
                     },
                 )
-            try:
-                mtype = MediaType(subscribe.type)
-            except ValueError:
-                logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+            mtype = resolve_subscribe_media_type(subscribe.type)
+            if mtype is None:
+                logger.warning(
+                    f"跳过无效订阅记录：id={subscribe.id}，标题={subscribe.name or '<空>'}，"
+                    f"类型={subscribe.type or '<空>'}"
+                )
                 continue
             # 先按订阅的主媒体身份预热对应数据源，再对 TMDB 额外预热分集接口。
             if mtype == MediaType.MUSIC:

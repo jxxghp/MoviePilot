@@ -8,7 +8,7 @@ Verification preparation below is the contributor default. Confirmed maintainers
 
 ```bash
 # 至少运行与本次改动直接相关的测试
-uv run --locked --no-sync pytest tests/test_<domain>.py
+uv run --locked --no-sync pytest tests/application/plugin -q
 
 # 改动影响公共模块、启动流程、CLI 或智能体运行行为时扩大测试范围
 uv run --locked --no-sync pytest
@@ -33,11 +33,11 @@ Use the following as likely shared-impact boundaries. Run the full test suite wh
 
 ### Writing New Tests
 
-- When fixing a bug, prefer adding a test that reproduces it first.
-- When adding a feature, add at minimum the smallest useful test coverage.
-- Test files go in `tests/`, named `test_<domain>.py`.
+- When fixing a bug, reproduce it with existing tests or the smallest useful extension before implementation.
+- When adding a feature, cover new observable risks; reuse or parameterize existing suites before adding files.
+- New test files go under responsibility directories in `tests/`, named `test_<behavior>.py`; ownership, consolidation, retirement, and maintenance checks follow `docs/testing.md`.
 - Use the patterns established in adjacent test files (fixtures, mock patterns, assertion style).
-- Agent-related tests are under `tests/test_agent_*.py`. Integration-style tests may be in `tests/cases/` or `tests/manual/`.
+- Cross-module behavior belongs in `tests/integration/<domain>/`. Root test files and imports from test entry modules are forbidden across the full test tree; historical paths are not exceptions. Do not introduce another general-purpose cases/manual test tree.
 
 ---
 

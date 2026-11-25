@@ -1,0 +1,19 @@
+"""
+跨来源音乐身份的合成回放值；不注册测试用例。
+"""
+
+import base64
+
+_COVER = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=")
+
+
+_RECORDING = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
+
+
+_RELEASE = "70b71113-b078-4f07-9d24-374482016a41"
+
+
+_GROUP = "25aa1b18-5e85-43c2-94c4-4b07ad96268a"
+
+
+_TRACK = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"

@@ -323,6 +323,26 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_stream_url(self, fileitem: _SchemaFileItem) -> Optional[Tuple[str, dict[str, str]]]:
+        """
+        返回支持 HTTP Range 渐进流式播放的远端文件直链与可选上游请求头。
+
+        :param fileitem: 远端文件项
+        :return: ``(url, headers)`` 二元组；存储不支持 HTTP 直链流式读取时返回 None
+        """
+        _ = fileitem
+        return None
+
+    def open_file_stream(self, fileitem: _SchemaFileItem) -> Optional[Tuple[Any, int]]:
+        """
+        以可随机定位的二进制只读流打开远端文件（例如 SMB），用于按需分块 Range 传输。
+
+        :param fileitem: 远端文件项
+        :return: ``(seekable_binary_stream, file_size)`` 二元组；不支持时返回 None
+        """
+        _ = fileitem
+        return None
+
     @abstractmethod
     def upload(self, fileitem: _SchemaFileItem, path: Path,
                new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:

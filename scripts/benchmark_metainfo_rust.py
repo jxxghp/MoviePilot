@@ -26,7 +26,7 @@ from app.domain.meta.runtime import (
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.adapters.system import rust as rust_accel
 from app.runtime.settings import get_runtime_setting
-from tests.cases.meta import meta_cases
+from tests.fixtures.recognition.titles import meta_cases
 
 
 BenchmarkInput = tuple[str, str, Optional[str]]

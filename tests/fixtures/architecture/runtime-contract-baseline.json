@@ -6250,6 +6250,25 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "get_file_stream_url": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "storage",
+      "input_contract": "StorageStreamUrlRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "fileitem"
+      ],
+      "result_contract": "tuple[str, dict[str, str]] | None",
+      "result_shape": "any",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "get_folder": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -7683,6 +7702,25 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "open_file_stream": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "storage",
+      "input_contract": "StorageOpenStreamRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "fileitem"
+      ],
+      "result_contract": "tuple[BinaryIO, int] | None",
+      "result_shape": "any",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "parse_torrent_download_confirmation": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -8240,6 +8278,25 @@
       ],
       "result_contract": "StorageProviderResult",
       "result_shape": "any",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "supports_file_stream": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "storage",
+      "input_contract": "StorageStreamSupportRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "storage"
+      ],
+      "result_contract": "bool | None",
+      "result_shape": "boolean",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -8941,10 +8998,10 @@
     }
   },
   "run_module": {
-    "call_count": 289,
+    "call_count": 292,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 234,
+    "method_count": 237,
     "methods": {
       "anilist_credits": [
         {
@@ -9869,6 +9926,13 @@
           "mode": "sync"
         }
       ],
+      "get_file_stream_url": [
+        {
+          "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "get_folder": [
         {
           "caller": "app.chain.storage",
@@ -10337,6 +10401,13 @@
           "mode": "sync"
         }
       ],
+      "open_file_stream": [
+        {
+          "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "parse_torrent_download_response": [
         {
           "caller": "app.chain.download.submission",
@@ -10524,6 +10595,13 @@
         }
       ],
       "storage_manage": [
+        {
+          "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "supports_file_stream": [
         {
           "caller": "app.chain.storage",
           "count": 1,
