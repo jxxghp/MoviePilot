@@ -883,6 +883,9 @@ class SearchScan:
                 self.choose(ready, submit)
             if self.execution and time.monotonic() - started >= SEARCH_SLICE_SECONDS:
                 self._defer()
+            # 提交后可能只剩站点尚未收录的缺集；本批来源列表仍是提交前按旧缺集选出的。
+            if ready and not self.collection.active_sources(full=self.full):
+                break
         return advanced
 
     def _wait_for_long_waits(self) -> bool:
