@@ -36,7 +36,7 @@ from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.hdwing import HDWingPromotionMixin
 from app.modules.indexer.spider.milkie import MilkieSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
-from app.modules.indexer.spider.piggo import PiggoSpider
+from app.modules.indexer.spider.piggo import PiggoSpider, media_search_params
 from app.modules.indexer.spider.rousi import RousiSpider
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
@@ -826,8 +826,10 @@ class IndexerModule(_ModuleBase):
         if not IndexerModule.__search_check(site, keyword):
             return None
 
-        search_word = IndexerModule.__clear_search_text(keyword)
         parser_name = str(site.get("parser") or "")
+        # 精确作品链接依赖原始标点，其他站点及猪猪普通关键词继续原有清洗。
+        keep_keyword = parser_name == "Piggo" and search_type == "torrents" and media_search_params(keyword)
+        search_word = keyword if keep_keyword else IndexerModule.__clear_search_text(keyword)
         parser_class = SPIDER_PARSER_CLASSES.get(parser_name)
         if search_type == "subtitles":
             subtitle_argument_names = _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS.get(parser_name)
