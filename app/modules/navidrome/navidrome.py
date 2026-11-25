@@ -744,8 +744,17 @@ class Navidrome:
         """
         通过 Subsonic `scrobble` 接口同步 Navidrome 正在播放状态与完播计数。
 
-        起播时上报 `submission=false` 激活正在播放列表；停止时若满足 Last.fm/Subsonic 规则
-        （已播 >= 50% 或累计听满 4 分钟）且尚未计次，则提交 `submission=true`。
+        起播时上报 `submission=false` 激活正在播放列表。停止时优先按客户端上报的累计
+        收听时长判断，达到曲目时长的 50% 或 4 分钟且尚未计次时，提交 `submission=true`。
+
+        :param item_id: Navidrome 曲目标识
+        :param position_ms: 播放位置（毫秒）；仅在未上报累计时长时用于估算
+        :param duration_ms: 曲目总时长（毫秒）；缺失时只按 4 分钟判断
+        :param state: 播放会话事件状态
+        :param playback_time_ms: 本次播放累计收听时长（毫秒）；None 表示客户端未提供
+        :param started_reported: 是否已经上报过起播
+        :param scrobbled: 是否已经提交过本次播放计数
+        :return: 上报结果及本次播放是否已计次
         """
         _ = (
             media_source_id,
@@ -776,9 +785,9 @@ class Navidrome:
         if state == "stopped":
             if scrobbled:
                 return {"reported": True, "mode": "scrobble", "started_sent": started_reported, "scrobbled": True}
-            reached_half = bool(duration_ms and duration_ms > 0 and (position_ms / duration_ms) >= 0.5)
-            reached_four_min = (playback_time_ms is not None and playback_time_ms >= 240_000) or position_ms >= 240_000
-            if reached_half or reached_four_min:
+            listened_ms = position_ms if playback_time_ms is None else playback_time_ms
+            reached_half = bool(duration_ms and duration_ms > 0 and listened_ms * 2 >= duration_ms)
+            if reached_half or listened_ms >= 240_000:
                 ok = self._call("scrobble", id=item_id, submission="true", time=int(time.time() * 1000)) is not None
                 return {
                     "reported": ok,
