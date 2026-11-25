@@ -393,7 +393,11 @@ class _BatchDownloadRun:
             self, context: Context, *, partial: bool = False,
     ) -> Optional[Tuple[bytes, List[int]]]:
         """
-        读取真实文件集数；保留站点失败原因用于冷却，磁力链只跳过当前阶段。
+        读取真实文件集数；保留站点失败原因，单次无效内容使用瞬时冷却，磁力链只跳过当前阶段。
+
+        :param context: 包含种子与识别信息的候选
+        :param partial: 是否处于拆包阶段，用于选择日志级别和说明
+        :return: 种子内容和识别出的集数；无法读取或核对文件时返回 None
         """
         assert context.torrent_info is not None
         torrent = context.torrent_info
@@ -407,9 +411,11 @@ class _BatchDownloadRun:
         if not content:
             log_failure = logger.info if partial else logger.warn
             log_failure(f"{torrent.title} 种子下载失败！")
+            error_msg = errors[-1] if errors else "下载种子内容为空"
             self.owner._record_download_failure(
-                context=context, error_msg=errors[-1] if errors else "下载种子内容为空",
+                context=context, error_msg=error_msg,
                 downloader=self.options["downloader"], source=self.options["source"],
+                ttl_seconds=self.owner._download_failure_ttl(error_msg, episode_probe=True),
             )
             self._remember_failure(context)
             governance = self.options["governance"]
