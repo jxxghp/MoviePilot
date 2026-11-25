@@ -31,6 +31,7 @@ from app.chain.mediaserver import MediaServerChain
 from app.schemas.danmaku import (
     DanmakuBindingRequest,
     DanmakuConfigUpdateRequest,
+    DanmakuHttpResponse,
     DanmakuMatchRequest,
 )
 from app.schemas.mediaserver import (
@@ -114,7 +115,7 @@ class _FakeDanmakuTransport:
     可编程的上游弹幕 HTTP 传输测试替身。
     """
 
-    def __init__(self, handler: Callable[[_RecordedRequest], danmaku_app.DanmakuHttpResponse]) -> None:
+    def __init__(self, handler: Callable[[_RecordedRequest], DanmakuHttpResponse]) -> None:
         """
         注册响应回调与调用日志。
         """
@@ -132,7 +133,7 @@ class _FakeDanmakuTransport:
         timeout: int = 10,
         proxies: Any = None,
         verify_tls: bool = True,
-    ) -> danmaku_app.DanmakuHttpResponse:
+    ) -> DanmakuHttpResponse:
         """
         记录调用并委托自定义回调构造上游响应。
         """
@@ -155,11 +156,11 @@ def isolated_danmaku_store(
     yield store
 
 
-def _json_response(payload: Any, status_code: int = 200) -> danmaku_app.DanmakuHttpResponse:
+def _json_response(payload: Any, status_code: int = 200) -> DanmakuHttpResponse:
     """
     构造 JSON 格式的上游模拟响应。
     """
-    return danmaku_app.DanmakuHttpResponse(
+    return DanmakuHttpResponse(
         status_code=status_code,
         content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         content_type="application/json; charset=utf-8",
@@ -323,7 +324,7 @@ def test_match_fallback_and_manual_binding_priority(
     验证自动匹配回退 /search/episodes、手动绑定优先级（item > tmdb）与解绑恢复自动匹配。
     """
 
-    def _handler(req: _RecordedRequest) -> danmaku_app.DanmakuHttpResponse:
+    def _handler(req: _RecordedRequest) -> DanmakuHttpResponse:
         if req.url.endswith("/api/v2/match"):
             return _json_response({"isMatched": False, "matches": []})
         if "/api/v2/search/episodes" in req.url:
@@ -445,7 +446,7 @@ def test_singleflight_l2_gzip_etag_304_and_xml_parsing(
     upstream_hits = 0
     hit_lock = threading.Lock()
 
-    def _handler(req: _RecordedRequest) -> danmaku_app.DanmakuHttpResponse:
+    def _handler(req: _RecordedRequest) -> DanmakuHttpResponse:
         nonlocal upstream_hits
         if "/api/v2/comment/1001" in req.url:
             time.sleep(0.05)
@@ -466,7 +467,7 @@ def test_singleflight_l2_gzip_etag_304_and_xml_parsing(
                 '<i><d p="3.5,4,25,16711680,1700000000,0,abc,1">底部红字</d>'
                 '<d p="1.2,1,25,16777215,1700000000,0,def,2">XML滚动弹幕</d></i>'
             )
-            return danmaku_app.DanmakuHttpResponse(
+            return DanmakuHttpResponse(
                 status_code=200,
                 content=xml_body.encode("utf-8"),
                 content_type="application/xml",
@@ -629,3 +630,279 @@ def test_stream_info_exposes_danmaku_metadata_without_server_directory_path(
     assert data["file_name"] == "Frieren.S01E01.1080p.mkv"
     assert data["file_size"] == 1234567890
     assert "/mnt/secret_nas" not in resp.text
+
+
+def test_request_utils_danmaku_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    验证 RequestUtilsDanmakuTransport 的 GET、POST 及空响应异常处理。
+    """
+    from app.adapters.external import danmaku as transport_mod
+
+    recorded: list[tuple[str, str, Any]] = []
+
+    class _DummyRequestUtils:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def get_res(self, url: str, verify: bool = True) -> Any:
+            recorded.append(("GET", url, verify))
+            if "none" in url:
+                return None
+            return SimpleNamespace(status_code=200, content=b'{"ok":true}', headers={"Content-Type": "application/json"})
+
+        def post_res(self, url: str, json: Any = None, verify: bool = True) -> Any:
+            recorded.append(("POST", url, (json, verify)))
+            return SimpleNamespace(status_code=201, content=b'{"matched":true}', headers={"Content-Type": "application/json"})
+
+    monkeypatch.setattr(transport_mod, "RequestUtils", _DummyRequestUtils)
+    adapter = transport_mod.RequestUtilsDanmakuTransport()
+
+    get_resp = adapter.request("GET", "https://danmu.example/api/v2/search/anime", headers={"Accept": "application/json"})
+    assert get_resp.status_code == 200
+    assert get_resp.content == b'{"ok":true}'
+
+    post_resp = adapter.request(
+        "POST",
+        "https://danmu.example/api/v2/match",
+        headers={"Accept": "application/json"},
+        json_body={"fileName": "demo.mkv"},
+        verify_tls=False,
+    )
+    assert post_resp.status_code == 201
+    assert recorded[-1][0] == "POST"
+
+    with pytest.raises(RuntimeError, match="上游弹幕服务无响应"):
+        adapter.request("GET", "https://danmu.example/none", headers={})
+
+
+def test_danmaku_endpoints_search_bangumi_bindings_cache_and_errors(
+    isolated_danmaku_store: _InMemorySystemConfig,
+    tmp_path: Path,
+) -> None:
+    """
+    覆盖弹幕路由全部端点的正常响应、缓存命中、参数校验与上游错误映射。
+    """
+    mode = {"fail_search": False, "bangumi_status": 200, "bangumi_bad_json": False, "comments_fail": False}
+
+    def _handler(req: _RecordedRequest) -> DanmakuHttpResponse:
+        if "/api/v2/match" in req.url:
+            return _json_response(
+                {
+                    "isMatched": True,
+                    "matches": [
+                        {
+                            "episodeId": 300101,
+                            "animeId": 3001,
+                            "animeTitle": "进击的巨人",
+                            "episodeTitle": "第1话",
+                            "typeDescription": "TV动画",
+                            "shift": 1.5,
+                        }
+                    ],
+                }
+            )
+        if "/api/v2/search/episodes" in req.url:
+            if mode["fail_search"]:
+                return _json_response({"errorMessage": "busy"}, status_code=503)
+            return _json_response(
+                {
+                    "animes": [
+                        {
+                            "animeId": 3001,
+                            "animeTitle": "进击的巨人",
+                            "typeDescription": "TV动画",
+                            "episodes": [{"episodeId": 300101, "episodeTitle": "第1话"}],
+                        }
+                    ]
+                }
+            )
+        if "/api/v2/search/anime" in req.url:
+            if mode["fail_search"]:
+                return DanmakuHttpResponse(status_code=200, content=b"not-json", content_type="text/plain")
+            return _json_response(
+                {
+                    "animes": [
+                        {"animeId": 3001, "animeTitle": "进击的巨人", "type": "tvseries", "episodeCount": 25},
+                        "skip-invalid",
+                        {"animeId": None, "animeTitle": "无ID"},
+                    ]
+                }
+            )
+        if "/api/v2/bangumi/" in req.url:
+            if mode["bangumi_status"] != 200:
+                return _json_response({}, status_code=mode["bangumi_status"])
+            if mode["bangumi_bad_json"]:
+                return DanmakuHttpResponse(status_code=200, content=b"{bad", content_type="application/json")
+            return _json_response(
+                {
+                    "bangumi": {
+                        "animeTitle": "进击的巨人",
+                        "typeDescription": "TV动画",
+                        "episodes": [{"episodeId": 300101, "episodeTitle": "第1话"}],
+                    }
+                }
+            )
+        if "/api/v2/comment/" in req.url:
+            if mode["comments_fail"]:
+                return _json_response({}, status_code=500)
+            return _json_response({"comments": [[1000, 1, 16777215, "紧凑弹幕", "bilibili"]]})
+        return _json_response({})
+
+    transport = _FakeDanmakuTransport(_handler)
+    service = danmaku_app.DanmakuService(transport=transport, cache_root=tmp_path)
+    admin_client = _build_test_client(service, is_superuser=True)
+
+    # 未启用时访问 /match 返回 503
+    assert admin_client.post("/api/v1/danmaku/match", json={"title": "进击的巨人"}).status_code == 503
+    # 非法上游地址返回 400
+    assert (
+        admin_client.put(
+            "/api/v1/danmaku/config",
+            json={"enabled": True, "api_base_url": "ftp://invalid.example"},
+        ).status_code
+        == 400
+    )
+
+    # 正确配置后测试 GET /config 与 POST /config/test
+    assert (
+        admin_client.put(
+            "/api/v1/danmaku/config",
+            json={"enabled": True, "api_base_url": "https://danmu.example.com", "auth_mode": "none"},
+        ).status_code
+        == 200
+    )
+    cfg_resp = admin_client.get("/api/v1/danmaku/config")
+    assert cfg_resp.status_code == 200
+    assert cfg_resp.json()["data"]["enabled"] is True
+
+    test_resp = admin_client.post("/api/v1/danmaku/config/test", json={"api_base_url": "https://danmu.example.com"})
+    assert test_resp.status_code == 200
+    assert test_resp.json()["data"]["ok"] is True
+
+    # /match 直接命中
+    match_resp = admin_client.post(
+        "/api/v1/danmaku/match",
+        json={"server": "Emby", "item_id": "ep-9", "file_name": "AoT.S01E01.mkv", "duration_ms": 1440000},
+    )
+    assert match_resp.status_code == 200
+    assert match_resp.json()["data"]["episode"]["episode_id"] == 300101
+    assert match_resp.json()["data"]["shift_ms"] == 1500
+
+    # /search（按剧名 & 按分集 + 缓存命中 + 异常映射）
+    s1 = admin_client.get("/api/v1/danmaku/search", params={"keyword": "进击的巨人", "type": "tvseries"})
+    assert s1.status_code == 200
+    assert s1.json()["data"][0]["anime_id"] == 3001
+    # 第二次命中 L1 缓存
+    assert admin_client.get("/api/v1/danmaku/search", params={"keyword": "进击的巨人", "type": "tvseries"}).status_code == 200
+
+    s2 = admin_client.get("/api/v1/danmaku/search", params={"keyword": "进击的巨人", "episode": "1"})
+    assert s2.status_code == 200
+    assert s2.json()["data"][0]["episodes"][0]["episode_id"] == 300101
+
+    mode["fail_search"] = True
+    assert admin_client.get("/api/v1/danmaku/search", params={"keyword": "新词触发失败"}).status_code == 502
+    assert admin_client.get("/api/v1/danmaku/search", params={"keyword": "新词分集失败", "episode": "2"}).status_code == 502
+    mode["fail_search"] = False
+
+    # /bangumi/{id}（正常 + 缓存命中 + 404 + 502 + 无效 JSON）
+    b1 = admin_client.get("/api/v1/danmaku/bangumi/3001")
+    assert b1.status_code == 200
+    assert b1.json()["data"]["episodes"][0]["episode_id"] == 300101
+    assert admin_client.get("/api/v1/danmaku/bangumi/3001").status_code == 200
+
+    mode["bangumi_status"] = 404
+    assert admin_client.get("/api/v1/danmaku/bangumi/3002").status_code == 404
+    mode["bangumi_status"] = 500
+    assert admin_client.get("/api/v1/danmaku/bangumi/3003").status_code == 502
+    mode["bangumi_status"] = 200
+    mode["bangumi_bad_json"] = True
+    assert admin_client.get("/api/v1/danmaku/bangumi/3004").status_code == 502
+    mode["bangumi_bad_json"] = False
+
+    # /comments/{id}（正常 + 通配符 If-None-Match 304 + 上游失败 502）
+    c_ok = admin_client.get("/api/v1/danmaku/comments/300101")
+    assert c_ok.status_code == 200
+    assert admin_client.get("/api/v1/danmaku/comments/300101", headers={"If-None-Match": "*"}).status_code == 304
+    mode["comments_fail"] = True
+    assert admin_client.get("/api/v1/danmaku/comments/300999").status_code == 502
+    mode["comments_fail"] = False
+
+    # /bindings PUT + DELETE + 无效键 400
+    put_bind = admin_client.put(
+        "/api/v1/danmaku/bindings",
+        json={"server": "Emby", "item_id": "ep-9", "episode_id": 300101, "anime_id": 3001, "anime_title": "进击的巨人"},
+    )
+    assert put_bind.status_code == 200
+    assert admin_client.put("/api/v1/danmaku/bindings", json={"episode_id": 300101}).status_code == 400
+    del_bind = admin_client.delete("/api/v1/danmaku/bindings", params={"server": "Emby", "item_id": "ep-9"})
+    assert del_bind.status_code == 200
+    assert del_bind.json()["data"] is True
+    assert admin_client.delete("/api/v1/danmaku/bindings").status_code == 400
+
+    # /cache DELETE
+    clear_resp = admin_client.delete("/api/v1/danmaku/cache")
+    assert clear_resp.status_code == 200
+    assert clear_resp.json()["data"]["removed_files"] >= 1
+
+
+def test_danmaku_parsers_and_validation_edge_cases(
+    isolated_danmaku_store: _InMemorySystemConfig,
+    tmp_path: Path,
+) -> None:
+    """
+    验证弹幕双格式解析器、来源标签提取、非严格 XML 正则兜底及上游连通性测试异常分支。
+    """
+    assert danmaku_app.parse_upstream_comments(b"") == []
+    assert danmaku_app.parse_upstream_comments(b"   ") == []
+    assert danmaku_app.parse_upstream_comments(b"{not-json}") == []
+
+    # 兼容 data.items 包装与裸紧凑数组，并过滤非法条目
+    wrapped = json.dumps(
+        {
+            "data": {
+                "items": [
+                    [2000, 5, 16711680, "顶部", "iqiyi"],
+                    [-10, 1, 16777215, "负时间跳过", ""],
+                    ["bad", 1, 16777215, "坏格式", ""],
+                    {"p": "1.5,4,65280,[CustomSub]u1", "m": "底部绿字"},
+                    {"p": "bad,1,0", "m": "非法时间"},
+                    {"p": "-2,1,0", "m": "负时间对象"},
+                    {"p": "1.0", "m": "字段不足"},
+                    "skip",
+                ]
+            }
+        }
+    ).encode("utf-8")
+    parsed_json = danmaku_app.parse_upstream_comments(wrapped)
+    assert parsed_json == [
+        [1500, 4, 65280, "底部绿字", "customsub"],
+        [2000, 5, 16711680, "顶部", "iqiyi"],
+    ]
+
+    # 畸形未闭合 XML 走正则容错兜底，并跳过残缺/负时间节点
+    broken_xml = b'<i><d p="2.5,1,25,16777215">A &amp; B</d><d p="1.0">bad</d><d p="-1,1,25,0">neg</d><d p="x,1,25,0">nan</d>'
+    parsed_xml = danmaku_app.parse_upstream_comments(broken_xml, content_type="text/plain")
+    assert parsed_xml == [[2500, 1, 16777215, "A & B", "xml"]]
+
+    # test_config 覆盖异常路径（未配置地址、401 鉴权失败、500 服务异常、传输抛出异常）
+    def _boom(_req: _RecordedRequest) -> DanmakuHttpResponse:
+        raise RuntimeError("connect timeout")
+
+    svc_err = danmaku_app.DanmakuService(transport=_FakeDanmakuTransport(_boom), cache_root=tmp_path)
+    assert svc_err.test_config().ok is False
+    svc_err.update_config(DanmakuConfigUpdateRequest(enabled=True, api_base_url="https://danmu.example.com"))
+    assert svc_err.test_config().ok is False
+
+    svc_401 = danmaku_app.DanmakuService(
+        transport=_FakeDanmakuTransport(lambda _r: _json_response({}, status_code=401)),
+        cache_root=tmp_path,
+    )
+    r401 = svc_401.test_config()
+    assert r401.ok is False and r401.status_code == 401
+
+    svc_500 = danmaku_app.DanmakuService(
+        transport=_FakeDanmakuTransport(lambda _r: _json_response({}, status_code=500)),
+        cache_root=tmp_path,
+    )
+    r500 = svc_500.test_config()
+    assert r500.ok is False and r500.status_code == 500
