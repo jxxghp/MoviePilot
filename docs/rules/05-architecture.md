@@ -311,5 +311,5 @@ Event producer and consumer facts are collected solely by
 | `app/application/agent.py` & `app/agent/` | Agent facade, `AgentManager`, `graph.py` resource cache, session/task/lifecycle/shell/terminal owners and `llm/` (`provider.py`, `helper.py`) |
 | `app/application/system.py` & `network.py` | System settings/update/log/Wiki use cases and SSRF-guarded network-test catalog |
 
-Run `tests/test_architecture_dependencies.py` after any ownership, package-root
+Run `tests/contracts/architecture/test_architecture_dependencies.py` after any ownership, package-root
 or import change.

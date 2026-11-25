@@ -1,0 +1,900 @@
+"""
+验证文件整理计划的输入冻结、操作顺序、事件拦截和清理兼容。
+"""
+
+from dataclasses import replace
+from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
+
+from app.application.transfer.workflow import (
+    TransferPlanCheckpoint,
+    TransferPlanItem,
+    TransferPlanningInput,
+)
+from app.domain.context import MediaInfo, MusicInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.modules.filemanager import transhandler as transhandler_module
+from app.modules.filemanager.module import FileManagerModule
+from app.modules.filemanager.transhandler import TransHandler
+from app.runtime.events import eventmanager
+from app.schemas.system import TransferDirectoryConf
+from app.schemas.types import ChainEventType, MediaType
+from app.schemas.workflow import FileItem
+from tests.support.storage.planning import (
+    ReadOnlyTreeStorage,
+    RecordingStorage,
+)
+
+
+def _build_media() -> tuple[MetaBase, MediaInfo]:
+    """
+    构造文件规划所需的最小电视剧领域对象。
+    """
+    meta = MetaBase("Test.Show.S01E01.mkv")
+    meta.type = MediaType.TV
+    meta.name = "Test Show"
+    meta.year = "2026"
+    meta.begin_season = 1
+    meta.begin_episode = 1
+    mediainfo = MediaInfo(
+        type=MediaType.TV,
+        title="Test Show",
+        year="2026",
+        tmdb_id=12345,
+    )
+    return meta, mediainfo
+
+
+def _build_fileitem() -> FileItem:
+    """
+    构造无需访问宿主文件系统的网盘源文件。
+    """
+    return FileItem(
+        storage="alist",
+        path="/downloads/Test.Show.S01E01.mkv",
+        name="Test.Show.S01E01.mkv",
+        basename="Test.Show.S01E01",
+        extension="mkv",
+        type="file",
+        size=1024,
+        modify_time=1.0,
+    )
+
+
+def _build_input(fileitem: FileItem, **overrides) -> TransferPlanningInput:
+    """
+    构造可持久化规划输入。
+    """
+    values = {
+        "source_fileitem": fileitem.model_dump(mode="json"),
+        "target_storage": "alist",
+        "target_path": "/library",
+        "requested_transfer_type": "copy",
+        "need_rename": True,
+        "overwrite_mode": "always",
+    }
+    values.update(overrides)
+    return TransferPlanningInput(**values)
+
+
+def _plan_file(
+    handler: TransHandler,
+    planning_input: TransferPlanningInput,
+    meta: MetaBase,
+    mediainfo: MediaInfo,
+    source_oper,
+):
+    """
+    使用测试固定策略规划单个文件。
+    """
+    return handler.plan_transfer(
+        planning_input,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=source_oper,
+        target_storage="alist",
+        target_path=Path("/library"),
+        transfer_type="copy",
+        need_scrape=False,
+        need_rename=True,
+        need_notify=True,
+        overwrite_mode="always",
+        episodes_info=None,
+        preview=False,
+    )
+
+
+def test_directory_planning_only_reads_source_and_freezes_ordered_leaf_operations():
+    """
+    目录规划只读取源目录，并冻结有序的叶子文件操作。
+    """
+    root = FileItem(storage="alist", path="/source/disc", name="disc", type="dir")
+    nested = FileItem(storage="alist", path="/source/disc/BDMV", name="BDMV", type="dir")
+    first = FileItem(
+        storage="alist",
+        path="/source/disc/BDMV/index.bdmv",
+        name="index.bdmv",
+        type="file",
+        extension="bdmv",
+    )
+    second = FileItem(
+        storage="alist",
+        path="/source/disc/MovieObject.bdmv",
+        name="MovieObject.bdmv",
+        type="file",
+        extension="bdmv",
+    )
+    storage = ReadOnlyTreeStorage(
+        {
+            root.path: [nested, second],
+            nested.path: [first],
+        }
+    )
+    meta, mediainfo = _build_media()
+    planning_input = _build_input(root, need_rename=False)
+
+    checkpoint = TransHandler().plan_transfer(
+        planning_input,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=storage,
+        target_storage="alist",
+        target_path=Path("/library"),
+        transfer_type="copy",
+        need_scrape=False,
+        need_rename=False,
+        need_notify=True,
+        overwrite_mode="never",
+        episodes_info=None,
+        preview=False,
+    )
+
+    assert storage.reads == [root.path, nested.path]
+    assert [item.sequence for item in checkpoint.items] == [0, 1]
+    assert [item.source_fileitem["path"] for item in checkpoint.items] == [
+        first.path,
+        second.path,
+    ]
+    assert [item.target_path for item in checkpoint.items] == [
+        "/library/disc/BDMV/index.bdmv",
+        "/library/disc/MovieObject.bdmv",
+    ]
+
+
+def test_execute_uses_frozen_target_and_intercepts_before_directory_or_delete(
+    monkeypatch,
+):
+    """
+    执行阶段使用冻结目标，在创建目录和覆盖删除前完成拦截。
+    """
+    calls: list[str] = []
+    fileitem = _build_fileitem()
+    meta, mediainfo = _build_media()
+
+    def record_event(event_type, event_data):
+        """
+        记录规划和执行事件顺序。
+        """
+        calls.append(event_type.value)
+        return None
+
+    monkeypatch.setattr(eventmanager, "send_event", record_event)
+    handler = TransHandler()
+    checkpoint = _plan_file(
+        handler,
+        _build_input(fileitem),
+        meta,
+        mediainfo,
+        ReadOnlyTreeStorage({}),
+    )
+    frozen_target = checkpoint.final_target_path
+    assert calls == [
+        ChainEventType.TransferRenameBuild.value,
+        ChainEventType.TransferRename.value,
+    ]
+    calls.clear()
+    original_get_runtime_setting = transhandler_module.get_runtime_setting
+
+    def drifted_runtime_setting(name: str):
+        """
+        让执行期重新读取重命名配置时立即失败。
+        """
+        if name == "RENAME_FORMAT":
+            raise AssertionError("执行冻结计划不应重新读取重命名配置")
+        return original_get_runtime_setting(name)
+
+    monkeypatch.setattr(
+        transhandler_module,
+        "get_runtime_setting",
+        drifted_runtime_setting,
+    )
+    existing = FileItem(
+        storage="alist",
+        path=frozen_target,
+        name=Path(frozen_target).name,
+        type="file",
+        extension="mkv",
+        size=100,
+        modify_time=1.0,
+    )
+    storage = RecordingStorage(calls, existing=existing)
+
+    result = handler.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=storage,
+        target_oper=storage,
+    )
+
+    assert result.success is True
+    assert ChainEventType.TransferRenameBuild.value not in calls
+    assert ChainEventType.TransferRename.value not in calls
+    assert ChainEventType.TransferOverwriteCheck.value in calls
+    intercept_index = calls.index(ChainEventType.TransferIntercept.value)
+    assert intercept_index < calls.index("get_folder")
+    assert intercept_index < calls.index("delete")
+    assert f"rename:{frozen_target}" in calls
+    assert next(index for index, call in enumerate(calls) if call.startswith("copy:")) < calls.index("delete")
+
+
+def test_module_preserves_admission_input_while_freezing_resolved_directory():
+    """
+    规划保留原始准入输入，同时冻结解析后的目录和媒体信息。
+    """
+    fileitem = _build_fileitem()
+    meta, mediainfo = _build_media()
+    admission_input = _build_input(
+        fileitem,
+        target_storage=None,
+        target_path=None,
+        requested_transfer_type=None,
+        target_directory={"name": "library"},
+    )
+    fingerprint = admission_input.fingerprint
+    target_directory = TransferDirectoryConf(
+        name="library",
+        transfer_type="copy",
+        overwrite_mode="never",
+        library_path="/resolved-library",
+        library_storage="alist",
+        renaming=True,
+        scraping=False,
+        notify=True,
+    )
+
+    checkpoint = FileManagerModule().plan_transfer(
+        fileitem=fileitem,
+        meta=meta,
+        mediainfo=mediainfo,
+        target_directory=target_directory,
+        source_oper=ReadOnlyTreeStorage({}),
+        planning_input=admission_input,
+    )
+
+    assert checkpoint.planning_input is admission_input
+    assert checkpoint.planning_input.fingerprint == fingerprint
+    assert checkpoint.root_target_path == "/resolved-library"
+    assert checkpoint.final_target_path.startswith("/resolved-library/")
+    assert checkpoint.resolved_meta_kind == "MetaBase"
+    assert checkpoint.resolved_meta["begin_episode"] == 1
+    assert checkpoint.resolved_mediainfo_kind == "MediaInfo"
+    assert checkpoint.resolved_mediainfo["title"] == "Test Show"
+
+
+@pytest.mark.parametrize("configured", [False, True])
+@pytest.mark.parametrize("renaming", [False, True])
+@pytest.mark.parametrize("extension", ["flac", "lrc", "jpg"])
+def test_manual_music_final_directory_preserves_filename_and_frozen_input(monkeypatch, configured, renaming, extension):
+    """
+    手动最终目录覆盖分类及模板目录，音频歌词仍重命名，封面保持原名且规划不写文件。
+    """
+    fileitem = _build_fileitem().model_copy(update={
+        "path": f"/downloads/song.{extension}", "name": f"song.{extension}", "extension": extension,
+    })
+    meta = MetaMusic(title="Selected Song", album="Album", artists=["Artist"], track_number=1,
+                     sample_rate=48000, duration=30)
+    info = MusicInfo.from_meta(meta)
+    planning = _build_input(fileitem, options={"music_target_path": "/chosen/OST/Album"})
+    fingerprint = planning.fingerprint
+    original_get_setting = transhandler_module.get_runtime_setting
+
+    def setting(name):
+        """
+        以跨目录条件模板验证先完整渲染再提取文件名，其他配置仍走隔离默认值。
+        """
+        if name == "RENAME_FORMAT":
+            return lambda _type: "{% if sample_rate %}{{sample_rate}}/{{album}}/{% endif %}{{track}} - {{title}}{{fileExt}}"
+        return original_get_setting(name)
+
+    monkeypatch.setattr(transhandler_module, "get_runtime_setting", setting)
+    directory = TransferDirectoryConf(
+        library_path="/configured-library", library_storage="alist", transfer_type="reflink", renaming=renaming,
+        library_type_folder=True, library_category_folder=True, scraping=True, overwrite_mode="never",
+    ) if configured else None
+    checkpoint = FileManagerModule().plan_transfer(
+        fileitem=fileitem, meta=meta, mediainfo=info, target_directory=directory, target_path=Path("/default-root"),
+        target_storage="alist", transfer_type=None, library_type_folder=True, library_category_folder=True,
+        source_oper=ReadOnlyTreeStorage({}), planning_input=planning,
+    )
+    target = Path(checkpoint.final_target_path)
+    assert target.parent == Path("/chosen/OST/Album")
+    assert target.name == ("song.jpg" if extension == "jpg" else f"01 - Selected Song.{extension}")
+    assert checkpoint.root_target_path == "/chosen/OST/Album"
+    assert checkpoint.resolved_transfer_type == ("reflink" if configured else "copy")
+    assert checkpoint.planning_input.fingerprint == fingerprint
+    assert checkpoint.resolved_meta["sample_rate"] == 48000
+    assert checkpoint.resolved_meta["duration"] == 30
+    restored = TransferPlanCheckpoint.from_payload(checkpoint.to_payload())
+    assert restored.final_target_path == checkpoint.final_target_path
+    assert restored.planning_input.options["music_target_path"] == "/chosen/OST/Album"
+
+
+def _build_cleanup_checkpoint(monkeypatch, calls: list[str]):
+    """
+    构造带冻结旧目标清理意图的单文件检查点。
+    """
+    fileitem = _build_fileitem()
+    meta, mediainfo = _build_media()
+    cleanup_item = FileItem(
+        storage="cleanup",
+        path="/old-library/old.mkv",
+        name="old.mkv",
+        type="file",
+        extension="mkv",
+    )
+    planning_input = _build_input(
+        fileitem,
+        options={"cleanup_dest_fileitem": cleanup_item.model_dump(mode="json")},
+    )
+
+    def record_event(event_type, event_data):
+        """
+        记录执行事件顺序。
+        """
+        calls.append(event_type.value)
+        return None
+
+    monkeypatch.setattr(eventmanager, "send_event", record_event)
+    checkpoint = _plan_file(
+        TransHandler(),
+        planning_input,
+        meta,
+        mediainfo,
+        ReadOnlyTreeStorage({}),
+    )
+    calls.clear()
+    return checkpoint, meta, mediainfo, cleanup_item
+
+
+def test_cleanup_runs_after_new_target_is_materialized(monkeypatch):
+    """
+    宿主重整理只能在新目标已完整落地后清理旧历史目的。
+    """
+    calls: list[str] = []
+    checkpoint, meta, mediainfo, cleanup_item = _build_cleanup_checkpoint(
+        monkeypatch,
+        calls,
+    )
+    transfer_storage = RecordingStorage(calls)
+    module = FileManagerModule()
+    cleaned_items: list[FileItem] = []
+
+    def cleanup_media_file(fileitem: FileItem) -> bool:
+        """
+        模拟含目录保护与插件路由的统一删除兼容能力。
+        """
+        calls.append("cleanup_compat")
+        cleaned_items.append(fileitem)
+        return True
+
+    result = module.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=transfer_storage,
+        target_oper=transfer_storage,
+        cleanup_media_file=cleanup_media_file,
+    )
+
+    assert result.success is True
+    intercept_index = calls.index(ChainEventType.TransferIntercept.value)
+    assert intercept_index < calls.index("cleanup_compat")
+    assert calls.index("get_folder") < calls.index("cleanup_compat")
+    assert calls.index("cleanup_compat") > next(
+        index for index, call in enumerate(calls) if call.startswith("copy:")
+    )
+    assert cleaned_items == [cleanup_item]
+
+
+def test_cleanup_compatibility_capability_can_report_idempotent_success(monkeypatch):
+    """
+    旧清理能力缺失时可报告幂等成功，不阻断已完成的整理。
+    """
+    calls: list[str] = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    transfer_storage = RecordingStorage(calls)
+    module = FileManagerModule()
+
+    def cleanup_media_file(fileitem: FileItem) -> bool:
+        """
+        统一能力将目标不存在归一为幂等成功。
+        """
+        calls.append("cleanup_compat_missing")
+        return True
+
+    result = module.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=transfer_storage,
+        target_oper=transfer_storage,
+        cleanup_media_file=cleanup_media_file,
+    )
+
+    assert result.success is True
+    assert "cleanup_compat_missing" in calls
+
+
+def test_replayed_checkpoint_skips_cleanup_already_completed_before_provider(
+    monkeypatch,
+):
+    """
+    provider 前已完成 cleanup 的持久检查点在宿主重放时不得再次删除。
+    """
+    calls: list[str] = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    persisted_checkpoint = TransferPlanCheckpoint.from_payload(
+        replace(
+            checkpoint,
+            pre_execution_cleanup_completed=True,
+        ).to_payload()
+    )
+    transfer_storage = RecordingStorage(calls)
+
+    def unexpected_cleanup(_fileitem: FileItem) -> bool:
+        """
+        若持久完成事实未被消费则立即暴露重复清理。
+        """
+        raise AssertionError("已完成的 provider 前 cleanup 不应在宿主重放时重复执行")
+
+    result = FileManagerModule().execute_transfer_plan(
+        persisted_checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=transfer_storage,
+        target_oper=transfer_storage,
+        cleanup_media_file=unexpected_cleanup,
+    )
+
+    assert result.success is True
+    assert ChainEventType.TransferIntercept.value in calls
+    assert any(call.startswith("copy:") for call in calls)
+
+
+def test_cleanup_failure_keeps_the_new_target_and_raises_for_retry(monkeypatch):
+    """
+    旧目的清理失败可重试，已成功落地的新目标不能因此被删除。
+    """
+    calls: list[str] = []
+    checkpoint, meta, mediainfo, cleanup_item = _build_cleanup_checkpoint(
+        monkeypatch,
+        calls,
+    )
+    transfer_storage = RecordingStorage(calls)
+    module = FileManagerModule()
+
+    def cleanup_media_file(fileitem: FileItem) -> bool:
+        """
+        模拟统一删除能力执行保护治理后的失败结果。
+        """
+        calls.append("cleanup_compat_failed")
+        return False
+
+    with pytest.raises(RuntimeError, match="整理计划保留待重试"):
+        module.execute_transfer_plan(
+            checkpoint,
+            meta=meta,
+            mediainfo=mediainfo,
+            source_oper=transfer_storage,
+            target_oper=transfer_storage,
+            cleanup_media_file=cleanup_media_file,
+        )
+
+    assert ChainEventType.TransferIntercept.value in calls
+    assert "cleanup_compat_failed" in calls
+    assert "get_folder" in calls
+    assert any(call.startswith("copy:") for call in calls)
+    assert checkpoint.final_target_path in transfer_storage.files
+
+
+def test_cleanup_is_not_called_when_materialization_fails(monkeypatch):
+    """
+    新目标未落地时保留历史旧目的，不调用任何兼容删除能力。
+    """
+    calls = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    storage = RecordingStorage(calls)
+    monkeypatch.setattr(storage, "copy", lambda *_args: False)
+    cleanup = Mock(return_value=True)
+    result = FileManagerModule().execute_transfer_plan(
+        checkpoint, meta=meta, mediainfo=mediainfo,
+        source_oper=storage, target_oper=storage, cleanup_media_file=cleanup,
+    )
+    assert result.success is False
+    cleanup.assert_not_called()
+
+
+@pytest.mark.parametrize("ancestor", [False, True])
+def test_cleanup_never_removes_the_new_target_or_its_parent(monkeypatch, ancestor):
+    """
+    同路径或祖先目录的历史目的交文件级覆盖，不能整块删除新版本。
+    """
+    calls = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    path = Path(checkpoint.final_target_path)
+    cleanup = FileItem(storage="alist", path=(path.parent if ancestor else path).as_posix(),
+                       type="dir" if ancestor else "file")
+    planning_input = replace(checkpoint.planning_input, options={
+        "cleanup_dest_fileitem": cleanup.model_dump(mode="json"),
+    })
+    checkpoint = replace(checkpoint, planning_input=planning_input)
+    storage = RecordingStorage(calls, existing=FileItem(
+        storage="alist", path=path.as_posix(), name=path.name, type="file", size=100, modify_time=1.0,
+    ))
+    unexpected_cleanup = Mock(side_effect=AssertionError("不可删除重合目的"))
+    result = FileManagerModule().execute_transfer_plan(
+        checkpoint, meta=meta, mediainfo=mediainfo,
+        source_oper=storage, target_oper=storage, cleanup_media_file=unexpected_cleanup,
+    )
+    assert result.success
+    assert path.as_posix() in storage.files
+    unexpected_cleanup.assert_not_called()
+
+
+def test_empty_directory_plan_is_zero_operation_without_intercept_or_cleanup(
+    monkeypatch,
+):
+    """
+    空目录生成零操作计划，执行时不触发拦截或清理。
+    """
+    calls: list[str] = []
+    root = FileItem(
+        storage="alist",
+        path="/downloads/empty",
+        name="empty",
+        type="dir",
+    )
+    cleanup_item = FileItem(
+        storage="alist",
+        path="/library/old.mkv",
+        name="old.mkv",
+        type="file",
+    )
+    planning_input = _build_input(
+        root,
+        need_rename=False,
+        options={"cleanup_dest_fileitem": cleanup_item.model_dump(mode="json")},
+    )
+    meta, mediainfo = _build_media()
+    checkpoint = TransHandler().plan_transfer(
+        planning_input,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=ReadOnlyTreeStorage({root.path: []}),
+        target_storage="alist",
+        target_path=Path("/library"),
+        transfer_type="copy",
+        need_scrape=False,
+        need_rename=False,
+        need_notify=True,
+        overwrite_mode="never",
+        episodes_info=None,
+        preview=False,
+    )
+    assert checkpoint.items == ()
+
+    def unexpected_event(event_type, event_data):
+        """
+        空计划若触发事件则立即失败。
+        """
+        raise AssertionError(f"空计划不应触发事件：{event_type}")
+
+    monkeypatch.setattr(eventmanager, "send_event", unexpected_event)
+    result = FileManagerModule().execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=RecordingStorage(calls),
+        target_oper=RecordingStorage(calls),
+        cleanup_media_file=lambda _fileitem: calls.append("cleanup") or True,
+    )
+
+    assert result.success is False
+    assert result.message == "源目录中没有可整理文件"
+    assert result.failure_stage == "planning"
+    assert result.target_item is None
+    assert result.need_notify is False
+    assert calls == []
+
+
+def test_directory_intercept_preserves_legacy_payload(monkeypatch):
+    """
+    目录拦截事件保留旧载荷约定，不额外声明元数据和选项字段。
+    """
+    calls: list[str] = []
+    root = FileItem(
+        storage="alist",
+        path="/downloads/disc",
+        name="disc",
+        type="dir",
+    )
+    child = FileItem(
+        storage="alist",
+        path="/downloads/disc/index.bdmv",
+        name="index.bdmv",
+        type="file",
+        extension="bdmv",
+    )
+    meta, mediainfo = _build_media()
+    checkpoint = TransHandler().plan_transfer(
+        _build_input(root, need_rename=False),
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=ReadOnlyTreeStorage({root.path: [child]}),
+        target_storage="alist",
+        target_path=Path("/library"),
+        transfer_type="copy",
+        need_scrape=False,
+        need_rename=False,
+        need_notify=True,
+        overwrite_mode="never",
+        episodes_info=None,
+        preview=False,
+    )
+    intercept_payloads = []
+
+    def capture_event(event_type, event_data):
+        """
+        捕获目录根拦截事件。
+        """
+        if event_type == ChainEventType.TransferIntercept:
+            intercept_payloads.append(event_data)
+        return None
+
+    monkeypatch.setattr(eventmanager, "send_event", capture_event)
+    result = TransHandler().execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=RecordingStorage(calls),
+        target_oper=RecordingStorage(calls),
+    )
+
+    assert result.success is True
+    assert len(intercept_payloads) == 1
+    payload = intercept_payloads[0]
+    assert payload.meta is None
+    assert payload.options is None
+    assert "meta" not in payload.model_fields_set
+    assert "options" not in payload.model_fields_set
+
+
+def test_directory_intercept_step_uses_frozen_source_after_size_projection():
+    """
+    目录执行期修正根目录大小时，持久拦截意图仍使用冻结源快照。
+    """
+    root = FileItem(
+        storage="alist",
+        path="/downloads/disc",
+        name="disc",
+        type="dir",
+    )
+    stream = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/STREAM/00001.m2ts",
+        name="00001.m2ts",
+        type="file",
+        extension="m2ts",
+        size=123,
+    )
+    planning_input = TransferPlanningInput(
+        source_fileitem=root.model_dump(mode="json"),
+        target_storage="alist",
+        target_path="/library",
+        requested_transfer_type="copy",
+        need_rename=False,
+    )
+    checkpoint = TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage="alist",
+        root_target_path="/library/disc",
+        final_target_path="/library/disc",
+        resolved_transfer_type="copy",
+        items=(TransferPlanItem(
+            sequence=0,
+            source_fileitem=stream.model_dump(mode="json"),
+            target_storage="alist",
+            target_path="/library/disc/BDMV/STREAM/00001.m2ts",
+        ),),
+        need_rename=False,
+        overwrite_mode="never",
+    )
+    runner = Mock()
+    steps = []
+
+    def run_step(*, phase, kind, payload, execute, observe):
+        """
+        模拟 durable runner，并记录其接受的冻结步骤意图。
+        """
+        steps.append((phase, kind, payload))
+        return execute()
+
+    runner.run.side_effect = run_step
+    storage = RecordingStorage([])
+
+    result = TransHandler().execute_transfer_plan(
+        checkpoint,
+        meta=_build_media()[0],
+        mediainfo=_build_media()[1],
+        source_oper=storage,
+        target_oper=storage,
+        step_runner=runner,
+    )
+
+    assert result.success is True
+    intercept = next(
+        payload
+        for _phase, kind, payload in steps
+        if kind == "plugin_transfer_intercept"
+    )
+    assert intercept["source"] == planning_input.source_fileitem
+
+
+def test_directory_execution_accumulates_total_size_and_file_count():
+    """
+    目录整理成功时累加全部叶子文件数量与大小，并与单文件结果保持一致。
+    """
+    root = FileItem(storage="alist", path="/downloads/disc", name="disc", type="dir")
+    bdmv = FileItem(storage="alist", path="/downloads/disc/BDMV", name="BDMV", type="dir")
+    stream_dir = FileItem(
+        storage="alist", path="/downloads/disc/BDMV/STREAM", name="STREAM", type="dir",
+    )
+    cert_dir = FileItem(
+        storage="alist", path="/downloads/disc/CERTIFICATE", name="CERTIFICATE", type="dir",
+    )
+    stream_main = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/STREAM/00001.m2ts",
+        name="00001.m2ts",
+        type="file",
+        extension="m2ts",
+        size=1000,
+    )
+    stream_extra = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/STREAM/00002.m2ts",
+        name="00002.m2ts",
+        type="file",
+        extension="m2ts",
+        size=2500,
+    )
+    index_file = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/index.bdmv",
+        name="index.bdmv",
+        type="file",
+        extension="bdmv",
+        size=128,
+    )
+    empty_file = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/MovieObject.bdmv",
+        name="MovieObject.bdmv",
+        type="file",
+        extension="bdmv",
+        size=0,
+    )
+    unknown_size_cert = FileItem(
+        storage="alist",
+        path="/downloads/disc/CERTIFICATE/id.bdmv",
+        name="id.bdmv",
+        type="file",
+        extension="bdmv",
+        size=None,
+    )
+    source_tree = ReadOnlyTreeStorage(
+        {
+            root.path: [bdmv, cert_dir],
+            bdmv.path: [stream_dir, index_file, empty_file],
+            stream_dir.path: [stream_main, stream_extra],
+            cert_dir.path: [unknown_size_cert],
+        }
+    )
+
+    class _TargetSizedRecordingStorage(RecordingStorage):
+        """
+        源缺少大小时在落地目标上补全字节数，验证回退统计。
+        """
+
+        def copy(self, fileitem: FileItem, path: Path, name: str) -> bool:
+            """
+            模拟复制并在目标缺失大小时写入实际落地大小。
+            """
+            copied = super().copy(fileitem, path, name)
+            target_key = (path / name).as_posix()
+            if self.files[target_key].size is None:
+                self.files[target_key] = self.files[target_key].model_copy(
+                    update={"size": 48}
+                )
+            return copied
+
+    meta = MetaBase("Test Movie (2026)")
+    meta.type = MediaType.MOVIE
+    meta.name = "Test Movie"
+    meta.year = "2026"
+    mediainfo = MediaInfo(
+        type=MediaType.MOVIE,
+        title="Test Movie",
+        year="2026",
+        tmdb_id=12345,
+    )
+    handler = TransHandler()
+    dir_checkpoint = handler.plan_transfer(
+        _build_input(root, need_rename=False),
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=source_tree,
+        target_storage="alist",
+        target_path=Path("/library"),
+        transfer_type="copy",
+        need_scrape=False,
+        need_rename=False,
+        need_notify=True,
+        overwrite_mode="never",
+        episodes_info=None,
+        preview=False,
+    )
+    storage = _TargetSizedRecordingStorage([])
+
+    dir_result = handler.execute_transfer_plan(
+        dir_checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=storage,
+        target_oper=storage,
+    )
+
+    assert dir_result.success is True
+    assert dir_result.file_count == 5
+    assert len(dir_result.file_list) == 5
+    assert len(dir_result.file_list_new) == 5
+    assert dir_result.total_size == 1000 + 2500 + 128 + 0 + 48
+    # 目录项自身的 size 仍保持仅统计 BDMV/STREAM 的原有兼容投影。
+    assert dir_result.fileitem.size == 1000 + 2500
+
+    # 对照单文件整理：同样返回准确的 file_count 与 total_size。
+    single_file = _build_fileitem().model_copy(update={"size": 2048})
+    single_meta, single_mediainfo = _build_media()
+    single_checkpoint = _plan_file(
+        handler,
+        _build_input(single_file),
+        single_meta,
+        single_mediainfo,
+        ReadOnlyTreeStorage({}),
+    )
+    single_storage = RecordingStorage([])
+    single_result = handler.execute_transfer_plan(
+        single_checkpoint,
+        meta=single_meta,
+        mediainfo=single_mediainfo,
+        source_oper=single_storage,
+        target_oper=single_storage,
+    )
+
+    assert single_result.success is True
+    assert single_result.file_count == 1
+    assert single_result.total_size == 2048

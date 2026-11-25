@@ -21,25 +21,38 @@ DURATIONS_PATH = TESTS_DIR / "fixtures" / "durations.json"
 DEFAULT_TEST_DURATION = 1.0
 # CI 架构门禁任务单独运行的测试文件；分片使用 --exclude-architecture-gate 时不再重复执行
 ARCHITECTURE_GATE_TESTS = (
-    "test_architecture_dependencies.py",
-    "test_architecture_adapter_imports.py",
-    "test_architecture_egress.py",
-    "test_architecture_event_facts.py",
-    "test_architecture_event_policy.py",
-    "test_architecture_contract_baseline.py",
-    "test_architecture_baseline_cli.py",
+    "contracts/architecture/test_architecture_dependencies.py",
+    "contracts/architecture/test_architecture_adapter_imports.py",
+    "contracts/architecture/test_architecture_egress.py",
+    "contracts/architecture/test_architecture_event_facts.py",
+    "contracts/architecture/test_architecture_event_policy.py",
+    "contracts/architecture/test_architecture_contract_baseline.py",
+    "contracts/architecture/test_architecture_baseline_cli.py",
 )
 
 
 def collect_test_files(exclude_architecture_gate: bool = False) -> list[Path]:
     """
-    按稳定路径顺序收集测试根目录中的测试文件。
+    递归按稳定路径顺序收集测试文件，兼容尚未迁移的根目录用例。
 
     :param exclude_architecture_gate: 是否排除已由 CI 架构门禁单独运行的文件
-    :return: 排序后的 test_*.py 路径；不递归子目录
+    :return: 排序后的 test_*.py 文件路径
     """
     excluded = set(ARCHITECTURE_GATE_TESTS) if exclude_architecture_gate else set()
-    return sorted(path for path in TESTS_DIR.glob("test_*.py") if path.name not in excluded)
+    return sorted(
+        path for path in TESTS_DIR.rglob("test_*.py")
+        if path.is_file() and test_file_key(path) not in excluded
+    )
+
+
+def test_file_key(path: Path) -> str:
+    """
+    使用相对 tests 的完整路径标识文件，防止不同责任域的同名文件共享权重或被误排除。
+
+    :param path: 收集得到的绝对路径，或调用者提供的 tests 相对路径
+    :return: 使用正斜线的 tests 相对路径
+    """
+    return (path.relative_to(TESTS_DIR) if path.is_absolute() else path).as_posix()
 
 
 def load_test_durations() -> dict[str, float]:
@@ -75,12 +88,12 @@ def split_test_files(
     shard_durations = [0.0] * shard_count
     weighted_files = sorted(
         test_files,
-        key=lambda path: (-durations.get(path.name, DEFAULT_TEST_DURATION), path),
+        key=lambda path: (-durations.get(test_file_key(path), DEFAULT_TEST_DURATION), path),
     )
     for test_file in weighted_files:
         shard_index = min(range(shard_count), key=shard_durations.__getitem__)
         shards[shard_index].append(test_file)
-        shard_durations[shard_index] += durations.get(test_file.name, DEFAULT_TEST_DURATION)
+        shard_durations[shard_index] += durations.get(test_file_key(test_file), DEFAULT_TEST_DURATION)
     return [sorted(shard) for shard in shards]
 
 

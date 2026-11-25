@@ -53,52 +53,52 @@
   "scripts/perf/task_registry_ab.py": {
     "E402": 1
   },
-  "tests/test_agent_session_status.py": {
+  "tests/agent/runtime/test_agent_session_status.py": {
     "I001": 1
   },
-  "tests/test_database_migration_startup.py": {
+  "tests/db/migrations/test_database_migration_startup.py": {
     "F841": 1
   },
-  "tests/test_db_declarative_2_0.py": {
+  "tests/db/base/test_db_declarative_2_0.py": {
     "E402": 1
   },
-  "tests/test_episode_format_helper.py": {
+  "tests/integration/download/test_episode_format_helper.py": {
     "F841": 1
   },
-  "tests/test_feedback_issue_repository_routing.py": {
+  "tests/tooling/skills/test_feedback_issue_repository_routing.py": {
     "I001": 1
   },
-  "tests/test_feedback_issue_scripts.py": {
+  "tests/tooling/skills/test_feedback_issue_scripts.py": {
     "I001": 1
   },
-  "tests/test_interaction_router.py": {
+  "tests/application/messaging/test_interaction_router.py": {
     "E402": 5
   },
-  "tests/test_local_setup_config_dir.py": {
+  "tests/tooling/setup/test_local_setup_config_dir.py": {
     "F841": 1
   },
-  "tests/test_media_interaction.py": {
+  "tests/integration/media/test_media_interaction.py": {
     "F841": 1
   },
-  "tests/test_media_source_signature_compatibility.py": {
+  "tests/chain/media/test_media_source_signature_compatibility.py": {
     "I001": 1
   },
-  "tests/test_mediaserver_image_signing.py": {
+  "tests/integration/mediaserver/test_mediaserver_image_signing.py": {
     "I001": 1
   },
-  "tests/test_message_channel_permissions.py": {
+  "tests/modules/messaging/test_message_channel_permissions.py": {
     "I001": 1
   },
-  "tests/test_plugin_sdk.py": {
+  "tests/integration/plugin/test_plugin_sdk.py": {
     "I001": 3
   },
-  "tests/test_plugin_virtual_instances.py": {
+  "tests/integration/plugin/test_plugin_virtual_instances.py": {
     "E731": 1
   },
-  "tests/test_skills_command.py": {
+  "tests/integration/skills/test_skills_command.py": {
     "E402": 5
   },
-  "tests/test_tmdb_retry_and_errors.py": {
+  "tests/modules/themoviedb/test_tmdb_retry_and_errors.py": {
     "F811": 1
   }
 }
