@@ -12,6 +12,7 @@ import pytest
 
 from app.runtime import events as events_module
 from app.runtime.config import global_vars
+from app.runtime.event.dispatch import is_handling_system_error
 from app.runtime.events import Event, eventmanager
 from app.schemas.types import ChainEventType, EventType
 
@@ -1165,3 +1166,101 @@ def test_outbox_retries_strict_failure_without_repeating_system_alert(
     store.complete.assert_not_called()
     notify.assert_called_once()
     emit.assert_called_once()
+
+
+def test_system_error_raised_inside_system_error_handler_is_not_rebroadcast(
+    isolated_eventmanager,
+):
+    """
+    错误通知处理器的投递渠道再次失败时只记录日志，不能再入队新的 SystemError 形成通知循环。
+    """
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    calls = []
+
+    def notify_handler(event):
+        """
+        模拟错误通知插件：通过失败渠道发送通知后，宿主模块错误处理再次上报 SystemError。
+        """
+        calls.append(event.event_data["error"])
+        assert is_handling_system_error()
+        isolated_eventmanager.send_event(
+            EventType.SystemError,
+            {"type": "module", "error": "Telegram 通知发送未确认：Telegram"},
+        )
+
+    isolated_eventmanager.add_event_listener(EventType.SystemError, notify_handler)
+
+    dispatch = isolated_eventmanager._EventManager__dispatch_broadcast_event
+    dispatch(Event(EventType.SystemError, {"type": "module", "error": "原始错误"}))
+
+    assert calls == ["原始错误"]
+    assert isolated_eventmanager._EventManager__event_queue.empty()
+    assert not is_handling_system_error()
+
+
+def test_system_error_raised_inside_regular_handler_is_still_broadcast(
+    isolated_eventmanager,
+):
+    """
+    普通事件处理期间产生的 SystemError 仍正常入队，递归保护只作用于 SystemError 处理器。
+    """
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+
+    def handler(_event):
+        """
+        模拟普通事件处理期间宿主模块失败并上报 SystemError。
+        """
+        assert not is_handling_system_error()
+        isolated_eventmanager.send_event(
+            EventType.SystemError,
+            {"type": "module", "error": "下载器不可用"},
+        )
+
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, handler)
+
+    dispatch = isolated_eventmanager._EventManager__dispatch_broadcast_event
+    dispatch(Event(EventType.ConfigChanged, {}))
+
+    queue = isolated_eventmanager._EventManager__event_queue
+    _priority, queued = queue.get_nowait()
+    assert queued.event_type == EventType.SystemError
+    assert queued.event_data["error"] == "下载器不可用"
+    assert queue.empty()
+
+
+@pytest.mark.anyio
+async def test_async_system_error_handler_suppresses_rebroadcast_from_worker_thread(
+    isolated_eventmanager,
+):
+    """
+    异步错误通知处理器把渠道发送交给工作线程时，线程继承的上下文仍阻止 SystemError 递归广播。
+    """
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    calls = []
+
+    def deliver(error: str) -> None:
+        """
+        模拟在工作线程同步执行的通知渠道失败上报。
+        """
+        calls.append(error)
+        isolated_eventmanager.send_event(
+            EventType.SystemError,
+            {"type": "module", "error": f"通知发送失败：{error}"},
+        )
+
+    async def notify_handler(event):
+        """
+        模拟异步错误通知插件，在线程池中调用同步通知渠道。
+        """
+        await asyncio.to_thread(deliver, event.event_data["error"])
+
+    isolated_eventmanager.add_event_listener(EventType.SystemError, notify_handler)
+
+    await isolated_eventmanager.async_send_event_strict(
+        EventType.SystemError,
+        {"type": "module", "error": "原始错误"},
+    )
+
+    assert calls == ["原始错误"]
+    assert isolated_eventmanager._EventManager__event_queue.empty()
+    assert not is_handling_system_error()

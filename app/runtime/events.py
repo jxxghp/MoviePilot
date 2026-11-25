@@ -21,7 +21,7 @@ from app.runtime.event.binding import (
     HandlerInstanceResolver,
 )
 from app.runtime.event.contracts import normalize_event_type, validate_event_payload
-from app.runtime.event.dispatch import EventDispatcher
+from app.runtime.event.dispatch import EventDispatcher, is_handling_system_error
 from app.runtime.event.errors import EventErrorNotifier, EventErrorPolicy
 from app.runtime.event.registry import EventRegistry
 from app.runtime.log import logger
@@ -807,9 +807,17 @@ class EventManager(metaclass=Singleton):
         """
         触发广播事件，将事件插入到优先级队列中。
 
+        SystemError 处理器调用栈内再次产生的 SystemError 只记录日志：错误通知渠道
+        自身失败时继续广播会让通知插件反复投递同一渠道，形成错误通知循环。
+
         :param event: 要处理的事件对象
         """
         logger.debug(f"Triggering broadcast event: {event}")
+        if event.event_type == EventType.SystemError and is_handling_system_error():
+            payload = event.event_data
+            error = payload.get("error") if isinstance(payload, dict) else getattr(payload, "error", None)
+            logger.warning(f"SystemError 处理期间再次产生系统错误，仅记录日志并停止递归广播：{error}")
+            return None
         with self.__lifecycle_lock:
             if self.__lifecycle_state in {"sealed", "stopping", "stopped"}:
                 logger.warning(
