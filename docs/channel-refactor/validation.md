@@ -96,3 +96,24 @@
 
 
 本轮全量还复现了两个既有的时序问题。媒体分类性能测试首轮在并发覆盖率采集中超出 5ms P95，源码及预算未改，同覆盖率单例和完整分片复验通过。终端等待测试曾将分块返回的正文误判为缺少末尾换行，现复用原有真实字节观测握手，保留完整输出、进程状态、游标与超时断言；修正后的完整分片通过。首轮失败和最终复验日志分别留档，不以调整基线或放宽门槛解决。
+
+## SDK 接入收口与兼容治理验收
+
+实现及回归提交 `42d905f03` 的完整树为 `cfa4fa533a29ed049dca8bb5e3b3b316996a078e`，其中 app 树为 `e853fc9169641d58ba94ae841e7a13a584394e78`。本节之后的提交仅补充文档，最终本地修订与远端 PR 修订分别记录于 `current-source.json`、`platform-boundaries-current.json` 和 `review-sdk/manifest.json`。前端文档提交为 `148c6e7d`，生产和测试源码仍与 `81b53931` 相同。
+
+| 检查 | 最终结果 |
+| --- | --- |
+| 完整后端 | `COVERAGE_FILE=<隔离文件> uv run --locked --no-sync python -m coverage run --parallel-mode tests/run.py --shard N/8`；8 个分片全部退出 0，23,116 通过、22 跳过 |
+| 覆盖率 | 保留各分片原始数据，合并后执行 `coverage_ratchet.py --report <coverage.json>` 通过；全 app 排除 plugins 的行覆盖率 82.57%，1,231 文件；两个新增 SDK 门面均为 100%，原覆盖率基线未改 |
+| SDK 与入站 | 独立平台与全部 12 个内置平台共存；公共类型契约、版本/owner 校验、认证、申请、HTTP 审批、规则、拒绝和撤权全链路通过；未就绪、身份缺失、停止、执行器拒绝/异常及接收器重装均无隐式回环 |
+| 防重与兼容 | 企业微信私聊规则文本在提交成功或失败时都仅提交一次；保留旧插件导入、显式 HTTP helper、公开方法和固定离线升级；旧解析 Hook 不能注入私有证明或 Web/WebAgent 身份 |
+| 架构 | `test_architecture_dependencies.py` 109 项先通过，再核对快照；全量和 `channel_platforms.py` 通过。反例覆盖模块、局部与带类型变量别名，以及公共 SDK 整体导入可信模块 |
+| 快照审阅 | 仅新增两个 SDK 模块、净增 19 条依赖和 13 个规范类型/版本导出，增加已保留旧名的精确映射；现有导出没有删除。两个新 owner 分派调用纳入运行快照；SCC、直接 Adapter、网络出口和越层边均未变 |
+| pylint 与类型 | PR base、暂存及本轮文件并集共 243 个 Python 文件和全 app pylint 均 10.00/10；全宿主 mypy 与 mypy ratchet 0 错误 |
+| 其余适用门禁 | 类型例外、复杂度、并发、异步阻塞、任务归属、service locator、Ruff/mypy ratchet 通过；未增加豁免或提高基线 |
+| 启动 | `performance.py --check --repeat 3` 通过，中位数 factory 1834.428ms、main 1890.701ms、lifecycle 1769.386ms；3000ms 预算保持 |
+| 前端文档 | 四个改动 Markdown 的 Prettier、相对链接与 diff 检查通过；未重跑前端产品测试、构建或浏览器，没有宣称真实租户联调 |
+
+首轮全量发现旧测试仍替换 `message_parser`，新入口已改用固定宿主 `run_module` 分派；相关群组归属用例已接到当前分派并保留真实解析、授权及原回复断言。消息上下文单测显式装配就绪状态，停用 ClawBot 断言增加 `message_ingress=None`。新增防重夹具的缺失必填字段也已修正。失败记录保留在 `review-sdk/full-suite.log` 和初轮专项日志；最终结果来自随后完整的 8 个隔离分片，未删除安全断言或放宽校验。
+
+真实企业微信按用户要求继续跳过，外部协议均使用隔离配置与替身。本轮仅完成本地提交；未推送、强推、合并、发布或切换手测实例。完整内置接入清单、调用链及兼容退出条件见[SDK 台账](sdk-boundaries.md)，可安装插件渠道的信任模型仍为后续独立范围。
