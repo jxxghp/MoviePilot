@@ -9,7 +9,7 @@ from app.runtime.event.snapshot import (
     EventPayloadSnapshot as RuntimeEventPayloadSnapshot,
 )
 from app.runtime.event.snapshot import snapshot_event_data as runtime_snapshot_event_data
-from app.schemas.event import ResourceSelectionEventData
+from app.schemas.event import ResourceSelectionEventData, ResourceSubmitEventData
 from app.schemas.types import ChainEventType, EventType, MediaType
 from app.sdk.events import (
     DownloadAddedContractData,
@@ -17,6 +17,9 @@ from app.sdk.events import (
     EventPayloadSnapshot,
     ResourceSelectionInputContractData,
     ResourceSelectionOutputContractData,
+    ResourceSubmitContractData,
+    ResourceSubmitInputContractData,
+    ResourceSubmitOutputContractData,
     snapshot_event_data,
 )
 
@@ -78,6 +81,44 @@ def test_chain_snapshot_separates_plugin_input_and_output_models() -> None:
     assert snapshot.output.updated is True
     assert snapshot.output.updated_contexts[0].media_info.title == "Movie"
     assert event.event_data is raw
+
+
+def test_resource_submit_snapshot_exposes_hashes_and_cancel_boundary() -> None:
+    """
+    ResourceSubmit 链式快照分离提交前只读事实和取消回写字段，不污染原事件对象。
+    """
+    context = Context(
+        media_info=MediaInfo(type=MediaType.MOVIE, title="Movie", year="2026")
+    )
+    raw = ResourceSubmitEventData(
+        context=context,
+        hashes=["3db38150daf7c83acf17bb413d9e29c3c8a90efd"],
+        origin="Subscribe|{\"id\": 1}",
+        downloader="qb",
+        save_path="local:/downloads/movies",
+        folder_name="Movie.2026",
+        file_list=["Movie.2026.mkv"],
+        user_specified=False,
+        cancel=True,
+        source="plugin",
+        reason="命中近期删除指纹",
+    )
+    event = Event(ChainEventType.ResourceSubmit, raw)
+
+    snapshot = event.snapshot()
+
+    assert snapshot.valid is True
+    assert snapshot.raw is raw
+    assert isinstance(snapshot.payload, ResourceSubmitContractData)
+    assert isinstance(snapshot.input, ResourceSubmitInputContractData)
+    assert isinstance(snapshot.output, ResourceSubmitOutputContractData)
+    assert snapshot.input.hashes == ["3db38150daf7c83acf17bb413d9e29c3c8a90efd"]
+    assert snapshot.input.file_list == ["Movie.2026.mkv"]
+    assert snapshot.input.save_path == "local:/downloads/movies"
+    assert snapshot.output.cancel is True
+    assert snapshot.output.reason == "命中近期删除指纹"
+    snapshot.input.hashes.append("mutated")
+    assert raw.hashes == ["3db38150daf7c83acf17bb413d9e29c3c8a90efd"]
 
 
 def test_unknown_plugin_event_returns_unregistered_snapshot_without_error() -> None:

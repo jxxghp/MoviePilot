@@ -2,6 +2,7 @@
 插件使用的媒体上下文、歌词候选、标题解析、识别类型和媒体身份规则。
 """
 
+from app.application.site.protocol import torrent_resource_identity
 from app.domain.context import Context, MediaInfo, MusicInfo, MusicLyrics, TorrentInfo
 from app.domain.media import (
     MUSIC_MEDIA_SOURCE_ORDER,
@@ -77,4 +78,5 @@ __all__ = [
     "parse_media_source_selection",
     "resolve_media_identity",
     "set_custom_separator",
+    "torrent_resource_identity",
 ]
