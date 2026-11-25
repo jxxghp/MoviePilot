@@ -8941,10 +8941,10 @@
     }
   },
   "run_module": {
-    "call_count": 289,
+    "call_count": 292,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 234,
+    "method_count": 237,
     "methods": {
       "anilist_credits": [
         {
@@ -9869,6 +9869,13 @@
           "mode": "sync"
         }
       ],
+      "get_file_stream_url": [
+        {
+          "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "get_folder": [
         {
           "caller": "app.chain.storage",
@@ -10337,6 +10344,13 @@
           "mode": "sync"
         }
       ],
+      "open_file_stream": [
+        {
+          "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "parse_torrent_download_response": [
         {
           "caller": "app.chain.download.submission",
@@ -10524,6 +10538,13 @@
         }
       ],
       "storage_manage": [
+        {
+          "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "supports_file_stream": [
         {
           "caller": "app.chain.storage",
           "count": 1,

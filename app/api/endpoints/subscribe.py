@@ -305,8 +305,17 @@ async def create_subscribe(
     新增订阅
     """
     # 类型转换
-    if subscribe_in.type:
-        mtype = MediaType.from_agent(subscribe_in.type) or MediaType(subscribe_in.type)
+    if subscribe_in.type and str(subscribe_in.type).strip():
+        raw_type = str(subscribe_in.type).strip()
+        mtype = MediaType.from_agent(raw_type)
+        if mtype is None:
+            try:
+                mtype = MediaType(raw_type)
+            except ValueError:
+                return _SchemaResponse(
+                    success=False,
+                    message=f"订阅媒体类型无效：{raw_type}",
+                )
     else:
         mtype = None
     # 非 TMDB 来源的标题可能自带季标记，入库前统一拆分。
@@ -351,6 +360,39 @@ async def create_subscribe(
     )
 
 
+def _sanitize_subscribe_core_fields(
+    subscribe_dict: dict[str, Any],
+    subscribe: Any,
+) -> Optional[str]:
+    """
+    保护订阅的核心 name / type 字段不被局部编辑误传空白清空，并归一化英文媒体类型。
+
+    :return: 校验失败时返回中文错误信息，通过返回 None
+    """
+    if "name" in subscribe_dict and not str(subscribe_dict.get("name") or "").strip():
+        if getattr(subscribe, "name", None):
+            subscribe_dict["name"] = subscribe.name
+        else:
+            subscribe_dict.pop("name", None)
+    if "type" not in subscribe_dict:
+        return None
+    raw_type = str(subscribe_dict.get("type") or "").strip()
+    if not raw_type:
+        if getattr(subscribe, "type", None):
+            subscribe_dict["type"] = subscribe.type
+        else:
+            subscribe_dict.pop("type", None)
+        return None
+    normalized_type = MediaType.from_agent(raw_type)
+    if normalized_type is None:
+        try:
+            normalized_type = MediaType(raw_type)
+        except ValueError:
+            return f"订阅媒体类型无效：{raw_type}"
+    subscribe_dict["type"] = normalized_type.value
+    return None
+
+
 @router.put("/", summary="更新订阅", response_model=_SchemaResponse[None])
 async def update_subscribe(
     *,
@@ -372,6 +414,8 @@ async def update_subscribe(
     if not subscribe:
         return _SchemaResponse(success=False, message="订阅不存在")
     subscribe_dict = subscribe_in.to_public_write_payload(exclude_unset=True)
+    if core_error := _sanitize_subscribe_core_fields(subscribe_dict, subscribe):
+        return _SchemaResponse(success=False, message=core_error)
     identity_fields = {"media_source", "media_id"}.intersection(subscribe_in.model_fields_set)
     if identity_fields:
         media_source, media_id = resolve_media_identity(

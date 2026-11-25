@@ -1147,6 +1147,54 @@ def _post_emby_userdata_with_compat(
         return False
 
 
+def _report_emby_playstate_user_endpoint(
+    cfg: EmbyBrowseConfig,
+    *,
+    item_id: str,
+    position_ms: int,
+    is_paused: bool,
+    state: str,
+    media_source_id: Optional[str] = None,
+    play_session_id: Optional[str] = None,
+    event_name: Optional[str] = None,
+) -> bool:
+    """
+    通过 Emby/Jellyfin 服务端 PlaystateService 用户路径（`Users/{UserId}/PlayingItems/{ItemId}`）上报进度。
+
+    当仅配置全局 API Key 且服务端不支持直接 `POST .../UserData`（如部分 Emby 4.7/4.8 实例返回 404/405）时，
+    以此兼容接口同步播放位置与暂停/停止状态。
+    """
+    if not cfg.host or not cfg.api_key or not cfg.user_id:
+        return False
+    quoted_item = quote(str(item_id), safe="")
+    quoted_user = quote(str(cfg.user_id), safe="")
+    base_url = f"{cfg.host}{cfg.api_prefix}Users/{quoted_user}/PlayingItems/{quoted_item}"
+    ticks = max(0, int(position_ms)) * _TICKS_PER_MS
+    extra: dict[str, Any] = {"PositionTicks": ticks}
+    if media_source_id:
+        extra["MediaSourceId"] = media_source_id
+    if play_session_id:
+        extra["PlaySessionId"] = play_session_id
+    if state != "stopped":
+        extra["PlayMethod"] = "DirectPlay"
+    if state in {"playing", "paused"}:
+        extra["IsPaused"] = "true" if (is_paused or state == "paused") else "false"
+        extra["EventName"] = event_name or ("Pause" if (is_paused or state == "paused") else "TimeUpdate")
+    params = _api_params(cfg, extra)
+    try:
+        http = cfg.request_factory()
+        if state == "stopped":
+            res = http.delete_res(url=base_url, params=params)
+        elif state == "started":
+            res = http.post_res(url=base_url, params=params)
+        else:
+            res = http.post_res(url=f"{base_url}/Progress", params=params)
+        return bool(res and res.status_code in {200, 204})
+    except Exception as err:
+        logger.debug(f"兜底通过 PlayingItems 上报 {cfg.server_type} 播放进度失败：{err}")
+        return False
+
+
 def _emby_report_userdata_fallback(
     cfg: EmbyBrowseConfig,
     *,
@@ -1156,9 +1204,13 @@ def _emby_report_userdata_fallback(
     state: str,
     allow_userdata_write: bool,
     token_invalid: bool,
+    media_source_id: Optional[str] = None,
+    play_session_id: Optional[str] = None,
+    is_paused: bool = False,
+    event_name: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    在仅配置全局服务端 API Key（无用户级令牌）时，通过 UserData / PlayedItems 持久化断点与已看状态。
+    在仅配置全局服务端 API Key（无用户级令牌）时，通过 UserData / PlayedItems / PlayingItems 持久化断点与已看状态。
 
     :return: 包含 `reported`、`mode="userdata"`、`userdata_written`、`needs_account_bind` 的结构化回执
     """
@@ -1207,6 +1259,17 @@ def _emby_report_userdata_fallback(
                 fallback_params=None,
                 json_body=None,
             )
+        if not ok:
+            ok = _report_emby_playstate_user_endpoint(
+                cfg,
+                item_id=item_id,
+                position_ms=position_ms,
+                is_paused=is_paused,
+                state=state,
+                media_source_id=media_source_id,
+                play_session_id=play_session_id,
+                event_name=event_name,
+            )
         base_result["reported"] = ok
         base_result["userdata_written"] = ok
         return base_result
@@ -1233,6 +1296,17 @@ def _emby_report_userdata_fallback(
             fallback_url=None,
             fallback_params=None,
             json_body=body,
+        )
+    if not ok:
+        ok = _report_emby_playstate_user_endpoint(
+            cfg,
+            item_id=item_id,
+            position_ms=position_ms,
+            is_paused=is_paused,
+            state=state,
+            media_source_id=media_source_id,
+            play_session_id=play_session_id,
+            event_name=event_name,
         )
     base_result["reported"] = ok
     base_result["userdata_written"] = ok
@@ -1306,6 +1380,10 @@ def emby_report_progress_detail(
             state=state,
             allow_userdata_write=allow_userdata_write,
             token_invalid=True,
+            media_source_id=media_source_id,
+            play_session_id=resolved_session_id,
+            is_paused=is_paused,
+            event_name=event_name,
         )
     return _emby_report_userdata_fallback(
         cfg,
@@ -1315,6 +1393,10 @@ def emby_report_progress_detail(
         state=state,
         allow_userdata_write=allow_userdata_write,
         token_invalid=False,
+        media_source_id=media_source_id,
+        play_session_id=resolved_session_id,
+        is_paused=is_paused,
+        event_name=event_name,
     )
 
 

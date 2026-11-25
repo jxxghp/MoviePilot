@@ -1086,11 +1086,32 @@ class SessionSubscriptionPort(
     """
 
 
+def resolve_subscribe_media_type(raw_type: Optional[str]) -> Optional[MediaType]:
+    """
+    将订阅记录中的媒体类型归一化为标准 `MediaType`（兼容中英文枚举值与前后空白）。
+    """
+    if not raw_type:
+        return None
+    cleaned = str(raw_type).strip()
+    if not cleaned:
+        return None
+    agent_type = MediaType.from_agent(cleaned)
+    if agent_type is not None:
+        return agent_type
+    try:
+        return MediaType(cleaned)
+    except ValueError:
+        return None
+
+
 def build_subscribe_meta(subscribe: SubscriptionSnapshot) -> MetaBase:
     """
     按订阅快照构造主程序链路共用的媒体元数据。
     """
-    if subscribe.type == MediaType.MUSIC.value:
+    resolved_type = resolve_subscribe_media_type(subscribe.type)
+    if subscribe.type and resolved_type is None:
+        raise ValueError(f"订阅 #{subscribe.id} 类型错误：{subscribe.type}")
+    if resolved_type == MediaType.MUSIC:
         is_album = subscribe.music_type == MUSIC_ENTITY_ALBUM
         music_year: Optional[int] = None
         if subscribe.year:
@@ -1109,8 +1130,8 @@ def build_subscribe_meta(subscribe: SubscriptionSnapshot) -> MetaBase:
     meta = MetaInfo(subscribe.name)
     meta.year = subscribe.year
     meta.begin_season = subscribe.season
-    if subscribe.type:
-        meta.type = MediaType(subscribe.type)
+    if resolved_type is not None:
+        meta.type = resolved_type
     meta.media_source = subscribe.media_source
     meta.media_id = subscribe.media_id
     return meta

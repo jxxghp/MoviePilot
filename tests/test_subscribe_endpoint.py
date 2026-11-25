@@ -520,6 +520,68 @@ class TestSubscribeEndpoint:
         assert updated.music_type == "album"
         assert updated.total_tracks == 11
 
+    def test_update_subscribe_guards_blank_name_type_and_normalizes_agent_type(self):
+        """
+        局部编辑传入空白 name / type 不得清空已有有效字段，英文类型自动归一化，非法类型应明确拒绝。
+        """
+        from app.api.endpoints.subscribe import update_subscribe
+        from app.application.subscription.contract import resolve_subscribe_media_type
+
+        assert resolve_subscribe_media_type("movie") == MediaType.MOVIE
+        assert resolve_subscribe_media_type(" 电视剧 ") == MediaType.TV
+        assert resolve_subscribe_media_type("") is None
+        assert resolve_subscribe_media_type("invalid") is None
+
+        subscribe = _EndpointSubscribe(
+            id=29,
+            username="alice",
+            name="沙丘",
+            type=MediaType.MOVIE.value,
+        )
+        repository = _SubscriptionRepositoryFake(subscribe)
+
+        with patch(
+            "app.runtime.events.eventmanager.async_send_event",
+            new=AsyncMock(),
+        ):
+            # 传入空 name/type 时必须保留原有有效字段
+            resp_blank = asyncio.run(
+                update_subscribe(
+                    subscribe_in=Subscribe(id=29, name="   ", type=""),
+                    mutation=_subscription_mutation(repository),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+            assert resp_blank.success
+            kept = repository.get(29)
+            assert kept is not None
+            assert kept.name == "沙丘"
+            assert kept.type == MediaType.MOVIE.value
+
+            # 传入英文枚举名自动归一化为标准值
+            resp_agent = asyncio.run(
+                update_subscribe(
+                    subscribe_in=Subscribe(id=29, type="tv"),
+                    mutation=_subscription_mutation(repository),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+            assert resp_agent.success
+            normalized = repository.get(29)
+            assert normalized is not None
+            assert normalized.type == MediaType.TV.value
+
+            # 传入非法类型应被拒绝而非破坏记录
+            resp_bad = asyncio.run(
+                update_subscribe(
+                    subscribe_in=Subscribe(id=29, type="bogus_type"),
+                    mutation=_subscription_mutation(repository),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+            assert not resp_bad.success
+            assert "无效" in (resp_bad.message or "")
+
     def test_superuser_can_update_other_and_legacy_subscribe(self):
         """
         超级用户可以管理他人和 legacy 订阅。

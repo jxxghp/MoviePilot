@@ -66,6 +66,30 @@ class StorageChain(ChainBase):
         """
         return cast(Optional[Path], self.run_module("download_file", fileitem=fileitem, path=path))
 
+    def supports_file_stream(self, storage: str) -> bool:
+        """
+        查询目标存储是否支持渐进式 Range 流媒体读取。
+        """
+        return bool(self.run_module("supports_file_stream", storage=storage))
+
+    def get_file_stream_url(self, fileitem: _SchemaFileItem) -> Optional[tuple[str, dict[str, str]]]:
+        """
+        查询远端存储的 HTTP(S) 直链与上游请求头。
+        """
+        return cast(
+            Optional[tuple[str, dict[str, str]]],
+            self.run_module("get_file_stream_url", fileitem=fileitem),
+        )
+
+    def open_file_stream(self, fileitem: _SchemaFileItem) -> Optional[tuple[Any, int]]:
+        """
+        以可随机定位二进制流打开远端存储文件（如 SMB）。
+        """
+        return cast(
+            Optional[tuple[Any, int]],
+            self.run_module("open_file_stream", fileitem=fileitem),
+        )
+
     def upload_file(self, fileitem: _SchemaFileItem, path: Path,
                     new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """

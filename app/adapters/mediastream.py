@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 
 from app.adapters.network.http import RequestUtils
 from app.runtime.settings import get_runtime_setting
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.mediaserver import MediaServerSubtitleTrack as _SchemaMediaServerSubtitleTrack
 
 _STREAM_CHUNK_SIZE = 256 * 1024
@@ -182,6 +183,74 @@ def _file_stream_ticket_media_type(item_id: str) -> str:
     except (InvalidToken, ValueError, json.JSONDecodeError):
         return "video"
     return "audio" if isinstance(payload, dict) and payload.get("media_type") == "audio" else "video"
+
+
+def _create_storage_file_stream_ticket(
+    fileitem: _SchemaFileItem, user_id: int, media_type: str = "video"
+) -> str:
+    """
+    为远端存储（SMB / OpenList / 阿里云盘 / 115 等）媒体文件创建带用途和有效期的加密播放票据。
+
+    :param fileitem: 已通过管理权限与存储存在性校验的远端文件项
+    :param user_id: 签发票据的当前用户主键
+    :param media_type: 原生播放器使用的媒体类型（video / audio）
+    :return: URL 安全的 `file.` 票据标识
+    :raises HTTPException: 路径无效或序列化超限时
+    """
+    raw_path = (fileitem.path or "").strip()
+    if not fileitem.storage or not raw_path or len(raw_path.encode("utf-8")) > 2048:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="媒体文件路径无效")
+    compact_item: dict[str, Any] = {
+        "storage": fileitem.storage,
+        "type": "file",
+        "path": raw_path,
+        "name": fileitem.name or Path(raw_path).name,
+    }
+    if fileitem.fileid:
+        compact_item["fileid"] = fileitem.fileid
+    if fileitem.drive_id:
+        compact_item["drive_id"] = fileitem.drive_id
+    if fileitem.pickcode:
+        compact_item["pickcode"] = fileitem.pickcode
+    if fileitem.size is not None:
+        compact_item["size"] = int(fileitem.size)
+    payload = json.dumps(
+        {
+            "purpose": "storage-file",
+            "media_type": media_type,
+            "user_id": user_id,
+            "fileitem": compact_item,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    token = _file_ticket_cipher().encrypt(payload).decode("ascii").rstrip("=")
+    return f"{_FILE_TICKET_PREFIX}{token}"
+
+
+def _resolve_storage_file_stream_ticket(
+    item_id: str, user_id: Optional[int]
+) -> Optional[tuple[_SchemaFileItem, str]]:
+    """
+    若票据属于远端存储文件票据（`purpose="storage-file"`），校验并还原 `(FileItem, media_type)`；
+    若属于本地文件票据则返回 None，交由 `_resolve_file_stream_ticket` 处理。
+    """
+    token = item_id.removeprefix(_FILE_TICKET_PREFIX)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{64,4096}", token):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到已入库媒体")
+    token += "=" * (-len(token) % 4)
+    try:
+        payload = json.loads(_file_ticket_cipher().decrypt(token.encode("ascii"), ttl=_FILE_TICKET_TTL_SECONDS))
+    except (InvalidToken, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到已入库媒体") from None
+    if not isinstance(payload, dict) or payload.get("user_id") != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到已入库媒体")
+    if payload.get("purpose") != "storage-file":
+        return None
+    raw_item = payload.get("fileitem")
+    if not isinstance(raw_item, dict) or not raw_item.get("storage") or not raw_item.get("path"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到已入库媒体")
+    media_type = "audio" if payload.get("media_type") == "audio" else "video"
+    return _SchemaFileItem(**raw_item), media_type
 
 
 def _is_file_stream_ticket(item_id: str) -> bool:
@@ -592,6 +661,75 @@ def _parse_range_header(range_header: Optional[str], size: int) -> tuple[int, in
     return start, end, status.HTTP_206_PARTIAL_CONTENT
 
 
+def _seekable_stream_response(
+    stream: Any,
+    size: int,
+    filename: str,
+    range_header: Optional[str],
+    *,
+    head_only: bool = False,
+) -> StreamingResponse:
+    """
+    将任意支持 `seek`/`read`/`close` 的二进制只读流（本地文件、SMB 共享文件等）按 HTTP Range 分块输出。
+
+    - 音频文件显式返回 IANA MIME 并采用 64KB 分片，便于移动端播放器边缓冲边播放；
+    - 支持 `HEAD` 元数据/Range 探测请求。
+    """
+    try:
+        start, end, response_status = _parse_range_header(range_header, size)
+    except HTTPException:
+        stream.close()
+        raise
+    length = max(0, end - start + 1)
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, no-store",
+        "Content-Length": str(length),
+        "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename, safe='')}",
+    }
+    if response_status == status.HTTP_206_PARTIAL_CONTENT:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    suffix = Path(filename).suffix.casefold()
+    content_type = (
+        _SUBTITLE_MIME_TYPES.get(suffix)
+        or _AUDIO_MIME_TYPES.get(suffix)
+        or mimetypes.guess_type(filename)[0]
+    )
+    chunk_size = _AUDIO_STREAM_CHUNK_SIZE if suffix in _AUDIO_EXTENSIONS else _STREAM_CHUNK_SIZE
+
+    if head_only:
+        stream.close()
+        return StreamingResponse(
+            iter(()),
+            status_code=response_status,
+            media_type=content_type or "application/octet-stream",
+            headers=headers,
+        )
+
+    def chunks() -> Iterator[bytes]:
+        """
+        从所选范围读取固定大小数据块并在客户端断开时关闭句柄。
+        """
+        remaining = length
+        try:
+            stream.seek(start)
+            while remaining > 0:
+                chunk = stream.read(min(chunk_size, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+        finally:
+            stream.close()
+
+    return StreamingResponse(
+        chunks(),
+        status_code=response_status,
+        media_type=content_type or "application/octet-stream",
+        headers=headers,
+    )
+
+
 def _file_stream_response(
     path: Path,
     range_header: Optional[str],
@@ -614,61 +752,7 @@ def _file_stream_response(
         size = path.stat().st_size
     except OSError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="媒体文件不可读取") from None
-    try:
-        start, end, response_status = _parse_range_header(range_header, size)
-    except HTTPException:
-        file.close()
-        raise
-    length = max(0, end - start + 1)
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "private, no-store",
-        "Content-Length": str(length),
-        "Content-Disposition": f"inline; filename*=UTF-8''{quote(path.name, safe='')}",
-    }
-    if response_status == status.HTTP_206_PARTIAL_CONTENT:
-        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-    suffix = path.suffix.casefold()
-    content_type = (
-        _SUBTITLE_MIME_TYPES.get(suffix)
-        or _AUDIO_MIME_TYPES.get(suffix)
-        or mimetypes.guess_type(path.name)[0]
-    )
-    chunk_size = _AUDIO_STREAM_CHUNK_SIZE if suffix in _AUDIO_EXTENSIONS else _STREAM_CHUNK_SIZE
-
-    if head_only:
-        file.close()
-        return StreamingResponse(
-            iter(()),
-            status_code=response_status,
-            media_type=content_type or "application/octet-stream",
-            headers=headers,
-        )
-
-    def chunks() -> Iterator[bytes]:
-        """
-        从所选范围读取固定大小数据块并在客户端断开时关闭文件。
-
-        :yields: 文件内容块
-        """
-        remaining = length
-        try:
-            file.seek(start)
-            while remaining > 0:
-                chunk = file.read(min(chunk_size, remaining))
-                if not chunk:
-                    break
-                remaining -= len(chunk)
-                yield chunk
-        finally:
-            file.close()
-
-    return StreamingResponse(
-        chunks(),
-        status_code=response_status,
-        media_type=content_type or "application/octet-stream",
-        headers=headers,
-    )
+    return _seekable_stream_response(file, size, path.name, range_header, head_only=head_only)
 
 
 def _validate_range_syntax(range_header: Optional[str]) -> None:

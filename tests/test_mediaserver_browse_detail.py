@@ -229,6 +229,23 @@ def test_emby_browse_filters_detail_seasons_episodes_and_subtitles() -> None:
     assert emby_report_progress(session_cfg, "ep-1", 120_000, media_source_id="src-4k", state="paused") is True
     assert http.post_res.call_args.kwargs["json"]["PositionTicks"] == 1_200_000_000
 
+    # 8. Emby API Key 兜底：当 POST .../UserData 返回 404/405 时自动回退到 PlaystateService PlayingItems
+    http.post_res.reset_mock()
+    http.delete_res.reset_mock()
+    http.post_res.side_effect = [Mock(status_code=405), Mock(status_code=204)]
+    assert emby_report_progress(cfg, "ep-1", 180_000, media_source_id="src-4k", state="paused", is_paused=True) is True
+    assert http.post_res.call_count == 2
+    assert "/PlayingItems/ep-1/Progress" in http.post_res.call_args.kwargs["url"]
+    assert http.post_res.call_args.kwargs["params"]["PositionTicks"] == 1_800_000_000
+    assert http.post_res.call_args.kwargs["params"]["IsPaused"] == "true"
+
+    http.post_res.side_effect = None
+    http.post_res.return_value = Mock(status_code=404)
+    http.delete_res.return_value = Mock(status_code=204)
+    assert emby_report_progress(cfg, "ep-1", 240_000, media_source_id="src-4k", state="stopped") is True
+    assert "/PlayingItems/ep-1" in http.delete_res.call_args.kwargs["url"]
+    assert http.delete_res.call_args.kwargs["params"]["PositionTicks"] == 2_400_000_000
+
 
 def test_plex_browse_detail_seasons_episodes_and_progress() -> None:
     """验证 Plex 浏览、筛选、详情轨道解析、三层剧集、字幕流及进度回传。"""

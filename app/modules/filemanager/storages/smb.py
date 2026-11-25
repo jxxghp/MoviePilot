@@ -657,6 +657,26 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】重命名失败: {e}")
             return False
 
+    def open_file_stream(self, fileitem: _SchemaFileItem) -> Optional[tuple[Any, int]]:
+        """
+        以可随机定位的二进制只读句柄打开 SMB 共享文件，供流媒体端点按 HTTP Range 边加载边播放。
+        """
+        import smbclient
+
+        file_path = fileitem.path
+        if not file_path:
+            return None
+        smb_path = self._normalize_path(file_path)
+        try:
+            self._check_connection()
+            stat_info = smbclient.stat(smb_path)
+            size = int(stat_info.st_size)
+            stream = smbclient.open_file(smb_path, mode="rb")
+            return stream, size
+        except Exception as e:
+            logger.error(f"【SMB】打开流式读取失败: {fileitem.name} - {e}")
+            return None
+
     def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         分块读取 SMB 文件到本地路径并报告进度。

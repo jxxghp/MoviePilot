@@ -13,6 +13,7 @@ from app.application.mediaserver import MediaServerQueryError
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
+    resolve_subscribe_media_type,
     subscribe_media_key,
 )
 from app.application.subscription.facts import FreshFactLease
@@ -225,10 +226,19 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         """
         刷新单条订阅元数据，并按需复用同一事实执行完成对账。
         """
+        if not (subscribe.name or "").strip() or resolve_subscribe_media_type(subscribe.type) is None:
+            logger.warning(
+                f"跳过无效订阅元数据刷新：id={subscribe.id}，标题={subscribe.name or '<空>'}，"
+                f"类型={subscribe.type or '<空>'}"
+            )
+            return None
         try:
             meta = build_subscribe_meta(subscribe)
         except ValueError:
-            logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+            logger.warning(
+                f"跳过类型异常的订阅：id={subscribe.id}，标题={subscribe.name or '<空>'}，"
+                f"类型={subscribe.type or '<空>'}"
+            )
             return None
         converted_subscribe = self._retry_subscribe_media_identity(
             subscribe,
@@ -240,7 +250,10 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
             try:
                 meta = build_subscribe_meta(subscribe)
             except ValueError:
-                logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+                logger.warning(
+                    f"跳过类型异常的订阅：id={subscribe.id}，标题={subscribe.name or '<空>'}，"
+                    f"类型={subscribe.type or '<空>'}"
+                )
                 return None
         if meta.type == MediaType.MUSIC:
             mediainfo = self._recognize_music_subscribe(subscribe)

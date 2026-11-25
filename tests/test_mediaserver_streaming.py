@@ -814,3 +814,93 @@ def test_stream_route_supports_head_and_range_for_local_audio_ticket(
     assert range_resp.status_code == 206
     assert range_resp.headers["content-range"] == "bytes 0-3/16"
     assert range_resp.content == b"0123"
+
+
+def test_remote_storage_smb_and_http_progressive_stream_tickets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 SMB（可随机定位流）与 OpenList/网盘（HTTP 直链）远端文件支持签发流票据并按 Range 边加载边播放。"""
+    import io
+
+    payload = b"0123456789abcdefghijklmnopqrstuvwxyz"
+    monkeypatch.setattr(mediastream, "get_runtime_setting", lambda _key: "test-resource-secret")
+    monkeypatch.setattr(mediaserver, "_ensure_manage_storage_item", lambda fileitem, _user: fileitem)
+
+    class _FakeStorageChain:
+        def supports_file_stream(self, storage: str) -> bool:
+            return storage in {"smb", "alist"}
+
+        def get_file_stream_url(self, fileitem):
+            if fileitem.storage == "alist":
+                return ("https://cdn.example.com/movie.mp4", {"Referer": "https://alist.example.com/"})
+            return None
+
+        def open_file_stream(self, fileitem):
+            if fileitem.storage == "smb":
+                return io.BytesIO(payload), len(payload)
+            return None
+
+    monkeypatch.setattr(mediaserver, "StorageChain", _FakeStorageChain)
+    monkeypatch.setattr(
+        mediaserver,
+        "_remote_stream_response",
+        lambda url, range_header, _hosts, extra_headers=None, head_only=False: mediaserver.StreamingResponse(
+            iter(() if head_only else [b"ABCD"]),
+            status_code=206 if range_header else 200,
+            media_type="video/mp4",
+            headers={"Accept-Ranges": "bytes", "X-Upstream-Url": url, "X-Has-Referer": str(bool(extra_headers))},
+        ),
+    )
+
+    current_user = SimpleNamespace(id=21, is_superuser=True, permissions={})
+    app = FastAPI()
+    app.include_router(mediaserver.router, prefix="/api/v1/mediaserver")
+    app.dependency_overrides[mediaserver.get_current_active_manage_user] = lambda: current_user
+    app.dependency_overrides[mediaserver.verify_token] = lambda: TokenPayload(sub=21)
+    app.dependency_overrides[mediaserver.verify_resource_token] = lambda: TokenPayload(sub=21)
+
+    with TestClient(app) as client:
+        # 1. SMB 可 seek 分块 Range 流式读取
+        smb_ticket = client.post(
+            "/api/v1/mediaserver/stream-ticket",
+            json={
+                "file": {"storage": "smb", "type": "file", "name": "demo.mp4", "path": "/share/demo.mp4"},
+                "media_type": "video",
+            },
+        )
+        assert smb_ticket.status_code == 200
+        smb_id = smb_ticket.json()["data"]["item_id"]
+        smb_manifest = client.get("/api/v1/mediaserver/stream-info", params={"itemid": smb_id}).json()["data"]
+        smb_head = client.head(smb_manifest["content_url"])
+        smb_range = client.get(smb_manifest["content_url"], headers={"Range": "bytes=10-15"})
+        assert smb_head.status_code == 200
+        assert smb_head.headers["content-length"] == str(len(payload))
+        assert smb_range.status_code == 206
+        assert smb_range.headers["content-range"] == f"bytes 10-15/{len(payload)}"
+        assert smb_range.content == b"abcdef"
+
+        # 2. OpenList HTTP 直链代理
+        alist_ticket = client.post(
+            "/api/v1/mediaserver/stream-ticket",
+            json={
+                "file": {"storage": "alist", "type": "file", "name": "movie.mp4", "path": "/media/movie.mp4"},
+                "media_type": "video",
+            },
+        )
+        assert alist_ticket.status_code == 200
+        alist_id = alist_ticket.json()["data"]["item_id"]
+        alist_manifest = client.get("/api/v1/mediaserver/stream-info", params={"itemid": alist_id}).json()["data"]
+        alist_range = client.get(alist_manifest["content_url"], headers={"Range": "bytes=0-3"})
+        assert alist_range.status_code == 206
+        assert alist_range.headers["x-upstream-url"] == "https://cdn.example.com/movie.mp4"
+        assert alist_range.content == b"ABCD"
+
+        # 3. 不支持流式的存储返回 400
+        unsupported = client.post(
+            "/api/v1/mediaserver/stream-ticket",
+            json={
+                "file": {"storage": "rclone", "type": "file", "name": "movie.mp4", "path": "/media/movie.mp4"},
+                "media_type": "video",
+            },
+        )
+        assert unsupported.status_code == 400

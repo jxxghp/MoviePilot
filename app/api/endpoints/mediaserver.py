@@ -20,13 +20,18 @@ from app.adapters.mediastream import (
     _is_file_stream_ticket,
     _remote_stream_response,
     _resolve_file_stream_ticket,
+    _resolve_storage_file_stream_ticket,
     _sanitize_strm_direct_url,
+    _seekable_stream_response,
     _stream_source,
     _subtitle_tracks,
     _validate_stream_url,
 )
 from app.adapters.mediastream import _configured_stream_hosts as _configured_media_stream_hosts
 from app.adapters.mediastream import _create_file_stream_ticket as _create_media_file_stream_ticket
+from app.adapters.mediastream import (
+    _create_storage_file_stream_ticket as _create_media_storage_file_stream_ticket,
+)
 from app.adapters.web.security.access import verify_resource_token, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_mediaserver_query_service
@@ -59,12 +64,14 @@ from app.application.playback import (
 from app.application.storage import StorageHelper
 from app.chain.download import DownloadChain
 from app.chain.mediaserver import MediaServerChain
+from app.chain.storage import StorageChain
 from app.chain.tmdb import TmdbChain
 from app.domain.context import MediaInfo
 from app.domain.context import MusicInfo as _DomainMusicInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.mediaserver import MediaServerAccountBinding as _SchemaMediaServerAccountBinding
 from app.schemas.mediaserver import MediaServerAccountBindRequest as _SchemaMediaServerAccountBindRequest
@@ -151,6 +158,22 @@ def _resolve_stream_item(
     if not _is_file_stream_ticket(itemid):
         server_name, item, path = _find_stream_item(itemid, **({"server": server} if server else {}))
         return server_name, item, path
+    storage_ticket = _resolve_storage_file_stream_ticket(itemid, user_id)
+    if storage_ticket is not None:
+        storage_item, ticket_media_type = storage_ticket
+        item_type = "Audio" if ticket_media_type == "audio" else "Episode"
+        filename = storage_item.name or Path(storage_item.path or "").name or itemid
+        return (
+            None,
+            _SchemaMediaServerItem(
+                item_id=itemid,
+                title=Path(filename).stem or filename,
+                item_type=item_type,
+                path=storage_item.path,
+                note={"storage_file_item": storage_item.model_dump(exclude_none=True)},
+            ),
+            None,
+        )
     path = _resolve_file_stream_ticket(itemid, user_id)
     item_type = "Audio" if _file_stream_ticket_media_type(itemid) == "audio" else "Episode"
     return None, _SchemaMediaServerItem(item_id=itemid, title=path.stem, item_type=item_type, path=str(path)), path
@@ -342,6 +365,8 @@ def _playback_source(
             hosts = _configured_stream_hosts(path, include_media_servers=True)
             return "server", _validate_stream_url(upstream, configured_hosts=hosts), hosts
     if not path:
+        if isinstance(item.note, dict) and isinstance(item.note.get("storage_file_item"), dict):
+            return "storage", itemid, set()
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="媒体服务器不支持文件流且本地文件不可读取")
     hosts = _configured_stream_hosts(path)
     source_type, source = _stream_source(path, hosts)
@@ -437,7 +462,7 @@ def _is_audio_item(item: _SchemaMediaServerItem, path: Optional[Path]) -> bool:
 
 @router.post(
     "/stream-ticket",
-    summary="为文件管理器选中的本地媒体签发播放票据",
+    summary="为文件管理器选中的媒体文件签发流式播放票据",
     response_model=_SchemaResponse[_SchemaMediaServerFileStreamTicket],
 )
 def create_file_stream_ticket(
@@ -445,25 +470,39 @@ def create_file_stream_ticket(
     current_user: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> _SchemaResponse[_SchemaMediaServerFileStreamTicket]:
     """
-    验证管理用户可访问的本地媒体文件并签发短期单文件票据。
+    验证管理用户可访问的媒体文件（本地或支持 Range 流式的远端存储，如 SMB / OpenList / 阿里云盘 / 115）并签发短期票据。
 
-    :param request: 文件管理器提交的文件条目，仅接受本地支持格式的媒体或 STRM 文件
+    :param request: 文件管理器提交的文件条目
     :param current_user: 已验证且拥有管理权限的当前用户
-    :return: 与当前用户及签发时文件身份绑定的短期播放标识
-    :raises HTTPException: 用户无权访问文件、文件不可读或格式不受支持时
+    :return: 与当前用户及文件身份绑定的短期播放标识
+    :raises HTTPException: 用户无权访问文件、存储不支持在线流、文件不可读或格式不受支持时
     """
     fileitem = request.file
-    if fileitem.storage != "local" or fileitem.type != "file":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="仅支持本地媒体文件")
+    if fileitem.type != "file":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="仅支持媒体文件")
     authorized_item = _ensure_manage_storage_item(fileitem, current_user)
-    path = Path(authorized_item.path or "")
-    if not path.is_absolute():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="媒体文件路径无效")
+    raw_path = authorized_item.path or ""
+    path = Path(raw_path)
     media_type = request.media_type
     supported_extensions = _AUDIO_EXTENSIONS if media_type == "audio" else _VIDEO_EXTENSIONS
-    if path.suffix.casefold() != ".strm" and path.suffix.casefold() not in supported_extensions:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="该文件格式不支持在线播放")
-    item_id = _create_media_file_stream_ticket(path, current_user.id, media_type)
+    suffix = Path(authorized_item.name or raw_path).suffix.casefold()
+    if authorized_item.storage == "local":
+        if not path.is_absolute():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="媒体文件路径无效")
+        if suffix != ".strm" and suffix not in supported_extensions:
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="该文件格式不支持在线播放")
+        item_id = _create_media_file_stream_ticket(path, current_user.id, media_type)
+        return _SchemaResponse(
+            success=True,
+            data=_SchemaMediaServerFileStreamTicket(
+                item_id=item_id, title=authorized_item.name or path.stem, media_type=media_type
+            ),
+        )
+    if suffix == ".strm" or suffix not in supported_extensions:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="该文件格式不支持在线流式播放")
+    if not authorized_item.storage or not StorageChain().supports_file_stream(authorized_item.storage):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该存储暂不支持在线流式播放")
+    item_id = _create_media_storage_file_stream_ticket(authorized_item, current_user.id, media_type)
     return _SchemaResponse(
         success=True,
         data=_SchemaMediaServerFileStreamTicket(
@@ -919,6 +958,31 @@ def stream_item_content(
                 raise
             configured_hosts = _configured_stream_hosts(path)
             source_type, source = _stream_source(path, configured_hosts)
+    if source_type == "storage":
+        raw_storage_item = item.note.get("storage_file_item") if isinstance(item.note, dict) else None
+        if not isinstance(raw_storage_item, dict):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到远端媒体文件")
+        storage_file = _SchemaFileItem.model_validate(raw_storage_item)
+        chain = StorageChain()
+        stream_url_result = chain.get_file_stream_url(storage_file)
+        if stream_url_result:
+            stream_url, storage_headers = stream_url_result
+            hosts = _configured_stream_hosts(None, include_media_servers=True)
+            return _remote_stream_response(
+                stream_url,
+                range_header,
+                hosts,
+                extra_headers=storage_headers or None,
+                head_only=head_only,
+            )
+        seekable_result = chain.open_file_stream(storage_file)
+        if seekable_result:
+            stream_handle, stream_size = seekable_result
+            filename = storage_file.name or Path(storage_file.path or "media").name
+            return _seekable_stream_response(
+                stream_handle, stream_size, filename, range_header, head_only=head_only
+            )
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="该存储暂不支持在线流式播放")
     if source_type == "file":
         return _file_stream_response(Path(source), range_header, head_only=head_only)
     return _remote_stream_response(str(source), range_header, configured_hosts, head_only=head_only)
