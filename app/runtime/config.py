@@ -425,7 +425,7 @@ class ConfigModel(BaseModel):
     # Bangumi配置
     BANGUMI_PROXY_ENABLE: bool = Field(default=False, description='是否启用 Bangumi 数据与图片代理')
     BANGUMI_API_DOMAIN: str = Field(default="", description='Bangumi API代理地址，留空使用官方地址')
-    BANGUMI_IMAGE_DOMAIN: str = Field(default="", description='Bangumi图片代理地址，留空时由后端代理端点直接拉取原始图片')
+    BANGUMI_IMAGE_DOMAIN: str = Field(default="", description='Bangumi图片代理地址，非空时把响应里的官方图片域名替换为该地址，留空则由后端代理端点直接拉取原始图片')
 
     # 音乐配置
     MUSIC_COVER_PROXY: str = Field(

@@ -3,6 +3,9 @@
 """
 
 import asyncio
+import inspect
+import tomllib
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.modules.bangumi import BangumiModule
@@ -118,3 +121,30 @@ def test_bangumi_stop_closes_client_without_clearing_cache() -> None:
 
     module.bangumiapi.close.assert_called_once_with()
     module.bangumiapi.clear_cache.assert_not_called()
+
+
+def test_bangumi_module_watches_and_passes_image_domain(monkeypatch):
+    """
+    模块应监听图片代理配置，并把图片地址与数据地址一起交给客户端。
+    """
+    module = BangumiModule()
+    monkeypatch.setattr(settings, "BANGUMI_PROXY_ENABLE", True)
+    monkeypatch.setattr(settings, "BANGUMI_API_DOMAIN", "https://bgma.example")
+    monkeypatch.setattr(settings, "BANGUMI_IMAGE_DOMAIN", "bgmp.example/mirror/")
+
+    with patch("app.modules.bangumi.BangumiApi") as api_class:
+        module.init_module()
+
+    assert api_class.call_args.kwargs["base_url"] == "https://bgma.example"
+    assert api_class.call_args.kwargs["image_domain"] == "bgmp.example/mirror/"
+    assert "BANGUMI_IMAGE_DOMAIN" in BangumiModule.CONFIG_WATCH
+
+    manifest_path = Path(inspect.getsourcefile(BangumiModule)).parent / "capability.toml"
+    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    assert set(manifest["activation"]["watch"]) == set(BangumiModule.CONFIG_WATCH)
+
+    monkeypatch.setattr(settings, "BANGUMI_PROXY_ENABLE", False)
+    with patch("app.modules.bangumi.BangumiApi") as api_class:
+        module.init_module()
+
+    assert api_class.call_args.kwargs["image_domain"] == ""
