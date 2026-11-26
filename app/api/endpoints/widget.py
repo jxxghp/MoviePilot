@@ -20,7 +20,14 @@ from app.application.security.widget import WidgetAccessError, WidgetAuthService
 from app.application.widget import WidgetSnapshotService
 from app.runtime.execution import run_in_threadpool
 from app.schemas.response import Response as ApiResponse
-from app.schemas.widget import WidgetContext, WidgetRegistrationRequest, WidgetRegistrationResponse, WidgetSnapshot
+from app.schemas.widget import (
+    PluginWidgetCatalog,
+    PluginWidgetSnapshot,
+    WidgetContext,
+    WidgetRegistrationRequest,
+    WidgetRegistrationResponse,
+    WidgetSnapshot,
+)
 
 router = ResponseAPIRouter()
 
@@ -143,4 +150,68 @@ async def widget_snapshot(
         widget_http_error(error)
     except ValueError as error:
         raise HTTPException(503, "小组件快照暂不可用", headers=WIDGET_CACHE_HEADERS) from error
+    return result
+
+
+@router.get(
+    "/plugins",
+    summary="读取可绑定的插件桌面小组件目录",
+    response_model=PluginWidgetCatalog,
+    response_model_exclude_none=True,
+    openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
+)
+async def widget_plugin_catalog(
+    grant: WidgetGrant = Depends(get_widget_grant),
+    service: WidgetSnapshotService = Depends(get_widget_snapshot_service),
+    auth: WidgetAuthService = Depends(get_widget_auth_service),
+) -> PluginWidgetCatalog:
+    """
+    仅向具备超级管理员权限的小组件专用 Bearer 返回已启用插件的桌面小组件清单。
+
+    :param grant: 当前用户及有限期专用授权
+    :param service: 小组件只读投影服务
+    :param auth: 返回前复核撤销、到期和最新管理员权限
+    :return: 不超过 32 KiB 的插件小组件目录模型
+    """
+    try:
+        result = await service.plugin_catalog(grant)
+        await run_in_threadpool(auth.revalidate, grant)
+    except WidgetAccessError as error:
+        widget_http_error(error)
+    except ValueError as error:
+        raise HTTPException(503, "插件小组件目录暂不可用", headers=WIDGET_CACHE_HEADERS) from error
+    return result
+
+
+@router.get(
+    "/plugins/{plugin_id}",
+    summary="读取单个插件桌面小组件的只读快照",
+    response_model=PluginWidgetSnapshot,
+    response_model_exclude_none=True,
+    openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
+)
+async def widget_plugin_snapshot(
+    plugin_id: str,
+    key: str = "",
+    grant: WidgetGrant = Depends(get_widget_grant),
+    service: WidgetSnapshotService = Depends(get_widget_snapshot_service),
+    auth: WidgetAuthService = Depends(get_widget_auth_service),
+) -> PluginWidgetSnapshot:
+    """
+    使用专用只读 Bearer 读取单个插件小组件的预设指标、列表或经清洗的声明式自定义布局。
+
+    :param plugin_id: 运行态插件标识
+    :param key: 插件内小组件子键，缺省为空字符串
+    :param grant: 当前用户及有限期专用授权
+    :param service: 小组件只读投影服务
+    :param auth: 返回前复核撤销、到期和最新管理员权限
+    :return: 不超过 32 KiB 的单个插件小组件只读快照
+    """
+    try:
+        result = await service.plugin_snapshot(grant, plugin_id, key)
+        await run_in_threadpool(auth.revalidate, grant)
+    except WidgetAccessError as error:
+        widget_http_error(error)
+    except ValueError as error:
+        raise HTTPException(503, "插件小组件快照暂不可用", headers=WIDGET_CACHE_HEADERS) from error
     return result

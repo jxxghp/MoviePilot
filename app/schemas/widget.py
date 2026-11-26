@@ -2,7 +2,7 @@
 小组件专用登记与有界只读快照协议；不包含业务命令或主登录凭据。
 """
 
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,6 +13,8 @@ WidgetContent = Literal[
 WidgetIcon = Literal[
     "movie", "television", "episodes", "music", "download", "upload", "storage", "items", "clock", "cpu", "memory"
 ]
+PluginWidgetKind = Literal["metrics", "list", "poster", "nowPlaying", "custom"]
+PluginWidgetTone = Literal["default", "primary", "secondary", "muted", "accent", "success", "warning", "danger"]
 
 
 class WidgetContext(BaseModel):
@@ -105,3 +107,82 @@ class WidgetSnapshot(BaseModel):
     )
     availableContents: list[WidgetContent] = Field(max_length=6, description="最新授权的内容集合，与 sections 一一对应")
     sections: list[WidgetSection] = Field(max_length=6, description="独立来源结果，权限不足的内容不在此出现")
+
+
+class PluginWidgetDescriptor(BaseModel):
+    """
+    已启用插件可供系统桌面绑定的单个小组件描述。
+    """
+
+    pluginId: str = Field(min_length=1, max_length=128, description="运行态插件标识")
+    pluginName: str = Field(min_length=1, max_length=120, description="插件展示名称")
+    widgetKey: str = Field(default="", max_length=64, description="插件内唯一的小组件键名")
+    name: str = Field(min_length=1, max_length=120, description="小组件卡片名称")
+    description: str | None = Field(default=None, max_length=240, description="小组件可选说明文字")
+    kind: PluginWidgetKind = Field(default="metrics", description="小组件渲染形态")
+    source: Literal["widget", "dashboard"] = Field(default="widget", description="声明来源，支持专属协议或仪表板兜底")
+    hasPage: bool = Field(default=False, description="插件是否具备数据详情页面")
+
+
+class PluginWidgetCatalog(BaseModel):
+    """
+    小组件专用凭据可读的已启用插件小组件目录。
+    """
+
+    version: Literal[1] = Field(default=1, description="插件小组件目录协议版本")
+    owner: str = Field(pattern=r"^[0-9a-f]{32}$", description="不可变管理员身份标识")
+    generatedAt: float = Field(gt=0, allow_inf_nan=False, description="目录生成的 UTC Unix 秒")
+    expiresAt: float = Field(gt=0, allow_inf_nan=False, description="目录有效期的 UTC Unix 秒")
+    widgets: list[PluginWidgetDescriptor] = Field(default_factory=list, max_length=64, description="可绑定的插件小组件清单")
+
+
+class PluginWidgetMetricItem(BaseModel):
+    """
+    插件小组件预设模板中的单项统计指标。
+    """
+
+    id: str = Field(min_length=1, max_length=64, description="卡片内唯一的指标标识")
+    label: str = Field(min_length=1, max_length=120, description="指标标题")
+    value: str = Field(min_length=1, max_length=96, description="已格式化的指标数值")
+    subValue: str | None = Field(default=None, max_length=120, description="可选趋势或辅助值")
+    icon: str | None = Field(default=None, max_length=48, description="可选语义图标名称")
+    tone: PluginWidgetTone | None = Field(default=None, description="可选语义着色角色")
+
+
+class PluginWidgetListItem(BaseModel):
+    """
+    插件小组件预设列表模板中的单行条目。
+    """
+
+    id: str = Field(min_length=1, max_length=64, description="卡片内唯一的条目标识")
+    title: str = Field(min_length=1, max_length=240, description="条目主标题")
+    subtitle: str | None = Field(default=None, max_length=320, description="条目辅助说明")
+    trailing: str | None = Field(default=None, max_length=64, description="右侧简短状态或数值")
+    progress: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False, description="可选自然完成度比例，范围 0 至 1")
+
+
+class PluginWidgetSnapshot(BaseModel):
+    """
+    单个插件桌面小组件的有界只读快照，完整序列化体积不超过 32 KiB。
+    """
+
+    version: Literal[1] = Field(default=1, description="插件小组件快照协议版本")
+    owner: str = Field(pattern=r"^[0-9a-f]{32}$", description="不可变管理员身份标识")
+    generatedAt: float = Field(gt=0, allow_inf_nan=False, description="快照生成的 UTC Unix 秒")
+    expiresAt: float = Field(gt=0, allow_inf_nan=False, description="快照展示上限的 UTC Unix 秒")
+    pluginId: str = Field(min_length=1, max_length=128, description="所属运行态插件标识")
+    pluginName: str = Field(min_length=1, max_length=120, description="所属插件显示名称")
+    widgetKey: str = Field(default="", max_length=64, description="插件内小组件标识")
+    state: Literal["ready", "empty", "unavailable"] = Field(description="读取成功、成功但为空或暂不可用")
+    updatedAt: float | None = Field(default=None, gt=0, allow_inf_nan=False, description="成功采样的 UTC Unix 秒；不可用时为空")
+    kind: PluginWidgetKind = Field(default="metrics", description="小组件渲染形态")
+    title: str = Field(min_length=1, max_length=240, description="卡片主标题")
+    subtitle: str | None = Field(default=None, max_length=240, description="卡片副标题")
+    metrics: list[PluginWidgetMetricItem] = Field(default_factory=list, max_length=8, description="预设模板指标集合，最多八项")
+    items: list[PluginWidgetListItem] = Field(default_factory=list, max_length=6, description="预设模板条目集合，最多六项")
+    layout: dict[str, Any] | None = Field(default=None, description="通用声明式自定义布局根节点，已经过层级与字段清洗")
+    layouts: dict[str, dict[str, Any]] | None = Field(
+        default=None,
+        description="按 small、medium、large 尺寸分别声明的自定义布局根节点映射",
+    )
+    message: str | None = Field(default=None, max_length=240, description="可公开展示的状态说明文字")

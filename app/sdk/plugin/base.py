@@ -191,6 +191,29 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_widgets(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        声明插件提供的移动端桌面小组件元信息。
+
+        每项至少包含插件内唯一的 ``key`` 与展示名称 ``name``，可选提供 ``description``、
+        ``kind``（``metrics``、``list``、``poster``、``nowPlaying`` 或 ``custom``）和建议刷新秒数 ``refresh``。
+
+        :return: 小组件声明字典列表；未提供专属声明时返回 None
+        """
+        pass
+
+    def get_widget_data(self, key: str = "") -> Optional[Dict[str, Any]]:
+        """
+        返回指定桌面小组件的只读展示数据或声明式布局节点树。
+
+        返回字典可包含 ``title``、``subtitle``、``kind``、``metrics``、``items``、
+        ``layout`` 或按尺寸区分的 ``layouts``；宿主会对体积、层级深度和链接执行有界清洗。
+
+        :param key: 插件内声明的小组件标识，缺省为空字符串以兼容单卡片实现
+        :return: 小组件快照字典；当前无可展示数据时返回 None
+        """
+        pass
+
     def get_auth_providers(self) -> Optional[List[Dict[str, Any]]]:
         """
         声明插件提供的登录认证入口。

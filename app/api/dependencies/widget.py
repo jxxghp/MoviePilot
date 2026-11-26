@@ -13,6 +13,7 @@ from app.api.dependencies.dashboard import sample_downloader, sample_system
 from app.api.dependencies.history import get_history_query_service
 from app.application.configuration import ApiRuntimeConfig
 from app.application.history import HistoryQueryService
+from app.application.plugin.runtime import get_existing_plugin_manager
 from app.application.query import get_configured_data_query_service
 from app.application.security.widget import WidgetAccessError, WidgetAuthService, WidgetGrant
 from app.application.widget import WidgetSnapshotService
@@ -71,6 +72,27 @@ def get_widget_grant(
         widget_http_error(error)
 
 
+def _list_plugin_widgets() -> list[dict[str, object]]:
+    """
+    从已就绪的插件运行时读取桌面小组件目录；运行时尚未物化时返回空列表。
+    """
+    manager = get_existing_plugin_manager()
+    if manager is None:
+        return []
+    return list(manager.get_plugin_widget_meta() or [])
+
+
+def _read_plugin_widget_data(plugin_id: str, widget_key: str) -> dict[str, object] | None:
+    """
+    从已就绪的插件运行时读取单个桌面小组件快照；运行时尚未物化时返回 None。
+    """
+    manager = get_existing_plugin_manager()
+    if manager is None:
+        return None
+    raw = manager.get_plugin_widget_data(plugin_id, widget_key)
+    return dict(raw) if isinstance(raw, dict) else None
+
+
 def get_widget_snapshot_service(
     history: HistoryQueryService = Depends(get_history_query_service),
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
@@ -88,4 +110,6 @@ def get_widget_snapshot_service(
         system=sample_system,
         downloads=partial(DownloadChain().downloading, require_source=True),
         downloader=partial(sample_downloader, btrfs_fsid_dedup=runtime_config.btrfs_fsid_dedup, require_source=True),
+        plugin_widgets=_list_plugin_widgets,
+        plugin_widget_data=_read_plugin_widget_data,
     )

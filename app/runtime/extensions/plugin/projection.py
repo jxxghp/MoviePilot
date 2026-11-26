@@ -25,6 +25,9 @@ _AGENT_PET_MODES = frozenset({"stage", "renderer"})
 _AGENT_PET_BUBBLES = frozenset({"host", "self"})
 # 预览图与头像允许原样透传的绝对地址前缀，其余一律视为相对联邦产物目录的路径
 _AGENT_PET_ABSOLUTE_PREVIEW_PREFIXES = ("http://", "https://", "data:")
+# 桌面小组件标识与形态枚举白名单
+_WIDGET_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_WIDGET_KINDS = frozenset({"metrics", "list", "poster", "nowPlaying", "custom"})
 
 
 class _InvalidAgentPet(ValueError):
@@ -651,3 +654,262 @@ class PluginProjection:
                 "virtual" if getattr(plugin, "plugin_source_id", None) else None
             ),
         )
+
+    def widget_metadata(self) -> List[Dict[str, Any]]:
+        """
+        投影启用插件声明的桌面小组件目录，并为仅实现仪表板的插件提供自动降级入口。
+
+        :return: 已启用插件的小组件元信息列表
+        """
+        items: list[dict[str, Any]] = []
+        declared_pairs: set[tuple[str, str]] = set()
+        for plugin_id, plugin in sorted(self._items(None), key=lambda pair: pair[0]):
+            if not plugin.get_state():
+                continue
+            has_page = bool(supports_plugin_hook(plugin, "get_page"))
+            plugin_name = getattr(plugin, "plugin_name", None) or plugin_id
+            if supports_plugin_hook(plugin, "get_widgets"):
+                try:
+                    raw_list = plugin.get_widgets() or []
+                except Exception as error:
+                    self._logger.error(f"获取插件[{plugin_id}]桌面小组件元信息出错：{error}")
+                    raw_list = []
+                if isinstance(raw_list, list):
+                    for raw in raw_list:
+                        if not isinstance(raw, Mapping):
+                            continue
+                        raw_key = str(raw.get("key") or "").strip()
+                        if not _WIDGET_KEY_PATTERN.match(raw_key):
+                            self._logger.warning(
+                                f"插件[{plugin_id}]桌面小组件 key 无效，已跳过：{raw_key!r}"
+                            )
+                            continue
+                        if (plugin_id, raw_key) in declared_pairs:
+                            continue
+                        name = str(raw.get("name") or "").strip() or plugin_name
+                        kind = str(raw.get("kind") or "metrics").strip()
+                        if kind not in _WIDGET_KINDS:
+                            kind = "metrics"
+                        description = raw.get("description")
+                        desc_str = description.strip() if isinstance(description, str) and description.strip() else None
+                        declared_pairs.add((plugin_id, raw_key))
+                        items.append({
+                            "plugin_id": plugin_id,
+                            "plugin_name": plugin_name,
+                            "key": raw_key,
+                            "name": name,
+                            "description": desc_str,
+                            "kind": kind,
+                            "source": "widget",
+                            "has_page": has_page,
+                        })
+            if supports_plugin_hook(plugin, "get_dashboard"):
+                try:
+                    dash_metas = (
+                        plugin.get_dashboard_meta()
+                        if supports_plugin_hook(plugin, "get_dashboard_meta")
+                        else None
+                    )
+                except Exception as error:
+                    self._logger.error(f"获取插件[{plugin_id}]仪表盘兜底小组件元信息出错：{error}")
+                    continue
+                entries = dash_metas if dash_metas else [{"key": "", "name": plugin_name}]
+                for entry in entries:
+                    if not isinstance(entry, Mapping):
+                        continue
+                    dash_key = str(entry.get("key") or "").strip()
+                    if dash_key and not _WIDGET_KEY_PATTERN.match(dash_key):
+                        continue
+                    if (plugin_id, dash_key) in declared_pairs:
+                        continue
+                    declared_pairs.add((plugin_id, dash_key))
+                    items.append({
+                        "plugin_id": plugin_id,
+                        "plugin_name": plugin_name,
+                        "key": dash_key,
+                        "name": str(entry.get("name") or "").strip() or plugin_name,
+                        "description": None,
+                        "kind": "metrics",
+                        "source": "dashboard",
+                        "has_page": has_page,
+                    })
+        return items
+
+    def widget_data(self, plugin_id: str, key: str = "") -> Optional[Dict[str, Any]]:
+        """
+        读取插件专属桌面小组件快照；未实现专属方法时自动投影该插件的仪表板结构。
+
+        :param plugin_id: 运行态插件标识
+        :param key: 小组件或仪表板子键
+        :return: 原始小组件字典；插件当前无小组件内容时返回 None
+        :raises PluginNotFoundError: 插件未加载或未启用
+        :raises PluginDashboardError: 插件方法执行失败或返回非法结构
+        """
+        plugin = self._running_plugins.get(plugin_id)
+        if not plugin or not plugin.get_state():
+            raise PluginNotFoundError(f"插件 {plugin_id} 不存在或未启用")
+        plugin_name = getattr(plugin, "plugin_name", None) or plugin_id
+        if supports_plugin_hook(plugin, "get_widget_data"):
+            try:
+                method = plugin.get_widget_data
+                param_count = len(inspect.signature(method).parameters)
+                raw = method(key) if param_count > 0 else method()
+            except Exception as error:  # noqa: BLE001
+                self._logger.error(f"插件 {plugin_id} 调用方法 get_widget_data 出错: {error}")
+                raise PluginDashboardError(
+                    f"插件 {plugin_id} 调用方法 get_widget_data 出错"
+                ) from error
+            if raw is None:
+                return None
+            if not isinstance(raw, Mapping):
+                raise PluginDashboardError(f"插件 {plugin_id} 返回的小组件数据格式错误")
+            payload = dict(raw)
+            payload.setdefault("plugin_id", plugin_id)
+            payload.setdefault("plugin_name", plugin_name)
+            payload.setdefault("widget_key", key)
+            payload.setdefault("title", plugin_name)
+            return payload
+        if supports_plugin_hook(plugin, "get_dashboard"):
+            dash = self.dashboard(plugin_id, key)
+            if dash is None:
+                return None
+            return self._dashboard_to_widget_payload(plugin_id, plugin_name, key, dash)
+        return None
+
+    @classmethod
+    def _dashboard_to_widget_payload(
+        cls,
+        plugin_id: str,
+        plugin_name: str,
+        key: str,
+        dash: PluginDashboard,
+    ) -> Dict[str, Any]:
+        """
+        把存量插件的 Vuetify 仪表板元素树提取为桌面小组件可消费的指标与摘要列表。
+        """
+        attrs = dash.attrs if isinstance(dash.attrs, Mapping) else {}
+        title = str(attrs.get("title") or dash.name or plugin_name).strip() or plugin_name
+        subtitle = str(attrs.get("subtitle") or "").strip() or None
+        if dash.render_mode == "vue":
+            return {
+                "plugin_id": plugin_id,
+                "plugin_name": plugin_name,
+                "widget_key": key,
+                "kind": "poster",
+                "title": title,
+                "subtitle": subtitle or "交互式联邦仪表盘 · 点击在 App 中打开",
+                "metrics": [],
+                "items": [],
+            }
+        metrics: list[dict[str, Any]] = []
+        lines: list[str] = []
+        cls._extract_vuetify_snippets(dash.elements, metrics, lines, depth=0)
+        dedup_lines = list(dict.fromkeys(line for line in lines if line))[:6]
+        if metrics:
+            return {
+                "plugin_id": plugin_id,
+                "plugin_name": plugin_name,
+                "widget_key": key,
+                "kind": "metrics",
+                "title": title,
+                "subtitle": subtitle,
+                "metrics": metrics[:8],
+                "items": [
+                    {"id": f"item-{idx}", "title": text}
+                    for idx, text in enumerate(dedup_lines[:4])
+                ],
+            }
+        return {
+            "plugin_id": plugin_id,
+            "plugin_name": plugin_name,
+            "widget_key": key,
+            "kind": "list",
+            "title": title,
+            "subtitle": subtitle,
+            "metrics": [],
+            "items": [
+                {"id": f"item-{idx}", "title": text}
+                for idx, text in enumerate(dedup_lines[:6])
+            ],
+        }
+
+    @classmethod
+    def _extract_vuetify_snippets(
+        cls,
+        node: Any,
+        metrics: list[dict[str, Any]],
+        lines: list[str],
+        depth: int,
+    ) -> None:
+        """
+        有界递归扫描仪表板 Vuetify JSON 树，识别成对的「指标名/数值」与可读文本行。
+        """
+        if depth > 14 or (len(metrics) >= 8 and len(lines) >= 12):
+            return
+        if isinstance(node, str):
+            cleaned = " ".join(node.split()).strip()
+            if (
+                cleaned
+                and cleaned != "null"
+                and not cleaned.startswith(("mdi-", "ri-", "#", "{", "."))
+                and len(cleaned) <= 80
+            ):
+                lines.append(cleaned)
+            return
+        if isinstance(node, list):
+            for child in node:
+                cls._extract_vuetify_snippets(child, metrics, lines, depth + 1)
+            return
+        if not isinstance(node, Mapping):
+            return
+        comp = str(node.get("component") or "")
+        if comp.lower() in {"style", "script", "vicon"}:
+            return
+        props = node.get("props")
+        if isinstance(props, Mapping):
+            prop_title = str(props.get("title") or props.get("label") or "").strip()
+            prop_value = str(props.get("value") or props.get("subtitle") or "").strip()
+            if (
+                prop_title
+                and prop_value
+                and len(prop_title) <= 24
+                and len(prop_value) <= 32
+                and not prop_title.startswith("mdi-")
+                and not prop_value.startswith("mdi-")
+                and len(metrics) < 8
+            ):
+                metrics.append({
+                    "id": f"m-{len(metrics)}",
+                    "label": prop_title,
+                    "value": prop_value,
+                })
+            else:
+                for field in ("title", "subtitle", "label", "text", "value"):
+                    val = props.get(field)
+                    if isinstance(val, str):
+                        cls._extract_vuetify_snippets(val, metrics, lines, depth + 1)
+        direct_text = node.get("text")
+        if isinstance(direct_text, str):
+            cls._extract_vuetify_snippets(direct_text, metrics, lines, depth + 1)
+        content = node.get("content")
+        if isinstance(content, list):
+            local_lines: list[str] = []
+            local_metrics: list[dict[str, Any]] = []
+            for child in content:
+                cls._extract_vuetify_snippets(child, local_metrics, local_lines, depth + 1)
+            for item in local_metrics:
+                if len(metrics) < 8:
+                    metrics.append(item)
+            if (
+                len(local_lines) == 2
+                and len(local_lines[0]) <= 20
+                and len(local_lines[1]) <= 28
+                and len(metrics) < 8
+            ):
+                metrics.append({
+                    "id": f"m-{len(metrics)}",
+                    "label": local_lines[0],
+                    "value": local_lines[1],
+                })
+            else:
+                lines.extend(local_lines)

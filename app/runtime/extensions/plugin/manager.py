@@ -1248,6 +1248,24 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_projection().dashboard(pid, key, user_agent)
 
+    def get_plugin_widget_meta(self) -> List[Dict[str, Any]]:
+        """
+        获取所有已启用插件的桌面小组件元信息。
+
+        :return: 插件桌面小组件声明与仪表板兜底目录
+        """
+        return self._plugin_projection().widget_metadata()
+
+    def get_plugin_widget_data(self, pid: str, key: str = "") -> Optional[Dict[str, Any]]:
+        """
+        获取指定插件桌面小组件的数据快照。
+
+        :param pid: 运行态插件标识
+        :param key: 插件内小组件或仪表板键名
+        :return: 小组件原始数据字典；无内容时返回 None
+        """
+        return self._plugin_projection().widget_data(pid, key)
+
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
         """
         获取插件属性。

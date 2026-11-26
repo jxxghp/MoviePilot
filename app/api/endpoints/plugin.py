@@ -68,6 +68,7 @@ from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginAgentPet as _SchemaPluginAgentPet
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
+from app.schemas.plugin import PluginWidgetMetaItem as _SchemaPluginWidgetMetaItem
 from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
 from app.schemas.plugin import PluginDocumentation as _SchemaPluginDocumentation
 from app.schemas.plugin import PluginInstallOutcome as _SchemaPluginInstallOutcome
@@ -769,6 +770,49 @@ def plugin_dashboard(
     根据插件ID获取插件仪表板
     """
     return plugin_dashboard_by_key(plugin_id, "", user_agent)
+
+
+@router.get(
+    "/widgets/meta",
+    summary="获取所有已启用插件的桌面小组件元信息",
+    response_model=List[_SchemaPluginWidgetMetaItem],
+)
+def plugin_widgets_meta(
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+) -> List[dict[str, Any]]:
+    """
+    查询运行中插件声明的移动端桌面小组件目录及仪表板兜底入口。
+
+    :return: 已启用插件的小组件元信息列表
+    """
+    return cast(List[dict[str, Any]], get_plugin_manager().get_plugin_widget_meta())
+
+
+@router.get(
+    "/widgets/{plugin_id}",
+    summary="获取单个插件的桌面小组件数据",
+    response_model=Optional[_SchemaJsonObject],
+)
+def plugin_widget_data(
+    plugin_id: str,
+    key: str = "",
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+) -> Optional[dict[str, Any]]:
+    """
+    查询指定运行中插件的桌面小组件原始快照（未声明专属方法时自动投影仪表板）。
+
+    :param plugin_id: 运行态插件标识
+    :param key: 插件内小组件键名，缺省为空字符串
+    :return: 插件小组件字典；无内容时返回 None
+    :raises HTTPException: 插件不存在或执行失败
+    """
+    try:
+        raw = get_plugin_manager().get_plugin_widget_data(plugin_id, key)
+        return dict(raw) if isinstance(raw, dict) else None
+    except PluginNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PluginDashboardError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
 
 
 @router.get("/reset/{plugin_id}", summary="重置插件配置及数据", response_model=_SchemaResponse[None])

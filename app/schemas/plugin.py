@@ -845,3 +845,24 @@ class PluginDashboardMetaItem(BaseModel):
     id: str = Field(description="记录标识")
     name: Optional[str] = Field(default=None, description="显示名称")
     key: Optional[str] = Field(default=None, description="缓存条目的键")
+
+
+class PluginWidgetMetaItem(BaseModel):
+    """
+    插件移动端桌面小组件入口摘要。
+    """
+
+    plugin_id: str = Field(description="运行态插件标识")
+    plugin_name: str = Field(description="插件显示名称")
+    key: str = Field(default="", description="插件内唯一的小组件键名，默认单卡片为空字符串")
+    name: str = Field(description="小组件展示标题")
+    description: Optional[str] = Field(default=None, description="小组件用途简述")
+    kind: Literal["metrics", "list", "poster", "nowPlaying", "custom"] = Field(
+        default="metrics",
+        description="小组件形态类别，支持预设指标、列表、海报、正在播放与声明式自定义树",
+    )
+    source: Literal["widget", "dashboard"] = Field(
+        default="widget",
+        description="数据来源类型，widget 表示插件专属声明，dashboard 表示从存量仪表板自动投影",
+    )
+    has_page: bool = Field(default=False, description="插件是否提供可跳转的数据详情页")

@@ -828,3 +828,110 @@ def test_widget_system_sampler_reuses_existing_sources_in_order(monkeypatch):
     cpu, memory, network = dashboard_dependencies.sample_system()
     assert cpu == 42 and network == [1024, 2048] and memory.available == 30
     assert [call[0] for call in source.mock_calls] == ["cpu_usage", "network_usage", "cpu_usage", "memory_usage"]
+
+
+def test_widget_plugin_catalog_and_custom_snapshot_enforce_admin_and_bounds(widget_case):
+    """
+    仅超级管理员可读插件小组件；支持自定义节点树清洗、仪表板兜底与采样期撤权拦截。
+    """
+    case = widget_case
+    case.snapshots._plugin_widgets = lambda: [
+        {
+            "plugin_id": "MusicBox",
+            "plugin_name": "音乐盒",
+            "key": "card_main",
+            "name": "实时播控卡",
+            "description": "展示曲目与自定义布局",
+            "kind": "custom",
+            "source": "widget",
+            "has_page": True,
+        },
+        {
+            "plugin_id": "SiteStat",
+            "plugin_name": "站点统计",
+            "key": "",
+            "name": "站点统计",
+            "kind": "metrics",
+            "source": "dashboard",
+            "has_page": False,
+        },
+        {
+            "plugin_id": "../bad",
+            "key": "ignored",
+            "name": "非法插件ID",
+        },
+    ]
+
+    def fake_widget_data(pid: str, key: str):
+        """
+        返回含越界属性与外部 URL 的自定义树，验证服务端白名单清洗。
+        """
+        if pid == "MusicBox" and key == "card_main":
+            return {
+                "title": "夜曲\n\x00",
+                "subtitle": "周杰伦",
+                "kind": "custom",
+                "metrics": [{"id": "m1", "label": "播放量", "value": "1,024", "tone": "accent"}],
+                "items": [{"id": "i1", "title": "七里香", "progress": 0.5}],
+                "layout": {
+                    "type": "column",
+                    "gap": 8,
+                    "evil": "dropped",
+                    "children": [
+                        {"type": "text", "text": "正在播放", "size": "md", "tone": "accent", "tabularNums": True},
+                        {"type": "image", "url": "https://evil.example/steal?token=1", "width": 48, "height": 48},
+                        {"type": "image", "url": "/api/v1/plugin/file/musicbox/cover.png", "width": 48, "height": 48},
+                        {
+                            "type": "button",
+                            "label": "下一首",
+                            "action": {"type": "pluginAction", "surface": "data", "actionId": "next_track"},
+                        },
+                    ],
+                },
+            }
+        if pid == "SiteStat":
+            return None
+        raise RuntimeError("secret-plugin-dsn://password")
+
+    case.snapshots._plugin_widget_data = fake_widget_data
+
+    # 普通用户凭据访问插件小组件目录或快照均返回 403
+    member_issued = _register(case, user_id=101)
+    with _client(case) as client:
+        member_headers = {"Authorization": f"Bearer {member_issued.secret}"}
+        assert client.get("/api/v1/widget/plugins", headers=member_headers).status_code == 403
+        assert client.get("/api/v1/widget/plugins/MusicBox?key=card_main", headers=member_headers).status_code == 403
+
+        # 升级为超级管理员后允许访问并执行清洗
+        _update_user(case, user_id=101, is_superuser=True)
+        admin_issued = _register(case, user_id=101)
+        admin_headers = {"Authorization": f"Bearer {admin_issued.secret}"}
+
+        cat_resp = client.get("/api/v1/widget/plugins", headers=admin_headers)
+        assert cat_resp.status_code == 200
+        cat_json = cat_resp.json()
+        assert len(cat_json["widgets"]) == 2
+        assert cat_json["widgets"][0]["pluginId"] == "MusicBox"
+        assert cat_json["widgets"][1]["source"] == "dashboard"
+
+        snap_resp = client.get("/api/v1/widget/plugins/MusicBox?key=card_main", headers=admin_headers)
+        assert snap_resp.status_code == 200
+        snap_json = snap_resp.json()
+        assert snap_json["state"] == "ready"
+        assert snap_json["kind"] == "custom"
+        assert "\x00" not in snap_json["title"]
+        assert "evil" not in snap_json["layout"]
+        children = snap_json["layout"]["children"]
+        assert "url" not in children[1]
+        assert children[2]["url"] == "/api/v1/plugin/file/musicbox/cover.png"
+        assert children[3]["action"]["actionId"] == "next_track"
+
+        empty_resp = client.get("/api/v1/widget/plugins/SiteStat", headers=admin_headers)
+        assert empty_resp.status_code == 200
+        assert empty_resp.json()["state"] == "empty"
+
+        fail_resp = client.get("/api/v1/widget/plugins/BrokenPlugin", headers=admin_headers)
+        assert fail_resp.status_code == 200
+        assert fail_resp.json()["state"] == "unavailable"
+        assert "secret-plugin-dsn" not in fail_resp.text
+        assert client.get("/api/v1/widget/plugins/bad..id", headers=admin_headers).status_code == 404

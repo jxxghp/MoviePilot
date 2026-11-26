@@ -325,7 +325,7 @@ Web 影视精确与标题 SSE 的 `manual_paging=true` 模式在最终 `done` �
 ### App 小组件只读接口
 
 主 App 使用既有登录通过 `/api/v1/widget/context` 核对账号、`/api/v1/widget/registrations` 登记。
-扩展使用独立的有限期只读 Bearer 通过 `/api/v1/widget/snapshot` 刷新。
+扩展使用独立的有限期只读 Bearer 通过 `/api/v1/widget/snapshot` 刷新主体快照，超级管理员还可通过 `/api/v1/widget/plugins` 与 `/api/v1/widget/plugins/{plugin_id}` 只读刷新插件桌面小组件。
 该凭据不适用于普通 REST/MCP，小组件接口也不加入 Agent 工具目录；
 详见[授权、权限与快照协议](widgets.md)。主登录凭据不得交给系统扩展。
 

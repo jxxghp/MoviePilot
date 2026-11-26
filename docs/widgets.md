@@ -83,3 +83,11 @@ Cookie、主登录 JWT、资源令牌或 `API_TOKEN`。小组件凭据也不能�
 入库保留成功历史的总数，追加按媒体类型计数及最近六条成功记录的季集、年份和原时间文字。小卡片显示总数，中卡片显示类别/状态统计，大卡片才显示真实名称和列表进度；媒体名称默认显示，可由用户关闭。下载小尺寸保留上传/下载速度，中大尺寸增加剩余空间、任务/状态数量，大尺寸追加任务名称、进度、单任务速度与预计剩余时间。
 
 更新后的 App 和前端须一起升级以识别合并订阅内容、系统图标与八指标投影；旧客户端不能把未知指标当媒体数量显示。普通 Web/PWA 业务请求不变。
+
+## 插件桌面小组件只读接口
+
+超级管理员绑定的小组件专用 Bearer 可额外读取插件桌面小组件只读接口，普通成员调用时返回 `403`：
+
+- `GET /api/v1/widget/plugins`：返回当前已启用插件可绑定的桌面小组件目录 `PluginWidgetCatalog`（优先读取插件实现的 `get_widgets()`，未实现时自动把 `get_dashboard()` 投影为 `source="dashboard"` 的候选卡片）。
+- `GET /api/v1/widget/plugins/{plugin_id}?key=...`：返回单个插件小组件的只读快照 `PluginWidgetSnapshot`（支持 `metrics`、`list`、`poster`、`nowPlaying` 预设数据与层级不超过五层、总节点不超过四十个的 `custom` 声明式布局树；仅放行 `/api/v1/plugin/file/...` 同源静态资源路径，完整响应不超过 32 KiB）。
+- 前台已登录超级管理员亦可通过 `GET /api/v1/plugin/widgets/meta` 与 `GET /api/v1/plugin/widgets/{plugin_id}?key=...` 在配置界面预览插件小组件清单与实时快照。
