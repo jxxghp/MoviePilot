@@ -34,7 +34,6 @@ from app.chain.transfer.facade import TransferChain
 from app.foundation import text as text_tools
 from app.runtime.localization import LocaleHelper
 from app.runtime.progress import ProgressHelper
-from app.runtime.settings import get_runtime_setting
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.response import Response as _SchemaResponse
@@ -518,12 +517,12 @@ def delete(
 
 def _cleanup_remote_temp_file(fileitem: _SchemaFileItem, tmp_file: Path) -> None:
     """
-    清理远端存储下载至 ``TEMP_PATH`` 的临时副本，本地存储原路径绝不删除。
+    清理远端存储下载至临时目录的副本，本地存储原路径绝不删除。
     """
     if (fileitem.storage or "local") == "local":
         return
     try:
-        temp_root = Path(get_runtime_setting("TEMP_PATH")).resolve()
+        temp_root = Path(get_api_runtime_config_snapshot().temp_path).resolve()
         resolved_tmp = tmp_file.resolve()
         if resolved_tmp != temp_root and resolved_tmp.is_relative_to(temp_root):
             resolved_tmp.unlink(missing_ok=True)

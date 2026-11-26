@@ -237,7 +237,11 @@ def test_remote_download_and_image_cleanup_temp_copy_while_preserving_local_sour
     remote_image_tmp = temp_root / "remote_cover.jpg"
     remote_image_tmp.write_bytes(b"remote-jpeg")
 
-    monkeypatch.setattr(storage_endpoint, "get_runtime_setting", lambda _k: temp_root)
+    monkeypatch.setattr(
+        storage_endpoint,
+        "get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(temp_path=temp_root),
+    )
     monkeypatch.setattr(storage_endpoint, "_ensure_manage_storage_item", lambda item, _u: item)
 
     # 1. 远端 download 返回带后台清理任务的 FileResponse，执行后删除 TEMP_PATH 临时文件
