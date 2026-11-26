@@ -299,3 +299,40 @@ def test_get_librarys_uses_dedicated_routes(
         f"{host}web/index.html#!/{collection_type}?topParentId=library-id{query_suffix}"
     )
     assert libraries[0].type == MediaType.UNKNOWN.value
+
+
+def test_get_latest_queries_movies_and_series_by_date_created() -> None:
+    """
+    最新入库按入库时间查询电影与剧集顶层条目，混排返回并过滤同步库外的条目。
+    """
+    client = _build_client()
+    payload = {
+        "Items": [
+            {"Id": "series-1", "Name": "Show", "Type": "Series", "Path": "/media/tv/Show"},
+            {"Id": "other-1", "Name": "Other", "Type": "Movie", "Path": "/other/Other"},
+            {"Id": "movie-1", "Name": "Film", "Type": "Movie", "Path": "/media/movies/Film", "ProductionYear": 2026},
+            {"Id": "movie-2", "Name": "Film 2", "Type": "Movie", "Path": "/media/movies/Film2"},
+        ]
+    }
+
+    with (
+        patch.object(jellyfin_module, "RequestUtils") as request_utils_cls,
+        patch.object(client, "get_user_library_folders", return_value=["/media/tv", "/media/movies"]),
+        patch.object(client, "get_play_url", return_value="http://jellyfin.local/play"),
+        patch.object(client, "_Jellyfin__get_local_image_by_id", return_value="http://jellyfin.local/image"),
+    ):
+        request_utils_cls.return_value.get_res.return_value = _FakeResponse(payload)
+
+        items = client.get_latest(num=2)
+
+    url, params = request_utils_cls.return_value.get_res.call_args.args
+    assert url == "http://jellyfin.local:8096Users/fallback-user/Items"
+    assert params["Recursive"] == "true"
+    assert params["IncludeItemTypes"] == "Movie,Series"
+    assert params["SortBy"] == "DateCreated"
+    assert params["SortOrder"] == "Descending"
+    assert params["Limit"] == 200
+    assert [item.id for item in items] == ["series-1", "movie-1"]
+    assert [item.type for item in items] == [MediaType.TV.value, MediaType.MOVIE.value]
+    assert items[1].subtitle == "2026"
+    assert all(item.server_type == "jellyfin" for item in items)

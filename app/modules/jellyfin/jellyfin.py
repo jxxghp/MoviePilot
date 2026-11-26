@@ -1618,7 +1618,7 @@ class Jellyfin:
         """
         查询用户最近入库的媒体条目。
 
-        :param num: 最多保留的条目数量，默认 20；先查询 100 条再按库路径筛选
+        :param num: 最多保留的条目数量，默认 20；按入库时间查询电影与剧集顶层条目后再按库路径筛选
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 转换后的最新媒体列表；配置不完整、用户不可用或请求失败时返回 None
@@ -1631,10 +1631,14 @@ class Jellyfin:
             user = self.user
         if not user:
             return None
-        url = f"{self._host}Users/{user}/Items/Latest"
+        # Items/Latest 会让剧集季/集挤占电影，改为按入库时间查询电影与剧集顶层条目
+        url = f"{self._host}Users/{user}/Items"
         params = {
-            "Limit": 100,
-            "MediaTypes": "Video",
+            "Recursive": "true",
+            "IncludeItemTypes": "Movie,Series",
+            "SortBy": "DateCreated",
+            "SortOrder": "Descending",
+            "Limit": max(200, (num or 20) * 10),
             "Fields": "ProductionYear,Path,BackdropImageTags",
             "api_key": self._apikey,
         }
@@ -1643,7 +1647,7 @@ class Jellyfin:
             params.update(emby_query_params(query.with_fields(MediaServerField.PATH) if query is not None else None))
             res = self._request().get_res(url, params)
             if res:
-                result = res.json() or []
+                result = (res.json() or {}).get("Items") or []
                 ret_latest: list[_SchemaMediaServerPlayItem] = []
                 # 用户媒体库文件夹列表（排除黑名单）
                 library_folders = self.get_user_library_folders()
@@ -1682,9 +1686,9 @@ class Jellyfin:
                     )
                 return ret_latest
             else:
-                logger.error("Users/Items/Latest 未获取到返回数据")
+                logger.error("Users/Items 未获取到最新入库数据")
         except Exception as e:
-            logger.error("连接Users/Items/Latest出错：" + str(e))
+            logger.error("连接Users/Items出错：" + str(e))
         return None
 
     def get_user_library_folders(self) -> list[str]:
