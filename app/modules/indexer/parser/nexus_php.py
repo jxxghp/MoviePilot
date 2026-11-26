@@ -588,11 +588,15 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         )
         return user_level_match.group(1).strip() if user_level_match else None
 
-    def _set_detail_user_level(self, user_level: str) -> None:
+    def _set_detail_user_level(self, user_level: str, *, keep_existing_without_level: bool = False) -> None:
         """
-        仅在括号组名后仍有等级时移除该前缀，保留只有组名的等级文本。
+        提取括号组名后的通用等级。缺少通用等级时默认保留字段原文，
+        Audiences 的可选徽章则保留之前已解析的等级。
         """
-        self.user_level = re.sub(r"^\([^)]+\)\s*(?=\S)", "", user_level.strip())
+        level_text = user_level.strip()
+        common_level = re.sub(r"^\([^)]*\)\s*", "", level_text)
+        if common_level or not keep_existing_without_level:
+            self.user_level = common_level or level_text
 
     def _get_user_level(self, html: etree._Element) -> None:
         """
