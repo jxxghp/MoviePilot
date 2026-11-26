@@ -434,6 +434,7 @@ SCHEMA_EXPORTS = {
     'PluginSourceOptions': ('app.schemas.plugin', 'PluginSourceOptions'),
     'PluginTriggeredEventData': ('app.schemas.event', 'PluginTriggeredEventData'),
     'PluginUpdateCandidate': ('app.schemas.plugin', 'PluginUpdateCandidate'),
+    'PluginWidgetMetaItem': ('app.schemas.plugin', 'PluginWidgetMetaItem'),
     'PluginWorkflowActionGroup': ('app.schemas.workflow', 'PluginWorkflowActionGroup'),
     'PrivateAttr': ('app.schemas.context', 'PrivateAttr'),
     'ProcessInfo': ('app.schemas.dashboard', 'ProcessInfo'),

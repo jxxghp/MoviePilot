@@ -160,7 +160,7 @@ async def widget_snapshot(
     response_model_exclude_none=True,
     openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
 )
-async def widget_plugin_catalog(
+def widget_plugin_catalog(
     grant: WidgetGrant = Depends(get_widget_grant),
     service: WidgetSnapshotService = Depends(get_widget_snapshot_service),
     auth: WidgetAuthService = Depends(get_widget_auth_service),
@@ -174,8 +174,8 @@ async def widget_plugin_catalog(
     :return: 不超过 32 KiB 的插件小组件目录模型
     """
     try:
-        result = await service.plugin_catalog(grant)
-        await run_in_threadpool(auth.revalidate, grant)
+        result = service.plugin_catalog(grant)
+        auth.revalidate(grant)
     except WidgetAccessError as error:
         widget_http_error(error)
     except ValueError as error:
@@ -190,7 +190,7 @@ async def widget_plugin_catalog(
     response_model_exclude_none=True,
     openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
 )
-async def widget_plugin_snapshot(
+def widget_plugin_snapshot(
     plugin_id: str,
     key: str = "",
     grant: WidgetGrant = Depends(get_widget_grant),
@@ -208,8 +208,8 @@ async def widget_plugin_snapshot(
     :return: 不超过 32 KiB 的单个插件小组件只读快照
     """
     try:
-        result = await service.plugin_snapshot(grant, plugin_id, key)
-        await run_in_threadpool(auth.revalidate, grant)
+        result = service.plugin_snapshot(grant, plugin_id, key)
+        auth.revalidate(grant)
     except WidgetAccessError as error:
         widget_http_error(error)
     except ValueError as error:

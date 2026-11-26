@@ -2,10 +2,12 @@
 小组件专用登记与有界只读快照协议；不包含业务命令或主登录凭据。
 """
 
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.common import JsonObject
 
 WidgetContent = Literal[
     "overview", "downloads", "imports", "subscriptions", "movieSubscriptions", "tvSubscriptions", "musicSubscriptions"
@@ -180,8 +182,8 @@ class PluginWidgetSnapshot(BaseModel):
     subtitle: str | None = Field(default=None, max_length=240, description="卡片副标题")
     metrics: list[PluginWidgetMetricItem] = Field(default_factory=list, max_length=8, description="预设模板指标集合，最多八项")
     items: list[PluginWidgetListItem] = Field(default_factory=list, max_length=6, description="预设模板条目集合，最多六项")
-    layout: dict[str, Any] | None = Field(default=None, description="通用声明式自定义布局根节点，已经过层级与字段清洗")
-    layouts: dict[str, dict[str, Any]] | None = Field(
+    layout: JsonObject | None = Field(default=None, description="通用声明式自定义布局根节点，已经过层级与字段清洗")
+    layouts: dict[str, JsonObject] | None = Field(
         default=None,
         description="按 small、medium、large 尺寸分别声明的自定义布局根节点映射",
     )

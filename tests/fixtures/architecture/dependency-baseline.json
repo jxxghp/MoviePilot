@@ -980,8 +980,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10687,
-  "edge_sha256": "5395c7542852c2c45dbcd0325f522e49ff7c0c62ca8f9054d53449b743b47ce4",
+  "edge_count": 10692,
+  "edge_sha256": "4ac61cea5b1d5db7de36af43c353141d3669cacff213dd1080067c6891421ea4",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2461,6 +2461,8 @@
     "app.api.dependencies.widget -> app.application",
     "app.api.dependencies.widget -> app.application.configuration",
     "app.api.dependencies.widget -> app.application.history",
+    "app.api.dependencies.widget -> app.application.plugin",
+    "app.api.dependencies.widget -> app.application.plugin.runtime",
     "app.api.dependencies.widget -> app.application.query",
     "app.api.dependencies.widget -> app.application.security",
     "app.api.dependencies.widget -> app.application.security.widget",
@@ -4872,6 +4874,7 @@
     "app.application.widget -> app.runtime.execution",
     "app.application.widget -> app.runtime.log",
     "app.application.widget -> app.schemas",
+    "app.application.widget -> app.schemas.common",
     "app.application.widget -> app.schemas.dashboard",
     "app.application.widget -> app.schemas.query",
     "app.application.widget -> app.schemas.subscribe",
@@ -10381,6 +10384,8 @@
     "app.schemas.transfer -> app.schemas.types",
     "app.schemas.user -> app.schemas",
     "app.schemas.user -> app.schemas.common",
+    "app.schemas.widget -> app.schemas",
+    "app.schemas.widget -> app.schemas.common",
     "app.schemas.workflow -> app.schemas",
     "app.schemas.workflow -> app.schemas.common",
     "app.schemas.workflow -> app.schemas.context",

@@ -21,6 +21,7 @@ from app.application.security.widget import (
 from app.foundation.size import format_size
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.schemas.common import JsonData, JsonObject
 from app.schemas.dashboard import DashboardMemoryInfo, DownloaderInfo
 from app.schemas.query import QueryPageRequest, SubscriptionFilter, SubscriptionSnapshot, TransferHistoryFilter
 from app.schemas.subscribe import Subscribe
@@ -382,7 +383,7 @@ class WidgetSnapshotService:
             ],
         )
 
-    async def plugin_catalog(self, grant: WidgetGrant) -> PluginWidgetCatalog:
+    def plugin_catalog(self, grant: WidgetGrant) -> PluginWidgetCatalog:
         """
         向拥有超级管理员权限的小组件授权返回可绑定的已启用插件小组件目录。
 
@@ -393,11 +394,7 @@ class WidgetSnapshotService:
         """
         if not grant.user.is_superuser:
             raise WidgetAccessError(403, "当前账号无权读取插件小组件")
-        raw_items = (
-            await run_in_threadpool(self._plugin_widgets)
-            if self._plugin_widgets is not None
-            else []
-        )
+        raw_items = self._plugin_widgets() if self._plugin_widgets is not None else []
         descriptors: list[PluginWidgetDescriptor] = []
         for raw in (raw_items or [])[:64]:
             if not isinstance(raw, Mapping):
@@ -410,8 +407,7 @@ class WidgetSnapshotService:
             wname = _text(str(raw.get("name") or pname), 120, pname)
             raw_desc = raw.get("description")
             desc = _text(str(raw_desc), 240) if isinstance(raw_desc, str) and raw_desc.strip() else None
-            raw_kind = str(raw.get("kind") or "metrics").strip()
-            kind: PluginWidgetKind = raw_kind if raw_kind in _ALLOWED_KINDS else "metrics"  # type: ignore[assignment]
+            kind = self._normalize_widget_kind(raw.get("kind"))
             source: Literal["widget", "dashboard"] = "dashboard" if raw.get("source") == "dashboard" else "widget"
             descriptors.append(
                 PluginWidgetDescriptor(
@@ -439,7 +435,7 @@ class WidgetSnapshotService:
             raise ValueError("插件小组件目录超过协议体积")
         return catalog
 
-    async def plugin_snapshot(
+    def plugin_snapshot(
         self,
         grant: WidgetGrant,
         plugin_id: str,
@@ -468,7 +464,7 @@ class WidgetSnapshotService:
         if self._plugin_widget_data is None:
             return self._unavailable_plugin_snapshot(grant, clean_pid, clean_key, generated_at, expires_at)
         try:
-            raw = await run_in_threadpool(self._plugin_widget_data, clean_pid, clean_key)
+            raw = self._plugin_widget_data(clean_pid, clean_key)
         except Exception as error:
             logger.warning(f"插件小组件 {clean_pid}/{clean_key} 读取失败（{type(error).__name__}）")
             return self._unavailable_plugin_snapshot(grant, clean_pid, clean_key, generated_at, expires_at)
@@ -528,20 +524,20 @@ class WidgetSnapshotService:
         title = _text(str(raw.get("title") or pname), 240, pname)
         raw_sub = raw.get("subtitle")
         subtitle = _text(str(raw_sub), 240) if isinstance(raw_sub, str) and raw_sub.strip() else None
-        raw_kind = str(raw.get("kind") or "metrics").strip()
-        kind: PluginWidgetKind = raw_kind if raw_kind in _ALLOWED_KINDS else "metrics"  # type: ignore[assignment]
+        kind = self._normalize_widget_kind(raw.get("kind"))
 
         metrics = self._sanitize_plugin_metrics(raw.get("metrics"))
         items = self._sanitize_plugin_items(raw.get("items"))
-        layout = self._sanitize_layout_root(raw.get("layout"))
+        raw_layout = self._sanitize_layout_root(raw.get("layout"))
+        layout = JsonObject(raw_layout) if raw_layout is not None else None
         layouts_raw = raw.get("layouts")
-        layouts: dict[str, dict[str, Any]] | None = None
+        layouts: dict[str, JsonObject] | None = None
         if isinstance(layouts_raw, Mapping):
-            cleaned_layouts: dict[str, dict[str, Any]] = {}
+            cleaned_layouts: dict[str, JsonObject] = {}
             for size_key in ("small", "medium", "large"):
                 sanitized_tree = self._sanitize_layout_root(layouts_raw.get(size_key))
                 if sanitized_tree is not None:
-                    cleaned_layouts[size_key] = sanitized_tree
+                    cleaned_layouts[size_key] = JsonObject(sanitized_tree)
             if cleaned_layouts:
                 layouts = cleaned_layouts
 
@@ -589,8 +585,7 @@ class WidgetSnapshotService:
             sub_val = _text(str(raw_sub), 120) if isinstance(raw_sub, str) and raw_sub.strip() else None
             raw_icon = entry.get("icon")
             icon = _text(str(raw_icon), 48) if isinstance(raw_icon, str) and raw_icon.strip() else None
-            raw_tone = str(entry.get("tone") or "").strip()
-            tone: PluginWidgetTone | None = raw_tone if raw_tone in _ALLOWED_TONES else None  # type: ignore[assignment]
+            tone = WidgetSnapshotService._normalize_widget_tone(entry.get("tone"))
             out.append(
                 PluginWidgetMetricItem(
                     id=mid,
@@ -641,8 +636,48 @@ class WidgetSnapshotService:
             )
         return out
 
+    @staticmethod
+    def _normalize_widget_kind(raw_kind: Any) -> PluginWidgetKind:
+        """
+        将任意原始形态标识收敛为受支持的小组件形态字面量。
+        """
+        candidate = str(raw_kind or "metrics").strip()
+        if candidate == "list":
+            return "list"
+        if candidate == "poster":
+            return "poster"
+        if candidate == "nowPlaying":
+            return "nowPlaying"
+        if candidate == "custom":
+            return "custom"
+        return "metrics"
+
+    @staticmethod
+    def _normalize_widget_tone(raw_tone: Any) -> PluginWidgetTone | None:
+        """
+        将任意原始色调标识收敛为受支持的语义着色角色或空值。
+        """
+        candidate = str(raw_tone or "").strip()
+        if candidate == "default":
+            return "default"
+        if candidate == "primary":
+            return "primary"
+        if candidate == "secondary":
+            return "secondary"
+        if candidate == "muted":
+            return "muted"
+        if candidate == "accent":
+            return "accent"
+        if candidate == "success":
+            return "success"
+        if candidate == "warning":
+            return "warning"
+        if candidate == "danger":
+            return "danger"
+        return None
+
     @classmethod
-    def _sanitize_layout_root(cls, raw_node: Any) -> dict[str, Any] | None:
+    def _sanitize_layout_root(cls, raw_node: Any) -> dict[str, JsonData] | None:
         """
         对声明式自定义小组件节点树执行深度不超过五层、总节点不超过四十个的白名单清洗。
         """
@@ -656,7 +691,7 @@ class WidgetSnapshotService:
         *,
         depth: int,
         budget: list[int],
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, JsonData] | None:
         """
         递归校验单个声明式布局节点，剔除未知属性、外部任意地址与越界数值。
         """
@@ -666,8 +701,22 @@ class WidgetSnapshotService:
         if node_type not in _ALLOWED_NODE_TYPES:
             return None
         budget[0] -= 1
-        out: dict[str, Any] = {"type": node_type}
+        out: dict[str, JsonData] = {"type": node_type}
+        cls._copy_layout_scalars(raw_node, out)
+        action = cls._sanitize_layout_action(raw_node.get("action"))
+        if action is not None:
+            out["action"] = action
+        if node_type in {"column", "row", "stack", "box"} and depth < PLUGIN_WIDGET_MAX_DEPTH:
+            children = cls._sanitize_layout_children(raw_node.get("children"), depth=depth + 1, budget=budget)
+            if children is not None:
+                out["children"] = children
+        return out
 
+    @classmethod
+    def _copy_layout_scalars(cls, raw_node: Mapping[str, Any], out: dict[str, JsonData]) -> None:
+        """
+        提取并截断布局节点的文本、色调、有界数值、布尔开关与受控静态资源路径。
+        """
         for str_key, max_bytes in (
             ("text", 240),
             ("label", 120),
@@ -681,13 +730,18 @@ class WidgetSnapshotService:
             val = raw_node.get(str_key)
             if isinstance(val, str) and val.strip():
                 out[str_key] = _text(val, max_bytes)
-
         raw_tone = raw_node.get("tone")
         if isinstance(raw_tone, str):
             clean_tone = raw_tone.strip()
             if clean_tone in _ALLOWED_TONES or _HEX_COLOR_RE.fullmatch(clean_tone):
                 out["tone"] = clean_tone
+        cls._copy_layout_numbers_and_assets(raw_node, out)
 
+    @classmethod
+    def _copy_layout_numbers_and_assets(cls, raw_node: Mapping[str, Any], out: dict[str, JsonData]) -> None:
+        """
+        拷贝布局节点中的有界数值、布尔标记与插件静态资源路径。
+        """
         for num_key, low, high in (
             ("gap", 0.0, 32.0),
             ("padding", 0.0, 32.0),
@@ -703,43 +757,54 @@ class WidgetSnapshotService:
             if isinstance(num_val, (int, float)) and not isinstance(num_val, bool) and math.isfinite(float(num_val)):
                 clamped = min(max(float(num_val), low), high)
                 out[num_key] = int(clamped) if num_key == "maxLines" else clamped
-
-        if isinstance(raw_node.get("tabularNums"), bool):
-            out["tabularNums"] = raw_node["tabularNums"]
-        if isinstance(raw_node.get("scrim"), bool):
-            out["scrim"] = raw_node["scrim"]
-
+        for bool_key in ("tabularNums", "scrim"):
+            if isinstance(raw_node.get(bool_key), bool):
+                out[bool_key] = raw_node[bool_key]
         for url_key in ("url", "backgroundUrl"):
-            raw_url = raw_node.get(url_key)
-            safe_url = cls._sanitize_plugin_asset_path(raw_url)
+            safe_url = cls._sanitize_plugin_asset_path(raw_node.get(url_key))
             if safe_url:
                 out[url_key] = safe_url
 
-        raw_action = raw_node.get("action")
-        if isinstance(raw_action, Mapping):
-            action_kind = str(raw_action.get("type") or "openPlugin").strip()
-            if action_kind in {"openPlugin", "pluginAction"}:
-                act_obj: dict[str, str] = {"type": action_kind}
-                surface = str(raw_action.get("surface") or "data").strip()
-                if surface in {"data", "config"}:
-                    act_obj["surface"] = surface
-                act_id = raw_action.get("actionId")
-                if isinstance(act_id, str) and _WIDGET_KEY_RE.fullmatch(act_id.strip()):
-                    act_obj["actionId"] = act_id.strip()
-                out["action"] = act_obj
+    @staticmethod
+    def _sanitize_layout_action(raw_action: Any) -> dict[str, JsonData] | None:
+        """
+        校验按钮或容器上的受控点击动作定义。
+        """
+        if not isinstance(raw_action, Mapping):
+            return None
+        action_kind = str(raw_action.get("type") or "openPlugin").strip()
+        if action_kind not in {"openPlugin", "pluginAction"}:
+            return None
+        act_obj: dict[str, JsonData] = {"type": action_kind}
+        surface = str(raw_action.get("surface") or "data").strip()
+        if surface in {"data", "config"}:
+            act_obj["surface"] = surface
+        act_id = raw_action.get("actionId")
+        if isinstance(act_id, str) and _WIDGET_KEY_RE.fullmatch(act_id.strip()):
+            act_obj["actionId"] = act_id.strip()
+        return act_obj
 
-        if node_type in {"column", "row", "stack", "box"} and depth < PLUGIN_WIDGET_MAX_DEPTH:
-            raw_children = raw_node.get("children")
-            if isinstance(raw_children, list):
-                children: list[dict[str, Any]] = []
-                for child in raw_children[:16]:
-                    if budget[0] <= 0:
-                        break
-                    clean_child = cls._sanitize_layout_node(child, depth=depth + 1, budget=budget)
-                    if clean_child is not None:
-                        children.append(clean_child)
-                out["children"] = children
-        return out
+    @classmethod
+    def _sanitize_layout_children(
+        cls,
+        raw_children: Any,
+        *,
+        depth: int,
+        budget: list[int],
+    ) -> list[JsonData] | None:
+        """
+        按节点配额递归清洗容器子节点列表。
+        """
+        if not isinstance(raw_children, list):
+            return None
+        children: list[JsonData] = []
+        for child in raw_children[:16]:
+            if budget[0] <= 0:
+                break
+            clean_child = cls._sanitize_layout_node(child, depth=depth, budget=budget)
+            if clean_child is not None:
+                children.append(clean_child)
+        return children
 
     @staticmethod
     def _sanitize_plugin_asset_path(raw_url: Any) -> str | None:

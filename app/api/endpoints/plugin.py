@@ -68,7 +68,6 @@ from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginAgentPet as _SchemaPluginAgentPet
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
-from app.schemas.plugin import PluginWidgetMetaItem as _SchemaPluginWidgetMetaItem
 from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
 from app.schemas.plugin import PluginDocumentation as _SchemaPluginDocumentation
 from app.schemas.plugin import PluginInstallOutcome as _SchemaPluginInstallOutcome
@@ -90,6 +89,7 @@ from app.schemas.plugin import PluginSourceChangeRequest as _SchemaPluginSourceC
 from app.schemas.plugin import PluginSourceIdentity as _SchemaPluginSourceIdentity
 from app.schemas.plugin import PluginSourceInstallRequest as _SchemaPluginSourceInstallRequest
 from app.schemas.plugin import PluginSourceOptions as _SchemaPluginSourceOptions
+from app.schemas.plugin import PluginWidgetMetaItem as _SchemaPluginWidgetMetaItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import SystemConfigKey
@@ -779,12 +779,15 @@ def plugin_dashboard(
 )
 def plugin_widgets_meta(
     _: ApiPrincipal = Depends(get_current_active_superuser),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[dict[str, Any]]:
     """
     查询运行中插件声明的移动端桌面小组件目录及仪表板兜底入口。
 
     :return: 已启用插件的小组件元信息列表
     """
+    del page, count
     return cast(List[dict[str, Any]], get_plugin_manager().get_plugin_widget_meta())
 
 
