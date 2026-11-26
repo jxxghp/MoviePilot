@@ -18,6 +18,7 @@ from app.db.oper.message import MessageOper
 from app.db.session import AsyncSessionFactory
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.message import Message
+from app.schemas.token import TokenPayload
 
 
 @pytest.mark.parametrize("has_poster", [True, False])
@@ -77,7 +78,10 @@ def test_notification_history_preserves_poster_and_legacy_null(async_write: bool
             else:
                 MessageOper().add(**payload)
                 MessageOper().add(title=f"{title}-legacy", image=payload["image"])
-            messages = await get_notification_message(service=MessageQueryService(MessageOper(db)))
+            messages = await get_notification_message(
+                token_data=TokenPayload(sub=1, username="admin", super_user=True),
+                service=MessageQueryService(MessageOper(db)),
+            )
             current = next(item for item in messages if item.title == title)
             legacy = next(item for item in messages if item.title == f"{title}-legacy")
             assert current.image == payload["image"]

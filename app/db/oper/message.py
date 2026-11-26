@@ -3,9 +3,9 @@
 """
 
 import time
-from typing import Any, Optional, Union
+from typing import Any, Optional, Sequence, Union
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -136,26 +136,32 @@ class MessageOper(DbOper):
         return exists
 
     async def async_list_by_page(
-            self, page: int = 1, count: int = 30
+            self,
+            page: int = 1,
+            count: int = 30,
+            visible_mtypes: Optional[Sequence[str]] = None,
+            visible_userid: Optional[str] = None,
     ) -> list[Message]:
         """
         异步分页获取全部消息记录，不区分渠道与收发方向。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的消息数，默认 30
+        :param visible_mtypes: 允许普通用户查看的通知场景值，None 表示不限制
+        :param visible_userid: 允许查看本人记录的用户标识
         :return: 按登记时间和主键倒序排列的消息记录列表
         """
         async def query(session: AsyncSession) -> list[Message]:
             """
             在调用方异步会话中执行消息分页查询。
             """
-            result = await session.execute(
-                select(Message)
-                .order_by(Message.reg_time.desc(), Message.id.desc())
-                .offset((page - 1) * count)
-                .limit(count)
+            return await Message.async_list_by_page(
+                session,
+                page=page,
+                count=count,
+                visible_mtypes=visible_mtypes,
+                visible_userid=visible_userid,
             )
-            return list(result.scalars().all())
 
         messages: list[Message] = await self._execute_async_query(query)
         return messages
@@ -167,35 +173,34 @@ class MessageOper(DbOper):
             all_clear_before: Optional[str] = None,
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
+            visible_mtypes: Optional[Sequence[str]] = None,
+            visible_userid: Optional[str] = None,
     ) -> list[Message]:
         """
         分页获取系统发送的通知消息。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数，默认 30
+        :param all_clear_before: 全部通知的清理水位
+        :param system_clear_before: 无图片系统通知的清理水位
+        :param media_clear_before: 含图片媒体通知的清理水位
+        :param visible_mtypes: 允许普通用户查看的通知场景值，None 表示不限制
+        :param visible_userid: 允许查看本人记录的用户标识
         """
         async def query(session: AsyncSession) -> list[Message]:
             """
             在调用方异步会话中执行通知消息分页查询。
             """
-            statement = select(Message).where(Message.action == 1)
-            if all_clear_before:
-                statement = statement.where(Message.reg_time > all_clear_before)
-            if system_clear_before:
-                statement = statement.where(or_(
-                    and_(Message.image.isnot(None), Message.image != ""),
-                    Message.reg_time > system_clear_before,
-                ))
-            if media_clear_before:
-                statement = statement.where(or_(
-                    Message.image.is_(None),
-                    Message.image == "",
-                    Message.reg_time > media_clear_before,
-                ))
-            result = await session.execute(
-                statement
-                .order_by(Message.reg_time.desc(), Message.id.desc())
-                .offset((page - 1) * count)
-                .limit(count)
+            return await Message.async_list_sent_by_page(
+                session,
+                page=page,
+                count=count,
+                all_clear_before=all_clear_before,
+                system_clear_before=system_clear_before,
+                media_clear_before=media_clear_before,
+                visible_mtypes=visible_mtypes,
+                visible_userid=visible_userid,
             )
-            return list(result.scalars().all())
 
         messages: list[Message] = await self._execute_async_query(query)
         return messages

@@ -13,9 +13,10 @@ import socket
 import threading
 import time
 from contextvars import Context, copy_context
+from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union, cast, overload
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Sequence, Union, cast, overload
 
 from jinja2 import Template
 
@@ -46,19 +47,55 @@ _MESSAGE_QUEUE_STOP_TIMEOUT_SECONDS = 10.0
 _SSE_QUEUE_MAXSIZE = 100
 
 
+@dataclass(frozen=True)
+class MessageViewer:
+    """
+    消息历史与通知的读取主体，用于确定可见范围。
+
+    :ivar super_user: 是否超级用户，超管不受可见范围限制
+    :ivar userid: 调用者用户标识，用于匹配本人产生的记录
+    :ivar visible_mtypes: 允许普通用户查看的通知场景值，由调用方按通知场景配置解析
+    """
+
+    super_user: bool
+    userid: Optional[str] = None
+    visible_mtypes: Optional[Sequence[str]] = None
+
+
+def _visibility_kwargs(viewer: Optional[MessageViewer]) -> dict[str, Any]:
+    """
+    把读取主体转换为持久化层可见性条件参数。
+
+    :param viewer: 读取主体，None 表示内部调用不限制可见范围
+    :return: 持久化查询的可见性关键字参数
+    """
+    if viewer is None or viewer.super_user:
+        return {}
+    return {
+        "visible_mtypes": viewer.visible_mtypes or (),
+        "visible_userid": viewer.userid,
+    }
+
+
 class AsyncMessageQueryRepository(Protocol):
     """
     消息查询用例依赖的异步持久化端口。
     """
 
     async def async_list_by_page(
-            self, page: int = 1, count: int = 30
+            self,
+            page: int = 1,
+            count: int = 30,
+            visible_mtypes: Optional[Sequence[str]] = None,
+            visible_userid: Optional[str] = None,
     ) -> list[Any]:
         """
         分页读取全部消息历史记录，不区分渠道与收发方向。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的消息数，默认 30
+        :param visible_mtypes: 允许普通用户查看的通知场景值，None 表示不限制
+        :param visible_userid: 允许查看本人记录的用户标识
         :return: 按记录时间和主键降序排列的消息记录
         """
         ...
@@ -70,6 +107,8 @@ class AsyncMessageQueryRepository(Protocol):
             all_clear_before: Optional[str] = None,
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
+            visible_mtypes: Optional[Sequence[str]] = None,
+            visible_userid: Optional[str] = None,
     ) -> list[Any]:
         """
         分页读取清理水位之后的通知消息。
@@ -79,6 +118,8 @@ class AsyncMessageQueryRepository(Protocol):
         :param all_clear_before: 全部通知的清理时间水位，按存储层时间字符串比较；None 表示不限制
         :param system_clear_before: 无图片通知的清理时间水位，None 表示不限制此类消息
         :param media_clear_before: 含图片通知的清理时间水位，None 表示不限制此类消息
+        :param visible_mtypes: 允许普通用户查看的通知场景值，None 表示不限制
+        :param visible_userid: 允许查看本人记录的用户标识
         :return: 记录时间严格晚于相应水位的已发送通知，按时间和主键降序排列
         """
         ...
@@ -97,15 +138,25 @@ class MessageQueryService:
         """
         self._repository = repository
 
-    async def list_history(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
+    async def list_history(
+            self,
+            page: int = 1,
+            count: int = 20,
+            viewer: Optional[MessageViewer] = None,
+    ) -> list[dict[str, Any]]:
         """
         分页返回可由 API 模型消费的全部消息历史字典，包含接收消息与发送通知。
 
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的消息数，默认 20
+        :param viewer: 读取主体，None 或超管时不限制可见范围
         :return: 按记录时间和主键降序排列的消息字典列表
         """
-        messages = await self._repository.async_list_by_page(page=page, count=count)
+        messages = await self._repository.async_list_by_page(
+            page=page,
+            count=count,
+            **_visibility_kwargs(viewer),
+        )
         result: list[dict[str, Any]] = []
         for message in messages:
             try:
@@ -121,6 +172,7 @@ class MessageQueryService:
             all_clear_before: Optional[str] = None,
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
+            viewer: Optional[MessageViewer] = None,
     ) -> list[dict[str, Any]]:
         """
         分页返回清理水位之后的系统已发送通知消息字典。
@@ -130,6 +182,7 @@ class MessageQueryService:
         :param all_clear_before: 全部通知的清理时间水位，None 表示不限制
         :param system_clear_before: 无图片系统通知的清理时间水位，None 表示不限制
         :param media_clear_before: 含图片媒体通知的清理时间水位，None 表示不限制
+        :param viewer: 读取主体，None 或超管时不限制可见范围
         :return: 仅包含已发送通知（action=1）且晚于相应清理水位的消息字典列表
         """
         messages = await self._repository.async_list_sent_by_page(
@@ -138,6 +191,7 @@ class MessageQueryService:
             all_clear_before=all_clear_before,
             system_clear_before=system_clear_before,
             media_clear_before=media_clear_before,
+            **_visibility_kwargs(viewer),
         )
         return [message.to_dict() for message in messages]
 
