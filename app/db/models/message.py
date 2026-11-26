@@ -4,7 +4,7 @@
 会话及事务由调用方管理，本模块不负责提交或回滚。
 """
 
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Sequence
 
 from sqlalchemy import JSON, Index, Integer, String, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,14 +90,49 @@ class Message(Base):
         ).scalars().first() is not None
 
     @classmethod
+    def _visible_clause(
+            cls,
+            visible_mtypes: Optional[Sequence[str]] = None,
+            visible_userid: Optional[str] = None,
+    ) -> Optional[Any]:
+        """
+        构造读取侧可见性条件：广播场景的通知或本人产生的记录。
+
+        :param visible_mtypes: 允许普通用户查看的通知场景值，None 表示不限制
+        :param visible_userid: 允许查看本人记录的用户标识
+        :return: 查询条件，None 表示不限制可见范围
+        """
+        if visible_mtypes is None:
+            return None
+        conditions = [cls.mtype.in_(visible_mtypes)]
+        if visible_userid:
+            conditions.append(cls.userid == visible_userid)
+        return or_(*conditions)
+
+    @classmethod
     async def async_list_by_page(
-            cls, db: AsyncSession, page: int = 1, count: int = 30
+            cls,
+            db: AsyncSession,
+            page: int = 1,
+            count: int = 30,
+            visible_mtypes: Optional[Sequence[str]] = None,
+            visible_userid: Optional[str] = None,
     ) -> List["Message"]:
         """
         异步分页获取消息记录。
+
+        :param db: 数据库会话
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数
+        :param visible_mtypes: 允许普通用户查看的通知场景值，None 表示不限制
+        :param visible_userid: 允许查看本人记录的用户标识
         """
+        statement = select(cls)
+        visible = cls._visible_clause(visible_mtypes, visible_userid)
+        if visible is not None:
+            statement = statement.where(visible)
         result = await db.execute(
-            select(cls)
+            statement
             .order_by(cls.reg_time.desc(), cls.id.desc())
             .offset((page - 1) * count)
             .limit(count)
@@ -113,9 +148,20 @@ class Message(Base):
             all_clear_before: Optional[str] = None,
             system_clear_before: Optional[str] = None,
             media_clear_before: Optional[str] = None,
+            visible_mtypes: Optional[Sequence[str]] = None,
+            visible_userid: Optional[str] = None,
     ) -> List["Message"]:
         """
         分页获取系统发送的通知消息。
+
+        :param db: 数据库会话
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的消息数
+        :param all_clear_before: 全部通知的清理水位
+        :param system_clear_before: 无图片系统通知的清理水位
+        :param media_clear_before: 含图片媒体通知的清理水位
+        :param visible_mtypes: 允许普通用户查看的通知场景值，None 表示不限制
+        :param visible_userid: 允许查看本人记录的用户标识
         """
         statement = select(cls).where(cls.action == 1)
         if all_clear_before:
@@ -135,6 +181,9 @@ class Message(Base):
                     cls.reg_time > media_clear_before,
                 )
             )
+        visible = cls._visible_clause(visible_mtypes, visible_userid)
+        if visible is not None:
+            statement = statement.where(visible)
         result = await db.execute(
             statement
             .order_by(cls.reg_time.desc(), cls.id.desc())

@@ -64,3 +64,14 @@ def get_notification_switch(mtype: MessageType) -> str:
         if switch.type == mtype.value:
             return switch.action or "admin"
     return "admin"
+
+
+def get_user_notification_types() -> tuple[str, ...]:
+    """
+    返回发送范围为全部用户的通知场景值，供读取侧过滤普通用户可见记录。
+    """
+    return tuple(
+        mtype.value
+        for mtype in MessageType
+        if get_notification_switch(mtype) == "all"
+    )

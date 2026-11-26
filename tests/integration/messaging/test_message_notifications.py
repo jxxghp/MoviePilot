@@ -16,7 +16,12 @@ from app.api.endpoints.message import (
     get_notification_message,
 )
 from app.api.endpoints.system import get_message
-from app.application.messaging.message import _SSE_QUEUE_MAXSIZE, MessageHelper, MessageQueryService
+from app.application.messaging.message import (
+    _SSE_QUEUE_MAXSIZE,
+    MessageHelper,
+    MessageQueryService,
+    MessageViewer,
+)
 from app.chain.base import ChainBase
 from app.db.models.message import Message as MessageModel
 from app.db.oper.message import MessageOper
@@ -25,6 +30,7 @@ from app.db.session import AsyncSessionFactory, SessionFactory
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.message import Message, MessageClearScope
+from app.schemas.token import TokenPayload
 from app.schemas.types import MediaType, MessageType, SystemConfigKey
 
 
@@ -48,6 +54,13 @@ def _isolate_message_state() -> Iterator[None]:
     _clear_messages()
     yield
     _clear_messages()
+
+
+def _admin_token() -> TokenPayload:
+    """
+    构造超管令牌载荷，直调端点时用于关闭可见性过滤。
+    """
+    return TokenPayload(sub=1, username="admin", super_user=True)
 
 
 def _reset_message_helper(helper: MessageHelper) -> None:
@@ -84,6 +97,7 @@ def test_notification_history_only_lists_sent_messages() -> None:
         """
         async with AsyncSessionFactory() as db:
             items = await get_notification_message(
+                token_data=_admin_token(),
                 service=MessageQueryService(MessageOper(db)),
                 page=1,
                 count=10,
@@ -105,8 +119,6 @@ def test_message_history_endpoint_returns_all_directions_and_keeps_web_compat() 
 
     from app.adapters.web.security.access import verify_token
     from app.api.dependencies.agent import get_message_query_service
-    from app.schemas.token import TokenPayload
-
     _clear_messages()
     oper = MessageOper()
     oper.add(title="智能体回复", text="已处理", action=1, mtype=MessageType.Agent)
@@ -119,6 +131,7 @@ def test_message_history_endpoint_returns_all_directions_and_keeps_web_compat() 
         """
         async with AsyncSessionFactory() as db:
             items = await get_message_history(
+                token_data=_admin_token(),
                 service=MessageQueryService(MessageOper(db)),
                 page=1,
                 count=10,
@@ -313,7 +326,8 @@ def test_notification_clear_marker_filters_history_across_requests() -> None:
         """
         async with AsyncSessionFactory() as db:
             messages = await get_notification_message(
-                service=MessageQueryService(MessageOper(db))
+                token_data=_admin_token(),
+                service=MessageQueryService(MessageOper(db)),
             )
         return [message.title for message in messages]
 
@@ -591,3 +605,124 @@ def test_transient_media_and_torrent_lists_skip_history_but_dispatch(monkeypatch
 
     assert MessageOper().list_by_page(page=1, count=10) == []
     assert send_message.call_count == 2
+
+
+def test_user_notification_types_keep_only_broadcast_scope(monkeypatch) -> None:
+    """
+    只有发送范围为全部用户的场景进入普通用户可见类型。
+    """
+    from app.application import notification as notification_application
+
+    monkeypatch.setattr(
+        notification_application,
+        "get_notification_switch",
+        lambda mtype: "all" if mtype == MessageType.Organize else "admin",
+    )
+
+    assert notification_application.get_user_notification_types() == (
+        MessageType.Organize.value,
+    )
+
+
+def test_message_query_service_hides_records_outside_visible_scope(monkeypatch) -> None:
+    """
+    普通用户读取历史时只返回广播通知与本人记录，超管不受限制。
+    """
+    _clear_messages()
+    oper = MessageOper()
+    oper.add(title="入库广播", text="已入库", action=1, mtype=MessageType.Organize)
+    oper.add(title="站点告警", text="站点失效", action=1, mtype=MessageType.SiteMessage)
+    oper.add(title="本人提问", text="/ai 帮我搜索", action=0, userid="7")
+    oper.add(title="他人提问", text="/ai 帮我搜索", action=0, userid="9")
+    monkeypatch.setattr(
+        "app.application.messaging.message.get_user_notification_types",
+        lambda: (MessageType.Organize.value,),
+    )
+
+    async def _titles(viewer: MessageViewer | None) -> list[str]:
+        """
+        按指定读取主体查询消息历史标题。
+        """
+        async with AsyncSessionFactory() as db:
+            items = await MessageQueryService(MessageOper(db)).list_history(
+                page=1,
+                count=10,
+                viewer=viewer,
+            )
+        return [item["title"] for item in items]
+
+    assert asyncio.run(_titles(None)) == ["他人提问", "本人提问", "站点告警", "入库广播"]
+    assert asyncio.run(_titles(MessageViewer(super_user=True))) == [
+        "他人提问",
+        "本人提问",
+        "站点告警",
+        "入库广播",
+    ]
+    assert asyncio.run(_titles(MessageViewer(super_user=False, userid="7"))) == [
+        "本人提问",
+        "入库广播",
+    ]
+    assert asyncio.run(_titles(MessageViewer(super_user=False))) == ["入库广播"]
+
+
+def test_message_endpoints_filter_admin_scope_for_normal_user(monkeypatch) -> None:
+    """
+    普通用户的消息历史与通知接口只返回广播通知与本人记录。
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.adapters.web.security.access import verify_token
+    from app.api.dependencies.agent import get_message_query_service
+
+    _clear_messages()
+    oper = MessageOper()
+    oper.add(title="入库广播", text="已入库", action=1, mtype=MessageType.Organize)
+    oper.add(title="站点告警", text="站点失效", action=1, mtype=MessageType.SiteMessage)
+    oper.add(title="无类型通知", text="未分类", action=1)
+    oper.add(title="本人提问", text="/ai 帮我搜索", action=0, userid="7")
+    oper.add(title="他人提问", text="/ai 帮我搜索", action=0, userid="9")
+    monkeypatch.setattr(
+        "app.application.messaging.message.get_user_notification_types",
+        lambda: (MessageType.Organize.value,),
+    )
+
+    class _SessionRepository:
+        """
+        在测试数据库会话中执行可见性查询的消息仓储。
+        """
+
+        async def async_list_by_page(self, **kwargs) -> list[MessageModel]:
+            """
+            按可见性参数查询全部方向的消息记录。
+            """
+            async with AsyncSessionFactory() as db:
+                return await MessageModel.async_list_by_page(db, **kwargs)
+
+        async def async_list_sent_by_page(self, **kwargs) -> list[MessageModel]:
+            """
+            按可见性参数查询发送方向的消息记录。
+            """
+            async with AsyncSessionFactory() as db:
+                return await MessageModel.async_list_sent_by_page(db, **kwargs)
+
+    def _override_service() -> MessageQueryService:
+        """
+        提供绑定测试数据库会话的消息历史查询服务。
+        """
+        return MessageQueryService(_SessionRepository())
+
+    app = FastAPI()
+    app.include_router(message_endpoint.router, prefix="/api/v1/message")
+    app.dependency_overrides[verify_token] = lambda: TokenPayload(
+        sub=7,
+        username="user",
+        super_user=False,
+    )
+    app.dependency_overrides[get_message_query_service] = _override_service
+    with TestClient(app) as client:
+        history = client.get("/api/v1/message/history?page=1&count=10").json()["data"]
+        notifications = client.get("/api/v1/message/notification?page=1&count=10").json()["data"]
+
+    assert [row["title"] for row in history] == ["本人提问", "入库广播"]
+    assert [row["title"] for row in notifications] == ["入库广播"]
