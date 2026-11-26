@@ -35,11 +35,13 @@ class BangumiConfigSnapshot:
     :param proxy: 宿主 HTTP 代理配置，None 表示不使用代理
     :param proxy_enabled: 是否启用自定义 Bangumi 数据接口，默认关闭
     :param api_domain: 自定义数据接口域名或 URL；空值使用官方接口
+    :param image_domain: 自定义图片代理域名或 URL；空值保留官方图片域名
     """
 
     proxy: Any
     proxy_enabled: bool = False
     api_domain: str = ""
+    image_domain: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +92,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         "PROXY_HOST",
         "BANGUMI_PROXY_ENABLE",
         "BANGUMI_API_DOMAIN",
+        "BANGUMI_IMAGE_DOMAIN",
     }
 
     bangumiapi: Optional[BangumiApi] = None
@@ -130,9 +133,13 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             api_domain=str(
                 get_runtime_setting('BANGUMI_API_DOMAIN', '') or ''
             ),
+            image_domain=str(
+                get_runtime_setting('BANGUMI_IMAGE_DOMAIN', '') or ''
+            ),
         )
         self.bangumiapi = BangumiApi(
             base_url=self._config.api_domain if self._config.proxy_enabled else '',
+            image_domain=self._config.image_domain if self._config.proxy_enabled else '',
         )
         self.scraper = MediaScraperHelper()
 
@@ -140,7 +147,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         关闭Bangumi客户端。
         """
-        # 请求缓存键已包含 API 地址，切换代理或域名后自然使用新键；这里不清缓存，
+        # 请求缓存键已包含数据与图片地址，切换代理或域名后自然使用新键；这里不清缓存，
         # 以免 Redis 缓存在每次重载和关闭时都被清空。
         if self.bangumiapi:
             self._require_api().close()

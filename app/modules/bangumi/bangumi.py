@@ -5,7 +5,7 @@ Bangumi 同步与异步客户端，统一代理地址、缓存身份与响应提
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, cast
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import CacheControls, cached
@@ -28,6 +28,19 @@ class _BangumiRequestPlan:
     key: Optional[str] = None
 
 
+@dataclass(frozen=True, slots=True)
+class _BangumiImageProxy:
+    """
+    图片代理地址与拼接方式。
+
+    :param mode: host 替换主机、query 按查询参数拼接、path 按路径拼接
+    :param prefix: 已归一化的代理地址前缀
+    """
+
+    mode: str
+    prefix: str
+
+
 class BangumiApi:
     """
     Bangumi API 客户端，统一同步与异步请求决策和结果投影。
@@ -45,17 +58,21 @@ class BangumiApi:
         "person_credits": "v0/persons/%s/subjects",
     }
     _base_url = "https://api.bgm.tv/"
+    # 官方图片 CDN 主机：仅该主机的地址参与替换，仿冒域名保持原样。
+    _image_host = "lain.bgm.tv"
 
     def __init__(
             self,
             base_url: Optional[str] = None,
+            image_domain: Optional[str] = None,
     ) -> None:
         """
-        初始化同步会话、异步请求客户端和数据地址快照。
+        初始化同步会话、异步请求客户端和数据、图片地址快照。
 
-        数据地址纳入缓存键，切换代理或域名不会复用旧来源的缓存。
+        数据与图片地址纳入缓存键，切换代理或域名不会复用旧来源的缓存。
 
         :param base_url: 显式数据地址；None 读取代理设置，空值或无效地址回退官方接口
+        :param image_domain: 显式图片地址；None 读取图片代理设置，空值或无效地址保留官方图片域名
         """
         configured_base_url = (
             base_url if base_url is not None else (
@@ -68,7 +85,19 @@ class BangumiApi:
             configured_base_url,
             default=self.__class__._base_url,
         )
-        self._cache_token = self._base_url
+        configured_image_domain = (
+            image_domain if image_domain is not None else (
+                get_runtime_setting("BANGUMI_IMAGE_DOMAIN", "")
+                if get_runtime_setting("BANGUMI_PROXY_ENABLE", False)
+                else ""
+            )
+        )
+        self._image_proxy = self._normalize_image_proxy(configured_image_domain)
+        self._cache_token = (
+            f"{self._base_url}|{self._image_proxy.mode}:{self._image_proxy.prefix}"
+            if self._image_proxy
+            else self._base_url
+        )
         self._req = RequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -87,6 +116,15 @@ class BangumiApi:
         :return: 规范化且带末尾斜杠的 HTTP 或 HTTPS 地址
         """
         return self._base_url
+
+    @property
+    def image_proxy(self) -> Optional[_BangumiImageProxy]:
+        """
+        读取当前客户端改写图片地址使用的代理地址与拼接方式。
+
+        :return: 代理地址与拼接方式；未配置或无效图片地址时为 None
+        """
+        return self._image_proxy
 
     @staticmethod
     def _normalize_base_url(value: Any, default: str) -> str:
@@ -113,6 +151,39 @@ class BangumiApi:
         ):
             return default
         return f"{candidate.rstrip('/')}/"
+
+    @staticmethod
+    def _normalize_image_proxy(value: Any) -> Optional[_BangumiImageProxy]:
+        """
+        归一化图片代理地址，按配置形态区分三种拼接方式。
+
+        尾部斜杠视为替换主机，含查询串视为按查询参数拼接，其余按路径拼接。
+
+        :param value: 配置的域名或完整 URL；空值、含凭据或无法解析时视为无效
+        :return: 代理地址与拼接方式，无效地址返回 None
+        """
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return None
+        candidate = raw_value if "://" in raw_value else f"https://{raw_value}"
+        try:
+            parsed = urlsplit(candidate)
+        except ValueError:
+            return None
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+        ):
+            return None
+        if parsed.query:
+            return _BangumiImageProxy(mode="query", prefix=candidate)
+        return _BangumiImageProxy(
+            mode="host" if raw_value.endswith("/") else "path",
+            prefix=candidate.rstrip("/"),
+        )
 
     def _request_plan(
             self,
@@ -155,7 +226,48 @@ class BangumiApi:
         except (TypeError, ValueError) as err:
             logger.warning(f"Bangumi 响应解析失败：{str(err)}")
             return None
-        return self._project_response(response.status_code, payload, key)
+        return self._normalize_images(
+            self._project_response(response.status_code, payload, key)
+        )
+
+    def _normalize_images(self, payload: Any) -> Any:
+        """
+        按图片代理地址替换响应中的 Bangumi 图片域名。
+
+        :param payload: 解码并投影后的响应数据
+        :return: 替换后的响应数据；不修改入参，未配置图片代理时原样返回
+        """
+        if self._image_proxy is None:
+            return payload
+        return self._normalize_image_node(payload, self._image_proxy)
+
+    @classmethod
+    def _normalize_image_node(cls, node: Any, image_proxy: _BangumiImageProxy) -> Any:
+        """
+        递归复制响应节点，只改写 images 映射和 image 地址。
+
+        :param node: 当前响应节点
+        :param image_proxy: 图片代理地址与拼接方式
+        :return: 改写后的节点；报文结构和非图片字段保持原样
+        """
+        if isinstance(node, dict):
+            normalized: dict[str, Any] = {}
+            for field, value in node.items():
+                if field == "images" and isinstance(value, dict):
+                    normalized[field] = {
+                        size: cls._normalize_image_url(url, image_proxy)
+                        for size, url in value.items()
+                    }
+                elif field == "image" and isinstance(value, str):
+                    normalized[field] = cls._normalize_image_url(value, image_proxy)
+                elif isinstance(value, (dict, list)):
+                    normalized[field] = cls._normalize_image_node(value, image_proxy)
+                else:
+                    normalized[field] = value
+            return normalized
+        if isinstance(node, list):
+            return [cls._normalize_image_node(item, image_proxy) for item in node]
+        return node
 
     @cached(
         maxsize=get_runtime_setting('CONF').bangumi,
@@ -264,20 +376,24 @@ class BangumiApi:
             images = item.get("images")
             if isinstance(images, dict):
                 normalized_item["images"] = {
-                    size: BangumiApi._normalize_calendar_image_url(url)
+                    size: BangumiApi._normalize_image_url(url)
                     for size, url in images.items()
                 }
             if "image" in item:
-                normalized_item["image"] = BangumiApi._normalize_calendar_image_url(
+                normalized_item["image"] = BangumiApi._normalize_image_url(
                     item["image"]
                 )
             normalized_items.append(normalized_item)
         return normalized_items
 
     @staticmethod
-    def _normalize_calendar_image_url(url: Any) -> Any:
+    def _normalize_image_url(url: Any, image_proxy: Optional[_BangumiImageProxy] = None) -> Any:
         """
-        将 Bangumi 日历图片域名返回的 HTTP 地址升级为 HTTPS。
+        升级官方图片域名的 HTTP 地址为 HTTPS，并按代理配置改写图片地址。
+
+        :param url: 响应中的图片地址
+        :param image_proxy: 图片代理地址与拼接方式；None 时只做官方域名的 HTTPS 升级
+        :return: 规范化后的地址；非官方图片主机和非字符串值保持原样
         """
         if not isinstance(url, str):
             return url
@@ -285,9 +401,22 @@ class BangumiApi:
             parsed = urlsplit(url)
         except ValueError:
             return url
-        if parsed.scheme != "http" or parsed.hostname != "lain.bgm.tv":
+        if parsed.hostname != BangumiApi._image_host:
             return url
-        return parsed._replace(scheme="https").geturl()
+        if image_proxy is None:
+            if parsed.scheme != "http":
+                return url
+            return parsed._replace(scheme="https").geturl()
+        if image_proxy.mode == "query":
+            encoded = quote(url, safe="!'()*-._~")
+            return f"{image_proxy.prefix}{encoded}"
+        if image_proxy.mode == "path":
+            return f"{image_proxy.prefix}/{url}"
+        proxy_host = urlsplit(image_proxy.prefix).hostname or ""
+        if (parsed.hostname or "").lower() == proxy_host.lower():
+            return url
+        query = f"?{parsed.query}" if parsed.query else ""
+        return f"{image_proxy.prefix}{parsed.path}{query}"
 
     @staticmethod
     def _credit_people(result: Any) -> list[dict[str, Any]]:
@@ -335,7 +464,7 @@ class BangumiApi:
         """
         读取每日放送，并按响应顺序展开各星期的条目。
 
-        :return: 原始媒体条目列表，图片域名 lain.bgm.tv 的 HTTP 链接升级为 HTTPS；无结果时为空
+        :return: 原始媒体条目列表，图片地址已完成 HTTPS 升级与图片代理域名替换；无结果时为空
         """
         result = self.__invoke(self._urls["calendar"], **self._dated_params())
         return self._calendar_items(result)
@@ -344,7 +473,7 @@ class BangumiApi:
         """
         异步读取每日放送，并按响应顺序展开各星期的条目。
 
-        :return: 原始媒体条目列表，图片域名 lain.bgm.tv 的 HTTP 链接升级为 HTTPS；无结果时为空
+        :return: 原始媒体条目列表，图片地址已完成 HTTPS 升级与图片代理域名替换；无结果时为空
         """
         result = await self.__async_invoke(
             self._urls["calendar"], **self._dated_params()
