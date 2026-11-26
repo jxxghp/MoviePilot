@@ -73,6 +73,7 @@ Before contributing, read the repository rules and local environment guide, keep
 - [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server)
 - [MoviePilot-Rust](https://github.com/jxxghp/MoviePilot-Rust)
 - [MoviePilot-Wiki](https://github.com/jxxghp/MoviePilot-Wiki)
+- [MoviePilot-App](https://github.com/jxxghp/MoviePilot-App)
 
 ## Disclaimer
 
