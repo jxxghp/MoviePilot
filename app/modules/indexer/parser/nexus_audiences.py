@@ -408,12 +408,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         if username and username.strip():
             self.username = username.strip()
 
-        user_level = user_node.get("data-uploader-badge")
-        if user_level:
-            # 站点组名仅用于展示，保留通用等级以与其他 NexusPHP 站点一致。
-            user_level = re.sub(r"^\([^)]*\)\s*", "", user_level.strip()).strip()
-            if user_level:
-                self.user_level = user_level
+        self._set_detail_user_level(user_node.get("data-uploader-badge") or "", keep_existing_without_level=True)
 
     def __parse_uploader_stats(self, stats_text: str) -> None:
         """
