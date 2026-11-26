@@ -27,7 +27,7 @@ from app.application.configuration import (
     get_configured_system_config,
 )
 from app.application.messaging.message import MessageQueryService, MessageViewer
-from app.application.notification import get_notification_configs
+from app.application.notification import get_notification_configs, get_user_notification_types
 from app.chain.message import MessageChain
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
@@ -56,9 +56,11 @@ def _message_viewer(token_data: _SchemaTokenPayload) -> MessageViewer:
     :param token_data: 已验证的访问令牌载荷
     :return: 用于确定可见范围的读取主体
     """
+    super_user = bool(token_data.super_user)
     return MessageViewer(
-        super_user=bool(token_data.super_user),
+        super_user=super_user,
         userid=str(token_data.sub or ""),
+        visible_mtypes=None if super_user else get_user_notification_types(),
     )
 
 

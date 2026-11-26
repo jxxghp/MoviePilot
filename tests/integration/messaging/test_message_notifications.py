@@ -624,7 +624,7 @@ def test_user_notification_types_keep_only_broadcast_scope(monkeypatch) -> None:
     )
 
 
-def test_message_query_service_hides_records_outside_visible_scope(monkeypatch) -> None:
+def test_message_query_service_hides_records_outside_visible_scope() -> None:
     """
     普通用户读取历史时只返回广播通知与本人记录，超管不受限制。
     """
@@ -634,10 +634,7 @@ def test_message_query_service_hides_records_outside_visible_scope(monkeypatch) 
     oper.add(title="站点告警", text="站点失效", action=1, mtype=MessageType.SiteMessage)
     oper.add(title="本人提问", text="/ai 帮我搜索", action=0, userid="7")
     oper.add(title="他人提问", text="/ai 帮我搜索", action=0, userid="9")
-    monkeypatch.setattr(
-        "app.application.messaging.message.get_user_notification_types",
-        lambda: (MessageType.Organize.value,),
-    )
+    visible_mtypes = (MessageType.Organize.value,)
 
     async def _titles(viewer: MessageViewer | None) -> list[str]:
         """
@@ -658,11 +655,14 @@ def test_message_query_service_hides_records_outside_visible_scope(monkeypatch) 
         "站点告警",
         "入库广播",
     ]
-    assert asyncio.run(_titles(MessageViewer(super_user=False, userid="7"))) == [
+    assert asyncio.run(_titles(MessageViewer(
+        super_user=False, userid="7", visible_mtypes=visible_mtypes))) == [
         "本人提问",
         "入库广播",
     ]
-    assert asyncio.run(_titles(MessageViewer(super_user=False))) == ["入库广播"]
+    assert asyncio.run(_titles(MessageViewer(
+        super_user=False, visible_mtypes=visible_mtypes))) == ["入库广播"]
+    assert asyncio.run(_titles(MessageViewer(super_user=False))) == []
 
 
 def test_message_endpoints_filter_admin_scope_for_normal_user(monkeypatch) -> None:
@@ -683,7 +683,7 @@ def test_message_endpoints_filter_admin_scope_for_normal_user(monkeypatch) -> No
     oper.add(title="本人提问", text="/ai 帮我搜索", action=0, userid="7")
     oper.add(title="他人提问", text="/ai 帮我搜索", action=0, userid="9")
     monkeypatch.setattr(
-        "app.application.messaging.message.get_user_notification_types",
+        "app.api.endpoints.message.get_user_notification_types",
         lambda: (MessageType.Organize.value,),
     )
 

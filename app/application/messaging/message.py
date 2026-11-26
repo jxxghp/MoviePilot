@@ -21,7 +21,6 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Seque
 from jinja2 import Template
 
 from app.application.configuration import get_chain_runtime_config_snapshot, get_configured_system_config
-from app.application.notification import get_user_notification_types
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -55,10 +54,12 @@ class MessageViewer:
 
     :ivar super_user: 是否超级用户，超管不受可见范围限制
     :ivar userid: 调用者用户标识，用于匹配本人产生的记录
+    :ivar visible_mtypes: 允许普通用户查看的通知场景值，由调用方按通知场景配置解析
     """
 
     super_user: bool
     userid: Optional[str] = None
+    visible_mtypes: Optional[Sequence[str]] = None
 
 
 def _visibility_kwargs(viewer: Optional[MessageViewer]) -> dict[str, Any]:
@@ -71,7 +72,7 @@ def _visibility_kwargs(viewer: Optional[MessageViewer]) -> dict[str, Any]:
     if viewer is None or viewer.super_user:
         return {}
     return {
-        "visible_mtypes": get_user_notification_types(),
+        "visible_mtypes": viewer.visible_mtypes or (),
         "visible_userid": viewer.userid,
     }
 

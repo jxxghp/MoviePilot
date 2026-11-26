@@ -11,11 +11,13 @@ from fastapi import HTTPException
 from pydantic import TypeAdapter
 
 from app.api.endpoints import bangumi, download, history, mediaserver, message, search, site, tmdb, transfer
+from app.application.messaging.message import MessageViewer
 from app.domain.context import MediaInfo
 from app.schemas.context import MediaInfo as MediaInfoInput
 from app.schemas.context import SubtitleInfo
 from app.schemas.file import FileItem
 from app.schemas.site import SiteCategory
+from app.schemas.token import TokenPayload
 from app.schemas.transfer import ManualTransferItem
 from app.schemas.types import MediaType
 
@@ -58,8 +60,14 @@ def test_history_and_web_message_optional_pagination():
     query.list_transfer.assert_awaited_once_with(title=None, page=1, count=30, status=None)
     assert response.success is True
     messages = SimpleNamespace(list_history=AsyncMock(return_value=[]))
-    assert asyncio.run(message.get_message_history(service=messages, page=None, count=None, _=None)) == []
-    messages.list_history.assert_awaited_once_with(page=1, count=20)
+    token = TokenPayload(sub=1, username="admin", super_user=True)
+    assert asyncio.run(message.get_message_history(
+        service=messages, page=None, count=None, token_data=token)) == []
+    messages.list_history.assert_awaited_once_with(
+        page=1,
+        count=20,
+        viewer=MessageViewer(super_user=True, userid="1"),
+    )
 
 
 @pytest.mark.parametrize("season", [None, 2])

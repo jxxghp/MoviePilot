@@ -21,6 +21,7 @@ from app.api.dependencies.history import get_history_query_service
 from app.api.dependencies.subscription import get_subscription_query_service
 from app.api.endpoints import agent, history, message, subscribe
 from app.api.response import ResponseAPIRoute
+from app.application.messaging.message import MessageViewer
 from app.factory import (
     localized_http_exception_handler,
     localized_unhandled_exception_handler,
@@ -190,8 +191,13 @@ def test_database_paginated_endpoints_preserve_defaults_and_large_transfer_page_
         all_clear_before=None,
         system_clear_before=None,
         media_clear_before=None,
+        viewer=MessageViewer(super_user=True, userid="1"),
     )
-    stubs["message"].list_history.assert_awaited_once_with(page=1, count=20)
+    stubs["message"].list_history.assert_awaited_once_with(
+        page=1,
+        count=20,
+        viewer=MessageViewer(super_user=True, userid="1"),
+    )
     stubs["agent_chat"].list.assert_awaited_once()
     assert stubs["agent_chat"].list.await_args.kwargs == {"page": 1, "count": 30}
     stubs["history"].list_download.assert_awaited_once_with(page=1, count=30)
