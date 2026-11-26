@@ -278,6 +278,7 @@ def test_direct_calls_with_none_pagination_fall_back_to_endpoint_defaults(
         all_clear_before=None,
         system_clear_before=None,
         media_clear_before=None,
+        viewer=MessageViewer(super_user=True, userid="1"),
     )
     history_service.list_download.assert_awaited_once_with(page=1, count=30)
     subscription_service.list_history.assert_awaited_once_with(
