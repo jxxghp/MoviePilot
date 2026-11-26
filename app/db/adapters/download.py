@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import AbstractAsyncContextManager
 from types import MappingProxyType
 from typing import Any, Optional, TypeVar
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.application.download.failures import (
@@ -21,7 +23,7 @@ from app.application.download.pending import (
 from app.db.models.downloadpending import DownloadPending
 from app.db.oper.downloadfailure import DownloadFailureOper
 from app.db.oper.downloadpending import DownloadPendingOper
-from app.db.uow import SqlAlchemyUnitOfWork
+from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.schemas.media import normalize_media_source
 
 _T = TypeVar("_T")
@@ -93,11 +95,16 @@ class TransactionalDownloadFailureRepository:
     为 Chain 下载失败读写创建短生命周期会话并显式收口事务。
     """
 
-    def __init__(self, session_factory: Callable[[], Session]) -> None:
+    def __init__(self, session_factory: Callable[[], Session],
+                 async_session_factory: Optional[Callable[[], AbstractAsyncContextManager[AsyncSession]]] = None) -> None:
         """
-        保存由启动组合根提供的同步会话工厂。
+        保存由启动组合根提供的同步与可选异步短会话工厂。
+
+        :param session_factory: 同步择源使用的独立数据库会话工厂
+        :param async_session_factory: 人工重试清理使用的异步会话工厂；未装配时拒绝异步删除
         """
         self._session_factory = session_factory
+        self._async_session_factory = async_session_factory
 
     def get_active_by_fingerprints(
         self,
@@ -151,6 +158,28 @@ class TransactionalDownloadFailureRepository:
                 transaction.commit()
             except Exception:
                 transaction.rollback()
+                raise
+
+
+    async def async_delete_by_fingerprints(self, fingerprints: list[str]) -> int:
+        """
+        以短事务清除人工确认资源的失败冷却，提交失败时保留原记录并向调用方报告。
+
+        :param fingerprints: 需要清除的普通资源失败指纹
+        :return: 已成功提交删除的记录数
+        """
+        if self._async_session_factory is None:
+            raise RuntimeError("下载失败清理异步会话尚未装配")
+        async with self._async_session_factory() as session:
+            transaction = SqlAlchemyAsyncUnitOfWork(session)
+            try:
+                count: int = await session.run_sync(
+                    lambda sync_session: DownloadFailureOper(db=sync_session).delete_by_fingerprints(fingerprints)
+                )
+                await transaction.commit()
+                return count
+            except Exception:
+                await transaction.rollback()
                 raise
 
 

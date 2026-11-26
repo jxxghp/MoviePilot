@@ -96,3 +96,12 @@ class DownloadFailureRepository(Protocol):
         :param failure: 本次下载失败与下一次重试时间的稳定快照
         """
         ...
+
+    async def async_delete_by_fingerprints(self, fingerprints: list[str]) -> int:
+        """
+        清除人工确认资源对应的失败冷却，不扩展到同媒体的其他种子。
+
+        :param fingerprints: 人工操作前后资源上下文的普通失败指纹；空列表不执行删除
+        :return: 已提交删除的失败记录数量；记录不存在时返回 0
+        """
+        ...

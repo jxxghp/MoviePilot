@@ -34,6 +34,9 @@ def repository(tmp_path):
 
 
 def _set_lease(engine, token):
+    """
+    在隔离数据库中更换任务租约，模拟队列把任务交给新执行者。
+    """
     with sessionmaker(bind=engine)() as session:
         session.execute(update(SubscriptionSearchTask).values(lease_token=token))
         session.commit()
@@ -110,6 +113,46 @@ def test_partial_submission_does_not_finish_an_interrupted_search_round(system_s
     assert state == expected
     queue.finish_task.assert_not_called()
     queue.release_task.assert_called_once()
+
+
+def test_download_cooldown_completes_task_and_batch_with_retry_reason(repository):
+    """
+    下载冷却正常结束搜索任务和批次，并通过执行状态返回原因与重试时间，不残留站点等待。
+    """
+    from types import SimpleNamespace
+
+    from app.application.subscription.observability import finish_returned_search_task
+    from app.application.subscription.status import SubscriptionExecutionStatusService
+    from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
+    from app.db.adapters.subscriptionstatus import _task
+    from app.db.models.subscriptionsearch import SubscriptionSearchBatch
+
+    _sessions, engine = repository
+    factory = sessionmaker(bind=engine)
+    queue = TransactionalSubscriptionSearchRepository(factory)
+    with factory() as session:
+        session.add(SubscriptionSearchBatch(batch_id="batch", source="manual", state="running", total_count=1,
+                    created_at="2026-11-26T00:00:00+00:00", updated_at="2026-11-26T00:00:00+00:00"))
+        session.commit()
+    reason = "E18 的候选资源暂时跳过（原因：无法打开链接），最早 2026-11-27 19:30:00 后可重试"
+    execution = SimpleNamespace(download_started=False, incremental_search=True, scan_finished=True,
+                                result_message=reason, is_expired=lambda: False)
+
+    result = finish_returned_search_task(queue=queue, task_id="task", lease_token="old", subscription_id=1,
+                                        execution_context=execution, system_stopped=False, cancel_requested=False)
+
+    assert result == (1, "completed", None)
+    with factory() as session:
+        task = _task(session.query(SubscriptionSearchTask).filter_by(task_id="task").one())
+    batch = queue.get_batch("batch")
+    status = SubscriptionExecutionStatusService._from_task(task)
+    assert status.state == "completed"
+    assert status.error == reason
+    assert status.submitted_count == 0
+    assert status.next_run_at is None
+    assert batch.state == "completed"
+    assert batch.finished_count == 1
+    assert batch.last_error == reason
 
 
 def test_finished_round_removes_its_checkpoint_only_with_the_current_lease_and_version(repository):

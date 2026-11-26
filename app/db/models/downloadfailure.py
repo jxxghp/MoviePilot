@@ -120,6 +120,23 @@ class DownloadFailure(Base):
         return failure
 
     @classmethod
+    def delete_by_fingerprints(cls, db: Session, fingerprints: List[str]) -> int:
+        """
+        在调用方事务中删除明确指定的资源失败记录，不影响其他资源或重复提交退避。
+
+        :param db: 由调用方持有并负责提交的会话
+        :param fingerprints: 待清除的完整资源指纹；空列表不执行删除
+        :return: 实际删除的记录数
+        """
+        normalized = list(dict.fromkeys(fingerprint for fingerprint in fingerprints if fingerprint))
+        if not normalized:
+            return 0
+        return execute_dml(
+            db, delete(cls).where(cls.fingerprint.in_(normalized)),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
     def delete_expired(
             cls,
             db: Session,

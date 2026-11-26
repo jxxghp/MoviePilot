@@ -561,7 +561,7 @@ def configure_plugin_system_services():
             transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
             transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
             media_server_repository=TransactionalMediaServerRepository(SessionFactory),
-            download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+            download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory, async_session_scope),
             download_pending_repository=TransactionalDownloadPendingRepository(SessionFactory),
             user_repository=user_repository(),
             configuration=build_chain_runtime_config(settings),

@@ -5,9 +5,13 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
+
 from app.application.subscription.candidates import CandidateIndex
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.facts import FreshFactLease
+from app.chain.subscribe import match as subscribe_match
+from app.chain.subscribe.facade import SubscribeChain
 from app.chain.torrents import TorrentsChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
@@ -79,6 +83,32 @@ def _candidate_count(groups: dict[str, list[Context]]) -> int:
     统计分站点候选总数。
     """
     return sum(len(contexts) for contexts in groups.values())
+
+
+@pytest.mark.parametrize("custom_words", [None, "旧名 => 新名"])
+def test_match_prunes_clear_type_and_season_conflicts_before_external_recognition(monkeypatch, custom_words):
+    """
+    RSS 重识别前排除明确类型或季号冲突，自定义识别词、未知类型和年份差异继续保守处理。
+    """
+    subscribe = _subscribe(custom_words=custom_words)
+    related = _context("Alias 1999 S01E18", media_type=MediaType.TV)
+    movie = _context("Unrelated Movie 2026", media_type=MediaType.MOVIE, season=None)
+    other_season = _context("Another Show S02E01", media_type=MediaType.TV, season=2)
+    unknown = _context("Unknown Work", media_type=MediaType.UNKNOWN, season=None)
+    contexts = [related, movie, other_season, unknown]
+    recognize = Mock(return_value=None)
+    chain = SubscribeChain()
+    monkeypatch.setattr(chain, "subscription_repository", Mock(list=Mock(return_value=[subscribe])))
+    monkeypatch.setattr(chain, "_check_match_subscription", Mock())
+    monkeypatch.setattr(subscribe_match, "MediaChain", lambda: SimpleNamespace(recognize_by_meta=recognize))
+
+    chain.match({"example.com": contexts})
+
+    assert recognize.call_count == (4 if custom_words else 2)
+    assert related.media_recognize_fail_count == 1
+    assert unknown.media_recognize_fail_count == 1
+    assert movie.media_recognize_fail_count == int(bool(custom_words))
+    assert other_season.media_recognize_fail_count == int(bool(custom_words))
 
 
 def test_refresh_returns_complete_cache_with_new_candidates():

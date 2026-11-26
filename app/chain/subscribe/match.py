@@ -302,6 +302,42 @@ def _prepare_subscription_match(
     return meta, mediainfo, routed_torrents, domains, sub_sites
 
 
+def _recognition_candidates(
+    torrents: Dict[str, List[Context]], subscribes: list[SubscriptionSnapshot],
+) -> Dict[str, List[Context]]:
+    """
+    外部重识别前按当前订阅的明确类型和标题季号裁剪未知身份候选。
+
+    自定义识别词可能改变类型和季号，因此保留完整候选；未知类型、未标季、别名和年份差异
+    同样保留。已经识别出的身份仍交给原有索引及严格匹配处理，不能用预筛替代身份复核。
+
+    :param torrents: 按站点组织的共享资源，不修改输入及候选本身
+    :param subscribes: 本轮实际需要匹配的活动订阅
+    :return: 仍可能被当前订阅使用的候选，保持原站点及资源顺序
+    """
+    if not subscribes:
+        return {}
+    if any(subscribe.custom_words for subscribe in subscribes):
+        return torrents
+    scopes = {(CandidateIndex.normalize_media_type(subscribe.type), CandidateIndex.normalize_int(subscribe.season))
+              for subscribe in subscribes}
+    selected: Dict[str, List[Context]] = {}
+    for domain, contexts in torrents.items():
+        selected[domain] = []
+        for context in contexts:
+            meta = getattr(context, "meta_info", None)
+            media = getattr(context, "media_info", None)
+            if meta is None or (media and resolve_media_identity(media=media)[1]):
+                selected[domain].append(context)
+                continue
+            media_type = CandidateIndex.normalize_media_type(getattr(meta, "type", None))
+            seasons = CandidateIndex.meta_seasons(meta)
+            if any((not media_type or not target_type or media_type == target_type)
+                   and (not seasons or season is None or season in seasons) for target_type, season in scopes):
+                selected[domain].append(context)
+    return selected
+
+
 def _prepare_match_torrents(
     torrents: Dict[str, List[Context]],
 ) -> Dict[str, List[Context]]:
@@ -443,12 +479,11 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             if not lock_acquired:
                 return
 
-            processed_torrents = self._prepare_match_torrents(torrents)
-            candidate_index, fresh_fact_lease = CandidateIndex(processed_torrents), FreshFactLease()
-
             subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
             if mtype is not None:
                 subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype]
+            processed_torrents = self._prepare_match_torrents(_recognition_candidates(torrents, subscribes))
+            candidate_index, fresh_fact_lease = CandidateIndex(processed_torrents), FreshFactLease()
             total_num = len(subscribes)
             summary.total = total_num
             logger.info(summary.start_log())

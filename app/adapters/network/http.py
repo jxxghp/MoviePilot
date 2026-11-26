@@ -38,6 +38,9 @@ AsyncHttpRequestError = httpx2.RequestError
 # 资源等幂等下载调用方通过同一异常边界区分可重试故障，不持有原始 transport。
 HttpConnectionError = requests.exceptions.ConnectionError
 HttpTimeoutError = requests.exceptions.Timeout
+# 面向用户的连接诊断区分代理与 TLS 故障，调用方仍只依赖宿主网络异常边界。
+HttpProxyError = requests.exceptions.ProxyError
+HttpTlsError = requests.exceptions.SSLError
 HttpResponseError = requests.exceptions.HTTPError
 HttpStreamError = requests.exceptions.ChunkedEncodingError
 

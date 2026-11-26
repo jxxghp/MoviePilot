@@ -14,6 +14,7 @@ from app.application.download.failures import (
     DownloadFailureSnapshot,
     DownloadFailureWrite,
 )
+from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain import episode as episode_rules
 from app.domain import torrent as torrent_rules
@@ -52,6 +53,23 @@ class DownloadFailureOwner(_DownloadOwnerBase):
     """
     下载资源级失败与退避指纹、冷却和持久化 owner。
     """
+
+    async def async_clear_download_failure(self, contexts: List[Context]) -> None:
+        """
+        异步清除人工确认资源的失败台账和无效地址缓存，不清除重复提交的保护记录。
+
+        失败台账提交成功后才清除地址缓存。任何一步失败均向调用方报告，不把未完成的重试放行说成成功。
+
+        :param contexts: 操作前后同一资源的上下文；不接受按媒体或站点批量清除
+        """
+        fingerprints = list(dict.fromkeys(fingerprint for context in contexts
+                                         if (fingerprint := self._build_download_failure_fingerprint(context))))
+        if fingerprints:
+            await self.download_failure_repository.async_delete_by_fingerprints(fingerprints)
+        helper = TorrentHelper()
+        for context in contexts:
+            if context.torrent_info is not None:
+                await helper.async_remove_invalid(context.torrent_info.enclosure)
 
     @staticmethod
     def _is_subscribe_source(source: Optional[str]) -> bool:

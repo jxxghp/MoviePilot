@@ -2,14 +2,18 @@
 种子缓存相关的应用用例。
 """
 
+import copy
+from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-from app.domain.context import MediaInfo, MusicInfo
+from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.foundation.crypto import HashUtils
 from app.runtime.cache import async_cache_mutation
+from app.runtime.log import logger
+from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicTargetEntityType
 
 
@@ -18,12 +22,18 @@ class TorrentCacheRecognitionService:
     执行种子缓存条目的媒体重新识别用例。
     """
 
-    def __init__(self, torrents_chain: Any, media_chain: Any) -> None:
+    def __init__(self, torrents_chain: Any, media_chain: Any,
+                 reset_download_failure: Optional[Callable[[list[Context]], Awaitable[None]]] = None) -> None:
         """
         初始化缓存和媒体识别依赖。
+
+        :param torrents_chain: 提供缓存读取、分类与持久化的种子链
+        :param media_chain: 执行元数据识别的媒体链
+        :param reset_download_failure: 缓存成功保存且识别出媒体身份后，清除该资源的下载失败退避
         """
         self.torrents_chain = torrents_chain
         self.media_chain = media_chain
+        self.reset_download_failure = reset_download_failure
 
     async def execute(
         self,
@@ -37,7 +47,8 @@ class TorrentCacheRecognitionService:
         重新识别缓存条目并持久化影视、音乐分离后的缓存。
 
         返回值保持端点原有的成功标识、用户消息和响应数据三元组，便于旧插件
-        继续消费原始 HTTP 响应结构。
+        继续消费原始 HTTP 响应结构。成功识别并保存后只清除本资源的自动下载失败记录，
+        不主动提交下载，也不影响其他资源和重复提交保护。
         """
         cache_data = await self.torrents_chain.async_get_torrents()
         if domain not in cache_data:
@@ -114,6 +125,8 @@ class TorrentCacheRecognitionService:
             )
         else:
             mediainfo.clear()
+        media_source_value, recognized_id = resolve_media_identity(media=mediainfo)
+        recognized = bool(media_source_value and recognized_id)
         async with async_cache_mutation("torrent-snapshots"):
             # 远端识别期间不占写锁；提交时重读当前快照，仅修改本次目标。
             latest = await self.torrents_chain.async_get_torrents()
@@ -122,7 +135,13 @@ class TorrentCacheRecognitionService:
                             == torrent_hash), None)
             if current is None:
                 return False, "种子缓存已刷新，目标条目不存在", None
+            original = copy.copy(current)
+            current.meta_info = meta
             current.media_info = mediainfo
+            current.match_source = str(media_source_value) if recognized else "unknown"
+            current.candidate_recognized = recognized
+            current.media_info_is_target = False
+            current.media_recognize_fail_count = 0 if recognized else 1
             video_cache, music_cache = self.torrents_chain.split_cache_contexts(latest)
             video_file, music_file = self.torrents_chain.cache_files()
             # 同一个资源不会跨分类移动；只写其所属缓存，避免无关文件失败或部分提交。
@@ -132,6 +151,12 @@ class TorrentCacheRecognitionService:
                 await self.torrents_chain.async_save_cache(cache, filename, strict=True)
             except Exception:
                 return False, "种子缓存保存失败，请稍后重试", None
+        if recognized and self.reset_download_failure is not None:
+            try:
+                await self.reset_download_failure([original, current])
+            except Exception as err:
+                logger.error(f"重新识别后清除资源下载失败记录失败：{err}")
+                return False, "重新识别已保存，但清除下载失败记录失败，请重试", None
         return True, "重新识别完成", {
             "media_name": mediainfo.title if mediainfo else "",
             "media_year": mediainfo.year if mediainfo else "",

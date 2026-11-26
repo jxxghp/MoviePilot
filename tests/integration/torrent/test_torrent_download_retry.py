@@ -2,16 +2,21 @@
 种子 GET 的有界重试、缓存与冷却策略离线回归。
 """
 
+import asyncio
+import copy
 import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from requests import Response
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import ProxyError, RequestException, SSLError, Timeout
 
+import app.api.endpoints.torrent as torrent_api
 import app.application.torrent.download as download
 import app.chain.download.failure as failure_owner
 import app.chain.download.submission as submission
@@ -25,11 +30,11 @@ from app.chain.download.failure import (
 )
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.models.downloadfailure import DownloadFailure
-from app.db.session import SessionFactory
+from app.db.session import SessionFactory, async_session_scope
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.media import build_media_key, resolve_media_identity
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 URL = "https://tracker.example/download.php?id=39"
 CONTENT = b"d4:infod4:name10:Series.mkv6:lengthi1eee"
@@ -58,7 +63,11 @@ def boundary(monkeypatch):
     monkeypatch.setattr(download, "FileCache", Mock(return_value=cache))
     sleep = Mock()
     monkeypatch.setattr(download.time, "sleep", sleep)
-    monkeypatch.setattr(download, "TTLCache", Mock(return_value={}))
+    invalid = {}
+    monkeypatch.setattr(download, "TTLCache", Mock(return_value=invalid))
+    monkeypatch.setattr(download, "AsyncTTLCache", Mock(return_value=SimpleNamespace(
+        pop=AsyncMock(side_effect=lambda key, default: invalid.pop(key, default)),
+    )))
     helper = download.TorrentHelper()
     helper.add_invalid = Mock(wraps=helper.add_invalid)
     return helper, port, cache, sleep
@@ -101,6 +110,61 @@ def test_exhausted_retry_is_bounded_and_does_not_poison_url(boundary, status):
     assert [call.args[0] for call in sleep.call_args_list] == [1, 2]
     helper.add_invalid.assert_not_called()
     cache.set.assert_not_called()
+
+
+@pytest.mark.parametrize("error,reason", [(ProxyError, "代理连接失败"), (Timeout, "请求超时"),
+                                         (SSLError, "TLS 连接失败"),
+                                         (RequestsConnectionError, "网络连接失败"), (RequestException, "网络请求失败")])
+@pytest.mark.parametrize("cache_invalid,attempts", [(True, 3), (False, 1)])
+def test_torrent_network_failures_preserve_safe_diagnostics(boundary, monkeypatch, error, reason,
+                                                           cache_invalid, attempts):
+    """
+    真实传输适配器把最终网络故障类别传到下载层，保留重试预算且不把地址或代理凭据暴露给用户。
+    """
+    from app.startup.composition import site as site_composition
+
+    helper, _, cache, sleep = boundary
+    transport = Mock()
+    transport.get_res.side_effect = error("https://user:password@site.example/download?passkey=private-key")
+    monkeypatch.setattr(site_composition, "RequestUtils", Mock(return_value=transport))
+    monkeypatch.setattr(download, "_require_torrent_port", lambda: site_composition._TorrentHttpAdapter())
+
+    result = helper.download_torrent(URL, cache_invalid=cache_invalid)
+
+    assert reason in result[4]
+    assert "passkey" not in result[4]
+    assert "password" not in result[4]
+    assert "private-key" not in result[4]
+    assert transport.get_res.call_count == attempts
+    assert transport.get_res.call_args.kwargs["raise_exception"] is True
+    assert sleep.call_count == attempts - 1
+    helper.add_invalid.assert_not_called()
+    cache.set.assert_not_called()
+
+
+@pytest.mark.parametrize("error", [ProxyError, Timeout])
+def test_confirmation_post_keeps_network_diagnostic_without_replaying_side_effect(boundary, monkeypatch, error):
+    """
+    首次下载确认 POST 遇到代理或超时异常只提交一次，并把安全诊断交还调用方。
+    """
+    from app.startup.composition import site as site_composition
+
+    helper, _, _, sleep = boundary
+    transport = Mock()
+    transport.get_res.return_value = _response(content=(
+        '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    ))
+    transport.post_res.side_effect = error("fictional connection failure")
+    monkeypatch.setattr(site_composition, "RequestUtils", Mock(return_value=transport))
+    monkeypatch.setattr(download, "_require_torrent_port", lambda: site_composition._TorrentHttpAdapter())
+
+    result = helper.download_torrent(URL)
+
+    assert "代理连接失败" in result[4] if error is ProxyError else "请求超时" in result[4]
+    transport.get_res.assert_called_once()
+    transport.post_res.assert_called_once()
+    sleep.assert_not_called()
+    helper.add_invalid.assert_not_called()
 
 
 @pytest.mark.parametrize("status", [401, 404, 410, 429])
@@ -584,6 +648,143 @@ def _duplicate_backoff_context():
         media_info=MediaInfo(title="Series", type=MediaType.TV),
         meta_info=MetaInfo("Series S01"),
     )
+
+
+@pytest.fixture
+def manual_reidentify(boundary, db, monkeypatch):
+    """
+    保留真实下载失败仓储、无效地址缓存和重新识别接口，仅隔离媒体与种子快照端口。
+    """
+    db.watermark(DownloadFailure)
+    helper = boundary[0]
+    chain = object.__new__(DownloadChain)
+    chain.download_failure_repository = TransactionalDownloadFailureRepository(SessionFactory, async_session_scope)
+    target = _duplicate_backoff_context()
+    target.media_info = MediaInfo(type=MediaType.TV, title="Series", media_source=MediaSource.TMDB, media_id="1")
+    target.candidate_recognized = False
+    target.media_info_is_target = True
+    target.media_recognize_fail_count = 3
+    original = chain._record_download_failure(target, "无法打开链接", source="Subscribe|1")
+    duplicate = chain._record_duplicate_download_backoff(target, source="Subscribe|1")
+    other = copy.deepcopy(target)
+    other.torrent_info.enclosure = URL.replace("39", "40")
+    unrelated = chain._record_download_failure(other, "无法打开链接", source="Subscribe|1")
+    helper.add_invalid(target.torrent_info.enclosure)
+    helper.add_invalid(other.torrent_info.enclosure)
+    cache_chain = Mock()
+    cache_chain.async_get_torrents = AsyncMock(return_value={"tracker.example": [target]})
+    cache_chain.split_cache_contexts.return_value = ({"tracker.example": [target]}, {})
+    cache_chain.cache_files.return_value = ("video", "music")
+    cache_chain.async_save_cache = AsyncMock()
+    media_chain = SimpleNamespace(async_recognize_media=AsyncMock(return_value=copy.deepcopy(target.media_info)))
+    monkeypatch.setattr(torrent_api, "TorrentsChain", lambda: cache_chain)
+    monkeypatch.setattr(torrent_api, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(torrent_api, "DownloadChain", lambda: chain)
+    return SimpleNamespace(chain=chain, target=target, other=other, cache=cache_chain, media=media_chain,
+                           helper=helper, original=original, duplicate=duplicate, unrelated=unrelated)
+
+
+def _reidentify_retry_target(scope, media_id="1"):
+    """
+    通过现有管理员重识别入口处理目标缓存，不主动调用下载器。
+    """
+    torrent = scope.target.torrent_info
+    return asyncio.run(torrent_api.reidentify_cache(
+        domain="tracker.example", torrent_hash=torrent_api.HashUtils.md5(f"{torrent.title}{torrent.description}"),
+        media_source=MediaSource.TMDB, media_id=media_id, _=Mock(),
+    ))
+
+
+@pytest.mark.parametrize("identity_changed", [False, True])
+def test_manual_reidentify_releases_only_that_resources_failure(manual_reidentify, identity_changed):
+    """
+    手工重识别同一身份或修正身份后，清除前后失败指纹和原地址标记，保留其他资源及重复提交保护。
+    """
+    scope = manual_reidentify
+    failures = [scope.original]
+    if identity_changed:
+        corrected = copy.deepcopy(scope.target)
+        corrected.media_info.media_id = "2"
+        failures.append(scope.chain._record_download_failure(corrected, "无法打开链接", source="Subscribe|1"))
+        scope.media.async_recognize_media.return_value = corrected.media_info
+
+    response = _reidentify_retry_target(scope, media_id="2" if identity_changed else "1")
+
+    assert response.success
+    active = scope.chain.download_failure_repository.get_active_by_fingerprints(
+        failures + [scope.unrelated, scope.duplicate], "0000",
+    )
+    assert set(active) == {scope.unrelated, scope.duplicate}
+    assert not scope.helper.is_invalid(scope.target.torrent_info.enclosure)
+    assert scope.helper.is_invalid(scope.other.torrent_info.enclosure)
+    assert scope.target.candidate_recognized
+    assert not scope.target.media_info_is_target
+    assert scope.target.media_recognize_fail_count == 0
+    assert scope.target.match_source == str(MediaSource.TMDB)
+    scope.cache.async_save_cache.assert_awaited_once()
+
+
+@pytest.mark.parametrize("failure", ["recognition", "save", "reset", "reset_commit"])
+def test_manual_reidentify_does_not_clear_backoff_before_success(manual_reidentify, monkeypatch, failure):
+    """
+    识别无结果、缓存保存失败或清理事务失败时，不错误放行资源，也不把未完成的清理返回为成功。
+    """
+    scope = manual_reidentify
+    if failure == "recognition":
+        scope.media.async_recognize_media.return_value = None
+    elif failure == "save":
+        scope.cache.async_save_cache.side_effect = OSError("fictional cache write failure")
+    elif failure == "reset":
+        monkeypatch.setattr(scope.chain.download_failure_repository, "async_delete_by_fingerprints",
+                            AsyncMock(side_effect=OSError("fictional database failure")))
+    else:
+        from app.db.adapters.download import SqlAlchemyAsyncUnitOfWork
+
+        monkeypatch.setattr(SqlAlchemyAsyncUnitOfWork, "commit", AsyncMock(side_effect=OSError("fictional commit failure")))
+
+    response = _reidentify_retry_target(scope)
+
+    assert response.success is (failure == "recognition")
+    active = scope.chain.download_failure_repository.get_active_by_fingerprints([scope.original], "0000")
+    assert scope.original in active
+    assert scope.helper.is_invalid(scope.target.torrent_info.enclosure)
+    if failure.startswith("reset"):
+        assert "清除下载失败记录失败" in response.message
+
+
+def test_empty_failure_clear_does_not_delete_other_resources(manual_reidentify):
+    """
+    没有明确资源指纹的清理请求幂等返回，不退化为全表或按媒体删除。
+    """
+    scope = manual_reidentify
+    assert asyncio.run(scope.chain.download_failure_repository.async_delete_by_fingerprints([])) == 0
+    assert scope.chain.download_failure_repository.get_active_by_fingerprints([scope.original], "0000")
+
+
+def test_manual_retry_requires_an_async_database_boundary():
+    """
+    未装配异步会话时拒绝清理，不在请求事件循环中退回同步事务。
+    """
+    repository = TransactionalDownloadFailureRepository(SessionFactory)
+    with pytest.raises(RuntimeError, match="异步会话尚未装配"):
+        asyncio.run(repository.async_delete_by_fingerprints(["missing"]))
+
+
+def test_invalid_marker_clear_uses_the_same_sync_and_async_cache_region():
+    """
+    真实缓存代理中，同步下载写入的无效地址能由人工重试的异步路径清除。
+    """
+    helper = download.TorrentHelper()
+    url = "https://tracker.example/download.php?id=manual-retry-cache-parity"
+    try:
+        helper.add_invalid(url)
+        assert helper.is_invalid(url)
+        asyncio.run(helper.async_remove_invalid(url))
+        assert not helper.is_invalid(url)
+        asyncio.run(helper.async_remove_invalid(url))
+        assert not helper.is_invalid(url)
+    finally:
+        helper._invalid_torrents.pop(url, False)
 
 
 @pytest.mark.parametrize("source,recorded", [("Subscribe|1", True), ("MoviePilot|手动下载", False)])
