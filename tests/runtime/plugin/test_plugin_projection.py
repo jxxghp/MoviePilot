@@ -7,6 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.runtime.extensions.plugin.contracts import (
+    PluginDashboardError,
+    PluginNotFoundError,
+)
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.schemas.category import ClassificationFieldDefinition
 from app.schemas.event import MediaSourceInfo
@@ -421,3 +425,211 @@ def test_projection_normalizes_sidebar_and_dashboard_metadata():
         "name": "状态",
         "key": "status",
     }]
+
+
+def test_projection_widget_metadata_merges_declared_and_dashboard_fallbacks():
+    """
+    widget_metadata 汇总显式小组件声明，对未覆盖键名的仪表板自动兜底，并隔离异常与非法键。
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    log = SimpleNamespace(
+        error=lambda msg: errors.append(msg),
+        warning=lambda msg: warnings.append(msg),
+    )
+
+    rich = _Plugin(
+        plugin_name="音乐盒",
+        get_page=lambda: [],
+        get_widgets=lambda: [
+            "not-a-dict",
+            {"key": "bad key!", "name": "非法键"},
+            {
+                "key": "main",
+                "name": "主卡片",
+                "description": " 实时曲目 ",
+                "kind": "custom",
+            },
+            {"key": "main", "name": "重复键被忽略"},
+            {"key": "unknown_kind", "kind": "unsupported"},
+        ],
+        get_dashboard=lambda: ({}, {}, []),
+        get_dashboard_meta=lambda: [
+            "invalid-meta",
+            {"key": "main", "name": "已被显式声明覆盖"},
+            {"key": "bad/key", "name": "非法仪表盘键"},
+            {"key": "extra", "name": "附加仪表盘"},
+        ],
+    )
+    broken_widgets = _Plugin(
+        get_widgets=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        get_dashboard=lambda: ({}, {}, []),
+        get_dashboard_meta=lambda: (_ for _ in ()).throw(RuntimeError("meta-boom")),
+    )
+    non_list_widgets = _Plugin(
+        get_widgets=lambda: "invalid-return",
+        get_dashboard=lambda: ({}, {}, []),
+    )
+    disabled = _Plugin(
+        enabled=False,
+        get_widgets=lambda: [{"key": "hidden", "name": "隐藏"}],
+    )
+
+    projection = PluginProjection(
+        {
+            "Rich": rich,
+            "Broken": broken_widgets,
+            "NonList": non_list_widgets,
+            "Disabled": disabled,
+        },
+        log=log,
+    )
+
+    items = projection.widget_metadata()
+    by_pair = {(item["plugin_id"], item["key"]): item for item in items}
+
+    assert ("Disabled", "hidden") not in by_pair
+    assert by_pair[("Rich", "main")] == {
+        "plugin_id": "Rich",
+        "plugin_name": "音乐盒",
+        "key": "main",
+        "name": "主卡片",
+        "description": "实时曲目",
+        "kind": "custom",
+        "source": "widget",
+        "has_page": True,
+    }
+    assert by_pair[("Rich", "unknown_kind")]["kind"] == "metrics"
+    assert by_pair[("Rich", "extra")] == {
+        "plugin_id": "Rich",
+        "plugin_name": "音乐盒",
+        "key": "extra",
+        "name": "附加仪表盘",
+        "description": None,
+        "kind": "metrics",
+        "source": "dashboard",
+        "has_page": True,
+    }
+    assert by_pair[("NonList", "")]["source"] == "dashboard"
+    assert warnings and "bad key!" in warnings[0]
+    assert len(errors) == 2
+
+
+def test_projection_widget_data_supports_explicit_hooks_and_vuetify_or_vue_fallbacks():
+    """
+    widget_data 支持有参/无参 get_widget_data，并在缺省时把 Vue 或 Vuetify 仪表板投影为小组件载荷。
+    """
+    keyed = _Plugin(
+        plugin_name="显式插件",
+        get_widget_data=lambda key="": (
+            None if key == "empty" else {"kind": "list", "items": [{"id": "1", "title": key or "默认"}]}
+        ),
+    )
+    zero_arg = _Plugin(
+        plugin_name="无参插件",
+        get_widget_data=lambda: {"metrics": [{"id": "m", "label": "总数", "value": "5"}]},
+    )
+    bad_format = _Plugin(get_widget_data=lambda _key="": ["not-a-dict"])
+    raising = _Plugin(get_widget_data=lambda _key="": (_ for _ in ()).throw(ValueError("bad")))
+    vue_dash = _Plugin(
+        plugin_name="联邦面板",
+        get_render_mode=lambda: ("vue", "dist/assets"),
+        get_dashboard=lambda **_kw: ({}, {"title": "联邦标题"}, []),
+    )
+    vuetify_metrics = _Plugin(
+        plugin_name="站点统计",
+        get_render_mode=lambda: ("vuetify", ""),
+        get_dashboard=lambda **_kw: (
+            {"cols": 12},
+            {"title": "站点总览", "subtitle": "今日"},
+            [
+                {"component": "VIcon", "props": {"icon": "mdi-chart"}},
+                {"component": "VCardItem", "props": {"title": "总上传", "value": "12.4 TB"}},
+                {
+                    "component": "div",
+                    "content": [
+                        {"component": "span", "text": "做种体积"},
+                        {"component": "span", "text": "8.5 TB"},
+                    ],
+                },
+                {
+                    "component": "div",
+                    "props": {"text": "最近刷新成功"},
+                    "content": ["mdi-skip", "#123456", "保种正常", "无异常告警", "连接稳定"],
+                },
+            ],
+        ),
+    )
+    vuetify_list = _Plugin(
+        plugin_name="日志摘要",
+        get_render_mode=lambda: ("vuetify", ""),
+        get_dashboard=lambda **_kw: (
+            {},
+            {},
+            [{"component": "div", "content": ["条目一", "条目二", "条目三"]}],
+        ),
+    )
+    empty_dash = _Plugin(
+        get_render_mode=lambda: ("vuetify", ""),
+        get_dashboard=lambda **_kw: None,
+    )
+    plain_plugin = _Plugin()
+    disabled_plugin = _Plugin(enabled=False, get_widget_data=lambda: {})
+
+    projection = PluginProjection(
+        {
+            "Keyed": keyed,
+            "ZeroArg": zero_arg,
+            "BadFormat": bad_format,
+            "Raising": raising,
+            "VueDash": vue_dash,
+            "VuetifyMetrics": vuetify_metrics,
+            "VuetifyList": vuetify_list,
+            "EmptyDash": empty_dash,
+            "Plain": plain_plugin,
+            "Disabled": disabled_plugin,
+        }
+    )
+
+    with pytest.raises(PluginNotFoundError):
+        projection.widget_data("Missing")
+    with pytest.raises(PluginNotFoundError):
+        projection.widget_data("Disabled")
+    with pytest.raises(PluginDashboardError):
+        projection.widget_data("BadFormat")
+    with pytest.raises(PluginDashboardError):
+        projection.widget_data("Raising")
+
+    assert projection.widget_data("Keyed", "empty") is None
+    keyed_payload = projection.widget_data("Keyed", "recent")
+    assert keyed_payload is not None
+    assert keyed_payload["plugin_id"] == "Keyed"
+    assert keyed_payload["items"][0]["title"] == "recent"
+
+    zero_payload = projection.widget_data("ZeroArg")
+    assert zero_payload is not None and zero_payload["title"] == "无参插件"
+
+    vue_payload = projection.widget_data("VueDash")
+    assert vue_payload is not None and vue_payload["kind"] == "poster"
+
+    metrics_payload = projection.widget_data("VuetifyMetrics")
+    assert metrics_payload is not None
+    assert metrics_payload["kind"] == "metrics"
+    assert [(m["label"], m["value"]) for m in metrics_payload["metrics"]] == [
+        ("总上传", "12.4 TB"),
+        ("做种体积", "8.5 TB"),
+    ]
+    assert [i["title"] for i in metrics_payload["items"]] == [
+        "最近刷新成功",
+        "保种正常",
+        "无异常告警",
+        "连接稳定",
+    ]
+
+    list_payload = projection.widget_data("VuetifyList")
+    assert list_payload is not None
+    assert list_payload["kind"] == "list"
+    assert [i["title"] for i in list_payload["items"]] == ["条目一", "条目二", "条目三"]
+
+    assert projection.widget_data("EmptyDash") is None
+    assert projection.widget_data("Plain") is None
