@@ -11,7 +11,7 @@ from app.application.transfer.recovery import TransferRecoveryCommand
 from app.chain.transfer.settlement import _discard_corrupt_transfer_task
 
 
-@pytest.mark.parametrize("message", ["记录已失效", "记录不完整", "版本不一致", "检查点", "恢复状态不完整"])
+@pytest.mark.parametrize("message", ["记录已失效", "记录不完整", "版本不一致", "检查点", "恢复状态不完整", "整理任务当前状态不能准备外部步骤"])
 def test_corrupt_conflict_discards_owned_task(message):
     """
     不可恢复的规划冲突必须带当前租约原子清理持久任务。
@@ -30,6 +30,7 @@ def test_corrupt_conflict_discards_owned_task(message):
 @pytest.mark.parametrize("error,task_id,lease_token", [
     (ValueError("记录不完整"), "task", "lease"),
     (TransferExecutionConflictError("暂时失败"), "task", "lease"),
+    (TransferExecutionConflictError("整理任务正在被其他操作处理，请稍后再试"), "task", "lease"),
     (TransferExecutionConflictError("记录不完整"), None, "lease"),
     (TransferExecutionConflictError("记录不完整"), "task", None),
 ])

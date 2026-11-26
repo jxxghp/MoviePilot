@@ -126,6 +126,9 @@ class TransferRecoveryCommand:
         message = str(error)
         if not any(marker in message for marker in (
             "记录已失效", "记录不完整", "版本不一致", "检查点", "恢复状态不完整",
+            # prepare 的 fencing 失败：持久状态已不在可准备集合里，冻结计划
+            # 永远无法通过 CAS，重放只会反复抛同一冲突，必须清理任务。
+            "不能准备外部步骤",
         )):
             return False
         return self.discard_corrupt_task(task_id=task_id, lease_token=lease_token, error=message)
