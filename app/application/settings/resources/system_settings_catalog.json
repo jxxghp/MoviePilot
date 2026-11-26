@@ -227,7 +227,7 @@
       "source_file": "app/runtime/config.py"
     },
     "BANGUMI_IMAGE_DOMAIN": {
-      "description": "Bangumi图片代理地址，留空时由后端代理端点直接拉取原始图片",
+      "description": "Bangumi图片代理地址，非空时把响应里的官方图片域名替换为该地址，留空则由后端代理端点直接拉取原始图片",
       "group": "bangumi",
       "source_file": "app/runtime/config.py"
     },
