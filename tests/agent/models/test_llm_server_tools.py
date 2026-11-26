@@ -52,6 +52,38 @@ def test_deepseek_v4_flash_exposes_builtin_web_search() -> None:
             "openai_responses",
         ),
         (
+            "chatgpt",
+            "gpt-6.1-terra",
+            "https://api.openai.com/v1",
+            {"type": "web_search"},
+            "responses",
+            "openai_responses",
+        ),
+        (
+            "chatgpt",
+            "gpt-6.2-astra",
+            "https://api.openai.com/v1",
+            {"type": "web_search"},
+            "responses",
+            "openai_responses",
+        ),
+        (
+            "chatgpt",
+            "gpt-6-luna",
+            "https://api.openai.com/v1",
+            {"type": "web_search"},
+            "responses",
+            "openai_responses",
+        ),
+        (
+            "openai",
+            "gpt-6.2-sol",
+            "https://api.openai.com/v1",
+            {"type": "web_search"},
+            "responses",
+            "openai_responses",
+        ),
+        (
             "openai",
             "gpt-4.1-mini",
             "https://api.openai.com/v1",
@@ -212,6 +244,8 @@ def test_deepseek_builtin_web_search_is_limited_to_official_endpoint() -> None:
     ("provider", "model", "base_url"),
     [
         ("openai", "gpt-5.6-sol", "https://openai-proxy.example.com/v1"),
+        ("chatgpt", "gpt-6.1-terra", "https://openai-proxy.example.com/v1"),
+        ("chatgpt", "gpt-6.1-terra", "https://chatgpt.com/backend-api/codex"),
         ("anthropic", "claude-opus-5", "https://anthropic-proxy.example.com/v1"),
         ("xai", "grok-4.5", "https://xai-proxy.example.com/v1"),
     ],
@@ -242,6 +276,13 @@ def test_provider_web_search_is_limited_to_official_endpoints(
         (
             "chatgpt",
             "gpt-5.6-sol",
+            "openai_compatible",
+            "https://api.openai.com/v1",
+            {"type": "web_search"},
+        ),
+        (
+            "chatgpt",
+            "gpt-6.1-terra",
             "openai_compatible",
             "https://api.openai.com/v1",
             {"type": "web_search"},
@@ -309,6 +350,8 @@ def test_llm_helper_binds_each_native_server_search_tool_offline(
     tools = LLMHelper.get_server_tools(llm)
     assert tools == [expected_tool]
     assert llm.bind_tools(tools) is not None
+    if runtime_name == "openai_compatible":
+        assert llm.use_responses_api is True
 
 
 def test_unavailable_server_tool_error_guides_user_to_safe_modes() -> None:

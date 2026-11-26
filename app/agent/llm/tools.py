@@ -114,7 +114,7 @@ class ServerToolRegistry:
         ServerToolCapability(
             tool_id="web_search",
             provider_ids=("chatgpt",),
-            model_patterns=("gpt-5*", "gpt-4.1*", "o4-mini*"),
+            model_patterns=("gpt-6*", "gpt-5*", "gpt-4.1*", "o4-mini*"),
             base_url_patterns=("api.openai.com",),
             required_api_protocol="responses",
             client_adapter="openai_responses",
@@ -123,7 +123,7 @@ class ServerToolRegistry:
         ServerToolCapability(
             tool_id="web_search",
             provider_ids=("openai",),
-            model_patterns=("gpt-5*", "gpt-4.1*", "o4-mini*"),
+            model_patterns=("gpt-6*", "gpt-5*", "gpt-4.1*", "o4-mini*"),
             base_url_patterns=("api.openai.com",),
             required_api_protocol="responses",
             client_adapter="openai_responses",
