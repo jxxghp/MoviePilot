@@ -114,6 +114,7 @@ class SubscriptionExecutionContext:
     :param source: 触发本轮执行的入口，例如手工搜索或自动调度
     :param refresh_sites: 本轮需要更新进度的站点摘要
     :param refresh_candidates: 刷新站点进度时累计的候选资源数
+    :param result_message: 本轮正常结束的补充说明，例如候选下载冷却原因及最早重试时间
     """
 
     lease: SubscriptionExecutionLease
@@ -130,6 +131,7 @@ class SubscriptionExecutionContext:
     source: str = "automatic"
     refresh_sites: tuple[dict[str, object], ...] = ()
     refresh_candidates: int = 0
+    result_message: Optional[str] = None
 
     def is_cancel_requested(self) -> bool:
         """

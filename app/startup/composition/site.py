@@ -10,7 +10,14 @@ from app.adapters.external.cookiecloud import CookieCloudHelper
 from app.adapters.external.ocr import OcrHelper
 from app.adapters.network.browser import PlaywrightHelper
 from app.adapters.network.cloudflare import under_challenge
-from app.adapters.network.http import RequestUtils
+from app.adapters.network.http import (
+    HttpConnectionError,
+    HttpProxyError,
+    HttpRequestError,
+    HttpTimeoutError,
+    HttpTlsError,
+    RequestUtils,
+)
 from app.adapters.system import rust as rust_accel
 from app.application.module import get_module_manager
 from app.application.rss import (
@@ -41,6 +48,7 @@ from app.application.site.protocol import (
 )
 from app.application.torrent.download import (
     TorrentHttpPort,
+    TorrentRequestError,
     TorrentResponsePort,
     configure_torrent_port,
     reset_torrent_port,
@@ -426,7 +434,9 @@ class _TorrentHttpAdapter:
                 allow_redirects: bool = True,
                 data: Optional[dict[str, Any]] = None) -> Optional[TorrentResponsePort]:
         """
-        按 Application 指定方法发起请求并保留响应三态。
+        按 Application 指定方法发起请求，保留 HTTP 状态并把传输异常转换为不含凭据的故障类别。
+
+        :raises TorrentRequestError: 请求超时、代理、TLS 或连接失败；不转发可能包含敏感 URL 的原异常文本
         """
         request = RequestUtils(
             ua=ua or "",
@@ -434,12 +444,21 @@ class _TorrentHttpAdapter:
             referer=referer or "",
             proxies=proxies or {},
         )
-        if method == "POST":
-            response = request.post_res(
-                url=url, data=data, allow_redirects=allow_redirects
-            )
-        else:
-            response = request.get_res(url=url, allow_redirects=allow_redirects)
+        try:
+            if method == "POST":
+                response = request.post_res(
+                    url=url, data=data, allow_redirects=allow_redirects, raise_exception=True,
+                )
+            else:
+                response = request.get_res(url=url, allow_redirects=allow_redirects, raise_exception=True)
+        except HttpRequestError as err:
+            reason = next((label for kind, label in (
+                (HttpProxyError, "代理连接失败，请检查站点代理配置"),
+                (HttpTimeoutError, "请求超时"),
+                (HttpTlsError, "TLS 连接失败"),
+                (HttpConnectionError, "网络连接失败"),
+            ) if isinstance(err, kind)), "网络请求失败")
+            raise TorrentRequestError(f"无法打开链接：{reason}") from None
         return cast(Optional[TorrentResponsePort], response)
 
 

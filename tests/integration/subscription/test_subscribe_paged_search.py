@@ -14,6 +14,7 @@ import app.chain.download.selection as download_selection
 import app.chain.subscribe.policy as subscribe_policy
 import app.chain.subscribe.refresh as subscribe_refresh
 import app.chain.subscribe.search as subscribe_search
+from app.application.download.failures import DownloadFailureSnapshot
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
 from app.application.subscription.contract import SubscriptionSnapshot, build_subscribe_meta
 from app.application.subscription.priority import (
@@ -81,6 +82,56 @@ def _missing(scope, item):
     """
     return scope.chain.resolve_subscribe_missing(
         subscribe=item, meta=build_subscribe_meta(item), mediainfo=scope.media, mediakey="tmdb:1")[1]
+
+
+def test_subscription_stops_deep_paging_when_available_episode_is_cooling(subscription, monkeypatch):
+    """
+    真实订阅择源跳过连载最新集的冷却候选后直接收尾，不为重复候选翻满二十页，也不误结算缺集。
+    """
+    scope = subscription
+    current = replace(scope.initial, total_episode=34, manual_total_episode=34, note=list(range(1, 18)))
+    scope.current["value"] = current
+    scope.media.seasons = {1: list(range(1, 35))}
+    target = SubscriptionSearchTarget(current, build_subscribe_meta(current), scope.media,
+                                      _missing(scope, current), "tmdb:1")
+    search = SearchChain()
+    monkeypatch.setattr(search, "_sync_indexers", lambda _sites: [{"id": 1, "name": "A", "parser": "mTorrent"}])
+    monkeypatch.setattr(search, "search_plugin_torrents", lambda **_params: [])
+    monkeypatch.setattr(scope.chain, "get_sub_sites", lambda _subscribe: [1])
+    monkeypatch.setattr(subscribe_search, "DownloadChain", lambda: scope.download)
+    monkeypatch.setattr(subscribe_search, "_subscription_search_strategy", lambda _best: "smart")
+    calls = []
+
+    def request(**params):
+        """
+        每页保留同一十八集候选并改变无关条目，模拟搜索参数失效却有不同整页摘要的站点。
+        """
+        calls.append(params["page"])
+        items = [TorrentInfo(site=1, site_name="A", title="Example Show S01E18",
+                             enclosure="https://site.example/download?id=18", pri_order=100),
+                 TorrentInfo(site=1, site_name="A", title=f"Unrelated Movie {params['page']}",
+                             enclosure=f"https://site.example/download?id={100 + params['page']}")]
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(items), has_more=True)
+        return items
+
+    def active_failures(contexts, **_params):
+        """
+        使用真实资源指纹返回仍有效的取链接失败记录。
+        """
+        return {fingerprint: DownloadFailureSnapshot(fingerprint, "无法打开链接", "2026-11-27 19:30:00")
+                for context in contexts
+                if (fingerprint := scope.download._build_download_failure_fingerprint(context))}
+
+    scope.download._active_download_failure_fingerprints.side_effect = active_failures
+    monkeypatch.setattr(search, "search_site_torrents", request)
+
+    _process_paged_subscription(scope.chain, current, search, target, SystemConfigKey.SubscribeFilterRuleGroups, None)
+
+    assert calls == [0]
+    scope.download.download_single.assert_not_called()
+    scope.finished.assert_not_called()
+    assert set(_missing(scope, scope.current["value"])["tmdb:1"][1].episodes) == set(range(18, 35))
 
 
 def test_cumulative_episode_subscription_reaches_download_submission(subscription, monkeypatch):

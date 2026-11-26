@@ -130,7 +130,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "database-operation": "20",
         "feedback-issue": "12",
         "anysearch": "3",
-        "moviepilot-api": "79",
+        "moviepilot-api": "80",
         "moviepilot-update": "7",
         "organize-files": "6",
         "transfer-failed-retry": "7",

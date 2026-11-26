@@ -54,6 +54,17 @@ class DownloadFailureOper(DbOper):
             )
         )
 
+    def delete_by_fingerprints(self, fingerprints: List[str]) -> int:
+        """
+        暂存人工确认资源的失败冷却删除，事务仍由调用方拥有。
+
+        :param fingerprints: 需要清除的普通资源失败指纹
+        :return: 删除的记录数；空列表或记录不存在时为 0
+        """
+        return self._execute_sync_write(
+            lambda session: DownloadFailure.delete_by_fingerprints(session, fingerprints)
+        )
+
     def delete_expired(
             self,
             before_time: str,

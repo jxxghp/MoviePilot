@@ -181,6 +181,7 @@ class SearchCollection:
     :param settled: 已成功提交或确认已存在的目标
     :param fallback: 需要从当前进度继续完整搜索的目标
     :param released: 本轮任一来源出现过的本作品各季最大集号，键为季号字符串
+    :param deferred: 本轮因可用候选全部处于下载冷却而暂缓的目标，仍计入缺失内容
     """
 
     targets: set[str]
@@ -188,6 +189,7 @@ class SearchCollection:
     settled: set[str] = field(default_factory=set)
     fallback: set[str] = field(default_factory=set)
     released: dict[str, int] = field(default_factory=dict)
+    deferred: set[str] = field(default_factory=set)
 
     @property
     def remaining(self) -> set[str]:
@@ -239,7 +241,7 @@ class SearchCollection:
             return set()
         unreleased = set() if full else self.unreleased()
         return {
-            target for target in self.remaining
+            target for target in self.remaining - self.deferred
             if all(
                 source.exhausted or source.failed or source.limit_reached
                 or (target in unreleased and source.next_page > 0)
@@ -252,17 +254,18 @@ class SearchCollection:
         """
         完整模式由所有未满足目标驱动分页，智能模式才按站点已见集号裁剪目标。
         """
-        driving = self.remaining if full else self.remaining - self.unreleased()
-        fallback = driving if full else self.fallback
+        searchable = self.remaining - self.deferred
+        driving = searchable if full else searchable - self.unreleased()
+        fallback = driving if full else self.fallback - self.deferred
         return [key for key, source in self.sources.items()
-                if source.drives_search(driving if source.next_page else self.remaining, fallback)]
+                if source.drives_search(driving if source.next_page else searchable, fallback)]
 
     @property
     def pending(self) -> set[str]:
         """
         仍值得在本轮继续寻找的目标；只剩站点未收录目标时本轮结束并释放检查点。
         """
-        return self.remaining - self.unreleased()
+        return self.remaining - self.unreleased() - self.deferred
 
     def settle(self, targets: set[str]) -> None:
         """
@@ -270,6 +273,7 @@ class SearchCollection:
         """
         self.settled.update(targets & self.targets)
         self.fallback.difference_update(targets)
+        self.deferred.difference_update(targets)
 
     def deepen(self, targets: set[str]) -> None:
         """

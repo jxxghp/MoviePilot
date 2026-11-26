@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
+from app.application.download.failures import DownloadFailureSnapshot
 from app.application.download.pending import (
     pending_blocks_movie_music,
     pending_targets_for_scan,
@@ -256,6 +257,33 @@ def _paused_pending_targets(
     return paused & ready
 
 
+def _subscription_candidate_cooldowns(
+    download_chain: DownloadChain,
+    subscribe: SubscriptionSnapshot,
+    source: str,
+    contexts: list[Context],
+) -> dict[str, DownloadFailureSnapshot]:
+    """
+    把资源下载退避映射为当前分页候选键，保持下载器及订阅范围与真实择源一致。
+
+    :param download_chain: 读取下载失败台账的下载链
+    :param subscribe: 本轮订阅快照，使用其下载器配置隔离退避范围
+    :param source: 与批量下载相同的订阅来源标识
+    :param contexts: 本批已经参与择源的资源
+    :return: 仍在下载退避期的搜索资源键及失败快照
+    """
+    records = download_chain._active_download_failure_fingerprints(
+        contexts=contexts, source=source, downloader=subscribe.downloader,
+    )
+    result: dict[str, DownloadFailureSnapshot] = {}
+    for context in contexts:
+        torrent = context.torrent_info
+        fingerprint = download_chain._build_download_failure_fingerprint(context)
+        if torrent is not None and torrent.search_resource_id and fingerprint and fingerprint in records:
+            result[torrent.search_resource_id] = records[fingerprint]
+    return result
+
+
 def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
                                 searchchain: SearchChain, target: SubscriptionSearchTarget,
                                 rule_key: SystemConfigKey,
@@ -304,7 +332,9 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
                       page_limit=1 if strategy == "single_page" else None,
                       execution=execution_context, repository=repository, snapshot=snapshot,
                       target_scope=(subscribe.start_episode or 1, subscribe.total_episode or 0),
-                      prefer_complete=prefer_initial_pack, complete_scan=strategy == "full")
+                      prefer_complete=prefer_initial_pack, complete_scan=strategy == "full",
+                      candidate_cooldowns=partial(_subscription_candidate_cooldowns, download_chain, subscribe,
+                                                  owner.get_subscribe_source_keyword(subscribe)))
     if execution_context:
         execution_context.incremental_search = True
 
@@ -345,6 +375,7 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
         _finish_paged_subscription(owner, subscribe, target)
     if execution_context:
         execution_context.scan_finished = not execution_context.should_stop() and not runtime_stop_state.is_system_stopped
+        execution_context.result_message = scan.cooldown_text() or None
         execution_context.report_phase("finished")
     return cast(Optional[SubscriptionSnapshot], owner.subscription_repository.get(subscribe.id))
 

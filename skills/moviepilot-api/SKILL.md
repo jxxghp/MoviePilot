@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 79
+version: 80
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -66,6 +66,16 @@ allowed-api-operations: >-
 ---
 
 # MoviePilot API
+
+`torrent.cache.reidentify` releases that resource's automatic download-failure
+cooldown and invalid-link marker only after recognition and cache persistence
+succeed. It does not submit a download or bypass site limits or duplicate-task
+protection. Retry with `subscription.search` or an explicit download afterward;
+if cleanup fails, inspect the returned error before claiming retry is available.
+Smart subscription search ends a target's deep fallback when all collected
+eligible candidates are cooling, while retaining missing episodes. Read the
+terminal execution state, submitted count, and `error` summary for the reason and
+earliest retry time; do not interpret a completed search as a completed download.
 
 When a plugin mutation is busy or its outcome is unknown, inspect `plugin.runtime.status`
 before retrying. `active_operation` identifies the running plugin, operation, hook, and

@@ -91,7 +91,7 @@ def restore_collection(values: dict[str, Any]) -> SearchCollection:
             params[name] = set(params.get(name, []))
         sources[key] = SearchSourceCursor(**params)
     return SearchCollection(set(values["targets"]), sources, set(values["settled"]), set(values["fallback"]),
-                            dict(values.get("released") or {}))
+                            dict(values.get("released") or {}), set(values.get("deferred") or []))
 
 
 @dataclass(frozen=True, slots=True)

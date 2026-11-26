@@ -139,7 +139,7 @@ def build_chain_runtime_context(
         transfer_admission_repository=TransactionalTransferAdmissionRepository(SessionFactory),
         transfer_execution_repository=dependencies.transfer_execution,
         media_server_repository=TransactionalMediaServerRepository(SessionFactory),
-        download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+        download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory, async_session_scope),
         download_pending_repository=TransactionalDownloadPendingRepository(SessionFactory),
         user_repository=build_transactional_user_repository(),
         classification_service=classification_service,

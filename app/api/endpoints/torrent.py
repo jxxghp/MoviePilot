@@ -18,6 +18,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.torrent.cache import TorrentCacheRecognitionService
+from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.torrents import TorrentsChain
 from app.foundation.crypto import HashUtils
@@ -244,7 +245,9 @@ async def reidentify_cache(
     _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[dict[str, Any]]:
     """
-    重新识别指定的种子
+    重新识别指定的种子，成功保存后清除该资源的自动下载失败冷却以允许再次尝试。
+
+    本接口不提交下载、不绕过站点限流，其他资源及重复提交保护不受影响。
 
     :param domain: 站点域名
     :param torrent_hash: 种子hash（使用title+description的md5）
@@ -255,7 +258,9 @@ async def reidentify_cache(
     """
 
     try:
-        service = TorrentCacheRecognitionService(TorrentsChain(), MediaChain())
+        service = TorrentCacheRecognitionService(
+            TorrentsChain(), MediaChain(), DownloadChain().async_clear_download_failure,
+        )
         success, message, data = await service.execute(
             domain=domain,
             torrent_hash=torrent_hash,

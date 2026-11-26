@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from app.application.download.failures import DownloadFailureSnapshot
 from app.application.search.session import SearchSessionSnapshot, encode_search_state
 from app.application.site.observation import SiteSearchObservation, report_site_search_outcome, report_site_search_page
 from app.application.subscription.sitebudget import (
@@ -73,12 +74,126 @@ def unknown_torrent(page):
                        enclosure=f"https://site.example/download?id=unknown-{page}")
 
 
+@pytest.mark.parametrize("full,all_cooling", [(False, True), (False, False), (True, True)])
+def test_cooling_candidates_stop_smart_fallback_without_settling_missing(owner, monkeypatch, full, all_cooling):
+    """
+    智能搜索不为全冷却目标深翻，完整搜索仍查后页；两者均不把退避当作下载成功。
+    """
+    calls = pages(owner, monkeypatch, {0: [torrent(18, 1), torrent(18, 2)],
+                                     1: [torrent(18, 3)]})
+    submitted = []
+    failure = DownloadFailureSnapshot("failure", "无法打开链接", "2026-11-27 19:30:00")
+
+    def cooldowns(items):
+        """
+        只有首页两个版本仍在退避，深页版本可以正常尝试。
+        """
+        return {item.torrent_info.search_resource_id: failure for item in items
+                if item.torrent_info.description == "18-1"
+                or (all_cooling and item.torrent_info.description == "18-2")}
+
+    scan = SearchScan(owner=owner, plan=plan(list(range(18, 35))), full=full,
+                      candidate_cooldowns=cooldowns)
+
+    def submit(items, _ready):
+        """
+        记录实际择源批次，所有下载均未成功，缺集应保持不变。
+        """
+        submitted.extend(item.torrent_info.description for item in items)
+        return set()
+
+    scan.run(submit)
+
+    deepen = full or not all_cooling
+    assert calls == ([0, 1, 2] if deepen else [0])
+    assert submitted == (["18-1", "18-2", "18-3"] if deepen else ["18-1", "18-2"])
+    assert scan.collection.remaining == {f"1:{episode}" for episode in range(18, 35)}
+    assert not scan.submitted
+    assert scan.ended
+    if not deepen:
+        assert "无法打开链接" in scan.progress_text()
+        assert "2026-11-27 19:30:00" in scan.progress_text()
+
+
+def test_cooling_target_keeps_other_targets_and_new_alternatives_searchable(owner, monkeypatch):
+    """
+    退避只暂停已有候选全冷却的目标；其他缺集驱动的新页发现可用版本时重新放行该目标。
+    """
+    calls = pages(owner, monkeypatch, {0: [torrent(18)], 1: [torrent(17), torrent(18, 2)]})
+    failure = DownloadFailureSnapshot("failure", "无法打开链接", "2026-11-27 19:30:00")
+
+    def cooldowns(items):
+        """
+        仅第十八集旧版本命中退避。
+        """
+        return {item.torrent_info.search_resource_id: failure for item in items
+                if item.torrent_info.description == "18-1"}
+
+    scan = SearchScan(owner=owner, plan=plan([17, 18, 19]), candidate_cooldowns=cooldowns)
+
+    def submit(items, ready):
+        """
+        旧版本不提交，新资源按实际覆盖目标结算。
+        """
+        return ready if any(item.torrent_info.description != "18-1" for item in items) else set()
+
+    scan.run(submit)
+
+    assert calls == [0, 1]
+    assert scan.collection.remaining == {"1:19"}
+    assert scan.submitted == {"1:17", "1:18"}
+
+
+@pytest.mark.parametrize("cleared", [False, True])
+def test_candidate_cooldown_survives_checkpoint_and_manual_clear_reopens_only_missing(owner, monkeypatch, cleared):
+    """
+    检查点保留冷却与真实缺集；人工清除后重新受理该候选，未清除时不重复提交。
+    """
+    pages(owner, monkeypatch, {0: [torrent(18)]})
+    failure = DownloadFailureSnapshot("failure", "无法打开链接", "2026-11-27 19:30:00")
+
+    def cooldowns(items):
+        """
+        初次仍处于冷却，恢复时按当前台账是否已清除返回事实。
+        """
+        return {item.torrent_info.search_resource_id: failure for item in items}
+
+    search_plan = plan([18, 19])
+    scan = SearchScan(owner=owner, plan=search_plan, candidate_cooldowns=cooldowns)
+    for key in list(scan.collection.sources):
+        scan.step(key)
+    scan.choose({"1:18"}, lambda _items, _ready: set())
+    state = scan.state()
+    snapshot = SearchSessionSnapshot("cooldown", 1, encode_search_state(state))
+    restored = SearchScan(owner=owner, plan=search_plan, snapshot=snapshot,
+                          candidate_cooldowns=(lambda _items: {}) if cleared else cooldowns)
+    # 只恢复下载票据的边界被隔离；检查点、退避复核及目标结算仍使用真实实现。
+    restored.live = scan.live
+    submitted = []
+
+    def submit(items, ready):
+        """
+        记录恢复后真正提交的候选，并结算已提交集数。
+        """
+        submitted.extend(items)
+        return ready
+
+    restored.run(submit)
+
+    assert len(submitted) == int(cleared)
+    assert restored.collection.remaining == ({"1:19"} if cleared else {"1:18", "1:19"})
+    assert ("无法打开链接" in restored.progress_text()) is not cleared
+
+
 def pages(owner, monkeypatch, data):
     """
     用内存页面替换站点请求，并返回请求页码记录。
     """
     calls = []
     def request(**params):
+        """
+        返回本页内存数据并记录真实页面观察事实。
+        """
         page = params["page"]
         calls.append(page)
         values = data.get(page, [])

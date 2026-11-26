@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional, cast
 
 from app.application.configuration import get_configured_system_config
+from app.application.download.failures import DownloadFailureSnapshot
 from app.application.search.session import (
     SearchSessionRepository,
     SearchSessionSnapshot,
@@ -232,6 +233,7 @@ class SearchScan:
         page_limit: Optional[int] = None,
         prefer_complete: bool = False,
         complete_scan: Optional[bool] = None,
+        candidate_cooldowns: Optional[Callable[[list[Context]], dict[str, DownloadFailureSnapshot]]] = None,
     ) -> None:
         """
         创建或恢复一轮搜索，候选与匹配前史由检查点一起持有。
@@ -239,6 +241,7 @@ class SearchScan:
         :param prefer_complete: 提交分集前先准备覆盖全部目标的候选；由订阅当前整包优先策略决定
         :param complete_scan: 是否翻完所有页再择优（用户选了完整搜索或洗版）；否则各站第一页到齐就先提交，
             凑不齐的目标再继续翻页。未指定时跟随 full
+        :param candidate_cooldowns: 按搜索资源键查询有效下载冷却；仅智能搜索据此暂缓目标的深页兜底
         """
         if not isinstance(plan.mediainfo, MediaInfo):
             raise ValueError("分页影视搜索不适用于音乐")
@@ -252,6 +255,7 @@ class SearchScan:
                          not missing.episodes for seasons in (plan.no_exists or {}).values()
                          for missing in seasons.values())))
         self.complete_scan = full if complete_scan is None else complete_scan
+        self.candidate_cooldowns = candidate_cooldowns
         self.target_scope = target_scope
         self.page_limit = page_limit
         self.prefer_complete = prefer_complete
@@ -277,6 +281,8 @@ class SearchScan:
         self.first_pass_done = False
         # 本轮因要等很久而先跳过的来源及其可再搜时间和原因；整轮什么都没交时改为等它们，不判搜索失败。
         self.long_waits: dict[str, tuple[str, str]] = {}
+        # 暂缓目标的原因与最早重试时间随检查点保存，不能当成已提交或站点限流。
+        self.cooldowns: dict[str, tuple[Optional[str], Optional[str]]] = {}
         self.sources = SearchSources(owner, plan)
         self._media_identity = encode_search_state({
             "source": self.media.media_source, "id": self.media.media_id, "type": self.media.type,
@@ -357,6 +363,7 @@ class SearchScan:
         # 旧检查点没有这两项：按未先提交处理，升级后卡在整季屏障的任务能先交第一页已有的资源。
         self.first_pass_done = bool(data.get("first_pass_done", False))
         self.long_waits = {key: (value[0], value[1]) for key, value in data.get("long_waits", {}).items()}
+        self.cooldowns = {key: (value[0], value[1]) for key, value in data.get("cooldowns", {}).items()}
         same_media = data["media_identity"] == self._media_identity
         if not same_media:
             self.restart = True
@@ -410,7 +417,23 @@ class SearchScan:
                 "retry": self.retry, "retry_reasons": self.retry_reasons,
                 "recovery_failures": {key: count for key, count in self.recovery_failures.items() if key in candidates},
                 "submitted": sorted(self.submitted), "first_pass_done": self.first_pass_done,
-                "long_waits": self.long_waits, "saved_at": time.time()}
+                "long_waits": self.long_waits, "cooldowns": self.cooldowns, "saved_at": time.time()}
+
+    def cooldown_text(self) -> str:
+        """
+        汇总仍缺失且因下载冷却暂缓的目标，供日志及任务终态保留原因和最早重试时间。
+        """
+        targets = self.collection.deferred & self.collection.remaining
+        if not targets:
+            return ""
+        episodes = [int(target.split(":")[1]) for target in targets
+                    if ":" in target and target.split(":")[1].isdigit()]
+        label = format_ranges(episodes) or ("影片" if self.media.type == MediaType.MOVIE else "整季")
+        records = [self.cooldowns[target] for target in sorted(targets) if target in self.cooldowns]
+        reasons = "；".join(dict.fromkeys(reason or "下载失败" for reason, _ in records))
+        retry_at = min((retry for _, retry in records if retry), default=None)
+        retry = f"，最早 {retry_at} 后可重试" if retry_at else ""
+        return f"{label} 的候选资源暂时跳过（原因：{reasons or '下载失败'}）{retry}"
 
     def progress_text(self) -> str:
         """
@@ -433,13 +456,14 @@ class SearchScan:
             waiting = "（站点上还没有，之后的定时检查会继续找）"
         else:
             waiting = f"（其中 {unreleased} 站点上还没有，之后的定时检查会继续找）"
+        cooling = f"。{self.cooldown_text()}" if self.collection.deferred else ""
         if self.ended:
             skipped = sorted({self._site_name(key) for key, source in self.collection.sources.items()
                               if source.failed and not key.startswith("plugin:")})
             note = f"。{('、'.join(skipped))} 这次没有搜成" if skipped else ""
-            return f"搜索结束，{added}{missing}{waiting}{note}"
+            return f"搜索结束，{added}{missing}{waiting}{note}{cooling}"
         page = max((source.next_page for source in self.collection.sources.values()), default=0)
-        return f"已搜到第 {page} 页，{added}{missing}{waiting}"
+        return f"已搜到第 {page} 页，{added}{missing}{waiting}{cooling}"
 
     def _site_name(self, key: str) -> str:
         """
@@ -538,6 +562,10 @@ class SearchScan:
             self.retry.pop(key, None)
             self.retry_reasons.pop(key, None)
             self.live.update(contexts)
+            # 其他缺集仍驱动分页时，新发现的替代资源应重新参与择源，不能继承旧候选的冷却结论。
+            for candidate_id in contexts:
+                if candidate_id not in self.attempted:
+                    self.collection.deferred.difference_update(self.identity[candidate_id]["targets"] or [])
             for candidate_id, context in contexts.items():
                 self.candidates[candidate_id] = {"torrent": torrent_snapshot(context.torrent_info),
                                                   "source": key, "page": page}
@@ -744,6 +772,7 @@ class SearchScan:
         """
         合集覆盖目标全就绪才提交；同轮已处理候选跨队列恢复不重试，剩余缓存先于共享游标兜底。
         """
+        ready = ready - self.collection.deferred
         contexts, keys = self._contexts(ready)
         contexts = self._filter(contexts)
         accepted = {
@@ -763,8 +792,51 @@ class SearchScan:
         self.collection.settle(settled)
         cached = {target for key, record in self.identity.items() if key in self.candidates and key not in self.attempted
                   for target in record["targets"] or []} & ready
+        self._defer_cooling_targets(batch, ready - settled - cached)
         self.collection.deepen(ready - settled - cached)
         self.checkpoint()
+
+    def _defer_cooling_targets(self, batch: list[Context], targets: set[str]) -> None:
+        """
+        智能模式在已收集候选全冷却时暂缓该目标；无退避事实的失败仍继续寻找替代资源。
+
+        :param batch: 刚交给下载层处理的候选，冷却查询须包含本次新记录的失败
+        :param targets: 尚未成功提交且没有待处理缓存候选的目标
+        """
+        if self.complete_scan or self.candidate_cooldowns is None or not batch or not targets:
+            return
+        records = self.candidate_cooldowns(batch)
+        for target in targets:
+            covering = [cast(str, item.torrent_info.search_resource_id) for item in batch
+                        if item.torrent_info is not None
+                        and target in self._coverage(cast(str, item.torrent_info.search_resource_id))]
+            if not covering or any(key not in records for key in covering):
+                continue
+            first = min((records[key] for key in covering), key=lambda item: item.next_retry_at or "")
+            self.collection.deferred.add(target)
+            self.cooldowns[target] = (first.error_message, first.next_retry_at)
+        if self.collection.deferred & targets:
+            logger.info(f"{self.media.title_year} {self.cooldown_text()}，本轮不再为这些目标翻页")
+
+    def _refresh_deferred_targets(self) -> None:
+        """
+        恢复检查点时复核退避；到期或手工清除后只重新放行对应目标及其候选。
+        """
+        deferred = self.collection.deferred & self.collection.remaining
+        if not deferred:
+            return
+        contexts = [context for key in self.candidates if self._coverage(key) & deferred
+                    and (context := self._candidate_context(key)) is not None]
+        records = self.candidate_cooldowns(contexts) if self.candidate_cooldowns else {}
+        for target in deferred:
+            covering = [cast(str, item.torrent_info.search_resource_id) for item in contexts
+                        if item.torrent_info is not None
+                        and target in self._coverage(cast(str, item.torrent_info.search_resource_id))]
+            if covering and all(key in records for key in covering):
+                continue
+            self.collection.deferred.discard(target)
+            self.cooldowns.pop(target, None)
+            self.attempted.difference_update(key for key in self.candidates if target in self._coverage(key))
 
     def _covered_targets(self) -> set[str]:
         """
@@ -809,6 +881,7 @@ class SearchScan:
         self.recovery_failures = {}
         self.first_pass_done = False
         self.long_waits = {}
+        self.cooldowns = {}
         self.sources.queries = {}
         self.sources.keyword_index = 0
         self.attempted.clear()
@@ -895,7 +968,7 @@ class SearchScan:
 
         :return: 已把等待中的来源放回重试队列时为 True，调用方继续循环并按重试时间交还队列
         """
-        if self.submitted or not self.long_waits or not self.collection.remaining:
+        if self.submitted or not self.long_waits or not (self.collection.remaining - self.collection.deferred):
             return False
         for key, (retry_at, reason) in self.long_waits.items():
             source = self.collection.sources[key]
@@ -928,6 +1001,7 @@ class SearchScan:
         started = time.monotonic()
         if self.restart:
             self._reset_changed_contract()
+        self._refresh_deferred_targets()
         while self.collection.remaining:
             if self._stopping():
                 return
@@ -937,7 +1011,8 @@ class SearchScan:
                 if self._has_cached_ready() or self.collection.active_sources(full=self.full):
                     continue
                 # 智能模式只剩站点未收录目标时不再尝试别名；完整模式仍保留别名的深页收集机会。
-                if not (self.full or self.collection.pending) or not self._add_sources():
+                if (not (self.collection.remaining - self.collection.deferred)
+                        or not (self.full or self.collection.pending) or not self._add_sources()):
                     if self._wait_for_long_waits():
                         continue
                     self._finish_round()

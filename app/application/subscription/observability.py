@@ -173,7 +173,8 @@ def finish_returned_search_task(
             return subscription_id, "completed", "cancelled"
         queue.release_task(task_id=task_id, lease_token=lease_token, cancelled=True)
         return None, "cancelled", "cancelled"
-    queue.finish_task(task_id=task_id, lease_token=lease_token, state="completed")
+    queue.finish_task(task_id=task_id, lease_token=lease_token, state="completed",
+                      error=execution_context.result_message)
     return subscription_id, "completed", None
 
 
