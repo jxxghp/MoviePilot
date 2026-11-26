@@ -215,3 +215,60 @@ def test_rename_target_is_checked_in_source_parent(monkeypatch, tmp_path):
             SimpleNamespace(is_superuser=False),
         )
     assert exc_info.value.status_code == 403
+
+
+def test_remote_download_and_image_cleanup_temp_copy_while_preserving_local_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """
+    验证远端存储在 ``TEMP_PATH`` 生成的下载/图片临时副本会在响应完成后删除，而本地存储源文件保持不变。
+    """
+    import asyncio
+
+    temp_root = tmp_path / "temp"
+    temp_root.mkdir()
+    local_root = tmp_path / "local_media"
+    local_root.mkdir()
+    local_source = local_root / "poster.jpg"
+    local_source.write_bytes(b"local-jpeg")
+
+    remote_download_tmp = temp_root / "remote_movie.mkv"
+    remote_download_tmp.write_bytes(b"remote-video")
+    remote_image_tmp = temp_root / "remote_cover.jpg"
+    remote_image_tmp.write_bytes(b"remote-jpeg")
+
+    monkeypatch.setattr(storage_endpoint, "get_runtime_setting", lambda _k: temp_root)
+    monkeypatch.setattr(storage_endpoint, "_ensure_manage_storage_item", lambda item, _u: item)
+
+    # 1. 远端 download 返回带后台清理任务的 FileResponse，执行后删除 TEMP_PATH 临时文件
+    monkeypatch.setattr(storage_endpoint.StorageChain, "download_file", lambda _c, _i: remote_download_tmp)
+    dl_resp = storage_endpoint.download(
+        FileItem(storage="rclone", type="file", path="/movies/remote_movie.mkv", name="remote_movie.mkv"),
+        SimpleNamespace(is_superuser=True),
+    )
+    assert dl_resp.background is not None
+    asyncio.run(dl_resp.background())
+    assert not remote_download_tmp.exists()
+
+    # 2. 远端 image 读取字节后立即清理 TEMP_PATH 临时文件
+    monkeypatch.setattr(storage_endpoint.StorageChain, "download_file", lambda _c, _i: remote_image_tmp)
+    img_resp = storage_endpoint.image(
+        FileItem(storage="u115", type="file", path="/movies/remote_cover.jpg", name="remote_cover.jpg"),
+        SimpleNamespace(is_superuser=True),
+    )
+    assert img_resp.body == b"remote-jpeg"
+    assert not remote_image_tmp.exists()
+
+    # 3. 本地存储原文件绝不能被清理任务删除
+    monkeypatch.setattr(storage_endpoint.StorageChain, "download_file", lambda _c, _i: local_source)
+    local_dl = storage_endpoint.download(
+        FileItem(storage="local", type="file", path=str(local_source), name="poster.jpg"),
+        SimpleNamespace(is_superuser=True),
+    )
+    assert local_dl.background is None
+    local_img = storage_endpoint.image(
+        FileItem(storage="local", type="file", path=str(local_source), name="poster.jpg"),
+        SimpleNamespace(is_superuser=True),
+    )
+    assert local_img.body == b"local-jpeg"
+    assert local_source.exists()

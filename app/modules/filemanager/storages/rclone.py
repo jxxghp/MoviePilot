@@ -9,7 +9,7 @@ import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from app.foundation import temporal as time_tools
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -37,6 +37,120 @@ def _evict_unused_folder_locks_locked() -> None:
                 break
         else:
             break
+
+
+class _RcloneRangeStream:
+    """
+    基于 ``rclone cat --offset`` 的按需字节流读取器。
+
+    供媒体流端点按 HTTP Range 渐进式传输远端大文件，无需整文件下载至临时目录；
+    ``HEAD`` 探测或定位变更时按需启停子进程，并在请求结束时立即回收句柄。
+    """
+
+    def __init__(self, remote_path: str, size: int, startupinfo: Optional[Any] = None) -> None:
+        """
+        初始化远端流读取上下文，不在构造阶段启动子进程。
+
+        :param remote_path: MP 远端内的文件路径
+        :param size: 已确认的文件总字节数
+        :param startupinfo: Windows 平台可选隐藏控制台启动配置
+        """
+        self._remote_path = remote_path
+        self._size = max(0, int(size))
+        self._startupinfo = startupinfo
+        self._position = 0
+        self._process: Optional[subprocess.Popen[bytes]] = None
+        self._closed = False
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        """
+        更新下一次读取的起始字节偏移，定位变化时关闭旧流进程。
+
+        :param offset: 目标字节偏移量
+        :param whence: 偏移基准，支持 ``0``（文件头）、``1``（当前位置）、``2``（文件尾）
+        :return: 归一化后的新字节位置
+        """
+        if whence == 1:
+            target = self._position + offset
+        elif whence == 2:
+            target = self._size + offset
+        else:
+            target = offset
+        clamped = max(0, min(int(target), self._size))
+        if clamped != self._position:
+            self._close_process()
+            self._position = clamped
+        return self._position
+
+    def read(self, size: int = -1) -> bytes:
+        """
+        从当前偏移按需读取指定字节数，不将剩余内容落盘。
+
+        :param size: 本次最多读取的字节数；负数表示读取至文件末尾
+        :return: 读取到的字节块，到达文件末尾或流已关闭时返回空字节串
+        """
+        if self._closed or size == 0 or self._position >= self._size:
+            return b""
+        remaining_total = self._size - self._position
+        want = remaining_total if size < 0 else min(int(size), remaining_total)
+        if want <= 0:
+            return b""
+        if self._process is None:
+            self._process = subprocess.Popen(
+                [
+                    "rclone",
+                    "cat",
+                    "--offset",
+                    str(self._position),
+                    f"MP:{self._remote_path}",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                startupinfo=self._startupinfo,
+                bufsize=65536,
+            )
+        stdout = self._process.stdout
+        if stdout is None:
+            self._close_process()
+            return b""
+        data = stdout.read(want)
+        if not data:
+            self._close_process()
+            return b""
+        self._position += len(data)
+        if self._position >= self._size:
+            self._close_process()
+        return data
+
+    def _close_process(self) -> None:
+        proc = self._process
+        self._process = None
+        if proc is None:
+            return
+        try:
+            if proc.stdout is not None:
+                proc.stdout.close()
+        except Exception:
+            pass
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=1)
+                except Exception:
+                    pass
+
+    def close(self) -> None:
+        """
+        关闭流并立即终止底层 ``rclone cat`` 子进程。
+        """
+        if self._closed:
+            return
+        self._closed = True
+        self._close_process()
 
 
 class Rclone(StorageBase):
@@ -416,6 +530,23 @@ class Rclone(StorageBase):
         except Exception as err:
             logger.error(f"【rclone】重命名文件失败：{err}")
         return False
+
+    def open_file_stream(self, fileitem: _SchemaFileItem) -> Optional[Tuple[Any, int]]:
+        """
+        以按需定位流打开 Rclone 远端文件，供流媒体端点按 HTTP Range 边加载边播放而不写入临时目录。
+
+        :param fileitem: 待流式读取的远端文件项
+        :return: ``(stream, size)`` 二元组；路径无效或无法确认文件大小时返回 None
+        """
+        if not fileitem.path:
+            return None
+        size = fileitem.size
+        if size is None or size < 0:
+            detailed = self.detail(fileitem)
+            size = detailed.size if detailed else None
+        if size is None or size < 0:
+            return None
+        return _RcloneRangeStream(fileitem.path, int(size), self.__get_hidden_shell()), int(size)
 
     def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """

@@ -284,3 +284,74 @@ def test_folder_lock_table_evicts_old_unlocked_paths() -> None:
     assert "/C" in rclone_module._folder_locks
     assert first_lock is not third_lock
     assert second_lock is rclone_module._folder_locks["/B"]
+
+
+def test_rclone_open_file_stream_reads_ranges_without_temp_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    验证 Rclone.open_file_stream 通过 ``rclone cat --offset`` 按需读取字节区间并在关闭时终止子进程，不写入临时目录。
+    """
+    import io
+
+    from app.modules.filemanager.module import FileManagerModule
+
+    payload = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    spawned: list[tuple[list[str], SimpleNamespace]] = []
+
+    def _fake_popen(cmd, **_kwargs):
+        offset_idx = cmd.index("--offset")
+        offset = int(cmd[offset_idx + 1])
+        terminated = {"called": False}
+
+        def _terminate() -> None:
+            terminated["called"] = True
+
+        proc = SimpleNamespace(
+            stdout=io.BytesIO(payload[offset:]),
+            poll=lambda: 0 if terminated["called"] else None,
+            terminate=_terminate,
+            kill=_terminate,
+            wait=lambda timeout=None: 0,
+        )
+        spawned.append((list(cmd), proc))
+        return proc
+
+    monkeypatch.setattr("app.modules.filemanager.storages.rclone.subprocess.Popen", _fake_popen)
+    storage = Rclone()
+
+    # 1. 空路径返回 None
+    assert storage.open_file_stream(schemas.FileItem(storage="rclone", type="file", path="", name="a.mkv")) is None
+
+    # 2. 缺失 size 时回退 detail() 获取长度；HEAD 探测直接 close() 不启动子进程
+    monkeypatch.setattr(
+        storage,
+        "detail",
+        lambda _item: schemas.FileItem(storage="rclone", type="file", path="/Media/movie.mkv", size=len(payload)),
+    )
+    head_stream = storage.open_file_stream(
+        schemas.FileItem(storage="rclone", type="file", path="/Media/movie.mkv", name="movie.mkv")
+    )
+    assert head_stream is not None
+    head_handle, total_size = head_stream
+    assert total_size == len(payload)
+    head_handle.close()
+    assert spawned == []
+
+    # 3. Range 定位读取仅从目标偏移启动一次 rclone cat 并在关闭时回收子进程
+    range_result = storage.open_file_stream(
+        schemas.FileItem(storage="rclone", type="file", path="/Media/movie.mkv", name="movie.mkv", size=len(payload))
+    )
+    assert range_result is not None
+    stream_handle, size = range_result
+    assert size == len(payload)
+    assert stream_handle.seek(10) == 10
+    assert stream_handle.read(6) == b"ABCDEF"
+    stream_handle.close()
+    assert len(spawned) == 1
+    assert spawned[0][0] == ["rclone", "cat", "--offset", "10", "MP:/Media/movie.mkv"]
+    assert spawned[0][1].poll() == 0
+
+    # 4. FileManagerModule 声明 rclone 支持渐进流式读取
+    file_module = FileManagerModule()
+    monkeypatch.setattr(file_module, "_support_storages", {"rclone"})
+    monkeypatch.setattr(file_module, "_FileManagerModule__get_storage_oper", lambda _s: storage)
+    assert file_module.supports_file_stream("rclone") is True

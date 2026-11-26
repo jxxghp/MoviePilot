@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException
+from starlette.background import BackgroundTask
 from starlette.responses import FileResponse, Response
 
 from app.api.dependencies.auth import (
@@ -33,6 +34,7 @@ from app.chain.transfer.facade import TransferChain
 from app.foundation import text as text_tools
 from app.runtime.localization import LocaleHelper
 from app.runtime.progress import ProgressHelper
+from app.runtime.settings import get_runtime_setting
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.response import Response as _SchemaResponse
@@ -514,6 +516,21 @@ def delete(
     return _SchemaResponse(success=False)
 
 
+def _cleanup_remote_temp_file(fileitem: _SchemaFileItem, tmp_file: Path) -> None:
+    """
+    清理远端存储下载至 ``TEMP_PATH`` 的临时副本，本地存储原路径绝不删除。
+    """
+    if (fileitem.storage or "local") == "local":
+        return
+    try:
+        temp_root = Path(get_runtime_setting("TEMP_PATH")).resolve()
+        resolved_tmp = tmp_file.resolve()
+        if resolved_tmp != temp_root and resolved_tmp.is_relative_to(temp_root):
+            resolved_tmp.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 @router.post(
     "/download",
     summary="下载文件",
@@ -541,7 +558,12 @@ def download(
     # 临时目录
     tmp_file = StorageChain().download_file(fileitem)
     if tmp_file:
-        return FileResponse(path=tmp_file)
+        cleanup = (
+            BackgroundTask(_cleanup_remote_temp_file, fileitem, tmp_file)
+            if (fileitem.storage or "local") != "local"
+            else None
+        )
+        return FileResponse(path=tmp_file, background=cleanup)
     return _SchemaResponse(success=False)
 
 
@@ -572,7 +594,11 @@ def image(
     tmp_file = StorageChain().download_file(fileitem)
     if not tmp_file:
         raise HTTPException(status_code=500, detail="图片读取出错")
-    return Response(content=tmp_file.read_bytes(), media_type="image/jpeg")
+    try:
+        content = tmp_file.read_bytes()
+    finally:
+        _cleanup_remote_temp_file(fileitem, tmp_file)
+    return Response(content=content, media_type="image/jpeg")
 
 
 @router.post("/rename", summary="重命名文件或目录", response_model=_SchemaResponse[None])
