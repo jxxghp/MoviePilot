@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer.execution import (
     TransferExecutionCommand,
+    TransferExecutionConflictError,
     TransferExecutionLeaseLostError,
     TransferExecutionState,
     TransferManualReviewDecision,
@@ -28,6 +29,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
 )
 from app.chain.transfer import execution as transfer_chain_module
+from app.chain.transfer.settlement import _discard_corrupt_transfer_task
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
@@ -733,3 +735,60 @@ def test_frozen_disc_plan_executes_and_replays_with_real_step_ledger(
     assert source_oper.delete.call_args.args[0].url is None
     assert checkpoint.planning_input.source_fileitem == source
     assert checkpoint.items[0].source_fileitem == leaf
+
+
+def test_prepare_conflict_on_stuck_task_discards_pending_so_replay_stops(
+        execution_repository,
+):
+    """
+    恢复调度可认领、prepare 却永远失败的卡死任务必须被清理，否则反复回放。
+
+    settling 任务仍在恢复候选里，但 prepare 的 CAS 只接受 not_started /
+    running / retry_wait，于是每次回放都在 prepare 抛
+    “整理任务当前状态不能准备外部步骤”，失败收口又放掉租约，调度下轮继续
+    认领同一任务。失败收口必须原子删除该持久任务，任务才退出重试。
+    """
+    with execution_repository._session_factory() as session:
+        pending = session.query(TransferPending).one()
+        pending.execution_state = "settling"
+        pending.lease_owner = "old-owner"
+        pending.lease_token = "old-token"
+        pending.lease_expires_at = "2000-01-01 00:00:00.000000"
+        session.commit()
+    admissions = TransactionalTransferAdmissionRepository(
+        execution_repository._session_factory
+    )
+    claimed = admissions.claim_recoverable(
+        owner_id="recovery", limit=1, lease_seconds=120,
+    )
+    assert [item.task_id for item in claimed] == ["task-runner"]
+    admission = claimed[0]
+    assert admission.lease_token
+    runner = transfer_chain_module._DurableTransferStepRunner(
+        task_id="task-runner",
+        lease_token=admission.lease_token,
+        checkpoint_fingerprint=_runner_plan_fingerprint(),
+        repository=execution_repository,
+    )
+    with pytest.raises(
+        TransferExecutionConflictError,
+        match="整理任务当前状态不能准备外部步骤",
+    ):
+        runner.run(
+            phase="transfer",
+            kind="materialize_target",
+            payload=_runner_step_payload(),
+            execute=lambda: pytest.fail("不可准备的步骤不得执行副作用"),
+            observe=lambda: pytest.fail("不可准备的步骤不得执行恢复探测"),
+        )
+    task = Mock(
+        preview=False,
+        admission_task_id="task-runner",
+        lease_token=admission.lease_token,
+    )
+    _discard_corrupt_transfer_task(
+        execution_repository,
+        task,
+        TransferExecutionConflictError("整理任务当前状态不能准备外部步骤"),
+    )
+    assert execution_repository.get_snapshot(task_id="task-runner") is None
