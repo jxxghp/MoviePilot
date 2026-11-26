@@ -245,7 +245,12 @@ def test_direct_calls_with_none_pagination_fall_back_to_endpoint_defaults(
     )
 
     assert asyncio.run(
-        message.get_notification_message(_=None, service=message_service, page=None, count=None)
+        message.get_notification_message(
+            token_data=TokenPayload(sub=1, username="admin", super_user=True),
+            service=message_service,
+            page=None,
+            count=None,
+        )
     ) == []
     assert asyncio.run(
         history.download_history(
