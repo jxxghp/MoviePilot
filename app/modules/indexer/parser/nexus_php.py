@@ -588,6 +588,12 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         )
         return user_level_match.group(1).strip() if user_level_match else None
 
+    def _set_detail_user_level(self, user_level: str) -> None:
+        """
+        仅在括号组名后仍有等级时移除该前缀，保留只有组名的等级文本。
+        """
+        self.user_level = re.sub(r"^\([^)]+\)\s*(?=\S)", "", user_level.strip())
+
     def _get_user_level(self, html: etree._Element) -> None:
         """
         从用户详情页或首页中解析用户等级。
@@ -596,7 +602,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         user_levels_text = html.xpath('//tr/td[text()="等級" or text()="等级" or *[text()="等级"]]/'
                                       'following-sibling::td[1]/img[1]/@title')
         if user_levels_text:
-            self.user_level = user_levels_text[0].strip()
+            self._set_detail_user_level(user_levels_text[0])
             return
 
         user_levels_text = html.xpath('//tr/td[text()="等級" or text()="等级"]/'
@@ -604,13 +610,13 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                                       '|//tr/td[text()="等級" or text()="等级"]/'
                                       'following-sibling::td[1 and img[not(@title)]]')
         if user_levels_text:
-            self.user_level = user_levels_text[0].xpath("string(.)").strip()
+            self._set_detail_user_level(user_levels_text[0].xpath("string(.)"))
             return
 
         user_levels_text = html.xpath('//tr/td[text()="等級" or text()="等级"]/'
                                       'following-sibling::td[1]')
         if user_levels_text:
-            self.user_level = user_levels_text[0].xpath("string(.)").strip()
+            self._set_detail_user_level(user_levels_text[0].xpath("string(.)"))
             return
 
         user_levels_text = html.xpath('//a[contains(@href, "userdetails")]/text()')
@@ -618,7 +624,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             for user_level_text in user_levels_text:
                 user_level_match = re.search(r"\[(.*)]", user_level_text)
                 if user_level_match and user_level_match.group(1).strip():
-                    self.user_level = user_level_match.group(1).strip()
+                    self._set_detail_user_level(user_level_match.group(1))
                     break
 
         user_level = self._parse_user_level_marker(html.xpath("string(.)"), self.userid)

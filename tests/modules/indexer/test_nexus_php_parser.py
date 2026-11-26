@@ -329,6 +329,24 @@ def test_nexus_php_pttime_marker_requires_common_level_for_current_user():
     assert parse_marker("[UID=123][(初中)Elite User]", "67537") is None
 
 
+@pytest.mark.parametrize("detail, expected", [
+    ("<table><tr><td>等级</td><td>(士兵)User</td></tr></table>", "User"),
+    ('<table><tr><td>等级</td><td><img title=" (军官) Elite User "></td></tr></table>', "Elite User"),
+    ('<a href="userdetails.php?id=12">[(士兵)User]</a>', "User"),
+    ("<table><tr><td>等级</td><td>Power User</td></tr></table>", "Power User"),
+    ("<table><tr><td>等级</td><td>(士兵)  </td></tr></table>", "(士兵)"),
+    ("<table><tr><td>等级</td><td>User (士兵)</td></tr></table>", "User (士兵)"),
+])
+def test_nexus_php_detail_user_level_group_prefix(detail: str, expected: str) -> None:
+    """
+    详情页等级仅在组名前缀和等级并存时移除组名。
+    """
+    parser = _build_parser()
+    parser._parse_user_detail_info(detail)
+
+    assert parser.user_level == expected
+
+
 def test_nexus_php_bonus_fallback_ignores_unrelated_script_numbers():
     """
     魔力值兜底解析不得把页面脚本中的无关数字当作积分。
