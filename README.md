@@ -75,6 +75,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 - [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server)
 - [MoviePilot-Rust](https://github.com/jxxghp/MoviePilot-Rust)
 - [MoviePilot-Wiki](https://github.com/jxxghp/MoviePilot-Wiki)
+- [MoviePilot-App](https://github.com/jxxghp/MoviePilot-App)
 
 ## 免责申明
 
