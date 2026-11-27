@@ -34,26 +34,26 @@ def test_collect_agent_config_prefers_loaded_provider_directory() -> None:
 
     provider_definitions = [
         {
-            "id": "frogbot",
-            "name": "FrogBot",
-            "default_base_url": "https://app.frogbot.ai/api/v1",
+            "id": "example-provider",
+            "name": "Example Provider",
+            "default_base_url": "https://provider.example.test/v1",
             "api_key_label": "API Key",
         }
     ]
     models = [
-        {"id": "frog-1", "name": "Frog 1", "context_tokens_k": 128},
-        {"id": "frog-2", "name": "Frog 2"},
+        {"id": "example-model-1", "name": "Example Model 1", "context_tokens_k": 128},
+        {"id": "example-model-2", "name": "Example Model 2"},
     ]
 
     with (
         patch.object(module, "print_step"),
         patch.object(module, "_prompt_yes_no", side_effect=[True, False, True]),
         patch.object(module, "_load_llm_provider_definitions", return_value=provider_definitions),
-        patch.object(module, "_prompt_provider_choice", return_value="frogbot") as provider_prompt,
+        patch.object(module, "_prompt_provider_choice", return_value="example-provider") as provider_prompt,
         patch.object(module, "_prompt_text", side_effect=["https://override.example.com/v1"]),
-        patch.object(module, "_prompt_secret_text", return_value="sk-frog"),
+        patch.object(module, "_prompt_secret_text", return_value="example-api-key"),
         patch.object(module, "_load_llm_models", return_value=models) as load_models,
-        patch.object(module, "_prompt_model_choice", return_value="frog-2") as model_prompt,
+        patch.object(module, "_prompt_model_choice", return_value="example-model-2") as model_prompt,
         patch.object(module, "read_env_value", return_value=None),
         patch.object(module, "_env_default", side_effect=lambda key, default="": default),
         patch.object(module, "_env_bool", side_effect=lambda key, default: default),
@@ -64,16 +64,16 @@ def test_collect_agent_config_prefers_loaded_provider_directory() -> None:
 
     provider_prompt.assert_called_once()
     load_models.assert_called_once_with(
-        provider="frogbot",
-        api_key="sk-frog",
+        provider="example-provider",
+        api_key="example-api-key",
         base_url="https://override.example.com/v1",
         base_url_preset="",
         runtime_python=Path("/tmp/runtime-python"),
     )
     model_prompt.assert_called_once_with(models, default="")
-    assert config["LLM_PROVIDER"] == "frogbot"
-    assert config["LLM_MODEL"] == "frog-2"
-    assert config["LLM_API_KEY"] == "sk-frog"
+    assert config["LLM_PROVIDER"] == "example-provider"
+    assert config["LLM_MODEL"] == "example-model-2"
+    assert config["LLM_API_KEY"] == "example-api-key"
     assert config["LLM_BASE_URL"] == "https://override.example.com/v1"
 
 
@@ -152,7 +152,7 @@ def test_load_llm_provider_definitions_inner_uses_direct_provider_module_loader(
             """
             异步返回测试预设的提供方定义列表。
             """
-            return [{"id": "frogbot", "name": "FrogBot"}]
+            return [{"id": "example-provider", "name": "Example Provider"}]
 
     class _FakeProviderModule:
         """
@@ -176,7 +176,7 @@ def test_load_llm_provider_definitions_inner_uses_direct_provider_module_loader(
         providers = module._load_llm_provider_definitions_inner()
 
     loader.assert_called_once_with()
-    assert providers == [{"id": "frogbot", "name": "FrogBot"}]
+    assert providers == [{"id": "example-provider", "name": "Example Provider"}]
 
 
 def test_llm_provider_choice_map_skips_oauth_only_provider() -> None:
@@ -193,6 +193,21 @@ def test_llm_provider_choice_map_skips_oauth_only_provider() -> None:
     )
 
     assert choices == {"chatgpt": "ChatGPT"}
+
+
+def test_llm_provider_choices_include_retained_platforms() -> None:
+    """
+    本地安装向导从真实目录加载保留平台，并允许直接选择 API Key 配置。
+    """
+    from app.agent.llm import provider as provider_module
+
+    module = load_local_setup_module()
+    with patch.object(module, "_load_llm_provider_module", return_value=provider_module):
+        definitions = module._load_llm_provider_definitions_inner()
+    choices = module._llm_provider_choice_map(definitions)
+
+    for provider_id in ("atlascloud", "fireworks-ai", "huggingface", "jiekou", "kilo", "llama", "llmgateway", "nova", "poe"):
+        assert choices[provider_id]
 
 
 def test_prompt_provider_choice_accepts_custom_provider_id() -> None:
@@ -223,6 +238,16 @@ def test_fallback_provider_choices_include_builtin_domestic_token_providers() ->
     assert module.LLM_PROVIDER_FALLBACK_CHOICES["china-unicom"] == "中国联通"
     assert module.LLM_PROVIDER_FALLBACK_CHOICES["china-mobile"] == "中国移动"
     assert module.LLM_PROVIDER_FALLBACK_CHOICES["china-telecom"] == "中国电信"
+
+
+def test_local_setup_fallback_keeps_openrouter() -> None:
+    """
+    安装向导保留受支持的聚合平台及其默认地址。
+    """
+    module = load_local_setup_module()
+
+    assert module.LLM_PROVIDER_FALLBACK_CHOICES["openrouter"] == "OpenRouter"
+    assert module.LLM_PROVIDER_DEFAULTS["openrouter"]["base_url"] == "https://openrouter.ai/api/v1"
 
 
 def test_local_setup_defaults_include_builtin_domestic_token_base_urls() -> None:

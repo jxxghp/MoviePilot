@@ -38,6 +38,46 @@ def test_provider_manage_rejects_unknown_action(manager):
     assert "data" in result
 
 
+def test_provider_manage_returns_standard_error_for_unknown_provider(
+    manager: LLMProviderManager,
+) -> None:
+    """
+    管理接口对未定义的提供商返回统一错误结构。
+    """
+    provider_id = "unknown-provider"
+    result = asyncio.run(manager.provider_manage(
+        provider_id,
+        LlmProviderAction.LIST_MODELS,
+        api_key="offline-key",
+        base_url="https://custom.example.test/v1",
+    ))
+
+    assert result["success"] is False
+    assert result["message"] == f"不支持的 LLM 提供商：{provider_id}"
+    assert result["data"] is None
+
+
+def test_llm_manage_endpoint_exposes_retained_platforms() -> None:
+    """
+    设置页通过真实管理端点能够获取保留平台的正式目录项。
+    """
+    from app.api.endpoints import llm as llm_endpoint
+
+    previous = register_llm_provider_runtime(LLMProviderManager)
+    try:
+        request = SimpleNamespace(url_for=lambda *_args, **_kwargs: "unused")
+        payload = schemas.ManageRequest(target="", action="list_providers")
+        response = asyncio.run(llm_endpoint.manage_provider(request, payload, _="token"))
+    finally:
+        register_llm_provider_runtime(previous)
+
+    assert response.success is True
+    providers = {item["id"]: item for item in response.data}
+    for provider_id in ("atlascloud", "fireworks-ai", "huggingface", "jiekou", "kilo", "llama", "llmgateway", "nova", "poe"):
+        assert providers[provider_id]["supports_api_key"]
+        assert providers[provider_id]["default_base_url"]
+
+
 def test_provider_manage_accepts_enum_and_string_action(manager, monkeypatch):
     """
     动作标识兼容枚举对象与原始字符串，两种形式等价。

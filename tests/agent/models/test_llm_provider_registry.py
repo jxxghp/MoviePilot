@@ -4,6 +4,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import Optional
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -40,26 +41,30 @@ def test_models_dev_catalog_does_not_expand_unlisted_providers() -> None:
     models.dev 目录仅提供模型元数据，不再向提供商列表动态扩充未内置平台。
     """
     manager = LLMProviderManager()
+    provider_id = "unlisted-provider"
     manager._models_dev_data = {
-        "frogbot": {
-            "id": "frogbot",
-            "name": "FrogBot",
+        provider_id: {
+            "id": provider_id,
+            "name": provider_id,
             "npm": "@ai-sdk/openai-compatible",
-            "env": ["FROGBOT_API_KEY"],
-            "api": "https://app.frogbot.ai/api/v1",
+            "env": ["UNLISTED_API_KEY"],
+            "api": "https://unlisted.example.test/v1",
             "models": {},
         }
     }
 
     with pytest.raises(LLMProviderError):
-        manager.get_provider("frogbot")
-    assert "frogbot" not in {item["id"] for item in manager.list_providers()}
+        manager.get_provider(provider_id)
+    assert provider_id not in {item["id"] for item in manager.list_providers()}
+    assert provider_id not in {
+        item["id"] for item in asyncio.run(manager.list_providers_async(force_refresh=True))
+    }
 
 
 @pytest.mark.usefixtures("_isolate_provider_manager")
 def test_builtin_provider_catalog_exposes_generic_entries_and_curated_vendors() -> None:
     """
-    内置目录前两位暴露通用 OpenAI 与 Anthropic 兼容入口，并移除冗余中转预设。
+    内置目录暴露通用兼容入口及受支持的平台。
     """
     manager = LLMProviderManager()
     providers = asyncio.run(manager.list_providers_async())
@@ -68,63 +73,83 @@ def test_builtin_provider_catalog_exposes_generic_entries_and_curated_vendors() 
     assert provider_ids[:2] == ["openai", "anthropic-compatible"]
     for kept in ("opencode", "modelscope", "qiniu-ai", "openrouter", "siliconflow"):
         assert kept in provider_ids
-    for removed in (
-        "atlascloud",
-        "api-route",
-        "cheaperinference",
-        "runcrate",
-        "obscurify-ai",
-        "cheapaimodel",
-        "uberllm",
-        "trustedrouter",
-        "aigrow",
-        "jiekou",
-        "kilo",
-        "llama",
-        "llmgateway",
-        "poe",
-        "qihang-ai",
-        "huggingface",
-        "nova",
-        "fireworks-ai",
-    ):
-        assert removed not in provider_ids
 
 
 @pytest.mark.usefixtures("_isolate_provider_manager")
 @pytest.mark.parametrize(
-    ("provider_id", "saved_base_url", "expected_base_url"),
+    ("provider_id", "name", "base_url", "model_list_strategy"),
     [
-        ("api-route", None, "https://global.api-route.com/v1"),
-        ("aigrow", None, "https://aigrow.gg/v1"),
-        ("uberllm", None, "https://api.martllm.com/v1"),
-        ("atlascloud", " https://proxy.example.test/v1/ ", "https://proxy.example.test/v1"),
-        ("huggingface", None, "https://router.huggingface.co/v1"),
+        ("atlascloud", "Atlas Cloud", "https://api.atlascloud.ai/v1", "openai_compatible"),
+        ("fireworks-ai", "Fireworks AI", "https://api.fireworks.ai/inference/v1", "models_dev_only"),
+        ("huggingface", "Hugging Face", "https://router.huggingface.co/v1", "models_dev_only"),
+        ("jiekou", "接口AI", "https://api.jiekou.ai/openai", "models_dev_only"),
+        ("kilo", "Kilo", "https://api.kilo.ai/api/gateway", "models_dev_only"),
+        ("llama", "Meta Llama", "https://api.llama.com/compat/v1", "models_dev_only"),
+        ("llmgateway", "LLM Gateway", "https://api.llmgateway.io/v1", "models_dev_only"),
+        ("nova", "Amazon Nova", "https://api.nova.amazon.com/v1", "models_dev_only"),
+        ("poe", "Poe", "https://api.poe.com/v1", "models_dev_only"),
     ],
 )
-def test_saved_relay_config_keeps_runtime_endpoint(
-    provider_id: str, saved_base_url: str | None, expected_base_url: str,
+def test_retained_platforms_are_visible_and_resolve_runtime(
+    provider_id: str,
+    name: str,
+    base_url: str,
+    model_list_strategy: str,
 ) -> None:
     """
-    旧中转预设退出目录后，已保存的配置仍使用原接口地址和 API Key。
+    保留平台作为正式目录项提供选择、模型目录和连接配置。
+
+    :param provider_id: 正式平台标识
+    :param name: 平台显示名称
+    :param base_url: 平台默认服务地址
+    :param model_list_strategy: 平台的模型目录读取方式
     """
     manager = LLMProviderManager()
     manager._models_dev_data = {}
+    for providers in (manager.list_providers(), asyncio.run(manager.list_providers_async())):
+        entry = next(item for item in providers if item["id"] == provider_id)
+        assert entry["name"] == name
+        assert entry["default_base_url"] == base_url
+        assert entry["supports_api_key"]
 
-    runtime = asyncio.run(
-        manager.resolve_runtime(
+    provider = manager.get_provider(provider_id)
+    assert provider.runtime == "openai_compatible"
+    assert provider.models_dev_provider_id == provider_id
+    assert provider.model_list_strategy == model_list_strategy
+    assert manager.resolve_model_list_base_url(provider_id, None) == base_url
+
+    runtime = asyncio.run(manager.resolve_runtime(
+        provider_id=provider_id,
+        model="provider-model",
+        api_key="offline-key",
+    ))
+    assert runtime["provider_id"] == provider_id
+    assert runtime["runtime"] == "openai_compatible"
+    assert runtime["base_url"] == base_url
+    assert runtime["api_key"] == "offline-key"
+    assert runtime["model_id"] == "provider-model"
+
+
+@pytest.mark.usefixtures("_isolate_provider_manager")
+@pytest.mark.parametrize("base_url", [None, "https://custom.example.test/v1"])
+def test_unknown_provider_uses_standard_resolution_error(
+    base_url: Optional[str],
+) -> None:
+    """
+    未定义的提供商通过统一解析逻辑返回错误，不受自定义地址影响。
+    """
+    manager = LLMProviderManager()
+    provider_id = "unknown-provider"
+
+    with pytest.raises(LLMProviderError, match=f"不支持的 LLM 提供商：{provider_id}"):
+        asyncio.run(manager.resolve_runtime(
             provider_id=provider_id,
             model="custom-model",
             api_key="test-key",
-            base_url=saved_base_url,
-        )
-    )
-
-    assert runtime["runtime"] == "openai_compatible"
-    assert runtime["base_url"] == expected_base_url
-    assert runtime["api_key"] == "test-key"
-    assert runtime["model_id"] == "custom-model"
-    assert manager.resolve_model_list_base_url(provider_id, saved_base_url) == expected_base_url
+            base_url=base_url,
+        ))
+    with pytest.raises(LLMProviderError, match=f"不支持的 LLM 提供商：{provider_id}"):
+        manager.resolve_model_list_base_url(provider_id, base_url)
 
 
 @pytest.mark.usefixtures("_isolate_provider_manager")
@@ -524,18 +549,24 @@ def test_generic_openai_compatible_lists_models_via_authenticated_endpoint() -> 
 
 
 @pytest.mark.usefixtures("_isolate_provider_manager")
-def test_list_models_for_catalog_builtin_uses_models_dev_after_refresh() -> None:
+@pytest.mark.parametrize(
+    "provider_id",
+    ["modelscope", "fireworks-ai", "huggingface", "jiekou", "kilo", "llama", "llmgateway", "nova", "poe"],
+)
+def test_list_models_for_catalog_builtin_uses_models_dev_after_refresh(provider_id: str) -> None:
     """
     保留的目录型内置提供方在刷新后仍从 models.dev 读取模型列表。
+
+    :param provider_id: 使用元数据目录读取模型的正式平台标识
     """
     manager = LLMProviderManager()
     payload = {
-        "modelscope": {
-            "id": "modelscope",
-            "name": "ModelScope",
+        provider_id: {
+            "id": provider_id,
+            "name": provider_id,
             "models": {
-                "Qwen/Qwen3-235B": {
-                    "name": "Qwen3 235B",
+                "provider-model": {
+                    "name": "Provider Model",
                     "limit": {"context": 131072},
                 }
             },
@@ -553,13 +584,13 @@ def test_list_models_for_catalog_builtin_uses_models_dev_after_refresh() -> None
     with patch.object(manager, "get_models_dev_data", AsyncMock(side_effect=_load_models_dev)):
         models = asyncio.run(
             manager.list_models(
-                provider_id="modelscope",
+                provider_id=provider_id,
                 api_key="sk-test",
                 force_refresh=True,
             )
         )
 
-    assert [item["id"] for item in models] == ["Qwen/Qwen3-235B"]
+    assert [item["id"] for item in models] == ["provider-model"]
     assert models[0]["source"] == "models.dev"
 
 
