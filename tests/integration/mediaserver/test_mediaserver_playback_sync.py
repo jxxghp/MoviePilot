@@ -915,3 +915,46 @@ def test_mediaserver_chain_playback_and_auth_methods(monkeypatch: pytest.MonkeyP
     assert pwd_res is not None and pwd_res.token == "emby-tok"
     assert chain.authenticate_user("Emby", username="alice", password="wrong") is None
     assert len(calls) >= 8
+
+
+def test_user_mediaserver_credential_persists_across_backend_restarts(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    验证后端重启导致 SECRET_KEY 与 RESOURCE_SECRET_KEY 重新随机生成后，已绑定的媒体服务器令牌依然永久有效。
+    """
+    from app.application.security import token as token_security
+
+    store = _InMemorySystemConfig()
+    monkeypatch.setattr(playback_app, "get_configured_system_config", lambda: store)
+    config_dir = tmp_path / "config"
+
+    runtime_values = {
+        "CONFIG_PATH": config_dir,
+        "SECRET_KEY": "boot-1-ephemeral-secret",
+        "RESOURCE_SECRET_KEY": "boot-1-ephemeral-resource-secret",
+    }
+    monkeypatch.setattr(playback_app, "get_runtime_setting", lambda key: runtime_values.get(key))
+
+    saved = playback_app.save_user_mediaserver_credential(
+        "alice",
+        "MainEmby",
+        token="emby-permanent-user-token",
+        remote_username="AliceEmby",
+        remote_user_id="uid-42",
+    )
+    assert saved.token == "emby-permanent-user-token"
+    assert (config_dir / ".credential_key").is_file()
+
+    # 模拟后端进程重启：清空进程内密钥缓存并轮换所有临时密钥
+    token_security._credential_secret_cache.clear()
+    runtime_values["SECRET_KEY"] = "boot-2-ephemeral-secret"
+    runtime_values["RESOURCE_SECRET_KEY"] = "boot-2-ephemeral-resource-secret"
+
+    restored = playback_app.get_user_mediaserver_credential("alice", "MainEmby")
+    assert restored is not None
+    assert restored.token == "emby-permanent-user-token"
+    assert restored.remote_username == "AliceEmby"
+    assert restored.remote_user_id == "uid-42"
+    assert restored.invalid is False

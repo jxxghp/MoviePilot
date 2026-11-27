@@ -23,7 +23,11 @@ from typing import Any, Optional, Protocol
 from urllib.parse import urlencode, urlsplit
 
 from app.application.configuration import get_configured_system_config
-from app.application.security.token import decrypt, encrypt_message
+from app.application.security.token import (
+    decrypt_with_keys,
+    derive_domain_fernet_keys,
+    encrypt_message,
+)
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -190,14 +194,22 @@ class DanmakuCommentsResult:
     updated_at: int
 
 
+def _danmaku_fernet_keys() -> list[bytes]:
+    """
+    从实例持久化密钥派生弹幕专用 32 字节 Fernet 密钥及兼容回退列表。
+
+    :return: URL 安全 Base64 编码的 Fernet 密钥字节列表
+    """
+    return derive_domain_fernet_keys("mp-danmaku-cred", get_runtime_setting)
+
+
 def _danmaku_fernet_key() -> bytes:
     """
-    从实例资源密钥派生弹幕专用 32 字节 Fernet 密钥，与其他凭据域隔离。
+    返回弹幕上游密钥的首选持久化 32 字节 Fernet 密钥。
 
     :return: URL 安全 Base64 编码的 Fernet 密钥字节
     """
-    secret = str(get_runtime_setting("RESOURCE_SECRET_KEY") or get_runtime_setting("SECRET_KEY") or "moviepilot")
-    return base64.urlsafe_b64encode(hashlib.sha256(f"mp-danmaku-cred:{secret}".encode("utf-8")).digest())
+    return _danmaku_fernet_keys()[0]
 
 
 def _encrypt_secret(plain_text: str) -> str:
@@ -222,7 +234,7 @@ def _decrypt_secret(cipher_text: str) -> str:
     """
     if not cipher_text:
         return ""
-    raw = decrypt(cipher_text.encode("utf-8"), _danmaku_fernet_key())
+    raw = decrypt_with_keys(cipher_text.encode("utf-8"), _danmaku_fernet_keys())
     if not raw:
         return ""
     try:

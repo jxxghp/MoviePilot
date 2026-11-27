@@ -925,7 +925,9 @@ def test_smb_open_file_stream_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_stream = io.BytesIO(b"hello-smb")
     fake_smbclient = types.SimpleNamespace(
         stat=lambda _p: SimpleNamespace(st_size=9),
-        open_file=lambda _p, mode="rb": fake_stream if mode == "rb" else None,
+        open_file=lambda _p, mode="rb", share_access=None: (
+            fake_stream if mode == "rb" and share_access == "rwd" else None
+        ),
     )
     monkeypatch.setitem(sys.modules, "smbclient", fake_smbclient)
 
@@ -940,7 +942,7 @@ def test_smb_open_file_stream_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(
         sys.modules,
         "smbclient",
-        types.SimpleNamespace(stat=_boom, open_file=lambda _p, mode="rb": None),
+        types.SimpleNamespace(stat=_boom, open_file=lambda _p, mode="rb", **_kwargs: None),
     )
     assert storage.open_file_stream(FileItem(storage="smb", type="file", path="/movies/a.mp4", name="a.mp4")) is None
 

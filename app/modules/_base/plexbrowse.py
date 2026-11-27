@@ -5,7 +5,7 @@ Plex 媒体服务器浏览、详情、三层剧集、音轨字幕轨道与播放
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -22,6 +22,8 @@ from app.schemas.mediaserver import (
     MediaServerMediaSource,
     MediaServerMediaStream,
     MediaServerPerson,
+    MediaServerRatingItem,
+    MediaServerRatingSource,
 )
 from app.schemas.types import MediaType
 
@@ -90,6 +92,75 @@ def _plex_item_id(item: Any) -> str:
     return str(getattr(item, "key", "") or "")
 
 
+def _plex_critic_percent(item: Any) -> Optional[float]:
+    """
+    提取 Plex 条目中的烂番茄专业影评百分比（0 至 100）。
+
+    :param item: Plex SDK 条目对象
+    :return: 百分制评分，未提供时返回 None
+    """
+    for entry in getattr(item, "ratings", None) or []:
+        image = str(getattr(entry, "image", "") or "").casefold()
+        value = getattr(entry, "value", None)
+        if image.startswith("rottentomatoes://") and "upright" not in image and "spilled" not in image:
+            if isinstance(value, (int, float)) and value > 0:
+                return round(float(value) * 10.0 if value <= 10.0 else float(value), 0)
+    rating_image = str(getattr(item, "ratingImage", "") or "").casefold()
+    raw_rating = getattr(item, "rating", None)
+    if rating_image.startswith("rottentomatoes://") and isinstance(raw_rating, (int, float)) and raw_rating > 0:
+        return round(float(raw_rating) * 10.0 if raw_rating <= 10.0 else float(raw_rating), 0)
+    return None
+
+
+def _parse_single_plex_rating(entry: Any) -> Optional[MediaServerRatingItem]:
+    """
+    解析单条 Plex Rating 元素（兼容 imdb://、themoviedb:// 与 rottentomatoes://）。
+
+    :param entry: Plex Rating 对象
+    :return: 标准化评分项，无法识别时返回 None
+    """
+    image = str(getattr(entry, "image", "") or "").casefold()
+    value = getattr(entry, "value", None)
+    if not isinstance(value, (int, float)) or value <= 0:
+        return None
+    if image.startswith("imdb://"):
+        return MediaServerRatingItem(source="imdb", value=round(float(value), 1), scale="ten")
+    if image.startswith("themoviedb://"):
+        return MediaServerRatingItem(source="tmdb", value=round(float(value), 1), scale="ten")
+    if image.startswith("rottentomatoes://") and "upright" not in image and "spilled" not in image:
+        pct = round(float(value) * 10.0 if value <= 10.0 else float(value), 0)
+        return MediaServerRatingItem(source="rottentomatoes", value=pct, scale="percent")
+    return None
+
+
+def _build_plex_ratings(item: Any, guids: Mapping[str, Optional[str]]) -> list[MediaServerRatingItem]:
+    """
+    聚合 Plex 条目自带的多来源评分列表；缺少显式 Ratings 时从 rating / audienceRating 兜底推导。
+
+    :param item: Plex SDK 条目对象
+    :param guids: 解析后的外部标识字典
+    :return: 去重后的多来源评分列表
+    """
+    items: list[MediaServerRatingItem] = []
+    seen: set[str] = set()
+    for entry in getattr(item, "ratings", None) or []:
+        parsed = _parse_single_plex_rating(entry)
+        if parsed and parsed.source not in seen:
+            seen.add(parsed.source)
+            items.append(parsed)
+    if not items:
+        audience = getattr(item, "audienceRating", None) or getattr(item, "rating", None)
+        if isinstance(audience, (int, float)) and audience > 0:
+            fallback_src: MediaServerRatingSource = (
+                "imdb" if guids.get("imdb_id") else ("tmdb" if guids.get("tmdb_id") else "community")
+            )
+            items.append(MediaServerRatingItem(source=fallback_src, value=round(float(audience), 1), scale="ten"))
+        critic_pct = _plex_critic_percent(item)
+        if critic_pct and "rottentomatoes" not in seen:
+            items.append(MediaServerRatingItem(source="rottentomatoes", value=critic_pct, scale="percent"))
+    return items
+
+
 def _build_plex_browse_item(host: str, token: str, item: Any) -> Optional[MediaServerBrowseItem]:
     """
     将 Plex SDK 条目转换为统一 `MediaServerBrowseItem`。
@@ -141,6 +212,7 @@ def _build_plex_browse_item(host: str, token: str, item: Any) -> Optional[MediaS
         year=getattr(item, "year", None),
         premiere_date=premiere,
         rating=round(float(rating), 1) if isinstance(rating, (int, float)) else None,
+        critic_rating=_plex_critic_percent(item),
         duration_ms=int(duration_ms) if isinstance(duration_ms, (int, float)) and duration_ms > 0 else None,
         poster=poster,
         backdrop=art_url or still,
@@ -438,6 +510,7 @@ def plex_item_detail(
         season_count=getattr(item, "childCount", None) if base.item_type == "Series" else None,
         episode_count=getattr(item, "leafCount", None) if base.item_type in {"Series", "Season"} else None,
         media_sources=sources,
+        ratings=_build_plex_ratings(item, guids),
         play_url=play_url_builder(str(getattr(item, "key", "") or item_id)) if play_url_builder else None,
         can_play=base.item_type in {"Movie", "Episode", "Audio"} or bool(sources),
     )

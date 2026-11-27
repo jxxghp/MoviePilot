@@ -18,7 +18,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
-from app.application.security.token import decrypt, encrypt_message
+from app.application.security.token import (
+    decrypt_with_keys,
+    derive_domain_fernet_keys,
+    encrypt_message,
+)
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.mediaserver import (
@@ -72,19 +76,27 @@ def sanitize_client_header_value(value: Optional[str], fallback: str, max_len: i
     return cleaned[:max_len]
 
 
+def _credential_fernet_keys() -> list[bytes]:
+    """
+    派生媒体服务器用户凭据专属持久化 Fernet 密钥及运行期兼容回退密钥。
+
+    :return: URL 安全的 Base64 编码 Fernet 密钥列表（首项为主写入密钥）
+    """
+    return derive_domain_fernet_keys("mp-ms-cred", get_runtime_setting)
+
+
 def _credential_fernet_key() -> bytes:
     """
-    从实例资源密钥派生 32 字节 Fernet 加密密钥。
+    返回媒体服务器用户凭据的首选持久化 32 字节 Fernet 加密密钥。
 
     :return: URL 安全的 Base64 编码 Fernet 密钥
     """
-    secret = str(get_runtime_setting("RESOURCE_SECRET_KEY") or get_runtime_setting("SECRET_KEY") or "moviepilot")
-    return base64.urlsafe_b64encode(hashlib.sha256(f"mp-ms-cred:{secret}".encode("utf-8")).digest())
+    return _credential_fernet_keys()[0]
 
 
 def _encrypt_token(token: str) -> str:
     """
-    将媒体服务器用户令牌加密为持久化密文字符串。
+    将媒体服务器用户令牌加密为跨后端重启持久化的密文字符串。
 
     :param token: 原始媒体服务器访问令牌
     :return: Fernet 密文文本
@@ -94,14 +106,14 @@ def _encrypt_token(token: str) -> str:
 
 def _decrypt_token(cipher_text: str) -> Optional[str]:
     """
-    解密持久化存储的媒体服务器用户令牌；密文损坏或密钥变更时返回 None。
+    解密持久化存储的媒体服务器用户令牌；优先使用持久化主密钥，兼容旧进程内密钥。
 
     :param cipher_text: 已持久化的密文文本
     :return: 明文令牌；解密失败时返回 None
     """
     if not cipher_text:
         return None
-    raw = decrypt(cipher_text.encode("utf-8"), _credential_fernet_key())
+    raw = decrypt_with_keys(cipher_text.encode("utf-8"), _credential_fernet_keys())
     if not raw:
         return None
     try:

@@ -6,8 +6,13 @@ import base64
 import datetime
 import hashlib
 import importlib
+import os
+import secrets
+import threading
 import traceback
+from collections.abc import Callable, Sequence
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Optional, Union
 
 import bcrypt
@@ -214,6 +219,122 @@ def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
     except Exception as error:
         logger.error(f"解密失败：{str(error)} - {traceback.format_exc()}")
         return None
+
+
+_CREDENTIAL_KEY_FILENAME = ".credential_key"
+_credential_secret_lock = threading.Lock()
+_credential_secret_cache: dict[Path, str] = {}
+
+
+def _read_existing_secret_file(key_file: Path) -> Optional[str]:
+    """
+    读取已存在的持久化凭据密钥文件，长度不足时忽略。
+    """
+    try:
+        if not key_file.is_file():
+            return None
+        existing = key_file.read_text(encoding="utf-8").strip()
+        return existing if len(existing) >= 16 else None
+    except OSError:
+        return None
+
+
+def _ensure_persistent_secret_file(config_dir: Path) -> Optional[str]:
+    """
+    在配置目录下读取或原子创建实例级持久化凭据主密钥文件。
+    """
+    resolved_dir = config_dir.resolve()
+    cached = _credential_secret_cache.get(resolved_dir)
+    if cached:
+        return cached
+    with _credential_secret_lock:
+        cached = _credential_secret_cache.get(resolved_dir)
+        if cached:
+            return cached
+        key_file = resolved_dir / _CREDENTIAL_KEY_FILENAME
+        existing = _read_existing_secret_file(key_file)
+        if existing:
+            _credential_secret_cache[resolved_dir] = existing
+            return existing
+        generated = secrets.token_urlsafe(32)
+        try:
+            resolved_dir.mkdir(parents=True, exist_ok=True)
+            fd = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(generated)
+            _credential_secret_cache[resolved_dir] = generated
+            return generated
+        except FileExistsError:
+            raced = _read_existing_secret_file(key_file)
+            if raced:
+                _credential_secret_cache[resolved_dir] = raced
+            return raced
+        except OSError:
+            return None
+
+
+def _safe_read_setting(setting_getter: Callable[[str], Any], key: str) -> Any:
+    """
+    调用单参数设置读取器，缺失属性或键时返回 None。
+    """
+    try:
+        return setting_getter(key)
+    except (AttributeError, KeyError, TypeError):
+        return None
+
+
+def resolve_persistent_credential_secret(setting_getter: Callable[[str], Any]) -> str:
+    """
+    解析跨重启持久化的实例凭据加密种子；无配置目录替身时回退运行时密钥。
+    """
+    config_path = _safe_read_setting(setting_getter, "CONFIG_PATH")
+    if isinstance(config_path, Path):
+        persisted = _ensure_persistent_secret_file(config_path)
+        if persisted:
+            return persisted
+    fallback = (
+        _safe_read_setting(setting_getter, "SECRET_KEY")
+        or _safe_read_setting(setting_getter, "RESOURCE_SECRET_KEY")
+        or "moviepilot"
+    )
+    return str(fallback)
+
+
+def derive_domain_fernet_keys(
+    domain: str,
+    setting_getter: Callable[[str], Any],
+) -> list[bytes]:
+    """
+    按业务域派生首选持久化 Fernet 密钥及历史会话兼容回退密钥列表。
+    """
+    candidates = [
+        resolve_persistent_credential_secret(setting_getter),
+        str(_safe_read_setting(setting_getter, "SECRET_KEY") or ""),
+        str(_safe_read_setting(setting_getter, "RESOURCE_SECRET_KEY") or ""),
+        "moviepilot",
+    ]
+    keys: list[bytes] = []
+    seen: set[str] = set()
+    for secret in candidates:
+        if not secret or secret in seen:
+            continue
+        seen.add(secret)
+        digest = hashlib.sha256(f"{domain}:{secret}".encode("utf-8")).digest()
+        keys.append(base64.urlsafe_b64encode(digest))
+    return keys
+
+
+def decrypt_with_keys(data: bytes, keys: Sequence[bytes]) -> Optional[bytes]:
+    """
+    依次尝试候选 Fernet 密钥解密密文，避免回退探测期间输出误报错误日志。
+    """
+    for key in keys:
+        try:
+            decrypted: bytes = Fernet(key).decrypt(data)
+            return decrypted
+        except Exception:
+            continue
+    return None
 
 
 def encrypt_message(message: str, key: bytes) -> str:

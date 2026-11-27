@@ -896,3 +896,31 @@ def test_poll_retries_failed_smb_scan_without_losing_baseline(snapshot_server, m
     assert dispatcher.handle_file.call_args.kwargs["event_path"] == Path(new_path)
     assert poller.poll("smb", [state.root]) == 2
     dispatcher.handle_file.assert_called_once()
+
+
+def test_open_file_stream_uses_shared_read_access_for_concurrent_range_requests(
+    connected_smb,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    验证 SMB 流式读取以 share_access='rwd' 打开句柄，避免播放器并发 HTTP Range 请求触发独占锁冲突。
+    """
+    stat = Mock(return_value=SimpleNamespace(st_size=4096, st_mtime=1))
+    open_calls: list[dict[str, object]] = []
+
+    def fake_open_file(path: str, **kwargs: object) -> SimpleNamespace:
+        open_calls.append({"path": path, **kwargs})
+        return SimpleNamespace(close=Mock())
+
+    monkeypatch.setattr(smbclient, "stat", stat)
+    monkeypatch.setattr(smbclient, "open_file", fake_open_file)
+
+    item = FileItem(storage="smb", type="file", path="/Music/08 - 回到過去.flac", name="08 - 回到過去.flac")
+    first = connected_smb.storage.open_file_stream(item)
+    second = connected_smb.storage.open_file_stream(item)
+
+    assert first is not None and first[1] == 4096
+    assert second is not None and second[1] == 4096
+    assert len(open_calls) == 2
+    assert all(call.get("mode") == "rb" for call in open_calls)
+    assert all(call.get("share_access") == "rwd" for call in open_calls)

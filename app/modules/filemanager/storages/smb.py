@@ -771,7 +771,13 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             smb_path = self._normalize_path(file_path)
             stat_info = self._call_smb(smbclient.stat, smb_path, retry=True)
             size = int(stat_info.st_size)
-            stream = self._call_smb(smbclient.open_file, smb_path, mode="rb", retry=True)
+            stream = self._call_smb(
+                smbclient.open_file,
+                smb_path,
+                mode="rb",
+                share_access="rwd",
+                retry=True,
+            )
             return stream, size
         except Exception as e:
             logger.error(f"【SMB】打开流式读取失败: {fileitem.name} - {e}")
@@ -808,7 +814,13 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.info(f"【SMB】开始下载: {fileitem.name} -> {local_path}")
             progress_callback = transfer_process(Path(file_path).as_posix())
 
-            with self._call_smb(smbclient.open_file, smb_path, mode="rb", retry=True) as src_file:
+            with self._call_smb(
+                smbclient.open_file,
+                smb_path,
+                mode="rb",
+                share_access="rwd",
+                retry=True,
+            ) as src_file:
                 with open(local_path, "wb") as dst_file:
                     downloaded_size = 0
                     while True:

@@ -160,6 +160,8 @@ def test_emby_browse_filters_detail_seasons_episodes_and_subtitles() -> None:
                     ],
                 }
             ],
+            "CommunityRating": 8.4,
+            "CriticRating": 92,
         }
     )
     detail = emby_item_detail(cfg, "ep-1")
@@ -169,6 +171,11 @@ def test_emby_browse_filters_detail_seasons_episodes_and_subtitles() -> None:
     assert detail.season_id == "season-1"
     assert detail.tmdb_id == "1399"
     assert detail.media_source == MediaSource.TMDB
+    assert detail.critic_rating == 92.0
+    assert [(r.source, r.value, r.scale) for r in detail.ratings] == [
+        ("imdb", 8.4, "ten"),
+        ("rottentomatoes", 92.0, "percent"),
+    ]
     assert detail.can_play is True
     assert len(detail.media_sources) == 1
     streams = detail.media_sources[0].streams
@@ -271,6 +278,11 @@ def test_plex_browse_detail_seasons_episodes_and_progress() -> None:
         roles=[SimpleNamespace(id=1, tag="基努·里维斯", role="Neo", thumb="/thumb/1")],
         directors=[SimpleNamespace(tag="沃卓斯基")],
         guids=[SimpleNamespace(id="tmdb://603"), SimpleNamespace(id="imdb://tt0133093")],
+        ratings=[
+            SimpleNamespace(image="imdb://image.rating", value=8.7),
+            SimpleNamespace(image="rottentomatoes://image.rating.ripe", value=8.3),
+            SimpleNamespace(image="themoviedb://image.rating", value=8.2),
+        ],
         media=[media],
         reload=Mock(),
         updateTimeline=Mock(),
@@ -305,6 +317,12 @@ def test_plex_browse_detail_seasons_episodes_and_progress() -> None:
     detail = plex_item_detail(plex, "http://plex.test", "tok", "101")
     assert detail is not None
     assert detail.tmdb_id == "603"
+    assert detail.critic_rating == 83.0
+    assert [(r.source, r.value, r.scale) for r in detail.ratings] == [
+        ("imdb", 8.7, "ten"),
+        ("rottentomatoes", 83.0, "percent"),
+        ("tmdb", 8.2, "ten"),
+    ]
     assert detail.media_sources[0].streams[1].subtitle_id == "ms:plex:901.srt"
     assert plex_subtitle_url("http://plex.test", "tok", "ms:plex:901.srt") == "http://plex.test/library/streams/901?X-Plex-Token=tok"
 

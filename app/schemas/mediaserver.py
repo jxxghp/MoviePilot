@@ -371,6 +371,22 @@ class MediaServerPerson(BaseModel):
     image: Optional[str] = Field(default=None, description="已签名的头像图片地址")
 
 
+MediaServerRatingSource = Literal["imdb", "tmdb", "douban", "bangumi", "rottentomatoes", "community"]
+
+
+class MediaServerRatingItem(BaseModel):
+    """
+    媒体服务器返回的单个外部来源评分项。
+    """
+
+    source: MediaServerRatingSource = Field(description="评分来源标识")
+    value: float = Field(description="评分数值（十分制或百分制）")
+    scale: Literal["ten", "percent"] = Field(
+        default="ten",
+        description="评分量纲：ten 表示十分制（如 7.8），percent 表示百分制（如烂番茄 86%）",
+    )
+
+
 class MediaServerBrowseItem(BaseModel):
     """
     媒体服务器浏览列表、季列表与分集列表共用的轻量媒体卡片模型。
@@ -388,6 +404,7 @@ class MediaServerBrowseItem(BaseModel):
     year: Optional[Union[str, int]] = Field(default=None, description="发行或首播年份")
     premiere_date: Optional[str] = Field(default=None, description="首映或首播日期")
     rating: Optional[float] = Field(default=None, description="社区评分（0 至 10）")
+    critic_rating: Optional[float] = Field(default=None, description="影评人或烂番茄评分百分比（0 至 100）")
     duration_ms: Optional[int] = Field(default=None, description="时长（毫秒）")
     poster: Optional[str] = Field(default=None, description="已签名的海报主图地址")
     backdrop: Optional[str] = Field(default=None, description="已签名的背景横图地址")
@@ -448,6 +465,7 @@ class MediaServerItemDetail(MediaServerBrowseItem):
     season_count: Optional[int] = Field(default=None, description="剧集总季数")
     episode_count: Optional[int] = Field(default=None, description="剧集或当前季总集数")
     media_sources: List[MediaServerMediaSource] = Field(default_factory=list, description="可播放的多版本及音轨字幕轨道列表")
+    ratings: List[MediaServerRatingItem] = Field(default_factory=list, description="媒体服务器返回的多来源评分列表")
     play_url: Optional[str] = Field(default=None, description="媒体服务器网页跳转地址")
     can_play: bool = Field(default=False, description="当前条目是否支持直接发起播放")
 

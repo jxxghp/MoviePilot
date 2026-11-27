@@ -24,12 +24,14 @@ from app.schemas.mediaserver import (
     MediaServerMediaStream,
     MediaServerPerson,
     MediaServerPlayItem,
+    MediaServerRatingItem,
+    MediaServerRatingSource,
 )
 from app.schemas.types import MediaType
 
 _TICKS_PER_MS = 10_000
 _BROWSE_FIELDS = (
-    "Overview,ProductionYear,PremiereDate,CommunityRating,OfficialRating,"
+    "Overview,ProductionYear,PremiereDate,CommunityRating,CriticRating,OfficialRating,"
     "RunTimeTicks,ChildCount,RecursiveItemCount,UserData,ImageTags,"
     "BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,"
     "SeriesName,SeriesId,SeasonId,SeasonName,ParentIndexNumber,IndexNumber,"
@@ -399,6 +401,7 @@ def _build_browse_item(cfg: EmbyBrowseConfig, raw: Mapping[str, Any]) -> Optiona
     premiere = raw.get("PremiereDate")
     premiere_str = str(premiere)[:10] if isinstance(premiere, str) and premiere else None
     rating = raw.get("CommunityRating")
+    critic = raw.get("CriticRating")
     return MediaServerBrowseItem(
         item_id=item_id,
         server_type=cfg.server_type,
@@ -411,6 +414,7 @@ def _build_browse_item(cfg: EmbyBrowseConfig, raw: Mapping[str, Any]) -> Optiona
         year=raw.get("ProductionYear"),
         premiere_date=premiere_str,
         rating=round(float(rating), 1) if isinstance(rating, (int, float)) else None,
+        critic_rating=round(float(critic), 1) if isinstance(critic, (int, float)) and critic > 0 else None,
         duration_ms=duration_ms,
         poster=poster,
         backdrop=backdrop,
@@ -782,6 +786,55 @@ def _fallback_emby_genres(cfg: EmbyBrowseConfig, library_id: Optional[str]) -> l
     return []
 
 
+def _infer_emby_community_source(provider_ids: Mapping[str, Any]) -> MediaServerRatingSource:
+    """
+    根据 Emby/Jellyfin 外部 ProviderIds 推断 CommunityRating 对应的主要评分源。
+
+    :param provider_ids: 原始 ProviderIds 映射
+    :return: 推断出的评分源标识
+    """
+    if provider_ids.get("Imdb"):
+        return "imdb"
+    if provider_ids.get("Tmdb"):
+        return "tmdb"
+    if provider_ids.get("Douban"):
+        return "douban"
+    return "community"
+
+
+def _build_emby_ratings(
+    rating: Optional[float],
+    critic_rating: Optional[float],
+    provider_ids: Mapping[str, Any],
+) -> list[MediaServerRatingItem]:
+    """
+    组装 Emby/Jellyfin 条目的多来源评分（含社区评分与烂番茄 CriticRating 百分比）。
+
+    :param rating: 十分制社区评分
+    :param critic_rating: 百分制影评人评分
+    :param provider_ids: 外部 ProviderIds 字典
+    :return: 结构化评分列表
+    """
+    items: list[MediaServerRatingItem] = []
+    if isinstance(rating, (int, float)) and rating > 0:
+        items.append(
+            MediaServerRatingItem(
+                source=_infer_emby_community_source(provider_ids),
+                value=round(float(rating), 1),
+                scale="ten",
+            )
+        )
+    if isinstance(critic_rating, (int, float)) and critic_rating > 0:
+        items.append(
+            MediaServerRatingItem(
+                source="rottentomatoes",
+                value=round(float(critic_rating), 0),
+                scale="percent",
+            )
+        )
+    return items
+
+
 def emby_item_detail(cfg: EmbyBrowseConfig, item_id: str) -> Optional[MediaServerItemDetail]:
     """
     查询 Emby 系单个条目的完整详情，含演职员、外部 ID、多版本及音轨字幕轨道。
@@ -842,6 +895,7 @@ def emby_item_detail(cfg: EmbyBrowseConfig, item_id: str) -> Optional[MediaServe
         season_count=season_count,
         episode_count=episode_count,
         media_sources=media_sources,
+        ratings=_build_emby_ratings(base.rating, base.critic_rating, provider_ids),
         play_url=play_url,
         can_play=item_type in {"Movie", "Episode", "Audio"} or bool(media_sources),
     )
