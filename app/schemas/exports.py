@@ -302,6 +302,8 @@ SCHEMA_EXPORTS = {
     'MediaServerProgressReportRequest': ('app.schemas.mediaserver', 'MediaServerProgressReportRequest'),
     'MediaServerProgressReportResult': ('app.schemas.mediaserver', 'MediaServerProgressReportResult'),
     'MediaServerQueryOptions': ('app.schemas.mediaserver', 'MediaServerQueryOptions'),
+    'MediaServerRatingItem': ('app.schemas.mediaserver', 'MediaServerRatingItem'),
+    'MediaServerRatingSource': ('app.schemas.mediaserver', 'MediaServerRatingSource'),
     'MediaServerSeasonInfo': ('app.schemas.mediaserver', 'MediaServerSeasonInfo'),
     'MediaServerStreamInfo': ('app.schemas.mediaserver', 'MediaServerStreamInfo'),
     'MediaServerSubtitleTrack': ('app.schemas.mediaserver', 'MediaServerSubtitleTrack'),
