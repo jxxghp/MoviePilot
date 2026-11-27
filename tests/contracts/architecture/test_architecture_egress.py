@@ -127,8 +127,10 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.discord.discord", "discord"): "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
     ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
-    ("app.modules.filemanager.storages.smb", "smbclient"): "bfc6993d05d5d33dfcb8044fda6c89a3cc3c599fecb0fe327cefd9e1f9145092",
-    ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
+    # SMB 原有读写经同一 owner 的故障包装器调用；新增 delete_session 仅移除失效主机缓存。
+    # smbprotocol 新绑定只识别断线异常和状态码，没有新增外连调用方或传输库。
+    ("app.modules.filemanager.storages.smb", "smbclient"): "9b4df1be8c63c2c8ece658f5c5ebe65f3f7e28fc1c1e926abd790cb81ea95d42",
+    ("app.modules.filemanager.storages.smb", "smbprotocol"): "f1c9ba18714734a3287d273ecacc9777fdd1d8f5918e95b5003e3a84a518ed6f",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
     # 补充现有 SDK 返回类型导入；未增加客户端或请求路径。

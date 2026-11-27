@@ -6,8 +6,9 @@ import errno
 import ntpath
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, TypeVar, Union
 
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -22,7 +23,9 @@ from app.schemas.types import StorageSchema
 # SMB SDK（smbclient/smbprotocol/spnego）约 12MB，存储发现会导入全部存储实现，
 # 因此各方法内按需导入，未配置 SMB 时不加载
 
-lock = threading.Lock()
+# 初始化和失效会话替换共用可重入锁，读操作重试可以再次检查连接。
+lock = threading.RLock()
+SMBResult = TypeVar("SMBResult")
 
 
 class SMBConnectionError(Exception):
@@ -54,6 +57,11 @@ class SMB(StorageBase, metaclass=WeakSingleton):
     # 文件读写块大小，默认 10 MiB
     chunk_size = 10 * 1024 * 1024
 
+    # 重连失败后等待 30 秒，避免整理队列对故障服务器连续认证。
+    reconnect_interval = 30
+    # 每次重建都推进代数，旧请求的迟到异常不能再次清除新连接。
+    _connection_generation = 0
+
     @property
     def snapshot_check_folder_modtime(self) -> bool:
         """
@@ -84,13 +92,17 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         self._host = None
         self._username = None
         self._password = None
+        self._port = 445
+        self._reconnect_after = 0.0
 
-        self._init_connection()
+        with lock:
+            self._init_connection()
 
     def _init_connection(self) -> None:
         """
-        按当前配置建立连接，清除上次状态以免配置无效时继续使用旧共享。
+        在连接锁内按当前配置建立连接，失败后延迟下一次自动重连。
         """
+        self._connection_generation += 1
         self._connected = False
         self._server_path = None
         self._shares = {}
@@ -106,6 +118,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             self._password = conf.get("password")
             domain = conf.get("domain", "")
             port = conf.get("port", 445)
+            self._port = port
 
             if not self._host:
                 return
@@ -145,6 +158,10 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         except Exception as e:
             logger.error(f"【SMB】连接初始化失败：{e}")
             self._connected = False
+        finally:
+            self._reconnect_after = (
+                0.0 if self._connected else time.monotonic() + self.reconnect_interval
+            )
 
     def _configure_shares(self, conf: dict[str, object]) -> None:
         """
@@ -178,13 +195,13 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             for share in self._shares.values():
                 smbclient.listdir(f"\\\\{self._host}\\{share}")
         except SMBAuthenticationError as e:
-            raise SMBConnectionError(f"SMB认证失败：{e}")
+            raise SMBConnectionError(f"SMB认证失败：{e}") from e
         except SMBResponseException as e:
-            raise SMBConnectionError(f"SMB响应错误：{e}")
+            raise SMBConnectionError(f"SMB响应错误：{e}") from e
         except SMBException as e:
-            raise SMBConnectionError(f"SMB连接错误：{e}")
+            raise SMBConnectionError(f"SMB连接错误：{e}") from e
         except Exception as e:
-            raise SMBConnectionError(f"连接测试失败：{e}")
+            raise SMBConnectionError(f"连接测试失败：{e}") from e
 
     def _is_anonymous_access(self) -> bool:
         """
@@ -194,10 +211,90 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
     def _check_connection(self) -> None:
         """
-        检查SMB连接状态。
+        连接失效时串行替换当前主机的会话，失败后按退避时间再试。
+
+        :raises SMBConnectionError: 未配置共享、处于退避期或重连失败
         """
-        if not self._connected or not self._server_path:
-            raise SMBConnectionError("【SMB】连接未建立或已断开，请检查配置！")
+        with lock:
+            if (not self._connected and self._server_path
+                    and time.monotonic() >= self._reconnect_after):
+                from smbclient import delete_session
+
+                try:
+                    # SDK 可能仍缓存 transport.connected 为真的失效会话，直接注册会复用它。
+                    delete_session(self._host, port=self._port, timeout=5)
+                except Exception as err:
+                    # SDK 先移除缓存再关闭连接；关闭失败也应继续创建新会话。
+                    logger.debug(f"【SMB】关闭失效会话失败：{err}")
+                self._init_connection()
+            if not self._connected or not self._server_path:
+                raise SMBConnectionError("【SMB】连接未建立或已断开，请检查配置！")
+
+    @staticmethod
+    def _is_connection_error(error: Exception) -> bool:
+        """
+        识别网络、会话失效与 credits 耗尽，保留缺失、权限和空间错误。
+
+        :param error: SDK 原始异常或连接探测包装的异常
+        :return: 是否需要丢弃缓存会话后重连
+        """
+        from smbprotocol.exceptions import SMBConnectionClosed, SMBException
+        from smbprotocol.header import NtStatus
+
+        if isinstance(error, SMBConnectionError) and isinstance(error.__cause__, Exception):
+            return SMB._is_connection_error(error.__cause__)
+        if isinstance(error, (ConnectionError, TimeoutError, SMBConnectionClosed)):
+            return True
+        if isinstance(error, OSError) and error.errno in (
+                errno.ECONNRESET, errno.ECONNABORTED, errno.ENOTCONN, errno.EPIPE,
+                errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ENETDOWN,
+        ):
+            return True
+        status = getattr(error, "ntstatus", None) or getattr(error, "status", None)
+        if status in (
+                NtStatus.STATUS_NETWORK_NAME_DELETED, NtStatus.STATUS_USER_SESSION_DELETED,
+                NtStatus.STATUS_IO_TIMEOUT,
+        ):
+            return True
+        message = str(error)
+        return isinstance(error, SMBException) and (
+            ("credits but only" in message and "credits are available" in message)
+            or (message.startswith("Connection timeout of ")
+                and "response from the server" in message)
+        )
+
+    def _call_smb(
+            self, operation: Callable[..., SMBResult], *args: Any,
+            retry: bool = False, **kwargs: Any,
+    ) -> SMBResult:
+        """
+        记录 SDK 连接故障，仅对可安全重放的查询重连并重试一次。
+
+        写操作及已打开句柄的读写失败只失效当前连接，由后续操作恢复，避免重复副作用。
+
+        :param operation: SMB SDK 操作或连接探测
+        :param args: 操作的位置参数
+        :param retry: 是否允许在重连后重放一次只读操作
+        :param kwargs: 操作的关键字参数
+        :return: SDK 操作的原始结果
+        :raises Exception: 普通错误、写操作错误或重试后仍失败的原始异常
+        """
+        with lock:
+            generation = self._connection_generation
+        try:
+            return operation(*args, **kwargs)
+        except Exception as err:
+            if not self._is_connection_error(err):
+                raise
+            with lock:
+                if generation == self._connection_generation:
+                    self._connected = False
+                    if not retry:
+                        self._reconnect_after = time.monotonic() + self.reconnect_interval
+            if not retry:
+                raise
+            self._check_connection()
+            return self._call_smb(operation, *args, **kwargs)
 
     def _normalize_path(self, path: Union[str, Path], *, writable: bool = False) -> str:
         """
@@ -239,7 +336,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         import smbclient
         try:
-            is_directory = smbclient.path.isdir(file_path)
+            is_directory = self._call_smb(smbclient.path.isdir, file_path, retry=True)
 
             relative_path = self._relative_path(file_path)
             if not relative_path.startswith("/"):
@@ -291,24 +388,22 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         保存或重置配置后清理旧会话并重新连接，即使配置未变或上次连接失败。
         """
         from smbclient import reset_connection_cache
-        reset_connection_cache()
-        self._init_connection()
+        with lock:
+            reset_connection_cache()
+            self._init_connection()
 
     def check(self) -> bool:
         """
         列举各已配置共享以确认连接可用。
 
-        :return: 已连接且全部共享探测成功返回 True；失败时返回 False 并清除连接标记
+        :return: 全部共享探测成功返回 True；连接故障自动恢复一次，仍失败时返回 False
         """
-        if not self._connected:
-            return False
-
         try:
-            self._test_connection()
+            self._check_connection()
+            self._call_smb(self._test_connection, retry=True)
             return True
         except Exception as e:
             logger.debug(f"【SMB】连接检查失败：{e}")
-            self._connected = False
             return False
 
     def list_strict(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
@@ -359,7 +454,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             smb_path = self._normalize_path(file_path.rstrip("/"))
 
             try:
-                entries = smbclient.listdir(smb_path)
+                entries = self._call_smb(smbclient.listdir, smb_path, retry=True)
             except (SMBResponseException, SMBException) as e:
                 logger.error(f"【SMB】列出目录失败: {smb_path} - {e}")
                 if strict:
@@ -373,7 +468,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
                 entry_path = f"{smb_path}\\{entry}"
                 try:
-                    stat_result = smbclient.stat(entry_path)
+                    stat_result = self._call_smb(smbclient.stat, entry_path, retry=True)
                     item = self._create_fileitem(stat_result, entry_path, entry, strict=strict)
                     items.append(item)
                 except Exception as e:
@@ -408,7 +503,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             new_path = self._normalize_path(Path(file_path) / name, writable=True)
 
-            smbclient.mkdir(new_path)
+            self._call_smb(smbclient.mkdir, new_path)
 
             return _SchemaFileItem(
                 storage=self.schema.value,
@@ -473,10 +568,10 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             smb_path = self._normalize_path(str(path).rstrip("/"))
 
-            if not smbclient.path.exists(smb_path):
+            if not self._call_smb(smbclient.path.exists, smb_path, retry=True):
                 return None
 
-            stat_result = smbclient.stat(smb_path)
+            stat_result = self._call_smb(smbclient.stat, smb_path, retry=True)
             file_name = Path(path).name
 
             return self._create_fileitem(stat_result, smb_path, file_name)
@@ -509,7 +604,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
             smb_path = self._normalize_path(str(path).rstrip("/"))
             try:
-                stat_result = smbclient.stat(smb_path)
+                stat_result = self._call_smb(smbclient.stat, smb_path, retry=True)
             except OSError as err:
                 if err.errno in (errno.ENOENT, errno.ENOTDIR):
                     return None
@@ -547,7 +642,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             smb_path = self._normalize_path(file_path.rstrip("/"), writable=True)
             logger.info(f"【SMB】开始删除: {file_path} (类型: {fileitem.type})")
 
-            if not smbclient.path.exists(smb_path):
+            if not self._call_smb(smbclient.path.exists, smb_path, retry=True):
                 logger.warn(f"【SMB】路径不存在，跳过删除: {file_path}")
                 return True
 
@@ -556,7 +651,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 self._recursive_delete(smb_path)
             else:
                 logger.debug(f"【SMB】删除文件: {smb_path}")
-                smbclient.remove(smb_path)
+                self._call_smb(smbclient.remove, smb_path)
 
             logger.info(f"【SMB】删除成功: {fileitem.path}")
             return True
@@ -580,19 +675,19 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         import smbclient
         from smbprotocol.exceptions import SMBException, SMBResponseException
         try:
-            if not smbclient.path.exists(smb_path):
+            if not self._call_smb(smbclient.path.exists, smb_path, retry=True):
                 logger.debug(f"【SMB】路径不存在，跳过删除: {smb_path}")
                 return
 
-            if smbclient.path.isfile(smb_path):
+            if self._call_smb(smbclient.path.isfile, smb_path, retry=True):
                 logger.debug(f"【SMB】删除文件: {smb_path}")
-                smbclient.remove(smb_path)
+                self._call_smb(smbclient.remove, smb_path)
                 return
 
-            if smbclient.path.isdir(smb_path):
+            if self._call_smb(smbclient.path.isdir, smb_path, retry=True):
                 logger.debug(f"【SMB】开始删除目录内容: {smb_path}")
                 try:
-                    entries = smbclient.listdir(smb_path)
+                    entries = self._call_smb(smbclient.listdir, smb_path, retry=True)
                     logger.debug(f"【SMB】目录 {smb_path} 包含 {len(entries)} 个项目")
 
                     for entry in entries:
@@ -603,15 +698,17 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                         self._recursive_delete(entry_path)
 
                     logger.debug(f"【SMB】删除空目录: {smb_path}")
-                    smbclient.rmdir(smb_path)
+                    self._call_smb(smbclient.rmdir, smb_path)
                     logger.debug(f"【SMB】目录删除成功: {smb_path}")
 
                 except SMBResponseException as e:
+                    if self._is_connection_error(e):
+                        raise
                     # 如果目录不为空，尝试强制删除
                     logger.warn(f"【SMB】目录不为空，尝试强制删除: {smb_path} - {e}")
                     # 使用remove方法尝试删除（某些SMB服务器支持）
                     try:
-                        smbclient.remove(smb_path)
+                        self._call_smb(smbclient.remove, smb_path)
                         logger.info(f"【SMB】强制删除目录成功: {smb_path}")
                     except Exception as remove_error:
                         logger.error(
@@ -649,7 +746,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             parent_path = Path(file_path).parent
             new_path = self._normalize_path(parent_path / name, writable=True)
 
-            smbclient.rename(old_path, new_path)
+            self._call_smb(smbclient.rename, old_path, new_path)
 
             logger.info(f"【SMB】重命名成功: {file_path} -> {name}")
             return True
@@ -660,18 +757,21 @@ class SMB(StorageBase, metaclass=WeakSingleton):
     def open_file_stream(self, fileitem: _SchemaFileItem) -> Optional[tuple[Any, int]]:
         """
         以可随机定位的二进制只读句柄打开 SMB 共享文件，供流媒体端点按 HTTP Range 边加载边播放。
+
+        :param fileitem: 待打开的共享内文件
+        :return: 只读句柄与字节长度；连接或打开失败返回 None
         """
         import smbclient
 
         file_path = fileitem.path
         if not file_path:
             return None
-        smb_path = self._normalize_path(file_path)
         try:
             self._check_connection()
-            stat_info = smbclient.stat(smb_path)
+            smb_path = self._normalize_path(file_path)
+            stat_info = self._call_smb(smbclient.stat, smb_path, retry=True)
             size = int(stat_info.st_size)
-            stream = smbclient.open_file(smb_path, mode="rb")
+            stream = self._call_smb(smbclient.open_file, smb_path, mode="rb", retry=True)
             return stream, size
         except Exception as e:
             logger.error(f"【SMB】打开流式读取失败: {fileitem.name} - {e}")
@@ -697,9 +797,9 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         local_path = self._build_download_path(fileitem, temp_path)
         if not local_path:
             return None
-        smb_path = self._normalize_path(file_path)
         try:
             self._check_connection()
+            smb_path = self._normalize_path(file_path)
 
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -708,14 +808,14 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.info(f"【SMB】开始下载: {fileitem.name} -> {local_path}")
             progress_callback = transfer_process(Path(file_path).as_posix())
 
-            with smbclient.open_file(smb_path, mode="rb") as src_file:
+            with self._call_smb(smbclient.open_file, smb_path, mode="rb", retry=True) as src_file:
                 with open(local_path, "wb") as dst_file:
                     downloaded_size = 0
                     while True:
                         if runtime_stop_state.consume_transfer_stop(file_path):
                             logger.info(f"【SMB】{file_path} 下载已取消！")
                             return None
-                        chunk = src_file.read(self.chunk_size)
+                        chunk = self._call_smb(src_file.read, self.chunk_size)
                         if not chunk:
                             break
                         dst_file.write(chunk)
@@ -761,7 +861,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             progress_callback = transfer_process(path.as_posix())
 
             with open(path, "rb") as src_file:
-                with smbclient.open_file(smb_path, mode="wb") as dst_file:
+                with self._call_smb(smbclient.open_file, smb_path, mode="wb") as dst_file:
                     uploaded_size = 0
                     while True:
                         if runtime_stop_state.consume_transfer_stop(path.as_posix()):
@@ -770,7 +870,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                         chunk = src_file.read(self.chunk_size)
                         if not chunk:
                             break
-                        dst_file.write(chunk)
+                        self._call_smb(dst_file.write, chunk)
                         uploaded_size += len(chunk)
                         if file_size:
                             progress = (uploaded_size * 100) / file_size
@@ -804,12 +904,12 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             src_path = self._normalize_path(fileitem.path, writable=True)
             dst_path = self._normalize_path(path / new_name, writable=True)
             try:
-                if smbclient.path.samefile(src_path, dst_path):
+                if self._call_smb(smbclient.path.samefile, src_path, dst_path, retry=True):
                     raise ValueError("源文件和目标是同一文件，不能执行服务端复制")
             except OSError as err:
                 if err.errno != errno.ENOENT:
                     raise
-            smbclient.copyfile(src_path, dst_path)
+            self._call_smb(smbclient.copyfile, src_path, dst_path)
             logger.info(f"【SMB】服务端复制成功: {src_path} -> {dst_path}")
             return True
         except Exception as e:
@@ -837,7 +937,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             if ntpath.splitdrive(src_path)[0].casefold() != ntpath.splitdrive(dst_path)[0].casefold():
                 self._move_between_shares(fileitem, path, new_name, src_path, dst_path)
             else:
-                smbclient.rename(src_path, dst_path)
+                self._call_smb(smbclient.rename, src_path, dst_path)
             logger.info(f"【SMB】服务端移动成功: {src_path} -> {dst_path}")
             return True
         except Exception as e:
@@ -852,7 +952,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         import smbclient
         try:
-            smbclient.stat(dst_path)
+            self._call_smb(smbclient.stat, dst_path, retry=True)
         except OSError as err:
             if err.errno != errno.ENOENT:
                 raise
@@ -860,7 +960,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             raise FileExistsError("跨共享移动的目标已存在，请先由整理覆盖策略处理")
         if not self.copy(fileitem, path, new_name):
             raise OSError("跨共享服务端复制失败，保留源文件")
-        smbclient.remove(src_path)
+        self._call_smb(smbclient.remove, src_path)
 
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
@@ -882,15 +982,15 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             if ntpath.splitdrive(src_path)[0].casefold() != ntpath.splitdrive(dst_path)[0].casefold():
                 raise ValueError("SMB 不支持跨共享硬链接，请改用复制或移动，或使用包含两者的共同共享")
 
-            if not smbclient.path.exists(src_path):
+            if not self._call_smb(smbclient.path.exists, src_path, retry=True):
                 raise FileNotFoundError(f"源文件不存在: {src_path}")
 
             dst_parent = "\\".join(dst_path.rsplit("\\", 1)[:-1])
-            if dst_parent and not smbclient.path.exists(dst_parent):
+            if dst_parent and not self._call_smb(smbclient.path.exists, dst_parent, retry=True):
                 logger.info(f"【SMB】创建目标目录: {dst_parent}")
-                smbclient.makedirs(dst_parent, exist_ok=True)
+                self._call_smb(smbclient.makedirs, dst_parent, exist_ok=True)
 
-            smbclient.link(src_path, dst_path)
+            self._call_smb(smbclient.link, src_path, dst_path)
             logger.info(f"【SMB】硬链接创建成功: {src_path} -> {dst_path}")
             return True
 
@@ -924,7 +1024,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             # 多个共享可能共用存储池；SMB 的卷序列号也可能按共享生成，不能据此累加。
             # 沿用单卷用量合同，以配置首项作为容量查询入口，保持卡片和仪表板可用。
             share = next(iter(self._shares.values()))
-            volume_stat = smbclient.stat_volume(f"\\\\{self._host}\\{share}")
+            volume_stat = self._call_smb(smbclient.stat_volume, f"\\\\{self._host}\\{share}", retry=True)
             return _SchemaStorageUsage(
                 total=volume_stat.total_size,
                 available=volume_stat.caller_available_size,
