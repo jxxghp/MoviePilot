@@ -3,12 +3,16 @@ SMB 保存重连、服务端整理与远程快照恢复的回归测试。
 """
 
 import errno
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 import smbclient
+from smbclient import _pool as smb_pool
+from smbprotocol.exceptions import SMBConnectionClosed, SMBException, SMBOSError
+from smbprotocol.header import NtStatus
 
 from app.application.storage import StorageHelper
 from app.modules.filemanager.module import FileManagerModule
@@ -27,7 +31,7 @@ def smb_storage(monkeypatch):
     state = {"conf": {}}
     client = Mock()
     client.listdir.return_value = []
-    for name in ("ClientConfig", "register_session", "listdir", "reset_connection_cache"):
+    for name in ("ClientConfig", "register_session", "listdir", "reset_connection_cache", "delete_session"):
         monkeypatch.setattr(smbclient, name, getattr(client, name))
 
     def get_conf(_self):
@@ -102,6 +106,230 @@ def test_save_incomplete_config_clears_previous_connection(smb_storage, conf):
     smb_storage.client.register_session.assert_not_called()
     with pytest.raises(smb_module.SMBConnectionError, match="连接未建立"):
         smb_storage.storage._check_connection()
+
+
+@pytest.fixture
+def connected_smb(smb_storage, monkeypatch):
+    """
+    建立可用共享并提供确定性的退避时钟，所有 SMB 请求均被拦截。
+    """
+    smb_storage.state["conf"] = {"host": "smb.example", "share": "video", "port": 1445}
+    smb_storage.storage.init_storage()
+    smb_storage.client.reset_mock()
+    monkeypatch.setattr(smbclient.path, "isdir", Mock(return_value=False))
+    clock = Mock(return_value=100.0)
+    monkeypatch.setattr(smb_module.time, "monotonic", clock)
+    smb_storage.clock = clock
+    return smb_storage
+
+
+@pytest.mark.parametrize("failure", [
+    SMBException("Request requires 1 credits but only 0 credits are available"),
+    SMBConnectionClosed("socket closed"),
+    ConnectionResetError(errno.ECONNRESET, "reset"),
+    TimeoutError("timed out"),
+    SMBException("Connection timeout of 60 seconds exceeded while waiting for a message id 1 response from the server"),
+    OSError(errno.EHOSTUNREACH, "unreachable"),
+    SMBOSError(NtStatus.STATUS_USER_SESSION_DELETED, "file"),
+    SMBOSError(NtStatus.STATUS_NETWORK_NAME_DELETED, "file"),
+    SMBOSError(NtStatus.STATUS_IO_TIMEOUT, "file"),
+])
+def test_strict_query_replaces_stale_session_and_retries_once(connected_smb, monkeypatch, failure):
+    """
+    真实查询入口遇到断线、会话丢失或 credits 耗尽后自动恢复，无需保存配置。
+    """
+    state = connected_smb
+    stat = Mock(side_effect=[failure, SimpleNamespace(st_size=1024, st_mtime=1)])
+    monkeypatch.setattr(smbclient, "stat", stat)
+
+    item = state.storage.get_item_strict(Path("/movie.mkv"))
+
+    assert item.path == "/movie.mkv"
+    assert item.size == 1024
+    assert stat.call_count == 2
+    state.client.delete_session.assert_called_once_with("smb.example", port=1445, timeout=5)
+    state.client.register_session.assert_called_once()
+    state.client.reset_connection_cache.assert_not_called()
+    assert state.storage._connected is True
+
+
+@pytest.mark.parametrize("error_number", [errno.EACCES, errno.ENOENT, errno.ENOTDIR, errno.ENOSPC])
+def test_query_business_errors_do_not_reset_session(connected_smb, monkeypatch, error_number):
+    """
+    路径缺失、权限与空间错误保留原有语义，不通过重连掩盖。
+    """
+    stat = Mock(side_effect=OSError(error_number, "query failed"))
+    monkeypatch.setattr(smbclient, "stat", stat)
+    if error_number in (errno.ENOENT, errno.ENOTDIR):
+        assert connected_smb.storage.get_item_strict(Path("/movie.mkv")) is None
+    else:
+        with pytest.raises(smb_module.StorageQueryError):
+            connected_smb.storage.get_item_strict(Path("/movie.mkv"))
+    stat.assert_called_once()
+    connected_smb.client.delete_session.assert_not_called()
+    connected_smb.client.register_session.assert_not_called()
+    assert connected_smb.storage._connected is True
+
+
+def test_health_check_recovers_after_session_expires(connected_smb):
+    """
+    连通性巡检也能丢弃失效会话并恢复，不会永久锁在未连接状态。
+    """
+    state = connected_smb
+    state.client.listdir.side_effect = [SMBConnectionClosed("closed"), [], []]
+
+    assert state.storage.check() is True
+    state.client.delete_session.assert_called_once()
+    state.client.register_session.assert_called_once()
+
+
+def test_failed_reconnect_is_bounded_and_recovers_after_cooldown(connected_smb, monkeypatch):
+    """
+    服务未恢复时每个退避窗口只重连一次，后续查询仍严格失败且下一窗口可恢复。
+    """
+    state = connected_smb
+    stat = Mock(side_effect=SMBConnectionClosed("closed"))
+    monkeypatch.setattr(smbclient, "stat", stat)
+    state.client.register_session.side_effect = OSError(errno.ECONNREFUSED, "offline")
+
+    for _ in range(5):
+        with pytest.raises(smb_module.StorageQueryError):
+            state.storage.get_item_strict(Path("/movie.mkv"))
+    state.client.register_session.assert_called_once()
+    stat.assert_called_once()
+    assert state.storage.list(FileItem(storage="smb", type="dir", path="/")) == []
+
+    state.clock.return_value += state.storage.reconnect_interval
+    state.client.register_session.side_effect = None
+    stat.side_effect = None
+    stat.return_value = SimpleNamespace(st_size=1024, st_mtime=1)
+    assert state.storage.get_item_strict(Path("/movie.mkv")).size == 1024
+    assert state.client.register_session.call_count == 2
+
+
+def test_repeated_query_fault_stops_after_one_retry(connected_smb, monkeypatch):
+    """
+    新会话查询仍失败时最多请求两次，并对后续文件启用退避。
+    """
+    state = connected_smb
+    stat = Mock(side_effect=SMBException("Request requires 1 credits but only 0 credits are available"))
+    monkeypatch.setattr(smbclient, "stat", stat)
+    for _ in range(3):
+        with pytest.raises(smb_module.StorageQueryError):
+            state.storage.get_item_strict(Path("/movie.mkv"))
+    assert stat.call_count == 2
+    state.client.register_session.assert_called_once()
+    assert state.storage._connected is False
+
+
+@pytest.mark.parametrize("mode, command", [("move", "rename"), ("copy", "copyfile"), ("delete", "remove")])
+def test_write_failure_is_not_replayed_and_later_operation_recovers(connected_smb, monkeypatch, mode, command):
+    """
+    写请求中途失效只报告失败，退避后后续操作恢复，不重放结果不明的副作用。
+    """
+    state = connected_smb
+    operation = Mock(side_effect=SMBConnectionClosed("response lost"))
+    monkeypatch.setattr(smbclient, command, operation)
+    monkeypatch.setattr(smbclient.path, "exists", Mock(return_value=True))
+    monkeypatch.setattr(smbclient.path, "samefile", Mock(return_value=False))
+    source = FileItem(storage="smb", type="file", path="/source.mkv")
+    arguments = (source,) if mode == "delete" else (source, Path("/media"), "target.mkv")
+
+    assert getattr(state.storage, mode)(*arguments) is False
+    operation.assert_called_once()
+    state.client.register_session.assert_not_called()
+
+    state.clock.return_value += state.storage.reconnect_interval
+    operation.side_effect = None
+    assert getattr(state.storage, mode)(*arguments) is True
+    assert operation.call_count == 2
+    state.client.register_session.assert_called_once()
+
+
+def test_parallel_queries_share_one_reconnect(connected_smb, monkeypatch):
+    """
+    多个真实查询同时看到未连接状态时只建立一个新会话。
+    """
+    state = connected_smb
+    state.storage._connected = False
+    start = threading.Barrier(5)
+    monkeypatch.setattr(smbclient, "stat", Mock(return_value=SimpleNamespace(st_size=1, st_mtime=1)))
+    results = []
+
+    def query():
+        """
+        在屏障释放后进入真实存储查询，收集成功或失败结果。
+        """
+        start.wait(timeout=10)
+        results.append(state.storage.get_item_strict(Path("/movie.mkv")))
+
+    threads = [threading.Thread(target=query) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    try:
+        start.wait(timeout=10)
+    finally:
+        for thread in threads:
+            thread.join(timeout=10)
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(results) == 4
+    assert all(item.size == 1 for item in results)
+    state.client.delete_session.assert_called_once()
+    state.client.register_session.assert_called_once()
+
+
+def test_old_request_error_cannot_invalidate_replacement_session(connected_smb, monkeypatch):
+    """
+    旧代查询迟到报错时复用已恢复的新会话，不额外断开它。
+    """
+    state = connected_smb
+
+    def query(_path):
+        """
+        在旧请求返回前模拟另一个调用已经替换会话。
+        """
+        if stat.call_count == 1:
+            state.storage._connected = False
+            state.storage._check_connection()
+            raise SMBConnectionClosed("old connection closed")
+        return SimpleNamespace(st_size=1, st_mtime=1)
+
+    stat = Mock(side_effect=query)
+    monkeypatch.setattr(smbclient, "stat", stat)
+    assert state.storage.get_item_strict(Path("/movie.mkv")).size == 1
+    assert state.storage._connected is True
+    state.client.register_session.assert_called_once()
+
+
+def test_sdk_cache_replaces_broken_transport_even_when_close_fails(connected_smb, monkeypatch):
+    """
+    使用真实 SDK 缓存注册与删除逻辑，确认仍标记连接的旧会话确实被替换。
+    """
+    state = connected_smb
+    old_session = SimpleNamespace(username=None, encrypt_data=False)
+    new_session = SimpleNamespace(username=None, encrypt_data=False)
+    old_connection = Mock(session_table={1: old_session})
+    new_connection = Mock(session_table={2: new_session})
+    old_connection.transport.connected = new_connection.transport.connected = True
+    old_connection.disconnect.side_effect = SMBException(
+        "Request requires 1 credits but only 0 credits are available"
+    )
+    cache = {"smb.example:1445": old_connection}
+    monkeypatch.setattr(smb_pool, "_SMB_CONNECTIONS", cache)
+    monkeypatch.setattr(smb_pool, "Connection", Mock(return_value=new_connection))
+    monkeypatch.setattr(smbclient, "register_session", smb_pool.register_session)
+    monkeypatch.setattr(smbclient, "delete_session", smb_pool.delete_session)
+    monkeypatch.setattr(smbclient, "stat_volume", Mock(side_effect=[
+        SMBConnectionClosed("expired"),
+        SimpleNamespace(total_size=4096, caller_available_size=1024),
+    ]))
+
+    assert smb_pool.register_session("smb.example", port=1445) is old_session
+    assert state.storage.usage().available == 1024
+    assert cache["smb.example:1445"] is new_connection
+    old_connection.disconnect.assert_called_once_with(close=True, timeout=5)
+    new_connection.connect.assert_called_once_with(timeout=60)
+    state.client.reset_connection_cache.assert_not_called()
 
 
 @pytest.fixture
@@ -485,9 +713,15 @@ def snapshot_server(smb_storage, monkeypatch):
     fault = {"operation": None, "path": None}
 
     def relative(path):
+        """
+        将 SDK 的 UNC 路径转换为测试树的存储内键。
+        """
         return storage._relative_path(path).rstrip("/")
 
     def read_node(operation, path):
+        """
+        按操作和路径注入查询故障，其余节点保持真实缺失语义。
+        """
         key = relative(path)
         if fault == {"operation": operation, "path": key}:
             raise OSError(errno.EIO, "temporary SMB read failure")
@@ -496,14 +730,23 @@ def snapshot_server(smb_storage, monkeypatch):
         return key, tree[key]
 
     def list_directory(path):
+        """
+        列出测试树中的直接子项，不递归展开后代。
+        """
         key, _node = read_node("list", path)
         return [Path(item).name for item in tree if Path(item).parent.as_posix() == key]
 
     def stat_item(path):
+        """
+        将节点大小和修改时间投影为 SDK 元数据。
+        """
         _key, node = read_node("stat", path)
         return SimpleNamespace(st_mtime=node["mtime"], st_size=node.get("size", 0))
 
     def is_directory(path):
+        """
+        返回节点类型，保留独立类型查询的故障注入。
+        """
         _key, node = read_node("type", path)
         return node["directory"]
 
@@ -586,6 +829,7 @@ def test_disconnected_snapshot_preserves_failure_semantics(snapshot_server):
     """
     state = snapshot_server
     state.storage._connected = False
+    state.client.listdir.side_effect = SMBConnectionClosed("server remains offline")
 
     assert state.module.snapshot_storage("smb", state.root) is None
     assert state.storage.list(FileItem(storage="smb", type="dir", path="/downloads")) == []
