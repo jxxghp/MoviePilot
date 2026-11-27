@@ -1298,9 +1298,9 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
             )
         ],
     )
-    chain.download_history_repository = SimpleNamespace(
-        get_by_hash=lambda download_hash: history
-    )
+    monkeypatch.setattr(chain, "download_history_repository", SimpleNamespace(
+        get_by_hash=lambda download_hash: history,
+    ))
     monkeypatch.setattr(
         chain,
         "list_torrents",
