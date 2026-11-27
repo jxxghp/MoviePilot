@@ -69,14 +69,20 @@ async def terminal_manager() -> AsyncIterator[_TerminalSessionManager]:
 
 async def _start_ready(manager: _TerminalSessionManager, code: str = _INTERACTIVE) -> tuple[dict[str, Any], _TerminalSession]:
     """
-    等待明确的 READY 输出而非猜测进程启动耗时。
+    使用公开消费游标等到完整的 READY 行，允许标记和换行分批到达。
     """
-    payload = await asyncio.wait_for(manager.start(
-        command=_command(code), use_pty=False, yield_time_ms=10000, since_offset=0,
-        env={"PYTHONIOENCODING": "utf-8"},
-    ), timeout=_DEADLINE)
-    assert "READY" in payload["output"]
-    session = manager._sessions[payload["session_id"]]
+    async with asyncio.timeout(_DEADLINE):
+        payload = await manager.start(
+            command=_command(code), use_pty=False, yield_time_ms=10000, since_offset=0,
+            env={"PYTHONIOENCODING": "utf-8"},
+        )
+        assert payload["output"]
+        session = manager._sessions[payload["session_id"]]
+        output = payload["output"]
+        while not output.endswith(("READY\n", "READY\r\n")):
+            payload = await manager.wait(session_id=session.session_id, timeout_ms=10000, **_cursor(payload))
+            assert payload["output"]
+            output += payload["output"]
     assert session.process is not None and session.process.returncode is None
     return payload, session
 
@@ -223,7 +229,15 @@ async def test_new_output_wakes_wait_without_process_exit(monkeypatch, terminal_
         assert not task.done()
         await _input(session, "NEW-OUTPUT\n")
         payload = await asyncio.wait_for(task, timeout=_DEADLINE)
-        assert payload["output"] == "NEW-OUTPUT\n"
+        output = payload["output"]
+        assert output
+        async with asyncio.timeout(_DEADLINE):
+            while not output.endswith("\n"):
+                payload = await terminal_manager.wait(
+                    session_id=session.session_id, timeout_ms=10000, **_cursor(payload),
+                )
+                output += payload["output"]
+        assert output == "NEW-OUTPUT\n"
         assert payload["status"] == "running" and payload["output_complete"] is False
         assert session.process.returncode is None and not session.wait_task.done()
     finally:
@@ -259,7 +273,7 @@ async def test_output_between_empty_snapshot_and_await_is_not_lost(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_wait_deadline_keeps_session_running_and_usable(terminal_manager):
+async def test_wait_deadline_keeps_session_running_and_usable(monkeypatch, terminal_manager):
     """
     分段等待到期是一次空快照，不能被解释成命令超时或终止。
     """
@@ -269,7 +283,9 @@ async def test_wait_deadline_keeps_session_running_and_usable(terminal_manager):
     assert expired["output"] == "" and _position(expired) == _position(initial)
     assert expired["status"] == "running" and expired["exit_code"] is None
     assert not session.wait_task.done()
+    arrived = _observe_bytes(monkeypatch, session, b"AFTER-WAIT-DEADLINE\n")
     await _input(session, "AFTER-WAIT-DEADLINE\n")
+    await asyncio.wait_for(arrived.wait(), timeout=_DEADLINE)
     resumed = await asyncio.wait_for(terminal_manager.wait(
         session_id=session.session_id, timeout_ms=10000, **_cursor(expired),
     ), timeout=_DEADLINE)
