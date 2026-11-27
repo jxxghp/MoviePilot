@@ -313,8 +313,19 @@ async def test_waiters_receive_output_independently_and_cancel_is_local(monkeypa
         assert not session.wait_task.done() and session.process.returncode is None
         await _input(session, "FOR-ALL-READERS\n")
         active = tasks[1:] if cancel_first else tasks
-        payloads = await asyncio.wait_for(asyncio.gather(*active), timeout=_DEADLINE)
-        assert all(payload["output"] == "FOR-ALL-READERS\n" for payload in payloads)
+        async with asyncio.timeout(_DEADLINE):
+            payloads = await asyncio.gather(*active)
+            outputs = []
+            for payload in payloads:
+                output = payload["output"]
+                assert output
+                while not output.endswith("\n"):
+                    payload = await terminal_manager.wait(
+                        session_id=session.session_id, timeout_ms=10000, **_cursor(payload),
+                    )
+                    output += payload["output"]
+                outputs.append(output)
+        assert all(output == "FOR-ALL-READERS\n" for output in outputs)
         assert all(payload["status"] == "running" for payload in payloads)
         assert not session.wait_task.cancelled()
         assert all(not task.cancelled() for task in session.reader_tasks)
