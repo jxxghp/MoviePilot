@@ -943,3 +943,68 @@ def test_smb_open_file_stream_branches(monkeypatch: pytest.MonkeyPatch) -> None:
         types.SimpleNamespace(stat=_boom, open_file=lambda _p, mode="rb": None),
     )
     assert storage.open_file_stream(FileItem(storage="smb", type="file", path="/movies/a.mp4", name="a.mp4")) is None
+
+
+def test_emby_subtitle_url_supports_colon_in_media_source_id() -> None:
+    """
+    验证代理字幕标识中媒体源 ID 含有冒号时仍能准确解析上游字幕流地址。
+    """
+    from app.modules._base.embybrowse import EmbyBrowseConfig, emby_subtitle_url
+
+    cfg = EmbyBrowseConfig(
+        host="https://emby.example:8920/",
+        api_key="emby-token",
+        user_id="u1",
+        server_type="emby",
+    )
+    url = emby_subtitle_url(cfg, "item-42", "ms:strm:source:99:3.ass")
+    assert url == (
+        "https://emby.example:8920/emby/Videos/item-42/"
+        "strm%3Asource%3A99/Subtitles/3/Stream.ass?api_key=emby-token"
+    )
+
+
+def test_open_upstream_stream_retries_self_signed_tls_only_for_configured_hosts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    验证管理员配置的媒体服务器遇到自签名证书 SSLError 时允许单跳回退，外部未配置主机仍严格拒绝。
+    """
+    import requests
+
+    ssl_fail_ctx = Mock()
+    ssl_fail_ctx.__enter__ = Mock(side_effect=requests.exceptions.SSLError("self-signed cert"))
+    ssl_fail_ctx.__exit__ = Mock(return_value=False)
+
+    ok_upstream = Mock(status_code=200, headers={"Content-Type": "text/x-ssa"})
+    ok_ctx = nullcontext(ok_upstream)
+
+    strict_client = Mock(get_stream=Mock(return_value=ssl_fail_ctx))
+    insecure_client = Mock(get_stream=Mock(return_value=ok_ctx))
+
+    def fake_request_utils(**kwargs):
+        return strict_client if kwargs.get("verify", True) else insecure_client
+
+    monkeypatch.setattr(mediastream, "RequestUtils", fake_request_utils)
+    monkeypatch.setattr(mediastream, "_validate_stream_url", lambda url, **_kwargs: url)
+
+    resp, _ctx, returned_client = mediastream._open_upstream_stream(
+        "https://192.168.1.10:8920/emby/Subtitles/Stream.ass",
+        None,
+        {"192.168.1.10"},
+    )
+    assert resp is ok_upstream
+    assert returned_client is insecure_client
+    strict_client.close.assert_called_once()
+
+    strict_client.reset_mock()
+    insecure_client.reset_mock()
+    with pytest.raises(HTTPException) as external_err:
+        mediastream._open_upstream_stream(
+            "https://cdn.external.example/sub.ass",
+            None,
+            {"192.168.1.10"},
+        )
+    assert external_err.value.status_code == 502
+    insecure_client.get_stream.assert_not_called()
+    strict_client.close.assert_called_once()

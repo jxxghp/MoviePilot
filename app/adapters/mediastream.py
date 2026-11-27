@@ -15,6 +15,7 @@ from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+import requests
 
 from app.adapters.network.http import RequestUtils
 from app.runtime.settings import get_runtime_setting
@@ -804,6 +805,7 @@ def _open_upstream_stream(
     :raises HTTPException: 上游不可用、目标不安全或重定向次数超限时
     """
     client = RequestUtils(timeout=30, verify=True)
+    insecure_client: Optional[RequestUtils] = None
     current_url = url
     initial_origin = _stream_origin(url)
     try:
@@ -814,15 +816,33 @@ def _open_upstream_stream(
                 headers.update(extra_headers)
             if range_header:
                 headers["Range"] = range_header
-            context = client.get_stream(
+            active_client = client
+            context = active_client.get_stream(
                 current_url,
                 headers=headers,
                 allow_redirects=False,
-                timeout=(10, 60),
+                timeout=(10, 90),
                 raise_exception=True,
             )
             try:
                 response = context.__enter__()
+            except requests.exceptions.SSLError:
+                if _stream_origin(current_url)[1] not in configured_hosts:
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="STRM 上游连接失败") from None
+                if insecure_client is None:
+                    insecure_client = RequestUtils(timeout=30, verify=False)
+                active_client = insecure_client
+                context = active_client.get_stream(
+                    current_url,
+                    headers=headers,
+                    allow_redirects=False,
+                    timeout=(10, 90),
+                    raise_exception=True,
+                )
+                try:
+                    response = context.__enter__()
+                except Exception:
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="STRM 上游连接失败") from None
             except Exception:
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="STRM 上游连接失败") from None
             if response is None:
@@ -835,10 +855,17 @@ def _open_upstream_stream(
                     raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="STRM 上游重定向无效")
                 current_url = urljoin(current_url, location)
                 continue
+            if active_client is insecure_client:
+                client.close()
+                return response, context, insecure_client
+            if insecure_client is not None:
+                insecure_client.close()
             return response, context, client
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="STRM 上游重定向次数过多")
     except Exception:
         client.close()
+        if insecure_client is not None:
+            insecure_client.close()
         raise
 
 

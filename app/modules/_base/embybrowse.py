@@ -53,8 +53,11 @@ _SUBTITLE_EXT_MAP = {
     "smi": "smi",
     "sami": "smi",
     "sub": "sub",
+    "pgssub": "sup",
+    "pgs": "sup",
+    "hdmv_pgs_subtitle": "sup",
 }
-_SUBTITLE_ID_RE = re.compile(r"^ms:([^:]+):(\d+)\.([a-z0-9]{2,6})$", re.IGNORECASE)
+_SUBTITLE_ID_RE = re.compile(r"^ms:(.+):(\d+)\.([a-z0-9]{2,6})$", re.IGNORECASE)
 _ITEM_TYPE_MAP = {
     "movie": "Movie",
     "电影": "Movie",
