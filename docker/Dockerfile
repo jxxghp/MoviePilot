@@ -99,6 +99,7 @@ RUN apt-get update \
     nano \
     unar \
     supervisor \
+    postgresql-client-16 \
     postgresql-client-18 \
     libchromaprint-tools \
     libjemalloc2 \
