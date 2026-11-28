@@ -254,7 +254,7 @@ def _text_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: 
     ):
         raw_pattern = params.get(key)
         if isinstance(raw_pattern, str) and raw_pattern:
-            pattern = torrent_rules.normalize_filter_pattern(key, raw_pattern) or raw_pattern
+            pattern = torrent_rules.resolve_runtime_filter_pattern(key, raw_pattern) or raw_pattern
             if _filter_pattern_search(pattern, subject or "") != expected:
                 diagnostic = f"{subject} {'不匹配' if expected else '匹配'}{label}规则 {pattern}"
                 return f"不符合{label}条件：{raw_pattern}", diagnostic

@@ -805,6 +805,17 @@ _UI_FILTER_PATTERN_ALIASES: dict[str, dict[str, str]] = {
     },
 }
 
+# 运行期标题匹配兼容行首/行尾/连字符等非字母数字边界，同时继续排除 HDRip、DVD 等误命中。
+_RUNTIME_EFFECT_PATTERN_OVERRIDES: dict[str, str] = {
+    r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+": (
+        r"Dolby[\s.]+Vision|DOVI|(?<![A-Za-z0-9])DV(?![A-Za-z0-9])"
+    ),
+    r"[\s.]+HDR[\s.]+|HDR10|HDR10\+": (
+        r"(?<![A-Za-z0-9])HDR(?![A-Za-z0-9])|HDR10|HDR10\+"
+    ),
+    r"[\s.]+SDR[\s.]+": r"(?<![A-Za-z0-9])SDR(?![A-Za-z0-9])",
+}
+
 
 def normalize_filter_pattern(field: str, pattern: Optional[str]) -> Optional[str]:
     """
@@ -823,6 +834,23 @@ def normalize_filter_pattern(field: str, pattern: Optional[str]) -> Optional[str
     if not aliases:
         return pattern
     return aliases.get(pattern.strip().casefold(), pattern)
+
+
+def resolve_runtime_filter_pattern(field: str, pattern: Optional[str]) -> Optional[str]:
+    """
+    解析运行期种子标题匹配使用的正则表达式。
+
+    在短标签展开的基础上，将内置特效预设中的空白/点号边界放宽为非字母数字词边界，
+    使标题首尾或括号/连字符分隔的 ``HDR``、``SDR``、``DV`` 能正常命中，同时排除 ``HDRip``、``DVD``。
+
+    :param field: 过滤条件字段名
+    :param pattern: 原始或已规范化的过滤表达式
+    :return: 供运行期标题搜索使用的正则表达式
+    """
+    normalized = normalize_filter_pattern(field, pattern)
+    if field == "effect" and isinstance(normalized, str):
+        return _RUNTIME_EFFECT_PATTERN_OVERRIDES.get(normalized, normalized)
+    return normalized
 
 
 def normalize_filter_payload(payload: dict[str, Any]) -> dict[str, Any]:

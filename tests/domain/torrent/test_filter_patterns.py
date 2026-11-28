@@ -101,6 +101,30 @@ def test_normalize_filter_pattern_preserves_custom_regex_and_other_fields(
             "Fold.the.Moon.S01E01.2160p.WEB-DL.AAC2.0.H265-Group",
             "不符合特效条件：杜比全景声",
         ),
+        (
+            {"effect": "HDR"},
+            "Movie 1080p HDR",
+            "Movie.1080p.HDRip.x264-Group",
+            "不符合特效条件：HDR",
+        ),
+        (
+            {"effect": r"[\s.]+HDR[\s.]+|HDR10|HDR10\+"},
+            "Movie 2160p HDR",
+            "Movie.2160p.SDR.WEB-DL",
+            r"不符合特效条件：[\s.]+HDR[\s.]+|HDR10|HDR10\+",
+        ),
+        (
+            {"effect": "杜比视界"},
+            "Movie 2160p DV",
+            "Movie.DVDRip.x264-Group",
+            "不符合特效条件：杜比视界",
+        ),
+        (
+            {"effect": "SDR"},
+            "Movie 1080p SDR",
+            "Movie.1080p.HDR10.WEB-DL",
+            "不符合特效条件：SDR",
+        ),
     ],
 )
 def test_torrent_helper_matches_short_ui_labels_against_real_torrent_titles(
