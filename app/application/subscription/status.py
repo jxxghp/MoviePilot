@@ -2,6 +2,7 @@
 订阅执行状态的业务投影与访问范围治理。
 """
 
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
@@ -65,6 +66,8 @@ class SubscriptionBatchStatus:
     :param downloads: 批次内成功下载安全摘要；最多返回 100 条
     :param downloads_omitted: 超出明细上限或已被活动裁剪的成功下载数量
     :param skipped_count: 本轮无需执行而跳过的任务数量
+    :param rejected_count: 匹配订阅目标但因质量、分辨率、特效、优先级或洗版规则被过滤拒绝的资源数量
+    :param rejection_reasons: 批次内被过滤拒绝资源的按原因汇总计数
     """
 
     batch_id: str
@@ -86,6 +89,8 @@ class SubscriptionBatchStatus:
     download_counts: dict[str, int] = field(default_factory=dict)
     downloads: tuple[dict[str, JsonData], ...] = ()
     downloads_omitted: int = 0
+    rejected_count: int = 0
+    rejection_reasons: dict[str, int] = field(default_factory=dict)
 
 
 class SubscriptionExecutionReadRepository(Protocol):
@@ -276,10 +281,21 @@ class SubscriptionExecutionStatusService:
         download_counts = {key: sum(task.download_counts.get(key, 0) for task in tasks)
                            for key in ("submitted", "initial_submitted", "upgrade_submitted", "full_upgrade_submitted")}
         downloads = tuple(resource for task in tasks for resource in task.downloads)[:100]
+        reason_counter: Counter[str] = Counter()
+        for task in tasks:
+            for reason, count in task.rejection_reasons.items():
+                if reason and count > 0:
+                    reason_counter[reason] += count
+        rejection_reasons = {
+            reason: count
+            for reason, count in sorted(reason_counter.items(), key=lambda item: (-item[1], item[0]))
+        }
         return SubscriptionBatchStatus(
             download_counts=download_counts,
             downloads=downloads,
             downloads_omitted=max(0, download_counts["submitted"] - len(downloads)),
+            rejected_count=sum(task.rejected_count for task in tasks),
+            rejection_reasons=rejection_reasons,
             batch_id=batch.batch_id,
             source=batch.source,
             state=batch.state,

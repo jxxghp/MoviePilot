@@ -386,3 +386,43 @@ def test_resumed_site_request_keeps_the_original_planned_denominator():
     event = stored["resumed-sites"]
     assert event.counts["sites"] == event.counts["requested_sites"] == 8
     assert event.counts["discovered"] == 8 and event.counts["waiting_sites"] == 0
+
+
+def test_rejected_resources_preserve_counts_reasons_and_clear_on_qualification():
+    """
+    过滤拒绝的资源即使超过明细上限也保留完整原因分布，后续晋级为合格资源时移除拒绝计数。
+    """
+    saved = []
+    service = SubscriptionActivityService(SimpleNamespace(save=saved.append, get=lambda *_args: saved[-1] if saved else None))
+    with service.scope(replace(_snapshot(), resolution="4K|2160p|x2160"), "search", "manual", "rejected-run") as run:
+        for index in range(110):
+            run.resource(_resource(f"Show.S01E{index:02d}.1080p"), "rejected", "不符合分辨率条件：4K|2160p|x2160")
+        for index in range(5):
+            run.resource(_resource(f"Show.Special.{index}.2160p"), "rejected", "不符合特效条件：杜比视界")
+        promoted = _resource("Show.S01E01.2160p.DV")
+        run.resource(promoted, "rejected", "不符合洗版范围或升级优先级")
+        run.resource(promoted, "qualified")
+        run.resource(promoted, "submitted")
+    completed = saved[-1]
+    assert completed.status == "completed"
+    assert completed.counts["related"] == 116
+    assert completed.counts["rejected"] == 115
+    assert completed.counts["submitted"] == 1
+    assert completed.details["rejection_reasons"] == {
+        "不符合分辨率条件：4K|2160p|x2160": 110,
+        "不符合特效条件：杜比视界": 5,
+    }
+
+    saved.clear()
+    with pytest.raises(SubscriptionSearchDeferred):
+        with service.scope(_snapshot(), "search", "manual", "all-rejected") as run:
+            for index in range(3):
+                run.resource(_resource(f"Only1080p.{index}"), "rejected", "不符合分辨率条件：4K|2160p|x2160")
+            raise SubscriptionSearchDeferred(retry_at="2026-10-12T10:50:00Z", site_ids=(2,))
+    with service.scope(_snapshot(), "search", "manual", "all-rejected") as run:
+        run.resource(_resource("Only1080p.3"), "rejected", "不符合分辨率条件：4K|2160p|x2160")
+    empty_event = saved[-1]
+    assert empty_event.status == "empty"
+    assert empty_event.counts["rejected"] == 4
+    assert empty_event.details["rejection_reasons"] == {"不符合分辨率条件：4K|2160p|x2160": 4}
+    assert "匹配到 4 个相关资源，均未通过过滤条件" in str(empty_event.details.get("reason"))

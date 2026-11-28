@@ -189,6 +189,9 @@ def test_batch_reads_persisted_activity_counts_and_safe_items(tmp_path):
                 context = _context([1, 2])
                 annotate_subscription_download(run.subscribe, context)
                 run.resource(context, "submitted")
+                rejected = _context([1])
+                rejected.torrent_info.title = "Demo.S01E01.1080p"
+                run.resource(rejected, "rejected", "不符合分辨率条件：4K|2160p|x2160")
                 event = run.snapshot()
                 session.add(SubscribeActivity(activity_key="activity", event_id=task_id, kind="search", source="manual",
                                               status="completed", started_at="now", counts=event.counts, details=event.details))
@@ -203,6 +206,8 @@ def test_batch_reads_persisted_activity_counts_and_safe_items(tmp_path):
                 assert details.download_counts["full_upgrade_submitted"] == 1
                 assert details.downloads[0]["subscription_download"] == context.subscription_download
                 assert details.downloads_omitted == 0
+                assert details.rejected_count == 1
+                assert details.rejection_reasons == {"不符合分辨率条件：4K|2160p|x2160": 1}
                 assert "private" not in str(details)
                 statuses = await service.for_subscriptions((17, 18))
                 assert statuses[17].submitted_count == 1

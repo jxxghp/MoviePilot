@@ -2,6 +2,7 @@
 订阅执行状态的请求级异步 SQLAlchemy 适配器。
 """
 
+from collections import Counter
 from dataclasses import replace
 from typing import Any, Optional
 
@@ -22,15 +23,51 @@ def _download_counts(counts: dict[str, Any]) -> dict[str, int]:
             and isinstance(value, int)}
 
 
+def _rejection_summary(activity: Optional[SubscribeActivity]) -> tuple[int, dict[str, int]]:
+    """
+    提取单任务活动中的过滤拒绝计数与原因分布，兼容仅含资源明细的历史活动记录。
+    """
+    if activity is None:
+        return 0, {}
+    details = activity.details if isinstance(activity.details, dict) else {}
+    stored_reasons = details.get("rejection_reasons")
+    if isinstance(stored_reasons, dict):
+        reasons = {
+            str(reason): count
+            for reason, count in stored_reasons.items()
+            if reason and isinstance(count, int) and count > 0
+        }
+    else:
+        resources = details.get("resources", [])
+        counter = Counter(
+            str(resource.get("reason") or "不符合订阅筛选条件")
+            for resource in (resources if isinstance(resources, list) else [])
+            if isinstance(resource, dict) and resource.get("decision") == "rejected"
+        )
+        reasons = dict(counter)
+    ordered_reasons = {
+        reason: count
+        for reason, count in sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+    }
+    counts = activity.counts if isinstance(activity.counts, dict) else {}
+    rejected_count = counts.get("rejected")
+    if not isinstance(rejected_count, int) or rejected_count < 0:
+        rejected_count = sum(ordered_reasons.values())
+    return rejected_count, ordered_reasons
+
+
 def _task(record: SubscriptionSearchTask, activity: Optional[SubscribeActivity] = None) -> SearchTaskSnapshot:
     """
     复制可脱离 AsyncSession 使用的搜索任务快照。
     """
+    rejected_count, rejection_reasons = _rejection_summary(activity)
     return SearchTaskSnapshot(
         download_counts=_download_counts(activity.counts if activity else {}),
         downloads=tuple({**resource, "subscription_id": record.subscription_id, "task_id": record.task_id}
                         for resource in (activity.details.get("resources", []) if activity else [])
                         if isinstance(resource, dict) and resource.get("decision") == "submitted"),
+        rejected_count=rejected_count,
+        rejection_reasons=rejection_reasons,
         task_id=record.task_id,
         batch_id=record.batch_id,
         subscription_id=record.subscription_id,

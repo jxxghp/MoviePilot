@@ -32,6 +32,7 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.delete import AsyncUnitOfWork
 from app.application.subscription.observability import subscription_log_scope
+from app.domain.torrent import normalize_filter_payload
 from app.runtime.log import logger
 from app.schemas.common import JsonData
 from app.schemas.event import SubscribeModifiedEventData
@@ -46,11 +47,13 @@ def _normalized_subscription_patch(
     payload: dict[str, JsonData],
 ) -> SubscriptionPatch:
     """
-    按订阅媒体类型规范化人工分类稳定引用并构造写入补丁。
+    按订阅媒体类型规范化人工分类稳定引用与筛选短标签，并构造写入补丁。
     """
-    normalized = normalize_classification_reference_payload(
-        payload,
-        media_type=subscribe.type,
+    normalized = normalize_filter_payload(
+        normalize_classification_reference_payload(
+            payload,
+            media_type=subscribe.type,
+        )
     )
     identity_fields = ("type", "media_source", "media_id", "season", "episode_group", "music_type")
     if any(field in payload and payload[field] != getattr(subscribe, field) for field in identity_fields):

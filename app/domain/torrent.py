@@ -762,3 +762,109 @@ def rate_limit_cooldown(message: Optional[str]) -> Optional[int]:
         60 if unit.startswith(("分", "minute")) else 1
     )
     return max(3600, int(wait.group(1)) * multiplier)
+
+
+# 与前端 constants.ts 下拉选项一一对应的短标签展开映射，键统一使用小写去空白形式。
+_UI_FILTER_PATTERN_ALIASES: dict[str, dict[str, str]] = {
+    "quality": {
+        "蓝光原盘": "Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD",
+        "藍光原盤": "Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD",
+        "blu-ray original": "Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD",
+        "bluray original": "Blu-?Ray.+VC-?1|Blu-?Ray.+AVC|UHD.+blu-?ray.+HEVC|MiniBD",
+        "remux": "Remux",
+        "bluray": "Blu-?Ray",
+        "blu-ray": "Blu-?Ray",
+        "uhd": "UHD|UltraHD",
+        "web-dl": "WEB-?DL|WEB-?RIP",
+        "webdl": "WEB-?DL|WEB-?RIP",
+        "hdtv": "HDTV",
+        "h265": "[Hx].?265|HEVC",
+        "h.265": "[Hx].?265|HEVC",
+        "hevc": "[Hx].?265|HEVC",
+        "h264": "[Hx].?264|AVC",
+        "h.264": "[Hx].?264|AVC",
+        "avc": "[Hx].?264|AVC",
+    },
+    "resolution": {
+        "4k": "4K|2160p|x2160",
+        "1080p": "1080[pi]|x1080",
+        "720p": "720[pi]|x720",
+    },
+    "effect": {
+        "杜比视界": r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+",
+        "杜比視界": r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+",
+        "dolby vision": r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+",
+        "dovi": r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+",
+        "dv": r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+",
+        "杜比全景声": r"Dolby[\s.]*\+?Atmos|Atmos",
+        "杜比全景聲": r"Dolby[\s.]*\+?Atmos|Atmos",
+        "dolby atmos": r"Dolby[\s.]*\+?Atmos|Atmos",
+        "atmos": r"Dolby[\s.]*\+?Atmos|Atmos",
+        "hdr": r"[\s.]+HDR[\s.]+|HDR10|HDR10\+",
+        "sdr": r"[\s.]+SDR[\s.]+",
+    },
+}
+
+# 运行期标题匹配兼容行首/行尾/连字符等非字母数字边界，同时继续排除 HDRip、DVD 等误命中。
+_RUNTIME_EFFECT_PATTERN_OVERRIDES: dict[str, str] = {
+    r"Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+": (
+        r"Dolby[\s.]+Vision|DOVI|(?<![A-Za-z0-9])DV(?![A-Za-z0-9])"
+    ),
+    r"[\s.]+HDR[\s.]+|HDR10|HDR10\+": (
+        r"(?<![A-Za-z0-9])HDR(?![A-Za-z0-9])|HDR10|HDR10\+"
+    ),
+    r"[\s.]+SDR[\s.]+": r"(?<![A-Za-z0-9])SDR(?![A-Za-z0-9])",
+}
+
+
+def normalize_filter_pattern(field: str, pattern: Optional[str]) -> Optional[str]:
+    """
+    将质量、分辨率、特效的界面短标签展开为与 Web 端一致的等价正则表达式。
+
+    仅对精确匹配已知枚举短标签（忽略首尾空白与大小写）的值做展开；
+    已展开表达式或用户自定义正则保持原样返回，不改变显式正则语义。
+
+    :param field: 过滤条件字段名，支持 quality、resolution、effect
+    :param pattern: 订阅、默认规则或工作流传入的匹配表达式
+    :return: 规范化后的正则表达式；输入为空或非字符串时原样返回
+    """
+    if not isinstance(pattern, str) or not pattern:
+        return pattern
+    aliases = _UI_FILTER_PATTERN_ALIASES.get(field)
+    if not aliases:
+        return pattern
+    return aliases.get(pattern.strip().casefold(), pattern)
+
+
+def resolve_runtime_filter_pattern(field: str, pattern: Optional[str]) -> Optional[str]:
+    """
+    解析运行期种子标题匹配使用的正则表达式。
+
+    在短标签展开的基础上，将内置特效预设中的空白/点号边界放宽为非字母数字词边界，
+    使标题首尾或括号/连字符分隔的 ``HDR``、``SDR``、``DV`` 能正常命中，同时排除 ``HDRip``、``DVD``。
+
+    :param field: 过滤条件字段名
+    :param pattern: 原始或已规范化的过滤表达式
+    :return: 供运行期标题搜索使用的正则表达式
+    """
+    normalized = normalize_filter_pattern(field, pattern)
+    if field == "effect" and isinstance(normalized, str):
+        return _RUNTIME_EFFECT_PATTERN_OVERRIDES.get(normalized, normalized)
+    return normalized
+
+
+def normalize_filter_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    复制并规范化字典中的质量、分辨率、特效枚举短标签。
+
+    未提供的字段与显式清空的 None 保持原样，不修改调用方传入的原字典。
+
+    :param payload: 待持久化或转换的订阅字段字典
+    :return: 规范化过滤表达式后的新字典
+    """
+    normalized = dict(payload)
+    for field in ("quality", "resolution", "effect"):
+        value = normalized.get(field)
+        if isinstance(value, str) and value:
+            normalized[field] = normalize_filter_pattern(field, value)
+    return normalized

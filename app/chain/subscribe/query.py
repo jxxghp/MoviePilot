@@ -26,6 +26,7 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfo
+from app.domain.torrent import normalize_filter_pattern
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.media import normalize_media_source
@@ -322,7 +323,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
     @staticmethod
     def get_params(subscribe: SubscriptionSnapshot) -> dict[str, Any]:
         """
-        获取订阅默认参数
+        获取订阅默认参数，并将存量或默认配置中的枚举短标签规范化为等价正则。
         """
         default_rule = get_configured_system_config().get(SystemConfigKey.SubscribeDefaultParams) or {}
         return {
@@ -330,9 +331,11 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             for key, value in {
                 "include": subscribe.include or default_rule.get("include"),
                 "exclude": subscribe.exclude or default_rule.get("exclude"),
-                "quality": subscribe.quality or default_rule.get("quality"),
-                "resolution": subscribe.resolution or default_rule.get("resolution"),
-                "effect": subscribe.effect or default_rule.get("effect"),
+                "quality": normalize_filter_pattern("quality", subscribe.quality or default_rule.get("quality")),
+                "resolution": normalize_filter_pattern(
+                    "resolution", subscribe.resolution or default_rule.get("resolution")
+                ),
+                "effect": normalize_filter_pattern("effect", subscribe.effect or default_rule.get("effect")),
                 "audio_quality": getattr(subscribe, "audio_quality", None),
                 "audio_format": getattr(subscribe, "audio_format", None),
                 "min_bitrate": getattr(subscribe, "min_bitrate", None),

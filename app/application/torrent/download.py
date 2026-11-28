@@ -244,16 +244,20 @@ def _cache_valid_torrent_content(
 def _text_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: str) -> Optional[Tuple[str, str]]:
     """
     按原有顺序检查包含、排除、质量等正则，并返回业务原因和运行诊断。
+
+    质量、分辨率、特效会先将界面短标签规范化为等价正则，兼容存量短标签与第三方调用。
     """
     for key, label, subject, expected in (
         ("include", "包含", content, True), ("exclude", "排除", content, False),
         ("quality", "质量", torrent.title, True), ("resolution", "分辨率", torrent.title, True),
         ("effect", "特效", torrent.title, True),
     ):
-        pattern = params.get(key)
-        if isinstance(pattern, str) and pattern and _filter_pattern_search(pattern, subject or "") != expected:
-            diagnostic = f"{subject} {'不匹配' if expected else '匹配'}{label}规则 {pattern}"
-            return f"不符合{label}条件：{pattern}", diagnostic
+        raw_pattern = params.get(key)
+        if isinstance(raw_pattern, str) and raw_pattern:
+            pattern = torrent_rules.resolve_runtime_filter_pattern(key, raw_pattern) or raw_pattern
+            if _filter_pattern_search(pattern, subject or "") != expected:
+                diagnostic = f"{subject} {'不匹配' if expected else '匹配'}{label}规则 {pattern}"
+                return f"不符合{label}条件：{raw_pattern}", diagnostic
     return None
 
 

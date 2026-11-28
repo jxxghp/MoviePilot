@@ -156,6 +156,8 @@ class SubscriptionBatchStatus(BaseModel):
     download_counts: Dict[str, int] = Field(default_factory=dict, description="成功下载任务分类计数：submitted 总数、initial_submitted 首次订阅、upgrade_submitted 洗版（含混合整包）、full_upgrade_submitted 全集洗版子集；旧活动不推断来源")
     downloads: List[Dict[str, JsonData]] = Field(default_factory=list, description="成功下载的安全摘要，含 subscription_download 提交类型与全集洗版模式；最多 100 条")
     downloads_omitted: int = Field(default=0, description="因活动或批次明细上限省略的成功下载数量，计数不受此上限影响")
+    rejected_count: int = Field(default=0, description="匹配订阅作品但因质量、分辨率、特效、优先级或洗版规则被过滤拒绝的资源数量")
+    rejection_reasons: Dict[str, int] = Field(default_factory=dict, description="批次内被过滤拒绝资源的按原因汇总计数，用于区分站点无资源与规则过滤")
     skipped_count: int = Field(default=0, description="已跳过的订阅任务数量")
     current_subscription_id: Optional[int] = Field(default=None, description="正在处理的订阅标识")
     current_site_id: Optional[int] = Field(default=None, description="正在处理的站点标识")

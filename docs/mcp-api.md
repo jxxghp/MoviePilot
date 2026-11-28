@@ -210,8 +210,10 @@ Agent/MCP 网关要求更新对象非空，且拒绝把 `***` 等宿主脱敏占
   `submission_type`（`initial` / `upgrade`）、`best_version_full` 及两类集数。
   活动可从订阅历史继续查看，恢复重试按资源去重，不重复累计成功回执。
 - `GET /api/v1/subscribe/execution/batches` 及其 `/{batch_id}` 详情返回 `download_counts`、
-  `downloads` 和 `downloads_omitted`。分类数量按成功下载任务计数，与搜索任务完成数量独立；
-  明细最多 100 条，裁剪不影响总量，访问权限沿用整批订阅归属校验。
+  `downloads` 和 `downloads_omitted`，并在各搜索任务快照中提供 `rejected_count` 与
+  `rejection_reasons` 以区分“站点无相关资源”与“候选资源被分辨率/质量/规则过滤”。
+  分类数量按成功下载任务计数，与搜索任务完成数量独立；明细最多 100 条，裁剪不影响总量，
+  访问权限沿用整批订阅归属校验。
 - 下载历史的 `note.subscription_download` 保留同一来源，`note.source` 继续保留原入口信息。
   下载处理上下文在持久事件恢复后保留该来源，已冻结的通知保持模板渲染结果。
 

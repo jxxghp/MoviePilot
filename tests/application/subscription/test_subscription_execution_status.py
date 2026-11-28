@@ -237,3 +237,44 @@ def test_request_cancel_uses_injected_execution_boundary():
 
     assert asyncio.run(service.request_cancel("batch-1")) is True
     assert requested == ["batch-1"]
+
+
+def test_batch_projection_aggregates_rejected_counts_and_reasons():
+    """
+    批次零提交时仍须汇总各任务被过滤拒绝的资源数量与原因，避免表现为静默空成功。
+    """
+    repository = _Repository()
+    repository.batch = replace(
+        repository.batch,
+        state="completed",
+        total_count=2,
+        finished_count=2,
+    )
+    repository.tasks = {
+        1: replace(
+            _task(1, state="completed", phase="completed"),
+            rejected_count=20,
+            rejection_reasons={"不符合分辨率条件：4K|2160p|x2160": 18, "不符合优先级过滤规则": 2},
+        ),
+        2: replace(
+            _task(2, state="completed", phase="completed"),
+            rejected_count=7,
+            rejection_reasons={"不符合分辨率条件：4K|2160p|x2160": 7},
+        ),
+    }
+
+    visible = asyncio.run(
+        SubscriptionExecutionStatusService(repository).get_batch(
+            "batch-1",
+            accessible_subscription_ids={1, 2},
+        )
+    )
+
+    assert visible is not None
+    assert visible.state == "completed"
+    assert visible.download_counts["submitted"] == 0
+    assert visible.rejected_count == 27
+    assert visible.rejection_reasons == {
+        "不符合分辨率条件：4K|2160p|x2160": 25,
+        "不符合优先级过滤规则": 2,
+    }
