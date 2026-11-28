@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -43,6 +44,31 @@ def _detail_objects(details: Mapping[str, JsonData], field_name: str) -> list[di
     """
     values = details.get(field_name)
     return [value for value in values if isinstance(value, dict)] if isinstance(values, list) else []
+
+
+def _sorted_reason_counts(reasons: Iterable[str]) -> dict[str, int]:
+    """
+    按命中数量降序、文案升序汇总过滤拒绝原因，保持输出稳定可读。
+    """
+    counts = Counter(reason for reason in reasons if reason)
+    return {
+        reason: count
+        for reason, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    }
+
+
+def _decode_rejected_tracking(entries: Iterable[str]) -> dict[str, str]:
+    """
+    从持久化去重记录还原当前仍处于拒绝状态的资源键及原因。
+    """
+    restored: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, str) or not entry:
+            continue
+        key, separator, reason = entry.partition(":")
+        if key:
+            restored[key] = reason if separator and reason else "不符合订阅筛选条件"
+    return restored
 
 
 def activity_time() -> str:
@@ -211,7 +237,8 @@ class SubscriptionActivityRun:
         self.started_at = activity_time()
         self.status = "running"
         self.finished_at: str | None = None
-        self.counts: dict[str, int] = {"sites": 0, "requested_sites": 0, "discovered": 0, "related": 0, "qualified": 0, "submitted": 0,
+        self.counts: dict[str, int] = {"sites": 0, "requested_sites": 0, "discovered": 0, "related": 0, "rejected": 0,
+                                       "qualified": 0, "submitted": 0,
                                        "initial_submitted": 0, "upgrade_submitted": 0, "full_upgrade_submitted": 0}
         self.details: dict[str, JsonData] = {
             "rules": {key: subscribe.to_dict().get(key) for key in RULE_FIELDS},
@@ -219,6 +246,7 @@ class SubscriptionActivityRun:
         }
         self._resources: dict[str, dict[str, JsonData]] = {}
         self._related: set[str] = set()
+        self._rejected_reasons: dict[str, str] = {}
         self._qualified: set[str] = set()
         self._submitted: set[str] = set()
         self._failed: set[str] = set()
@@ -226,6 +254,17 @@ class SubscriptionActivityRun:
         self._requested_sites: set[int] = set()
         self._planned_sites: set[int] = set()
         self._lock = RLock()
+
+    def _sync_rejection_summary(self) -> None:
+        """
+        将当前拒绝集合同步到汇总计数与按原因分类统计，不受资源明细条数上限截断影响。
+        """
+        self.counts["rejected"] = len(self._rejected_reasons)
+        reason_counts = _sorted_reason_counts(self._rejected_reasons.values())
+        if reason_counts:
+            self.details["rejection_reasons"] = cast(JsonData, reason_counts)
+        else:
+            self.details.pop("rejection_reasons", None)
 
     def resource(self, context: object, decision: str, reason: str | None = None) -> None:
         """
@@ -257,6 +296,11 @@ class SubscriptionActivityRun:
                 self._failed.discard(key)
             if decision == "failed" and key not in self._submitted:
                 self._failed.add(key)
+            if decision == "rejected" and key not in self._qualified and key not in self._submitted and key not in self._failed:
+                self._rejected_reasons[key] = str(reason or "不符合订阅筛选条件")
+            elif decision in {"qualified", "submitted", "failed"}:
+                self._rejected_reasons.pop(key, None)
+            self._sync_rejection_summary()
             self.counts["download_failed"] = len(self._failed)
             if key in self._submitted:
                 decision, reason = "submitted", None
@@ -329,7 +373,9 @@ class SubscriptionActivityRun:
             return SubscriptionActivity(
                 self.subscribe.activity_key or "", self.event_id, self.kind, self.source,
                 self.status, self.started_at, self.finished_at, dict(self.counts), copy.deepcopy(self.details),
-                {"related": sorted(self._related), "qualified": sorted(self._qualified), "submitted": sorted(self._submitted), "failed": sorted(self._failed),
+                {"related": sorted(self._related),
+                 "rejected": [f"{key}:{reason}" for key, reason in sorted(self._rejected_reasons.items())],
+                 "qualified": sorted(self._qualified), "submitted": sorted(self._submitted), "failed": sorted(self._failed),
                  "requested_sites": [str(site_id) for site_id in sorted(self._requested_sites)],
                  "planned_sites": [str(site_id) for site_id in sorted(self._planned_sites)]},
             )
@@ -344,13 +390,24 @@ class SubscriptionActivityRun:
         if event.details.get("phase") == "queued":
             self.details["rules"] = {key: self.subscribe.to_dict().get(key) for key in RULE_FIELDS}
         self._related.update(event.tracking.get("related", []))
+        self._rejected_reasons.update(_decode_rejected_tracking(event.tracking.get("rejected", [])))
         self._qualified.update(event.tracking.get("qualified", []))
         self._submitted.update(event.tracking.get("submitted", []))
         self._failed.update(event.tracking.get("failed", []))
         self._requested_sites.update(int(site_id) for site_id in event.tracking.get("requested_sites", []))
         self._planned_sites.update(int(site_id) for site_id in event.tracking.get("planned_sites", []))
         for resource in _detail_objects(self.details, "resources"):
-            self._resources[str(resource["resource_id"])] = resource
+            resource_id = str(resource["resource_id"])
+            self._resources[resource_id] = resource
+            if (
+                resource.get("decision") == "rejected"
+                and resource_id not in self._rejected_reasons
+                and resource_id not in self._qualified
+                and resource_id not in self._submitted
+                and resource_id not in self._failed
+            ):
+                self._rejected_reasons[resource_id] = str(resource.get("reason") or "不符合订阅筛选条件")
+        self._sync_rejection_summary()
         for site in _detail_objects(self.details, "sites"):
             self._sites[int(cast(int, site["id"]))] = site
             if site.get("attempted", site["status"] != "waiting") is True:
@@ -413,6 +470,14 @@ class SubscriptionActivityService:
             run.status = "not_submitted" if run.counts["qualified"] else "empty"
         if failures and "reason" not in run.details:
             run.details["reason"] = f"本轮有 {failures} 个站点请求未成功，其余处理结果已保留"
+        elif run.counts.get("rejected") and not run.counts.get("qualified") and "reason" not in run.details:
+            reasons = run.details.get("rejection_reasons")
+            reason_items = (
+                "；".join(f"{name}（{count}）" for name, count in list(reasons.items())[:3])
+                if isinstance(reasons, Mapping) and reasons
+                else "不符合订阅筛选条件"
+            )
+            run.details["reason"] = f"匹配到 {run.counts['rejected']} 个相关资源，均未通过过滤条件：{reason_items}"
 
     @contextmanager
     def scope(self, subscribe: SubscriptionSnapshot, kind: str, source: str, run_id: str | None = None) -> Iterator[SubscriptionActivityRun]:

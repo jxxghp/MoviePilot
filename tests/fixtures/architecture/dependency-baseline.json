@@ -951,8 +951,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10692,
-  "edge_sha256": "4ac61cea5b1d5db7de36af43c353141d3669cacff213dd1080067c6891421ea4",
+  "edge_count": 10696,
+  "edge_sha256": "03031aa6ebd0825acbb20b2fcc323a76aca62cf1c1dfaf662d36e265f6e10c25",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4628,6 +4628,8 @@
     "app.application.subscription.mutation -> app.application.subscription.contract",
     "app.application.subscription.mutation -> app.application.subscription.delete",
     "app.application.subscription.mutation -> app.application.subscription.observability",
+    "app.application.subscription.mutation -> app.domain",
+    "app.application.subscription.mutation -> app.domain.torrent",
     "app.application.subscription.mutation -> app.runtime",
     "app.application.subscription.mutation -> app.runtime.log",
     "app.application.subscription.mutation -> app.schemas",
@@ -4687,6 +4689,7 @@
     "app.application.subscription.write -> app.application.subscription.contract",
     "app.application.subscription.write -> app.domain",
     "app.application.subscription.write -> app.domain.context",
+    "app.application.subscription.write -> app.domain.torrent",
     "app.application.subscription.write -> app.schemas",
     "app.application.subscription.write -> app.schemas.common",
     "app.application.subscription.write -> app.schemas.media",
@@ -6166,6 +6169,7 @@
     "app.chain.subscribe.query -> app.domain.meta",
     "app.chain.subscribe.query -> app.domain.meta.metabase",
     "app.chain.subscribe.query -> app.domain.metainfo",
+    "app.chain.subscribe.query -> app.domain.torrent",
     "app.chain.subscribe.query -> app.runtime",
     "app.chain.subscribe.query -> app.runtime.log",
     "app.chain.subscribe.query -> app.runtime.stop",

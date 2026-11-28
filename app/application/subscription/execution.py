@@ -277,6 +277,8 @@ class SearchTaskSnapshot:
     :param download_counts: 任务活动累计的成功提交分类计数；旧活动为空
     :param downloads: 本任务活动中保留的成功下载安全摘要；最多 100 条
     :param pending_site_ids: 等待恢复的站点标识；None 表示尚未限定站点范围
+    :param rejected_count: 匹配订阅目标但未通过附加参数、优先级规则或洗版条件而被过滤拒绝的资源数量
+    :param rejection_reasons: 任务内被过滤拒绝资源的按原因汇总计数
     """
 
     task_id: str
@@ -300,6 +302,8 @@ class SearchTaskSnapshot:
     pending_site_ids: Optional[tuple[int, ...]] = None
     download_counts: dict[str, int] = field(default_factory=dict)
     downloads: tuple[dict[str, JsonData], ...] = ()
+    rejected_count: int = 0
+    rejection_reasons: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

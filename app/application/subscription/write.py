@@ -29,6 +29,7 @@ from app.application.subscription.contract import (
     subscription_added_report_key,
 )
 from app.domain.context import MediaInfo, MusicInfo
+from app.domain.torrent import normalize_filter_payload
 from app.schemas.common import JsonData
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
@@ -452,12 +453,14 @@ def _translate(
         season=raw_season if isinstance(raw_season, int) else None,
         episode_group=mediainfo.episode_group,
     )
-    payload = cast(
-        dict[str, JsonData],
-        normalize_classification_reference_payload(
-            kwargs,
-            media_type=mediainfo.type,
-        ),
+    payload = normalize_filter_payload(
+        cast(
+            dict[str, JsonData],
+            normalize_classification_reference_payload(
+                kwargs,
+                media_type=mediainfo.type,
+            ),
+        )
     )
     payload.update(
         {
