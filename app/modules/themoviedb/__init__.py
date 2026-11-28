@@ -45,6 +45,8 @@ from app.schemas.types import (
 )
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_JOINED_TITLE_ARTICLE_RE = re.compile(r"(?<=[\u4e00-\u9fff])(?:the|an|a)$", re.IGNORECASE | re.ASCII)
+_ENGLISH_TITLE_TAIL_RE = re.compile(r"[A-Za-z][A-Za-z'’-]*(?: [A-Za-z][A-Za-z'’-]*)+")
 _TmdbData = Dict[str, Any]
 _TmdbDataList = List[_TmdbData]
 
@@ -424,11 +426,23 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     @staticmethod
     def _prepare_search_names(meta: MetaBase) -> List[str]:
         """
-        准备搜索名称列表。
+        按原有优先级准备搜索名称，再追加有明确冠词边界的双语片名候选。
+
+        :param meta: 解析后的文件或种子元数据，不修改原始片名、年份和季集
+        :return: 有序去重的名称；仅当前面的候选都未命中时才会查询附加候选
         """
         zh_name = zhconv_convert(meta.cn_name, "zh-hans") if meta.cn_name else None
-        # 使用中英文名分别识别，去重去空，但要保持顺序
-        return list(dict.fromkeys([k for k in [meta.cn_name, zh_name, meta.en_name] if k]))
+        names = [meta.cn_name, zh_name, meta.en_name]
+        if meta.cn_name and meta.en_name and _ENGLISH_TITLE_TAIL_RE.fullmatch(meta.en_name):
+            article = _JOINED_TITLE_ARTICLE_RE.search(meta.cn_name)
+            if article:
+                cn_name = meta.cn_name[:article.start()]
+                names.extend((
+                    f"{article[0].capitalize()} {meta.en_name}",
+                    cn_name,
+                    zhconv_convert(cn_name, "zh-hans"),
+                ))
+        return list(dict.fromkeys(name for name in names if name))
 
     @staticmethod
     def _fill_group_season_info(mediainfo: MediaInfo, episode_group: Optional[str], group_seasons: _TmdbDataList) -> None:

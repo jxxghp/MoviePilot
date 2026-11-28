@@ -3,6 +3,7 @@ TMDB 模块同步与异步公开能力的业务决策一致性测试。
 """
 
 import asyncio
+from pathlib import Path
 from typing import Optional
 from unittest.mock import AsyncMock, Mock, call
 
@@ -10,6 +11,7 @@ import pytest
 
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.metainfo import MetaInfoPath
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
 from app.schemas.category import ClassificationEnrichmentRequest, ClassificationIdentityFacts
@@ -315,6 +317,83 @@ def test_name_match_sync_async_share_ordered_fallback_plan() -> None:
     ]
     assert module.tmdb.match.call_args_list == expected_calls
     assert module.tmdb.async_match.call_args_list == expected_calls
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize(
+    ("title", "matched_name", "expected_names"),
+    [
+        (
+            "虚构远征The.Great.Unknown",
+            "The Great Unknown",
+            ["虚构远征The", "Great Unknown", "The Great Unknown"],
+        ),
+        (
+            "虛構遠征The.Great.Unknown",
+            "虚构远征",
+            ["虛構遠征The", "虚构远征The", "Great Unknown", "The Great Unknown", "虛構遠征", "虚构远征"],
+        ),
+        ("虚构远征An.Ocean.Away", "An Ocean Away", ["虚构远征An", "Ocean Away", "An Ocean Away"]),
+        ("虚构远征A.New.World", "A New World", ["虚构远征A", "New World", "A New World"]),
+        ("虚构远征The.Great.Unknown", "虚构远征The", ["虚构远征The"]),
+        ("虚构远征The.Great.Unknown", "Great Unknown", ["虚构远征The", "Great Unknown"]),
+        ("虚构远征.The.Great.Unknown", None, ["虚构远征", "The Great Unknown"]),
+        ("虚构远征Plus.Great.Unknown", None, ["虚构远征Plus", "Great Unknown"]),
+        ("虚构远征The", None, ["虚构远征The"]),
+        ("虚构远征The.Great", None, ["虚构远征The", "Great"]),
+    ],
+)
+def test_recognize_joined_bilingual_title_fallback(
+    use_async: bool, title: str, matched_name: Optional[str], expected_names: list[str],
+) -> None:
+    """
+    中英文紧贴时补试完整英文名和去掉冠词的中文名，原候选命中则不回退。
+
+    :param use_async: 是否调用异步公开识别入口
+    :param title: 模拟整理源文件的片名部分
+    :param matched_name: 离线 TMDB 客户端接受的唯一名称，为空时均不命中
+    :param expected_names: 按首次查询排序的名称列表
+    """
+    module = _module_with_clients()
+    meta = MetaInfoPath(Path(f"{title}.2026.S01E21.2160p.WEB-DL.H265.mkv"))
+    info = {
+        "id": 20,
+        "media_type": MediaType.TV,
+        "name": "虚构远征",
+        "first_air_date": "2026-01-01",
+        "genres": [{"id": 18, "name": "剧情"}],
+    }
+
+    def match(name: str, **kwargs: object) -> Optional[dict[str, object]]:
+        """
+        模拟客户端只接受指定名称，并检查查询保留媒体类型、年份和季号。
+
+        :param name: 当前查询的名称
+        :param kwargs: TMDB 匹配参数
+        :return: 匹配时返回剧集详情，否则为空
+        """
+        assert kwargs["mtype"] == MediaType.TV
+        if "year" in kwargs:
+            assert (kwargs["year"], kwargs["season_number"]) == ("2026", 1)
+        else:
+            assert kwargs["soft_year"] == "2026"
+        return info if name == matched_name else None
+
+    if use_async:
+        client = module.tmdb.async_match = AsyncMock(side_effect=match)
+        result = asyncio.run(module.async_recognize_media(meta=meta, media_source=MediaSource.TMDB, cache=False))
+    else:
+        client = module.tmdb.match
+        client.side_effect = match
+        result = module.recognize_media(meta=meta, media_source=MediaSource.TMDB, cache=False)
+
+    assert list(dict.fromkeys(query.kwargs["name"] for query in client.call_args_list)) == expected_names
+    assert (meta.year, meta.begin_season, meta.begin_episode) == ("2026", 1, 21)
+    if matched_name:
+        assert result is not None
+        assert result.tmdb_id == 20
+    else:
+        assert result is None
 
 
 def test_media_search_sync_async_share_combination_and_sorting() -> None:
