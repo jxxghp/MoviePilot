@@ -1028,6 +1028,73 @@ class StreamingHandler:
         if self._message_response is not None:
             await run_in_threadpool(_StreamChain().finalize_message, self._message_response)
 
+    def _resolve_channel_enum(self) -> Optional[NotificationChannel]:
+        """
+        解析当前流式输出所属的通知渠道枚举，无法识别时返回 None。
+        """
+        if not self._channel:
+            return None
+        try:
+            return NotificationChannel(self._channel)
+        except (ValueError, KeyError):
+            return None
+
+    def _rollover_message_if_needed(
+        self,
+        current_text: str,
+        end_offset: Optional[int],
+    ) -> str:
+        """
+        当前消息超长时冻结旧消息并重置编辑身份，返回新消息应发送的未交付文本。
+        """
+        if (
+            self._message_response is None
+            or not self._max_message_length
+            or len(current_text) <= self._max_message_length
+        ):
+            return current_text
+        logger.debug(
+            f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息"
+        )
+        with self._lock:
+            unsent_text = self._unsent_text_locked(current_text)
+            self._msg_start_offset += len(current_text) - len(unsent_text)
+            next_text = self._buffer[self._msg_start_offset : end_offset]
+        self._message_response = None
+        self._sent_text = ""
+        self._sent_thinking_status = ""
+        return next_text
+
+    def _build_direct_stream_message(self, text: str) -> Message:
+        """
+        构造流式首条或分段直发消息体。
+        """
+        return Message.model_validate({
+            "channel": self._channel,
+            "source": self._source,
+            "mtype": MessageType.Agent,
+            "userid": self._user_id,
+            "username": self._username,
+            "original_message_id": self._original_message_id,
+            "original_chat_id": self._original_chat_id,
+            "title": self._title,
+            "text": text,
+            "rich_message": self._get_rich_message(text),
+            "save_history": False,
+        })
+
+    def _should_clear_thinking_placeholder_locked(self, current_text: str, final: bool) -> bool:
+        """
+        判断收尾时是否需要删除仅含思考占位且无后续正文的渠道消息。
+        """
+        return (
+            final
+            and not current_text
+            and self._message_response is not None
+            and bool(self._sent_thinking_status)
+            and self._sent_text == self._sent_thinking_status
+        )
+
     async def _flush(
         self,
         end_offset: Optional[int] = None,
@@ -1046,7 +1113,10 @@ class StreamingHandler:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
             current_text = self._buffer[self._msg_start_offset : end_offset]
             thinking_status = self._thinking_status_text
-            if not current_text or current_text == self._sent_text:
+            should_clear_placeholder = self._should_clear_thinking_placeholder_locked(
+                current_text, final
+            )
+            if (not current_text or current_text == self._sent_text) and not should_clear_placeholder:
                 # 没有新内容需要刷新
                 return
             if (not self._channel or not self._source) and not self._allow_dispatch_without_context:
@@ -1056,97 +1126,66 @@ class StreamingHandler:
         chain = _StreamChain()
 
         try:
+            if should_clear_placeholder:
+                channel_enum = self._resolve_channel_enum()
+                response = self._message_response
+                if channel_enum is not None and response is not None and response.message_id:
+                    deleted = await run_in_threadpool(
+                        chain.delete_message,
+                        channel=channel_enum,
+                        source=response.source or self._source or "",
+                        message_id=response.message_id,
+                        chat_id=response.chat_id,
+                    )
+                    if deleted:
+                        with self._lock:
+                            self._message_response = None
+                            self._sent_text = ""
+                            self._sent_thinking_status = ""
+                return
+
+            current_text = self._rollover_message_if_needed(current_text, end_offset)
             if self._message_response is None:
-                # 第一次发送：发送新消息并获取 message_id
+                if not current_text:
+                    return
+                # 首次发送或超长分段：发送新消息并获取 message_id
                 response = await run_in_threadpool(
                     chain.send_direct_message,
-                    Message.model_validate({
-                        "channel": self._channel,
-                        "source": self._source,
-                        "mtype": MessageType.Agent,
-                        "userid": self._user_id,
-                        "username": self._username,
-                        "original_message_id": self._original_message_id,
-                        "original_chat_id": self._original_chat_id,
-                        "title": self._title,
-                        "text": current_text,
-                        "rich_message": self._get_rich_message(current_text),
-                        "save_history": False,
-                    }),
+                    self._build_direct_stream_message(current_text),
                 )
                 if response and response.success and response.message_id:
                     self._message_response = response
                     self._record_sent_text(current_text, thinking_status)
-                    logger.debug(f"流式输出初始消息已发送: message_id={response.message_id}")
+                    logger.debug(f"流式输出消息已发送: message_id={response.message_id}")
                 else:
-                    logger.debug("流式输出初始消息发送失败或未返回message_id，降级为非流式输出")
+                    logger.debug("流式输出消息发送失败或未返回message_id，降级为非流式输出")
                     self._streaming_enabled = False
+                return
+
+            # 后续更新：编辑已有消息
+            channel_enum = self._resolve_channel_enum()
+            if channel_enum is None:
+                return
+            metadata = dict(self._message_response.metadata or {})
+            rich_message = self._get_rich_message(current_text)
+            if rich_message:
+                # 通用编辑接口不增加渠道专属参数，通过元数据交给 Telegram 模块消费。
+                metadata["telegram_rich_message"] = rich_message
+                metadata["telegram_wait_for_edit_interval"] = final
+            success = await run_in_threadpool(
+                chain.edit_message,
+                channel=channel_enum,
+                source=self._message_response.source,
+                message_id=self._message_response.message_id,
+                chat_id=self._message_response.chat_id,
+                text=current_text,
+                title=self._title,
+                metadata=metadata,
+            )
+            if success:
+                self._record_sent_text(current_text, thinking_status)
             else:
-                # 检查当前消息内容是否超过长度限制
-                if self._max_message_length and len(current_text) > self._max_message_length:
-                    # 消息过长，冻结当前消息（保持最后一次成功编辑的内容）
-                    # 将 offset 移动到已发送文本之后，开启新消息
-                    logger.debug(f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息")
-                    with self._lock:
-                        unsent_text = self._unsent_text_locked(current_text)
-                        self._msg_start_offset += len(current_text) - len(unsent_text)
-                        current_text = self._buffer[self._msg_start_offset : end_offset]
-                    self._message_response = None
-                    self._sent_text = ""
-                    self._sent_thinking_status = ""
-
-                    # 如果偏移后还有新内容，立即发送为新消息
-                    if current_text:
-                        response = await run_in_threadpool(
-                            chain.send_direct_message,
-                            Message.model_validate({
-                                "channel": self._channel,
-                                "source": self._source,
-                                "mtype": MessageType.Agent,
-                                "userid": self._user_id,
-                                "username": self._username,
-                                "original_message_id": self._original_message_id,
-                                "original_chat_id": self._original_chat_id,
-                                "title": self._title,
-                                "text": current_text,
-                                "rich_message": self._get_rich_message(current_text),
-                                "save_history": False,
-                            }),
-                        )
-                        if response and response.success and response.message_id:
-                            self._message_response = response
-                            self._record_sent_text(current_text, thinking_status)
-                            logger.debug(f"流式输出新消息已发送: message_id={response.message_id}")
-                        else:
-                            logger.debug("流式输出新消息发送失败，降级为非流式输出")
-                            self._streaming_enabled = False
-                else:
-                    # 后续更新：编辑已有消息
-                    try:
-                        channel_enum = NotificationChannel(self._channel)
-                    except (ValueError, KeyError):
-                        return
-
-                    metadata = dict(self._message_response.metadata or {})
-                    rich_message = self._get_rich_message(current_text)
-                    if rich_message:
-                        # 通用编辑接口不增加渠道专属参数，通过元数据交给 Telegram 模块消费。
-                        metadata["telegram_rich_message"] = rich_message
-                        metadata["telegram_wait_for_edit_interval"] = final
-                    success = await run_in_threadpool(
-                        chain.edit_message,
-                        channel=channel_enum,
-                        source=self._message_response.source,
-                        message_id=self._message_response.message_id,
-                        chat_id=self._message_response.chat_id,
-                        text=current_text,
-                        title=self._title,
-                        metadata=metadata,
-                    )
-                    if success:
-                        self._record_sent_text(current_text, thinking_status)
-                    else:
-                        logger.debug("流式输出消息编辑失败")
+                logger.debug("流式输出消息编辑失败")
         except Exception as e:
             logger.error(f"流式输出刷新失败: {e}")
 

@@ -526,6 +526,7 @@ class NotificationMixin:
         :param transferinfo:  文件整理信息
         :param kwargs:  其他参数(覆盖业务对象属性值)
         """
+        strict_delivery = bool(kwargs.pop("_strict_delivery", False))
         message = _render_notification_message(
             message=message,
             meta=meta,
@@ -542,6 +543,7 @@ class NotificationMixin:
         dispatch_message = self._normalize_notification_for_dispatch(message)
         await self._async_dispatch_notification_steps(
             dispatch_message,
+            strict_delivery=strict_delivery,
             kwargs=kwargs,
         )
 
@@ -549,6 +551,7 @@ class NotificationMixin:
         self,
         message: Message,
         *,
+        strict_delivery: bool = False,
         kwargs: dict[str, object],
     ) -> None:
         """
@@ -580,11 +583,14 @@ class NotificationMixin:
                     etype=EventType.NoticeMessage,
                     data=self._build_notice_message_data(step.message),
                 )
+                delivery_kwargs = dict(kwargs)
+                if strict_delivery:
+                    delivery_kwargs["raise_exception"] = True
                 await self.messagequeue.async_send_message(
                     "post_message",
                     message=step.message,
-                    immediately=step.immediately,
-                    **kwargs,
+                    immediately=True if strict_delivery else step.immediately,
+                    **delivery_kwargs,
                 )
             try:
                 step = steps.send(lookup_result)

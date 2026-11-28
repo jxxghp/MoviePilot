@@ -135,6 +135,85 @@ async def test_agent_final_edit_waits_during_telegram_edit_interval(
     assert "思考中" not in final_text
 
 
+@pytest.mark.asyncio
+async def test_agent_final_edit_recovers_after_telegram_429_cooldown(telegram, monkeypatch):
+    """
+    进度编辑触发 429 冷却后，中间刷新跳过，收尾编辑应等待剩余冷却并覆盖思考中消息。
+    """
+    now = [100.0]
+    waits = []
+    monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+    def advance(seconds):
+        """
+        记录并推进 Telegram 429 冷却等待，保持用例离线。
+
+        :param seconds: 等待秒数
+        """
+        waits.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+    telegram.bot.send_rich_message.return_value = {
+        "message_id": 101, "chat": {"id": "fake_chat_id"},
+    }
+    telegram.bot.edit_message_text.side_effect = [
+        TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": 13}),
+        {"message_id": 101, "chat": {"id": "fake_chat_id"}},
+    ]
+    handler = StreamingHandler()
+    handler._channel = NotificationChannel.Telegram.value
+    handler._source = "bot"
+    handler._streaming_enabled = True
+    handler._original_message_id = "question"
+    module = TelegramModule()
+    module._channel = NotificationChannel.Telegram
+    monkeypatch.setattr(module, "get_configs", lambda: {"bot": SimpleNamespace(name="bot")})
+    monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
+    monkeypatch.setattr(module, "check_message", lambda *_args: True)
+    monkeypatch.setattr(module, "get_notification_targets", lambda _message: None)
+
+    async def dispatch(func, *args, **kwargs):
+        """
+        保留真实 Telegram 发送与编辑冷却逻辑，仅隔离模块调度边界。
+        """
+        if func.__name__ == "send_direct_message":
+            return module.send_direct_message(args[0])
+        if func.__name__ == "edit_message":
+            return module.edit_message(**kwargs)
+        return True
+
+    monkeypatch.setattr("app.agent.callback.run_in_threadpool", dispatch)
+    handler.thinking_started()
+    await handler._flush_messages()
+
+    now[0] += 2.0
+    handler.record_tool_call("execute_command", tool_kwargs={"command": "inspect"})
+    await handler._flush_messages()
+    assert telegram.bot.edit_message_text.call_count == 1
+
+    # 冷却期内中间进度编辑直接跳过，不等待也不触碰 Bot API。
+    now[0] += 3.0
+    handler.record_tool_call("read_file", tool_kwargs={"file_path": "a.py"})
+    await handler._flush_messages()
+    assert telegram.bot.edit_message_text.call_count == 1
+    assert waits == []
+
+    # 冷却结束前 4 秒收到最终答案，收尾编辑应等待剩余 4 秒并覆盖原消息。
+    now[0] += 6.0
+    handler.emit("任务已完成，这是最终结论。")
+    all_sent, final_text = await handler.stop_streaming()
+
+    assert all_sent is True
+    assert waits == [4.0]
+    assert await handler.take() == ""
+    assert telegram.bot.edit_message_text.call_count == 2
+    rich_html = telegram.bot.edit_message_text.call_args.kwargs["rich_message"]["html"]
+    assert "任务已完成，这是最终结论。" in rich_html
+    assert "思考中" not in rich_html
+    assert "任务已完成，这是最终结论。" in final_text
+
+
 @pytest.mark.parametrize("url", [None, "", "   ", 123, False])
 @pytest.mark.parametrize("callback_data", [None, "", 123, "history"])
 def test_inline_keyboard_filters_invalid_actions(url, callback_data):
@@ -614,10 +693,10 @@ def test_photo_retry_stops_when_telegram_rejects_image(telegram, telegram_retry_
 @pytest.mark.parametrize("failures", [0, 1, 2])
 def test_photo_rate_limit_does_not_send_fallback_or_retry(telegram, telegram_retry_sleep, failures):
     """
-    429 必须尊重冷却期，不再用文本请求加重限流。
+    超出等待上限的 429 必须尊重冷却期，不再等待、重试或用文本请求加重限流。
     """
     rate_limit = TelegramApiError(
-        "sendPhoto", "Too Many Requests", 429, {"retry_after": 17},
+        "sendPhoto", "Too Many Requests", 429, {"retry_after": 120},
     )
     telegram.bot.send_photo.side_effect = [TelegramNetworkError("sendPhoto", "timeout")] * failures + [rate_limit]
     result = telegram.send_msg(title="通知", image="https://example.com/poster.jpg")

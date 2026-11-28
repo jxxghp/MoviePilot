@@ -1086,13 +1086,21 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         return False
 
-    async def send_message(self, message: Message) -> None:
+    async def send_message(
+        self,
+        message: Message,
+        *,
+        strict_delivery: bool = False,
+    ) -> None:
         """
         发送工具消息。
 
         WebAgent 渠道没有后端模块实例，前端流式面板通过 Agent 上下文中的
         回调直接接收消息；无渠道的后台任务清空渠道侧定位信息后交由消息链广播，
         其它渠道继续走统一消息链。
+
+        :param message: 待发送的通知消息
+        :param strict_delivery: 交互渠道发送时是否透传模块投递未确认异常
         """
         callback = self._agent_context.get("message_callback")
         if (
@@ -1127,6 +1135,10 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 message = message.model_copy(
                     update={"original_chat_id": original_chat_id}
                 )
+
+        if strict_delivery and self._channel and self._source:
+            await ToolChain().async_post_message(message, _strict_delivery=True)
+            return
 
         await ToolChain().async_post_message(message)
 

@@ -2,6 +2,7 @@
 发送消息工具
 """
 
+import json
 from typing import Any, Optional, Type
 
 from pydantic import BaseModel, Field, model_validator
@@ -148,11 +149,20 @@ class SendMessageTool(MoviePilotTool):
                     "image": image_url,
                     "rich_message": rich_message,
                     "save_history": False,
-                })
+                }),
+                strict_delivery=bool(self._channel and self._source),
             )
             self._agent_context["user_reply_sent"] = True
             self._agent_context["reply_mode"] = "send_message"
             return "消息已发送"
         except Exception as e:
             logger.error(f"发送消息失败: {e}")
-            return f"发送消息时发生错误: {str(e)}"
+            return json.dumps(
+                {
+                    "success": False,
+                    "execution_outcome": "failed",
+                    "tool": self.name,
+                    "error": f"发送消息失败: {e}",
+                },
+                ensure_ascii=False,
+            )

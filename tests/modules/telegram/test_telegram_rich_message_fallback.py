@@ -9,6 +9,7 @@ import pytest
 from app.modules.telegram.botapi import TelegramApiError, TelegramNetworkError
 from app.modules.telegram.telegram import (
     TELEGRAM_EDIT_MIN_INTERVAL_SECONDS,
+    TELEGRAM_RATE_LIMIT_MAX_WAIT_SECONDS,
     NonRetryableTelegramError,
     RetryException,
     Telegram,
@@ -186,17 +187,18 @@ class TestSendMsgFallsBackToPlainText:
 
         assert result["success"] is False
 
-    def test_send_429_skips_fallback_and_retry(self):
+    def test_send_429_over_cap_skips_fallback_and_retry(self):
         """
-        Rich 发送收到 429 时应立即返回失败，不再重试或发送纯文本。
+        Rich 发送收到超出等待上限的 429 时应立即返回失败，不再等待、重试或降级纯文本。
         """
         client = _make_client()
+        over_cap = int(TELEGRAM_RATE_LIMIT_MAX_WAIT_SECONDS) + 30
         client._api.send_rich_message.side_effect = TelegramApiError(
-            "sendRichMessage", "Too Many Requests: retry after 17", 429,
-            {"retry_after": 17},
+            "sendRichMessage", f"Too Many Requests: retry after {over_cap}", 429,
+            {"retry_after": over_cap},
         )
 
-        with patch("time.sleep") as sleep_mock:
+        with patch("app.modules.telegram.telegram.time.sleep") as sleep_mock:
             result = client.send_msg(title="结果", text="正文", rich_message="# 结果")
 
         assert result["success"] is False
@@ -204,22 +206,164 @@ class TestSendMsgFallsBackToPlainText:
         client._api.send_message.assert_not_called()
         sleep_mock.assert_not_called()
 
-    def test_plain_send_429_skips_retry(self):
+    def test_plain_send_429_over_cap_skips_retry(self):
         """
-        普通发送收到 429 时也应隔离输出失败，不能阻塞 Agent。
+        普通发送收到超出等待上限的 429 时应立即隔离失败，不无界阻塞 Agent。
         """
         client = _make_client()
+        over_cap = int(TELEGRAM_RATE_LIMIT_MAX_WAIT_SECONDS) + 30
         client._api.send_message.side_effect = TelegramApiError(
-            "sendMessage", "Too Many Requests: retry after 17", 429,
-            {"retry_after": 17},
+            "sendMessage", f"Too Many Requests: retry after {over_cap}", 429,
+            {"retry_after": over_cap},
         )
 
-        with patch("time.sleep") as sleep_mock:
+        with patch("app.modules.telegram.telegram.time.sleep") as sleep_mock:
             result = client.send_msg(title="结果", text="正文")
 
         assert result["success"] is False
         client._api.send_message.assert_called_once()
         sleep_mock.assert_not_called()
+
+    def test_send_msg_waits_for_existing_429_cooldown_within_cap(self, monkeypatch):
+        """
+        已有 429 冷却剩余时间在上限内时，最终正文应等待冷却结束后补发成功。
+        """
+        client = _make_client()
+        client._telegram_chat_id = "-1001"
+        now = [100.0]
+        waits = []
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+        def advance(seconds):
+            """
+            用虚拟时钟推进冷却等待，避免测试真实休眠。
+
+            :param seconds: 等待秒数
+            """
+            waits.append(seconds)
+            now[0] += seconds
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+        client._mark_rate_limit(
+            "-1001",
+            TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": 13}),
+        )
+        now[0] += 9.0
+        client._api.send_rich_message.return_value = {"message_id": 201, "chat": {"id": "-1001"}}
+
+        result = client.send_msg(None, text="final answer", rich_message="final answer")
+
+        assert result == {"success": True, "message_id": 201, "chat_id": "-1001"}
+        assert waits == [4.0]
+        client._api.send_rich_message.assert_called_once()
+        client._api.send_message.assert_not_called()
+
+    def test_rich_chunked_send_429_only_retries_unsent_chunks(self, monkeypatch):
+        """
+        富文本多分块发送中途命中 429 时，冷却后只补发尚未送达的分块，不重发首块。
+        """
+        client = _make_client()
+        now = [200.0]
+        waits = []
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+        def advance(seconds):
+            """
+            记录并推进虚拟冷却等待。
+
+            :param seconds: 等待秒数
+            """
+            waits.append(seconds)
+            now[0] += seconds
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+        chunks = [{"html": "<b>第一块</b>"}, {"html": "<b>第二块</b>"}, {"html": "<b>第三块</b>"}]
+        monkeypatch.setattr(client, "_build_rich_message_chunks", lambda _text: chunks)
+        client._api.send_rich_message.side_effect = [
+            {"message_id": 1, "chat": {"id": "chat"}},
+            TelegramApiError("sendRichMessage", "Too Many Requests", 429, {"retry_after": 5}),
+            {"message_id": 2, "chat": {"id": "chat"}},
+            {"message_id": 3, "chat": {"id": "chat"}},
+        ]
+
+        result = client.send_msg(None, text="正文", rich_message="第一块\n第二块\n第三块")
+
+        assert result == {"success": True, "message_id": 3, "chat_id": "chat"}
+        assert waits == [5.0]
+        sent_payloads = [
+            call.kwargs["rich_message"]["html"]
+            for call in client._api.send_rich_message.call_args_list
+        ]
+        assert sent_payloads == ["<b>第一块</b>", "<b>第二块</b>", "<b>第二块</b>", "<b>第三块</b>"]
+        client._api.send_message.assert_not_called()
+
+    @pytest.mark.parametrize("parse_mode", ["plain", "HTML", "MarkdownV2"])
+    def test_long_message_429_only_retries_unsent_chunks(self, monkeypatch, parse_mode):
+        """
+        普通、HTML 和 MarkdownV2 长消息分块遇到 429 时，只补发未送达分块。
+        """
+        client = _make_client()
+        now = [300.0]
+        waits = []
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+        def advance(seconds):
+            """
+            推进虚拟时钟模拟等待 429 冷却。
+
+            :param seconds: 等待秒数
+            """
+            waits.append(seconds)
+            now[0] += seconds
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+        client._api.send_message.side_effect = [
+            {"message_id": 11, "chat": {"id": "chat"}},
+            TelegramApiError("sendMessage", "Too Many Requests", 429, {"retry_after": 6}),
+            {"message_id": 12, "chat": {"id": "chat"}},
+        ]
+        body = ("第一段内容" * 700) + "\n" + ("第二段内容" * 700)
+
+        result = client.send_msg(title="", text=body, parse_mode=parse_mode)
+
+        assert result == {"success": True, "message_id": 12, "chat_id": "chat"}
+        assert waits == [6.0]
+        sent_texts = [call.kwargs["text"] for call in client._api.send_message.call_args_list]
+        assert len(sent_texts) == 3
+        assert sent_texts[0] != sent_texts[1]
+        assert sent_texts[1] == sent_texts[2]
+
+    def test_repeated_429_stops_at_wait_budget_cap(self, monkeypatch):
+        """
+        连续 429 累计等待不得超过等待上限，超预算时立即放弃补发。
+        """
+        client = _make_client()
+        now = [400.0]
+        waits = []
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+        def advance(seconds):
+            """
+            记录每次虚拟等待时长并推进时钟。
+
+            :param seconds: 等待秒数
+            """
+            waits.append(seconds)
+            now[0] += seconds
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+        client._api.send_rich_message.side_effect = [
+            TelegramApiError("sendRichMessage", "Too Many Requests", 429, {"retry_after": 35}),
+            TelegramApiError("sendRichMessage", "Too Many Requests", 429, {"retry_after": 35}),
+        ]
+
+        result = client.send_msg(None, text="正文", rich_message="# 正文")
+
+        assert result == {"success": False}
+        assert waits == [35.0]
+        assert sum(waits) <= TELEGRAM_RATE_LIMIT_MAX_WAIT_SECONDS
+        assert client._api.send_rich_message.call_count == 2
+        client._api.send_message.assert_not_called()
 
 
 class TestEditMsgFallsBackToPlainText:
@@ -279,10 +423,9 @@ class TestEditMsgFallsBackToPlainText:
         assert result is False
         client._api.edit_message_text.assert_called_once()
 
-    @pytest.mark.parametrize("wait_for_interval", [False, True])
-    def test_429_cooldown_skips_follow_up_edits(self, monkeypatch, wait_for_interval):
+    def test_429_cooldown_skips_intermediate_edits(self, monkeypatch):
         """
-        同一聊天的冷却期内后续编辑不应再触碰 Bot API。
+        中间进度编辑在聊天 429 冷却期内应立即跳过，不触碰 Bot API 也不等待。
         """
         client = _make_client()
         now = [100.0]
@@ -297,7 +440,7 @@ class TestEditMsgFallsBackToPlainText:
         with patch("app.modules.telegram.telegram.time.sleep") as sleep_mock:
             assert client.edit_msg(
                 chat_id="chat", message_id=5, text="更新", rich_message="# 更新",
-                wait_for_interval=wait_for_interval,
+                wait_for_interval=False,
             ) is False
         sleep_mock.assert_not_called()
         assert client._api.edit_message_text.call_count == 1
@@ -307,10 +450,91 @@ class TestEditMsgFallsBackToPlainText:
         assert client.edit_msg(chat_id="chat", message_id=5, text="更新", rich_message="# 更新") is True
         assert client._api.edit_message_text.call_count == 2
 
-    @pytest.mark.parametrize("interruption", ["429", "edit"])
+    def test_final_edit_waits_for_429_cooldown_within_cap_and_skips_over_cap(self, monkeypatch):
+        """
+        收尾编辑在 429 剩余冷却未超上限时应等待并送达，超出上限时立即放弃不阻塞。
+        """
+        client = _make_client()
+        now = [100.0]
+        waits = []
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+        def advance(seconds):
+            """
+            推进虚拟时钟并记录等待时长。
+
+            :param seconds: 等待秒数
+            """
+            waits.append(seconds)
+            now[0] += seconds
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+        client._mark_rate_limit(
+            "chat",
+            TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": 13}),
+        )
+        now[0] += 9.0
+        client._api.edit_message_text.return_value = {"message_id": 10}
+
+        assert client.edit_msg(
+            chat_id="chat", message_id=10, text="finished", rich_message="finished",
+            wait_for_interval=True,
+        ) is True
+        assert waits == [4.0]
+        assert client._api.edit_message_text.call_count == 1
+
+        waits.clear()
+        over_cap = int(TELEGRAM_RATE_LIMIT_MAX_WAIT_SECONDS) + 60
+        client._mark_rate_limit(
+            "chat",
+            TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": over_cap}),
+        )
+        assert client.edit_msg(
+            chat_id="chat", message_id=10, text="too-long", rich_message="too-long",
+            wait_for_interval=True,
+        ) is False
+        assert waits == []
+        assert client._api.edit_message_text.call_count == 1
+
+    def test_final_edit_retries_after_fresh_429_without_plain_fallback(self, monkeypatch):
+        """
+        收尾编辑本身命中短 429 时，应在冷却后重试富文本编辑而不降级纯文本。
+        """
+        client = _make_client()
+        now = [100.0]
+        waits = []
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+        def advance(seconds):
+            """
+            用虚拟时钟推进 429 冷却等待。
+
+            :param seconds: 等待秒数
+            """
+            waits.append(seconds)
+            now[0] += seconds
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+        client._api.edit_message_text.side_effect = [
+            TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": 5}),
+            {"message_id": 5},
+        ]
+
+        assert client.edit_msg(
+            chat_id="chat", message_id=5, text="完整正文", rich_message="# 完整正文",
+            wait_for_interval=True,
+        ) is True
+        assert waits == [5.0]
+        assert client._api.edit_message_text.call_count == 2
+        assert all(
+            call.kwargs.get("rich_message") is not None
+            for call in client._api.edit_message_text.call_args_list
+        )
+
+    @pytest.mark.parametrize("interruption", ["429_over_cap", "edit"])
     def test_final_edit_rechecks_cooldown_and_interval_after_one_wait(self, monkeypatch, interruption):
         """
-        等待期间出现聊天冷却或同消息并发编辑时，不追加请求或无限延长等待。
+        等待期间出现超上限 429 冷却或同消息并发编辑时，不追加请求或无限延长等待。
         """
         client = _make_client()
         now = [100.0]
@@ -327,9 +551,11 @@ class TestEditMsgFallsBackToPlainText:
             """
             waits.append(seconds)
             now[0] += seconds
-            if interruption == "429":
+            if interruption == "429_over_cap":
+                over_cap = int(TELEGRAM_RATE_LIMIT_MAX_WAIT_SECONDS) + 30
                 client._mark_rate_limit(
-                    "chat", TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": 17}),
+                    "chat",
+                    TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": over_cap}),
                 )
             else:
                 assert client.edit_msg(chat_id="chat", message_id=5, text="并发编辑") is True
@@ -340,7 +566,7 @@ class TestEditMsgFallsBackToPlainText:
             wait_for_interval=True,
         ) is False
         assert waits == [TELEGRAM_EDIT_MIN_INTERVAL_SECONDS]
-        assert client._api.edit_message_text.call_count == (1 if interruption == "429" else 2)
+        assert client._api.edit_message_text.call_count == (1 if interruption == "429_over_cap" else 2)
 
     def test_successful_edits_are_throttled_and_latest_text_wins(self, monkeypatch):
         """

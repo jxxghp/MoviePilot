@@ -1280,7 +1280,7 @@ class MessageQueueManager(metaclass=SingletonClass):
         **kwargs: Any,
     ) -> None:
         """
-        调用一条消息携带的发送回调并隔离渠道异常。
+        调用一条消息携带的发送回调；未显式要求抛错时隔离渠道异常。
         """
         if send_callback:
             try:
@@ -1288,6 +1288,8 @@ class MessageQueueManager(metaclass=SingletonClass):
                 send_callback(*args, **kwargs)
             except Exception as e:
                 logger.error(f"发送消息错误：{str(e)}")
+                if kwargs.get("raise_exception"):
+                    raise
 
     def _monitor_loop(self) -> None:
         """

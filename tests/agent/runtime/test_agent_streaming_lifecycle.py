@@ -700,3 +700,22 @@ async def test_agent_fallback_does_not_repeat_answer_in_output_or_history(
     agent.send_agent_message.assert_awaited_once_with(fallback)
     assert agent._streamed_output == delivered_prefix + answer
     save_display.assert_awaited_once_with(delivered_prefix + answer)
+
+
+@pytest.mark.asyncio
+async def test_stop_streaming_deletes_orphaned_thinking_placeholder(channel_stream) -> None:
+    """
+    仅发送过思考占位且通过工具直接完成回复时，收尾应删除占位消息避免停留在思考中。
+    """
+    handler, calls, messages, _ = channel_stream
+    handler.thinking_started()
+    await handler._flush_messages()
+    assert messages == {"1": "🤔 思考中 · 已用时 0 秒"}
+
+    all_sent, final_text = await handler.stop_streaming()
+
+    assert all_sent is False
+    assert final_text == ""
+    assert [call[0] for call in calls] == ["send_direct_message", "delete_message"]
+    assert calls[1][2]["message_id"] == "1"
+    assert await handler.take() == ""
